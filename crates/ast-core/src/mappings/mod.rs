@@ -4,6 +4,8 @@ pub(crate) mod helpers;
 pub(crate) mod rate;
 mod unit;
 pub use unit::UnitMap;
+mod zoom;
+pub use zoom::ZoomMap;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
