@@ -8,6 +8,8 @@ mod zoom;
 pub use zoom::ZoomMap;
 mod shift;
 pub use shift::ShiftMap;
+mod matrix;
+pub use matrix::MatrixMap;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
