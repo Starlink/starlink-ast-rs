@@ -10,14 +10,25 @@ use ast_core::regions::{DynRegion, Overlap, Region};
 struct DummyRegion;
 
 impl Mapping for DummyRegion {
-    fn nin(&self) -> usize { 2 }
-    fn nout(&self) -> usize { 2 }
-    fn is_inverted(&self) -> bool { false }
+    fn nin(&self) -> usize {
+        2
+    }
+    fn nout(&self) -> usize {
+        2
+    }
+    fn is_inverted(&self) -> bool {
+        false
+    }
     fn invert(&mut self) {}
     fn transform(&self, _pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn transform_into(&self, _pts: &PointSet, _forward: bool, _out: &mut PointSet) -> AstResult<()> {
+    fn transform_into(
+        &self,
+        _pts: &PointSet,
+        _forward: bool,
+        _out: &mut PointSet,
+    ) -> AstResult<()> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
     fn simplified(&self) -> AstResult<DynMapping> {
@@ -29,7 +40,9 @@ impl Mapping for DummyRegion {
 }
 
 impl Frame for DummyRegion {
-    fn naxes(&self) -> usize { 2 }
+    fn naxes(&self) -> usize {
+        2
+    }
     fn format(&self, _axis: usize, _value: f64) -> AstResult<String> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

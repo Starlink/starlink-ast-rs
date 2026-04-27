@@ -26,7 +26,10 @@ impl PointSet {
     /// All points must have the same length. Panics if the iterator is empty.
     pub fn from_rows(rows: impl IntoIterator<Item = impl AsRef<[f64]>>) -> Self {
         let rows: Vec<Vec<f64>> = rows.into_iter().map(|r| r.as_ref().to_vec()).collect();
-        assert!(!rows.is_empty(), "PointSet::from_rows requires at least one row");
+        assert!(
+            !rows.is_empty(),
+            "PointSet::from_rows requires at least one row"
+        );
         let ncoord = rows[0].len();
         let npoint = rows.len();
         let flat: Vec<f64> = rows.into_iter().flatten().collect();
@@ -49,10 +52,7 @@ impl PointSet {
             if col.len() != npoint {
                 return Err(AstError::new(
                     ErrorCode::Ncpin,
-                    format!(
-                        "column {i} has length {} but expected {npoint}",
-                        col.len()
-                    ),
+                    format!("column {i} has length {} but expected {npoint}", col.len()),
                 ));
             }
         }

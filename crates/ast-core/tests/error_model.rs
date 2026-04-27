@@ -20,8 +20,7 @@ fn with_context_appends() {
 
 #[test]
 fn display_includes_context() {
-    let err = AstError::new(ErrorCode::Atger, "failed")
-        .with_context("in transform");
+    let err = AstError::new(ErrorCode::Atger, "failed").with_context("in transform");
     let msg = format!("{err}");
     assert!(msg.contains("attribute getting error"));
     assert!(msg.contains("failed"));

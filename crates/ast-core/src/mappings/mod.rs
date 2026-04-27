@@ -34,12 +34,7 @@ pub trait Mapping: Send {
     ///
     /// `out` must have shape `(pts.npoint(), self.nout())` for forward or
     /// `(pts.npoint(), self.nin())` for inverse transforms.
-    fn transform_into(
-        &self,
-        pts: &PointSet,
-        forward: bool,
-        out: &mut PointSet,
-    ) -> AstResult<()>;
+    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()>;
 
     /// Return a simplified version of this mapping.
     ///
