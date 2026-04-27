@@ -11,7 +11,7 @@ The port keeps full **binary ABI compatibility** with the existing C
 Rust build with no source or recompile changes.
 
 **The design is fixed.** Read it before making non-trivial changes:
-[`docs/specs/2026-04-20-rust-port-design.md`](docs/specs/2026-04-20-rust-port-design.md).
+[`docs/superpower/specs/2026-04-20-rust-port-design.md`](docs/superpower/specs/2026-04-20-rust-port-design.md).
 The CLAUDE.md you're reading is the operational summary; the spec is
 authoritative when they disagree.
 
