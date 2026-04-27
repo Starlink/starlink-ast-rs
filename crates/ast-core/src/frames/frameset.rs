@@ -516,6 +516,10 @@ impl Frame for FrameSet {
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         self.current().map_from(previous)
     }
+
+    fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        self.current().convert(to, domains)
+    }
 }
 
 // ====================================================================== //

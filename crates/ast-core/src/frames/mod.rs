@@ -54,4 +54,12 @@ pub trait Frame: Send {
     /// After mutating a frame attribute, this returns the transformation that
     /// maps coordinates in the old frame to coordinates in the new frame.
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping>;
+
+    /// Find a mapping to convert coordinates from this frame to `to`.
+    ///
+    /// `domains` is a priority-ordered list of domain names to try when
+    /// searching for an alignment path. Returns a [`FrameSet`] connecting
+    /// `self` (base) to `to` (current) if conversion is possible, or
+    /// `None` if the frames are incompatible.
+    fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;
 }

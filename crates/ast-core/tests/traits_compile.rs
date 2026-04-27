@@ -67,6 +67,13 @@ impl Frame for DummyRegion {
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
+    fn convert(
+        &self,
+        _to: &dyn Frame,
+        _domains: &[&str],
+    ) -> AstResult<Option<ast_core::frames::FrameSet>> {
+        Ok(None)
+    }
 }
 
 impl Region for DummyRegion {

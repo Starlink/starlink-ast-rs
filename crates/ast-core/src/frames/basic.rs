@@ -5,7 +5,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 
-use super::{DynFrame, Frame};
+use super::{DynFrame, Frame, FrameRef, FrameSet};
 
 /// A basic coordinate frame with Euclidean (Cartesian) geometry.
 ///
@@ -536,5 +536,19 @@ impl Frame for BasicFrame {
 
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
         Ok(Box::new(UnitMap::new(self.naxes)))
+    }
+
+    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        if self.naxes() == to.naxes() {
+            let mut fs = FrameSet::new(self.snapshot());
+            fs.add_frame(
+                FrameRef::Base,
+                Box::new(UnitMap::new(self.naxes)),
+                to.snapshot(),
+            )?;
+            Ok(Some(fs))
+        } else {
+            Ok(None)
+        }
     }
 }
