@@ -1,5 +1,6 @@
-// oracle benchmark stub — implementation pending
-use criterion::{criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 
-criterion_group!(benches,);
+fn placeholder(_c: &mut Criterion) {}
+
+criterion_group!(benches, placeholder);
 criterion_main!(benches);
