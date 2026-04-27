@@ -5,7 +5,7 @@ use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, UnitMap};
 
 use super::{DynFrame, Frame};
 
@@ -473,5 +473,97 @@ impl FrameSet {
             }
         }
         Ok(())
+    }
+}
+
+// ====================================================================== //
+// Frame trait implementation                                              //
+// ====================================================================== //
+
+impl Frame for FrameSet {
+    fn naxes(&self) -> usize {
+        self.current().naxes()
+    }
+
+    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
+        self.current().format(axis, value)
+    }
+
+    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
+        self.current().unformat(axis, text)
+    }
+
+    fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        self.current().distance(a, b)
+    }
+
+    fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        self.current().angle(a, b, c)
+    }
+
+    fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        self.current().offset(from, to, dist)
+    }
+
+    fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        self.current().norm(coords)
+    }
+
+    fn snapshot(&self) -> DynFrame {
+        self.current().snapshot()
+    }
+
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        self.current().map_from(previous)
+    }
+}
+
+// ====================================================================== //
+// Mapping trait implementation                                            //
+// ====================================================================== //
+
+impl Mapping for FrameSet {
+    fn nin(&self) -> usize {
+        self.base().naxes()
+    }
+
+    fn nout(&self) -> usize {
+        self.current().naxes()
+    }
+
+    fn is_inverted(&self) -> bool {
+        // Inversion is handled by swapping base/current, so this is
+        // always false.
+        false
+    }
+
+    fn invert(&mut self) {
+        std::mem::swap(&mut self.base_idx, &mut self.current_idx);
+    }
+
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        let map = if forward {
+            self.mapping(FrameRef::Base, FrameRef::Current)?
+        } else {
+            self.mapping(FrameRef::Current, FrameRef::Base)?
+        };
+        map.transform(pts, true)
+    }
+
+    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        let map = if forward {
+            self.mapping(FrameRef::Base, FrameRef::Current)?
+        } else {
+            self.mapping(FrameRef::Current, FrameRef::Base)?
+        };
+        map.transform_into(pts, true, out)
+    }
+
+    fn simplified(&self) -> AstResult<DynMapping> {
+        self.mapping(FrameRef::Base, FrameRef::Current)
+    }
+
+    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
     }
 }
