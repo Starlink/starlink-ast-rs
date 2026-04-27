@@ -1,0 +1,17 @@
+[workspace]
+members = ["crates/*"]
+default-members = [
+    "crates/ast-core",
+    "crates/ast-capi",
+    "crates/ast-plugins",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/lsst-dm/starlink-astrs"
+
+[workspace.dependencies]
+cc = "1"
