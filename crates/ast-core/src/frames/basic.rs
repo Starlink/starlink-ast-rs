@@ -34,7 +34,7 @@ pub struct BasicFrame {
 /// # Examples
 ///
 /// ```
-/// use ast_core::frames::BasicFrameBuilder;
+/// use ast_core::frames::{BasicFrameBuilder, Frame};
 ///
 /// let frame = BasicFrameBuilder::new(2)
 ///     .title("Sky Position")

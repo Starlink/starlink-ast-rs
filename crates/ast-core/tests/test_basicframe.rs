@@ -240,10 +240,7 @@ fn unformat_invalid() {
 
 #[test]
 fn snapshot_is_independent_clone() {
-    let frame = BasicFrameBuilder::new(3)
-        .title("Original")
-        .build()
-        .unwrap();
+    let frame = BasicFrameBuilder::new(3).title("Original").build().unwrap();
     let snap = frame.snapshot();
     assert_eq!(snap.naxes(), 3);
 }
