@@ -12,6 +12,8 @@ mod matrix;
 pub use matrix::MatrixMap;
 mod perm;
 pub use perm::PermMap;
+mod cmpmap;
+pub use cmpmap::{CmpMap, Composition};
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
@@ -61,4 +63,22 @@ pub trait Mapping: Send {
     /// `ax2` is the 1-based index of the input axis.
     /// `at` is the position at which to evaluate the rate.
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64>;
+}
+
+impl dyn Mapping {
+    /// Compose this mapping with `next` in series.
+    ///
+    /// The resulting `CmpMap` applies `self` first, then `next`.
+    /// Requires `self.nout() == next.nin()`.
+    pub fn then(self: Box<Self>, next: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(self, next, Composition::Series)
+    }
+
+    /// Compose this mapping with `other` in parallel.
+    ///
+    /// The resulting `CmpMap` applies `self` and `other` side-by-side
+    /// to disjoint coordinate ranges.
+    pub fn alongside(self: Box<Self>, other: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(self, other, Composition::Parallel)
+    }
 }
