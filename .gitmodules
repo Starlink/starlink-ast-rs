@@ -1,0 +1,3 @@
+[submodule "reference/starlink-ast"]
+	path = reference/starlink-ast
+	url = https://github.com/Starlink/ast
