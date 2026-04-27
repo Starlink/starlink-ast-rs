@@ -4,15 +4,10 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 
-use super::helpers::is_bad;
 use super::Mapping;
+use super::helpers::is_bad;
 
-pub fn numeric_rate(
-    mapping: &dyn Mapping,
-    at: &[f64],
-    ax1: usize,
-    ax2: usize,
-) -> AstResult<f64> {
+pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
     let ax2_idx = ax2 - 1;
     let h = {
         let base = at[ax2_idx].abs();

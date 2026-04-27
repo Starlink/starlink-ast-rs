@@ -51,7 +51,12 @@ impl CmpMap {
                 ),
             ));
         }
-        Ok(Self { first, second, kind, inverted: false })
+        Ok(Self {
+            first,
+            second,
+            kind,
+            inverted: false,
+        })
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -102,14 +107,16 @@ impl CmpMap {
 
         // When fwd: split pts into first.nin() and second.nin() coord columns.
         // When !fwd: split pts into second.nout() and first.nout() coord columns.
-        let split = if fwd { self.first.nin() } else { self.second.nout() };
+        let split = if fwd {
+            self.first.nin()
+        } else {
+            self.second.nout()
+        };
         let npoint = pts.npoint();
 
         // Build sub-PointSets for each half.
-        let pts_a =
-            PointSet::from_ndarray(pts.view().slice(ndarray::s![.., ..split]).to_owned());
-        let pts_b =
-            PointSet::from_ndarray(pts.view().slice(ndarray::s![.., split..]).to_owned());
+        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., ..split]).to_owned());
+        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., split..]).to_owned());
 
         let out_a = a.transform(&pts_a, fwd)?;
         let out_b = b.transform(&pts_b, fwd)?;
@@ -173,12 +180,14 @@ impl Clone for CmpMap {
         //
         // Better: add a `clone_box()` method to Mapping.  For now we use
         // simplified() since it must return an equivalent mapping.
-        let first_clone = self.first.simplified().unwrap_or_else(|_| {
-            Box::new(UnitMap::new(self.first.nin()))
-        });
-        let second_clone = self.second.simplified().unwrap_or_else(|_| {
-            Box::new(UnitMap::new(self.second.nin()))
-        });
+        let first_clone = self
+            .first
+            .simplified()
+            .unwrap_or_else(|_| Box::new(UnitMap::new(self.first.nin())));
+        let second_clone = self
+            .second
+            .simplified()
+            .unwrap_or_else(|_| Box::new(UnitMap::new(self.second.nin())));
         // Reconstruct, ignoring the error (dimensions must still be valid).
         let mut c = CmpMap {
             first: first_clone,
@@ -252,10 +261,9 @@ impl Mapping for CmpMap {
 
         // If both simplified components behave as identity UnitMaps (same
         // nin and nout), we can return a single UnitMap.
-        let first_is_unit = s_first.nin() == s_first.nout()
-            && is_unit_map_like(s_first.as_ref());
-        let second_is_unit = s_second.nin() == s_second.nout()
-            && is_unit_map_like(s_second.as_ref());
+        let first_is_unit = s_first.nin() == s_first.nout() && is_unit_map_like(s_first.as_ref());
+        let second_is_unit =
+            s_second.nin() == s_second.nout() && is_unit_map_like(s_second.as_ref());
 
         if first_is_unit && second_is_unit {
             let n = match self.kind {
@@ -268,7 +276,12 @@ impl Mapping for CmpMap {
             return Ok(Box::new(UnitMap::new(n)));
         }
 
-        Ok(Box::new(CmpMap { first: s_first, second: s_second, kind: self.kind, inverted: self.inverted }))
+        Ok(Box::new(CmpMap {
+            first: s_first,
+            second: s_second,
+            kind: self.kind,
+            inverted: self.inverted,
+        }))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -288,12 +301,11 @@ fn is_unit_map_like(m: &dyn Mapping) -> bool {
     let probe: Vec<f64> = (1..=n).map(|i| i as f64 * 1.23456789).collect();
     let pts = PointSet::from_rows([probe.as_slice()]);
     match m.transform(&pts, true) {
-        Ok(out) => {
-            out.point(0)
-                .iter()
-                .zip(probe.iter())
-                .all(|(&got, &exp)| (got - exp).abs() < 1e-12)
-        }
+        Ok(out) => out
+            .point(0)
+            .iter()
+            .zip(probe.iter())
+            .all(|(&got, &exp)| (got - exp).abs() < 1e-12),
         Err(_) => false,
     }
 }

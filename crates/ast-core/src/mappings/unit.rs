@@ -17,7 +17,10 @@ pub struct UnitMap {
 impl UnitMap {
     /// Create a new `UnitMap` with `ncoord` coordinates.
     pub fn new(ncoord: usize) -> Self {
-        Self { ncoord, inverted: false }
+        Self {
+            ncoord,
+            inverted: false,
+        }
     }
 
     /// Compose in series with another mapping.
@@ -32,10 +35,18 @@ impl UnitMap {
 }
 
 impl Mapping for UnitMap {
-    fn nin(&self) -> usize { self.ncoord }
-    fn nout(&self) -> usize { self.ncoord }
-    fn is_inverted(&self) -> bool { self.inverted }
-    fn invert(&mut self) { self.inverted = !self.inverted; }
+    fn nin(&self) -> usize {
+        self.ncoord
+    }
+    fn nout(&self) -> usize {
+        self.ncoord
+    }
+    fn is_inverted(&self) -> bool {
+        self.inverted
+    }
+    fn invert(&mut self) {
+        self.inverted = !self.inverted;
+    }
 
     fn transform(&self, pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
         Ok(pts.clone())

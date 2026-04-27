@@ -52,16 +52,17 @@ impl MatrixMap {
         }
 
         let inverse = if nrows == ncols {
-            match gauss_jordan_inverse(&matrix) {
-                Ok(inv) => Some(inv),
-                // A singular square matrix — no inverse, but we allow creation.
-                Err(_) => None,
-            }
+            // A singular square matrix — no inverse, but we allow creation.
+            gauss_jordan_inverse(&matrix).ok()
         } else {
             None
         };
 
-        Ok(Self { matrix, inverse, inverted: false })
+        Ok(Self {
+            matrix,
+            inverse,
+            inverted: false,
+        })
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -153,7 +154,7 @@ impl Mapping for MatrixMap {
                     return Err(AstError::new(
                         ErrorCode::Nodef,
                         "MatrixMap inverse is not defined (non-square or singular matrix)",
-                    ))
+                    ));
                 }
             }
         };
@@ -173,7 +174,7 @@ impl Mapping for MatrixMap {
                     return Err(AstError::new(
                         ErrorCode::Nodef,
                         "MatrixMap inverse is not defined (non-square or singular matrix)",
-                    ))
+                    ));
                 }
             }
         };
@@ -218,15 +219,19 @@ fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
 
     for col in 0..n {
         // Find pivot row (partial pivoting).
-        let pivot_row = (col..n)
-            .max_by(|&a, &b| aug[idx(a, col)].abs().partial_cmp(&aug[idx(b, col)].abs()).unwrap());
+        let pivot_row = (col..n).max_by(|&a, &b| {
+            aug[idx(a, col)]
+                .abs()
+                .partial_cmp(&aug[idx(b, col)].abs())
+                .unwrap()
+        });
         let pivot_row = match pivot_row {
             Some(r) => r,
             None => {
                 return Err(AstError::new(
                     ErrorCode::Nodef,
                     "matrix is singular and cannot be inverted",
-                ))
+                ));
             }
         };
 

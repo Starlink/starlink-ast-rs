@@ -63,9 +63,7 @@ impl PermMap {
             if p > 0 && p as usize > nin {
                 return Err(AstError::new(
                     ErrorCode::Prmin,
-                    format!(
-                        "outperm entry {p} refers to input axis {p} but nin = {nin}"
-                    ),
+                    format!("outperm entry {p} refers to input axis {p} but nin = {nin}"),
                 ));
             }
             if p < 0 {
@@ -75,7 +73,8 @@ impl PermMap {
                         ErrorCode::Prmin,
                         format!(
                             "outperm entry {p} refers to constants[{}] but only {} constants supplied",
-                            cidx, constants.len()
+                            cidx,
+                            constants.len()
                         ),
                     ));
                 }
@@ -88,9 +87,7 @@ impl PermMap {
             if p > 0 && p as usize > nout {
                 return Err(AstError::new(
                     ErrorCode::Prmin,
-                    format!(
-                        "inperm entry {p} refers to output axis {p} but nout = {nout}"
-                    ),
+                    format!("inperm entry {p} refers to output axis {p} but nout = {nout}"),
                 ));
             }
             if p < 0 {
@@ -100,7 +97,8 @@ impl PermMap {
                         ErrorCode::Prmin,
                         format!(
                             "inperm entry {p} refers to constants[{}] but only {} constants supplied",
-                            cidx, constants.len()
+                            cidx,
+                            constants.len()
                         ),
                     ));
                 }
@@ -125,12 +123,7 @@ impl PermMap {
     /// `perm` encodes the selection (1-based / negative / zero convention).
     /// `nin_for_perm` is the number of input coordinates expected by `perm`
     /// (used for BAD-value checks).
-    fn apply_perm(
-        perm: &[i64],
-        constants: &[f64],
-        pts: &PointSet,
-        out: &mut PointSet,
-    ) {
+    fn apply_perm(perm: &[i64], constants: &[f64], pts: &PointSet, out: &mut PointSet) {
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -163,11 +156,19 @@ impl PermMap {
 
 impl Mapping for PermMap {
     fn nin(&self) -> usize {
-        if self.inverted { self.outperm.len() } else { self.inperm.len() }
+        if self.inverted {
+            self.outperm.len()
+        } else {
+            self.inperm.len()
+        }
     }
 
     fn nout(&self) -> usize {
-        if self.inverted { self.inperm.len() } else { self.outperm.len() }
+        if self.inverted {
+            self.inperm.len()
+        } else {
+            self.outperm.len()
+        }
     }
 
     fn is_inverted(&self) -> bool {

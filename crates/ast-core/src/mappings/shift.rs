@@ -22,7 +22,10 @@ impl ShiftMap {
     ///
     /// The number of coordinates is determined by the length of `shift`.
     pub fn new(shift: impl Into<Vec<f64>>) -> Self {
-        Self { shift: shift.into(), inverted: false }
+        Self {
+            shift: shift.into(),
+            inverted: false,
+        }
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -41,10 +44,18 @@ impl ShiftMap {
 }
 
 impl Mapping for ShiftMap {
-    fn nin(&self) -> usize { self.shift.len() }
-    fn nout(&self) -> usize { self.shift.len() }
-    fn is_inverted(&self) -> bool { self.inverted }
-    fn invert(&mut self) { self.inverted = !self.inverted; }
+    fn nin(&self) -> usize {
+        self.shift.len()
+    }
+    fn nout(&self) -> usize {
+        self.shift.len()
+    }
+    fn is_inverted(&self) -> bool {
+        self.inverted
+    }
+    fn invert(&mut self) {
+        self.inverted = !self.inverted;
+    }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         let mut out = PointSet::zeros(pts.npoint(), self.shift.len());

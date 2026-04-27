@@ -24,9 +24,16 @@ impl ZoomMap {
     /// Returns an error if `factor` is zero.
     pub fn new(ncoord: usize, factor: f64) -> AstResult<Self> {
         if factor == 0.0 {
-            return Err(AstError::new(ErrorCode::Zoomi, "zoom factor must not be zero"));
+            return Err(AstError::new(
+                ErrorCode::Zoomi,
+                "zoom factor must not be zero",
+            ));
         }
-        Ok(Self { ncoord, factor, inverted: false })
+        Ok(Self {
+            ncoord,
+            factor,
+            inverted: false,
+        })
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -45,10 +52,18 @@ impl ZoomMap {
 }
 
 impl Mapping for ZoomMap {
-    fn nin(&self) -> usize { self.ncoord }
-    fn nout(&self) -> usize { self.ncoord }
-    fn is_inverted(&self) -> bool { self.inverted }
-    fn invert(&mut self) { self.inverted = !self.inverted; }
+    fn nin(&self) -> usize {
+        self.ncoord
+    }
+    fn nout(&self) -> usize {
+        self.ncoord
+    }
+    fn is_inverted(&self) -> bool {
+        self.inverted
+    }
+    fn invert(&mut self) {
+        self.inverted = !self.inverted;
+    }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         let mut out = PointSet::zeros(pts.npoint(), self.ncoord);
