@@ -7,3 +7,4 @@ pub mod coords;
 pub mod error;
 pub mod frames;
 pub mod mappings;
+pub mod regions;
