@@ -1,7 +1,9 @@
 //! The Frame trait and associated types.
 
 mod basic;
+mod cmpframe;
 pub use basic::{BasicFrame, BasicFrameBuilder};
+pub use cmpframe::CmpFrame;
 
 use crate::error::AstResult;
 use crate::mappings::DynMapping;
