@@ -141,7 +141,7 @@ For AST: `facility_code = 1521`, `severity = 2` (ERROR), `base = 300`.
 
 Example: `ATGER` is message 300, so:
 ```
-((1521 | 2048) << 16) + ((300 | 4096) << 3) + 2 = 154010634
+((1521 | 2048) << 16) + ((300 | 4096) << 3) + 2 = 233933154
 ```
 
 ### Generated Output
@@ -153,9 +153,9 @@ Written to `$OUT_DIR/error_codes.rs`:
 #[repr(u32)]
 pub enum ErrorCode {
     /// attribute getting error
-    Atger = 154010634,
+    Atger = 233933154,
     /// attribute setting error
-    Atser = 154010642,
+    Atser = 233933162,
     // ... one variant per message in ast_err.msg
 }
 ```
