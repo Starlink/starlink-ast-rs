@@ -10,6 +10,8 @@ mod shift;
 pub use shift::ShiftMap;
 mod matrix;
 pub use matrix::MatrixMap;
+mod perm;
+pub use perm::PermMap;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
