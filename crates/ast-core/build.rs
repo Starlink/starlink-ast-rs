@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -12,8 +12,11 @@ fn main() {
     generate_error_codes(&vendor_dir);
 }
 
-fn compile_pal_erfa(vendor_dir: &PathBuf) {
-    println!("cargo::rerun-if-changed={}", vendor_dir.join("palwrap.c").display());
+fn compile_pal_erfa(vendor_dir: &Path) {
+    println!(
+        "cargo::rerun-if-changed={}",
+        vendor_dir.join("palwrap.c").display()
+    );
 
     cc::Build::new()
         .file(vendor_dir.join("palwrap.c"))
@@ -24,13 +27,25 @@ fn compile_pal_erfa(vendor_dir: &PathBuf) {
         .compile("ast_pal_erfa");
 }
 
-fn compile_wcslib(vendor_dir: &PathBuf) {
+fn compile_wcslib(vendor_dir: &Path) {
     let wcslib_dir = vendor_dir.join("wcslib");
 
-    println!("cargo::rerun-if-changed={}", wcslib_dir.join("proj.c").display());
-    println!("cargo::rerun-if-changed={}", wcslib_dir.join("tpn.c").display());
-    println!("cargo::rerun-if-changed={}", wcslib_dir.join("wcstrig.c").display());
-    println!("cargo::rerun-if-changed={}", wcslib_dir.join("ast_memory_stub.c").display());
+    println!(
+        "cargo::rerun-if-changed={}",
+        wcslib_dir.join("proj.c").display()
+    );
+    println!(
+        "cargo::rerun-if-changed={}",
+        wcslib_dir.join("tpn.c").display()
+    );
+    println!(
+        "cargo::rerun-if-changed={}",
+        wcslib_dir.join("wcstrig.c").display()
+    );
+    println!(
+        "cargo::rerun-if-changed={}",
+        wcslib_dir.join("ast_memory_stub.c").display()
+    );
 
     cc::Build::new()
         .file(wcslib_dir.join("proj.c"))
@@ -42,7 +57,7 @@ fn compile_wcslib(vendor_dir: &PathBuf) {
         .compile("ast_wcslib");
 }
 
-fn generate_error_codes(vendor_dir: &PathBuf) {
+fn generate_error_codes(vendor_dir: &Path) {
     let msg_path = vendor_dir.join("ast_err.msg");
     println!("cargo::rerun-if-changed={}", msg_path.display());
 
@@ -108,9 +123,8 @@ fn generate_error_codes(vendor_dir: &PathBuf) {
                 let description = &line[angle_start + 1..angle_end];
 
                 // Starlink MESSGEN formula
-                let errcode = ((facility_code | 0x800) << 16)
-                    + ((message_number | 0x1000) << 3)
-                    + severity;
+                let errcode =
+                    ((facility_code | 0x800) << 16) + ((message_number | 0x1000) << 3) + severity;
 
                 // Convert name to PascalCase: "ATGER" -> "Atger", "3DFSET" -> "ThreeDfset"
                 let variant_name = to_pascal_case(name);
@@ -124,7 +138,11 @@ fn generate_error_codes(vendor_dir: &PathBuf) {
     // Write the enum
     writeln!(out, "/// Error codes defined by the AST library.").unwrap();
     writeln!(out, "///").unwrap();
-    writeln!(out, "/// Values match the Starlink MESSGEN formula for binary compatibility").unwrap();
+    writeln!(
+        out,
+        "/// Values match the Starlink MESSGEN formula for binary compatibility"
+    )
+    .unwrap();
     writeln!(out, "/// with the C library's `AST__*` error constants.").unwrap();
     writeln!(out, "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]").unwrap();
     writeln!(out, "#[repr(u32)]").unwrap();
@@ -139,7 +157,11 @@ fn generate_error_codes(vendor_dir: &PathBuf) {
 
     // Write Display impl
     writeln!(out, "impl fmt::Display for ErrorCode {{").unwrap();
-    writeln!(out, "    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {{").unwrap();
+    writeln!(
+        out,
+        "    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {{"
+    )
+    .unwrap();
     writeln!(out, "        let desc = match self {{").unwrap();
     for (name, _, desc) in &variants {
         writeln!(out, "            ErrorCode::{name} => \"{desc}\",").unwrap();
@@ -159,7 +181,11 @@ fn generate_error_codes(vendor_dir: &PathBuf) {
     writeln!(out).unwrap();
 
     // Write from_raw method
-    writeln!(out, "    /// Convert a raw numeric value to an ErrorCode, if valid.").unwrap();
+    writeln!(
+        out,
+        "    /// Convert a raw numeric value to an ErrorCode, if valid."
+    )
+    .unwrap();
     writeln!(out, "    pub fn from_raw(value: u32) -> Option<Self> {{").unwrap();
     writeln!(out, "        match value {{").unwrap();
     for (name, value, _) in &variants {
