@@ -1,5 +1,8 @@
 //! The Mapping trait and associated types.
 
+pub(crate) mod helpers;
+pub(crate) mod rate;
+
 use crate::coords::PointSet;
 use crate::error::AstResult;
 
