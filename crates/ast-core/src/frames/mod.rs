@@ -1,5 +1,8 @@
 //! The Frame trait and associated types.
 
+mod basic;
+pub use basic::{BasicFrame, BasicFrameBuilder};
+
 use crate::error::AstResult;
 use crate::mappings::DynMapping;
 
