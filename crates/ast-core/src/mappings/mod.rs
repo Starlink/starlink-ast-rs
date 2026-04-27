@@ -6,6 +6,8 @@ mod unit;
 pub use unit::UnitMap;
 mod zoom;
 pub use zoom::ZoomMap;
+mod shift;
+pub use shift::ShiftMap;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
