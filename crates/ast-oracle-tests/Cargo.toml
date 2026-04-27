@@ -1,0 +1,10 @@
+[package]
+name = "ast-oracle-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Oracle correctness tests: Rust ast-core vs reference C libast"
+
+[dependencies]
+ast-core = { path = "../ast-core" }

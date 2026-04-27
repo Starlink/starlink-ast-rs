@@ -1,0 +1,10 @@
+[package]
+name = "ast-ffi-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "FFI parity tests: C ast_tester programs against Rust-built libast"
+
+[dependencies]
+ast-capi = { path = "../ast-capi" }
