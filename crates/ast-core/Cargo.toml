@@ -1,0 +1,10 @@
+[package]
+name = "ast-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pure-Rust port of the Starlink AST world coordinate system library"
+
+[build-dependencies]
+cc.workspace = true
