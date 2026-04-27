@@ -1,0 +1,43 @@
+//! The identity mapping.
+
+use crate::coords::PointSet;
+use crate::error::AstResult;
+
+use super::rate::numeric_rate;
+use super::{DynMapping, Mapping};
+
+#[derive(Debug, Clone)]
+pub struct UnitMap {
+    ncoord: usize,
+    inverted: bool,
+}
+
+impl UnitMap {
+    pub fn new(ncoord: usize) -> Self {
+        Self { ncoord, inverted: false }
+    }
+}
+
+impl Mapping for UnitMap {
+    fn nin(&self) -> usize { self.ncoord }
+    fn nout(&self) -> usize { self.ncoord }
+    fn is_inverted(&self) -> bool { self.inverted }
+    fn invert(&mut self) { self.inverted = !self.inverted; }
+
+    fn transform(&self, pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
+        Ok(pts.clone())
+    }
+
+    fn transform_into(&self, pts: &PointSet, _forward: bool, out: &mut PointSet) -> AstResult<()> {
+        out.view_mut().assign(&pts.view());
+        Ok(())
+    }
+
+    fn simplified(&self) -> AstResult<DynMapping> {
+        Ok(Box::new(self.clone()))
+    }
+
+    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        numeric_rate(self, at, ax1, ax2)
+    }
+}

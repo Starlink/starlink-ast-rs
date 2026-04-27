@@ -2,6 +2,8 @@
 
 pub(crate) mod helpers;
 pub(crate) mod rate;
+mod unit;
+pub use unit::UnitMap;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
