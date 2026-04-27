@@ -10,6 +10,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+use super::cmpmap::{CmpMap, Composition};
 use super::helpers::point_has_bad;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
@@ -103,6 +104,16 @@ impl MatrixMap {
                 }
             }
         }
+    }
+
+    /// Compose in series with another mapping.
+    pub fn then(self, next: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), next, Composition::Series)
+    }
+
+    /// Compose in parallel with another mapping.
+    pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 }
 

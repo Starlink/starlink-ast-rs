@@ -3,9 +3,11 @@
 use crate::coords::PointSet;
 use crate::error::AstResult;
 
+use super::cmpmap::{CmpMap, Composition};
 use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
 
+/// The identity mapping: every output coordinate equals the corresponding input.
 #[derive(Debug, Clone)]
 pub struct UnitMap {
     ncoord: usize,
@@ -13,8 +15,19 @@ pub struct UnitMap {
 }
 
 impl UnitMap {
+    /// Create a new `UnitMap` with `ncoord` coordinates.
     pub fn new(ncoord: usize) -> Self {
         Self { ncoord, inverted: false }
+    }
+
+    /// Compose in series with another mapping.
+    pub fn then(self, next: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), next, Composition::Series)
+    }
+
+    /// Compose in parallel with another mapping.
+    pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 }
 

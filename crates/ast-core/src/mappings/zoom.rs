@@ -4,11 +4,13 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+use super::cmpmap::{CmpMap, Composition};
 use super::helpers::point_has_bad;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
+/// A mapping that scales all input coordinates by a constant factor.
 #[derive(Debug, Clone)]
 pub struct ZoomMap {
     ncoord: usize,
@@ -17,6 +19,9 @@ pub struct ZoomMap {
 }
 
 impl ZoomMap {
+    /// Create a new `ZoomMap` that scales `ncoord` coordinates by `factor`.
+    ///
+    /// Returns an error if `factor` is zero.
     pub fn new(ncoord: usize, factor: f64) -> AstResult<Self> {
         if factor == 0.0 {
             return Err(AstError::new(ErrorCode::Zoomi, "zoom factor must not be zero"));
@@ -26,6 +31,16 @@ impl ZoomMap {
 
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
+    }
+
+    /// Compose in series with another mapping.
+    pub fn then(self, next: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), next, Composition::Series)
+    }
+
+    /// Compose in parallel with another mapping.
+    pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 }
 

@@ -4,11 +4,13 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 
+use super::cmpmap::{CmpMap, Composition};
 use super::helpers::point_has_bad;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
+/// A mapping that adds a constant shift vector to all input coordinates.
 #[derive(Debug, Clone)]
 pub struct ShiftMap {
     shift: Vec<f64>,
@@ -16,12 +18,25 @@ pub struct ShiftMap {
 }
 
 impl ShiftMap {
+    /// Create a new `ShiftMap` with the given shift offsets.
+    ///
+    /// The number of coordinates is determined by the length of `shift`.
     pub fn new(shift: impl Into<Vec<f64>>) -> Self {
         Self { shift: shift.into(), inverted: false }
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
+    }
+
+    /// Compose in series with another mapping.
+    pub fn then(self, next: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), next, Composition::Series)
+    }
+
+    /// Compose in parallel with another mapping.
+    pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 }
 
