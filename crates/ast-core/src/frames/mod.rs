@@ -2,8 +2,10 @@
 
 mod basic;
 mod cmpframe;
+mod frameset;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
+pub use frameset::{FrameRef, FrameSet};
 
 use crate::error::AstResult;
 use crate::mappings::DynMapping;
