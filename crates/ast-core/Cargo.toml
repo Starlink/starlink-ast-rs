@@ -6,5 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 description = "Pure-Rust port of the Starlink AST world coordinate system library"
 
+[dependencies]
+ndarray.workspace = true
+
 [build-dependencies]
 cc.workspace = true
