@@ -13,7 +13,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{AsAny, DynMapping, Mapping};
 
 /// Determines whether two mappings are composed in series or in parallel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,11 +259,13 @@ impl Mapping for CmpMap {
         let s_first = self.first.simplified()?;
         let s_second = self.second.simplified()?;
 
-        // If both simplified components behave as identity UnitMaps (same
-        // nin and nout), we can return a single UnitMap.
-        let first_is_unit = s_first.nin() == s_first.nout() && is_unit_map_like(s_first.as_ref());
-        let second_is_unit =
-            s_second.nin() == s_second.nout() && is_unit_map_like(s_second.as_ref());
+        // Class-membership check, mirroring C's astIsAUnitMap. Each
+        // concrete mapping's simplified() canonicalises the identity case
+        // to a real UnitMap, so a type test is sound here; a behavioural
+        // probe would not be (e.g. a PolyMap with a fixed point at the
+        // probe).
+        let first_is_unit = s_first.as_any().is::<UnitMap>();
+        let second_is_unit = s_second.as_any().is::<UnitMap>();
 
         if first_is_unit && second_is_unit {
             let n = match self.kind {
@@ -286,26 +288,5 @@ impl Mapping for CmpMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         super::rate::numeric_rate(self, at, ax1, ax2)
-    }
-}
-
-/// Returns true if the mapping behaves like a UnitMap (identity).  We use a
-/// simple heuristic: probe a single test point through the forward transform
-/// and check that the output equals the input.
-fn is_unit_map_like(m: &dyn Mapping) -> bool {
-    if m.nin() != m.nout() {
-        return false;
-    }
-    let n = m.nin();
-    // Use a probe point that is unlikely to be identity by coincidence.
-    let probe: Vec<f64> = (1..=n).map(|i| i as f64 * 1.23456789).collect();
-    let pts = PointSet::from_rows([probe.as_slice()]);
-    match m.transform(&pts, true) {
-        Ok(out) => out
-            .point(0)
-            .iter()
-            .zip(probe.iter())
-            .all(|(&got, &exp)| (got - exp).abs() < 1e-12),
-        Err(_) => false,
     }
 }

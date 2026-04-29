@@ -5,7 +5,7 @@ use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, UnitMap};
+use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, UnitMap};
 
 use super::{DynFrame, Frame};
 
@@ -437,22 +437,12 @@ impl FrameSet {
     /// For edges leaving current (`edge.from == current_idx`):
     ///   new = CmpMap(delta_inv, old, Series)
     ///
-    /// Skips if delta is effectively an identity (tested by probing a
-    /// test point through the forward transform).
+    /// Skips if the simplified delta is a `UnitMap` (a class-membership
+    /// test mirroring C's `astIsAUnitMap`).
     fn fuse_into_current_edges(&mut self, delta: DynMapping) -> AstResult<()> {
-        // Quick identity check: probe a test point.
-        let ncoord = delta.nin();
-        let probe: Vec<f64> = (1..=ncoord).map(|i| i as f64 * 1.23456789).collect();
-        let pts = PointSet::from_rows([probe.as_slice()]);
-        if let Ok(out) = delta.transform(&pts, true) {
-            let is_identity = out
-                .point(0)
-                .iter()
-                .zip(probe.iter())
-                .all(|(&got, &exp)| (got - exp).abs() < 1e-12);
-            if is_identity {
-                return Ok(());
-            }
+        let delta = delta.simplified()?;
+        if delta.as_any().is::<UnitMap>() {
+            return Ok(());
         }
 
         let cur = self.current_idx;

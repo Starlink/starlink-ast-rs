@@ -15,18 +15,40 @@ pub use perm::PermMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
+use std::any::Any;
+
 use crate::coords::PointSet;
 use crate::error::AstResult;
 
 /// An owned, dynamically-dispatched Mapping.
 pub type DynMapping = Box<dyn Mapping>;
 
+/// Provides downcasting from `&dyn Mapping` to a concrete type.
+///
+/// This is the Rust equivalent of the C library's `astIsAFoo` family of
+/// class-membership checks. A blanket impl gives every `T: Any` an
+/// `as_any` method automatically, so concrete mapping classes do not
+/// need per-class boilerplate.
+///
+/// Use as `m.as_any().is::<UnitMap>()` or
+/// `m.as_any().downcast_ref::<MatrixMap>()`.
+pub trait AsAny: Any {
+    /// Coerce to `&dyn Any` for runtime type queries.
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<T: Any> AsAny for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 /// A coordinate transformation.
 ///
 /// All concrete mapping classes implement this trait. Mappings are `Send`
 /// (movable between threads) but not `Sync` (no shared references across
 /// threads — mutation is lock-free).
-pub trait Mapping: Send {
+pub trait Mapping: AsAny + Send {
     /// Number of input coordinates.
     fn nin(&self) -> usize;
 
