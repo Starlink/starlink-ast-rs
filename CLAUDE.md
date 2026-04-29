@@ -123,6 +123,46 @@ non-trivial work into any `SkyFrame::set_*` method, stop and
 reconsider — you're regressing the hot path. Tier-5 oracle benches
 fail CI if Rust is >10% slower than C on these.
 
+## Bulk-transform optimisation (per-mapping evaluation)
+
+The default per-point loop pattern — `for i in 0..npoint { check
+point_has_bad; do math }` — has a known faster variant for transforms
+whose math is a polynomial in the inputs (no division, no
+log/sqrt/etc):
+
+1. Substitute `BAD_VALUE` → `f64::NAN` on a copy of the input.
+2. Run the math without per-point branching (lets the compiler
+   vectorise, or lets you call BLAS via ndarray's `general_mat_mul`,
+   `axpy`, etc — Apple Accelerate or OpenBLAS via `blas-src`).
+3. Convert any `NaN` outputs back to `BAD_VALUE`.
+
+IEEE 754 propagates NaN through arithmetic for free, so the kernel
+runs branchless and the only added cost is two memory-bandwidth-bound
+passes.
+
+**Whether it's worth doing depends on the mapping**, and must be
+evaluated per class via `ast-oracle-bench`. The setup costs (input
+clone + two NaN passes + kernel call overhead) only amortise when
+both:
+
+- The math body is large enough per point — `MatrixMap` at 3×3 (the
+  typical AST direction-cosine case) is *too small*; the prototype
+  was 15-22% slower than the scalar loop at every npoint. At 6×6 it
+  wins ~1.3×; at 100×100, ~5×.
+- npoint is large enough — a single-point call always loses on the
+  bulk path (the SCUBA-2 hot path *is* bulk-N within a time slice,
+  so this is fine for that workload, but Frame-attribute integrity
+  re-fusion uses 1-point probes that should stay scalar).
+
+When adding a new `Mapping` whose math is polynomial in the inputs:
+prototype both paths behind a temporary `bench-internals` cargo
+feature, run a parametric criterion bench across the realistic shape
+× npoint grid, and only commit the GEMM/BLAS path if it wins on the
+shapes that actually occur for that class. For mappings whose
+typical shape stays at ≤3 inputs/outputs, the scalar loop is
+generally the right answer — `MatrixMap` was evaluated and rejected
+on those grounds; do not re-prototype it without new motivation.
+
 ## Code style
 
 - Rust 2024 edition. MSRV pinned in `rust-toolchain.toml`.
