@@ -633,7 +633,7 @@ impl Serializable for BasicFrame {
         // Per-axis Axis child objects.
         for i in 0..self.naxes {
             let mut axis_node = Node::new("Axis");
-            axis_node.class_comment = Some(format!("Coordinate axis"));
+            axis_node.class_comment = Some("Coordinate axis".to_string());
 
             // Label.
             if let Some(ref label) = self.labels[i] {
