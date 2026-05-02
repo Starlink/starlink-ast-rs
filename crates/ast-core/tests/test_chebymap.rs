@@ -1,0 +1,786 @@
+//! Tests for ChebyMap — Chebyshev polynomial transformation.
+//!
+//! Ported from C's testchebymap.c and the Step 6 design spec.
+
+use ast_core::constants::BAD_VALUE;
+use ast_core::coords::PointSet;
+use ast_core::mappings::{ChebyMap, Mapping, PolyTerm};
+use ast_core::{AnyObject, from_native_string, to_native_string};
+
+// ---------------------------------------------------------------------------
+// Construction and basic properties
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_dimensions() {
+    // 1D ChebyMap: f(x) = 1.5 (constant via T_0)
+    let terms = vec![PolyTerm {
+        coeff: 1.5,
+        powers: vec![0],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+    assert_eq!(m.nin(), 1);
+    assert_eq!(m.nout(), 1);
+    assert!(!m.is_inverted());
+}
+
+#[test]
+fn chebymap_nin_zero_rejected() {
+    let result = ChebyMap::new(0, 1, &[], None, &[], &[], None, None);
+    assert!(result.is_err());
+}
+
+#[test]
+fn chebymap_nout_zero_rejected() {
+    let result = ChebyMap::new(1, 0, &[], None, &[0.0], &[1.0], None, None);
+    assert!(result.is_err());
+}
+
+#[test]
+fn chebymap_bad_bounds_len_rejected() {
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![0],
+        out_axis: 1,
+    }];
+    // lbnd_f has wrong length.
+    let result = ChebyMap::new(1, 1, &terms, None, &[0.0, 1.0], &[10.0], None, None);
+    assert!(result.is_err());
+}
+
+#[test]
+fn chebymap_bad_bounds_order_rejected() {
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![0],
+        out_axis: 1,
+    }];
+    // lbnd >= ubnd.
+    let result = ChebyMap::new(1, 1, &terms, None, &[10.0], &[0.0], None, None);
+    assert!(result.is_err());
+}
+
+// ---------------------------------------------------------------------------
+// 1D constant: f(x) = 1.5 via T_0 for any x in [0, 10]
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_1d_constant() {
+    let terms = vec![PolyTerm {
+        coeff: 1.5,
+        powers: vec![0],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+
+    let pts = PointSet::from_rows(vec![vec![0.0], vec![5.0], vec![10.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    for i in 0..3 {
+        assert!(
+            (out.point(i)[0] - 1.5).abs() < 1e-12,
+            "point {}: expected 1.5, got {}",
+            i,
+            out.point(i)[0]
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 1D quadratic via Chebyshev:
+// f(x_norm) = 2.5 * T_0(x_norm) - 2.0 * T_2(x_norm)
+//           = 2.5 - 2 * (2*x_norm^2 - 1) = 4.5 - 4*x_norm^2
+// Domain [0, 1]: x_norm = 2*x - 1, so x=0 -> x_norm=-1, x=1 -> x_norm=1
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_1d_quadratic() {
+    let terms = vec![
+        PolyTerm {
+            coeff: 2.5,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: -2.0,
+            powers: vec![2],
+            out_axis: 1,
+        },
+    ];
+    let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[1.0], None, None).unwrap();
+
+    // At x=0: x_norm = -1, T_0(-1) = 1, T_2(-1) = 2*1-1 = 1
+    // f = 2.5 - 2.0 = 0.5
+    let pts0 = PointSet::from_rows(vec![vec![0.0]]);
+    let out0 = m.transform(&pts0, true).unwrap();
+    assert!(
+        (out0.point(0)[0] - 0.5).abs() < 1e-12,
+        "at x=0: expected 0.5, got {}",
+        out0.point(0)[0]
+    );
+
+    // At x=0.5: x_norm = 0, T_0(0) = 1, T_2(0) = 2*0-1 = -1
+    // f = 2.5 - 2.0*(-1) = 4.5
+    let pts_mid = PointSet::from_rows(vec![vec![0.5]]);
+    let out_mid = m.transform(&pts_mid, true).unwrap();
+    assert!(
+        (out_mid.point(0)[0] - 4.5).abs() < 1e-12,
+        "at x=0.5: expected 4.5, got {}",
+        out_mid.point(0)[0]
+    );
+
+    // At x=1: x_norm = 1, T_0(1) = 1, T_2(1) = 1
+    // f = 2.5 - 2.0 = 0.5
+    let pts1 = PointSet::from_rows(vec![vec![1.0]]);
+    let out1 = m.transform(&pts1, true).unwrap();
+    assert!(
+        (out1.point(0)[0] - 0.5).abs() < 1e-12,
+        "at x=1: expected 0.5, got {}",
+        out1.point(0)[0]
+    );
+
+    // At x=0.25: x_norm = -0.5, T_2(-0.5) = 2*0.25-1 = -0.5
+    // f = 2.5 - 2.0*(-0.5) = 3.5
+    let pts_q = PointSet::from_rows(vec![vec![0.25]]);
+    let out_q = m.transform(&pts_q, true).unwrap();
+    assert!(
+        (out_q.point(0)[0] - 3.5).abs() < 1e-12,
+        "at x=0.25: expected 3.5, got {}",
+        out_q.point(0)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Out-of-bounds input produces BAD_VALUE
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_out_of_bounds() {
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+
+    // Below lower bound.
+    let pts = PointSet::from_rows(vec![vec![-0.1]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert_eq!(
+        out.point(0)[0],
+        BAD_VALUE,
+        "below lower bound should be BAD"
+    );
+
+    // Above upper bound.
+    let pts2 = PointSet::from_rows(vec![vec![10.1]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert_eq!(
+        out2.point(0)[0],
+        BAD_VALUE,
+        "above upper bound should be BAD"
+    );
+
+    // At boundary (should work).
+    let pts3 = PointSet::from_rows(vec![vec![0.0], vec![10.0]]);
+    let out3 = m.transform(&pts3, true).unwrap();
+    assert_ne!(
+        out3.point(0)[0],
+        BAD_VALUE,
+        "at lower bound should not be BAD"
+    );
+    assert_ne!(
+        out3.point(1)[0],
+        BAD_VALUE,
+        "at upper bound should not be BAD"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// BAD_VALUE input propagation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_bad_value_propagation() {
+    let terms = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let m = ChebyMap::new(
+        2,
+        2,
+        &terms,
+        None,
+        &[-10.0, -10.0],
+        &[10.0, 10.0],
+        None,
+        None,
+    )
+    .unwrap();
+
+    // One BAD input -> all outputs BAD
+    let pts = PointSet::from_rows(vec![vec![BAD_VALUE, 3.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+
+    // NaN input -> BAD output
+    let pts2 = PointSet::from_rows(vec![vec![f64::NAN, 3.0]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert_eq!(out2.point(0)[0], BAD_VALUE);
+    assert_eq!(out2.point(0)[1], BAD_VALUE);
+}
+
+// ---------------------------------------------------------------------------
+// 2D ChebyMap with mixed Chebyshev powers
+// f(x,y) = 3.0 * T_1(x_norm) * T_2(y_norm)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_2d_mixed_powers() {
+    let terms = vec![PolyTerm {
+        coeff: 3.0,
+        powers: vec![1, 2],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(2, 1, &terms, None, &[-1.0, -1.0], &[1.0, 1.0], None, None).unwrap();
+
+    // With domain [-1,1]x[-1,1], normalization is identity: x_norm=x, y_norm=y
+    // At (0.5, 0.5): T_1(0.5)=0.5, T_2(0.5)=2*0.25-1=-0.5
+    // f = 3.0 * 0.5 * (-0.5) = -0.75
+    let pts = PointSet::from_rows(vec![vec![0.5, 0.5]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - (-0.75)).abs() < 1e-12,
+        "expected -0.75, got {}",
+        out.point(0)[0]
+    );
+
+    // At (1.0, 0.0): T_1(1)=1, T_2(0)=2*0-1=-1
+    // f = 3.0 * 1.0 * (-1.0) = -3.0
+    let pts2 = PointSet::from_rows(vec![vec![1.0, 0.0]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert!(
+        (out2.point(0)[0] - (-3.0)).abs() < 1e-12,
+        "expected -3.0, got {}",
+        out2.point(0)[0]
+    );
+
+    // At (0.0, 0.0): T_1(0)=0, so entire product is 0
+    let pts3 = PointSet::from_rows(vec![vec![0.0, 0.0]]);
+    let out3 = m.transform(&pts3, true).unwrap();
+    assert!(
+        out3.point(0)[0].abs() < 1e-12,
+        "expected 0.0, got {}",
+        out3.point(0)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 2D ChebyMap with non-trivial domain
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_2d_nontrivial_domain() {
+    // f(x,y) = T_1(x_norm), domain [0, 10] x [0, 20]
+    // scale_x = 2/10 = 0.2, offset_x = -(10)/10 = -1
+    // x_norm = 0.2*x - 1
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1, 0],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(2, 1, &terms, None, &[0.0, 0.0], &[10.0, 20.0], None, None).unwrap();
+
+    // At (5, 10): x_norm = 0.2*5 - 1 = 0.0, T_1(0) = 0
+    let pts = PointSet::from_rows(vec![vec![5.0, 10.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert!(
+        out.point(0)[0].abs() < 1e-12,
+        "expected 0.0, got {}",
+        out.point(0)[0]
+    );
+
+    // At (10, 10): x_norm = 0.2*10 - 1 = 1.0, T_1(1) = 1
+    let pts2 = PointSet::from_rows(vec![vec![10.0, 10.0]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert!(
+        (out2.point(0)[0] - 1.0).abs() < 1e-12,
+        "expected 1.0, got {}",
+        out2.point(0)[0]
+    );
+
+    // At (0, 10): x_norm = -1.0, T_1(-1) = -1
+    let pts3 = PointSet::from_rows(vec![vec![0.0, 10.0]]);
+    let out3 = m.transform(&pts3, true).unwrap();
+    assert!(
+        (out3.point(0)[0] - (-1.0)).abs() < 1e-12,
+        "expected -1.0, got {}",
+        out3.point(0)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Forward/inverse round-trip
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_forward_inverse_roundtrip() {
+    // Forward: f(x) = T_1(x_norm) on domain [0, 10]
+    // Inverse: g(y) = T_1(y_norm) on domain [-1, 1]
+    // These are approximate inverses: forward maps [0,10] to [-1,1],
+    // inverse maps [-1,1] back to [-1,1] (in normalized coords).
+
+    // For a true inverse, we need: forward maps x -> y, inverse maps y -> x.
+    // Forward: y = T_1(x_norm) = x_norm = (2x/10 - 1)  on [0,10] -> [-1,1]
+    // Inverse: x = T_1(y_norm) on [-1,1], but we want to map y back to x.
+    // If y = (x/5 - 1), then x = 5(y+1), i.e. x = 5*y + 5.
+    // As Chebyshev: x = 5*T_0(y_norm) + 5*T_1(y_norm) on domain [-1,1]
+    // (with identity normalization since domain is already [-1,1]).
+
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let inv = vec![
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+    ];
+    let m = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv),
+        &[0.0],
+        &[10.0],
+        Some(&[-1.0]),
+        Some(&[1.0]),
+    )
+    .unwrap();
+
+    // Forward: x=5 -> x_norm=0 -> T_1(0)=0 -> y=0
+    let pts = PointSet::from_rows(vec![vec![5.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert!(
+        out.point(0)[0].abs() < 1e-12,
+        "forward x=5: expected 0, got {}",
+        out.point(0)[0]
+    );
+
+    // Inverse: y=0 -> y_norm=0 -> 5*T_0(0) + 5*T_1(0) = 5 + 0 = 5
+    let inv_out = m.transform(&out, false).unwrap();
+    assert!(
+        (inv_out.point(0)[0] - 5.0).abs() < 1e-12,
+        "inverse y=0: expected 5, got {}",
+        inv_out.point(0)[0]
+    );
+
+    // Forward: x=0 -> x_norm=-1 -> T_1(-1)=-1 -> y=-1
+    let pts2 = PointSet::from_rows(vec![vec![0.0]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert!(
+        (out2.point(0)[0] - (-1.0)).abs() < 1e-12,
+        "forward x=0: expected -1, got {}",
+        out2.point(0)[0]
+    );
+
+    // Inverse: y=-1 -> 5*1 + 5*(-1) = 0
+    let inv_out2 = m.transform(&out2, false).unwrap();
+    assert!(
+        inv_out2.point(0)[0].abs() < 1e-12,
+        "inverse y=-1: expected 0, got {}",
+        inv_out2.point(0)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Invert flag
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_invert() {
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let inv = vec![
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+    ];
+    let mut m = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv),
+        &[0.0],
+        &[10.0],
+        Some(&[-1.0]),
+        Some(&[1.0]),
+    )
+    .unwrap();
+
+    // Before inversion: forward maps [0,10] -> [-1,1]
+    let pts = PointSet::from_rows(vec![vec![5.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert!(
+        out.point(0)[0].abs() < 1e-12,
+        "before invert: expected 0, got {}",
+        out.point(0)[0]
+    );
+
+    // Invert: now "forward" uses the inverse transform.
+    m.invert();
+    assert!(m.is_inverted());
+
+    // After inversion: forward call uses inverse polynomial
+    // Input y=0 -> 5*T_0(0) + 5*T_1(0) = 5
+    let pts2 = PointSet::from_rows(vec![vec![0.0]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert!(
+        (out2.point(0)[0] - 5.0).abs() < 1e-12,
+        "after invert: expected 5, got {}",
+        out2.point(0)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// No inverse returns BAD
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_no_inverse_returns_bad() {
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &fwd, None, &[0.0], &[10.0], None, None).unwrap();
+
+    let pts = PointSet::from_rows(vec![vec![5.0]]);
+    let out = m.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+}
+
+// ---------------------------------------------------------------------------
+// Domain accessor
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_domain_accessor() {
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let inv = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv),
+        &[0.0],
+        &[10.0],
+        Some(&[-1.0]),
+        Some(&[1.0]),
+    )
+    .unwrap();
+
+    assert_eq!(m.forward_lbnd(), &[0.0]);
+    assert_eq!(m.forward_ubnd(), &[10.0]);
+    assert_eq!(m.inverse_lbnd(), Some(&[-1.0][..]));
+    assert_eq!(m.inverse_ubnd(), Some(&[1.0][..]));
+
+    // domain() accounts for inversion.
+    let (lb, ub) = m.domain(true).unwrap();
+    assert_eq!(lb, &[0.0]);
+    assert_eq!(ub, &[10.0]);
+
+    let (lb_i, ub_i) = m.domain(false).unwrap();
+    assert_eq!(lb_i, &[-1.0]);
+    assert_eq!(ub_i, &[1.0]);
+}
+
+// ---------------------------------------------------------------------------
+// Chebyshev T_n evaluation (indirect via transform)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_higher_order_chebyshev() {
+    // T_3(x) = 4x^3 - 3x
+    // f(x) = T_3(x_norm) on domain [-1, 1] (identity normalization)
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![3],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[-1.0], &[1.0], None, None).unwrap();
+
+    // T_3(0.5) = 4*0.125 - 1.5 = 0.5 - 1.5 = -1.0
+    let pts = PointSet::from_rows(vec![vec![0.5]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - (-1.0)).abs() < 1e-12,
+        "T_3(0.5): expected -1.0, got {}",
+        out.point(0)[0]
+    );
+
+    // T_3(1.0) = 4 - 3 = 1.0
+    let pts2 = PointSet::from_rows(vec![vec![1.0]]);
+    let out2 = m.transform(&pts2, true).unwrap();
+    assert!(
+        (out2.point(0)[0] - 1.0).abs() < 1e-12,
+        "T_3(1.0): expected 1.0, got {}",
+        out2.point(0)[0]
+    );
+
+    // T_3(0) = 0
+    let pts3 = PointSet::from_rows(vec![vec![0.0]]);
+    let out3 = m.transform(&pts3, true).unwrap();
+    assert!(
+        out3.point(0)[0].abs() < 1e-12,
+        "T_3(0): expected 0.0, got {}",
+        out3.point(0)[0]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation round-trip
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_serialisation_roundtrip() {
+    let fwd = vec![
+        PolyTerm {
+            coeff: 2.5,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: -2.0,
+            powers: vec![2],
+            out_axis: 1,
+        },
+    ];
+    let inv = vec![
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+    ];
+    let m = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv),
+        &[0.0],
+        &[1.0],
+        Some(&[-1.0]),
+        Some(&[1.0]),
+    )
+    .unwrap();
+
+    let native = to_native_string(&AnyObject::ChebyMap(m.clone())).unwrap();
+    let obj = from_native_string(&native).unwrap();
+    let m2 = match obj {
+        AnyObject::ChebyMap(c) => c,
+        other => panic!("expected ChebyMap, got {:?}", other),
+    };
+
+    // Verify forward transform produces the same results.
+    let test_points = vec![vec![0.0], vec![0.25], vec![0.5], vec![0.75], vec![1.0]];
+    let pts = PointSet::from_rows(test_points);
+    let out1 = m.transform(&pts, true).unwrap();
+    let out2 = m2.transform(&pts, true).unwrap();
+    for i in 0..5 {
+        assert!(
+            (out1.point(i)[0] - out2.point(i)[0]).abs() < 1e-12,
+            "fwd point {}: {} vs {}",
+            i,
+            out1.point(i)[0],
+            out2.point(i)[0]
+        );
+    }
+
+    // Verify inverse transform.
+    let inv_pts = PointSet::from_rows(vec![vec![0.0], vec![0.5], vec![-0.5]]);
+    let inv_out1 = m.transform(&inv_pts, false).unwrap();
+    let inv_out2 = m2.transform(&inv_pts, false).unwrap();
+    for i in 0..3 {
+        assert!(
+            (inv_out1.point(i)[0] - inv_out2.point(i)[0]).abs() < 1e-12,
+            "inv point {}: {} vs {}",
+            i,
+            inv_out1.point(i)[0],
+            inv_out2.point(i)[0]
+        );
+    }
+}
+
+#[test]
+fn chebymap_serialisation_forward_only() {
+    let fwd = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+    ];
+    let m = ChebyMap::new(1, 1, &fwd, None, &[-5.0], &[5.0], None, None).unwrap();
+
+    let native = to_native_string(&AnyObject::ChebyMap(m.clone())).unwrap();
+    let obj = from_native_string(&native).unwrap();
+    let m2 = match obj {
+        AnyObject::ChebyMap(c) => c,
+        _ => panic!("expected ChebyMap"),
+    };
+
+    let pts = PointSet::from_rows(vec![vec![-5.0], vec![0.0], vec![5.0]]);
+    let out1 = m.transform(&pts, true).unwrap();
+    let out2 = m2.transform(&pts, true).unwrap();
+    for i in 0..3 {
+        assert!(
+            (out1.point(i)[0] - out2.point(i)[0]).abs() < 1e-12,
+            "point {}: {} vs {}",
+            i,
+            out1.point(i)[0],
+            out2.point(i)[0]
+        );
+    }
+
+    // Verify bounds survived the round-trip.
+    assert_eq!(m2.forward_lbnd(), &[-5.0]);
+    assert_eq!(m2.forward_ubnd(), &[5.0]);
+}
+
+// ---------------------------------------------------------------------------
+// 2D serialisation round-trip
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_2d_serialisation_roundtrip() {
+    let fwd = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 0.5,
+            powers: vec![1, 1],
+            out_axis: 2,
+        },
+    ];
+    let m = ChebyMap::new(2, 2, &fwd, None, &[0.0, 0.0], &[10.0, 20.0], None, None).unwrap();
+
+    let native = to_native_string(&AnyObject::ChebyMap(m.clone())).unwrap();
+    let obj = from_native_string(&native).unwrap();
+    let m2 = match obj {
+        AnyObject::ChebyMap(c) => c,
+        other => panic!("expected ChebyMap, got {:?}", other),
+    };
+
+    let pts = PointSet::from_rows(vec![vec![5.0, 10.0], vec![2.5, 15.0]]);
+    let out1 = m.transform(&pts, true).unwrap();
+    let out2 = m2.transform(&pts, true).unwrap();
+    for i in 0..2 {
+        for j in 0..2 {
+            assert!(
+                (out1.point(i)[j] - out2.point(i)[j]).abs() < 1e-12,
+                "point {} axis {}: {} vs {}",
+                i,
+                j,
+                out1.point(i)[j],
+                out2.point(i)[j]
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation preserves the ChebyMap class name (not PolyMap)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_serialisation_preserves_class() {
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+
+    let native = to_native_string(&AnyObject::ChebyMap(m)).unwrap();
+    assert!(
+        native.contains("ChebyMap"),
+        "native string should contain ChebyMap class name"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rate (numeric differentiation)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_rate() {
+    // f(x) = T_1(x_norm) on [-1, 1] => f(x) = x
+    // df/dx = 1 everywhere in domain.
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &terms, None, &[-1.0], &[1.0], None, None).unwrap();
+
+    let rate = m.rate(&[0.0], 1, 1).unwrap();
+    assert!(
+        (rate - 1.0).abs() < 1e-6,
+        "expected rate ~1.0, got {}",
+        rate
+    );
+}

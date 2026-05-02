@@ -18,6 +18,8 @@ mod lutmap;
 pub use lutmap::{LutInterp, LutMap};
 mod polymap;
 pub use polymap::{PolyMap, PolyTerm};
+mod chebymap;
+pub use chebymap::ChebyMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
