@@ -130,9 +130,14 @@ fn parse_scalar_value(s: &str) -> NodeValue {
         return NodeValue::Int(v);
     }
 
-    // Floating-point.
-    if let Ok(v) = s.parse::<f64>() {
-        return NodeValue::Double(v);
+    // Floating-point (reject inf/nan which Rust parses but AST never emits).
+    if !s.eq_ignore_ascii_case("inf")
+        && !s.eq_ignore_ascii_case("infinity")
+        && !s.eq_ignore_ascii_case("nan")
+    {
+        if let Ok(v) = s.parse::<f64>() {
+            return NodeValue::Double(v);
+        }
     }
 
     // Unquoted string (e.g. `GALACTIC`).
@@ -227,8 +232,7 @@ fn parse_object(
         }
 
         // Comment line: either a commented-out default or a plain comment.
-        if trimmed.starts_with('#') {
-            let after_hash = &trimmed[1..];
+        if let Some(after_hash) = trimmed.strip_prefix('#') {
             if let Some(item) = try_parse_commented_default(after_hash) {
                 node.items.push(item);
             }
