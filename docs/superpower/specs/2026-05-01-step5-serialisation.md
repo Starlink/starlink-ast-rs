@@ -13,16 +13,18 @@ deferred to later steps.
 
 ## Deliverables
 
-1. `Node` / `NodeValue` types (pub(crate)).
-2. `Serializable` trait (pub(crate)) with `class_name`, `to_node`,
+1. Public API: `AnyObject` enum, `to_native_string`, `from_native_string`.
+2. `Node` / `NodeValue` / `NodeItem` types (pub(crate)).
+3. `Serializable` trait (pub(crate)) with `class_name`, `to_node`,
    `from_node`.
-3. Dispatch functions: `mapping_from_node`, `frame_from_node`.
-4. Native text parser (`native_read`): text → `Node` tree.
-5. Native text renderer (`native_write`): `Node` tree → text.
-6. `Serializable` implementations for: UnitMap, ZoomMap, ShiftMap,
+4. Dispatch functions: `mapping_from_node`, `frame_from_node`,
+   `any_object_from_node`.
+5. Native text parser (`native_read`): text → `Node` tree.
+6. Native text renderer (`native_write`): `Node` tree → text.
+7. `Serializable` implementations for: UnitMap, ZoomMap, ShiftMap,
    MatrixMap, PermMap, CmpMap, BasicFrame, CmpFrame, FrameSet.
-7. C fixture generator in `ast-ffi-tests`.
-8. Three tiers of tests.
+8. C fixture generator in `ast-ffi-tests`.
+9. Three tiers of tests.
 
 ## Module Structure
 
@@ -85,9 +87,11 @@ pub(crate) struct Node {
 ### Design Notes
 
 - **Ordered items**: Native format is line-oriented and order-dependent.
-  A HashMap would lose ordering; `Vec<(String, NodeValue)>` preserves
-  it. Lookup by name during `from_node` is O(n) but n is small
-  (typically < 30 attributes).
+  A HashMap would lose ordering. `indexmap::IndexMap` preserves
+  insertion order with O(1) lookup, but doesn't support duplicate
+  keys — and `"IsA"` appears multiple times (e.g. `IsA Mapping` then
+  `IsA Frame`). `Vec<NodeItem>` with linear scan is simpler and
+  adequate given typical attribute counts (< 30).
 
 - **Unset variant**: The C library writes commented-out lines for
   informational attributes (e.g. `# Title = "..."`, `# Lbl1 = "..."`).
@@ -102,6 +106,58 @@ pub(crate) struct Node {
   the interleaving of attributes and IsA markers naturally. The `isa`
   field on Node is redundant with this approach and is removed — the
   items vec is the single source of truth for ordering.
+
+## Public API
+
+The Rust equivalents of C's `astToString` / `astFromString`. Since
+there is no unified `Object` trait, a closed `AnyObject` enum
+provides the return type for deserialisation (this is the same enum
+the design spec prescribes for `Channel::read` and the CFFI handle
+registry, pulled forward):
+
+```rust
+// Public, in ast-core/src/serial/mod.rs (re-exported from lib.rs)
+
+/// A type-erased AST object for serialisation round-trips.
+///
+/// This is the Rust equivalent of C's `AstObject *`. It grows as
+/// new types are implemented.
+pub enum AnyObject {
+    UnitMap(UnitMap),
+    ZoomMap(ZoomMap),
+    ShiftMap(ShiftMap),
+    MatrixMap(MatrixMap),
+    PermMap(PermMap),
+    CmpMap(CmpMap),
+    BasicFrame(BasicFrame),
+    CmpFrame(CmpFrame),
+    FrameSet(FrameSet),
+}
+
+/// Serialise any AST object to Native text format.
+///
+/// Equivalent to C's `astToString`.
+pub fn to_native_string(obj: &AnyObject) -> AstResult<String>;
+
+/// Deserialise an AST object from Native text format.
+///
+/// Equivalent to C's `astFromString`.
+pub fn from_native_string(s: &str) -> AstResult<AnyObject>;
+```
+
+`AnyObject` provides convenience accessors:
+
+```rust
+impl AnyObject {
+    pub fn as_mapping(&self) -> Option<&dyn Mapping> { ... }
+    pub fn as_frame(&self) -> Option<&dyn Frame> { ... }
+    pub fn into_mapping(self) -> Option<DynMapping> { ... }
+    pub fn into_frame(self) -> Option<DynFrame> { ... }
+}
+```
+
+The internal `Serializable` trait (below) does the actual work;
+the public functions dispatch through `AnyObject`.
 
 ## Serializable Trait
 
@@ -438,5 +494,4 @@ as each class gains its `from_node` implementation.
 - FITS-header-card encoding (FitsChan, Step 8).
 - Channel trait and Channel implementations.
 - SkyFrame, WinMap, PolyMap, or any types not yet in Rust.
-- `WritableToChannel` / `DynAnyObject` dispatch.
 - STC-S, MOC formats.
