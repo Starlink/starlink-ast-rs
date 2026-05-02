@@ -14,6 +14,8 @@ mod perm;
 pub use perm::PermMap;
 mod winmap;
 pub use winmap::WinMap;
+mod lutmap;
+pub use lutmap::{LutInterp, LutMap};
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
