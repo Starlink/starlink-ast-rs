@@ -97,7 +97,7 @@ fn format_c_exponent(mantissa: &str, exp: i32) -> String {
         // Positive exponents >= 100 naturally get 3+ digits from {:02}.
         format!("{}e+{:02}", mantissa, exp)
     } else {
-        format!("{}e-{:02}", mantissa, -exp)
+        format!("{}e-{:02}", mantissa, exp.unsigned_abs())
     }
 }
 
