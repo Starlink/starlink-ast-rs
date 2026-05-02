@@ -12,6 +12,8 @@ mod matrix;
 pub use matrix::MatrixMap;
 mod perm;
 pub use perm::PermMap;
+mod winmap;
+pub use winmap::WinMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
