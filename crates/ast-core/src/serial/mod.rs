@@ -7,7 +7,7 @@ pub(crate) mod node;
 pub(crate) use node::{Node, NodeValue};
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame};
+use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame, FrameSet};
 use crate::mappings::{
     CmpMap, DynMapping, Mapping, MatrixMap, PermMap, ShiftMap, UnitMap, ZoomMap,
 };
@@ -83,6 +83,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "MatrixMap" => Ok(Box::new(MatrixMap::from_node(node)?)),
         "PermMap" => Ok(Box::new(PermMap::from_node(node)?)),
         "CmpMap" => Ok(Box::new(CmpMap::from_node(node)?)),
+        "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Mapping class: {other}"),
@@ -120,6 +121,9 @@ impl MappingToNode for dyn Mapping {
         if let Some(m) = self.as_any().downcast_ref::<CmpMap>() {
             return m.to_node();
         }
+        if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
+            return Serializable::to_node(f);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Mapping type for serialisation",
@@ -145,6 +149,9 @@ impl FrameToNode for dyn Frame {
         if let Some(f) = self.as_any().downcast_ref::<CmpFrame>() {
             return Serializable::to_node(f);
         }
+        if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
+            return Serializable::to_node(f);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Frame type for serialisation",
@@ -157,6 +164,7 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {
         "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
         "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
+        "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown or unsupported Frame class: {other}"),

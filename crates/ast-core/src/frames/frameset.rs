@@ -6,6 +6,7 @@ use std::fmt;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, UnitMap};
+use crate::serial::{FrameToNode, MappingToNode, Node, Serializable, frame_from_node, mapping_from_node};
 
 use super::{DynFrame, Frame};
 
@@ -559,5 +560,148 @@ impl Mapping for FrameSet {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
+    }
+}
+
+// ====================================================================== //
+// Serialisation                                                          //
+// ====================================================================== //
+
+impl Serializable for FrameSet {
+    fn class_name(&self) -> &'static str {
+        "FrameSet"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Set of inter-related coordinate Frames".to_string());
+
+        // Naxes — current frame's naxes (informational).
+        node.push_int(
+            "Naxes",
+            self.current().naxes() as i64,
+            Some("Number of coordinate axes".to_string()),
+        );
+
+        // IsA Frame marker.
+        node.push_isa("Frame", Some("Coordinate Frame".to_string()));
+
+        // Nframe — number of frames (always).
+        let nframe = self.frames.len();
+        node.push_int(
+            "Nframe",
+            nframe as i64,
+            Some("Number of Frames in FrameSet".to_string()),
+        );
+
+        // Base — 1-based base frame index.
+        node.push_int(
+            "Base",
+            (self.base_idx + 1) as i64,
+            Some("Index of base Frame".to_string()),
+        );
+
+        // Currnt — 1-based current frame index.
+        node.push_int(
+            "Currnt",
+            (self.current_idx + 1) as i64,
+            Some("Index of current Frame".to_string()),
+        );
+
+        // Lnk{to+1} = from+1 for each edge (1-based).
+        for edge in &self.edges {
+            let key = format!("Lnk{}", edge.to + 1);
+            let comment = format!(
+                "Node {} is derived from node {}",
+                edge.to + 1,
+                edge.from + 1,
+            );
+            node.push_int(&key, (edge.from + 1) as i64, Some(comment));
+        }
+
+        // Frm{i+1} — each frame as a nested object.
+        for (i, frame) in self.frames.iter().enumerate() {
+            let key = format!("Frm{}", i + 1);
+            let frame_node = FrameToNode::to_node(frame.as_ref())?;
+            let comment = format!("Frame number {}", i + 1);
+            node.push_object(&key, frame_node, Some(comment));
+        }
+
+        // Map{to+1} — each edge mapping as a nested object.
+        for edge in &self.edges {
+            let key = format!("Map{}", edge.to + 1);
+            let map_node = MappingToNode::to_node(edge.mapping.as_ref())?;
+            let comment = format!(
+                "Mapping between nodes {} and {}",
+                edge.from + 1,
+                edge.to + 1,
+            );
+            node.push_object(&key, map_node, Some(comment));
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let nframe = node.get_int("Nframe", 0) as usize;
+        if nframe == 0 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                "FrameSet: Nframe is 0 or missing",
+            ));
+        }
+
+        let base = node.get_int("Base", 1) as usize;
+        let current = node.get_int("Currnt", 1) as usize;
+
+        // Read frames.
+        let mut frames: Vec<DynFrame> = Vec::with_capacity(nframe);
+        for i in 0..nframe {
+            let key = format!("Frm{}", i + 1);
+            let frame_node = node.get_object(&key).ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Lderr,
+                    format!("FrameSet: missing {key}"),
+                )
+            })?;
+            frames.push(frame_from_node(frame_node)?);
+        }
+
+        // Read edges: for frames 1..nframe (0-based: 1..nframe), each
+        // has a Lnk and Map entry.
+        let mut edges: Vec<Edge> = Vec::with_capacity(nframe.saturating_sub(1));
+        for i in 1..nframe {
+            let lnk_key = format!("Lnk{}", i + 1);
+            let parent = node.get_int(&lnk_key, 0) as usize;
+            if parent == 0 {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!("FrameSet: missing or invalid {lnk_key}"),
+                ));
+            }
+
+            let map_key = format!("Map{}", i + 1);
+            let map_node = node.get_object(&map_key).ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Lderr,
+                    format!("FrameSet: missing {map_key}"),
+                )
+            })?;
+            let mapping = mapping_from_node(map_node)?;
+
+            edges.push(Edge {
+                from: parent - 1,
+                to: i,
+                mapping,
+            });
+        }
+
+        Ok(FrameSet {
+            frames,
+            edges,
+            base_idx: base - 1,
+            current_idx: current - 1,
+            variants: Vec::new(),
+        })
     }
 }
