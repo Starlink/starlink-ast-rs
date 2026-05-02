@@ -171,3 +171,157 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
         )),
     }
 }
+
+// ---------------------------------------------------------------------------
+// AnyObject — type-erased AST object for serialisation round-trips
+// ---------------------------------------------------------------------------
+
+/// A type-erased AST object for serialisation round-trips.
+///
+/// Every concrete AST class that can be serialised has a variant here.
+/// The convenience methods [`as_mapping`](AnyObject::as_mapping),
+/// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping),
+/// and [`into_frame`](AnyObject::into_frame) provide trait-object access
+/// without requiring the caller to match on variants.
+#[derive(Debug)]
+pub enum AnyObject {
+    /// A [`UnitMap`] (identity mapping).
+    UnitMap(UnitMap),
+    /// A [`ZoomMap`] (scalar zoom mapping).
+    ZoomMap(ZoomMap),
+    /// A [`ShiftMap`] (per-axis constant shift).
+    ShiftMap(ShiftMap),
+    /// A [`MatrixMap`] (linear matrix transformation).
+    MatrixMap(MatrixMap),
+    /// A [`PermMap`] (axis permutation / constant mapping).
+    PermMap(PermMap),
+    /// A [`CmpMap`] (compound mapping — series or parallel).
+    CmpMap(CmpMap),
+    /// A [`BasicFrame`] (generic coordinate frame).
+    BasicFrame(BasicFrame),
+    /// A [`CmpFrame`] (compound frame).
+    CmpFrame(CmpFrame),
+    /// A [`FrameSet`] (frame + inter-frame mappings).
+    FrameSet(FrameSet),
+}
+
+impl AnyObject {
+    /// Return a reference to the contained object as a `&dyn Mapping`,
+    /// or `None` if the variant does not implement [`Mapping`].
+    pub fn as_mapping(&self) -> Option<&dyn Mapping> {
+        match self {
+            AnyObject::UnitMap(m) => Some(m),
+            AnyObject::ZoomMap(m) => Some(m),
+            AnyObject::ShiftMap(m) => Some(m),
+            AnyObject::MatrixMap(m) => Some(m),
+            AnyObject::PermMap(m) => Some(m),
+            AnyObject::CmpMap(m) => Some(m),
+            AnyObject::FrameSet(f) => Some(f),
+            AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
+        }
+    }
+
+    /// Return a reference to the contained object as a `&dyn Frame`,
+    /// or `None` if the variant does not implement [`Frame`].
+    pub fn as_frame(&self) -> Option<&dyn Frame> {
+        match self {
+            AnyObject::BasicFrame(f) => Some(f),
+            AnyObject::CmpFrame(f) => Some(f),
+            AnyObject::FrameSet(f) => Some(f),
+            AnyObject::UnitMap(_)
+            | AnyObject::ZoomMap(_)
+            | AnyObject::ShiftMap(_)
+            | AnyObject::MatrixMap(_)
+            | AnyObject::PermMap(_)
+            | AnyObject::CmpMap(_) => None,
+        }
+    }
+
+    /// Consume `self` and return a [`DynMapping`] (`Box<dyn Mapping>`),
+    /// or `None` if the variant does not implement [`Mapping`].
+    pub fn into_mapping(self) -> Option<DynMapping> {
+        match self {
+            AnyObject::UnitMap(m) => Some(Box::new(m)),
+            AnyObject::ZoomMap(m) => Some(Box::new(m)),
+            AnyObject::ShiftMap(m) => Some(Box::new(m)),
+            AnyObject::MatrixMap(m) => Some(Box::new(m)),
+            AnyObject::PermMap(m) => Some(Box::new(m)),
+            AnyObject::CmpMap(m) => Some(Box::new(m)),
+            AnyObject::FrameSet(f) => Some(Box::new(f)),
+            AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
+        }
+    }
+
+    /// Consume `self` and return a [`DynFrame`] (`Box<dyn Frame>`),
+    /// or `None` if the variant does not implement [`Frame`].
+    pub fn into_frame(self) -> Option<DynFrame> {
+        match self {
+            AnyObject::BasicFrame(f) => Some(Box::new(f)),
+            AnyObject::CmpFrame(f) => Some(Box::new(f)),
+            AnyObject::FrameSet(f) => Some(Box::new(f)),
+            AnyObject::UnitMap(_)
+            | AnyObject::ZoomMap(_)
+            | AnyObject::ShiftMap(_)
+            | AnyObject::MatrixMap(_)
+            | AnyObject::PermMap(_)
+            | AnyObject::CmpMap(_) => None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AnyObject dispatch: Node ↔ AnyObject
+// ---------------------------------------------------------------------------
+
+/// Reconstruct an [`AnyObject`] from a [`Node`], dispatching by class name.
+fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
+    match node.class.as_str() {
+        "UnitMap" => Ok(AnyObject::UnitMap(UnitMap::from_node(node)?)),
+        "ZoomMap" => Ok(AnyObject::ZoomMap(ZoomMap::from_node(node)?)),
+        "ShiftMap" => Ok(AnyObject::ShiftMap(ShiftMap::from_node(node)?)),
+        "MatrixMap" => Ok(AnyObject::MatrixMap(MatrixMap::from_node(node)?)),
+        "PermMap" => Ok(AnyObject::PermMap(PermMap::from_node(node)?)),
+        "CmpMap" => Ok(AnyObject::CmpMap(CmpMap::from_node(node)?)),
+        "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
+        "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
+        "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
+        other => Err(AstError::new(
+            ErrorCode::Lderr,
+            format!("unknown AST class: {other}"),
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public API: to_native_string / from_native_string
+// ---------------------------------------------------------------------------
+
+/// Serialise any AST object to Native text format.
+///
+/// The returned string is in the AST Native serialisation format, compatible
+/// with the C library's `astWrite` / `astRead` channel functions.
+pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
+    let node = match obj {
+        AnyObject::UnitMap(m) => Serializable::to_node(m)?,
+        AnyObject::ZoomMap(m) => Serializable::to_node(m)?,
+        AnyObject::ShiftMap(m) => Serializable::to_node(m)?,
+        AnyObject::MatrixMap(m) => Serializable::to_node(m)?,
+        AnyObject::PermMap(m) => Serializable::to_node(m)?,
+        AnyObject::CmpMap(m) => Serializable::to_node(m)?,
+        AnyObject::BasicFrame(f) => Serializable::to_node(f)?,
+        AnyObject::CmpFrame(f) => Serializable::to_node(f)?,
+        AnyObject::FrameSet(f) => Serializable::to_node(f)?,
+    };
+    native_write::render_native(&node)
+}
+
+/// Deserialise an AST object from Native text format.
+///
+/// Parses the AST Native serialisation format and returns a type-erased
+/// [`AnyObject`]. Use [`AnyObject::as_mapping`], [`AnyObject::as_frame`],
+/// [`AnyObject::into_mapping`], or [`AnyObject::into_frame`] to extract
+/// the concrete trait object.
+pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
+    let node = native_read::parse_native(s)?;
+    any_object_from_node(&node)
+}
