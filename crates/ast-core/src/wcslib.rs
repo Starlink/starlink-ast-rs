@@ -1,7 +1,3 @@
-// All wrappers are pub(crate) and will be consumed by WcsMap.
-// Until WcsMap lands, suppress dead-code warnings.
-#![allow(dead_code)]
-
 //! Safe Rust wrappers for the vendored wcslib projection functions.
 //!
 //! The C wcslib library is compiled from `vendor/wcslib/{proj,tpn,wcstrig,ast_memory_stub}.c`
@@ -28,7 +24,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// by setting appropriate projection parameters before delegating to the
 /// underlying standard projection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum WcsProjection {
+pub enum WcsProjection {
     /// Zenithal/azimuthal perspective
     Azp,
     /// Slant zenithal perspective
@@ -95,7 +91,7 @@ pub(crate) enum WcsProjection {
 
 impl WcsProjection {
     /// Return the 3-letter FITS projection code (uppercase).
-    pub(crate) fn code(&self) -> &'static str {
+    pub fn code(&self) -> &'static str {
         match self {
             Self::Azp => "AZP",
             Self::Szp => "SZP",
@@ -134,7 +130,7 @@ impl WcsProjection {
     /// Parse a 3-letter FITS projection code (case-insensitive).
     ///
     /// Returns `None` if the code is not recognised.
-    pub(crate) fn from_code(s: &str) -> Option<Self> {
+    pub fn from_code(s: &str) -> Option<Self> {
         // Fast path: check length first.
         if s.len() != 3 {
             return None;
@@ -185,6 +181,7 @@ impl WcsProjection {
     /// These match the `WCS__*` constants in `vendor/wcslib/proj.c`.
     /// The encoding groups projections by class (zenithal=1xx,
     /// cylindrical=2xx, pseudo-cylindrical=3xx, etc.).
+    #[allow(dead_code)] // Used by SlaMap (Step 7a Task 4)
     pub(crate) fn type_code(&self) -> i32 {
         match self {
             // Zenithal (1xx)
@@ -236,6 +233,7 @@ impl WcsProjection {
     /// Returns `None` if the code is not recognised.  Note that the
     /// deprecated `Ncp` (105) and `Gls` (301) are not returned — the
     /// canonical `Sin` and `Sfl` are returned instead.
+    #[allow(dead_code)] // Used by SlaMap (Step 7a Task 4)
     pub(crate) fn from_type_code(i: i32) -> Option<Self> {
         match i {
             101 => Some(Self::Azp),
@@ -432,6 +430,7 @@ impl PrjParams {
     /// - `m`: parameter index (0-based).
     ///
     /// Returns `None` if `m >= WCSLIB_MXPAR` or `axis > 1`.
+    #[allow(dead_code)] // Used by SkyFrame (Step 7b)
     pub(crate) fn get_param(&self, axis: usize, m: usize) -> Option<f64> {
         if m >= WCSLIB_MXPAR || axis > 1 {
             return None;
@@ -518,11 +517,13 @@ impl PrjParams {
     }
 
     /// Return the reference point (phi0, theta0) in degrees.
+    #[allow(dead_code)] // Used by SkyFrame (Step 7b)
     pub(crate) fn reference_point(&self) -> (f64, f64) {
         (self.inner.phi0, self.inner.theta0)
     }
 
     /// Return the radius of the generating sphere, r0.
+    #[allow(dead_code)] // Used by SkyFrame (Step 7b)
     pub(crate) fn r0(&self) -> f64 {
         self.inner.r0
     }

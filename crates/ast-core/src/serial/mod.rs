@@ -10,7 +10,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame, FrameSet};
 use crate::mappings::{
     ChebyMap, CmpMap, DynMapping, LutMap, Mapping, MatrixMap, PermMap, PolyMap, ShiftMap, UnitMap,
-    WinMap, ZoomMap,
+    WcsMap, WinMap, ZoomMap,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -88,6 +88,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "PolyMap" => Ok(Box::new(PolyMap::from_node(node)?)),
         "ChebyMap" => Ok(Box::new(ChebyMap::from_node(node)?)),
         "CmpMap" => Ok(Box::new(CmpMap::from_node(node)?)),
+        "WcsMap" => Ok(Box::new(WcsMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
@@ -136,6 +137,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<CmpMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<WcsMap>() {
             return m.to_node();
         }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
@@ -222,6 +226,8 @@ pub enum AnyObject {
     ChebyMap(ChebyMap),
     /// A [`CmpMap`] (compound mapping — series or parallel).
     CmpMap(CmpMap),
+    /// A [`WcsMap`] (FITS-WCS sky projection).
+    WcsMap(WcsMap),
     /// A [`BasicFrame`] (generic coordinate frame).
     BasicFrame(BasicFrame),
     /// A [`CmpFrame`] (compound frame).
@@ -245,6 +251,7 @@ impl AnyObject {
             AnyObject::PolyMap(m) => Some(m),
             AnyObject::ChebyMap(m) => Some(m),
             AnyObject::CmpMap(m) => Some(m),
+            AnyObject::WcsMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
             AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
         }
@@ -266,7 +273,8 @@ impl AnyObject {
             | AnyObject::LutMap(_)
             | AnyObject::PolyMap(_)
             | AnyObject::ChebyMap(_)
-            | AnyObject::CmpMap(_) => None,
+            | AnyObject::CmpMap(_)
+            | AnyObject::WcsMap(_) => None,
         }
     }
 
@@ -284,6 +292,7 @@ impl AnyObject {
             AnyObject::PolyMap(m) => Some(Box::new(m)),
             AnyObject::ChebyMap(m) => Some(Box::new(m)),
             AnyObject::CmpMap(m) => Some(Box::new(m)),
+            AnyObject::WcsMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
         }
@@ -305,7 +314,8 @@ impl AnyObject {
             | AnyObject::LutMap(_)
             | AnyObject::PolyMap(_)
             | AnyObject::ChebyMap(_)
-            | AnyObject::CmpMap(_) => None,
+            | AnyObject::CmpMap(_)
+            | AnyObject::WcsMap(_) => None,
         }
     }
 }
@@ -327,6 +337,7 @@ fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "PolyMap" => Ok(AnyObject::PolyMap(PolyMap::from_node(node)?)),
         "ChebyMap" => Ok(AnyObject::ChebyMap(ChebyMap::from_node(node)?)),
         "CmpMap" => Ok(AnyObject::CmpMap(CmpMap::from_node(node)?)),
+        "WcsMap" => Ok(AnyObject::WcsMap(WcsMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
@@ -357,6 +368,7 @@ pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
         AnyObject::PolyMap(m) => Serializable::to_node(m)?,
         AnyObject::ChebyMap(m) => Serializable::to_node(m)?,
         AnyObject::CmpMap(m) => Serializable::to_node(m)?,
+        AnyObject::WcsMap(m) => Serializable::to_node(m)?,
         AnyObject::BasicFrame(f) => Serializable::to_node(f)?,
         AnyObject::CmpFrame(f) => Serializable::to_node(f)?,
         AnyObject::FrameSet(f) => Serializable::to_node(f)?,

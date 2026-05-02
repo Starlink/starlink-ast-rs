@@ -20,6 +20,9 @@ mod polymap;
 pub use polymap::{PolyMap, PolyTerm};
 mod chebymap;
 pub use chebymap::ChebyMap;
+mod wcsmap;
+pub use crate::wcslib::WcsProjection;
+pub use wcsmap::WcsMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
