@@ -669,4 +669,237 @@ mod tests {
         assert_eq!(zoom.class, "ZoomMap");
         assert_eq!(zoom.get_double("Zoom", 0.0), 5.23598775598299e-06);
     }
+
+    // ---------------------------------------------------------------
+    // Parse-only reference tests against committed fixture files.
+    // These always run (no submodule required).
+    // ---------------------------------------------------------------
+
+    /// Read a committed fixture from tests/fixtures/native/reference/.
+    fn read_committed_fixture(filename: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/native/reference")
+            .join(filename);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()))
+    }
+
+    /// Collect all distinct class names in a Node tree.
+    fn collect_classes(node: &Node, classes: &mut std::collections::BTreeSet<String>) {
+        classes.insert(node.class.clone());
+        for item in &node.items {
+            if let NodeValue::Object(child) = &item.value {
+                collect_classes(child, classes);
+            }
+        }
+    }
+
+    #[test]
+    fn ref_splittest1_parse() {
+        let text = read_committed_fixture("splittest1.ast");
+        let node = parse_native(&text).unwrap();
+
+        // Top-level structure.
+        assert_eq!(node.class, "CmpMap");
+        assert_eq!(node.get_int("Nin", 0), 4);
+        assert_eq!(node.class_comment.as_deref(), Some("Compound Mapping"));
+
+        // Object count: 17 Begin lines in the file.
+        let total = count_nodes(&node);
+        assert_eq!(total, 17);
+
+        // Top-level children.
+        let map_a = node.get_object("MapA").expect("MapA missing");
+        assert_eq!(map_a.class, "UnitMap");
+        assert_eq!(map_a.get_int("Nin", 0), 4);
+        assert_eq!(map_a.get_int("Invert", -1), 1);
+
+        let map_b = node.get_object("MapB").expect("MapB missing");
+        assert_eq!(map_b.class, "CmpMap");
+
+        // Verify class diversity: file contains CmpMap, UnitMap, WinMap,
+        // LutMap, MatrixMap at minimum.
+        let mut classes = std::collections::BTreeSet::new();
+        collect_classes(&node, &mut classes);
+        for expected in &["CmpMap", "UnitMap", "WinMap", "LutMap", "MatrixMap"] {
+            assert!(
+                classes.contains(*expected),
+                "expected class {expected} not found; have: {classes:?}"
+            );
+        }
+
+        // Commented-out defaults: at least one Unset "Incr" deep inside.
+        fn has_unset_key(node: &Node, key: &str) -> bool {
+            for item in &node.items {
+                if item.key == key && matches!(&item.value, NodeValue::Unset(_)) {
+                    return true;
+                }
+                if let NodeValue::Object(child) = &item.value {
+                    if has_unset_key(child, key) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        assert!(
+            has_unset_key(&node, "Incr"),
+            "should have at least one Unset Incr"
+        );
+    }
+
+    #[test]
+    fn ref_degen1_parse() {
+        let text = read_committed_fixture("degen1.ast");
+        let node = parse_native(&text).unwrap();
+
+        // Top-level FrameSet with leading comment block.
+        assert_eq!(node.class, "FrameSet");
+        assert_eq!(node.get_int("Nframe", 0), 4);
+        assert_eq!(node.get_int("Currnt", 0), 4);
+        // Base is a commented-out default (Unset), so get_int returns
+        // the fallback. Verify the Unset item is present instead.
+        assert!(node.get("Base").is_none(), "Base should be Unset");
+        let base_item = node
+            .items
+            .iter()
+            .find(|i| i.key == "Base")
+            .expect("Base item missing");
+        assert!(matches!(&base_item.value, NodeValue::Unset(_)));
+
+        // Object count: 38 Begin lines.
+        let total = count_nodes(&node);
+        assert_eq!(total, 38);
+
+        // Frame 4 is a CmpFrame containing a SkyFrame.
+        let frm4 = node.get_object("Frm4").expect("Frm4 missing");
+        assert_eq!(frm4.class, "CmpFrame");
+        let frame_a = frm4.get_object("FrameA").expect("FrameA missing");
+        assert_eq!(frame_a.class, "SkyFrame");
+        assert_eq!(frame_a.get_string("System", ""), "FK5");
+
+        // SkyFrame should have SkyAxis children.
+        let ax1 = frame_a.get_object("Ax1").expect("SkyFrame Ax1 missing");
+        assert_eq!(ax1.class, "SkyAxis");
+
+        // Class diversity: should include FrameSet, CmpFrame, SkyFrame,
+        // Frame, SkyAxis, Axis, CmpMap, PermMap, WcsMap, SphMap, etc.
+        let mut classes = std::collections::BTreeSet::new();
+        collect_classes(&node, &mut classes);
+        for expected in &[
+            "FrameSet", "CmpFrame", "SkyFrame", "Frame", "SkyAxis", "CmpMap", "PermMap", "WcsMap",
+            "SphMap", "UnitMap",
+        ] {
+            assert!(
+                classes.contains(*expected),
+                "expected class {expected} not found; have: {classes:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ref_brad_map_parse() {
+        let text = read_committed_fixture("brad.map");
+        let node = parse_native(&text).unwrap();
+
+        // Top-level parallel CmpMap with 3 inputs.
+        assert_eq!(node.class, "CmpMap");
+        assert_eq!(node.get_int("Nin", 0), 3);
+        assert_eq!(node.get_int("Series", 0), 0); // parallel
+
+        // Object count: 7 Begin lines.
+        let total = count_nodes(&node);
+        assert_eq!(total, 7);
+
+        // MapA is a CmpMap (spectral axis).
+        let map_a = node.get_object("MapA").expect("MapA missing");
+        assert_eq!(map_a.class, "CmpMap");
+
+        // MapB is a CmpMap (sky axes).
+        let map_b = node.get_object("MapB").expect("MapB missing");
+        assert_eq!(map_b.class, "CmpMap");
+
+        // MapB.MapA is a ZoomMap with a known zoom factor.
+        let zoom = map_b.get_object("MapA").expect("MapB.MapA missing");
+        assert_eq!(zoom.class, "ZoomMap");
+        assert_eq!(zoom.get_double("Zoom", 0.0), 5.23598775598299e-06);
+
+        // MapB.MapB is a WcsMap (TAN projection).
+        let wcsmap = map_b.get_object("MapB").expect("MapB.MapB missing");
+        assert_eq!(wcsmap.class, "WcsMap");
+        assert_eq!(wcsmap.get_string("Type", ""), "TAN");
+
+        // Class diversity.
+        let mut classes = std::collections::BTreeSet::new();
+        collect_classes(&node, &mut classes);
+        for expected in &["CmpMap", "ZoomMap", "WcsMap", "WinMap", "LutMap"] {
+            assert!(
+                classes.contains(*expected),
+                "expected class {expected} not found; have: {classes:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ref_specflux_parse() {
+        let text = read_committed_fixture("specflux.ast");
+        let node = parse_native(&text).unwrap();
+
+        // Top-level CmpFrame.
+        assert_eq!(node.class, "CmpFrame");
+        assert_eq!(
+            node.class_comment.as_deref(),
+            Some("Compound coordinate system description")
+        );
+
+        // Object count: 5 Begin lines.
+        let total = count_nodes(&node);
+        assert_eq!(total, 5);
+
+        // FrameA is a SpecFrame.
+        let frame_a = node.get_object("FrameA").expect("FrameA missing");
+        assert_eq!(frame_a.class, "SpecFrame");
+        assert_eq!(frame_a.get_int("Naxes", 0), 1);
+        assert_eq!(frame_a.get_string("System", ""), "WAVE");
+
+        // SpecFrame has an Axis child with wavelength units.
+        let spec_ax = frame_a.get_object("Ax1").expect("SpecFrame Ax1 missing");
+        assert_eq!(spec_ax.class, "Axis");
+        assert_eq!(spec_ax.get_string("Unit", ""), "um");
+
+        // FrameB is a basic Frame.
+        let frame_b = node.get_object("FrameB").expect("FrameB missing");
+        assert_eq!(frame_b.class, "Frame");
+        assert_eq!(frame_b.get_int("Naxes", 0), 1);
+
+        // FrameB axis has flux-density units with AST escape sequences.
+        let flux_ax = frame_b.get_object("Ax1").expect("FrameB Ax1 missing");
+        assert_eq!(flux_ax.class, "Axis");
+        let flux_unit = flux_ax.get_string("Unit", "");
+        assert!(
+            flux_unit.contains("W/m"),
+            "expected flux unit containing 'W/m', got: {flux_unit}"
+        );
+
+        // Commented-out defaults: Title, Naxes, Domain, labels, units
+        // should all be Unset on the top-level CmpFrame.
+        let title_item = node
+            .items
+            .iter()
+            .find(|i| i.key == "Title")
+            .expect("Title item missing");
+        assert!(
+            matches!(&title_item.value, NodeValue::Unset(_)),
+            "Title should be Unset"
+        );
+        let domain_item = node
+            .items
+            .iter()
+            .find(|i| i.key == "Domain")
+            .expect("Domain item missing");
+        assert!(
+            matches!(&domain_item.value, NodeValue::Unset(_)),
+            "Domain should be Unset"
+        );
+    }
 }
