@@ -9,7 +9,8 @@ pub(crate) use node::{Node, NodeValue};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame, FrameSet};
 use crate::mappings::{
-    CmpMap, DynMapping, LutMap, Mapping, MatrixMap, PermMap, ShiftMap, UnitMap, WinMap, ZoomMap,
+    CmpMap, DynMapping, LutMap, Mapping, MatrixMap, PermMap, PolyMap, ShiftMap, UnitMap, WinMap,
+    ZoomMap,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -84,6 +85,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "PermMap" => Ok(Box::new(PermMap::from_node(node)?)),
         "WinMap" => Ok(Box::new(WinMap::from_node(node)?)),
         "LutMap" => Ok(Box::new(LutMap::from_node(node)?)),
+        "PolyMap" => Ok(Box::new(PolyMap::from_node(node)?)),
         "CmpMap" => Ok(Box::new(CmpMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
@@ -124,6 +126,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<LutMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<PolyMap>() {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<CmpMap>() {
@@ -207,6 +212,8 @@ pub enum AnyObject {
     WinMap(WinMap),
     /// A [`LutMap`] (1-D lookup table mapping).
     LutMap(LutMap),
+    /// A [`PolyMap`] (polynomial transformation).
+    PolyMap(PolyMap),
     /// A [`CmpMap`] (compound mapping — series or parallel).
     CmpMap(CmpMap),
     /// A [`BasicFrame`] (generic coordinate frame).
@@ -229,6 +236,7 @@ impl AnyObject {
             AnyObject::PermMap(m) => Some(m),
             AnyObject::WinMap(m) => Some(m),
             AnyObject::LutMap(m) => Some(m),
+            AnyObject::PolyMap(m) => Some(m),
             AnyObject::CmpMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
             AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
@@ -249,6 +257,7 @@ impl AnyObject {
             | AnyObject::PermMap(_)
             | AnyObject::WinMap(_)
             | AnyObject::LutMap(_)
+            | AnyObject::PolyMap(_)
             | AnyObject::CmpMap(_) => None,
         }
     }
@@ -264,6 +273,7 @@ impl AnyObject {
             AnyObject::PermMap(m) => Some(Box::new(m)),
             AnyObject::WinMap(m) => Some(Box::new(m)),
             AnyObject::LutMap(m) => Some(Box::new(m)),
+            AnyObject::PolyMap(m) => Some(Box::new(m)),
             AnyObject::CmpMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
@@ -284,6 +294,7 @@ impl AnyObject {
             | AnyObject::PermMap(_)
             | AnyObject::WinMap(_)
             | AnyObject::LutMap(_)
+            | AnyObject::PolyMap(_)
             | AnyObject::CmpMap(_) => None,
         }
     }
@@ -303,6 +314,7 @@ fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "PermMap" => Ok(AnyObject::PermMap(PermMap::from_node(node)?)),
         "WinMap" => Ok(AnyObject::WinMap(WinMap::from_node(node)?)),
         "LutMap" => Ok(AnyObject::LutMap(LutMap::from_node(node)?)),
+        "PolyMap" => Ok(AnyObject::PolyMap(PolyMap::from_node(node)?)),
         "CmpMap" => Ok(AnyObject::CmpMap(CmpMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
@@ -331,6 +343,7 @@ pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
         AnyObject::PermMap(m) => Serializable::to_node(m)?,
         AnyObject::WinMap(m) => Serializable::to_node(m)?,
         AnyObject::LutMap(m) => Serializable::to_node(m)?,
+        AnyObject::PolyMap(m) => Serializable::to_node(m)?,
         AnyObject::CmpMap(m) => Serializable::to_node(m)?,
         AnyObject::BasicFrame(f) => Serializable::to_node(f)?,
         AnyObject::CmpFrame(f) => Serializable::to_node(f)?,

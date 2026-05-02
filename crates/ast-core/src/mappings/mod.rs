@@ -16,6 +16,8 @@ mod winmap;
 pub use winmap::WinMap;
 mod lutmap;
 pub use lutmap::{LutInterp, LutMap};
+mod polymap;
+pub use polymap::{PolyMap, PolyTerm};
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 

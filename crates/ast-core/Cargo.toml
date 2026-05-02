@@ -8,6 +8,7 @@ description = "Pure-Rust port of the Starlink AST world coordinate system librar
 
 [dependencies]
 levenberg-marquardt.workspace = true
+nalgebra.workspace = true
 ndarray.workspace = true
 
 [build-dependencies]
