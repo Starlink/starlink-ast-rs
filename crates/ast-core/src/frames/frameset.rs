@@ -6,7 +6,9 @@ use std::fmt;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, UnitMap};
-use crate::serial::{FrameToNode, MappingToNode, Node, Serializable, frame_from_node, mapping_from_node};
+use crate::serial::{
+    FrameToNode, MappingToNode, Node, Serializable, frame_from_node, mapping_from_node,
+};
 
 use super::{DynFrame, Frame};
 
@@ -659,10 +661,7 @@ impl Serializable for FrameSet {
         for i in 0..nframe {
             let key = format!("Frm{}", i + 1);
             let frame_node = node.get_object(&key).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Lderr,
-                    format!("FrameSet: missing {key}"),
-                )
+                AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {key}"))
             })?;
             frames.push(frame_from_node(frame_node)?);
         }
@@ -682,10 +681,7 @@ impl Serializable for FrameSet {
 
             let map_key = format!("Map{}", i + 1);
             let map_node = node.get_object(&map_key).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Lderr,
-                    format!("FrameSet: missing {map_key}"),
-                )
+                AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {map_key}"))
             })?;
             let mapping = mapping_from_node(map_node)?;
 
