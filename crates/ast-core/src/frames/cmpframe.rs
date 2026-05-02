@@ -6,6 +6,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
+use crate::serial::{FrameToNode, Node, Serializable, frame_from_node};
 
 use super::{DynFrame, Frame, FrameRef, FrameSet};
 
@@ -178,5 +179,41 @@ impl Frame for CmpFrame {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl Serializable for CmpFrame {
+    fn class_name(&self) -> &'static str {
+        "CmpFrame"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Compound coordinate Frame".to_string());
+
+        // IsA Frame marker (CmpFrame inherits from Frame).
+        node.push_isa("Frame", Some("Coordinate Frame".to_string()));
+
+        // Component frames as nested objects.
+        let node_a = FrameToNode::to_node(self.frame1.as_ref())?;
+        let node_b = FrameToNode::to_node(self.frame2.as_ref())?;
+        node.push_object("FrameA", node_a, Some("First component Frame".to_string()));
+        node.push_object("FrameB", node_b, Some("Second component Frame".to_string()));
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let node_a = node
+            .get_object("FrameA")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameA"))?;
+        let node_b = node
+            .get_object("FrameB")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameB"))?;
+
+        let frame1 = frame_from_node(node_a)?;
+        let frame2 = frame_from_node(node_b)?;
+
+        Ok(CmpFrame::new(frame1, frame2))
     }
 }

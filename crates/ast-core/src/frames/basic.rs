@@ -4,6 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
+use crate::serial::{Node, NodeValue, Serializable};
 
 use super::{DynFrame, Frame, FrameRef, FrameSet};
 
@@ -550,5 +551,176 @@ impl Frame for BasicFrame {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl Serializable for BasicFrame {
+    fn class_name(&self) -> &'static str {
+        "Frame"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Coordinate Frame".to_string());
+
+        // Title (if set and non-empty).
+        if let Some(ref title) = self.title {
+            if !title.is_empty() {
+                node.push_string(
+                    "Title",
+                    title,
+                    Some("Title of coordinate system".to_string()),
+                );
+            }
+        }
+
+        // Naxes (always).
+        node.push_int(
+            "Naxes",
+            self.naxes as i64,
+            Some("Number of coordinate axes".to_string()),
+        );
+
+        // Domain (if set and non-empty).
+        if let Some(ref domain) = self.domain {
+            if !domain.is_empty() {
+                node.push_string(
+                    "Domain",
+                    domain,
+                    Some("Coordinate system domain".to_string()),
+                );
+            }
+        }
+
+        // Epoch (if set).
+        if let Some(epoch) = self.epoch {
+            node.push_double(
+                "Epoch",
+                epoch,
+                Some("Julian epoch of observation".to_string()),
+            );
+        }
+
+        // Per-axis Label (commented/Unset — informational).
+        for i in 0..self.naxes {
+            if let Some(ref label) = self.labels[i] {
+                let key = format!("Lbl{}", i + 1);
+                let comment = format!("Label for axis {}", i + 1);
+                node.push_unset(&key, NodeValue::String(label.clone()), Some(comment));
+            }
+        }
+
+        // Per-axis Symbol (commented/Unset — informational).
+        for i in 0..self.naxes {
+            if let Some(ref symbol) = self.symbols[i] {
+                let key = format!("Sym{}", i + 1);
+                let comment = format!("Symbol for axis {}", i + 1);
+                node.push_unset(&key, NodeValue::String(symbol.clone()), Some(comment));
+            }
+        }
+
+        // Per-axis Unit (active, not commented — only if set and non-empty).
+        for i in 0..self.naxes {
+            if let Some(ref unit) = self.units[i] {
+                if !unit.is_empty() {
+                    let key = format!("Uni{}", i + 1);
+                    let comment = format!("Units for axis {}", i + 1);
+                    node.push_string(&key, unit, Some(comment));
+                }
+            }
+        }
+
+        // Per-axis Axis child objects.
+        for i in 0..self.naxes {
+            let mut axis_node = Node::new("Axis");
+            axis_node.class_comment = Some(format!("Coordinate axis"));
+
+            // Label.
+            if let Some(ref label) = self.labels[i] {
+                axis_node.push_string("Label", label, Some("Axis Label".to_string()));
+            }
+
+            // Symbol.
+            if let Some(ref symbol) = self.symbols[i] {
+                axis_node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
+            }
+
+            // Unit.
+            if let Some(ref unit) = self.units[i] {
+                axis_node.push_string("Unit", unit, Some("Axis units".to_string()));
+            }
+
+            // Format.
+            if let Some(ref fmt) = self.format_strs[i] {
+                axis_node.push_string("Format", fmt, Some("Format specifier".to_string()));
+            }
+
+            let key = format!("Ax{}", i + 1);
+            let comment = format!("Axis number {}", i + 1);
+            node.push_object(&key, axis_node, Some(comment));
+        }
+
+        // IsA Frame marker.
+        node.push_isa("Frame", None);
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let naxes = node.get_int("Naxes", 0) as usize;
+        if naxes == 0 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                "Frame: Naxes is 0 or missing",
+            ));
+        }
+
+        let mut builder = BasicFrameBuilder::new(naxes);
+
+        // Title.
+        let title = node.get_string("Title", "");
+        if !title.is_empty() {
+            builder = builder.title(title);
+        }
+
+        // Domain.
+        let domain = node.get_string("Domain", "");
+        if !domain.is_empty() {
+            builder = builder.domain(domain);
+        }
+
+        // Epoch.
+        if node.get("Epoch").is_some() {
+            let epoch = node.get_double("Epoch", 0.0);
+            builder = builder.epoch(epoch);
+        }
+
+        // Per-axis attributes from Axis child objects.
+        for i in 0..naxes {
+            let key = format!("Ax{}", i + 1);
+            if let Some(axis_node) = node.get_object(&key) {
+                let label = axis_node.get_string("Label", "");
+                if !label.is_empty() {
+                    builder = builder.label(i + 1, label);
+                }
+
+                let symbol = axis_node.get_string("Symbol", "");
+                if !symbol.is_empty() {
+                    builder = builder.symbol(i + 1, symbol);
+                }
+
+                let unit = axis_node.get_string("Unit", "");
+                if !unit.is_empty() {
+                    builder = builder.unit(i + 1, unit);
+                }
+
+                let fmt = axis_node.get_string("Format", "");
+                if !fmt.is_empty() {
+                    builder = builder.format_str(i + 1, fmt);
+                }
+            }
+        }
+
+        builder.build()
     }
 }

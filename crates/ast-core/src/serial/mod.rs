@@ -7,7 +7,7 @@ pub(crate) mod node;
 pub(crate) use node::{Node, NodeValue};
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame};
+use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame};
 use crate::mappings::{
     CmpMap, DynMapping, Mapping, MatrixMap, PermMap, ShiftMap, UnitMap, ZoomMap,
 };
@@ -139,20 +139,27 @@ pub(crate) trait FrameToNode {
 
 impl FrameToNode for dyn Frame {
     fn to_node(&self) -> AstResult<Node> {
-        // Downcast to concrete frame types and call Serializable::to_node.
-        // Frame Serializable impls are added in Tasks 5 and 6.
+        if let Some(f) = self.as_any().downcast_ref::<BasicFrame>() {
+            return Serializable::to_node(f);
+        }
+        if let Some(f) = self.as_any().downcast_ref::<CmpFrame>() {
+            return Serializable::to_node(f);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
-            "Frame serialisation not yet implemented",
+            "unsupported Frame type for serialisation",
         ))
     }
 }
 
 /// Reconstruct a concrete Frame from a Node tree, dispatching by class name.
 pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
-    // Frame Serializable impls are added in Tasks 5 and 6.
-    Err(AstError::new(
-        ErrorCode::Lderr,
-        format!("unknown or unsupported Frame class: {}", node.class),
-    ))
+    match node.class.as_str() {
+        "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
+        "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
+        other => Err(AstError::new(
+            ErrorCode::Lderr,
+            format!("unknown or unsupported Frame class: {other}"),
+        )),
+    }
 }
