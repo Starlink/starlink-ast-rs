@@ -15,4 +15,5 @@ repository = "https://github.com/lsst-dm/starlink-astrs"
 
 [workspace.dependencies]
 cc = "1"
+levenberg-marquardt = "0.15"
 ndarray = "0.16"

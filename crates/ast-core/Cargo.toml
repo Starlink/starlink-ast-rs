@@ -7,6 +7,7 @@ license.workspace = true
 description = "Pure-Rust port of the Starlink AST world coordinate system library"
 
 [dependencies]
+levenberg-marquardt.workspace = true
 ndarray.workspace = true
 
 [build-dependencies]
