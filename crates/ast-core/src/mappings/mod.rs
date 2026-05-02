@@ -23,6 +23,8 @@ pub use chebymap::ChebyMap;
 mod wcsmap;
 pub use crate::wcslib::WcsProjection;
 pub use wcsmap::WcsMap;
+mod slamap;
+pub use slamap::{SlaCvtType, SlaMap};
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
