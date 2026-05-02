@@ -7,6 +7,7 @@ use ast_core::mappings::{DynMapping, Mapping};
 use ast_core::regions::{DynRegion, Overlap, Region};
 
 /// A dummy type that implements all three traits, proving they're coherent.
+#[derive(Debug)]
 struct DummyRegion;
 
 impl Mapping for DummyRegion {

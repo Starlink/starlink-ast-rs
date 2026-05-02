@@ -253,9 +253,9 @@ fn set_base_changes_nin() {
 #[test]
 fn set_current_invalid_index() {
     let fs = FrameSet::new(make_frame(2));
-    let err = fs.frame(FrameRef::Index(0)).err().unwrap();
+    let err = fs.frame(FrameRef::Index(0)).unwrap_err();
     assert_eq!(err.code(), ErrorCode::Frmin);
-    let err = fs.frame(FrameRef::Index(2)).err().unwrap();
+    let err = fs.frame(FrameRef::Index(2)).unwrap_err();
     assert_eq!(err.code(), ErrorCode::Frmin);
 }
 

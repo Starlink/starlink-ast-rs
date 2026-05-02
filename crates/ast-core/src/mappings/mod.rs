@@ -16,6 +16,7 @@ mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
 use std::any::Any;
+use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
@@ -48,7 +49,7 @@ impl<T: Any> AsAny for T {
 /// All concrete mapping classes implement this trait. Mappings are `Send`
 /// (movable between threads) but not `Sync` (no shared references across
 /// threads — mutation is lock-free).
-pub trait Mapping: AsAny + Send {
+pub trait Mapping: AsAny + Send + fmt::Debug {
     /// Number of input coordinates.
     fn nin(&self) -> usize;
 
