@@ -11,6 +11,9 @@ use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::serial::{
+    MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
+};
 
 use super::unit::UnitMap;
 use super::{AsAny, DynMapping, Mapping};
@@ -288,5 +291,88 @@ impl Mapping for CmpMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         super::rate::numeric_rate(self, at, ax1, ax2)
+    }
+}
+
+impl Serializable for CmpMap {
+    fn class_name(&self) -> &'static str {
+        "CmpMap"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Compound Mapping".to_string());
+        write_mapping_base(&mut node, self);
+
+        // Series is the default (1); only write for parallel (0).
+        if self.kind == Composition::Parallel {
+            node.push_int(
+                "Series",
+                0,
+                Some("Component Mappings combined in parallel".to_string()),
+            );
+        }
+
+        // Component invert flags (only if non-zero).
+        if self.first.is_inverted() {
+            node.push_int(
+                "InvA",
+                1,
+                Some("First component Mapping inverted".to_string()),
+            );
+        }
+        if self.second.is_inverted() {
+            node.push_int(
+                "InvB",
+                1,
+                Some("Second component Mapping inverted".to_string()),
+            );
+        }
+
+        // Component mappings as nested objects.
+        let node_a = self.first.to_node()?;
+        let node_b = self.second.to_node()?;
+        node.push_object("MapA", node_a, Some("First component Mapping".to_string()));
+        node.push_object("MapB", node_b, Some("Second component Mapping".to_string()));
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let (_nin, _nout, inverted) = read_mapping_base(node);
+
+        let is_series = node.get_int("Series", 1) != 0;
+        let kind = if is_series {
+            Composition::Series
+        } else {
+            Composition::Parallel
+        };
+
+        let inv_a = node.get_int("InvA", 0) != 0;
+        let inv_b = node.get_int("InvB", 0) != 0;
+
+        let node_a = node
+            .get_object("MapA")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapA"))?;
+        let node_b = node
+            .get_object("MapB")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapB"))?;
+
+        let mut map_a = mapping_from_node(node_a)?;
+        let mut map_b = mapping_from_node(node_b)?;
+
+        // Ensure component invert state matches InvA/InvB.
+        if map_a.is_inverted() != inv_a {
+            map_a.invert();
+        }
+        if map_b.is_inverted() != inv_b {
+            map_b.invert();
+        }
+
+        let mut cmp = CmpMap::new(map_a, map_b, kind)?;
+        if inverted {
+            cmp.invert();
+        }
+        Ok(cmp)
     }
 }

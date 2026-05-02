@@ -3,6 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::point_has_bad;
@@ -98,5 +99,31 @@ impl Mapping for ZoomMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+}
+
+impl Serializable for ZoomMap {
+    fn class_name(&self) -> &'static str {
+        "ZoomMap"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Zoom about the origin".to_string());
+        write_mapping_base(&mut node, self);
+        if self.factor != 1.0 {
+            node.push_double("Zoom", self.factor, Some("Zoom factor".to_string()));
+        }
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let (nin, _nout, inverted) = read_mapping_base(node);
+        let factor = node.get_double("Zoom", 1.0);
+        let mut m = ZoomMap::new(nin, factor)?;
+        if inverted {
+            m.invert();
+        }
+        Ok(m)
     }
 }

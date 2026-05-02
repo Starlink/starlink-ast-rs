@@ -9,9 +9,10 @@ use ndarray::Array2;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::point_has_bad;
+use super::helpers::{is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -192,6 +193,94 @@ impl Mapping for MatrixMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+}
+
+impl Serializable for MatrixMap {
+    fn class_name(&self) -> &'static str {
+        "MatrixMap"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Matrix transformation".to_string());
+        write_mapping_base(&mut node, self);
+
+        let nout = self.matrix.nrows();
+        let nin = self.matrix.ncols();
+
+        // Forward matrix elements in row-major order.
+        for i in 0..(nout * nin) {
+            let row = i / nin;
+            let col = i % nin;
+            let val = self.matrix[[row, col]];
+            if !is_bad(val) {
+                node.push_double(
+                    &format!("M{i}"),
+                    val,
+                    Some("Forward matrix value".to_string()),
+                );
+            }
+        }
+
+        // Inverse matrix elements, if available.
+        if let Some(ref inv) = self.inverse {
+            for i in 0..(nin * nout) {
+                let row = i / nout;
+                let col = i % nout;
+                let val = inv[[row, col]];
+                if !is_bad(val) {
+                    node.push_double(
+                        &format!("IM{i}"),
+                        val,
+                        Some("Inverse matrix value".to_string()),
+                    );
+                }
+            }
+        }
+
+        node.push_string("Form", "Full", Some("Matrix storage form".to_string()));
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let (nin, nout, inverted) = read_mapping_base(node);
+
+        if nin == 0 || nout == 0 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                "MatrixMap: zero-dimensional matrix",
+            ));
+        }
+
+        // Read forward matrix (default BAD_VALUE for missing elements).
+        let mut fwd_flat = Vec::with_capacity(nout * nin);
+        for i in 0..(nout * nin) {
+            fwd_flat.push(node.get_double(&format!("M{i}"), BAD_VALUE));
+        }
+        let matrix = Array2::from_shape_vec((nout, nin), fwd_flat).unwrap();
+
+        // Read inverse matrix.
+        let mut has_inverse = false;
+        let mut inv_flat = Vec::with_capacity(nin * nout);
+        for i in 0..(nin * nout) {
+            let val = node.get_double(&format!("IM{i}"), BAD_VALUE);
+            inv_flat.push(val);
+            if !is_bad(val) {
+                has_inverse = true;
+            }
+        }
+        let inverse = if has_inverse {
+            Some(Array2::from_shape_vec((nin, nout), inv_flat).unwrap())
+        } else {
+            None
+        };
+
+        Ok(MatrixMap {
+            matrix,
+            inverse,
+            inverted,
+        })
     }
 }
 

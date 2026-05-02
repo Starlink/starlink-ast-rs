@@ -10,9 +10,10 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::point_has_bad;
+use super::helpers::{is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -219,5 +220,84 @@ impl Mapping for PermMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+}
+
+impl Serializable for PermMap {
+    fn class_name(&self) -> &'static str {
+        "PermMap"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Coordinate permutation".to_string());
+        write_mapping_base(&mut node, self);
+
+        // Outperm (forward permutation).
+        for (i, &p) in self.outperm.iter().enumerate() {
+            node.push_int(
+                &format!("Out{}", i + 1),
+                p,
+                Some("Output permutation".to_string()),
+            );
+        }
+
+        // Inperm (inverse permutation).
+        for (i, &p) in self.inperm.iter().enumerate() {
+            node.push_int(
+                &format!("In{}", i + 1),
+                p,
+                Some("Input permutation".to_string()),
+            );
+        }
+
+        // Constants.
+        if !self.constants.is_empty() {
+            node.push_int(
+                "Nconst",
+                self.constants.len() as i64,
+                Some("Number of constants".to_string()),
+            );
+            for (i, &c) in self.constants.iter().enumerate() {
+                let key = format!("Con{}", i + 1);
+                if is_bad(c) {
+                    node.push_string(&key, "<bad>", Some("Constant value".to_string()));
+                } else {
+                    node.push_double(&key, c, Some("Constant value".to_string()));
+                }
+            }
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let (nin, nout, inverted) = read_mapping_base(node);
+
+        let mut outperm = Vec::with_capacity(nout);
+        for i in 0..nout {
+            outperm.push(node.get_int(&format!("Out{}", i + 1), 0));
+        }
+
+        let mut inperm = Vec::with_capacity(nin);
+        for i in 0..nin {
+            inperm.push(node.get_int(&format!("In{}", i + 1), 0));
+        }
+
+        let nconst = node.get_int("Nconst", 0) as usize;
+        let mut constants = Vec::with_capacity(nconst);
+        for i in 0..nconst {
+            let key = format!("Con{}", i + 1);
+            match node.get(&key) {
+                Some(NodeValue::String(s)) if s == "<bad>" => constants.push(BAD_VALUE),
+                _ => constants.push(node.get_double(&key, 0.0)),
+            }
+        }
+
+        let mut m = PermMap::new(&inperm, &outperm, &constants)?;
+        if inverted {
+            m.invert();
+        }
+        Ok(m)
     }
 }

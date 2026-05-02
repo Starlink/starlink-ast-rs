@@ -10,7 +10,7 @@ pub use frameset::{FrameRef, FrameSet};
 use std::fmt;
 
 use crate::error::AstResult;
-use crate::mappings::DynMapping;
+use crate::mappings::{AsAny, DynMapping};
 
 /// An owned, dynamically-dispatched Frame.
 pub type DynFrame = Box<dyn Frame>;
@@ -19,7 +19,7 @@ pub type DynFrame = Box<dyn Frame>;
 ///
 /// All concrete frame classes implement this trait. Frames are `Send`
 /// but not `Sync`.
-pub trait Frame: Send + fmt::Debug {
+pub trait Frame: AsAny + Send + fmt::Debug {
     /// Number of axes in this frame.
     fn naxes(&self) -> usize;
 

@@ -121,17 +121,23 @@ impl Node {
     }
 
     /// Look up an integer attribute, returning a default if absent.
+    ///
+    /// If the stored value is a `Double`, it is truncated to `i64`.
     pub fn get_int(&self, key: &str, default: i64) -> i64 {
         match self.get(key) {
             Some(NodeValue::Int(v)) => *v,
+            Some(NodeValue::Double(v)) => *v as i64,
             _ => default,
         }
     }
 
     /// Look up a double attribute, returning a default if absent.
+    ///
+    /// If the stored value is an `Int`, it is promoted to `f64`.
     pub fn get_double(&self, key: &str, default: f64) -> f64 {
         match self.get(key) {
             Some(NodeValue::Double(v)) => *v,
+            Some(NodeValue::Int(v)) => *v as f64,
             _ => default,
         }
     }
