@@ -3,6 +3,7 @@
 mod basic;
 mod cmpframe;
 mod frameset;
+pub(crate) mod skyaxis;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
 pub use frameset::{FrameRef, FrameSet};
