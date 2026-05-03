@@ -5,7 +5,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
-use crate::mappings::helpers::is_bad;
+use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
 use crate::serial::{Node, Serializable};
@@ -408,6 +408,37 @@ impl Frame for SkyFrame {
                 Ok(Box::new(UnitMap::new(2)))
             }
         }
+    }
+
+    fn equal(&self, other: &dyn Frame) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<SkyFrame>() else {
+            return false;
+        };
+        if self.system != other.system {
+            return false;
+        }
+        let epoch_eq = match (self.epoch, other.epoch) {
+            (Some(a), Some(b)) => ast_equal(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !epoch_eq {
+            return false;
+        }
+        let equinox_eq = match (self.equinox, other.equinox) {
+            (Some(a), Some(b)) => ast_equal(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !equinox_eq {
+            return false;
+        }
+        self.sky_ref_is == other.sky_ref_is
+            && ast_equal(self.sky_ref[0], other.sky_ref[0])
+            && ast_equal(self.sky_ref[1], other.sky_ref[1])
+            && self.neglon == other.neglon
+            && self.title == other.title
+            && self.domain == other.domain
     }
 
     fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {

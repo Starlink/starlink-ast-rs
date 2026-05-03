@@ -99,4 +99,9 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn system_string(&self) -> Option<&str> {
         None
     }
+
+    /// Test whether this frame is equal to another.
+    ///
+    /// Uses AST's standard floating-point tolerance for numeric comparisons.
+    fn equal(&self, other: &dyn Frame) -> bool;
 }

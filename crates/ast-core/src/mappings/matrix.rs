@@ -12,7 +12,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -193,6 +193,33 @@ impl Mapping for MatrixMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<MatrixMap>() else {
+            return false;
+        };
+        if self.nin() != other.nin() || self.nout() != other.nout() {
+            return false;
+        }
+        if self.inverted != other.inverted {
+            return false;
+        }
+        // Compare forward matrix elements.
+        let fwd_eq = self
+            .matrix
+            .iter()
+            .zip(other.matrix.iter())
+            .all(|(a, b)| ast_equal(*a, *b));
+        if !fwd_eq {
+            return false;
+        }
+        // Compare inverse matrices.
+        match (&self.inverse, &other.inverse) {
+            (Some(a), Some(b)) => a.iter().zip(b.iter()).all(|(x, y)| ast_equal(*x, *y)),
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 

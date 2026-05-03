@@ -167,6 +167,13 @@ impl Frame for CmpFrame {
         Ok(Box::new(UnitMap::new(self.naxes())))
     }
 
+    fn equal(&self, other: &dyn Frame) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<CmpFrame>() else {
+            return false;
+        };
+        self.frame1.equal(other.frame1.as_ref()) && self.frame2.equal(other.frame2.as_ref())
+    }
+
     fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         if self.naxes() == to.naxes() {
             let mut fs = FrameSet::new(self.snapshot());

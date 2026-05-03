@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::{ast_equal, is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
 
@@ -537,6 +537,30 @@ impl Frame for BasicFrame {
 
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
         Ok(Box::new(UnitMap::new(self.naxes)))
+    }
+
+    fn equal(&self, other: &dyn Frame) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<BasicFrame>() else {
+            return false;
+        };
+        if self.naxes != other.naxes {
+            return false;
+        }
+        if self.title != other.title || self.domain != other.domain {
+            return false;
+        }
+        let epoch_eq = match (self.epoch, other.epoch) {
+            (Some(a), Some(b)) => ast_equal(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !epoch_eq {
+            return false;
+        }
+        self.labels == other.labels
+            && self.units == other.units
+            && self.symbols == other.symbols
+            && self.format_strs == other.format_strs
     }
 
     fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {

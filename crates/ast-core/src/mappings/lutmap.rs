@@ -6,7 +6,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::is_bad;
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
 
@@ -496,6 +496,24 @@ impl Mapping for LutMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<LutMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        ast_equal(self.start, other.start)
+            && ast_equal(self.inc, other.inc)
+            && self.interp == other.interp
+            && self.lut.len() == other.lut.len()
+            && self
+                .lut
+                .iter()
+                .zip(&other.lut)
+                .all(|(a, b)| ast_equal(*a, *b))
     }
 }
 

@@ -13,7 +13,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -220,6 +220,23 @@ impl Mapping for PermMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<PermMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        self.outperm == other.outperm
+            && self.inperm == other.inperm
+            && self.constants.len() == other.constants.len()
+            && self
+                .constants
+                .iter()
+                .zip(&other.constants)
+                .all(|(a, b)| ast_equal(*a, *b))
     }
 }
 

@@ -6,7 +6,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::point_has_bad;
+use super::helpers::{ast_equal, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -99,6 +99,20 @@ impl Mapping for ZoomMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<ZoomMap>() else {
+            return false;
+        };
+        if self.ncoord != other.ncoord {
+            return false;
+        }
+        if self.inverted == other.inverted {
+            ast_equal(self.factor, other.factor)
+        } else {
+            ast_equal(self.factor * other.factor, 1.0)
+        }
     }
 }
 

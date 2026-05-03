@@ -11,7 +11,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::point_has_bad;
+use super::helpers::{ast_equal, point_has_bad};
 use super::polymap::{PolyMap, PolyTerm};
 use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
@@ -419,6 +419,52 @@ impl Mapping for ChebyMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<ChebyMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        // Compare inner PolyMap.
+        if !self.poly.equal(&other.poly) {
+            return false;
+        }
+        // Compare forward bounds.
+        if self.lbnd_f.len() != other.lbnd_f.len() {
+            return false;
+        }
+        let fwd_bounds = self
+            .lbnd_f
+            .iter()
+            .zip(&other.lbnd_f)
+            .all(|(a, b)| ast_equal(*a, *b))
+            && self
+                .ubnd_f
+                .iter()
+                .zip(&other.ubnd_f)
+                .all(|(a, b)| ast_equal(*a, *b));
+        if !fwd_bounds {
+            return false;
+        }
+        // Compare inverse bounds.
+        let inv_lbnd = match (&self.lbnd_i, &other.lbnd_i) {
+            (Some(a), Some(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| ast_equal(*x, *y))
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        let inv_ubnd = match (&self.ubnd_i, &other.ubnd_i) {
+            (Some(a), Some(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| ast_equal(*x, *y))
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        inv_lbnd && inv_ubnd
     }
 }
 

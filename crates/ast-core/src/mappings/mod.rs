@@ -101,6 +101,13 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// `ax2` is the 1-based index of the input axis.
     /// `at` is the position at which to evaluate the rate.
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64>;
+
+    /// Test whether this mapping is equal to another.
+    ///
+    /// Uses AST's standard floating-point tolerance for numeric comparisons.
+    /// Handles inverted mappings where appropriate (e.g., ZoomMap with
+    /// factor 2 inverted equals ZoomMap with factor 0.5 non-inverted).
+    fn equal(&self, other: &dyn Mapping) -> bool;
 }
 
 impl dyn Mapping {

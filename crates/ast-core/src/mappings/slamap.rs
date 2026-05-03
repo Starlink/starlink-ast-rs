@@ -7,7 +7,7 @@ use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::is_bad;
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
 
@@ -526,6 +526,26 @@ impl Mapping for SlaMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<SlaMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        if self.conversions.len() != other.conversions.len() {
+            return false;
+        }
+        self.conversions
+            .iter()
+            .zip(&other.conversions)
+            .all(|(a, b)| {
+                a.cvt_type == b.cvt_type
+                    && a.args.len() == b.args.len()
+                    && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
+            })
     }
 }
 

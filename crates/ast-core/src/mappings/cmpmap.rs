@@ -292,6 +292,19 @@ impl Mapping for CmpMap {
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         super::rate::numeric_rate(self, at, ax1, ax2)
     }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<CmpMap>() else {
+            return false;
+        };
+        if self.kind != other.kind {
+            return false;
+        }
+        if self.inverted != other.inverted {
+            return false;
+        }
+        self.first.equal(other.first.as_ref()) && self.second.equal(other.second.as_ref())
+    }
 }
 
 impl Serializable for CmpMap {

@@ -7,7 +7,7 @@ use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
 
@@ -186,6 +186,15 @@ impl Mapping for SphMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<SphMap>() else {
+            return false;
+        };
+        self.inverted == other.inverted
+            && self.unit_radius == other.unit_radius
+            && ast_equal(self.polar_long, other.polar_long)
     }
 }
 

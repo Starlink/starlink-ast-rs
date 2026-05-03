@@ -10,9 +10,11 @@ use ast_core::from_native_string;
 use ast_core::mappings::Mapping;
 
 fn load_lsst_frameset() -> Box<dyn Mapping> {
-    let text = std::fs::read_to_string(
-        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/native/reference/lsst.ast")
-    ).expect("failed to read lsst.ast");
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/native/reference/lsst.ast"
+    ))
+    .expect("failed to read lsst.ast");
     let obj = from_native_string(&text).expect("failed to parse lsst.ast");
     obj.into_mapping().expect("lsst.ast is not a Mapping")
 }
@@ -35,14 +37,24 @@ fn bench_transform(mapping: &dyn Mapping, npoint: usize, forward: bool) -> std::
     let _ = mapping.transform(&pts, forward);
 
     // Time 10 iterations (or fewer for large N)
-    let iterations = if npoint >= 100_000 { 3 } else if npoint >= 10_000 { 10 } else { 100 };
+    let iterations = if npoint >= 100_000 {
+        3
+    } else if npoint >= 10_000 {
+        10
+    } else {
+        100
+    };
     let start = Instant::now();
     for _ in 0..iterations {
         let _ = mapping.transform(&pts, forward).unwrap();
     }
     let elapsed = start.elapsed();
     let per_call = elapsed / iterations;
-    let per_point = if npoint > 0 { per_call / npoint as u32 } else { per_call };
+    let per_point = if npoint > 0 {
+        per_call / npoint as u32
+    } else {
+        per_call
+    };
 
     println!(
         "  {label:>7} {npoint:>7} pts: {per_call:>10.3?} total, {per_point:>8.1?}/pt  ({iterations} iters)"

@@ -38,6 +38,9 @@ impl Mapping for DummyRegion {
     fn rate(&self, _at: &[f64], _ax1: usize, _ax2: usize) -> AstResult<f64> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
+    fn equal(&self, _other: &dyn Mapping) -> bool {
+        false
+    }
 }
 
 impl Frame for DummyRegion {
@@ -74,6 +77,9 @@ impl Frame for DummyRegion {
         _domains: &[&str],
     ) -> AstResult<Option<ast_core::frames::FrameSet>> {
         Ok(None)
+    }
+    fn equal(&self, _other: &dyn Frame) -> bool {
+        false
     }
 }
 

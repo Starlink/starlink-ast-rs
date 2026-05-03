@@ -468,7 +468,7 @@ fn add_fk5_to_system(
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::mappings::Mapping;
-use crate::mappings::helpers::point_has_bad;
+use crate::mappings::helpers::{ast_equal, point_has_bad};
 use crate::mappings::rate::numeric_rate;
 use std::fmt;
 
@@ -560,6 +560,23 @@ impl Mapping for RotationMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<RotationMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        for (row_a, row_b) in self.matrix.iter().zip(&other.matrix) {
+            for (&a, &b) in row_a.iter().zip(row_b) {
+                if !ast_equal(a, b) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 

@@ -9,7 +9,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::point_has_bad;
+use super::helpers::{ast_equal, point_has_bad};
 use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
 
@@ -442,6 +442,40 @@ impl Mapping for PolyMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<PolyMap>() else {
+            return false;
+        };
+        if self.nin != other.nin || self.nout != other.nout {
+            return false;
+        }
+        if self.inverted != other.inverted {
+            return false;
+        }
+        // Compare forward terms.
+        if self.forward.len() != other.forward.len() {
+            return false;
+        }
+        for (a, b) in self.forward.iter().zip(&other.forward) {
+            if !ast_equal(a.coeff, b.coeff) || a.powers != b.powers || a.out_axis != b.out_axis {
+                return false;
+            }
+        }
+        // Compare inverse terms.
+        match (&self.inverse, &other.inverse) {
+            (Some(a), Some(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                a.iter().zip(b).all(|(x, y)| {
+                    ast_equal(x.coeff, y.coeff) && x.powers == y.powers && x.out_axis == y.out_axis
+                })
+            }
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 

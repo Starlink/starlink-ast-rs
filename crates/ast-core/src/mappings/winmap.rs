@@ -6,7 +6,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::{DynMapping, Mapping};
 
 /// A mapping that applies a per-axis linear transformation:
@@ -183,6 +183,29 @@ impl Mapping for WinMap {
 
     fn simplified(&self) -> AstResult<DynMapping> {
         Ok(Box::new(self.clone()))
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<WinMap>() else {
+            return false;
+        };
+        if self.shifts.len() != other.shifts.len() {
+            return false;
+        }
+        if self.inverted == other.inverted {
+            self.shifts
+                .iter()
+                .zip(&other.shifts)
+                .all(|(a, b)| ast_equal(*a, *b))
+                && self
+                    .scales
+                    .iter()
+                    .zip(&other.scales)
+                    .all(|(a, b)| ast_equal(*a, *b))
+        } else {
+            // WinMap inversion changes both shift and scale non-trivially.
+            false
+        }
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

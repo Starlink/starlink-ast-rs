@@ -6,7 +6,7 @@ use crate::error::AstResult;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::point_has_bad;
+use super::helpers::{ast_equal, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -91,6 +91,26 @@ impl Mapping for ShiftMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<ShiftMap>() else {
+            return false;
+        };
+        if self.shift.len() != other.shift.len() {
+            return false;
+        }
+        if self.inverted == other.inverted {
+            self.shift
+                .iter()
+                .zip(&other.shift)
+                .all(|(a, b)| ast_equal(*a, *b))
+        } else {
+            self.shift
+                .iter()
+                .zip(&other.shift)
+                .all(|(a, b)| ast_equal(*a, -b))
+        }
     }
 }
 

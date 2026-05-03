@@ -328,6 +328,19 @@ impl Mapping for WcsMap {
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
     }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<WcsMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        self.proj == other.proj
+            && self.lonax == other.lonax
+            && self.latax == other.latax
+            && self.ncoord == other.ncoord
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -510,6 +510,35 @@ impl Frame for FrameSet {
         self.current().map_from(previous)
     }
 
+    fn equal(&self, other: &dyn Frame) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<FrameSet>() else {
+            return false;
+        };
+        if self.frames.len() != other.frames.len() {
+            return false;
+        }
+        if self.base_idx != other.base_idx || self.current_idx != other.current_idx {
+            return false;
+        }
+        if self.edges.len() != other.edges.len() {
+            return false;
+        }
+        for (a, b) in self.frames.iter().zip(&other.frames) {
+            if !a.equal(b.as_ref()) {
+                return false;
+            }
+        }
+        for (a, b) in self.edges.iter().zip(&other.edges) {
+            if a.from != b.from || a.to != b.to {
+                return false;
+            }
+            if !a.mapping.equal(b.mapping.as_ref()) {
+                return false;
+            }
+        }
+        true
+    }
+
     fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         self.current().convert(to, domains)
     }
@@ -581,6 +610,37 @@ impl Mapping for FrameSet {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<FrameSet>() else {
+            return false;
+        };
+        if self.frames.len() != other.frames.len() {
+            return false;
+        }
+        if self.base_idx != other.base_idx || self.current_idx != other.current_idx {
+            return false;
+        }
+        if self.edges.len() != other.edges.len() {
+            return false;
+        }
+        // Compare all frames.
+        for (a, b) in self.frames.iter().zip(&other.frames) {
+            if !a.equal(b.as_ref()) {
+                return false;
+            }
+        }
+        // Compare all edges.
+        for (a, b) in self.edges.iter().zip(&other.edges) {
+            if a.from != b.from || a.to != b.to {
+                return false;
+            }
+            if !a.mapping.equal(b.mapping.as_ref()) {
+                return false;
+            }
+        }
+        true
     }
 }
 
