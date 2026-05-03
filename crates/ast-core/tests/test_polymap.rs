@@ -605,11 +605,11 @@ fn polymap_empty_forward() {
 }
 
 // ---------------------------------------------------------------------------
-// LM inverse with 2D->2D polynomial
+// Newton-Raphson inverse with 2D->2D polynomial
 // ---------------------------------------------------------------------------
 
 #[test]
-fn polymap_lm_inverse_2d() {
+fn polymap_nr_inverse_2d() {
     // Forward: u = x + 1, v = y + 2 (simple linear shift)
     let fwd = vec![
         PolyTerm {
@@ -656,4 +656,188 @@ fn polymap_lm_inverse_2d() {
         "expected ~4.0, got {}",
         inv.point(0)[1]
     );
+}
+
+// ---------------------------------------------------------------------------
+// Bulk Newton-Raphson inverse: 1D, 1000 points
+// ---------------------------------------------------------------------------
+
+#[test]
+fn polymap_bulk_nr_inverse_1d() {
+    // Forward: y = 2x + 3 (linear)
+    let fwd = vec![
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+    ];
+    let mut m = PolyMap::new(1, 1, &fwd, None).unwrap();
+    m.set_iter_inverse(true);
+    m.set_niter_inverse(20);
+    m.set_tol_inverse(1e-10);
+
+    // Generate 1000 input points spanning [-50, 50].
+    let npoints = 1000;
+    let inputs: Vec<Vec<f64>> = (0..npoints)
+        .map(|i| vec![-50.0 + 100.0 * (i as f64) / (npoints as f64 - 1.0)])
+        .collect();
+    let pts = PointSet::from_rows(inputs.clone());
+
+    // Forward transform.
+    let fwd_out = m.transform(&pts, true).unwrap();
+
+    // Inverse: should recover original inputs.
+    let inv_out = m.transform(&fwd_out, false).unwrap();
+
+    for i in 0..npoints {
+        let expected = inputs[i][0];
+        let got = inv_out.point(i)[0];
+        assert!(
+            (got - expected).abs() < 1e-6,
+            "point {}: expected {}, got {}",
+            i,
+            expected,
+            got
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bulk Newton-Raphson inverse: 2D, 1000 points, non-linear polynomial
+// ---------------------------------------------------------------------------
+
+#[test]
+fn polymap_bulk_nr_inverse_2d() {
+    // Forward: u = x + 0.01*x*y, v = y + 0.01*x^2
+    // This is a mildly nonlinear 2D->2D map that is invertible near
+    // the origin.
+    let fwd = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 0.01,
+            powers: vec![1, 1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 0.01,
+            powers: vec![2, 0],
+            out_axis: 2,
+        },
+    ];
+    let mut m = PolyMap::new(2, 2, &fwd, None).unwrap();
+    m.set_iter_inverse(true);
+    m.set_niter_inverse(20);
+    m.set_tol_inverse(1e-10);
+
+    // Generate a 32x32 grid of points in [-5, 5] x [-5, 5] = 1024 points.
+    let n_side = 32;
+    let mut inputs = Vec::with_capacity(n_side * n_side);
+    for i in 0..n_side {
+        for j in 0..n_side {
+            let x = -5.0 + 10.0 * (i as f64) / (n_side as f64 - 1.0);
+            let y = -5.0 + 10.0 * (j as f64) / (n_side as f64 - 1.0);
+            inputs.push(vec![x, y]);
+        }
+    }
+    let npoints = inputs.len();
+    let pts = PointSet::from_rows(inputs.clone());
+
+    // Forward transform.
+    let fwd_out = m.transform(&pts, true).unwrap();
+
+    // Inverse: should recover original inputs.
+    let inv_out = m.transform(&fwd_out, false).unwrap();
+
+    for i in 0..npoints {
+        let ex = inputs[i][0];
+        let ey = inputs[i][1];
+        let gx = inv_out.point(i)[0];
+        let gy = inv_out.point(i)[1];
+        assert!(
+            (gx - ex).abs() < 1e-6 && (gy - ey).abs() < 1e-6,
+            "point {} ({}, {}): expected ({}, {}), got ({}, {})",
+            i,
+            ex,
+            ey,
+            ex,
+            ey,
+            gx,
+            gy
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bulk Newton-Raphson inverse: BAD_VALUE propagation in bulk
+// ---------------------------------------------------------------------------
+
+#[test]
+fn polymap_bulk_nr_inverse_bad_values() {
+    // Forward: u = x + 1, v = y + 2
+    let fwd = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![0, 0],
+            out_axis: 2,
+        },
+    ];
+    let mut m = PolyMap::new(2, 2, &fwd, None).unwrap();
+    m.set_iter_inverse(true);
+    m.set_niter_inverse(20);
+    m.set_tol_inverse(1e-10);
+
+    // Mix of good and BAD points.
+    let pts = PointSet::from_rows(vec![
+        vec![4.0, 6.0],        // good: should invert to (3, 4)
+        vec![BAD_VALUE, 6.0],  // BAD input
+        vec![5.0, 7.0],        // good: should invert to (4, 5)
+        vec![4.0, BAD_VALUE],  // BAD input
+    ]);
+    let inv = m.transform(&pts, false).unwrap();
+
+    // Point 0: good
+    assert!((inv.point(0)[0] - 3.0).abs() < 1e-3);
+    assert!((inv.point(0)[1] - 4.0).abs() < 1e-3);
+
+    // Point 1: BAD
+    assert_eq!(inv.point(1)[0], BAD_VALUE);
+    assert_eq!(inv.point(1)[1], BAD_VALUE);
+
+    // Point 2: good
+    assert!((inv.point(2)[0] - 4.0).abs() < 1e-3);
+    assert!((inv.point(2)[1] - 5.0).abs() < 1e-3);
+
+    // Point 3: BAD
+    assert_eq!(inv.point(3)[0], BAD_VALUE);
+    assert_eq!(inv.point(3)[1], BAD_VALUE);
 }

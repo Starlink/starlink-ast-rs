@@ -31,7 +31,7 @@ pub struct PolyTerm {
 ///
 /// The forward transformation is defined by a set of polynomial terms,
 /// each contributing to a specified output axis. An optional explicit
-/// inverse can be provided, or an iterative Levenberg-Marquardt inverse
+/// inverse can be provided, or an iterative Newton-Raphson inverse
 /// can be enabled.
 #[derive(Debug, Clone)]
 pub struct PolyMap {
@@ -198,6 +198,185 @@ impl PolyMap {
     pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
         CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
+
+    // ------------------------------------------------------------------
+    // Newton-Raphson iterative inverse helpers
+    // ------------------------------------------------------------------
+
+    /// Compute the Jacobian of the forward polynomial as differentiated
+    /// polynomial terms.
+    ///
+    /// Returns `Vec<Vec<PolyTerm>>` indexed by input axis `j` (0-based).
+    /// Each inner `Vec<PolyTerm>` contains terms representing
+    /// `d(forward_i)/d(x_j)` for all output axes `i`, suitable for
+    /// evaluation via [`eval_poly`].
+    fn compute_jacobian_terms(&self) -> Vec<Vec<PolyTerm>> {
+        let mut jac_terms = Vec::with_capacity(self.nin);
+        for j in 0..self.nin {
+            let mut col_terms = Vec::new();
+            for term in &self.forward {
+                let pj = term.powers[j];
+                if pj == 0 {
+                    // Derivative w.r.t. x_j is zero for this term.
+                    continue;
+                }
+                let new_coeff = term.coeff * (pj as f64);
+                let mut new_powers = term.powers.clone();
+                new_powers[j] = pj - 1;
+                col_terms.push(PolyTerm {
+                    coeff: new_coeff,
+                    powers: new_powers,
+                    out_axis: term.out_axis,
+                });
+            }
+            jac_terms.push(col_terms);
+        }
+        jac_terms
+    }
+
+    /// Perform a bulk Newton-Raphson iterative inverse.
+    ///
+    /// Given target output positions in `target`, compute the input
+    /// positions that produce them under the forward polynomial, writing
+    /// results into `result`.
+    fn newton_raphson_inverse(&self, target: &PointSet, result: &mut PointSet) -> AstResult<()> {
+        let npoint = target.npoint();
+        let ncoord = self.nin; // nin == nout for iterative inverse
+        debug_assert_eq!(self.nin, self.nout);
+
+        // Pre-compute Jacobian polynomial terms (one set per input axis).
+        let jac_terms = self.compute_jacobian_terms();
+
+        // Initial guess: use target positions.
+        for i in 0..npoint {
+            let t = target.point(i);
+            let r = result.point_mut(i);
+            if point_has_bad(t) {
+                r.fill(BAD_VALUE);
+            } else {
+                r.copy_from_slice(t);
+            }
+        }
+
+        let max_iter = self.niter_inverse;
+        let tol_sq = self.tol_inverse * self.tol_inverse;
+        let mut converged = vec![false; npoint];
+
+        // Mark BAD points as already converged.
+        for (i, conv) in converged.iter_mut().enumerate() {
+            if point_has_bad(target.point(i)) {
+                *conv = true;
+            }
+        }
+
+        // Scratch space for per-point Jacobian matrix and RHS.
+        let mut jac_matrix = vec![0.0; ncoord * ncoord];
+        let mut dy = vec![0.0; ncoord];
+
+        for _iter in 0..max_iter {
+            if converged.iter().all(|&c| c) {
+                break;
+            }
+
+            // Evaluate forward polynomial at all current guesses.
+            // Also evaluate Jacobian columns at all current guesses.
+            // We process point-by-point to avoid large temporary allocations.
+            #[allow(clippy::needless_range_loop)]
+            for ip in 0..npoint {
+                if converged[ip] {
+                    continue;
+                }
+
+                let guess = result.point(ip);
+
+                // Forward evaluation at guess.
+                let fwd = eval_poly(&self.forward, self.nin, self.nout, guess);
+
+                // Compute residual: dy = target - forward(guess).
+                for ic in 0..ncoord {
+                    dy[ic] = target.point(ip)[ic] - fwd[ic];
+                }
+
+                // Evaluate Jacobian columns and build the ncoord x ncoord matrix.
+                // J[row][col] = d(F_row)/d(x_col) = jac_terms[col] evaluated
+                // at guess, for output row.
+                for col in 0..ncoord {
+                    let jcol = eval_poly(&jac_terms[col], self.nin, self.nout, guess);
+                    for row in 0..ncoord {
+                        jac_matrix[row * ncoord + col] = jcol[row];
+                    }
+                }
+
+                // Solve J * dx = dy.
+                if ncoord == 1 {
+                    // Trivial 1x1 case.
+                    let j00 = jac_matrix[0];
+                    if j00.abs() < 1e-30 {
+                        result.point_mut(ip).fill(BAD_VALUE);
+                        converged[ip] = true;
+                        continue;
+                    }
+                    let dx = dy[0] / j00;
+                    result.point_mut(ip)[0] += dx;
+                    let xlensq = result.point(ip)[0].powi(2);
+                    if dx * dx < tol_sq * xlensq || xlensq == 0.0 {
+                        converged[ip] = true;
+                    }
+                } else if ncoord == 2 {
+                    // Direct 2x2 solve via Cramer's rule.
+                    let a = jac_matrix[0]; // J[0][0] = dF0/dx0
+                    let b = jac_matrix[1]; // J[0][1] = dF0/dx1
+                    let c = jac_matrix[2]; // J[1][0] = dF1/dx0
+                    let d = jac_matrix[3]; // J[1][1] = dF1/dx1
+                    let det = a * d - b * c;
+                    if det.abs() < 1e-30 {
+                        result.point_mut(ip).fill(BAD_VALUE);
+                        converged[ip] = true;
+                        continue;
+                    }
+                    let dx0 = (d * dy[0] - b * dy[1]) / det;
+                    let dx1 = (a * dy[1] - c * dy[0]) / det;
+                    result.point_mut(ip)[0] += dx0;
+                    result.point_mut(ip)[1] += dx1;
+
+                    let xlensq =
+                        result.point(ip)[0].powi(2) + result.point(ip)[1].powi(2);
+                    let vlensq = dx0 * dx0 + dx1 * dx1;
+                    if vlensq < tol_sq * xlensq || xlensq == 0.0 {
+                        converged[ip] = true;
+                    }
+                } else {
+                    // General NxN: Gaussian elimination with partial pivoting.
+                    // Work in-place on copies of the Jacobian and dy.
+                    let mut mat = jac_matrix[..ncoord * ncoord].to_vec();
+                    let mut rhs = dy.clone();
+                    let ok = solve_linear_system(&mut mat, &mut rhs, ncoord);
+                    if !ok {
+                        result.point_mut(ip).fill(BAD_VALUE);
+                        converged[ip] = true;
+                        continue;
+                    }
+                    // rhs now contains dx. Apply update and compute
+                    // convergence norms.
+                    let mut vlensq = 0.0;
+                    let pt = result.point_mut(ip);
+                    for (ic, &dx_ic) in rhs.iter().enumerate().take(ncoord) {
+                        pt[ic] += dx_ic;
+                        vlensq += dx_ic * dx_ic;
+                    }
+                    let mut xlensq = 0.0;
+                    for &x in result.point(ip).iter().take(ncoord) {
+                        xlensq += x * x;
+                    }
+                    if vlensq < tol_sq * xlensq || xlensq == 0.0 {
+                        converged[ip] = true;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -227,11 +406,66 @@ fn eval_poly(terms: &[PolyTerm], n_in: usize, n_out: usize, input: &[f64]) -> Ve
 }
 
 // ---------------------------------------------------------------------------
-// Levenberg-Marquardt iterative inverse
+// General NxN linear solve (Gaussian elimination, partial pivoting)
+// ---------------------------------------------------------------------------
+
+/// Solve `A * x = b` in-place using Gaussian elimination with partial
+/// pivoting. `mat` is row-major `n x n`, `rhs` has length `n`.
+/// On success the solution is written into `rhs` and returns `true`.
+/// Returns `false` if the matrix is singular.
+fn solve_linear_system(mat: &mut [f64], rhs: &mut [f64], n: usize) -> bool {
+    // Forward elimination.
+    for col in 0..n {
+        // Partial pivoting: find the row with the largest absolute value
+        // in the current column.
+        let mut max_val = mat[col * n + col].abs();
+        let mut max_row = col;
+        for row in (col + 1)..n {
+            let v = mat[row * n + col].abs();
+            if v > max_val {
+                max_val = v;
+                max_row = row;
+            }
+        }
+        if max_val < 1e-30 {
+            return false; // Singular.
+        }
+        // Swap rows if needed.
+        if max_row != col {
+            for k in 0..n {
+                mat.swap(col * n + k, max_row * n + k);
+            }
+            rhs.swap(col, max_row);
+        }
+        // Eliminate below.
+        let pivot = mat[col * n + col];
+        for row in (col + 1)..n {
+            let factor = mat[row * n + col] / pivot;
+            for k in (col + 1)..n {
+                mat[row * n + k] -= factor * mat[col * n + k];
+            }
+            mat[row * n + col] = 0.0;
+            rhs[row] -= factor * rhs[col];
+        }
+    }
+    // Back substitution.
+    for col in (0..n).rev() {
+        let mut sum = rhs[col];
+        for k in (col + 1)..n {
+            sum -= mat[col * n + k] * rhs[k];
+        }
+        rhs[col] = sum / mat[col * n + col];
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Levenberg-Marquardt iterative inverse (legacy, kept for reference)
 // ---------------------------------------------------------------------------
 
 /// Problem struct for the LM solver. Solves: find `x` such that
 /// `forward(x) = target`.
+#[allow(dead_code)]
 struct PolyInverseProblem<'a> {
     /// Current parameter estimate (the unknown input coordinates).
     params: DVector<f64>,
@@ -299,6 +533,7 @@ impl<'a> LeastSquaresProblem<f64, Dyn, Dyn> for PolyInverseProblem<'a> {
 }
 
 /// Attempt to invert a single point using Levenberg-Marquardt.
+#[allow(dead_code)]
 fn lm_inverse(
     terms: &[PolyTerm],
     nin: usize,
@@ -409,24 +644,8 @@ impl Mapping for PolyMap {
                     }
                 }
             } else if self.iter_inverse {
-                // LM iterative inverse.
-                for i in 0..pts.npoint() {
-                    let inp = pts.point(i);
-                    let outp = out.point_mut(i);
-                    if point_has_bad(inp) {
-                        outp.fill(BAD_VALUE);
-                    } else {
-                        let result = lm_inverse(
-                            &self.forward,
-                            self.nin,
-                            self.nout,
-                            inp,
-                            self.niter_inverse,
-                            self.tol_inverse,
-                        );
-                        outp.copy_from_slice(&result);
-                    }
-                }
+                // Bulk Newton-Raphson iterative inverse.
+                self.newton_raphson_inverse(pts, out)?;
             } else {
                 // No inverse available: fill with BAD.
                 for i in 0..pts.npoint() {
