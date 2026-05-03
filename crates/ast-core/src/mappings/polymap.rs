@@ -11,6 +11,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, point_has_bad};
 use super::rate::numeric_rate;
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// A single polynomial term: `coeff * x0^p0 * x1^p1 * ... * xN^pN`.
@@ -442,6 +443,37 @@ impl Mapping for PolyMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only handle inverse cancellation: same PolyMap in opposite directions.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_poly = other.as_any().downcast_ref::<PolyMap>()?;
+        if self.nin == other_poly.nin
+            && self.nout == other_poly.nout
+            && self.forward.len() == other_poly.forward.len()
+            && self.forward.iter().zip(&other_poly.forward).all(|(a, b)| {
+                ast_equal(a.coeff, b.coeff) && a.powers == b.powers && a.out_axis == b.out_axis
+            })
+        {
+            // Input dimension of the pair depends on which direction
+            // self is being used in.
+            let pair_nin = if self_inv { self.nout } else { self.nin };
+            Some(Box::new(UnitMap::new(pair_nin)))
+        } else {
+            None
+        }
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

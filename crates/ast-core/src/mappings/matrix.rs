@@ -191,6 +191,48 @@ impl Mapping for MatrixMap {
         }
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        let other_mat = other.as_any().downcast_ref::<MatrixMap>()?;
+
+        // Get effective forward matrices, accounting for inversion.
+        let a = if self_inv {
+            self.inverse.as_ref()?.clone()
+        } else {
+            self.matrix.clone()
+        };
+        let b = if other_inv {
+            other_mat.inverse.as_ref()?.clone()
+        } else {
+            other_mat.matrix.clone()
+        };
+
+        // Series: self first (matrix a), then other (matrix b).
+        // Result = b * a. Requires b.ncols() == a.nrows().
+        if b.ncols() != a.nrows() {
+            return None;
+        }
+
+        let product = b.dot(&a);
+
+        // Check if the product is the identity matrix.
+        if is_identity_matrix(&product) {
+            Some(Box::new(UnitMap::new(product.nrows())))
+        } else {
+            MatrixMap::new(product)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping)
+        }
+    }
+
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
     }
@@ -309,6 +351,23 @@ impl Serializable for MatrixMap {
             inverted,
         })
     }
+}
+
+/// Check if a matrix is the identity (within `ast_equal` tolerance).
+fn is_identity_matrix(m: &Array2<f64>) -> bool {
+    if m.nrows() != m.ncols() {
+        return false;
+    }
+    let n = m.nrows();
+    for i in 0..n {
+        for j in 0..n {
+            let expected = if i == j { 1.0 } else { 0.0 };
+            if !ast_equal(m[[i, j]], expected) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Compute the inverse of a square matrix using Gauss-Jordan elimination

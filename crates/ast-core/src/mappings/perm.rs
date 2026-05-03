@@ -222,6 +222,43 @@ impl Mapping for PermMap {
         numeric_rate(self, at, ax1, ax2)
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only handle inverse cancellation: same PermMap in opposite directions.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_perm = other.as_any().downcast_ref::<PermMap>()?;
+        if self.outperm == other_perm.outperm
+            && self.inperm == other_perm.inperm
+            && self.constants.len() == other_perm.constants.len()
+            && self
+                .constants
+                .iter()
+                .zip(&other_perm.constants)
+                .all(|(a, b)| ast_equal(*a, *b))
+        {
+            // Input dimension of the pair depends on which direction
+            // self is being used in.
+            let n = if self_inv {
+                self.outperm.len()
+            } else {
+                self.inperm.len()
+            };
+            Some(Box::new(UnitMap::new(n)))
+        } else {
+            None
+        }
+    }
+
     fn equal(&self, other: &dyn Mapping) -> bool {
         let Some(other) = other.as_any().downcast_ref::<PermMap>() else {
             return false;

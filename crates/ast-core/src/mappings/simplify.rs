@@ -626,4 +626,318 @@ mod tests {
         assert!(result.as_any().is::<UnitMap>());
         assert_eq!(result.nin(), 5);
     }
+
+    // ------------------------------------------------------------ //
+    // try_merge: WinMap merging                                     //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_winmap_series_composes() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // WinMap(s=1,c=2) then WinMap(s=10,c=3)
+        // Compose: out = 10 + 3*(1 + 2*x) = 13 + 6*x
+        let a = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
+        let b = dyn_map(WinMap::new(&[10.0], &[3.0]).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<WinMap>());
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 43.0).abs() < 1e-12); // 13 + 6*5 = 43
+    }
+
+    #[test]
+    fn simplify_winmap_inverse_cancels_to_unit() {
+        use crate::mappings::WinMap;
+
+        // WinMap(s=3,c=2) then WinMap(s=3,c=2)^-1 should cancel.
+        let a = dyn_map(WinMap::new(&[3.0], &[2.0]).unwrap());
+        let mut b = WinMap::new(&[3.0], &[2.0]).unwrap();
+        b.invert();
+        let cmp = CmpMap::new(a, dyn_map(b), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 1);
+    }
+
+    #[test]
+    fn simplify_winmap_preserves_transform() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        let a = dyn_map(WinMap::new(&[1.0, 2.0], &[3.0, 4.0]).unwrap());
+        let b = dyn_map(WinMap::new(&[5.0, 6.0], &[7.0, 8.0]).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[1.0, -2.0], [0.5, 100.0]]);
+        let before = cmp.transform(&pts, true).unwrap();
+        let after = simplified.transform(&pts, true).unwrap();
+        for i in 0..pts.npoint() {
+            for j in 0..2 {
+                assert!(
+                    (before.point(i)[j] - after.point(i)[j]).abs() < 1e-10,
+                    "mismatch at point {} coord {}",
+                    i,
+                    j,
+                );
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: MatrixMap merging                                  //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_matrix_rot90_inverse_cancels() {
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // 90-degree rotation then its inverse = identity.
+        let rot90 = array![[0.0_f64, -1.0], [1.0, 0.0]];
+        let rot90_inv = array![[0.0_f64, 1.0], [-1.0, 0.0]];
+        let a = dyn_map(MatrixMap::new(rot90).unwrap());
+        let b = dyn_map(MatrixMap::new(rot90_inv).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_matrix_series_multiplies() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // Scaling by 2 then scaling by 3 = scaling by 6.
+        let s2 = array![[2.0_f64, 0.0], [0.0, 2.0]];
+        let s3 = array![[3.0_f64, 0.0], [0.0, 3.0]];
+        let a = dyn_map(MatrixMap::new(s2).unwrap());
+        let b = dyn_map(MatrixMap::new(s3).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+        assert!(simplified.as_any().is::<MatrixMap>());
+
+        let pts = PointSet::from_rows([[1.0, 2.0]]);
+        let out = simplified.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 12.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_matrix_preserves_transform() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        let m1 = array![[1.0_f64, 2.0], [3.0, 4.0]];
+        let m2 = array![[5.0_f64, 6.0], [7.0, 8.0]];
+        let a = dyn_map(MatrixMap::new(m1).unwrap());
+        let b = dyn_map(MatrixMap::new(m2).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[1.0, -1.0], [3.0, 7.0]]);
+        let before = cmp.transform(&pts, true).unwrap();
+        let after = simplified.transform(&pts, true).unwrap();
+        for i in 0..pts.npoint() {
+            for j in 0..2 {
+                assert!(
+                    (before.point(i)[j] - after.point(i)[j]).abs() < 1e-10,
+                    "mismatch at point {} coord {}",
+                    i,
+                    j,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn simplify_matrix_with_inversion_flag() {
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // MatrixMap then MatrixMap^-1 (via .invert()) should cancel.
+        let m = array![[1.0_f64, 2.0], [3.0, 4.0]];
+        let a = dyn_map(MatrixMap::new(m.clone()).unwrap());
+        let mut b = MatrixMap::new(m).unwrap();
+        b.invert();
+        let cmp = CmpMap::new(a, dyn_map(b), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: SphMap inverse cancellation                        //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_sphmap_fwd_inv_cancels() {
+        use crate::mappings::SphMap;
+
+        // SphMap (fwd 3->2) then SphMap^-1 (inv 2->3) with unit_radius.
+        let mut fwd = SphMap::new();
+        fwd.set_unit_radius(true);
+        let mut inv = SphMap::new();
+        inv.set_unit_radius(true);
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 3);
+    }
+
+    #[test]
+    fn simplify_sphmap_inv_fwd_cancels() {
+        use crate::mappings::SphMap;
+
+        // SphMap^-1 (inv 2->3) then SphMap (fwd 3->2) with default attrs.
+        let mut inv = SphMap::new();
+        inv.invert();
+        let fwd = SphMap::new();
+        let cmp = CmpMap::new(dyn_map(inv), dyn_map(fwd), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_sphmap_mismatched_attrs_no_merge() {
+        use crate::mappings::SphMap;
+
+        // Different unit_radius: should NOT cancel.
+        let mut fwd = SphMap::new();
+        fwd.set_unit_radius(true);
+        let mut inv = SphMap::new();
+        // inv keeps unit_radius=false (default)
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        // Should NOT be a UnitMap.
+        assert!(!result.as_any().is::<UnitMap>());
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: WcsMap inverse cancellation                        //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_wcsmap_inverse_cancels() {
+        use crate::mappings::{WcsMap, WcsProjection};
+
+        let fwd = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+        let mut inv = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_wcsmap_different_proj_no_merge() {
+        use crate::mappings::{WcsMap, WcsProjection};
+
+        // Different projections should NOT cancel.
+        let fwd = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+        let mut inv = WcsMap::new(2, WcsProjection::Sin, 1, 2).unwrap();
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(!result.as_any().is::<UnitMap>());
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: SlaMap inverse cancellation                        //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_slamap_inverse_cancels() {
+        use crate::mappings::{SlaCvtType, SlaMap};
+
+        let mut fwd = SlaMap::new();
+        fwd.add(SlaCvtType::Eqgal, &[]);
+        let mut inv = SlaMap::new();
+        inv.add(SlaCvtType::Eqgal, &[]);
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_slamap_different_steps_no_merge() {
+        use crate::mappings::{SlaCvtType, SlaMap};
+
+        // Different conversions should NOT cancel.
+        let mut fwd = SlaMap::new();
+        fwd.add(SlaCvtType::Eqgal, &[]);
+        let mut inv = SlaMap::new();
+        inv.add(SlaCvtType::Galeq, &[]);
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(!result.as_any().is::<UnitMap>());
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: PolyMap inverse cancellation                       //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_polymap_inverse_cancels() {
+        use crate::mappings::{PolyMap, PolyTerm};
+
+        // Simple linear polynomial: y = 2*x
+        let terms = vec![PolyTerm {
+            coeff: 2.0,
+            powers: vec![1],
+            out_axis: 1,
+        }];
+        let fwd = PolyMap::new(1, 1, &terms, None).unwrap();
+        let mut inv = PolyMap::new(1, 1, &terms, None).unwrap();
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 1);
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: PermMap inverse cancellation                       //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_permmap_inverse_cancels() {
+        use crate::mappings::PermMap;
+
+        // Swap axes: outperm=[2,1], inperm=[2,1].
+        let fwd = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+        let mut inv = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_permmap_different_perms_no_merge() {
+        use crate::mappings::PermMap;
+
+        let fwd = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+        let mut inv = PermMap::new(&[1, 2], &[1, 2], &[]).unwrap();
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        // Different perms: should NOT simplify to UnitMap.
+        assert!(!result.as_any().is::<UnitMap>());
+    }
 }

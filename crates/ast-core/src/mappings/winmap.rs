@@ -7,6 +7,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// A mapping that applies a per-axis linear transformation:
@@ -208,6 +209,46 @@ impl Mapping for WinMap {
         }
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        let other_wm = other.as_any().downcast_ref::<WinMap>()?;
+        if self.shifts.len() != other_wm.shifts.len() {
+            return None;
+        }
+
+        // Get effective parameters for self (first) and other (second).
+        let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self_inv);
+        let (s2, c2) = winmap_effective_params(&other_wm.shifts, &other_wm.scales, other_inv);
+
+        // Compose: out = s2 + c2 * (s1 + c1 * x) = (c2*s1 + s2) + (c2*c1) * x
+        let n = s1.len();
+        let mut new_shifts = vec![0.0; n];
+        let mut new_scales = vec![0.0; n];
+        for i in 0..n {
+            new_scales[i] = c2[i] * c1[i];
+            new_shifts[i] = c2[i] * s1[i] + s2[i];
+        }
+
+        // Check if result is identity.
+        if new_scales.iter().all(|&s| ast_equal(s, 1.0))
+            && new_shifts.iter().all(|&s| ast_equal(s, 0.0))
+        {
+            return Some(Box::new(UnitMap::new(n)));
+        }
+
+        WinMap::new(&new_shifts, &new_scales)
+            .ok()
+            .map(|m| Box::new(m) as DynMapping)
+    }
+
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         // For a diagonal linear mapping, the rate is known analytically.
         if ax1 == ax2 {
@@ -226,6 +267,30 @@ impl Mapping for WinMap {
         }
         // Off-diagonal: axes are independent, so the rate is exactly 0.
         Ok(0.0)
+    }
+}
+
+/// Compute effective (shifts, scales) for a WinMap, accounting for inversion.
+///
+/// Forward: `output = shift + scale * input`.
+/// Inverse: `output = (input - shift) / scale = -shift/scale + (1/scale) * input`.
+fn winmap_effective_params(shifts: &[f64], scales: &[f64], inv: bool) -> (Vec<f64>, Vec<f64>) {
+    if !inv {
+        (shifts.to_vec(), scales.to_vec())
+    } else {
+        let n = shifts.len();
+        let mut inv_shifts = Vec::with_capacity(n);
+        let mut inv_scales = Vec::with_capacity(n);
+        for i in 0..n {
+            if is_bad(scales[i]) || is_bad(shifts[i]) || scales[i] == 0.0 {
+                inv_shifts.push(BAD_VALUE);
+                inv_scales.push(BAD_VALUE);
+            } else {
+                inv_scales.push(1.0 / scales[i]);
+                inv_shifts.push(-shifts[i] / scales[i]);
+            }
+        }
+        (inv_shifts, inv_scales)
     }
 }
 

@@ -9,6 +9,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 // ---------------------------------------------------------------------------
@@ -526,6 +527,39 @@ impl Mapping for SlaMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only handle inverse cancellation: same SlaMap in opposite directions.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_sla = other.as_any().downcast_ref::<SlaMap>()?;
+        if self.conversions.len() == other_sla.conversions.len()
+            && self
+                .conversions
+                .iter()
+                .zip(&other_sla.conversions)
+                .all(|(a, b)| {
+                    a.cvt_type == b.cvt_type
+                        && a.args.len() == b.args.len()
+                        && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
+                })
+        {
+            // SlaMap always maps 2 coords (lon, lat) to 2 coords.
+            Some(Box::new(UnitMap::new(2)))
+        } else {
+            None
+        }
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

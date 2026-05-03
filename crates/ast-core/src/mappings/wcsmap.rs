@@ -11,6 +11,7 @@ use crate::wcslib::{PrjParams, WcsProjection};
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::is_bad;
 use super::rate::numeric_rate;
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// Maximum number of projection parameters per axis (from wcslib).
@@ -327,6 +328,33 @@ impl Mapping for WcsMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only handle inverse cancellation: same WcsMap in opposite directions.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_wcs = other.as_any().downcast_ref::<WcsMap>()?;
+        if self.proj == other_wcs.proj
+            && self.lonax == other_wcs.lonax
+            && self.latax == other_wcs.latax
+            && self.ncoord == other_wcs.ncoord
+        {
+            // WcsMap always has nin == nout == ncoord.
+            Some(Box::new(UnitMap::new(self.ncoord)))
+        } else {
+            None
+        }
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

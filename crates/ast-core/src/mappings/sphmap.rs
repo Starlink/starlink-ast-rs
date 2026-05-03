@@ -9,6 +9,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::rate::numeric_rate;
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// A mapping that converts between 3-D Cartesian coordinates and
@@ -186,6 +187,34 @@ impl Mapping for SphMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only handle inverse cancellation: same SphMap in opposite directions.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_sph = other.as_any().downcast_ref::<SphMap>()?;
+        if self.unit_radius == other_sph.unit_radius
+            && ast_equal(self.polar_long, other_sph.polar_long)
+        {
+            // Input dimension of the pair: SphMap forward is 3->2,
+            // inverse is 2->3. self_inv tells us which direction
+            // self (the first mapping) is applied in.
+            let self_nin = if self_inv { 2 } else { 3 };
+            Some(Box::new(UnitMap::new(self_nin)))
+        } else {
+            None
+        }
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
