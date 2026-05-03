@@ -65,4 +65,22 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// `self` (base) to `to` (current) if conversion is possible, or
     /// `None` if the frames are incompatible.
     fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;
+
+    /// Observer geodetic latitude in radians.
+    fn obs_lat(&self) -> Option<f64> { None }
+
+    /// Observer geodetic longitude in radians.
+    fn obs_lon(&self) -> Option<f64> { None }
+
+    /// Observer altitude in metres.
+    fn obs_alt(&self) -> Option<f64> { None }
+
+    /// TAI-UTC in seconds.
+    fn dtai(&self) -> Option<f64> { None }
+
+    /// UT1-UTC in seconds.
+    fn dut1(&self) -> Option<f64> { None }
+
+    /// Coordinate system name (e.g., "FK5", "GALACTIC"), if applicable.
+    fn system_string(&self) -> Option<&str> { None }
 }
