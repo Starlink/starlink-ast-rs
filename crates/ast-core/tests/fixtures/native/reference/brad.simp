@@ -1,0 +1,45 @@
+ Begin CmpMap
+ Nin = 3
+ IsSimp = 1
+ IsA Mapping
+ MapA =
+ Begin WinMap
+ Nin = 3
+ IsA Mapping
+ Sft1 = -0.215698
+ Scl2 = 5.2359877559829903e-06
+ Scl3 = 5.2359877559829903e-06
+ End WinMap
+ MapB =
+ Begin CmpMap
+ Nin = 3
+ IsA Mapping
+ Series = 0
+ MapA =
+ Begin LutMap
+ Nin = 1
+ IsA Mapping
+ Nlut = 11
+ Start = 1
+ Incr = 100
+ LutInt = 0
+ L1 = 1.39532005786896
+ L2 = 1.5043200254440301
+ L3 = 1.61332011222839
+ L4 = 1.7223200798034699
+ L5 = 1.83132004737854
+ L6 = 1.94032001495361
+ L7 = 2.0493202209472701
+ L8 = 2.1583199501037602
+ L9 = 2.2673201560974099
+ L10 = 2.3763201236724898
+ L11 = 2.4853200912475599
+ End LutMap
+ MapB =
+ Begin WcsMap
+ Nin = 2
+ IsA Mapping
+ Type = "TAN"
+ End WcsMap
+ End CmpMap
+ End CmpMap

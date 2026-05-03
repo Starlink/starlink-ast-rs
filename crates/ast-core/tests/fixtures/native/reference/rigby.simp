@@ -1,0 +1,209 @@
+ Begin CmpMap
+ Nin = 2
+ IsSimp = 1
+ IsA Mapping
+ MapA =
+ Begin PermMap
+ Nin = 2
+ Nout = 3
+ IsA Mapping
+ Out1 = 1
+ Out2 = -1
+ Out3 = 2
+ In1 = 1
+ In2 = 3
+ Nconst = 1
+ Con1 = 232.84
+ End PermMap
+ MapB =
+ Begin CmpMap
+ Nin = 3
+ Nout = 2
+ IsA Mapping
+ MapA =
+ Begin MatrixMap
+ Nin = 3
+ IsA Mapping
+ M0 = 8.1296825791877598
+ M1 = 0.58230800408075301
+ M2 = 0
+ M3 = -5.8230800408075298
+ M4 = 0.81296825791877603
+ M5 = 0
+ M6 = 0
+ M7 = 0
+ M8 = 1
+ IM0 = 0.081296825791877636
+ IM1 = -0.058230800408075309
+ IM2 = 0
+ IM3 = 0.58230800408075301
+ IM4 = 0.81296825791877614
+ IM5 = 0
+ IM6 = 0
+ IM7 = 0
+ IM8 = 1
+ Form = "Full"
+ End MatrixMap
+ MapB =
+ Begin CmpMap
+ Nin = 3
+ Nout = 2
+ IsA Mapping
+ MapA =
+ Begin CmpMap
+ Nin = 3
+ IsA Mapping
+ MapA =
+ Begin WinMap
+ Nin = 3
+ IsSimp = 1
+ IsA Mapping
+ Sft1 = -3780.1919848386815
+ Sft2 = 2408.2662394170707
+ Sft3 = 330416457339.85065
+ Scl3 = 551361.36816875194
+ End WinMap
+ MapB =
+ Begin CmpMap
+ Nin = 3
+ IsSimp = 1
+ IsA Mapping
+ Series = 0
+ MapA =
+ Begin CmpMap
+ Nin = 2
+ IsA Mapping
+ MapA =
+ Begin MatrixMap
+ Nin = 2
+ IsA Mapping
+ M0 = -3.2823037047206903e-05
+ M1 = -1.6868750268151298e-05
+ M2 = -1.6868750268151298e-05
+ M3 = 3.2823037047206903e-05
+ IM0 = -24100.800700246858
+ IM1 = -12386.129525133199
+ IM2 = -12386.129525133199
+ IM3 = 24100.800700246858
+ Form = "Full"
+ End MatrixMap
+ MapB =
+ Begin CmpMap
+ Nin = 2
+ IsSimp = 1
+ IsA Mapping
+ InvA = 1
+ MapA =
+ Begin WcsMap
+ Nin = 2
+ Invert = 1
+ IsA Mapping
+ Type = "TAN"
+ End WcsMap
+ MapB =
+ Begin CmpMap
+ Nin = 2
+ IsA Mapping
+ InvA = 1
+ MapA =
+ Begin SphMap
+ Nin = 3
+ Nout = 2
+ Invert = 1
+ IsA Mapping
+ UntRd = 1
+ PlrLg = 0
+ End SphMap
+ MapB =
+ Begin CmpMap
+ Nin = 3
+ Nout = 2
+ IsA Mapping
+ MapA =
+ Begin MatrixMap
+ Nin = 3
+ IsA Mapping
+ M0 = 0.016039835492688701
+ M1 = 0.96719204920834101
+ M2 = 0.25353947153360201
+ M3 = -0.061066031142155398
+ M4 = 0.25404633425454198
+ M5 = -0.96526234770261998
+ M6 = -0.99800484143009704
+ M7 = 0
+ M8 = 0.063137441206365094
+ IM0 = 0.016039835492688722
+ IM1 = -0.061066031142155419
+ IM2 = -0.99800484143009671
+ IM3 = 0.96719204920834034
+ IM4 = 0.25404633425454248
+ IM5 = -5.8980598183211441e-17
+ IM6 = 0.25353947153360162
+ IM7 = -0.96526234770262109
+ IM8 = 0.063137441206365122
+ Form = "Full"
+ End MatrixMap
+ MapB =
+ Begin CmpMap
+ Nin = 3
+ Nout = 2
+ IsA Mapping
+ MapA =
+ Begin SphMap
+ Nin = 3
+ Nout = 2
+ IsA Mapping
+ UntRd = 1
+ PlrLg = 4.96925054084174
+ End SphMap
+ MapB =
+ Begin SlaMap
+ Nin = 2
+ IsA Mapping
+ Nsla = 1
+ Sla1 = "EQGAL"
+ End SlaMap
+ End CmpMap
+ End CmpMap
+ End CmpMap
+ End CmpMap
+ End CmpMap
+ MapB =
+ Begin CmpMap
+ Nin = 1
+ IsSimp = 1
+ IsA Mapping
+ MapA =
+ Begin SpecMap
+ Nin = 1
+ IsA Mapping
+ Nspec = 2
+ Spec1 = "FRTOVL"
+ Spec1a = 330587960100
+ Spec2 = "VLTOVR"
+ End SpecMap
+ MapB =
+ Begin ZoomMap
+ Nin = 1
+ IsA Mapping
+ Zoom = 0.001
+ End ZoomMap
+ End CmpMap
+ End CmpMap
+ End CmpMap
+ MapB =
+ Begin PermMap
+ Nin = 3
+ Nout = 2
+ IsA Mapping
+ Out1 = 1
+ Out2 = 3
+ In1 = 1
+ In2 = -1
+ In3 = 2
+ Nconst = 1
+ Con1 = -0.00039155961436864302
+ End PermMap
+ End CmpMap
+ End CmpMap
+ End CmpMap
