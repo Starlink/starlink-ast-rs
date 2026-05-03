@@ -7,7 +7,7 @@ pub(crate) mod node;
 pub(crate) use node::{Node, NodeValue};
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame, FrameSet};
+use crate::frames::{BasicFrame, CmpFrame, DynFrame, Frame, FrameSet, SkyFrame};
 use crate::mappings::{
     ChebyMap, CmpMap, DynMapping, LutMap, Mapping, MatrixMap, PermMap, PolyMap, ShiftMap, SlaMap,
     UnitMap, WcsMap, WinMap, ZoomMap,
@@ -174,6 +174,9 @@ impl FrameToNode for dyn Frame {
         if let Some(f) = self.as_any().downcast_ref::<CmpFrame>() {
             return Serializable::to_node(f);
         }
+        if let Some(f) = self.as_any().downcast_ref::<SkyFrame>() {
+            return Serializable::to_node(f);
+        }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
             return Serializable::to_node(f);
         }
@@ -188,6 +191,7 @@ impl FrameToNode for dyn Frame {
 pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {
         "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
+        "SkyFrame" => Ok(Box::new(SkyFrame::from_node(node)?)),
         "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
@@ -236,6 +240,8 @@ pub enum AnyObject {
     SlaMap(SlaMap),
     /// A [`BasicFrame`] (generic coordinate frame).
     BasicFrame(BasicFrame),
+    /// A [`SkyFrame`] (celestial coordinate frame).
+    SkyFrame(SkyFrame),
     /// A [`CmpFrame`] (compound frame).
     CmpFrame(CmpFrame),
     /// A [`FrameSet`] (frame + inter-frame mappings).
@@ -260,7 +266,7 @@ impl AnyObject {
             AnyObject::WcsMap(m) => Some(m),
             AnyObject::SlaMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
-            AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
+            AnyObject::BasicFrame(_) | AnyObject::SkyFrame(_) | AnyObject::CmpFrame(_) => None,
         }
     }
 
@@ -269,6 +275,7 @@ impl AnyObject {
     pub fn as_frame(&self) -> Option<&dyn Frame> {
         match self {
             AnyObject::BasicFrame(f) => Some(f),
+            AnyObject::SkyFrame(f) => Some(f),
             AnyObject::CmpFrame(f) => Some(f),
             AnyObject::FrameSet(f) => Some(f),
             AnyObject::UnitMap(_)
@@ -303,7 +310,7 @@ impl AnyObject {
             AnyObject::WcsMap(m) => Some(Box::new(m)),
             AnyObject::SlaMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
-            AnyObject::BasicFrame(_) | AnyObject::CmpFrame(_) => None,
+            AnyObject::BasicFrame(_) | AnyObject::SkyFrame(_) | AnyObject::CmpFrame(_) => None,
         }
     }
 
@@ -312,6 +319,7 @@ impl AnyObject {
     pub fn into_frame(self) -> Option<DynFrame> {
         match self {
             AnyObject::BasicFrame(f) => Some(Box::new(f)),
+            AnyObject::SkyFrame(f) => Some(Box::new(f)),
             AnyObject::CmpFrame(f) => Some(Box::new(f)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             AnyObject::UnitMap(_)
@@ -350,6 +358,7 @@ fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "WcsMap" => Ok(AnyObject::WcsMap(WcsMap::from_node(node)?)),
         "SlaMap" => Ok(AnyObject::SlaMap(SlaMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
+        "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
@@ -382,6 +391,7 @@ pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
         AnyObject::WcsMap(m) => Serializable::to_node(m)?,
         AnyObject::SlaMap(m) => Serializable::to_node(m)?,
         AnyObject::BasicFrame(f) => Serializable::to_node(f)?,
+        AnyObject::SkyFrame(f) => Serializable::to_node(f)?,
         AnyObject::CmpFrame(f) => Serializable::to_node(f)?,
         AnyObject::FrameSet(f) => Serializable::to_node(f)?,
     };

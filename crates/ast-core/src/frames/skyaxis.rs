@@ -11,6 +11,7 @@ use std::f64::consts::PI;
 
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::is_bad;
+use crate::serial::{Node, Serializable};
 
 /// Per-axis display properties for a sky coordinate axis.
 #[derive(Debug, Clone)]
@@ -60,6 +61,63 @@ impl SkyAxis {
     /// longitude axes default to false ([0,2pi]).
     pub fn effective_centre_zero(&self) -> bool {
         self.centre_zero.unwrap_or(self.is_latitude)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation
+// ---------------------------------------------------------------------------
+
+impl Serializable for SkyAxis {
+    fn class_name(&self) -> &'static str {
+        "SkyAxis"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Celestial coordinate axis".to_string());
+
+        if self.is_latitude {
+            node.push_int("IsLat", 1, Some("Latitude axis".to_string()));
+        }
+
+        if let Some(cz) = self.centre_zero {
+            if cz {
+                node.push_int("CnZer", 1, Some("Centre zero for axis range".to_string()));
+            }
+        }
+
+        if let Some(at) = self.as_time {
+            node.push_int(
+                "AsTime",
+                if at { 1 } else { 0 },
+                Some("Format as time".to_string()),
+            );
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let is_lat = node.get_int("IsLat", 0) != 0;
+
+        let mut axis = if is_lat {
+            SkyAxis::latitude()
+        } else {
+            SkyAxis::longitude()
+        };
+
+        // CnZer: only set if present in the node.
+        if node.get("CnZer").is_some() {
+            axis.centre_zero = Some(node.get_int("CnZer", 0) != 0);
+        }
+
+        // AsTime: only set if present in the node.
+        if node.get("AsTime").is_some() {
+            axis.as_time = Some(node.get_int("AsTime", 0) != 0);
+        }
+
+        Ok(axis)
     }
 }
 

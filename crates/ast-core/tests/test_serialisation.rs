@@ -5,7 +5,9 @@
 //! then deserialised and verified for both attribute fidelity and functional equivalence.
 
 use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet};
+use ast_core::frames::{
+    BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkyRefIs, SkySystem,
+};
 use ast_core::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PermMap, ShiftMap, UnitMap, ZoomMap,
 };
@@ -794,4 +796,263 @@ fn any_object_debug() {
     let obj = AnyObject::ZoomMap(ZoomMap::new(2, 3.5).unwrap());
     let debug_str = format!("{:?}", obj);
     assert!(debug_str.contains("ZoomMap"));
+}
+
+// ===========================================================================
+// 16. SkyFrame round-trip
+// ===========================================================================
+
+#[test]
+fn round_trip_skyframe_default_fk5() {
+    let original = SkyFrame::new(SkySystem::Fk5);
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+
+    assert!(text.contains("Begin SkyFrame"), "missing Begin SkyFrame");
+    assert!(text.contains("End SkyFrame"), "missing End SkyFrame");
+    assert!(text.contains("Naxes = 2"), "missing Naxes");
+    assert!(text.contains("System = \"FK5\""), "missing System");
+    assert!(text.contains("IsA Frame"), "missing IsA Frame");
+    // Default domain is SKY, should NOT be serialised.
+    assert!(
+        !text.contains("Domain"),
+        "default domain SKY should not be written"
+    );
+    // SkyAxis children should be present.
+    assert!(text.contains("Begin SkyAxis"), "missing SkyAxis");
+
+    let restored = from_native_string(&text).unwrap();
+    let frame = restored.as_frame().unwrap();
+    assert_eq!(frame.naxes(), 2);
+    // Not a mapping.
+    assert!(restored.as_mapping().is_none());
+
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_eq!(sf.system(), SkySystem::Fk5);
+            assert_eq!(sf.domain(), "SKY");
+            assert!(!sf.neglon());
+            assert_eq!(sf.sky_ref_is(), SkyRefIs::Ignored);
+            assert!(!sf.align_offset());
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
+}
+
+#[test]
+fn round_trip_skyframe_galactic_with_attributes() {
+    let mut original = SkyFrame::new(SkySystem::Galactic);
+    original.set_title("Galactic Test");
+    original.set_epoch(53000.0);
+    original.set_neglon(true);
+    original.set_sky_tol(1.0e-7);
+    original.set_projection("TAN");
+    original.set_align_offset(true);
+
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+
+    assert!(text.contains("GALACTIC"), "missing GALACTIC system");
+    assert!(text.contains("Galactic Test"), "missing title");
+    assert!(text.contains("NegLon"), "missing NegLon");
+    assert!(text.contains("SkyTol"), "missing SkyTol");
+    assert!(text.contains("Proj"), "missing Proj");
+    assert!(text.contains("AlOff"), "missing AlOff");
+
+    let restored = from_native_string(&text).unwrap();
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_eq!(sf.system(), SkySystem::Galactic);
+            assert_eq!(sf.title(), "Galactic Test");
+            assert_close(sf.epoch_mjd(), 53000.0, 1e-10, "epoch");
+            assert!(sf.neglon());
+            assert_close(sf.sky_tol(), 1.0e-7, 1e-15, "sky_tol");
+            assert_eq!(sf.projection(), Some("TAN"));
+            assert!(sf.align_offset());
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
+}
+
+#[test]
+fn round_trip_skyframe_with_equinox() {
+    let mut original = SkyFrame::new(SkySystem::Fk5);
+    // Set equinox to J2010.0 MJD.
+    let j2010_mjd = 55197.0; // approximate MJD for 2010-01-01
+    original.set_equinox(j2010_mjd);
+
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    assert!(text.contains("Eqnox"), "missing Eqnox");
+
+    let restored = from_native_string(&text).unwrap();
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_close(sf.equinox_mjd(), j2010_mjd, 1e-6, "equinox MJD");
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
+}
+
+#[test]
+fn round_trip_skyframe_with_sky_ref() {
+    let mut original = SkyFrame::new(SkySystem::Fk5);
+    original.set_sky_ref_is(SkyRefIs::Origin);
+    original.set_sky_ref(1.5, 0.75);
+    original.set_sky_ref_p(0.3, 1.2);
+
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    assert!(text.contains("SRefIs"), "missing SRefIs");
+    assert!(text.contains("SRef1"), "missing SRef1");
+    assert!(text.contains("SRef2"), "missing SRef2");
+    assert!(text.contains("SRefP1"), "missing SRefP1");
+    assert!(text.contains("SRefP2"), "missing SRefP2");
+
+    let restored = from_native_string(&text).unwrap();
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_eq!(sf.sky_ref_is(), SkyRefIs::Origin);
+            assert_close(sf.sky_ref()[0], 1.5, 1e-10, "sky_ref lon");
+            assert_close(sf.sky_ref()[1], 0.75, 1e-10, "sky_ref lat");
+            assert_close(sf.sky_ref_p()[0], 0.3, 1e-10, "sky_ref_p lon");
+            assert_close(sf.sky_ref_p()[1], 1.2, 1e-10, "sky_ref_p lat");
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
+}
+
+#[test]
+fn round_trip_skyframe_with_observer() {
+    let mut original = SkyFrame::new(SkySystem::Fk5);
+    original.set_obs_lat(0.3);
+    original.set_obs_lon(-2.1);
+    original.set_obs_alt(4200.0);
+    original.set_dtai(37.0);
+    original.set_dut1(0.27);
+
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+
+    let restored = from_native_string(&text).unwrap();
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_close(sf.obs_lat().unwrap(), 0.3, 1e-10, "obs_lat");
+            assert_close(sf.obs_lon().unwrap(), -2.1, 1e-10, "obs_lon");
+            assert_close(sf.obs_alt().unwrap(), 4200.0, 1e-10, "obs_alt");
+            assert_close(sf.dtai().unwrap(), 37.0, 1e-10, "dtai");
+            assert_close(sf.dut1().unwrap(), 0.27, 1e-10, "dut1");
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
+}
+
+#[test]
+fn round_trip_skyframe_with_domain() {
+    let mut original = SkyFrame::new(SkySystem::Fk5);
+    original.set_domain("CUSTOM_SKY");
+
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    assert!(text.contains("CUSTOM_SKY"), "missing custom domain");
+
+    let restored = from_native_string(&text).unwrap();
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_eq!(sf.domain(), "CUSTOM_SKY");
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
+}
+
+#[test]
+fn round_trip_skyframe_geometry() {
+    // Verify the round-tripped frame still computes distance correctly.
+    let original = SkyFrame::new(SkySystem::Fk5);
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let restored = from_native_string(&text).unwrap();
+    let frame = restored.as_frame().unwrap();
+
+    // Distance between two poles should be pi.
+    let d = frame
+        .distance(
+            &[0.0, std::f64::consts::FRAC_PI_2],
+            &[0.0, -std::f64::consts::FRAC_PI_2],
+        )
+        .unwrap();
+    assert_close(d, std::f64::consts::PI, 1e-10, "distance");
+}
+
+#[test]
+fn double_round_trip_skyframe() {
+    let mut original = SkyFrame::new(SkySystem::Fk5);
+    original.set_title("Double RT");
+    original.set_epoch(53000.0);
+    original.set_equinox(51544.5);
+    original.set_neglon(true);
+    original.set_sky_ref_is(SkyRefIs::Pole);
+    original.set_sky_ref(0.5, 0.25);
+    original.set_sky_ref_p(0.1, 1.0);
+    original.set_sky_tol(1.0e-8);
+    original.set_projection("SIN");
+    original.set_align_offset(true);
+
+    let text1 = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    let restored = from_native_string(&text1).unwrap();
+    let text2 = to_native_string(&restored).unwrap();
+    assert_eq!(text1, text2, "double round-trip text mismatch for SkyFrame");
+}
+
+#[test]
+fn round_trip_skyframe_into_frame() {
+    let original = SkyFrame::new(SkySystem::Icrs);
+    let obj = AnyObject::SkyFrame(original);
+    let dyn_frame = obj.into_frame().unwrap();
+    assert_eq!(dyn_frame.naxes(), 2);
+}
+
+#[test]
+fn any_object_skyframe_not_a_mapping() {
+    let original = SkyFrame::new(SkySystem::Fk5);
+    let obj = AnyObject::SkyFrame(original);
+    assert!(obj.as_mapping().is_none());
+    assert!(obj.as_frame().is_some());
+}
+
+#[test]
+fn round_trip_frameset_with_skyframe() {
+    // SkyFrame as the current frame in a FrameSet.
+    let base: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap());
+    let current: Box<dyn Frame> = Box::new(SkyFrame::new(SkySystem::Fk5));
+    let mut fs = FrameSet::new(base);
+    let z: DynMapping = Box::new(ZoomMap::new(2, 0.01).unwrap());
+    fs.add_frame(FrameRef::Base, z, current).unwrap();
+
+    let text = to_native_string(&AnyObject::FrameSet(fs)).unwrap();
+    assert!(text.contains("Begin SkyFrame"), "missing nested SkyFrame");
+
+    let restored = from_native_string(&text).unwrap();
+    let mapping = restored.as_mapping().unwrap();
+    assert_eq!(mapping.nin(), 2);
+    assert_eq!(mapping.nout(), 2);
+
+    let pts = PointSet::from_rows([[100.0, 200.0]]);
+    let out = mapping.transform(&pts, true).unwrap();
+    assert_close(out.point(0)[0], 1.0, 1e-10, "fs skyframe x");
+    assert_close(out.point(0)[1], 2.0, 1e-10, "fs skyframe y");
+}
+
+#[test]
+fn round_trip_skyframe_fk4_besselian_equinox() {
+    // FK4 with B1950 equinox -- should use Besselian epoch serialisation.
+    let mut original = SkyFrame::new(SkySystem::Fk4);
+    // B1950.0 is the default, but set it explicitly to force serialisation.
+    let b1950_mjd = 33281.92346; // approximate B1950 MJD
+    original.set_equinox(b1950_mjd);
+
+    let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
+    assert!(text.contains("Eqnox"), "missing Eqnox for FK4");
+
+    let restored = from_native_string(&text).unwrap();
+    match restored {
+        AnyObject::SkyFrame(ref sf) => {
+            assert_eq!(sf.system(), SkySystem::Fk4);
+            assert_close(sf.equinox_mjd(), b1950_mjd, 1e-3, "FK4 equinox MJD");
+        }
+        _ => panic!("expected SkyFrame variant"),
+    }
 }

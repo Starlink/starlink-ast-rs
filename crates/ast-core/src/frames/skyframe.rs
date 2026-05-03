@@ -8,6 +8,7 @@ use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{DynMapping, UnitMap};
 use crate::pal;
+use crate::serial::{Node, Serializable};
 
 /// A celestial coordinate frame.
 ///
@@ -437,6 +438,309 @@ impl Frame for SkyFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation
+// ---------------------------------------------------------------------------
+
+impl Serializable for SkyFrame {
+    fn class_name(&self) -> &'static str {
+        "SkyFrame"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Description of celestial coordinate system".to_string());
+
+        // --- Frame-level attributes (before IsA Frame) ---
+
+        // Title (if set and non-empty).
+        if let Some(ref title) = self.title {
+            if !title.is_empty() {
+                node.push_string(
+                    "Title",
+                    title,
+                    Some("Title of coordinate system".to_string()),
+                );
+            }
+        }
+
+        // Naxes = 2 (always).
+        node.push_int("Naxes", 2, Some("Number of coordinate axes".to_string()));
+
+        // Domain (if set and != "SKY", which is the default).
+        if let Some(ref domain) = self.domain {
+            if !domain.is_empty() && domain != "SKY" {
+                node.push_string(
+                    "Domain",
+                    domain,
+                    Some("Coordinate system domain".to_string()),
+                );
+            }
+        }
+
+        // System.
+        node.push_string(
+            "System",
+            self.system.as_str(),
+            Some("Coordinate system type".to_string()),
+        );
+
+        // Epoch (if set).
+        if let Some(epoch) = self.epoch {
+            node.push_double(
+                "Epoch",
+                epoch,
+                Some("Julian epoch of observation".to_string()),
+            );
+        }
+
+        // Observer attributes.
+        if let Some(obs_lat) = self.obs_lat {
+            node.push_double(
+                "ObsLat",
+                obs_lat,
+                Some("Observers geodetic latitude (rads)".to_string()),
+            );
+        }
+        if let Some(obs_lon) = self.obs_lon {
+            node.push_double(
+                "ObsLon",
+                obs_lon,
+                Some("Observers geodetic longitude (rads)".to_string()),
+            );
+        }
+        if let Some(obs_alt) = self.obs_alt {
+            node.push_double(
+                "ObsAlt",
+                obs_alt,
+                Some("Observers geodetic altitude (m)".to_string()),
+            );
+        }
+        if let Some(dtai) = self.dtai {
+            node.push_double("Dtai", dtai, Some("TAI-UTC (s)".to_string()));
+        }
+        if let Some(dut1) = self.dut1 {
+            node.push_double("Dut1", dut1, Some("UT1-UTC (s)".to_string()));
+        }
+
+        // Per-axis SkyAxis children.
+        for (i, axis) in self.axes.iter().enumerate() {
+            let axis_node = Serializable::to_node(axis)?;
+            let key = format!("Ax{}", i + 1);
+            let comment = format!("Axis number {}", i + 1);
+            node.push_object(&key, axis_node, Some(comment));
+        }
+
+        // IsA Frame marker.
+        node.push_isa("Frame", None);
+
+        // --- SkyFrame-specific attributes (after IsA Frame) ---
+
+        // Proj (if set).
+        if let Some(ref proj) = self.projection {
+            node.push_string(
+                "Proj",
+                proj,
+                Some("Description of sky projection".to_string()),
+            );
+        }
+
+        // NegLon (if true).
+        if self.neglon {
+            node.push_int(
+                "NegLon",
+                1,
+                Some("Display negative longitude values".to_string()),
+            );
+        }
+
+        // SkyTol (if set).
+        if let Some(sky_tol) = self.sky_tol {
+            node.push_double(
+                "SkyTol",
+                sky_tol,
+                Some("Smallest significant distance (rads)".to_string()),
+            );
+        }
+
+        // Equinox (if explicitly set) as decimal epoch.
+        // Besselian if < 1984, Julian otherwise.
+        if let Some(eqnox_mjd) = self.equinox {
+            let jep = pal::epj(eqnox_mjd);
+            let epoch_val = if jep < 1984.0 {
+                pal::epb(eqnox_mjd)
+            } else {
+                jep
+            };
+            node.push_double(
+                "Eqnox",
+                epoch_val,
+                Some("Epoch of mean equinox".to_string()),
+            );
+        }
+
+        // SRefIs (if != Ignored).
+        if self.sky_ref_is != SkyRefIs::Ignored {
+            let srefis_str = match self.sky_ref_is {
+                SkyRefIs::Pole => "Pole",
+                SkyRefIs::Origin => "Origin",
+                SkyRefIs::Ignored => unreachable!(),
+            };
+            node.push_string(
+                "SRefIs",
+                srefis_str,
+                Some("Interpretation of sky reference point".to_string()),
+            );
+        }
+
+        // SRef1, SRef2 (sky_ref longitude/latitude) if SkyRefIs != Ignored.
+        if self.sky_ref_is != SkyRefIs::Ignored {
+            node.push_double(
+                "SRef1",
+                self.sky_ref[0],
+                Some("Sky reference longitude".to_string()),
+            );
+            node.push_double(
+                "SRef2",
+                self.sky_ref[1],
+                Some("Sky reference latitude".to_string()),
+            );
+        }
+
+        // SRefP1, SRefP2 (sky_ref_p longitude/latitude).
+        // Write if SkyRefIs != Ignored and values differ from defaults.
+        if self.sky_ref_is != SkyRefIs::Ignored {
+            if self.sky_ref_p[0] != 0.0 {
+                node.push_double(
+                    "SRefP1",
+                    self.sky_ref_p[0],
+                    Some("Sky reference meridian longitude".to_string()),
+                );
+            }
+            node.push_double(
+                "SRefP2",
+                self.sky_ref_p[1],
+                Some("Sky reference meridian latitude".to_string()),
+            );
+        }
+
+        // AlOff (if true).
+        if self.align_offset {
+            node.push_int(
+                "AlOff",
+                1,
+                Some("Align offset coordinate system".to_string()),
+            );
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        // Read System.
+        let sys_str = node.get_string("System", "FK5");
+        let system = SkySystem::parse(&sys_str).unwrap_or(SkySystem::Fk5);
+
+        let mut sky = SkyFrame::new(system);
+
+        // Title.
+        let title = node.get_string("Title", "");
+        if !title.is_empty() {
+            sky.set_title(&title);
+        }
+
+        // Domain.
+        let domain = node.get_string("Domain", "");
+        if !domain.is_empty() {
+            sky.domain = Some(domain);
+        }
+
+        // Epoch (MJD).
+        if node.get("Epoch").is_some() {
+            sky.epoch = Some(node.get_double("Epoch", 0.0));
+        }
+
+        // Equinox: decimal epoch -> MJD.
+        // If < 1984: Besselian epoch -> pal::epb2d; else Julian -> pal::epj2d.
+        if node.get("Eqnox").is_some() {
+            let eqnox = node.get_double("Eqnox", 0.0);
+            let mjd = if eqnox < 1984.0 {
+                pal::epb2d(eqnox)
+            } else {
+                pal::epj2d(eqnox)
+            };
+            sky.equinox = Some(mjd);
+        }
+
+        // Observer attributes.
+        if node.get("ObsLat").is_some() {
+            sky.obs_lat = Some(node.get_double("ObsLat", 0.0));
+        }
+        if node.get("ObsLon").is_some() {
+            sky.obs_lon = Some(node.get_double("ObsLon", 0.0));
+        }
+        if node.get("ObsAlt").is_some() {
+            sky.obs_alt = Some(node.get_double("ObsAlt", 0.0));
+        }
+        if node.get("Dtai").is_some() {
+            sky.dtai = Some(node.get_double("Dtai", 0.0));
+        }
+        if node.get("Dut1").is_some() {
+            sky.dut1 = Some(node.get_double("Dut1", 0.0));
+        }
+
+        // SkyFrame-specific.
+        let proj = node.get_string("Proj", "");
+        if !proj.is_empty() {
+            sky.projection = Some(proj);
+        }
+
+        sky.neglon = node.get_int("NegLon", 0) != 0;
+
+        if node.get("SkyTol").is_some() {
+            sky.sky_tol = Some(node.get_double("SkyTol", 0.0));
+        }
+
+        // SRefIs.
+        let srefis_str = node.get_string("SRefIs", "Ignored");
+        sky.sky_ref_is = match srefis_str.to_ascii_uppercase().as_str() {
+            "POLE" => SkyRefIs::Pole,
+            "ORIGIN" => SkyRefIs::Origin,
+            _ => SkyRefIs::Ignored,
+        };
+
+        // SRef1, SRef2.
+        if node.get("SRef1").is_some() {
+            sky.sky_ref[0] = node.get_double("SRef1", 0.0);
+        }
+        if node.get("SRef2").is_some() {
+            sky.sky_ref[1] = node.get_double("SRef2", 0.0);
+        }
+
+        // SRefP1, SRefP2.
+        if node.get("SRefP1").is_some() {
+            sky.sky_ref_p[0] = node.get_double("SRefP1", 0.0);
+        }
+        if node.get("SRefP2").is_some() {
+            sky.sky_ref_p[1] = node.get_double("SRefP2", 0.0);
+        }
+
+        sky.align_offset = node.get_int("AlOff", 0) != 0;
+
+        // Read SkyAxis children.
+        for i in 0..2 {
+            let key = format!("Ax{}", i + 1);
+            if let Some(axis_node) = node.get_object(&key) {
+                if axis_node.class == "SkyAxis" {
+                    sky.axes[i] = SkyAxis::from_node(axis_node)?;
+                }
+            }
+        }
+
+        Ok(sky)
     }
 }
 
