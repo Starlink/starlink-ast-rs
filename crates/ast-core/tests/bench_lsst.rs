@@ -69,10 +69,38 @@ fn benchmark_lsst_frameset() {
     let mapping = load_lsst_frameset();
     println!("Loaded: nin={}, nout={}\n", mapping.nin(), mapping.nout());
 
+    println!("--- Original mapping ---");
     for &n in &[1, 10_000, 100_000] {
         println!("N = {n}:");
         bench_transform(mapping.as_ref(), n, true);
         bench_transform(mapping.as_ref(), n, false);
+        println!();
+    }
+
+    println!("--- Simplified mapping ---");
+    let simplified = mapping.simplified().unwrap();
+    println!(
+        "Simplified: nin={}, nout={}\n",
+        simplified.nin(),
+        simplified.nout()
+    );
+
+    // Verify equivalence
+    let pts = make_points(100);
+    let out_orig = mapping.transform(&pts, true).unwrap();
+    let out_simp = simplified.transform(&pts, true).unwrap();
+    for i in 0..100 {
+        for j in 0..2 {
+            let diff = (out_orig.point(i)[j] - out_simp.point(i)[j]).abs();
+            assert!(diff < 1e-8, "point {i} axis {j}: diff={diff}");
+        }
+    }
+    println!("Transform equivalence verified (100 points, < 1e-8 rad)\n");
+
+    for &n in &[1, 10_000, 100_000] {
+        println!("N = {n}:");
+        bench_transform(simplified.as_ref(), n, true);
+        bench_transform(simplified.as_ref(), n, false);
         println!();
     }
 }
