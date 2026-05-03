@@ -3,10 +3,12 @@
 mod basic;
 mod cmpframe;
 mod frameset;
+pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
 pub use frameset::{FrameRef, FrameSet};
+pub use sky_convert::{SkyRefIs, SkySystem};
 
 use std::fmt;
 
@@ -67,20 +69,32 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;
 
     /// Observer geodetic latitude in radians.
-    fn obs_lat(&self) -> Option<f64> { None }
+    fn obs_lat(&self) -> Option<f64> {
+        None
+    }
 
     /// Observer geodetic longitude in radians.
-    fn obs_lon(&self) -> Option<f64> { None }
+    fn obs_lon(&self) -> Option<f64> {
+        None
+    }
 
     /// Observer altitude in metres.
-    fn obs_alt(&self) -> Option<f64> { None }
+    fn obs_alt(&self) -> Option<f64> {
+        None
+    }
 
     /// TAI-UTC in seconds.
-    fn dtai(&self) -> Option<f64> { None }
+    fn dtai(&self) -> Option<f64> {
+        None
+    }
 
     /// UT1-UTC in seconds.
-    fn dut1(&self) -> Option<f64> { None }
+    fn dut1(&self) -> Option<f64> {
+        None
+    }
 
     /// Coordinate system name (e.g., "FK5", "GALACTIC"), if applicable.
-    fn system_string(&self) -> Option<&str> { None }
+    fn system_string(&self) -> Option<&str> {
+        None
+    }
 }

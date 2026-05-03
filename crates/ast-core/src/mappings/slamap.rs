@@ -58,6 +58,10 @@ pub enum SlaCvtType {
     Dh2e = 25,
     /// Equatorial (ha/dec) to horizon (az/el).
     De2h = 26,
+    /// RA to hour angle: `ha = last - ra`.
+    R2h = 27,
+    /// Hour angle to RA: `ra = last - ha`.
+    H2r = 28,
 }
 
 impl SlaCvtType {
@@ -74,7 +78,9 @@ impl SlaCvtType {
             | Self::Hfk5z
             | Self::Fk5hz
             | Self::Dh2e
-            | Self::De2h => 1,
+            | Self::De2h
+            | Self::R2h
+            | Self::H2r => 1,
             Self::Prebn | Self::Prec | Self::Amp | Self::Map => 2,
         }
     }
@@ -100,6 +106,8 @@ impl SlaCvtType {
             Self::Fk5hz => "FK5HZ",
             Self::Dh2e => "DH2E",
             Self::De2h => "DE2H",
+            Self::R2h => "R2H",
+            Self::H2r => "H2R",
         }
     }
 
@@ -124,6 +132,8 @@ impl SlaCvtType {
             "FK5HZ" => Some(Self::Fk5hz),
             "DH2E" => Some(Self::Dh2e),
             "DE2H" => Some(Self::De2h),
+            "R2H" => Some(Self::R2h),
+            "H2R" => Some(Self::H2r),
             _ => None,
         }
     }
@@ -152,6 +162,8 @@ impl SlaCvtType {
             Self::Fk5hz => Self::Hfk5z,
             Self::Dh2e => Self::De2h,
             Self::De2h => Self::Dh2e,
+            Self::R2h => Self::H2r,
+            Self::H2r => Self::R2h,
         }
     }
 
@@ -176,6 +188,8 @@ impl SlaCvtType {
             20 => Some(Self::Fk5hz),
             25 => Some(Self::Dh2e),
             26 => Some(Self::De2h),
+            27 => Some(Self::R2h),
+            28 => Some(Self::H2r),
             _ => None,
         }
     }
@@ -201,6 +215,8 @@ impl SlaCvtType {
             Self::Fk5hz => "FK5 to ICRS (no PM)",
             Self::Dh2e => "Horizon to equatorial",
             Self::De2h => "Equatorial to horizon",
+            Self::R2h => "RA to Hour Angle",
+            Self::H2r => "Hour Angle to RA",
         }
     }
 }
@@ -396,6 +412,16 @@ fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3]) -> [f64; 3] {
             let (lon, lat) = pal::dcc2s(&v);
             let (ha, dec) = pal::dh2e(lon, lat, cvt.args[0]);
             pal::dcs2c(ha, dec)
+        }
+        // R2H and H2R both perform: longitude' = LAST - longitude.
+        // The operation is self-inverse (applying it twice returns to
+        // the original coordinates), so forward and inverse are the
+        // same for each type.  R2H and H2R are each other's inverse()
+        // in the SlaCvtType sense but the computation is identical.
+        SlaCvtType::R2h | SlaCvtType::H2r => {
+            let (lon, lat) = pal::dcc2s(&v);
+            let new_lon = cvt.args[0] - lon;
+            pal::dcs2c(new_lon, lat)
         }
     }
 }

@@ -514,12 +514,24 @@ impl Frame for FrameSet {
         self.current().convert(to, domains)
     }
 
-    fn obs_lat(&self) -> Option<f64> { self.current().obs_lat() }
-    fn obs_lon(&self) -> Option<f64> { self.current().obs_lon() }
-    fn obs_alt(&self) -> Option<f64> { self.current().obs_alt() }
-    fn dtai(&self) -> Option<f64> { self.current().dtai() }
-    fn dut1(&self) -> Option<f64> { self.current().dut1() }
-    fn system_string(&self) -> Option<&str> { self.current().system_string() }
+    fn obs_lat(&self) -> Option<f64> {
+        self.current().obs_lat()
+    }
+    fn obs_lon(&self) -> Option<f64> {
+        self.current().obs_lon()
+    }
+    fn obs_alt(&self) -> Option<f64> {
+        self.current().obs_alt()
+    }
+    fn dtai(&self) -> Option<f64> {
+        self.current().dtai()
+    }
+    fn dut1(&self) -> Option<f64> {
+        self.current().dut1()
+    }
+    fn system_string(&self) -> Option<&str> {
+        self.current().system_string()
+    }
 }
 
 // ====================================================================== //
