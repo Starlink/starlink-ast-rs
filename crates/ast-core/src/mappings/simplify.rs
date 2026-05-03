@@ -14,9 +14,12 @@
 //!    from the flat list.
 
 use crate::error::AstResult;
+use crate::mappings::helpers::ast_equal;
 
 use super::cmpmap::{CmpMap, Composition};
 use super::unit::UnitMap;
+use super::wcsmap::WcsMap;
+use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
 
 /// Recursively decompose a mapping into a flat list of leaf mappings.
@@ -122,6 +125,13 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
         }
 
         if !improved {
+            // Try swapping WinMap↔WcsMap pairs to enable further merges.
+            // A WinMap can swap past a WcsMap if the WinMap acts as identity
+            // on the WcsMap's celestial axes (shift=0, scale=1 on lon/lat).
+            if series && try_swap_winmap_wcsmap(list) {
+                // A swap happened — re-run the merge loop.
+                continue;
+            }
             break;
         }
     }
@@ -144,6 +154,56 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             list.push((Box::new(UnitMap::new(1)), false));
         }
     }
+}
+
+/// Try to swap adjacent WinMap↔WcsMap pairs in a flattened series list.
+///
+/// A WinMap can be swapped past a WcsMap if the WinMap acts as identity
+/// on the WcsMap's celestial axes (shift=0 and scale=1 on both the
+/// longitude and latitude axes). The swap doesn't change the WinMap's
+/// parameters — it just moves it to the other side of the WcsMap,
+/// potentially enabling further merges with other linear mappings.
+///
+/// Returns true if any swap was performed.
+fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    let mut swapped = false;
+    let mut i = 0;
+    while i + 1 < list.len() {
+        let is_win_wcs = list[i].0.as_any().is::<WinMap>()
+            && list[i + 1].0.as_any().is::<WcsMap>();
+        let is_wcs_win = list[i].0.as_any().is::<WcsMap>()
+            && list[i + 1].0.as_any().is::<WinMap>();
+
+        if is_win_wcs || is_wcs_win {
+            let (win_idx, wcs_idx) = if is_win_wcs { (i, i + 1) } else { (i + 1, i) };
+            let win = list[win_idx].0.as_any().downcast_ref::<WinMap>().unwrap();
+            let wcs = list[wcs_idx].0.as_any().downcast_ref::<WcsMap>().unwrap();
+
+            // Check WinMap is identity on WcsMap's celestial axes.
+            // lonax()/latax() return 1-based; convert to 0-based for indexing.
+            let lonax = wcs.lonax() - 1;
+            let latax = wcs.latax() - 1;
+            let shifts = win.shifts();
+            let scales = win.scales();
+
+            if lonax < shifts.len()
+                && latax < shifts.len()
+                && ast_equal(shifts[lonax], 0.0)
+                && ast_equal(shifts[latax], 0.0)
+                && ast_equal(scales[lonax], 1.0)
+                && ast_equal(scales[latax], 1.0)
+            {
+                list.swap(i, i + 1);
+                // Also swap their invert flags.
+                let tmp = list[i].1;
+                list[i].1 = list[i + 1].1;
+                list[i + 1].1 = tmp;
+                swapped = true;
+            }
+        }
+        i += 1;
+    }
+    swapped
 }
 
 /// Reconstruct a `CmpMap` tree (or single mapping) from a flat list.

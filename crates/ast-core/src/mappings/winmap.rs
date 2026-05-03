@@ -27,6 +27,16 @@ pub struct WinMap {
 }
 
 impl WinMap {
+    /// Access the shift array.
+    pub(crate) fn shifts(&self) -> &[f64] {
+        &self.shifts
+    }
+
+    /// Access the scale array.
+    pub(crate) fn scales(&self) -> &[f64] {
+        &self.scales
+    }
+
     /// Create a new `WinMap` from explicit per-axis shifts and scales.
     ///
     /// `shifts` and `scales` must have the same length (the number of axes)
