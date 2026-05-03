@@ -605,7 +605,8 @@ impl Mapping for FrameSet {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        self.mapping(FrameRef::Base, FrameRef::Current)
+        let composed = self.mapping(FrameRef::Base, FrameRef::Current)?;
+        composed.simplified()
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
