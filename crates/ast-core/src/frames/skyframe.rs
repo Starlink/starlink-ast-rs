@@ -2,11 +2,11 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_sky_mapping};
+use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::is_bad;
-use crate::mappings::{DynMapping, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
 use crate::serial::{Node, Serializable};
 
@@ -371,19 +371,38 @@ impl Frame for SkyFrame {
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         let prev = previous.as_any().downcast_ref::<SkyFrame>();
         match prev {
-            Some(prev_sky) => make_sky_mapping(
-                prev_sky.system,
-                prev_sky.equinox_mjd(),
-                prev_sky.epoch_mjd(),
-                self.system,
-                self.equinox_mjd(),
-                self.epoch_mjd(),
-                self.system, // align in current system
-                prev_sky.obs_lat.unwrap_or(0.0),
-                0.0, // LAST=0 for non-AZEL (full LAST deferred)
-                self.obs_lat.unwrap_or(0.0),
-                0.0,
-            ),
+            Some(prev_sky) => {
+                let mut mapping: DynMapping = make_sky_mapping(
+                    prev_sky.system,
+                    prev_sky.equinox_mjd(),
+                    prev_sky.epoch_mjd(),
+                    self.system,
+                    self.equinox_mjd(),
+                    self.epoch_mjd(),
+                    self.system, // align in current system
+                    prev_sky.obs_lat.unwrap_or(0.0),
+                    0.0, // LAST=0 for non-AZEL (full LAST deferred)
+                    self.obs_lat.unwrap_or(0.0),
+                    0.0,
+                )?;
+
+                // Prepend source offset removal (offset→standard).
+                if let Some(off_map) =
+                    make_offset_mapping(prev_sky.sky_ref, prev_sky.sky_ref_p, prev_sky.sky_ref_is)?
+                {
+                    mapping = Box::new(CmpMap::new(off_map, mapping, Composition::Series)?);
+                }
+
+                // Append target offset application (standard→offset = inverse).
+                if let Some(mut off_map) =
+                    make_offset_mapping(self.sky_ref, self.sky_ref_p, self.sky_ref_is)?
+                {
+                    off_map.invert();
+                    mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
+                }
+
+                Ok(mapping)
+            }
             None => {
                 // Previous was not a SkyFrame -- return UnitMap.
                 Ok(Box::new(UnitMap::new(2)))
@@ -395,7 +414,7 @@ impl Frame for SkyFrame {
         let to_sky = to.as_any().downcast_ref::<SkyFrame>();
         match to_sky {
             Some(to_sky) => {
-                let mapping = make_sky_mapping(
+                let mut mapping: DynMapping = make_sky_mapping(
                     self.system,
                     self.equinox_mjd(),
                     self.epoch_mjd(),
@@ -408,6 +427,22 @@ impl Frame for SkyFrame {
                     to_sky.obs_lat.unwrap_or(0.0),
                     0.0,
                 )?;
+
+                // Prepend source offset removal (offset→standard).
+                if let Some(off_map) =
+                    make_offset_mapping(self.sky_ref, self.sky_ref_p, self.sky_ref_is)?
+                {
+                    mapping = Box::new(CmpMap::new(off_map, mapping, Composition::Series)?);
+                }
+
+                // Append target offset application (standard→offset = inverse).
+                if let Some(mut off_map) =
+                    make_offset_mapping(to_sky.sky_ref, to_sky.sky_ref_p, to_sky.sky_ref_is)?
+                {
+                    off_map.invert();
+                    mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
+                }
+
                 let mut fs = FrameSet::new(self.snapshot());
                 fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
                 Ok(Some(fs))
@@ -1126,5 +1161,108 @@ mod tests {
     #[test]
     fn skyframe_is_send() {
         _assert_send::<SkyFrame>();
+    }
+
+    // -----------------------------------------------------------------------
+    // Offset coordinate integration (convert / map_from)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn convert_with_origin_offset() {
+        // Source frame has offset coordinates; target is standard FK5.
+        let mut src = SkyFrame::new(SkySystem::Fk5);
+        src.set_sky_ref(1.0, 0.5);
+        src.set_sky_ref_p(1.0, 0.5 + 0.1);
+        src.set_sky_ref_is(SkyRefIs::Origin);
+
+        let dst = SkyFrame::new(SkySystem::Fk5);
+
+        let fs = src.convert(&dst, &[]).unwrap().unwrap();
+
+        // (0, 0) in offset should map to sky_ref in standard.
+        let pts = crate::coords::PointSet::from_rows([[0.0, 0.0]]);
+        let out = fs.transform(&pts, true).unwrap();
+        let p = out.point(0);
+
+        // Compare with wrapping tolerance.
+        let lon_diff = (p[0] - 1.0).rem_euclid(2.0 * PI);
+        let lon_err = lon_diff.min(2.0 * PI - lon_diff);
+        assert!(lon_err < 1.0e-10, "lon mismatch: {:.2e}", lon_err);
+        assert_close(p[1], 0.5, 1.0e-10);
+    }
+
+    #[test]
+    fn convert_to_offset_frame() {
+        // Source is standard FK5; target has offset coordinates.
+        let src = SkyFrame::new(SkySystem::Fk5);
+
+        let mut dst = SkyFrame::new(SkySystem::Fk5);
+        dst.set_sky_ref(1.0, 0.5);
+        dst.set_sky_ref_p(1.0, 0.5 + 0.1);
+        dst.set_sky_ref_is(SkyRefIs::Origin);
+
+        let fs = src.convert(&dst, &[]).unwrap().unwrap();
+
+        // sky_ref in standard should map to (0, 0) in offset.
+        let pts = crate::coords::PointSet::from_rows([[1.0, 0.5]]);
+        let out = fs.transform(&pts, true).unwrap();
+        let p = out.point(0);
+
+        // The longitude at (0,0) may come out as 0 or +-2pi.
+        let lon_diff = p[0].rem_euclid(2.0 * PI);
+        let lon_err = lon_diff.min(2.0 * PI - lon_diff);
+        assert!(lon_err < 1.0e-10, "lon mismatch: {:.2e}", lon_err);
+        assert_close(p[1], 0.0, 1.0e-10);
+    }
+
+    #[test]
+    fn convert_between_offset_frames_round_trip() {
+        // Both source and target have offsets; round-trip through convert.
+        let mut src = SkyFrame::new(SkySystem::Fk5);
+        src.set_sky_ref(0.5, 0.3);
+        src.set_sky_ref_p(0.5, 0.3 + 0.1);
+        src.set_sky_ref_is(SkyRefIs::Origin);
+
+        let mut dst = SkyFrame::new(SkySystem::Fk5);
+        dst.set_sky_ref(2.0, -0.4);
+        dst.set_sky_ref_p(2.0, -0.4 + 0.1);
+        dst.set_sky_ref_is(SkyRefIs::Origin);
+
+        let fs_fwd = src.convert(&dst, &[]).unwrap().unwrap();
+
+        // Pick a point in source offset coords, convert to dst offset,
+        // then convert back.
+        let test_lon = 0.1;
+        let test_lat = 0.2;
+        let pts = crate::coords::PointSet::from_rows([[test_lon, test_lat]]);
+        let mid = fs_fwd.transform(&pts, true).unwrap();
+        let back = fs_fwd.transform(&mid, false).unwrap();
+        let p = back.point(0);
+
+        assert_close(p[0], test_lon, 1.0e-9);
+        assert_close(p[1], test_lat, 1.0e-9);
+    }
+
+    #[test]
+    fn map_from_with_offsets() {
+        // Test map_from with offset source.
+        let mut prev = SkyFrame::new(SkySystem::Fk5);
+        prev.set_sky_ref(1.0, 0.5);
+        prev.set_sky_ref_p(1.0, 0.5 + 0.1);
+        prev.set_sky_ref_is(SkyRefIs::Origin);
+
+        let cur = SkyFrame::new(SkySystem::Fk5);
+
+        let mapping = cur.map_from(&prev).unwrap();
+
+        // (0,0) in prev (offset) should map to sky_ref in standard.
+        let pts = crate::coords::PointSet::from_rows([[0.0, 0.0]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let p = out.point(0);
+
+        let lon_diff = (p[0] - 1.0).rem_euclid(2.0 * PI);
+        let lon_err = lon_diff.min(2.0 * PI - lon_diff);
+        assert!(lon_err < 1.0e-10, "lon mismatch: {:.2e}", lon_err);
+        assert_close(p[1], 0.5, 1.0e-10);
     }
 }

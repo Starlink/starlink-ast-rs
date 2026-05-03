@@ -462,6 +462,231 @@ fn add_fk5_to_system(
 }
 
 // ---------------------------------------------------------------------------
+// Offset coordinate rotation
+// ---------------------------------------------------------------------------
+
+use crate::constants::BAD_VALUE;
+use crate::coords::PointSet;
+use crate::mappings::Mapping;
+use crate::mappings::helpers::point_has_bad;
+use crate::mappings::rate::numeric_rate;
+use std::fmt;
+
+/// A private spherical rotation mapping for offset coordinates.
+///
+/// Converts 2D (lon, lat) coordinates through a 3D rotation matrix on the
+/// unit sphere:
+///   forward:  dcs2c → dmxv  → dcc2s
+///   inverse:  dcs2c → dimxv → dcc2s
+#[derive(Clone)]
+struct RotationMap {
+    /// 3x3 rotation matrix (offset→standard direction).
+    matrix: [[f64; 3]; 3],
+    inverted: bool,
+}
+
+impl fmt::Debug for RotationMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RotationMap")
+            .field("inverted", &self.inverted)
+            .finish()
+    }
+}
+
+impl RotationMap {
+    fn new(matrix: [[f64; 3]; 3]) -> Self {
+        Self {
+            matrix,
+            inverted: false,
+        }
+    }
+
+    /// Apply the rotation to a single (lon, lat) point.
+    fn rotate_point(&self, lon: f64, lat: f64, forward: bool) -> (f64, f64) {
+        let v = pal::dcs2c(lon, lat);
+        let effective_fwd = forward != self.inverted;
+        let v_out = if effective_fwd {
+            pal::dmxv(&self.matrix, &v)
+        } else {
+            pal::dimxv(&self.matrix, &v)
+        };
+        pal::dcc2s(&v_out)
+    }
+}
+
+impl Mapping for RotationMap {
+    fn nin(&self) -> usize {
+        2
+    }
+    fn nout(&self) -> usize {
+        2
+    }
+    fn is_inverted(&self) -> bool {
+        self.inverted
+    }
+    fn invert(&mut self) {
+        self.inverted = !self.inverted;
+    }
+
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        let np = pts.npoint();
+        let mut out = PointSet::zeros(np, 2);
+        self.transform_into(pts, forward, &mut out)?;
+        Ok(out)
+    }
+
+    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        let np = pts.npoint();
+        let view = pts.view();
+        let mut oview = out.view_mut();
+        for i in 0..np {
+            let lon_in = view[[i, 0]];
+            let lat_in = view[[i, 1]];
+            if point_has_bad(&[lon_in, lat_in]) {
+                oview[[i, 0]] = BAD_VALUE;
+                oview[[i, 1]] = BAD_VALUE;
+            } else {
+                let (lon_out, lat_out) = self.rotate_point(lon_in, lat_in, forward);
+                oview[[i, 0]] = lon_out;
+                oview[[i, 1]] = lat_out;
+            }
+        }
+        Ok(())
+    }
+
+    fn simplified(&self) -> AstResult<DynMapping> {
+        Ok(Box::new(self.clone()))
+    }
+
+    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        numeric_rate(self, at, ax1, ax2)
+    }
+}
+
+/// Build a rotation matrix for SkyRefIs::Origin.
+///
+/// The rotation maps offset coordinates to standard coordinates such that:
+/// - (0, 0) in offset → `sky_ref` in standard
+/// - The direction toward positive latitude at offset origin → direction
+///   from `sky_ref` toward `sky_ref_p` on the sphere
+fn build_origin_rotation(sky_ref: [f64; 2], sky_ref_p: [f64; 2]) -> [[f64; 3]; 3] {
+    let v_ref = pal::dcs2c(sky_ref[0], sky_ref[1]);
+    let v_refp = pal::dcs2c(sky_ref_p[0], sky_ref_p[1]);
+
+    // e1 = direction to reference point (new origin on the sphere)
+    let e1 = v_ref;
+
+    // e3 = component of v_refp perpendicular to v_ref, normalized.
+    // This defines the "north" direction in the offset system.
+    let dot = pal::dvdv(&v_refp, &v_ref);
+    let perp = [
+        v_refp[0] - dot * v_ref[0],
+        v_refp[1] - dot * v_ref[1],
+        v_refp[2] - dot * v_ref[2],
+    ];
+    let (perp_len, mag) = pal::dvn(&perp);
+
+    // If sky_ref_p is coincident with or antipodal to sky_ref, fall back
+    // to the standard north pole as the "up" direction.
+    let e3 = if mag < 1.0e-20 {
+        let pole = [0.0, 0.0, 1.0];
+        let dot2 = pal::dvdv(&pole, &v_ref);
+        let perp2 = [
+            pole[0] - dot2 * v_ref[0],
+            pole[1] - dot2 * v_ref[1],
+            pole[2] - dot2 * v_ref[2],
+        ];
+        let (n2, _) = pal::dvn(&perp2);
+        n2
+    } else {
+        perp_len
+    };
+
+    // e2 = e3 x e1 (completes right-handed system)
+    let e2 = pal::dvxv(&e3, &e1);
+
+    // Rotation matrix: columns are the new basis vectors.
+    // Maps (1,0,0) -> e1, (0,1,0) -> e2, (0,0,1) -> e3.
+    // The standard (lon=0,lat=0) direction in 3-vector is (1,0,0).
+    // The standard pole direction in 3-vector is (0,0,1).
+    // So this maps standard-origin to sky_ref and standard-pole to e3.
+    [
+        [e1[0], e2[0], e3[0]],
+        [e1[1], e2[1], e3[1]],
+        [e1[2], e2[2], e3[2]],
+    ]
+}
+
+/// Build a rotation matrix for SkyRefIs::Pole.
+///
+/// `sky_ref` becomes the north pole of the offset coordinate system.
+/// `sky_ref_p` defines the zero-meridian direction.
+fn build_pole_rotation(sky_ref: [f64; 2], sky_ref_p: [f64; 2]) -> [[f64; 3]; 3] {
+    let v_pole = pal::dcs2c(sky_ref[0], sky_ref[1]);
+    let v_zero = pal::dcs2c(sky_ref_p[0], sky_ref_p[1]);
+
+    // e3 (new pole) = v_pole
+    let e3 = v_pole;
+
+    // e1 (new zero meridian direction) = component of v_zero perpendicular to e3
+    let dot = pal::dvdv(&v_zero, &e3);
+    let perp = [
+        v_zero[0] - dot * e3[0],
+        v_zero[1] - dot * e3[1],
+        v_zero[2] - dot * e3[2],
+    ];
+    let (perp_len, mag) = pal::dvn(&perp);
+
+    // Fallback: if sky_ref_p is at the pole, use the standard origin direction.
+    let e1 = if mag < 1.0e-20 {
+        let origin = [1.0, 0.0, 0.0];
+        let dot2 = pal::dvdv(&origin, &e3);
+        let perp2 = [
+            origin[0] - dot2 * e3[0],
+            origin[1] - dot2 * e3[1],
+            origin[2] - dot2 * e3[2],
+        ];
+        let (n2, _) = pal::dvn(&perp2);
+        n2
+    } else {
+        perp_len
+    };
+
+    // e2 = e3 x e1 (right-handed)
+    let e2 = pal::dvxv(&e3, &e1);
+
+    // Rotation matrix columns.
+    [
+        [e1[0], e2[0], e3[0]],
+        [e1[1], e2[1], e3[1]],
+        [e1[2], e2[2], e3[2]],
+    ]
+}
+
+/// Build a rotation mapping for offset coordinates.
+///
+/// Returns a mapping that converts FROM offset coordinates TO standard
+/// (unrotated) celestial coordinates. Returns `None` if `sky_ref_is ==
+/// Ignored`.
+pub(crate) fn make_offset_mapping(
+    sky_ref: [f64; 2],
+    sky_ref_p: [f64; 2],
+    sky_ref_is: SkyRefIs,
+) -> AstResult<Option<DynMapping>> {
+    match sky_ref_is {
+        SkyRefIs::Ignored => Ok(None),
+        SkyRefIs::Origin => {
+            let matrix = build_origin_rotation(sky_ref, sky_ref_p);
+            Ok(Some(Box::new(RotationMap::new(matrix))))
+        }
+        SkyRefIs::Pole => {
+            let matrix = build_pole_rotation(sky_ref, sky_ref_p);
+            Ok(Some(Box::new(RotationMap::new(matrix))))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -470,7 +695,7 @@ mod tests {
     use super::*;
     use crate::coords::PointSet;
     use crate::mappings::Mapping;
-    use std::f64::consts::PI;
+    use std::f64::consts::{FRAC_PI_2, PI};
 
     const TOL: f64 = 1.0e-8;
 
@@ -1111,5 +1336,135 @@ mod tests {
         let (back_ha, back_dec) = transform_inv(&sla, ra, out_dec);
         assert_close(back_ha, ha, 1.0e-10);
         assert_close(back_dec, dec, 1.0e-10);
+    }
+
+    // -----------------------------------------------------------------------
+    // Offset coordinate rotation: make_offset_mapping
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn offset_ignored_returns_none() {
+        let result = make_offset_mapping([1.0, 0.5], [0.0, FRAC_PI_2], SkyRefIs::Ignored).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn offset_origin_maps_origin_to_skyref() {
+        // With SkyRefIs::Origin, (0,0) in offset coordinates should map
+        // to sky_ref in the standard system.
+        let sky_ref = [1.0, 0.5]; // lon=1.0 rad, lat=0.5 rad
+        let sky_ref_p = [1.0, 0.5 + 0.1]; // slightly north of sky_ref
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin)
+            .unwrap()
+            .unwrap();
+
+        // Forward: offset → standard.  (0,0) should map to sky_ref.
+        let (lon, lat) = transform_fwd(&*map, 0.0, 0.0);
+        assert_close(lon, sky_ref[0], 1.0e-10);
+        assert_close(lat, sky_ref[1], 1.0e-10);
+    }
+
+    #[test]
+    fn offset_origin_round_trip() {
+        let sky_ref = [2.0, 0.3];
+        let sky_ref_p = [2.0, 0.3 + 0.5]; // north of sky_ref
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin)
+            .unwrap()
+            .unwrap();
+
+        // Pick an arbitrary offset coordinate.
+        let off_lon = 0.1;
+        let off_lat = 0.2;
+        let (std_lon, std_lat) = transform_fwd(&*map, off_lon, off_lat);
+        let (back_lon, back_lat) = transform_inv(&*map, std_lon, std_lat);
+
+        assert_close(back_lon, off_lon, 1.0e-10);
+        assert_close(back_lat, off_lat, 1.0e-10);
+    }
+
+    #[test]
+    fn offset_pole_maps_pole_to_skyref() {
+        // With SkyRefIs::Pole, the north pole of the offset system
+        // (lon=anything, lat=pi/2) should map to sky_ref.
+        let sky_ref = [1.5, 0.8];
+        let sky_ref_p = [0.0, 0.0]; // zero-meridian reference
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Pole)
+            .unwrap()
+            .unwrap();
+
+        // Forward: offset → standard.
+        // The offset north pole is (0, pi/2).
+        let (_lon, lat) = transform_fwd(&*map, 0.0, FRAC_PI_2);
+        // Should land at sky_ref.
+        assert_close(lat, sky_ref[1], 1.0e-10);
+        // Longitude at the pole is degenerate, but the latitude should match.
+    }
+
+    #[test]
+    fn offset_pole_round_trip() {
+        let sky_ref = [0.5, 1.0];
+        let sky_ref_p = [0.5, 0.0];
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Pole)
+            .unwrap()
+            .unwrap();
+
+        let off_lon = 0.3;
+        let off_lat = 0.4;
+        let (std_lon, std_lat) = transform_fwd(&*map, off_lon, off_lat);
+        let (back_lon, back_lat) = transform_inv(&*map, std_lon, std_lat);
+
+        assert_close(back_lon, off_lon, 1.0e-10);
+        assert_close(back_lat, off_lat, 1.0e-10);
+    }
+
+    #[test]
+    fn offset_origin_galactic_centre() {
+        // Place the offset origin at the galactic centre
+        // (approximately l=0, b=0 in galactic coords, but we use
+        // FK5 J2000.0 values: RA ~266.405 deg, Dec ~-28.936 deg).
+        let ra_gc = 266.405_f64.to_radians();
+        let dec_gc = (-28.936_f64).to_radians();
+        let sky_ref = [ra_gc, dec_gc];
+        // sky_ref_p: north of galactic centre.
+        let sky_ref_p = [ra_gc, dec_gc + 0.01];
+
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin)
+            .unwrap()
+            .unwrap();
+
+        // (0,0) in offset → galactic centre in standard.
+        let (lon, lat) = transform_fwd(&*map, 0.0, 0.0);
+        // dcc2s may return longitude in [-pi, pi]; compare modulo 2*pi.
+        let lon_diff = (lon - ra_gc).rem_euclid(2.0 * PI);
+        let lon_err = lon_diff.min(2.0 * PI - lon_diff);
+        assert!(
+            lon_err < 1.0e-10,
+            "expected lon ~= {ra_gc}, got {lon} (err = {lon_err:.2e})"
+        );
+        assert_close(lat, dec_gc, 1.0e-10);
+
+        // A small positive-latitude offset should go roughly northward.
+        let (lon2, lat2) = transform_fwd(&*map, 0.0, 0.01);
+        assert!(
+            lat2 > dec_gc,
+            "positive latitude offset should go north of reference"
+        );
+        // Distance should be approximately 0.01 radians.
+        let sep = pal::dsep(lon, lat, lon2, lat2);
+        assert_close(sep, 0.01, 1.0e-4);
+    }
+
+    #[test]
+    fn offset_bad_values() {
+        let map = make_offset_mapping([1.0, 0.5], [1.0, 1.0], SkyRefIs::Origin)
+            .unwrap()
+            .unwrap();
+
+        // Bad input should produce bad output.
+        let pts = PointSet::from_rows([[BAD_VALUE, 0.5]]);
+        let out = map.transform(&pts, true).unwrap();
+        let p = out.point(0);
+        assert_eq!(p[0], BAD_VALUE);
+        assert_eq!(p[1], BAD_VALUE);
     }
 }
