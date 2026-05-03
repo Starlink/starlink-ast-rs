@@ -2,6 +2,7 @@
 
 pub(crate) mod helpers;
 pub(crate) mod rate;
+pub(crate) mod simplify;
 mod unit;
 pub use unit::UnitMap;
 mod zoom;
@@ -108,6 +109,31 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// Handles inverted mappings where appropriate (e.g., ZoomMap with
     /// factor 2 inverted equals ZoomMap with factor 0.5 non-inverted).
     fn equal(&self, other: &dyn Mapping) -> bool;
+
+    /// Attempt to merge this mapping with an adjacent mapping.
+    ///
+    /// If `series` is true, the mappings are composed in series (self then
+    /// other for forward, or other then self for inverse). If false, they
+    /// are composed in parallel.
+    ///
+    /// `self_inv` and `other_inv` indicate whether each mapping should be
+    /// treated as effectively inverted in the composition. The mappings
+    /// themselves are stored in their forward (non-inverted) state; the
+    /// inversion information is carried separately by the simplification
+    /// engine.
+    ///
+    /// Returns `Some(merged)` if the two can be replaced by a single
+    /// mapping, `None` otherwise. The returned mapping is in its forward
+    /// (non-inverted) state.
+    fn try_merge(
+        &self,
+        _other: &dyn Mapping,
+        _series: bool,
+        _self_inv: bool,
+        _other_inv: bool,
+    ) -> Option<DynMapping> {
+        None
+    }
 }
 
 impl dyn Mapping {

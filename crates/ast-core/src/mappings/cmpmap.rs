@@ -62,6 +62,21 @@ impl CmpMap {
         })
     }
 
+    /// The first component mapping.
+    pub(crate) fn first(&self) -> &dyn Mapping {
+        self.first.as_ref()
+    }
+
+    /// The second component mapping.
+    pub(crate) fn second(&self) -> &dyn Mapping {
+        self.second.as_ref()
+    }
+
+    /// The composition mode (series or parallel).
+    pub(crate) fn composition(&self) -> Composition {
+        self.kind
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }
