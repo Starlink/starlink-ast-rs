@@ -25,6 +25,8 @@ pub use crate::wcslib::WcsProjection;
 pub use wcsmap::WcsMap;
 mod slamap;
 pub use slamap::{SlaCvtType, SlaMap};
+mod sphmap;
+pub use sphmap::SphMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 
