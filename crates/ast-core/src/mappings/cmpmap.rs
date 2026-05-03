@@ -16,7 +16,7 @@ use crate::serial::{
 };
 
 use super::unit::UnitMap;
-use super::{AsAny, DynMapping, Mapping};
+use super::{DynMapping, Mapping};
 
 /// Determines whether two mappings are composed in series or in parallel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,34 +274,7 @@ impl Mapping for CmpMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let s_first = self.first.simplified()?;
-        let s_second = self.second.simplified()?;
-
-        // Class-membership check, mirroring C's astIsAUnitMap. Each
-        // concrete mapping's simplified() canonicalises the identity case
-        // to a real UnitMap, so a type test is sound here; a behavioural
-        // probe would not be (e.g. a PolyMap with a fixed point at the
-        // probe).
-        let first_is_unit = s_first.as_any().is::<UnitMap>();
-        let second_is_unit = s_second.as_any().is::<UnitMap>();
-
-        if first_is_unit && second_is_unit {
-            let n = match self.kind {
-                Composition::Series => {
-                    // Both are unit maps and must agree on ncoord.
-                    s_first.nin()
-                }
-                Composition::Parallel => s_first.nin() + s_second.nin(),
-            };
-            return Ok(Box::new(UnitMap::new(n)));
-        }
-
-        Ok(Box::new(CmpMap {
-            first: s_first,
-            second: s_second,
-            kind: self.kind,
-            inverted: self.inverted,
-        }))
+        crate::mappings::simplify::simplify_mapping(self)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

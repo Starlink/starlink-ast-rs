@@ -1,8 +1,3 @@
-// Functions in this module are wired into CmpMap::simplified() incrementally
-// as concrete try_merge implementations land. Suppress dead-code warnings
-// until then.
-#![allow(dead_code)]
-
 //! Core simplification engine for mapping composition trees.
 //!
 //! This module implements the flatten/merge/reconstruct pipeline that
@@ -471,5 +466,164 @@ mod tests {
         let pts = PointSet::from_rows([[20.0]]);
         let out = result.transform(&pts, true).unwrap();
         assert!((out.point(0)[0] - 5.0).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: UnitMap removal                                    //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_unitmap_series_zoom_removes_unit() {
+        // CmpMap(UnitMap(2), ZoomMap(2,3), Series) → ZoomMap(2,3)
+        let a = dyn_map(UnitMap::new(2));
+        let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<ZoomMap>());
+        assert_eq!(result.nin(), 2);
+        assert_eq!(result.nout(), 2);
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: ZoomMap merging                                    //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_zoom_series_merges_factors() {
+        // CmpMap(ZoomMap(2,2), ZoomMap(2,3), Series) → ZoomMap(2,6)
+        let a = dyn_map(ZoomMap::new(2, 2.0).unwrap());
+        let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<ZoomMap>());
+        assert_eq!(result.nin(), 2);
+        // Verify the merged factor via transform.
+        let pts = crate::coords::PointSet::from_rows([[1.0, 2.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 12.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_zoom_series_inverse_becomes_unit() {
+        // CmpMap(ZoomMap(2,2), ZoomMap(2,0.5), Series) → UnitMap(2)
+        let a = dyn_map(ZoomMap::new(2, 2.0).unwrap());
+        let b = dyn_map(ZoomMap::new(2, 0.5).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: ShiftMap merging                                   //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_shift_series_merges_offsets() {
+        // CmpMap(ShiftMap([1,2]), ShiftMap([3,4]), Series) → ShiftMap([4,6])
+        let a = dyn_map(ShiftMap::new(vec![1.0, 2.0]));
+        let b = dyn_map(ShiftMap::new(vec![3.0, 4.0]));
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<ShiftMap>());
+        let pts = crate::coords::PointSet::from_rows([[0.0, 0.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 4.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 6.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_shift_series_cancels_to_unit() {
+        // CmpMap(ShiftMap([1,2]), ShiftMap([-1,-2]), Series) → UnitMap(2)
+        let a = dyn_map(ShiftMap::new(vec![1.0, 2.0]));
+        let b = dyn_map(ShiftMap::new(vec![-1.0, -2.0]));
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    // ------------------------------------------------------------ //
+    // Transform equivalence: before/after simplification            //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_preserves_transform_zoom_series() {
+        use crate::coords::PointSet;
+
+        let a = dyn_map(ZoomMap::new(2, 2.0).unwrap());
+        let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[1.0, -2.0], [0.5, 100.0]]);
+        let before = cmp.transform(&pts, true).unwrap();
+        let after = simplified.transform(&pts, true).unwrap();
+        for i in 0..pts.npoint() {
+            for j in 0..2 {
+                assert!(
+                    (before.point(i)[j] - after.point(i)[j]).abs() < 1e-12,
+                    "mismatch at point {} coord {}",
+                    i,
+                    j,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn simplify_preserves_transform_shift_series() {
+        use crate::coords::PointSet;
+
+        let a = dyn_map(ShiftMap::new(vec![10.0, 20.0]));
+        let b = dyn_map(ShiftMap::new(vec![30.0, 40.0]));
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[1.0, 2.0], [5.0, -3.0]]);
+        let before = cmp.transform(&pts, true).unwrap();
+        let after = simplified.transform(&pts, true).unwrap();
+        for i in 0..pts.npoint() {
+            for j in 0..2 {
+                assert!(
+                    (before.point(i)[j] - after.point(i)[j]).abs() < 1e-12,
+                    "mismatch at point {} coord {}",
+                    i,
+                    j,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn simplify_preserves_transform_inverse() {
+        use crate::coords::PointSet;
+
+        // Test that inverse transforms also agree.
+        let a = dyn_map(ZoomMap::new(1, 4.0).unwrap());
+        let b = dyn_map(ZoomMap::new(1, 5.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[100.0]]);
+        let before = cmp.transform(&pts, false).unwrap();
+        let after = simplified.transform(&pts, false).unwrap();
+        assert!((before.point(0)[0] - after.point(0)[0]).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // try_merge: UnitMap parallel merge                             //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_unitmap_parallel_merges() {
+        // CmpMap(UnitMap(2), UnitMap(3), Parallel) → UnitMap(5)
+        let a = dyn_map(UnitMap::new(2));
+        let b = dyn_map(UnitMap::new(3));
+        let cmp = CmpMap::new(a, b, Composition::Parallel).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 5);
     }
 }

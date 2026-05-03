@@ -114,6 +114,41 @@ impl Mapping for ZoomMap {
             ast_equal(self.factor * other.factor, 1.0)
         }
     }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        let other_zoom = other.as_any().downcast_ref::<ZoomMap>()?;
+        if self.ncoord != other_zoom.ncoord {
+            return None;
+        }
+        // Effective factors accounting for inversion.
+        let f1 = if self_inv {
+            1.0 / self.factor
+        } else {
+            self.factor
+        };
+        let f2 = if other_inv {
+            1.0 / other_zoom.factor
+        } else {
+            other_zoom.factor
+        };
+        let product = f1 * f2;
+        if ast_equal(product, 1.0) {
+            Some(Box::new(UnitMap::new(self.ncoord)))
+        } else {
+            ZoomMap::new(self.ncoord, product)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping)
+        }
+    }
 }
 
 impl Serializable for ZoomMap {

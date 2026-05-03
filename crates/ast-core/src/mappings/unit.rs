@@ -72,6 +72,23 @@ impl Mapping for UnitMap {
         };
         self.ncoord == other.ncoord
     }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        _self_inv: bool,
+        _other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            // Parallel: merge adjacent UnitMaps into one with combined ncoord.
+            let other_unit = other.as_any().downcast_ref::<UnitMap>()?;
+            Some(Box::new(UnitMap::new(self.ncoord + other_unit.ncoord)))
+        } else {
+            // Series: UnitMap removal handled by post-loop cleanup in merge_loop.
+            None
+        }
+    }
 }
 
 impl Serializable for UnitMap {

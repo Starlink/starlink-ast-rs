@@ -112,6 +112,41 @@ impl Mapping for ShiftMap {
                 .all(|(a, b)| ast_equal(*a, -b))
         }
     }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        let other_shift = other.as_any().downcast_ref::<ShiftMap>()?;
+        if self.shift.len() != other_shift.shift.len() {
+            return None;
+        }
+        let mut combined = Vec::with_capacity(self.shift.len());
+        for i in 0..self.shift.len() {
+            let s1 = if self_inv {
+                -self.shift[i]
+            } else {
+                self.shift[i]
+            };
+            let s2 = if other_inv {
+                -other_shift.shift[i]
+            } else {
+                other_shift.shift[i]
+            };
+            combined.push(s1 + s2);
+        }
+        if combined.iter().all(|&s| ast_equal(s, 0.0)) {
+            Some(Box::new(UnitMap::new(self.shift.len())))
+        } else {
+            Some(Box::new(ShiftMap::new(combined)))
+        }
+    }
 }
 
 impl Serializable for ShiftMap {
