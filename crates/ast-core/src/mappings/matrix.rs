@@ -15,6 +15,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
+use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 
 /// Tolerance used to identify identity matrices.
@@ -184,11 +185,32 @@ impl Mapping for MatrixMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.is_identity() {
-            Ok(Box::new(UnitMap::new(self.matrix.nrows())))
-        } else {
-            Ok(Box::new(self.clone()))
+        let nrows = self.matrix.nrows();
+        let ncols = self.matrix.ncols();
+
+        // Only square matrices can reduce to simpler types.
+        if nrows == ncols {
+            if self.is_identity() {
+                return Ok(Box::new(UnitMap::new(nrows)));
+            }
+            // Check for diagonal matrix with uniform scale → ZoomMap.
+            if is_diagonal(&self.matrix) {
+                let first = self.matrix[[0, 0]];
+                if (1..nrows).all(|i| ast_equal(self.matrix[[i, i]], first)) {
+                    if ast_equal(first, 1.0) {
+                        return Ok(Box::new(UnitMap::new(nrows)));
+                    }
+                    if let Ok(mut zm) = ZoomMap::new(nrows, first) {
+                        if self.inverted {
+                            zm.invert();
+                        }
+                        return Ok(Box::new(zm));
+                    }
+                }
+            }
         }
+
+        Ok(Box::new(self.clone()))
     }
 
     fn try_merge(
@@ -201,36 +223,64 @@ impl Mapping for MatrixMap {
         if !series {
             return None;
         }
-        let other_mat = other.as_any().downcast_ref::<MatrixMap>()?;
 
-        // Get effective forward matrices, accounting for inversion.
-        let a = if self_inv {
-            self.inverse.as_ref()?.clone()
-        } else {
-            self.matrix.clone()
-        };
-        let b = if other_inv {
-            other_mat.inverse.as_ref()?.clone()
-        } else {
-            other_mat.matrix.clone()
-        };
+        // MatrixMap + MatrixMap → MatrixMap.
+        if let Some(other_mat) = other.as_any().downcast_ref::<MatrixMap>() {
+            // Get effective forward matrices, accounting for inversion.
+            let a = if self_inv {
+                self.inverse.as_ref()?.clone()
+            } else {
+                self.matrix.clone()
+            };
+            let b = if other_inv {
+                other_mat.inverse.as_ref()?.clone()
+            } else {
+                other_mat.matrix.clone()
+            };
 
-        // Series: self first (matrix a), then other (matrix b).
-        // Result = b * a. Requires b.ncols() == a.nrows().
-        if b.ncols() != a.nrows() {
-            return None;
+            // Series: self first (matrix a), then other (matrix b).
+            // Result = b * a. Requires b.ncols() == a.nrows().
+            if b.ncols() != a.nrows() {
+                return None;
+            }
+
+            let product = b.dot(&a);
+
+            return if is_identity_matrix(&product) {
+                Some(Box::new(UnitMap::new(product.nrows())))
+            } else {
+                MatrixMap::new(product)
+                    .ok()
+                    .map(|m| Box::new(m) as DynMapping)
+            };
         }
 
-        let product = b.dot(&a);
-
-        // Check if the product is the identity matrix.
-        if is_identity_matrix(&product) {
-            Some(Box::new(UnitMap::new(product.nrows())))
-        } else {
-            MatrixMap::new(product)
+        // MatrixMap + ZoomMap → MatrixMap (scaled).
+        // ZoomMap commutes with MatrixMap: f*(M*x) = M*(f*x) = (f*M)*x.
+        if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
+            let f = if other_inv {
+                1.0 / zm.factor()
+            } else {
+                zm.factor()
+            };
+            let a = if self_inv {
+                self.inverse.as_ref()?.clone()
+            } else {
+                self.matrix.clone()
+            };
+            if a.ncols() != zm.nin() && a.nrows() != zm.nin() {
+                return None;
+            }
+            let scaled = &a * f;
+            if is_identity_matrix(&scaled) {
+                return Some(Box::new(UnitMap::new(scaled.nrows())));
+            }
+            return MatrixMap::new(scaled)
                 .ok()
-                .map(|m| Box::new(m) as DynMapping)
+                .map(|m| Box::new(m) as DynMapping);
         }
+
+        None
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -351,6 +401,23 @@ impl Serializable for MatrixMap {
             inverted,
         })
     }
+}
+
+/// Check if a square matrix is diagonal (all off-diagonal elements are
+/// zero within `ast_equal` tolerance).
+fn is_diagonal(m: &Array2<f64>) -> bool {
+    let n = m.nrows();
+    if n != m.ncols() {
+        return false;
+    }
+    for i in 0..n {
+        for j in 0..n {
+            if i != j && !ast_equal(m[[i, j]], 0.0) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Check if a matrix is the identity (within `ast_equal` tolerance).

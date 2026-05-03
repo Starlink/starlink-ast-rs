@@ -9,6 +9,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
+use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
 
 /// A mapping that scales all input coordinates by a constant factor.
@@ -35,6 +36,11 @@ impl ZoomMap {
             factor,
             inverted: false,
         })
+    }
+
+    /// The zoom factor.
+    pub(crate) fn factor(&self) -> f64 {
+        self.factor
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -125,29 +131,44 @@ impl Mapping for ZoomMap {
         if !series {
             return None;
         }
-        let other_zoom = other.as_any().downcast_ref::<ZoomMap>()?;
-        if self.ncoord != other_zoom.ncoord {
-            return None;
+
+        // Fast path: ZoomMap + ZoomMap → ZoomMap (preserves type).
+        if let Some(other_zoom) = other.as_any().downcast_ref::<ZoomMap>() {
+            if self.ncoord != other_zoom.ncoord {
+                return None;
+            }
+            let f1 = if self_inv {
+                1.0 / self.factor
+            } else {
+                self.factor
+            };
+            let f2 = if other_inv {
+                1.0 / other_zoom.factor
+            } else {
+                other_zoom.factor
+            };
+            let product = f1 * f2;
+            if ast_equal(product, 1.0) {
+                return Some(Box::new(UnitMap::new(self.ncoord)));
+            }
+            return ZoomMap::new(self.ncoord, product)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping);
         }
-        // Effective factors accounting for inversion.
+
+        // Cross-type: ZoomMap + {WinMap, ShiftMap} → WinMap or UnitMap.
         let f1 = if self_inv {
             1.0 / self.factor
         } else {
             self.factor
         };
-        let f2 = if other_inv {
-            1.0 / other_zoom.factor
-        } else {
-            other_zoom.factor
-        };
-        let product = f1 * f2;
-        if ast_equal(product, 1.0) {
-            Some(Box::new(UnitMap::new(self.ncoord)))
-        } else {
-            ZoomMap::new(self.ncoord, product)
-                .ok()
-                .map(|m| Box::new(m) as DynMapping)
+        let s1 = vec![0.0; self.ncoord];
+        let c1 = vec![f1; self.ncoord];
+        let (s2, c2) = extract_linear_params(other, other_inv)?;
+        if s1.len() != s2.len() {
+            return None;
         }
+        compose_linear(&s1, &c1, &s2, &c2)
     }
 }
 

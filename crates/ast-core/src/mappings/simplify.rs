@@ -323,9 +323,11 @@ mod tests {
     // ------------------------------------------------------------ //
 
     #[test]
-    fn merge_loop_no_merges_with_default_try_merge() {
-        // With no try_merge implementations, nothing should merge.
-        let a = dyn_map(ZoomMap::new(2, 2.0).unwrap());
+    fn merge_loop_no_merges_with_incompatible_types() {
+        use crate::mappings::SphMap;
+
+        // Types that have no cross-type merge rule should not merge.
+        let a = dyn_map(SphMap::new());
         let b = dyn_map(ShiftMap::new([10.0, 20.0]));
         let mut list: Vec<(DynMapping, bool)> = vec![(a, false), (b, false)];
         merge_loop(&mut list, true);
@@ -714,19 +716,20 @@ mod tests {
         use crate::mappings::MatrixMap;
         use ndarray::array;
 
-        // Scaling by 2 then scaling by 3 = scaling by 6.
-        let s2 = array![[2.0_f64, 0.0], [0.0, 2.0]];
-        let s3 = array![[3.0_f64, 0.0], [0.0, 3.0]];
-        let a = dyn_map(MatrixMap::new(s2).unwrap());
-        let b = dyn_map(MatrixMap::new(s3).unwrap());
+        // Non-diagonal matrices that truly require MatrixMap after merging.
+        let m1 = array![[1.0_f64, 1.0], [0.0, 1.0]]; // shear
+        let m2 = array![[2.0_f64, 0.0], [0.0, 1.0]]; // non-uniform scale
+        let a = dyn_map(MatrixMap::new(m1).unwrap());
+        let b = dyn_map(MatrixMap::new(m2).unwrap());
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let simplified = simplify_mapping(&cmp).unwrap();
         assert!(simplified.as_any().is::<MatrixMap>());
 
+        // m2 * m1 = [[2,2],[0,1]]; apply to (1,2): (2*1+2*2, 0*1+1*2) = (6, 2)
         let pts = PointSet::from_rows([[1.0, 2.0]]);
         let out = simplified.transform(&pts, true).unwrap();
         assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
-        assert!((out.point(0)[1] - 12.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 2.0).abs() < 1e-12);
     }
 
     #[test]
@@ -939,5 +942,427 @@ mod tests {
         let result = simplify_mapping(&cmp).unwrap();
         // Different perms: should NOT simplify to UnitMap.
         assert!(!result.as_any().is::<UnitMap>());
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type linear merges: WinMap absorbs ZoomMap              //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_winmap_absorbs_zoommap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // WinMap(s=1,c=2) then ZoomMap(1,3): out = 3*(2*x + 1) = 6*x + 3
+        let a = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
+        let b = dyn_map(ZoomMap::new(1, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<WinMap>());
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        // 6*5 + 3 = 33
+        assert!((out.point(0)[0] - 33.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_zoommap_then_winmap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // ZoomMap(1,3) then WinMap(s=1,c=2): out = 2*(3*x) + 1 = 6*x + 1
+        let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
+        let b = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 31.0).abs() < 1e-12); // 6*5 + 1
+
+        // Also verify transform equivalence.
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type linear merges: WinMap absorbs ShiftMap             //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_winmap_absorbs_shiftmap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // WinMap(s=1,c=2) then ShiftMap([10]): out = 1*(2*x+1) + 10 = 2*x + 11
+        let a = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
+        let b = dyn_map(ShiftMap::new(vec![10.0]));
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<WinMap>());
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 21.0).abs() < 1e-12); // 2*5 + 11
+    }
+
+    #[test]
+    fn simplify_shiftmap_then_winmap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // ShiftMap([10]) then WinMap(s=1,c=2): out = 2*(x+10) + 1 = 2*x + 21
+        let a = dyn_map(ShiftMap::new(vec![10.0]));
+        let b = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 31.0).abs() < 1e-12); // 2*5 + 21
+
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type linear merges: ZoomMap + ShiftMap                  //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_zoommap_then_shiftmap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // ZoomMap(1,3) then ShiftMap([10]): out = 3*x + 10
+        let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
+        let b = dyn_map(ShiftMap::new(vec![10.0]));
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        // Should produce a WinMap (shift + scale).
+        assert!(result.as_any().is::<WinMap>());
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 25.0).abs() < 1e-12); // 3*5 + 10
+
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_shiftmap_then_zoommap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // ShiftMap([10]) then ZoomMap(1,3): out = 3*(x + 10) = 3*x + 30
+        let a = dyn_map(ShiftMap::new(vec![10.0]));
+        let b = dyn_map(ZoomMap::new(1, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<WinMap>());
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 45.0).abs() < 1e-12); // 3*5 + 30
+
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type linear merges: with inversion                     //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_winmap_then_inv_zoommap() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // WinMap(s=6,c=3) then ZoomMap(1,3)^-1: out = (1/3)*(3*x + 6) = x + 2
+        let a = dyn_map(WinMap::new(&[6.0], &[3.0]).unwrap());
+        let mut z = ZoomMap::new(1, 3.0).unwrap();
+        z.invert();
+        let cmp = CmpMap::new(a, dyn_map(z), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 7.0).abs() < 1e-12); // 5 + 2
+
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_inv_shiftmap_then_zoommap() {
+        use crate::coords::PointSet;
+
+        // ShiftMap([10])^-1 then ZoomMap(1,2): out = 2*(x - 10) = 2*x - 20
+        let mut s = ShiftMap::new(vec![10.0]);
+        s.invert();
+        let z = ZoomMap::new(1, 2.0).unwrap();
+        let cmp = CmpMap::new(dyn_map(s), dyn_map(z), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+
+        let pts = PointSet::from_rows([[15.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 10.0).abs() < 1e-12); // 2*15 - 20
+
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type linear merges: multi-axis                         //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_cross_type_multi_axis() {
+        use crate::coords::PointSet;
+        use crate::mappings::WinMap;
+
+        // 2-axis: ShiftMap([1,2]) then ZoomMap(2,3) → WinMap with scales=[3,3], shifts=[3,6]
+        let a = dyn_map(ShiftMap::new(vec![1.0, 2.0]));
+        let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<WinMap>());
+
+        // out = 3*(x + shift) = [3*(x1+1), 3*(x2+2)] = [3*x1+3, 3*x2+6]
+        let pts = PointSet::from_rows([[10.0, 20.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 33.0).abs() < 1e-12); // 3*10 + 3
+        assert!((out.point(0)[1] - 66.0).abs() < 1e-12); // 3*20 + 6
+
+        let before = cmp.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - out.point(0)[0]).abs() < 1e-12);
+        assert!((before.point(0)[1] - out.point(0)[1]).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type linear merges: identity cancellation               //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_zoommap_inverse_via_winmap() {
+        // ZoomMap(1,3) then WinMap(s=0,c=1/3): out = (1/3)*(3*x) = x → UnitMap
+        use crate::mappings::WinMap;
+
+        let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
+        let b = dyn_map(WinMap::new(&[0.0], &[1.0 / 3.0]).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+    }
+
+    // ------------------------------------------------------------ //
+    // Mixed chain: three different linear types                    //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_mixed_linear_chain() {
+        use crate::coords::PointSet;
+
+        // ShiftMap([1]) then ZoomMap(1,3) then ShiftMap([10])
+        // Step 1: x + 1
+        // Step 2: 3*(x+1) = 3*x + 3
+        // Step 3: 3*x + 3 + 10 = 3*x + 13
+        let a = dyn_map(ShiftMap::new(vec![1.0]));
+        let b = dyn_map(ZoomMap::new(1, 3.0).unwrap());
+        let inner = CmpMap::new(a, b, Composition::Series).unwrap();
+        let c = dyn_map(ShiftMap::new(vec![10.0]));
+        let outer = CmpMap::new(dyn_map(inner), c, Composition::Series).unwrap();
+        let result = simplify_mapping(&outer).unwrap();
+
+        let pts = PointSet::from_rows([[5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 28.0).abs() < 1e-12); // 3*5 + 13
+
+        // Verify it reduced to a single mapping (not a CmpMap).
+        assert!(!result.as_any().is::<CmpMap>());
+    }
+
+    // ------------------------------------------------------------ //
+    // MatrixMap self-reduction                                      //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_matrix_identity_reduces_to_unitmap() {
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        let m = array![[1.0_f64, 0.0], [0.0, 1.0]];
+        let mm = MatrixMap::new(m).unwrap();
+        let result = mm.simplified().unwrap();
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_matrix_uniform_diagonal_reduces_to_zoommap() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        let m = array![[3.0_f64, 0.0], [0.0, 3.0]];
+        let mm = MatrixMap::new(m).unwrap();
+        let result = mm.simplified().unwrap();
+        assert!(result.as_any().is::<ZoomMap>());
+        assert_eq!(result.nin(), 2);
+
+        let pts = PointSet::from_rows([[2.0, 5.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 15.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_matrix_nonuniform_diagonal_stays_matrix() {
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // Non-uniform diagonal: different scale per axis → stays MatrixMap.
+        let m = array![[2.0_f64, 0.0], [0.0, 5.0]];
+        let mm = MatrixMap::new(m).unwrap();
+        let result = mm.simplified().unwrap();
+        assert!(result.as_any().is::<MatrixMap>());
+    }
+
+    #[test]
+    fn simplify_matrix_non_square_stays_matrix() {
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // Non-square matrix can't reduce.
+        let m = array![[1.0_f64, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let mm = MatrixMap::new(m).unwrap();
+        let result = mm.simplified().unwrap();
+        assert!(result.as_any().is::<MatrixMap>());
+    }
+
+    #[test]
+    fn simplify_matrix_inverted_diagonal_reduces_to_zoommap() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // An inverted uniform diagonal should reduce to an inverted ZoomMap.
+        let m = array![[4.0_f64, 0.0], [0.0, 4.0]];
+        let mut mm = MatrixMap::new(m).unwrap();
+        mm.invert();
+        let result = mm.simplified().unwrap();
+        assert!(result.as_any().is::<ZoomMap>());
+        assert!(result.is_inverted());
+
+        // Forward transform of inverted ZoomMap(4) = divide by 4.
+        let pts = PointSet::from_rows([[8.0, 12.0]]);
+        let out = result.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 2.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 3.0).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // ZoomMap absorbed into MatrixMap                               //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_zoommap_then_matrixmap() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // ZoomMap(2,3) then MatrixMap([[1,2],[3,4]]): result = 3 * M * x
+        let a = dyn_map(ZoomMap::new(2, 3.0).unwrap());
+        let m = array![[1.0_f64, 2.0], [3.0, 4.0]];
+        let b = dyn_map(MatrixMap::new(m).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        // Should merge to a single MatrixMap.
+        assert!(simplified.as_any().is::<MatrixMap>());
+
+        let pts = PointSet::from_rows([[1.0, 2.0]]);
+        let before = cmp.transform(&pts, true).unwrap();
+        let after = simplified.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - after.point(0)[0]).abs() < 1e-12);
+        assert!((before.point(0)[1] - after.point(0)[1]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_matrixmap_then_zoommap() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // MatrixMap([[1,2],[3,4]]) then ZoomMap(2,3): result = 3 * M * x
+        let m = array![[1.0_f64, 2.0], [3.0, 4.0]];
+        let a = dyn_map(MatrixMap::new(m).unwrap());
+        let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+        assert!(simplified.as_any().is::<MatrixMap>());
+
+        let pts = PointSet::from_rows([[1.0, 2.0]]);
+        let before = cmp.transform(&pts, true).unwrap();
+        let after = simplified.transform(&pts, true).unwrap();
+        assert!((before.point(0)[0] - after.point(0)[0]).abs() < 1e-12);
+        assert!((before.point(0)[1] - after.point(0)[1]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn simplify_matrixmap_then_inv_zoommap() {
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // MatrixMap(3*I) then ZoomMap(2,3)^-1: (1/3)*(3*I*x) = I*x → UnitMap
+        let m = array![[3.0_f64, 0.0], [0.0, 3.0]];
+        let a = dyn_map(MatrixMap::new(m).unwrap());
+        let mut z = ZoomMap::new(2, 3.0).unwrap();
+        z.invert();
+        let cmp = CmpMap::new(a, dyn_map(z), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
+        // MatrixMap(3I) simplifies to ZoomMap(3), then ZoomMap(3)*ZoomMap(1/3) = UnitMap
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 2);
+    }
+
+    #[test]
+    fn simplify_diagonal_matrix_series_reduces() {
+        use crate::coords::PointSet;
+        use crate::mappings::MatrixMap;
+        use ndarray::array;
+
+        // Two uniform diagonal matrices: diag(2,2) * diag(3,3) = diag(6,6) → ZoomMap(2,6)
+        let s2 = array![[2.0_f64, 0.0], [0.0, 2.0]];
+        let s3 = array![[3.0_f64, 0.0], [0.0, 3.0]];
+        let a = dyn_map(MatrixMap::new(s2).unwrap());
+        let b = dyn_map(MatrixMap::new(s3).unwrap());
+        let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
+        let simplified = simplify_mapping(&cmp).unwrap();
+
+        // Both MatrixMaps simplify to ZoomMaps, which then merge to ZoomMap(2,6).
+        assert!(simplified.as_any().is::<ZoomMap>());
+
+        let pts = PointSet::from_rows([[1.0, 2.0]]);
+        let out = simplified.transform(&pts, true).unwrap();
+        assert!((out.point(0)[0] - 6.0).abs() < 1e-12);
+        assert!((out.point(0)[1] - 12.0).abs() < 1e-12);
+    }
+
+    // ------------------------------------------------------------ //
+    // Cross-type: dimension mismatch gives no merge                //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn simplify_cross_type_dimension_mismatch_no_merge() {
+        // ZoomMap(2-dim) + ShiftMap(3-dim): can't merge due to dimension mismatch.
+        // These can't form a valid CmpMap in series either, but try_merge
+        // should return None regardless.
+        let z = ZoomMap::new(2, 3.0).unwrap();
+        let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+        let result = z.try_merge(&s, true, false, false);
+        assert!(result.is_none());
     }
 }

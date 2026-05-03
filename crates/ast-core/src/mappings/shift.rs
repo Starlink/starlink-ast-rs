@@ -9,6 +9,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
+use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
 
 /// A mapping that adds a constant shift vector to all input coordinates.
@@ -27,6 +28,11 @@ impl ShiftMap {
             shift: shift.into(),
             inverted: false,
         }
+    }
+
+    /// The shift offsets.
+    pub(crate) fn shifts(&self) -> &[f64] {
+        &self.shift
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -123,29 +129,45 @@ impl Mapping for ShiftMap {
         if !series {
             return None;
         }
-        let other_shift = other.as_any().downcast_ref::<ShiftMap>()?;
-        if self.shift.len() != other_shift.shift.len() {
+
+        // Fast path: ShiftMap + ShiftMap → ShiftMap (preserves type).
+        if let Some(other_shift) = other.as_any().downcast_ref::<ShiftMap>() {
+            if self.shift.len() != other_shift.shift.len() {
+                return None;
+            }
+            let mut combined = Vec::with_capacity(self.shift.len());
+            for i in 0..self.shift.len() {
+                let s1 = if self_inv {
+                    -self.shift[i]
+                } else {
+                    self.shift[i]
+                };
+                let s2 = if other_inv {
+                    -other_shift.shift[i]
+                } else {
+                    other_shift.shift[i]
+                };
+                combined.push(s1 + s2);
+            }
+            if combined.iter().all(|&s| ast_equal(s, 0.0)) {
+                return Some(Box::new(UnitMap::new(self.shift.len())));
+            }
+            return Some(Box::new(ShiftMap::new(combined)));
+        }
+
+        // Cross-type: ShiftMap + {WinMap, ZoomMap} → WinMap or UnitMap.
+        let n = self.shift.len();
+        let s1: Vec<f64> = self
+            .shift
+            .iter()
+            .map(|&s| if self_inv { -s } else { s })
+            .collect();
+        let c1 = vec![1.0; n];
+        let (s2, c2) = extract_linear_params(other, other_inv)?;
+        if n != s2.len() {
             return None;
         }
-        let mut combined = Vec::with_capacity(self.shift.len());
-        for i in 0..self.shift.len() {
-            let s1 = if self_inv {
-                -self.shift[i]
-            } else {
-                self.shift[i]
-            };
-            let s2 = if other_inv {
-                -other_shift.shift[i]
-            } else {
-                other_shift.shift[i]
-            };
-            combined.push(s1 + s2);
-        }
-        if combined.iter().all(|&s| ast_equal(s, 0.0)) {
-            Some(Box::new(UnitMap::new(self.shift.len())))
-        } else {
-            Some(Box::new(ShiftMap::new(combined)))
-        }
+        compose_linear(&s1, &c1, &s2, &c2)
     }
 }
 

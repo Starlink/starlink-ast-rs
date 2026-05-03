@@ -7,7 +7,9 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
+use super::shift::ShiftMap;
 use super::unit::UnitMap;
+use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 
 /// A mapping that applies a per-axis linear transformation:
@@ -219,34 +221,18 @@ impl Mapping for WinMap {
         if !series {
             return None;
         }
-        let other_wm = other.as_any().downcast_ref::<WinMap>()?;
-        if self.shifts.len() != other_wm.shifts.len() {
+
+        // Extract effective parameters for self (applied first).
+        let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self_inv);
+        // Extract effective parameters for other (applied second).
+        // Accepts WinMap, ZoomMap, or ShiftMap.
+        let (s2, c2) = extract_linear_params(other, other_inv)?;
+
+        if s1.len() != s2.len() {
             return None;
         }
 
-        // Get effective parameters for self (first) and other (second).
-        let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self_inv);
-        let (s2, c2) = winmap_effective_params(&other_wm.shifts, &other_wm.scales, other_inv);
-
-        // Compose: out = s2 + c2 * (s1 + c1 * x) = (c2*s1 + s2) + (c2*c1) * x
-        let n = s1.len();
-        let mut new_shifts = vec![0.0; n];
-        let mut new_scales = vec![0.0; n];
-        for i in 0..n {
-            new_scales[i] = c2[i] * c1[i];
-            new_shifts[i] = c2[i] * s1[i] + s2[i];
-        }
-
-        // Check if result is identity.
-        if new_scales.iter().all(|&s| ast_equal(s, 1.0))
-            && new_shifts.iter().all(|&s| ast_equal(s, 0.0))
-        {
-            return Some(Box::new(UnitMap::new(n)));
-        }
-
-        WinMap::new(&new_shifts, &new_scales)
-            .ok()
-            .map(|m| Box::new(m) as DynMapping)
+        compose_linear(&s1, &c1, &s2, &c2)
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -292,6 +278,63 @@ fn winmap_effective_params(shifts: &[f64], scales: &[f64], inv: bool) -> (Vec<f6
         }
         (inv_shifts, inv_scales)
     }
+}
+
+/// Extract effective `(shifts, scales)` from a linear mapping,
+/// accounting for inversion.
+///
+/// Returns `None` if the mapping is not one of `WinMap`, `ZoomMap`, or
+/// `ShiftMap`.
+pub(crate) fn extract_linear_params(
+    mapping: &dyn Mapping,
+    inv: bool,
+) -> Option<(Vec<f64>, Vec<f64>)> {
+    if let Some(wm) = mapping.as_any().downcast_ref::<WinMap>() {
+        return Some(winmap_effective_params(&wm.shifts, &wm.scales, inv));
+    }
+    if let Some(zm) = mapping.as_any().downcast_ref::<ZoomMap>() {
+        let n = zm.nin();
+        let f = if inv { 1.0 / zm.factor() } else { zm.factor() };
+        return Some((vec![0.0; n], vec![f; n]));
+    }
+    if let Some(sm) = mapping.as_any().downcast_ref::<ShiftMap>() {
+        let shifts: Vec<f64> = sm
+            .shifts()
+            .iter()
+            .map(|&s| if inv { -s } else { s })
+            .collect();
+        return Some((shifts, vec![1.0; sm.nin()]));
+    }
+    None
+}
+
+/// Compose two linear mappings given their per-axis `(shifts, scales)`.
+///
+/// The composition is: `out = s2 + c2 * (s1 + c1 * x)`.
+/// This is the result of applying mapping 1 (`s1`, `c1`) first, then
+/// mapping 2 (`s2`, `c2`) second.
+///
+/// Returns a `UnitMap` if the result is the identity, otherwise a
+/// `WinMap`.
+pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> Option<DynMapping> {
+    let n = s1.len();
+    let mut new_shifts = vec![0.0; n];
+    let mut new_scales = vec![0.0; n];
+    for i in 0..n {
+        new_scales[i] = c2[i] * c1[i];
+        new_shifts[i] = c2[i] * s1[i] + s2[i];
+    }
+
+    // Check if the result is the identity.
+    if new_scales.iter().all(|&s| ast_equal(s, 1.0))
+        && new_shifts.iter().all(|&s| ast_equal(s, 0.0))
+    {
+        return Some(Box::new(UnitMap::new(n)));
+    }
+
+    WinMap::new(&new_shifts, &new_scales)
+        .ok()
+        .map(|m| Box::new(m) as DynMapping)
 }
 
 impl Serializable for WinMap {
