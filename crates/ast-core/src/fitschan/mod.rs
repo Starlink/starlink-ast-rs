@@ -10,9 +10,15 @@ pub mod card_list;
 pub(crate) mod fits_store;
 pub mod format;
 #[allow(dead_code)]
+pub(crate) mod wcs_celestial;
+#[allow(dead_code)]
 pub(crate) mod wcs_keywords;
 #[allow(dead_code)]
 pub(crate) mod wcs_matrix;
+#[allow(dead_code)]
+pub(crate) mod wcs_read;
+#[allow(dead_code)]
+pub(crate) mod wcs_spectral;
 
 use card::{FitsCard, FitsValue};
 use card_list::CardList;
@@ -467,6 +473,12 @@ impl Channel for FitsChan {
                 // Parse using the native reader.
                 let node = serial::native_read::parse_native(&text)?;
                 let obj = serial::any_object_from_node(&node)?;
+                Ok(Some(obj))
+            }
+            Encoding::FitsWcs | Encoding::FitsPc => {
+                // Extract WCS keywords into a FitsStore and decode.
+                let store = wcs_keywords::extract_wcs_keywords(&self.cards)?;
+                let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
             _ => Err(AstError::new(
