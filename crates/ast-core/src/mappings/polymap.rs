@@ -46,6 +46,42 @@ pub struct PolyMap {
     /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
     /// Only populated when `iter_inverse` is true and `nin == nout`.
     jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
+    // -- Pre-computed evaluation indices for power-table evaluation --
+    /// Indices into `forward` grouped by output axis (0-based).
+    /// `forward_by_output[i]` contains indices of terms contributing to output axis `i+1`.
+    forward_by_output: Vec<Vec<usize>>,
+    /// Maximum power per input axis across all forward terms.
+    forward_max_pows: Vec<usize>,
+    /// Indices into `inverse` terms grouped by output axis, if inverse exists.
+    inverse_by_output: Option<Vec<Vec<usize>>>,
+    /// Maximum power per input axis across all inverse terms.
+    inverse_max_pows: Vec<usize>,
+}
+
+// ---------------------------------------------------------------------------
+// Pre-computation helpers for power-table evaluation
+// ---------------------------------------------------------------------------
+
+/// Compute the maximum power per input axis across a set of terms.
+fn compute_max_powers(terms: &[PolyTerm], nin: usize) -> Vec<usize> {
+    let mut max_pows = vec![0usize; nin];
+    for term in terms {
+        for (i, &p) in term.powers.iter().enumerate().take(nin) {
+            if p > max_pows[i] {
+                max_pows[i] = p;
+            }
+        }
+    }
+    max_pows
+}
+
+/// Group term indices by their output axis (0-based output index).
+fn compute_terms_by_output(terms: &[PolyTerm], nout: usize) -> Vec<Vec<usize>> {
+    let mut by_output = vec![Vec::new(); nout];
+    for (idx, term) in terms.iter().enumerate() {
+        by_output[term.out_axis - 1].push(idx);
+    }
+    by_output
 }
 
 impl PolyMap {
@@ -136,16 +172,32 @@ impl PolyMap {
             None
         };
 
+        let fwd_vec = forward.to_vec();
+        let forward_by_output = compute_terms_by_output(&fwd_vec, nout);
+        let forward_max_pows = compute_max_powers(&fwd_vec, nin);
+        let (inverse_by_output, inverse_max_pows) = if let Some(ref inv_terms) = inv {
+            (
+                Some(compute_terms_by_output(inv_terms, nin)),
+                compute_max_powers(inv_terms, nout),
+            )
+        } else {
+            (None, Vec::new())
+        };
+
         Ok(Self {
             nin,
             nout,
-            forward: forward.to_vec(),
+            forward: fwd_vec,
             inverse: inv,
             iter_inverse: false,
             niter_inverse: 4,
             tol_inverse: 1e-6,
             inverted: false,
             jacobian_terms: None,
+            forward_by_output,
+            forward_max_pows,
+            inverse_by_output,
+            inverse_max_pows,
         })
     }
 
@@ -373,10 +425,12 @@ impl PolyMap {
     /// positions that produce them under the forward polynomial, writing
     /// results into `result`.
     ///
-    /// Optimizations over a naive per-point implementation:
-    /// - Cached Jacobian polynomial terms (computed once, reused across calls)
+    /// Optimizations:
+    /// - Pre-computed Jacobian polynomial terms (computed once, reused across calls)
     /// - Linear initial guess (faster convergence, fewer iterations needed)
-    /// - Bulk polynomial evaluation (better cache locality for coefficients)
+    /// - Combined forward+Jacobian evaluation: a single power table is computed
+    ///   once per point and reused to evaluate both the forward polynomial and
+    ///   all Jacobian columns, avoiding redundant power computation.
     fn newton_raphson_inverse(&self, target: &PointSet, result: &mut PointSet) -> AstResult<()> {
         let npoint = target.npoint();
         let ncoord = self.nin; // nin == nout for iterative inverse
@@ -401,13 +455,31 @@ impl PolyMap {
         // Better initial guess via linear truncation of forward polynomial.
         self.compute_linear_guess(target, result, &converged);
 
-        // Work buffers for bulk evaluation.
-        let mut fwd_work = PointSet::zeros(npoint, ncoord);
-        let mut jac_work: Vec<PointSet> = (0..ncoord)
-            .map(|_| PointSet::zeros(npoint, ncoord))
+        // Pre-compute max powers across forward AND all Jacobian terms
+        // so that the shared power table covers everything.
+        let mut nr_max_pows = self.forward_max_pows.clone();
+        for jcol in jac_terms {
+            for term in jcol {
+                for (i, &p) in term.powers.iter().enumerate().take(ncoord) {
+                    if p > nr_max_pows[i] {
+                        nr_max_pows[i] = p;
+                    }
+                }
+            }
+        }
+
+        // Pre-group Jacobian terms by output axis for each column.
+        let jac_by_output: Vec<Vec<Vec<usize>>> = jac_terms
+            .iter()
+            .map(|col_terms| compute_terms_by_output(col_terms, ncoord))
             .collect();
 
-        // Scratch space for per-point Jacobian matrix and RHS.
+        // Allocate shared power table (reused for all points across all iterations).
+        let mut power_table: Vec<Vec<f64>> =
+            nr_max_pows.iter().map(|&m| vec![0.0; m + 1]).collect();
+
+        // Scratch space for forward output, Jacobian matrix, and RHS.
+        let mut fwd_out = vec![0.0; ncoord];
         let mut jac_matrix = vec![0.0; ncoord * ncoord];
         let mut dy = vec![0.0; ncoord];
 
@@ -416,50 +488,43 @@ impl PolyMap {
                 break;
             }
 
-            // Bulk forward evaluation: evaluate polynomial at all current
-            // guesses simultaneously.
-            eval_poly_into(
-                &self.forward,
-                self.nin,
-                self.nout,
-                result,
-                &mut fwd_work,
-                &converged,
-            );
-
-            // Bulk Jacobian evaluation: one call per input axis column.
-            for j in 0..ncoord {
-                eval_poly_into(
-                    &jac_terms[j],
-                    self.nin,
-                    self.nout,
-                    result,
-                    &mut jac_work[j],
-                    &converged,
-                );
-            }
-
-            // Per-point: compute residual, build J, solve, update.
             #[allow(clippy::needless_range_loop)]
             for ip in 0..npoint {
                 if converged[ip] {
                     continue;
                 }
 
-                // Compute residual: dy = target - forward(guess).
-                let fwd_pt = fwd_work.point(ip);
-                let tgt_pt = target.point(ip);
-                for ic in 0..ncoord {
-                    dy[ic] = tgt_pt[ic] - fwd_pt[ic];
+                let inp = result.point(ip);
+
+                // Fill power table once for this point.
+                fill_power_table(inp, &nr_max_pows, &mut power_table);
+
+                // Evaluate forward polynomial using the power table.
+                for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
+                    let mut sum = 0.0;
+                    for &idx in term_indices {
+                        sum += eval_term_with_table(&self.forward[idx], &power_table);
+                    }
+                    fwd_out[out_idx] = sum;
                 }
 
-                // Build Jacobian matrix from pre-evaluated columns.
+                // Evaluate Jacobian columns using the same power table.
                 // J[row][col] = d(F_row)/d(x_col)
                 for col in 0..ncoord {
-                    let jcol = jac_work[col].point(ip);
-                    for row in 0..ncoord {
-                        jac_matrix[row * ncoord + col] = jcol[row];
+                    let col_terms = &jac_terms[col];
+                    for (row, term_indices) in jac_by_output[col].iter().enumerate() {
+                        let mut sum = 0.0;
+                        for &idx in term_indices {
+                            sum += eval_term_with_table(&col_terms[idx], &power_table);
+                        }
+                        jac_matrix[row * ncoord + col] = sum;
                     }
+                }
+
+                // Compute residual: dy = target - forward(guess).
+                let tgt_pt = target.point(ip);
+                for ic in 0..ncoord {
+                    dy[ic] = tgt_pt[ic] - fwd_out[ic];
                 }
 
                 // Solve J * dx = dy.
@@ -530,10 +595,43 @@ impl PolyMap {
 }
 
 // ---------------------------------------------------------------------------
-// Polynomial evaluation
+// Polynomial evaluation (power-table approach)
 // ---------------------------------------------------------------------------
 
-/// Evaluate polynomial terms for a single input point.
+/// Fill the power table for one point's input values.
+///
+/// `power_table[axis][p] = input[axis]^p`, computed incrementally:
+/// `table[0] = 1.0, table[1] = x, table[p] = table[p-1] * x`.
+///
+/// The power table must be pre-allocated with `power_table[axis].len() >= max_pows[axis] + 1`.
+#[inline]
+fn fill_power_table(input: &[f64], max_pows: &[usize], power_table: &mut [Vec<f64>]) {
+    for (axis, table) in power_table.iter_mut().enumerate() {
+        let x = input[axis];
+        table[0] = 1.0;
+        let mp = max_pows[axis];
+        if mp >= 1 {
+            table[1] = x;
+            for p in 2..=mp {
+                table[p] = table[p - 1] * x;
+            }
+        }
+    }
+}
+
+/// Evaluate a single term using the pre-filled power table.
+#[inline]
+fn eval_term_with_table(term: &PolyTerm, power_table: &[Vec<f64>]) -> f64 {
+    let mut prod = term.coeff;
+    for (axis, &pow) in term.powers.iter().enumerate() {
+        if pow > 0 {
+            prod *= power_table[axis][pow];
+        }
+    }
+    prod
+}
+
+/// Evaluate polynomial terms for a single input point using power-table lookup.
 ///
 /// `terms` are the polynomial terms, `n_in` is the number of input axes,
 /// `n_out` is the number of output axes, and `input` is the input point
@@ -543,26 +641,29 @@ impl PolyMap {
 fn eval_poly(terms: &[PolyTerm], n_in: usize, n_out: usize, input: &[f64]) -> Vec<f64> {
     debug_assert_eq!(input.len(), n_in);
 
+    // Compute max powers on the fly for standalone calls.
+    let max_pows = compute_max_powers(terms, n_in);
+    let mut power_table: Vec<Vec<f64>> = max_pows.iter().map(|&m| vec![0.0; m + 1]).collect();
+    fill_power_table(input, &max_pows, &mut power_table);
+
     let mut output = vec![0.0; n_out];
     for term in terms {
-        debug_assert_eq!(term.powers.len(), n_in);
-        let mut val = term.coeff;
-        for (&inp, &pow) in input.iter().zip(term.powers.iter()) {
-            val *= inp.powi(pow as i32);
-        }
-        output[term.out_axis - 1] += val;
+        output[term.out_axis - 1] += eval_term_with_table(term, &power_table);
     }
     output
 }
 
-/// Evaluate polynomial terms for ALL points in a PointSet at once.
+/// Evaluate polynomial terms for ALL points in a PointSet using power-table
+/// lookup.
 ///
-/// This is more cache-friendly than calling `eval_poly` per point because
-/// the coefficient/power data is traversed once per term across all points.
-/// Results are written directly into the output PointSet (which must already
-/// be allocated with the correct dimensions).
+/// The power table is allocated once and reused for every point. For each
+/// point, powers are computed incrementally (`x^p = x^(p-1) * x`), then
+/// all terms are evaluated via table lookup — avoiding redundant `powi()`
+/// calls across terms that share the same input axis powers.
 ///
-/// Points containing BAD values are skipped (output left as-is for those rows).
+/// Points whose corresponding `skip` entry is true are left unchanged in
+/// the output.
+#[allow(dead_code)]
 fn eval_poly_into(
     terms: &[PolyTerm],
     n_in: usize,
@@ -577,34 +678,28 @@ fn eval_poly_into(
     debug_assert_eq!(output.ncoord(), n_out);
     debug_assert_eq!(skip.len(), npoint);
 
-    // Zero output for non-skipped points.
+    // Pre-compute max powers and term grouping.
+    let max_pows = compute_max_powers(terms, n_in);
+    let terms_by_output = compute_terms_by_output(terms, n_out);
+
+    // Allocate power table once, reuse for each point.
+    let mut power_table: Vec<Vec<f64>> = max_pows.iter().map(|&m| vec![0.0; m + 1]).collect();
+
     #[allow(clippy::needless_range_loop)]
     for ip in 0..npoint {
-        if !skip[ip] {
-            output.point_mut(ip).fill(0.0);
+        if skip[ip] {
+            continue;
         }
-    }
+        let inp = input.point(ip);
+        fill_power_table(inp, &max_pows, &mut power_table);
 
-    // Accumulate each term across all points (better cache locality for
-    // coefficient data — each term's powers are loaded once and applied
-    // to all points consecutively).
-    for term in terms {
-        debug_assert_eq!(term.powers.len(), n_in);
-        let out_idx = term.out_axis - 1;
-        let coeff = term.coeff;
-        let powers = &term.powers;
-
-        #[allow(clippy::needless_range_loop)]
-        for ip in 0..npoint {
-            if skip[ip] {
-                continue;
+        let outp = output.point_mut(ip);
+        for (out_idx, term_indices) in terms_by_output.iter().enumerate() {
+            let mut sum = 0.0;
+            for &idx in term_indices {
+                sum += eval_term_with_table(&terms[idx], &power_table);
             }
-            let inp = input.point(ip);
-            let mut val = coeff;
-            for (j, &pow) in powers.iter().enumerate() {
-                val *= inp[j].powi(pow as i32);
-            }
-            output.point_mut(ip)[out_idx] += val;
+            outp[out_idx] = sum;
         }
     }
 }
@@ -848,15 +943,26 @@ impl Mapping for PolyMap {
         let fwd = self.effective_forward(forward);
 
         if fwd {
-            // Forward transform using forward terms.
+            // Forward transform using pre-computed power-table indices.
+            let mut power_table: Vec<Vec<f64>> = self
+                .forward_max_pows
+                .iter()
+                .map(|&m| vec![0.0; m + 1])
+                .collect();
             for i in 0..pts.npoint() {
                 let inp = pts.point(i);
                 let outp = out.point_mut(i);
                 if point_has_bad(inp) {
                     outp.fill(BAD_VALUE);
                 } else {
-                    let result = eval_poly(&self.forward, self.nin, self.nout, inp);
-                    outp.copy_from_slice(&result);
+                    fill_power_table(inp, &self.forward_max_pows, &mut power_table);
+                    for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
+                        let mut sum = 0.0;
+                        for &idx in term_indices {
+                            sum += eval_term_with_table(&self.forward[idx], &power_table);
+                        }
+                        outp[out_idx] = sum;
+                    }
                 }
             }
         } else {
@@ -865,14 +971,26 @@ impl Mapping for PolyMap {
                 // Explicit inverse terms: the inverse maps from nout-space
                 // to nin-space. Input powers have length nout, output goes
                 // to nin axes.
+                let inv_by_output = self.inverse_by_output.as_ref().unwrap();
+                let mut power_table: Vec<Vec<f64>> = self
+                    .inverse_max_pows
+                    .iter()
+                    .map(|&m| vec![0.0; m + 1])
+                    .collect();
                 for i in 0..pts.npoint() {
                     let inp = pts.point(i);
                     let outp = out.point_mut(i);
                     if point_has_bad(inp) {
                         outp.fill(BAD_VALUE);
                     } else {
-                        let result = eval_poly(inv_terms, self.nout, self.nin, inp);
-                        outp.copy_from_slice(&result);
+                        fill_power_table(inp, &self.inverse_max_pows, &mut power_table);
+                        for (out_idx, term_indices) in inv_by_output.iter().enumerate() {
+                            let mut sum = 0.0;
+                            for &idx in term_indices {
+                                sum += eval_term_with_table(&inv_terms[idx], &power_table);
+                            }
+                            outp[out_idx] = sum;
+                        }
                     }
                 }
             } else if self.iter_inverse {
@@ -1265,6 +1383,16 @@ impl Serializable for PolyMap {
         } else {
             None
         };
+        let forward_by_output = compute_terms_by_output(&forward, nout);
+        let forward_max_pows = compute_max_powers(&forward, nin);
+        let (inverse_by_output, inverse_max_pows) = if let Some(ref inv) = inverse {
+            (
+                Some(compute_terms_by_output(inv, nin)),
+                compute_max_powers(inv, nout),
+            )
+        } else {
+            (None, Vec::new())
+        };
         let mut m = PolyMap {
             nin,
             nout,
@@ -1275,6 +1403,10 @@ impl Serializable for PolyMap {
             tol_inverse: tol_inv,
             inverted: false,
             jacobian_terms,
+            forward_by_output,
+            forward_max_pows,
+            inverse_by_output,
+            inverse_max_pows,
         };
         if inverted {
             m.invert();
