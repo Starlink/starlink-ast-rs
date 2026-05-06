@@ -6,7 +6,13 @@
 
 pub mod card;
 pub mod card_list;
+#[allow(dead_code)]
+pub(crate) mod fits_store;
 pub mod format;
+#[allow(dead_code)]
+pub(crate) mod wcs_keywords;
+#[allow(dead_code)]
+pub(crate) mod wcs_matrix;
 
 use card::{FitsCard, FitsValue};
 use card_list::CardList;
