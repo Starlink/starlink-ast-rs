@@ -2,17 +2,21 @@
 
 mod basic;
 mod cmpframe;
+mod fluxframe;
 mod frameset;
 pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
 mod skyframe;
+mod specfluxframe;
 mod specframe;
 mod timeframe;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
+pub use fluxframe::{FluxFrame, FluxSystem};
 pub use frameset::{FrameRef, FrameSet};
 pub use sky_convert::{SkyRefIs, SkySystem};
 pub use skyframe::SkyFrame;
+pub use specfluxframe::SpecFluxFrame;
 pub use specframe::{SpecFrame, SpecSystem, StdOfRest};
 pub use timeframe::{TimeFrame, TimeScale, TimeSystem};
 
