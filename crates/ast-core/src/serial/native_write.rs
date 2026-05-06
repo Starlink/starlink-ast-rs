@@ -105,14 +105,54 @@ fn format_c_exponent(mantissa: &str, exp: i32) -> String {
 // Native text renderer
 // ---------------------------------------------------------------------------
 
+/// Options controlling Native format output.
+#[derive(Debug, Clone)]
+pub(crate) struct RenderOptions {
+    /// Include comment text after `#` (default: true).
+    pub comment: bool,
+    /// Verbosity: -1=minimal (skip Unset), 0=normal, 1=verbose.
+    pub full: i8,
+    /// Indentation increment per nesting level (default: 3).
+    pub indent: usize,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            comment: true,
+            full: 0,
+            indent: 3,
+        }
+    }
+}
+
 /// Render a [`Node`] tree as AST's plain-text Native format.
 ///
 /// The output faithfully reproduces the whitespace, indentation, and
 /// formatting conventions of the C library's `astWrite` so that the text is
 /// byte-exact with C output when given an identical Node tree.
+///
+/// This is a convenience wrapper around [`render_native_with_options`] with
+/// default options (comments enabled, full=0, indent=3).
+#[cfg(test)]
 pub(crate) fn render_native(node: &Node) -> AstResult<String> {
+    render_native_with_options(node, &RenderOptions::default())
+}
+
+/// Render a [`Node`] tree as AST's plain-text Native format, respecting
+/// the given [`RenderOptions`].
+///
+/// Behaviour with non-default options:
+/// - `comment = false`: don't emit `\t# comment_text` — just key=value.
+/// - `full = -1`: skip items whose value is `Unset(...)` (commented defaults).
+/// - `full = 1`: same as 0 for now (include everything).
+/// - `indent`: controls indentation increment per nesting level.
+pub(crate) fn render_native_with_options(
+    node: &Node,
+    options: &RenderOptions,
+) -> AstResult<String> {
     let mut buf = String::new();
-    write_object(&mut buf, node, 0);
+    write_object_with_options(&mut buf, node, 0, options);
     Ok(buf)
 }
 
@@ -121,20 +161,33 @@ pub(crate) fn render_native(node: &Node) -> AstResult<String> {
 /// `base_indent` is the number of spaces before the `" "` that prefixes
 /// `Begin`, `End`, and `IsA` lines.  Attribute lines use
 /// `base_indent + 4` leading spaces.  Nested objects recurse with
-/// `base_indent + 6`.
-fn write_object(buf: &mut String, node: &Node, base_indent: usize) {
-    // Precompute indent strings.
+/// `base_indent + 2 * indent`.
+fn write_object_with_options(
+    buf: &mut String,
+    node: &Node,
+    base_indent: usize,
+    options: &RenderOptions,
+) {
+    // The C library uses indent=3 with Begin/End at base+1, attributes at
+    // base+4, and nested objects at base+6.  The spacing arithmetic is:
+    //   begin_prefix = base + 1 space (the " " before Begin)
+    //   attr_prefix  = base + indent + 1  (=4 at default indent=3)
+    //   nested       = base + 2*indent    (=6 at default indent=3)
+    //   unset_prefix = "#" + (base + indent) spaces (= "#   " at indent=3)
+    let indent = options.indent;
     let begin_indent = format!("{} ", " ".repeat(base_indent));
-    let attr_indent = " ".repeat(base_indent + 4);
-    let unset_prefix = format!("#{}", " ".repeat(base_indent + 3));
+    let attr_indent = " ".repeat(base_indent + indent + 1);
+    let unset_prefix = format!("#{}", " ".repeat(base_indent + indent));
 
     // Begin line.
     buf.push_str(&begin_indent);
     buf.push_str("Begin ");
     buf.push_str(&node.class);
-    if let Some(ref comment) = node.class_comment {
-        buf.push_str(" \t# ");
-        buf.push_str(comment);
+    if options.comment {
+        if let Some(ref comment) = node.class_comment {
+            buf.push_str(" \t# ");
+            buf.push_str(comment);
+        }
     }
     buf.push('\n');
 
@@ -146,9 +199,11 @@ fn write_object(buf: &mut String, node: &Node, base_indent: usize) {
                 buf.push_str(&begin_indent);
                 buf.push_str("IsA ");
                 buf.push_str(class);
-                if let Some(ref comment) = item.comment {
-                    buf.push_str(" \t# ");
-                    buf.push_str(comment);
+                if options.comment {
+                    if let Some(ref comment) = item.comment {
+                        buf.push_str(" \t# ");
+                        buf.push_str(comment);
+                    }
                 }
                 buf.push('\n');
             }
@@ -158,13 +213,19 @@ fn write_object(buf: &mut String, node: &Node, base_indent: usize) {
         match &item.value {
             // Unset (commented-out default).
             NodeValue::Unset(inner) => {
+                // full = -1: skip Unset items entirely.
+                if options.full < 0 {
+                    continue;
+                }
                 buf.push_str(&unset_prefix);
                 buf.push_str(&item.key);
                 buf.push_str(" = ");
                 write_scalar_value(buf, inner);
-                if let Some(ref comment) = item.comment {
-                    buf.push_str(" \t# ");
-                    buf.push_str(comment);
+                if options.comment {
+                    if let Some(ref comment) = item.comment {
+                        buf.push_str(" \t# ");
+                        buf.push_str(comment);
+                    }
                 }
                 buf.push('\n');
             }
@@ -174,12 +235,14 @@ fn write_object(buf: &mut String, node: &Node, base_indent: usize) {
                 buf.push_str(&attr_indent);
                 buf.push_str(&item.key);
                 buf.push_str(" = ");
-                if let Some(ref comment) = item.comment {
-                    buf.push_str("\t# ");
-                    buf.push_str(comment);
+                if options.comment {
+                    if let Some(ref comment) = item.comment {
+                        buf.push_str("\t# ");
+                        buf.push_str(comment);
+                    }
                 }
                 buf.push('\n');
-                write_object(buf, child, base_indent + 6);
+                write_object_with_options(buf, child, base_indent + 2 * indent, options);
             }
 
             // Scalar attribute.
@@ -188,9 +251,11 @@ fn write_object(buf: &mut String, node: &Node, base_indent: usize) {
                 buf.push_str(&item.key);
                 buf.push_str(" = ");
                 write_scalar_value(buf, &item.value);
-                if let Some(ref comment) = item.comment {
-                    buf.push_str(" \t# ");
-                    buf.push_str(comment);
+                if options.comment {
+                    if let Some(ref comment) = item.comment {
+                        buf.push_str(" \t# ");
+                        buf.push_str(comment);
+                    }
                 }
                 buf.push('\n');
             }

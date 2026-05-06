@@ -493,9 +493,14 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
 ///
 /// The returned string is in the AST Native serialisation format, compatible
 /// with the C library's `astWrite` / `astRead` channel functions.
+///
+/// This delegates to [`NativeChannel`](crate::channel::NativeChannel) with
+/// default configuration (comments enabled, full=0).
 pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
-    let node = any_object_to_node(obj)?;
-    native_write::render_native(&node)
+    use crate::channel::{Channel, NativeChannel};
+    let mut ch = NativeChannel::with_string_sink();
+    ch.write(obj)?;
+    Ok(ch.into_string())
 }
 
 /// Deserialise an AST object from Native text format.
@@ -504,7 +509,11 @@ pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
 /// [`AnyObject`]. Use [`AnyObject::as_mapping`], [`AnyObject::as_frame`],
 /// [`AnyObject::into_mapping`], or [`AnyObject::into_frame`] to extract
 /// the concrete trait object.
+///
+/// This delegates to [`NativeChannel`](crate::channel::NativeChannel).
 pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
-    let node = native_read::parse_native(s)?;
-    any_object_from_node(&node)
+    use crate::channel::{Channel, NativeChannel};
+    let mut ch = NativeChannel::from_string(s);
+    ch.read()?
+        .ok_or_else(|| AstError::new(ErrorCode::Rderr, "no object found in input"))
 }

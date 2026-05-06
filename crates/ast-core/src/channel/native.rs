@@ -162,7 +162,12 @@ impl Channel for NativeChannel {
     fn write(&mut self, obj: &AnyObject) -> AstResult<()> {
         self.warnings.clear();
         let node = serial::any_object_to_node(obj)?;
-        let text = serial::native_write::render_native(&node)?;
+        let options = serial::native_write::RenderOptions {
+            comment: self.config.comment,
+            full: self.config.full,
+            indent: self.config.indent,
+        };
+        let text = serial::native_write::render_native_with_options(&node, &options)?;
 
         if let Some(sink) = self.sink.as_mut() {
             for line in text.lines() {
