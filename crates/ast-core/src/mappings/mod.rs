@@ -28,6 +28,8 @@ mod slamap;
 pub use slamap::{SlaCvtType, SlaMap};
 mod specmap;
 pub use specmap::{SpecCvtType, SpecMap};
+mod timemap;
+pub use timemap::{TimeCvtType, TimeMap};
 mod sphmap;
 pub use sphmap::SphMap;
 mod cmpmap;
