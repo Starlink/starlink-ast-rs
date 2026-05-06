@@ -15,4 +15,5 @@ pub(crate) mod serial;
 pub(crate) mod wcslib;
 pub use channel::source_sink::{FileSink, FileSource, StringSink, StringSource};
 pub use channel::{Channel, ChannelConfig, NativeChannel, Sink, Source};
+pub use fitschan::{Encoding, FitsChan};
 pub use serial::{AnyObject, from_native_string, to_native_string};
