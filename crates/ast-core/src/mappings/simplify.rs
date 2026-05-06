@@ -858,10 +858,13 @@ mod tests {
     fn simplify_sphmap_inv_fwd_cancels() {
         use crate::mappings::SphMap;
 
-        // SphMap^-1 (inv 2->3) then SphMap (fwd 3->2) with default attrs.
+        // SphMap^-1 (inv 2->3) then SphMap (fwd 3->2) with unit_radius.
+        // C AST requires UnitRadius on both for cancellation.
         let mut inv = SphMap::new();
+        inv.set_unit_radius(true);
         inv.invert();
-        let fwd = SphMap::new();
+        let mut fwd = SphMap::new();
+        fwd.set_unit_radius(true);
         let cmp = CmpMap::new(dyn_map(inv), dyn_map(fwd), Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         assert!(result.as_any().is::<UnitMap>());

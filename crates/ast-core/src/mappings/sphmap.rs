@@ -204,9 +204,15 @@ impl Mapping for SphMap {
             return None;
         }
         let other_sph = other.as_any().downcast_ref::<SphMap>()?;
-        if self.unit_radius == other_sph.unit_radius
-            && ast_equal(self.polar_long, other_sph.polar_long)
-        {
+        // Both must have unit_radius = true for safe cancellation.
+        // This matches the C AST rule: without UnitRadius, the forward
+        // SphMap normalises the input vector's length, so a round-trip
+        // is not identity for non-unit inputs. The C library requires
+        // UnitRadius on both regardless of which direction comes first.
+        if !self.unit_radius || !other_sph.unit_radius {
+            return None;
+        }
+        if ast_equal(self.polar_long, other_sph.polar_long) {
             // Input dimension of the pair: SphMap forward is 3->2,
             // inverse is 2->3. self_inv tells us which direction
             // self (the first mapping) is applied in.

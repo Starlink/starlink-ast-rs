@@ -372,27 +372,70 @@ impl Serializable for MatrixMap {
             ));
         }
 
-        // Read forward matrix (default BAD_VALUE for missing elements).
-        let mut fwd_flat = Vec::with_capacity(nout * nin);
-        for i in 0..(nout * nin) {
-            fwd_flat.push(node.get_double(&format!("M{i}"), BAD_VALUE));
-        }
-        let matrix = Array2::from_shape_vec((nout, nin), fwd_flat).unwrap();
+        let form = node.get_string("Form", "Full");
 
-        // Read inverse matrix.
-        let mut has_inverse = false;
-        let mut inv_flat = Vec::with_capacity(nin * nout);
-        for i in 0..(nin * nout) {
-            let val = node.get_double(&format!("IM{i}"), BAD_VALUE);
-            inv_flat.push(val);
-            if !is_bad(val) {
-                has_inverse = true;
+        // Read forward matrix based on storage form.
+        let matrix = match form.as_str() {
+            "Unit" => {
+                // Identity matrix — no elements stored.
+                Array2::eye(nin)
             }
-        }
-        let inverse = if has_inverse {
-            Some(Array2::from_shape_vec((nin, nout), inv_flat).unwrap())
-        } else {
-            None
+            "Diagonal" => {
+                // Only min(nout, nin) diagonal elements stored.
+                let nel = nin.min(nout);
+                let mut mat = Array2::zeros((nout, nin));
+                for i in 0..nel {
+                    mat[[i, i]] = node.get_double(&format!("M{i}"), 0.0);
+                }
+                mat
+            }
+            _ => {
+                // "Full" — nout*nin elements in row-major order.
+                let mut fwd_flat = Vec::with_capacity(nout * nin);
+                for i in 0..(nout * nin) {
+                    fwd_flat.push(node.get_double(&format!("M{i}"), BAD_VALUE));
+                }
+                Array2::from_shape_vec((nout, nin), fwd_flat).unwrap()
+            }
+        };
+
+        // Read inverse matrix based on storage form.
+        let inverse = match form.as_str() {
+            "Unit" => {
+                // Identity inverse — same as forward.
+                Some(Array2::eye(nin))
+            }
+            "Diagonal" => {
+                // Check if any IM elements exist.
+                let nel = nin.min(nout);
+                let has_inv = (0..nel).any(|i| node.get(&format!("IM{i}")).is_some());
+                if has_inv {
+                    let mut mat = Array2::zeros((nin, nout));
+                    for i in 0..nel {
+                        mat[[i, i]] = node.get_double(&format!("IM{i}"), 0.0);
+                    }
+                    Some(mat)
+                } else {
+                    None
+                }
+            }
+            _ => {
+                // "Full" — nin*nout elements.
+                let mut has_inverse = false;
+                let mut inv_flat = Vec::with_capacity(nin * nout);
+                for i in 0..(nin * nout) {
+                    let val = node.get_double(&format!("IM{i}"), BAD_VALUE);
+                    inv_flat.push(val);
+                    if !is_bad(val) {
+                        has_inverse = true;
+                    }
+                }
+                if has_inverse {
+                    Some(Array2::from_shape_vec((nin, nout), inv_flat).unwrap())
+                } else {
+                    None
+                }
+            }
         };
 
         Ok(MatrixMap {
