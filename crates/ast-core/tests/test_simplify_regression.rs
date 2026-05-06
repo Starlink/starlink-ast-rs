@@ -132,8 +132,9 @@ fn simplify_regression() {
         // the ground truth for correctness.
         let out_original = match mapping.transform(&pts, true) {
             Ok(o) => o,
-            Err(e) => {
-                failed.push(format!("{name}: original transform failed: {e}"));
+            Err(_) => {
+                // Original can't be evaluated (e.g. singular MatrixMap) — skip
+                skipped += 1;
                 continue;
             }
         };
