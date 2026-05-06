@@ -270,7 +270,6 @@ fn build_world_frame(
 mod tests {
     use super::*;
     use crate::coords::PointSet;
-    use crate::frames::Frame;
     use crate::mappings::Mapping;
 
     /// Build a minimal 2D celestial FitsStore.
