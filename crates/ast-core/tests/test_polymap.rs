@@ -818,10 +818,10 @@ fn polymap_bulk_nr_inverse_bad_values() {
 
     // Mix of good and BAD points.
     let pts = PointSet::from_rows(vec![
-        vec![4.0, 6.0],        // good: should invert to (3, 4)
-        vec![BAD_VALUE, 6.0],  // BAD input
-        vec![5.0, 7.0],        // good: should invert to (4, 5)
-        vec![4.0, BAD_VALUE],  // BAD input
+        vec![4.0, 6.0],       // good: should invert to (3, 4)
+        vec![BAD_VALUE, 6.0], // BAD input
+        vec![5.0, 7.0],       // good: should invert to (4, 5)
+        vec![4.0, BAD_VALUE], // BAD input
     ]);
     let inv = m.transform(&pts, false).unwrap();
 

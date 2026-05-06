@@ -169,10 +169,8 @@ fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
     let mut swapped = false;
     let mut i = 0;
     while i + 1 < list.len() {
-        let is_win_wcs = list[i].0.as_any().is::<WinMap>()
-            && list[i + 1].0.as_any().is::<WcsMap>();
-        let is_wcs_win = list[i].0.as_any().is::<WcsMap>()
-            && list[i + 1].0.as_any().is::<WinMap>();
+        let is_win_wcs = list[i].0.as_any().is::<WinMap>() && list[i + 1].0.as_any().is::<WcsMap>();
+        let is_wcs_win = list[i].0.as_any().is::<WcsMap>() && list[i + 1].0.as_any().is::<WinMap>();
 
         if is_win_wcs || is_wcs_win {
             let (win_idx, wcs_idx) = if is_win_wcs { (i, i + 1) } else { (i + 1, i) };

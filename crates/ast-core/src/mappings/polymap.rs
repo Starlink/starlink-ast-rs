@@ -43,6 +43,9 @@ pub struct PolyMap {
     niter_inverse: usize,
     tol_inverse: f64,
     inverted: bool,
+    /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
+    /// Only populated when `iter_inverse` is true and `nin == nout`.
+    jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
 }
 
 impl PolyMap {
@@ -142,6 +145,7 @@ impl PolyMap {
             niter_inverse: 4,
             tol_inverse: 1e-6,
             inverted: false,
+            jacobian_terms: None,
         })
     }
 
@@ -153,6 +157,11 @@ impl PolyMap {
     /// Enable or disable the iterative inverse.
     pub fn set_iter_inverse(&mut self, v: bool) {
         self.iter_inverse = v;
+        if v && self.nin == self.nout && self.jacobian_terms.is_none() {
+            self.jacobian_terms = Some(self.compute_jacobian_terms());
+        } else if !v {
+            self.jacobian_terms = None;
+        }
     }
 
     /// Maximum number of iterations for the iterative inverse.
@@ -211,27 +220,151 @@ impl PolyMap {
     /// `d(forward_i)/d(x_j)` for all output axes `i`, suitable for
     /// evaluation via [`eval_poly`].
     fn compute_jacobian_terms(&self) -> Vec<Vec<PolyTerm>> {
-        let mut jac_terms = Vec::with_capacity(self.nin);
-        for j in 0..self.nin {
-            let mut col_terms = Vec::new();
-            for term in &self.forward {
-                let pj = term.powers[j];
-                if pj == 0 {
-                    // Derivative w.r.t. x_j is zero for this term.
+        compute_jacobian_terms_from(&self.forward, self.nin)
+    }
+
+    /// Return cached Jacobian terms, computing them if not yet cached.
+    fn get_jacobian_terms(&self) -> &[Vec<PolyTerm>] {
+        // In the optimized path, jacobian_terms should always be Some
+        // when newton_raphson_inverse is called (set during construction
+        // or set_iter_inverse). But fall back to compute if somehow missing.
+        // This cannot happen in normal usage since we set it eagerly.
+        debug_assert!(
+            self.jacobian_terms.is_some(),
+            "jacobian_terms should be pre-computed"
+        );
+        // Safety: we always populate this before calling NR inverse.
+        self.jacobian_terms.as_ref().unwrap()
+    }
+
+    /// Compute a linear approximation of the inverse and use it as the
+    /// initial guess for Newton-Raphson iteration.
+    ///
+    /// Extracts the constant and linear terms from the forward polynomial,
+    /// builds the linear system `y = offset + A*x`, inverts A, and applies
+    /// `x0 = A^{-1} * (target - offset)`.
+    ///
+    /// Falls back to copying target values (identity guess) if the linear
+    /// part is singular.
+    fn compute_linear_guess(&self, target: &PointSet, result: &mut PointSet, converged: &[bool]) {
+        let ncoord = self.nin;
+        let npoint = target.npoint();
+
+        // Extract constant terms (power sum = 0) and linear terms (exactly
+        // one power = 1, rest = 0) from the forward polynomial.
+        let mut offset = vec![0.0; ncoord];
+        let mut matrix = vec![0.0; ncoord * ncoord]; // row-major: matrix[out*ncoord + in]
+
+        for term in &self.forward {
+            let power_sum: usize = term.powers.iter().sum();
+            let out_idx = term.out_axis - 1;
+            if power_sum == 0 {
+                offset[out_idx] += term.coeff;
+            } else if power_sum == 1 {
+                for (j, &p) in term.powers.iter().enumerate() {
+                    if p == 1 {
+                        matrix[out_idx * ncoord + j] += term.coeff;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Try to invert the linear matrix.
+        let inv_matrix = if ncoord == 1 {
+            let a = matrix[0];
+            if a.abs() > 1e-30 {
+                Some(vec![1.0 / a])
+            } else {
+                None
+            }
+        } else if ncoord == 2 {
+            let a = matrix[0];
+            let b = matrix[1];
+            let c = matrix[2];
+            let d = matrix[3];
+            let det = a * d - b * c;
+            if det.abs() > 1e-30 {
+                let inv_det = 1.0 / det;
+                Some(vec![d * inv_det, -b * inv_det, -c * inv_det, a * inv_det])
+            } else {
+                None
+            }
+        } else {
+            // General NxN: attempt inversion via Gaussian elimination.
+            // Build augmented identity and solve.
+            let mut aug = vec![0.0; ncoord * ncoord];
+            aug.copy_from_slice(&matrix);
+            let mut inv = vec![0.0; ncoord * ncoord];
+            for i in 0..ncoord {
+                inv[i * ncoord + i] = 1.0;
+            }
+            // Forward elimination with partial pivoting.
+            let mut ok = true;
+            for col in 0..ncoord {
+                let mut max_val = aug[col * ncoord + col].abs();
+                let mut max_row = col;
+                for row in (col + 1)..ncoord {
+                    let v = aug[row * ncoord + col].abs();
+                    if v > max_val {
+                        max_val = v;
+                        max_row = row;
+                    }
+                }
+                if max_val < 1e-30 {
+                    ok = false;
+                    break;
+                }
+                if max_row != col {
+                    for k in 0..ncoord {
+                        aug.swap(col * ncoord + k, max_row * ncoord + k);
+                        inv.swap(col * ncoord + k, max_row * ncoord + k);
+                    }
+                }
+                let pivot = aug[col * ncoord + col];
+                for k in 0..ncoord {
+                    aug[col * ncoord + k] /= pivot;
+                    inv[col * ncoord + k] /= pivot;
+                }
+                for row in 0..ncoord {
+                    if row == col {
+                        continue;
+                    }
+                    let factor = aug[row * ncoord + col];
+                    for k in 0..ncoord {
+                        aug[row * ncoord + k] -= factor * aug[col * ncoord + k];
+                        inv[row * ncoord + k] -= factor * inv[col * ncoord + k];
+                    }
+                }
+            }
+            if ok { Some(inv) } else { None }
+        };
+
+        // Apply the linear inverse guess.
+        #[allow(clippy::needless_range_loop)]
+        if let Some(ref inv_mat) = inv_matrix {
+            for ip in 0..npoint {
+                if converged[ip] {
                     continue;
                 }
-                let new_coeff = term.coeff * (pj as f64);
-                let mut new_powers = term.powers.clone();
-                new_powers[j] = pj - 1;
-                col_terms.push(PolyTerm {
-                    coeff: new_coeff,
-                    powers: new_powers,
-                    out_axis: term.out_axis,
-                });
+                let t = target.point(ip);
+                let r = result.point_mut(ip);
+                for i in 0..ncoord {
+                    let mut sum = 0.0;
+                    for j in 0..ncoord {
+                        sum += inv_mat[i * ncoord + j] * (t[j] - offset[j]);
+                    }
+                    r[i] = sum;
+                }
             }
-            jac_terms.push(col_terms);
+        } else {
+            for ip in 0..npoint {
+                if converged[ip] {
+                    continue;
+                }
+                result.point_mut(ip).copy_from_slice(target.point(ip));
+            }
         }
-        jac_terms
     }
 
     /// Perform a bulk Newton-Raphson iterative inverse.
@@ -239,35 +372,40 @@ impl PolyMap {
     /// Given target output positions in `target`, compute the input
     /// positions that produce them under the forward polynomial, writing
     /// results into `result`.
+    ///
+    /// Optimizations over a naive per-point implementation:
+    /// - Cached Jacobian polynomial terms (computed once, reused across calls)
+    /// - Linear initial guess (faster convergence, fewer iterations needed)
+    /// - Bulk polynomial evaluation (better cache locality for coefficients)
     fn newton_raphson_inverse(&self, target: &PointSet, result: &mut PointSet) -> AstResult<()> {
         let npoint = target.npoint();
         let ncoord = self.nin; // nin == nout for iterative inverse
         debug_assert_eq!(self.nin, self.nout);
 
-        // Pre-compute Jacobian polynomial terms (one set per input axis).
-        let jac_terms = self.compute_jacobian_terms();
-
-        // Initial guess: use target positions.
-        for i in 0..npoint {
-            let t = target.point(i);
-            let r = result.point_mut(i);
-            if point_has_bad(t) {
-                r.fill(BAD_VALUE);
-            } else {
-                r.copy_from_slice(t);
-            }
-        }
+        // Use cached Jacobian terms.
+        let jac_terms = self.get_jacobian_terms();
 
         let max_iter = self.niter_inverse;
         let tol_sq = self.tol_inverse * self.tol_inverse;
         let mut converged = vec![false; npoint];
 
-        // Mark BAD points as already converged.
-        for (i, conv) in converged.iter_mut().enumerate() {
+        // Mark BAD points as already converged and fill their output with BAD.
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..npoint {
             if point_has_bad(target.point(i)) {
-                *conv = true;
+                converged[i] = true;
+                result.point_mut(i).fill(BAD_VALUE);
             }
         }
+
+        // Better initial guess via linear truncation of forward polynomial.
+        self.compute_linear_guess(target, result, &converged);
+
+        // Work buffers for bulk evaluation.
+        let mut fwd_work = PointSet::zeros(npoint, ncoord);
+        let mut jac_work: Vec<PointSet> = (0..ncoord)
+            .map(|_| PointSet::zeros(npoint, ncoord))
+            .collect();
 
         // Scratch space for per-point Jacobian matrix and RHS.
         let mut jac_matrix = vec![0.0; ncoord * ncoord];
@@ -278,30 +416,47 @@ impl PolyMap {
                 break;
             }
 
-            // Evaluate forward polynomial at all current guesses.
-            // Also evaluate Jacobian columns at all current guesses.
-            // We process point-by-point to avoid large temporary allocations.
+            // Bulk forward evaluation: evaluate polynomial at all current
+            // guesses simultaneously.
+            eval_poly_into(
+                &self.forward,
+                self.nin,
+                self.nout,
+                result,
+                &mut fwd_work,
+                &converged,
+            );
+
+            // Bulk Jacobian evaluation: one call per input axis column.
+            for j in 0..ncoord {
+                eval_poly_into(
+                    &jac_terms[j],
+                    self.nin,
+                    self.nout,
+                    result,
+                    &mut jac_work[j],
+                    &converged,
+                );
+            }
+
+            // Per-point: compute residual, build J, solve, update.
             #[allow(clippy::needless_range_loop)]
             for ip in 0..npoint {
                 if converged[ip] {
                     continue;
                 }
 
-                let guess = result.point(ip);
-
-                // Forward evaluation at guess.
-                let fwd = eval_poly(&self.forward, self.nin, self.nout, guess);
-
                 // Compute residual: dy = target - forward(guess).
+                let fwd_pt = fwd_work.point(ip);
+                let tgt_pt = target.point(ip);
                 for ic in 0..ncoord {
-                    dy[ic] = target.point(ip)[ic] - fwd[ic];
+                    dy[ic] = tgt_pt[ic] - fwd_pt[ic];
                 }
 
-                // Evaluate Jacobian columns and build the ncoord x ncoord matrix.
-                // J[row][col] = d(F_row)/d(x_col) = jac_terms[col] evaluated
-                // at guess, for output row.
+                // Build Jacobian matrix from pre-evaluated columns.
+                // J[row][col] = d(F_row)/d(x_col)
                 for col in 0..ncoord {
-                    let jcol = eval_poly(&jac_terms[col], self.nin, self.nout, guess);
+                    let jcol = jac_work[col].point(ip);
                     for row in 0..ncoord {
                         jac_matrix[row * ncoord + col] = jcol[row];
                     }
@@ -309,7 +464,6 @@ impl PolyMap {
 
                 // Solve J * dx = dy.
                 if ncoord == 1 {
-                    // Trivial 1x1 case.
                     let j00 = jac_matrix[0];
                     if j00.abs() < 1e-30 {
                         result.point_mut(ip).fill(BAD_VALUE);
@@ -324,10 +478,10 @@ impl PolyMap {
                     }
                 } else if ncoord == 2 {
                     // Direct 2x2 solve via Cramer's rule.
-                    let a = jac_matrix[0]; // J[0][0] = dF0/dx0
-                    let b = jac_matrix[1]; // J[0][1] = dF0/dx1
-                    let c = jac_matrix[2]; // J[1][0] = dF1/dx0
-                    let d = jac_matrix[3]; // J[1][1] = dF1/dx1
+                    let a = jac_matrix[0];
+                    let b = jac_matrix[1];
+                    let c = jac_matrix[2];
+                    let d = jac_matrix[3];
                     let det = a * d - b * c;
                     if det.abs() < 1e-30 {
                         result.point_mut(ip).fill(BAD_VALUE);
@@ -339,15 +493,13 @@ impl PolyMap {
                     result.point_mut(ip)[0] += dx0;
                     result.point_mut(ip)[1] += dx1;
 
-                    let xlensq =
-                        result.point(ip)[0].powi(2) + result.point(ip)[1].powi(2);
+                    let xlensq = result.point(ip)[0].powi(2) + result.point(ip)[1].powi(2);
                     let vlensq = dx0 * dx0 + dx1 * dx1;
                     if vlensq < tol_sq * xlensq || xlensq == 0.0 {
                         converged[ip] = true;
                     }
                 } else {
                     // General NxN: Gaussian elimination with partial pivoting.
-                    // Work in-place on copies of the Jacobian and dy.
                     let mut mat = jac_matrix[..ncoord * ncoord].to_vec();
                     let mut rhs = dy.clone();
                     let ok = solve_linear_system(&mut mat, &mut rhs, ncoord);
@@ -356,8 +508,6 @@ impl PolyMap {
                         converged[ip] = true;
                         continue;
                     }
-                    // rhs now contains dx. Apply update and compute
-                    // convergence norms.
                     let mut vlensq = 0.0;
                     let pt = result.point_mut(ip);
                     for (ic, &dx_ic) in rhs.iter().enumerate().take(ncoord) {
@@ -403,6 +553,88 @@ fn eval_poly(terms: &[PolyTerm], n_in: usize, n_out: usize, input: &[f64]) -> Ve
         output[term.out_axis - 1] += val;
     }
     output
+}
+
+/// Evaluate polynomial terms for ALL points in a PointSet at once.
+///
+/// This is more cache-friendly than calling `eval_poly` per point because
+/// the coefficient/power data is traversed once per term across all points.
+/// Results are written directly into the output PointSet (which must already
+/// be allocated with the correct dimensions).
+///
+/// Points containing BAD values are skipped (output left as-is for those rows).
+fn eval_poly_into(
+    terms: &[PolyTerm],
+    n_in: usize,
+    n_out: usize,
+    input: &PointSet,
+    output: &mut PointSet,
+    skip: &[bool],
+) {
+    let npoint = input.npoint();
+    debug_assert_eq!(output.npoint(), npoint);
+    debug_assert_eq!(input.ncoord(), n_in);
+    debug_assert_eq!(output.ncoord(), n_out);
+    debug_assert_eq!(skip.len(), npoint);
+
+    // Zero output for non-skipped points.
+    #[allow(clippy::needless_range_loop)]
+    for ip in 0..npoint {
+        if !skip[ip] {
+            output.point_mut(ip).fill(0.0);
+        }
+    }
+
+    // Accumulate each term across all points (better cache locality for
+    // coefficient data — each term's powers are loaded once and applied
+    // to all points consecutively).
+    for term in terms {
+        debug_assert_eq!(term.powers.len(), n_in);
+        let out_idx = term.out_axis - 1;
+        let coeff = term.coeff;
+        let powers = &term.powers;
+
+        #[allow(clippy::needless_range_loop)]
+        for ip in 0..npoint {
+            if skip[ip] {
+                continue;
+            }
+            let inp = input.point(ip);
+            let mut val = coeff;
+            for (j, &pow) in powers.iter().enumerate() {
+                val *= inp[j].powi(pow as i32);
+            }
+            output.point_mut(ip)[out_idx] += val;
+        }
+    }
+}
+
+/// Compute Jacobian polynomial terms from a set of forward terms.
+///
+/// Returns `Vec<Vec<PolyTerm>>` indexed by input axis `j` (0-based).
+/// Each inner `Vec<PolyTerm>` contains terms representing
+/// `d(forward_i)/d(x_j)` for all output axes `i`.
+fn compute_jacobian_terms_from(forward: &[PolyTerm], nin: usize) -> Vec<Vec<PolyTerm>> {
+    let mut jac_terms = Vec::with_capacity(nin);
+    for j in 0..nin {
+        let mut col_terms = Vec::new();
+        for term in forward {
+            let pj = term.powers[j];
+            if pj == 0 {
+                continue;
+            }
+            let new_coeff = term.coeff * (pj as f64);
+            let mut new_powers = term.powers.clone();
+            new_powers[j] = pj - 1;
+            col_terms.push(PolyTerm {
+                coeff: new_coeff,
+                powers: new_powers,
+                out_axis: term.out_axis,
+            });
+        }
+        jac_terms.push(col_terms);
+    }
+    jac_terms
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,6 +1260,11 @@ impl Serializable for PolyMap {
         // Build directly rather than using `new()` to avoid re-validation
         // of terms that may include BAD_VALUE sentinel coefficients from the
         // serialised format.
+        let jacobian_terms = if iter_inv && nin == nout {
+            Some(compute_jacobian_terms_from(&forward, nin))
+        } else {
+            None
+        };
         let mut m = PolyMap {
             nin,
             nout,
@@ -1037,6 +1274,7 @@ impl Serializable for PolyMap {
             niter_inverse: niter_inv,
             tol_inverse: tol_inv,
             inverted: false,
+            jacobian_terms,
         };
         if inverted {
             m.invert();
