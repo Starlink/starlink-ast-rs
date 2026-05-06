@@ -95,6 +95,18 @@ unsafe extern "C" {
 
     // -- Miscellaneous --
     fn astPalDav2m(axvec: *const f64, rmat: *mut [f64; 3]);
+
+    // -- Time / sidereal --
+    fn astPalDat(dju: f64) -> f64;
+    fn astPalGmst(ut1: f64) -> f64;
+    fn astPalEqeqx(date: f64) -> f64;
+
+    // -- Observer / velocity --
+    fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);
+    fn astPalRvgalc(r2000: f64, d2000: f64) -> f64;
+    fn astPalRvlg(r2000: f64, d2000: f64) -> f64;
+    fn astPalRvlsrd(r2000: f64, d2000: f64) -> f64;
+    fn astPalRvlsrk(r2000: f64, d2000: f64) -> f64;
 }
 
 // ---------------------------------------------------------------------------
@@ -483,6 +495,74 @@ pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
     let mut m = [[0.0; 3]; 3];
     unsafe { astPalDav2m(axvec.as_ptr(), m.as_mut_ptr()) };
     m
+}
+
+// ---------------------------------------------------------------------------
+// Group 12: Time / sidereal
+// ---------------------------------------------------------------------------
+
+/// TAI-UTC leap seconds for a given UTC date (MJD).
+pub(crate) fn dat(mjd: f64) -> f64 {
+    unsafe { astPalDat(mjd) }
+}
+
+/// Greenwich Mean Sidereal Time (radians) for a given UT1 date (MJD).
+pub(crate) fn gmst(ut1: f64) -> f64 {
+    unsafe { astPalGmst(ut1) }
+}
+
+/// Equation of the equinoxes (radians) for a given TDB date (MJD).
+pub(crate) fn eqeqx(date: f64) -> f64 {
+    unsafe { astPalEqeqx(date) }
+}
+
+// ---------------------------------------------------------------------------
+// Group 13: Observer / velocity
+// ---------------------------------------------------------------------------
+
+/// Observer position and velocity as a 6-vector.
+///
+/// - `lat`: geodetic latitude (radians)
+/// - `alt`: altitude above reference spheroid (metres)
+/// - `lst`: local apparent sidereal time (radians)
+///
+/// Returns a 6-element array: [x, y, z, xdot, ydot, zdot] in AU and AU/s.
+pub(crate) fn pvobs(lat: f64, alt: f64, lst: f64) -> [f64; 6] {
+    let mut pv = [0.0; 6];
+    unsafe { astPalPvobs(lat, alt, lst, pv.as_mut_ptr()) };
+    pv
+}
+
+/// Component of galactic rotation velocity toward the source (km/s).
+///
+/// - `ra`: J2000 right ascension (radians)
+/// - `dec`: J2000 declination (radians)
+pub(crate) fn rvgalc(ra: f64, dec: f64) -> f64 {
+    unsafe { astPalRvgalc(ra, dec) }
+}
+
+/// Velocity component of the Local Group motion toward the source (km/s).
+///
+/// - `ra`: J2000 right ascension (radians)
+/// - `dec`: J2000 declination (radians)
+pub(crate) fn rvlg(ra: f64, dec: f64) -> f64 {
+    unsafe { astPalRvlg(ra, dec) }
+}
+
+/// Velocity component of the dynamical LSR toward the source (km/s).
+///
+/// - `ra`: J2000 right ascension (radians)
+/// - `dec`: J2000 declination (radians)
+pub(crate) fn rvlsrd(ra: f64, dec: f64) -> f64 {
+    unsafe { astPalRvlsrd(ra, dec) }
+}
+
+/// Velocity component of the kinematic LSR toward the source (km/s).
+///
+/// - `ra`: J2000 right ascension (radians)
+/// - `dec`: J2000 declination (radians)
+pub(crate) fn rvlsrk(ra: f64, dec: f64) -> f64 {
+    unsafe { astPalRvlsrk(ra, dec) }
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +959,34 @@ mod tests {
         assert_close(back[0], 1.0, TOL);
         assert_close(back[1], 0.0, TOL);
         assert_close(back[2], 0.0, TOL);
+    }
+
+    // -- Time / sidereal --
+
+    #[test]
+    fn dat_j2000() {
+        // TAI-UTC at J2000.0 (MJD 51544.5) = 32 seconds
+        assert!((super::dat(51544.5) - 32.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn dat_2017() {
+        // After 2017 Jan 1 (MJD ~57754): TAI-UTC = 37 seconds
+        assert!((super::dat(58000.0) - 37.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn gmst_range() {
+        // GMST should be in range [0, 2π]
+        let g = super::gmst(51544.5);
+        assert!(g >= 0.0 && g < 2.0 * std::f64::consts::PI);
+    }
+
+    #[test]
+    fn rvlsrk_nonzero() {
+        // LSRK velocity should be non-zero for arbitrary direction
+        let v = super::rvlsrk(1.0, 0.5);
+        assert!(v.abs() > 0.1); // km/s
     }
 
     // -- Helper --
