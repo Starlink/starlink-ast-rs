@@ -6,6 +6,7 @@ pub mod channel;
 pub mod constants;
 pub mod coords;
 pub mod error;
+pub mod fitschan;
 pub mod frames;
 pub mod mappings;
 pub(crate) mod pal;
