@@ -4,11 +4,11 @@
 //! find/delete/empty operations, iteration, and Native-encoding Channel
 //! round-trips for AST objects.
 
+use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::{Encoding, FitsChan};
 use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::mappings::ZoomMap;
-use ast_core::AnyObject;
 
 // ===========================================================================
 // Helpers
@@ -33,11 +33,7 @@ fn parse_sip_header() {
     let fc = FitsChan::from_header(&text).unwrap();
 
     // The SIP header has well over 50 cards (288 lines, many are cards).
-    assert!(
-        fc.ncard() > 50,
-        "expected > 50 cards, got {}",
-        fc.ncard()
-    );
+    assert!(fc.ncard() > 50, "expected > 50 cards, got {}", fc.ncard());
 
     // Verify known keywords.
     assert_eq!(fc.get_fits_i("NAXIS"), Some(2));
@@ -268,7 +264,10 @@ fn find_fits_wraps_around() {
 
     // Now search for FIRST — should wrap around and find it.
     let found = fc.find_fits("FIRST", true);
-    assert!(found.is_some(), "find_fits should wrap around to find FIRST");
+    assert!(
+        found.is_some(),
+        "find_fits should wrap around to find FIRST"
+    );
     assert!(found.unwrap().contains("1"));
 }
 
@@ -339,10 +338,7 @@ fn native_round_trip_skyframe() {
 
     // Verify it's a SkyFrame by checking system_string.
     let sys = frame.system_string();
-    assert!(
-        sys.is_some(),
-        "SkyFrame should have a system string"
-    );
+    assert!(sys.is_some(), "SkyFrame should have a system string");
     assert!(
         sys.unwrap().contains("FK5") || sys.unwrap().contains("Fk5"),
         "system should be FK5, got {:?}",
