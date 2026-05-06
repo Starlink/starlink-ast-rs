@@ -420,7 +420,7 @@ impl AnyObject {
 // ---------------------------------------------------------------------------
 
 /// Reconstruct an [`AnyObject`] from a [`Node`], dispatching by class name.
-fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
+pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
     match node.class.as_str() {
         "UnitMap" => Ok(AnyObject::UnitMap(UnitMap::from_node(node)?)),
         "ZoomMap" => Ok(AnyObject::ZoomMap(ZoomMap::from_node(node)?)),
@@ -453,6 +453,39 @@ fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
 }
 
 // ---------------------------------------------------------------------------
+// AnyObject → Node helper (used by Channel and to_native_string)
+// ---------------------------------------------------------------------------
+
+/// Convert an [`AnyObject`] reference to a [`Node`] tree.
+pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
+    match obj {
+        AnyObject::UnitMap(m) => Serializable::to_node(m),
+        AnyObject::ZoomMap(m) => Serializable::to_node(m),
+        AnyObject::ShiftMap(m) => Serializable::to_node(m),
+        AnyObject::MatrixMap(m) => Serializable::to_node(m),
+        AnyObject::PermMap(m) => Serializable::to_node(m),
+        AnyObject::WinMap(m) => Serializable::to_node(m),
+        AnyObject::LutMap(m) => Serializable::to_node(m),
+        AnyObject::PolyMap(m) => Serializable::to_node(m),
+        AnyObject::ChebyMap(m) => Serializable::to_node(m),
+        AnyObject::CmpMap(m) => Serializable::to_node(m),
+        AnyObject::WcsMap(m) => Serializable::to_node(m),
+        AnyObject::SlaMap(m) => Serializable::to_node(m),
+        AnyObject::SpecMap(m) => Serializable::to_node(m),
+        AnyObject::TimeMap(m) => Serializable::to_node(m),
+        AnyObject::SphMap(m) => Serializable::to_node(m),
+        AnyObject::BasicFrame(f) => Serializable::to_node(f),
+        AnyObject::SkyFrame(f) => Serializable::to_node(f),
+        AnyObject::SpecFrame(f) => Serializable::to_node(f),
+        AnyObject::TimeFrame(f) => Serializable::to_node(f),
+        AnyObject::FluxFrame(f) => Serializable::to_node(f),
+        AnyObject::SpecFluxFrame(f) => Serializable::to_node(f),
+        AnyObject::CmpFrame(f) => Serializable::to_node(f),
+        AnyObject::FrameSet(f) => Serializable::to_node(f),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public API: to_native_string / from_native_string
 // ---------------------------------------------------------------------------
 
@@ -461,31 +494,7 @@ fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
 /// The returned string is in the AST Native serialisation format, compatible
 /// with the C library's `astWrite` / `astRead` channel functions.
 pub fn to_native_string(obj: &AnyObject) -> AstResult<String> {
-    let node = match obj {
-        AnyObject::UnitMap(m) => Serializable::to_node(m)?,
-        AnyObject::ZoomMap(m) => Serializable::to_node(m)?,
-        AnyObject::ShiftMap(m) => Serializable::to_node(m)?,
-        AnyObject::MatrixMap(m) => Serializable::to_node(m)?,
-        AnyObject::PermMap(m) => Serializable::to_node(m)?,
-        AnyObject::WinMap(m) => Serializable::to_node(m)?,
-        AnyObject::LutMap(m) => Serializable::to_node(m)?,
-        AnyObject::PolyMap(m) => Serializable::to_node(m)?,
-        AnyObject::ChebyMap(m) => Serializable::to_node(m)?,
-        AnyObject::CmpMap(m) => Serializable::to_node(m)?,
-        AnyObject::WcsMap(m) => Serializable::to_node(m)?,
-        AnyObject::SlaMap(m) => Serializable::to_node(m)?,
-        AnyObject::SpecMap(m) => Serializable::to_node(m)?,
-        AnyObject::TimeMap(m) => Serializable::to_node(m)?,
-        AnyObject::SphMap(m) => Serializable::to_node(m)?,
-        AnyObject::BasicFrame(f) => Serializable::to_node(f)?,
-        AnyObject::SkyFrame(f) => Serializable::to_node(f)?,
-        AnyObject::SpecFrame(f) => Serializable::to_node(f)?,
-        AnyObject::TimeFrame(f) => Serializable::to_node(f)?,
-        AnyObject::FluxFrame(f) => Serializable::to_node(f)?,
-        AnyObject::SpecFluxFrame(f) => Serializable::to_node(f)?,
-        AnyObject::CmpFrame(f) => Serializable::to_node(f)?,
-        AnyObject::FrameSet(f) => Serializable::to_node(f)?,
-    };
+    let node = any_object_to_node(obj)?;
     native_write::render_native(&node)
 }
 
