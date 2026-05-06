@@ -6,11 +6,13 @@ mod frameset;
 pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
 mod skyframe;
+mod specframe;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
 pub use frameset::{FrameRef, FrameSet};
 pub use sky_convert::{SkyRefIs, SkySystem};
 pub use skyframe::SkyFrame;
+pub use specframe::{SpecFrame, SpecSystem, StdOfRest};
 
 use std::fmt;
 
