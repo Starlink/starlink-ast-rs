@@ -142,8 +142,17 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     let target_enc = encoding_from_str(&case.encoding)
         .ok_or_else(|| format!("unknown encoding: {}", case.encoding))?;
 
-    // Set up output FitsChan.
-    let mut fc_out = FitsChan::new();
+    // Set up output FitsChan. For FITS header inputs, pre-load the input
+    // cards so write() can purge old WCS keywords while preserving non-WCS
+    // structural keywords (SIMPLE, NAXIS, etc.). This mirrors wcsconverter.
+    let mut fc_out = if !case.input_file.ends_with(".ast") {
+        let input_path = fixtures_dir().join("inputs").join(&case.input_file);
+        let text =
+            std::fs::read_to_string(&input_path).map_err(|e| format!("read input: {e}"))?;
+        FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?
+    } else {
+        FitsChan::new()
+    };
     fc_out.set_encoding(target_enc);
 
     // Apply attributes.
@@ -235,7 +244,7 @@ fn wcsconv_regression_suite() {
             Ok(()) => passed += 1,
             Err(msg) => {
                 failed += 1;
-                if failures.len() < 20 {
+                if failures.len() < 3 {
                     failures.push(format!("  {} : {}", case.name, msg));
                 }
             }
