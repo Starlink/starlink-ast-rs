@@ -163,7 +163,7 @@ impl CardList {
         self.position >= self.cards.len()
     }
 
-    /// Set an integer keyword value (insert or overwrite existing).
+    /// Set an integer keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_int(&mut self, keyword: &str, value: i64, comment: &str) {
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
@@ -175,10 +175,10 @@ impl CardList {
             },
             used: false,
         };
-        self.put(card, true);
+        self.put_or_append(card);
     }
 
-    /// Set a float keyword value (insert or overwrite existing).
+    /// Set a float keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_float(&mut self, keyword: &str, value: f64, comment: &str) {
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
@@ -190,10 +190,10 @@ impl CardList {
             },
             used: false,
         };
-        self.put(card, true);
+        self.put_or_append(card);
     }
 
-    /// Set a string keyword value (insert or overwrite existing).
+    /// Set a string keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_string(&mut self, keyword: &str, value: &str, comment: &str) {
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
@@ -205,7 +205,21 @@ impl CardList {
             },
             used: false,
         };
-        self.put(card, true);
+        self.put_or_append(card);
+    }
+
+    /// Overwrite existing card or append at end (preserves write order).
+    fn put_or_append(&mut self, card: FitsCard) {
+        let kw_upper = card.keyword.to_uppercase();
+        if let Some(idx) = self
+            .cards
+            .iter()
+            .position(|c| c.keyword.eq_ignore_ascii_case(&kw_upper))
+        {
+            self.cards[idx] = card;
+        } else {
+            self.cards.push(card);
+        }
     }
 
     /// Return an iterator over all cards.
