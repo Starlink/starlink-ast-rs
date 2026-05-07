@@ -557,24 +557,47 @@ impl Channel for FitsChan {
                 self.store_native_text(&text);
                 Ok(())
             }
-            Encoding::FitsWcs => wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix),
-            Encoding::FitsIraf => {
-                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_iraf::write_to_cards)
-            }
-            Encoding::FitsPc => {
-                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_pc::write_to_cards)
-            }
-            Encoding::FitsAips => {
-                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_aips::write_to_cards)
-            }
-            Encoding::FitsAipsPP => {
-                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_aips::write_to_cards_pp)
-            }
-            Encoding::FitsClass => {
-                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_class::write_to_cards)
-            }
-            Encoding::Dss => {
-                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_dss::write_to_cards)
+            _ => {
+                // For all FITS-WCS encodings: purge old WCS keywords before
+                // writing new ones. This preserves non-WCS structural keywords
+                // (SIMPLE, BITPIX, NAXIS, NAXISn, etc.) while replacing WCS
+                // data. Mirrors the C library's FindWcs + SetValue approach.
+                self.cards.purge_wcs_keywords();
+
+                match self.encoding {
+                    Encoding::FitsWcs => {
+                        wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix)
+                    }
+                    Encoding::FitsIraf => wcs_write::encode_wcs_to_store(
+                        obj,
+                        &mut self.cards,
+                        enc_iraf::write_to_cards,
+                    ),
+                    Encoding::FitsPc => {
+                        wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_pc::write_to_cards)
+                    }
+                    Encoding::FitsAips => wcs_write::encode_wcs_to_store(
+                        obj,
+                        &mut self.cards,
+                        enc_aips::write_to_cards,
+                    ),
+                    Encoding::FitsAipsPP => wcs_write::encode_wcs_to_store(
+                        obj,
+                        &mut self.cards,
+                        enc_aips::write_to_cards_pp,
+                    ),
+                    Encoding::FitsClass => wcs_write::encode_wcs_to_store(
+                        obj,
+                        &mut self.cards,
+                        enc_class::write_to_cards,
+                    ),
+                    Encoding::Dss => wcs_write::encode_wcs_to_store(
+                        obj,
+                        &mut self.cards,
+                        enc_dss::write_to_cards,
+                    ),
+                    Encoding::Native => unreachable!(),
+                }
             }
         }
     }

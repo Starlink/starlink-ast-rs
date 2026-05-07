@@ -208,6 +208,22 @@ impl CardList {
         self.put_or_append(card);
     }
 
+    /// Remove all WCS-related keywords, preserving non-WCS structural cards.
+    ///
+    /// Mirrors the C library's `FindWcs` keyword identification (fitschan.c
+    /// line 10710). Removes: CRPIX, CRVAL, CDELT, CROTA, CTYPE, CUNIT, CNAME,
+    /// CD matrix, PC matrix, PV/PS parameters, WCSAXES, WCSNAME, LONPOLE,
+    /// LATPOLE, EQUINOX, EPOCH, RADESYS, RADECSYS, MJD-OBS, DATE-OBS,
+    /// SPECSYS, RESTFRQ, RESTFREQ, RESTWAV, SSYSSRC, VELOSYS, ZSOURCE,
+    /// OBSGEO-*, DSS plate keywords (PLTRAH, etc.), PROJP*.
+    ///
+    /// Preserves: SIMPLE, BITPIX, NAXIS, NAXISn, COMMENT, HISTORY, EXTEND,
+    /// BLOCKED, and any unrecognized keywords.
+    pub(crate) fn purge_wcs_keywords(&mut self) {
+        self.cards.retain(|card| !is_wcs_keyword(&card.keyword));
+        self.position = self.position.min(self.cards.len());
+    }
+
     /// Overwrite existing card or append at end (preserves write order).
     fn put_or_append(&mut self, card: FitsCard) {
         let kw_upper = card.keyword.to_uppercase();
@@ -261,6 +277,162 @@ impl Default for CardList {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ---------------------------------------------------------------------------
+// WCS keyword identification
+// ---------------------------------------------------------------------------
+
+/// Check if a keyword is a WCS-related keyword that should be removed
+/// when writing new WCS data.
+///
+/// Based on the C library's `FindWcs` function (fitschan.c line 10710).
+/// Returns true for all keywords that form part of a WCS encoding.
+fn is_wcs_keyword(keyword: &str) -> bool {
+    let kw = keyword.to_uppercase();
+
+    // Fixed WCS keywords (exact match).
+    if matches!(
+        kw.as_str(),
+        "WCSAXES"
+            | "WCSNAME"
+            | "LONPOLE"
+            | "LONGPOLE"
+            | "LATPOLE"
+            | "EQUINOX"
+            | "EPOCH"
+            | "RADESYS"
+            | "RADECSYS"
+            | "MJD-OBS"
+            | "DATE-OBS"
+            | "TIMESYS"
+            | "SPECSYS"
+            | "SSYSSRC"
+            | "SSYSOBS"
+            | "VELOSYS"
+            | "ZSOURCE"
+            | "RESTFRQ"
+            | "RESTFREQ"
+            | "RESTWAV"
+            | "MJD-AVG"
+            | "IMAGFREQ"
+            | "DELTAV"
+            | "VLSR"
+            | "VELO-LSR"
+            | "VELO-OBS"
+            | "VELO-HEL"
+            | "VELO-EAR"
+    ) {
+        return true;
+    }
+
+    // Per-axis WCS keywords (CRPIXn, CRVALn, etc.).
+    if kw.len() >= 6 {
+        let prefix5 = &kw[..5];
+        if matches!(
+            prefix5,
+            "CRPIX" | "CRVAL" | "CDELT" | "CTYPE" | "CUNIT" | "CNAME"
+        ) {
+            let rest = &kw[5..];
+            if rest
+                .chars()
+                .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
+            {
+                return true;
+            }
+        }
+        if kw.starts_with("CROTA") {
+            return true;
+        }
+    }
+
+    // CD matrix: CDi_j or CD00i00j format.
+    if kw.starts_with("CD") && kw.len() >= 4 {
+        let rest = &kw[2..];
+        if rest.contains('_') && rest.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            return true;
+        }
+        if rest.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+
+    // PC matrix: PCi_j or PC00i00j format.
+    if kw.starts_with("PC") && kw.len() >= 4 {
+        let rest = &kw[2..];
+        if rest.contains('_') && rest.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            return true;
+        }
+        if rest.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+
+    // PV and PS projection parameters: PVi_m, PSi_m.
+    if (kw.starts_with("PV") || kw.starts_with("PS")) && kw.len() >= 4 {
+        let rest = &kw[2..];
+        if rest.contains('_') && rest.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            return true;
+        }
+    }
+
+    // PROJP parameters (old-style).
+    if kw.starts_with("PROJP") {
+        return true;
+    }
+
+    // WCSAXES with version suffix (WCSAXESA, etc.)
+    if kw.starts_with("WCSAXES") && kw.len() > 7 {
+        return true;
+    }
+
+    // DSS plate solution keywords.
+    if matches!(
+        kw.as_str(),
+        "PLTRAH"
+            | "PLTRAM"
+            | "PLTRAS"
+            | "PLTDECD"
+            | "PLTDECM"
+            | "PLTDECS"
+            | "PLTDECSN"
+            | "PLTSCALE"
+            | "XPIXELSZ"
+            | "YPIXELSZ"
+            | "CNPIX1"
+            | "CNPIX2"
+            | "PPO1"
+            | "PPO2"
+            | "PPO3"
+            | "PPO4"
+            | "PPO5"
+            | "PPO6"
+    ) {
+        return true;
+    }
+    if kw.starts_with("AMDX") || kw.starts_with("AMDY") {
+        return true;
+    }
+
+    // OBSGEO- keywords (observatory position).
+    if kw.starts_with("OBSGEO-") {
+        return true;
+    }
+
+    // Alternate version keywords: CnVAL, CnPIX, CnELT, CnYPE, CnNIT.
+    if kw.len() >= 5 && kw.starts_with('C') && kw.as_bytes()[1].is_ascii_digit() {
+        let suffix = &kw[2..];
+        if suffix.starts_with("VAL")
+            || suffix.starts_with("PIX")
+            || suffix.starts_with("ELT")
+            || suffix.starts_with("YPE")
+            || suffix.starts_with("NIT")
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 // ---------------------------------------------------------------------------
