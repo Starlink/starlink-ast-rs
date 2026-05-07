@@ -952,6 +952,91 @@ fn apply_frame_change(cvt: &mut SpecConversion, val: f64, forward: bool) -> f64 
 }
 
 // ---------------------------------------------------------------------------
+// Step-level simplification helpers
+// ---------------------------------------------------------------------------
+
+/// Check whether two conversion steps cancel each other.
+///
+/// Two steps cancel if one is the inverse of the other and they share
+/// the same user-supplied arguments (ignoring the cached correction factor
+/// slot that frame-change steps store in their last arg position).
+fn steps_cancel(a: &SpecConversion, b: &SpecConversion) -> bool {
+    if a.cvt_type.inverse() != b.cvt_type {
+        return false;
+    }
+    // Compare the first nargs() values (user-supplied arguments).
+    let nargs = a.cvt_type.nargs();
+    for i in 0..nargs {
+        let av = a.args.get(i).copied().unwrap_or(0.0);
+        let bv = b.args.get(i).copied().unwrap_or(0.0);
+        if !ast_equal(av, bv) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Produce a normalized step list for a SpecMap, accounting for inversion.
+///
+/// When `inv` is false, clones the conversions as-is.
+/// When `inv` is true, reverses the step order and swaps each step's
+/// `cvt_type` to its inverse. For frame-change steps the cached correction
+/// factor (last arg slot) is reciprocated (1.0 / value) if it is a valid,
+/// non-zero, non-BAD value.
+fn normalized_steps(spec: &SpecMap, inv: bool) -> Vec<SpecConversion> {
+    if !inv {
+        return spec.conversions.clone();
+    }
+    spec.conversions
+        .iter()
+        .rev()
+        .map(|step| {
+            let inv_type = step.cvt_type.inverse();
+            let mut args = step.args.clone();
+            // For frame-change steps, reciprocate the cached correction factor
+            if inv_type.is_frame_change() && !args.is_empty() {
+                let last = args.len() - 1;
+                let v = args[last];
+                if v != BAD_VALUE && v != 0.0 {
+                    args[last] = 1.0 / v;
+                }
+            }
+            SpecConversion {
+                cvt_type: inv_type,
+                args,
+            }
+        })
+        .collect()
+}
+
+/// Scan adjacent step pairs and remove cancelling pairs.
+///
+/// Loops until no further cancellations are found.
+/// Returns `true` if any steps were eliminated.
+fn simplify_steps(steps: &mut Vec<SpecConversion>) -> bool {
+    let mut any_removed = false;
+    loop {
+        let mut removed_this_pass = false;
+        let mut i = 0;
+        while i + 1 < steps.len() {
+            if steps_cancel(&steps[i], &steps[i + 1]) {
+                steps.remove(i + 1);
+                steps.remove(i);
+                removed_this_pass = true;
+                any_removed = true;
+                // Don't advance i — new neighbours may cancel
+            } else {
+                i += 1;
+            }
+        }
+        if !removed_this_pass {
+            break;
+        }
+    }
+    any_removed
+}
+
+// ---------------------------------------------------------------------------
 // Mapping trait
 // ---------------------------------------------------------------------------
 
@@ -1034,7 +1119,21 @@ impl Mapping for SpecMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
+        // Normalize steps (accounting for the inverted flag) and cancel
+        // adjacent inverse pairs within this single SpecMap.
+        let mut steps = normalized_steps(self, self.inverted);
+        let changed = simplify_steps(&mut steps);
+        if !changed && !self.inverted {
+            // No simplification possible — return self unchanged.
+            return Ok(Box::new(self.clone()));
+        }
+        if steps.is_empty() {
+            return Ok(Box::new(UnitMap::new(1)));
+        }
+        Ok(Box::new(SpecMap {
+            conversions: steps,
+            inverted: false,
+        }))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -1051,32 +1150,28 @@ impl Mapping for SpecMap {
         if !series {
             return None;
         }
-        // Only handle inverse cancellation: same SpecMap in opposite directions.
-        if self_inv == other_inv {
+        let other_spec = other.as_any().downcast_ref::<SpecMap>()?;
+
+        // Normalize both SpecMaps accounting for their inversion flags.
+        let self_steps = normalized_steps(self, self_inv != self.inverted);
+        let other_steps = normalized_steps(other_spec, other_inv != other_spec.inverted);
+
+        // Concatenate: self is applied first, then other.
+        let mut steps = self_steps;
+        steps.extend(other_steps);
+
+        // Try to cancel adjacent inverse pairs.
+        if !simplify_steps(&mut steps) {
             return None;
         }
-        let other_spec = other.as_any().downcast_ref::<SpecMap>()?;
-        if self.conversions.len() == other_spec.conversions.len()
-            && self
-                .conversions
-                .iter()
-                .zip(&other_spec.conversions)
-                .all(|(a, b)| {
-                    a.cvt_type == b.cvt_type
-                        && a.args.len() == b.args.len()
-                        && a.args.iter().zip(&b.args).enumerate().all(|(idx, (x, y))| {
-                            // Skip cached correction factor (last element for frame changes)
-                            if a.cvt_type.is_frame_change() && idx == a.args.len() - 1 {
-                                true
-                            } else {
-                                ast_equal(*x, *y)
-                            }
-                        })
-                })
-        {
+
+        if steps.is_empty() {
             Some(Box::new(UnitMap::new(1)))
         } else {
-            None
+            Some(Box::new(SpecMap {
+                conversions: steps,
+                inverted: false,
+            }))
         }
     }
 
