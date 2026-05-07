@@ -1,0 +1,322 @@
+                                                                                
+COMMENT AST ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ AST
+COMMENT AST                  WCS information in AST format                   AST
+COMMENT AST                See http://www.starlink.ac.uk/ast/                AST
+COMMENT AST            Beginning of AST data for FrameSet object             AST
+COMMENT AST ................................................................ AST
+BEGAST_A= 'FrameSet'           / Set of inter-related coordinate systems        
+NFRAME_A=                    2 / Number of Frames in FrameSet                   
+BASE_A  =                    1 / Index of base Frame                            
+CURRNT_A=                    2 / Index of current Frame                         
+LNK2_A  =                    1 / Node 2 is derived from node 1                  
+FRM1_A  = '        '           / Frame number 1                                 
+BEGAST_B= 'Frame   '           / Coordinate system description                  
+TITLE_A = 'Pixel Coordinates'  / Title of coordinate system                     
+NAXES_A =                    2 / Number of coordinate axes                      
+DOMAIN_A= 'GRID    '           / Coordinate system domain                       
+AX1_A   = '        '           / Axis number 1                                  
+BEGAST_C= 'Axis    '           / Coordinate axis                                
+LABEL_A = 'Pixel axis 1'       / Axis Label                                     
+ENDAST_A= 'Axis    '           / End of object definition                       
+AX2_A   = '        '           / Axis number 2                                  
+BEGAST_D= 'Axis    '           / Coordinate axis                                
+LABEL_B = 'Pixel axis 2'       / Axis Label                                     
+ENDAST_B= 'Axis    '           / End of object definition                       
+ENDAST_C= 'Frame   '           / End of object definition                       
+FRM2_A  = '        '           / Frame number 2                                 
+BEGAST_E= 'SkyFrame'           / Description of celestial coordinate system     
+IDENT_A = '" "     '           / Permanent Object identification string         
+ISA_A   = 'Object  '           / AST Object                                     
+NAXES_B =                    2 / Number of coordinate axes                      
+EPOCH_A =    2007.326859422215 / Julian epoch of observation                    
+SYSTEM_A= 'FK5     '           / Coordinate system type                         
+DUT1_A  =     -0.0989801599392 / UT1-UTC in seconds                             
+PRM1_A  =                    2 / Axis 1 permuted to use internal axis 2         
+PRM2_A  =                    1 / Axis 2 permuted to use internal axis 1         
+AX1_B   = '        '           / Axis number 1                                  
+BEGAST_F= 'SkyAxis '           / Celestial coordinate axis                      
+ENDAST_D= 'SkyAxis '           / End of object definition                       
+AX2_B   = '        '           / Axis number 2                                  
+BEGAST_G= 'SkyAxis '           / Celestial coordinate axis                      
+ENDAST_E= 'SkyAxis '           / End of object definition                       
+ISA_B   = 'Frame   '           / Coordinate system description                  
+PROJ_A  = 'gnomonic'           / Description of sky projection                  
+EQNOX_A =               2000.0 / Julian epoch of mean equinox                   
+SREFIS_A= 'Ignored '           / Not rotated (ref. pos. is ignored)             
+SREF1_A =   4.8432959470712582 / Ref. pos. RA 18:30:00.1                        
+SREF2_A = 0.021307561278946344 / Ref. pos. Dec 1:13:15                          
+ENDAST_F= 'SkyFrame'           / End of object definition                       
+MAP2_A  = '        '           / Mapping between nodes 1 and 2                  
+BEGAST_H= 'CmpMap  '           / Compound Mapping                               
+NIN_A   =                    2 / Number of input coordinates                    
+ISSIMP_A=                    1 / Mapping has been simplified                    
+ISA_C   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_A  = '        '           / First component Mapping                        
+BEGAST_I= 'ShiftMap'           / Shift each coordinate axis                     
+NIN_B   =                    2 / Number of input coordinates                    
+ISA_D   = 'Mapping '           / Mapping between coordinate systems             
+SFT1_A  =           -75.910204 / Shift for axis 1                               
+SFT2_A  =           -60.359184 / Shift for axis 2                               
+ENDAST_G= 'ShiftMap'           / End of object definition                       
+MAPB_A  = '        '           / Second component Mapping                       
+BEGAST_J= 'CmpMap  '           / Compound Mapping                               
+NIN_C   =                    2 / Number of input coordinates                    
+ISA_E   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_B  = '        '           / First component Mapping                        
+BEGAST_K= 'MatrixMap'          / Matrix transformation                          
+NIN_D   =                    2 / Number of input coordinates                    
+ISA_F   = 'Mapping '           / Mapping between coordinate systems             
+M0_A    =  -3.1970486649575151E-5 / Forward matrix value                        
+M1_A    =  -1.4908082756862879E-5 / Forward matrix value                        
+M2_A    =  1.4908082756862879E-5 / Forward matrix value                         
+M3_A    =  -3.1970486649575151E-5 / Forward matrix value                        
+IM0_A   =  -25692.252166853508 / Inverse matrix value                           
+IM1_A   =   11980.493938422162 / Inverse matrix value                           
+IM2_A   =  -11980.493938422162 / Inverse matrix value                           
+IM3_A   =  -25692.252166853508 / Inverse matrix value                           
+FORM_A  = 'Full    '           / Matrix storage form                            
+ENDAST_H= 'MatrixMap'          / End of object definition                       
+MAPB_B  = '        '           / Second component Mapping                       
+BEGAST_L= 'CmpMap  '           / Compound Mapping                               
+NIN_E   =                    2 / Number of input coordinates                    
+ISA_G   = 'Mapping '           / Mapping between coordinate systems             
+INVA_A  =                    1 / First Mapping used in inverse direction        
+MAPA_C  = '        '           / First component Mapping                        
+BEGAST_M= 'WcsMap  '           / FITS-WCS sky projection                        
+NIN_F   =                    2 / Number of input coordinates                    
+INVERT_A=                    1 / Mapping inverted                               
+ISA_H   = 'Mapping '           / Mapping between coordinate systems             
+TYPE_A  = 'TAN     '           / Gnomonic projection                            
+WCSAX1_A=                    2 / Index of celestial longitude axis              
+WCSAX2_A=                    1 / Index of celestial latitude axis               
+ENDAST_I= 'WcsMap  '           / End of object definition                       
+MAPB_C  = '        '           / Second component Mapping                       
+BEGAST_N= 'CmpMap  '           / Compound Mapping                               
+NIN_G   =                    2 / Number of input coordinates                    
+ISA_I   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_D  = '        '           / First component Mapping                        
+BEGAST_O= 'PermMap '           / Coordinate permutation                         
+NIN_H   =                    2 / Number of input coordinates                    
+INVERT_B=                    1 / Mapping inverted                               
+ISA_J   = 'Mapping '           / Mapping between coordinate systems             
+OUT1_A  =                    2 / Output coordinate 1 = input coordinate 2       
+OUT2_A  =                    1 / Output coordinate 2 = input coordinate 1       
+IN1_A   =                    2 / Input coordinate 1 = output coordinate 2       
+IN2_A   =                    1 / Input coordinate 2 = output coordinate 1       
+ENDAST_J= 'PermMap '           / End of object definition                       
+MAPB_D  = '        '           / Second component Mapping                       
+BEGAST_P= 'CmpMap  '           / Compound Mapping                               
+NIN_I   =                    2 / Number of input coordinates                    
+ISA_K   = 'Mapping '           / Mapping between coordinate systems             
+INVA_B  =                    1 / First Mapping used in inverse direction        
+MAPA_E  = '        '           / First component Mapping                        
+BEGAST_Q= 'SphMap  '           / Cartesian to Spherical mapping                 
+NIN_J   =                    3 / Number of input coordinates                    
+NOUT_A  =                    2 / Number of output coordinates                   
+INVERT_C=                    1 / Mapping inverted                               
+ISA_L   = 'Mapping '           / Mapping between coordinate systems             
+UNTRD_A =                    1 / All input vectors have unit length             
+PLRLG_A =                  0.0 / Polar longitude (rad.s)                        
+ENDAST_K= 'SphMap  '           / End of object definition                       
+MAPB_E  = '        '           / Second component Mapping                       
+BEGAST_R= 'CmpMap  '           / Compound Mapping                               
+NIN_K   =                    3 / Number of input coordinates                    
+NOUT_B  =                    2 / Number of output coordinates                   
+ISA_M   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_F  = '        '           / First component Mapping                        
+BEGAST_S= 'MatrixMap'          / Matrix transformation                          
+NIN_L   =                    3 / Number of input coordinates                    
+ISA_N   = 'Mapping '           / Mapping between coordinate systems             
+M0_B    = 0.0027811380225360805 / Forward matrix value                          
+M1_B    =  0.99144391205839688 / Forward matrix value                           
+M2_B    =  0.13050377202840313 / Forward matrix value                           
+M3_B    = -0.021123653426874299 / Forward matrix value                          
+M4_A    =  0.13053340278389211 / Forward matrix value                           
+M5_A    = -0.99121885677359856 / Forward matrix value                           
+M6_A    = -0.99977300250466894 / Forward matrix value                           
+M7_A    =                  0.0 / Forward matrix value                           
+M8_A    =  0.02130594900019931 / Forward matrix value                           
+IM0_B   = 0.0027811380225360805 / Inverse matrix value                          
+IM1_B   = -0.021123653426874299 / Inverse matrix value                          
+IM2_B   = -0.99977300250466894 / Inverse matrix value                           
+IM3_B   =  0.99144391205839688 / Inverse matrix value                           
+IM4_A   =  0.13053340278389211 / Inverse matrix value                           
+IM5_A   =                  0.0 / Inverse matrix value                           
+IM6_A   =  0.13050377202840313 / Inverse matrix value                           
+IM7_A   = -0.99121885677359856 / Inverse matrix value                           
+IM8_A   =  0.02130594900019931 / Inverse matrix value                           
+FORM_B  = 'Full    '           / Matrix storage form                            
+ENDAST_L= 'MatrixMap'          / End of object definition                       
+MAPB_F  = '        '           / Second component Mapping                       
+BEGAST_T= 'CmpMap  '           / Compound Mapping                               
+NIN_M   =                    3 / Number of input coordinates                    
+NOUT_C  =                    2 / Number of output coordinates                   
+ISA_O   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_G  = '        '           / First component Mapping                        
+BEGAST_U= 'SphMap  '           / Cartesian to Spherical mapping                 
+NIN_N   =                    3 / Number of input coordinates                    
+NOUT_D  =                    2 / Number of output coordinates                   
+ISA_P   = 'Mapping '           / Mapping between coordinate systems             
+UNTRD_B =                    1 / All input vectors have unit length             
+PLRLG_B =   4.8432959470712582 / Polar longitude (rad.s)                        
+ENDAST_M= 'SphMap  '           / End of object definition                       
+MAPB_G  = '        '           / Second component Mapping                       
+BEGAST_V= 'PermMap '           / Coordinate permutation                         
+NIN_O   =                    2 / Number of input coordinates                    
+ISA_Q   = 'Mapping '           / Mapping between coordinate systems             
+OUT1_B  =                    2 / Output coordinate 1 = input coordinate 2       
+OUT2_B  =                    1 / Output coordinate 2 = input coordinate 1       
+IN1_B   =                    2 / Input coordinate 1 = output coordinate 2       
+IN2_B   =                    1 / Input coordinate 2 = output coordinate 1       
+ENDAST_N= 'PermMap '           / End of object definition                       
+ENDAST_O= 'CmpMap  '           / End of object definition                       
+ENDAST_P= 'CmpMap  '           / End of object definition                       
+ENDAST_Q= 'CmpMap  '           / End of object definition                       
+ENDAST_R= 'CmpMap  '           / End of object definition                       
+ENDAST_S= 'CmpMap  '           / End of object definition                       
+ENDAST_T= 'CmpMap  '           / End of object definition                       
+ENDAST_U= 'CmpMap  '           / End of object definition                       
+ENDAST_V= 'FrameSet'           / End of object definition                       
+COMMENT AST ................................................................ AST
+COMMENT AST               End of AST data for FrameSet object                AST
+COMMENT AST ---------------------------------------------------------------- AST
+NAXIS1  =                  150 / length of data axis 1                          
+NAXIS2  =                  120 / length of data axis 2                          
+DUT1    =      -1.145603703E-6 / [d] UT1-UTC correction                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+EXP_TIME=          41.97277069 / [s] Median MAKECUBE exposure time              
+EFF_TIME=          11.13561535 / [s] Median MAKECUBE effective integration time 
+PROVCNT =                    1 / Number of unique OBSIDs                        
+OBS00001= 'acsis_98_20070430T151247' / OBSID from component observation         
+                                                                                
+                                                                                
+HISTORY History structure created 2007 Apr 30 05:52:50.656                      
+HISTORY Update mode: NORMAL   Current record: 8                                 
+                                                                                
+HISTORY 1: 2007 Apr 30 05:52:53.959 - MAKECUBE        (SMURF V0.2.2)            
+HISTORY User: operator   Host: kolea  Width: 72                                 
+HISTORY Dataset: /jcmtdata/reduced/acsis/20070430/a20070430_00098_01_cube       
+HISTORY Parameters: AUTOGRID=TRUE CROTA=115 DETECTORS=!                         
+HISTORY    FBL=[4.8435931408225,0.024206080047514]                              
+HISTORY    FBR=[4.8456657339925,0.019762137343435]                              
+HISTORY    FLBND=[4.8407875332009,0.018441755319268,-426.75185625342]           
+HISTORY    FUBND=[4.8456891772589,0.024229519070352,440.3284772626]             
+HISTORY    FTL=[4.8408109789176,0.022909013956528]                              
+HISTORY    FTR=[4.8428837776034,0.018465194476559] GENVAR='tsys'                
+HISTORY    IN=@^/jcmtdata/reduced/acsis/20070430/oractemppV8I2A.lis             
+HISTORY    INWEIGHT=TRUE LBOUND=[-70,-41,-1024] OUT=@a20070430_00098_01_cube    
+HISTORY    OUTCAT=! PIXSIZE=7.2761 MSG_FILTER='NORM' REFLAT='1:13:15'           
+HISTORY    REFLON='18:30:00.1' SPARSE=FALSE SPECBOUNDS='-426.5402 440.1168'     
+HISTORY    TRIM=TRUE WEIGHTS=FALSE SPREAD='nearest' SYSTEM='TRACKING'           
+HISTORY    UBOUND=[69,46,1023] USEDETPOS=TRUE                                   
+HISTORY Software: /star/bin/smurf/smurf_mon                                     
+                                                                                
+HISTORY 2: 2007 Apr 30 05:52:59.952 - NDFCOPY         (KAPPA 1.7-2)             
+HISTORY User: operator   Host: kolea  Width: 72                                 
+HISTORY Dataset: /jcmtdata/reduced/acsis/20070430/a20070430_00098_01_em         
+HISTORY Parameters: IN=@a20070430_00098_01_cube(,,-820:819) LIKE=!              
+HISTORY    OUT=@a20070430_00098_01_em TITLE=! TRIM=FALSE                        
+HISTORY Software: /star/bin/kappa/ndfpack_mon                                   
+                                                                                
+HISTORY 3: 2007 Apr 30 05:53:04.009 - MFITTREND       (KAPPA 1.7-2)             
+HISTORY User: operator   Host: kolea  Width: 72                                 
+HISTORY Dataset: /jcmtdata/reduced/acsis/20070430/a20070430_00098_01_bl         
+HISTORY Parameters: ARANGES=[-820,-56,47,819] AUTO=TRUE AXIS=@3 CLIP=[2,2,2.5,3]
+HISTORY    IN=@a20070430_00098_01_em MODIFYIN=FALSE ORDER=0                     
+HISTORY    OUT=@a20070430_00098_01_bl RMSCLIP=! SECTION='-70:69,-41:46,'        
+HISTORY    SUBTRACT=TRUE TITLE=! VARIANCE=TRUE                                  
+HISTORY Software: /star/bin/kappa/kappa_mon                                     
+                                                                                
+HISTORY 4: 2007 Apr 30 05:53:17.048 - NDFCOPY         (KAPPA 1.7-2)             
+HISTORY User: operator   Host: kolea  Width: 72                                 
+HISTORY Dataset: /jcmtdata/reduced/acsis/20070430/ga20070430_98                 
+HISTORY Parameters: IN=@a20070430_00098_01_bl LIKE=! OUT=@ga20070430_98         
+HISTORY    TITLE='ga20070430_98' TRIM=FALSE                                     
+HISTORY Software: /star/bin/kappa/ndfpack_mon                                   
+                                                                                
+HISTORY 5: 2007 Apr 30 06:40:02.994 - WCSMOSAIC       (KAPPA 1.7-2)             
+HISTORY User: operator   Host: kolea  Width: 72                                 
+HISTORY Dataset: /jcmtdata/reduced/acsis/20070430/oractemppLv7wv                
+HISTORY Parameters: ACC=0.05 GENVAR=FALSE ILEVEL=2                              
+HISTORY    IN=@^/jcmtdata/reduced/acsis/20070430/oractempyopUhZ.lis LBND=!      
+HISTORY    LBOUND=[-70,-43,-820] MAXPIX=1000 METHOD='nearest'                   
+HISTORY    OUT=@/jcmtdata/reduced/acsis/20070430/oractemppLv7wv REF=! UBND=!    
+HISTORY    UBOUND=[69,46,819] VARIANCE=TRUE WLIM=1E-10                          
+HISTORY Software: /star/bin/kappa/kappa_mon                                     
+                                                                                
+HISTORY 6: 2007 Apr 30 06:40:05.801 - NDFCOPY         (KAPPA 1.7-2)             
+HISTORY User: operator   Host: kolea  Width: 72                                 
+HISTORY Dataset: /jcmtdata/reduced/acsis/20070430/ga20070430_98                 
+HISTORY Parameters: IN=@/jcmtdata/reduced/acsis/20070430/oractemppLv7wv LIKE=!  
+HISTORY    OUT=@ga20070430_98 TITLE=! TRIM=FALSE                                
+HISTORY Software: /star/bin/kappa/ndfpack_mon                                   
+                                                                                
+HISTORY 7: 2007 May 10 10:42:40.627 - WCSMOSAIC       (KAPPA 1.7-3)             
+HISTORY User: jbuckle   Host: scubadev  Width: 72                               
+HISTORY Dataset: /home/jbuckle/data/serpens_cube                                
+HISTORY Parameters: ACC=0.05 GENVAR=FALSE ILEVEL=2                              
+HISTORY    IN=@ga20070430_98,ga20070502_63_1 LBND=! LBOUND=[-77,-52,-820]       
+HISTORY    MAXPIX=1000 METHOD='nearest' OUT=@serpens_cube REF=!                 
+HISTORY    UBOUND=[77,54,819] VARIANCE=TRUE WLIM=1E-10                          
+HISTORY Software: /star/bin/kappa/wcsmosaic                                     
+                                                                                
+HISTORY 8: 2007 May 17 12:04:41.724 - NDFCOPY         (KAPPA 1.7-2)             
+HISTORY User: dsb   Host: localhost.localdomain  Width: 72                      
+HISTORY Dataset: /stardev/jaccvs/jcmt/scuba2/soft/smurf/makecube/jane           
+HISTORY Parameters: IN=@serpens_cube(~150,~120,0) LIKE=! OUT=@jane TITLE=!      
+HISTORY    TRIM=TRUE TRIMWCS=TRUE USEAXIS=!                                     
+HISTORY Software: /stardev/cvs/star/bin/kappa/ndfcopy                           
+END                                                                             
+XTENSION= 'IMAGE   '           / IMAGE extension                                
+BITPIX  =                  -32 / number of bits per data pixel                  
+NAXIS   =                    2 / number of data axes                            
+NAXIS1  =                  150 / length of data axis 1                          
+NAXIS2  =                  120 / length of data axis 2                          
+PCOUNT  =                    0 / required keyword; must = 0                     
+GCOUNT  =                    1 / required keyword; must = 1                     
+LBOUND1 =                  -74 / Pixel origin along axis 1                      
+LBOUND2 =                  -58 / Pixel origin along axis 2                      
+OBJECT  = 'ga20070430_98'      / Title of the dataset                           
+LABEL   = 'T%s60+%v30+A%^50+%<20+*%+   corrected antenna ...' / Label of the pri
+BUNIT   = 'K       '           / Units of the primary array                     
+DATE    = '2007-05-17T11:05:09' / file creation date (YYYY-MM-DDThh:mm:ss UT)   
+ORIGIN  = 'Starlink Project, U.K.' / Origin of this FITS file                   
+BSCALE  =                  1.0 / True_value = BSCALE * FITS_value + BZERO       
+BZERO   =                  0.0 / True_value = BSCALE * FITS_value + BZERO       
+HDUCLAS1= 'NDF     '           / Starlink NDF (hierarchical n-dim format)       
+HDUCLAS2= 'VARIANCE'           / Array component subclass                       
+EXTNAME = 'VARIANCE'           / Array component                                
+HDSTYPE = 'NDF     '           / HDS data type of the component                 
+                                                                                
+CD1_1   =      -0.001831773954 / Transformation matrix element                  
+CD1_2   =      -8.541702226E-4 / Transformation matrix element                  
+CD2_1   =      0.0008541702226 / Transformation matrix element                  
+CD2_2   =      -0.001831773954 / Transformation matrix element                  
+RADECSYS= 'FK5     '           / Reference frame for RA/DEC values              
+DATE-OBS= '2007-04-30T15:13:53.717' / Date of observation                       
+END                                                                             

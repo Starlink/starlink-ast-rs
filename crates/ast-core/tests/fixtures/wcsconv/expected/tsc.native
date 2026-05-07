@@ -1,0 +1,236 @@
+                                                                                
+COMMENT AST ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ AST
+COMMENT AST                  WCS information in AST format                   AST
+COMMENT AST                See http://www.starlink.ac.uk/ast/                AST
+COMMENT AST            Beginning of AST data for FrameSet object             AST
+COMMENT AST ................................................................ AST
+BEGAST_A= 'FrameSet'           / Set of inter-related coordinate systems        
+NFRAME_A=                    2 / Number of Frames in FrameSet                   
+BASE_A  =                    1 / Index of base Frame                            
+CURRNT_A=                    2 / Index of current Frame                         
+LNK2_A  =                    1 / Node 2 is derived from node 1                  
+FRM1_A  = '        '           / Frame number 1                                 
+BEGAST_B= 'Frame   '           / Coordinate system description                  
+TITLE_A = 'Pixel Coordinates'  / Title of coordinate system                     
+NAXES_A =                    2 / Number of coordinate axes                      
+DOMAIN_A= 'GRID    '           / Coordinate system domain                       
+AX1_A   = '        '           / Axis number 1                                  
+BEGAST_C= 'Axis    '           / Coordinate axis                                
+LABEL_A = 'Pixel axis 1'       / Axis Label                                     
+ENDAST_A= 'Axis    '           / End of object definition                       
+AX2_A   = '        '           / Axis number 2                                  
+BEGAST_D= 'Axis    '           / Coordinate axis                                
+LABEL_B = 'Pixel axis 2'       / Axis Label                                     
+ENDAST_B= 'Axis    '           / End of object definition                       
+ENDAST_C= 'Frame   '           / End of object definition                       
+FRM2_A  = '        '           / Frame number 2                                 
+BEGAST_E= 'SkyFrame'           / Description of celestial coordinate system     
+IDENT_A = '" "     '           / Permanent Object identification string         
+ISA_A   = 'Object  '           / AST Object                                     
+NAXES_B =                    2 / Number of coordinate axes                      
+EPOCH_A =               2000.0 / Julian epoch of observation                    
+SYSTEM_A= 'FK5     '           / Coordinate system type                         
+AX1_B   = '        '           / Axis number 1                                  
+BEGAST_F= 'SkyAxis '           / Celestial coordinate axis                      
+ENDAST_D= 'SkyAxis '           / End of object definition                       
+AX2_B   = '        '           / Axis number 2                                  
+BEGAST_G= 'SkyAxis '           / Celestial coordinate axis                      
+ENDAST_E= 'SkyAxis '           / End of object definition                       
+ISA_B   = 'Frame   '           / Coordinate system description                  
+PROJ_A  = 'tangential spherical cube' / Description of sky projection           
+EQNOX_A =               2000.0 / Julian epoch of mean equinox                   
+SREFIS_A= 'Ignored '           / Not rotated (ref. pos. is ignored)             
+SREF1_A =                  0.0 / Ref. pos. RA 0:00:00.0                         
+SREF2_A =  -1.5707963267948966 / Ref. pos. Dec -90:00:00                        
+ENDAST_F= 'SkyFrame'           / End of object definition                       
+MAP2_A  = '        '           / Mapping between nodes 1 and 2                  
+BEGAST_H= 'CmpMap  '           / Compound Mapping                               
+NIN_A   =                    2 / Number of input coordinates                    
+ISSIMP_A=                    1 / Mapping has been simplified                    
+ISA_C   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_A  = '        '           / First component Mapping                        
+BEGAST_I= 'WinMap  '           / Map one window on to another                   
+NIN_B   =                    2 / Number of input coordinates                    
+ISA_D   = 'Mapping '           / Mapping between coordinate systems             
+SFT1_A  =   6.3995405906464571 / Shift for axis 1                               
+SCL1_A  = -0.0063995405906464567 / Scale factor for axis 1                      
+SFT2_A  =  -5.1196324725171651 / Shift for axis 2                               
+SCL2_A  = 0.0063995405906464567 / Scale factor for axis 2                       
+ENDAST_G= 'WinMap  '           / End of object definition                       
+MAPB_A  = '        '           / Second component Mapping                       
+BEGAST_J= 'CmpMap  '           / Compound Mapping                               
+NIN_C   =                    2 / Number of input coordinates                    
+ISA_E   = 'Mapping '           / Mapping between coordinate systems             
+INVA_A  =                    1 / First Mapping used in inverse direction        
+MAPA_B  = '        '           / First component Mapping                        
+BEGAST_K= 'WcsMap  '           / FITS-WCS sky projection                        
+NIN_D   =                    2 / Number of input coordinates                    
+INVERT_A=                    1 / Mapping inverted                               
+ISA_F   = 'Mapping '           / Mapping between coordinate systems             
+TYPE_A  = 'TSC     '           / Tangential spherical cube projection           
+PV1_3_A =                180.0 / Projection parameter 3 for axis 1              
+PV1_4_A =                  0.0 / Projection parameter 4 for axis 1              
+ENDAST_H= 'WcsMap  '           / End of object definition                       
+MAPB_B  = '        '           / Second component Mapping                       
+BEGAST_L= 'CmpMap  '           / Compound Mapping                               
+NIN_E   =                    2 / Number of input coordinates                    
+ISA_G   = 'Mapping '           / Mapping between coordinate systems             
+INVA_B  =                    1 / First Mapping used in inverse direction        
+MAPA_C  = '        '           / First component Mapping                        
+BEGAST_M= 'SphMap  '           / Cartesian to Spherical mapping                 
+NIN_F   =                    3 / Number of input coordinates                    
+NOUT_A  =                    2 / Number of output coordinates                   
+INVERT_B=                    1 / Mapping inverted                               
+ISA_H   = 'Mapping '           / Mapping between coordinate systems             
+UNTRD_A =                    1 / All input vectors have unit length             
+PLRLG_A =                  0.0 / Polar longitude (rad.s)                        
+ENDAST_I= 'SphMap  '           / End of object definition                       
+MAPB_C  = '        '           / Second component Mapping                       
+BEGAST_N= 'CmpMap  '           / Compound Mapping                               
+NIN_G   =                    3 / Number of input coordinates                    
+NOUT_B  =                    2 / Number of output coordinates                   
+ISA_I   = 'Mapping '           / Mapping between coordinate systems             
+MAPA_D  = '        '           / First component Mapping                        
+BEGAST_O= 'MatrixMap'          / Matrix transformation                          
+NIN_H   =                    3 / Number of input coordinates                    
+ISA_J   = 'Mapping '           / Mapping between coordinate systems             
+M0_A    = 6.123233995736766E-17 / Forward matrix value                          
+M1_A    =                  0.0 / Forward matrix value                           
+M2_A    =                  1.0 / Forward matrix value                           
+M3_A    =                  0.0 / Forward matrix value                           
+M4_A    =                  1.0 / Forward matrix value                           
+M5_A    =                  0.0 / Forward matrix value                           
+M6_A    =                 -1.0 / Forward matrix value                           
+M7_A    =                  0.0 / Forward matrix value                           
+M8_A    = 6.123233995736766E-17 / Forward matrix value                          
+IM0_A   = 6.123233995736766E-17 / Inverse matrix value                          
+IM1_A   =                  0.0 / Inverse matrix value                           
+IM2_A   =                 -1.0 / Inverse matrix value                           
+IM3_A   =                  0.0 / Inverse matrix value                           
+IM4_A   =                  1.0 / Inverse matrix value                           
+IM5_A   =                  0.0 / Inverse matrix value                           
+IM6_A   =                  1.0 / Inverse matrix value                           
+IM7_A   =                  0.0 / Inverse matrix value                           
+IM8_A   = 6.123233995736766E-17 / Inverse matrix value                          
+FORM_A  = 'Full    '           / Matrix storage form                            
+ENDAST_J= 'MatrixMap'          / End of object definition                       
+MAPB_D  = '        '           / Second component Mapping                       
+BEGAST_P= 'SphMap  '           / Cartesian to Spherical mapping                 
+NIN_I   =                    3 / Number of input coordinates                    
+NOUT_C  =                    2 / Number of output coordinates                   
+ISA_K   = 'Mapping '           / Mapping between coordinate systems             
+UNTRD_B =                    1 / All input vectors have unit length             
+PLRLG_B =                  0.0 / Polar longitude (rad.s)                        
+ENDAST_K= 'SphMap  '           / End of object definition                       
+ENDAST_L= 'CmpMap  '           / End of object definition                       
+ENDAST_M= 'CmpMap  '           / End of object definition                       
+ENDAST_N= 'CmpMap  '           / End of object definition                       
+ENDAST_O= 'CmpMap  '           / End of object definition                       
+ENDAST_P= 'FrameSet'           / End of object definition                       
+COMMENT AST ................................................................ AST
+COMMENT AST               End of AST data for FrameSet object                AST
+COMMENT AST ---------------------------------------------------------------- AST
+SIMPLE  =                    T                                                  
+BITPIX  =                  -32 / IEEE (big-endian) 32-bit floating point data   
+NAXIS   =                    2                                                  
+NAXIS1  =                 1600                                                  
+NAXIS2  =                 1600                                                  
+BUNIT   = 'JY/BEAM '                                                            
+BMAJ    =  0.23999999364220001 / Beam major axis in degrees                     
+BMIN    =  0.23999999364220001 / Beam minor axis in degrees                     
+BPA     =                  0.0 / Beam position angle in degrees                 
+HISTORY Parkes Multibeam continuum map                                          
+HISTORY Formed on Mon 2004/02/09 02:23:02 GMT by "pksgridzilla" which was       
+HISTORY compiled on Feb  9 2004 12:08:02 (local time) within                    
+HISTORY AIPS++ version 19.405.00 dated .                                        
+HISTORY Polarization mode: A and B aggregated                                   
+HISTORY Gridding parameters:                                                    
+HISTORY    Method: WGTMED                                                       
+HISTORY    Clip fraction: 0.000                                                 
+HISTORY    Tsys weighting: applied                                              
+HISTORY    Beam weight order: 1                                                 
+HISTORY    Beam FWHM: 14.4 arcmin                                               
+HISTORY    Beam normalization: applied                                          
+HISTORY    Smoothing kernel type: TOP-HAT                                       
+HISTORY    Kernel FWHM: 12.0 arcmin                                             
+HISTORY    Cutoff radius: 6.0 arcmin                                            
+HISTORY      Beam RSS cutoff: 0.0                                               
+HISTORY Input data sets:                                                        
+HISTORY    97-10-09_0356_193558-66_206a.sdfits                                  
+HISTORY    97-10-12_0142_182123-66_193a.sdfits                                  
+HISTORY    97-10-12_0151_182707-66_194a.sdfits                                  
+HISTORY    97-10-12_0200_183252-66_195a.sdfits                                  
+HISTORY    97-11-07_0510_183836-66_196a.sdfits                                  
+HISTORY    97-11-07_0519_184420-66_197a.sdfits                                  
+HISTORY    97-11-07_0528_185004-66_198a.sdfits                                  
+HISTORY    97-11-07_0537_185548-66_199a.sdfits                                  
+HISTORY    97-11-07_0546_190132-66_200a.sdfits                                  
+HISTORY    97-11-07_0556_190717-66_201a.sdfits                                  
+HISTORY    97-11-07_0645_191301-66_202a.sdfits                                  
+HISTORY    97-11-07_0654_191845-66_203a.sdfits                                  
+HISTORY    97-11-07_0703_192429-66_204a.sdfits                                  
+HISTORY    97-11-07_0712_193013-66_205a.sdfits                                  
+HISTORY    97-11-07_0724_194142-66_207a.sdfits                                  
+HISTORY    97-11-18_0256_193815-66_206c.sdfits                                  
+HISTORY    97-11-18_0306_194359-66_207c.sdfits                                  
+HISTORY    97-11-19_0447_182341-66_193c.sdfits                                  
+HISTORY    97-11-19_0456_182925-66_194c.sdfits                                  
+HISTORY    97-11-19_0507_190350-66_200c.sdfits                                  
+HISTORY    97-11-19_0516_190934-66_201c.sdfits                                  
+HISTORY    97-11-19_0525_191519-66_202c.sdfits                                  
+HISTORY    97-11-19_0534_192103-66_203c.sdfits                                  
+HISTORY    97-11-19_0544_192647-66_204c.sdfits                                  
+HISTORY    97-11-19_0553_193231-66_205c.sdfits                                  
+HISTORY    97-11-19_0602_183509-66_195c.sdfits                                  
+HISTORY    97-11-19_0612_184053-66_196c.sdfits                                  
+HISTORY    97-11-19_0622_184638-66_197c.sdfits                                  
+HISTORY    97-11-19_0631_185222-66_198c.sdfits                                  
+HISTORY    97-11-19_0640_185806-66_199c.sdfits                                  
+HISTORY    98-03-24_2107_193706-66_206b.sdfits                                  
+HISTORY    98-03-24_2116_194251-66_207b.sdfits                                  
+HISTORY    98-03-25_2020_190826-66_201b.sdfits                                  
+HISTORY    98-03-25_2029_191410-66_202b.sdfits                                  
+HISTORY    98-03-25_2038_191954-66_203b.sdfits                                  
+HISTORY    98-03-25_2047_192538-66_204b.sdfits                                  
+HISTORY    98-03-25_2056_193122-66_205b.sdfits                                  
+HISTORY    98-03-26_2048_190459-66_200d.sdfits                                  
+HISTORY    98-03-27_2034_191627-66_202d.sdfits                                  
+HISTORY    98-03-27_2043_192212-66_203d.sdfits                                  
+HISTORY    98-03-27_2052_192756-66_204d.sdfits                                  
+HISTORY    98-03-27_2102_193340-66_205d.sdfits                                  
+HISTORY    98-03-27_2111_193924-66_206d.sdfits                                  
+HISTORY    98-03-27_2120_194508-66_207d.sdfits                                  
+HISTORY    98-03-27_2130_191043-66_201d.sdfits                                  
+HISTORY    98-05-10_2123_182232-66_193b.sdfits                                  
+HISTORY    98-05-10_2133_182816-66_194b.sdfits                                  
+HISTORY    98-05-10_2142_183400-66_195b.sdfits                                  
+HISTORY    98-05-10_2151_183945-66_196b.sdfits                                  
+HISTORY    98-05-10_2200_184529-66_197b.sdfits                                  
+HISTORY    98-05-10_2209_185113-66_198b.sdfits                                  
+HISTORY    98-05-10_2219_185657-66_199b.sdfits                                  
+HISTORY    98-05-10_2228_190241-66_200b.sdfits                                  
+HISTORY    98-05-13_2132_182450-66_193d.sdfits                                  
+HISTORY    98-05-13_2151_183034-66_194d.sdfits                                  
+HISTORY    98-05-13_2200_183618-66_195d.sdfits                                  
+HISTORY    98-05-13_2210_184202-66_196d.sdfits                                  
+HISTORY    98-05-13_2219_184746-66_197d.sdfits                                  
+HISTORY    98-05-13_2228_185331-66_198d.sdfits                                  
+HISTORY    98-05-13_2237_185915-66_199d.sdfits                                  
+HISTORY    98-05-25_1711_182559-66_193e.sdfits                                  
+HISTORY    98-05-25_1720_183143-66_194e.sdfits                                  
+HISTORY    98-05-25_1729_183727-66_195e.sdfits                                  
+HISTORY    98-05-25_1738_184311-66_196e.sdfits                                  
+HISTORY    98-05-25_1747_184855-66_197e.sdfits                                  
+HISTORY    98-05-25_1756_185439-66_198e.sdfits                                  
+HISTORY    98-05-25_1806_190024-66_199e.sdfits                                  
+HISTORY    98-05-25_1815_190608-66_200e.sdfits                                  
+HISTORY    98-05-25_1824_191152-66_201e.sdfits                                  
+HISTORY    98-05-25_1833_191736-66_202e.sdfits                                  
+HISTORY    98-05-25_1842_192320-66_203e.sdfits                                  
+HISTORY    98-05-25_1851_192905-66_204e.sdfits                                  
+HISTORY    98-05-25_1901_193449-66_205e.sdfits                                  
+HISTORY    98-05-25_1910_194033-66_206e.sdfits                                  
+HISTORY    98-05-25_1919_194617-66_207e.sdfits                                  
+HISTORY Original FITS filename "1904-66_TSC.continuum.fits".                    
+HISTORY Noise level of continuum map: 61 mJy (RMS)                              
+END                                                                             
