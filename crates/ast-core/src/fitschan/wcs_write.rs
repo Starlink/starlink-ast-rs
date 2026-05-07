@@ -11,6 +11,7 @@ use super::fits_store::FitsStore;
 use super::wcs_decompose::{decompose_linear, split_cd};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{CmpFrame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest};
+use crate::mappings::{CmpMap, Composition, Mapping, ShiftMap, WinMap};
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -63,8 +64,11 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // Get the base→current mapping.
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
-    // Use pixel 1.0 as reference (FITS first-pixel convention).
-    let ref_pixel: Vec<f64> = vec![1.0; naxis];
+    // Find the best reference pixel. For non-linear mappings (e.g. TAN
+    // projections), this is the pixel where the mapping is most locally
+    // linear — the projection centre. For linear mappings, any pixel works
+    // and we fall back to (1,1,...).
+    let ref_pixel = find_reference_pixel(mapping.as_ref(), naxis)?;
 
     // Decompose the mapping at the reference pixel.
     let decomp = decompose_linear(mapping.as_ref(), naxis, &ref_pixel)?;
@@ -85,6 +89,80 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     identify_axes(fs, &decomp.crval, &mut store)?;
 
     Ok(store)
+}
+
+/// Find the best reference pixel for WCS encoding.
+///
+/// Extracts the CRPIX from the pixel-to-world mapping structure. For FrameSets
+/// constructed from FITS headers, the mapping starts with a WinMap or ShiftMap
+/// whose shift encodes -CRPIX. We walk the CmpMap tree to find this shift.
+///
+/// If the mapping structure doesn't contain a recognizable CRPIX shift, falls
+/// back to pixel (1,1,...) as the reference.
+fn find_reference_pixel(mapping: &dyn Mapping, naxis: usize) -> AstResult<Vec<f64>> {
+    // Try to extract CRPIX from the mapping structure.
+    if let Some(crpix) = extract_crpix_from_mapping(mapping, naxis) {
+        return Ok(crpix);
+    }
+
+    // Fallback: use pixel (1,1,...).
+    Ok(vec![1.0; naxis])
+}
+
+/// Walk the mapping tree to find the leading shift that encodes CRPIX.
+///
+/// For a pixel-to-world mapping constructed by the WCS reader, the structure is:
+///   CmpMap(Series): pixel_to_iwc → iwc_to_world
+/// where pixel_to_iwc starts with a WinMap(shift=-CRPIX, scale=1).
+///
+/// We recursively descend through the "first" component of Series CmpMaps
+/// until we find a WinMap or ShiftMap at the leaf.
+fn extract_crpix_from_mapping(mapping: &dyn Mapping, naxis: usize) -> Option<Vec<f64>> {
+    // Check if this mapping is itself a WinMap with unit scales.
+    if let Some(wm) = mapping.as_any().downcast_ref::<WinMap>() {
+        let shifts = wm.shifts();
+        let scales = wm.scales();
+        if shifts.len() == naxis && scales.iter().all(|&s| (s - 1.0).abs() < 1e-10) {
+            // WinMap with unit scales: forward(pixel) = pixel + shift.
+            // At CRPIX: output = CRPIX + shift = 0 → shift = -CRPIX → CRPIX = -shift.
+            let crpix: Vec<f64> = shifts.iter().map(|&s| -s).collect();
+            return Some(crpix);
+        }
+        // WinMap with non-unit scales: CRPIX = -shift/scale.
+        if shifts.len() == naxis {
+            let crpix: Vec<f64> = shifts
+                .iter()
+                .zip(scales.iter())
+                .map(|(&s, &sc)| if sc.abs() > 1e-30 { -s / sc } else { 1.0 })
+                .collect();
+            return Some(crpix);
+        }
+    }
+
+    // Check if this is a ShiftMap.
+    if let Some(sm) = mapping.as_any().downcast_ref::<ShiftMap>() {
+        let shifts = sm.shifts();
+        if shifts.len() == naxis {
+            // ShiftMap forward(pixel) = pixel + shift → CRPIX = -shift.
+            let crpix: Vec<f64> = shifts.iter().map(|&s| -s).collect();
+            return Some(crpix);
+        }
+    }
+
+    // Check if this is a CmpMap in Series composition.
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == Composition::Series {
+            // The first component in a series CmpMap is applied first (to pixel coords).
+            // Recursively check it for a shift/WinMap.
+            if let Some(crpix) = extract_crpix_from_mapping(cmp.first(), naxis) {
+                return Some(crpix);
+            }
+            // If the first component is itself a CmpMap that didn't yield a result,
+            // try the second component in case the structure is different.
+        }
+    }
+
+    None
 }
 
 /// Identify axis types from the current frame and populate CTYPE, CRVAL, etc.
