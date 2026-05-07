@@ -10,6 +10,8 @@ pub mod card_list;
 pub(crate) mod fits_store;
 pub mod format;
 #[allow(dead_code)]
+pub(crate) mod guess_encoding;
+#[allow(dead_code)]
 pub(crate) mod wcs_celestial;
 #[allow(dead_code)]
 pub(crate) mod wcs_decompose;
