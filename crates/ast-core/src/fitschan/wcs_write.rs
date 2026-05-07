@@ -102,6 +102,10 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
 fn find_reference_pixel(mapping: &dyn Mapping, naxis: usize) -> AstResult<Vec<f64>> {
     // Try to extract CRPIX from the mapping structure.
     if let Some(crpix) = extract_crpix_from_mapping(mapping, naxis) {
+        // Note: the extracted CRPIX may include a 0.5 offset from the
+        // GRID→PIXEL conversion in the FrameSet's internal mapping path.
+        // We keep it as-is because decompose_linear must evaluate at this
+        // exact pixel to get the correct CRVAL.
         return Ok(crpix);
     }
 
@@ -329,7 +333,8 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = format!("CRPIX{}", i + 1);
-            cards.set_float(&key, val, "Reference pixel");
+            let comment = format!("Reference pixel on axis {}", i + 1);
+            cards.set_float(&key, val, &comment);
         }
     }
 
@@ -337,7 +342,8 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let key = format!("CRVAL{}", i + 1);
-            cards.set_float(&key, val, "Reference value");
+            let comment = format!("Value at ref. pixel on axis {}", i + 1);
+            cards.set_float(&key, val, &comment);
         }
     }
 
@@ -345,7 +351,8 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
     for i in 0..naxis {
         if let Some(ref val) = store.ctype[i] {
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(&key, val, "Axis type");
+            let comment = format!("Type of co-ordinate on axis {}", i + 1);
+            cards.set_string(&key, val, &comment);
         }
     }
 
@@ -353,7 +360,8 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, "Axis units");
+            let comment = format!("Units for axis {}", i + 1);
+            cards.set_string(&key, val, &comment);
         }
     }
 
@@ -366,10 +374,10 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
 
     // Ancillary keywords.
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADESYS", radesys, "Reference frame");
+        cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
     }
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Equinox of coordinates");
+        cards.set_float("EQUINOX", equinox, "[yr] Epoch of reference equinox");
     }
     if let Some(lonpole) = store.lonpole {
         cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
@@ -401,7 +409,7 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
             if let Some(val) = store.cd[i][j] {
                 if val != 0.0 || i == j {
                     let key = format!("CD{}_{}", i + 1, j + 1);
-                    cards.set_float(&key, val, "");
+                    cards.set_float(&key, val, "Transformation matrix element");
                 }
             }
         }
