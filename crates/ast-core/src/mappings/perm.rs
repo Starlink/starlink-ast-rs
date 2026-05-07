@@ -155,6 +155,75 @@ impl PermMap {
     }
 }
 
+/// Add a constant value to the pool, deduplicating via `ast_equal`.
+/// Returns the 0-based index of the (possibly pre-existing) entry.
+fn add_constant(constants: &mut Vec<f64>, val: f64) -> usize {
+    for (i, &existing) in constants.iter().enumerate() {
+        if ast_equal(existing, val) {
+            return i;
+        }
+    }
+    constants.push(val);
+    constants.len() - 1
+}
+
+/// Compose two permutation arrays in series (first then second).
+///
+/// For each element `p2` in `second_perm`:
+/// - If `p2 == 0`: result is 0 (BAD).
+/// - If `p2 < 0`: result references a constant from `second_constants`.
+/// - If `p2 > 0`: look up `first_perm[p2-1]`:
+///   - 0 → BAD propagates.
+///   - < 0 → result references a constant from `first_constants`.
+///   - > 0 → pass through that input coordinate.
+///
+/// Returns the composed permutation and its own constant pool (indices
+/// into which are encoded as negative values in the result perm).
+fn compose_perms(
+    first_perm: &[i64],
+    second_perm: &[i64],
+    first_constants: &[f64],
+    second_constants: &[f64],
+) -> (Vec<i64>, Vec<f64>) {
+    let mut result_perm = Vec::with_capacity(second_perm.len());
+    let mut result_constants: Vec<f64> = Vec::new();
+
+    for &p2 in second_perm {
+        if p2 == 0 {
+            // BAD
+            result_perm.push(0);
+        } else if p2 < 0 {
+            // Constant from second
+            let val = second_constants[(-p2 - 1) as usize];
+            let idx = add_constant(&mut result_constants, val);
+            result_perm.push(-((idx + 1) as i64));
+        } else {
+            // p2 > 0: look up in first_perm
+            let first_idx = (p2 - 1) as usize;
+            if first_idx >= first_perm.len() {
+                // Out of range in first — treat as BAD
+                result_perm.push(0);
+            } else {
+                let p1 = first_perm[first_idx];
+                if p1 == 0 {
+                    // BAD propagates
+                    result_perm.push(0);
+                } else if p1 < 0 {
+                    // Constant from first
+                    let val = first_constants[(-p1 - 1) as usize];
+                    let idx = add_constant(&mut result_constants, val);
+                    result_perm.push(-((idx + 1) as i64));
+                } else {
+                    // Pass through input coordinate
+                    result_perm.push(p1);
+                }
+            }
+        }
+    }
+
+    (result_perm, result_constants)
+}
+
 impl Mapping for PermMap {
     fn nin(&self) -> usize {
         if self.inverted {
@@ -232,30 +301,102 @@ impl Mapping for PermMap {
         if !series {
             return None;
         }
-        // Only handle inverse cancellation: same PermMap in opposite directions.
-        if self_inv == other_inv {
-            return None;
-        }
         let other_perm = other.as_any().downcast_ref::<PermMap>()?;
-        if self.outperm == other_perm.outperm
-            && self.inperm == other_perm.inperm
-            && self.constants.len() == other_perm.constants.len()
-            && self
-                .constants
-                .iter()
-                .zip(&other_perm.constants)
-                .all(|(a, b)| ast_equal(*a, *b))
-        {
-            // Input dimension of the pair depends on which direction
-            // self is being used in.
-            let n = if self_inv {
-                self.outperm.len()
-            } else {
-                self.inperm.len()
-            };
-            Some(Box::new(UnitMap::new(n)))
+
+        // Determine effective forward/inverse permutations based on
+        // invert flags.  A non-inverted PermMap uses outperm for forward
+        // and inperm for inverse; an inverted one swaps them.
+        let self_eff_outperm = if self_inv {
+            &self.inperm
         } else {
-            None
+            &self.outperm
+        };
+        let self_eff_inperm = if self_inv {
+            &self.outperm
+        } else {
+            &self.inperm
+        };
+        let other_eff_outperm = if other_inv {
+            &other_perm.inperm
+        } else {
+            &other_perm.outperm
+        };
+        let other_eff_inperm = if other_inv {
+            &other_perm.outperm
+        } else {
+            &other_perm.inperm
+        };
+
+        // Compose forward: self then other.
+        let (fwd_perm, fwd_consts) = compose_perms(
+            self_eff_outperm,
+            other_eff_outperm,
+            &self.constants,
+            &other_perm.constants,
+        );
+
+        // Compose inverse: other_inv then self_inv (inverse of A then B
+        // is B_inv then A_inv).
+        let (inv_perm, inv_consts) = compose_perms(
+            other_eff_inperm,
+            self_eff_inperm,
+            &other_perm.constants,
+            &self.constants,
+        );
+
+        // Merge constant pools from both compositions.
+        let mut merged_constants: Vec<f64> = Vec::new();
+
+        // Remap forward perm constant references into the merged pool.
+        let fwd_perm_merged: Vec<i64> = fwd_perm
+            .iter()
+            .map(|&p| {
+                if p < 0 {
+                    let val = fwd_consts[(-p - 1) as usize];
+                    let idx = add_constant(&mut merged_constants, val);
+                    -((idx + 1) as i64)
+                } else {
+                    p
+                }
+            })
+            .collect();
+
+        // Remap inverse perm constant references into the merged pool.
+        let inv_perm_merged: Vec<i64> = inv_perm
+            .iter()
+            .map(|&p| {
+                if p < 0 {
+                    let val = inv_consts[(-p - 1) as usize];
+                    let idx = add_constant(&mut merged_constants, val);
+                    -((idx + 1) as i64)
+                } else {
+                    p
+                }
+            })
+            .collect();
+
+        // Check if result is identity: all outperm[i] == i+1, no BAD,
+        // same nin/nout, and inperm is also identity.
+        let nout = fwd_perm_merged.len();
+        let nin = inv_perm_merged.len();
+        let fwd_is_identity = nout == nin
+            && fwd_perm_merged
+                .iter()
+                .enumerate()
+                .all(|(i, &p)| p == (i as i64 + 1));
+        let inv_is_identity = inv_perm_merged
+            .iter()
+            .enumerate()
+            .all(|(i, &p)| p == (i as i64 + 1));
+
+        if fwd_is_identity && inv_is_identity {
+            Some(Box::new(UnitMap::new(nin)))
+        } else {
+            // Build a new PermMap.  The constructor validates the arrays.
+            match PermMap::new(&inv_perm_merged, &fwd_perm_merged, &merged_constants) {
+                Ok(pm) => Some(Box::new(pm)),
+                Err(_) => None,
+            }
         }
     }
 
