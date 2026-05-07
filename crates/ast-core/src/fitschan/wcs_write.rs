@@ -32,8 +32,31 @@ pub(crate) fn encode_wcs(obj: &AnyObject, cards: &mut CardList, use_cd: bool) ->
     write_store_to_cards(&store, cards, use_cd)
 }
 
+/// Encode a FrameSet via FitsStore with a custom card writer.
+///
+/// Used by alternative encodings that share the FrameSet→FitsStore
+/// decomposition but write different keywords.
+pub(crate) fn encode_wcs_to_store(
+    obj: &AnyObject,
+    cards: &mut CardList,
+    writer: impl FnOnce(&FitsStore, &mut CardList) -> AstResult<()>,
+) -> AstResult<()> {
+    let frameset = match obj {
+        AnyObject::FrameSet(fs) => fs,
+        _ => {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                "FitsWcs encoding requires a FrameSet object",
+            ));
+        }
+    };
+
+    let store = store_from_frameset(frameset)?;
+    writer(&store, cards)
+}
+
 /// Decompose a FrameSet into a FitsStore.
-fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
+pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
 

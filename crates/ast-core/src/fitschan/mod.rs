@@ -6,24 +6,20 @@
 
 pub mod card;
 pub mod card_list;
-#[allow(dead_code)]
+pub(crate) mod enc_aips;
+pub(crate) mod enc_class;
+pub(crate) mod enc_dss;
+pub(crate) mod enc_iraf;
+pub(crate) mod enc_pc;
 pub(crate) mod fits_store;
 pub mod format;
-#[allow(dead_code)]
 pub(crate) mod guess_encoding;
-#[allow(dead_code)]
 pub(crate) mod wcs_celestial;
-#[allow(dead_code)]
 pub(crate) mod wcs_decompose;
-#[allow(dead_code)]
 pub(crate) mod wcs_keywords;
-#[allow(dead_code)]
 pub(crate) mod wcs_matrix;
-#[allow(dead_code)]
 pub(crate) mod wcs_read;
-#[allow(dead_code)]
 pub(crate) mod wcs_spectral;
-#[allow(dead_code)]
 pub(crate) mod wcs_write;
 
 use card::{FitsCard, FitsValue};
@@ -83,7 +79,6 @@ pub struct FitsChan {
     warnings: Vec<String>,
     fits_digits: usize,
     /// Whether to use CD matrix notation (default false).
-    #[allow(dead_code)]
     cd_matrix: bool,
 }
 
@@ -344,6 +339,17 @@ impl FitsChan {
         self.encoding
     }
 
+    /// Auto-detect the encoding format from the current header cards.
+    ///
+    /// Examines keyword signatures to determine which WCS encoding the
+    /// header uses. Returns the detected encoding and updates the internal
+    /// encoding attribute.
+    pub fn guess_encoding(&mut self) -> Encoding {
+        let enc = guess_encoding::guess_encoding(&self.cards);
+        self.encoding = enc;
+        enc
+    }
+
     /// Set the number of significant digits for floating-point output.
     pub fn set_fits_digits(&mut self, digits: usize) {
         self.fits_digits = digits.clamp(1, 17);
@@ -471,26 +477,44 @@ impl Channel for FitsChan {
 
         match self.encoding {
             Encoding::Native => {
-                // Extract native text from COMMENT cards.
                 let text = match self.extract_native_text() {
                     Some(t) => t,
                     None => return Ok(None),
                 };
-                // Parse using the native reader.
                 let node = serial::native_read::parse_native(&text)?;
                 let obj = serial::any_object_from_node(&node)?;
                 Ok(Some(obj))
             }
-            Encoding::FitsWcs | Encoding::FitsPc => {
-                // Extract WCS keywords into a FitsStore and decode.
+            Encoding::FitsWcs => {
                 let store = wcs_keywords::extract_wcs_keywords(&self.cards)?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
-            _ => Err(AstError::new(
-                ErrorCode::Nodef,
-                format!("{:?} encoding read not yet implemented", self.encoding),
-            )),
+            Encoding::FitsPc => {
+                let store = enc_pc::read_from_cards(&self.cards)?;
+                let obj = wcs_read::decode_wcs(&store)?;
+                Ok(Some(obj))
+            }
+            Encoding::FitsIraf => {
+                let store = enc_iraf::read_from_cards(&self.cards)?;
+                let obj = wcs_read::decode_wcs(&store)?;
+                Ok(Some(obj))
+            }
+            Encoding::FitsAips | Encoding::FitsAipsPP => {
+                let store = enc_aips::read_from_cards(&self.cards)?;
+                let obj = wcs_read::decode_wcs(&store)?;
+                Ok(Some(obj))
+            }
+            Encoding::FitsClass => {
+                let store = enc_class::read_from_cards(&self.cards)?;
+                let obj = wcs_read::decode_wcs(&store)?;
+                Ok(Some(obj))
+            }
+            Encoding::Dss => {
+                let store = enc_dss::read_from_cards(&self.cards)?;
+                let obj = wcs_read::decode_wcs(&store)?;
+                Ok(Some(obj))
+            }
         }
     }
 
@@ -499,7 +523,6 @@ impl Channel for FitsChan {
 
         match self.encoding {
             Encoding::Native => {
-                // Render to native text.
                 let node = serial::any_object_to_node(obj)?;
                 let options = serial::native_write::RenderOptions {
                     comment: self.config.comment,
@@ -507,15 +530,28 @@ impl Channel for FitsChan {
                     indent: self.config.indent,
                 };
                 let text = serial::native_write::render_native_with_options(&node, &options)?;
-                // Store as COMMENT cards.
                 self.store_native_text(&text);
                 Ok(())
             }
             Encoding::FitsWcs => wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix),
-            _ => Err(AstError::new(
-                ErrorCode::Nodef,
-                format!("{:?} encoding write not yet implemented", self.encoding),
-            )),
+            Encoding::FitsIraf => {
+                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_iraf::write_to_cards)
+            }
+            Encoding::FitsPc => {
+                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_pc::write_to_cards)
+            }
+            Encoding::FitsAips => {
+                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_aips::write_to_cards)
+            }
+            Encoding::FitsAipsPP => {
+                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_aips::write_to_cards_pp)
+            }
+            Encoding::FitsClass => {
+                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_class::write_to_cards)
+            }
+            Encoding::Dss => {
+                wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_dss::write_to_cards)
+            }
         }
     }
 
