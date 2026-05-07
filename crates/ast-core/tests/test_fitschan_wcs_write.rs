@@ -73,10 +73,7 @@ fn write_produces_fits_cards() {
     let fc = write_to_fitschan(&obj);
 
     // The output should contain some cards.
-    assert!(
-        fc.ncard() > 0,
-        "Written FitsChan should have cards, got 0"
-    );
+    assert!(fc.ncard() > 0, "Written FitsChan should have cards, got 0");
 
     // Check that fundamental WCS keywords are present.
     assert!(
@@ -102,12 +99,8 @@ fn write_celestial_has_correct_ctype() {
     let obj = read_frameset(MINIMAL_TAN_HEADER);
     let fc = write_to_fitschan(&obj);
 
-    let ctype1 = fc
-        .get_fits_s("CTYPE1")
-        .expect("CTYPE1 should be present");
-    let ctype2 = fc
-        .get_fits_s("CTYPE2")
-        .expect("CTYPE2 should be present");
+    let ctype1 = fc.get_fits_s("CTYPE1").expect("CTYPE1 should be present");
+    let ctype2 = fc.get_fits_s("CTYPE2").expect("CTYPE2 should be present");
 
     // CTYPE1 should indicate RA with TAN projection.
     assert!(
@@ -160,7 +153,9 @@ fn round_trip_read_write_read() {
         .read()
         .expect("re-read should not error")
         .expect("re-read should produce a FrameSet");
-    let mapping2 = obj2.as_mapping().expect("re-read FrameSet should be a Mapping");
+    let mapping2 = obj2
+        .as_mapping()
+        .expect("re-read FrameSet should be a Mapping");
 
     // Both should agree at pixel (1, 1) — the reference pixel.
     // Since CRPIX=1 in the input and the encoder also uses CRPIX=1,
@@ -251,7 +246,9 @@ fn write_spectral_round_trip() {
         .read()
         .expect("re-read should not error")
         .expect("re-read should produce a FrameSet");
-    let mapping2 = obj2.as_mapping().expect("re-read FrameSet should be a Mapping");
+    let mapping2 = obj2
+        .as_mapping()
+        .expect("re-read FrameSet should be a Mapping");
 
     // Transform CRPIX=1 through both FrameSets.
     let pix = PointSet::from_rows([[1.0]]);

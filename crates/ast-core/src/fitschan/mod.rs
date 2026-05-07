@@ -509,9 +509,7 @@ impl Channel for FitsChan {
                 self.store_native_text(&text);
                 Ok(())
             }
-            Encoding::FitsWcs => {
-                wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix)
-            }
+            Encoding::FitsWcs => wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix),
             _ => Err(AstError::new(
                 ErrorCode::Nodef,
                 format!("{:?} encoding write not yet implemented", self.encoding),
