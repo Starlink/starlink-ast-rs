@@ -38,6 +38,16 @@ impl CmpFrame {
         self.frame1.naxes()
     }
 
+    /// Access the first child frame.
+    pub fn frame1(&self) -> &dyn Frame {
+        self.frame1.as_ref()
+    }
+
+    /// Access the second child frame.
+    pub fn frame2(&self) -> &dyn Frame {
+        self.frame2.as_ref()
+    }
+
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
     fn validate_axis(&self, axis: usize) -> AstResult<()> {
         let n = self.naxes();
