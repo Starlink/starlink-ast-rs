@@ -229,7 +229,18 @@ impl FitsCard {
     }
 
     /// Format the card back to an 80-character FITS header card string.
+    /// Format this card as an 80-character FITS header string using a
+    /// specific number of significant digits for float values.
+    pub fn format_with_digits(&self, digits: usize) -> String {
+        self.format_internal(digits)
+    }
+
+    /// Format this card as an 80-character FITS header string.
     pub fn format(&self) -> String {
+        self.format_internal(15)
+    }
+
+    fn format_internal(&self, digits: usize) -> String {
         let mut buf = String::with_capacity(FITS_CARD_LEN);
 
         // Write keyword, left-justified, padded to 8 chars.
@@ -275,7 +286,7 @@ impl FitsCard {
             }
             FitsValue::Float(v) => {
                 buf.push_str("= ");
-                let formatted = format_float(*v);
+                let formatted = format_float(*v, digits);
                 let width = FITS_RL_COL + 1 - (FITS_NAME_LEN + 2); // 20
                 if formatted.len() < width {
                     for _ in 0..(width - formatted.len()) {
@@ -303,8 +314,8 @@ impl FitsCard {
             }
             FitsValue::ComplexFloat(r, i) => {
                 buf.push_str("= ");
-                let r_fmt = format_float(*r);
-                let i_fmt = format_float(*i);
+                let r_fmt = format_float(*r, digits);
+                let i_fmt = format_float(*i, digits);
                 // Right-justify real to col 30, imaginary to col 50.
                 let r_width = FITS_RL_COL + 1 - (FITS_NAME_LEN + 2); // 20
                 if r_fmt.len() < r_width {
@@ -541,58 +552,8 @@ fn try_parse_complex(s: &str) -> Option<FitsValue> {
 /// Uses a representation that preserves precision while staying compact.
 /// Mimics C's `%G` format: uses fixed notation when the exponent is in [-4, 15],
 /// scientific notation otherwise, and trims trailing zeros.
-fn format_float(v: f64) -> String {
-    if v == 0.0 {
-        return "0.0".to_string();
-    }
-
-    // Determine which representation is more compact, mimicking %G behaviour.
-    let abs_v = v.abs();
-    let exp = abs_v.log10().floor() as i32;
-
-    if (-4..=14).contains(&exp) {
-        // Fixed notation with enough precision.
-        // Number of decimal places needed: 15 - (exp + 1), but at least 1.
-        let decimal_places = (15 - (exp + 1)).max(1) as usize;
-        let s = format!("{v:.decimal_places$}");
-        // Trim trailing zeros but keep at least one decimal digit.
-        trim_trailing_zeros(&s)
-    } else {
-        // Scientific notation.
-        let s = format!("{v:.14E}");
-        // Trim trailing zeros in the mantissa.
-        trim_trailing_zeros_exp(&s)
-    }
-}
-
-/// Trim trailing zeros from a fixed-point formatted number, keeping at least one
-/// digit after the decimal point.
-fn trim_trailing_zeros(s: &str) -> String {
-    if let Some(dot_pos) = s.find('.') {
-        let trimmed = s.trim_end_matches('0');
-        // Keep at least one digit after the dot.
-        if trimmed.ends_with('.') {
-            format!("{trimmed}0")
-        } else if trimmed.len() <= dot_pos {
-            format!("{}0", &s[..=dot_pos])
-        } else {
-            trimmed.to_string()
-        }
-    } else {
-        s.to_string()
-    }
-}
-
-/// Trim trailing zeros in the mantissa of a scientific notation number.
-fn trim_trailing_zeros_exp(s: &str) -> String {
-    if let Some(e_pos) = s.find('E').or_else(|| s.find('e')) {
-        let mantissa = &s[..e_pos];
-        let exponent = &s[e_pos..];
-        let trimmed = trim_trailing_zeros(mantissa);
-        format!("{trimmed}{exponent}")
-    } else {
-        s.to_string()
-    }
+fn format_float(v: f64, digits: usize) -> String {
+    super::format::format_significant(v, digits)
 }
 
 /// Format a string value with FITS quoting rules into the buffer.

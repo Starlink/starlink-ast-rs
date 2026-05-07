@@ -214,7 +214,7 @@ impl FitsChan {
     pub fn to_header(&self) -> String {
         self.cards
             .iter()
-            .map(|card| card.format())
+            .map(|card| card.format_with_digits(self.fits_digits))
             .collect::<Vec<_>>()
             .join("\n")
     }
