@@ -31,10 +31,21 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         (Some(w), _) => w,
         (None, Some(n)) => n,
         (None, None) => {
-            return Err(AstError::new(
-                ErrorCode::Bdfts,
-                "cannot determine number of WCS axes: neither WCSAXES nor NAXIS found",
-            ));
+            // Fallback: infer from highest-numbered NAXISn keyword.
+            let mut max_n = 0;
+            for i in 1..=9 {
+                let key = format!("NAXIS{i}");
+                if cards.find(&key).is_some() {
+                    max_n = i;
+                }
+            }
+            if max_n == 0 {
+                return Err(AstError::new(
+                    ErrorCode::Bdfts,
+                    "cannot determine number of WCS axes: neither WCSAXES nor NAXIS found",
+                ));
+            }
+            max_n
         }
     };
 
