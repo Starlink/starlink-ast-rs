@@ -208,6 +208,17 @@ impl FitsChan {
         self.cards.len()
     }
 
+    /// Format all stored cards as a FITS header string.
+    ///
+    /// Each card is formatted as an 80-character line followed by a newline.
+    pub fn to_header(&self) -> String {
+        self.cards
+            .iter()
+            .map(|card| card.format())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     // -----------------------------------------------------------------------
     // Typed getters
     // -----------------------------------------------------------------------
@@ -358,6 +369,19 @@ impl FitsChan {
     /// Return the current number of significant digits for floating-point output.
     pub fn fits_digits(&self) -> usize {
         self.fits_digits
+    }
+
+    /// Set whether to use CD matrix notation for FITS-WCS output.
+    ///
+    /// When true, the output uses CDi_j keywords; when false (the default),
+    /// it uses the PCi_j + CDELTi form.
+    pub fn set_cd_matrix(&mut self, use_cd: bool) {
+        self.cd_matrix = use_cd;
+    }
+
+    /// Return whether CD matrix notation is enabled.
+    pub fn cd_matrix(&self) -> bool {
+        self.cd_matrix
     }
 
     /// Reset the card position to the beginning.
