@@ -12,6 +12,8 @@ pub mod format;
 #[allow(dead_code)]
 pub(crate) mod wcs_celestial;
 #[allow(dead_code)]
+pub(crate) mod wcs_decompose;
+#[allow(dead_code)]
 pub(crate) mod wcs_keywords;
 #[allow(dead_code)]
 pub(crate) mod wcs_matrix;
@@ -19,6 +21,8 @@ pub(crate) mod wcs_matrix;
 pub(crate) mod wcs_read;
 #[allow(dead_code)]
 pub(crate) mod wcs_spectral;
+#[allow(dead_code)]
+pub(crate) mod wcs_write;
 
 use card::{FitsCard, FitsValue};
 use card_list::CardList;

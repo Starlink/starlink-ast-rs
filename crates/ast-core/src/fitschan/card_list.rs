@@ -163,6 +163,51 @@ impl CardList {
         self.position >= self.cards.len()
     }
 
+    /// Set an integer keyword value (insert or overwrite existing).
+    pub(crate) fn set_int(&mut self, keyword: &str, value: i64, comment: &str) {
+        let card = FitsCard {
+            keyword: keyword.to_uppercase(),
+            value: FitsValue::Int(value),
+            comment: if comment.is_empty() {
+                None
+            } else {
+                Some(comment.to_string())
+            },
+            used: false,
+        };
+        self.put(card, true);
+    }
+
+    /// Set a float keyword value (insert or overwrite existing).
+    pub(crate) fn set_float(&mut self, keyword: &str, value: f64, comment: &str) {
+        let card = FitsCard {
+            keyword: keyword.to_uppercase(),
+            value: FitsValue::Float(value),
+            comment: if comment.is_empty() {
+                None
+            } else {
+                Some(comment.to_string())
+            },
+            used: false,
+        };
+        self.put(card, true);
+    }
+
+    /// Set a string keyword value (insert or overwrite existing).
+    pub(crate) fn set_string(&mut self, keyword: &str, value: &str, comment: &str) {
+        let card = FitsCard {
+            keyword: keyword.to_uppercase(),
+            value: FitsValue::String(value.to_string()),
+            comment: if comment.is_empty() {
+                None
+            } else {
+                Some(comment.to_string())
+            },
+            used: false,
+        };
+        self.put(card, true);
+    }
+
     /// Return an iterator over all cards.
     pub fn iter(&self) -> impl Iterator<Item = &FitsCard> {
         self.cards.iter()
