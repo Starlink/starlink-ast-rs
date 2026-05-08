@@ -24,6 +24,7 @@ use crate::mappings::helpers::ast_equal;
 use super::cmpmap::{CmpMap, Composition};
 use super::matrix::{MatrixMap, is_diagonal};
 use super::perm::PermMap;
+use super::shift::ShiftMap;
 use super::sphmap::SphMap;
 use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
@@ -290,6 +291,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             if series && try_swap_winmap_wcsmap(list) {
                 continue;
             }
+            // Try swapping WinMap past a non-diagonal MatrixMap.
+            if series && try_swap_winmap_past_matrixmap(list) {
+                continue;
+            }
             // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
             if series && try_sphmap_diagonal_pattern(list) {
                 continue;
@@ -375,6 +380,126 @@ fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
         i += 1;
     }
     swapped
+}
+
+/// Try to swap a WinMap past a non-diagonal MatrixMap in a flattened series list.
+///
+/// When a WinMap (or ShiftMap, which is a WinMap with unit scales) is at
+/// position `i` and a non-diagonal MatrixMap is at position `i+1`, the pair
+/// can be rewritten as `MatrixMap' ; ShiftMap'` (or just `MatrixMap'` if
+/// the transformed shifts are zero). This moves the linear per-axis component
+/// to the other side of the matrix, potentially enabling further merges.
+///
+/// Math: `y = M * (s + c*x) = M*diag(c)*x + M*s`
+/// - New MatrixMap = `M * diag(c)` (columns of M scaled by WinMap scales)
+/// - New ShiftMap = `M * s` (shifts transformed through the matrix)
+///
+/// Only fires when there is a potential merge partner on the other side of
+/// the MatrixMap (another linear mapping that the shifted result could combine
+/// with), to avoid infinite swap loops.
+///
+/// Matches C winmap.c:2793 (WinMat).
+fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    let mut i = 0;
+    while i + 1 < list.len() {
+        // Check for WinMap/ShiftMap at position i and MatrixMap at position i+1.
+        let is_linear_at_i = list[i].0.as_any().is::<WinMap>()
+            || list[i].0.as_any().is::<ShiftMap>()
+            || list[i].0.as_any().is::<ZoomMap>();
+        let is_matrix_at_i1 = list[i + 1].0.as_any().is::<MatrixMap>();
+
+        if is_linear_at_i && is_matrix_at_i1 {
+            // Check that the MatrixMap is NOT diagonal (diagonal case is
+            // already handled by the normal pairwise merge via extract_linear_params).
+            let mm = list[i + 1].0.as_any().downcast_ref::<MatrixMap>().unwrap();
+            let mat_inv = list[i + 1].1;
+            let mat = if mat_inv {
+                match mm.inverse_matrix() {
+                    Some(m) => m.clone(),
+                    None => {
+                        i += 1;
+                        continue;
+                    }
+                }
+            } else {
+                mm.forward_matrix().clone()
+            };
+
+            if is_diagonal(&mat) {
+                i += 1;
+                continue;
+            }
+
+            // Extract effective (shifts, scales) from the linear mapping at i.
+            let win_inv = list[i].1;
+            let Some((shifts, scales)) =
+                super::winmap::extract_linear_params(list[i].0.as_ref(), win_inv)
+            else {
+                i += 1;
+                continue;
+            };
+
+            let nin = mat.ncols();
+            let nout = mat.nrows();
+            if shifts.len() != nin || scales.len() != nin {
+                i += 1;
+                continue;
+            }
+
+            // Compute transformed shifts: M * s.
+            let shifted: Vec<f64> = (0..nout)
+                .map(|row| (0..nin).map(|j| mat[[row, j]] * shifts[j]).sum::<f64>())
+                .collect();
+            let all_shifts_zero = shifted.iter().all(|&s| ast_equal(s, 0.0));
+
+            // Only proceed if:
+            // 1. The shifts are all zero (pure scaling absorbed → net reduction), OR
+            // 2. There's a linear merge partner at position i+2 that the
+            //    resulting ShiftMap could combine with.
+            if !all_shifts_zero {
+                let has_merge_partner = if i + 2 < list.len() {
+                    super::winmap::extract_linear_params(list[i + 2].0.as_ref(), list[i + 2].1)
+                        .is_some()
+                } else {
+                    false
+                };
+                if !has_merge_partner {
+                    i += 1;
+                    continue;
+                }
+            }
+
+            // Build M * diag(c): scale each column j of M by scales[j].
+            let mut scaled_mat = mat.clone();
+            for j in 0..nin {
+                for row in 0..nout {
+                    scaled_mat[[row, j]] *= scales[j];
+                }
+            }
+
+            // Replace: remove position i (WinMap), replace position i+1 (MatrixMap)
+            // with the new MatrixMap, and optionally insert a ShiftMap after.
+            let Ok(new_mm) = MatrixMap::new(scaled_mat) else {
+                i += 1;
+                continue;
+            };
+
+            // Remove the WinMap at position i.
+            list.remove(i);
+            // Replace the MatrixMap (now at position i after removal) with new one.
+            list[i] = (Box::new(new_mm), false);
+
+            if !all_shifts_zero {
+                // Insert ShiftMap after the new MatrixMap.
+                let new_sm = ShiftMap::new(shifted);
+                list.insert(i + 1, (Box::new(new_sm), false));
+            }
+
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 /// Effective output coordinate count with external inversion.

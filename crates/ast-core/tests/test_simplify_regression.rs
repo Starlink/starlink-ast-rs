@@ -559,6 +559,141 @@ fn sphmap_three_mapping_matrixmap_pattern() {
     );
 }
 
+/// Verify that a WinMap (pure scaling, zero shifts) before a non-diagonal
+/// MatrixMap is absorbed into the MatrixMap by scaling its columns.
+#[test]
+fn winmap_pure_scale_before_matrix_simplifies() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, WinMap};
+    use ndarray::array;
+
+    // WinMap(shift=[0,0], scale=[2,3]) ; MatrixMap[[1,1],[1,-1]]
+    // The WinMap scales should be absorbed into the MatrixMap columns.
+    // Result: MatrixMap[[2,3],[2,-3]] (columns scaled by [2,3]).
+    let wm = WinMap::new(&[0.0, 0.0], &[2.0, 3.0]).unwrap();
+    let m = array![[1.0, 1.0], [1.0, -1.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    let c = CmpMap::new(
+        Box::new(wm.clone()),
+        Box::new(mm.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let s = c.simplified().unwrap();
+
+    // Should reduce to a single MatrixMap (WinMap absorbed).
+    assert!(
+        s.as_any().is::<MatrixMap>(),
+        "Expected MatrixMap, got {:?}",
+        s
+    );
+
+    // Verify transform equivalence.
+    let pts = PointSet::from_rows([[5.0, 7.0], [1.0, -2.0]]);
+    let wm_out = wm.transform(&pts, true).unwrap();
+    let expected = mm.transform(&wm_out, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        for j in 0..2 {
+            assert!(
+                (actual.point(i)[j] - expected.point(i)[j]).abs() < 1e-10,
+                "Point {i} coord {j}: got {}, expected {}",
+                actual.point(i)[j],
+                expected.point(i)[j]
+            );
+        }
+    }
+}
+
+/// Verify that a WinMap (with shifts) before a non-diagonal MatrixMap
+/// produces a CmpMap(MatrixMap, ShiftMap) that is numerically equivalent.
+#[test]
+fn winmap_with_shifts_before_matrix_simplifies() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, WinMap};
+    use ndarray::array;
+
+    // WinMap(shift=[1,2], scale=[2,3]) ; MatrixMap[[1,1],[1,-1]]
+    // Result: MatrixMap[[2,3],[2,-3]] then ShiftMap([1*1+1*2, 1*1+(-1)*2]) = ShiftMap([3,-1])
+    let wm = WinMap::new(&[1.0, 2.0], &[2.0, 3.0]).unwrap();
+    let m = array![[1.0, 1.0], [1.0, -1.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    let c = CmpMap::new(
+        Box::new(wm.clone()),
+        Box::new(mm.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let s = c.simplified().unwrap();
+
+    // The result should NOT be a single WinMap or MatrixMap (it needs a shift).
+    // It should be either a CmpMap(MatrixMap, ShiftMap) or possibly further
+    // simplified, but must be numerically equivalent.
+    let pts = PointSet::from_rows([[5.0, 7.0], [0.0, 0.0], [-1.0, 3.0]]);
+    let wm_out = wm.transform(&pts, true).unwrap();
+    let expected = mm.transform(&wm_out, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        for j in 0..2 {
+            assert!(
+                (actual.point(i)[j] - expected.point(i)[j]).abs() < 1e-10,
+                "Point {i} coord {j}: got {}, expected {}",
+                actual.point(i)[j],
+                expected.point(i)[j]
+            );
+        }
+    }
+}
+
+/// Verify that WinMap before MatrixMap enables further chain simplification.
+/// ShiftMap ; MatrixMap ; ShiftMap where the first ShiftMap can swap past
+/// the matrix to merge with the second ShiftMap.
+#[test]
+fn winmap_swap_enables_chain_simplification() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, ShiftMap};
+    use ndarray::array;
+
+    // ShiftMap([1,0]) ; MatrixMap[[0,1],[1,0]] ; ShiftMap([0,2])
+    // The permutation matrix swaps axes.
+    // ShiftMap([1,0]) is a WinMap(shifts=[1,0], scales=[1,1]).
+    // After swap: MatrixMap[[0,1],[1,0]] ; ShiftMap([0,1]) ; ShiftMap([0,2])
+    // = MatrixMap[[0,1],[1,0]] ; ShiftMap([0,3])
+    let s1 = ShiftMap::new([1.0, 0.0]);
+    let m = array![[0.0, 1.0], [1.0, 0.0]]; // axis swap
+    let mm = MatrixMap::new(m).unwrap();
+    let s2 = ShiftMap::new([0.0, 2.0]);
+
+    let ab = CmpMap::new(
+        Box::new(s1.clone()),
+        Box::new(mm.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let abc = CmpMap::new(Box::new(ab), Box::new(s2.clone()), Composition::Series).unwrap();
+
+    // Compute reference output manually.
+    let pts = PointSet::from_rows([[3.0, 5.0], [0.0, -1.0]]);
+    let step1 = s1.transform(&pts, true).unwrap();
+    let step2 = mm.transform(&step1, true).unwrap();
+    let expected = s2.transform(&step2, true).unwrap();
+
+    let s = abc.simplified().unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        for j in 0..2 {
+            assert!(
+                (actual.point(i)[j] - expected.point(i)[j]).abs() < 1e-10,
+                "Point {i} coord {j}: got {}, expected {}",
+                actual.point(i)[j],
+                expected.point(i)[j]
+            );
+        }
+    }
+}
+
 /// Verify that the pattern does NOT fire when magnitudes differ (non-uniform scaling).
 #[test]
 fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {
