@@ -269,3 +269,62 @@ fn matrix_no_merge_with_constant_permmap() {
     let merged = mm.try_merge(&pm, true, false, false);
     assert!(merged.is_none(), "PermMap with constants should not merge into MatrixMap");
 }
+
+/// Diagonal MatrixMap followed by WinMap merges into a single WinMap.
+#[test]
+fn diagonal_matrix_merge_with_winmap() {
+    use ast_core::mappings::WinMap;
+
+    // Diagonal matrix [[2,0],[0,3]] followed by WinMap shift=[1,1] scale=[1,1]
+    // Combined: out = 1 + 1*(diag*x) = 1 + [2x, 3y]
+    let m = array![[2.0, 0.0], [0.0, 3.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let wm = WinMap::new(&[1.0, 1.0], &[1.0, 1.0]).unwrap();
+
+    let merged = mm.try_merge(&wm, true, false, false);
+    assert!(merged.is_some(), "diagonal MatrixMap + WinMap should merge");
+
+    // Verify: MatrixMap then WinMap
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let mat_out = mm.transform(&pts, true).unwrap(); // [10, 21]
+    let expected = wm.transform(&mat_out, true).unwrap(); // [11, 22]
+    let actual = merged.unwrap().transform(&pts, true).unwrap();
+    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+}
+
+/// Non-diagonal MatrixMap should NOT merge with WinMap.
+#[test]
+fn non_diagonal_matrix_no_merge_with_winmap() {
+    use ast_core::mappings::WinMap;
+
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let wm = WinMap::new(&[1.0, 1.0], &[1.0, 1.0]).unwrap();
+
+    let merged = mm.try_merge(&wm, true, false, false);
+    assert!(merged.is_none(), "non-diagonal MatrixMap should not merge with WinMap");
+}
+
+/// Diagonal MatrixMap + WinMap with non-trivial scales.
+#[test]
+fn diagonal_matrix_merge_with_winmap_scales() {
+    use ast_core::mappings::WinMap;
+
+    // Diagonal [[3,0],[0,2]], WinMap shifts=[10, 20], scales=[0.5, 4.0]
+    // Combined: out = [10, 20] + [0.5, 4.0] * ([3, 2] * x)
+    //         = [10 + 1.5*x, 20 + 8*y]
+    let m = array![[3.0, 0.0], [0.0, 2.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let wm = WinMap::new(&[10.0, 20.0], &[0.5, 4.0]).unwrap();
+
+    let merged = mm.try_merge(&wm, true, false, false);
+    assert!(merged.is_some());
+
+    let pts = PointSet::from_rows([[2.0, 3.0]]);
+    let mat_out = mm.transform(&pts, true).unwrap(); // [6, 6]
+    let expected = wm.transform(&mat_out, true).unwrap(); // [10+3, 20+24] = [13, 44]
+    let actual = merged.unwrap().transform(&pts, true).unwrap();
+    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+}

@@ -15,6 +15,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::perm::PermMap;
 use super::unit::UnitMap;
+use super::winmap::WinMap;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 
@@ -348,6 +349,32 @@ impl Mapping for MatrixMap {
             return MatrixMap::new(product)
                 .ok()
                 .map(|m| Box::new(m) as DynMapping);
+        }
+
+        // Diagonal MatrixMap + WinMap → WinMap (absorb diagonal scales).
+        // Matches C matrixmap.c:3230 (MatWin2).
+        if other.as_any().downcast_ref::<WinMap>().is_some() {
+            let a = if self_inv {
+                self.inverse.as_ref()?.clone()
+            } else {
+                self.matrix.clone()
+            };
+            if !is_diagonal(&a) {
+                return None;
+            }
+            let n = a.nrows();
+            // Extract effective (shifts, scales) from the WinMap.
+            let (wshifts, wscales) =
+                super::winmap::extract_linear_params(other, other_inv)?;
+            if wshifts.len() != n {
+                return None;
+            }
+            // Combined: out = wshift + wscale * (diag * x)
+            //         = wshift + (wscale * diag) * x
+            // Use compose_linear with s1=[0..], c1=diag, s2=wshifts, c2=wscales.
+            let diag: Vec<f64> = (0..n).map(|i| a[[i, i]]).collect();
+            let zeros = vec![0.0; n];
+            return super::winmap::compose_linear(&zeros, &diag, &wshifts, &wscales);
         }
 
         None
