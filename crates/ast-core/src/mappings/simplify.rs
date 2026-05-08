@@ -1431,6 +1431,58 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
     let mut inperm_new = vec![0i64; npin_new];
     let mut constants_new: Vec<f64> = Vec::new();
 
+    // If any PermMap outputs are constant, transform those constants through
+    // the CmpMap components. Matches C cmpmap.c:1929-1949.
+    let (qa, qb) = if aconstants || bconstants {
+        use crate::coords::PointSet;
+
+        // Transform all-BAD inputs through the PermMap to extract constant outputs.
+        let p = vec![BAD_VALUE; npin];
+        let pts = PointSet::from_rows(vec![p]);
+        let q_pts = perm.transform(&pts, !perm_inv).ok();
+        let q = q_pts.as_ref().map(|ps| ps.point(0).to_vec());
+
+        // Transform the first nin_a outputs through component A.
+        let qa = if aconstants {
+            if let Some(ref qv) = q {
+                let a_input: Vec<f64> = qv[..nin_a].to_vec();
+                let a_pts = PointSet::from_rows(vec![a_input]);
+                let comp_a = &par_list[0];
+                comp_a
+                    .0
+                    .transform(&a_pts, !comp_a.1)
+                    .ok()
+                    .map(|r| r.point(0).to_vec())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Transform the last nin_b outputs through component B.
+        let qb = if bconstants {
+            if let Some(ref qv) = q {
+                let b_input: Vec<f64> = qv[nin_a..nin_a + nin_b].to_vec();
+                let b_pts = PointSet::from_rows(vec![b_input]);
+                let comp_b = &par_list[1];
+                comp_b
+                    .0
+                    .transform(&b_pts, !comp_b.1)
+                    .ok()
+                    .map(|r| r.point(0).to_vec())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        (qa, qb)
+    } else {
+        (None, None)
+    };
+
     if !bconstants {
         // Second component (now first in swapped CmpMap): its nout_b outputs
         // map to the last nout_b positions in the new PermMap output.
@@ -1440,14 +1492,16 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
             outperm_new[j] = idx as i64 + 1;
         }
     } else {
-        // Second component outputs are constants — transform the PermMap
-        // constants through component B.
+        // Second component outputs are constants — use the transformed
+        // constants (qb) from component B. Matches C cmpmap.c:2003-2006.
         for idx in 0..nout_b {
             let j = npout_new - nout_b + idx;
-            // Output j gets a constant value — use BAD for now since we
-            // can't easily transform constants without executing the mapping.
             let const_idx = constants_new.len();
-            constants_new.push(BAD_VALUE);
+            let val = qb
+                .as_ref()
+                .and_then(|v| v.get(idx).copied())
+                .unwrap_or(BAD_VALUE);
+            constants_new.push(val);
             outperm_new[j] = -((const_idx + 1) as i64);
         }
         // Inputs from the UnitMap portion.
@@ -1476,10 +1530,15 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
             outperm_new[idx] = j as i64 + 1;
         }
     } else {
-        // First component outputs are constants.
+        // First component outputs are constants — use the transformed
+        // constants (qa) from component A. Matches C cmpmap.c:2037-2039.
         for idx in 0..nout_a {
             let const_idx = constants_new.len();
-            constants_new.push(BAD_VALUE);
+            let val = qa
+                .as_ref()
+                .and_then(|v| v.get(idx).copied())
+                .unwrap_or(BAD_VALUE);
+            constants_new.push(val);
             outperm_new[idx] = -((const_idx + 1) as i64);
         }
         for idx in nout_b..npin_new {

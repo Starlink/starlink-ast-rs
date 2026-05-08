@@ -887,3 +887,65 @@ fn series_in_parallel_different_lengths() {
         );
     }
 }
+
+/// When swapping a PermMap with constant outputs past a parallel CmpMap,
+/// those constants must be transformed through the appropriate CmpMap
+/// component. Previously the code used BAD_VALUE as a placeholder.
+/// Matches C cmpmap.c:1929-1949.
+#[test]
+fn permmap_swap_transforms_constants() {
+    use ast_core::constants::BAD_VALUE;
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, PermMap, ZoomMap};
+
+    // Build a PermMap with block-swap structure and constants on the B side.
+    // 3 inputs, 3 outputs.
+    // outperm = [3, -1, -2]: out[0]=in[2], out[1]=const[0]=5.0, out[2]=const[1]=7.0
+    // inperm = [-1, -2, 1]: in[0]=const[0] (inverse), in[1]=const[1] (inverse), in[2]→out[0]
+    //
+    // This is a block-swap where:
+    //  - Block A (first nin_a=1 outputs): out[0] comes from input[2] (the last 1 input)
+    //  - Block B (last nin_b=2 outputs): out[1..3] are constants (bconstants=true)
+    //
+    // Following: ZoomMap(1, 2.0) || ZoomMap(2, 3.0) (parallel, 1+2=3 inputs)
+    // Constants [5.0, 7.0] feed into the 2-input ZoomMap(2,3.0) component.
+    // After transformation, the constants should become [15.0, 21.0].
+    let pm = PermMap::new(&[-1, -2, 1], &[3, -1, -2], &[5.0, 7.0]).unwrap();
+    let z1 = ZoomMap::new(1, 2.0).unwrap();
+    let z2 = ZoomMap::new(2, 3.0).unwrap();
+    let par = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Parallel).unwrap();
+
+    let chain = CmpMap::new(Box::new(pm), Box::new(par), Composition::Series).unwrap();
+
+    // Verify the original transform: input [10.0, 20.0, 30.0]
+    // PermMap forward: out[0]=in[2]=30.0, out[1]=5.0, out[2]=7.0
+    // Parallel CmpMap: z1(30.0)=60.0, z2(5.0,7.0)=(15.0, 21.0)
+    // Expected output: [60.0, 15.0, 21.0]
+    let pts = PointSet::from_rows([[10.0, 20.0, 30.0]]);
+    let expected = chain.transform(&pts, true).unwrap();
+
+    assert!((expected.point(0)[0] - 60.0).abs() < 1e-10);
+    assert!((expected.point(0)[1] - 15.0).abs() < 1e-10);
+    assert!((expected.point(0)[2] - 21.0).abs() < 1e-10);
+
+    // After simplification, the result should still produce the same output.
+    let s = chain.simplified().unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+
+    for j in 0..3 {
+        assert!(
+            (actual.point(0)[j] - expected.point(0)[j]).abs() < 1e-10,
+            "axis {j}: transform changed after simplification: {} vs {}",
+            actual.point(0)[j],
+            expected.point(0)[j],
+        );
+    }
+    // None of the outputs should be BAD_VALUE.
+    for j in 0..3 {
+        assert_ne!(
+            actual.point(0)[j],
+            BAD_VALUE,
+            "axis {j}: output is BAD_VALUE after simplification"
+        );
+    }
+}
