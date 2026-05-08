@@ -559,6 +559,125 @@ fn lutmap_no_cancel_parallel() {
 }
 
 // ---------------------------------------------------------------------------
+// Simplification: linear LUT -> WinMap
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lutmap_linear_simplifies_to_winmap() {
+    use ast_core::mappings::WinMap;
+
+    // A perfectly linear LUT: y = 2*x + 1 (for x = 0, 1, 2, 3, 4)
+    // LUT values: [1, 3, 5, 7, 9]
+    let lut = vec![1.0, 3.0, 5.0, 7.0, 9.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    let s = lm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<WinMap>(),
+        "Linear LUT should simplify to WinMap"
+    );
+    assert_eq!(s.nin(), 1);
+    assert_eq!(s.nout(), 1);
+
+    // Verify the WinMap produces the same values.
+    let pts = PointSet::from_rows([[2.5]]);
+    let expected = lm.transform(&pts, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!(
+        (actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10,
+        "WinMap output {} != LutMap output {}",
+        actual.point(0)[0],
+        expected.point(0)[0]
+    );
+}
+
+#[test]
+fn lutmap_linear_with_start_and_inc_simplifies() {
+    use ast_core::mappings::WinMap;
+
+    // Linear LUT with start=10, inc=5: covers inputs [10, 15, 20]
+    // LUT values: [100, 200, 300] — y = 100 + 100*(x-10)/5 = 100 + 20*(x-10)
+    let lut = vec![100.0, 200.0, 300.0];
+    let lm = LutMap::new(&lut, 10.0, 5.0).unwrap();
+
+    let s = lm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<WinMap>(),
+        "Linear LUT with non-trivial start/inc should simplify to WinMap"
+    );
+
+    // Verify at a few points
+    for &x in &[10.0, 12.5, 15.0, 17.5, 20.0] {
+        let pts = PointSet::from_rows([[x]]);
+        let expected = lm.transform(&pts, true).unwrap();
+        let actual = s.transform(&pts, true).unwrap();
+        assert!(
+            (actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10,
+            "Mismatch at x={x}: WinMap={}, LutMap={}",
+            actual.point(0)[0],
+            expected.point(0)[0]
+        );
+    }
+}
+
+#[test]
+fn lutmap_linear_inverted_simplifies() {
+    use ast_core::mappings::WinMap;
+
+    // Linear LUT, inverted
+    let lut = vec![1.0, 3.0, 5.0, 7.0, 9.0];
+    let mut lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+    lm.invert();
+
+    let s = lm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<WinMap>(),
+        "Inverted linear LUT should simplify to WinMap"
+    );
+    assert!(s.is_inverted());
+
+    // Verify the inverted WinMap produces the same values as inverted LutMap
+    let pts = PointSet::from_rows([[5.0]]);
+    let expected = lm.transform(&pts, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!(
+        (actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10,
+        "Inverted WinMap output {} != inverted LutMap output {}",
+        actual.point(0)[0],
+        expected.point(0)[0]
+    );
+}
+
+#[test]
+fn lutmap_nonlinear_stays_lutmap() {
+    // Non-linear LUT: [0, 1, 4, 9, 16] (quadratic)
+    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    let s = lm.simplified().unwrap();
+    assert!(s.as_any().is::<LutMap>());
+}
+
+#[test]
+fn lutmap_do_not_simplify_respected() {
+    // Linear LUT with do_not_simplify flag should stay as LutMap
+    let lut = vec![1.0, 3.0, 5.0, 7.0, 9.0];
+    let mut lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+    lm.set_do_not_simplify(true);
+
+    let s = lm.simplified().unwrap();
+    assert!(s.as_any().is::<LutMap>());
+}
+
+#[test]
+fn lutmap_single_element_no_simplify() {
+    // Single-element table cannot determine linearity
+    let lm = LutMap::new(&[42.0], 0.0, 1.0).unwrap();
+    let s = lm.simplified().unwrap();
+    assert!(s.as_any().is::<LutMap>());
+}
+
+// ---------------------------------------------------------------------------
 // Inf handling
 // ---------------------------------------------------------------------------
 

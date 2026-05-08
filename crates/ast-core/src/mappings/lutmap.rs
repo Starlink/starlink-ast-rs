@@ -9,6 +9,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
+use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
 
 /// Interpolation method for [`LutMap`] table lookups.
@@ -42,6 +43,8 @@ pub struct LutMap {
     monotonic: i8,
     /// Whether the mapping is inverted.
     inverted: bool,
+    /// Whether this mapping is protected from simplification.
+    do_not_simplify: bool,
 }
 
 impl LutMap {
@@ -72,6 +75,7 @@ impl LutMap {
             interp: LutInterp::Linear,
             monotonic,
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -507,7 +511,49 @@ impl Mapping for LutMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
+
+        // Check if the LUT is effectively linear: lut[i] = a + b*i for all i.
+        // If so, replace with a WinMap for downstream merging with other linear
+        // mappings. Matches C lutmap.c GetLinear() logic.
+        if self.lut.len() < 2 {
+            return Ok(Box::new(self.clone()));
+        }
+
+        let n = self.lut.len();
+        let a = self.lut[0];
+        let b = (self.lut[n - 1] - a) / (n - 1) as f64;
+
+        // Check all intermediate points lie on the line within tolerance.
+        let tol = (a.abs() + (a + b * (n - 1) as f64).abs()) * 1e-10 + 1e-20;
+        let is_linear = (1..n - 1).all(|i| {
+            let expected = a + b * i as f64;
+            (self.lut[i] - expected).abs() <= tol
+        });
+
+        if !is_linear {
+            return Ok(Box::new(self.clone()));
+        }
+
+        // Linear LUT detected. The forward mapping is:
+        //   y = lut[idx] where idx = (x - start) / inc
+        //   y = a + b * idx = a + b * (x - start) / inc
+        //   y = (a - b*start/inc) + (b/inc) * x
+        //   y = shift + scale * x
+        let scale = b / self.inc;
+        let shift = a - scale * self.start;
+
+        match WinMap::new(&[shift], &[scale]) {
+            Ok(mut wm) => {
+                if self.inverted {
+                    wm.invert();
+                }
+                Ok(Box::new(wm))
+            }
+            Err(_) => Ok(Box::new(self.clone())),
+        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -567,6 +613,14 @@ impl Mapping for LutMap {
         }
         // LutMap maps 1 coordinate to 1 coordinate.
         Some(Box::new(UnitMap::new(1)))
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
     }
 }
 
@@ -649,6 +703,7 @@ impl Serializable for LutMap {
             interp,
             monotonic,
             inverted: false,
+            do_not_simplify: false,
         };
         if inverted {
             m.invert();
