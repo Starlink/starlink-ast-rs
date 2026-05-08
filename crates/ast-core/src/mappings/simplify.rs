@@ -1215,9 +1215,24 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
         return false;
     };
 
-    // Both must have the same length for zip-parallel rearrangement.
-    if ser_list1.len() != ser_list2.len() {
-        return false;
+    // Pad the shorter series list with UnitMaps to match lengths.
+    // (A;B;C) || (D;E) becomes (A;B;C) || (D;E;UnitMap) which is equivalent
+    // because UnitMap is the identity mapping and gets stripped after merging.
+    let mut ser_list1 = ser_list1;
+    let mut ser_list2 = ser_list2;
+    while ser_list1.len() < ser_list2.len() {
+        let nout = effective_nout(
+            ser_list1.last().unwrap().0.as_ref(),
+            ser_list1.last().unwrap().1,
+        );
+        ser_list1.push((Box::new(UnitMap::new(nout)), false));
+    }
+    while ser_list2.len() < ser_list1.len() {
+        let nout = effective_nout(
+            ser_list2.last().unwrap().0.as_ref(),
+            ser_list2.last().unwrap().1,
+        );
+        ser_list2.push((Box::new(UnitMap::new(nout)), false));
     }
 
     let n = ser_list1.len();

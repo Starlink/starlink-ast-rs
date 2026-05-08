@@ -844,3 +844,46 @@ fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {
         "transform changed after simplification"
     );
 }
+
+#[test]
+fn series_in_parallel_different_lengths() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+
+    // Build two parallel branches with different series lengths:
+    // branch1 = ZoomMap(2, 3.0) ; ShiftMap([1.0, 1.0])  (2 components, 2D)
+    // branch2 = ZoomMap(1, 2.0)                          (1 component, 1D)
+    //
+    // The parallel composition (branch1 || branch2) is 3D → 3D.
+    // Without the relaxation, the restructuring (A;B)||(C) → (A||C);(B||unit)
+    // is rejected because the series lists have different lengths.
+    let branch1 = CmpMap::new(
+        Box::new(ZoomMap::new(2, 3.0).unwrap()),
+        Box::new(ShiftMap::new([1.0, 1.0])),
+        Composition::Series,
+    )
+    .unwrap();
+    let branch2 = ZoomMap::new(1, 2.0).unwrap();
+    let par = CmpMap::new(Box::new(branch1), Box::new(branch2), Composition::Parallel).unwrap();
+
+    // Transform before simplification.
+    let pts = PointSet::from_rows([[1.0, 2.0, 3.0]]);
+    let out_before = par.transform(&pts, true).unwrap();
+
+    let s = par.simplified().unwrap();
+
+    // Dimensions must be preserved.
+    assert_eq!(s.nin(), 3);
+    assert_eq!(s.nout(), 3);
+
+    // Transform after simplification must give the same result.
+    let out_after = s.transform(&pts, true).unwrap();
+    for j in 0..3 {
+        assert!(
+            (out_before.point(0)[j] - out_after.point(0)[j]).abs() < 1e-10,
+            "axis {j}: transform changed after simplification: {} vs {}",
+            out_before.point(0)[j],
+            out_after.point(0)[j],
+        );
+    }
+}
