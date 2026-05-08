@@ -1160,10 +1160,10 @@ impl Mapping for SpecMap {
         let mut steps = self_steps;
         steps.extend(other_steps);
 
-        // Try to cancel adjacent inverse pairs.
-        if !simplify_steps(&mut steps) {
-            return None;
-        }
+        // Try to cancel adjacent inverse pairs.  Always merge even if no
+        // cancellation occurred — the combined list enables future passes to
+        // find new cancellations when a third SpecMap appears (C specmap.c:2259-2288).
+        simplify_steps(&mut steps);
 
         if steps.is_empty() {
             Some(Box::new(UnitMap::new(1)))

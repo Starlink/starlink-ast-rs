@@ -586,3 +586,21 @@ fn equality() {
 
     assert!(!spec1.equal(&spec3));
 }
+
+/// Adjacent SpecMaps should always merge (concatenating step lists) even when
+/// no steps cancel. This matches C specmap.c:2259-2288 and enables future
+/// simplification when a third SpecMap appears.
+#[test]
+fn specmap_always_merges_adjacent() {
+    // Two SpecMaps with non-cancelling steps should still merge.
+    let mut sm1 = SpecMap::new();
+    sm1.add(SpecCvtType::FrToWv, &[]);
+    let mut sm2 = SpecMap::new();
+    sm2.add(SpecCvtType::VrToVl, &[]);
+
+    let merged = sm1.try_merge(&sm2, true, false, false);
+    assert!(merged.is_some(), "Adjacent SpecMaps should always merge");
+    // Result should be a SpecMap with both steps.
+    let m = merged.unwrap();
+    assert!(m.as_any().is::<SpecMap>());
+}
