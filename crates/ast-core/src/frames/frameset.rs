@@ -653,7 +653,7 @@ impl Mapping for FrameSet {
                 .map(|e| Edge {
                     from: e.from,
                     to: e.to,
-                    mapping: e.mapping.clone_box(),
+                    mapping: e.mapping.clone(),
                 })
                 .collect(),
             base_idx: self.base_idx,
@@ -661,7 +661,7 @@ impl Mapping for FrameSet {
             variants: self
                 .variants
                 .iter()
-                .map(|(s, m)| (s.clone(), m.clone_box()))
+                .map(|(s, m)| (s.clone(), m.clone()))
                 .collect(),
         })
     }

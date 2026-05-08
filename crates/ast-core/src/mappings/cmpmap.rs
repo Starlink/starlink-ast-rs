@@ -181,8 +181,8 @@ impl fmt::Debug for CmpMap {
 impl Clone for CmpMap {
     fn clone(&self) -> Self {
         CmpMap {
-            first: self.first.clone_box(),
-            second: self.second.clone_box(),
+            first: self.first.clone(),
+            second: self.second.clone(),
             kind: self.kind,
             inverted: self.inverted,
             do_not_simplify: self.do_not_simplify,
@@ -350,13 +350,7 @@ impl Mapping for CmpMap {
     }
 
     fn clone_box(&self) -> DynMapping {
-        Box::new(CmpMap {
-            first: self.first.clone_box(),
-            second: self.second.clone_box(),
-            kind: self.kind,
-            inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
-        })
+        Box::new(self.clone())
     }
 }
 

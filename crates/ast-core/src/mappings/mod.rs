@@ -44,6 +44,12 @@ use crate::error::AstResult;
 /// An owned, dynamically-dispatched Mapping.
 pub type DynMapping = Box<dyn Mapping>;
 
+impl Clone for Box<dyn Mapping> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
 /// Provides downcasting from `&dyn Mapping` to a concrete type.
 ///
 /// This is the Rust equivalent of the C library's `astIsAFoo` family of
@@ -165,11 +171,7 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// mapping with adjacent mappings and will not simplify it individually.
     fn set_do_not_simplify(&mut self, _flag: bool) {}
 
-    /// Clone this mapping into a new `Box<dyn Mapping>`.
-    ///
-    /// This performs a deep copy without simplification. Used by the
-    /// simplification recursion guard and by `CmpMap::clone()` to avoid
-    /// infinite recursion through `simplified()`.
+    #[doc(hidden)]
     fn clone_box(&self) -> DynMapping;
 }
 
