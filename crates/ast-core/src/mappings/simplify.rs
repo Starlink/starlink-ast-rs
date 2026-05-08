@@ -479,15 +479,20 @@ fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
             // Only proceed if:
             // 1. The shifts are all zero (pure scaling absorbed → net reduction), OR
             // 2. There's a linear merge partner at position i+2 that the
-            //    resulting ShiftMap could combine with.
+            //    resulting ShiftMap could combine with, OR
+            // 3. There's a MatrixMap at position i-1 that could merge with
+            //    the new MatrixMap (swap-and-seek: two MatrixMaps separated
+            //    by a linear mapping become adjacent after the swap).
+            //    Matches C matrixmap.c:2063-2273.
             if !all_shifts_zero {
-                let has_merge_partner = if i + 2 < list.len() {
+                let has_linear_partner_after = if i + 2 < list.len() {
                     super::winmap::extract_linear_params(list[i + 2].0.as_ref(), list[i + 2].1)
                         .is_some()
                 } else {
                     false
                 };
-                if !has_merge_partner {
+                let has_matrix_partner_before = i > 0 && list[i - 1].0.as_any().is::<MatrixMap>();
+                if !has_linear_partner_after && !has_matrix_partner_before {
                     i += 1;
                     continue;
                 }

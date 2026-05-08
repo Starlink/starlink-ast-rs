@@ -888,6 +888,113 @@ fn series_in_parallel_different_lengths() {
     }
 }
 
+/// Verify that two MatrixMaps separated by a WinMap (pure scale) can find
+/// each other via the existing swap infrastructure: the WinMap is absorbed
+/// into the second MatrixMap (by `try_swap_winmap_past_matrixmap`), leaving
+/// the two MatrixMaps adjacent so they multiply in a subsequent merge pass.
+///
+/// This is the "swap-and-seek" strategy from C matrixmap.c:2063-2273.
+#[test]
+fn matrixmap_seek_through_winmap() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, WinMap};
+    use ndarray::array;
+
+    // MatrixMap1 ; WinMap(pure scale) ; MatrixMap2 (non-diagonal)
+    // The WinMap at position 1 is before MatrixMap2 at position 2 (non-diagonal).
+    // The swap absorbs the WinMap's scales into MatrixMap2's columns, leaving
+    // [MatrixMap1, MatrixMap2'] adjacent. They then multiply into a single matrix.
+    let m1 = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm1 = MatrixMap::new(m1).unwrap();
+    let wm = WinMap::new(&[0.0, 0.0], &[2.0, 3.0]).unwrap(); // pure scale
+    let m2 = array![[1.0, 1.0], [0.0, 1.0]]; // upper triangular (non-diagonal)
+    let mm2 = MatrixMap::new(m2).unwrap();
+
+    let c1 = CmpMap::new(
+        Box::new(mm1.clone()),
+        Box::new(wm.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let full = CmpMap::new(Box::new(c1), Box::new(mm2.clone()), Composition::Series).unwrap();
+
+    let s = full.simplified().unwrap();
+
+    // Verify transform equivalence.
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let step1 = mm1.transform(&pts, true).unwrap();
+    let step2 = wm.transform(&step1, true).unwrap();
+    let expected = mm2.transform(&step2, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!(
+        (actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10,
+        "axis 0: got {}, expected {}",
+        actual.point(0)[0],
+        expected.point(0)[0]
+    );
+    assert!(
+        (actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10,
+        "axis 1: got {}, expected {}",
+        actual.point(0)[1],
+        expected.point(0)[1]
+    );
+
+    // Should simplify to a single MatrixMap (WinMap absorbed, then matrices multiply).
+    assert!(
+        s.as_any().is::<MatrixMap>(),
+        "Expected MatrixMap, got {:?}",
+        s
+    );
+}
+
+/// Verify that two MatrixMaps separated by a ShiftMap can find each other.
+/// The ShiftMap is absorbed into the second MatrixMap (producing a MatrixMap +
+/// ShiftMap pair), then the two MatrixMaps become adjacent and multiply.
+#[test]
+fn matrixmap_seek_through_shiftmap() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, ShiftMap};
+    use ndarray::array;
+
+    // MatrixMap1 (non-diagonal) ; ShiftMap ; MatrixMap2 (non-diagonal)
+    // The ShiftMap can be swapped past MatrixMap2 (absorbed via WinMap-MatrixMap logic)
+    // because there is a MatrixMap at position i-1 that serves as a merge partner.
+    let m1 = array![[1.0, 2.0], [0.0, 1.0]]; // upper triangular (non-diagonal)
+    let mm1 = MatrixMap::new(m1).unwrap();
+    let sm = ShiftMap::new(&[1.0, 2.0]);
+    let m2 = array![[1.0, 0.0], [1.0, 1.0]]; // lower triangular (non-diagonal)
+    let mm2 = MatrixMap::new(m2).unwrap();
+
+    let c1 = CmpMap::new(
+        Box::new(mm1.clone()),
+        Box::new(sm.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let full = CmpMap::new(Box::new(c1), Box::new(mm2.clone()), Composition::Series).unwrap();
+
+    let s = full.simplified().unwrap();
+
+    // Verify transform equivalence.
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let step1 = mm1.transform(&pts, true).unwrap();
+    let step2 = sm.transform(&step1, true).unwrap();
+    let expected = mm2.transform(&step2, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!(
+        (actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10,
+        "axis 0: got {}, expected {}",
+        actual.point(0)[0],
+        expected.point(0)[0]
+    );
+    assert!(
+        (actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10,
+        "axis 1: got {}, expected {}",
+        actual.point(0)[1],
+        expected.point(0)[1]
+    );
+}
+
 /// When swapping a PermMap with constant outputs past a parallel CmpMap,
 /// those constants must be transformed through the appropriate CmpMap
 /// component. Previously the code used BAD_VALUE as a placeholder.
