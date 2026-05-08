@@ -829,3 +829,28 @@ fn serialise_round_trip_skyframe() {
         panic!("expected SkyFrame from round-trip");
     }
 }
+
+// =========================================================================
+// MatrixMap equality with inversion / storage normalization
+// =========================================================================
+
+#[test]
+fn matrixmap_equal_cross_inversion() {
+    // A MatrixMap storing the inverse matrix (non-inverted)
+    // should equal the original matrix with invert flag set.
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mut mm_inv = MatrixMap::new(m.clone()).unwrap();
+    mm_inv.invert(); // Now uses the inverse matrix as its forward transform
+
+    // Compute what the inverse matrix is: for [[1,2],[3,4]], inv = [[-2,1],[1.5,-0.5]]
+    let m_inv = array![[-2.0, 1.0], [1.5, -0.5]];
+    let mm_direct = MatrixMap::new(m_inv).unwrap();
+
+    // Both compute the same effective forward transform => equal
+    assert!(mm_inv.equal(&mm_direct));
+
+    // But a non-inverted [[1,2],[3,4]] is NOT equal to inverted [[1,2],[3,4]]
+    // (they do different things)
+    let mm_fwd = MatrixMap::new(m).unwrap();
+    assert!(!mm_fwd.equal(&mm_inv));
+}

@@ -300,27 +300,31 @@ impl Mapping for MatrixMap {
         let Some(other) = other.as_any().downcast_ref::<MatrixMap>() else {
             return false;
         };
-        if self.nin() != other.nin() || self.nout() != other.nout() {
+        // Compare effective forward matrices (resolving invert flags).
+        // When inverted, the "effective forward" is the stored inverse matrix.
+        let self_fwd = if self.inverted {
+            match &self.inverse {
+                Some(inv) => inv,
+                None => return false,
+            }
+        } else {
+            &self.matrix
+        };
+        let other_fwd = if other.inverted {
+            match &other.inverse {
+                Some(inv) => inv,
+                None => return false,
+            }
+        } else {
+            &other.matrix
+        };
+        if self_fwd.shape() != other_fwd.shape() {
             return false;
         }
-        if self.inverted != other.inverted {
-            return false;
-        }
-        // Compare forward matrix elements.
-        let fwd_eq = self
-            .matrix
+        self_fwd
             .iter()
-            .zip(other.matrix.iter())
-            .all(|(a, b)| ast_equal(*a, *b));
-        if !fwd_eq {
-            return false;
-        }
-        // Compare inverse matrices.
-        match (&self.inverse, &other.inverse) {
-            (Some(a), Some(b)) => a.iter().zip(b.iter()).all(|(x, y)| ast_equal(*x, *y)),
-            (None, None) => true,
-            _ => false,
-        }
+            .zip(other_fwd.iter())
+            .all(|(a, b)| ast_equal(*a, *b))
     }
 }
 
