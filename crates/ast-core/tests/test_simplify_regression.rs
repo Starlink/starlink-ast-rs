@@ -781,6 +781,30 @@ fn winmap_distributes_into_parallel_cmpmap() {
     );
 }
 
+/// Verify that oscillation detection in merge_loop does not interfere with
+/// normal operation. A deeply nested chain of alternating ShiftMap and
+/// ZoomMap mappings should simplify correctly and terminate without
+/// hitting MAX_MERGE_PASSES.
+#[test]
+fn merge_loop_terminates_with_oscillation_guard() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+
+    // Build a deeply nested CmpMap: ZoomMap(1.5) ; ShiftMap ; ZoomMap(1.0) ; ShiftMap ; ...
+    let mut m: Box<dyn Mapping> = Box::new(ZoomMap::new(2, 1.5).unwrap());
+    for i in 0..30 {
+        let next: Box<dyn Mapping> = if i % 2 == 0 {
+            Box::new(ShiftMap::new([1.0, 1.0]))
+        } else {
+            Box::new(ZoomMap::new(2, 1.0).unwrap())
+        };
+        m = Box::new(CmpMap::new(m, next, Composition::Series).unwrap());
+    }
+    // Should terminate in reasonable time without hitting MAX_MERGE_PASSES.
+    let s = m.simplified().unwrap();
+    assert_eq!(s.nin(), 2);
+    assert_eq!(s.nout(), 2);
+}
+
 /// Verify that the pattern does NOT fire when magnitudes differ (non-uniform scaling).
 #[test]
 fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {

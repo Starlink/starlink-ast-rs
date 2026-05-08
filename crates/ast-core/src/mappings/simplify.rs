@@ -219,6 +219,8 @@ pub(crate) fn flatten(
 pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
     const MAX_MERGE_PASSES: usize = 50;
     let mut pass = 0;
+    let mut prev_len = list.len();
+    let mut prev_prev_len: usize = 0;
 
     loop {
         pass += 1;
@@ -324,6 +326,16 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             }
             break;
         }
+
+        // Oscillation detection: if list length alternates between two values,
+        // we are in an infinite merge/split cycle. Break to prevent wasted passes.
+        // Matches C cmpmap.c:3589-3620 in intent.
+        let current_len = list.len();
+        if pass > 2 && current_len == prev_prev_len && current_len != prev_len {
+            break;
+        }
+        prev_prev_len = prev_len;
+        prev_len = current_len;
     }
 
     // Post-loop: strip UnitMaps from series lists.
