@@ -304,6 +304,63 @@ fn diagonal_matrix_merge_with_winmap() {
     assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
 }
 
+/// Diagonal matrix uses the O(N) fast path — verify correctness.
+#[test]
+fn matrix_diagonal_fast_path() {
+    // Diagonal 3x3 matrix
+    let m = array![[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    let pts = PointSet::from_rows([[1.0, 2.0, 3.0]]);
+    let out = mm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 2.0);
+    assert_eq!(out.point(0)[1], 6.0);
+    assert_eq!(out.point(0)[2], 12.0);
+
+    // Inverse of diagonal [[2,0,0],[0,3,0],[0,0,4]] is [[0.5,0,0],[0,1/3,0],[0,0,0.25]]
+    let inv_out = mm.transform(&pts, false).unwrap();
+    assert!((inv_out.point(0)[0] - 0.5).abs() < 1e-12);
+    assert!((inv_out.point(0)[1] - 2.0 / 3.0).abs() < 1e-12);
+    assert!((inv_out.point(0)[2] - 0.75).abs() < 1e-12);
+}
+
+/// Large diagonal matrix to verify the O(N) path scales correctly.
+#[test]
+fn matrix_diagonal_fast_path_large() {
+    let n = 100;
+    let mut big = ndarray::Array2::<f64>::zeros((n, n));
+    for i in 0..n {
+        big[[i, i]] = (i + 1) as f64;
+    }
+    let big_mm = MatrixMap::new(big).unwrap();
+    let big_pts = PointSet::from_rows([vec![1.0; n].as_slice()]);
+    let big_out = big_mm.transform(&big_pts, true).unwrap();
+    for i in 0..n {
+        assert_eq!(big_out.point(0)[i], (i + 1) as f64);
+    }
+}
+
+/// Diagonal matrix: BAD_VALUE with zero diagonal element should produce 0.0
+/// (zero coeff masks BAD), non-zero diagonal with BAD should produce BAD.
+#[test]
+fn matrix_diagonal_bad_handling() {
+    // Diagonal [[0, 0], [0, 5]] — first diag is 0, second is 5
+    let m = array![[0.0, 0.0], [0.0, 5.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let pts = PointSet::from_rows([[BAD_VALUE, 3.0]]);
+    let out = mm.transform(&pts, true).unwrap();
+    // Row 0: diag=0 → output is 0.0 regardless of input
+    assert_eq!(out.point(0)[0], 0.0);
+    // Row 1: diag=5, input=3.0 → 15.0
+    assert_eq!(out.point(0)[1], 15.0);
+
+    // Now BAD in the second input where diag is non-zero
+    let pts2 = PointSet::from_rows([[2.0, BAD_VALUE]]);
+    let out2 = mm.transform(&pts2, true).unwrap();
+    assert_eq!(out2.point(0)[0], 0.0); // diag=0 → 0
+    assert_eq!(out2.point(0)[1], BAD_VALUE); // diag=5, input=BAD → BAD
+}
+
 /// Non-diagonal MatrixMap should NOT merge with WinMap.
 #[test]
 fn non_diagonal_matrix_no_merge_with_winmap() {

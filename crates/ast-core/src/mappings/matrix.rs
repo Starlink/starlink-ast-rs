@@ -22,6 +22,18 @@ use super::{DynMapping, Mapping};
 /// Tolerance used to identify identity matrices.
 const IDENTITY_TOL: f64 = 1e-15;
 
+/// Storage form of a matrix, used to select optimized transform paths.
+///
+/// This mirrors the C library's `form` field in `matrixmap.c`, which dispatches
+/// between O(N) diagonal and O(N²) full matrix-vector products.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MatrixForm {
+    /// Full matrix: O(N²) matrix-vector product per point.
+    Full,
+    /// Diagonal matrix: O(N) per-axis multiply per point.
+    Diagonal,
+}
+
 /// A linear mapping defined by a matrix multiplication.
 ///
 /// Forward transform: `out = M × in` where `M` is an `nout × nin` matrix.
@@ -37,6 +49,10 @@ pub struct MatrixMap {
     inverted: bool,
     /// Whether this mapping is protected from simplification.
     do_not_simplify: bool,
+    /// Cached form of the forward matrix (Full or Diagonal).
+    form: MatrixForm,
+    /// Cached form of the inverse matrix (Full or Diagonal).
+    inv_form: MatrixForm,
 }
 
 impl MatrixMap {
@@ -63,11 +79,18 @@ impl MatrixMap {
             None
         };
 
+        let form = compute_form(&matrix);
+        let inv_form = inverse
+            .as_ref()
+            .map_or(MatrixForm::Full, compute_form);
+
         Ok(Self {
             matrix,
             inverse,
             inverted: false,
             do_not_simplify: false,
+            form,
+            inv_form,
         })
     }
 
@@ -108,26 +131,52 @@ impl MatrixMap {
     /// Per-axis BAD handling: for each output row, only inputs with non-zero
     /// coefficients matter. If an input is BAD but its coefficient is zero,
     /// it is masked and does not propagate BAD.
-    fn apply_matrix(m: &Array2<f64>, pts: &PointSet, out: &mut PointSet) {
-        let nout = m.nrows();
-        let nin = m.ncols();
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let outp = out.point_mut(i);
-            for row in 0..nout {
-                let mut sum = 0.0;
-                let mut bad = false;
-                for col in 0..nin {
-                    let coeff = m[[row, col]];
-                    if coeff != 0.0 {
-                        if is_bad(inp[col]) {
-                            bad = true;
-                            break;
+    ///
+    /// The `form` parameter selects the fast path:
+    /// - `Diagonal`: O(N) per-axis multiply (each output depends only on the
+    ///   corresponding input).
+    /// - `Full`: O(N²) matrix-vector product (the general case).
+    fn apply_matrix(m: &Array2<f64>, form: MatrixForm, pts: &PointSet, out: &mut PointSet) {
+        match form {
+            MatrixForm::Diagonal => {
+                let n = m.nrows();
+                for i in 0..pts.npoint() {
+                    let inp = pts.point(i);
+                    let outp = out.point_mut(i);
+                    for j in 0..n {
+                        let diag = m[[j, j]];
+                        if diag == 0.0 {
+                            outp[j] = 0.0;
+                        } else if is_bad(inp[j]) {
+                            outp[j] = BAD_VALUE;
+                        } else {
+                            outp[j] = diag * inp[j];
                         }
-                        sum += coeff * inp[col];
                     }
                 }
-                outp[row] = if bad { BAD_VALUE } else { sum };
+            }
+            MatrixForm::Full => {
+                let nout = m.nrows();
+                let nin = m.ncols();
+                for i in 0..pts.npoint() {
+                    let inp = pts.point(i);
+                    let outp = out.point_mut(i);
+                    for row in 0..nout {
+                        let mut sum = 0.0;
+                        let mut bad = false;
+                        for col in 0..nin {
+                            let coeff = m[[row, col]];
+                            if coeff != 0.0 {
+                                if is_bad(inp[col]) {
+                                    bad = true;
+                                    break;
+                                }
+                                sum += coeff * inp[col];
+                            }
+                        }
+                        outp[row] = if bad { BAD_VALUE } else { sum };
+                    }
+                }
             }
         }
     }
@@ -170,11 +219,11 @@ impl Mapping for MatrixMap {
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         let fwd = self.effective_forward(forward);
-        let (nout_coords, m) = if fwd {
-            (self.matrix.nrows(), &self.matrix)
+        let (nout_coords, m, form) = if fwd {
+            (self.matrix.nrows(), &self.matrix, self.form)
         } else {
             match &self.inverse {
-                Some(inv) => (inv.nrows(), inv),
+                Some(inv) => (inv.nrows(), inv, self.inv_form),
                 None => {
                     return Err(AstError::new(
                         ErrorCode::Nodef,
@@ -184,17 +233,17 @@ impl Mapping for MatrixMap {
             }
         };
         let mut out = PointSet::zeros(pts.npoint(), nout_coords);
-        Self::apply_matrix(m, pts, &mut out);
+        Self::apply_matrix(m, form, pts, &mut out);
         Ok(out)
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
-        let m = if fwd {
-            &self.matrix
+        let (m, form) = if fwd {
+            (&self.matrix, self.form)
         } else {
             match &self.inverse {
-                Some(inv) => inv,
+                Some(inv) => (inv, self.inv_form),
                 None => {
                     return Err(AstError::new(
                         ErrorCode::Nodef,
@@ -203,7 +252,7 @@ impl Mapping for MatrixMap {
                 }
             }
         };
-        Self::apply_matrix(m, pts, out);
+        Self::apply_matrix(m, form, pts, out);
         Ok(())
     }
 
@@ -605,12 +654,28 @@ impl Serializable for MatrixMap {
             None => None,
         };
 
+        let form = compute_form(&matrix);
+        let inv_form = inverse
+            .as_ref()
+            .map_or(MatrixForm::Full, compute_form);
+
         Ok(MatrixMap {
             matrix,
             inverse,
             inverted,
             do_not_simplify: false,
+            form,
+            inv_form,
         })
+    }
+}
+
+/// Determine the storage form of a matrix (Diagonal or Full).
+fn compute_form(m: &Array2<f64>) -> MatrixForm {
+    if is_diagonal(m) {
+        MatrixForm::Diagonal
+    } else {
+        MatrixForm::Full
     }
 }
 
