@@ -147,8 +147,7 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     // structural keywords (SIMPLE, NAXIS, etc.). This mirrors wcsconverter.
     let mut fc_out = if !case.input_file.ends_with(".ast") {
         let input_path = fixtures_dir().join("inputs").join(&case.input_file);
-        let text =
-            std::fs::read_to_string(&input_path).map_err(|e| format!("read input: {e}"))?;
+        let text = std::fs::read_to_string(&input_path).map_err(|e| format!("read input: {e}"))?;
         FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?
     } else {
         FitsChan::new()

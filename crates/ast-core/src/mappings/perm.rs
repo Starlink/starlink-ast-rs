@@ -114,6 +114,18 @@ impl PermMap {
         })
     }
 
+    pub(crate) fn outperm(&self) -> &[i64] {
+        &self.outperm
+    }
+
+    pub(crate) fn inperm(&self) -> &[i64] {
+        &self.inperm
+    }
+
+    pub(crate) fn constants(&self) -> &[f64] {
+        &self.constants
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }
