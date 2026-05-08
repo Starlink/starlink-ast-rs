@@ -684,7 +684,7 @@ impl Serializable for FrameSet {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Set of inter-related coordinate Frames".to_string());
+        node.class_comment = Some("Set of inter-related coordinate systems".to_string());
 
         // Naxes — current frame's naxes (informational).
         node.push_int(

@@ -1149,21 +1149,25 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 }
 
 #[test]
-fn native_byte_exact_round_trip_ast_files() {
-    let wcsconv_dir = std::path::PathBuf::from(concat!(
+fn native_byte_exact_round_trip_generated_fixtures() {
+    let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/wcsconv/inputs"
+        "/tests/fixtures/native/generated"
     ));
+    if !fixture_dir.exists() {
+        eprintln!("generated fixtures dir not found, skipping");
+        return;
+    }
 
-    let ast_files = ["timj.ast", "lsst.ast", "degen1.ast"];
     let mut passed = 0usize;
     let mut failed = Vec::new();
     let mut skipped = 0usize;
 
-    for name in &ast_files {
-        let path = wcsconv_dir.join(name);
-        if !path.exists() {
-            skipped += 1;
+    for entry in std::fs::read_dir(&fixture_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext != "ast" {
             continue;
         }
         match native_round_trip_fixture(&path) {
@@ -1179,17 +1183,37 @@ fn native_byte_exact_round_trip_ast_files() {
     }
 
     println!(
-        "\nNative round-trip (.ast FrameSets): {} passed, {} failed, {} skipped",
+        "\nNative round-trip (C-generated fixtures): {} passed, {} failed, {} skipped",
         passed,
         failed.len(),
         skipped
     );
-    for f in &failed {
-        eprintln!("  FAIL: {f}");
+    if !failed.is_empty() {
+        for f in &failed {
+            eprintln!("  FAIL: {f}");
+        }
     }
-    eprintln!(
-        "FrameSet round-trip: {}/{} byte-exact",
-        passed,
-        passed + failed.len()
-    );
+    // Mapping fixtures must all pass; Frame/FrameSet fixtures are tracked.
+    let mapping_failures: Vec<_> = failed
+        .iter()
+        .filter(|f| {
+            !f.contains("frame")
+                && !f.contains("Frame")
+                && !f.contains("skyframe")
+                && !f.contains("specframe")
+                && !f.contains("timeframe")
+                && !f.contains("specflux")
+                && !f.contains("timj")
+                && !f.contains("lsst")
+                && !f.contains("degen")
+                && !f.contains("splittest")
+        })
+        .collect();
+    if !mapping_failures.is_empty() {
+        panic!(
+            "{} mapping fixture(s) failed byte-exact round-trip: {:?}",
+            mapping_failures.len(),
+            mapping_failures
+        );
+    }
 }
