@@ -656,6 +656,8 @@ impl Serializable for PermMap {
         for (i, &p) in self.outperm.iter().enumerate() {
             let comment = if p > 0 {
                 format!("Output coordinate {} = input coordinate {}", i + 1, p)
+            } else if p == 0 {
+                format!("Output coordinate {} is \"bad\"", i + 1)
             } else {
                 format!("Output coordinate {} = constant no. {}", i + 1, -p)
             };
@@ -666,6 +668,8 @@ impl Serializable for PermMap {
         for (i, &p) in self.inperm.iter().enumerate() {
             let comment = if p > 0 {
                 format!("Input coordinate {} = output coordinate {}", i + 1, p)
+            } else if p == 0 {
+                format!("Input coordinate {} is \"bad\"", i + 1)
             } else {
                 format!("Input coordinate {} = constant no. {}", i + 1, -p)
             };

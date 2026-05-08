@@ -263,7 +263,7 @@ impl SlaCvtType {
                 "TDB Julian epoch of equinox",
             ],
             Self::Ecleq | Self::Eqecl => &["Julian epoch of mean equinox and equator"],
-            Self::Addet | Self::Subet => &["Besselian epoch of E-terms"],
+            Self::Addet | Self::Subet => &["Besselian epoch of mean equinox (FK4)"],
             Self::Hpceq | Self::Eqhpc | Self::Hpreq | Self::Eqhpr => &[
                 "Julian epoch of observation",
                 "Longitude of sun",
