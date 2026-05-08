@@ -267,6 +267,20 @@ fn winmap_inverted_not_equal() {
     assert!(!a.equal(&b));
 }
 
+#[test]
+fn winmap_equal_cross_inversion() {
+    // Forward: out = 2 + 3*x. Inverse: out = (x-2)/3 = -2/3 + (1/3)*x.
+    let wm1 = WinMap::new(&[2.0], &[3.0]).unwrap();
+    let mut wm1_inv = wm1.clone();
+    wm1_inv.invert();
+
+    // Construct the inverse explicitly.
+    let wm2 = WinMap::new(&[-2.0 / 3.0], &[1.0 / 3.0]).unwrap();
+
+    // wm1 inverted should equal wm2 non-inverted.
+    assert!(wm1_inv.equal(&wm2));
+}
+
 // =========================================================================
 // CmpMap (recursive)
 // =========================================================================

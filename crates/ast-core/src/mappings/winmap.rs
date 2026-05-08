@@ -203,20 +203,11 @@ impl Mapping for WinMap {
         if self.shifts.len() != other.shifts.len() {
             return false;
         }
-        if self.inverted == other.inverted {
-            self.shifts
-                .iter()
-                .zip(&other.shifts)
-                .all(|(a, b)| ast_equal(*a, *b))
-                && self
-                    .scales
-                    .iter()
-                    .zip(&other.scales)
-                    .all(|(a, b)| ast_equal(*a, *b))
-        } else {
-            // WinMap inversion changes both shift and scale non-trivially.
-            false
-        }
+        // Compare effective parameters (resolving inversion).
+        let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self.inverted);
+        let (s2, c2) = winmap_effective_params(&other.shifts, &other.scales, other.inverted);
+        s1.iter().zip(&s2).all(|(a, b)| ast_equal(*a, *b))
+            && c1.iter().zip(&c2).all(|(a, b)| ast_equal(*a, *b))
     }
 
     fn try_merge(
