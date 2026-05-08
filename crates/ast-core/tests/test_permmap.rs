@@ -4,7 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, PermMap};
+use ast_core::mappings::{Mapping, PermMap, UnitMap};
 
 /// Swap axes: outperm=[2,1] maps (x,y) → (y,x).
 #[test]
@@ -126,4 +126,18 @@ fn perm_rate_analytical_inverted() {
     assert_eq!(pm.rate(&[0.0, 0.0], 1, 2).unwrap(), 1.0);
     assert_eq!(pm.rate(&[0.0, 0.0], 2, 1).unwrap(), 1.0);
     assert_eq!(pm.rate(&[0.0, 0.0], 2, 2).unwrap(), 0.0);
+}
+
+/// simplified() must check both inperm and outperm for identity.
+#[test]
+fn perm_simplified_checks_both_perms() {
+    // Identity outperm but non-identity inperm -> NOT a UnitMap.
+    let pm = PermMap::new(&[2, 1], &[1, 2], &[]).unwrap();
+    let s = pm.simplified().unwrap();
+    assert!(!s.as_any().is::<UnitMap>());
+
+    // Both identity -> IS a UnitMap.
+    let pm2 = PermMap::new(&[1, 2], &[1, 2], &[]).unwrap();
+    let s2 = pm2.simplified().unwrap();
+    assert!(s2.as_any().is::<UnitMap>());
 }

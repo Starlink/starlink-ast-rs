@@ -285,15 +285,20 @@ impl Mapping for PermMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        // Identity: outperm is exactly [1, 2, 3, ...].
-        let is_identity = self.outperm.len() == self.inperm.len()
+        let n = self.outperm.len();
+        let outperm_is_identity = n == self.inperm.len()
             && self
                 .outperm
                 .iter()
                 .enumerate()
                 .all(|(i, &p)| p == (i as i64 + 1));
-        if is_identity {
-            Ok(Box::new(UnitMap::new(self.outperm.len())))
+        let inperm_is_identity = self
+            .inperm
+            .iter()
+            .enumerate()
+            .all(|(i, &p)| p == (i as i64 + 1));
+        if outperm_is_identity && inperm_is_identity {
+            Ok(Box::new(UnitMap::new(n)))
         } else {
             Ok(Box::new(self.clone()))
         }
