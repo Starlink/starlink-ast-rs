@@ -83,9 +83,12 @@ fn cvt_nargs() {
     assert_eq!(SlaCvtType::Addet.nargs(), 1);
     assert_eq!(SlaCvtType::Fk45z.nargs(), 1);
     assert_eq!(SlaCvtType::Ecleq.nargs(), 1);
-    assert_eq!(SlaCvtType::De2h.nargs(), 1);
+    assert_eq!(SlaCvtType::De2h.nargs(), 2);
     assert_eq!(SlaCvtType::Prec.nargs(), 2);
     assert_eq!(SlaCvtType::Map.nargs(), 2);
+    assert_eq!(SlaCvtType::Hpceq.nargs(), 4);
+    assert_eq!(SlaCvtType::J2000h.nargs(), 0);
+    assert_eq!(SlaCvtType::Heeq.nargs(), 1);
 }
 
 #[test]
@@ -455,8 +458,8 @@ fn fk5_icrs_round_trip() {
 #[test]
 fn horizon_round_trip() {
     let mut sla = SlaMap::new();
-    // Observer latitude = 0.8 rad
-    sla.add(SlaCvtType::De2h, &[0.8]);
+    // Observer latitude = 0.8 rad, diurnal aberration = 0.0
+    sla.add(SlaCvtType::De2h, &[0.8, 0.0]);
 
     let ha = 0.5_f64;
     let dec = 0.4_f64;

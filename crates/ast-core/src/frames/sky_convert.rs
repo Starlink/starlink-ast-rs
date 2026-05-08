@@ -365,7 +365,8 @@ fn add_system_to_fk5(
 
         SkySystem::Azel => {
             // Horizon → equatorial (ha, dec) → RA shift → mean place
-            sla.add(SlaCvtType::Dh2e, &[obs_lat]);
+            // TODO: compute diurnal aberration from observer parameters
+            sla.add(SlaCvtType::Dh2e, &[obs_lat, 0.0]);
             sla.add(SlaCvtType::H2r, &[last]);
             sla.add(SlaCvtType::Amp, &[2000.0, epoch_mjd]);
         }
@@ -452,7 +453,8 @@ fn add_fk5_to_system(
             // Mean place → geocentric apparent → RA shift → horizon
             sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
             sla.add(SlaCvtType::R2h, &[last]);
-            sla.add(SlaCvtType::De2h, &[obs_lat]);
+            // TODO: compute diurnal aberration from observer parameters
+            sla.add(SlaCvtType::De2h, &[obs_lat, 0.0]);
         }
 
         SkySystem::Unknown => {
