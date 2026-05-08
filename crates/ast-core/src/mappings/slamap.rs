@@ -390,7 +390,16 @@ fn try_cancel_pair(a: &SlaConversion, b: &SlaConversion) -> bool {
     let at = a.cvt_type;
     let bt = b.cvt_type;
 
-    // Check if the types form an inverse pair.
+    // For Prec/Prebn: the inverse is itself with swapped epoch arguments.
+    // So Prec(e1,e2) followed by Prec(e2,e1) cancels.
+    if matches!(at, SlaCvtType::Prec | SlaCvtType::Prebn) && at == bt {
+        return a.args.len() >= 2
+            && b.args.len() >= 2
+            && ast_equal(a.args[0], b.args[1])
+            && ast_equal(a.args[1], b.args[0]);
+    }
+
+    // Check if the types form an inverse pair (different types).
     let is_inverse_pair = (at.inverse() == bt) && (bt.inverse() == at) && (at != bt);
 
     if !is_inverse_pair {
@@ -409,6 +418,112 @@ fn try_cancel_pair(a: &SlaConversion, b: &SlaConversion) -> bool {
 
     // For all other inverse pairs, all arguments must match in same order.
     a.args.len() == b.args.len() && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
+}
+
+/// Return the normalized step list for a SlaMap, accounting for inversion.
+///
+/// When inverted, reverses the step order and inverts each step type.
+/// For Prec/Prebn, inversion swaps the two epoch arguments.
+fn sla_normalized_steps(sla: &SlaMap, inv: bool) -> Vec<SlaConversion> {
+    if !inv {
+        return sla.conversions.clone();
+    }
+    sla.conversions
+        .iter()
+        .rev()
+        .map(|cvt| {
+            let inv_type = cvt.cvt_type.inverse();
+            let args = if matches!(cvt.cvt_type, SlaCvtType::Prec | SlaCvtType::Prebn) {
+                // For precession, inverting means swapping the two epoch arguments.
+                let mut a = cvt.args.clone();
+                if a.len() >= 2 {
+                    a.swap(0, 1);
+                }
+                a
+            } else {
+                cvt.args.clone()
+            };
+            SlaConversion {
+                cvt_type: inv_type,
+                args,
+            }
+        })
+        .collect()
+}
+
+/// Simplify a step list by cancelling adjacent inverse pairs and combining
+/// adjacent precession steps.
+///
+/// Loops until no further simplifications are found.
+/// Returns `true` if any steps were eliminated or combined.
+fn sla_simplify_steps(steps: &mut Vec<SlaConversion>) -> bool {
+    let mut any_changed = false;
+    loop {
+        let mut changed_this_pass = false;
+        let mut i = 0;
+        while i + 1 < steps.len() {
+            // Check for inverse pair cancellation.
+            if try_cancel_pair(&steps[i], &steps[i + 1]) {
+                steps.remove(i + 1);
+                steps.remove(i);
+                changed_this_pass = true;
+                any_changed = true;
+                // Don't advance — new neighbours may cancel.
+                i = i.saturating_sub(1);
+                continue;
+            }
+
+            // Precession combination: Prec(e1,e2) + Prec(e2,e3) -> Prec(e1,e3)
+            let combine_prec = {
+                let a = &steps[i];
+                let b = &steps[i + 1];
+                a.cvt_type == b.cvt_type
+                    && matches!(a.cvt_type, SlaCvtType::Prec | SlaCvtType::Prebn)
+                    && a.args.len() >= 2
+                    && b.args.len() >= 2
+                    && ast_equal(a.args[1], b.args[0])
+            };
+            if combine_prec {
+                let e1 = steps[i].args[0];
+                let e3 = steps[i + 1].args[1];
+                if ast_equal(e1, e3) {
+                    // Prec(e,e) is identity — remove both.
+                    steps.remove(i + 1);
+                    steps.remove(i);
+                } else {
+                    steps[i].args[1] = e3;
+                    steps.remove(i + 1);
+                }
+                changed_this_pass = true;
+                any_changed = true;
+                i = i.saturating_sub(1);
+                continue;
+            }
+
+            i += 1;
+        }
+
+        // Also remove identity precession steps: Prec(e,e).
+        let mut j = 0;
+        while j < steps.len() {
+            let ct = steps[j].cvt_type;
+            if matches!(ct, SlaCvtType::Prec | SlaCvtType::Prebn)
+                && steps[j].args.len() >= 2
+                && ast_equal(steps[j].args[0], steps[j].args[1])
+            {
+                steps.remove(j);
+                changed_this_pass = true;
+                any_changed = true;
+            } else {
+                j += 1;
+            }
+        }
+
+        if !changed_this_pass {
+            break;
+        }
+    }
+    any_changed
 }
 
 // ---------------------------------------------------------------------------
@@ -993,75 +1108,23 @@ impl Mapping for SlaMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        // Perform step-level simplification within the SlaMap:
-        // 1. Eliminate redundant precession (same start and end epoch).
-        // 2. Cancel adjacent inverse pairs with matching arguments.
-        // 3. Combine adjacent precession steps with a common epoch.
-        let mut steps: Vec<SlaConversion> = self.conversions.clone();
+        // Normalize steps (accounting for the inverted flag) and simplify
+        // (cancel adjacent inverse pairs, combine precessions, remove identity
+        // precessions).
+        let mut steps = sla_normalized_steps(self, self.inverted);
+        let changed = sla_simplify_steps(&mut steps);
 
-        let mut done = false;
-        while !done {
-            done = true;
-            let mut new_steps: Vec<SlaConversion> = Vec::with_capacity(steps.len());
-            let mut i = 0;
-            while i < steps.len() {
-                // Check for redundant precession (same start and end epoch).
-                let ct = steps[i].cvt_type;
-                if (ct == SlaCvtType::Prec || ct == SlaCvtType::Prebn)
-                    && steps[i].args.len() >= 2
-                    && ast_equal(steps[i].args[0], steps[i].args[1])
-                {
-                    // Skip this step entirely.
-                    done = false;
-                    i += 1;
-                    continue;
-                }
-
-                // Check for adjacent pair cancellation.
-                if i + 1 < steps.len() && try_cancel_pair(&steps[i], &steps[i + 1]) {
-                    // Both steps cancel — skip them.
-                    done = false;
-                    i += 2;
-                    continue;
-                }
-
-                // Check for adjacent precession combination.
-                if i + 1 < steps.len() {
-                    let ct_next = steps[i + 1].cvt_type;
-                    if ct == ct_next
-                        && (ct == SlaCvtType::Prec || ct == SlaCvtType::Prebn)
-                        && steps[i].args.len() >= 2
-                        && steps[i + 1].args.len() >= 2
-                        && ast_equal(steps[i].args[1], steps[i + 1].args[0])
-                    {
-                        // Combine: keep second step with first step's start epoch.
-                        let mut combined = steps[i + 1].clone();
-                        combined.args[0] = steps[i].args[0];
-                        new_steps.push(combined);
-                        done = false;
-                        i += 2;
-                        continue;
-                    }
-                }
-
-                new_steps.push(steps[i].clone());
-                i += 1;
-            }
-            steps = new_steps;
+        if !changed && !self.inverted {
+            // No simplification possible — return self unchanged.
+            return Ok(Box::new(self.clone()));
         }
 
         if steps.is_empty() {
             Ok(Box::new(UnitMap::new(2)))
-        } else if steps.len() == self.conversions.len() {
-            // No simplification occurred.
-            Ok(Box::new(self.clone()))
         } else {
             let mut result = SlaMap::new();
             for step in &steps {
                 result.add(step.cvt_type, &step.args);
-            }
-            if self.inverted {
-                result.invert();
             }
             Ok(Box::new(result))
         }
@@ -1081,26 +1144,30 @@ impl Mapping for SlaMap {
         if !series {
             return None;
         }
-        // Only handle inverse cancellation: same SlaMap in opposite directions.
-        if self_inv == other_inv {
-            return None;
-        }
         let other_sla = other.as_any().downcast_ref::<SlaMap>()?;
-        if self.conversions.len() == other_sla.conversions.len()
-            && self
-                .conversions
-                .iter()
-                .zip(&other_sla.conversions)
-                .all(|(a, b)| {
-                    a.cvt_type == b.cvt_type
-                        && a.args.len() == b.args.len()
-                        && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
-                })
-        {
-            // SlaMap always maps 2 coords (lon, lat) to 2 coords.
+
+        // Normalize: account for both the mapping's own inverted flag
+        // AND the external inversion from the simplification engine.
+        let self_steps = sla_normalized_steps(self, self_inv != self.inverted);
+        let other_steps = sla_normalized_steps(other_sla, other_inv != other_sla.inverted);
+
+        // Concatenate: self is applied first, then other.
+        let mut steps = self_steps;
+        steps.extend(other_steps);
+
+        // Always merge (concatenate) even if no simplification occurs.
+        // This matches C slamap.c behaviour where all adjacent SlaMaps are
+        // combined, enabling further simplification in subsequent passes.
+        sla_simplify_steps(&mut steps);
+
+        if steps.is_empty() {
             Some(Box::new(UnitMap::new(2)))
         } else {
-            None
+            let mut result = SlaMap::new();
+            for cvt in steps {
+                result.add(cvt.cvt_type, &cvt.args);
+            }
+            Some(Box::new(result))
         }
     }
 

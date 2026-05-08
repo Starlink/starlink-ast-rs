@@ -582,6 +582,75 @@ fn serialise_inverted() {
 }
 
 // ===========================================================================
+// try_merge: step concatenation and simplification
+// ===========================================================================
+
+#[test]
+fn slamap_merge_concatenates_steps() {
+    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap};
+
+    // Two SlaMaps with non-cancelling steps: should merge into one combined SlaMap.
+    let mut sla1 = SlaMap::new();
+    sla1.add(SlaCvtType::Fk45z, &[1950.0]);
+    let mut sla2 = SlaMap::new();
+    sla2.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+
+    // Merging in series should concatenate steps into a single SlaMap.
+    let merged = sla1.try_merge(&sla2, true, false, false);
+    assert!(merged.is_some());
+    let m = merged.unwrap();
+    assert!(m.as_any().is::<SlaMap>());
+}
+
+#[test]
+fn slamap_merge_cancels_inverse_pairs() {
+    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap, UnitMap};
+
+    // FK4->FK5 followed by inverted FK4->FK5 should cancel to UnitMap.
+    let mut sla1 = SlaMap::new();
+    sla1.add(SlaCvtType::Fk45z, &[1950.0]);
+    let mut sla2 = SlaMap::new();
+    sla2.add(SlaCvtType::Fk45z, &[1950.0]);
+
+    let merged = sla1.try_merge(&sla2, true, false, true);
+    assert!(merged.is_some());
+    let m = merged.unwrap();
+    assert!(m.as_any().is::<UnitMap>());
+}
+
+#[test]
+fn slamap_merge_combines_precession() {
+    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap};
+
+    // Prec(2000,2010) + Prec(2010,2020) should merge to Prec(2000,2020).
+    let mut sla1 = SlaMap::new();
+    sla1.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    let mut sla2 = SlaMap::new();
+    sla2.add(SlaCvtType::Prec, &[2010.0, 2020.0]);
+
+    let merged = sla1.try_merge(&sla2, true, false, false);
+    assert!(merged.is_some());
+    // Result should be a single SlaMap (not UnitMap since it's not identity).
+    let m = merged.unwrap();
+    assert!(m.as_any().is::<SlaMap>());
+}
+
+#[test]
+fn slamap_merge_precession_to_identity() {
+    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap, UnitMap};
+
+    // Prec(2000,2010) + Prec(2010,2000) = Prec(2000,2000) = identity.
+    let mut sla1 = SlaMap::new();
+    sla1.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    let mut sla2 = SlaMap::new();
+    sla2.add(SlaCvtType::Prec, &[2010.0, 2000.0]);
+
+    let merged = sla1.try_merge(&sla2, true, false, false);
+    assert!(merged.is_some());
+    assert!(merged.unwrap().as_any().is::<UnitMap>());
+}
+
+// ===========================================================================
 // Simplified
 // ===========================================================================
 
