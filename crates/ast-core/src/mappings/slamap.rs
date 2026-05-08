@@ -258,22 +258,29 @@ impl SlaCvtType {
             Self::Prec => &["From Julian epoch", "To Julian epoch"],
             Self::Prebn => &["From Besselian epoch", "To Besselian epoch"],
             Self::Fk45z | Self::Fk54z => &["Besselian epoch of FK4 equinox"],
-            Self::Amp | Self::Map => &[
-                "TDB Julian epoch of observation",
-                "TDB Julian epoch of equinox",
+            Self::Amp => &[
+                "TDB of apparent place (as MJD)",
+                "Julian epoch of mean equinox (FK5)",
             ],
-            Self::Ecleq | Self::Eqecl => &["Julian epoch of mean equinox and equator"],
+            Self::Map => &[
+                "Julian epoch of mean equinox (FK5)",
+                "TDB of required apparent place (as MJD)",
+            ],
+            Self::Ecleq | Self::Eqecl => &["TDB of mean ecliptic (as MJD)"],
             Self::Addet | Self::Subet => &["Besselian epoch of mean equinox (FK4)"],
             Self::Hpceq | Self::Eqhpc | Self::Hpreq | Self::Eqhpr => &[
-                "Julian epoch of observation",
-                "Longitude of sun",
-                "Latitude of sun",
-                "Radius of sun",
+                "Modified Julian Date of observation",
+                "Heliocentric-Aries-Ecliptic X value at observer",
+                "Heliocentric-Aries-Ecliptic Y value at observer",
+                "Heliocentric-Aries-Ecliptic Z value at observer",
             ],
-            Self::Hfk5z | Self::Fk5hz => &["Julian epoch of observation"],
-            Self::Heeq | Self::Eqhe => &["Julian epoch of observation"],
-            Self::Dh2e | Self::De2h => &["Geodetic latitude", "Diurnal aberration"],
-            Self::R2h | Self::H2r => &["Local apparent sidereal time"],
+            Self::Hfk5z | Self::Fk5hz => &["Julian epoch of FK5 coordinates"],
+            Self::Heeq | Self::Eqhe => &["TDB of mean ecliptic (as MJD)"],
+            Self::Dh2e | Self::De2h => &[
+                "Geodetic latitude of observer",
+                "Magnitude of diurnal aberration vector",
+            ],
+            Self::R2h | Self::H2r => &["Local apparent sidereal time (radians)"],
             _ => &[],
         }
     }

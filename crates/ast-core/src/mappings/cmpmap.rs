@@ -369,7 +369,7 @@ impl Serializable for CmpMap {
             node.push_int(
                 "Series",
                 0,
-                Some("Component Mappings combined in parallel".to_string()),
+                Some("Component Mappings applied in parallel".to_string()),
             );
         }
 
@@ -378,14 +378,14 @@ impl Serializable for CmpMap {
             node.push_int(
                 "InvA",
                 1,
-                Some("First component Mapping inverted".to_string()),
+                Some("First Mapping used in inverse direction".to_string()),
             );
         }
         if self.second.is_inverted() {
             node.push_int(
                 "InvB",
                 1,
-                Some("Second component Mapping inverted".to_string()),
+                Some("Second Mapping used in inverse direction".to_string()),
             );
         }
 

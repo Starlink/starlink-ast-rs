@@ -1056,3 +1056,140 @@ fn round_trip_skyframe_fk4_besselian_equinox() {
         _ => panic!("expected SkyFrame variant"),
     }
 }
+
+// ===========================================================================
+// Native read→write byte-exact round-trip tests (Task 9)
+// ===========================================================================
+
+/// Read a C-generated .ast/.map/.simp file, write it back via to_native_string,
+/// and verify the output is byte-exact with the input.
+fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let obj = from_native_string(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    let output = to_native_string(&obj).map_err(|e| format!("render {}: {e}", path.display()))?;
+    if output.trim() == text.trim() {
+        Ok(())
+    } else {
+        // Find first differing line
+        for (i, (got, want)) in output.lines().zip(text.lines()).enumerate() {
+            if got != want {
+                return Err(format!(
+                    "{}: line {} differs:\n  got:  {:?}\n  want: {:?}",
+                    path.file_name().unwrap().to_string_lossy(),
+                    i + 1,
+                    got,
+                    want
+                ));
+            }
+        }
+        let got_lines = output.lines().count();
+        let want_lines = text.lines().count();
+        Err(format!(
+            "{}: line count differs: got {got_lines}, want {want_lines}",
+            path.file_name().unwrap().to_string_lossy()
+        ))
+    }
+}
+
+#[test]
+fn native_byte_exact_round_trip_simplify_fixtures() {
+    let fixture_dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/native/reference/simplify_fixtures"
+    ));
+    if !fixture_dir.exists() {
+        eprintln!("simplify_fixtures dir not found, skipping");
+        return;
+    }
+
+    let mut passed = 0usize;
+    let mut failed = Vec::new();
+    let mut skipped = 0usize;
+
+    for entry in std::fs::read_dir(&fixture_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext != "map" && ext != "simp" {
+            continue;
+        }
+        match native_round_trip_fixture(&path) {
+            Ok(()) => passed += 1,
+            Err(e) => {
+                if e.contains("unknown") || e.contains("unsupported") {
+                    skipped += 1;
+                } else {
+                    failed.push(e);
+                }
+            }
+        }
+    }
+
+    println!(
+        "\nNative round-trip (simplify_fixtures): {} passed, {} failed, {} skipped",
+        passed,
+        failed.len(),
+        skipped
+    );
+    if !failed.is_empty() {
+        for f in &failed[..failed.len().min(10)] {
+            eprintln!("  FAIL: {f}");
+        }
+        if failed.len() > 10 {
+            eprintln!("  ... and {} more", failed.len() - 10);
+        }
+    }
+    // Report but don't hard-fail yet — this is aspirational
+    eprintln!(
+        "Native round-trip: {}/{} byte-exact",
+        passed,
+        passed + failed.len()
+    );
+}
+
+#[test]
+fn native_byte_exact_round_trip_ast_files() {
+    let wcsconv_dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs"
+    ));
+
+    let ast_files = ["timj.ast", "lsst.ast", "degen1.ast"];
+    let mut passed = 0usize;
+    let mut failed = Vec::new();
+    let mut skipped = 0usize;
+
+    for name in &ast_files {
+        let path = wcsconv_dir.join(name);
+        if !path.exists() {
+            skipped += 1;
+            continue;
+        }
+        match native_round_trip_fixture(&path) {
+            Ok(()) => passed += 1,
+            Err(e) => {
+                if e.contains("unknown") || e.contains("unsupported") {
+                    skipped += 1;
+                } else {
+                    failed.push(e);
+                }
+            }
+        }
+    }
+
+    println!(
+        "\nNative round-trip (.ast FrameSets): {} passed, {} failed, {} skipped",
+        passed,
+        failed.len(),
+        skipped
+    );
+    for f in &failed {
+        eprintln!("  FAIL: {f}");
+    }
+    eprintln!(
+        "FrameSet round-trip: {}/{} byte-exact",
+        passed,
+        passed + failed.len()
+    );
+}

@@ -299,16 +299,20 @@ impl TimeCvtType {
             Self::TcbToTdb | Self::TdbToTcb => &["MJD offset", "TCB offset"],
             Self::TdbToTt | Self::TtToTdb => &[
                 "MJD offset",
-                "Longitude",
-                "Latitude",
-                "Altitude",
-                "Clock correction",
+                "Observer longitude",
+                "Observer latitude",
+                "Observer altitude",
+                "DTAI",
                 "",
                 "",
             ],
             Self::UtToGmst | Self::GmstToUt => &["MJD offset"],
-            Self::GmstToLmst | Self::LmstToGmst => &["MJD offset", "Longitude", "Latitude"],
-            Self::LastToLmst | Self::LmstToLast => &["MJD offset", "Longitude", "Latitude"],
+            Self::GmstToLmst | Self::LmstToGmst => {
+                &["MJD offset", "Observer longitude", "Observer latitude"]
+            }
+            Self::LastToLmst | Self::LmstToLast => {
+                &["MJD offset", "Observer longitude", "Observer latitude"]
+            }
             Self::UtToUtc | Self::UtcToUt | Self::LtToUtc | Self::UtcToLt => &["MJD offset"],
         }
     }
