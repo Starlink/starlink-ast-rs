@@ -43,6 +43,7 @@ pub struct PolyMap {
     niter_inverse: usize,
     tol_inverse: f64,
     inverted: bool,
+    do_not_simplify: bool,
     /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
     /// Only populated when `iter_inverse` is true and `nin == nout`.
     jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
@@ -193,6 +194,7 @@ impl PolyMap {
             niter_inverse: 4,
             tol_inverse: 1e-6,
             inverted: false,
+            do_not_simplify: false,
             jacobian_terms: None,
             forward_by_output,
             forward_max_pows,
@@ -1007,6 +1009,9 @@ impl Mapping for PolyMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         // Determine which terms are the "forward" set in the current orientation.
         let (fwd_terms, inv_terms) = if self.inverted {
             (
@@ -1127,6 +1132,18 @@ impl Mapping for PolyMap {
             (None, None) => true,
             _ => false,
         }
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
     }
 }
 
@@ -1452,6 +1469,7 @@ impl Serializable for PolyMap {
             niter_inverse: niter_inv,
             tol_inverse: tol_inv,
             inverted: false,
+            do_not_simplify: false,
             jacobian_terms,
             forward_by_output,
             forward_max_pows,

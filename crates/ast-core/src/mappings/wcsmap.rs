@@ -68,6 +68,8 @@ pub struct WcsMap {
     prj: RefCell<PrjParams>,
     /// Whether the mapping is inverted.
     inverted: bool,
+    /// Whether this mapping is protected from simplification.
+    do_not_simplify: bool,
 }
 
 impl WcsMap {
@@ -126,6 +128,7 @@ impl WcsMap {
                     params,
                     prj: RefCell::new(prj),
                     inverted: false,
+                    do_not_simplify: false,
                 });
             }
             other => other,
@@ -144,6 +147,7 @@ impl WcsMap {
             params,
             prj: RefCell::new(prj),
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -299,6 +303,7 @@ impl Clone for WcsMap {
             params: self.params.clone(),
             prj: RefCell::new(prj),
             inverted: self.inverted,
+            do_not_simplify: self.do_not_simplify,
         }
     }
 }
@@ -388,6 +393,9 @@ impl Mapping for WcsMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         // Unknown/blank projection simplifies to identity.
         if self.proj == WcsProjection::Unknown {
             return Ok(Box::new(UnitMap::new(self.ncoord)));
@@ -439,6 +447,18 @@ impl Mapping for WcsMap {
             && self.latax == other.latax
             && self.ncoord == other.ncoord
             && self.params_equal(other)
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
     }
 }
 

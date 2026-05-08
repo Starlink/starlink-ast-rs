@@ -48,6 +48,8 @@ pub struct ChebyMap {
     offset_i: Option<Vec<f64>>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
+    /// Whether this mapping is protected from simplification.
+    do_not_simplify: bool,
 }
 
 impl ChebyMap {
@@ -172,6 +174,7 @@ impl ChebyMap {
             scale_i: scale_i_v,
             offset_i: offset_i_v,
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -414,6 +417,9 @@ impl Mapping for ChebyMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         Ok(Box::new(self.clone()))
     }
 
@@ -465,6 +471,18 @@ impl Mapping for ChebyMap {
             _ => false,
         };
         inv_lbnd && inv_ubnd
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
     }
 }
 
@@ -845,6 +863,7 @@ impl Serializable for ChebyMap {
             scale_i,
             offset_i,
             inverted: false,
+            do_not_simplify: false,
         };
         if inverted {
             m.invert();

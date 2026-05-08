@@ -105,6 +105,10 @@ impl Mapping for UnitMap {
     fn set_do_not_simplify(&mut self, flag: bool) {
         self.do_not_simplify = flag;
     }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
+    }
 }
 
 impl Serializable for UnitMap {

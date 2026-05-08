@@ -41,6 +41,9 @@ impl Mapping for DummyRegion {
     fn equal(&self, _other: &dyn Mapping) -> bool {
         false
     }
+    fn clone_box(&self) -> DynMapping {
+        panic!("not implemented")
+    }
 }
 
 impl Frame for DummyRegion {

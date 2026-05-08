@@ -42,6 +42,8 @@ pub struct PermMap {
     constants: Vec<f64>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
+    /// Whether this mapping is protected from simplification.
+    do_not_simplify: bool,
 }
 
 impl PermMap {
@@ -110,6 +112,7 @@ impl PermMap {
             inperm: inperm.to_vec(),
             constants: constants.to_vec(),
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -285,6 +288,9 @@ impl Mapping for PermMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         let n = self.outperm.len();
         let outperm_is_identity = n == self.inperm.len()
             && self
@@ -612,6 +618,18 @@ impl Mapping for PermMap {
                 .iter()
                 .zip(&other.constants)
                 .all(|(a, b)| ast_equal(*a, *b))
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
     }
 }
 

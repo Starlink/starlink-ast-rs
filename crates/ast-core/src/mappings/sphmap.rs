@@ -35,6 +35,7 @@ pub struct SphMap {
     unit_radius: bool,
     polar_long: f64,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl SphMap {
@@ -46,6 +47,7 @@ impl SphMap {
             unit_radius: false,
             polar_long: 0.0,
             inverted: false,
+            do_not_simplify: false,
         }
     }
 
@@ -182,6 +184,9 @@ impl Mapping for SphMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         Ok(Box::new(self.clone()))
     }
 
@@ -251,6 +256,18 @@ impl Mapping for SphMap {
             && self.unit_radius == other.unit_radius
             && ast_equal(self.polar_long, other.polar_long)
     }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
+    }
 }
 
 impl Serializable for SphMap {
@@ -292,6 +309,7 @@ impl Serializable for SphMap {
             unit_radius,
             polar_long,
             inverted: false,
+            do_not_simplify: false,
         };
         if inverted {
             m.invert();

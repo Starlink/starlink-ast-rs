@@ -13,6 +13,10 @@
 //! 3. **Reconstruct**: build a new `CmpMap` tree (or single mapping)
 //!    from the flat list.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+
 use crate::constants::BAD_VALUE;
 use crate::error::AstResult;
 use crate::mappings::helpers::ast_equal;
@@ -23,6 +27,115 @@ use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
 use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
+
+// ------------------------------------------------------------------ //
+// Recursion guard: fingerprint stack                                   //
+// ------------------------------------------------------------------ //
+
+thread_local! {
+    /// Tracks structural fingerprints of mappings currently being
+    /// simplified on this thread.  Before entering the flatten/merge/
+    /// reconstruct pipeline, we compute a fingerprint of the mapping
+    /// and check whether an equivalent structure is already being
+    /// simplified higher up the call stack.  If so, we bail immediately
+    /// to prevent infinite recursion.
+    ///
+    /// This matches the C library's thread-local "simplify stack"
+    /// (cmpmap.c:3481-3493) which stores pointers to mappings currently
+    /// in progress and checks equality before entering simplification.
+    /// We use structural fingerprints (hashes) instead of pointer
+    /// equality since Rust values move.
+    static SIMPLIFY_STACK: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+}
+
+/// Compute a structural fingerprint of a mapping for recursion detection.
+///
+/// The fingerprint incorporates the concrete type, dimensions, and for
+/// CmpMaps the composition kind and recursive fingerprints of children.
+/// Collisions are possible but harmless (they only cause an early bail
+/// which is a conservative no-op, not a correctness issue).
+fn mapping_fingerprint(mapping: &dyn Mapping) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    mapping.nin().hash(&mut hasher);
+    mapping.nout().hash(&mut hasher);
+    mapping.as_any().type_id().hash(&mut hasher);
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        (cmp.composition() == Composition::Series).hash(&mut hasher);
+        mapping_fingerprint(cmp.first()).hash(&mut hasher);
+        mapping_fingerprint(cmp.second()).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Maximum allowed recursion depth for `simplify_mapping`.
+///
+/// This complements the fingerprint-based cycle detection by capping
+/// the call-stack depth absolutely.  Even if fingerprints don't match
+/// (non-identical but deeply recursive structures), this limit
+/// prevents stack overflow.
+const MAX_SIMPLIFY_DEPTH: usize = 10;
+
+/// RAII guard that manages both the fingerprint stack and depth counter.
+///
+/// On creation: checks the fingerprint against the stack (cycle detection)
+/// and increments a depth counter (absolute limit).
+/// On drop: removes the fingerprint and decrements the counter.
+struct SimplifyGuard {
+    fingerprint: u64,
+}
+
+thread_local! {
+    static SIMPLIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+impl SimplifyGuard {
+    /// Attempt to enter simplification for `mapping`.
+    ///
+    /// Returns `None` if:
+    /// - The mapping's fingerprint is already on the stack (cycle), or
+    /// - The recursion depth limit has been reached.
+    ///
+    /// On success, returns a guard that cleans up on drop.
+    fn enter(mapping: &dyn Mapping) -> Option<Self> {
+        let fp = mapping_fingerprint(mapping);
+
+        // Check for cycle: is this fingerprint already on the stack?
+        let cycle = SIMPLIFY_STACK.with(|stack| stack.borrow().contains(&fp));
+        if cycle {
+            return None;
+        }
+
+        // Check depth limit.
+        let depth_ok = SIMPLIFY_DEPTH.with(|d| {
+            let current = d.get();
+            if current >= MAX_SIMPLIFY_DEPTH {
+                false
+            } else {
+                d.set(current + 1);
+                true
+            }
+        });
+        if !depth_ok {
+            return None;
+        }
+
+        // Push fingerprint onto stack.
+        SIMPLIFY_STACK.with(|stack| {
+            stack.borrow_mut().insert(fp);
+        });
+
+        Some(SimplifyGuard { fingerprint: fp })
+    }
+}
+
+impl Drop for SimplifyGuard {
+    fn drop(&mut self) {
+        SIMPLIFY_STACK.with(|stack| {
+            stack.borrow_mut().remove(&self.fingerprint);
+        });
+        SIMPLIFY_DEPTH.with(|d| d.set(d.get() - 1));
+    }
+}
 
 /// Recursively decompose a mapping into a flat list of leaf mappings.
 ///
@@ -113,6 +226,12 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
         let mut i = 0;
 
         while i + 1 < list.len() {
+            // Skip if either mapping is protected from simplification.
+            if list[i].0.do_not_simplify() || list[i + 1].0.do_not_simplify() {
+                i += 1;
+                continue;
+            }
+
             let merged = {
                 let (ref m1, inv1) = list[i];
                 let (ref m2, inv2) = list[i + 1];
@@ -847,6 +966,18 @@ pub(crate) fn reconstruct(list: Vec<(DynMapping, bool)>, series: bool) -> AstRes
 pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
         return mapping.simplified();
+    };
+
+    // Guard against infinite recursion.  The fingerprint-based guard
+    // detects cycles (same structure reappearing on the call stack) and
+    // the depth counter caps absolute recursion depth.  Either condition
+    // causes an immediate bail — we return the mapping unchanged.
+    let _guard = match SimplifyGuard::enter(mapping) {
+        Some(g) => g,
+        None => {
+            // Cycle detected or depth exceeded — return unchanged.
+            return Ok(mapping.clone_box());
+        }
     };
 
     let series = cmp.composition() == Composition::Series;

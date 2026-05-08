@@ -15,7 +15,6 @@ use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
 };
 
-use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// Determines whether two mappings are composed in series or in parallel.
@@ -181,45 +180,13 @@ impl fmt::Debug for CmpMap {
 
 impl Clone for CmpMap {
     fn clone(&self) -> Self {
-        // We need to clone through the DynMapping.  DynMapping does not
-        // implement Clone directly, so we delegate to simplified() if available
-        // or use transform round-trip.  Instead, we use a workaround: capture
-        // the simplified form.
-        //
-        // A simpler approach: CmpMap wraps components that implement Mapping
-        // but not necessarily Clone.  We implement Clone by re-boxing.
-        //
-        // Since all concrete Mappings are Clone, and Box<dyn Mapping> is our
-        // only type, we ask for the simplified form — which always allocates a
-        // new Box — as our clone.  If simplification is a no-op the clone is
-        // functionally equivalent.
-        //
-        // NOTE: This means clone() may produce a simplified form.  That is
-        // acceptable because Clone is documented as a "deep copy" that
-        // preserves functional equivalence.
-        //
-        // Better: add a `clone_box()` method to Mapping.  For now we use
-        // simplified() since it must return an equivalent mapping.
-        let first_clone = self
-            .first
-            .simplified()
-            .unwrap_or_else(|_| Box::new(UnitMap::new(self.first.nin())));
-        let second_clone = self
-            .second
-            .simplified()
-            .unwrap_or_else(|_| Box::new(UnitMap::new(self.second.nin())));
-        // Reconstruct, ignoring the error (dimensions must still be valid).
-        let mut c = CmpMap {
-            first: first_clone,
-            second: second_clone,
+        CmpMap {
+            first: self.first.clone_box(),
+            second: self.second.clone_box(),
             kind: self.kind,
             inverted: self.inverted,
             do_not_simplify: self.do_not_simplify,
-        };
-        // In case simplified swapped dimensions for inverted mappings, ensure
-        // the inverted flag is preserved.
-        c.inverted = self.inverted;
-        c
+        }
     }
 }
 
@@ -380,6 +347,16 @@ impl Mapping for CmpMap {
 
     fn set_do_not_simplify(&mut self, flag: bool) {
         self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(CmpMap {
+            first: self.first.clone_box(),
+            second: self.second.clone_box(),
+            kind: self.kind,
+            inverted: self.inverted,
+            do_not_simplify: self.do_not_simplify,
+        })
     }
 }
 

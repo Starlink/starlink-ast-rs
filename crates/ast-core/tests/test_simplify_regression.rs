@@ -333,3 +333,122 @@ fn cmpmap_re_expands_merged_cmpmap() {
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
 }
+
+#[test]
+fn do_not_simplify_prevents_merge() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
+
+    let mut z1 = ZoomMap::new(2, 3.0).unwrap();
+    z1.set_do_not_simplify(true);
+    let z2 = ZoomMap::new(2, 2.0).unwrap();
+
+    // try_merge should still work (it's the caller that guards), but the
+    // merge_loop should skip the pair.  Verify via CmpMap simplification.
+    let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
+    let s = cmp.simplified().unwrap();
+    // Should NOT simplify to a single ZoomMap (factor 6) — the flag prevents it.
+    assert!(s.as_any().is::<CmpMap>());
+}
+
+#[test]
+fn do_not_simplify_default_is_false() {
+    use ast_core::mappings::{Mapping, ZoomMap};
+    let z = ZoomMap::new(2, 3.0).unwrap();
+    assert!(!z.do_not_simplify());
+}
+
+#[test]
+fn do_not_simplify_preserves_identity_zoom() {
+    use ast_core::mappings::{Mapping, ZoomMap};
+
+    // A ZoomMap with factor 1.0 normally simplifies to UnitMap.
+    let mut z = ZoomMap::new(2, 1.0).unwrap();
+    z.set_do_not_simplify(true);
+    let s = z.simplified().unwrap();
+    // With the flag set, it should stay as ZoomMap.
+    assert!(s.as_any().is::<ZoomMap>());
+}
+
+#[test]
+fn do_not_simplify_second_mapping_prevents_merge() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
+
+    let z1 = ZoomMap::new(2, 3.0).unwrap();
+    let mut z2 = ZoomMap::new(2, 2.0).unwrap();
+    z2.set_do_not_simplify(true);
+
+    // Flag on the second mapping should also prevent merging.
+    let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
+    let s = cmp.simplified().unwrap();
+    assert!(s.as_any().is::<CmpMap>());
+}
+
+/// Verify the recursion guard terminates for deeply nested CmpMaps.
+///
+/// A chain of 20 ZoomMaps(factor=1.0) composed in series with a single
+/// ZoomMap(factor=1.5) should simplify to a single ZoomMap without
+/// hitting the MAX_MERGE_PASSES limit wastefully or recursing forever.
+#[test]
+fn simplify_recursion_guard_terminates() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
+
+    // Build a deeply nested CmpMap: ZoomMap(1.5) ; ZoomMap(1.0) ; ... ; ZoomMap(1.0)
+    let mut m: Box<dyn Mapping> = Box::new(ZoomMap::new(2, 1.5).unwrap());
+    for _ in 0..20 {
+        let z = ZoomMap::new(2, 1.0).unwrap();
+        m = Box::new(CmpMap::new(m, Box::new(z), Composition::Series).unwrap());
+    }
+    // Should simplify without infinite recursion or excessive time.
+    let s = m.simplified().unwrap();
+    assert_eq!(s.nin(), 2);
+    assert_eq!(s.nout(), 2);
+}
+
+/// Verify that a mapping with identical sub-structures does not
+/// get stuck in a cycle where simplification reproduces the input.
+#[test]
+fn simplify_recursion_guard_identical_subtrees() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+
+    // (Shift ; Zoom) || (Shift ; Zoom)  — two identical parallel arms
+    // then (result) ; (result)  — identical halves in series.
+    // Each simplification pass produces the same structure, triggering
+    // the fingerprint-based cycle detection.
+    let arm = || -> Box<dyn Mapping> {
+        let a = ShiftMap::new([1.0, 2.0]);
+        let b = ZoomMap::new(2, 3.0).unwrap();
+        Box::new(CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap())
+    };
+
+    let par = CmpMap::new(arm(), arm(), Composition::Parallel).unwrap();
+    let doubled = CmpMap::new(Box::new(par.clone()), Box::new(par), Composition::Series).unwrap();
+
+    // Must terminate (no infinite recursion).
+    let s = doubled.simplified().unwrap();
+    // The result's dimensions must be preserved.
+    assert_eq!(s.nin(), 4);
+    assert_eq!(s.nout(), 4);
+}
+
+/// Verify that clone_box produces a functionally equivalent deep copy.
+#[test]
+fn clone_box_preserves_transform() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+
+    let a = ShiftMap::new([1.0, 2.0]);
+    let b = ZoomMap::new(2, 3.0).unwrap();
+    let cmp = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+
+    let cloned = cmp.clone_box();
+
+    let pts = PointSet::from_rows(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
+    let out_orig = cmp.transform(&pts, true).unwrap();
+    let out_clone = cloned.transform(&pts, true).unwrap();
+
+    for i in 0..pts.npoint() {
+        for j in 0..2 {
+            assert_eq!(out_orig.point(i)[j], out_clone.point(i)[j]);
+        }
+    }
+}

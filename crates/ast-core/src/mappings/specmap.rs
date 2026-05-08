@@ -443,6 +443,7 @@ struct SpecConversion {
 pub struct SpecMap {
     conversions: Vec<SpecConversion>,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl SpecMap {
@@ -451,6 +452,7 @@ impl SpecMap {
         Self {
             conversions: Vec::new(),
             inverted: false,
+            do_not_simplify: false,
         }
     }
 
@@ -1119,6 +1121,9 @@ impl Mapping for SpecMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         // Normalize steps (accounting for the inverted flag) and cancel
         // adjacent inverse pairs within this single SpecMap.
         let mut steps = normalized_steps(self, self.inverted);
@@ -1133,6 +1138,7 @@ impl Mapping for SpecMap {
         Ok(Box::new(SpecMap {
             conversions: steps,
             inverted: false,
+            do_not_simplify: false,
         }))
     }
 
@@ -1171,6 +1177,7 @@ impl Mapping for SpecMap {
             Some(Box::new(SpecMap {
                 conversions: steps,
                 inverted: false,
+                do_not_simplify: false,
             }))
         }
     }
@@ -1200,6 +1207,18 @@ impl Mapping for SpecMap {
                         }
                     })
             })
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
     }
 }
 

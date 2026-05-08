@@ -356,6 +356,7 @@ struct TimeConversion {
 pub struct TimeMap {
     conversions: Vec<TimeConversion>,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl TimeMap {
@@ -364,6 +365,7 @@ impl TimeMap {
         Self {
             conversions: Vec::new(),
             inverted: false,
+            do_not_simplify: false,
         }
     }
 
@@ -1208,6 +1210,9 @@ impl Mapping for TimeMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         // Normalize steps (accounting for the inverted flag) and simplify
         // (cancel adjacent inverse pairs, remove no-effect steps).
         let mut steps = time_normalized_steps(self, self.inverted);
@@ -1284,6 +1289,18 @@ impl Mapping for TimeMap {
                     && a.args.len() == b.args.len()
                     && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
             })
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
     }
 }
 

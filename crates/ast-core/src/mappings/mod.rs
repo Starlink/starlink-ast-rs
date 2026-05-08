@@ -164,6 +164,13 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// When set to true, the simplification engine will not merge this
     /// mapping with adjacent mappings and will not simplify it individually.
     fn set_do_not_simplify(&mut self, _flag: bool) {}
+
+    /// Clone this mapping into a new `Box<dyn Mapping>`.
+    ///
+    /// This performs a deep copy without simplification. Used by the
+    /// simplification recursion guard and by `CmpMap::clone()` to avoid
+    /// infinite recursion through `simplified()`.
+    fn clone_box(&self) -> DynMapping;
 }
 
 impl dyn Mapping {

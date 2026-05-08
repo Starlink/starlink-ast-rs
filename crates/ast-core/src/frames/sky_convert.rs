@@ -580,6 +580,10 @@ impl Mapping for RotationMap {
         }
         true
     }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
+    }
 }
 
 /// Build a rotation matrix for SkyRefIs::Origin.
