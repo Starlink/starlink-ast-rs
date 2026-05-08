@@ -557,3 +557,23 @@ fn lutmap_no_cancel_parallel() {
     let merged = lm.try_merge(&lm, false, false, true);
     assert!(merged.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Inf handling
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lutmap_treats_inf_as_bad() {
+    let lut = vec![0.0, 1.0, 2.0, 3.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    // Inf input should produce BAD output
+    let pts = PointSet::from_rows([[f64::INFINITY]]);
+    let out = lm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+
+    // Negative Inf too
+    let pts_neg = PointSet::from_rows([[f64::NEG_INFINITY]]);
+    let out_neg = lm.transform(&pts_neg, true).unwrap();
+    assert_eq!(out_neg.point(0)[0], BAD_VALUE);
+}

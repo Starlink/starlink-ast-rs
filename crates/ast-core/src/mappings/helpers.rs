@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 
 #[inline]
 pub fn is_bad(v: f64) -> bool {
-    v == BAD_VALUE || v.is_nan()
+    v == BAD_VALUE || !v.is_finite()
 }
 
 #[inline]
