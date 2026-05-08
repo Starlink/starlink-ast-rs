@@ -832,7 +832,7 @@ fn dh2e_with_aberration(az: f64, el: f64, phi: f64, diurab: f64) -> (f64, f64) {
 /// Apply a single conversion step to a 3-vector, in the forward direction.
 ///
 /// Returns the updated 3-vector.
-fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3]) -> [f64; 3] {
+fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21]>) -> [f64; 3] {
     match cvt.cvt_type {
         SlaCvtType::Galeq => {
             let (lon, lat) = pal::dcc2s(&v);
@@ -902,15 +902,15 @@ fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3]) -> [f64; 3] {
             pal::dcs2c(rm, dm)
         }
         SlaCvtType::Map => {
-            let amprms = pal::mappa(cvt.args[0], cvt.args[1]);
+            let cached = amprms.expect("Map step requires pre-computed amprms");
             let (lon, lat) = pal::dcc2s(&v);
-            let (ra, da) = pal::mapqkz(lon, lat, &amprms);
+            let (ra, da) = pal::mapqkz(lon, lat, cached);
             pal::dcs2c(ra, da)
         }
         SlaCvtType::Amp => {
-            let amprms = pal::mappa(cvt.args[0], cvt.args[1]);
+            let cached = amprms.expect("Amp step requires pre-computed amprms");
             let (lon, lat) = pal::dcc2s(&v);
-            let (rm, dm) = pal::ampqk(lon, lat, &amprms);
+            let (rm, dm) = pal::ampqk(lon, lat, cached);
             pal::dcs2c(rm, dm)
         }
         SlaCvtType::De2h => {
@@ -985,7 +985,7 @@ fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3]) -> [f64; 3] {
 /// For Prec/Prebn, it swaps the epoch arguments.
 /// For J2000H/HJ2000, uses the transpose directly.
 /// For STP types, passes forward=false to the STP converter.
-fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3]) -> [f64; 3] {
+fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21]>) -> [f64; 3] {
     match cvt.cvt_type {
         SlaCvtType::Prec => {
             // Inverse precession: swap epoch arguments
@@ -1030,12 +1030,14 @@ fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3]) -> [f64; 3] {
             pal::dcs2c(result[0], result[1])
         }
         _ => {
-            // For all other types, use the inverse type's forward operation
+            // For all other types, use the inverse type's forward operation.
+            // Note: amprms is passed through since Map.inverse()=Amp and
+            // Amp.inverse()=Map share the same mappa parameters.
             let inv_cvt = SlaConversion {
                 cvt_type: cvt.cvt_type.inverse(),
                 args: cvt.args.clone(),
             };
-            apply_step_forward(&inv_cvt, v)
+            apply_step_forward(&inv_cvt, v, amprms)
         }
     }
 }
@@ -1070,6 +1072,18 @@ impl Mapping for SlaMap {
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 
+        // Pre-compute star-independent mean-to-apparent parameters for any
+        // Map/Amp steps.  pal::mappa is expensive (precession, nutation,
+        // aberration matrices) and constant across all points.
+        let mappa_cache: Vec<Option<[f64; 21]>> = self
+            .conversions
+            .iter()
+            .map(|cvt| match cvt.cvt_type {
+                SlaCvtType::Map | SlaCvtType::Amp => Some(pal::mappa(cvt.args[0], cvt.args[1])),
+                _ => None,
+            })
+            .collect();
+
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -1088,13 +1102,13 @@ impl Mapping for SlaMap {
 
             if fwd {
                 // Forward: iterate conversions in order
-                for cvt in &self.conversions {
-                    v = apply_step_forward(cvt, v);
+                for (cvt, cached) in self.conversions.iter().zip(mappa_cache.iter()) {
+                    v = apply_step_forward(cvt, v, cached.as_ref());
                 }
             } else {
                 // Inverse: iterate conversions in REVERSE order, applying inverse
-                for cvt in self.conversions.iter().rev() {
-                    v = apply_step_inverse(cvt, v);
+                for (cvt, cached) in self.conversions.iter().rev().zip(mappa_cache.iter().rev()) {
+                    v = apply_step_inverse(cvt, v, cached.as_ref());
                 }
             }
 
