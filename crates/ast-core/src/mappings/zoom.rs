@@ -18,6 +18,7 @@ pub struct ZoomMap {
     ncoord: usize,
     factor: f64,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl ZoomMap {
@@ -35,6 +36,7 @@ impl ZoomMap {
             ncoord,
             factor,
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -92,6 +94,9 @@ impl Mapping for ZoomMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         if self.factor == 1.0 {
             Ok(Box::new(UnitMap::new(self.ncoord)))
         } else {
@@ -122,6 +127,18 @@ impl Mapping for ZoomMap {
         } else {
             ast_equal(self.factor * other.factor, 1.0)
         }
+    }
+
+    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
+        if nout_wanted == 0 || first_out + nout_wanted > self.ncoord {
+            return None;
+        }
+        ZoomMap::new(nout_wanted, self.factor).ok().map(|mut z| {
+            if self.inverted {
+                z.invert();
+            }
+            Box::new(z) as DynMapping
+        })
     }
 
     fn try_merge(
@@ -202,6 +219,14 @@ impl Mapping for ZoomMap {
             return None;
         }
         compose_linear(&s1, &c1, &s2, &c2)
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
     }
 }
 

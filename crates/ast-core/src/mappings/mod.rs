@@ -138,6 +138,32 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     ) -> Option<DynMapping> {
         None
     }
+
+    /// Split this mapping to extract a sub-mapping for a contiguous range of output axes.
+    ///
+    /// Given a 0-based output axis range `[first_out .. first_out + nout_wanted)`,
+    /// returns the sub-mapping that produces exactly those outputs, consuming the
+    /// corresponding input axes.
+    ///
+    /// Returns `None` if the mapping cannot be split at the requested boundary
+    /// (e.g., a full MatrixMap where outputs depend on all inputs).
+    fn map_split(&self, _first_out: usize, _nout_wanted: usize) -> Option<DynMapping> {
+        None
+    }
+
+    /// Whether this mapping should be protected from simplification.
+    ///
+    /// When true, `simplified()` returns self unchanged and `try_merge()`
+    /// returns `None` (enforced by the merge loop, not per-mapping).
+    fn do_not_simplify(&self) -> bool {
+        false
+    }
+
+    /// Set the do-not-simplify protection flag.
+    ///
+    /// When set to true, the simplification engine will not merge this
+    /// mapping with adjacent mappings and will not simplify it individually.
+    fn set_do_not_simplify(&mut self, _flag: bool) {}
 }
 
 impl dyn Mapping {

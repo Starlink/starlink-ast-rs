@@ -36,6 +36,7 @@ pub struct CmpMap {
     second: DynMapping,
     kind: Composition,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl CmpMap {
@@ -59,6 +60,7 @@ impl CmpMap {
             second,
             kind,
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -212,6 +214,7 @@ impl Clone for CmpMap {
             second: second_clone,
             kind: self.kind,
             inverted: self.inverted,
+            do_not_simplify: self.do_not_simplify,
         };
         // In case simplified swapped dimensions for inverted mappings, ensure
         // the inverted flag is preserved.
@@ -274,6 +277,9 @@ impl Mapping for CmpMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         crate::mappings::simplify::simplify_mapping(self)
     }
 
@@ -304,6 +310,76 @@ impl Mapping for CmpMap {
             .iter()
             .zip(list_other.iter())
             .all(|((m1, inv1), (m2, inv2))| inv1 == inv2 && m1.equal(m2.as_ref()))
+    }
+
+    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
+        if self.kind != Composition::Parallel {
+            return None;
+        }
+        // For an inverted parallel CmpMap, the effective output is the
+        // concatenation of the inverses: (A^-1 || B^-1). The "output" of
+        // the inverted map corresponds to the *inputs* of the non-inverted
+        // map, so we split based on nin of components.
+        let na = if self.inverted {
+            self.first.nin()
+        } else {
+            self.first.nout()
+        };
+        let nb = if self.inverted {
+            self.second.nin()
+        } else {
+            self.second.nout()
+        };
+
+        if first_out + nout_wanted > na + nb {
+            return None;
+        }
+
+        if first_out == 0 && nout_wanted == na {
+            // Exactly the first component.
+            let mut m = self.first.simplified().ok()?;
+            if self.inverted {
+                m.invert();
+            }
+            Some(m)
+        } else if first_out == na && nout_wanted == nb {
+            // Exactly the second component.
+            let mut m = self.second.simplified().ok()?;
+            if self.inverted {
+                m.invert();
+            }
+            Some(m)
+        } else if first_out < na && first_out + nout_wanted <= na {
+            // Within the first component — recurse.
+            if self.inverted {
+                // Need to invert the sub-result from first's map_split.
+                let mut sub = self.first.map_split(first_out, nout_wanted)?;
+                sub.invert();
+                Some(sub)
+            } else {
+                self.first.map_split(first_out, nout_wanted)
+            }
+        } else if first_out >= na && first_out + nout_wanted <= na + nb {
+            // Within the second component — recurse.
+            if self.inverted {
+                let mut sub = self.second.map_split(first_out - na, nout_wanted)?;
+                sub.invert();
+                Some(sub)
+            } else {
+                self.second.map_split(first_out - na, nout_wanted)
+            }
+        } else {
+            // Spans both components — cannot split.
+            None
+        }
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
     }
 }
 

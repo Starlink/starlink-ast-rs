@@ -12,6 +12,7 @@ use super::{DynMapping, Mapping};
 pub struct UnitMap {
     ncoord: usize,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl UnitMap {
@@ -20,6 +21,7 @@ impl UnitMap {
         Self {
             ncoord,
             inverted: false,
+            do_not_simplify: false,
         }
     }
 
@@ -72,6 +74,13 @@ impl Mapping for UnitMap {
         self.ncoord == other.ncoord
     }
 
+    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
+        if nout_wanted == 0 || first_out + nout_wanted > self.ncoord {
+            return None;
+        }
+        Some(Box::new(UnitMap::new(nout_wanted)))
+    }
+
     fn try_merge(
         &self,
         other: &dyn Mapping,
@@ -87,6 +96,14 @@ impl Mapping for UnitMap {
             // Series: UnitMap removal handled by post-loop cleanup in merge_loop.
             None
         }
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
     }
 }
 
@@ -107,6 +124,7 @@ impl Serializable for UnitMap {
         Ok(UnitMap {
             ncoord: nin,
             inverted,
+            do_not_simplify: false,
         })
     }
 }

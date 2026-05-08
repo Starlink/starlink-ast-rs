@@ -35,6 +35,8 @@ pub struct MatrixMap {
     inverse: Option<Array2<f64>>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
+    /// Whether this mapping is protected from simplification.
+    do_not_simplify: bool,
 }
 
 impl MatrixMap {
@@ -65,6 +67,7 @@ impl MatrixMap {
             matrix,
             inverse,
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -205,6 +208,9 @@ impl Mapping for MatrixMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         let nrows = self.matrix.nrows();
         let ncols = self.matrix.ncols();
 
@@ -427,6 +433,40 @@ impl Mapping for MatrixMap {
             .zip(other_fwd.iter())
             .all(|(a, b)| ast_equal(*a, *b))
     }
+
+    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
+        // Only splittable if the matrix is square and diagonal — in that case
+        // each output axis depends only on the corresponding input axis.
+        let n = self.matrix.nrows();
+        if n != self.matrix.ncols() {
+            return None;
+        }
+        if !is_diagonal(&self.matrix) {
+            return None;
+        }
+        if nout_wanted == 0 || first_out + nout_wanted > n {
+            return None;
+        }
+        // Extract diagonal sub-block as a smaller diagonal MatrixMap.
+        let mut sub = Array2::<f64>::zeros((nout_wanted, nout_wanted));
+        for i in 0..nout_wanted {
+            sub[[i, i]] = self.matrix[[first_out + i, first_out + i]];
+        }
+        MatrixMap::new(sub).ok().map(|mut mm| {
+            if self.inverted {
+                mm.invert();
+            }
+            Box::new(mm) as DynMapping
+        })
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
 }
 
 impl Serializable for MatrixMap {
@@ -565,6 +605,7 @@ impl Serializable for MatrixMap {
             matrix,
             inverse,
             inverted,
+            do_not_simplify: false,
         })
     }
 }

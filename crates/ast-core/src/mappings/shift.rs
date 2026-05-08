@@ -16,6 +16,7 @@ use super::{DynMapping, Mapping};
 pub struct ShiftMap {
     shift: Vec<f64>,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl ShiftMap {
@@ -26,6 +27,7 @@ impl ShiftMap {
         Self {
             shift: shift.into(),
             inverted: false,
+            do_not_simplify: false,
         }
     }
 
@@ -87,6 +89,9 @@ impl Mapping for ShiftMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         if self.shift.iter().all(|&s| s == 0.0) {
             Ok(Box::new(UnitMap::new(self.shift.len())))
         } else {
@@ -116,6 +121,18 @@ impl Mapping for ShiftMap {
                 .zip(&other.shift)
                 .all(|(a, b)| ast_equal(*a, -b))
         }
+    }
+
+    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
+        if nout_wanted == 0 || first_out + nout_wanted > self.shift.len() {
+            return None;
+        }
+        let sub_shifts = &self.shift[first_out..first_out + nout_wanted];
+        let mut sm = ShiftMap::new(sub_shifts);
+        if self.inverted {
+            sm.invert();
+        }
+        Some(Box::new(sm))
     }
 
     fn try_merge(
@@ -168,6 +185,14 @@ impl Mapping for ShiftMap {
         }
         compose_linear(&s1, &c1, &s2, &c2)
     }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
 }
 
 impl Serializable for ShiftMap {
@@ -200,6 +225,7 @@ impl Serializable for ShiftMap {
         Ok(ShiftMap {
             shift: shifts,
             inverted,
+            do_not_simplify: false,
         })
     }
 }

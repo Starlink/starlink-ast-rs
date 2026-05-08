@@ -25,6 +25,7 @@ pub struct WinMap {
     shifts: Vec<f64>,
     scales: Vec<f64>,
     inverted: bool,
+    do_not_simplify: bool,
 }
 
 impl WinMap {
@@ -65,6 +66,7 @@ impl WinMap {
             shifts: shifts.to_vec(),
             scales: scales.to_vec(),
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -122,6 +124,7 @@ impl WinMap {
             shifts,
             scales,
             inverted: false,
+            do_not_simplify: false,
         })
     }
 
@@ -194,6 +197,9 @@ impl Mapping for WinMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
         let n = self.shifts.len();
         let all_shifts_zero = self.shifts.iter().all(|&s| ast_equal(s, 0.0));
         let all_scales_one = self.scales.iter().all(|&s| ast_equal(s, 1.0));
@@ -236,6 +242,20 @@ impl Mapping for WinMap {
         let (s2, c2) = winmap_effective_params(&other.shifts, &other.scales, other.inverted);
         s1.iter().zip(&s2).all(|(a, b)| ast_equal(*a, *b))
             && c1.iter().zip(&c2).all(|(a, b)| ast_equal(*a, *b))
+    }
+
+    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
+        if nout_wanted == 0 || first_out + nout_wanted > self.shifts.len() {
+            return None;
+        }
+        let sub_shifts = &self.shifts[first_out..first_out + nout_wanted];
+        let sub_scales = &self.scales[first_out..first_out + nout_wanted];
+        WinMap::new(sub_shifts, sub_scales).ok().map(|mut w| {
+            if self.inverted {
+                w.invert();
+            }
+            Box::new(w) as DynMapping
+        })
     }
 
     fn try_merge(
@@ -289,6 +309,14 @@ impl Mapping for WinMap {
         }
         // Off-diagonal: axes are independent, so the rate is exactly 0.
         Ok(0.0)
+    }
+
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
     }
 }
 
@@ -429,6 +457,7 @@ impl Serializable for WinMap {
             shifts,
             scales,
             inverted: false,
+            do_not_simplify: false,
         };
         if inverted {
             m.invert();
