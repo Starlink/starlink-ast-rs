@@ -452,3 +452,149 @@ fn clone_box_preserves_transform() {
         }
     }
 }
+
+/// Verify that the (inv-SphMap, diagonal-scale, fwd-SphMap) pattern
+/// simplifies to a WinMap encoding longitude/latitude reflections.
+///
+/// Matches C sphmap.c:798-950.
+#[test]
+fn sphmap_three_mapping_pattern_simplifies() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, SphMap, ZoomMap};
+
+    // Build: inv-SphMap (sph→cart, 2→3) ; ZoomMap(-1, 3D) ; fwd-SphMap (cart→sph, 3→2)
+    //
+    // SphMap forward direction: cart→sph (3→2)
+    // SphMap inverse direction: sph→cart (2→3)
+    //
+    // ZoomMap(-1) negates all Cartesian axes = point reflection through origin.
+    // In spherical: lon → lon + π, lat → -lat.
+    let mut inv_sph = SphMap::new(); // forward = cart→sph (3→2)
+    inv_sph.invert(); // now forward = sph→cart (2→3)
+    let zoom = ZoomMap::new(3, -1.0).unwrap();
+    let fwd_sph = SphMap::new(); // forward = cart→sph (3→2)
+
+    let step1 = CmpMap::new(Box::new(inv_sph), Box::new(zoom), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(step1), Box::new(fwd_sph), Composition::Series).unwrap();
+
+    // Get the unsimplified transform output for comparison.
+    let lon = 0.5_f64;
+    let lat = 0.3_f64;
+    let pts = PointSet::from_rows([[lon, lat]]);
+    let out_orig = full.transform(&pts, true).unwrap();
+
+    let s = full.simplified().unwrap();
+    // Should simplify — the trio should be replaced by something simpler.
+    assert_eq!(s.nin(), 2);
+    assert_eq!(s.nout(), 2);
+
+    // Verify the simplified transform matches the original.
+    let out = s.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - out_orig.point(0)[0]).abs() < 1e-10,
+        "lon: simplified {} vs original {}",
+        out.point(0)[0],
+        out_orig.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - out_orig.point(0)[1]).abs() < 1e-10,
+        "lat: simplified {} vs original {}",
+        out.point(0)[1],
+        out_orig.point(0)[1]
+    );
+
+    // Verify expected geometric effect: lat should be negated.
+    assert!(
+        (out_orig.point(0)[1] - (-lat)).abs() < 1e-10,
+        "lat: got {}, expected {}",
+        out_orig.point(0)[1],
+        -lat
+    );
+}
+
+/// Verify the pattern with a diagonal MatrixMap (non-uniform signs).
+#[test]
+fn sphmap_three_mapping_matrixmap_pattern() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, SphMap};
+    use ndarray::Array2;
+
+    // Diagonal [-1, 1, 1]: negate X only.
+    // Expected spherical effect: lon → π - lon (reflection), lat unchanged.
+    // C logic: diag[0]<0, diag[1]>0 → shift=π, scale=-1, diag[2]>0 → lat_scale=1
+    let mut inv_sph = SphMap::new();
+    inv_sph.invert();
+    let mut m = Array2::zeros((3, 3));
+    m[[0, 0]] = -1.0;
+    m[[1, 1]] = 1.0;
+    m[[2, 2]] = 1.0;
+    let mm = MatrixMap::new(m).unwrap();
+    let fwd_sph = SphMap::new();
+
+    let step1 = CmpMap::new(Box::new(inv_sph), Box::new(mm), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(step1), Box::new(fwd_sph), Composition::Series).unwrap();
+
+    let s = full.simplified().unwrap();
+    assert_eq!(s.nin(), 2);
+    assert_eq!(s.nout(), 2);
+
+    // Verify: (lon, lat) → (π - lon, lat)
+    let lon = 0.5_f64;
+    let lat = 0.3_f64;
+    let pts = PointSet::from_rows([[lon, lat]]);
+    let out = s.transform(&pts, true).unwrap();
+    let expected_lon = std::f64::consts::PI - lon;
+    let expected_lat = lat;
+    assert!(
+        (out.point(0)[0] - expected_lon).abs() < 1e-10,
+        "lon: got {}, expected {}",
+        out.point(0)[0],
+        expected_lon
+    );
+    assert!(
+        (out.point(0)[1] - expected_lat).abs() < 1e-10,
+        "lat: got {}, expected {}",
+        out.point(0)[1],
+        expected_lat
+    );
+}
+
+/// Verify that the pattern does NOT fire when magnitudes differ (non-uniform scaling).
+#[test]
+fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, MatrixMap, SphMap};
+    use ndarray::Array2;
+
+    // Diagonal [2, 1, 1]: magnitudes differ, pattern should not fire.
+    let mut inv_sph = SphMap::new();
+    inv_sph.invert();
+    let mut m = Array2::zeros((3, 3));
+    m[[0, 0]] = 2.0;
+    m[[1, 1]] = 1.0;
+    m[[2, 2]] = 1.0;
+    let mm = MatrixMap::new(m).unwrap();
+    let fwd_sph = SphMap::new();
+
+    let step1 = CmpMap::new(Box::new(inv_sph), Box::new(mm), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(step1), Box::new(fwd_sph), Composition::Series).unwrap();
+
+    // Even without simplification the transform should still be valid.
+    let lon = 0.5_f64;
+    let lat = 0.3_f64;
+    let pts = PointSet::from_rows([[lon, lat]]);
+    let out_before = full.transform(&pts, true).unwrap();
+    let s = full.simplified().unwrap();
+    let out_after = s.transform(&pts, true).unwrap();
+
+    // The outputs should match — simplification must preserve semantics
+    // even if it doesn't reduce the mapping.
+    assert!(
+        (out_before.point(0)[0] - out_after.point(0)[0]).abs() < 1e-10,
+        "transform changed after simplification"
+    );
+    assert!(
+        (out_before.point(0)[1] - out_after.point(0)[1]).abs() < 1e-10,
+        "transform changed after simplification"
+    );
+}

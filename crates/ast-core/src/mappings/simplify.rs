@@ -22,10 +22,13 @@ use crate::error::AstResult;
 use crate::mappings::helpers::ast_equal;
 
 use super::cmpmap::{CmpMap, Composition};
+use super::matrix::{MatrixMap, is_diagonal};
 use super::perm::PermMap;
+use super::sphmap::SphMap;
 use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
 use super::winmap::WinMap;
+use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 
 // ------------------------------------------------------------------ //
@@ -285,6 +288,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
         if !improved {
             // Try swapping WinMap↔WcsMap pairs to enable further merges.
             if series && try_swap_winmap_wcsmap(list) {
+                continue;
+            }
+            // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
+            if series && try_sphmap_diagonal_pattern(list) {
                 continue;
             }
             // Try cross-composition restructuring.
@@ -924,6 +931,113 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
         list[i + 1] = (Box::new(new_pm), false);
     }
     true
+}
+
+/// Detect the (inv-SphMap, diagonal-scale, fwd-SphMap) pattern and replace
+/// with an equivalent combination that simplifies on the next pass.
+///
+/// When an inverted SphMap (sph→cart, 2→3) is followed by a diagonal
+/// MatrixMap or ZoomMap (3→3) with equal-magnitude diagonal elements,
+/// followed by a non-inverted SphMap (cart→sph, 3→2), the trio can be
+/// replaced by (WinMap, inv-SphMap, fwd-SphMap). The WinMap encodes the
+/// longitude/latitude reflections caused by the sign pattern of the
+/// diagonal, and the two adjacent SphMaps cancel on the next merge pass.
+///
+/// Matches C sphmap.c:798-950.
+fn try_sphmap_diagonal_pattern(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    let mut i = 0;
+    while i + 2 < list.len() {
+        // Pattern: SphMap(inverted) ; diagonal(3→3) ; SphMap(forward)
+        let (ref m1, inv1) = list[i];
+        let (ref m2, inv2) = list[i + 1];
+        let (ref m3, inv3) = list[i + 2];
+
+        let sph1 = m1.as_any().downcast_ref::<SphMap>();
+        let sph3 = m3.as_any().downcast_ref::<SphMap>();
+
+        if let (Some(s1), Some(s3)) = (sph1, sph3) {
+            // s1 must be applied inverted (sph→cart, 2→3)
+            // s3 must be applied forward (cart→sph, 3→2)
+            if inv1 && !inv3 {
+                // Extract the 3D diagonal from the middle mapping.
+                if let Some(diag) = extract_3d_diagonal(m2.as_ref(), inv2) {
+                    // All magnitudes must be equal and non-zero.
+                    let mag = diag[0].abs();
+                    if mag != 0.0 && ast_equal(diag[1].abs(), mag) && ast_equal(diag[2].abs(), mag)
+                    {
+                        // Compute the WinMap parameters from the sign pattern.
+                        // Matches C sphmap.c:875-900.
+                        let (lon_shift, lon_scale) = if diag[0] < 0.0 {
+                            if diag[1] < 0.0 {
+                                (std::f64::consts::PI, 1.0)
+                            } else {
+                                (std::f64::consts::PI, -1.0)
+                            }
+                        } else if diag[1] < 0.0 {
+                            (0.0, -1.0)
+                        } else {
+                            (0.0, 1.0)
+                        };
+
+                        let lat_scale = if diag[2] < 0.0 { -1.0 } else { 1.0 };
+
+                        // Check PolarLong compatibility (C sphmap.c:914-921):
+                        // The replacement transforms PolarLong through the WinMap.
+                        let new_polarlong = lon_shift + lon_scale * s1.polar_long();
+                        if !ast_equal(new_polarlong, s3.polar_long()) {
+                            i += 1;
+                            continue;
+                        }
+
+                        // Build the WinMap.
+                        let Ok(winmap) = WinMap::new(&[lon_shift, 0.0], &[lon_scale, lat_scale])
+                        else {
+                            i += 1;
+                            continue;
+                        };
+
+                        // Replace (inv-SphMap, diag, fwd-SphMap) with
+                        // (WinMap, inv-SphMap, fwd-SphMap).
+                        // The SphMap gets the adjusted PolarLong.
+                        let mut new_sph = s1.clone();
+                        new_sph.set_polar_long(new_polarlong);
+
+                        // Remove the diagonal (position i+1) and replace
+                        // position i with WinMap, insert the modified SphMap.
+                        list.remove(i + 1); // remove diagonal
+                        list[i] = (Box::new(winmap), false);
+                        // Insert the modified inv-SphMap after the WinMap.
+                        list.insert(i + 1, (Box::new(new_sph), true));
+                        return true;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Extract the diagonal of a 3×3 mapping if it's a ZoomMap or diagonal MatrixMap.
+///
+/// The inversion flag is noted but for this pattern (sign detection) the
+/// inversion only affects magnitude (not signs), so we use the forward
+/// matrix/factor for sign determination. The C code also ignores the Invert
+/// flag for this purpose (sphmap.c:822-823).
+fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
+    if let Some(zm) = m.as_any().downcast_ref::<ZoomMap>() {
+        if zm.nin() == 3 {
+            let f = zm.factor();
+            return Some([f, f, f]);
+        }
+    }
+    if let Some(mm) = m.as_any().downcast_ref::<MatrixMap>() {
+        let mat = mm.forward_matrix();
+        if mat.nrows() == 3 && mat.ncols() == 3 && is_diagonal(mat) {
+            return Some([mat[[0, 0]], mat[[1, 1]], mat[[2, 2]]]);
+        }
+    }
+    None
 }
 
 /// Reconstruct a `CmpMap` tree (or single mapping) from a flat list.
