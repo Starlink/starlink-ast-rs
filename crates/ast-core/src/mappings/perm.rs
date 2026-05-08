@@ -13,7 +13,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -140,18 +140,19 @@ impl PermMap {
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
-            if point_has_bad(inp) {
-                outp.fill(BAD_VALUE);
-            } else {
-                for (k, &p) in perm.iter().enumerate() {
-                    outp[k] = if p > 0 {
-                        inp[(p as usize) - 1]
-                    } else if p < 0 {
-                        constants[(-p as usize) - 1]
-                    } else {
+            for (k, &p) in perm.iter().enumerate() {
+                outp[k] = if p > 0 {
+                    let src = (p as usize) - 1;
+                    if is_bad(inp[src]) {
                         BAD_VALUE
-                    };
-                }
+                    } else {
+                        inp[src]
+                    }
+                } else if p < 0 {
+                    constants[(-p as usize) - 1]
+                } else {
+                    BAD_VALUE
+                };
             }
         }
     }

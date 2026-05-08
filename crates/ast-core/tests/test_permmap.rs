@@ -50,14 +50,33 @@ fn perm_map_zero_entry_is_bad() {
     assert_eq!(out.point(0)[1], BAD_VALUE);
 }
 
-/// BAD_VALUE in any input coord → whole output point is BAD_VALUE.
+/// BAD_VALUE in an input coord → only output axes that select it are BAD.
 #[test]
 fn perm_map_bad_value_propagation() {
+    // outperm=[2,1]: out[0]=in[1], out[1]=in[0]
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 7.0]]);
     let out = pm.transform(&pts, true).unwrap();
-    assert_eq!(out.point(0)[0], BAD_VALUE);
+    // out[0] = in[1] = 7.0 (unaffected by BAD in in[0])
+    assert_eq!(out.point(0)[0], 7.0);
+    // out[1] = in[0] = BAD
     assert_eq!(out.point(0)[1], BAD_VALUE);
+}
+
+/// Per-axis BAD handling: only the selected source axis matters for each output.
+#[test]
+fn perm_bad_per_axis() {
+    // outperm: [2, -1, 1] => out[0]=in[1], out[1]=const[0], out[2]=in[0]
+    // inperm: [3, 1, 0]   => inv: out[0]=in[2], out[1]=in[0], out[2]=BAD
+    let pm = PermMap::new(&[3, 1, 0], &[2, -1, 1], &[99.0]).unwrap();
+
+    // Forward: input[0]=BAD. out[0]=in[1]=5.0 (not affected),
+    //          out[1]=const=99.0 (never affected), out[2]=in[0]=BAD.
+    let pts = PointSet::from_rows([[BAD_VALUE, 5.0, 7.0]]);
+    let out = pm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 5.0);
+    assert_eq!(out.point(0)[1], 99.0);
+    assert_eq!(out.point(0)[2], BAD_VALUE);
 }
 
 /// Identity permutation [1, 2] simplifies to a working UnitMap.
