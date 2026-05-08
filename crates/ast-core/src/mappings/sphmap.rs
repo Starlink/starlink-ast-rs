@@ -199,28 +199,48 @@ impl Mapping for SphMap {
         if !series {
             return None;
         }
-        // Only handle inverse cancellation: same SphMap in opposite directions.
+        // Only handle inverse cancellation: opposite directions.
         if self_inv == other_inv {
             return None;
         }
         let other_sph = other.as_any().downcast_ref::<SphMap>()?;
-        // Both must have unit_radius = true for safe cancellation.
-        // This matches the C AST rule: without UnitRadius, the forward
-        // SphMap normalises the input vector's length, so a round-trip
-        // is not identity for non-unit inputs. The C library requires
-        // UnitRadius on both regardless of which direction comes first.
-        if !self.unit_radius || !other_sph.unit_radius {
+        if !ast_equal(self.polar_long, other_sph.polar_long) {
             return None;
         }
-        if ast_equal(self.polar_long, other_sph.polar_long) {
-            // Input dimension of the pair: SphMap forward is 3->2,
-            // inverse is 2->3. self_inv tells us which direction
-            // self (the first mapping) is applied in.
-            let self_nin = if self_inv { 2 } else { 3 };
-            Some(Box::new(UnitMap::new(self_nin)))
-        } else {
-            None
+
+        // Determine which direction each map is applied in.
+        // SphMap forward: 3D Cartesian → 2D spherical (cart→sph), nin=3, nout=2
+        // SphMap inverse: 2D spherical → 3D Cartesian (sph→cart), nin=2, nout=3
+        //
+        // self_inv == true means self is applied in its INVERSE direction (sph→cart)
+        // self_inv == false means self is applied FORWARD (cart→sph)
+        //
+        // Cancellation rules (matching C sphmap.c:748-761):
+        //
+        // - Inverse→forward (sph→cart then cart→sph): always cancels.
+        //   palDcs2c always produces unit vectors, so the intermediate
+        //   3D vector is guaranteed to lie on the unit sphere.
+        //
+        // - Forward→inverse (cart→sph then sph→cart): cancels only if
+        //   UnitRadius is set on the forward map. Without it, magnitude
+        //   information is lost in the forward step and the round-trip
+        //   is not identity for non-unit inputs.
+        if !self_inv {
+            // Self is forward (cart→sph), other is inverse (sph→cart).
+            // Pattern: forward→inverse needs UnitRadius on the forward map.
+            if !self.unit_radius {
+                return None;
+            }
         }
+        // If self is inverse (sph→cart) and other is forward (cart→sph):
+        // No UnitRadius check needed — palDcs2c always produces unit vectors,
+        // so the intermediate 3D vector is guaranteed on the unit sphere.
+
+        // UnitMap dimension: the "input" side of the cancelling pair.
+        // If self is inverse (sph->cart, input is 2D), pair input is 2D.
+        // If self is forward (cart->sph, input is 3D), pair input is 3D.
+        let nin_pair = if self_inv { 2 } else { 3 };
+        Some(Box::new(UnitMap::new(nin_pair)))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

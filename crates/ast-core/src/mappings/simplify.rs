@@ -117,10 +117,20 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
                 let (ref m1, inv1) = list[i];
                 let (ref m2, inv2) = list[i + 1];
 
+                // The effective input dimension of m1 in its applied
+                // direction — this is what the merged result must accept.
+                let m1_nin = if inv1 { m1.nout() } else { m1.nin() };
+
                 // Try left merging into right.
                 m1.try_merge(m2.as_ref(), series, inv1, inv2)
                     // Try right merging into left (swap roles).
-                    .or_else(|| m2.try_merge(m1.as_ref(), series, inv2, inv1))
+                    // Validate that the result's input dimension matches
+                    // m1's effective input, since the result replaces
+                    // m1's position in the pipeline.
+                    .or_else(|| {
+                        m2.try_merge(m1.as_ref(), series, inv2, inv1)
+                            .filter(|m| m.nin() == m1_nin)
+                    })
             };
 
             if let Some(m) = merged {
@@ -1432,13 +1442,12 @@ mod tests {
     fn simplify_sphmap_inv_fwd_cancels() {
         use crate::mappings::SphMap;
 
-        // SphMap^-1 (inv 2->3) then SphMap (fwd 3->2) with unit_radius.
-        // C AST requires UnitRadius on both for cancellation.
+        // SphMap^-1 (inv, sph→cart 2->3) then SphMap (fwd, cart→sph 3->2).
+        // Inv→fwd cancels without UnitRadius — palDcs2c always produces
+        // unit vectors so the intermediate 3D vector is guaranteed unit.
         let mut inv = SphMap::new();
-        inv.set_unit_radius(true);
         inv.invert();
-        let mut fwd = SphMap::new();
-        fwd.set_unit_radius(true);
+        let fwd = SphMap::new();
         let cmp = CmpMap::new(dyn_map(inv), dyn_map(fwd), Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         assert!(result.as_any().is::<UnitMap>());
@@ -1446,10 +1455,12 @@ mod tests {
     }
 
     #[test]
-    fn simplify_sphmap_mismatched_attrs_no_merge() {
+    fn simplify_sphmap_fwd_inv_cancels_with_unit_radius_on_first() {
         use crate::mappings::SphMap;
 
-        // Different unit_radius: should NOT cancel.
+        // Forward (cart→sph) with UnitRadius, then inverse (sph→cart) without.
+        // C AST only requires UnitRadius on the first (forward) map for
+        // fwd→inv cancellation, so this SHOULD cancel.
         let mut fwd = SphMap::new();
         fwd.set_unit_radius(true);
         let mut inv = SphMap::new();
@@ -1457,7 +1468,22 @@ mod tests {
         inv.invert();
         let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
-        // Should NOT be a UnitMap.
+        assert!(result.as_any().is::<UnitMap>());
+        assert_eq!(result.nin(), 3);
+    }
+
+    #[test]
+    fn simplify_sphmap_fwd_inv_no_cancel_without_unit_radius() {
+        use crate::mappings::SphMap;
+
+        // Forward (cart→sph) WITHOUT UnitRadius, then inverse (sph→cart).
+        // Should NOT cancel: without UnitRadius the forward step loses
+        // magnitude information.
+        let fwd = SphMap::new(); // unit_radius=false
+        let mut inv = SphMap::new();
+        inv.invert();
+        let cmp = CmpMap::new(dyn_map(fwd), dyn_map(inv), Composition::Series).unwrap();
+        let result = simplify_mapping(&cmp).unwrap();
         assert!(!result.as_any().is::<UnitMap>());
     }
 

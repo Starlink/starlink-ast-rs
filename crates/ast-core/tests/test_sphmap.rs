@@ -240,6 +240,73 @@ fn inverted_inverse_is_cartesian_to_spherical() {
 }
 
 // -----------------------------------------------------------------------
+// try_merge: relaxed cancellation conditions
+// -----------------------------------------------------------------------
+
+#[test]
+fn sphmap_inv_fwd_cancels_without_unit_radius() {
+    use ast_core::mappings::UnitMap;
+
+    // Inverse (sph->cart) followed by forward (cart->sph) should cancel
+    // even without UnitRadius — palDcs2c always produces unit vectors.
+    let s1 = SphMap::new(); // unit_radius=false
+    let s2 = SphMap::new(); // unit_radius=false
+
+    // self_inv=true means self is applied inverted (sph->cart = inverse of SphMap)
+    // other_inv=false means other is applied forward (cart->sph = forward of SphMap)
+    let merged = s1.try_merge(&s2, true, true, false);
+    assert!(merged.is_some(), "inv->fwd should cancel without UnitRadius");
+    assert!(merged.unwrap().as_any().is::<UnitMap>());
+}
+
+#[test]
+fn sphmap_fwd_inv_needs_unit_radius_on_first_only() {
+    use ast_core::mappings::UnitMap;
+
+    // Forward (cart->sph) then inverse (sph->cart).
+    // Requires UnitRadius on the first (forward) map only.
+    let mut s1 = SphMap::new();
+    s1.set_unit_radius(true); // first, applied forward — needs UnitRadius
+    let s2 = SphMap::new(); // second, applied inverted — no UnitRadius needed
+
+    // self_inv=false means self applied forward (cart->sph)
+    // other_inv=true means other applied inverted (sph->cart)
+    let merged = s1.try_merge(&s2, true, false, true);
+    assert!(
+        merged.is_some(),
+        "fwd->inv should cancel with UnitRadius on first only"
+    );
+    assert!(merged.unwrap().as_any().is::<UnitMap>());
+}
+
+#[test]
+fn sphmap_fwd_inv_fails_without_unit_radius() {
+    // Forward without UnitRadius → should NOT cancel.
+    let s1 = SphMap::new(); // no UnitRadius (first, forward)
+    let s2 = SphMap::new(); // (second, inverted)
+
+    let merged = s1.try_merge(&s2, true, false, true);
+    assert!(
+        merged.is_none(),
+        "fwd->inv should NOT cancel without UnitRadius on first"
+    );
+}
+
+#[test]
+fn sphmap_cancellation_requires_matching_polar_long() {
+    // Even inv->fwd should not cancel if PolarLong differs.
+    let s1 = SphMap::new(); // polar_long = 0.0
+    let mut s2 = SphMap::new();
+    s2.set_polar_long(1.0); // polar_long = 1.0
+
+    let merged = s1.try_merge(&s2, true, true, false);
+    assert!(
+        merged.is_none(),
+        "should not cancel with different PolarLong"
+    );
+}
+
+// -----------------------------------------------------------------------
 // Serialisation round-trip
 // -----------------------------------------------------------------------
 
