@@ -219,6 +219,28 @@ fn permmap_different_perm() {
     assert!(!a.equal(&b));
 }
 
+#[test]
+fn permmap_equal_cross_inversion() {
+    // A symmetric swap PermMap: inperm=[2,1], outperm=[2,1].
+    // Its inverse is itself (swap is self-inverse).
+    let pm1 = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let mut pm2 = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    pm2.invert();
+    // Inverted swap is still a swap — should be equal
+    // because effective outperm (was inperm=[2,1]) equals pm1's outperm=[2,1]
+    assert!(pm1.equal(&pm2));
+
+    // Asymmetric case: outperm=[3,1,2], inperm=[2,3,1]
+    // Inverting swaps: effective outperm becomes [2,3,1]
+    let pm3 = PermMap::new(&[2, 3, 1], &[3, 1, 2], &[]).unwrap();
+    let mut pm3_inv = pm3.clone();
+    pm3_inv.invert();
+    // pm3_inv has effective outperm=[2,3,1], inperm=[3,1,2]
+    // Compare with a fresh PermMap constructed with those arrays directly
+    let pm4 = PermMap::new(&[3, 1, 2], &[2, 3, 1], &[]).unwrap();
+    assert!(pm3_inv.equal(&pm4));
+}
+
 // =========================================================================
 // WinMap
 // =========================================================================

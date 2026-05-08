@@ -417,12 +417,24 @@ impl Mapping for PermMap {
         let Some(other) = other.as_any().downcast_ref::<PermMap>() else {
             return false;
         };
-        if self.inverted != other.inverted {
+        // Resolve invert flags to get effective outperm/inperm.
+        let self_outperm = if self.inverted { &self.inperm } else { &self.outperm };
+        let self_inperm = if self.inverted { &self.outperm } else { &self.inperm };
+        let other_outperm = if other.inverted { &other.inperm } else { &other.outperm };
+        let other_inperm = if other.inverted { &other.outperm } else { &other.inperm };
+
+        if self_outperm.len() != other_outperm.len()
+            || self_inperm.len() != other_inperm.len()
+        {
             return false;
         }
-        self.outperm == other.outperm
-            && self.inperm == other.inperm
-            && self.constants.len() == other.constants.len()
+        if self_outperm != other_outperm || self_inperm != other_inperm {
+            return false;
+        }
+        // Compare constants referenced by the effective permutations.
+        // Constants are shared between forward and inverse — compare
+        // them all with tolerance.
+        self.constants.len() == other.constants.len()
             && self
                 .constants
                 .iter()
