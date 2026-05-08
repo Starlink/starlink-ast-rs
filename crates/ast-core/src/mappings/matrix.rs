@@ -80,9 +80,7 @@ impl MatrixMap {
         };
 
         let form = compute_form(&matrix);
-        let inv_form = inverse
-            .as_ref()
-            .map_or(MatrixForm::Full, compute_form);
+        let inv_form = inverse.as_ref().map_or(MatrixForm::Full, compute_form);
 
         Ok(Self {
             matrix,
@@ -655,9 +653,7 @@ impl Serializable for MatrixMap {
         };
 
         let form = compute_form(&matrix);
-        let inv_form = inverse
-            .as_ref()
-            .map_or(MatrixForm::Full, compute_form);
+        let inv_form = inverse.as_ref().map_or(MatrixForm::Full, compute_form);
 
         Ok(MatrixMap {
             matrix,
