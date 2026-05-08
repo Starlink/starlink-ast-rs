@@ -128,6 +128,29 @@ fn perm_rate_analytical_inverted() {
     assert_eq!(pm.rate(&[0.0, 0.0], 2, 2).unwrap(), 0.0);
 }
 
+/// Parallel merge: two adjacent parallel PermMaps combine into one larger PermMap.
+#[test]
+fn perm_parallel_merge() {
+    // PermMap [2,1] parallel with PermMap [1] → combined 3-axis PermMap
+    // First 2 outputs come from first PermMap (swaps inputs 1,2),
+    // third output comes from second PermMap (passes input 3).
+    let p1 = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let p2 = PermMap::new(&[1], &[1], &[]).unwrap();
+
+    let merged = p1.try_merge(&p2, false, false, false);
+    assert!(merged.is_some());
+    let m = merged.unwrap();
+    assert_eq!(m.nin(), 3);
+    assert_eq!(m.nout(), 3);
+
+    // Verify: input [a, b, c] → [b, a, c]
+    let pts = PointSet::from_rows([[1.0, 2.0, 3.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 2.0);
+    assert_eq!(out.point(0)[1], 1.0);
+    assert_eq!(out.point(0)[2], 3.0);
+}
+
 /// simplified() must check both inperm and outperm for identity.
 #[test]
 fn perm_simplified_checks_both_perms() {

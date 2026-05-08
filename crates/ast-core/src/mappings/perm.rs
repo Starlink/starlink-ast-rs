@@ -326,7 +326,90 @@ impl Mapping for PermMap {
         other_inv: bool,
     ) -> Option<DynMapping> {
         if !series {
-            return None;
+            // Parallel merge: two PermMaps operating on disjoint coordinate
+            // ranges combine into a single larger PermMap with offset-adjusted
+            // indices.
+            let other_perm = other.as_any().downcast_ref::<PermMap>()?;
+
+            let self_outperm = if self_inv {
+                &self.inperm
+            } else {
+                &self.outperm
+            };
+            let self_inperm = if self_inv {
+                &self.outperm
+            } else {
+                &self.inperm
+            };
+            let other_outperm = if other_inv {
+                &other_perm.inperm
+            } else {
+                &other_perm.outperm
+            };
+            let other_inperm = if other_inv {
+                &other_perm.outperm
+            } else {
+                &other_perm.inperm
+            };
+
+            let n1_in = self_inperm.len();
+            let n1_out = self_outperm.len();
+
+            let mut merged_constants: Vec<f64> = Vec::new();
+
+            // Build combined outperm.
+            let mut new_outperm: Vec<i64> = Vec::new();
+            for &p in self_outperm {
+                if p > 0 {
+                    new_outperm.push(p);
+                } else if p < 0 {
+                    let val = self.constants[(-p - 1) as usize];
+                    let idx = add_constant(&mut merged_constants, val);
+                    new_outperm.push(-((idx + 1) as i64));
+                } else {
+                    new_outperm.push(0);
+                }
+            }
+            for &p in other_outperm {
+                if p > 0 {
+                    new_outperm.push(p + n1_in as i64); // offset by first's input count
+                } else if p < 0 {
+                    let val = other_perm.constants[(-p - 1) as usize];
+                    let idx = add_constant(&mut merged_constants, val);
+                    new_outperm.push(-((idx + 1) as i64));
+                } else {
+                    new_outperm.push(0);
+                }
+            }
+
+            // Build combined inperm.
+            let mut new_inperm: Vec<i64> = Vec::new();
+            for &p in self_inperm {
+                if p > 0 {
+                    new_inperm.push(p);
+                } else if p < 0 {
+                    let val = self.constants[(-p - 1) as usize];
+                    let idx = add_constant(&mut merged_constants, val);
+                    new_inperm.push(-((idx + 1) as i64));
+                } else {
+                    new_inperm.push(0);
+                }
+            }
+            for &p in other_inperm {
+                if p > 0 {
+                    new_inperm.push(p + n1_out as i64); // offset by first's output count
+                } else if p < 0 {
+                    let val = other_perm.constants[(-p - 1) as usize];
+                    let idx = add_constant(&mut merged_constants, val);
+                    new_inperm.push(-((idx + 1) as i64));
+                } else {
+                    new_inperm.push(0);
+                }
+            }
+
+            return PermMap::new(&new_inperm, &new_outperm, &merged_constants)
+                .ok()
+                .map(|pm| Box::new(pm) as DynMapping);
         }
 
         // PermMap + MatrixMap → MatrixMap.
