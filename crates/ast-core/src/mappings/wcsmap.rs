@@ -108,9 +108,26 @@ impl WcsMap {
 
         // For NCP and GLS, create the underlying projection as SIN/SFL
         // with appropriate default parameters.
+        // For Unknown, we don't need a PrjParams — it acts as identity.
         let underlying = match proj {
             WcsProjection::Ncp => WcsProjection::Sin,
             WcsProjection::Gls => WcsProjection::Sfl,
+            WcsProjection::Unknown => {
+                // Unknown projection has no wcslib implementation.
+                // It acts as an identity mapping and simplifies to UnitMap.
+                let params = vec![Vec::new(), Vec::new()];
+                // Use a dummy PrjParams (CAR is simplest) — it will never be called.
+                let prj = PrjParams::new(WcsProjection::Car)?;
+                return Ok(Self {
+                    proj,
+                    lonax: lonax - 1,
+                    latax: latax - 1,
+                    ncoord,
+                    params,
+                    prj: RefCell::new(prj),
+                    inverted: false,
+                });
+            }
             other => other,
         };
 
@@ -215,6 +232,8 @@ impl WcsMap {
         let underlying = match self.proj {
             WcsProjection::Ncp => WcsProjection::Sin,
             WcsProjection::Gls => WcsProjection::Sfl,
+            // Unknown has no real projection; use CAR as dummy placeholder.
+            WcsProjection::Unknown => WcsProjection::Car,
             other => other,
         };
         let mut prj = PrjParams::new(underlying)?;
@@ -270,6 +289,14 @@ impl Mapping for WcsMap {
     }
 
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        // Unknown/blank projection acts as identity — pass through all coords.
+        if self.proj == WcsProjection::Unknown {
+            for i in 0..pts.npoint() {
+                out.point_mut(i).copy_from_slice(pts.point(i));
+            }
+            return Ok(());
+        }
+
         let fwd = self.effective_forward(forward);
         let mut prj = self.prj.borrow_mut();
 
@@ -323,6 +350,10 @@ impl Mapping for WcsMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        // Unknown/blank projection simplifies to identity.
+        if self.proj == WcsProjection::Unknown {
+            return Ok(Box::new(UnitMap::new(self.ncoord)));
+        }
         Ok(Box::new(self.clone()))
     }
 
@@ -410,6 +441,7 @@ fn projection_description(proj: WcsProjection) -> &'static str {
         WcsProjection::Tpn => "TAN with polynomial corrections",
         WcsProjection::Hpx => "HEALPix",
         WcsProjection::Xph => "HEALPix polar",
+        WcsProjection::Unknown => "Unknown",
     }
 }
 
@@ -478,13 +510,10 @@ impl Serializable for WcsMap {
         let (nin, _nout, inverted) = read_mapping_base(node);
 
         // Read projection type.
+        // If the type is blank or unrecognised, fall back to Unknown (which
+        // acts as identity and simplifies to UnitMap).
         let type_str = node.get_string("Type", "");
-        let proj = WcsProjection::from_code(&type_str).ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Wcsty,
-                format!("unknown WCS projection type: '{type_str}'"),
-            )
-        })?;
+        let proj = WcsProjection::from_code(type_str.trim()).unwrap_or(WcsProjection::Unknown);
 
         // Read axis indices (1-based, defaults 1 and 2).
         let wcsax1 = node.get_int("WcsAx1", 1) as usize;

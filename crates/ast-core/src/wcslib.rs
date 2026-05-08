@@ -87,6 +87,8 @@ pub enum WcsProjection {
     Hpx,
     /// HEALPix polar
     Xph,
+    /// Unknown / blank projection type (simplifies to UnitMap)
+    Unknown,
 }
 
 impl WcsProjection {
@@ -124,6 +126,7 @@ impl WcsProjection {
             Self::Tpn => "TPN",
             Self::Hpx => "HPX",
             Self::Xph => "XPH",
+            Self::Unknown => "   ",
         }
     }
 
@@ -225,6 +228,8 @@ impl WcsProjection {
             Self::Gls => 301, // -> SFL
             // TPN uses 999 (defined in tpn.c)
             Self::Tpn => 999,
+            // Unknown/blank type — no valid type code.
+            Self::Unknown => 0,
         }
     }
 
@@ -340,11 +345,14 @@ impl PrjParams {
     pub(crate) fn new(proj: WcsProjection) -> AstResult<Self> {
         // NCP and GLS are not recognised by astPRJset — they must be
         // converted to SIN/SFL with parameters at a higher level.
-        if matches!(proj, WcsProjection::Ncp | WcsProjection::Gls) {
+        if matches!(
+            proj,
+            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown
+        ) {
             return Err(AstError::new(
                 ErrorCode::Wcsty,
                 format!(
-                    "Projection {} is deprecated and must be handled at the WcsMap level",
+                    "Projection {} cannot be initialised directly and must be handled at the WcsMap level",
                     proj.code()
                 ),
             ));
