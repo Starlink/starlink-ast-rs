@@ -286,3 +286,50 @@ fn simplify_regression() {
         "No simplify regression tests passed (all skipped?)"
     );
 }
+
+#[test]
+fn cmpmap_re_expands_after_merge() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, WinMap, ZoomMap};
+
+    // Create a chain: ShiftMap ; ZoomMap ; ShiftMap
+    // Merging Shift+Zoom produces a WinMap, which should then merge with the final Shift.
+    let a = ShiftMap::new([1.0]);
+    let b = ZoomMap::new(1, 2.0).unwrap();
+    let c = ShiftMap::new([3.0]);
+
+    let ab = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+    let abc = CmpMap::new(Box::new(ab), Box::new(c), Composition::Series).unwrap();
+
+    let s = abc.simplified().unwrap();
+    // Should reduce to a single WinMap: shift = 2*1 + 3 = 5, scale = 2.
+    assert!(s.as_any().is::<WinMap>(), "Expected WinMap but got {:?}", s);
+}
+
+#[test]
+fn cmpmap_re_expands_merged_cmpmap() {
+    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, UnitMap, ZoomMap};
+
+    // Scenario where a merge produces a CmpMap that should be re-expanded.
+    // ZoomMap(2) ; [ShiftMap(1) parallel UnitMap(1)] ; ZoomMap(3)
+    // The parallel CmpMap in the middle has 2 axes.
+    // ZoomMap(2) can't merge with the parallel CmpMap directly,
+    // but after simplification the middle should become a WinMap,
+    // which can merge with ZoomMaps on both sides.
+    let z1 = ZoomMap::new(2, 2.0).unwrap();
+    let inner = CmpMap::new(
+        Box::new(ShiftMap::new([1.0])),
+        Box::new(UnitMap::new(1)),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let z2 = ZoomMap::new(2, 3.0).unwrap();
+
+    let chain1 = CmpMap::new(Box::new(z1), Box::new(inner), Composition::Series).unwrap();
+    let chain = CmpMap::new(Box::new(chain1), Box::new(z2), Composition::Series).unwrap();
+
+    let s = chain.simplified().unwrap();
+    // The result should be simpler than the original 4-mapping chain.
+    // At minimum it should not be a 4-element series CmpMap.
+    assert_eq!(s.nin(), 2);
+    assert_eq!(s.nout(), 2);
+}

@@ -134,6 +134,25 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             };
 
             if let Some(m) = merged {
+                // Check if merged result is a CmpMap that should be re-expanded.
+                let target_kind = if series {
+                    Composition::Series
+                } else {
+                    Composition::Parallel
+                };
+                if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>() {
+                    if cmp.composition() == target_kind {
+                        if let Ok(expanded) = flatten(m.as_ref(), false, series) {
+                            list.remove(i + 1);
+                            list.remove(i);
+                            for (idx, item) in expanded.into_iter().enumerate() {
+                                list.insert(i + idx, item);
+                            }
+                            improved = true;
+                            continue;
+                        }
+                    }
+                }
                 list[i] = (m, false);
                 list.remove(i + 1);
                 improved = true;
