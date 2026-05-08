@@ -452,6 +452,48 @@ fn gls_projection() {
 }
 
 // ===========================================================================
+// NatLat / NatLon accessors
+// ===========================================================================
+
+#[test]
+fn wcsmap_natlat_natlon() {
+    // TAN projection: native latitude of fiducial = 90 degrees = pi/2
+    let wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let nat_lat = wcs.nat_lat();
+    assert!(
+        (nat_lat - std::f64::consts::FRAC_PI_2).abs() < 1e-10,
+        "TAN nat_lat should be pi/2, got {nat_lat}"
+    );
+    // Native longitude of fiducial = 0 for zenithal projections.
+    let nat_lon = wcs.nat_lon();
+    assert!(
+        nat_lon.abs() < 1e-10,
+        "TAN nat_lon should be 0, got {nat_lon}"
+    );
+
+    // CAR (cylindrical) projection: native latitude of fiducial = 0
+    let wcs_car = WcsMap::new(2, WcsProjection::Car, 1, 2).unwrap();
+    let nat_lat_car = wcs_car.nat_lat();
+    assert!(
+        nat_lat_car.abs() < 1e-10,
+        "CAR nat_lat should be 0, got {nat_lat_car}"
+    );
+    let nat_lon_car = wcs_car.nat_lon();
+    assert!(
+        nat_lon_car.abs() < 1e-10,
+        "CAR nat_lon should be 0, got {nat_lon_car}"
+    );
+
+    // ARC (zenithal equidistant): same as TAN - theta0=90 degrees
+    let wcs_arc = WcsMap::new(2, WcsProjection::Arc, 1, 2).unwrap();
+    let nat_lat_arc = wcs_arc.nat_lat();
+    assert!(
+        (nat_lat_arc - std::f64::consts::FRAC_PI_2).abs() < 1e-10,
+        "ARC nat_lat should be pi/2, got {nat_lat_arc}"
+    );
+}
+
+// ===========================================================================
 // Equality and try_merge with PV parameters
 // ===========================================================================
 

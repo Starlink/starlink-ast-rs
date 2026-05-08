@@ -525,7 +525,6 @@ impl PrjParams {
     }
 
     /// Return the reference point (phi0, theta0) in degrees.
-    #[allow(dead_code)] // Used by SkyFrame (Step 7b)
     pub(crate) fn reference_point(&self) -> (f64, f64) {
         (self.inner.phi0, self.inner.theta0)
     }

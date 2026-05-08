@@ -213,6 +213,27 @@ impl WcsMap {
         self.latax + 1
     }
 
+    /// Native longitude of the fiducial point (radians).
+    ///
+    /// For zenithal projections (TAN, SIN, STG, ARC, etc.) this is 0.
+    /// The underlying wcslib struct stores this in degrees; this method
+    /// converts to radians (the AST convention).
+    pub fn nat_lon(&self) -> f64 {
+        let (phi0, _theta0) = self.prj.borrow().reference_point();
+        phi0.to_radians()
+    }
+
+    /// Native latitude of the fiducial point (radians).
+    ///
+    /// For zenithal projections (TAN, SIN, STG, ARC, etc.) this is pi/2.
+    /// For cylindrical projections (CAR, MER, CEA, etc.) this is 0.
+    /// The underlying wcslib struct stores this in degrees; this method
+    /// converts to radians (the AST convention).
+    pub fn nat_lat(&self) -> f64 {
+        let (_phi0, theta0) = self.prj.borrow().reference_point();
+        theta0.to_radians()
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }
