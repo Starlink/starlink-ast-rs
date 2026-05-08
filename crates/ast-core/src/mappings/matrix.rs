@@ -438,6 +438,15 @@ impl Serializable for MatrixMap {
             }
         };
 
+        // If no inverse was stored in the file but the matrix is square,
+        // compute it now (matching C library behaviour which always
+        // recomputes the inverse on load).
+        let inverse = match inverse {
+            Some(inv) => Some(inv),
+            None if matrix.nrows() == matrix.ncols() => gauss_jordan_inverse(&matrix).ok(),
+            None => None,
+        };
+
         Ok(MatrixMap {
             matrix,
             inverse,
