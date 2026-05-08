@@ -300,3 +300,44 @@ fn winmap_no_merge_with_full_matrix() {
     let merged = wm.try_merge(&mm, true, false, false);
     assert!(merged.is_none());
 }
+
+#[test]
+fn winmap_simplifies_to_shiftmap() {
+    use ast_core::mappings::{Mapping, ShiftMap, WinMap};
+
+    // All scales = 1.0 → should simplify to ShiftMap
+    let wm = WinMap::new(&[3.0, 5.0], &[1.0, 1.0]).unwrap();
+    let s = wm.simplified().unwrap();
+    assert!(s.as_any().is::<ShiftMap>());
+    assert_eq!(s.nin(), 2);
+}
+
+#[test]
+fn winmap_simplifies_to_zoommap() {
+    use ast_core::mappings::{Mapping, WinMap, ZoomMap};
+
+    // All shifts = 0.0, uniform scale → should simplify to ZoomMap
+    let wm = WinMap::new(&[0.0, 0.0], &[4.0, 4.0]).unwrap();
+    let s = wm.simplified().unwrap();
+    assert!(s.as_any().is::<ZoomMap>());
+}
+
+#[test]
+fn winmap_simplifies_to_unitmap() {
+    use ast_core::mappings::{Mapping, UnitMap, WinMap};
+
+    // Identity: all shifts=0, all scales=1
+    let wm = WinMap::new(&[0.0, 0.0], &[1.0, 1.0]).unwrap();
+    let s = wm.simplified().unwrap();
+    assert!(s.as_any().is::<UnitMap>());
+}
+
+#[test]
+fn winmap_non_uniform_stays_winmap() {
+    use ast_core::mappings::{Mapping, WinMap};
+
+    // Non-uniform scales → stays WinMap
+    let wm = WinMap::new(&[1.0, 2.0], &[3.0, 4.0]).unwrap();
+    let s = wm.simplified().unwrap();
+    assert!(s.as_any().is::<WinMap>());
+}

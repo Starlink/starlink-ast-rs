@@ -194,6 +194,33 @@ impl Mapping for WinMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        let n = self.shifts.len();
+        let all_shifts_zero = self.shifts.iter().all(|&s| ast_equal(s, 0.0));
+        let all_scales_one = self.scales.iter().all(|&s| ast_equal(s, 1.0));
+
+        // Identity: out = 0 + 1*x = x
+        if all_shifts_zero && all_scales_one {
+            return Ok(Box::new(UnitMap::new(n)));
+        }
+        // Pure shift: out = shift + 1*x = shift + x
+        if all_scales_one {
+            let shifts: Vec<f64> = if self.inverted {
+                self.shifts.iter().map(|&s| -s).collect()
+            } else {
+                self.shifts.clone()
+            };
+            return Ok(Box::new(ShiftMap::new(shifts)));
+        }
+        // Pure uniform zoom: out = 0 + f*x = f*x (same factor on all axes)
+        if all_shifts_zero {
+            let first = self.scales[0];
+            if (1..n).all(|i| ast_equal(self.scales[i], first)) {
+                let f = if self.inverted { 1.0 / first } else { first };
+                if let Ok(zm) = ZoomMap::new(n, f) {
+                    return Ok(Box::new(zm));
+                }
+            }
+        }
         Ok(Box::new(self.clone()))
     }
 
