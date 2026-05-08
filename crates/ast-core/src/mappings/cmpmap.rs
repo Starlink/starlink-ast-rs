@@ -282,16 +282,28 @@ impl Mapping for CmpMap {
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<CmpMap>() else {
+        let Some(other_cmp) = other.as_any().downcast_ref::<CmpMap>() else {
             return false;
         };
-        if self.kind != other.kind {
+        if self.kind != other_cmp.kind {
             return false;
         }
-        if self.inverted != other.inverted {
+        let series = self.kind == Composition::Series;
+        // Flatten both into canonical component lists, accounting for
+        // tree structure differences like (A;(B;C)) vs ((A;B);C).
+        let Ok(list_self) = super::simplify::flatten(self, false, series) else {
+            return false;
+        };
+        let Ok(list_other) = super::simplify::flatten(other_cmp, false, series) else {
+            return false;
+        };
+        if list_self.len() != list_other.len() {
             return false;
         }
-        self.first.equal(other.first.as_ref()) && self.second.equal(other.second.as_ref())
+        list_self
+            .iter()
+            .zip(list_other.iter())
+            .all(|((m1, inv1), (m2, inv2))| inv1 == inv2 && m1.equal(m2.as_ref()))
     }
 }
 

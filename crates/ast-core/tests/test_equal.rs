@@ -484,6 +484,44 @@ fn sphmap_inverted() {
     assert!(!a.equal(&b));
 }
 
+#[test]
+fn cmpmap_equal_different_tree_structure() {
+    // (A ; (B ; C)) vs ((A ; B) ; C) — same effective pipeline.
+    let a = ShiftMap::new(vec![1.0, 2.0]);
+    let b = ZoomMap::new(2, 3.0).unwrap();
+    let c = ShiftMap::new(vec![4.0, 5.0]);
+
+    // Tree 1: A ; (B ; C)
+    let bc = CmpMap::new(
+        Box::new(b.clone()),
+        Box::new(c.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let abc_1 = CmpMap::new(
+        Box::new(a.clone()),
+        Box::new(bc),
+        Composition::Series,
+    )
+    .unwrap();
+
+    // Tree 2: (A ; B) ; C
+    let ab = CmpMap::new(
+        Box::new(a.clone()),
+        Box::new(b.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+    let abc_2 = CmpMap::new(
+        Box::new(ab),
+        Box::new(c.clone()),
+        Composition::Series,
+    )
+    .unwrap();
+
+    assert!(abc_1.equal(&abc_2));
+}
+
 // =========================================================================
 // Cross-type rejection
 // =========================================================================
