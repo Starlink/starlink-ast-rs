@@ -450,3 +450,53 @@ fn gls_projection() {
     assert_close(back.point(0)[0], lon, 1e-10, "GLS lon round-trip");
     assert_close(back.point(0)[1], lat, 1e-10, "GLS lat round-trip");
 }
+
+// ===========================================================================
+// Equality and try_merge with PV parameters
+// ===========================================================================
+
+#[test]
+fn wcsmap_equal_different_params() {
+    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    // Same projection, same axes => equal
+    assert!(w1.equal(&w2));
+
+    // Set different PV parameters
+    w1.set_pv(2, 1, 0.5).unwrap();
+    w2.set_pv(2, 1, 0.7).unwrap();
+    // Different PV => NOT equal
+    assert!(!w1.equal(&w2));
+}
+
+#[test]
+fn wcsmap_equal_same_params() {
+    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    w1.set_pv(2, 1, 0.5).unwrap();
+    w2.set_pv(2, 1, 0.5).unwrap();
+    // Same PV => equal
+    assert!(w1.equal(&w2));
+}
+
+#[test]
+fn wcsmap_no_cancel_different_params() {
+    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    w1.set_pv(2, 1, 0.5).unwrap();
+    w2.set_pv(2, 1, 0.7).unwrap();
+    // Should NOT cancel (different params) even though opposite invert directions
+    let result = w1.try_merge(&w2, true, false, true);
+    assert!(result.is_none());
+}
+
+#[test]
+fn wcsmap_cancel_same_params() {
+    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    w1.set_pv(2, 1, 0.5).unwrap();
+    w2.set_pv(2, 1, 0.5).unwrap();
+    // Same params + opposite invert directions => should cancel to UnitMap
+    let result = w1.try_merge(&w2, true, true, false);
+    assert!(result.is_some());
+}

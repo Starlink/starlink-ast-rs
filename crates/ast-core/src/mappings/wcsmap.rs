@@ -9,7 +9,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use crate::wcslib::{PrjParams, WcsProjection};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::is_bad;
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -246,6 +246,23 @@ impl WcsMap {
         }
         Ok(prj)
     }
+
+    /// Compare projection parameters between two WcsMaps.
+    fn params_equal(&self, other: &WcsMap) -> bool {
+        for axis in 0..2 {
+            let p1 = self.params.get(axis).map(|v| v.as_slice()).unwrap_or(&[]);
+            let p2 = other.params.get(axis).map(|v| v.as_slice()).unwrap_or(&[]);
+            let max_len = p1.len().max(p2.len());
+            for m in 0..max_len {
+                let v1 = p1.get(m).copied().flatten().unwrap_or(0.0);
+                let v2 = p2.get(m).copied().flatten().unwrap_or(0.0);
+                if !ast_equal(v1, v2) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
 impl Clone for WcsMap {
@@ -380,6 +397,7 @@ impl Mapping for WcsMap {
             && self.lonax == other_wcs.lonax
             && self.latax == other_wcs.latax
             && self.ncoord == other_wcs.ncoord
+            && self.params_equal(other_wcs)
         {
             // WcsMap always has nin == nout == ncoord.
             Some(Box::new(UnitMap::new(self.ncoord)))
@@ -399,6 +417,7 @@ impl Mapping for WcsMap {
             && self.lonax == other.lonax
             && self.latax == other.latax
             && self.ncoord == other.ncoord
+            && self.params_equal(other)
     }
 }
 
