@@ -6,7 +6,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad};
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::zoom::ZoomMap;
@@ -165,14 +165,12 @@ impl Mapping for WinMap {
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
-            if point_has_bad(inp) {
-                outp.fill(BAD_VALUE);
-            } else if fwd {
+            if fwd {
                 // forward: output = shift + scale * input
                 for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
                     let shift = self.shifts[j];
                     let scale = self.scales[j];
-                    if is_bad(shift) || is_bad(scale) {
+                    if is_bad(v) || is_bad(shift) || is_bad(scale) {
                         *o = BAD_VALUE;
                     } else {
                         *o = shift + scale * v;
@@ -183,7 +181,7 @@ impl Mapping for WinMap {
                 for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
                     let shift = self.shifts[j];
                     let scale = self.scales[j];
-                    if is_bad(shift) || is_bad(scale) || scale == 0.0 {
+                    if is_bad(v) || is_bad(shift) || is_bad(scale) || scale == 0.0 {
                         *o = BAD_VALUE;
                     } else {
                         *o = (v - shift) / scale;

@@ -83,17 +83,17 @@ fn winmap_zero_scale_inverse() {
 fn winmap_bad_input_propagation() {
     let m = WinMap::new(&[10.0, 20.0], &[2.0, 3.0]).unwrap();
 
-    // BAD_VALUE in input -> all outputs BAD
+    // BAD_VALUE in axis 1 -> only axis 1 output BAD (per-axis handling)
     let pts = PointSet::from_rows([[BAD_VALUE, 2.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], BAD_VALUE);
-    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert_eq!(out.point(0)[1], 26.0); // 20 + 3*2
 
-    // NaN in input -> all outputs BAD
+    // NaN in axis 1 -> only axis 1 output BAD
     let pts_nan = PointSet::from_rows([[f64::NAN, 2.0]]);
     let out_nan = m.transform(&pts_nan, true).unwrap();
     assert_eq!(out_nan.point(0)[0], BAD_VALUE);
-    assert_eq!(out_nan.point(0)[1], BAD_VALUE);
+    assert_eq!(out_nan.point(0)[1], 26.0); // 20 + 3*2
 }
 
 #[test]
@@ -198,4 +198,25 @@ fn winmap_validation_mismatched_lengths() {
 fn winmap_validation_empty() {
     let result = WinMap::new(&[], &[]);
     assert!(result.is_err());
+}
+
+#[test]
+fn winmap_bad_per_axis() {
+    // WinMap is diagonal: each output depends only on its corresponding input.
+    // BAD on one axis must not contaminate other axes.
+    let wm = WinMap::new(&[1.0, 2.0, 3.0], &[2.0, 3.0, 4.0]).unwrap();
+
+    // Forward with axis 2 (middle) BAD
+    let pts = PointSet::from_rows([[5.0, BAD_VALUE, 7.0]]);
+    let out = wm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 1.0 + 2.0 * 5.0); // 11.0
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert_eq!(out.point(0)[2], 3.0 + 4.0 * 7.0); // 31.0
+
+    // Inverse with axis 1 (first) BAD
+    let pts_inv = PointSet::from_rows([[BAD_VALUE, 20.0, 31.0]]);
+    let out_inv = wm.transform(&pts_inv, false).unwrap();
+    assert_eq!(out_inv.point(0)[0], BAD_VALUE);
+    assert_eq!(out_inv.point(0)[1], (20.0 - 2.0) / 3.0); // 6.0
+    assert_eq!(out_inv.point(0)[2], (31.0 - 3.0) / 4.0); // 7.0
 }
