@@ -256,6 +256,19 @@ fn lutmap_inverse_non_monotonic_returns_bad() {
 }
 
 #[test]
+fn lutmap_flat_section_inverse_returns_bad() {
+    // LUT with a flat section: [0.0, 1.0, 1.0, 1.0, 2.0]
+    // At values corresponding to indices 1-3, output is constant 1.0.
+    // Inverse at y=1.0 is undetermined => BAD.
+    let lut = vec![0.0, 1.0, 1.0, 1.0, 2.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    let pts = PointSet::from_rows([[1.0]]); // y=1.0 hits the flat section
+    let out = lm.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+}
+
+#[test]
 fn lutmap_inverse_round_trip() {
     // Test that forward then inverse gives back the original
     let m = LutMap::new(&[0.0, 10.0, 20.0, 30.0], 0.0, 1.0).unwrap();

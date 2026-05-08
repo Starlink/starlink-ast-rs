@@ -260,11 +260,28 @@ impl LutMap {
         if is_bad(v_lo) || is_bad(v_hi) {
             return BAD_VALUE;
         }
+
+        // Check for flat sections: if the target value equals one of the
+        // bracket values and a neighbour also has that value, the inverse
+        // is undetermined. Matches C lutmap.c:1669-1679.
+        if v_lo == y {
+            if (low > 0 && !is_bad(self.lut[low - 1]) && self.lut[low - 1] == y)
+                || v_hi == y
+            {
+                return BAD_VALUE;
+            }
+        } else if v_hi == y
+            && high < self.lut.len() - 1
+            && !is_bad(self.lut[high + 1])
+            && self.lut[high + 1] == y
+        {
+            return BAD_VALUE;
+        }
+
         let dv = v_hi - v_lo;
         if dv == 0.0 {
-            // Flat section — return midpoint
-            let frac_idx = (low as f64 + high as f64) / 2.0;
-            return self.start + frac_idx * self.inc;
+            // Flat section — inverse is undetermined, return BAD
+            return BAD_VALUE;
         }
         let frac = (y - v_lo) / dv;
         let idx = low as f64 + frac * (high - low) as f64;
