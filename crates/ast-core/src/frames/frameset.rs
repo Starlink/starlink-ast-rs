@@ -70,6 +70,30 @@ pub struct FrameSet {
     variants: Vec<(String, DynMapping)>,
 }
 
+impl Clone for FrameSet {
+    fn clone(&self) -> Self {
+        FrameSet {
+            frames: self.frames.iter().map(|f| f.snapshot()).collect(),
+            edges: self
+                .edges
+                .iter()
+                .map(|e| Edge {
+                    from: e.from,
+                    to: e.to,
+                    mapping: e.mapping.clone(),
+                })
+                .collect(),
+            base_idx: self.base_idx,
+            current_idx: self.current_idx,
+            variants: self
+                .variants
+                .iter()
+                .map(|(s, m)| (s.clone(), m.clone()))
+                .collect(),
+        }
+    }
+}
+
 impl fmt::Debug for FrameSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FrameSet")
@@ -645,25 +669,7 @@ impl Mapping for FrameSet {
     }
 
     fn clone_box(&self) -> DynMapping {
-        Box::new(FrameSet {
-            frames: self.frames.iter().map(|f| f.snapshot()).collect(),
-            edges: self
-                .edges
-                .iter()
-                .map(|e| Edge {
-                    from: e.from,
-                    to: e.to,
-                    mapping: e.mapping.clone(),
-                })
-                .collect(),
-            base_idx: self.base_idx,
-            current_idx: self.current_idx,
-            variants: self
-                .variants
-                .iter()
-                .map(|(s, m)| (s.clone(), m.clone()))
-                .collect(),
-        })
+        Box::new(self.clone())
     }
 }
 
