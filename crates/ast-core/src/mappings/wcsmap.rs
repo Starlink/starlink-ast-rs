@@ -272,6 +272,43 @@ impl WcsMap {
         Ok(prj)
     }
 
+    /// Create a copy of this WcsMap with different axis assignments.
+    ///
+    /// Used by the simplify engine to absorb a PermMap into a WcsMap
+    /// by remapping which axes carry the longitude/latitude.
+    /// `new_lonax` and `new_latax` are 0-based.
+    pub(crate) fn with_permuted_axes(
+        &self,
+        new_ncoord: usize,
+        new_lonax: usize,
+        new_latax: usize,
+    ) -> Option<Self> {
+        if new_lonax == new_latax || new_lonax >= new_ncoord || new_latax >= new_ncoord {
+            return None;
+        }
+        let prj = self.rebuild_prj().ok()?;
+        Some(Self {
+            proj: self.proj,
+            lonax: new_lonax,
+            latax: new_latax,
+            ncoord: new_ncoord,
+            params: self.params.clone(),
+            prj: RefCell::new(prj),
+            inverted: self.inverted,
+            do_not_simplify: self.do_not_simplify,
+        })
+    }
+
+    /// 0-based longitude axis index (crate-internal).
+    pub(crate) fn lonax_0based(&self) -> usize {
+        self.lonax
+    }
+
+    /// 0-based latitude axis index (crate-internal).
+    pub(crate) fn latax_0based(&self) -> usize {
+        self.latax
+    }
+
     /// Compare projection parameters between two WcsMaps.
     fn params_equal(&self, other: &WcsMap) -> bool {
         for axis in 0..2 {

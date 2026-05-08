@@ -299,6 +299,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             if series && try_swap_winmap_past_permmap(list) {
                 continue;
             }
+            // Try swapping WcsMap past a PermMap (or vice versa).
+            if series && try_swap_wcsmap_past_permmap(list) {
+                continue;
+            }
             // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
             if series && try_sphmap_diagonal_pattern(list) {
                 continue;
@@ -610,6 +614,352 @@ fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
         i += 1;
     }
     false
+}
+
+/// Try to swap a WcsMap past a PermMap (or vice versa) in a flattened series list.
+///
+/// When a WcsMap is adjacent to a PermMap, they can be swapped in order
+/// (producing a modified WcsMap with permuted axis assignments) if:
+/// 1. All links between input/output axes in the PermMap are bi-directional.
+/// 2. The WcsMap's longitude and latitude axes are both passed through by
+///    the PermMap (both have bi-directional links) OR both are unassigned
+///    (receive constants from the PermMap).
+///
+/// Only fires when there is a potential merge partner (another WcsMap) on
+/// the other side that could cancel with the swapped WcsMap.
+///
+/// Matches C wcsmap.c CanSwap+WcsPerm (lines 922-1145, 4463-4698).
+fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    let mut i = 0;
+    while i + 1 < list.len() {
+        let is_wcs_perm =
+            list[i].0.as_any().is::<WcsMap>() && list[i + 1].0.as_any().is::<PermMap>();
+        let is_perm_wcs =
+            list[i].0.as_any().is::<PermMap>() && list[i + 1].0.as_any().is::<WcsMap>();
+
+        if !is_wcs_perm && !is_perm_wcs {
+            i += 1;
+            continue;
+        }
+
+        let (wcs_idx, perm_idx) = if is_wcs_perm { (i, i + 1) } else { (i + 1, i) };
+
+        // Check if swapping is worthwhile: either there's a WcsMap merge partner
+        // on the far side, or the swap itself produces a simpler result (when
+        // the PermMap reduces dimensionality, replacing the WcsMap with a UnitMap
+        // is a net simplification). Matches C wcsmap.c MapMerge logic.
+        let far_side = if is_wcs_perm {
+            i + 2
+        } else {
+            i.wrapping_sub(1)
+        };
+        let has_merge_partner = if is_wcs_perm {
+            far_side < list.len() && list[far_side].0.as_any().is::<WcsMap>()
+        } else {
+            i > 0 && list[i - 1].0.as_any().is::<WcsMap>()
+        };
+
+        let perm_ref = list[perm_idx].0.as_any().downcast_ref::<PermMap>().unwrap();
+        let perm_inv_flag = list[perm_idx].1;
+        let perm_nin = if perm_inv_flag {
+            perm_ref.outperm().len()
+        } else {
+            perm_ref.inperm().len()
+        };
+        let perm_nout = if perm_inv_flag {
+            perm_ref.inperm().len()
+        } else {
+            perm_ref.outperm().len()
+        };
+        let simpler = if is_wcs_perm {
+            // PermMap is second: simpler if nin > nout (reduces dimensions).
+            perm_nin > perm_nout
+        } else {
+            // PermMap is first: simpler if nout > nin (increases dimensions).
+            perm_nout > perm_nin
+        };
+
+        if !has_merge_partner && !simpler {
+            i += 1;
+            continue;
+        }
+
+        let wcs = list[wcs_idx].0.as_any().downcast_ref::<WcsMap>().unwrap();
+        let perm = list[perm_idx].0.as_any().downcast_ref::<PermMap>().unwrap();
+        let wcs_inv = list[wcs_idx].1;
+        let perm_inv = list[perm_idx].1;
+
+        // Get the effective forward permutation arrays for the PermMap.
+        let outperm = if perm_inv {
+            perm.inperm()
+        } else {
+            perm.outperm()
+        };
+        let inperm = if perm_inv {
+            perm.outperm()
+        } else {
+            perm.inperm()
+        };
+        let npin = inperm.len();
+        let npout = outperm.len();
+
+        // Check bi-directionality: all active links must be reversible.
+        // Note: PermMap uses 1-based positive indices. outperm[k]=j means
+        // output k gets input axis j (1-based). Convert to 0-based for indexing.
+        let mut ok = true;
+        for (k, &j) in outperm.iter().enumerate() {
+            if j > 0 && (j as usize - 1) < npin {
+                // outperm[k] links output k to input (j-1) (0-based).
+                // Check reverse: inperm[j-1] should link back to output (k+1) (1-based).
+                if inperm[j as usize - 1] != (k as i64 + 1) {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if ok {
+            for (k, &j) in inperm.iter().enumerate() {
+                if j > 0 && (j as usize - 1) < npout {
+                    // inperm[k] links input k to output (j-1) (0-based).
+                    // Check reverse: outperm[j-1] should link back to input (k+1) (1-based).
+                    if outperm[j as usize - 1] != (k as i64 + 1) {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+        }
+        if !ok {
+            i += 1;
+            continue;
+        }
+
+        // Get the WcsMap's lon/lat axis indices (0-based).
+        let lonax = wcs.lonax_0based();
+        let latax = wcs.latax_0based();
+
+        // Determine whether lon/lat are assigned or unassigned in the PermMap,
+        // depending on whether the WcsMap comes before or after the PermMap.
+        if is_wcs_perm {
+            // WcsMap at i, PermMap at i+1.
+            // PermMap operates on WcsMap's outputs. The PermMap's inperm tells
+            // where each PermMap input (= WcsMap output) gets routed in the
+            // PermMap's output. inperm[lonax] is 1-based output position.
+            if lonax >= npin || latax >= npin {
+                i += 1;
+                continue;
+            }
+
+            let lon_dest = inperm[lonax]; // 1-based or negative
+            let lat_dest = inperm[latax];
+
+            if lon_dest < 0 && lat_dest < 0 {
+                // Both celestial axes are unassigned (receive constants in inverse).
+                // WcsMap becomes UnitMap, PermMap gets transformed constants.
+                if let Some(result) =
+                    swap_wcsmap_perm_unassigned(wcs, perm, wcs_inv, perm_inv, true)
+                {
+                    list[i] = (result.0, result.1);
+                    list[i + 1] = (result.2, result.3);
+                    return true;
+                }
+            } else if lon_dest > 0
+                && (lon_dest as usize) <= npout
+                && lat_dest > 0
+                && (lat_dest as usize) <= npout
+            {
+                // Both celestial axes are assigned. Create new WcsMap with permuted
+                // axes. lon_dest is 1-based → convert to 0-based for new axis index.
+                let new_lonax = lon_dest as usize - 1;
+                let new_latax = lat_dest as usize - 1;
+                let Some(new_wcs) = wcs.with_permuted_axes(npout, new_lonax, new_latax) else {
+                    i += 1;
+                    continue;
+                };
+
+                // Swap: [WcsMap, PermMap] → [PermMap, new_WcsMap]
+                let perm_entry = list.remove(i + 1);
+                list.remove(i);
+                list.insert(i, perm_entry);
+                list.insert(i + 1, (Box::new(new_wcs), wcs_inv));
+                return true;
+            }
+            // else: one assigned, one not — cannot swap.
+        } else {
+            // PermMap at i, WcsMap at i+1.
+            // PermMap operates on WcsMap's inputs. The PermMap's outperm tells
+            // where each WcsMap input (= PermMap output) gets its value.
+            // outperm[lonax] is 1-based input source position.
+            if lonax >= npout || latax >= npout {
+                i += 1;
+                continue;
+            }
+
+            let lon_src = outperm[lonax]; // 1-based or negative
+            let lat_src = outperm[latax];
+
+            if lon_src < 0 && lat_src < 0 {
+                // Both celestial axes are unassigned (receive constants in forward).
+                // WcsMap becomes UnitMap, PermMap gets transformed constants.
+                if let Some(result) =
+                    swap_wcsmap_perm_unassigned(wcs, perm, wcs_inv, perm_inv, false)
+                {
+                    list[i] = (result.0, result.1);
+                    list[i + 1] = (result.2, result.3);
+                    return true;
+                }
+            } else if lon_src > 0
+                && (lon_src as usize) <= npin
+                && lat_src > 0
+                && (lat_src as usize) <= npin
+            {
+                // Both celestial axes are assigned. Create new WcsMap with permuted
+                // axes. lon_src is 1-based → convert to 0-based.
+                let new_lonax = lon_src as usize - 1;
+                let new_latax = lat_src as usize - 1;
+                let Some(new_wcs) = wcs.with_permuted_axes(npin, new_lonax, new_latax) else {
+                    i += 1;
+                    continue;
+                };
+
+                // Swap: [PermMap, WcsMap] → [new_WcsMap, PermMap]
+                let perm_entry = list.remove(i);
+                list.remove(i); // was at i+1, now at i after removal
+                list.insert(i, (Box::new(new_wcs), wcs_inv));
+                list.insert(i + 1, perm_entry);
+                return true;
+            }
+            // else: one assigned, one not — cannot swap.
+        }
+
+        i += 1;
+    }
+    false
+}
+
+/// Handle the "unassigned lon/lat" case of WcsMap↔PermMap swap.
+///
+/// When the PermMap feeds constants to the WcsMap's celestial axes (or
+/// receives constants from them), the WcsMap can be replaced by a UnitMap
+/// and the PermMap's constants are transformed through the WcsMap.
+///
+/// Returns (new_first_mapping, new_first_inv, new_second_mapping, new_second_inv)
+/// or None if the transformation fails.
+fn swap_wcsmap_perm_unassigned(
+    wcs: &WcsMap,
+    perm: &PermMap,
+    wcs_inv: bool,
+    perm_inv: bool,
+    wcs_first: bool, // true if WcsMap comes before PermMap in the pipeline
+) -> Option<(DynMapping, bool, DynMapping, bool)> {
+    use crate::coords::PointSet;
+
+    let outperm = if perm_inv {
+        perm.inperm()
+    } else {
+        perm.outperm()
+    };
+    let inperm = if perm_inv {
+        perm.outperm()
+    } else {
+        perm.inperm()
+    };
+    let constants = perm.constants();
+    let npin = inperm.len();
+    let npout = outperm.len();
+
+    if wcs_first {
+        // WcsMap outputs feed PermMap inputs. The PermMap's inperm has negative
+        // entries for constant axes. We transform those constants through the
+        // inverse WcsMap to get the new PermMap constants.
+        let mut p = vec![BAD_VALUE; npin];
+        let mut new_constants = constants.to_vec();
+
+        for k in 0..npin {
+            if inperm[k] < 0 {
+                let cidx = (-inperm[k] - 1) as usize;
+                if cidx < constants.len() {
+                    p[k] = constants[cidx];
+                }
+            }
+        }
+
+        // Transform through the effective inverse WcsMap.
+        // C equivalent: astTranN(wm, 1, npin, 1, p, 0, npin, 1, q) with Invert=wcs_inv.
+        // effective_forward = forward XOR invert = 0 XOR wcs_inv = wcs_inv.
+        // In Rust (self.inverted=false): transform(&pts, wcs_inv) gives same effective direction.
+        let pts = PointSet::from_rows(vec![p]);
+        let transformed = wcs.transform(&pts, wcs_inv).ok()?;
+        let q = transformed.point(0);
+
+        // Update constants.
+        for k in 0..npin {
+            if inperm[k] < 0 {
+                let cidx = (-inperm[k] - 1) as usize;
+                if cidx < new_constants.len() {
+                    new_constants[cidx] = q[k];
+                }
+            }
+        }
+
+        let new_pm = PermMap::new(inperm, outperm, &new_constants).ok()?;
+        let unit = UnitMap::new(npout);
+
+        // Result: [PermMap (at original PermMap position), UnitMap (replacing WcsMap)]
+        // Swapped order: [UnitMap, PermMap] — but UnitMap will be stripped.
+        // Actually the C code puts: maps[iwm=0] = newpm, maps[1] = UnitMap(npout)
+        // That means: position 0 gets the PermMap, position 1 gets the UnitMap.
+        // So the result is [PermMap, UnitMap].
+        Some((
+            Box::new(new_pm) as DynMapping,
+            perm_inv,
+            Box::new(unit) as DynMapping,
+            false,
+        ))
+    } else {
+        // PermMap outputs feed WcsMap inputs. The PermMap's outperm has negative
+        // entries for constant axes on the celestial positions.
+        let mut p = vec![BAD_VALUE; npout];
+        let mut new_constants = constants.to_vec();
+
+        for k in 0..npout {
+            if outperm[k] < 0 {
+                let cidx = (-outperm[k] - 1) as usize;
+                if cidx < constants.len() {
+                    p[k] = constants[cidx];
+                }
+            }
+        }
+
+        // Transform through the effective forward WcsMap.
+        // C equivalent: astTranN(wm, 1, npout, 1, p, 1, npout, 1, q) with Invert=wcs_inv.
+        // effective_forward = forward XOR invert = 1 XOR wcs_inv = !wcs_inv.
+        // In Rust (self.inverted=false): transform(&pts, !wcs_inv) gives same effective direction.
+        let pts = PointSet::from_rows(vec![p]);
+        let transformed = wcs.transform(&pts, !wcs_inv).ok()?;
+        let q = transformed.point(0);
+
+        // Update constants.
+        for k in 0..npout {
+            if outperm[k] < 0 {
+                let cidx = (-outperm[k] - 1) as usize;
+                if cidx < new_constants.len() {
+                    new_constants[cidx] = q[k];
+                }
+            }
+        }
+
+        let new_pm = PermMap::new(inperm, outperm, &new_constants).ok()?;
+        let unit = UnitMap::new(npin);
+
+        // Swapped: [UnitMap (replacing WcsMap), PermMap]
+        Some((
+            Box::new(unit) as DynMapping,
+            false,
+            Box::new(new_pm) as DynMapping,
+            perm_inv,
+        ))
+    }
 }
 
 /// Effective output coordinate count with external inversion.

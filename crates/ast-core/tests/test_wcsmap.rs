@@ -2,7 +2,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, WcsMap, WcsProjection};
+use ast_core::mappings::{CmpMap, Mapping, PermMap, WcsMap, WcsProjection};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 // ===========================================================================
@@ -541,4 +541,107 @@ fn wcsmap_cancel_same_params() {
     // Same params + opposite invert directions => should cancel to UnitMap
     let result = w1.try_merge(&w2, true, true, false);
     assert!(result.is_some());
+}
+
+// ===========================================================================
+// WcsMap + PermMap swap simplification
+// ===========================================================================
+
+#[test]
+fn wcsmap_perm_swap_cancel_simplify() {
+    // Fixture: WcsMap(TAN,1,2)_fwd ; PermMap(swap) ; WcsMap(TAN,2,1)_inv
+    // Expected simplification: PermMap(swap)
+    let fixture_dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/native/reference/simplify_fixtures"
+    ));
+    let input_text =
+        std::fs::read_to_string(fixture_dir.join("wcsmap_perm_swap_cancel.map")).unwrap();
+    let ref_text =
+        std::fs::read_to_string(fixture_dir.join("wcsmap_perm_swap_cancel.simp")).unwrap();
+    let input_obj = from_native_string(&input_text).unwrap();
+    let mapping = input_obj.into_mapping().unwrap();
+    let ref_obj = from_native_string(&ref_text).unwrap();
+    let ref_mapping = ref_obj.into_mapping().unwrap();
+
+    let simplified = mapping.simplified().unwrap();
+
+    // The result should be a PermMap.
+    assert!(
+        simplified.as_any().is::<PermMap>(),
+        "Expected PermMap after simplification, got nin={} nout={} is_CmpMap={}",
+        simplified.nin(),
+        simplified.nout(),
+        simplified.as_any().is::<CmpMap>()
+    );
+
+    // Check structural equality with C reference.
+    assert!(
+        simplified.equal(ref_mapping.as_ref()),
+        "Simplified PermMap not structurally equal to C reference. inv_s={} inv_r={} nin_s={} nin_r={}",
+        simplified.is_inverted(),
+        ref_mapping.is_inverted(),
+        simplified.nin(),
+        ref_mapping.nin(),
+    );
+}
+
+#[test]
+fn wcsmap_perm_swap_simplify_constants() {
+    // Fixture: WcsMap(TAN,1,2,3axes)_fwd ; PermMap(3→1, with constants)
+    // Expected: PermMap with transformed constants (WcsMap → UnitMap).
+    let fixture_dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/native/reference/simplify_fixtures"
+    ));
+    let input_text =
+        std::fs::read_to_string(fixture_dir.join("wcsmap_perm_swap_simplify.map")).unwrap();
+    let input_obj = from_native_string(&input_text).unwrap();
+    let mapping = input_obj.into_mapping().unwrap();
+
+    let simplified = mapping.simplified().unwrap();
+
+    // The result should be a PermMap.
+    assert!(
+        simplified.as_any().is::<PermMap>(),
+        "Expected PermMap after simplification, got nin={} nout={}",
+        simplified.nin(),
+        simplified.nout(),
+    );
+    assert_eq!(simplified.nin(), 3);
+    assert_eq!(simplified.nout(), 1);
+}
+
+#[test]
+fn wcsmap_absorbs_adjacent_permmap() {
+    // WcsMap(TAN, lonax=1, latax=2) followed by PermMap that swaps axes [2,1].
+    // After simplification via the swap mechanism, plus cancellation with an
+    // inverse WcsMap, the result should simplify.
+    let wcs_fwd = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let mut wcs_inv = WcsMap::new(2, WcsProjection::Tan, 2, 1).unwrap();
+    wcs_inv.invert();
+
+    // Build: WcsMap(1,2)_fwd ; PermMap(swap) ; WcsMap(2,1)_inv
+    use ast_core::mappings::CmpMap;
+    use ast_core::mappings::Composition;
+    let inner = CmpMap::new(Box::new(pm), Box::new(wcs_inv), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(wcs_fwd), Box::new(inner), Composition::Series).unwrap();
+
+    let simplified = full.simplified().unwrap();
+
+    // Should simplify to just a PermMap(swap).
+    assert!(
+        simplified.as_any().is::<PermMap>(),
+        "Expected PermMap, got nin={} nout={} is_CmpMap={}",
+        simplified.nin(),
+        simplified.nout(),
+        simplified.as_any().is::<CmpMap>()
+    );
+
+    // Verify the PermMap's functional equivalence: should swap axes.
+    let pts = PointSet::from_rows([[0.1, 1.2]]);
+    let out = simplified.transform(&pts, true).unwrap();
+    assert_close(out.point(0)[0], 1.2, 1e-10, "swap axis 0");
+    assert_close(out.point(0)[1], 0.1, 1e-10, "swap axis 1");
 }
