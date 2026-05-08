@@ -149,3 +149,123 @@ fn matrix_rate_analytical_inverted() {
     assert_eq!(mm.rate(&[0.0, 0.0], 2, 1).unwrap(), 0.0);
     assert!((mm.rate(&[0.0, 0.0], 2, 2).unwrap() - 0.25).abs() < 1e-15);
 }
+
+/// MatrixMap followed by PermMap merges into a single MatrixMap.
+/// PermMap permutes the outputs of MatrixMap.
+#[test]
+fn matrix_merge_with_permmap_after() {
+    use ast_core::mappings::PermMap;
+
+    // Matrix [[1,2],[3,4]] followed by PermMap that swaps outputs [2,1].
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+
+    // MatrixMap then PermMap in series: self=mm first, other=pm second.
+    let merged = mm.try_merge(&pm, true, false, false);
+    assert!(merged.is_some(), "MatrixMap + PermMap should merge");
+
+    // Verify the merged mapping produces the same result as sequential application.
+    let pts = PointSet::from_rows([[1.0, 2.0]]);
+    let mat_out = mm.transform(&pts, true).unwrap();
+    let expected = pm.transform(&mat_out, true).unwrap();
+    let actual = merged.unwrap().transform(&pts, true).unwrap();
+    assert_eq!(actual.point(0)[0], expected.point(0)[0]);
+    assert_eq!(actual.point(0)[1], expected.point(0)[1]);
+
+    // Verify numeric values:
+    // mm([1,2]) = [1*1+2*2, 3*1+4*2] = [5, 11]
+    // pm([5,11]) = [11, 5] (swap)
+    assert_eq!(actual.point(0)[0], 11.0);
+    assert_eq!(actual.point(0)[1], 5.0);
+}
+
+/// PermMap followed by MatrixMap merges into a single MatrixMap.
+/// PermMap permutes the inputs before MatrixMap applies.
+#[test]
+fn matrix_merge_with_permmap_before() {
+    use ast_core::mappings::{CmpMap, Composition, PermMap};
+
+    // PermMap [2,1] followed by MatrixMap [[1,2],[3,4]].
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    // Test via CmpMap simplification (the merge loop tries both directions).
+    let cmp = CmpMap::new(Box::new(pm.clone()), Box::new(mm.clone()), Composition::Series).unwrap();
+    let simplified = cmp.simplified().unwrap();
+
+    // Should simplify to a single MatrixMap.
+    assert!(
+        simplified.as_any().is::<MatrixMap>(),
+        "PermMap + MatrixMap should simplify to MatrixMap"
+    );
+
+    let pts = PointSet::from_rows([[1.0, 2.0]]);
+    let out = simplified.transform(&pts, true).unwrap();
+
+    // PermMap swaps inputs: [1,2] → [2,1], then Matrix [[1,2],[3,4]] * [2,1]:
+    // [1*2+2*1, 3*2+4*1] = [4, 10]
+    assert_eq!(out.point(0)[0], 4.0);
+    assert_eq!(out.point(0)[1], 10.0);
+}
+
+/// PermMap followed by MatrixMap can also be tested directly via try_merge
+/// on PermMap (pm.try_merge(mm)).
+#[test]
+fn permmap_try_merge_with_matrixmap() {
+    use ast_core::mappings::PermMap;
+
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    // PermMap.try_merge(MatrixMap): self=pm first, other=mm second.
+    let merged = pm.try_merge(&mm, true, false, false);
+    assert!(merged.is_some(), "PermMap + MatrixMap should merge");
+
+    let pts = PointSet::from_rows([[1.0, 2.0]]);
+    let out = merged.unwrap().transform(&pts, true).unwrap();
+
+    // pm swaps inputs: [1,2] → [2,1], then mm: [1*2+2*1, 3*2+4*1] = [4, 10]
+    assert_eq!(out.point(0)[0], 4.0);
+    assert_eq!(out.point(0)[1], 10.0);
+}
+
+/// MatrixMap + inverted PermMap should merge correctly.
+#[test]
+fn matrix_merge_with_inverted_permmap() {
+    use ast_core::mappings::PermMap;
+
+    // Matrix [[1,2],[3,4]] followed by inverted PermMap.
+    // PermMap with outperm=[2,1], inperm=[2,1]: inverted uses inperm for forward.
+    // inperm=[2,1] swaps the same way.
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+
+    // Treat PermMap as inverted: uses inperm for forward direction.
+    let merged = mm.try_merge(&pm, true, false, true);
+    assert!(merged.is_some(), "MatrixMap + inverted PermMap should merge");
+
+    let pts = PointSet::from_rows([[1.0, 2.0]]);
+    let out = merged.unwrap().transform(&pts, true).unwrap();
+
+    // mm([1,2]) = [5, 11], then inverted pm uses inperm=[2,1] to swap: [11, 5]
+    assert_eq!(out.point(0)[0], 11.0);
+    assert_eq!(out.point(0)[1], 5.0);
+}
+
+/// Non-pure permutation (constants or BAD) should not merge.
+#[test]
+fn matrix_no_merge_with_constant_permmap() {
+    use ast_core::mappings::PermMap;
+
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    // PermMap with a constant reference (negative entry): outperm=[-1, 1]
+    let pm = PermMap::new(&[2, 1], &[-1, 1], &[99.0]).unwrap();
+
+    let merged = mm.try_merge(&pm, true, false, false);
+    assert!(merged.is_none(), "PermMap with constants should not merge into MatrixMap");
+}

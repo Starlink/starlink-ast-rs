@@ -13,6 +13,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
+use super::perm::PermMap;
 use super::unit::UnitMap;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
@@ -64,6 +65,16 @@ impl MatrixMap {
             inverse,
             inverted: false,
         })
+    }
+
+    /// Returns a reference to the forward transformation matrix.
+    pub(crate) fn forward_matrix(&self) -> &Array2<f64> {
+        &self.matrix
+    }
+
+    /// Returns a reference to the inverse matrix, if available.
+    pub(crate) fn inverse_matrix(&self) -> Option<&Array2<f64>> {
+        self.inverse.as_ref()
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -288,6 +299,57 @@ impl Mapping for MatrixMap {
                 .map(|m| Box::new(m) as DynMapping);
         }
 
+        // MatrixMap + PermMap → MatrixMap (permuted).
+        // Convention: self (MatrixMap) applied first, other (PermMap) applied second.
+        // Result = P * A where P is the permutation matrix and A is self's matrix.
+        // The PermMap permutes the rows (outputs) of the MatrixMap.
+        if let Some(pm) = other.as_any().downcast_ref::<PermMap>() {
+            let a = if self_inv {
+                self.inverse.as_ref()?.clone()
+            } else {
+                self.matrix.clone()
+            };
+
+            // Get effective outperm: when other_inv is set, the PermMap's
+            // forward direction uses inperm instead of outperm.
+            let perm = if other_inv { pm.inperm() } else { pm.outperm() };
+            let nout = perm.len();
+
+            // Dimensions must match: MatrixMap output (a.nrows) == PermMap input (perm.len for fwd).
+            let pm_nin = if other_inv {
+                pm.outperm().len()
+            } else {
+                pm.inperm().len()
+            };
+            if a.nrows() != pm_nin {
+                return None;
+            }
+
+            // Only handle pure permutations (all positive entries — no constants or BAD).
+            if perm.iter().any(|&p| p <= 0) {
+                return None;
+            }
+
+            // Build permutation matrix P: P[row, col] = 1 where perm[row] == col+1.
+            let mut perm_mat = Array2::<f64>::zeros((nout, a.nrows()));
+            for (row, &p) in perm.iter().enumerate() {
+                let col = (p as usize) - 1;
+                if col >= a.nrows() {
+                    return None;
+                }
+                perm_mat[[row, col]] = 1.0;
+            }
+
+            // Result = P * A (PermMap applied after MatrixMap).
+            let product = perm_mat.dot(&a);
+            if is_identity_matrix(&product) {
+                return Some(Box::new(UnitMap::new(product.nrows())));
+            }
+            return MatrixMap::new(product)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping);
+        }
+
         None
     }
 
@@ -496,6 +558,11 @@ fn is_diagonal(m: &Array2<f64>) -> bool {
         }
     }
     true
+}
+
+/// Check if a matrix is the identity (within `ast_equal` tolerance).
+pub(crate) fn is_identity_matrix_pub(m: &Array2<f64>) -> bool {
+    is_identity_matrix(m)
 }
 
 /// Check if a matrix is the identity (within `ast_equal` tolerance).

@@ -319,6 +319,67 @@ impl Mapping for PermMap {
         if !series {
             return None;
         }
+
+        // PermMap + MatrixMap → MatrixMap.
+        // Convention: self (PermMap) applied first, other (MatrixMap) applied second.
+        // Result = A * P where A is the matrix and P is the permutation matrix.
+        // The PermMap permutes the columns (inputs) of the MatrixMap.
+        if let Some(other_mat) = other.as_any().downcast_ref::<super::matrix::MatrixMap>() {
+            // Get effective outperm for self (the forward permutation of the PermMap).
+            let perm = if self_inv {
+                &self.inperm
+            } else {
+                &self.outperm
+            };
+            let perm_nout = perm.len();
+
+            // Only handle pure permutations (all positive — no constants or BAD).
+            if perm.iter().any(|&p| p <= 0) {
+                return None;
+            }
+
+            // Get effective matrix for the MatrixMap.
+            let a = if other_inv {
+                other_mat.inverse_matrix()?.clone()
+            } else {
+                other_mat.forward_matrix().clone()
+            };
+
+            // Dimensions: PermMap output feeds MatrixMap input.
+            // a.ncols() == perm_nout must hold.
+            if a.ncols() != perm_nout {
+                return None;
+            }
+
+            // PermMap input dimension (number of columns of the result).
+            let perm_nin = if self_inv {
+                self.outperm.len()
+            } else {
+                self.inperm.len()
+            };
+
+            // Build permutation matrix P (perm_nout × perm_nin):
+            // P[row, col] = 1 where perm[row] == col+1.
+            // P maps perm_nin inputs → perm_nout outputs.
+            let mut perm_mat = ndarray::Array2::<f64>::zeros((perm_nout, perm_nin));
+            for (row, &p) in perm.iter().enumerate() {
+                let col = (p as usize) - 1;
+                if col >= perm_nin {
+                    return None;
+                }
+                perm_mat[[row, col]] = 1.0;
+            }
+
+            // Result = A * P (MatrixMap applied after PermMap).
+            let product = a.dot(&perm_mat);
+            if super::matrix::is_identity_matrix_pub(&product) {
+                return Some(Box::new(UnitMap::new(product.nrows())));
+            }
+            return super::matrix::MatrixMap::new(product)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping);
+        }
+
         let other_perm = other.as_any().downcast_ref::<PermMap>()?;
 
         // Determine effective forward/inverse permutations based on
