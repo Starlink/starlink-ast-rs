@@ -734,6 +734,53 @@ fn winmap_swaps_past_permmap() {
     assert!(s.as_any().is::<CmpMap>(), "Expected a CmpMap, got {:?}", s);
 }
 
+/// Verify that a WinMap distributes into a parallel CmpMap's branches.
+///
+/// WinMap(4 axes) ; CmpMap(ZoomMap(2) || ZoomMap(2)) should distribute
+/// the WinMap into sub-WinMaps per branch, enabling further merges.
+/// Matches C winmap.c:1268-1416.
+#[test]
+fn winmap_distributes_into_parallel_cmpmap() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, WinMap, ZoomMap};
+
+    // WinMap(4 axes, shift=[1,2,3,4] scale=[1,1,1,1]) ;
+    // CmpMap(ZoomMap(2, factor=2) || ZoomMap(2, factor=3))
+    // Should distribute: the WinMap splits into [shift=1,2] and [shift=3,4],
+    // each getting pushed into the parallel branches.
+    let wm = WinMap::new(&[1.0, 2.0, 3.0, 4.0], &[1.0, 1.0, 1.0, 1.0]).unwrap();
+    let z1 = ZoomMap::new(2, 2.0).unwrap();
+    let z2 = ZoomMap::new(2, 3.0).unwrap();
+    let par = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Parallel).unwrap();
+
+    let full = CmpMap::new(Box::new(wm), Box::new(par), Composition::Series).unwrap();
+    let s = full.simplified().unwrap();
+
+    // Verify transform: [5,6,7,8] → shift [6,8,10,12] → zoom [12,16,30,36]
+    let pts = PointSet::from_rows([[5.0, 6.0, 7.0, 8.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 12.0).abs() < 1e-10,
+        "axis 0: got {}, expected 12.0",
+        out.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - 16.0).abs() < 1e-10,
+        "axis 1: got {}, expected 16.0",
+        out.point(0)[1]
+    );
+    assert!(
+        (out.point(0)[2] - 30.0).abs() < 1e-10,
+        "axis 2: got {}, expected 30.0",
+        out.point(0)[2]
+    );
+    assert!(
+        (out.point(0)[3] - 36.0).abs() < 1e-10,
+        "axis 3: got {}, expected 36.0",
+        out.point(0)[3]
+    );
+}
+
 /// Verify that the pattern does NOT fire when magnitudes differ (non-uniform scaling).
 #[test]
 fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {

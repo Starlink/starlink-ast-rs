@@ -314,6 +314,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             if series && try_swap_permmap_parallel(list) {
                 continue;
             }
+            // Try distributing a WinMap into a parallel CmpMap's branches.
+            if series && try_distribute_winmap_into_parallel(list) {
+                continue;
+            }
             break;
         }
     }
@@ -1269,6 +1273,120 @@ fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
         }
     }
     None
+}
+
+/// Try to distribute a WinMap (or ShiftMap/ZoomMap) into a parallel CmpMap's branches.
+///
+/// When `WinMap ; CmpMap(A || B)` appears in a series list, splits the WinMap
+/// by dimension boundaries (determined by each parallel component's input count)
+/// and pushes sub-WinMaps into each branch:
+///
+///   `WinMap(4) ; CmpMap(A(2) || B(2))`
+///   → `CmpMap((WinMap(2);A) || (WinMap(2);B))`
+///
+/// On the next simplification pass, each sub-WinMap can merge with the first
+/// mapping in its branch. Critical for FITS-WCS where pixel scaling precedes
+/// parallel (lon,lat) WcsMaps.
+///
+/// Matches C winmap.c:1268-1416.
+fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    let mut i = 0;
+    while i + 1 < list.len() {
+        // Position i must be a WinMap (or linear mapping convertible to WinMap).
+        let is_linear = list[i].0.as_any().is::<WinMap>()
+            || list[i].0.as_any().is::<ShiftMap>()
+            || list[i].0.as_any().is::<ZoomMap>();
+        // Position i+1 must be a parallel CmpMap.
+        let is_par = list[i + 1]
+            .0
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .is_some_and(|c| c.composition() == Composition::Parallel);
+
+        if !is_linear || !is_par {
+            i += 1;
+            continue;
+        }
+
+        // Get the WinMap's effective params.
+        let Some((shifts, scales)) =
+            super::winmap::extract_linear_params(list[i].0.as_ref(), list[i].1)
+        else {
+            i += 1;
+            continue;
+        };
+
+        // Flatten the parallel CmpMap to get components.
+        let par_inv = list[i + 1].1;
+        let Ok(par_list) = flatten(list[i + 1].0.as_ref(), par_inv, false) else {
+            i += 1;
+            continue;
+        };
+
+        // Compute input dimensions of each parallel component.
+        let mut dim_boundaries: Vec<(usize, usize)> = Vec::new();
+        let mut offset = 0;
+        for (comp, comp_inv) in &par_list {
+            let nin = effective_nin(comp.as_ref(), *comp_inv);
+            dim_boundaries.push((offset, nin));
+            offset += nin;
+        }
+
+        // Total must match WinMap's axes.
+        if offset != shifts.len() {
+            i += 1;
+            continue;
+        }
+
+        // Split the WinMap and build new parallel branches.
+        let mut new_branches: Vec<(DynMapping, bool)> = Vec::new();
+        let mut failed = false;
+        for ((comp, comp_inv), &(start, nin)) in par_list.iter().zip(dim_boundaries.iter()) {
+            let sub_shifts = &shifts[start..start + nin];
+            let sub_scales = &scales[start..start + nin];
+
+            // Build sub-WinMap.
+            let sub_wm = match WinMap::new(sub_shifts, sub_scales) {
+                Ok(w) => w,
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            };
+
+            // Clone the component and apply its inversion flag.
+            let mut comp_clone = comp.clone();
+            if *comp_inv {
+                comp_clone.invert();
+            }
+
+            // Build series: sub_wm ; component.
+            match CmpMap::new(Box::new(sub_wm), comp_clone, Composition::Series) {
+                Ok(series) => new_branches.push((Box::new(series), false)),
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            }
+        }
+
+        if failed {
+            i += 1;
+            continue;
+        }
+
+        // Rebuild as parallel CmpMap.
+        let Ok(new_par) = reconstruct(new_branches, false) else {
+            i += 1;
+            continue;
+        };
+
+        // Replace the pair [winmap, parallel] with [new_parallel].
+        list.remove(i + 1);
+        list[i] = (new_par, false);
+        return true;
+    }
+    false
 }
 
 /// Reconstruct a `CmpMap` tree (or single mapping) from a flat list.
