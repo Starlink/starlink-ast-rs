@@ -8,6 +8,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// Interpolation method for [`LutMap`] table lookups.
@@ -529,6 +530,43 @@ impl Mapping for LutMap {
                 .iter()
                 .zip(&other.lut)
                 .all(|(a, b)| ast_equal(*a, *b))
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only cancel with inverse: same LUT, opposite direction.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_lut = other.as_any().downcast_ref::<LutMap>()?;
+        // Must be same LUT data, start, inc, and interpolation method.
+        if self.lut.len() != other_lut.lut.len() {
+            return None;
+        }
+        if !ast_equal(self.start, other_lut.start) || !ast_equal(self.inc, other_lut.inc) {
+            return None;
+        }
+        if self.interp != other_lut.interp {
+            return None;
+        }
+        if !self
+            .lut
+            .iter()
+            .zip(&other_lut.lut)
+            .all(|(a, b)| ast_equal(*a, *b))
+        {
+            return None;
+        }
+        // LutMap maps 1 coordinate to 1 coordinate.
+        Some(Box::new(UnitMap::new(1)))
     }
 }
 

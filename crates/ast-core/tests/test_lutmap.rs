@@ -4,7 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{LutInterp, LutMap, Mapping};
+use ast_core::mappings::{LutInterp, LutMap, Mapping, UnitMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 // ---------------------------------------------------------------------------
@@ -509,4 +509,51 @@ fn lutmap_serialisation_inverted() {
     let restored = from_native_string(&text).unwrap();
     let m2 = restored.into_mapping().unwrap();
     assert!(m2.is_inverted());
+}
+
+// ---------------------------------------------------------------------------
+// try_merge (inverse self-cancellation)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lutmap_cancels_with_inverse() {
+    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    // Same LUT, opposite invert flags -> should cancel to UnitMap.
+    let merged = lm.try_merge(&lm, true, false, true);
+    assert!(merged.is_some());
+    assert!(merged.unwrap().as_any().is::<UnitMap>());
+}
+
+#[test]
+fn lutmap_no_cancel_different_lut() {
+    let lut1 = vec![0.0, 1.0, 4.0, 9.0, 16.0];
+    let lut2 = vec![0.0, 2.0, 4.0, 6.0, 8.0];
+    let lm1 = LutMap::new(&lut1, 0.0, 1.0).unwrap();
+    let lm2 = LutMap::new(&lut2, 0.0, 1.0).unwrap();
+
+    // Different LUTs -> should NOT cancel.
+    let merged = lm1.try_merge(&lm2, true, false, true);
+    assert!(merged.is_none());
+}
+
+#[test]
+fn lutmap_no_cancel_same_direction() {
+    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    // Same invert flags -> not an inverse pair, should not cancel.
+    let merged = lm.try_merge(&lm, true, false, false);
+    assert!(merged.is_none());
+}
+
+#[test]
+fn lutmap_no_cancel_parallel() {
+    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
+    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+
+    // Parallel composition -> no merge supported.
+    let merged = lm.try_merge(&lm, false, false, true);
+    assert!(merged.is_none());
 }
