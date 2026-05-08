@@ -1213,6 +1213,7 @@ impl Mapping for TimeMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         // Normalize steps (accounting for the inverted flag) and simplify
         // (cancel adjacent inverse pairs, remove no-effect steps).
         let mut steps = time_normalized_steps(self, self.inverted);
@@ -1226,9 +1227,9 @@ impl Mapping for TimeMap {
         if steps.is_empty() {
             Ok(Box::new(UnitMap::new(1)))
         } else {
-            let mut result = TimeMap::new();
-            result.conversions = steps;
-            Ok(Box::new(result))
+            let mut tm = TimeMap::new();
+            tm.conversions = steps;
+            Ok(Box::new(tm))
         }
     }
 
@@ -1363,7 +1364,7 @@ impl Serializable for TimeMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         let ntime = node.get_int("Ntime", 0) as usize;
 
@@ -1409,6 +1410,7 @@ impl Serializable for TimeMap {
             tm.add(cvt_type, &user_args);
         }
 
+        tm.set_do_not_simplify(do_not_simplify);
         if inverted {
             tm.invert();
         }

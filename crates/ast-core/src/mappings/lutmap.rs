@@ -684,7 +684,7 @@ impl Serializable for LutMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
         let nlut = node.get_int("Nlut", 0) as usize;
         let start = node.get_double("Start", 0.0);
         let inc = node.get_double("Incr", 1.0);
@@ -707,7 +707,7 @@ impl Serializable for LutMap {
             interp,
             monotonic,
             inverted: false,
-            do_not_simplify: false,
+            do_not_simplify,
         };
         if inverted {
             m.invert();

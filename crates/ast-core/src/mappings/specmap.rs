@@ -1124,6 +1124,7 @@ impl Mapping for SpecMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         // Normalize steps (accounting for the inverted flag) and cancel
         // adjacent inverse pairs within this single SpecMap.
         let mut steps = normalized_steps(self, self.inverted);
@@ -1133,13 +1134,14 @@ impl Mapping for SpecMap {
             return Ok(Box::new(self.clone()));
         }
         if steps.is_empty() {
-            return Ok(Box::new(UnitMap::new(1)));
+            Ok(Box::new(UnitMap::new(1)))
+        } else {
+            Ok(Box::new(SpecMap {
+                conversions: steps,
+                inverted: false,
+                do_not_simplify: false,
+            }))
         }
-        Ok(Box::new(SpecMap {
-            conversions: steps,
-            inverted: false,
-            do_not_simplify: false,
-        }))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -1272,7 +1274,7 @@ impl Serializable for SpecMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         let nspec = node.get_int("Nspec", 0) as usize;
 
@@ -1300,6 +1302,7 @@ impl Serializable for SpecMap {
             spec.conversions.push(SpecConversion { cvt_type, args });
         }
 
+        spec.set_do_not_simplify(do_not_simplify);
         if inverted {
             spec.invert();
         }

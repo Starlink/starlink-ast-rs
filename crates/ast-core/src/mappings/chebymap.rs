@@ -421,6 +421,7 @@ impl Mapping for ChebyMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         Ok(Box::new(self.clone()))
     }
 
@@ -758,7 +759,7 @@ impl Serializable for ChebyMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted) = read_mapping_base(node);
+        let (nin, nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         // --- Read ChebyMap-specific attributes: scale and offset ---
         let mut scale_f = Vec::with_capacity(nin);
@@ -930,7 +931,7 @@ impl Serializable for ChebyMap {
             scale_i,
             offset_i,
             inverted: false,
-            do_not_simplify: false,
+            do_not_simplify,
         };
         if inverted {
             m.invert();

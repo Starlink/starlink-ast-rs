@@ -1015,6 +1015,7 @@ impl Mapping for PolyMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         // Determine which terms are the "forward" set in the current orientation.
         let (fwd_terms, inv_terms) = if self.inverted {
             (
@@ -1406,7 +1407,7 @@ impl Serializable for PolyMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted) = read_mapping_base(node);
+        let (nin, nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         // --- Forward transformation ---
         let mut forward = Vec::new();
@@ -1544,7 +1545,7 @@ impl Serializable for PolyMap {
             niter_inverse: niter_inv,
             tol_inverse: tol_inv,
             inverted: false,
-            do_not_simplify: false,
+            do_not_simplify,
             jacobian_terms,
             forward_by_output,
             forward_max_pows,

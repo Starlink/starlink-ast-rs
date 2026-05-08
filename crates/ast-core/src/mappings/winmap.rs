@@ -200,6 +200,7 @@ impl Mapping for WinMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         let n = self.shifts.len();
         let all_shifts_zero = self.shifts.iter().all(|&s| ast_equal(s, 0.0));
         let all_scales_one = self.scales.iter().all(|&s| ast_equal(s, 1.0));
@@ -441,20 +442,19 @@ impl Serializable for WinMap {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Map one window on to another".to_string());
         write_mapping_base(&mut node, self);
-        for (i, &s) in self.shifts.iter().enumerate() {
-            if s != 0.0 {
+        // C library writes Sft/Scl interleaved per axis: Sft1, Scl1, Sft2, Scl2, ...
+        for i in 0..self.shifts.len() {
+            if self.shifts[i] != 0.0 {
                 node.push_double(
                     &format!("Sft{}", i + 1),
-                    s,
+                    self.shifts[i],
                     Some(format!("Shift for axis {}", i + 1)),
                 );
             }
-        }
-        for (i, &s) in self.scales.iter().enumerate() {
-            if s != 1.0 {
+            if self.scales[i] != 1.0 {
                 node.push_double(
                     &format!("Scl{}", i + 1),
-                    s,
+                    self.scales[i],
                     Some(format!("Scale factor for axis {}", i + 1)),
                 );
             }
@@ -463,7 +463,7 @@ impl Serializable for WinMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
         let mut shifts = Vec::with_capacity(nin);
         let mut scales = Vec::with_capacity(nin);
         for i in 0..nin {
@@ -474,7 +474,7 @@ impl Serializable for WinMap {
             shifts,
             scales,
             inverted: false,
-            do_not_simplify: false,
+            do_not_simplify,
         };
         if inverted {
             m.invert();

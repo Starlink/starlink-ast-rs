@@ -124,11 +124,11 @@ impl Serializable for UnitMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
         Ok(UnitMap {
             ncoord: nin,
             inverted,
-            do_not_simplify: false,
+            do_not_simplify,
         })
     }
 }

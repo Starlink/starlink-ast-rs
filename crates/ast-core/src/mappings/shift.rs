@@ -94,6 +94,13 @@ impl Mapping for ShiftMap {
         }
         if self.shift.iter().all(|&s| s == 0.0) {
             Ok(Box::new(UnitMap::new(self.shift.len())))
+        } else if self.inverted {
+            let normalized: Vec<f64> = self.shift.iter().map(|&s| -s).collect();
+            Ok(Box::new(ShiftMap {
+                shift: normalized,
+                inverted: false,
+                do_not_simplify: false,
+            }))
         } else {
             Ok(Box::new(self.clone()))
         }
@@ -221,7 +228,7 @@ impl Serializable for ShiftMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
         let mut shifts = Vec::with_capacity(nin);
         for i in 0..nin {
             shifts.push(node.get_double(&format!("Sft{}", i + 1), 0.0));
@@ -229,7 +236,7 @@ impl Serializable for ShiftMap {
         Ok(ShiftMap {
             shift: shifts,
             inverted,
-            do_not_simplify: false,
+            do_not_simplify,
         })
     }
 }

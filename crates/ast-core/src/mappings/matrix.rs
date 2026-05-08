@@ -258,6 +258,7 @@ impl Mapping for MatrixMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         let nrows = self.matrix.nrows();
         let ncols = self.matrix.ncols();
 
@@ -533,42 +534,78 @@ impl Serializable for MatrixMap {
         let nout = self.matrix.nrows();
         let nin = self.matrix.ncols();
 
-        // Forward matrix elements in row-major order.
-        for i in 0..(nout * nin) {
-            let row = i / nin;
-            let col = i % nin;
-            let val = self.matrix[[row, col]];
-            if !is_bad(val) {
-                node.push_double(
-                    &format!("M{i}"),
-                    val,
-                    Some("Forward matrix value".to_string()),
-                );
+        match self.form {
+            MatrixForm::Diagonal => {
+                let nel = nin.min(nout);
+                for i in 0..nel {
+                    let val = self.matrix[[i, i]];
+                    if !is_bad(val) {
+                        node.push_double(
+                            &format!("M{i}"),
+                            val,
+                            Some("Forward matrix value".to_string()),
+                        );
+                    }
+                }
             }
-        }
-
-        // Inverse matrix elements, if available.
-        if let Some(ref inv) = self.inverse {
-            for i in 0..(nin * nout) {
-                let row = i / nout;
-                let col = i % nout;
-                let val = inv[[row, col]];
-                if !is_bad(val) {
-                    node.push_double(
-                        &format!("IM{i}"),
-                        val,
-                        Some("Inverse matrix value".to_string()),
-                    );
+            MatrixForm::Full => {
+                for i in 0..(nout * nin) {
+                    let row = i / nin;
+                    let col = i % nin;
+                    let val = self.matrix[[row, col]];
+                    if !is_bad(val) {
+                        node.push_double(
+                            &format!("M{i}"),
+                            val,
+                            Some("Forward matrix value".to_string()),
+                        );
+                    }
                 }
             }
         }
 
-        node.push_string("Form", "Full", Some("Matrix storage form".to_string()));
+        if let Some(ref inv) = self.inverse {
+            match self.inv_form {
+                MatrixForm::Diagonal => {
+                    let nel = nin.min(nout);
+                    for i in 0..nel {
+                        let val = inv[[i, i]];
+                        if !is_bad(val) {
+                            node.push_double(
+                                &format!("IM{i}"),
+                                val,
+                                Some("Inverse matrix value".to_string()),
+                            );
+                        }
+                    }
+                }
+                MatrixForm::Full => {
+                    for i in 0..(nin * nout) {
+                        let row = i / nout;
+                        let col = i % nout;
+                        let val = inv[[row, col]];
+                        if !is_bad(val) {
+                            node.push_double(
+                                &format!("IM{i}"),
+                                val,
+                                Some("Inverse matrix value".to_string()),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        let form_str = match self.form {
+            MatrixForm::Diagonal => "Diagonal",
+            MatrixForm::Full => "Full",
+        };
+        node.push_string("Form", form_str, Some("Matrix storage form".to_string()));
         Ok(node)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted) = read_mapping_base(node);
+        let (nin, nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         if nin == 0 || nout == 0 {
             return Err(AstError::new(
@@ -659,7 +696,7 @@ impl Serializable for MatrixMap {
             matrix,
             inverse,
             inverted,
-            do_not_simplify: false,
+            do_not_simplify,
             form,
             inv_form,
         })

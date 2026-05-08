@@ -399,7 +399,7 @@ impl Serializable for CmpMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         let is_series = node.get_int("Series", 1) != 0;
         let kind = if is_series {
@@ -430,6 +430,7 @@ impl Serializable for CmpMap {
         }
 
         let mut cmp = CmpMap::new(map_a, map_b, kind)?;
+        cmp.set_do_not_simplify(do_not_simplify);
         if inverted {
             cmp.invert();
         }

@@ -34,7 +34,7 @@ pub(crate) trait Serializable {
 // Mapping base helpers
 // ---------------------------------------------------------------------------
 
-/// Write common Mapping attributes (Nin, Nout, Invert, IsA Mapping).
+/// Write common Mapping attributes (Nin, Nout, IsSimp, Invert, IsA Mapping).
 pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     let nin = mapping.nin();
     let nout = mapping.nout();
@@ -50,6 +50,9 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             Some("Number of output coordinates".to_string()),
         );
     }
+    if mapping.do_not_simplify() {
+        node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
+    }
     if mapping.is_inverted() {
         node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
     }
@@ -61,8 +64,8 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
 
 /// Read common Mapping attributes from a node.
 ///
-/// Returns `(nin, nout, inverted)`.
-pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool) {
+/// Returns `(nin, nout, inverted, do_not_simplify)`.
+pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool, bool) {
     let nin = node.get_int("Nin", 0) as usize;
     let nout_raw = node.get_int("Nout", 0);
     let nout = if nout_raw <= 0 {
@@ -71,7 +74,8 @@ pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool) {
         nout_raw as usize
     };
     let inverted = node.get_int("Invert", 0) != 0;
-    (nin, nout, inverted)
+    let do_not_simplify = node.get_int("IsSimp", 0) != 0;
+    (nin, nout, inverted, do_not_simplify)
 }
 
 // ---------------------------------------------------------------------------

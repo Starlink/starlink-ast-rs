@@ -185,11 +185,11 @@ fn simplify_regression() {
             }
         };
 
-        // Simplify
-        let simplified = match mapping.simplified() {
+        // Simplify (use public simplify() which sets IsSimp flag)
+        let simplified = match mapping.simplify() {
             Ok(s) => s,
             Err(e) => {
-                other_failures.push(format!("{name}: simplified() failed: {e}"));
+                other_failures.push(format!("{name}: simplify() failed: {e}"));
                 continue;
             }
         };

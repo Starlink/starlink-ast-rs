@@ -176,6 +176,22 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
 }
 
 impl dyn Mapping {
+    /// Simplify this mapping and mark the result as simplified.
+    ///
+    /// This is the public entry point equivalent to C's `astSimplify`.
+    /// It calls the type-specific `simplified()` method and then sets the
+    /// `do_not_simplify` flag on the result, which causes `IsSimp = 1`
+    /// to appear in the serialized output.
+    ///
+    /// Use this method for user-facing simplification. The trait method
+    /// `simplified()` is the internal virtual dispatch used during the
+    /// merge loop and does NOT set the flag.
+    pub fn simplify(&self) -> AstResult<DynMapping> {
+        let mut result = self.simplified()?;
+        result.set_do_not_simplify(true);
+        Ok(result)
+    }
+
     /// Compose this mapping with `next` in series.
     ///
     /// The resulting `CmpMap` applies `self` first, then `next`.

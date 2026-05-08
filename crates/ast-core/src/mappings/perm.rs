@@ -291,6 +291,7 @@ impl Mapping for PermMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         let n = self.outperm.len();
         let outperm_is_identity = n == self.inperm.len()
             && self
@@ -682,7 +683,7 @@ impl Serializable for PermMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted) = read_mapping_base(node);
+        let (nin, nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         // Check for OutCpy shorthand (identity forward permutation).
         let out_cpy = node.get_int("OutCpy", 0) != 0;
@@ -721,6 +722,7 @@ impl Serializable for PermMap {
         }
 
         let mut m = PermMap::new(&inperm, &outperm, &constants)?;
+        m.set_do_not_simplify(do_not_simplify);
         if inverted {
             m.invert();
         }

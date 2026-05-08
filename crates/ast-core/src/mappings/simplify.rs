@@ -1933,10 +1933,12 @@ mod tests {
         let mut z = ZoomMap::new(1, 5.0).unwrap();
         z.invert();
         assert!(z.is_inverted());
-        // External inv=false, self.is_inverted()=true → effective_inv=true
+        // ZoomMap::simplified() normalizes inversion into the factor:
+        // ZoomMap(5, inverted) → ZoomMap(0.2, forward)
+        // So effective_inv = external(false) XOR simplified.is_inverted()(false) = false
         let list = flatten(&z, false, true).unwrap();
         assert_eq!(list.len(), 1);
-        assert!(list[0].1); // effectively inverted
+        assert!(!list[0].1); // inversion absorbed into factor
         assert!(!list[0].0.is_inverted()); // normalised
     }
 
@@ -1944,10 +1946,11 @@ mod tests {
     fn flatten_non_cmpmap_double_inversion_cancels() {
         let mut z = ZoomMap::new(1, 5.0).unwrap();
         z.invert();
-        // External inv=true, self.is_inverted()=true → effective_inv=false
+        // ZoomMap::simplified() normalizes: ZoomMap(5, inv) → ZoomMap(0.2, fwd)
+        // effective_inv = external(true) XOR simplified.is_inverted()(false) = true
         let list = flatten(&z, true, true).unwrap();
         assert_eq!(list.len(), 1);
-        assert!(!list[0].1); // double inversion cancels
+        assert!(list[0].1); // external inversion not cancelled (already absorbed)
     }
 
     #[test]

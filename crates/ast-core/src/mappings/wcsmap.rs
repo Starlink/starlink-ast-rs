@@ -433,11 +433,13 @@ impl Mapping for WcsMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         // Unknown/blank projection simplifies to identity.
         if self.proj == WcsProjection::Unknown {
-            return Ok(Box::new(UnitMap::new(self.ncoord)));
+            Ok(Box::new(UnitMap::new(self.ncoord)))
+        } else {
+            Ok(Box::new(self.clone()))
         }
-        Ok(Box::new(self.clone()))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -604,7 +606,7 @@ impl Serializable for WcsMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         // Read projection type.
         // If the type is blank or unrecognised, fall back to Unknown (which
@@ -634,6 +636,7 @@ impl Serializable for WcsMap {
             }
         }
 
+        wcs.set_do_not_simplify(do_not_simplify);
         if inverted {
             wcs.invert();
         }

@@ -1127,6 +1127,7 @@ impl Mapping for SlaMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
+
         // Normalize steps (accounting for the inverted flag) and simplify
         // (cancel adjacent inverse pairs, combine precessions, remove identity
         // precessions).
@@ -1141,11 +1142,11 @@ impl Mapping for SlaMap {
         if steps.is_empty() {
             Ok(Box::new(UnitMap::new(2)))
         } else {
-            let mut result = SlaMap::new();
+            let mut sla = SlaMap::new();
             for step in &steps {
-                result.add(step.cvt_type, &step.args);
+                sla.add(step.cvt_type, &step.args);
             }
-            Ok(Box::new(result))
+            Ok(Box::new(sla))
         }
     }
 
@@ -1273,7 +1274,7 @@ impl Serializable for SlaMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
 
         let nsla = node.get_int("Nsla", 0) as usize;
 
@@ -1300,6 +1301,7 @@ impl Serializable for SlaMap {
             sla.add(cvt_type, &args);
         }
 
+        sla.set_do_not_simplify(do_not_simplify);
         if inverted {
             sla.invert();
         }

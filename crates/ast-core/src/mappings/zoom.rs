@@ -97,10 +97,20 @@ impl Mapping for ZoomMap {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
         }
-        if self.factor == 1.0 {
+        let effective_factor = if self.inverted {
+            1.0 / self.factor
+        } else {
+            self.factor
+        };
+        if effective_factor == 1.0 {
             Ok(Box::new(UnitMap::new(self.ncoord)))
         } else {
-            Ok(Box::new(self.clone()))
+            Ok(Box::new(ZoomMap {
+                ncoord: self.ncoord,
+                factor: effective_factor,
+                inverted: false,
+                do_not_simplify: false,
+            }))
         }
     }
 
@@ -250,9 +260,10 @@ impl Serializable for ZoomMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
         let factor = node.get_double("Zoom", 1.0);
         let mut m = ZoomMap::new(nin, factor)?;
+        m.set_do_not_simplify(do_not_simplify);
         if inverted {
             m.invert();
         }
