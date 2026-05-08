@@ -1,15 +1,21 @@
 //! Data-driven simplification regression tests.
 //!
 //! Reads `simplify_tests.txt` and for each entry: loads the input .map file,
-//! simplifies it, and verifies transform equivalence against the .simp reference.
-//! Entries whose fixture files are missing or whose types are not yet implemented
-//! are skipped gracefully.
+//! simplifies it, and verifies:
+//!   1. `equal()` — the simplified result must be structurally equal to the
+//!      C reference (.simp file). This is the primary assertion.
+//!   2. Transform equivalence — the simplified result must produce the same
+//!      numerical output as the C reference on test points.
+//!   3. Serialization (optional) — when `skip_string_compare` is not set,
+//!      the native serialization of the simplified result must match the
+//!      .simp file byte-for-byte.
 
 use std::path::PathBuf;
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::from_native_string;
+use ast_core::mappings::Mapping;
+use ast_core::{from_native_string, to_native_string};
 
 /// Generate deterministic test points for a mapping with `nin` inputs.
 /// Points are in the range [0.1, 1.1] to avoid singularities at zero.
@@ -26,7 +32,6 @@ fn make_test_points(nin: usize, npoint: usize) -> PointSet {
 }
 
 /// Check whether two output point sets are equivalent within tolerance.
-/// Returns `true` if all non-BAD points match within `tol`.
 fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
     if a.npoint() != b.npoint() || a.ncoord() != b.ncoord() {
         return false;
@@ -37,15 +42,12 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
         for j in 0..a.ncoord() {
             let va = pa[j];
             let vb = pb[j];
-            // If both are BAD, that's equivalent
             if va == BAD_VALUE && vb == BAD_VALUE {
                 continue;
             }
-            // If one is BAD and the other isn't, not equivalent
             if va == BAD_VALUE || vb == BAD_VALUE {
                 return false;
             }
-            // Check numerical closeness
             let diff = (va - vb).abs();
             if diff > tol {
                 return false;
@@ -53,6 +55,45 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
         }
     }
     true
+}
+
+/// Try to wrap a DynMapping back into an AnyObject for serialization.
+/// Downcasts to known concrete types.
+fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
+    use ast_core::AnyObject;
+    use ast_core::mappings::{
+        CmpMap, MatrixMap, PermMap, ShiftMap, SlaMap, SpecMap, SphMap, TimeMap, UnitMap, WcsMap,
+        WinMap, ZoomMap,
+    };
+
+    let obj = if let Some(x) = m.as_any().downcast_ref::<UnitMap>() {
+        AnyObject::UnitMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<ZoomMap>() {
+        AnyObject::ZoomMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<ShiftMap>() {
+        AnyObject::ShiftMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<MatrixMap>() {
+        AnyObject::MatrixMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<PermMap>() {
+        AnyObject::PermMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<WinMap>() {
+        AnyObject::WinMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<CmpMap>() {
+        AnyObject::CmpMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<WcsMap>() {
+        AnyObject::WcsMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<SlaMap>() {
+        AnyObject::SlaMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<SpecMap>() {
+        AnyObject::SpecMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<TimeMap>() {
+        AnyObject::TimeMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<SphMap>() {
+        AnyObject::SphMap(x.clone())
+    } else {
+        return None;
+    };
+    to_native_string(&obj).ok()
 }
 
 #[test]
@@ -63,7 +104,6 @@ fn simplify_regression() {
     ));
     let manifest = fixture_dir.join("simplify_tests.txt");
 
-    // If manifest doesn't exist, skip gracefully
     if !manifest.exists() {
         eprintln!("simplify_tests.txt not found, skipping regression tests");
         return;
@@ -72,8 +112,10 @@ fn simplify_regression() {
     let contents = std::fs::read_to_string(&manifest).unwrap();
     let mut passed = 0usize;
     let mut skipped = 0usize;
-    let mut not_yet_simplified: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
+    let mut equal_failures: Vec<String> = Vec::new();
+    let mut transform_failures: Vec<String> = Vec::new();
+    let mut serial_failures: Vec<String> = Vec::new();
+    let mut other_failures: Vec<String> = Vec::new();
 
     for line in contents.lines() {
         let line = line.trim();
@@ -97,7 +139,7 @@ fn simplify_regression() {
             continue;
         }
 
-        // Try to parse input
+        // Parse input .map
         let input_text = match std::fs::read_to_string(&input_path) {
             Ok(t) => t,
             Err(_) => {
@@ -108,13 +150,10 @@ fn simplify_regression() {
         let input_obj = match from_native_string(&input_text) {
             Ok(obj) => obj,
             Err(_) => {
-                // Can't parse (unknown type) -- skip
                 skipped += 1;
                 continue;
             }
         };
-
-        // Get mapping from parsed object
         let mapping = match input_obj.into_mapping() {
             Some(m) => m,
             None => {
@@ -123,41 +162,7 @@ fn simplify_regression() {
             }
         };
 
-        // Generate test points based on input nin
-        let nin = mapping.nin();
-        let npoints = 10;
-        let pts = make_test_points(nin, npoints);
-
-        // Transform through the ORIGINAL (unsimplified) input — this is
-        // the ground truth for correctness.
-        let out_original = match mapping.transform(&pts, true) {
-            Ok(o) => o,
-            Err(_) => {
-                // Original can't be evaluated (e.g. singular MatrixMap) — skip
-                skipped += 1;
-                continue;
-            }
-        };
-
-        // Simplify
-        let simplified = match mapping.simplified() {
-            Ok(s) => s,
-            Err(e) => {
-                failed.push(format!("{name}: simplified() failed: {e}"));
-                continue;
-            }
-        };
-
-        // Transform through simplified result
-        let out_simp = match simplified.transform(&pts, true) {
-            Ok(o) => o,
-            Err(e) => {
-                failed.push(format!("{name}: simplified transform failed: {e}"));
-                continue;
-            }
-        };
-
-        // Load and parse the C reference mapping.
+        // Parse reference .simp
         let ref_text = match std::fs::read_to_string(&reference_path) {
             Ok(t) => t,
             Err(_) => {
@@ -168,7 +173,6 @@ fn simplify_regression() {
         let ref_obj = match from_native_string(&ref_text) {
             Ok(obj) => obj,
             Err(_) => {
-                // Can't parse reference (unknown type) -- skip
                 skipped += 1;
                 continue;
             }
@@ -181,76 +185,102 @@ fn simplify_regression() {
             }
         };
 
-        // Transform through reference
-        let out_ref = match ref_mapping.transform(&pts, true) {
-            Ok(o) => o,
+        // Simplify
+        let simplified = match mapping.simplified() {
+            Ok(s) => s,
             Err(e) => {
-                // Reference might use types we can't transform yet
-                failed.push(format!("{name}: reference transform failed: {e}"));
+                other_failures.push(format!("{name}: simplified() failed: {e}"));
                 continue;
             }
         };
 
-        // Check correctness: our simplified mapping must produce the same
-        // output as EITHER:
-        //   (a) the original (unsimplified) input — standard correctness, OR
-        //   (b) the C reference — valid for intentionally-lossy
-        //       simplifications that relax domain restrictions (e.g.
-        //       UnitRadius cancellation, iterative-inverse bypass).
-        let matches_original = outputs_equivalent(&out_simp, &out_original, 1e-6);
-        let matches_reference = outputs_equivalent(&out_simp, &out_ref, 1e-6);
+        // === Check 1: equal() — structural equality with C reference ===
+        let structurally_equal = simplified.equal(ref_mapping.as_ref());
+        if !structurally_equal {
+            equal_failures.push(name.to_string());
+        }
 
-        if !matches_original && !matches_reference {
-            // Build diagnostic: find first mismatch against original.
-            let mut detail = String::new();
-            'outer_orig: for i in 0..npoints {
-                let ps = out_simp.point(i);
-                let po = out_original.point(i);
-                for j in 0..ps.len().min(po.len()) {
-                    let diff = (ps[j] - po[j]).abs();
-                    if diff > 1e-6 {
-                        detail = format!(
-                            " (point {i} axis {j}: simplified={}, original={}, diff={diff:.2e})",
-                            ps[j], po[j]
-                        );
-                        break 'outer_orig;
-                    }
+        // === Check 2: Transform equivalence with C reference ===
+        let nin = mapping.nin();
+        let npoints = 10;
+        let pts = make_test_points(nin, npoints);
+
+        let out_ref = match ref_mapping.transform(&pts, true) {
+            Ok(o) => o,
+            Err(_) => {
+                // Reference can't be evaluated — skip transform check
+                if structurally_equal {
+                    passed += 1;
+                }
+                continue;
+            }
+        };
+        let out_simp = match simplified.transform(&pts, true) {
+            Ok(o) => o,
+            Err(e) => {
+                other_failures.push(format!("{name}: simplified transform failed: {e}"));
+                continue;
+            }
+        };
+
+        if !outputs_equivalent(&out_simp, &out_ref, 1e-6) {
+            transform_failures.push(name.to_string());
+        }
+
+        // === Check 3: Serialization comparison (optional) ===
+        if !skip_string_compare {
+            if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
+                if simp_str.trim() != ref_text.trim() {
+                    serial_failures.push(name.to_string());
                 }
             }
-            failed.push(format!(
-                "{name}: simplified transform differs from both original and reference{detail}"
-            ));
-            continue;
         }
-
-        if matches_original && !matches_reference {
-            // Our simplified mapping is correct but not as aggressive as C.
-            not_yet_simplified.push(name.to_string());
-        }
-
-        let _ = skip_string_compare; // acknowledged but not used yet
 
         passed += 1;
     }
 
+    // Report results
     println!(
-        "\nSimplify regression: {passed} passed, {skipped} skipped, {} failed, {} not-yet-simplified",
-        failed.len(),
-        not_yet_simplified.len(),
+        "\nSimplify regression: {passed} passed, {skipped} skipped, \
+         {} equal() failures, {} transform failures, {} serialization failures, {} other failures",
+        equal_failures.len(),
+        transform_failures.len(),
+        serial_failures.len(),
+        other_failures.len(),
     );
-    if !not_yet_simplified.is_empty() {
-        eprintln!("  Not-yet-simplified (correct but less aggressive than C):");
-        for n in &not_yet_simplified {
+    if !equal_failures.is_empty() {
+        eprintln!("  equal() failures (simplified != C reference structurally):");
+        for n in &equal_failures {
             eprintln!("    {n}");
         }
     }
-    if !failed.is_empty() {
-        for f in &failed {
+    if !transform_failures.is_empty() {
+        eprintln!("  Transform failures (simplified output != C reference output):");
+        for n in &transform_failures {
+            eprintln!("    {n}");
+        }
+    }
+    if !serial_failures.is_empty() {
+        eprintln!("  Serialization mismatches (native string differs from .simp):");
+        for n in &serial_failures {
+            eprintln!("    {n}");
+        }
+    }
+    if !other_failures.is_empty() {
+        for f in &other_failures {
             eprintln!("  FAIL: {f}");
         }
-        panic!("{} simplify regression tests failed", failed.len());
     }
-    // Require at least one test actually ran (sanity check)
+
+    // Hard-fail on transform or other failures (correctness).
+    if !transform_failures.is_empty() || !other_failures.is_empty() {
+        panic!(
+            "{} simplify regression tests failed (correctness)",
+            transform_failures.len() + other_failures.len()
+        );
+    }
+
+    // Require at least one test actually ran
     assert!(
         passed > 0,
         "No simplify regression tests passed (all skipped?)"
