@@ -6,7 +6,7 @@ use crate::error::AstResult;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, point_has_bad};
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::winmap::{compose_linear, extract_linear_params};
@@ -76,12 +76,8 @@ impl Mapping for ShiftMap {
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
-            if point_has_bad(inp) {
-                outp.fill(BAD_VALUE);
-            } else {
-                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                    *o = v + sign * self.shift[j];
-                }
+            for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
+                *o = if is_bad(v) { BAD_VALUE } else { v + sign * self.shift[j] };
             }
         }
         Ok(())
