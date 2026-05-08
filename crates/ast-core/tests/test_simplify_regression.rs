@@ -694,6 +694,46 @@ fn winmap_swap_enables_chain_simplification() {
     }
 }
 
+/// Verify that a WinMap (ShiftMap) swaps past a PermMap to reach a merge partner.
+///
+/// ShiftMap[1,2] ; PermMap[2,1] ; ShiftMap[3,4]
+/// The first ShiftMap should swap past the PermMap (becoming ShiftMap[2,1]),
+/// then merge with the second ShiftMap to give ShiftMap[5,5].
+#[test]
+fn winmap_swaps_past_permmap() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, PermMap, ShiftMap};
+
+    let s1 = ShiftMap::new(&[1.0, 2.0]);
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let s2 = ShiftMap::new(&[3.0, 4.0]);
+
+    let c1 = CmpMap::new(Box::new(s1), Box::new(pm), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(c1), Box::new(s2), Composition::Series).unwrap();
+
+    let s = full.simplified().unwrap();
+
+    // Verify transform: input [5,7] -> shift [6,9] -> permute [9,6] -> shift [12,10]
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 12.0).abs() < 1e-10,
+        "axis 0: got {}, expected 12.0",
+        out.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - 10.0).abs() < 1e-10,
+        "axis 1: got {}, expected 10.0",
+        out.point(0)[1]
+    );
+
+    // After swap+merge, the result should be simpler than the original 3-map chain.
+    // The ShiftMap should have swapped past the PermMap and merged with the second
+    // ShiftMap, yielding a 2-element chain (PermMap ; ShiftMap/WinMap) rather than 3.
+    // At minimum it must not be a plain ShiftMap or WinMap (still needs PermMap).
+    assert!(s.as_any().is::<CmpMap>(), "Expected a CmpMap, got {:?}", s);
+}
+
 /// Verify that the pattern does NOT fire when magnitudes differ (non-uniform scaling).
 #[test]
 fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {

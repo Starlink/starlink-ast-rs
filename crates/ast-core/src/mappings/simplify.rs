@@ -295,6 +295,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
             if series && try_swap_winmap_past_matrixmap(list) {
                 continue;
             }
+            // Try swapping WinMap past a PermMap.
+            if series && try_swap_winmap_past_permmap(list) {
+                continue;
+            }
             // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
             if series && try_sphmap_diagonal_pattern(list) {
                 continue;
@@ -495,6 +499,108 @@ fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
                 list.insert(i + 1, (Box::new(new_sm), false));
             }
 
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Try to swap a WinMap (or ShiftMap/ZoomMap) past a PermMap in a flattened series list.
+///
+/// When a linear mapping at position `i` is followed by a PermMap at position `i+1`,
+/// and a potential merge partner (another linear mapping) exists at position `i+2`,
+/// the pair can be rewritten as `PermMap ; WinMap'` where WinMap' has shifts/scales
+/// reordered according to the permutation.
+///
+/// Math: `WinMap(s,c) ; PermMap(outperm)` means:
+/// - Step 1: `inter[j] = s[j] + c[j] * x[j]`
+/// - Step 2: `out[k] = inter[outperm[k]-1]`
+///
+/// Equivalent to `PermMap(outperm) ; WinMap(s',c')` where:
+/// - `s'[k] = s[outperm[k]-1]`
+/// - `c'[k] = c[outperm[k]-1]`
+///
+/// Only fires when there is a potential merge partner at position `i+2` to avoid
+/// infinite swap loops.
+///
+/// Matches C winmap.c:2973 (WinPerm).
+fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    let mut i = 0;
+    while i + 1 < list.len() {
+        // Check: position i is a linear mapping and position i+1 is a PermMap.
+        let is_linear_i = list[i].0.as_any().is::<WinMap>()
+            || list[i].0.as_any().is::<ShiftMap>()
+            || list[i].0.as_any().is::<ZoomMap>();
+        let is_perm_i1 = list[i + 1].0.as_any().is::<PermMap>();
+
+        if is_linear_i && is_perm_i1 {
+            // Only swap if there's a potential merge partner at i+2.
+            if i + 2 >= list.len() {
+                i += 1;
+                continue;
+            }
+            let is_linear_i2 = list[i + 2].0.as_any().is::<WinMap>()
+                || list[i + 2].0.as_any().is::<ShiftMap>()
+                || list[i + 2].0.as_any().is::<ZoomMap>();
+            if !is_linear_i2 {
+                i += 1;
+                continue;
+            }
+
+            // Extract effective (shifts, scales) from the linear mapping at i.
+            let win_inv = list[i].1;
+            let Some((shifts, scales)) =
+                super::winmap::extract_linear_params(list[i].0.as_ref(), win_inv)
+            else {
+                i += 1;
+                continue;
+            };
+
+            // Get the effective outperm from the PermMap at i+1.
+            let perm = list[i + 1].0.as_any().downcast_ref::<PermMap>().unwrap();
+            let perm_inv = list[i + 1].1;
+            let outperm = if perm_inv {
+                perm.inperm()
+            } else {
+                perm.outperm()
+            };
+
+            // Only handle pure permutations (no constants or BAD assignments).
+            if outperm.iter().any(|&p| p <= 0) {
+                i += 1;
+                continue;
+            }
+
+            // Dimensions must match: outperm length must equal shifts/scales length.
+            let n = outperm.len();
+            if shifts.len() != n || scales.len() != n {
+                i += 1;
+                continue;
+            }
+
+            // All outperm entries must index within the input dimension.
+            if outperm.iter().any(|&p| p as usize > n) {
+                i += 1;
+                continue;
+            }
+
+            // Reorder shifts/scales per the permutation:
+            // new_s[k] = shifts[outperm[k]-1], new_c[k] = scales[outperm[k]-1]
+            let new_shifts: Vec<f64> = (0..n).map(|k| shifts[(outperm[k] as usize) - 1]).collect();
+            let new_scales: Vec<f64> = (0..n).map(|k| scales[(outperm[k] as usize) - 1]).collect();
+
+            // Build new WinMap with reordered params.
+            let Ok(new_wm) = WinMap::new(&new_shifts, &new_scales) else {
+                i += 1;
+                continue;
+            };
+
+            // Swap: replace [linear, perm] with [perm, new_winmap].
+            let perm_entry = list.remove(i + 1);
+            list.remove(i);
+            list.insert(i, perm_entry);
+            list.insert(i + 1, (Box::new(new_wm), false));
             return true;
         }
         i += 1;
