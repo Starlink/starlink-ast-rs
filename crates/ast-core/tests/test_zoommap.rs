@@ -34,10 +34,11 @@ fn zoom_map_inverse() {
 #[test]
 fn zoom_map_bad_value() {
     let m = ZoomMap::new(2, 2.0).unwrap();
+    // Per-axis BAD handling: only the BAD axis is blanked; the other computes.
     let pts = PointSet::from_rows([[BAD_VALUE, 3.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], BAD_VALUE);
-    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert_eq!(out.point(0)[1], 6.0);
 }
 
 #[test]
@@ -63,4 +64,22 @@ fn zoom_map_rate() {
     let m = ZoomMap::new(2, 3.0).unwrap();
     let r = m.rate(&[1.0, 1.0], 1, 1).unwrap();
     assert!((r - 3.0).abs() < 1e-4);
+}
+
+#[test]
+fn zoom_bad_per_axis() {
+    let zm = ZoomMap::new(3, 2.0).unwrap();
+    // Only axis 1 is BAD; axes 0 and 2 should still compute.
+    let pts = PointSet::from_rows([[1.0, BAD_VALUE, 3.0]]);
+    let out = zm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 2.0);
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert_eq!(out.point(0)[2], 6.0);
+
+    // Inverse too
+    let pts_inv = PointSet::from_rows([[BAD_VALUE, 4.0, 6.0]]);
+    let out_inv = zm.transform(&pts_inv, false).unwrap();
+    assert_eq!(out_inv.point(0)[0], BAD_VALUE);
+    assert_eq!(out_inv.point(0)[1], 2.0);
+    assert_eq!(out_inv.point(0)[2], 3.0);
 }
