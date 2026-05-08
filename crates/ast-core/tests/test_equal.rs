@@ -534,12 +534,7 @@ fn cmpmap_equal_different_tree_structure() {
         Composition::Series,
     )
     .unwrap();
-    let abc_1 = CmpMap::new(
-        Box::new(a.clone()),
-        Box::new(bc),
-        Composition::Series,
-    )
-    .unwrap();
+    let abc_1 = CmpMap::new(Box::new(a.clone()), Box::new(bc), Composition::Series).unwrap();
 
     // Tree 2: (A ; B) ; C
     let ab = CmpMap::new(
@@ -548,12 +543,7 @@ fn cmpmap_equal_different_tree_structure() {
         Composition::Series,
     )
     .unwrap();
-    let abc_2 = CmpMap::new(
-        Box::new(ab),
-        Box::new(c.clone()),
-        Composition::Series,
-    )
-    .unwrap();
+    let abc_2 = CmpMap::new(Box::new(ab), Box::new(c.clone()), Composition::Series).unwrap();
 
     assert!(abc_1.equal(&abc_2));
 }

@@ -406,7 +406,7 @@ fn chain_utc_to_tt() {
 
 #[test]
 fn serialisation_round_trip() {
-    use ast_core::{from_native_string, to_native_string, AnyObject};
+    use ast_core::{AnyObject, from_native_string, to_native_string};
 
     let mut tm = TimeMap::new();
     tm.add(TimeCvtType::MjdToJd, &[100.0, 200.0]);

@@ -300,7 +300,11 @@ impl Mapping for PermMap {
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        let perm = if self.inverted { &self.inperm } else { &self.outperm };
+        let perm = if self.inverted {
+            &self.inperm
+        } else {
+            &self.outperm
+        };
         let idx = ax1 - 1;
         if idx < perm.len() && perm[idx] == ax2 as i64 {
             Ok(1.0)
@@ -484,14 +488,28 @@ impl Mapping for PermMap {
             return false;
         };
         // Resolve invert flags to get effective outperm/inperm.
-        let self_outperm = if self.inverted { &self.inperm } else { &self.outperm };
-        let self_inperm = if self.inverted { &self.outperm } else { &self.inperm };
-        let other_outperm = if other.inverted { &other.inperm } else { &other.outperm };
-        let other_inperm = if other.inverted { &other.outperm } else { &other.inperm };
+        let self_outperm = if self.inverted {
+            &self.inperm
+        } else {
+            &self.outperm
+        };
+        let self_inperm = if self.inverted {
+            &self.outperm
+        } else {
+            &self.inperm
+        };
+        let other_outperm = if other.inverted {
+            &other.inperm
+        } else {
+            &other.outperm
+        };
+        let other_inperm = if other.inverted {
+            &other.outperm
+        } else {
+            &other.inperm
+        };
 
-        if self_outperm.len() != other_outperm.len()
-            || self_inperm.len() != other_inperm.len()
-        {
+        if self_outperm.len() != other_outperm.len() || self_inperm.len() != other_inperm.len() {
             return false;
         }
         if self_outperm != other_outperm || self_inperm != other_inperm {

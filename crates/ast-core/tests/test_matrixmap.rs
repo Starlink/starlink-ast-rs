@@ -192,7 +192,12 @@ fn matrix_merge_with_permmap_before() {
     let mm = MatrixMap::new(m).unwrap();
 
     // Test via CmpMap simplification (the merge loop tries both directions).
-    let cmp = CmpMap::new(Box::new(pm.clone()), Box::new(mm.clone()), Composition::Series).unwrap();
+    let cmp = CmpMap::new(
+        Box::new(pm.clone()),
+        Box::new(mm.clone()),
+        Composition::Series,
+    )
+    .unwrap();
     let simplified = cmp.simplified().unwrap();
 
     // Should simplify to a single MatrixMap.
@@ -246,7 +251,10 @@ fn matrix_merge_with_inverted_permmap() {
 
     // Treat PermMap as inverted: uses inperm for forward direction.
     let merged = mm.try_merge(&pm, true, false, true);
-    assert!(merged.is_some(), "MatrixMap + inverted PermMap should merge");
+    assert!(
+        merged.is_some(),
+        "MatrixMap + inverted PermMap should merge"
+    );
 
     let pts = PointSet::from_rows([[1.0, 2.0]]);
     let out = merged.unwrap().transform(&pts, true).unwrap();
@@ -267,7 +275,10 @@ fn matrix_no_merge_with_constant_permmap() {
     let pm = PermMap::new(&[2, 1], &[-1, 1], &[99.0]).unwrap();
 
     let merged = mm.try_merge(&pm, true, false, false);
-    assert!(merged.is_none(), "PermMap with constants should not merge into MatrixMap");
+    assert!(
+        merged.is_none(),
+        "PermMap with constants should not merge into MatrixMap"
+    );
 }
 
 /// Diagonal MatrixMap followed by WinMap merges into a single WinMap.
@@ -303,7 +314,10 @@ fn non_diagonal_matrix_no_merge_with_winmap() {
     let wm = WinMap::new(&[1.0, 1.0], &[1.0, 1.0]).unwrap();
 
     let merged = mm.try_merge(&wm, true, false, false);
-    assert!(merged.is_none(), "non-diagonal MatrixMap should not merge with WinMap");
+    assert!(
+        merged.is_none(),
+        "non-diagonal MatrixMap should not merge with WinMap"
+    );
 }
 
 /// Diagonal MatrixMap + WinMap with non-trivial scales.

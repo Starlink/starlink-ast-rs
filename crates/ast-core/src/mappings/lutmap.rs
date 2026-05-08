@@ -265,9 +265,7 @@ impl LutMap {
         // bracket values and a neighbour also has that value, the inverse
         // is undetermined. Matches C lutmap.c:1669-1679.
         if v_lo == y {
-            if (low > 0 && !is_bad(self.lut[low - 1]) && self.lut[low - 1] == y)
-                || v_hi == y
-            {
+            if (low > 0 && !is_bad(self.lut[low - 1]) && self.lut[low - 1] == y) || v_hi == y {
                 return BAD_VALUE;
             }
         } else if v_hi == y

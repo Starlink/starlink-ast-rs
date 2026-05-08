@@ -364,8 +364,7 @@ impl Mapping for MatrixMap {
             }
             let n = a.nrows();
             // Extract effective (shifts, scales) from the WinMap.
-            let (wshifts, wscales) =
-                super::winmap::extract_linear_params(other, other_inv)?;
+            let (wshifts, wscales) = super::winmap::extract_linear_params(other, other_inv)?;
             if wshifts.len() != n {
                 return None;
             }

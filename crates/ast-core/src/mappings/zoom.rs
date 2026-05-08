@@ -103,7 +103,11 @@ impl Mapping for ZoomMap {
         if ax1 != ax2 {
             return Ok(0.0);
         }
-        Ok(if !self.inverted { self.factor } else { 1.0 / self.factor })
+        Ok(if !self.inverted {
+            self.factor
+        } else {
+            1.0 / self.factor
+        })
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -156,7 +160,9 @@ impl Mapping for ZoomMap {
             for i in 0..n2 {
                 diag[[n1 + i, n1 + i]] = f2;
             }
-            return MatrixMap::new(diag).ok().map(|mm| Box::new(mm) as DynMapping);
+            return MatrixMap::new(diag)
+                .ok()
+                .map(|mm| Box::new(mm) as DynMapping);
         }
 
         // Fast path: ZoomMap + ZoomMap → ZoomMap (preserves type).

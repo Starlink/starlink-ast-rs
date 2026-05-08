@@ -255,7 +255,10 @@ fn sphmap_inv_fwd_cancels_without_unit_radius() {
     // self_inv=true means self is applied inverted (sph->cart = inverse of SphMap)
     // other_inv=false means other is applied forward (cart->sph = forward of SphMap)
     let merged = s1.try_merge(&s2, true, true, false);
-    assert!(merged.is_some(), "inv->fwd should cancel without UnitRadius");
+    assert!(
+        merged.is_some(),
+        "inv->fwd should cancel without UnitRadius"
+    );
     assert!(merged.unwrap().as_any().is::<UnitMap>());
 }
 

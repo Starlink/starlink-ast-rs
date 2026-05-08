@@ -76,7 +76,11 @@ impl Mapping for ShiftMap {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
             for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
-                *o = if is_bad(v) { BAD_VALUE } else { v + sign * self.shift[j] };
+                *o = if is_bad(v) {
+                    BAD_VALUE
+                } else {
+                    v + sign * self.shift[j]
+                };
             }
         }
         Ok(())
