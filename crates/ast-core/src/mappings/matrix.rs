@@ -545,7 +545,7 @@ impl Serializable for MatrixMap {
 
 /// Check if a square matrix is diagonal (all off-diagonal elements are
 /// zero within `ast_equal` tolerance).
-fn is_diagonal(m: &Array2<f64>) -> bool {
+pub(crate) fn is_diagonal(m: &Array2<f64>) -> bool {
     let n = m.nrows();
     if n != m.ncols() {
         return false;

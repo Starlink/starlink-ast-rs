@@ -7,6 +7,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
+use super::matrix::{MatrixMap, is_diagonal};
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::zoom::ZoomMap;
@@ -291,8 +292,8 @@ fn winmap_effective_params(shifts: &[f64], scales: &[f64], inv: bool) -> (Vec<f6
 /// Extract effective `(shifts, scales)` from a linear mapping,
 /// accounting for inversion.
 ///
-/// Returns `None` if the mapping is not one of `WinMap`, `ZoomMap`, or
-/// `ShiftMap`.
+/// Returns `None` if the mapping is not one of `WinMap`, `ZoomMap`,
+/// `ShiftMap`, or a diagonal `MatrixMap`.
 pub(crate) fn extract_linear_params(
     mapping: &dyn Mapping,
     inv: bool,
@@ -312,6 +313,20 @@ pub(crate) fn extract_linear_params(
             .map(|&s| if inv { -s } else { s })
             .collect();
         return Some((shifts, vec![1.0; sm.nin()]));
+    }
+    if let Some(mm) = mapping.as_any().downcast_ref::<MatrixMap>() {
+        let m = if inv {
+            mm.inverse_matrix()?
+        } else {
+            mm.forward_matrix()
+        };
+        if !is_diagonal(m) {
+            return None;
+        }
+        let n = m.nrows();
+        let shifts = vec![0.0; n];
+        let scales: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
+        return Some((shifts, scales));
     }
     None
 }

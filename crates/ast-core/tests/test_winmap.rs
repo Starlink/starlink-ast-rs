@@ -262,3 +262,41 @@ fn winmap_parallel_merge_with_zoommap() {
     assert_eq!(actual.point(0)[1], 3.0 * 7.0); // 21.0
     assert_eq!(actual.point(0)[2], 3.0 * 9.0); // 27.0
 }
+
+#[test]
+fn winmap_merge_with_diagonal_matrix() {
+    use ast_core::mappings::{MatrixMap, WinMap};
+    use ndarray::array;
+
+    // WinMap [shift=1, scale=2] for each axis, followed by diagonal MatrixMap [[3,0],[0,4]]
+    let wm = WinMap::new(&[1.0, 1.0], &[2.0, 2.0]).unwrap();
+    let m = array![[3.0, 0.0], [0.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    // Should merge: WinMap then MatrixMap = (shift=1, scale=2) then (scale=3 or 4)
+    // Combined: shift = 3*1 = 3, scale = 3*2 = 6 for axis 0
+    //           shift = 4*1 = 4, scale = 4*2 = 8 for axis 1
+    let merged = wm.try_merge(&mm, true, false, false);
+    assert!(merged.is_some());
+
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let wm_out = wm.transform(&pts, true).unwrap();
+    let expected = mm.transform(&wm_out, true).unwrap();
+    let actual = merged.unwrap().transform(&pts, true).unwrap();
+    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+}
+
+#[test]
+fn winmap_no_merge_with_full_matrix() {
+    use ast_core::mappings::{MatrixMap, WinMap};
+    use ndarray::array;
+
+    // Non-diagonal matrix should NOT merge
+    let wm = WinMap::new(&[1.0, 1.0], &[2.0, 2.0]).unwrap();
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    let merged = wm.try_merge(&mm, true, false, false);
+    assert!(merged.is_none());
+}
