@@ -220,3 +220,45 @@ fn winmap_bad_per_axis() {
     assert_eq!(out_inv.point(0)[1], (20.0 - 2.0) / 3.0); // 6.0
     assert_eq!(out_inv.point(0)[2], (31.0 - 3.0) / 4.0); // 7.0
 }
+
+#[test]
+fn winmap_parallel_merge() {
+    use ast_core::mappings::WinMap;
+
+    let w1 = WinMap::new(&[1.0, 2.0], &[3.0, 4.0]).unwrap();
+    let w2 = WinMap::new(&[5.0], &[6.0]).unwrap();
+
+    // Parallel merge: result should be a 3-axis WinMap.
+    let merged = w1.try_merge(&w2, false, false, false);
+    assert!(merged.is_some());
+    let m = merged.unwrap();
+    assert_eq!(m.nin(), 3);
+    assert_eq!(m.nout(), 3);
+
+    // Verify output: w1 on [1,2] then w2 on [3]
+    let pts = PointSet::from_rows([[1.0, 2.0, 3.0]]);
+    let actual = m.transform(&pts, true).unwrap();
+    assert_eq!(actual.point(0)[0], 1.0 + 3.0 * 1.0); // 4.0
+    assert_eq!(actual.point(0)[1], 2.0 + 4.0 * 2.0); // 10.0
+    assert_eq!(actual.point(0)[2], 5.0 + 6.0 * 3.0); // 23.0
+}
+
+#[test]
+fn winmap_parallel_merge_with_zoommap() {
+    use ast_core::mappings::ZoomMap;
+
+    let w = WinMap::new(&[1.0], &[2.0]).unwrap();
+    let z = ZoomMap::new(2, 3.0).unwrap();
+
+    // WinMap parallel with ZoomMap
+    let merged = w.try_merge(&z, false, false, false);
+    assert!(merged.is_some());
+    let m = merged.unwrap();
+    assert_eq!(m.nin(), 3);
+
+    let pts = PointSet::from_rows([[5.0, 7.0, 9.0]]);
+    let actual = m.transform(&pts, true).unwrap();
+    assert_eq!(actual.point(0)[0], 1.0 + 2.0 * 5.0); // 11.0
+    assert_eq!(actual.point(0)[1], 3.0 * 7.0); // 21.0
+    assert_eq!(actual.point(0)[2], 3.0 * 9.0); // 27.0
+}

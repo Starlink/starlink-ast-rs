@@ -218,7 +218,16 @@ impl Mapping for WinMap {
         other_inv: bool,
     ) -> Option<DynMapping> {
         if !series {
-            return None;
+            // Parallel: concatenate axis terms from both mappings.
+            let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self_inv);
+            let (s2, c2) = extract_linear_params(other, other_inv)?;
+            let mut new_shifts = s1;
+            new_shifts.extend(s2);
+            let mut new_scales = c1;
+            new_scales.extend(c2);
+            return WinMap::new(&new_shifts, &new_scales)
+                .ok()
+                .map(|m| Box::new(m) as DynMapping);
         }
 
         // Extract effective parameters for self (applied first).
