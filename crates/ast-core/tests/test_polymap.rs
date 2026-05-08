@@ -896,6 +896,190 @@ fn polymap_simplified_consolidates_multi_output() {
 }
 
 // ---------------------------------------------------------------------------
+// Affine decomposition in simplified()
+// ---------------------------------------------------------------------------
+
+#[test]
+fn polymap_linear_decomposes_to_matrixmap() {
+    use ast_core::mappings::MatrixMap;
+
+    // Purely linear: out1 = 2*x + 3*y, out2 = 4*x + 5*y
+    let terms = vec![
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![0, 1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 4.0,
+            powers: vec![1, 0],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let pm = PolyMap::new(2, 2, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<MatrixMap>(),
+        "Expected MatrixMap, got {:?}",
+        s
+    );
+
+    let pts = PointSet::from_rows(vec![vec![1.0, 2.0]]);
+    let expected = pm.transform(&pts, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+}
+
+#[test]
+fn polymap_affine_decomposes() {
+    // Affine: out1 = 10 + 2*x, out2 = 20 + 3*y
+    let terms = vec![
+        PolyTerm {
+            coeff: 10.0,
+            powers: vec![0, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 20.0,
+            powers: vec![0, 0],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let pm = PolyMap::new(2, 2, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+    // Should NOT be a PolyMap anymore
+    assert!(!s.as_any().is::<PolyMap>(), "Should decompose from PolyMap");
+
+    let pts = PointSet::from_rows(vec![vec![3.0, 4.0]]);
+    let expected = pm.transform(&pts, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+}
+
+#[test]
+fn polymap_affine_diagonal_decomposes_to_winmap() {
+    use ast_core::mappings::WinMap;
+
+    // Diagonal affine: out1 = 10 + 2*x, out2 = 20 + 3*y
+    let terms = vec![
+        PolyTerm {
+            coeff: 10.0,
+            powers: vec![0, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 20.0,
+            powers: vec![0, 0],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let pm = PolyMap::new(2, 2, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<WinMap>(),
+        "Expected WinMap for diagonal affine, got {:?}",
+        s
+    );
+}
+
+#[test]
+fn polymap_affine_general_decomposes_to_cmpmap() {
+    use ast_core::mappings::CmpMap;
+
+    // General affine (non-diagonal): out1 = 10 + 2*x + 3*y, out2 = 20 + 4*x + 5*y
+    let terms = vec![
+        PolyTerm {
+            coeff: 10.0,
+            powers: vec![0, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![0, 1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 20.0,
+            powers: vec![0, 0],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 4.0,
+            powers: vec![1, 0],
+            out_axis: 2,
+        },
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let pm = PolyMap::new(2, 2, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<CmpMap>(),
+        "Expected CmpMap for general affine, got {:?}",
+        s
+    );
+
+    let pts = PointSet::from_rows(vec![vec![1.0, 2.0]]);
+    let expected = pm.transform(&pts, true).unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
+    assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
+}
+
+#[test]
+fn polymap_nonlinear_stays_polymap() {
+    // Quadratic term: out = x^2
+    let terms = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![2],
+        out_axis: 1,
+    }];
+    let pm = PolyMap::new(1, 1, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+    assert!(s.as_any().is::<PolyMap>());
+}
+
+// ---------------------------------------------------------------------------
 // Bulk Newton-Raphson inverse: BAD_VALUE propagation in bulk
 // ---------------------------------------------------------------------------
 

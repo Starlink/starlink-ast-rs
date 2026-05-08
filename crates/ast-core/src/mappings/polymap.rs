@@ -10,8 +10,11 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, point_has_bad};
+use super::matrix::MatrixMap;
 use super::rate::numeric_rate;
+use super::shift::ShiftMap;
 use super::unit::UnitMap;
+use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
 
 /// A single polynomial term: `coeff * x0^p0 * x1^p1 * ... * xN^pN`.
@@ -1036,6 +1039,78 @@ impl Mapping for PolyMap {
         }
         // Remove zero-coefficient terms.
         consolidated.retain(|t| t.coeff.abs() > 1e-30);
+
+        // Check if all remaining terms are affine (constant or linear).
+        // A term is constant if sum of powers == 0, linear if sum == 1 with
+        // exactly one power == 1.
+        let nin = self.nin();
+        let nout = self.nout();
+        let is_affine = !consolidated.is_empty()
+            && nin > 0
+            && nout > 0
+            && consolidated.iter().all(|t| {
+                let power_sum: usize = t.powers.iter().sum();
+                power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
+            });
+
+        if is_affine {
+            let mut shifts = vec![0.0; nout];
+            let mut matrix = vec![0.0; nout * nin];
+
+            for term in &consolidated {
+                let out_idx = term.out_axis - 1;
+                let power_sum: usize = term.powers.iter().sum();
+                if power_sum == 0 {
+                    shifts[out_idx] += term.coeff;
+                } else {
+                    let in_idx = term.powers.iter().position(|&p| p == 1).unwrap();
+                    matrix[out_idx * nin + in_idx] += term.coeff;
+                }
+            }
+
+            let all_shifts_zero = shifts.iter().all(|&s| s.abs() < 1e-30);
+
+            if all_shifts_zero {
+                // Pure linear: just MatrixMap.
+                if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
+                    if let Ok(mm) = MatrixMap::new(m) {
+                        return Ok(Box::new(mm));
+                    }
+                }
+            } else {
+                // Affine: check if it can be a WinMap (diagonal matrix,
+                // square case).
+                let is_diagonal = nin == nout
+                    && (0..nout).all(|i| {
+                        (0..nin).all(|j| {
+                            if i == j {
+                                true
+                            } else {
+                                matrix[i * nin + j].abs() < 1e-30
+                            }
+                        })
+                    });
+
+                if is_diagonal {
+                    let scales: Vec<f64> = (0..nout).map(|i| matrix[i * nin + i]).collect();
+                    if let Ok(wm) = WinMap::new(&shifts, &scales) {
+                        return Ok(Box::new(wm));
+                    }
+                } else {
+                    // General affine: MatrixMap then ShiftMap in series.
+                    if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
+                        if let Ok(mm) = MatrixMap::new(m) {
+                            let sm = ShiftMap::new(shifts);
+                            if let Ok(cmp) =
+                                CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series)
+                            {
+                                return Ok(Box::new(cmp));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // If nothing changed, return self unchanged.
         if consolidated.len() == fwd_terms.len() {

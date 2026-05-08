@@ -1709,12 +1709,19 @@ mod tests {
     fn simplify_polymap_inverse_cancels() {
         use crate::mappings::{PolyMap, PolyTerm};
 
-        // Simple linear polynomial: y = 2*x
-        let terms = vec![PolyTerm {
-            coeff: 2.0,
-            powers: vec![1],
-            out_axis: 1,
-        }];
+        // Non-linear polynomial: y = x^2 + 3*x (not decomposed to MatrixMap)
+        let terms = vec![
+            PolyTerm {
+                coeff: 1.0,
+                powers: vec![2],
+                out_axis: 1,
+            },
+            PolyTerm {
+                coeff: 3.0,
+                powers: vec![1],
+                out_axis: 1,
+            },
+        ];
         let fwd = PolyMap::new(1, 1, &terms, None).unwrap();
         let mut inv = PolyMap::new(1, 1, &terms, None).unwrap();
         inv.invert();
