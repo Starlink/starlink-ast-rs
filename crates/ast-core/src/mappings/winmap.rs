@@ -226,6 +226,19 @@ impl Mapping for WinMap {
                     return Ok(Box::new(zm));
                 }
             }
+            // Non-uniform scales with zero shifts → diagonal MatrixMap
+            let scales: Vec<f64> = if self.inverted {
+                self.scales.iter().map(|&s| 1.0 / s).collect()
+            } else {
+                self.scales.clone()
+            };
+            let mut diag = ndarray::Array2::<f64>::zeros((n, n));
+            for i in 0..n {
+                diag[[i, i]] = scales[i];
+            }
+            if let Ok(mm) = MatrixMap::new(diag) {
+                return Ok(Box::new(mm));
+            }
         }
         Ok(Box::new(self.clone()))
     }
