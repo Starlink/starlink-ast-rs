@@ -59,12 +59,43 @@ fn matrix_map_non_square_inverse_error() {
     assert!(mm.transform(&pts, false).is_err());
 }
 
-/// BAD_VALUE in any input coord → whole output point is BAD_VALUE.
+/// BAD_VALUE in an input coord with non-zero coefficient → that output is BAD.
+/// But zero-coefficient columns mask BAD (per-axis handling).
 #[test]
 fn matrix_map_bad_value_propagation() {
     let m = array![[1.0_f64, 0.0], [0.0, 1.0]];
     let mm = MatrixMap::new(m).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 3.0]]);
+    let out = mm.transform(&pts, true).unwrap();
+    // Identity: row 0 depends on input 0 (BAD) → BAD
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    // Identity: row 1 depends on input 1 (3.0) → 3.0
+    assert_eq!(out.point(0)[1], 3.0);
+}
+
+/// Per-axis BAD handling: zero coefficients mask BAD inputs.
+#[test]
+fn matrix_bad_per_axis_zero_coeff() {
+    // 2x3 matrix where row 0 has a zero coefficient on input 1.
+    // Row 0: [1, 0, 2]  => output[0] = 1*x + 0*y + 2*z (y is masked)
+    // Row 1: [0, 1, 1]  => output[1] = 0*x + 1*y + 1*z
+    let m = array![[1.0_f64, 0.0, 2.0], [0.0, 1.0, 1.0]];
+    let mm = MatrixMap::new(m).unwrap();
+
+    // Input with y=BAD: output[0] should still compute (zero coeff masks BAD),
+    // output[1] should be BAD (non-zero coeff on y).
+    let pts = PointSet::from_rows([[3.0, BAD_VALUE, 5.0]]);
+    let out = mm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 1.0 * 3.0 + 0.0 + 2.0 * 5.0); // 13.0
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+}
+
+/// All inputs BAD → all outputs BAD.
+#[test]
+fn matrix_bad_all_inputs_bad() {
+    let m = array![[1.0_f64, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let pts = PointSet::from_rows([[BAD_VALUE, BAD_VALUE]]);
     let out = mm.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], BAD_VALUE);
     assert_eq!(out.point(0)[1], BAD_VALUE);

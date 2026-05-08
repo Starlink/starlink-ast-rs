@@ -12,7 +12,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::helpers::{ast_equal, is_bad, point_has_bad};
+use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::zoom::ZoomMap;
@@ -90,21 +90,30 @@ impl MatrixMap {
 
     /// Apply the matrix `m` (shape `nout × nin`) to each point in `pts`
     /// and write results into `out`.
+    ///
+    /// Per-axis BAD handling: for each output row, only inputs with non-zero
+    /// coefficients matter. If an input is BAD but its coefficient is zero,
+    /// it is masked and does not propagate BAD.
     fn apply_matrix(m: &Array2<f64>, pts: &PointSet, out: &mut PointSet) {
         let nout = m.nrows();
+        let nin = m.ncols();
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
-            if point_has_bad(inp) {
-                outp.fill(BAD_VALUE);
-            } else {
-                for row in 0..nout {
-                    let mut sum = 0.0;
-                    for (col, &x) in inp.iter().enumerate() {
-                        sum += m[[row, col]] * x;
+            for row in 0..nout {
+                let mut sum = 0.0;
+                let mut bad = false;
+                for col in 0..nin {
+                    let coeff = m[[row, col]];
+                    if coeff != 0.0 {
+                        if is_bad(inp[col]) {
+                            bad = true;
+                            break;
+                        }
+                        sum += coeff * inp[col];
                     }
-                    outp[row] = sum;
                 }
+                outp[row] = if bad { BAD_VALUE } else { sum };
             }
         }
     }
