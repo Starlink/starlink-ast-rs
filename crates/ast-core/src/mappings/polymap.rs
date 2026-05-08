@@ -1007,7 +1007,57 @@ impl Mapping for PolyMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
+        // Determine which terms are the "forward" set in the current orientation.
+        let (fwd_terms, inv_terms) = if self.inverted {
+            (
+                self.inverse.as_deref().unwrap_or(&[]),
+                Some(self.forward.as_slice()),
+            )
+        } else {
+            (self.forward.as_slice(), self.inverse.as_deref())
+        };
+
+        // Consolidate forward terms: merge duplicates with same (powers, out_axis).
+        let mut consolidated: Vec<PolyTerm> = Vec::new();
+        for term in fwd_terms {
+            if let Some(existing) = consolidated
+                .iter_mut()
+                .find(|t| t.out_axis == term.out_axis && t.powers == term.powers)
+            {
+                existing.coeff += term.coeff;
+            } else {
+                consolidated.push(term.clone());
+            }
+        }
+        // Remove zero-coefficient terms.
+        consolidated.retain(|t| t.coeff.abs() > 1e-30);
+
+        // If nothing changed, return self unchanged.
+        if consolidated.len() == fwd_terms.len() {
+            return Ok(Box::new(self.clone()));
+        }
+
+        // Build a new PolyMap with the consolidated terms.
+        // We need to map back to the non-inverted representation for the constructor.
+        let (new_fwd, new_inv) = if self.inverted {
+            (inv_terms.unwrap_or(&[]), Some(consolidated.as_slice()))
+        } else {
+            (consolidated.as_slice(), inv_terms)
+        };
+
+        let mut pm = PolyMap::new(self.nin, self.nout, new_fwd, new_inv)?;
+
+        // Preserve attributes.
+        if self.iter_inverse {
+            pm.set_iter_inverse(true);
+            pm.set_niter_inverse(self.niter_inverse);
+            pm.set_tol_inverse(self.tol_inverse);
+        }
+        if self.inverted {
+            pm.invert();
+        }
+
+        Ok(Box::new(pm))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

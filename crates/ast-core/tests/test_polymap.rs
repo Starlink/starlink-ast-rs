@@ -783,6 +783,119 @@ fn polymap_bulk_nr_inverse_2d() {
 }
 
 // ---------------------------------------------------------------------------
+// Coefficient consolidation in simplified()
+// ---------------------------------------------------------------------------
+
+#[test]
+fn polymap_removes_zero_terms() {
+    // Two terms that cancel: 2*x + (-2)*x → 0
+    let terms = vec![
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: -2.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+    ];
+    let pm = PolyMap::new(1, 1, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+
+    // The result should produce 0 for any input.
+    let pts = PointSet::from_rows(vec![vec![7.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 0.0);
+}
+
+#[test]
+fn polymap_consolidates_duplicate_terms() {
+    // Two terms with same powers: 2*x^2 + 3*x^2 → 5*x^2
+    let terms = vec![
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![2],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![2],
+            out_axis: 1,
+        },
+    ];
+    let pm = PolyMap::new(1, 1, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+
+    let pts = PointSet::from_rows(vec![vec![3.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    // 5 * 3^2 = 45
+    assert_eq!(out.point(0)[0], 45.0);
+}
+
+#[test]
+fn polymap_simplified_no_change_when_no_duplicates() {
+    // No duplicates: y = 2x^2 + 3x + 1
+    let terms = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![2],
+            out_axis: 1,
+        },
+    ];
+    let pm = PolyMap::new(1, 1, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+
+    // f(2) = 2*4 + 3*2 + 1 = 15
+    let pts = PointSet::from_rows(vec![vec![2.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 15.0);
+}
+
+#[test]
+fn polymap_simplified_consolidates_multi_output() {
+    // 2D->2D with duplicate terms on different outputs
+    let terms = vec![
+        // out1: 2*x + 3*x = 5*x
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 3.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        // out2: 4*y (no duplicates)
+        PolyTerm {
+            coeff: 4.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let pm = PolyMap::new(2, 2, &terms, None).unwrap();
+    let s = pm.simplified().unwrap();
+
+    // (3, 2) -> out1 = 5*3 = 15, out2 = 4*2 = 8
+    let pts = PointSet::from_rows(vec![vec![3.0, 2.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 15.0).abs() < 1e-12);
+    assert!((out.point(0)[1] - 8.0).abs() < 1e-12);
+}
+
+// ---------------------------------------------------------------------------
 // Bulk Newton-Raphson inverse: BAD_VALUE propagation in bulk
 // ---------------------------------------------------------------------------
 
