@@ -2198,8 +2198,12 @@ mod tests {
 
     #[test]
     fn series_in_parallel_length_mismatch_no_change() {
+        use crate::mappings::MatrixMap;
         // (Zoom(1,2) ; Zoom(1,3) ; Zoom(1,4)) || (Zoom(1,5) ; Zoom(1,6))
-        // Different series lengths → skip restructuring.
+        // Different series lengths → cross-composition restructuring skipped.
+        // However, each series merges individually (2*3*4=24, 5*6=30), then
+        // the parallel of two ZoomMaps with different factors merges into a
+        // diagonal MatrixMap.
         let z1 = ZoomMap::new(1, 2.0).unwrap();
         let z2 = ZoomMap::new(1, 3.0).unwrap();
         let z3 = ZoomMap::new(1, 4.0).unwrap();
@@ -2213,8 +2217,10 @@ mod tests {
         let parallel = CmpMap::new(dyn_map(ser1), dyn_map(ser2), Composition::Parallel).unwrap();
         let result = simplify_mapping(&parallel).unwrap();
 
-        // Should still be a CmpMap (lengths 3 vs 2 don't match).
-        assert!(result.as_any().is::<CmpMap>());
+        // Series merge individually, then parallel ZoomMaps with different
+        // factors produce a diagonal MatrixMap.
+        assert!(result.as_any().is::<MatrixMap>());
+        assert_eq!(result.nin(), 2);
     }
 
     #[test]

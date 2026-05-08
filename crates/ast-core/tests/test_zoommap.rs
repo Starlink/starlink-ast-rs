@@ -1,6 +1,6 @@
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, ZoomMap};
+use ast_core::mappings::{Mapping, MatrixMap, ZoomMap};
 
 #[test]
 fn zoom_map_dimensions() {
@@ -96,4 +96,35 @@ fn zoom_bad_per_axis() {
     assert_eq!(out_inv.point(0)[0], BAD_VALUE);
     assert_eq!(out_inv.point(0)[1], 2.0);
     assert_eq!(out_inv.point(0)[2], 3.0);
+}
+
+#[test]
+fn zoom_parallel_merge_different_factors() {
+    let z1 = ZoomMap::new(1, 2.0).unwrap();
+    let z2 = ZoomMap::new(1, 3.0).unwrap();
+
+    let merged = z1.try_merge(&z2, false, false, false);
+    assert!(merged.is_some());
+    let m = merged.unwrap();
+    // Different factors → diagonal MatrixMap
+    assert!(m.as_any().is::<MatrixMap>());
+    assert_eq!(m.nin(), 2);
+
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 10.0);
+    assert_eq!(out.point(0)[1], 21.0);
+}
+
+#[test]
+fn zoom_parallel_merge_same_factor() {
+    let z1 = ZoomMap::new(2, 5.0).unwrap();
+    let z2 = ZoomMap::new(1, 5.0).unwrap();
+
+    let merged = z1.try_merge(&z2, false, false, false);
+    assert!(merged.is_some());
+    // Same factor → should be a ZoomMap with ncoord=3
+    let m = merged.unwrap();
+    assert!(m.as_any().is::<ZoomMap>());
+    assert_eq!(m.nin(), 3);
 }

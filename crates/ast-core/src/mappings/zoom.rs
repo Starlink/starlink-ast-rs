@@ -7,6 +7,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
+use super::matrix::MatrixMap;
 use super::unit::UnitMap;
 use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
@@ -127,7 +128,35 @@ impl Mapping for ZoomMap {
         other_inv: bool,
     ) -> Option<DynMapping> {
         if !series {
-            return None;
+            // Parallel merge: ZoomMap alongside ZoomMap.
+            let other_zoom = other.as_any().downcast_ref::<ZoomMap>()?;
+            let f1 = if self_inv {
+                1.0 / self.factor
+            } else {
+                self.factor
+            };
+            let f2 = if other_inv {
+                1.0 / other_zoom.factor
+            } else {
+                other_zoom.factor
+            };
+            let n1 = self.ncoord;
+            let n2 = other_zoom.ncoord;
+            let n = n1 + n2;
+            if ast_equal(f1, f2) {
+                // Same factor → wider ZoomMap.
+                return ZoomMap::new(n, f1).ok().map(|z| Box::new(z) as DynMapping);
+            }
+            // Different factors → diagonal MatrixMap.
+            use ndarray::Array2;
+            let mut diag = Array2::<f64>::zeros((n, n));
+            for i in 0..n1 {
+                diag[[i, i]] = f1;
+            }
+            for i in 0..n2 {
+                diag[[n1 + i, n1 + i]] = f2;
+            }
+            return MatrixMap::new(diag).ok().map(|mm| Box::new(mm) as DynMapping);
         }
 
         // Fast path: ZoomMap + ZoomMap → ZoomMap (preserves type).
