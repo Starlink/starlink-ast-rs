@@ -53,6 +53,15 @@ fn shift_map_rate() {
 }
 
 #[test]
+fn shift_rate_analytical() {
+    let sm = ShiftMap::new(&[10.0, 20.0]);
+    assert_eq!(sm.rate(&[1.0, 2.0], 1, 1).unwrap(), 1.0);
+    assert_eq!(sm.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
+    assert_eq!(sm.rate(&[1.0, 2.0], 2, 2).unwrap(), 1.0);
+    assert_eq!(sm.rate(&[1.0, 2.0], 2, 1).unwrap(), 0.0);
+}
+
+#[test]
 fn shift_bad_per_axis() {
     let sm = ShiftMap::new(&[10.0, 20.0, 30.0]);
     let pts = PointSet::from_rows([[1.0, BAD_VALUE, 3.0]]);

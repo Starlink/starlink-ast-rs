@@ -14,7 +14,6 @@ use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapp
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
-use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
@@ -300,8 +299,14 @@ impl Mapping for PermMap {
         }
     }
 
-    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        numeric_rate(self, at, ax1, ax2)
+    fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        let perm = if self.inverted { &self.inperm } else { &self.outperm };
+        let idx = ax1 - 1;
+        if idx < perm.len() && perm[idx] == ax2 as i64 {
+            Ok(1.0)
+        } else {
+            Ok(0.0)
+        }
     }
 
     fn try_merge(

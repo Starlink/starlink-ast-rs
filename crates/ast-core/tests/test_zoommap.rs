@@ -67,6 +67,20 @@ fn zoom_map_rate() {
 }
 
 #[test]
+fn zoom_rate_analytical() {
+    let zm = ZoomMap::new(2, 3.0).unwrap();
+    assert_eq!(zm.rate(&[1.0, 2.0], 1, 1).unwrap(), 3.0);
+    assert_eq!(zm.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
+    assert_eq!(zm.rate(&[1.0, 2.0], 2, 2).unwrap(), 3.0);
+
+    let mut zm_inv = ZoomMap::new(2, 3.0).unwrap();
+    zm_inv.invert();
+    let r = zm_inv.rate(&[1.0, 2.0], 1, 1).unwrap();
+    assert!((r - 1.0 / 3.0).abs() < 1e-15);
+    assert_eq!(zm_inv.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
+}
+
+#[test]
 fn zoom_bad_per_axis() {
     let zm = ZoomMap::new(3, 2.0).unwrap();
     // Only axis 1 is BAD; axes 0 and 2 should still compute.

@@ -99,3 +99,31 @@ fn perm_map_non_identity_not_simplified() {
     // Should still swap.
     assert_eq!(out.point(0), &[2.0, 1.0]);
 }
+
+/// Analytical rate for PermMap: 1.0 if output axis depends on input axis, else 0.0.
+#[test]
+fn perm_rate_analytical() {
+    // outperm: [2, 1] => out[0]=in[1], out[1]=in[0]
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    // rate(output 1, input 1) = 0 (output 1 doesn't depend on input 1)
+    assert_eq!(pm.rate(&[0.0, 0.0], 1, 1).unwrap(), 0.0);
+    // rate(output 1, input 2) = 1 (output 1 = input 2)
+    assert_eq!(pm.rate(&[0.0, 0.0], 1, 2).unwrap(), 1.0);
+    // rate(output 2, input 1) = 1 (output 2 = input 1)
+    assert_eq!(pm.rate(&[0.0, 0.0], 2, 1).unwrap(), 1.0);
+    // rate(output 2, input 2) = 0
+    assert_eq!(pm.rate(&[0.0, 0.0], 2, 2).unwrap(), 0.0);
+}
+
+/// Analytical rate for inverted PermMap uses inperm.
+#[test]
+fn perm_rate_analytical_inverted() {
+    // outperm: [2, 1], inperm: [2, 1] (swap both ways)
+    let mut pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    pm.invert();
+    // Inverted: uses inperm [2, 1] => same swap pattern
+    assert_eq!(pm.rate(&[0.0, 0.0], 1, 1).unwrap(), 0.0);
+    assert_eq!(pm.rate(&[0.0, 0.0], 1, 2).unwrap(), 1.0);
+    assert_eq!(pm.rate(&[0.0, 0.0], 2, 1).unwrap(), 1.0);
+    assert_eq!(pm.rate(&[0.0, 0.0], 2, 2).unwrap(), 0.0);
+}

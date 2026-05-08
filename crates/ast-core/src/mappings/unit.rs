@@ -5,7 +5,6 @@ use crate::error::AstResult;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::rate::numeric_rate;
 use super::{DynMapping, Mapping};
 
 /// The identity mapping: every output coordinate equals the corresponding input.
@@ -62,8 +61,8 @@ impl Mapping for UnitMap {
         Ok(Box::new(self.clone()))
     }
 
-    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        numeric_rate(self, at, ax1, ax2)
+    fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        Ok(if ax1 == ax2 { 1.0 } else { 0.0 })
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

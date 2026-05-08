@@ -13,7 +13,6 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
-use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
@@ -292,8 +291,22 @@ impl Mapping for MatrixMap {
         None
     }
 
-    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        numeric_rate(self, at, ax1, ax2)
+    fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        let m = if self.inverted {
+            match &self.inverse {
+                Some(inv) => inv,
+                None => return Ok(BAD_VALUE),
+            }
+        } else {
+            &self.matrix
+        };
+        let row = ax1 - 1;
+        let col = ax2 - 1;
+        if row < m.nrows() && col < m.ncols() {
+            Ok(m[[row, col]])
+        } else {
+            Ok(0.0)
+        }
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

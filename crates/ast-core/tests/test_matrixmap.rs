@@ -124,3 +124,28 @@ fn matrix_map_simplified_non_identity_preserved() {
     assert!((out.point(0)[0] - 2.0).abs() < 1e-12);
     assert!((out.point(0)[1] - 3.0).abs() < 1e-12);
 }
+
+/// Analytical rate for MatrixMap: rate(ax1, ax2) = matrix[ax1-1, ax2-1].
+#[test]
+fn matrix_rate_analytical() {
+    let m = array![[1.0, 2.0], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    // rate(ax1=output, ax2=input) = matrix[ax1-1, ax2-1]
+    assert_eq!(mm.rate(&[0.0, 0.0], 1, 1).unwrap(), 1.0);
+    assert_eq!(mm.rate(&[0.0, 0.0], 1, 2).unwrap(), 2.0);
+    assert_eq!(mm.rate(&[0.0, 0.0], 2, 1).unwrap(), 3.0);
+    assert_eq!(mm.rate(&[0.0, 0.0], 2, 2).unwrap(), 4.0);
+}
+
+/// Analytical rate for inverted MatrixMap uses the inverse matrix.
+#[test]
+fn matrix_rate_analytical_inverted() {
+    // [[2, 0], [0, 4]] => inverse is [[0.5, 0], [0, 0.25]]
+    let m = array![[2.0, 0.0], [0.0, 4.0]];
+    let mut mm = MatrixMap::new(m).unwrap();
+    mm.invert();
+    assert!((mm.rate(&[0.0, 0.0], 1, 1).unwrap() - 0.5).abs() < 1e-15);
+    assert_eq!(mm.rate(&[0.0, 0.0], 1, 2).unwrap(), 0.0);
+    assert_eq!(mm.rate(&[0.0, 0.0], 2, 1).unwrap(), 0.0);
+    assert!((mm.rate(&[0.0, 0.0], 2, 2).unwrap() - 0.25).abs() < 1e-15);
+}

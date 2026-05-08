@@ -61,3 +61,13 @@ fn unit_map_rate() {
     let r = m.rate(&[1.0, 1.0], 1, 2).unwrap();
     assert!(r.abs() < 1e-6);
 }
+
+#[test]
+fn unit_rate_analytical() {
+    let u = UnitMap::new(3);
+    assert_eq!(u.rate(&[1.0, 2.0, 3.0], 1, 1).unwrap(), 1.0);
+    assert_eq!(u.rate(&[1.0, 2.0, 3.0], 1, 2).unwrap(), 0.0);
+    assert_eq!(u.rate(&[1.0, 2.0, 3.0], 2, 2).unwrap(), 1.0);
+    assert_eq!(u.rate(&[1.0, 2.0, 3.0], 3, 1).unwrap(), 0.0);
+    assert_eq!(u.rate(&[1.0, 2.0, 3.0], 3, 3).unwrap(), 1.0);
+}

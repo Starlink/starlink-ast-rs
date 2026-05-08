@@ -7,7 +7,6 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
-use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
@@ -99,8 +98,11 @@ impl Mapping for ZoomMap {
         }
     }
 
-    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        numeric_rate(self, at, ax1, ax2)
+    fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        if ax1 != ax2 {
+            return Ok(0.0);
+        }
+        Ok(if !self.inverted { self.factor } else { 1.0 / self.factor })
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
