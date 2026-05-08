@@ -281,6 +281,38 @@ impl TimeCvtType {
         }
     }
 
+    /// Human-readable descriptions for each serialised argument slot.
+    ///
+    /// The slice length matches `szargs()`. Used as comments in the Native
+    /// serialisation format. Derived (not stored) slots use empty strings.
+    pub fn arg_descriptions(&self) -> &'static [&'static str] {
+        match self {
+            Self::MjdToMjd | Self::MjdToJd | Self::JdToMjd => {
+                &["Zero point for input", "Zero point for output", ""]
+            }
+            Self::MjdToBep | Self::BepToMjd | Self::MjdToJep | Self::JepToMjd => {
+                &["Zero point for input", "Zero point for output", "", ""]
+            }
+            Self::TaiToUtc | Self::UtcToTai => &["UTC offset", "TAI offset"],
+            Self::TaiToTt | Self::TtToTai => &["MJD offset"],
+            Self::TcgToTt | Self::TtToTcg => &["MJD offset", "TCG offset"],
+            Self::TcbToTdb | Self::TdbToTcb => &["MJD offset", "TCB offset"],
+            Self::TdbToTt | Self::TtToTdb => &[
+                "MJD offset",
+                "Longitude",
+                "Latitude",
+                "Altitude",
+                "Clock correction",
+                "",
+                "",
+            ],
+            Self::UtToGmst | Self::GmstToUt => &["MJD offset"],
+            Self::GmstToLmst | Self::LmstToGmst => &["MJD offset", "Longitude", "Latitude"],
+            Self::LastToLmst | Self::LmstToLast => &["MJD offset", "Longitude", "Latitude"],
+            Self::UtToUtc | Self::UtcToUt | Self::LtToUtc | Self::UtcToLt => &["MJD offset"],
+        }
+    }
+
     /// Human-readable description for serialisation comments.
     pub fn description(&self) -> &'static str {
         match self {
@@ -1321,7 +1353,7 @@ impl Serializable for TimeMap {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Sequence of time coordinate conversions".to_string());
+        node.class_comment = Some("Conversion between time coordinate systems".to_string());
 
         // Mapping base attributes.
         write_mapping_base(&mut node, self);
@@ -1349,12 +1381,17 @@ impl Serializable for TimeMap {
                     _ => None,
                 };
                 let szargs = cvt.cvt_type.szargs();
+                let arg_descs = cvt.cvt_type.arg_descriptions();
                 for ext_j in 0..szargs {
                     let int_j = order.map_or(ext_j, |o| o[ext_j]);
                     let val = cvt.args[int_j];
                     if !is_bad(val) {
                         let letter = arg_letter(ext_j);
-                        node.push_double(&format!("Time{idx}{letter}"), val, None::<String>);
+                        let comment = arg_descs
+                            .get(ext_j)
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
+                        node.push_double(&format!("Time{idx}{letter}"), val, comment);
                     }
                 }
             }

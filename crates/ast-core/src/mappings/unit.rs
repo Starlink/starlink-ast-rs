@@ -60,7 +60,11 @@ impl Mapping for UnitMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
+        Ok(Box::new(UnitMap {
+            ncoord: self.ncoord,
+            inverted: false,
+            do_not_simplify: false,
+        }))
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

@@ -249,29 +249,58 @@ impl SlaCvtType {
         }
     }
 
+    /// Human-readable descriptions for each serialised argument.
+    ///
+    /// The slice length matches `nargs()`. Used as comments in the Native
+    /// serialisation format.
+    pub fn arg_descriptions(&self) -> &'static [&'static str] {
+        match self {
+            Self::Prec => &["From Julian epoch", "To Julian epoch"],
+            Self::Prebn => &["From Besselian epoch", "To Besselian epoch"],
+            Self::Fk45z | Self::Fk54z => &["Besselian epoch of FK4 equinox"],
+            Self::Amp | Self::Map => &[
+                "TDB Julian epoch of observation",
+                "TDB Julian epoch of equinox",
+            ],
+            Self::Ecleq | Self::Eqecl => &["Julian epoch of mean equinox and equator"],
+            Self::Addet | Self::Subet => &["Besselian epoch of E-terms"],
+            Self::Hpceq | Self::Eqhpc | Self::Hpreq | Self::Eqhpr => &[
+                "Julian epoch of observation",
+                "Longitude of sun",
+                "Latitude of sun",
+                "Radius of sun",
+            ],
+            Self::Hfk5z | Self::Fk5hz => &["Julian epoch of observation"],
+            Self::Heeq | Self::Eqhe => &["Julian epoch of observation"],
+            Self::Dh2e | Self::De2h => &["Geodetic latitude", "Diurnal aberration"],
+            Self::R2h | Self::H2r => &["Local apparent sidereal time"],
+            _ => &[],
+        }
+    }
+
     /// Human-readable description for serialisation comments.
     pub fn description(&self) -> &'static str {
         match self {
             Self::Addet => "Add E-terms of aberration",
-            Self::Subet => "Remove E-terms of aberration",
-            Self::Prebn => "Bessel-Newcomb (FK4) precession",
-            Self::Prec => "IAU 1976 (FK5) precession",
-            Self::Fk45z => "FK4 to FK5 (no PM)",
-            Self::Fk54z => "FK5 to FK4 (no PM)",
-            Self::Amp => "Geocentric apparent to mean place",
-            Self::Map => "Mean place to geocentric apparent",
-            Self::Ecleq => "Ecliptic to equatorial",
-            Self::Eqecl => "Equatorial to ecliptic",
-            Self::Galeq => "Galactic to equatorial",
-            Self::Eqgal => "Equatorial to galactic",
-            Self::Galsup => "Galactic to supergalactic",
-            Self::Supgal => "Supergalactic to galactic",
+            Self::Subet => "Subtract E-terms of aberration",
+            Self::Prebn => "Apply Bessel-Newcomb (FK4) precession",
+            Self::Prec => "Apply IAU 1975 (FK5) precession",
+            Self::Fk45z => "FK4 to FK5 J2000.0 (no PM or parallax)",
+            Self::Fk54z => "FK5 J2000.0 to FK4 (no PM or parallax)",
+            Self::Amp => "Geocentric apparent to mean place (FK5)",
+            Self::Map => "Mean place (FK5) to geocentric apparent",
+            Self::Ecleq => "Ecliptic (IAU 1980) to J2000.0 equatorial (FK5)",
+            Self::Eqecl => "Equatorial J2000.0 (FK5) to ecliptic (IAU 1980)",
+            Self::Galeq => "Galactic (IAU 1958) to J2000.0 equatorial (FK5)",
+            Self::Eqgal => "J2000.0 equatorial (FK5) to galactic (IAU 1958)",
+            Self::Galsup => "Galactic (IAU 1958) to supergalactic",
+            Self::Supgal => "Supergalactic to galactic (IAU 1958)",
             Self::Hpceq => "Helioprojective-Cartesian to J2000.0 equatorial (FK5)",
             Self::Eqhpc => "J2000.0 equatorial (FK5) to Helioprojective-Cartesian",
             Self::Hpreq => "Helioprojective-Radial to J2000.0 equatorial (FK5)",
             Self::Eqhpr => "J2000.0 equatorial (FK5) to Helioprojective-Radial",
-            Self::Hfk5z => "ICRS to FK5 (no PM)",
-            Self::Fk5hz => "FK5 to ICRS (no PM)",
+            Self::Hfk5z => "J2000.0 FK5 to ICRS (no PM or parallax)",
+            Self::Fk5hz => "ICRS to J2000.0 FK5 (no PM or parallax)",
             Self::Heeq => "Helio-ecliptic to equatorial",
             Self::Eqhe => "Equatorial to helio-ecliptic",
             Self::J2000h => "J2000 equatorial (dynamical) to ICRS",
@@ -1243,7 +1272,7 @@ impl Serializable for SlaMap {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Sequence of celestial coordinate conversions".to_string());
+        node.class_comment = Some("Conversion between sky coordinate systems".to_string());
 
         // Mapping base attributes.
         write_mapping_base(&mut node, self);
@@ -1263,9 +1292,11 @@ impl Serializable for SlaMap {
                     cvt.cvt_type.code_string(),
                     Some(cvt.cvt_type.description().to_string()),
                 );
+                let arg_descs = cvt.cvt_type.arg_descriptions();
                 for (j, &arg) in cvt.args.iter().enumerate() {
                     let letter = arg_letter(j);
-                    node.push_double(&format!("Sla{idx}{letter}"), arg, None::<String>);
+                    let comment = arg_descs.get(j).map(|s| s.to_string());
+                    node.push_double(&format!("Sla{idx}{letter}"), arg, comment);
                 }
             }
         }

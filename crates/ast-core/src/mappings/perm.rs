@@ -306,6 +306,14 @@ impl Mapping for PermMap {
             .all(|(i, &p)| p == (i as i64 + 1));
         if outperm_is_identity && inperm_is_identity {
             Ok(Box::new(UnitMap::new(n)))
+        } else if self.inverted {
+            Ok(Box::new(PermMap {
+                outperm: self.inperm.clone(),
+                inperm: self.outperm.clone(),
+                constants: self.constants.clone(),
+                inverted: false,
+                do_not_simplify: false,
+            }))
         } else {
             Ok(Box::new(self.clone()))
         }
@@ -646,20 +654,22 @@ impl Serializable for PermMap {
 
         // Outperm (forward permutation).
         for (i, &p) in self.outperm.iter().enumerate() {
-            node.push_int(
-                &format!("Out{}", i + 1),
-                p,
-                Some("Output permutation".to_string()),
-            );
+            let comment = if p > 0 {
+                format!("Output coordinate {} = input coordinate {}", i + 1, p)
+            } else {
+                format!("Output coordinate {} = constant no. {}", i + 1, -p)
+            };
+            node.push_int(&format!("Out{}", i + 1), p, Some(comment));
         }
 
         // Inperm (inverse permutation).
         for (i, &p) in self.inperm.iter().enumerate() {
-            node.push_int(
-                &format!("In{}", i + 1),
-                p,
-                Some("Input permutation".to_string()),
-            );
+            let comment = if p > 0 {
+                format!("Input coordinate {} = output coordinate {}", i + 1, p)
+            } else {
+                format!("Input coordinate {} = constant no. {}", i + 1, -p)
+            };
+            node.push_int(&format!("In{}", i + 1), p, Some(comment));
         }
 
         // Constants.
@@ -671,10 +681,11 @@ impl Serializable for PermMap {
             );
             for (i, &c) in self.constants.iter().enumerate() {
                 let key = format!("Con{}", i + 1);
+                let comment = format!("Constant number {}", i + 1);
                 if is_bad(c) {
-                    node.push_string(&key, "<bad>", Some("Constant value".to_string()));
+                    node.push_string(&key, "<bad>", Some(comment));
                 } else {
-                    node.push_double(&key, c, Some("Constant value".to_string()));
+                    node.push_double(&key, c, Some(comment));
                 }
             }
         }

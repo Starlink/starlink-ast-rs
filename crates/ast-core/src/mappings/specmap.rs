@@ -197,6 +197,68 @@ impl SpecCvtType {
         (*self as i32) >= 19
     }
 
+    /// Argument descriptions for serialisation comments.
+    ///
+    /// Returns a slice of descriptions, one per stored argument slot.
+    /// Indexed by argument position; indices beyond the slice length have no comment.
+    pub fn arg_descriptions(&self) -> &'static [&'static str] {
+        match self {
+            // 0-arg types
+            Self::EnToFr
+            | Self::FrToEn
+            | Self::WnToFr
+            | Self::FrToWn
+            | Self::WvToFr
+            | Self::FrToWv
+            | Self::AwToFr
+            | Self::FrToAw
+            | Self::VrToVl
+            | Self::VlToVr
+            | Self::VoToVl
+            | Self::VlToVo
+            | Self::ZoToVl
+            | Self::VlToZo
+            | Self::BtToVl
+            | Self::VlToBt => &[],
+            // 1-arg: rest frequency
+            Self::FrToVl | Self::VlToFr => &["Rest frequency (Hz)"],
+            // User-defined frame
+            Self::UsF2Hl | Self::HlF2Us => &["Velocity offset (m/s)"],
+            // Topocentric frame
+            Self::TpF2Hl | Self::HlF2Tp => &[
+                "Longitude (positive eastwards, radians)",
+                "Latitude (geodetic, radians)",
+                "Altitude (geodetic, metres)",
+                "UT1 epoch of observaton (Modified Julian Date)",
+                "RA of source (FK5 J2000, radians)",
+                "DEC of source (FK5 J2000, radians)",
+                "Frequency correction factor",
+            ],
+            // Geocentric frame
+            Self::GeF2Hl | Self::HlF2Ge => &[
+                "UT1 epoch of observaton (Modified Julian Date)",
+                "RA of source (FK5 J2000, radians)",
+                "DEC of source (FK5 J2000, radians)",
+                "Frequency correction factor",
+            ],
+            // Barycentric, LSRK, LSRD, Local group, Galactic frames
+            Self::ByF2Hl
+            | Self::HlF2By
+            | Self::LkF2Hl
+            | Self::HlF2Lk
+            | Self::LdF2Hl
+            | Self::HlF2Ld
+            | Self::LgF2Hl
+            | Self::HlF2Lg
+            | Self::GlF2Hl
+            | Self::HlF2Gl => &[
+                "RA of source (FK5 J2000, radians)",
+                "DEC of source (FK5 J2000, radians)",
+                "Frequency correction factor",
+            ],
+        }
+    }
+
     /// Uppercase code string for serialisation (e.g. `"FRTOVL"`, `"VLTOFR"`).
     pub fn code_string(&self) -> &'static str {
         match self {
@@ -1261,10 +1323,12 @@ impl Serializable for SpecMap {
                     Some(cvt.cvt_type.description().to_string()),
                 );
                 // Write all stored args (szargs), skipping BAD values
+                let descs = cvt.cvt_type.arg_descriptions();
                 for (j, &arg) in cvt.args.iter().enumerate() {
                     if arg != BAD_VALUE {
                         let letter = arg_letter(j);
-                        node.push_double(&format!("Spec{idx}{letter}"), arg, None::<String>);
+                        let comment = descs.get(j).map(|d| d.to_string());
+                        node.push_double(&format!("Spec{idx}{letter}"), arg, comment);
                     }
                 }
             }
