@@ -14,6 +14,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, point_has_bad};
 use super::polymap::{PolyMap, PolyTerm};
 use super::rate::numeric_rate;
+use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 /// A Chebyshev polynomial transformation mapping.
@@ -421,6 +422,72 @@ impl Mapping for ChebyMap {
             return Ok(Box::new(self.clone()));
         }
         Ok(Box::new(self.clone()))
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+        // Only handle inverse cancellation: same ChebyMap in opposite directions.
+        if self_inv == other_inv {
+            return None;
+        }
+        let other_cheby = other.as_any().downcast_ref::<ChebyMap>()?;
+        // Compare all defining properties (ignoring the inverted flag).
+        if self.lbnd_f.len() != other_cheby.lbnd_f.len() {
+            return None;
+        }
+        let fwd_bounds_match = self
+            .lbnd_f
+            .iter()
+            .zip(&other_cheby.lbnd_f)
+            .all(|(a, b)| ast_equal(*a, *b))
+            && self
+                .ubnd_f
+                .iter()
+                .zip(&other_cheby.ubnd_f)
+                .all(|(a, b)| ast_equal(*a, *b));
+        if !fwd_bounds_match {
+            return None;
+        }
+        let inv_bounds_match = match (&self.lbnd_i, &other_cheby.lbnd_i) {
+            (Some(a), Some(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| ast_equal(*x, *y))
+            }
+            (None, None) => true,
+            _ => false,
+        } && match (&self.ubnd_i, &other_cheby.ubnd_i) {
+            (Some(a), Some(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| ast_equal(*x, *y))
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if !inv_bounds_match {
+            return None;
+        }
+        // Compare the inner polynomial (ignoring inversion state).
+        // Use a temporary un-inverted copy for comparison if needed.
+        let self_fwd = self.poly.forward_terms();
+        let other_fwd = other_cheby.poly.forward_terms();
+        if self_fwd.len() != other_fwd.len() {
+            return None;
+        }
+        let fwd_match = self_fwd.iter().zip(other_fwd).all(|(a, b)| {
+            ast_equal(a.coeff, b.coeff) && a.powers == b.powers && a.out_axis == b.out_axis
+        });
+        if !fwd_match {
+            return None;
+        }
+        // The pair's input dimension depends on which direction self is used.
+        let pair_nin = if self_inv { self.nout() } else { self.nin() };
+        Some(Box::new(UnitMap::new(pair_nin)))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

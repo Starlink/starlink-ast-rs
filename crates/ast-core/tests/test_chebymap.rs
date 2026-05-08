@@ -4,7 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{ChebyMap, Mapping, PolyTerm};
+use ast_core::mappings::{ChebyMap, Mapping, PolyTerm, UnitMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 // ---------------------------------------------------------------------------
@@ -783,4 +783,181 @@ fn chebymap_rate() {
         "expected rate ~1.0, got {}",
         rate
     );
+}
+
+// ---------------------------------------------------------------------------
+// try_merge: inverse self-cancellation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn chebymap_cancels_with_inverse() {
+    // A ChebyMap followed by its inverse should simplify to UnitMap.
+    let fwd = vec![
+        PolyTerm {
+            coeff: 2.5,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: -2.0,
+            powers: vec![2],
+            out_axis: 1,
+        },
+    ];
+    let inv = vec![
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 5.0,
+            powers: vec![1],
+            out_axis: 1,
+        },
+    ];
+    let m = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv),
+        &[0.0],
+        &[1.0],
+        Some(&[-1.0]),
+        Some(&[1.0]),
+    )
+    .unwrap();
+
+    // Same ChebyMap, self used forward, other used inverse -> cancels.
+    let result = m.try_merge(&m, true, false, true);
+    assert!(result.is_some(), "should cancel with its own inverse");
+    let merged = result.unwrap();
+    assert_eq!(merged.nin(), 1);
+    assert_eq!(merged.nout(), 1);
+    // Verify it behaves as identity.
+    assert!(
+        merged.as_any().downcast_ref::<UnitMap>().is_some(),
+        "merged result should be a UnitMap"
+    );
+}
+
+#[test]
+fn chebymap_same_direction_does_not_cancel() {
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &fwd, None, &[0.0], &[10.0], None, None).unwrap();
+
+    // Same direction (both forward) should NOT cancel.
+    let result = m.try_merge(&m, true, false, false);
+    assert!(result.is_none(), "same direction should not cancel");
+}
+
+#[test]
+fn chebymap_different_maps_do_not_cancel() {
+    let fwd1 = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m1 = ChebyMap::new(1, 1, &fwd1, None, &[0.0], &[10.0], None, None).unwrap();
+
+    let fwd2 = vec![PolyTerm {
+        coeff: 2.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m2 = ChebyMap::new(1, 1, &fwd2, None, &[0.0], &[10.0], None, None).unwrap();
+
+    // Different ChebyMaps in opposite directions should NOT cancel.
+    let result = m1.try_merge(&m2, true, false, true);
+    assert!(result.is_none(), "different maps should not cancel");
+}
+
+#[test]
+fn chebymap_different_bounds_do_not_cancel() {
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m1 = ChebyMap::new(1, 1, &fwd, None, &[0.0], &[10.0], None, None).unwrap();
+    let m2 = ChebyMap::new(1, 1, &fwd, None, &[0.0], &[20.0], None, None).unwrap();
+
+    // Same coefficients but different domain bounds should NOT cancel.
+    let result = m1.try_merge(&m2, true, false, true);
+    assert!(result.is_none(), "different bounds should not cancel");
+}
+
+#[test]
+fn chebymap_parallel_does_not_merge() {
+    let fwd = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = ChebyMap::new(1, 1, &fwd, None, &[0.0], &[10.0], None, None).unwrap();
+
+    // Parallel composition is not handled.
+    let result = m.try_merge(&m, false, false, true);
+    assert!(result.is_none(), "parallel should not merge");
+}
+
+#[test]
+fn chebymap_2d_cancels_with_inverse() {
+    let fwd = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 2.0,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let inv = vec![
+        PolyTerm {
+            coeff: 1.0,
+            powers: vec![1, 0],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 0.5,
+            powers: vec![0, 1],
+            out_axis: 2,
+        },
+    ];
+    let m = ChebyMap::new(
+        2,
+        2,
+        &fwd,
+        Some(&inv),
+        &[-1.0, -1.0],
+        &[1.0, 1.0],
+        Some(&[-1.0, -2.0]),
+        Some(&[1.0, 2.0]),
+    )
+    .unwrap();
+
+    // Forward then inverse -> UnitMap(2).
+    let result = m.try_merge(&m, true, false, true);
+    assert!(result.is_some(), "2D ChebyMap should cancel with inverse");
+    let merged = result.unwrap();
+    assert_eq!(merged.nin(), 2);
+    assert_eq!(merged.nout(), 2);
+    assert!(merged.as_any().downcast_ref::<UnitMap>().is_some());
+
+    // Inverse then forward -> UnitMap(2).
+    let result2 = m.try_merge(&m, true, true, false);
+    assert!(
+        result2.is_some(),
+        "2D ChebyMap inverse then forward should cancel"
+    );
+    let merged2 = result2.unwrap();
+    assert_eq!(merged2.nin(), 2);
+    assert_eq!(merged2.nout(), 2);
 }
