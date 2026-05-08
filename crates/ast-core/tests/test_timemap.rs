@@ -406,7 +406,7 @@ fn chain_utc_to_tt() {
 
 #[test]
 fn serialisation_round_trip() {
-    use ast_core::{AnyObject, from_native_string, to_native_string};
+    use ast_core::{from_native_string, to_native_string, AnyObject};
 
     let mut tm = TimeMap::new();
     tm.add(TimeCvtType::MjdToJd, &[100.0, 200.0]);
@@ -577,4 +577,119 @@ fn cvt_type_inverse() {
     assert_eq!(TimeCvtType::JdToMjd.inverse(), TimeCvtType::MjdToJd);
     assert_eq!(TimeCvtType::TaiToUtc.inverse(), TimeCvtType::UtcToTai);
     assert_eq!(TimeCvtType::MjdToMjd.inverse(), TimeCvtType::MjdToMjd);
+}
+
+// ---------------------------------------------------------------------------
+// try_merge — step concatenation and simplification
+// ---------------------------------------------------------------------------
+
+#[test]
+fn timemap_merge_concatenates() {
+    use ast_core::mappings::UnitMap;
+
+    let mut tm1 = TimeMap::new();
+    tm1.add(TimeCvtType::MjdToMjd, &[0.0, 51544.5]);
+    let mut tm2 = TimeMap::new();
+    tm2.add(TimeCvtType::TaiToUtc, &[]);
+
+    let merged = tm1.try_merge(&tm2, true, false, false);
+    assert!(merged.is_some(), "Adjacent TimeMaps should always merge");
+    let merged = merged.unwrap();
+    // Should be a TimeMap (not UnitMap) since the steps don't cancel.
+    assert!(
+        !merged.as_any().is::<UnitMap>(),
+        "Non-cancelling merge should not produce UnitMap"
+    );
+    assert!(
+        merged.as_any().is::<TimeMap>(),
+        "Merged result should be a TimeMap"
+    );
+}
+
+#[test]
+fn timemap_merge_cancels_inverse() {
+    use ast_core::mappings::UnitMap;
+
+    let mut tm1 = TimeMap::new();
+    tm1.add(TimeCvtType::TaiToUtc, &[]);
+    let mut tm2 = TimeMap::new();
+    tm2.add(TimeCvtType::TaiToUtc, &[]);
+
+    // Same steps, opposite direction → should cancel to UnitMap
+    let merged = tm1.try_merge(&tm2, true, false, true);
+    assert!(merged.is_some(), "Inverse pair should merge");
+    assert!(
+        merged.unwrap().as_any().is::<UnitMap>(),
+        "Inverse pair should cancel to UnitMap"
+    );
+}
+
+#[test]
+fn timemap_merge_eliminates_no_effect() {
+    use ast_core::mappings::UnitMap;
+
+    // MjdToMjd with zero offset is a no-op
+    let mut tm1 = TimeMap::new();
+    tm1.add(TimeCvtType::MjdToMjd, &[0.0, 0.0]);
+
+    let s = tm1.simplified().unwrap();
+    assert!(
+        s.as_any().is::<UnitMap>(),
+        "MjdToMjd(0,0) should simplify to UnitMap"
+    );
+}
+
+#[test]
+fn timemap_merge_mjd_to_jd_cancels() {
+    use ast_core::mappings::UnitMap;
+
+    let mut tm1 = TimeMap::new();
+    tm1.add(TimeCvtType::MjdToJd, &[100.0, 200.0]);
+    let mut tm2 = TimeMap::new();
+    tm2.add(TimeCvtType::JdToMjd, &[200.0, 100.0]);
+
+    // MjdToJd(a,b) followed by JdToMjd(b,a) cancels
+    let merged = tm1.try_merge(&tm2, true, false, false);
+    assert!(merged.is_some());
+    assert!(
+        merged.unwrap().as_any().is::<UnitMap>(),
+        "MjdToJd + JdToMjd with swapped args should cancel"
+    );
+}
+
+#[test]
+fn timemap_merge_mjd_to_mjd_equal_offsets() {
+    use ast_core::mappings::UnitMap;
+
+    // MjdToMjd where both offsets are equal (not zero) is still identity
+    let mut tm1 = TimeMap::new();
+    tm1.add(TimeCvtType::MjdToMjd, &[51544.5, 51544.5]);
+
+    let s = tm1.simplified().unwrap();
+    assert!(
+        s.as_any().is::<UnitMap>(),
+        "MjdToMjd with equal offsets should simplify to UnitMap"
+    );
+}
+
+#[test]
+fn timemap_simplified_chain() {
+    use ast_core::mappings::UnitMap;
+
+    // TaiToUtc followed by UtcToTai should cancel in simplified()
+    let mut tm = TimeMap::new();
+    tm.add(
+        TimeCvtType::TaiToUtc,
+        &[51544.0, ast_core::constants::BAD_VALUE],
+    );
+    tm.add(
+        TimeCvtType::UtcToTai,
+        &[51544.0, ast_core::constants::BAD_VALUE],
+    );
+
+    let s = tm.simplified().unwrap();
+    assert!(
+        s.as_any().is::<UnitMap>(),
+        "TaiToUtc + UtcToTai should simplify to UnitMap"
+    );
 }

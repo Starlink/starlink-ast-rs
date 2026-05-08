@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::pal;
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{read_mapping_base, write_mapping_base, Node, Serializable};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -1004,6 +1004,150 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Step normalization and simplification (matching C timemap.c:2099-2428)
+// ---------------------------------------------------------------------------
+
+/// Return the normalized step list for a TimeMap, accounting for inversion.
+///
+/// When inverted, reverses the step order and inverts each step type.
+/// For MJD-offset conversions (MjdToMjd, MjdToJd/JdToMjd, MjdToBep/BepToMjd,
+/// MjdToJep/JepToMjd), inversion swaps the two offset arguments.
+fn time_normalized_steps(tm: &TimeMap, inv: bool) -> Vec<TimeConversion> {
+    if !inv {
+        return tm.conversions.clone();
+    }
+    tm.conversions
+        .iter()
+        .rev()
+        .map(|cvt| {
+            let inv_type = cvt.cvt_type.inverse();
+            let needs_swap = matches!(
+                cvt.cvt_type,
+                TimeCvtType::MjdToMjd
+                    | TimeCvtType::MjdToJd
+                    | TimeCvtType::JdToMjd
+                    | TimeCvtType::MjdToBep
+                    | TimeCvtType::BepToMjd
+                    | TimeCvtType::MjdToJep
+                    | TimeCvtType::JepToMjd
+            );
+            let nargs = inv_type.nargs();
+            let szargs = inv_type.szargs();
+            let mut new_args = vec![BAD_VALUE; szargs];
+            if needs_swap && cvt.args.len() >= 2 {
+                // Swap user args [0] and [1] for offset-based conversions.
+                new_args[0] = cvt.args[1];
+                new_args[1] = cvt.args[0];
+            } else {
+                // Copy user args as-is.
+                let copy_len = nargs.min(cvt.args.len());
+                new_args[..copy_len].copy_from_slice(&cvt.args[..copy_len]);
+            }
+            // Recompute derived arguments.
+            add_args(inv_type, &mut new_args);
+            TimeConversion {
+                cvt_type: inv_type,
+                args: new_args,
+            }
+        })
+        .collect()
+}
+
+/// Check whether two adjacent normalized steps cancel each other.
+fn time_steps_cancel(a: &TimeConversion, b: &TimeConversion) -> bool {
+    let at = a.cvt_type;
+    let bt = b.cvt_type;
+
+    // Types must form an inverse pair.
+    if at.inverse() != bt {
+        return false;
+    }
+
+    // For offset-based MJD conversions, the inverse swaps args[0] and args[1].
+    // MjdToMjd(a,b) followed by MjdToMjd(b,a) cancels.
+    // MjdToJd(a,b) followed by JdToMjd(b,a) cancels. Etc.
+    let needs_swap = matches!(
+        (at, bt),
+        (TimeCvtType::MjdToMjd, TimeCvtType::MjdToMjd)
+            | (TimeCvtType::MjdToJd, TimeCvtType::JdToMjd)
+            | (TimeCvtType::JdToMjd, TimeCvtType::MjdToJd)
+            | (TimeCvtType::MjdToBep, TimeCvtType::BepToMjd)
+            | (TimeCvtType::BepToMjd, TimeCvtType::MjdToBep)
+            | (TimeCvtType::MjdToJep, TimeCvtType::JepToMjd)
+            | (TimeCvtType::JepToMjd, TimeCvtType::MjdToJep)
+    );
+
+    if needs_swap {
+        return a.args.len() >= 2
+            && b.args.len() >= 2
+            && ast_equal(a.args[0], b.args[1])
+            && ast_equal(a.args[1], b.args[0]);
+    }
+
+    // For all other inverse pairs, user args must match in same order.
+    let na = at.nargs();
+    a.args
+        .iter()
+        .take(na)
+        .zip(b.args.iter().take(na))
+        .all(|(x, y)| ast_equal(*x, *y))
+}
+
+/// Check whether a step is a no-effect operation that can be removed.
+///
+/// Currently recognizes: MjdToMjd where args[0] == args[1] (zero net offset).
+fn time_step_is_no_effect(cvt: &TimeConversion) -> bool {
+    if cvt.cvt_type == TimeCvtType::MjdToMjd && cvt.args.len() >= 2 {
+        return ast_equal(cvt.args[0], cvt.args[1]);
+    }
+    false
+}
+
+/// Simplify a step list by cancelling adjacent inverse pairs and removing
+/// no-effect steps.
+///
+/// Loops until no further simplifications are found.
+/// Returns `true` if any steps were eliminated.
+fn time_simplify_steps(steps: &mut Vec<TimeConversion>) -> bool {
+    let mut any_changed = false;
+    loop {
+        let mut changed_this_pass = false;
+
+        // Cancel adjacent inverse pairs.
+        let mut i = 0;
+        while i + 1 < steps.len() {
+            if time_steps_cancel(&steps[i], &steps[i + 1]) {
+                steps.remove(i + 1);
+                steps.remove(i);
+                changed_this_pass = true;
+                any_changed = true;
+                // Don't advance — new neighbours may cancel.
+                i = i.saturating_sub(1);
+                continue;
+            }
+            i += 1;
+        }
+
+        // Remove no-effect steps.
+        let mut j = 0;
+        while j < steps.len() {
+            if time_step_is_no_effect(&steps[j]) {
+                steps.remove(j);
+                changed_this_pass = true;
+                any_changed = true;
+            } else {
+                j += 1;
+            }
+        }
+
+        if !changed_this_pass {
+            break;
+        }
+    }
+    any_changed
+}
+
+// ---------------------------------------------------------------------------
 // Mapping trait
 // ---------------------------------------------------------------------------
 
@@ -1064,7 +1208,23 @@ impl Mapping for TimeMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
+        // Normalize steps (accounting for the inverted flag) and simplify
+        // (cancel adjacent inverse pairs, remove no-effect steps).
+        let mut steps = time_normalized_steps(self, self.inverted);
+        let changed = time_simplify_steps(&mut steps);
+
+        if !changed && !self.inverted {
+            // No simplification possible — return self unchanged.
+            return Ok(Box::new(self.clone()));
+        }
+
+        if steps.is_empty() {
+            Ok(Box::new(UnitMap::new(1)))
+        } else {
+            let mut result = TimeMap::new();
+            result.conversions = steps;
+            Ok(Box::new(result))
+        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -1081,25 +1241,28 @@ impl Mapping for TimeMap {
         if !series {
             return None;
         }
-        // Only handle inverse cancellation: same TimeMap in opposite directions.
-        if self_inv == other_inv {
-            return None;
-        }
         let other_tm = other.as_any().downcast_ref::<TimeMap>()?;
-        if self.conversions.len() == other_tm.conversions.len()
-            && self
-                .conversions
-                .iter()
-                .zip(&other_tm.conversions)
-                .all(|(a, b)| {
-                    a.cvt_type == b.cvt_type
-                        && a.args.len() == b.args.len()
-                        && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
-                })
-        {
+
+        // Normalize: account for both the mapping's own inverted flag
+        // AND the external inversion from the simplification engine.
+        let self_steps = time_normalized_steps(self, self_inv != self.inverted);
+        let other_steps = time_normalized_steps(other_tm, other_inv != other_tm.inverted);
+
+        // Concatenate: self is applied first, then other.
+        let mut steps = self_steps;
+        steps.extend(other_steps);
+
+        // Always merge (concatenate) even if no simplification occurs.
+        // This matches C timemap.c behaviour where all adjacent TimeMaps are
+        // combined, enabling further simplification in subsequent passes.
+        time_simplify_steps(&mut steps);
+
+        if steps.is_empty() {
             Some(Box::new(UnitMap::new(1)))
         } else {
-            None
+            let mut result = TimeMap::new();
+            result.conversions = steps;
+            Some(Box::new(result))
         }
     }
 
