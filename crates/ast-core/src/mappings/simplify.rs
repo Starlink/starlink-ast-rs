@@ -253,8 +253,30 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
                     // m1's effective input, since the result replaces
                     // m1's position in the pipeline.
                     .or_else(|| {
-                        m2.try_merge(m1.as_ref(), series, inv2, inv1)
-                            .filter(|m| m.nin() == m1_nin)
+                        if series {
+                            // Skip reverse merge when m1 is UnitMap — let
+                            // post-loop strip handle it (matches C behavior
+                            // where UnitMap removes itself before neighbors
+                            // get a chance to merge).
+                            if m1.as_any().is::<UnitMap>() {
+                                return None;
+                            }
+                            m2.try_merge(m1.as_ref(), series, inv2, inv1)
+                                .filter(|m| m.nin() == m1_nin)
+                        } else {
+                            // For parallel: the reverse merge puts m2's axes
+                            // first, which is wrong. Instead, try extracting
+                            // linear params from both and merging with m1 first.
+                            let (s1, c1) = super::winmap::extract_linear_params(m1.as_ref(), inv1)?;
+                            let (s2, c2) = super::winmap::extract_linear_params(m2.as_ref(), inv2)?;
+                            let mut new_shifts = s1;
+                            new_shifts.extend(s2);
+                            let mut new_scales = c1;
+                            new_scales.extend(c2);
+                            WinMap::new(&new_shifts, &new_scales)
+                                .ok()
+                                .map(|m| Box::new(m) as DynMapping)
+                        }
                     })
             };
 
@@ -2040,20 +2062,20 @@ mod tests {
         let b = dyn_map(ShiftMap::new([5.0]));
         let mut list: Vec<(DynMapping, bool)> = vec![(a, false), (u, false), (b, false)];
         merge_loop(&mut list, true);
-        // UnitMap should be stripped.
-        assert_eq!(list.len(), 2);
+        // ZoomMap merges UnitMap (identity), then result merges ShiftMap.
+        assert_eq!(list.len(), 1);
         assert!(!list[0].0.as_any().is::<UnitMap>());
-        assert!(!list[1].0.as_any().is::<UnitMap>());
     }
 
     #[test]
-    fn merge_loop_does_not_strip_unitmaps_from_parallel() {
+    fn merge_loop_merges_linear_parallel() {
         let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let u = dyn_map(UnitMap::new(1));
         let mut list: Vec<(DynMapping, bool)> = vec![(a, false), (u, false)];
         merge_loop(&mut list, false);
-        // Parallel: UnitMaps are NOT stripped (they contribute dimensions).
-        assert_eq!(list.len(), 2);
+        // Parallel: linear mappings are merged into a wider WinMap.
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].0.nin(), 2);
     }
 
     #[test]

@@ -44,6 +44,10 @@ pub struct PermMap {
     inverted: bool,
     /// Whether this mapping is protected from simplification.
     do_not_simplify: bool,
+    /// Serialize outperm as `OutCpy=1` (identity shorthand).
+    out_is_copy: bool,
+    /// Serialize inperm as `InCpy=1` (identity shorthand).
+    in_is_copy: bool,
 }
 
 impl PermMap {
@@ -113,6 +117,8 @@ impl PermMap {
             constants: constants.to_vec(),
             inverted: false,
             do_not_simplify: false,
+            out_is_copy: false,
+            in_is_copy: false,
         })
     }
 
@@ -313,6 +319,8 @@ impl Mapping for PermMap {
                 constants: self.constants.clone(),
                 inverted: false,
                 do_not_simplify: false,
+                out_is_copy: self.in_is_copy,
+                in_is_copy: self.out_is_copy,
             }))
         } else {
             Ok(Box::new(self.clone()))
@@ -343,8 +351,19 @@ impl Mapping for PermMap {
         if !series {
             // Parallel merge: two PermMaps operating on disjoint coordinate
             // ranges combine into a single larger PermMap with offset-adjusted
-            // indices.
-            let other_perm = other.as_any().downcast_ref::<PermMap>()?;
+            // indices. Also handles UnitMap as an identity PermMap.
+            let other_perm: std::borrow::Cow<'_, PermMap>;
+            if let Some(pm) = other.as_any().downcast_ref::<PermMap>() {
+                other_perm = std::borrow::Cow::Borrowed(pm);
+            } else if let Some(um) = other.as_any().downcast_ref::<UnitMap>() {
+                let n = um.nin();
+                let identity: Vec<i64> = (1..=n as i64).collect();
+                let pm = PermMap::new(&identity, &identity, &[]).ok()?;
+                other_perm = std::borrow::Cow::Owned(pm);
+            } else {
+                return None;
+            }
+            let other_perm = other_perm.as_ref();
 
             let self_outperm = if self_inv {
                 &self.inperm
@@ -487,6 +506,34 @@ impl Mapping for PermMap {
                 .map(|m| Box::new(m) as DynMapping);
         }
 
+        // Handle UnitMap: composing with identity produces a fresh PermMap
+        // with copy flags set for identity arrays (matches C behavior where
+        // MapMerge creates a PermMap with NULL for identity arrays).
+        if other.as_any().is::<UnitMap>() {
+            let eff_outperm = if self_inv {
+                &self.inperm
+            } else {
+                &self.outperm
+            };
+            let eff_inperm = if self_inv {
+                &self.outperm
+            } else {
+                &self.inperm
+            };
+            let out_is_identity = eff_outperm
+                .iter()
+                .enumerate()
+                .all(|(i, &p)| p == (i as i64 + 1));
+            let in_is_identity = eff_inperm
+                .iter()
+                .enumerate()
+                .all(|(i, &p)| p == (i as i64 + 1));
+            let mut result = PermMap::new(eff_inperm, eff_outperm, &self.constants).ok()?;
+            result.out_is_copy = out_is_identity;
+            result.in_is_copy = in_is_identity;
+            return Some(Box::new(result));
+        }
+
         let other_perm = other.as_any().downcast_ref::<PermMap>()?;
 
         // Determine effective forward/inverse permutations based on
@@ -580,7 +627,11 @@ impl Mapping for PermMap {
         } else {
             // Build a new PermMap.  The constructor validates the arrays.
             match PermMap::new(&inv_perm_merged, &fwd_perm_merged, &merged_constants) {
-                Ok(pm) => Some(Box::new(pm)),
+                Ok(mut pm) => {
+                    pm.out_is_copy = fwd_is_identity;
+                    pm.in_is_copy = inv_is_identity;
+                    Some(Box::new(pm))
+                }
                 Err(_) => None,
             }
         }
@@ -653,27 +704,43 @@ impl Serializable for PermMap {
         write_mapping_base(&mut node, self);
 
         // Outperm (forward permutation).
-        for (i, &p) in self.outperm.iter().enumerate() {
-            let comment = if p > 0 {
-                format!("Output coordinate {} = input coordinate {}", i + 1, p)
-            } else if p == 0 {
-                format!("Output coordinate {} is \"bad\"", i + 1)
-            } else {
-                format!("Output coordinate {} = constant no. {}", i + 1, -p)
-            };
-            node.push_int(&format!("Out{}", i + 1), p, Some(comment));
+        if self.out_is_copy {
+            node.push_int(
+                "OutCpy",
+                1,
+                Some("Output coordinates = input coordinates".to_string()),
+            );
+        } else {
+            for (i, &p) in self.outperm.iter().enumerate() {
+                let comment = if p > 0 {
+                    format!("Output coordinate {} = input coordinate {}", i + 1, p)
+                } else if p == 0 {
+                    format!("Output coordinate {} is \"bad\"", i + 1)
+                } else {
+                    format!("Output coordinate {} = constant no. {}", i + 1, -p)
+                };
+                node.push_int(&format!("Out{}", i + 1), p, Some(comment));
+            }
         }
 
         // Inperm (inverse permutation).
-        for (i, &p) in self.inperm.iter().enumerate() {
-            let comment = if p > 0 {
-                format!("Input coordinate {} = output coordinate {}", i + 1, p)
-            } else if p == 0 {
-                format!("Input coordinate {} is \"bad\"", i + 1)
-            } else {
-                format!("Input coordinate {} = constant no. {}", i + 1, -p)
-            };
-            node.push_int(&format!("In{}", i + 1), p, Some(comment));
+        if self.in_is_copy {
+            node.push_int(
+                "InCpy",
+                1,
+                Some("Input coordinates = output coordinates".to_string()),
+            );
+        } else {
+            for (i, &p) in self.inperm.iter().enumerate() {
+                let comment = if p > 0 {
+                    format!("Input coordinate {} = output coordinate {}", i + 1, p)
+                } else if p == 0 {
+                    format!("Input coordinate {} is \"bad\"", i + 1)
+                } else {
+                    format!("Input coordinate {} = constant no. {}", i + 1, -p)
+                };
+                node.push_int(&format!("In{}", i + 1), p, Some(comment));
+            }
         }
 
         // Constants.
@@ -737,6 +804,8 @@ impl Serializable for PermMap {
         }
 
         let mut m = PermMap::new(&inperm, &outperm, &constants)?;
+        m.out_is_copy = out_cpy;
+        m.in_is_copy = in_cpy;
         m.set_do_not_simplify(do_not_simplify);
         if inverted {
             m.invert();

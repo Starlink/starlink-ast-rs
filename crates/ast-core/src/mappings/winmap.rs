@@ -401,6 +401,10 @@ pub(crate) fn extract_linear_params(
         let scales: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
         return Some((shifts, scales));
     }
+    if let Some(um) = mapping.as_any().downcast_ref::<UnitMap>() {
+        let n = um.nin();
+        return Some((vec![0.0; n], vec![1.0; n]));
+    }
     None
 }
 
@@ -426,6 +430,21 @@ pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> 
         && new_shifts.iter().all(|&s| ast_equal(s, 0.0))
     {
         return Some(Box::new(UnitMap::new(n)));
+    }
+
+    // Pure shift: all scales are 1.
+    if new_scales.iter().all(|&s| ast_equal(s, 1.0)) {
+        return Some(Box::new(ShiftMap::new(new_shifts)));
+    }
+
+    // Pure uniform zoom: all shifts are 0 and all scales equal.
+    if new_shifts.iter().all(|&s| ast_equal(s, 0.0)) && n > 0 {
+        let first = new_scales[0];
+        if (1..n).all(|i| ast_equal(new_scales[i], first)) {
+            if let Ok(zm) = ZoomMap::new(n, first) {
+                return Some(Box::new(zm));
+            }
+        }
     }
 
     WinMap::new(&new_shifts, &new_scales)
