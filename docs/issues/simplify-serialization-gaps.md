@@ -1,11 +1,22 @@
 # Remaining Simplification Serialization Gaps
 
-Status: 22 serialization mismatches remain (down from 116).
-Date: 2026-05-08
+Status: 7 serialization mismatches remain (down from 22, originally 116).
+Date: 2026-05-09
 
-All 22 produce numerically correct transforms (0 transform failures)
-but the simplified structure differs from C — our simplify engine
-doesn't cover all the merge/optimization paths the C library covers.
+All 7 produce numerically correct transforms (0 transform failures).
+Of the 7, only 3 have structural differences from C; the other 4 are
+serialization-only (correct structure, minor formatting differences) or
+have known C fixture issues.
+
+### Fixed in this session (22→7):
+- **Parallel WinMap merges (7 cases)**: Added UnitMap to extract_linear_params,
+  parallel linear merge fallback in merge_loop
+- **PermMap folding (4 cases)**: Added OutCpy/InCpy serialization, parallel
+  merge with UnitMap, series merge with UnitMap + copy flags
+- **ZoomMap absorption (2 cases)**: compose_linear returns diagonal MatrixMap
+  for non-uniform zero-shift scales (also fixed sph_matrix_sandwich)
+- **CmpMap structural (2 bonus)**: cmpmap_parallel_series_components and
+  cmpmap_self_simplify fixed by the parallel linear merge
 
 ## Categories
 
