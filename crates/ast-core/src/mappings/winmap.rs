@@ -437,13 +437,21 @@ pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> 
         return Some(Box::new(ShiftMap::new(new_shifts)));
     }
 
-    // Pure uniform zoom: all shifts are 0 and all scales equal.
+    // Pure scale (all shifts are 0): zoom or diagonal matrix.
     if new_shifts.iter().all(|&s| ast_equal(s, 0.0)) && n > 0 {
         let first = new_scales[0];
         if (1..n).all(|i| ast_equal(new_scales[i], first)) {
             if let Ok(zm) = ZoomMap::new(n, first) {
                 return Some(Box::new(zm));
             }
+        }
+        // Non-uniform scales → diagonal MatrixMap.
+        let mut diag = ndarray::Array2::<f64>::zeros((n, n));
+        for i in 0..n {
+            diag[[i, i]] = new_scales[i];
+        }
+        if let Ok(mm) = MatrixMap::new(diag) {
+            return Some(Box::new(mm));
         }
     }
 
