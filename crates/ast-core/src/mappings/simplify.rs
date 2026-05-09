@@ -174,21 +174,26 @@ pub(crate) fn flatten(
             // XOR: if both are inverted they cancel.
             let cmp_inv = inv != cmp.is_inverted();
 
+            // Effective inversion for each child: inv_a/inv_b record
+            // the expected child invert state. If the child's current
+            // state differs, that flips the direction. Then the CmpMap's
+            // own inversion (cmp_inv) flips again.
+            let child_inv_a = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+            let child_inv_b = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+
             if !cmp_inv {
-                // Forward: process first then second, children not
-                // additionally inverted.
-                let mut result = flatten(cmp.first(), false, series)?;
-                result.extend(flatten(cmp.second(), false, series)?);
+                let mut result = flatten(cmp.first(), child_inv_a, series)?;
+                result.extend(flatten(cmp.second(), child_inv_b, series)?);
                 return Ok(result);
             } else if series {
-                // Inverted series: reverse child order, both inverted.
-                let mut result = flatten(cmp.second(), true, series)?;
-                result.extend(flatten(cmp.first(), true, series)?);
+                // Inverted series: reverse child order.
+                let mut result = flatten(cmp.second(), child_inv_b, series)?;
+                result.extend(flatten(cmp.first(), child_inv_a, series)?);
                 return Ok(result);
             } else {
-                // Inverted parallel: same order, both inverted.
-                let mut result = flatten(cmp.first(), true, series)?;
-                result.extend(flatten(cmp.second(), true, series)?);
+                // Inverted parallel: same order.
+                let mut result = flatten(cmp.first(), child_inv_a, series)?;
+                result.extend(flatten(cmp.second(), child_inv_b, series)?);
                 return Ok(result);
             }
         }

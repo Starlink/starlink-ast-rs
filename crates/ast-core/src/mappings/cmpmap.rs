@@ -30,6 +30,11 @@ pub enum Composition {
 /// A mapping formed by composing two component mappings.
 ///
 /// See [`Composition`] for the two modes.
+///
+/// `inv_a`/`inv_b` record each child's Invert flag at the time the CmpMap
+/// was constructed or loaded.  Children are stored with their native Invert
+/// state; the effective transform direction for each child is computed at
+/// runtime as `forward XOR (inv_a != child.is_inverted())`.
 pub struct CmpMap {
     first: DynMapping,
     second: DynMapping,
@@ -40,9 +45,9 @@ pub struct CmpMap {
     pub(crate) tran_forward: bool,
     /// Whether the inverse transform is defined.
     pub(crate) tran_inverse: bool,
-    /// Serialized InvA flag (first child used inverted in this CmpMap).
+    /// Recorded Invert flag for first child (snapshot at construction/load).
     inv_a: bool,
-    /// Serialized InvB flag (second child used inverted in this CmpMap).
+    /// Recorded Invert flag for second child (snapshot at construction/load).
     inv_b: bool,
 }
 
@@ -62,6 +67,8 @@ impl CmpMap {
                 ),
             ));
         }
+        let inv_a = first.is_inverted();
+        let inv_b = second.is_inverted();
         Ok(Self {
             first,
             second,
@@ -70,8 +77,8 @@ impl CmpMap {
             do_not_simplify: false,
             tran_forward: true,
             tran_inverse: true,
-            inv_a: false,
-            inv_b: false,
+            inv_a,
+            inv_b,
         })
     }
 
@@ -90,6 +97,68 @@ impl CmpMap {
         self.kind
     }
 
+    /// Recorded Invert flag for first child.
+    pub(crate) fn inv_a(&self) -> bool {
+        self.inv_a
+    }
+
+    /// Recorded Invert flag for second child.
+    pub(crate) fn inv_b(&self) -> bool {
+        self.inv_b
+    }
+
+    /// Whether the first child's current Invert differs from the recorded
+    /// snapshot — if so, the effective transform direction must flip.
+    fn first_invert_changed(&self) -> bool {
+        self.inv_a != self.first.is_inverted()
+    }
+
+    /// Whether the second child's current Invert differs from the recorded
+    /// snapshot.
+    fn second_invert_changed(&self) -> bool {
+        self.inv_b != self.second.is_inverted()
+    }
+
+    /// Effective Nin of first child when the CmpMap is used in direction `fwd`.
+    fn effective_first_nin(&self, fwd: bool) -> usize {
+        let fwd1 = fwd != self.first_invert_changed();
+        if fwd1 {
+            self.first.nin()
+        } else {
+            self.first.nout()
+        }
+    }
+
+    /// Effective Nout of first child when the CmpMap is used in direction `fwd`.
+    fn effective_first_nout(&self, fwd: bool) -> usize {
+        let fwd1 = fwd != self.first_invert_changed();
+        if fwd1 {
+            self.first.nout()
+        } else {
+            self.first.nin()
+        }
+    }
+
+    /// Effective Nin of second child when the CmpMap is used in direction `fwd`.
+    fn effective_second_nin(&self, fwd: bool) -> usize {
+        let fwd2 = fwd != self.second_invert_changed();
+        if fwd2 {
+            self.second.nin()
+        } else {
+            self.second.nout()
+        }
+    }
+
+    /// Effective Nout of second child when the CmpMap is used in direction `fwd`.
+    fn effective_second_nout(&self, fwd: bool) -> usize {
+        let fwd2 = fwd != self.second_invert_changed();
+        if fwd2 {
+            self.second.nout()
+        } else {
+            self.second.nin()
+        }
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }
@@ -99,13 +168,14 @@ impl CmpMap {
     // ------------------------------------------------------------------ //
 
     fn series_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
+        let fwd1 = fwd != self.first_invert_changed();
+        let fwd2 = fwd != self.second_invert_changed();
         if fwd {
-            let mid = self.first.transform(pts, true)?;
-            self.second.transform(&mid, true)
+            let mid = self.first.transform(pts, fwd1)?;
+            self.second.transform(&mid, fwd2)
         } else {
-            // Inverse: undo second, then undo first.
-            let mid = self.second.transform(pts, false)?;
-            self.first.transform(&mid, false)
+            let mid = self.second.transform(pts, fwd2)?;
+            self.first.transform(&mid, fwd1)
         }
     }
 
@@ -115,12 +185,14 @@ impl CmpMap {
         fwd: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
+        let fwd1 = fwd != self.first_invert_changed();
+        let fwd2 = fwd != self.second_invert_changed();
         if fwd {
-            let mid = self.first.transform(pts, true)?;
-            self.second.transform_into(&mid, true, out)
+            let mid = self.first.transform(pts, fwd1)?;
+            self.second.transform_into(&mid, fwd2, out)
         } else {
-            let mid = self.second.transform(pts, false)?;
-            self.first.transform_into(&mid, false, out)
+            let mid = self.second.transform(pts, fwd2)?;
+            self.first.transform_into(&mid, fwd1, out)
         }
     }
 
@@ -129,30 +201,18 @@ impl CmpMap {
     // ------------------------------------------------------------------ //
 
     fn parallel_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
-        let (a, b) = if fwd {
-            (&*self.first, &*self.second)
-        } else {
-            // Swap roles for inverse: second inverts using nin/nout of second.
-            (&*self.second, &*self.first)
-        };
+        let fwd1 = fwd != self.first_invert_changed();
+        let fwd2 = fwd != self.second_invert_changed();
 
-        // When fwd: split pts into first.nin() and second.nin() coord columns.
-        // When !fwd: split pts into second.nout() and first.nout() coord columns.
-        let split = if fwd {
-            self.first.nin()
-        } else {
-            self.second.nout()
-        };
         let npoint = pts.npoint();
+        let split = self.effective_first_nin(fwd);
 
-        // Build sub-PointSets for each half.
         let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., ..split]).to_owned());
         let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., split..]).to_owned());
 
-        let out_a = a.transform(&pts_a, fwd)?;
-        let out_b = b.transform(&pts_b, fwd)?;
+        let out_a = self.first.transform(&pts_a, fwd1)?;
+        let out_b = self.second.transform(&pts_b, fwd2)?;
 
-        // Concatenate the two outputs.
         let ncols_a = out_a.ncoord();
         let ncols_b = out_b.ncoord();
         let mut combined = PointSet::zeros(npoint, ncols_a + ncols_b);
@@ -208,31 +268,37 @@ impl Clone for CmpMap {
 
 impl Mapping for CmpMap {
     fn nin(&self) -> usize {
-        if self.inverted {
-            match self.kind {
-                Composition::Series => self.second.nout(),
-                Composition::Parallel => self.first.nout() + self.second.nout(),
+        // The "forward nin" of the CmpMap (before considering self.inverted)
+        // is determined by the children in the CmpMap's nominal forward direction.
+        let fwd_nin = match self.kind {
+            Composition::Series => self.effective_first_nin(true),
+            Composition::Parallel => {
+                self.effective_first_nin(true) + self.effective_second_nin(true)
             }
-        } else {
-            match self.kind {
-                Composition::Series => self.first.nin(),
-                Composition::Parallel => self.first.nin() + self.second.nin(),
+        };
+        let fwd_nout = match self.kind {
+            Composition::Series => self.effective_second_nout(true),
+            Composition::Parallel => {
+                self.effective_first_nout(true) + self.effective_second_nout(true)
             }
-        }
+        };
+        if self.inverted { fwd_nout } else { fwd_nin }
     }
 
     fn nout(&self) -> usize {
-        if self.inverted {
-            match self.kind {
-                Composition::Series => self.first.nin(),
-                Composition::Parallel => self.first.nin() + self.second.nin(),
+        let fwd_nin = match self.kind {
+            Composition::Series => self.effective_first_nin(true),
+            Composition::Parallel => {
+                self.effective_first_nin(true) + self.effective_second_nin(true)
             }
-        } else {
-            match self.kind {
-                Composition::Series => self.second.nout(),
-                Composition::Parallel => self.first.nout() + self.second.nout(),
+        };
+        let fwd_nout = match self.kind {
+            Composition::Series => self.effective_second_nout(true),
+            Composition::Parallel => {
+                self.effective_first_nout(true) + self.effective_second_nout(true)
             }
-        }
+        };
+        if self.inverted { fwd_nin } else { fwd_nout }
     }
 
     fn is_inverted(&self) -> bool {
@@ -299,43 +365,32 @@ impl Mapping for CmpMap {
         if self.kind != Composition::Parallel {
             return None;
         }
-        // For an inverted parallel CmpMap, the effective output is the
-        // concatenation of the inverses: (A^-1 || B^-1). The "output" of
-        // the inverted map corresponds to the *inputs* of the non-inverted
-        // map, so we split based on nin of components.
-        let na = if self.inverted {
-            self.first.nin()
-        } else {
-            self.first.nout()
-        };
-        let nb = if self.inverted {
-            self.second.nin()
-        } else {
-            self.second.nout()
-        };
+        let na = self.effective_first_nout(!self.inverted);
+        let nb = self.effective_second_nout(!self.inverted);
 
         if first_out + nout_wanted > na + nb {
             return None;
         }
 
+        // Whether each child is effectively inverted relative to the
+        // CmpMap's forward direction.
+        let eff_inv_a = self.inverted != self.first_invert_changed();
+        let eff_inv_b = self.inverted != self.second_invert_changed();
+
         if first_out == 0 && nout_wanted == na {
-            // Exactly the first component.
             let mut m = self.first.simplified().ok()?;
-            if self.inverted {
+            if eff_inv_a {
                 m.invert();
             }
             Some(m)
         } else if first_out == na && nout_wanted == nb {
-            // Exactly the second component.
             let mut m = self.second.simplified().ok()?;
-            if self.inverted {
+            if eff_inv_b {
                 m.invert();
             }
             Some(m)
         } else if first_out < na && first_out + nout_wanted <= na {
-            // Within the first component — recurse.
-            if self.inverted {
-                // Need to invert the sub-result from first's map_split.
+            if eff_inv_a {
                 let mut sub = self.first.map_split(first_out, nout_wanted)?;
                 sub.invert();
                 Some(sub)
@@ -343,8 +398,7 @@ impl Mapping for CmpMap {
                 self.first.map_split(first_out, nout_wanted)
             }
         } else if first_out >= na && first_out + nout_wanted <= na + nb {
-            // Within the second component — recurse.
-            if self.inverted {
+            if eff_inv_b {
                 let mut sub = self.second.map_split(first_out - na, nout_wanted)?;
                 sub.invert();
                 Some(sub)
@@ -352,7 +406,6 @@ impl Mapping for CmpMap {
                 self.second.map_split(first_out - na, nout_wanted)
             }
         } else {
-            // Spans both components — cannot split.
             None
         }
     }
@@ -398,14 +451,14 @@ impl Serializable for CmpMap {
         }
 
         // Component invert flags (only if non-zero).
-        if self.first.is_inverted() {
+        if self.inv_a {
             node.push_int(
                 "InvA",
                 1,
                 Some("First Mapping used in inverse direction".to_string()),
             );
         }
-        if self.second.is_inverted() {
+        if self.inv_b {
             node.push_int(
                 "InvB",
                 1,
@@ -442,22 +495,24 @@ impl Serializable for CmpMap {
             .get_object("MapB")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapB"))?;
 
-        let mut map_a = mapping_from_node(node_a)?;
-        let mut map_b = mapping_from_node(node_b)?;
+        let map_a = mapping_from_node(node_a)?;
+        let map_b = mapping_from_node(node_b)?;
 
-        // Ensure component invert state matches InvA/InvB (XOR semantics).
-        // InvA means the child should be effectively inverted; if the child
-        // already has Invert=1 in its native state, InvA=1 cancels it.
-        if map_a.is_inverted() != inv_a {
-            map_a.invert();
-        }
-        if map_b.is_inverted() != inv_b {
-            map_b.invert();
-        }
-
-        let mut cmp = CmpMap::new(map_a, map_b, kind)?;
-        cmp.inv_a = inv_a;
-        cmp.inv_b = inv_b;
+        // Children keep their native Invert state as serialized.
+        // inv_a/inv_b record the expected child state; the effective
+        // transform direction is computed at runtime via
+        // first_invert_changed() / second_invert_changed().
+        let mut cmp = Self {
+            first: map_a,
+            second: map_b,
+            kind,
+            inverted: false,
+            do_not_simplify: false,
+            tran_forward: true,
+            tran_inverse: true,
+            inv_a,
+            inv_b,
+        };
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;
         cmp.set_do_not_simplify(base.do_not_simplify);

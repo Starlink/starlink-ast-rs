@@ -23,11 +23,11 @@ pub enum FrameRef {
     Index(usize),
 }
 
-/// A directed edge in the FrameSet graph.
+/// A directed edge in the FrameSet node graph.
 struct Edge {
-    /// Source node (0-based index into `frames`).
+    /// Source node (0-based node index).
     from: usize,
-    /// Destination node (0-based index into `frames`).
+    /// Destination node (0-based node index).
     to: usize,
     /// Mapping that transforms coordinates from `from` to `to`.
     mapping: DynMapping,
@@ -68,6 +68,11 @@ pub struct FrameSet {
     base_idx: usize,
     current_idx: usize,
     variants: Vec<(String, DynMapping)>,
+    /// Total number of nodes in the graph (>= nframe).
+    nnode: usize,
+    /// Maps each frame (0-based) to its node (0-based).
+    /// When `nnode == nframe`, this is the identity mapping.
+    node_map: Vec<usize>,
 }
 
 impl Clone for FrameSet {
@@ -90,6 +95,8 @@ impl Clone for FrameSet {
                 .iter()
                 .map(|(s, m)| (s.clone(), m.clone()))
                 .collect(),
+            nnode: self.nnode,
+            node_map: self.node_map.clone(),
         }
     }
 }
@@ -121,6 +128,8 @@ impl FrameSet {
             base_idx: 0,
             current_idx: 0,
             variants: Vec::new(),
+            nnode: 1,
+            node_map: vec![0],
         }
     }
 
@@ -192,14 +201,17 @@ impl FrameSet {
         new_frame: DynFrame,
     ) -> AstResult<()> {
         let anchor_idx = self.resolve(anchor)?;
-        let new_idx = self.frames.len();
+        let anchor_node = self.node_map[anchor_idx];
+        let new_node = self.nnode;
+        self.nnode += 1;
         self.frames.push(new_frame);
+        self.node_map.push(new_node);
         self.edges.push(Edge {
-            from: anchor_idx,
-            to: new_idx,
+            from: anchor_node,
+            to: new_node,
             mapping: map,
         });
-        self.current_idx = new_idx;
+        self.current_idx = self.frames.len() - 1;
         Ok(())
     }
 
@@ -216,19 +228,28 @@ impl FrameSet {
             ));
         }
         let idx = self.resolve(which)?;
+        let removed_node = self.node_map[idx];
 
-        // Remove the frame.
+        // Remove the frame and its node mapping.
         self.frames.remove(idx);
+        self.node_map.remove(idx);
 
-        // Remove all edges touching the removed frame.
-        self.edges.retain(|e| e.from != idx && e.to != idx);
+        // Remove all edges touching the removed node.
+        self.edges
+            .retain(|e| e.from != removed_node && e.to != removed_node);
 
-        // Renumber edges: any index > idx must decrease by 1.
+        // Renumber nodes: decrement any node index > removed_node.
+        self.nnode -= 1;
+        for node in &mut self.node_map {
+            if *node > removed_node {
+                *node -= 1;
+            }
+        }
         for edge in &mut self.edges {
-            if edge.from > idx {
+            if edge.from > removed_node {
                 edge.from -= 1;
             }
-            if edge.to > idx {
+            if edge.to > removed_node {
                 edge.to -= 1;
             }
         }
@@ -255,8 +276,9 @@ impl FrameSet {
     /// matches the resolved frame index.
     pub fn remap_frame(&mut self, which: FrameRef, map: DynMapping) -> AstResult<()> {
         let idx = self.resolve(which)?;
+        let node = self.node_map[idx];
         for edge in &mut self.edges {
-            if edge.from == idx || edge.to == idx {
+            if edge.from == node || edge.to == node {
                 edge.mapping = map;
                 return Ok(());
             }
@@ -283,7 +305,9 @@ impl FrameSet {
             let naxes = self.frames[from_idx].naxes();
             return Ok(Box::new(UnitMap::new(naxes)));
         }
-        let path = self.find_path(from_idx, to_idx)?;
+        let from_node = self.node_map[from_idx];
+        let to_node = self.node_map[to_idx];
+        let path = self.find_path(from_node, to_node)?;
         self.compose_path(&path)
     }
 
@@ -362,13 +386,13 @@ impl FrameSet {
         }
     }
 
-    /// BFS over the undirected frame graph, returning the node path.
+    /// BFS over the undirected node graph, returning the node path.
     ///
     /// Edges are treated as undirected: `from→to` and `to→from` are both
     /// valid traversal directions. The returned path includes both
-    /// endpoints.
+    /// endpoints. Arguments are 0-based node indices.
     fn find_path(&self, from: usize, to: usize) -> AstResult<Vec<usize>> {
-        let n = self.frames.len();
+        let n = self.nnode;
         let mut visited = vec![false; n];
         let mut parent: Vec<Option<usize>> = vec![None; n];
         let mut queue = VecDeque::new();
@@ -378,7 +402,6 @@ impl FrameSet {
 
         while let Some(current) = queue.pop_front() {
             if current == to {
-                // Reconstruct path.
                 let mut path = Vec::new();
                 let mut node = to;
                 path.push(node);
@@ -410,7 +433,7 @@ impl FrameSet {
         Err(AstError::new_tracked(
             ErrorCode::Frsin,
             format!(
-                "no path found between frames {} and {} in FrameSet",
+                "no path found between nodes {} and {} in FrameSet",
                 from + 1,
                 to + 1,
             ),
@@ -472,15 +495,15 @@ impl FrameSet {
             return Ok(());
         }
 
-        let cur = self.current_idx;
+        let cur_node = self.node_map[self.current_idx];
         for edge in &mut self.edges {
-            if edge.to == cur {
+            if edge.to == cur_node {
                 // Arriving at current: compose old then delta.
                 let old =
                     std::mem::replace(&mut edge.mapping, Box::new(UnitMap::new(1)) as DynMapping);
                 let delta_copy = delta.simplified()?;
                 edge.mapping = Box::new(CmpMap::new(old, delta_copy, Composition::Series)?);
-            } else if edge.from == cur {
+            } else if edge.from == cur_node {
                 // Leaving current: compose delta_inv then old.
                 let old =
                     std::mem::replace(&mut edge.mapping, Box::new(UnitMap::new(1)) as DynMapping);
@@ -786,9 +809,6 @@ impl Serializable for FrameSet {
             Some("Number of Frames in FrameSet".to_string()),
         );
 
-        // Nnode — only written when nnode != nframe (tree structure).
-        // Our FrameSet always has nnode == nframe (linear chain), so skip.
-
         // Base — 1-based base frame index (commented if default == 1).
         if self.base_idx == 0 {
             node.push_unset(
@@ -811,7 +831,26 @@ impl Serializable for FrameSet {
             Some("Index of current Frame".to_string()),
         );
 
-        // Lnk{to+1} = from+1 for each edge (1-based).
+        // Nnode — only written when nnode != nframe (tree structure).
+        if self.nnode != nframe {
+            node.push_int(
+                "Nnode",
+                self.nnode as i64,
+                Some("Number of nodes in FrameSet".to_string()),
+            );
+        }
+
+        // Nod{i} — frame-to-node mapping (only when differs from identity).
+        for (i, &nod) in self.node_map.iter().enumerate() {
+            let val = nod + 1; // 1-based
+            if val != i + 1 {
+                let key = format!("Nod{}", i + 1);
+                let comment = format!("Frame {} is associated with node {}", i + 1, val);
+                node.push_int(&key, val as i64, Some(comment));
+            }
+        }
+
+        // Lnk{node+1} = parent+1 for each edge (1-based node indices).
         for edge in &self.edges {
             let key = format!("Lnk{}", edge.to + 1);
             let comment = format!(
@@ -830,7 +869,7 @@ impl Serializable for FrameSet {
             node.push_object(&key, frame_node, Some(comment));
         }
 
-        // Map{to+1} — each edge mapping as a nested object.
+        // Map{node+1} — each edge mapping as a nested object.
         for edge in &self.edges {
             let key = format!("Map{}", edge.to + 1);
             let map_node = MappingToNode::to_node(edge.mapping.as_ref())?;
@@ -856,6 +895,15 @@ impl Serializable for FrameSet {
 
         let base = node.get_int("Base", 1) as usize;
         let current = node.get_int("Currnt", 1) as usize;
+        let nnode = node.get_int("Nnode", nframe as i64) as usize;
+
+        // Read frame-to-node mapping (Nod{i}, defaults to identity).
+        let mut node_map: Vec<usize> = Vec::with_capacity(nframe);
+        for i in 0..nframe {
+            let key = format!("Nod{}", i + 1);
+            let nod = node.get_int(&key, (i + 1) as i64) as usize;
+            node_map.push(nod - 1); // convert to 0-based
+        }
 
         // Read frames.
         let mut frames: Vec<DynFrame> = Vec::with_capacity(nframe);
@@ -867,11 +915,10 @@ impl Serializable for FrameSet {
             frames.push(frame_from_node(frame_node)?);
         }
 
-        // Read edges: for frames 1..nframe (0-based: 1..nframe), each
-        // has a Lnk and Map entry.
-        let mut edges: Vec<Edge> = Vec::with_capacity(nframe.saturating_sub(1));
-        for i in 1..nframe {
-            let lnk_key = format!("Lnk{}", i + 1);
+        // Read edges: for nodes 2..nnode (1-based), each has Lnk, Map.
+        let mut edges: Vec<Edge> = Vec::with_capacity(nnode.saturating_sub(1));
+        for inode in 1..nnode {
+            let lnk_key = format!("Lnk{}", inode + 1);
             let parent = node.get_int(&lnk_key, 0) as usize;
             if parent == 0 {
                 return Err(AstError::new(
@@ -880,15 +927,15 @@ impl Serializable for FrameSet {
                 ));
             }
 
-            let map_key = format!("Map{}", i + 1);
+            let map_key = format!("Map{}", inode + 1);
             let map_node = node.get_object(&map_key).ok_or_else(|| {
                 AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {map_key}"))
             })?;
             let mapping = mapping_from_node(map_node)?;
 
             edges.push(Edge {
-                from: parent - 1,
-                to: i,
+                from: parent - 1, // 0-based node index
+                to: inode,        // 0-based node index
                 mapping,
             });
         }
@@ -899,6 +946,8 @@ impl Serializable for FrameSet {
             base_idx: base - 1,
             current_idx: current - 1,
             variants: Vec::new(),
+            nnode,
+            node_map,
         })
     }
 }

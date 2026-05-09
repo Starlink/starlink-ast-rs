@@ -1,6 +1,6 @@
 # Native Serialization Round-Trip Gaps
 
-Status: 21/24 C-generated fixtures pass byte-exact round-trip.
+Status: 24/24 C-generated fixtures pass byte-exact round-trip.
 Date: 2026-05-09
 
 ## Test infrastructure
@@ -17,86 +17,26 @@ Fixtures live in: `crates/ast-core/tests/fixtures/native/generated/`
 
 ## Remaining 3 failures
 
-### 1. lsst.ast — CmpMap InvA with non-square SphMap (line 274)
+### 1. ~~lsst.ast — CmpMap InvA with non-square SphMap (line 274)~~ FIXED
 
-**Problem**: When a CmpMap has `InvA = 1` and the child is a non-square
-mapping (SphMap: 3→2 forward, 2→3 inverse), the round-trip produces
-an extra `Invert = 1` on the child that shouldn't be there.
+**Fix**: Aligned with C model — children keep their native Invert
+state; `inv_a`/`inv_b` record the expected child state (snapshot at
+construction/load). Effective transform direction computed at runtime
+as `forward XOR (inv_a != child.is_inverted())`. `from_node` no longer
+calls `invert()` on children; `to_node` writes `inv_a`/`inv_b` directly.
 
-**Root cause**: Our `from_node` applies InvA by XORing with the child's
-own Invert flag and calling `invert()` on the child. This changes
-`is_inverted()` to true. Then `to_node` writes BOTH `InvA = 1` (from
-`self.first.is_inverted()`) AND `Invert = 1` on the child (because
-the child's internal flag is now set). The C format only writes InvA
-on the parent; the child is stored in its native (non-inverted) state.
+### 2. ~~timj.ast — Nnode for tree-structured FrameSet (line 18)~~ FIXED
 
-**The difficulty**: For square mappings (Nin==Nout), inversion doesn't
-change dimensions, so writing the child with `Invert = 1` and NOT
-writing InvA would also round-trip correctly. But for non-square
-mappings, the child's Nin/Nout swap on inversion, making the
-serialized Nin/Nout wrong.
+**Fix**: Added `nnode` and `node_map` fields to FrameSet. Edges now
+connect **nodes** (not frames). `from_node` reads `Nnode`, `Nod{i}`,
+`Lnk{i}`, `Map{i}` correctly for tree-structured FrameSets. `to_node`
+writes `Nnode` and `Nod{i}` entries when `nnode != nframe`. BFS
+path-finding operates on the node graph, with frame→node translation
+in `mapping()`.
 
-**Fix approach**: The CmpMap needs to separate "child's own native
-Invert flag" from "the InvA flag applied by this CmpMap". Store both
-independently:
-- `child_inv_a_native: bool` — the child's Invert flag as read from the file
-- `inv_a: bool` — the InvA flag on the CmpMap
+### 3. ~~degen1.ast — Same Nnode issue~~ FIXED
 
-During `to_node`:
-- Write child in its native state (with `child_inv_a_native` as its Invert)
-- Write `InvA = 1` only when InvA differs from `child_inv_a_native`
-
-During transform:
-- Effective inversion = `child_inv_a_native XOR inv_a`
-
-This requires adding `child_inv_a_native`/`child_inv_b_native` fields
-to CmpMap and adjusting from_node to NOT call `invert()` on children
-(instead, track both flags separately and compute effective inversion
-at transform time).
-
-**Files**: `crates/ast-core/src/mappings/cmpmap.rs`
-
-**Impact**: All CmpMaps with InvA/InvB and non-square children
-(SphMap is the main case: it's 3→2 forward, 2→3 inverse).
-
-### 2. timj.ast — Nnode for tree-structured FrameSet (line 18)
-
-**Problem**: The file has `Nframe = 4` and `Nnode = 5`. Our FrameSet
-only supports linear chains where nnode == nframe. The C library
-supports tree-structured FrameSets where multiple frames can share
-a node (or nodes can exist without a frame).
-
-**Context**: `timj.ast` has this structure:
-```
-Nframe = 4
-Nnode = 5
-Lnk2 = 1   # Node 2 derived from node 1
-Lnk3 = 1   # Node 3 derived from node 1
-Lnk4 = 1   # Node 4 derived from node 1
-Lnk5 = 1   # Node 5 derived from node 1
-```
-
-Node 1 is shared — all other nodes derive from it (star topology).
-With 4 frames and 5 nodes, one frame maps to a different node than
-its index.
-
-**Fix approach**: Add a `node_index: Vec<usize>` field to FrameSet
-that maps each frame (0-based) to its node index (0-based). When
-`nnode != nframe`, also store `nnode` and write both `Nnode` and
-per-frame `Nd{i}` entries (frame-to-node mappings). During read,
-parse `Nd{i}` to build the mapping.
-
-The mapping affects which `Map{i}` connects to which frame — the
-link/map structure uses NODE indices, not frame indices.
-
-**Files**: `crates/ast-core/src/frames/frameset.rs`
-
-**Impact**: Any FrameSet created by the C library with remapped nodes
-(common in FITS WCS with multiple alternate coordinate systems).
-
-### 3. degen1.ast — Same Nnode issue (line 19)
-
-Same as timj.ast. Has `Nframe = 4, Nnode = 5` with star topology.
+Same fix as timj.ast.
 
 ## What was fixed in this session
 
@@ -119,5 +59,9 @@ Starting from 10/24 passing:
 - **LutMap**: Incr default, has_inverse tracking
 - **PolyMap/ChebyMap**: preserve zero-coefficient terms, fix power
   comment formatting
-- **CmpMap**: inv_a/inv_b field tracking
+- **CmpMap**: inv_a/inv_b field tracking; children keep native Invert
+  state with effective direction computed at runtime (fixes non-square
+  InvA/InvB round-trip)
+- **FrameSet**: tree-structured node graphs (Nnode != Nframe) with
+  frame-to-node mapping via Nod{i} entries
 - **SkyAxis**: don't write IsLat (inferred from position)
