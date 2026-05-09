@@ -5,7 +5,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{DynMapping, SpecCvtType, SpecMap, UnitMap};
-use crate::serial::{Node, Serializable};
+use crate::serial::{Node, NodeValue, Serializable};
 
 // ---------------------------------------------------------------------------
 // SpecSystem — spectral coordinate system type
@@ -106,14 +106,58 @@ impl SpecSystem {
         match self {
             Self::Freq => "Frequency",
             Self::Energy => "Energy",
-            Self::Wavenum => "Wave number",
+            Self::Wavenum => "Wave-number",
             Self::Wavelen => "Wavelength",
-            Self::Airwave => "Wavelength in air",
+            Self::Airwave => "Wavelength",
             Self::Vradio => "Radio velocity",
             Self::Voptical => "Optical velocity",
             Self::Redshift => "Redshift",
             Self::Beta => "Beta factor",
-            Self::Vrel => "Relativistic velocity",
+            Self::Vrel => "Velocity",
+        }
+    }
+
+    /// Native serialisation attribute key for the unit preference (e.g. "UFreq").
+    pub(crate) fn unit_attr_key(&self) -> &'static str {
+        match self {
+            Self::Freq => "UFreq",
+            Self::Energy => "UEner",
+            Self::Wavenum => "UWavn",
+            Self::Wavelen => "UWave",
+            Self::Airwave => "UAwav",
+            Self::Vradio => "UVrad",
+            Self::Voptical => "UVopt",
+            Self::Redshift => "UZopt",
+            Self::Beta => "UBeta",
+            Self::Vrel => "UVelo",
+        }
+    }
+
+    /// Comment for the unit preference attribute in Native format.
+    pub(crate) fn unit_attr_comment(&self) -> &'static str {
+        match self {
+            Self::Freq => "Preferred units for frequency",
+            Self::Energy => "Preferred units for energy",
+            Self::Wavenum => "Preferred units for wave-number",
+            Self::Wavelen => "Preferred units for wavelength",
+            Self::Airwave => "Preferred units for wavelength in air",
+            Self::Vradio => "Preferred units for radio velocity",
+            Self::Voptical => "Preferred units for optical velocity",
+            Self::Redshift => "Preferred units for redshift",
+            Self::Beta => "Preferred units for beta factor",
+            Self::Vrel => "Preferred units for apparent radial velocity",
+        }
+    }
+
+    /// Default display units for this system (user-facing, not SI).
+    pub(crate) fn default_display_units(&self) -> &'static str {
+        match self {
+            Self::Freq => "GHz",
+            Self::Energy => "J",
+            Self::Wavenum => "/m",
+            Self::Wavelen | Self::Airwave => "Angstrom",
+            Self::Vradio | Self::Voptical | Self::Vrel => "m/s",
+            Self::Redshift | Self::Beta => "",
         }
     }
 }
@@ -216,13 +260,15 @@ pub struct SpecFrame {
     // SpecFrame-specific
     system: SpecSystem,
     std_of_rest: StdOfRest,
-    rest_freq: Option<f64>,         // Hz
-    ref_ra: Option<f64>,            // FK5 J2000 radians
-    ref_dec: Option<f64>,           // FK5 J2000 radians
-    source_vel: Option<f64>,        // m/s (or redshift/beta depending on source_sys)
-    source_vrf: Option<StdOfRest>,  // rest frame of source velocity
+    sor_set: bool,           // whether std_of_rest was explicitly set (vs defaulting)
+    unit: Option<String>,    // user-facing unit for the current system (e.g. "GHz")
+    rest_freq: Option<f64>,  // Hz
+    ref_ra: Option<f64>,     // FK5 J2000 radians
+    ref_dec: Option<f64>,    // FK5 J2000 radians
+    source_vel: Option<f64>, // m/s (or redshift/beta depending on source_sys)
+    source_vrf: Option<StdOfRest>, // rest frame of source velocity
     source_sys: Option<SpecSystem>, // spectral system of source velocity
-    spec_origin: Option<f64>,       // spectral origin (in default units for current system)
+    spec_origin: Option<f64>, // spectral origin (in default units for current system)
     align_std_of_rest: Option<StdOfRest>,
     align_spec_offset: bool,
 }
@@ -241,6 +287,8 @@ impl SpecFrame {
             obs_alt: None,
             system,
             std_of_rest: StdOfRest::Heliocentric,
+            sor_set: false,
+            unit: None,
             rest_freq: None,
             ref_ra: None,
             ref_dec: None,
@@ -273,6 +321,19 @@ impl SpecFrame {
     /// Set the standard of rest.
     pub fn set_std_of_rest(&mut self, sor: StdOfRest) {
         self.std_of_rest = sor;
+        self.sor_set = true;
+    }
+
+    /// Return the user-facing unit for the current system (e.g. "GHz" for FREQ).
+    ///
+    /// Returns `None` if no unit has been explicitly set.
+    pub fn unit(&self) -> Option<&str> {
+        self.unit.as_deref()
+    }
+
+    /// Set the user-facing unit for the current system.
+    pub fn set_unit(&mut self, unit: &str) {
+        self.unit = Some(unit.to_string());
     }
 
     /// Return the alignment standard of rest.
@@ -376,6 +437,15 @@ impl SpecFrame {
     /// Set the title.
     pub fn set_title(&mut self, title: &str) {
         self.title = Some(title.to_string());
+    }
+
+    /// Compute the default title from the system label and standard of rest.
+    ///
+    /// Format: "{label} ({sor})" — e.g. "Frequency (Heliocentric)".
+    fn default_title(&self) -> String {
+        let label = self.system.label();
+        let sor = self.std_of_rest.as_str();
+        format!("{label} ({sor})")
     }
 
     /// Set the domain.
@@ -937,8 +1007,10 @@ impl Serializable for SpecFrame {
         node.class_comment = Some("Description of spectral coordinate system".to_string());
 
         // --- Frame-level attributes (before IsA Frame) ---
+        // Order: Title, Naxes, Domain, Epoch, Lbl1, System, Uni1, Ax1,
+        //        [observer], IsA Frame
 
-        // Title (if set and non-empty).
+        // Title: active if explicitly set, otherwise unset with default.
         if let Some(ref title) = self.title {
             if !title.is_empty() {
                 node.push_string(
@@ -947,12 +1019,18 @@ impl Serializable for SpecFrame {
                     Some("Title of coordinate system".to_string()),
                 );
             }
+        } else {
+            node.push_unset(
+                "Title",
+                NodeValue::String(self.default_title()),
+                Some("Title of coordinate system".to_string()),
+            );
         }
 
-        // Naxes = 1 (always).
+        // Naxes = 1 (always active).
         node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
 
-        // Domain (if set and != "SPECTRUM", which is the default).
+        // Domain: active if explicitly set to non-"SPECTRUM", otherwise unset.
         if let Some(ref domain) = self.domain {
             if !domain.is_empty() && domain != "SPECTRUM" {
                 node.push_string(
@@ -960,26 +1038,72 @@ impl Serializable for SpecFrame {
                     domain,
                     Some("Coordinate system domain".to_string()),
                 );
+            } else {
+                node.push_unset(
+                    "Domain",
+                    NodeValue::String("SPECTRUM".to_string()),
+                    Some("Coordinate system domain".to_string()),
+                );
             }
+        } else {
+            node.push_unset(
+                "Domain",
+                NodeValue::String("SPECTRUM".to_string()),
+                Some("Coordinate system domain".to_string()),
+            );
         }
 
-        // System.
-        node.push_string(
-            "System",
-            self.system.as_str(),
-            Some("Coordinate system type".to_string()),
-        );
-
-        // Epoch (if set).
+        // Epoch: active if explicitly set, otherwise unset with default 2000.
         if let Some(epoch) = self.epoch {
             node.push_double(
                 "Epoch",
                 epoch,
                 Some("Julian epoch of observation".to_string()),
             );
+        } else {
+            node.push_unset(
+                "Epoch",
+                NodeValue::Double(2000.0),
+                Some("Julian epoch of observation".to_string()),
+            );
         }
 
-        // Observer attributes.
+        // Lbl1: axis label (always unset with system-appropriate default).
+        node.push_unset(
+            "Lbl1",
+            NodeValue::String(self.system.label().to_string()),
+            Some("Label for axis 1".to_string()),
+        );
+
+        // System (always active).
+        node.push_string(
+            "System",
+            self.system.as_str(),
+            Some("Coordinate system type".to_string()),
+        );
+
+        // Uni1: axis unit (always unset with current unit or system default).
+        let display_unit = self
+            .unit
+            .as_deref()
+            .unwrap_or(self.system.default_display_units());
+        if !display_unit.is_empty() {
+            node.push_unset(
+                "Uni1",
+                NodeValue::String(display_unit.to_string()),
+                Some("Units for axis 1".to_string()),
+            );
+        }
+
+        // Ax1: axis child object with unit (if unit is set or non-empty default).
+        let mut axis_node = Node::new("Axis");
+        axis_node.class_comment = Some("Coordinate axis".to_string());
+        if let Some(ref unit) = self.unit {
+            axis_node.push_string("Unit", unit, Some("Axis units".to_string()));
+        }
+        node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
+
+        // Observer attributes (active only if explicitly set).
         if let Some(obs_lat) = self.obs_lat {
             node.push_double(
                 "ObsLat",
@@ -1003,16 +1127,27 @@ impl Serializable for SpecFrame {
         }
 
         // IsA Frame marker.
-        node.push_isa("Frame", None);
+        node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
         // --- SpecFrame-specific attributes (after IsA Frame) ---
 
-        // SoR (StdOfRest).
-        node.push_string(
-            "SoR",
-            self.std_of_rest.as_str(),
-            Some("Standard of rest".to_string()),
-        );
+        // SoR (StdOfRest) — only write if explicitly set.
+        if self.sor_set {
+            node.push_string(
+                "SoR",
+                self.std_of_rest.as_str(),
+                Some("Standard of rest".to_string()),
+            );
+        }
+
+        // Unit preference (UFreq, UWave, etc.) — only if explicitly set.
+        if let Some(ref unit) = self.unit {
+            node.push_string(
+                self.system.unit_attr_key(),
+                unit,
+                Some(self.system.unit_attr_comment().to_string()),
+            );
+        }
 
         // AlSoR (AlignStdOfRest, only if explicitly set).
         if let Some(ref asor) = self.align_std_of_rest {
@@ -1127,6 +1262,24 @@ impl Serializable for SpecFrame {
         let sor_str = node.get_string("SoR", "Heliocentric");
         if let Some(sor) = StdOfRest::parse(&sor_str) {
             sf.std_of_rest = sor;
+            if node.get("SoR").is_some() {
+                sf.sor_set = true;
+            }
+        }
+
+        // Unit preference (UFreq, UWave, etc.).
+        let unit_key = system.unit_attr_key();
+        let unit_str = node.get_string(unit_key, "");
+        if !unit_str.is_empty() {
+            sf.unit = Some(unit_str);
+        } else {
+            // Fall back to Axis child Unit attribute.
+            if let Some(axis_node) = node.get_object("Ax1") {
+                let axis_unit = axis_node.get_string("Unit", "");
+                if !axis_unit.is_empty() {
+                    sf.unit = Some(axis_unit);
+                }
+            }
         }
 
         // AlSoR (AlignStdOfRest).

@@ -6,7 +6,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
-use crate::serial::{FrameToNode, Node, Serializable, frame_from_node};
+use crate::serial::{FrameToNode, Node, NodeValue, Serializable, frame_from_node};
 
 use super::{DynFrame, Frame, FrameRef, FrameSet};
 
@@ -206,14 +206,103 @@ impl Serializable for CmpFrame {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Compound coordinate Frame".to_string());
+        node.class_comment = Some("Compound coordinate system description".to_string());
 
-        // IsA Frame marker (CmpFrame inherits from Frame).
-        node.push_isa("Frame", Some("Coordinate Frame".to_string()));
+        let naxes = self.naxes();
+        let n1 = self.frame1.naxes();
 
-        // Component frames as nested objects.
+        // Serialize child frames to get their Lbl/Uni/Dir info.
         let node_a = FrameToNode::to_node(self.frame1.as_ref())?;
         let node_b = FrameToNode::to_node(self.frame2.as_ref())?;
+
+        // Compute default title: "N-d compound coordinate system"
+        let default_title = format!("{naxes}-d compound coordinate system");
+        node.push_unset(
+            "Title",
+            NodeValue::String(default_title),
+            Some("Title of coordinate system".to_string()),
+        );
+
+        // Naxes (commented for CmpFrame — derivable from components)
+        node.push_unset(
+            "Naxes",
+            NodeValue::Int(naxes as i64),
+            Some("Number of coordinate axes".to_string()),
+        );
+
+        // Domain: join component domains with "-"
+        let domain_a = node_a.get_string_any("Domain").unwrap_or("").to_string();
+        let domain_b = node_b.get_string_any("Domain").unwrap_or("").to_string();
+        let compound_domain = if domain_a.is_empty() && domain_b.is_empty() {
+            String::new()
+        } else {
+            format!("{}-{}", domain_a, domain_b)
+        };
+        if !compound_domain.is_empty() {
+            node.push_unset(
+                "Domain",
+                NodeValue::String(compound_domain),
+                Some("Coordinate system domain".to_string()),
+            );
+        }
+
+        // Lbl{n} and Uni{n} from child frames
+        for ax in 1..=naxes {
+            let (child_node, local_ax) = if ax <= n1 {
+                (&node_a, ax)
+            } else {
+                (&node_b, ax - n1)
+            };
+            let lbl_key = format!("Lbl{local_ax}");
+            if let Some(lbl) = child_node.get_string_any(&lbl_key) {
+                node.push_unset(
+                    &format!("Lbl{ax}"),
+                    NodeValue::String(lbl.to_string()),
+                    Some(format!("Label for axis {ax}")),
+                );
+            }
+        }
+        for ax in 1..=naxes {
+            let (child_node, local_ax) = if ax <= n1 {
+                (&node_a, ax)
+            } else {
+                (&node_b, ax - n1)
+            };
+            let uni_key = format!("Uni{local_ax}");
+            if let Some(uni) = child_node.get_string_any(&uni_key) {
+                node.push_unset(
+                    &format!("Uni{ax}"),
+                    NodeValue::String(uni.to_string()),
+                    Some(format!("Units for axis {ax}")),
+                );
+            }
+        }
+
+        // Dir{n} — only write if value is 0 (reverse direction)
+        for ax in 1..=naxes {
+            let (child_node, local_ax) = if ax <= n1 {
+                (&node_a, ax)
+            } else {
+                (&node_b, ax - n1)
+            };
+            let dir_key = format!("Dir{local_ax}");
+            if let Some(0) = child_node.get_int_any(&dir_key) {
+                node.push_unset(
+                    &format!("Dir{ax}"),
+                    NodeValue::Int(0),
+                    Some(format!("Plot axis {ax} in reverse direction")),
+                );
+            }
+        }
+
+        // IsA Frame marker
+        node.push_isa("Frame", Some("Coordinate system description".to_string()));
+
+        // Component frames as nested objects (strip unset attributes for minimal output).
+        let mut node_a = node_a;
+        let mut node_b = node_b;
+        node_a.strip_unset();
+        node_b.strip_unset();
         node.push_object("FrameA", node_a, Some("First component Frame".to_string()));
         node.push_object("FrameB", node_b, Some("Second component Frame".to_string()));
 

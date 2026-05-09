@@ -120,6 +120,43 @@ impl Node {
         None
     }
 
+    /// Remove all `Unset` items from this node (for minimal output).
+    pub fn strip_unset(&mut self) {
+        self.items
+            .retain(|item| !matches!(&item.value, NodeValue::Unset(_)));
+    }
+
+    /// Look up the first item with the given key, returning its value
+    /// whether set or unset. Unwraps `Unset(inner)` to return `inner`.
+    pub fn get_any(&self, key: &str) -> Option<&NodeValue> {
+        for item in &self.items {
+            if item.key == key {
+                if let NodeValue::Unset(inner) = &item.value {
+                    return Some(inner.as_ref());
+                }
+                return Some(&item.value);
+            }
+        }
+        None
+    }
+
+    /// Look up a string attribute, returning it whether set or unset.
+    pub fn get_string_any(&self, key: &str) -> Option<&str> {
+        match self.get_any(key) {
+            Some(NodeValue::String(v)) => Some(v.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Look up an integer attribute (set or unset), returning None if absent.
+    pub fn get_int_any(&self, key: &str) -> Option<i64> {
+        match self.get_any(key) {
+            Some(NodeValue::Int(v)) => Some(*v),
+            Some(NodeValue::Double(v)) => Some(*v as i64),
+            _ => None,
+        }
+    }
+
     /// Look up an integer attribute, returning a default if absent.
     ///
     /// If the stored value is a `Double`, it is truncated to `i64`.

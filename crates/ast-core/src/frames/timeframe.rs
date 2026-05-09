@@ -5,7 +5,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{DynMapping, TimeCvtType, TimeMap, UnitMap};
-use crate::serial::{Node, Serializable};
+use crate::serial::{Node, NodeValue, Serializable};
 
 // ---------------------------------------------------------------------------
 // TimeSystem — time coordinate system type
@@ -341,6 +341,23 @@ impl TimeFrame {
     /// Set the DTAI value (TAI-UTC in seconds).
     pub fn set_dtai(&mut self, dtai: f64) {
         self.dtai = Some(dtai);
+    }
+
+    // --- Serialisation helpers ---
+
+    /// Return the default title: "SystemLabel [TimeScale]".
+    fn default_title(&self) -> String {
+        format!("{} [{}]", self.system.label(), self.timescale.as_str())
+    }
+
+    /// Return a human-readable description for a unit abbreviation.
+    fn unit_description(units: &str) -> &'static str {
+        match units {
+            "d" => "day",
+            "yr" => "year",
+            "s" => "second",
+            _ => "",
+        }
     }
 
     // --- Conversion helpers ---
@@ -769,8 +786,9 @@ impl Serializable for TimeFrame {
         node.class_comment = Some("Description of time coordinate system".to_string());
 
         // --- Frame-level attributes (before IsA Frame) ---
+        // Order: Title, Naxes, Domain, Epoch, Lbl1, System, Uni1, Ax1, IsA Frame
 
-        // Title (if set and non-empty).
+        // Title: active if explicitly set, otherwise unset with default.
         if let Some(ref title) = self.title {
             if !title.is_empty() {
                 node.push_string(
@@ -779,12 +797,18 @@ impl Serializable for TimeFrame {
                     Some("Title of coordinate system".to_string()),
                 );
             }
+        } else {
+            node.push_unset(
+                "Title",
+                NodeValue::String(self.default_title()),
+                Some("Title of coordinate system".to_string()),
+            );
         }
 
-        // Naxes = 1 (always).
+        // Naxes = 1 (always active).
         node.push_int("Naxes", 1, Some("Number of coordinate axes".to_string()));
 
-        // Domain (if set and != "TIME", which is the default).
+        // Domain: active if explicitly set to non-"TIME", otherwise unset "TIME".
         if let Some(ref domain) = self.domain {
             if !domain.is_empty() && domain != "TIME" {
                 node.push_string(
@@ -792,26 +816,66 @@ impl Serializable for TimeFrame {
                     domain,
                     Some("Coordinate system domain".to_string()),
                 );
+            } else {
+                node.push_unset(
+                    "Domain",
+                    NodeValue::String("TIME".to_string()),
+                    Some("Coordinate system domain".to_string()),
+                );
             }
+        } else {
+            node.push_unset(
+                "Domain",
+                NodeValue::String("TIME".to_string()),
+                Some("Coordinate system domain".to_string()),
+            );
         }
 
-        // System.
-        node.push_string(
-            "System",
-            self.system.as_str(),
-            Some("Coordinate system type".to_string()),
-        );
-
-        // Epoch (if set).
+        // Epoch: active if explicitly set, otherwise unset with default 2000.
         if let Some(epoch) = self.epoch {
             node.push_double(
                 "Epoch",
                 epoch,
                 Some("Julian epoch of observation".to_string()),
             );
+        } else {
+            node.push_unset(
+                "Epoch",
+                NodeValue::Double(2000.0),
+                Some("Julian epoch of observation".to_string()),
+            );
         }
 
-        // Observer attributes.
+        // Axis label (always unset with system-appropriate default).
+        node.push_unset(
+            "Lbl1",
+            NodeValue::String(self.system.label().to_string()),
+            Some("Label for axis 1".to_string()),
+        );
+
+        // System (always active).
+        node.push_string(
+            "System",
+            self.system.as_str(),
+            Some("Coordinate system type".to_string()),
+        );
+
+        // Axis units (always unset with system-appropriate default).
+        let units = self.system.default_units();
+        let unit_desc = Self::unit_description(units);
+        let uni_comment = format!("Units for axis 1 ({unit_desc})");
+        node.push_unset(
+            "Uni1",
+            NodeValue::String(units.to_string()),
+            Some(uni_comment),
+        );
+
+        // Per-axis Axis child object (empty Axis).
+        let mut axis_node = Node::new("Axis");
+        axis_node.class_comment = Some("Coordinate axis".to_string());
+        node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
+
+        // Observer attributes (active only if explicitly set).
         if let Some(obs_lat) = self.obs_lat {
             node.push_double(
                 "ObsLat",
@@ -845,7 +909,7 @@ impl Serializable for TimeFrame {
         }
 
         // IsA Frame marker.
-        node.push_isa("Frame", None);
+        node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
         // --- TimeFrame-specific attributes (after IsA Frame) ---
 

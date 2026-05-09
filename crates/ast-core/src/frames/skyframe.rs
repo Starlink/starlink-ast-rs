@@ -8,7 +8,7 @@ use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
-use crate::serial::{Node, Serializable};
+use crate::serial::{Node, NodeValue, Serializable};
 
 /// A celestial coordinate frame.
 ///
@@ -245,6 +245,72 @@ impl SkyFrame {
     /// Set UT1-UTC in seconds.
     pub fn set_dut1(&mut self, dut1: f64) {
         self.dut1 = Some(dut1);
+    }
+
+    // --- Private helpers for serialisation defaults ---
+
+    /// Default title for the current system and equinox.
+    fn default_title(&self) -> String {
+        let base = match self.system {
+            SkySystem::Fk5 => {
+                let eq = self.equinox_epoch_string();
+                format!("FK5 equatorial coordinates; mean equinox J{eq}")
+            }
+            SkySystem::Fk4 | SkySystem::Fk4NoE => {
+                let eq = self.equinox_epoch_string();
+                format!("FK4 equatorial coordinates; mean equinox B{eq}")
+            }
+            SkySystem::Galactic => "IAU (1958) galactic coordinates".to_string(),
+            SkySystem::Supergalactic => "Supergalactic coordinates".to_string(),
+            SkySystem::Ecliptic => "Ecliptic coordinates".to_string(),
+            SkySystem::Icrs => "ICRS coordinates".to_string(),
+            SkySystem::J2000 => "J2000 equatorial coordinates".to_string(),
+            _ => "Sky coordinates".to_string(),
+        };
+        if let Some(ref proj) = self.projection {
+            format!("{base}; {proj} projection")
+        } else {
+            base
+        }
+    }
+
+    /// Format the equinox as a display string (e.g. "2000.0" or "1950.0").
+    fn equinox_epoch_string(&self) -> String {
+        let eqnox_mjd = self
+            .equinox
+            .unwrap_or_else(|| self.system.default_equinox_mjd());
+        let jep = pal::epj(eqnox_mjd);
+        let epoch_val = if jep < 1984.0 {
+            pal::epb(eqnox_mjd)
+        } else {
+            jep
+        };
+        // Format: if integer, show as "NNNN.0"; otherwise full precision.
+        if epoch_val == epoch_val.trunc() {
+            format!("{:.1}", epoch_val)
+        } else {
+            format!("{}", epoch_val)
+        }
+    }
+
+    /// Default axis labels for the current system.
+    fn default_labels(&self) -> (&'static str, &'static str) {
+        match self.system {
+            SkySystem::Galactic => ("Galactic longitude", "Galactic latitude"),
+            SkySystem::Ecliptic => ("Ecliptic longitude", "Ecliptic latitude"),
+            SkySystem::Supergalactic => ("Supergalactic longitude", "Supergalactic latitude"),
+            _ => ("Right ascension", "Declination"),
+        }
+    }
+
+    /// Default axis units for the current system.
+    fn default_units(&self) -> (&'static str, &'static str) {
+        match self.system {
+            SkySystem::Galactic | SkySystem::Ecliptic | SkySystem::Supergalactic => {
+                ("degrees", "degrees")
+            }
+            _ => ("hh:mm:ss.s", "ddd:mm:ss"),
+        }
     }
 }
 
@@ -521,8 +587,10 @@ impl Serializable for SkyFrame {
         node.class_comment = Some("Description of celestial coordinate system".to_string());
 
         // --- Frame-level attributes (before IsA Frame) ---
+        // Order: Title, Naxes, Domain, Epoch, Lbl1, Lbl2, System,
+        //        Uni1, Uni2, Dir1, Bot2, Top2, [observer], Axes
 
-        // Title (if set and non-empty).
+        // Title: active if explicitly set, otherwise unset with default.
         if let Some(ref title) = self.title {
             if !title.is_empty() {
                 node.push_string(
@@ -531,12 +599,18 @@ impl Serializable for SkyFrame {
                     Some("Title of coordinate system".to_string()),
                 );
             }
+        } else {
+            node.push_unset(
+                "Title",
+                NodeValue::String(self.default_title()),
+                Some("Title of coordinate system".to_string()),
+            );
         }
 
-        // Naxes = 2 (always).
+        // Naxes = 2 (always active).
         node.push_int("Naxes", 2, Some("Number of coordinate axes".to_string()));
 
-        // Domain (if set and != "SKY", which is the default).
+        // Domain: active if explicitly set to non-"SKY", otherwise unset "SKY".
         if let Some(ref domain) = self.domain {
             if !domain.is_empty() && domain != "SKY" {
                 node.push_string(
@@ -544,26 +618,89 @@ impl Serializable for SkyFrame {
                     domain,
                     Some("Coordinate system domain".to_string()),
                 );
+            } else {
+                node.push_unset(
+                    "Domain",
+                    NodeValue::String("SKY".to_string()),
+                    Some("Coordinate system domain".to_string()),
+                );
             }
+        } else {
+            node.push_unset(
+                "Domain",
+                NodeValue::String("SKY".to_string()),
+                Some("Coordinate system domain".to_string()),
+            );
         }
 
-        // System.
-        node.push_string(
-            "System",
-            self.system.as_str(),
-            Some("Coordinate system type".to_string()),
-        );
-
-        // Epoch (if set).
+        // Epoch: active if explicitly set, otherwise unset with default 2000.
         if let Some(epoch) = self.epoch {
             node.push_double(
                 "Epoch",
                 epoch,
                 Some("Julian epoch of observation".to_string()),
             );
+        } else {
+            node.push_unset(
+                "Epoch",
+                NodeValue::Double(2000.0),
+                Some("Julian epoch of observation".to_string()),
+            );
         }
 
-        // Observer attributes.
+        // Axis labels (always unset with system-appropriate defaults).
+        let (lbl1, lbl2) = self.default_labels();
+        node.push_unset(
+            "Lbl1",
+            NodeValue::String(lbl1.to_string()),
+            Some("Label for axis 1".to_string()),
+        );
+        node.push_unset(
+            "Lbl2",
+            NodeValue::String(lbl2.to_string()),
+            Some("Label for axis 2".to_string()),
+        );
+
+        // System (always active).
+        node.push_string(
+            "System",
+            self.system.as_str(),
+            Some("Coordinate system type".to_string()),
+        );
+
+        // Axis units (always unset with system-appropriate defaults).
+        let (uni1, uni2) = self.default_units();
+        node.push_unset(
+            "Uni1",
+            NodeValue::String(uni1.to_string()),
+            Some("Units for axis 1".to_string()),
+        );
+        node.push_unset(
+            "Uni2",
+            NodeValue::String(uni2.to_string()),
+            Some("Units for axis 2".to_string()),
+        );
+
+        // Dir1: longitude axis plots in reverse direction (always unset).
+        node.push_unset(
+            "Dir1",
+            NodeValue::Int(0),
+            Some("Plot axis 1 in reverse direction".to_string()),
+        );
+
+        // Bot2/Top2: latitude axis limits (always unset).
+        node.push_unset(
+            "Bot2",
+            NodeValue::Double(-std::f64::consts::FRAC_PI_2),
+            Some("Lowest legal axis value".to_string()),
+        );
+        node.push_unset(
+            "Top2",
+            NodeValue::Double(std::f64::consts::FRAC_PI_2),
+            Some("Highest legal axis value".to_string()),
+        );
+
+        // Observer attributes (active only if explicitly set).
         if let Some(obs_lat) = self.obs_lat {
             node.push_double(
                 "ObsLat",
@@ -601,7 +738,7 @@ impl Serializable for SkyFrame {
         }
 
         // IsA Frame marker.
-        node.push_isa("Frame", None);
+        node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
         // --- SkyFrame-specific attributes (after IsA Frame) ---
 
@@ -623,12 +760,18 @@ impl Serializable for SkyFrame {
             );
         }
 
-        // SkyTol (if set).
+        // SkyTol: active if explicitly set, otherwise unset with default 0.001.
         if let Some(sky_tol) = self.sky_tol {
             node.push_double(
                 "SkyTol",
                 sky_tol,
-                Some("Smallest significant distance (rads)".to_string()),
+                Some("Smallest significant separation [arc-sec]".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "SkyTol",
+                NodeValue::Double(0.001),
+                Some("Smallest significant separation [arc-sec]".to_string()),
             );
         }
 
@@ -644,7 +787,7 @@ impl Serializable for SkyFrame {
             node.push_double(
                 "Eqnox",
                 epoch_val,
-                Some("Epoch of mean equinox".to_string()),
+                Some("Julian epoch of mean equinox".to_string()),
             );
         }
 

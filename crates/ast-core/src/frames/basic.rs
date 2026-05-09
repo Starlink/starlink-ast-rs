@@ -585,9 +585,9 @@ impl Serializable for BasicFrame {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Coordinate Frame".to_string());
+        node.class_comment = Some("Coordinate system description".to_string());
 
-        // Title (if set and non-empty).
+        // Title (active if set and non-empty).
         if let Some(ref title) = self.title {
             if !title.is_empty() {
                 node.push_string(
@@ -598,14 +598,14 @@ impl Serializable for BasicFrame {
             }
         }
 
-        // Naxes (always).
+        // Naxes (always active).
         node.push_int(
             "Naxes",
             self.naxes as i64,
             Some("Number of coordinate axes".to_string()),
         );
 
-        // Domain (if set and non-empty).
+        // Domain (active if set and non-empty).
         if let Some(ref domain) = self.domain {
             if !domain.is_empty() {
                 node.push_string(
@@ -616,7 +616,7 @@ impl Serializable for BasicFrame {
             }
         }
 
-        // Epoch (if set).
+        // Epoch (active if set).
         if let Some(epoch) = self.epoch {
             node.push_double(
                 "Epoch",
@@ -625,31 +625,25 @@ impl Serializable for BasicFrame {
             );
         }
 
-        // Per-axis Label (commented/Unset — informational).
+        // Per-axis Label (always commented/unset).
+        // Shows the explicit label if set, otherwise default "Axis N".
         for i in 0..self.naxes {
-            if let Some(ref label) = self.labels[i] {
-                let key = format!("Lbl{}", i + 1);
-                let comment = format!("Label for axis {}", i + 1);
-                node.push_unset(&key, NodeValue::String(label.clone()), Some(comment));
-            }
+            let label_val = match &self.labels[i] {
+                Some(label) => label.clone(),
+                None => format!("Axis {}", i + 1),
+            };
+            let key = format!("Lbl{}", i + 1);
+            let comment = format!("Label for axis {}", i + 1);
+            node.push_unset(&key, NodeValue::String(label_val), Some(comment));
         }
 
-        // Per-axis Symbol (commented/Unset — informational).
-        for i in 0..self.naxes {
-            if let Some(ref symbol) = self.symbols[i] {
-                let key = format!("Sym{}", i + 1);
-                let comment = format!("Symbol for axis {}", i + 1);
-                node.push_unset(&key, NodeValue::String(symbol.clone()), Some(comment));
-            }
-        }
-
-        // Per-axis Unit (active, not commented — only if set and non-empty).
+        // Per-axis Unit (commented/unset — only emitted when set and non-empty).
         for i in 0..self.naxes {
             if let Some(ref unit) = self.units[i] {
                 if !unit.is_empty() {
                     let key = format!("Uni{}", i + 1);
                     let comment = format!("Units for axis {}", i + 1);
-                    node.push_string(&key, unit, Some(comment));
+                    node.push_unset(&key, NodeValue::String(unit.clone()), Some(comment));
                 }
             }
         }
@@ -683,9 +677,6 @@ impl Serializable for BasicFrame {
             let comment = format!("Axis number {}", i + 1);
             node.push_object(&key, axis_node, Some(comment));
         }
-
-        // IsA Frame marker.
-        node.push_isa("Frame", None);
 
         Ok(node)
     }

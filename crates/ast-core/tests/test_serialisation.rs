@@ -812,10 +812,10 @@ fn round_trip_skyframe_default_fk5() {
     assert!(text.contains("Naxes = 2"), "missing Naxes");
     assert!(text.contains("System = \"FK5\""), "missing System");
     assert!(text.contains("IsA Frame"), "missing IsA Frame");
-    // Default domain is SKY, should NOT be serialised.
+    // Default domain is SKY, written as unset (commented out).
     assert!(
-        !text.contains("Domain"),
-        "default domain SKY should not be written"
+        text.contains("#   Domain = \"SKY\""),
+        "default domain SKY should be written as unset"
     );
     // SkyAxis children should be present.
     assert!(text.contains("Begin SkyAxis"), "missing SkyAxis");

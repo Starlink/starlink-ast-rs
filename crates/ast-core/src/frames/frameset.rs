@@ -7,7 +7,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, UnitMap};
 use crate::serial::{
-    FrameToNode, MappingToNode, Node, Serializable, frame_from_node, mapping_from_node,
+    FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
 
 use super::{DynFrame, Frame};
@@ -686,15 +686,77 @@ impl Serializable for FrameSet {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Set of inter-related coordinate systems".to_string());
 
-        // Naxes — current frame's naxes (informational).
-        node.push_int(
-            "Naxes",
-            self.current().naxes() as i64,
-            Some("Number of coordinate axes".to_string()),
-        );
+        // Write proxy attributes from the current frame as commented (unset).
+        // The C library writes all current-frame attributes as informational
+        // commented lines at the top of the FrameSet dump. Only scalar
+        // attributes (not nested objects) are proxied.
+        let current_node = FrameToNode::to_node(self.current())?;
+        let is_cmpframe = self
+            .current()
+            .as_any()
+            .downcast_ref::<super::CmpFrame>()
+            .is_some();
+        let mut has_epoch = false;
+        let mut has_system = false;
+        let mut injected_system = false;
+        for item in &current_node.items {
+            if item.key == "IsA" {
+                break;
+            }
+            let inner = match &item.value {
+                NodeValue::Unset(inner) => inner.as_ref(),
+                other => other,
+            };
+            if matches!(inner, NodeValue::Object(_)) {
+                continue;
+            }
+            if item.key == "Epoch" {
+                has_epoch = true;
+            }
+            if item.key == "System" {
+                has_system = true;
+            }
+            // For CmpFrame: inject System="Compound" before first Uni entry.
+            if is_cmpframe && !has_system && !injected_system && item.key.starts_with("Uni") {
+                node.push_unset(
+                    "System",
+                    NodeValue::String("Compound".to_string()),
+                    Some("Coordinate system type".to_string()),
+                );
+                injected_system = true;
+            }
+            // After Domain, inject Epoch from child frames if CmpFrame doesn't have it.
+            if item.key == "Domain" && !has_epoch && is_cmpframe {
+                node.push_unset(&item.key, inner.clone(), item.comment.clone());
+                if let Some(cmp) = self.current().as_any().downcast_ref::<super::CmpFrame>() {
+                    let child_node = FrameToNode::to_node(cmp.frame1())?;
+                    if let Some(epoch_val) = child_node.get_any("Epoch") {
+                        node.push_unset(
+                            "Epoch",
+                            epoch_val.clone(),
+                            Some("Julian epoch of observation".to_string()),
+                        );
+                        has_epoch = true;
+                    }
+                    if !has_epoch {
+                        let child_node = FrameToNode::to_node(cmp.frame2())?;
+                        if let Some(epoch_val) = child_node.get_any("Epoch") {
+                            node.push_unset(
+                                "Epoch",
+                                epoch_val.clone(),
+                                Some("Julian epoch of observation".to_string()),
+                            );
+                            has_epoch = true;
+                        }
+                    }
+                }
+                continue;
+            }
+            node.push_unset(&item.key, inner.clone(), item.comment.clone());
+        }
 
         // IsA Frame marker.
-        node.push_isa("Frame", Some("Coordinate Frame".to_string()));
+        node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
         // Nframe — number of frames (always).
         let nframe = self.frames.len();
@@ -704,12 +766,20 @@ impl Serializable for FrameSet {
             Some("Number of Frames in FrameSet".to_string()),
         );
 
-        // Base — 1-based base frame index.
-        node.push_int(
-            "Base",
-            (self.base_idx + 1) as i64,
-            Some("Index of base Frame".to_string()),
-        );
+        // Base — 1-based base frame index (commented if default == 1).
+        if self.base_idx == 0 {
+            node.push_unset(
+                "Base",
+                NodeValue::Int(1),
+                Some("Index of base Frame".to_string()),
+            );
+        } else {
+            node.push_int(
+                "Base",
+                (self.base_idx + 1) as i64,
+                Some("Index of base Frame".to_string()),
+            );
+        }
 
         // Currnt — 1-based current frame index.
         node.push_int(
