@@ -55,6 +55,7 @@ pub struct SkyFrame {
     sky_ref_p: [f64; 2],  // offset meridian point [lon, lat]
     sky_ref_is: SkyRefIs,
     align_offset: bool,
+    align_system: Option<SkySystem>,
 
     // Per-axis properties
     axes: [SkyAxis; 2], // [longitude, latitude]
@@ -90,6 +91,7 @@ impl SkyFrame {
             sky_ref_p: [0.0, std::f64::consts::FRAC_PI_2],
             sky_ref_is: SkyRefIs::Ignored,
             align_offset: false,
+            align_system: None,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
             act_unt: None,
             ident: None,
@@ -690,6 +692,15 @@ impl Serializable for SkyFrame {
             Some("Coordinate system type".to_string()),
         );
 
+        // AlSys (alignment coordinate system, if set).
+        if let Some(align_sys) = self.align_system {
+            node.push_string(
+                "AlSys",
+                align_sys.as_str(),
+                Some("Alignment coordinate system".to_string()),
+            );
+        }
+
         // Axis units (always unset with system-appropriate defaults).
         let (uni1, uni2) = self.default_units();
         node.push_unset(
@@ -969,6 +980,12 @@ impl Serializable for SkyFrame {
         }
 
         sky.align_offset = node.get_int("AlOff", 0) != 0;
+
+        // AlSys (alignment system).
+        let alsys_str = node.get_string("AlSys", "");
+        if !alsys_str.is_empty() {
+            sky.align_system = SkySystem::parse(&alsys_str);
+        }
 
         // ActUnt (default is 1 = true; only store when 0).
         let act_unt_val = node.get_int("ActUnt", 1);

@@ -710,8 +710,8 @@ impl Serializable for FrameSet {
                 // Skip IsA Object markers.
                 continue;
             }
-            // Skip Object-level attributes (Ident) — not proxied.
-            if item.key == "Ident" {
+            // Skip Object-level and class-specific attributes — not proxied.
+            if item.key == "Ident" || item.key == "AlSys" {
                 continue;
             }
             let inner = match &item.value {
