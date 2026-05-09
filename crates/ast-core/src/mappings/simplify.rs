@@ -558,106 +558,293 @@ fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
     false
 }
 
-/// Try to swap a WinMap (or ShiftMap/ZoomMap) past a PermMap in a flattened series list.
+/// Try to swap a WinMap (or ShiftMap/ZoomMap) past a PermMap in either order.
 ///
-/// When a linear mapping at position `i` is followed by a PermMap at position `i+1`,
-/// and a potential merge partner (another linear mapping) exists at position `i+2`,
-/// the pair can be rewritten as `PermMap ; WinMap'` where WinMap' has shifts/scales
-/// reordered according to the permutation.
+/// Handles both `[Linear, PermMap]` (forward swap) and `[PermMap, Linear]`
+/// (mirror swap). The PermMap may have constants and may change dimensions.
+/// Constants on the *opposite* permutation array are adjusted to absorb
+/// the WinMap that no longer exists on that side.
 ///
-/// Math: `WinMap(s,c) ; PermMap(outperm)` means:
-/// - Step 1: `inter[j] = s[j] + c[j] * x[j]`
-/// - Step 2: `out[k] = inter[outperm[k]-1]`
-///
-/// Equivalent to `PermMap(outperm) ; WinMap(s',c')` where:
-/// - `s'[k] = s[outperm[k]-1]`
-/// - `c'[k] = c[outperm[k]-1]`
-///
-/// Only fires when there is a potential merge partner at position `i+2` to avoid
-/// infinite swap loops.
-///
-/// Matches C winmap.c:2973 (WinPerm).
+/// Matches C winmap.c:2973 (WinPerm) and the CanSwap bidirectionality
+/// + nstep-walk gate (winmap.c:266 + winmap.c:1442-1474).
 fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
-        // Check: position i is a linear mapping and position i+1 is a PermMap.
-        let is_linear_i = list[i].0.as_any().is::<WinMap>()
-            || list[i].0.as_any().is::<ShiftMap>()
-            || list[i].0.as_any().is::<ZoomMap>();
-        let is_perm_i1 = list[i + 1].0.as_any().is::<PermMap>();
+        // Identify the [Linear, PermMap] or [PermMap, Linear] pattern.
+        let a_is_linear = is_linear_mapping(list[i].0.as_ref());
+        let b_is_linear = is_linear_mapping(list[i + 1].0.as_ref());
+        let a_is_perm = list[i].0.as_any().is::<PermMap>();
+        let b_is_perm = list[i + 1].0.as_any().is::<PermMap>();
 
-        if is_linear_i && is_perm_i1 {
-            // Only swap if it would enable a further merge:
-            // - a linear mapping at i+2 (new WinMap can merge with it), OR
-            // - a PermMap at i-1 (can merge with the PermMap that moves to i)
-            let has_linear_right = i + 2 < list.len()
-                && (list[i + 2].0.as_any().is::<WinMap>()
-                    || list[i + 2].0.as_any().is::<ShiftMap>()
-                    || list[i + 2].0.as_any().is::<ZoomMap>());
-            let has_perm_left = i > 0 && list[i - 1].0.as_any().is::<PermMap>();
-            if !has_linear_right && !has_perm_left {
-                i += 1;
-                continue;
-            }
+        // linear_iwm: position of the Linear within the pair (0 or 1).
+        let linear_iwm = if a_is_linear && b_is_perm {
+            0
+        } else if a_is_perm && b_is_linear {
+            1
+        } else {
+            i += 1;
+            continue;
+        };
+        let lin_idx = i + linear_iwm;
+        let perm_idx = i + 1 - linear_iwm;
 
-            // Extract effective (shifts, scales) from the linear mapping at i.
-            let win_inv = list[i].1;
-            let Some((shifts, scales)) =
-                super::winmap::extract_linear_params(list[i].0.as_ref(), win_inv)
-            else {
-                i += 1;
-                continue;
-            };
-
-            // Get the effective outperm from the PermMap at i+1.
-            let perm = list[i + 1].0.as_any().downcast_ref::<PermMap>().unwrap();
-            let perm_inv = list[i + 1].1;
-            let outperm = if perm_inv {
-                perm.inperm()
-            } else {
-                perm.outperm()
-            };
-
-            // Only handle pure permutations (no constants or BAD assignments).
-            if outperm.iter().any(|&p| p <= 0) {
-                i += 1;
-                continue;
-            }
-
-            // Dimensions must match: outperm length must equal shifts/scales length.
-            let n = outperm.len();
-            if shifts.len() != n || scales.len() != n {
-                i += 1;
-                continue;
-            }
-
-            // All outperm entries must index within the input dimension.
-            if outperm.iter().any(|&p| p as usize > n) {
-                i += 1;
-                continue;
-            }
-
-            // Reorder shifts/scales per the permutation:
-            // new_s[k] = shifts[outperm[k]-1], new_c[k] = scales[outperm[k]-1]
-            let new_shifts: Vec<f64> = (0..n).map(|k| shifts[(outperm[k] as usize) - 1]).collect();
-            let new_scales: Vec<f64> = (0..n).map(|k| scales[(outperm[k] as usize) - 1]).collect();
-
-            // Build new WinMap with reordered params.
-            let Ok(new_wm) = WinMap::new(&new_shifts, &new_scales) else {
-                i += 1;
-                continue;
-            };
-
-            // Swap: replace [linear, perm] with [perm, new_winmap].
-            let perm_entry = list.remove(i + 1);
-            list.remove(i);
-            list.insert(i, perm_entry);
-            list.insert(i + 1, (Box::new(new_wm), false));
-            return true;
+        // Bidirectionality: every connected axis in the PermMap must have
+        // matching forward/inverse links. (C CanSwap, winmap.c:399-417.)
+        let perm = list[perm_idx].0.as_any().downcast_ref::<PermMap>().unwrap();
+        let perm_inv = list[perm_idx].1;
+        let (outperm_eff, inperm_eff) = if perm_inv {
+            (perm.inperm().to_vec(), perm.outperm().to_vec())
+        } else {
+            (perm.outperm().to_vec(), perm.inperm().to_vec())
+        };
+        let consts = perm.constants().to_vec();
+        if !permmap_is_bidirectional(&outperm_eff, &inperm_eff) {
+            i += 1;
+            continue;
         }
-        i += 1;
+
+        // Extract WinMap shifts/scales for the supplied direction. The
+        // resulting (shifts, scales) describe the linear mapping's
+        // effective forward transform with `win_inv` already absorbed.
+        let win_inv = list[lin_idx].1;
+        let Some((shifts, scales)) =
+            super::winmap::extract_linear_params(list[lin_idx].0.as_ref(), win_inv)
+        else {
+            i += 1;
+            continue;
+        };
+
+        // The swap is worthwhile in any of these cases:
+        //   (a) A linear merge target is reachable on the Linear's far side
+        //       (matches C nstep walk, winmap.c:1442-1474).
+        //   (b) The mapping on the Linear's far side is itself a PermMap
+        //       (the swap places the two PermMaps adjacent so they can
+        //       merge/cancel — handles `[Perm, Linear, Perm]` patterns
+        //       like the win_swap_outer_merge fixture).
+        //   (c) The swap would intrinsically simplify the Linear
+        //       (matches C CanSwap "simpler" flag, winmap.c:419-427):
+        //       Linear before PermMap → simpler iff `npin > npout`;
+        //       Linear after PermMap → simpler iff `npout > npin`.
+        let walk_forward = linear_iwm == 0;
+        let has_walk_target = has_swap_target_for_winperm(list, i, walk_forward);
+        let has_perm_on_far_side = if linear_iwm == 0 {
+            // Far side of Linear at i is i-1.
+            i > 0 && list[i - 1].0.as_any().is::<PermMap>()
+        } else {
+            // Far side of Linear at i+1 is i+2.
+            i + 2 < list.len() && list[i + 2].0.as_any().is::<PermMap>()
+        };
+        let npin = if perm_inv {
+            perm.outperm().len()
+        } else {
+            perm.inperm().len()
+        };
+        let npout = if perm_inv {
+            perm.inperm().len()
+        } else {
+            perm.outperm().len()
+        };
+        let simpler = if linear_iwm == 0 {
+            npin > npout
+        } else {
+            npout > npin
+        };
+        if !has_walk_target && !has_perm_on_far_side && !simpler {
+            i += 1;
+            continue;
+        }
+
+        // Build the new (Linear', PermMap') pair.
+        let Some((new_lin, new_pm)) = build_winperm_swap(
+            linear_iwm,
+            &shifts,
+            &scales,
+            &outperm_eff,
+            &inperm_eff,
+            &consts,
+        ) else {
+            i += 1;
+            continue;
+        };
+
+        // Replace the two-element window with the swapped pair (PermMap'
+        // takes the Linear's slot and vice-versa). Both replacements are
+        // returned in their natural (forward) form.
+        list[lin_idx] = (Box::new(new_pm), false);
+        list[perm_idx] = (new_lin, false);
+        return true;
     }
     false
+}
+
+/// Returns `true` iff the mapping is a simple linear class
+/// (`WinMap`/`ShiftMap`/`ZoomMap`).
+fn is_linear_mapping(m: &dyn Mapping) -> bool {
+    m.as_any().is::<WinMap>() || m.as_any().is::<ShiftMap>() || m.as_any().is::<ZoomMap>()
+}
+
+/// Bi-directionality check on the (effective) PermMap permutation arrays.
+///
+/// For every connected output axis k (outperm[k] >= 1 and within range),
+/// the corresponding input axis must point back: inperm[outperm[k]-1] == k+1.
+/// And vice-versa for connected input axes.
+fn permmap_is_bidirectional(outperm: &[i64], inperm: &[i64]) -> bool {
+    let nin = inperm.len() as i64;
+    let nout = outperm.len() as i64;
+    for (k, &p) in outperm.iter().enumerate() {
+        if p >= 1 && p <= nin && inperm[(p - 1) as usize] != (k as i64) + 1 {
+            return false;
+        }
+    }
+    for (i, &p) in inperm.iter().enumerate() {
+        if p >= 1 && p <= nout && outperm[(p - 1) as usize] != (i as i64) + 1 {
+            return false;
+        }
+    }
+    true
+}
+
+/// Walk the flattened list looking for a merge target reachable from a
+/// proposed Linear↔PermMap swap. The Linear+PermMap pair occupies positions
+/// `i` and `i+1`. When `walk_forward` is true, the Linear is at `i` and
+/// scans positions `i+2..` (rightward); otherwise it scans `i-1..0`
+/// (leftward). The walk passes through MatrixMap/WcsMap/PermMap and
+/// stops on the first Linear (WinMap/ShiftMap/ZoomMap/UnitMap or diagonal
+/// MatrixMap) or non-swappable mapping.
+///
+/// Matches the gate logic in C winmap.c:1442-1474 + 1490-1513.
+fn has_swap_target_for_winperm(list: &[(DynMapping, bool)], i: usize, walk_forward: bool) -> bool {
+    // Position of the Linear in the pair (i for forward, i+1 for backward).
+    // The walk starts just past the PermMap.
+    let walk_iter: Box<dyn Iterator<Item = usize>> = if walk_forward {
+        Box::new((i + 2)..list.len())
+    } else if i > 0 {
+        Box::new((0..i).rev())
+    } else {
+        return false;
+    };
+    for j in walk_iter {
+        let m = list[j].0.as_ref();
+        if is_linear_mapping(m) || m.as_any().is::<UnitMap>() {
+            return true;
+        }
+        if let Some(mm) = m.as_any().downcast_ref::<MatrixMap>() {
+            let inv = list[j].1;
+            let mat = if inv {
+                match mm.inverse_matrix() {
+                    Some(x) => x,
+                    None => return false,
+                }
+            } else {
+                mm.forward_matrix()
+            };
+            if is_diagonal(mat) {
+                return true;
+            }
+            // Non-diagonal MatrixMap: keep walking through it.
+            continue;
+        }
+        if m.as_any().is::<WcsMap>() || m.as_any().is::<PermMap>() {
+            continue;
+        }
+        // Non-swappable: stop.
+        return false;
+    }
+    false
+}
+
+/// Construct the (Linear', PermMap') pair that results from swapping a
+/// Linear and PermMap. `linear_iwm == 0` means the Linear was *before* the
+/// PermMap (forward direction); `linear_iwm == 1` means it was *after*
+/// (mirror direction).
+///
+/// Matches winmap.c:3075-3209 (WinPerm).
+fn build_winperm_swap(
+    linear_iwm: usize,
+    shifts: &[f64],
+    scales: &[f64],
+    outperm: &[i64],
+    inperm: &[i64],
+    consts: &[f64],
+) -> Option<(DynMapping, PermMap)> {
+    use crate::constants::BAD_VALUE;
+    use crate::mappings::helpers::is_bad;
+
+    let npout = outperm.len();
+    let npin = inperm.len();
+    let mut new_consts = consts.to_vec();
+
+    let (new_dim, source_perm, ref_perm) = if linear_iwm == 0 {
+        // Linear before PermMap: new Linear sits *after* the PermMap.
+        // Its dim = npout. For each output axis k, source from outperm[k].
+        // Adjust constants on the inperm side (inverse-direction constants).
+        (npout, outperm, inperm)
+    } else {
+        // Linear after PermMap: new Linear sits *before* the PermMap.
+        // Its dim = npin. For each input axis i, source from inperm[i].
+        // Adjust constants on the outperm side (forward-direction constants).
+        (npin, inperm, outperm)
+    };
+
+    // Build the new shifts/scales from `source_perm`.
+    let mut new_shifts = vec![0.0; new_dim];
+    let mut new_scales = vec![1.0; new_dim];
+    let src_len = shifts.len() as i64;
+    for k in 0..new_dim {
+        let p = source_perm[k];
+        if p >= 1 && p <= src_len {
+            new_shifts[k] = shifts[(p - 1) as usize];
+            new_scales[k] = scales[(p - 1) as usize];
+        }
+        // Constants and BAD: leave shift=0, scale=1 (no transform).
+    }
+
+    // Adjust constants on the *opposite* permutation array.
+    // - linear_iwm == 0: iterate input axes (inperm); adjust = (c - a[i]) / b[i]
+    //   (the supplied WinMap was forward; the inverse PermMap previously had
+    //   its constants scaled by the inverse WinMap).
+    // - linear_iwm == 1: iterate output axes (outperm); adjust = a[k] + c * b[k]
+    //   (the supplied WinMap is forward; the forward PermMap previously had
+    //   its constants scaled by the forward WinMap).
+    let n_axis = ref_perm.len();
+    if shifts.len() != n_axis {
+        // Shouldn't happen: WinMap dim must equal PermMap's nin (when Linear
+        // is before) or nout (when Linear is after). Bail safely.
+        return None;
+    }
+    for i in 0..n_axis {
+        let p = ref_perm[i];
+        if p >= 0 {
+            continue;
+        }
+        let cidx = (-p - 1) as usize;
+        if cidx >= new_consts.len() {
+            continue;
+        }
+        let c = new_consts[cidx];
+        if is_bad(c) {
+            continue;
+        }
+        let a = shifts[i];
+        let b = scales[i];
+        if is_bad(a) || is_bad(b) {
+            new_consts[cidx] = BAD_VALUE;
+            continue;
+        }
+        if linear_iwm == 0 {
+            if b == 0.0 {
+                new_consts[cidx] = BAD_VALUE;
+            } else {
+                new_consts[cidx] = (c - a) / b;
+            }
+        } else {
+            new_consts[cidx] = a + c * b;
+        }
+    }
+
+    let new_lin: DynMapping = Box::new(WinMap::new(&new_shifts, &new_scales).ok()?);
+    let new_pm = PermMap::new(inperm, outperm, &new_consts).ok()?;
+    Some((new_lin, new_pm))
 }
 
 /// Try to swap a WcsMap past a PermMap (or vice versa) in a flattened series list.
@@ -1806,14 +1993,21 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
             continue;
         }
 
-        // Split the WinMap and build new parallel branches.
+        // Split the WinMap and build new parallel branches. Each branch
+        // is `sub_wm ; component`. Speculatively simplify each branch and
+        // only commit the distribution if at least one branch ends up
+        // structurally different from the unsimplified composition —
+        // i.e. the WinMap actually got absorbed somewhere. If no branch
+        // simplifies, the distribution is pure churn (and risks an
+        // infinite oscillation against `try_merge_parallel_in_series`),
+        // so it is rejected. Matches C winmap.c:1358-1375.
         let mut new_branches: Vec<(DynMapping, bool)> = Vec::new();
+        let mut any_branch_simplified = false;
         let mut failed = false;
         for ((comp, comp_inv), &(start, nin)) in par_list.iter().zip(dim_boundaries.iter()) {
             let sub_shifts = &shifts[start..start + nin];
             let sub_scales = &scales[start..start + nin];
 
-            // Build sub-WinMap.
             let sub_wm = match WinMap::new(sub_shifts, sub_scales) {
                 Ok(w) => w,
                 Err(_) => {
@@ -1822,23 +2016,40 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
                 }
             };
 
-            // Clone the component and apply its inversion flag.
             let mut comp_clone = comp.clone();
             if *comp_inv {
                 comp_clone.invert();
             }
 
-            // Build series: sub_wm ; component.
-            match CmpMap::new(Box::new(sub_wm), comp_clone, Composition::Series) {
-                Ok(series) => new_branches.push((Box::new(series), false)),
+            let series = match CmpMap::new(Box::new(sub_wm), comp_clone, Composition::Series) {
+                Ok(s) => s,
                 Err(_) => {
                     failed = true;
                     break;
                 }
+            };
+
+            // Compare structural fingerprints before/after simplification.
+            // A change indicates the WinMap absorbed into the component
+            // (or the chain restructured); no change means the branch
+            // is just `sub_wm ; component` with the WinMap still hanging
+            // around — the same as before distributing.
+            let fp_before = mapping_fingerprint(&series);
+            let simplified_branch = match series.simplified() {
+                Ok(s) => s,
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            };
+            let fp_after = mapping_fingerprint(simplified_branch.as_ref());
+            if fp_before != fp_after {
+                any_branch_simplified = true;
             }
+            new_branches.push((simplified_branch, false));
         }
 
-        if failed {
+        if failed || !any_branch_simplified {
             i += 1;
             continue;
         }

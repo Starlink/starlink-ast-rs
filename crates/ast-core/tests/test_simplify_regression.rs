@@ -1056,3 +1056,330 @@ fn permmap_swap_transforms_constants() {
         );
     }
 }
+
+/// Count "Begin <ClassName>" occurrences in a native serialization string.
+fn count_class(serialized: &str, class: &str) -> usize {
+    let pattern = format!("Begin {class}");
+    serialized.matches(&pattern).count()
+}
+
+/// Render a Mapping back to native form via the AnyObject wrapper, for
+/// structural inspection. Falls back to a debug string if downcast fails.
+fn render_mapping(m: &dyn Mapping) -> String {
+    use ast_core::AnyObject;
+    use ast_core::mappings::{CmpMap, MatrixMap, PermMap, ShiftMap, WinMap, ZoomMap};
+    use ast_core::to_native_string;
+
+    let obj = if let Some(x) = m.as_any().downcast_ref::<CmpMap>() {
+        AnyObject::CmpMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<WinMap>() {
+        AnyObject::WinMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<PermMap>() {
+        AnyObject::PermMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<MatrixMap>() {
+        AnyObject::MatrixMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<ShiftMap>() {
+        AnyObject::ShiftMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<ZoomMap>() {
+        AnyObject::ZoomMap(x.clone())
+    } else {
+        return format!("{m:?}");
+    };
+    to_native_string(&obj).unwrap_or_else(|e| format!("(serialize failed: {e})"))
+}
+
+/// WinMap before a parallel CmpMap whose branches each contain a non-linear
+/// mapping that cannot merge with a prepended WinMap. The simplifier must
+/// NOT distribute the WinMap into the branches (matching C winmap.c:1358-1375
+/// which only commits the distribution if at least one branch actually
+/// simplifies as a result).
+#[test]
+fn winmap_does_not_distribute_when_branches_dont_simplify() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, SpecCvtType, SpecMap, WinMap};
+
+    // 2-input WinMap ; (SpecMap || SpecMap), each branch 1-axis non-linear.
+    let wm = WinMap::new(&[1.0, 2.0], &[3.0, 5.0]).unwrap();
+    let mut sm1 = SpecMap::new();
+    sm1.add(SpecCvtType::FrToVl, &[330_000_000_000.0]);
+    let mut sm2 = SpecMap::new();
+    sm2.add(SpecCvtType::FrToVl, &[140_000_000_000.0]);
+
+    let par = CmpMap::new(Box::new(sm1), Box::new(sm2), Composition::Parallel).unwrap();
+    let full = CmpMap::new(Box::new(wm), Box::new(par), Composition::Series).unwrap();
+
+    // Numerical correctness: simplified must give the same forward result.
+    let pts = PointSet::from_rows([[1.0e6, 2.0e6], [-3.0e6, 7.5e5]]);
+    let expected = full.transform(&pts, true).unwrap();
+
+    let s = full.simplified().unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        for j in 0..2 {
+            assert!(
+                (actual.point(i)[j] - expected.point(i)[j]).abs() < 1e-6,
+                "point {i} axis {j}: got {}, expected {}",
+                actual.point(i)[j],
+                expected.point(i)[j]
+            );
+        }
+    }
+
+    // Structural: the WinMap must NOT have been distributed. Only one
+    // WinMap should remain in the serialized form.
+    let rendered = render_mapping(s.as_ref());
+    assert_eq!(
+        count_class(&rendered, "WinMap"),
+        1,
+        "WinMap should not have distributed when neither branch simplifies\n\
+         Got:\n{rendered}"
+    );
+}
+
+/// WinMap (2D) ; PermMap (2→3 with one constant axis) ; WinMap (3D)
+///
+/// The rigby simplification pattern: a WinMap precedes a dimension-changing
+/// PermMap that injects a constant. The C simplifier (winmap.c WinPerm)
+/// pushes the WinMap past the PermMap by building a new WinMap on the
+/// PermMap's output side: connected axes copy the WinMap's scale/shift,
+/// constant axes get scale=1 / shift=0. Then the new (3D) WinMap merges
+/// with the trailing WinMap.
+///
+/// Result: 3-mapping chain → 2-mapping chain (PermMap ; WinMap_merged).
+#[test]
+fn winmap_swaps_past_permmap_with_constants() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, PermMap, WinMap};
+
+    // outperm=[1, -1, 2]: out0 ← in[0], out1 = const[0]=99.0, out2 ← in[1]
+    // inperm=[1, 3]: bidirectional links for the connected axes.
+    let wm1 = WinMap::new(&[1.0, 2.0], &[3.0, 5.0]).unwrap();
+    let pm = PermMap::new(&[1, 3], &[1, -1, 2], &[99.0]).unwrap();
+    let wm2 = WinMap::new(&[10.0, 20.0, 30.0], &[2.0, 4.0, 6.0]).unwrap();
+
+    let c1 = CmpMap::new(Box::new(wm1), Box::new(pm), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(c1), Box::new(wm2), Composition::Series).unwrap();
+
+    // Reference forward transform on test points.
+    let pts = PointSet::from_rows([[7.0, 11.0], [-1.0, 0.5]]);
+    let expected = full.transform(&pts, true).unwrap();
+
+    let s = full.simplified().unwrap();
+    let actual = s.transform(&pts, true).unwrap();
+
+    for i in 0..pts.npoint() {
+        for j in 0..3 {
+            assert!(
+                (actual.point(i)[j] - expected.point(i)[j]).abs() < 1e-10,
+                "forward point {i} axis {j}: got {}, expected {}",
+                actual.point(i)[j],
+                expected.point(i)[j]
+            );
+        }
+    }
+
+    // Structural check: only ONE WinMap should remain (the leading 2D
+    // WinMap was pushed past the PermMap and merged with the trailing
+    // 3D WinMap).
+    let rendered = render_mapping(s.as_ref());
+    assert_eq!(
+        count_class(&rendered, "WinMap"),
+        1,
+        "Expected one WinMap after simplification, got:\n{rendered}"
+    );
+    assert_eq!(
+        count_class(&rendered, "PermMap"),
+        1,
+        "Expected one PermMap after simplification, got:\n{rendered}"
+    );
+}
+
+/// Mirror case (NOT triggered by rigby): PermMap (2→3 with constants) ; WinMap (3D)
+///
+/// The PermMap is followed by a WinMap. The C simplifier's `iwm == 1`
+/// branch pushes the WinMap *backwards* past the PermMap, producing
+/// a new WinMap on the input side (2D). Connected axes copy the
+/// WinMap's scale/shift indexed by `inperm`; constant input axes get
+/// scale=1 / shift=0. The forward-direction constants in the new
+/// PermMap must be adjusted: since there is no longer a forward
+/// WinMap to scale them, the constant becomes (a + c*b).
+///
+/// This case fires only when there's a merge partner reachable
+/// before the PermMap (e.g. another linear mapping).
+#[test]
+fn permmap_with_constants_followed_by_winmap_swaps_back() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, PermMap, WinMap};
+
+    // Pre-pend a WinMap so the swap has a merge target on the LHS.
+    // Structure: WinMap_2D ; PermMap_2to3_with_const ; WinMap_3D
+    //   Pass 1 might fire the forward-swap; we want to specifically
+    //   exercise the reverse swap. So build a chain where the LHS
+    //   WinMap is identity (forces only the RHS WinMap to swap back).
+    //   Actually identity is trivially merged; instead use a UnitMap
+    //   on the LHS, and a non-identity 2D WinMap that needs to merge
+    //   on the LHS via the swap.
+    //
+    // Cleaner construction: PermMap_3to2 ; WinMap_2D   (3 → 2 → 2)
+    // and a leading WinMap_3D that merges via swap.
+    //
+    // Chain: WinMap_3D ; PermMap_3to2_with_const ; WinMap_2D
+    //   - C will swap WinMap_2D backwards through the PermMap, producing
+    //     a 3D WinMap, which then merges with the leading WinMap_3D.
+    let wm_left = WinMap::new(&[1.0, 2.0, 3.0], &[2.0, 3.0, 5.0]).unwrap();
+    // outperm=[1, -1]: out0 ← in[0], out1 = const[0]=42.0
+    // inperm=[1, 3, -2]: in0 ← out[0], in1 ← out[2] (BAD via 0-based 2),
+    //                    in2 = const[1]=11.0
+    // Wait: nout=2, so inperm entries can be 1 or 2 (1-based).
+    // Use inperm=[1, 2, -1]: in0 ← out[0], in1 ← out[1], in2 = const[0].
+    // But then bidirectionality: out[0] ↔ in[0] ✓, out[1] = const so no link, in[2]=const so no link.
+    // outperm=[1, 2]: out0 ← in[0], out1 ← in[1]. But inperm has 3 entries (nin=3) and outperm has 2 (nout=2).
+    // outperm[0]=1 → in[0], inperm[0]=1 → out[0]. Bidirectional. ✓
+    // outperm[1]=2 → in[1], inperm[1]=2 → out[1]. Bidirectional. ✓
+    // inperm[2]=-1 → const[0]=42.0 (used only when going backwards through forward direction; doesn't link).
+    //
+    // So this is a "lossy" PermMap: forward 3→2 drops in[2], inverse 2→3 supplies in[2]=42.0.
+    let pm = PermMap::new(&[1, 2, -1], &[1, 2], &[42.0]).unwrap();
+    let wm_right = WinMap::new(&[7.0, 13.0], &[2.0, 4.0]).unwrap();
+
+    let c1 = CmpMap::new(Box::new(wm_left), Box::new(pm), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(c1), Box::new(wm_right), Composition::Series).unwrap();
+
+    // Forward transform reference.
+    let pts_3d = PointSet::from_rows([[1.0, 2.0, 3.0], [-1.0, 0.0, 5.5]]);
+    let expected_fwd = full.transform(&pts_3d, true).unwrap();
+
+    let s = full.simplified().unwrap();
+    let actual_fwd = s.transform(&pts_3d, true).unwrap();
+
+    assert_eq!(actual_fwd.npoint(), expected_fwd.npoint());
+    assert_eq!(actual_fwd.ncoord(), 2);
+    for i in 0..pts_3d.npoint() {
+        for j in 0..2 {
+            assert!(
+                (actual_fwd.point(i)[j] - expected_fwd.point(i)[j]).abs() < 1e-10,
+                "forward point {i} axis {j}: got {}, expected {}",
+                actual_fwd.point(i)[j],
+                expected_fwd.point(i)[j]
+            );
+        }
+    }
+
+    // The simplified chain should be 2 mappings: WinMap ; PermMap (only one
+    // WinMap remains; the leading 3D WinMap merged with the new 3D WinMap
+    // produced by swapping the trailing 2D WinMap backwards through the
+    // PermMap).
+    let rendered = render_mapping(s.as_ref());
+    assert_eq!(
+        count_class(&rendered, "WinMap"),
+        1,
+        "Expected one WinMap after simplification, got:\n{rendered}"
+    );
+    assert_eq!(
+        count_class(&rendered, "PermMap"),
+        1,
+        "Expected one PermMap after simplification, got:\n{rendered}"
+    );
+}
+
+/// Inverse-constants adjustment (NOT triggered by rigby): PermMap with a
+/// constant on the inperm side.
+///
+/// When `inperm[i] < 0`, the inverse PermMap injects a constant on input
+/// axis `i`. After swapping a forward-direction WinMap past the PermMap,
+/// any inverse-direction constant must be adjusted to absorb the inverse
+/// WinMap that no longer exists: `consts[k] = (c - a[i]) / b[i]`
+/// (winmap.c:3127). The test verifies the inverse transform of the
+/// simplified mapping matches the original.
+#[test]
+fn winmap_swaps_past_permmap_inverse_constants() {
+    use ast_core::coords::PointSet;
+    use ast_core::mappings::{CmpMap, Composition, Mapping, PermMap, WinMap};
+
+    // Forward: 2D in → 3D out
+    //   outperm=[1, -1, 2]: out0 ← in[0], out1 = const[0]=99.0, out2 ← in[1]
+    //   inperm=[-2, 3]: in0 = const[1]=7.0, in1 ← out[2]
+    //   constants = [99.0, 7.0]
+    //
+    // Forward path (with WinMap before): a WinMap-2D ; PermMap_2to3.
+    // Bidirectional check: out[0] ← in[0]; inperm[0] = -2 (constant), so
+    // out[0] is NOT linked back to anything — the link from in[0] to out[0]
+    // is uni-directional (forward only).
+    //
+    // For the swap to be valid, all links must be bidirectional. So
+    // outperm[0] = 1 means in[0] → out[0]; for this to be bi-directional,
+    // inperm[0] should be 1 (= out[0]→in[0]). But inperm[0] = -2 (const).
+    //
+    // So we need a different PermMap where ALL connected axes are
+    // bi-directional, but at least one inperm entry is negative
+    // (a constant on the inverse side).
+    //
+    // Construction: PermMap 3→3 (square)
+    //   outperm = [1, 2, 3]
+    //   inperm  = [1, 2, -1]   ← in[2] is a constant on the inverse side
+    //   constants = [55.0]
+    // Wait: outperm[2]=3 means out[2] ← in[2]. inperm[2]=-1 (const) is
+    // INconsistent — out[2] is sourced from in[2] forward, but inperm
+    // says in[2] = const (the inverse path doesn't read out[2]).
+    //
+    // Bi-directionality: out[2]↔in[2] requires inperm[2]=3 (1-based).
+    // For an UNCONNECTED axis with no forward link, outperm[k] would
+    // be -j (constant) or 0 (BAD).
+    //
+    // Realistic case: 3→2 PermMap.
+    //   outperm = [1, 2]: out0 ← in[0], out1 ← in[1]
+    //   inperm  = [1, 2, -1]: in0 ← out[0], in1 ← out[1], in2 = const[0]=55.0
+    //   The "in2=const" only matters in the inverse direction (output 3 of
+    //   inverse PermMap).
+    //
+    // Bidirectionality check (for connected axes):
+    //   out[0] ← in[0], inperm[0] = 1 → out[0]. ✓
+    //   out[1] ← in[1], inperm[1] = 2 → out[1]. ✓
+    //   in[2] = const, no link.
+    //
+    // So this PermMap is bi-directional and has a constant on the
+    // inperm side. Forward: 3D → 2D. Inverse: 2D → 3D with const on axis 2.
+    let wm = WinMap::new(&[1.0, 2.0, 3.0], &[2.0, 3.0, 5.0]).unwrap();
+    let pm = PermMap::new(&[1, 2, -1], &[1, 2], &[55.0]).unwrap();
+    let wm_right = WinMap::new(&[7.0, 11.0], &[4.0, 6.0]).unwrap();
+
+    // Build the chain. To make the swap fire on the forward (LHS) WinMap,
+    // we need a merge partner on the RHS of the PermMap. wm_right serves
+    // that purpose.
+    let c1 = CmpMap::new(Box::new(wm), Box::new(pm), Composition::Series).unwrap();
+    let full = CmpMap::new(Box::new(c1), Box::new(wm_right), Composition::Series).unwrap();
+
+    // Forward transform on 3D points.
+    let pts_3d = PointSet::from_rows([[1.0, 2.0, 3.0], [0.0, -1.0, 4.0]]);
+    let expected_fwd = full.transform(&pts_3d, true).unwrap();
+
+    let s = full.simplified().unwrap();
+    let actual_fwd = s.transform(&pts_3d, true).unwrap();
+    for i in 0..pts_3d.npoint() {
+        for j in 0..2 {
+            assert!(
+                (actual_fwd.point(i)[j] - expected_fwd.point(i)[j]).abs() < 1e-10,
+                "forward point {i} axis {j}: got {}, expected {}",
+                actual_fwd.point(i)[j],
+                expected_fwd.point(i)[j]
+            );
+        }
+    }
+
+    // Inverse transform on 2D points: takes 2D back to 3D, with axis 2
+    // injected as a constant scaled through the inverse WinMap.
+    let pts_2d = PointSet::from_rows([[10.0, 20.0], [-3.0, 5.0]]);
+    let expected_inv = full.transform(&pts_2d, false).unwrap();
+    let actual_inv = s.transform(&pts_2d, false).unwrap();
+    assert_eq!(actual_inv.ncoord(), 3);
+    for i in 0..pts_2d.npoint() {
+        for j in 0..3 {
+            assert!(
+                (actual_inv.point(i)[j] - expected_inv.point(i)[j]).abs() < 1e-10,
+                "inverse point {i} axis {j}: got {}, expected {}",
+                actual_inv.point(i)[j],
+                expected_inv.point(i)[j]
+            );
+        }
+    }
+}
