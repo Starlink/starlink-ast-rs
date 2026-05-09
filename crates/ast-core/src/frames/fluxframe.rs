@@ -117,6 +117,10 @@ pub struct FluxFrame {
     // FluxFrame-specific
     system: FluxSystem,
     spec_val: Option<f64>, // spectral position at which flux is measured
+
+    // Object-level attributes
+    act_unt: Option<bool>,
+    ident: Option<String>,
 }
 
 impl FluxFrame {
@@ -129,6 +133,8 @@ impl FluxFrame {
             domain: Some("FLUX".to_string()),
             system,
             spec_val: None,
+            act_unt: None,
+            ident: None,
         }
     }
 
@@ -370,8 +376,17 @@ impl Serializable for FluxFrame {
             Some("Coordinate system type".to_string()),
         );
 
+        // ActUnt (if explicitly set to false).
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
+
         // IsA Frame marker.
-        node.push_isa("Frame", None);
+        node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
         // --- FluxFrame-specific attributes (after IsA Frame) ---
 
@@ -410,6 +425,17 @@ impl Serializable for FluxFrame {
             if !is_bad(sv) {
                 ff.spec_val = Some(sv);
             }
+        }
+
+        // ActUnt.
+        if node.get_int("ActUnt", 1) == 0 {
+            ff.act_unt = Some(false);
+        }
+
+        // Ident.
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            ff.ident = Some(ident);
         }
 
         Ok(ff)

@@ -700,8 +700,19 @@ impl Serializable for FrameSet {
         let mut has_system = false;
         let mut injected_system = false;
         for item in &current_node.items {
+            // Stop at IsA Frame (not IsA Object).
             if item.key == "IsA" {
-                break;
+                if let NodeValue::String(ref class) = item.value {
+                    if class == "Frame" {
+                        break;
+                    }
+                }
+                // Skip IsA Object markers.
+                continue;
+            }
+            // Skip Object-level attributes (Ident) — not proxied.
+            if item.key == "Ident" {
+                continue;
             }
             let inner = match &item.value {
                 NodeValue::Unset(inner) => inner.as_ref(),
@@ -752,7 +763,16 @@ impl Serializable for FrameSet {
                 }
                 continue;
             }
-            node.push_unset(&item.key, inner.clone(), item.comment.clone());
+            // ActUnt is written as active (not commented) in the FrameSet proxy.
+            if item.key == "ActUnt" {
+                let val = match inner {
+                    NodeValue::Int(v) => *v,
+                    _ => 0,
+                };
+                node.push_int("ActUnt", val, item.comment.clone());
+            } else {
+                node.push_unset(&item.key, inner.clone(), item.comment.clone());
+            }
         }
 
         // IsA Frame marker.

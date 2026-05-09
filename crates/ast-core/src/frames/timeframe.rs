@@ -189,6 +189,10 @@ pub struct TimeFrame {
     time_origin: Option<f64>, // in default units for current system
     lt_offset: Option<f64>,   // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
+    /// When false, unit strings do not affect alignment. Default is true.
+    act_unt: Option<bool>,
+    /// Permanent object identification string (Object-level attribute).
+    ident: Option<String>,
 }
 
 impl TimeFrame {
@@ -215,6 +219,8 @@ impl TimeFrame {
             time_origin: None,
             lt_offset: None,
             align_timescale: None,
+            act_unt: None,
+            ident: None,
         }
     }
 
@@ -908,6 +914,15 @@ impl Serializable for TimeFrame {
             node.push_double("Dtai", dtai, Some("TAI-UTC (s)".to_string()));
         }
 
+        // ActUnt: active if explicitly set to false.
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
+
         // IsA Frame marker.
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
@@ -1015,6 +1030,18 @@ impl Serializable for TimeFrame {
         // LTOff (LTOffset).
         if node.get("LTOff").is_some() {
             tf.lt_offset = Some(node.get_double("LTOff", 0.0));
+        }
+
+        // ActUnt (default is 1 = true; only store when 0).
+        let act_unt_val = node.get_int("ActUnt", 1);
+        if act_unt_val == 0 {
+            tf.act_unt = Some(false);
+        }
+
+        // Ident (Object-level identification string).
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            tf.ident = Some(ident);
         }
 
         Ok(tf)

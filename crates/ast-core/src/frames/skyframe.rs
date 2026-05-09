@@ -58,6 +58,11 @@ pub struct SkyFrame {
 
     // Per-axis properties
     axes: [SkyAxis; 2], // [longitude, latitude]
+
+    /// When false, unit strings do not affect alignment. Default is true.
+    act_unt: Option<bool>,
+    /// Permanent object identification string (Object-level attribute).
+    ident: Option<String>,
 }
 
 impl SkyFrame {
@@ -86,6 +91,8 @@ impl SkyFrame {
             sky_ref_is: SkyRefIs::Ignored,
             align_offset: false,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
+            act_unt: None,
+            ident: None,
         }
     }
 
@@ -586,6 +593,21 @@ impl Serializable for SkyFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Description of celestial coordinate system".to_string());
 
+        // --- Object-level attributes (before IsA Object) ---
+        // Ident: written if explicitly set.
+        if let Some(ref ident) = self.ident {
+            node.push_string(
+                "Ident",
+                ident,
+                Some("Permanent Object identification string".to_string()),
+            );
+        }
+
+        // IsA Object marker (only emitted when Ident is present).
+        if self.ident.is_some() {
+            node.push_isa("Object", Some("AST Object".to_string()));
+        }
+
         // --- Frame-level attributes (before IsA Frame) ---
         // Order: Title, Naxes, Domain, Epoch, Lbl1, Lbl2, System,
         //        Uni1, Uni2, Dir1, Bot2, Top2, [observer], Axes
@@ -699,6 +721,15 @@ impl Serializable for SkyFrame {
             NodeValue::Double(std::f64::consts::FRAC_PI_2),
             Some("Highest legal axis value".to_string()),
         );
+
+        // ActUnt: active if explicitly set to false.
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
 
         // Observer attributes (active only if explicitly set).
         if let Some(obs_lat) = self.obs_lat {
@@ -938,6 +969,18 @@ impl Serializable for SkyFrame {
         }
 
         sky.align_offset = node.get_int("AlOff", 0) != 0;
+
+        // ActUnt (default is 1 = true; only store when 0).
+        let act_unt_val = node.get_int("ActUnt", 1);
+        if act_unt_val == 0 {
+            sky.act_unt = Some(false);
+        }
+
+        // Ident (Object-level identification string).
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            sky.ident = Some(ident);
+        }
 
         // Read SkyAxis children.
         for i in 0..2 {

@@ -23,6 +23,10 @@ use super::{DynFrame, Frame, FrameRef, FrameSet};
 pub struct CmpFrame {
     frame1: DynFrame,
     frame2: DynFrame,
+    /// When false, unit strings do not affect alignment. Default is true.
+    act_unt: Option<bool>,
+    /// Permanent object identification string (Object-level attribute).
+    ident: Option<String>,
 }
 
 impl CmpFrame {
@@ -30,7 +34,12 @@ impl CmpFrame {
     ///
     /// The resulting frame has `frame1.naxes() + frame2.naxes()` axes.
     pub fn new(frame1: DynFrame, frame2: DynFrame) -> Self {
-        Self { frame1, frame2 }
+        Self {
+            frame1,
+            frame2,
+            act_unt: None,
+            ident: None,
+        }
     }
 
     /// Number of axes contributed by the first child frame.
@@ -208,6 +217,18 @@ impl Serializable for CmpFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Compound coordinate system description".to_string());
 
+        // --- Object-level attributes (before IsA Object) ---
+        if let Some(ref ident) = self.ident {
+            node.push_string(
+                "Ident",
+                ident,
+                Some("Permanent Object identification string".to_string()),
+            );
+        }
+        if self.ident.is_some() {
+            node.push_isa("Object", Some("AST Object".to_string()));
+        }
+
         let naxes = self.naxes();
         let n1 = self.frame1.naxes();
 
@@ -301,6 +322,15 @@ impl Serializable for CmpFrame {
             }
         }
 
+        // ActUnt: active if explicitly set to false.
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
+
         // IsA Frame marker
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
 
@@ -326,6 +356,20 @@ impl Serializable for CmpFrame {
         let frame1 = frame_from_node(node_a)?;
         let frame2 = frame_from_node(node_b)?;
 
-        Ok(CmpFrame::new(frame1, frame2))
+        let mut cmp = CmpFrame::new(frame1, frame2);
+
+        // ActUnt (default is 1 = true; only store when 0).
+        let act_unt_val = node.get_int("ActUnt", 1);
+        if act_unt_val == 0 {
+            cmp.act_unt = Some(false);
+        }
+
+        // Ident (Object-level identification string).
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            cmp.ident = Some(ident);
+        }
+
+        Ok(cmp)
     }
 }

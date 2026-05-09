@@ -28,6 +28,11 @@ pub struct BasicFrame {
     format_strs: Vec<Option<String>>,
     bottoms: Vec<Option<f64>>,
     tops: Vec<Option<f64>>,
+    /// When false, unit strings do not affect alignment. Default is true.
+    act_unt: Option<bool>,
+    /// Permanent object identification string (Object-level attribute).
+    #[allow(dead_code)]
+    ident: Option<String>,
 }
 
 /// Builder for [`BasicFrame`].
@@ -59,6 +64,8 @@ pub struct BasicFrameBuilder {
     format_strs: Vec<Option<String>>,
     bottoms: Vec<Option<f64>>,
     tops: Vec<Option<f64>>,
+    act_unt: Option<bool>,
+    ident: Option<String>,
 }
 
 impl BasicFrameBuilder {
@@ -75,6 +82,8 @@ impl BasicFrameBuilder {
             format_strs: vec![None; naxes],
             bottoms: vec![None; naxes],
             tops: vec![None; naxes],
+            act_unt: None,
+            ident: None,
         }
     }
 
@@ -165,6 +174,8 @@ impl BasicFrameBuilder {
             format_strs: self.format_strs,
             bottoms: self.bottoms,
             tops: self.tops,
+            act_unt: self.act_unt,
+            ident: self.ident,
         })
     }
 }
@@ -655,6 +666,15 @@ impl Serializable for BasicFrame {
             }
         }
 
+        // ActUnt: active if explicitly set to false.
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
+
         // Per-axis Axis child objects.
         for i in 0..self.naxes {
             let mut axis_node = Node::new("Axis");
@@ -715,6 +735,18 @@ impl Serializable for BasicFrame {
         if node.get("Epoch").is_some() {
             let epoch = node.get_double("Epoch", 0.0);
             builder = builder.epoch(epoch);
+        }
+
+        // ActUnt (default is 1 = true; only store when 0).
+        let act_unt_val = node.get_int("ActUnt", 1);
+        if act_unt_val == 0 {
+            builder.act_unt = Some(false);
+        }
+
+        // Ident (Object-level identification string).
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            builder.ident = Some(ident);
         }
 
         // Per-axis attributes from Axis child objects.

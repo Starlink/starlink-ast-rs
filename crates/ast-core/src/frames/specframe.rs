@@ -271,6 +271,10 @@ pub struct SpecFrame {
     spec_origin: Option<f64>, // spectral origin (in default units for current system)
     align_std_of_rest: Option<StdOfRest>,
     align_spec_offset: bool,
+    /// When false, unit strings do not affect alignment. Default is true.
+    act_unt: Option<bool>,
+    /// Permanent object identification string (Object-level attribute).
+    ident: Option<String>,
 }
 
 impl SpecFrame {
@@ -298,6 +302,8 @@ impl SpecFrame {
             spec_origin: None,
             align_std_of_rest: None,
             align_spec_offset: false,
+            act_unt: None,
+            ident: None,
         }
     }
 
@@ -1095,6 +1101,15 @@ impl Serializable for SpecFrame {
             );
         }
 
+        // ActUnt: active if explicitly set to false.
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
+
         // Ax1: axis child object with unit (if unit is set or non-empty default).
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
@@ -1328,6 +1343,18 @@ impl Serializable for SpecFrame {
         // SpOrg (SpecOrigin).
         if node.get("SpOrg").is_some() {
             sf.spec_origin = Some(node.get_double("SpOrg", 0.0));
+        }
+
+        // ActUnt (default is 1 = true; only store when 0).
+        let act_unt_val = node.get_int("ActUnt", 1);
+        if act_unt_val == 0 {
+            sf.act_unt = Some(false);
+        }
+
+        // Ident (Object-level identification string).
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            sf.ident = Some(ident);
         }
 
         Ok(sf)
