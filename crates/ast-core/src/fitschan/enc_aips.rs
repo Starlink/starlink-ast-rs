@@ -197,7 +197,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = format!("CRPIX{}", i + 1);
-            cards.set_float(&key, val, "Reference pixel");
+            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
 
@@ -205,7 +205,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let key = format!("CRVAL{}", i + 1);
-            cards.set_float(&key, val, "Reference value");
+            cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
 
@@ -213,7 +213,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.cdelt[i] {
             let key = format!("CDELT{}", i + 1);
-            cards.set_float(&key, val, "Pixel scale");
+            cards.set_float(&key, val, "Pixel size");
         }
     }
 
@@ -222,7 +222,11 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         if let Some(ref ctype) = store.ctype[i] {
             let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(&key, &aips_ctype, "Axis type");
+            cards.set_string(
+                &key,
+                &aips_ctype,
+                &format!("Type of co-ordinate on axis {}", i + 1),
+            );
         }
     }
 
@@ -230,7 +234,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, "Axis units");
+            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
@@ -241,13 +245,13 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         let crota2 = pc10.atan2(pc11).to_degrees();
         // Only write CROTA2 if it differs from zero
         if crota2.abs() > 1e-10 {
-            cards.set_float("CROTA2", crota2, "Rotation angle");
+            cards.set_float("CROTA2", crota2, "Axis rotation");
         }
     }
 
     // EPOCH (not EQUINOX for plain AIPS)
     if let Some(equinox) = store.equinox {
-        cards.set_float("EPOCH", equinox, "Epoch of coordinate system");
+        cards.set_float("EPOCH", equinox, "Epoch of reference equinox");
     }
 
     // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ)
@@ -275,7 +279,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = format!("CRPIX{}", i + 1);
-            cards.set_float(&key, val, "Reference pixel");
+            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
 
@@ -283,7 +287,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let key = format!("CRVAL{}", i + 1);
-            cards.set_float(&key, val, "Reference value");
+            cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
 
@@ -292,7 +296,11 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         if let Some(ref ctype) = store.ctype[i] {
             let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(&key, &aips_ctype, "Axis type");
+            cards.set_string(
+                &key,
+                &aips_ctype,
+                &format!("Type of co-ordinate on axis {}", i + 1),
+            );
         }
     }
 
@@ -300,7 +308,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, "Axis units");
+            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
@@ -309,12 +317,12 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
 
     // EQUINOX (not EPOCH for AIPS++)
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Equinox of coordinates");
+        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
     }
 
     // RADESYS
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADESYS", radesys, "Reference frame");
+        cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
     }
 
     // LONPOLE, LATPOLE
@@ -372,7 +380,7 @@ fn write_aipspp_cd_matrix(store: &FitsStore, cards: &mut CardList) {
                 if let Some(val) = store.cd[i][j] {
                     if val != 0.0 || i == j {
                         let key = format!("CD{}_{}", i + 1, j + 1);
-                        cards.set_float(&key, val, "");
+                        cards.set_float(&key, val, "Transformation matrix element");
                     }
                 }
             }
@@ -386,7 +394,7 @@ fn write_aipspp_cd_matrix(store: &FitsStore, cards: &mut CardList) {
                 let cd_val = pc_ij * cdelt_i;
                 if cd_val != 0.0 || i == j {
                     let key = format!("CD{}_{}", i + 1, j + 1);
-                    cards.set_float(&key, cd_val, "");
+                    cards.set_float(&key, cd_val, "Transformation matrix element");
                 }
             }
         }

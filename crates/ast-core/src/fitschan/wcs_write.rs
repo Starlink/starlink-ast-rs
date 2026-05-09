@@ -10,8 +10,10 @@ use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::wcs_decompose::{decompose_linear, split_cd};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{CmpFrame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest};
-use crate::mappings::{CmpMap, Composition, Mapping, ShiftMap, WinMap};
+use crate::frames::{
+    BasicFrame, CmpFrame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
+};
+use crate::mappings::{CmpMap, Composition, Mapping, ShiftMap, WcsMap, WcsProjection, WinMap};
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -85,10 +87,39 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
         }
     }
 
+    // Identify the celestial projection from any WcsMap embedded in the
+    // pixel→world mapping. None means there is no celestial deprojection
+    // step (linear-only or non-celestial frame), in which case the axis-
+    // identification path either skips CTYPE for celestial axes or falls
+    // back to TAN if a SkyFrame appears with no projection mapping.
+    let projection = extract_projection_from_mapping(mapping.as_ref());
+
     // Identify axis types from the current frame and populate CTYPE/CRVAL.
-    identify_axes(fs, &decomp.crval, &mut store)?;
+    identify_axes(fs, &decomp.crval, &mut store, projection)?;
 
     Ok(store)
+}
+
+/// Walk the mapping tree to find the first [`WcsMap`] and return its
+/// projection type.
+///
+/// Returns `None` if the mapping contains no `WcsMap` (e.g. a purely
+/// linear pixel→world mapping). Walks both Series and Parallel CmpMap
+/// children — a celestial projection is usually nested inside one of
+/// them after axis-permutation and matrix steps.
+fn extract_projection_from_mapping(mapping: &dyn Mapping) -> Option<WcsProjection> {
+    if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
+        return Some(wm.projection());
+    }
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if let Some(p) = extract_projection_from_mapping(cmp.first()) {
+            return Some(p);
+        }
+        if let Some(p) = extract_projection_from_mapping(cmp.second()) {
+            return Some(p);
+        }
+    }
+    None
 }
 
 /// Find the best reference pixel for WCS encoding.
@@ -171,12 +202,17 @@ fn extract_crpix_from_mapping(mapping: &dyn Mapping, naxis: usize) -> Option<Vec
 
 /// Identify axis types from the current frame and populate CTYPE, CRVAL, etc.
 #[allow(clippy::needless_range_loop)]
-fn identify_axes(fs: &FrameSet, crval: &[f64], store: &mut FitsStore) -> AstResult<()> {
+fn identify_axes(
+    fs: &FrameSet,
+    crval: &[f64],
+    store: &mut FitsStore,
+    projection: Option<WcsProjection>,
+) -> AstResult<()> {
     let current = fs.current();
     let naxis = store.naxis;
 
     if let Some(sky) = current.as_any().downcast_ref::<SkyFrame>() {
-        populate_celestial(sky, crval, store, 0, 1)?;
+        populate_celestial(sky, crval, store, 0, 1, projection)?;
     } else if let Some(spec) = current.as_any().downcast_ref::<SpecFrame>() {
         populate_spectral(spec, crval, store, 0)?;
     } else if let Some(cmp) = current.as_any().downcast_ref::<CmpFrame>() {
@@ -185,33 +221,68 @@ fn identify_axes(fs: &FrameSet, crval: &[f64], store: &mut FitsStore) -> AstResu
         let frame2 = cmp.frame2();
 
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
-            populate_celestial(sky, crval, store, 0, 1)?;
+            populate_celestial(sky, crval, store, 0, 1, projection)?;
         } else if let Some(spec) = frame1.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, 0)?;
         }
 
         if let Some(sky) = frame2.as_any().downcast_ref::<SkyFrame>() {
-            populate_celestial(sky, crval, store, n1, n1 + 1)?;
+            populate_celestial(sky, crval, store, n1, n1 + 1, projection)?;
         } else if let Some(spec) = frame2.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, n1)?;
         }
 
-        // Remaining axes get generic labels.
+        // Remaining axes: pull a per-axis CTYPE from the linear frame
+        // attached to those axes (CmpFrame's frame1 if its axes come first,
+        // else frame2). We fall back to the frame domain, then to AXISn.
+        let n1 = cmp.naxes1();
         for i in 0..naxis {
             if store.ctype[i].is_none() {
-                store.ctype[i] = Some(format!("AXIS{}", i + 1));
+                let (sub_frame, sub_axis) = if i < n1 {
+                    (frame1, i + 1)
+                } else {
+                    (frame2, i - n1 + 1)
+                };
+                store.ctype[i] = Some(
+                    leftover_ctype_for_axis(sub_frame, sub_axis)
+                        .unwrap_or_else(|| format!("AXIS{}", i + 1)),
+                );
                 store.crval[i] = Some(crval[i]);
             }
         }
     } else {
-        // BasicFrame or unknown: generic linear axes.
+        // BasicFrame or unknown: derive CTYPE per axis from the frame's
+        // label (which the FITS reader sets from CTYPE), or the frame
+        // domain, falling back to AXISn.
         for i in 0..naxis {
-            store.ctype[i] = Some(format!("AXIS{}", i + 1));
+            store.ctype[i] = Some(
+                leftover_ctype_for_axis(current, i + 1).unwrap_or_else(|| format!("AXIS{}", i + 1)),
+            );
             store.crval[i] = Some(crval[i]);
         }
     }
 
     Ok(())
+}
+
+/// Derive a CTYPE value for one axis of a non-celestial, non-spectral frame.
+///
+/// Tries the per-axis label first (the FITS reader copies CTYPE into the
+/// label), then the frame domain (e.g. `"PIXEL"`). Returns `None` when
+/// nothing useful is set, letting the caller fall back to a generic AXISn.
+/// The 1-based `axis` index follows the AST convention.
+fn leftover_ctype_for_axis(frame: &dyn crate::frames::Frame, axis: usize) -> Option<String> {
+    let basic = frame.as_any().downcast_ref::<BasicFrame>()?;
+    if let Ok(label) = basic.label(axis) {
+        if !label.is_empty() {
+            return Some(label.to_string());
+        }
+    }
+    let domain = basic.domain();
+    if !domain.is_empty() {
+        return Some(domain.to_string());
+    }
+    None
 }
 
 /// Populate FitsStore fields for celestial axes.
@@ -221,9 +292,12 @@ fn populate_celestial(
     store: &mut FitsStore,
     lon_axis: usize,
     lat_axis: usize,
+    projection: Option<WcsProjection>,
 ) -> AstResult<()> {
     let system = sky.system();
-    let proj_code = "TAN";
+    // Use the projection from the WcsMap if available, falling back to
+    // TAN when the mapping is purely linear (no projection step).
+    let proj_code = projection.map_or("TAN", |p| p.code());
 
     let (lon_prefix, lat_prefix) = ctype_prefixes(system);
     store.ctype[lon_axis] = Some(format!("{lon_prefix}-{proj_code}"));

@@ -117,7 +117,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     let naxis = store.naxis;
 
     // NAXIS
-    cards.set_int("NAXIS", naxis as i64, "Number of axes");
+    cards.set_int("NAXIS", naxis as i64, "Number of dimensions");
 
     // Find spectral axis and rest frequency for later use.
     let spec_idx = store.spectral_axis();
@@ -127,7 +127,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = format!("CRPIX{}", i + 1);
-            cards.set_float(&key, val, "Reference pixel");
+            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
 
@@ -136,7 +136,11 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         if let Some(ref ctype) = store.ctype[i] {
             let class_ctype = translate_class_projection_write(ctype);
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(&key, &class_ctype, "Axis type");
+            cards.set_string(
+                &key,
+                &class_ctype,
+                &format!("Type of co-ordinate on axis {}", i + 1),
+            );
         }
     }
 
@@ -144,7 +148,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, "Axis units");
+            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
@@ -166,7 +170,11 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
                 val
             };
             let key = format!("CRVAL{}", i + 1);
-            cards.set_float(&key, output_val, "Reference value");
+            cards.set_float(
+                &key,
+                output_val,
+                &format!("Value at ref. pixel on axis {}", i + 1),
+            );
         }
     }
 
@@ -174,7 +182,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.cdelt[i] {
             let key = format!("CDELT{}", i + 1);
-            cards.set_float(&key, val, "Pixel scale");
+            cards.set_float(&key, val, "Pixel size");
         }
     }
 
@@ -202,12 +210,12 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 
     // RADESYS
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADESYS", radesys, "Reference frame");
+        cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
     }
 
     // EQUINOX
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Equinox of coordinates");
+        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
     }
 
     // MJD-OBS

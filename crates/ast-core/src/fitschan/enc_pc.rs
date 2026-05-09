@@ -140,7 +140,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = format!("CRPIX{}", i + 1);
-            cards.set_float(&key, val, "Reference pixel");
+            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
 
@@ -148,7 +148,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let key = format!("CRVAL{}", i + 1);
-            cards.set_float(&key, val, "Reference value");
+            cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
 
@@ -185,7 +185,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // Write CDELTi
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
         let key = format!("CDELT{}", i + 1);
-        cards.set_float(&key, cdelt_val, "Pixel scale");
+        cards.set_float(&key, cdelt_val, "Pixel size");
     }
 
     // CTYPEi — translate SFL→GLS, AIT→ATF
@@ -193,7 +193,11 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         if let Some(ref val) = store.ctype[i] {
             let pc_ctype = translate_pc_ctype_write(val);
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(&key, &pc_ctype, "Axis type");
+            cards.set_string(
+                &key,
+                &pc_ctype,
+                &format!("Type of co-ordinate on axis {}", i + 1),
+            );
         }
     }
 
@@ -201,7 +205,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, "Axis units");
+            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
@@ -213,19 +217,19 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
             let default = if i == j { 1.0 } else { 0.0 };
             if (val - default).abs() > 1e-15 {
                 let key = format!("PC{:03}{:03}", i + 1, j + 1);
-                cards.set_float(&key, val, "");
+                cards.set_float(&key, val, "Transformation matrix element");
             }
         }
     }
 
     // RADECSYS (the PC misspelling)
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADECSYS", radesys, "Reference frame");
+        cards.set_string("RADECSYS", radesys, "Reference frame for RA/DEC values");
     }
 
     // EQUINOX
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Equinox of coordinates");
+        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
     }
 
     // MJD-OBS

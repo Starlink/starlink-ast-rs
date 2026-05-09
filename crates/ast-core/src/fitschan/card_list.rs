@@ -239,6 +239,11 @@ impl CardList {
     /// In both branches the resulting card is marked `used = true` so that
     /// [`sweep_unused_wcs`] will keep it. This is how the FitsChan write
     /// path tracks which cards the encoder touched during this pass.
+    ///
+    /// When overwriting, an existing non-empty comment is preserved over
+    /// the encoder's default. This matches the C library: re-emitting a
+    /// value into an input header keeps that header's comment text rather
+    /// than smashing it with a generic "Reference pixel"-style default.
     fn put_or_append(&mut self, mut card: FitsCard) {
         card.used = true;
         let kw_upper = card.keyword.to_uppercase();
@@ -247,6 +252,9 @@ impl CardList {
             .iter()
             .position(|c| c.keyword.eq_ignore_ascii_case(&kw_upper))
         {
+            if self.cards[idx].comment.is_some() {
+                card.comment = self.cards[idx].comment.clone();
+            }
             self.cards[idx] = card;
         } else {
             self.cards.push(card);
