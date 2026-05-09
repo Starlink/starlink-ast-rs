@@ -582,15 +582,15 @@ fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
         let is_perm_i1 = list[i + 1].0.as_any().is::<PermMap>();
 
         if is_linear_i && is_perm_i1 {
-            // Only swap if there's a potential merge partner at i+2.
-            if i + 2 >= list.len() {
-                i += 1;
-                continue;
-            }
-            let is_linear_i2 = list[i + 2].0.as_any().is::<WinMap>()
-                || list[i + 2].0.as_any().is::<ShiftMap>()
-                || list[i + 2].0.as_any().is::<ZoomMap>();
-            if !is_linear_i2 {
+            // Only swap if it would enable a further merge:
+            // - a linear mapping at i+2 (new WinMap can merge with it), OR
+            // - a PermMap at i-1 (can merge with the PermMap that moves to i)
+            let has_linear_right = i + 2 < list.len()
+                && (list[i + 2].0.as_any().is::<WinMap>()
+                    || list[i + 2].0.as_any().is::<ShiftMap>()
+                    || list[i + 2].0.as_any().is::<ZoomMap>());
+            let has_perm_left = i > 0 && list[i - 1].0.as_any().is::<PermMap>();
+            if !has_linear_right && !has_perm_left {
                 i += 1;
                 continue;
             }

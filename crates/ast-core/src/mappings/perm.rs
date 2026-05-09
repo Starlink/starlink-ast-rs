@@ -534,6 +534,59 @@ impl Mapping for PermMap {
             return Some(Box::new(result));
         }
 
+        // Handle linear mapping (WinMap, ShiftMap, ZoomMap, diagonal MatrixMap):
+        // PermMap ; Linear can be simplified when the linear transform on
+        // constant-injected axes can be folded into the PermMap constants,
+        // and pass-through axes are identity in the linear mapping.
+        if let Some((lin_shifts, lin_scales)) =
+            super::winmap::extract_linear_params(other, other_inv)
+        {
+            let eff_outperm = if self_inv {
+                &self.inperm
+            } else {
+                &self.outperm
+            };
+            let eff_inperm = if self_inv {
+                &self.outperm
+            } else {
+                &self.inperm
+            };
+            let nout = eff_outperm.len();
+            if lin_shifts.len() != nout {
+                return None;
+            }
+            // Check: for each output axis, either:
+            // - it passes through an input (positive perm entry) and the linear
+            //   transform on that axis is identity (shift=0, scale=1), OR
+            // - it injects a constant (negative perm entry) or BAD (0), and
+            //   the linear transform can be folded into the constant.
+            let mut can_fold = true;
+            let mut new_constants = self.constants.clone();
+            for (k, &p) in eff_outperm.iter().enumerate() {
+                if p > 0 {
+                    if !super::helpers::ast_equal(lin_shifts[k], 0.0)
+                        || !super::helpers::ast_equal(lin_scales[k], 1.0)
+                    {
+                        can_fold = false;
+                        break;
+                    }
+                } else if p < 0 {
+                    let cidx = (-p - 1) as usize;
+                    let old_val = new_constants[cidx];
+                    if super::helpers::is_bad(old_val) {
+                        continue;
+                    }
+                    new_constants[cidx] = lin_shifts[k] + lin_scales[k] * old_val;
+                }
+                // p == 0 (BAD): linear transform on BAD produces BAD, no change needed
+            }
+            if can_fold {
+                let result = PermMap::new(eff_inperm, eff_outperm, &new_constants).ok()?;
+                return Some(Box::new(result));
+            }
+            return None;
+        }
+
         let other_perm = other.as_any().downcast_ref::<PermMap>()?;
 
         // Determine effective forward/inverse permutations based on
