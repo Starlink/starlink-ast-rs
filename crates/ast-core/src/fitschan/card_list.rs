@@ -208,24 +208,39 @@ impl CardList {
         self.put_or_append(card);
     }
 
-    /// Remove all WCS-related keywords, preserving non-WCS structural cards.
+    /// Reset the `used` flag on every card to false.
     ///
-    /// Mirrors the C library's `FindWcs` keyword identification (fitschan.c
-    /// line 10710). Removes: CRPIX, CRVAL, CDELT, CROTA, CTYPE, CUNIT, CNAME,
-    /// CD matrix, PC matrix, PV/PS parameters, WCSAXES, WCSNAME, LONPOLE,
-    /// LATPOLE, EQUINOX, EPOCH, RADESYS, RADECSYS, MJD-OBS, DATE-OBS,
-    /// SPECSYS, RESTFRQ, RESTFREQ, RESTWAV, SSYSSRC, VELOSYS, ZSOURCE,
-    /// OBSGEO-*, DSS plate keywords (PLTRAH, etc.), PROJP*.
+    /// Used by the FitsChan write path to begin tracking which cards the
+    /// encoder touches in this write pass. After the encoder finishes, any
+    /// WCS card still flagged unused is a leftover that should be removed
+    /// (see [`sweep_unused_wcs`]).
+    pub(crate) fn mark_all_unused(&mut self) {
+        for card in &mut self.cards {
+            card.used = false;
+        }
+    }
+
+    /// Delete every WCS-keyword card whose `used` flag is false.
     ///
-    /// Preserves: SIMPLE, BITPIX, NAXIS, NAXISn, COMMENT, HISTORY, EXTEND,
-    /// BLOCKED, and any unrecognized keywords.
-    pub(crate) fn purge_wcs_keywords(&mut self) {
-        self.cards.retain(|card| !is_wcs_keyword(&card.keyword));
+    /// Used after a FitsChan write pass: the encoder marked any card it
+    /// re-wrote as `used = true` via [`put_or_append`]. WCS cards that
+    /// remain unused are leftovers from the input header for keywords the
+    /// new encoding does not emit (e.g. CDELT/CROTA when switching to a CD
+    /// matrix encoding) and must be deleted to avoid stale WCS in the output.
+    /// Non-WCS cards (SIMPLE, NAXIS, COMMENT, etc.) are always preserved.
+    pub(crate) fn sweep_unused_wcs(&mut self) {
+        self.cards
+            .retain(|card| card.used || !is_wcs_keyword(&card.keyword));
         self.position = self.position.min(self.cards.len());
     }
 
     /// Overwrite existing card or append at end (preserves write order).
-    fn put_or_append(&mut self, card: FitsCard) {
+    ///
+    /// In both branches the resulting card is marked `used = true` so that
+    /// [`sweep_unused_wcs`] will keep it. This is how the FitsChan write
+    /// path tracks which cards the encoder touched during this pass.
+    fn put_or_append(&mut self, mut card: FitsCard) {
+        card.used = true;
         let kw_upper = card.keyword.to_uppercase();
         if let Some(idx) = self
             .cards

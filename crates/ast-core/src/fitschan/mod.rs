@@ -558,13 +558,18 @@ impl Channel for FitsChan {
                 Ok(())
             }
             _ => {
-                // For all FITS-WCS encodings: purge old WCS keywords before
-                // writing new ones. This preserves non-WCS structural keywords
-                // (SIMPLE, BITPIX, NAXIS, NAXISn, etc.) while replacing WCS
-                // data. Mirrors the C library's FindWcs + SetValue approach.
-                self.cards.purge_wcs_keywords();
+                // For all FITS-WCS encodings, preserve the relative position
+                // of any WCS card that already exists in the input header by
+                // letting the encoder overwrite it in place. We mark every
+                // card as `used = false`; the encoder's set_*() helpers flip
+                // touched cards to `used = true`. After encoding, any WCS
+                // card still unused is a leftover for a keyword the new
+                // encoding does not emit (e.g. CDELT after a CD-matrix write)
+                // and gets swept. Non-WCS cards (SIMPLE, NAXIS, COMMENT, …)
+                // are preserved unconditionally.
+                self.cards.mark_all_unused();
 
-                match self.encoding {
+                let result = match self.encoding {
                     Encoding::FitsWcs => {
                         wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix)
                     }
@@ -597,7 +602,10 @@ impl Channel for FitsChan {
                         enc_dss::write_to_cards,
                     ),
                     Encoding::Native => unreachable!(),
-                }
+                };
+
+                self.cards.sweep_unused_wcs();
+                result
             }
         }
     }
