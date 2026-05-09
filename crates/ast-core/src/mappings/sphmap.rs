@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::pal;
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{Node, Serializable, read_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
@@ -279,7 +279,20 @@ impl Serializable for SphMap {
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Cartesian to Spherical mapping".to_string());
-        write_mapping_base(&mut node, self);
+        // SphMap always serializes with stored dimensions (Nin=3, Nout=2)
+        // regardless of invert state. The Invert flag is separate.
+        node.push_int("Nin", 3, Some("Number of input coordinates".to_string()));
+        node.push_int("Nout", 2, Some("Number of output coordinates".to_string()));
+        if self.do_not_simplify {
+            node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
+        }
+        if self.inverted {
+            node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
+        }
+        node.push_isa(
+            "Mapping",
+            Some("Mapping between coordinate systems".to_string()),
+        );
         if self.unit_radius {
             node.push_int(
                 "UntRd",
@@ -291,6 +304,12 @@ impl Serializable for SphMap {
             node.push_double(
                 "PlrLg",
                 self.polar_long,
+                Some("Polar longitude (rad.s)".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "PlrLg",
+                crate::serial::NodeValue::Double(0.0),
                 Some("Polar longitude (rad.s)".to_string()),
             );
         }

@@ -216,7 +216,7 @@ pub(crate) fn flatten(
 ///
 /// After the merge loop stabilises, `UnitMap` entries are removed
 /// from series lists (they are identity and do not contribute).
-pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
+pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bool {
     const MAX_MERGE_PASSES: usize = 50;
     let mut pass = 0;
     let mut prev_len = list.len();
@@ -363,24 +363,21 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
         prev_len = current_len;
     }
 
+    // Track whether any passes ran (pass > 1 means something changed).
+    let mut changed = pass > 1;
+
     // Post-loop: strip UnitMaps from series lists.
     if series && list.len() > 1 {
+        let orig_len = list.len();
         list.retain(|(m, _)| !m.as_any().is::<UnitMap>());
-        // If everything was a UnitMap the list is now empty — put one
-        // back so reconstruct has something to work with. The ncoord
-        // is taken from any of the original UnitMaps, but since they
-        // were all compatible in series they share the same ncoord.
-        // We have already lost the ncoord info here, so use 0 as a
-        // sentinel; the caller (simplify_mapping) handles the
-        // all-UnitMap case before we get here via the existing
-        // CmpMap::simplified() path.
+        if list.len() != orig_len {
+            changed = true;
+        }
         if list.is_empty() {
-            // Shouldn't normally happen: CmpMap::simplified() already
-            // collapses UnitMap pairs. If it does, push a 1-D UnitMap
-            // as a safe fallback.
             list.push((Box::new(UnitMap::new(1)), false));
         }
     }
+    changed
 }
 
 /// Try to swap adjacent WinMap↔WcsMap pairs in a flattened series list.
@@ -1912,7 +1909,14 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     let series = cmp.composition() == Composition::Series;
 
     let mut list = flatten(mapping, false, series)?;
-    merge_loop(&mut list, series);
+    let changed = merge_loop(&mut list, series);
+
+    // If no simplification occurred, preserve the original tree structure
+    // rather than reconstructing (which changes associativity).
+    if !changed && list.len() > 1 {
+        return Ok(mapping.clone_box());
+    }
+
     reconstruct(list, series)
 }
 
