@@ -17,7 +17,7 @@ mod winmap;
 pub use winmap::WinMap;
 mod lutmap;
 pub use lutmap::{LutInterp, LutMap};
-mod polymap;
+pub(crate) mod polymap;
 pub use polymap::{PolyMap, PolyTerm};
 mod chebymap;
 pub use chebymap::ChebyMap;

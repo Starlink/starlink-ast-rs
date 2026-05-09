@@ -13,9 +13,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
     BasicFrame, CmpFrame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
-use crate::mappings::{
-    CmpMap, Composition, DynMapping, Mapping, ShiftMap, WcsMap, WcsProjection, WinMap,
-};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, WcsProjection};
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -68,12 +66,6 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // Get the base→current mapping (pixel→world).
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
-    // Find the best reference pixel. For non-linear mappings (e.g. TAN
-    // projections), this is the pixel where the mapping is most locally
-    // linear — the projection centre. For linear mappings, any pixel works
-    // and we fall back to (1,1,...).
-    let ref_pixel = find_reference_pixel(mapping.as_ref(), naxis)?;
-
     // For CD/PC/CDELT extraction, the C library (fitschan.c CelestialAxes
     // + MakeIntWorld) splits the pixel→world mapping at the WcsMap and
     // uses only the pre-WcsMap chain — i.e. pixel→IWC, the linear part
@@ -86,16 +78,29 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // deprojection), the full pixel→world mapping IS the pixel→IWC
     // mapping and we use it directly.
     let cd_mapping = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
-    let cd_decomp = decompose_linear(cd_mapping.as_ref(), naxis, &ref_pixel)?;
 
-    // CRVAL still comes from the FULL pixel→world mapping at the ref
-    // pixel — for celestial axes we want the sky coordinates, not the
+    // Decompose the pixel→IWC mapping at an arbitrary "root" grid
+    // position g₀ = (1, 1, …). This gives both the CD matrix (the
+    // Jacobian) and w₀ = mapping(g₀) — the IWC vector at g₀.
+    let g0: Vec<f64> = vec![1.0; naxis];
+    let cd_decomp = decompose_linear(cd_mapping.as_ref(), naxis, &g0)?;
+
+    // Solve for CRPIX as the C library does in MakeIntWorld:
+    //   w₀ = CD · (g₀ − CRPIX)   ⇒   CRPIX = g₀ − CD⁻¹ · w₀
+    // This is robust to extra UnitMaps, PermMaps, and other no-op steps
+    // that a tree-walking CRPIX extractor would trip over (e.g. the
+    // FrameSet-internal UnitMap leading every base→current mapping).
+    let crpix = solve_crpix_from_decomp(&cd_decomp.cd, &cd_decomp.crval, &g0)
+        .unwrap_or_else(|| g0.clone());
+
+    // CRVAL comes from the FULL pixel→world mapping at the resolved
+    // CRPIX — for celestial axes we want the sky coordinates, not the
     // projected (0, 0) point that the pre-WcsMap mapping outputs there.
-    let full_decomp = decompose_linear(mapping.as_ref(), naxis, &ref_pixel)?;
+    let full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
-    // Store CRPIX (from either decomposition — both share ref_pixel).
+    // Store CRPIX.
     for i in 0..naxis {
-        store.crpix[i] = Some(cd_decomp.crpix[i]);
+        store.crpix[i] = Some(crpix[i]);
     }
 
     // Store the CD matrix from the pre-WcsMap (pixel→IWC) mapping. For
@@ -119,6 +124,32 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     identify_axes(fs, &full_decomp.crval, &mut store, projection)?;
 
     Ok(store)
+}
+
+/// Solve the C library's CRPIX equation `w₀ = CD · (g₀ − CRPIX)` for CRPIX.
+///
+/// Returns `None` if the CD matrix is singular — caller should fall back
+/// to using `g₀` as CRPIX. Mirrors the `palDmat` step in fitschan.c's
+/// MakeIntWorld function.
+fn solve_crpix_from_decomp(cd: &ndarray::Array2<f64>, w0: &[f64], g0: &[f64]) -> Option<Vec<f64>> {
+    let n = g0.len();
+    if cd.nrows() != n || cd.ncols() != n || w0.len() != n {
+        return None;
+    }
+
+    // Copy CD into a row-major flat buffer for the in-place solver, and
+    // copy w₀ into the rhs buffer. The solver overwrites `rhs` with the
+    // solution `x` of `CD · x = w₀`.
+    let mut mat: Vec<f64> = (0..n)
+        .flat_map(|i| (0..n).map(move |j| cd[[i, j]]))
+        .collect();
+    let mut rhs: Vec<f64> = w0.to_vec();
+    if !crate::mappings::polymap::solve_linear_system(&mut mat, &mut rhs, n) {
+        return None;
+    }
+
+    // CRPIX = g₀ − x.
+    Some(g0.iter().zip(rhs.iter()).map(|(g, x)| g - x).collect())
 }
 
 /// Split the pixel→world mapping at the first [`WcsMap`] in its series
@@ -218,84 +249,6 @@ fn extract_projection_from_mapping(mapping: &dyn Mapping) -> Option<WcsProjectio
             return Some(p);
         }
     }
-    None
-}
-
-/// Find the best reference pixel for WCS encoding.
-///
-/// Extracts the CRPIX from the pixel-to-world mapping structure. For FrameSets
-/// constructed from FITS headers, the mapping starts with a WinMap or ShiftMap
-/// whose shift encodes -CRPIX. We walk the CmpMap tree to find this shift.
-///
-/// If the mapping structure doesn't contain a recognizable CRPIX shift, falls
-/// back to pixel (1,1,...) as the reference.
-fn find_reference_pixel(mapping: &dyn Mapping, naxis: usize) -> AstResult<Vec<f64>> {
-    // Try to extract CRPIX from the mapping structure.
-    if let Some(crpix) = extract_crpix_from_mapping(mapping, naxis) {
-        // Note: the extracted CRPIX may include a 0.5 offset from the
-        // GRID→PIXEL conversion in the FrameSet's internal mapping path.
-        // We keep it as-is because decompose_linear must evaluate at this
-        // exact pixel to get the correct CRVAL.
-        return Ok(crpix);
-    }
-
-    // Fallback: use pixel (1,1,...).
-    Ok(vec![1.0; naxis])
-}
-
-/// Walk the mapping tree to find the leading shift that encodes CRPIX.
-///
-/// For a pixel-to-world mapping constructed by the WCS reader, the structure is:
-///   CmpMap(Series): pixel_to_iwc → iwc_to_world
-/// where pixel_to_iwc starts with a WinMap(shift=-CRPIX, scale=1).
-///
-/// We recursively descend through the "first" component of Series CmpMaps
-/// until we find a WinMap or ShiftMap at the leaf.
-fn extract_crpix_from_mapping(mapping: &dyn Mapping, naxis: usize) -> Option<Vec<f64>> {
-    // Check if this mapping is itself a WinMap with unit scales.
-    if let Some(wm) = mapping.as_any().downcast_ref::<WinMap>() {
-        let shifts = wm.shifts();
-        let scales = wm.scales();
-        if shifts.len() == naxis && scales.iter().all(|&s| (s - 1.0).abs() < 1e-10) {
-            // WinMap with unit scales: forward(pixel) = pixel + shift.
-            // At CRPIX: output = CRPIX + shift = 0 → shift = -CRPIX → CRPIX = -shift.
-            let crpix: Vec<f64> = shifts.iter().map(|&s| -s).collect();
-            return Some(crpix);
-        }
-        // WinMap with non-unit scales: CRPIX = -shift/scale.
-        if shifts.len() == naxis {
-            let crpix: Vec<f64> = shifts
-                .iter()
-                .zip(scales.iter())
-                .map(|(&s, &sc)| if sc.abs() > 1e-30 { -s / sc } else { 1.0 })
-                .collect();
-            return Some(crpix);
-        }
-    }
-
-    // Check if this is a ShiftMap.
-    if let Some(sm) = mapping.as_any().downcast_ref::<ShiftMap>() {
-        let shifts = sm.shifts();
-        if shifts.len() == naxis {
-            // ShiftMap forward(pixel) = pixel + shift → CRPIX = -shift.
-            let crpix: Vec<f64> = shifts.iter().map(|&s| -s).collect();
-            return Some(crpix);
-        }
-    }
-
-    // Check if this is a CmpMap in Series composition.
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
-        if cmp.composition() == Composition::Series {
-            // The first component in a series CmpMap is applied first (to pixel coords).
-            // Recursively check it for a shift/WinMap.
-            if let Some(crpix) = extract_crpix_from_mapping(cmp.first(), naxis) {
-                return Some(crpix);
-            }
-            // If the first component is itself a CmpMap that didn't yield a result,
-            // try the second component in case the structure is different.
-        }
-    }
-
     None
 }
 
@@ -402,9 +355,21 @@ fn populate_celestial(
     store.ctype[lon_axis] = Some(format!("{lon_prefix}-{proj_code}"));
     store.ctype[lat_axis] = Some(format!("{lat_prefix}-{proj_code}"));
 
-    // CRVAL in degrees (mapping output is radians for SkyFrame).
-    store.crval[lon_axis] = Some(crval[lon_axis].to_degrees());
-    store.crval[lat_axis] = Some(crval[lat_axis].to_degrees());
+    // CRVAL in degrees (mapping output is radians for SkyFrame). The
+    // numerical evaluation can land outside the SkyFrame's canonical
+    // longitude range, e.g. when the projection rotation wraps past 2π —
+    // for timj.fits-wcs this turns 309.755° into −50.245°. Normalising
+    // through SkyFrame::norm before the rad→deg conversion mirrors the
+    // C library's astNorm step inside CelestialAxes (fitschan.c around
+    // line 5138) and keeps CRVAL in the conventional FITS range.
+    use crate::frames::Frame;
+    let mut sky_pair = [0.0_f64; 2];
+    // SkyFrame is intrinsically 2D with axis 1 = longitude, 2 = latitude.
+    sky_pair[0] = crval[lon_axis];
+    sky_pair[1] = crval[lat_axis];
+    sky.norm(&mut sky_pair)?;
+    store.crval[lon_axis] = Some(sky_pair[0].to_degrees());
+    store.crval[lat_axis] = Some(sky_pair[1].to_degrees());
 
     // CD rows for celestial axes were extracted from the pre-WcsMap
     // (pixel→IWC) mapping in store_from_frameset, where IWC is in

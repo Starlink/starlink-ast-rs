@@ -745,7 +745,7 @@ fn compute_jacobian_terms_from(forward: &[PolyTerm], nin: usize) -> Vec<Vec<Poly
 /// pivoting. `mat` is row-major `n x n`, `rhs` has length `n`.
 /// On success the solution is written into `rhs` and returns `true`.
 /// Returns `false` if the matrix is singular.
-fn solve_linear_system(mat: &mut [f64], rhs: &mut [f64], n: usize) -> bool {
+pub(crate) fn solve_linear_system(mat: &mut [f64], rhs: &mut [f64], n: usize) -> bool {
     // Forward elimination.
     for col in 0..n {
         // Partial pivoting: find the row with the largest absolute value
