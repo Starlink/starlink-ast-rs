@@ -40,6 +40,10 @@ pub struct CmpMap {
     pub(crate) tran_forward: bool,
     /// Whether the inverse transform is defined.
     pub(crate) tran_inverse: bool,
+    /// Serialized InvA flag (first child used inverted in this CmpMap).
+    inv_a: bool,
+    /// Serialized InvB flag (second child used inverted in this CmpMap).
+    inv_b: bool,
 }
 
 impl CmpMap {
@@ -66,6 +70,8 @@ impl CmpMap {
             do_not_simplify: false,
             tran_forward: true,
             tran_inverse: true,
+            inv_a: false,
+            inv_b: false,
         })
     }
 
@@ -194,6 +200,8 @@ impl Clone for CmpMap {
             do_not_simplify: self.do_not_simplify,
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
+            inv_a: self.inv_a,
+            inv_b: self.inv_b,
         }
     }
 }
@@ -437,7 +445,9 @@ impl Serializable for CmpMap {
         let mut map_a = mapping_from_node(node_a)?;
         let mut map_b = mapping_from_node(node_b)?;
 
-        // Ensure component invert state matches InvA/InvB.
+        // Ensure component invert state matches InvA/InvB (XOR semantics).
+        // InvA means the child should be effectively inverted; if the child
+        // already has Invert=1 in its native state, InvA=1 cancels it.
         if map_a.is_inverted() != inv_a {
             map_a.invert();
         }
@@ -446,6 +456,8 @@ impl Serializable for CmpMap {
         }
 
         let mut cmp = CmpMap::new(map_a, map_b, kind)?;
+        cmp.inv_a = inv_a;
+        cmp.inv_b = inv_b;
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;
         cmp.set_do_not_simplify(base.do_not_simplify);

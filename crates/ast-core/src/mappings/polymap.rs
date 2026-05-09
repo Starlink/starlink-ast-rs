@@ -1295,15 +1295,20 @@ impl Serializable for PolyMap {
             // Write powers, sequentially: for each output, for each term,
             // for each input axis.
             iv = 0;
-            for terms in &terms_by_out {
-                for term in terms {
+            for (out_idx, terms) in terms_by_out.iter().enumerate() {
+                for (term_idx, term) in terms.iter().enumerate() {
                     for (k, &p) in term.powers.iter().enumerate() {
                         iv += 1;
                         if p > 0 {
                             node.push_double(
                                 &format!("PF{iv}"),
                                 p as f64,
-                                Some(format!("Power of i/p {} for coeff of fwd poly", k + 1)),
+                                Some(format!(
+                                    "Power of i/p {} for coeff {} of fwd poly {}",
+                                    k + 1,
+                                    term_idx + 1,
+                                    out_idx + 1
+                                )),
                             );
                         }
                     }
@@ -1367,15 +1372,20 @@ impl Serializable for PolyMap {
 
                 // Write powers.
                 iv = 0;
-                for terms in &terms_by_out {
-                    for term in terms {
+                for (out_idx, terms) in terms_by_out.iter().enumerate() {
+                    for (term_idx, term) in terms.iter().enumerate() {
                         for (k, &p) in term.powers.iter().enumerate() {
                             iv += 1;
                             if p > 0 {
                                 node.push_double(
                                     &format!("PI{iv}"),
                                     p as f64,
-                                    Some(format!("Power of o/p {} for coeff of inv poly", k + 1)),
+                                    Some(format!(
+                                        "Power of o/p {} for coeff {} of inv poly {}",
+                                        k + 1,
+                                        term_idx + 1,
+                                        out_idx + 1
+                                    )),
                                 );
                             }
                         }
@@ -1451,7 +1461,7 @@ impl Serializable for PolyMap {
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nin].to_vec();
                     power_idx += nin;
                     // Skip BAD coefficients (they represent absent terms).
-                    if coeff != BAD_VALUE && coeff != 0.0 {
+                    if coeff != BAD_VALUE {
                         forward.push(PolyTerm {
                             coeff,
                             powers: term_powers,
@@ -1492,7 +1502,7 @@ impl Serializable for PolyMap {
                     coeff_idx += 1;
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nout].to_vec();
                     power_idx += nout;
-                    if coeff != BAD_VALUE && coeff != 0.0 {
+                    if coeff != BAD_VALUE {
                         inverse_terms.push(PolyTerm {
                             coeff,
                             powers: term_powers,

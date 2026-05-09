@@ -861,7 +861,7 @@ impl Serializable for ChebyMap {
                     coeff_idx += 1;
                     let term_powers: Vec<usize> = powers[power_idx..power_idx + nin].to_vec();
                     power_idx += nin;
-                    if coeff != BAD_VALUE && coeff != 0.0 {
+                    if coeff != BAD_VALUE {
                         forward.push(PolyTerm {
                             coeff,
                             powers: term_powers,
