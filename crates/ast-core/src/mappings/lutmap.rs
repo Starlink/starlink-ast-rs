@@ -648,35 +648,34 @@ impl Serializable for LutMap {
             node.push_double(
                 "Start",
                 self.start,
-                Some("Input value for first table entry".to_string()),
+                Some("Input value at first element".to_string()),
             );
         }
         if self.inc != 1.0 {
             node.push_double(
                 "Incr",
                 self.inc,
-                Some("Input increment between table entries".to_string()),
+                Some("Input value increment between elements".to_string()),
             );
         }
-        if self.interp != LutInterp::Linear {
-            let interp_val = match self.interp {
-                LutInterp::Linear => 0,
-                LutInterp::Nearest => 1,
-            };
-            node.push_int(
-                "LutInt",
-                interp_val,
-                Some("Interpolation method".to_string()),
-            );
-        }
+        let interp_val = match self.interp {
+            LutInterp::Linear => 0,
+            LutInterp::Nearest => 1,
+        };
+        node.push_int(
+            "LutInt",
+            interp_val,
+            Some("Interpolation method".to_string()),
+        );
 
         for (i, &v) in self.lut.iter().enumerate() {
             if !is_bad(v) {
-                node.push_double(
-                    &format!("L{}", i + 1),
-                    v,
-                    Some("Lookup table elements".to_string()),
-                );
+                let comment = if i == 0 {
+                    Some("Lookup table elements...".to_string())
+                } else {
+                    None
+                };
+                node.push_double(&format!("L{}", i + 1), v, comment);
             }
         }
 
