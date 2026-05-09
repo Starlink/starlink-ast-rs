@@ -1407,8 +1407,9 @@ impl Serializable for PolyMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
-            read_mapping_base(node);
+        let base = read_mapping_base(node);
+        let nin = base.nin;
+        let nout = base.nout;
 
         // --- Forward transformation ---
         let mut forward = Vec::new();
@@ -1546,14 +1547,14 @@ impl Serializable for PolyMap {
             niter_inverse: niter_inv,
             tol_inverse: tol_inv,
             inverted: false,
-            do_not_simplify,
+            do_not_simplify: base.do_not_simplify,
             jacobian_terms,
             forward_by_output,
             forward_max_pows,
             inverse_by_output,
             inverse_max_pows,
         };
-        if inverted {
+        if base.inverted {
             m.invert();
         }
         Ok(m)

@@ -490,11 +490,10 @@ impl Serializable for WinMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
-            read_mapping_base(node);
-        let mut shifts = Vec::with_capacity(nin);
-        let mut scales = Vec::with_capacity(nin);
-        for i in 0..nin {
+        let base = read_mapping_base(node);
+        let mut shifts = Vec::with_capacity(base.nin);
+        let mut scales = Vec::with_capacity(base.nin);
+        for i in 0..base.nin {
             shifts.push(node.get_double(&format!("Sft{}", i + 1), 0.0));
             scales.push(node.get_double(&format!("Scl{}", i + 1), 1.0));
         }
@@ -502,9 +501,9 @@ impl Serializable for WinMap {
             shifts,
             scales,
             inverted: false,
-            do_not_simplify,
+            do_not_simplify: base.do_not_simplify,
         };
-        if inverted {
+        if base.inverted {
             m.invert();
         }
         Ok(m)

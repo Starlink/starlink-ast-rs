@@ -76,10 +76,19 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     );
 }
 
+/// Common Mapping attributes read from a serialized node.
+#[derive(Debug, Clone)]
+pub(crate) struct MappingBaseAttrs {
+    pub nin: usize,
+    pub nout: usize,
+    pub inverted: bool,
+    pub do_not_simplify: bool,
+    pub has_forward: bool,
+    pub has_inverse: bool,
+}
+
 /// Read common Mapping attributes from a node.
-///
-/// Returns `(nin, nout, inverted, do_not_simplify, has_forward, has_inverse)`.
-pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool, bool, bool, bool) {
+pub(crate) fn read_mapping_base(node: &Node) -> MappingBaseAttrs {
     let nin = node.get_int("Nin", 0) as usize;
     let nout_raw = node.get_int("Nout", 0);
     let nout = if nout_raw <= 0 {
@@ -87,18 +96,14 @@ pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool, bool, bool,
     } else {
         nout_raw as usize
     };
-    let inverted = node.get_int("Invert", 0) != 0;
-    let do_not_simplify = node.get_int("IsSimp", 0) != 0;
-    let has_forward = node.get_int("Fwd", 1) != 0;
-    let has_inverse = node.get_int("Inv", 1) != 0;
-    (
+    MappingBaseAttrs {
         nin,
         nout,
-        inverted,
-        do_not_simplify,
-        has_forward,
-        has_inverse,
-    )
+        inverted: node.get_int("Invert", 0) != 0,
+        do_not_simplify: node.get_int("IsSimp", 0) != 0,
+        has_forward: node.get_int("Fwd", 1) != 0,
+        has_inverse: node.get_int("Inv", 1) != 0,
+    }
 }
 
 // ---------------------------------------------------------------------------

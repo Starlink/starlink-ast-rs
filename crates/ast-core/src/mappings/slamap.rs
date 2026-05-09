@@ -1312,8 +1312,7 @@ impl Serializable for SlaMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
-            read_mapping_base(node);
+        let base = read_mapping_base(node);
 
         let nsla = node.get_int("Nsla", 0) as usize;
 
@@ -1340,8 +1339,8 @@ impl Serializable for SlaMap {
             sla.add(cvt_type, &args);
         }
 
-        sla.set_do_not_simplify(do_not_simplify);
-        if inverted {
+        sla.set_do_not_simplify(base.do_not_simplify);
+        if base.inverted {
             sla.invert();
         }
 

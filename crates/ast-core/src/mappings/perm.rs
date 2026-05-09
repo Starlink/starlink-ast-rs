@@ -818,17 +818,16 @@ impl Serializable for PermMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
-            read_mapping_base(node);
+        let base = read_mapping_base(node);
 
         // Check for OutCpy shorthand (identity forward permutation).
         let out_cpy = node.get_int("OutCpy", 0) != 0;
         let outperm = if out_cpy {
             // Identity: output i = input i (1-based).
-            (1..=nout as i64).collect()
+            (1..=base.nout as i64).collect()
         } else {
-            let mut v = Vec::with_capacity(nout);
-            for i in 0..nout {
+            let mut v = Vec::with_capacity(base.nout);
+            for i in 0..base.nout {
                 v.push(node.get_int(&format!("Out{}", i + 1), 0));
             }
             v
@@ -838,10 +837,10 @@ impl Serializable for PermMap {
         let in_cpy = node.get_int("InCpy", 0) != 0;
         let inperm = if in_cpy {
             // Identity: input i = output i (1-based).
-            (1..=nin as i64).collect()
+            (1..=base.nin as i64).collect()
         } else {
-            let mut v = Vec::with_capacity(nin);
-            for i in 0..nin {
+            let mut v = Vec::with_capacity(base.nin);
+            for i in 0..base.nin {
                 v.push(node.get_int(&format!("In{}", i + 1), 0));
             }
             v
@@ -860,8 +859,8 @@ impl Serializable for PermMap {
         let mut m = PermMap::new(&inperm, &outperm, &constants)?;
         m.out_is_copy = out_cpy;
         m.in_is_copy = in_cpy;
-        m.set_do_not_simplify(do_not_simplify);
-        if inverted {
+        m.set_do_not_simplify(base.do_not_simplify);
+        if base.inverted {
             m.invert();
         }
         Ok(m)

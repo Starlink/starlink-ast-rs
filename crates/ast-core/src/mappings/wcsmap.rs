@@ -606,8 +606,7 @@ impl Serializable for WcsMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
-            read_mapping_base(node);
+        let base = read_mapping_base(node);
 
         // Read projection type.
         // If the type is blank or unrecognised, fall back to Unknown (which
@@ -619,7 +618,7 @@ impl Serializable for WcsMap {
         let wcsax1 = node.get_int("WcsAx1", 1) as usize;
         let wcsax2 = node.get_int("WcsAx2", 2) as usize;
 
-        let mut wcs = WcsMap::new(nin, proj, wcsax1, wcsax2)?;
+        let mut wcs = WcsMap::new(base.nin, proj, wcsax1, wcsax2)?;
 
         // Scan items for PV{i}_{m} keys.
         for item in &node.items {
@@ -637,8 +636,8 @@ impl Serializable for WcsMap {
             }
         }
 
-        wcs.set_do_not_simplify(do_not_simplify);
-        if inverted {
+        wcs.set_do_not_simplify(base.do_not_simplify);
+        if base.inverted {
             wcs.invert();
         }
 

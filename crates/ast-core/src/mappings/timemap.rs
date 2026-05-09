@@ -1405,8 +1405,7 @@ impl Serializable for TimeMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
-            read_mapping_base(node);
+        let base = read_mapping_base(node);
 
         let ntime = node.get_int("Ntime", 0) as usize;
 
@@ -1452,8 +1451,8 @@ impl Serializable for TimeMap {
             tm.add(cvt_type, &user_args);
         }
 
-        tm.set_do_not_simplify(do_not_simplify);
-        if inverted {
+        tm.set_do_not_simplify(base.do_not_simplify);
+        if base.inverted {
             tm.invert();
         }
 
