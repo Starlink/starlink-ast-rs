@@ -54,6 +54,7 @@ pub struct SkyFrame {
     sky_ref: [f64; 2],    // offset origin/pole [lon, lat] (radians)
     sky_ref_p: [f64; 2],  // offset meridian point [lon, lat]
     sky_ref_is: SkyRefIs,
+    sky_ref_is_set: bool,
     align_offset: bool,
     align_system: Option<SkySystem>,
 
@@ -90,6 +91,7 @@ impl SkyFrame {
             sky_ref: [0.0, 0.0],
             sky_ref_p: [0.0, std::f64::consts::FRAC_PI_2],
             sky_ref_is: SkyRefIs::Ignored,
+            sky_ref_is_set: false,
             align_offset: false,
             align_system: None,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
@@ -163,6 +165,7 @@ impl SkyFrame {
     /// Set the interpretation of the sky reference point.
     pub fn set_sky_ref_is(&mut self, mode: SkyRefIs) {
         self.sky_ref_is = mode;
+        self.sky_ref_is_set = true;
     }
 
     /// Return the sky reference meridian point `[lon, lat]` in radians.
@@ -833,37 +836,53 @@ impl Serializable for SkyFrame {
             );
         }
 
-        // SRefIs (if != Ignored).
-        if self.sky_ref_is != SkyRefIs::Ignored {
+        // SRefIs (write if explicitly set, even if Ignored).
+        if self.sky_ref_is_set || self.sky_ref_is != SkyRefIs::Ignored {
             let srefis_str = match self.sky_ref_is {
                 SkyRefIs::Pole => "Pole",
                 SkyRefIs::Origin => "Origin",
-                SkyRefIs::Ignored => unreachable!(),
+                SkyRefIs::Ignored => "Ignored",
             };
-            node.push_string(
-                "SRefIs",
-                srefis_str,
-                Some("Interpretation of sky reference point".to_string()),
-            );
+            let comment = match self.sky_ref_is {
+                SkyRefIs::Ignored => "Not rotated (ref. pos. is ignored)",
+                SkyRefIs::Origin => "Rotated to put ref. pos. at origin",
+                SkyRefIs::Pole => "Rotated to put ref. pos. at pole",
+            };
+            node.push_string("SRefIs", srefis_str, Some(comment.to_string()));
         }
 
-        // SRef1, SRef2 (sky_ref longitude/latitude) if SkyRefIs != Ignored.
-        if self.sky_ref_is != SkyRefIs::Ignored {
+        // SRef1, SRef2 (sky_ref longitude/latitude) — write if non-zero.
+        if self.sky_ref[0] != 0.0 || self.sky_ref[1] != 0.0 || self.sky_ref_is != SkyRefIs::Ignored
+        {
+            let (lon_sym, lat_sym) = match self.system {
+                SkySystem::Fk5
+                | SkySystem::Fk4
+                | SkySystem::Fk4NoE
+                | SkySystem::Icrs
+                | SkySystem::J2000 => ("RA", "Dec"),
+                SkySystem::Galactic => ("Gal. long.", "Gal. lat."),
+                SkySystem::Supergalactic => ("Supergal. long.", "Supergal. lat."),
+                SkySystem::Ecliptic => ("Ecl. long.", "Ecl. lat."),
+                _ => ("Longitude", "Latitude"),
+            };
+            let lon_fmt = self.format(1, self.sky_ref[0]).unwrap_or_default();
+            let lat_fmt = self.format(2, self.sky_ref[1]).unwrap_or_default();
             node.push_double(
                 "SRef1",
                 self.sky_ref[0],
-                Some("Sky reference longitude".to_string()),
+                Some(format!("Ref. pos. {lon_sym} {lon_fmt}")),
             );
             node.push_double(
                 "SRef2",
                 self.sky_ref[1],
-                Some("Sky reference latitude".to_string()),
+                Some(format!("Ref. pos. {lat_sym} {lat_fmt}")),
             );
         }
 
         // SRefP1, SRefP2 (sky_ref_p longitude/latitude).
-        // Write if SkyRefIs != Ignored and values differ from defaults.
-        if self.sky_ref_is != SkyRefIs::Ignored {
+        // Write if non-default.
+        if self.sky_ref[0] != 0.0 || self.sky_ref[1] != 0.0 || self.sky_ref_is != SkyRefIs::Ignored
+        {
             if self.sky_ref_p[0] != 0.0 {
                 node.push_double(
                     "SRefP1",
@@ -956,6 +975,9 @@ impl Serializable for SkyFrame {
         }
 
         // SRefIs.
+        if node.get("SRefIs").is_some() {
+            sky.sky_ref_is_set = true;
+        }
         let srefis_str = node.get_string("SRefIs", "Ignored");
         sky.sky_ref_is = match srefis_str.to_ascii_uppercase().as_str() {
             "POLE" => SkyRefIs::Pole,
