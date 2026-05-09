@@ -211,12 +211,17 @@ impl FitsChan {
     /// Format all stored cards as a FITS header string.
     ///
     /// Each card is formatted as an 80-character line followed by a newline.
+    /// A trailing `END` card is always appended — `from_header` strips it on
+    /// read, so producing it here keeps the output a complete FITS header
+    /// and the round-trip idempotent.
     pub fn to_header(&self) -> String {
-        self.cards
+        let mut lines: Vec<String> = self
+            .cards
             .iter()
             .map(|card| card.format_with_digits(self.fits_digits))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect();
+        lines.push(format!("{:<80}", "END"));
+        lines.join("\n")
     }
 
     // -----------------------------------------------------------------------

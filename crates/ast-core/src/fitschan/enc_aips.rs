@@ -12,9 +12,12 @@
 //! - [`write_to_cards`]: write a FitsStore as plain AIPS keywords into a CardList
 //! - [`write_to_cards_pp`]: write a FitsStore as AIPS++ keywords into a CardList
 
+use ndarray::Array2;
+
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::guess_encoding::is_aips_spectral;
+use super::wcs_decompose::split_cd;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Read AIPS/AIPS++ style WCS keywords from a [`CardList`] into a [`FitsStore`].
@@ -209,12 +212,15 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
-    // CDELTi
-    for i in 0..naxis {
-        if let Some(val) = store.cdelt[i] {
-            let key = format!("CDELT{}", i + 1);
-            cards.set_float(&key, val, "Pixel size");
-        }
+    // Plain AIPS does not store a matrix; it uses CDELT and a single
+    // CROTAk. Factor the store's CD matrix into (CDELT, PC) when only CD
+    // is present, then derive the rotation angle from PC.
+    let (cdelt_vals, pc_vals) = derive_cdelt_pc(store);
+
+    // CDELTi — always emitted (one per axis).
+    for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
+        let key = format!("CDELT{}", i + 1);
+        cards.set_float(&key, cdelt_val, "Pixel size");
     }
 
     // CTYPEi — convert standard types back to AIPS spectral format using SPECSYS
@@ -238,15 +244,14 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
-    // CROTA2 from PC matrix: atan2(PC[1][0], PC[1][1]) in degrees
+    // CROTAk from PC matrix: atan2(PC[1][0], PC[1][1]) in degrees, where k
+    // is the latitude axis if the frame is celestial, else axis 1. AIPS
+    // emits CROTA always (including 0.0) so downstream readers know the
+    // rotation is exactly zero rather than unspecified.
     if naxis >= 2 {
-        let pc10 = store.pc[1][0].unwrap_or(0.0);
-        let pc11 = store.pc[1][1].unwrap_or(1.0);
-        let crota2 = pc10.atan2(pc11).to_degrees();
-        // Only write CROTA2 if it differs from zero
-        if crota2.abs() > 1e-10 {
-            cards.set_float("CROTA2", crota2, "Axis rotation");
-        }
+        let crota = pc_vals[[1, 0]].atan2(pc_vals[[1, 1]]).to_degrees();
+        let k = crota_axis(store);
+        cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
     }
 
     // EPOCH (not EQUINOX for plain AIPS)
@@ -260,6 +265,54 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     }
 
     Ok(())
+}
+
+/// Derive CDELT and PC values for emission, factoring the store's CD
+/// matrix into (CDELT × PC) when CDELT/PC are not stored directly.
+///
+/// Mirrors the same logic as `enc_pc::write_to_cards`. Returns identity
+/// defaults when neither matrix form is populated.
+fn derive_cdelt_pc(store: &FitsStore) -> (Vec<f64>, Array2<f64>) {
+    let naxis = store.naxis;
+    if store.has_pc_matrix() || store.cdelt.iter().any(|v| v.is_some()) {
+        let cdelt: Vec<f64> = (0..naxis).map(|i| store.cdelt[i].unwrap_or(1.0)).collect();
+        let mut pc = Array2::zeros((naxis, naxis));
+        for i in 0..naxis {
+            for j in 0..naxis {
+                pc[[i, j]] = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
+            }
+        }
+        (cdelt, pc)
+    } else if store.has_cd_matrix() {
+        let mut cd = Array2::zeros((naxis, naxis));
+        for i in 0..naxis {
+            for j in 0..naxis {
+                cd[[i, j]] = store.cd[i][j].unwrap_or(0.0);
+            }
+        }
+        split_cd(&cd)
+    } else {
+        (vec![1.0; naxis], Array2::eye(naxis))
+    }
+}
+
+/// Choose the axis index `k` for CROTAk emission.
+///
+/// Returns the 1-based latitude axis when the store contains a celestial
+/// CTYPE pair (`DEC--`, `GLAT-`, `ELAT-`, `SLAT-`, `EL---`); otherwise
+/// returns 1. Matches the C library convention: CROTA is paired with the
+/// latitude axis for celestial frames and with axis 1 for purely linear
+/// frames.
+fn crota_axis(store: &FitsStore) -> usize {
+    for (i, ctype) in store.ctype.iter().enumerate() {
+        if let Some(s) = ctype {
+            let prefix = s.get(..4).unwrap_or("");
+            if matches!(prefix, "DEC-" | "GLAT" | "ELAT" | "SLAT" | "EL--") {
+                return i + 1;
+            }
+        }
+    }
+    1
 }
 
 /// Write a [`FitsStore`] as AIPS++ style WCS keywords into a [`CardList`].

@@ -307,6 +307,17 @@ fn populate_celestial(
     store.crval[lon_axis] = Some(crval[lon_axis].to_degrees());
     store.crval[lat_axis] = Some(crval[lat_axis].to_degrees());
 
+    // NOTE: CD rows for celestial axes are still in radians/pixel and
+    // include the projection's cos(δ) and sign-flip baked in by the
+    // numerical Jacobian on the full pixel→world mapping. FITS-WCS
+    // expects CD/CDELT in degrees of *projected* x — converting from
+    // world α requires intercepting the mapping at the IWC step (after
+    // the linear pixel→IWC matrix, before the WcsMap), not scaling the
+    // numerical Jacobian after the fact. That fix lives at the
+    // store_from_frameset / decompose_linear architecture level and is
+    // intentionally out of scope here. Until it lands, fits-aips and
+    // friends emit celestial CDELT in radians.
+
     // RADESYS.
     store.radesys = Some(radesys_string(system));
 
