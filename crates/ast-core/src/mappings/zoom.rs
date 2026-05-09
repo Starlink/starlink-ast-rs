@@ -260,7 +260,8 @@ impl Serializable for ZoomMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
+            read_mapping_base(node);
         let factor = node.get_double("Zoom", 1.0);
         let mut m = ZoomMap::new(nin, factor)?;
         m.set_do_not_simplify(do_not_simplify);

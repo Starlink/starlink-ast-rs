@@ -317,7 +317,8 @@ impl Serializable for SphMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
+            read_mapping_base(node);
         let unit_radius = node.get_int("UntRd", 0) != 0;
         let polar_long_raw = node.get_double("PlrLg", f64::MIN);
         let polar_long = if is_bad(polar_long_raw) {

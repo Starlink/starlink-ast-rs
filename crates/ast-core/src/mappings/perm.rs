@@ -818,7 +818,8 @@ impl Serializable for PermMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (nin, nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
+            read_mapping_base(node);
 
         // Check for OutCpy shorthand (identity forward permutation).
         let out_cpy = node.get_int("OutCpy", 0) != 0;

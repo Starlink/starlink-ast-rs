@@ -605,7 +605,8 @@ impl Serializable for MatrixMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (nin, nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
+            read_mapping_base(node);
 
         if nin == 0 || nout == 0 {
             return Err(AstError::new(

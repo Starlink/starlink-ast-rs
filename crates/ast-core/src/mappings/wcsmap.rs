@@ -606,7 +606,8 @@ impl Serializable for WcsMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
+            read_mapping_base(node);
 
         // Read projection type.
         // If the type is blank or unrecognised, fall back to Unknown (which

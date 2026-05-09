@@ -157,6 +157,16 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         None
     }
 
+    /// Whether the forward transform is defined.
+    fn has_forward(&self) -> bool {
+        true
+    }
+
+    /// Whether the inverse transform is defined.
+    fn has_inverse(&self) -> bool {
+        true
+    }
+
     /// Whether this mapping should be protected from simplification.
     ///
     /// When true, `simplified()` returns self unchanged and `try_merge()`

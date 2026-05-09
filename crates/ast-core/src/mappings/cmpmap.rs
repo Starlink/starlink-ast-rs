@@ -36,6 +36,10 @@ pub struct CmpMap {
     kind: Composition,
     inverted: bool,
     do_not_simplify: bool,
+    /// Whether the forward transform is defined.
+    pub(crate) tran_forward: bool,
+    /// Whether the inverse transform is defined.
+    pub(crate) tran_inverse: bool,
 }
 
 impl CmpMap {
@@ -60,6 +64,8 @@ impl CmpMap {
             kind,
             inverted: false,
             do_not_simplify: false,
+            tran_forward: true,
+            tran_inverse: true,
         })
     }
 
@@ -186,6 +192,8 @@ impl Clone for CmpMap {
             kind: self.kind,
             inverted: self.inverted,
             do_not_simplify: self.do_not_simplify,
+            tran_forward: self.tran_forward,
+            tran_inverse: self.tran_inverse,
         }
     }
 }
@@ -349,6 +357,14 @@ impl Mapping for CmpMap {
         self.do_not_simplify = flag;
     }
 
+    fn has_forward(&self) -> bool {
+        self.tran_forward
+    }
+
+    fn has_inverse(&self) -> bool {
+        self.tran_inverse
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
@@ -399,7 +415,8 @@ impl Serializable for CmpMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify, has_forward, has_inverse) =
+            read_mapping_base(node);
 
         let is_series = node.get_int("Series", 1) != 0;
         let kind = if is_series {
@@ -430,6 +447,8 @@ impl Serializable for CmpMap {
         }
 
         let mut cmp = CmpMap::new(map_a, map_b, kind)?;
+        cmp.tran_forward = has_forward;
+        cmp.tran_inverse = has_inverse;
         cmp.set_do_not_simplify(do_not_simplify);
         if inverted {
             cmp.invert();

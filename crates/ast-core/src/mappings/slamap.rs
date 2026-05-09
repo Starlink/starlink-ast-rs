@@ -1312,7 +1312,8 @@ impl Serializable for SlaMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        let (_nin, _nout, inverted, do_not_simplify) = read_mapping_base(node);
+        let (_nin, _nout, inverted, do_not_simplify, _has_forward, _has_inverse) =
+            read_mapping_base(node);
 
         let nsla = node.get_int("Nsla", 0) as usize;
 

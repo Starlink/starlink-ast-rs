@@ -50,6 +50,20 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             Some("Number of output coordinates".to_string()),
         );
     }
+    if !mapping.has_forward() {
+        node.push_int(
+            "Fwd",
+            0,
+            Some("Forward transformation not defined".to_string()),
+        );
+    }
+    if !mapping.has_inverse() {
+        node.push_int(
+            "Inv",
+            0,
+            Some("Inverse transformation not defined".to_string()),
+        );
+    }
     if mapping.do_not_simplify() {
         node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
     }
@@ -64,8 +78,8 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
 
 /// Read common Mapping attributes from a node.
 ///
-/// Returns `(nin, nout, inverted, do_not_simplify)`.
-pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool, bool) {
+/// Returns `(nin, nout, inverted, do_not_simplify, has_forward, has_inverse)`.
+pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool, bool, bool, bool) {
     let nin = node.get_int("Nin", 0) as usize;
     let nout_raw = node.get_int("Nout", 0);
     let nout = if nout_raw <= 0 {
@@ -75,7 +89,16 @@ pub(crate) fn read_mapping_base(node: &Node) -> (usize, usize, bool, bool) {
     };
     let inverted = node.get_int("Invert", 0) != 0;
     let do_not_simplify = node.get_int("IsSimp", 0) != 0;
-    (nin, nout, inverted, do_not_simplify)
+    let has_forward = node.get_int("Fwd", 1) != 0;
+    let has_inverse = node.get_int("Inv", 1) != 0;
+    (
+        nin,
+        nout,
+        inverted,
+        do_not_simplify,
+        has_forward,
+        has_inverse,
+    )
 }
 
 // ---------------------------------------------------------------------------

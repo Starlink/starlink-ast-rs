@@ -255,9 +255,15 @@ impl Serializable for CmpFrame {
             };
             let lbl_key = format!("Lbl{local_ax}");
             if let Some(lbl) = child_node.get_string_any(&lbl_key) {
+                // Renumber generic "Axis N" labels to compound axis position.
+                let lbl_str = if lbl == format!("Axis {local_ax}") && local_ax != ax {
+                    format!("Axis {ax}")
+                } else {
+                    lbl.to_string()
+                };
                 node.push_unset(
                     &format!("Lbl{ax}"),
-                    NodeValue::String(lbl.to_string()),
+                    NodeValue::String(lbl_str),
                     Some(format!("Label for axis {ax}")),
                 );
             }
