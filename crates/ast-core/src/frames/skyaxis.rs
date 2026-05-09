@@ -77,10 +77,6 @@ impl Serializable for SkyAxis {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Celestial coordinate axis".to_string());
 
-        if self.is_latitude {
-            node.push_int("IsLat", 1, Some("Latitude axis".to_string()));
-        }
-
         if let Some(cz) = self.centre_zero {
             if cz {
                 node.push_int("CnZer", 1, Some("Centre zero for axis range".to_string()));

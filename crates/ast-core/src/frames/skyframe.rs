@@ -880,9 +880,8 @@ impl Serializable for SkyFrame {
         }
 
         // SRefP1, SRefP2 (sky_ref_p longitude/latitude).
-        // Write if non-default.
-        if self.sky_ref[0] != 0.0 || self.sky_ref[1] != 0.0 || self.sky_ref_is != SkyRefIs::Ignored
-        {
+        // Only write if SRefIs != Ignored (SRefP is only meaningful when offset coords are active).
+        if self.sky_ref_is != SkyRefIs::Ignored {
             if self.sky_ref_p[0] != 0.0 {
                 node.push_double(
                     "SRefP1",
@@ -1026,7 +1025,12 @@ impl Serializable for SkyFrame {
             let key = format!("Ax{}", i + 1);
             if let Some(axis_node) = node.get_object(&key) {
                 if axis_node.class == "SkyAxis" {
-                    sky.axes[i] = SkyAxis::from_node(axis_node)?;
+                    let mut axis = SkyAxis::from_node(axis_node)?;
+                    // When IsLat is absent, infer from position (axis 1 = lon, axis 2 = lat).
+                    if axis_node.get("IsLat").is_none() {
+                        axis.is_latitude = i == 1;
+                    }
+                    sky.axes[i] = axis;
                 }
             }
         }
