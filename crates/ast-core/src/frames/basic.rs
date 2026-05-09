@@ -587,7 +587,7 @@ impl Serializable for BasicFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Coordinate system description".to_string());
 
-        // Title (active if set and non-empty).
+        // Title (active if set, commented default otherwise).
         if let Some(ref title) = self.title {
             if !title.is_empty() {
                 node.push_string(
@@ -596,6 +596,13 @@ impl Serializable for BasicFrame {
                     Some("Title of coordinate system".to_string()),
                 );
             }
+        } else {
+            let default_title = format!("{}-d coordinate system", self.naxes);
+            node.push_unset(
+                "Title",
+                NodeValue::String(default_title),
+                Some("Title of coordinate system".to_string()),
+            );
         }
 
         // Naxes (always active).

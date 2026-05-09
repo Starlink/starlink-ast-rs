@@ -766,6 +766,9 @@ impl Serializable for FrameSet {
             Some("Number of Frames in FrameSet".to_string()),
         );
 
+        // Nnode — only written when nnode != nframe (tree structure).
+        // Our FrameSet always has nnode == nframe (linear chain), so skip.
+
         // Base — 1-based base frame index (commented if default == 1).
         if self.base_idx == 0 {
             node.push_unset(
