@@ -13,7 +13,9 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
     BasicFrame, CmpFrame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
-use crate::mappings::{CmpMap, Composition, Mapping, ShiftMap, WcsMap, WcsProjection, WinMap};
+use crate::mappings::{
+    CmpMap, Composition, DynMapping, Mapping, ShiftMap, WcsMap, WcsProjection, WinMap,
+};
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -63,7 +65,7 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
 
-    // Get the base→current mapping.
+    // Get the base→current mapping (pixel→world).
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
     // Find the best reference pixel. For non-linear mappings (e.g. TAN
@@ -72,18 +74,37 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // and we fall back to (1,1,...).
     let ref_pixel = find_reference_pixel(mapping.as_ref(), naxis)?;
 
-    // Decompose the mapping at the reference pixel.
-    let decomp = decompose_linear(mapping.as_ref(), naxis, &ref_pixel)?;
+    // For CD/PC/CDELT extraction, the C library (fitschan.c CelestialAxes
+    // + MakeIntWorld) splits the pixel→world mapping at the WcsMap and
+    // uses only the pre-WcsMap chain — i.e. pixel→IWC, the linear part
+    // before any spherical deprojection. That is the mapping FITS-WCS
+    // describes via CRPIX/CD/CDELT, and decomposing it gives a CD matrix
+    // free of the cos(δ) factor and projection sign-flip that the full
+    // pixel→world Jacobian carries.
+    //
+    // If no WcsMap is present (purely linear mapping, no celestial
+    // deprojection), the full pixel→world mapping IS the pixel→IWC
+    // mapping and we use it directly.
+    let cd_mapping = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
+    let cd_decomp = decompose_linear(cd_mapping.as_ref(), naxis, &ref_pixel)?;
 
-    // Store CRPIX.
+    // CRVAL still comes from the FULL pixel→world mapping at the ref
+    // pixel — for celestial axes we want the sky coordinates, not the
+    // projected (0, 0) point that the pre-WcsMap mapping outputs there.
+    let full_decomp = decompose_linear(mapping.as_ref(), naxis, &ref_pixel)?;
+
+    // Store CRPIX (from either decomposition — both share ref_pixel).
     for i in 0..naxis {
-        store.crpix[i] = Some(decomp.crpix[i]);
+        store.crpix[i] = Some(cd_decomp.crpix[i]);
     }
 
-    // Store the CD matrix.
+    // Store the CD matrix from the pre-WcsMap (pixel→IWC) mapping. For
+    // celestial axes the values are still in radians-per-pixel here; the
+    // radian→degree conversion happens in populate_celestial which knows
+    // which axes are sky.
     for i in 0..naxis {
         for j in 0..naxis {
-            store.cd[i][j] = Some(decomp.cd[[i, j]]);
+            store.cd[i][j] = Some(cd_decomp.cd[[i, j]]);
         }
     }
 
@@ -95,9 +116,87 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     let projection = extract_projection_from_mapping(mapping.as_ref());
 
     // Identify axis types from the current frame and populate CTYPE/CRVAL.
-    identify_axes(fs, &decomp.crval, &mut store, projection)?;
+    identify_axes(fs, &full_decomp.crval, &mut store, projection)?;
 
     Ok(store)
+}
+
+/// Split the pixel→world mapping at the first [`WcsMap`] in its series
+/// chain and return the pre-WcsMap (pixel→IWC) sub-mapping.
+///
+/// Returns `None` if no WcsMap is present in the chain — caller should
+/// then use the full pixel→world mapping for linear extraction.
+///
+/// Mirrors the role of `SplitMap` in the C library (fitschan.c): for a
+/// celestial WCS the structure is
+///
+/// ```text
+/// pixel → CRPIX shift → CD matrix → IWC → ZoomMap(deg→rad) → WcsMap → ... → WCS
+/// ```
+///
+/// and the FITS-WCS keywords CRPIX/CD/PC/CDELT describe the pixel→IWC
+/// portion only. Walking only Series CmpMap children matches the C
+/// library's behaviour for the common case; Parallel composition (e.g.
+/// CmpFrame mixing sky+spec axes) is handled because the WcsMap appears
+/// inside one of the series components in practice.
+fn split_pre_wcsmap(mapping: &dyn Mapping) -> Option<DynMapping> {
+    let mut acc: Vec<DynMapping> = Vec::new();
+    if walk_pre_wcsmap(mapping, &mut acc) && !acc.is_empty() {
+        compose_series(acc).ok()
+    } else {
+        None
+    }
+}
+
+/// Walk the mapping in execution order, accumulating components in `acc`
+/// until the first WcsMap is hit. Returns true if a WcsMap was found
+/// (and `acc` holds the chain that leads up to it); false if the subtree
+/// contained no WcsMap.
+fn walk_pre_wcsmap(mapping: &dyn Mapping, acc: &mut Vec<DynMapping>) -> bool {
+    if mapping.as_any().downcast_ref::<WcsMap>().is_some() {
+        return true;
+    }
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == Composition::Series {
+            // Series: try the first component (applied first to pixel coords).
+            let mut first_acc: Vec<DynMapping> = Vec::new();
+            if walk_pre_wcsmap(cmp.first(), &mut first_acc) {
+                // WcsMap is inside `first`. The pre-WcsMap chain is the
+                // partial chain we accumulated inside the recursive call;
+                // anything in `second` happens *after* the WcsMap so we
+                // discard it.
+                acc.extend(first_acc);
+                return true;
+            }
+            // First contains no WcsMap → it's entirely pre-WcsMap.
+            acc.push(cmp.first().clone_box());
+            // Now look in second.
+            let mut second_acc: Vec<DynMapping> = Vec::new();
+            if walk_pre_wcsmap(cmp.second(), &mut second_acc) {
+                acc.extend(second_acc);
+                return true;
+            }
+            // Neither half contained a WcsMap. Roll back the speculative
+            // push so the caller can decide what to do.
+            acc.pop();
+            return false;
+        }
+        // Parallel composition: a WcsMap living inside one branch is
+        // independent of the other axes, but the linear extraction needs
+        // both branches treated together. Don't split parallel CmpMaps;
+        // let the caller fall back to the full mapping.
+        return false;
+    }
+    false
+}
+
+/// Compose a non-empty list of mappings in series order.
+fn compose_series(mut parts: Vec<DynMapping>) -> AstResult<DynMapping> {
+    let mut acc = parts.remove(0);
+    for next in parts {
+        acc = Box::new(CmpMap::new(acc, next, Composition::Series)?);
+    }
+    Ok(acc)
 }
 
 /// Walk the mapping tree to find the first [`WcsMap`] and return its
@@ -307,16 +406,23 @@ fn populate_celestial(
     store.crval[lon_axis] = Some(crval[lon_axis].to_degrees());
     store.crval[lat_axis] = Some(crval[lat_axis].to_degrees());
 
-    // NOTE: CD rows for celestial axes are still in radians/pixel and
-    // include the projection's cos(δ) and sign-flip baked in by the
-    // numerical Jacobian on the full pixel→world mapping. FITS-WCS
-    // expects CD/CDELT in degrees of *projected* x — converting from
-    // world α requires intercepting the mapping at the IWC step (after
-    // the linear pixel→IWC matrix, before the WcsMap), not scaling the
-    // numerical Jacobian after the fact. That fix lives at the
-    // store_from_frameset / decompose_linear architecture level and is
-    // intentionally out of scope here. Until it lands, fits-aips and
-    // friends emit celestial CDELT in radians.
+    // CD rows for celestial axes were extracted from the pre-WcsMap
+    // (pixel→IWC) mapping in store_from_frameset, where IWC is in
+    // radians (the WcsMap input convention). FITS-WCS expects CD/CDELT
+    // for celestial axes in degrees of projected x/y, so scale these
+    // two rows by 180/π. The pre-WcsMap mapping does not include the
+    // spherical deprojection, so there is no cos(δ) factor or sign
+    // flip to undo — only the radians→degrees unit conversion.
+    let scale = 180.0_f64 / std::f64::consts::PI;
+    let naxis = store.naxis;
+    for j in 0..naxis {
+        if let Some(v) = store.cd[lon_axis][j] {
+            store.cd[lon_axis][j] = Some(v * scale);
+        }
+        if let Some(v) = store.cd[lat_axis][j] {
+            store.cd[lat_axis][j] = Some(v * scale);
+        }
+    }
 
     // RADESYS.
     store.radesys = Some(radesys_string(system));
