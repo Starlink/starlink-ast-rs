@@ -273,9 +273,12 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) {
                             new_shifts.extend(s2);
                             let mut new_scales = c1;
                             new_scales.extend(c2);
-                            WinMap::new(&new_shifts, &new_scales)
-                                .ok()
-                                .map(|m| Box::new(m) as DynMapping)
+                            super::winmap::compose_linear(
+                                &vec![0.0; new_shifts.len()],
+                                &vec![1.0; new_shifts.len()],
+                                &new_shifts,
+                                &new_scales,
+                            )
                         }
                     })
             };
