@@ -50,6 +50,12 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             Some("Number of output coordinates".to_string()),
         );
     }
+    if mapping.do_not_simplify() {
+        node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
+    }
+    if mapping.is_inverted() {
+        node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
+    }
     if !mapping.has_forward() {
         node.push_int(
             "Fwd",
@@ -63,12 +69,6 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             0,
             Some("Inverse transformation not defined".to_string()),
         );
-    }
-    if mapping.do_not_simplify() {
-        node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
-    }
-    if mapping.is_inverted() {
-        node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
     }
     node.push_isa(
         "Mapping",
