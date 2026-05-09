@@ -1044,11 +1044,12 @@ impl Mapping for PolyMap {
         // Check if all remaining terms are affine (constant or linear).
         // A term is constant if sum of powers == 0, linear if sum == 1 with
         // exactly one power == 1.
+        // C only does this when nin == nout (polymap.c line 3734).
         let nin = self.nin();
         let nout = self.nout();
-        let is_affine = !consolidated.is_empty()
+        let is_affine = nin == nout
+            && !consolidated.is_empty()
             && nin > 0
-            && nout > 0
             && consolidated.iter().all(|t| {
                 let power_sum: usize = t.powers.iter().sum();
                 power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
