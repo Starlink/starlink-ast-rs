@@ -456,8 +456,8 @@ fn lutmap_serialisation_default_omission() {
         "Start should be omitted for default 0"
     );
     assert!(
-        !text.contains("Incr"),
-        "Incr should be omitted for default 1"
+        text.contains("# ") && text.contains("Incr = 1"),
+        "Incr should be commented for default 1"
     );
 }
 

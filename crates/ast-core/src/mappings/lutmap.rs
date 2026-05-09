@@ -3,7 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -45,6 +45,8 @@ pub struct LutMap {
     inverted: bool,
     /// Whether this mapping is protected from simplification.
     do_not_simplify: bool,
+    /// Whether the inverse transform is defined.
+    tran_inverse: bool,
 }
 
 impl LutMap {
@@ -76,6 +78,7 @@ impl LutMap {
             monotonic,
             inverted: false,
             do_not_simplify: false,
+            tran_inverse: monotonic != 0,
         })
     }
 
@@ -615,6 +618,10 @@ impl Mapping for LutMap {
         Some(Box::new(UnitMap::new(1)))
     }
 
+    fn has_inverse(&self) -> bool {
+        self.tran_inverse
+    }
+
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify
     }
@@ -655,6 +662,12 @@ impl Serializable for LutMap {
             node.push_double(
                 "Incr",
                 self.inc,
+                Some("Input value increment between elements".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "Incr",
+                NodeValue::Int(1),
                 Some("Input value increment between elements".to_string()),
             );
         }
@@ -707,6 +720,7 @@ impl Serializable for LutMap {
             monotonic,
             inverted: false,
             do_not_simplify: base.do_not_simplify,
+            tran_inverse: base.has_inverse,
         };
         if base.inverted {
             m.invert();
