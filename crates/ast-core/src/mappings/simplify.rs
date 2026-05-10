@@ -23,6 +23,7 @@ use crate::mappings::helpers::ast_equal;
 
 use super::cmpmap::{CmpMap, Composition};
 use super::matrix::{MatrixMap, is_diagonal};
+use super::pcdmap::PcdMap;
 use super::perm::PermMap;
 use super::shift::ShiftMap;
 use super::sphmap::SphMap;
@@ -333,6 +334,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
             }
             // Try swapping WcsMap past a PermMap (or vice versa).
             if series && try_swap_wcsmap_past_permmap(list) {
+                continue;
+            }
+            // Try swapping a PcdMap past a ZoomMap or PermMap.
+            if series && try_swap_pcdmap_past_neighbor(list) {
                 continue;
             }
             // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
@@ -1821,6 +1826,197 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
         list[i + 1] = (Box::new(new_pm), false);
     }
     true
+}
+
+/// Swap a PcdMap past an adjacent ZoomMap or axis-swapping PermMap to bring
+/// the PcdMap closer to a merge partner (another PcdMap or UnitMap).
+///
+/// This matches the C pcdmap.c MapMerge logic: the PcdMap can swap with
+/// ZoomMaps and axis-swapping PermMaps. The swap is only performed if
+/// there is a potential merge target (PcdMap or UnitMap) visible on the
+/// other side, to avoid infinite swap loops.
+///
+/// Matches C pcdmap.c:1503-1714 (CanSwap + PcdZoom + PcdPerm).
+fn try_swap_pcdmap_past_neighbor(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    // Look for a PcdMap that can be swapped towards a merge target.
+    let mut i = 0;
+    while i < list.len() {
+        if !list[i].0.as_any().is::<PcdMap>() {
+            i += 1;
+            continue;
+        }
+
+        let pcd_inv = list[i].1;
+
+        // Try swapping with the higher neighbor (i+1) towards a target further right.
+        // Count how many steps to a merge target in the forward direction.
+        let nstep_hi = if i + 1 < list.len() && can_swap_pcd_with(&list[i + 1].0) {
+            find_pcd_merge_target_steps(list, i + 2, true)
+        } else {
+            -1
+        };
+
+        // Try swapping with the lower neighbor (i-1) towards a target further left.
+        let nstep_lo = if i >= 1 && can_swap_pcd_with(&list[i - 1].0) {
+            if i >= 2 {
+                find_pcd_merge_target_steps(list, i - 2, false)
+            } else {
+                -1
+            }
+        } else {
+            -1
+        };
+
+        // Choose the direction that gets us to a merge target in fewer steps.
+        if nstep_lo >= 0 && (nstep_hi < 0 || nstep_hi > nstep_lo) {
+            // Swap with lower neighbor: neighbor at i-1, PcdMap at i.
+            // PcdMap is second (ipc=1 in C terms).
+            do_pcd_swap_second(list, i - 1, pcd_inv);
+            return true;
+        } else if nstep_hi >= 0 {
+            // Swap with higher neighbor: PcdMap at i, neighbor at i+1.
+            // PcdMap is first (ipc=0 in C terms).
+            do_pcd_swap_first(list, i, pcd_inv);
+            return true;
+        }
+
+        i += 1;
+    }
+    false
+}
+
+/// Check if a mapping can be swapped with an adjacent PcdMap.
+fn can_swap_pcd_with(m: &DynMapping) -> bool {
+    if m.as_any().is::<ZoomMap>() {
+        return true;
+    }
+    if let Some(pm) = m.as_any().downcast_ref::<PermMap>() {
+        return PcdMap::perm_is_swap(pm);
+    }
+    false
+}
+
+/// Search forward or backward from `start` for a PcdMap or UnitMap merge
+/// target, skipping over ZoomMaps and axis-swapping PermMaps.
+/// Returns the number of intermediate steps if found, -1 otherwise.
+fn find_pcd_merge_target_steps(list: &[(DynMapping, bool)], start: usize, forward: bool) -> i32 {
+    if start >= list.len() {
+        return -1;
+    }
+    let mut pos = start;
+    let mut steps = 0i32;
+    loop {
+        if pos >= list.len() {
+            return -1;
+        }
+        if list[pos].0.as_any().is::<PcdMap>() || list[pos].0.as_any().is::<UnitMap>() {
+            return steps;
+        }
+        if !can_swap_pcd_with(&list[pos].0) {
+            return -1;
+        }
+        steps += 1;
+        if forward {
+            pos += 1;
+        } else {
+            if pos == 0 {
+                return -1;
+            }
+            pos -= 1;
+        }
+    }
+}
+
+/// Perform PcdMap swap when PcdMap is first (at `i`) and neighbor is at `i+1`.
+/// After swap: neighbor at i, new PcdMap at i+1.
+/// C equivalent: ipc=0 in PcdZoom/PcdPerm.
+fn do_pcd_swap_first(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) {
+    let pcd = list[i].0.as_any().downcast_ref::<PcdMap>().unwrap();
+    let pcd_disc = pcd.disc();
+    let pcd_cen = pcd.pcdcen();
+
+    if let Some(zm) = list[i + 1].0.as_any().downcast_ref::<ZoomMap>() {
+        let other_inv = list[i + 1].1;
+        let zoom = if other_inv {
+            1.0 / zm.factor()
+        } else {
+            zm.factor()
+        };
+
+        // PcdMap first, ZoomMap second → after swap:
+        // New centre = old_centre * zoom
+        // New disc = old_disc / (zoom^2)
+        let new_cen = [pcd_cen[0] * zoom, pcd_cen[1] * zoom];
+        let new_disc = pcd_disc / (zoom * zoom);
+        let mut new_pcd = PcdMap::new(new_disc, new_cen);
+        if pcd_inv {
+            new_pcd.invert();
+        }
+
+        let new_zoom = ZoomMap::new(2, zoom).unwrap();
+        list[i] = (Box::new(new_zoom), false);
+        list[i + 1] = (Box::new(new_pcd), false);
+    } else if list[i + 1].0.as_any().is::<PermMap>() {
+        let other_inv = list[i + 1].1;
+
+        // PcdMap first, PermMap(swap) second → after swap:
+        // PermMap at i, new PcdMap(swapped centre) at i+1.
+        let new_cen = [pcd_cen[1], pcd_cen[0]];
+        let mut new_pcd = PcdMap::new(pcd_disc, new_cen);
+        if pcd_inv {
+            new_pcd.invert();
+        }
+
+        let pm_clone = list[i + 1].0.clone_box();
+        list[i] = (pm_clone, other_inv);
+        list[i + 1] = (Box::new(new_pcd), false);
+    }
+}
+
+/// Perform PcdMap swap when PcdMap is second (at `i+1`) and neighbor is at `i`.
+/// After swap: new PcdMap at i, neighbor at i+1.
+/// C equivalent: ipc=1 in PcdZoom/PcdPerm.
+fn do_pcd_swap_second(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) {
+    let pcd = list[i + 1].0.as_any().downcast_ref::<PcdMap>().unwrap();
+    let pcd_disc = pcd.disc();
+    let pcd_cen = pcd.pcdcen();
+
+    if let Some(zm) = list[i].0.as_any().downcast_ref::<ZoomMap>() {
+        let other_inv = list[i].1;
+        let zoom = if other_inv {
+            1.0 / zm.factor()
+        } else {
+            zm.factor()
+        };
+
+        // ZoomMap first, PcdMap second → after swap:
+        // New centre = old_centre / zoom
+        // New disc = old_disc * (zoom^2)
+        let new_cen = [pcd_cen[0] / zoom, pcd_cen[1] / zoom];
+        let new_disc = pcd_disc * zoom * zoom;
+        let mut new_pcd = PcdMap::new(new_disc, new_cen);
+        if pcd_inv {
+            new_pcd.invert();
+        }
+
+        let new_zoom = ZoomMap::new(2, zoom).unwrap();
+        list[i] = (Box::new(new_pcd), false);
+        list[i + 1] = (Box::new(new_zoom), false);
+    } else if list[i].0.as_any().is::<PermMap>() {
+        let other_inv = list[i].1;
+
+        // PermMap(swap) first, PcdMap second → after swap:
+        // new PcdMap(swapped centre) at i, PermMap at i+1.
+        let new_cen = [pcd_cen[1], pcd_cen[0]];
+        let mut new_pcd = PcdMap::new(pcd_disc, new_cen);
+        if pcd_inv {
+            new_pcd.invert();
+        }
+
+        let pm_clone = list[i].0.clone_box();
+        list[i] = (Box::new(new_pcd), false);
+        list[i + 1] = (pm_clone, other_inv);
+    }
 }
 
 /// Detect the (inv-SphMap, diagonal-scale, fwd-SphMap) pattern and replace

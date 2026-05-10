@@ -30,6 +30,8 @@ mod specmap;
 pub use specmap::{SpecCvtType, SpecMap};
 mod timemap;
 pub use timemap::{TimeCvtType, TimeMap};
+mod pcdmap;
+pub use pcdmap::PcdMap;
 mod sphmap;
 pub use sphmap::SphMap;
 mod cmpmap;
