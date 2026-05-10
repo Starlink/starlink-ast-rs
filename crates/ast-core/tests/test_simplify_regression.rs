@@ -62,8 +62,8 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
     use ast_core::AnyObject;
     use ast_core::mappings::{
-        CmpMap, GrismMap, MatrixMap, PcdMap, PermMap, RateMap, ShiftMap, SlaMap, SpecMap, SphMap,
-        TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+        CmpMap, GrismMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap, ShiftMap, SlaMap, SpecMap,
+        SphMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
     };
 
     let obj = if let Some(x) = m.as_any().downcast_ref::<UnitMap>() {
@@ -100,6 +100,8 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
         AnyObject::TranMap(x.clone())
     } else if let Some(x) = m.as_any().downcast_ref::<RateMap>() {
         AnyObject::RateMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<NormMap>() {
+        AnyObject::NormMap(x.clone())
     } else {
         return None;
     };

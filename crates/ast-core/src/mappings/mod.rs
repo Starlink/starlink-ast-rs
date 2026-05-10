@@ -46,6 +46,8 @@ mod tranmap;
 pub use tranmap::TranMap;
 mod ratemap;
 pub use ratemap::RateMap;
+mod normmap;
+pub use normmap::NormMap;
 mod dssmap;
 pub use dssmap::DssMap;
 
