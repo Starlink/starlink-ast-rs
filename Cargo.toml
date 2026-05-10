@@ -18,3 +18,10 @@ cc = "1"
 levenberg-marquardt = "0.15"
 nalgebra = { version = "0.34", default-features = false, features = ["std"] }
 ndarray = "0.16"
+
+# Workspace-wide lint configuration. Mirrors CI's
+# `RUSTFLAGS=-D warnings` so warnings surface as errors during local
+# `cargo build`/`cargo test` instead of slipping into the GitHub
+# Actions build. Each crate inherits via `[lints] workspace = true`.
+[workspace.lints.rust]
+warnings = "deny"

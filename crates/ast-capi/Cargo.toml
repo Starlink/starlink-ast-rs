@@ -5,3 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "C ABI shim for the Starlink AST library"
+
+[lints]
+workspace = true

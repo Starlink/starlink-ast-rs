@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "Pure-Rust port of the Starlink AST world coordinate system library"
 
+[lints]
+workspace = true
+
 [dependencies]
 levenberg-marquardt.workspace = true
 nalgebra.workspace = true

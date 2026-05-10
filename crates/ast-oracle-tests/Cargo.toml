@@ -6,5 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 description = "Oracle correctness tests: Rust ast-core vs reference C libast"
 
+[lints]
+workspace = true
+
 [dependencies]
 ast-core = { path = "../ast-core" }

@@ -6,5 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 description = "FFI parity tests: C ast_tester programs against Rust-built libast"
 
+[lints]
+workspace = true
+
 [dependencies]
 ast-capi = { path = "../ast-capi" }
