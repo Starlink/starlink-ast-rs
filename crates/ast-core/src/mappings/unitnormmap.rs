@@ -1,0 +1,522 @@
+//! Mapping that decomposes a vector into a unit vector and its norm.
+//!
+//! A `UnitNormMap` converts a vector to a unit vector and its norm,
+//! relative to a specified centre.
+//!
+//! The forward transformation subtracts the specified centre and then
+//! transforms the resulting vector to a unit vector and the vector norm.
+//! The output contains one more coordinate than the input: the initial
+//! Nin outputs are in the same order as the input; the final output is
+//! the norm.
+//!
+//! The inverse transformation multiplies each component of the provided
+//! unit vector by the provided norm and adds the specified centre.
+
+use crate::constants::BAD_VALUE;
+use crate::coords::PointSet;
+use crate::error::AstResult;
+use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+
+use super::cmpmap::{CmpMap, Composition};
+use super::helpers::{ast_equal, is_bad};
+use super::rate::numeric_rate;
+use super::shift::ShiftMap;
+use super::unit::UnitMap;
+use super::winmap::WinMap;
+use super::{DynMapping, Mapping};
+
+/// A mapping that decomposes a vector into unit vector and norm.
+///
+/// The forward transformation subtracts the given centre from the input
+/// vector, then computes the unit vector and norm (length) of the result.
+/// Output has one more axis than input: the first Nin axes hold the unit
+/// vector components, the last axis holds the norm.
+///
+/// If the norm is zero, the unit vector components are set to
+/// [`BAD_VALUE`] and the norm output is zero.
+///
+/// Example: centre = `[1, -1]`, input = `[5, 2]`.
+/// After subtracting centre: `[4, 3]`, norm = 5.
+/// Output: `[0.8, 0.6, 5.0]`.
+#[derive(Debug, Clone)]
+pub struct UnitNormMap {
+    centre: Vec<f64>,
+    inverted: bool,
+    do_not_simplify: bool,
+}
+
+impl UnitNormMap {
+    /// Create a new `UnitNormMap` with the given centre.
+    ///
+    /// `centre` defines the origin from which the unit vector and norm
+    /// are computed. Its length determines the number of spatial axes.
+    pub fn new(centre: impl Into<Vec<f64>>) -> Self {
+        Self {
+            centre: centre.into(),
+            inverted: false,
+            do_not_simplify: false,
+        }
+    }
+
+    /// The centre vector.
+    pub fn centre(&self) -> &[f64] {
+        &self.centre
+    }
+
+    /// The number of spatial axes (length of the centre array).
+    fn ncoord(&self) -> usize {
+        self.centre.len()
+    }
+
+    fn effective_forward(&self, forward: bool) -> bool {
+        forward != self.inverted
+    }
+
+    /// Compose in series with another mapping.
+    pub fn then(self, next: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), next, Composition::Series)
+    }
+
+    /// Compose in parallel with another mapping.
+    pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
+        CmpMap::new(Box::new(self), other, Composition::Parallel)
+    }
+}
+
+impl Mapping for UnitNormMap {
+    fn nin(&self) -> usize {
+        if self.inverted {
+            self.ncoord() + 1
+        } else {
+            self.ncoord()
+        }
+    }
+
+    fn nout(&self) -> usize {
+        if self.inverted {
+            self.ncoord()
+        } else {
+            self.ncoord() + 1
+        }
+    }
+
+    fn is_inverted(&self) -> bool {
+        self.inverted
+    }
+
+    fn invert(&mut self) {
+        self.inverted = !self.inverted;
+    }
+
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        let ncoord = self.ncoord();
+        let fwd = self.effective_forward(forward);
+        let nout = if fwd { ncoord + 1 } else { ncoord };
+        let mut out = PointSet::zeros(pts.npoint(), nout);
+        self.transform_into(pts, forward, &mut out)?;
+        Ok(out)
+    }
+
+    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        let ncoord = self.ncoord();
+
+        // Check if any centre coordinate is bad — if so, all outputs are bad.
+        for &c in &self.centre {
+            if is_bad(c) {
+                for i in 0..pts.npoint() {
+                    let outp = out.point_mut(i);
+                    for o in outp.iter_mut() {
+                        *o = BAD_VALUE;
+                    }
+                }
+                return Ok(());
+            }
+        }
+
+        if fwd {
+            // Forward: vector → unit vector + norm
+            let ncoord_out = ncoord + 1;
+            for i in 0..pts.npoint() {
+                let inp = pts.point(i);
+                let outp = out.point_mut(i);
+
+                // Check for any bad input — if so, all outputs are bad.
+                let mut any_bad = false;
+                let mut max_relin: f64 = 0.0;
+                for (coord, (&v, &c)) in inp.iter().zip(self.centre.iter()).enumerate() {
+                    if coord >= ncoord {
+                        break;
+                    }
+                    if is_bad(v) {
+                        any_bad = true;
+                        break;
+                    }
+                    let abs_relin = (v - c).abs();
+                    if abs_relin > max_relin {
+                        max_relin = abs_relin;
+                    }
+                }
+
+                if any_bad {
+                    for o in outp[..ncoord_out].iter_mut() {
+                        *o = BAD_VALUE;
+                    }
+                    continue;
+                }
+
+                if max_relin == 0.0 {
+                    // Norm is zero: unit vector is unknown, norm is 0.
+                    for o in outp[..ncoord].iter_mut() {
+                        *o = BAD_VALUE;
+                    }
+                    outp[ncoord] = 0.0;
+                    continue;
+                }
+
+                // Compute norm using scaled sum to avoid overflow.
+                let mut scaled_sum: f64 = 0.0;
+                for (&v, &c) in inp[..ncoord].iter().zip(self.centre.iter()) {
+                    let scaled = (v - c) / max_relin;
+                    scaled_sum += scaled * scaled;
+                }
+                let norm = max_relin * scaled_sum.sqrt();
+
+                // Output unit vector and norm.
+                for (coord, (&v, &c)) in inp[..ncoord].iter().zip(self.centre.iter()).enumerate() {
+                    outp[coord] = (v - c) / norm;
+                }
+                outp[ncoord] = norm;
+            }
+        } else {
+            // Inverse: unit vector + norm → vector
+            for i in 0..pts.npoint() {
+                let inp = pts.point(i);
+                let outp = out.point_mut(i);
+
+                // The last input coordinate is the norm.
+                let norm = inp[ncoord];
+
+                if is_bad(norm) {
+                    // Norm is bad: all outputs bad.
+                    for o in outp[..ncoord].iter_mut() {
+                        *o = BAD_VALUE;
+                    }
+                } else if norm == 0.0 {
+                    // Norm is zero: output is the centre.
+                    outp[..ncoord].copy_from_slice(&self.centre[..ncoord]);
+                } else {
+                    // Multiply unit vector by norm and add centre.
+                    for (coord, (&v, &c)) in
+                        inp[..ncoord].iter().zip(self.centre.iter()).enumerate()
+                    {
+                        if is_bad(v) {
+                            outp[coord] = BAD_VALUE;
+                        } else {
+                            outp[coord] = v * norm + c;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn simplified(&self) -> AstResult<DynMapping> {
+        if self.do_not_simplify {
+            return Ok(Box::new(self.clone()));
+        }
+        // UnitNormMap cannot simplify itself alone — merging happens via try_merge.
+        Ok(Box::new(self.clone()))
+    }
+
+    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<UnitNormMap>() else {
+            return false;
+        };
+        if self.inverted != other.inverted {
+            return false;
+        }
+        if self.ncoord() != other.ncoord() {
+            return false;
+        }
+        for i in 0..self.ncoord() {
+            if !ast_equal(self.centre[i], other.centre[i]) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if !series {
+            return None;
+        }
+
+        // Determine effective forward/inverse state for self and other.
+        // self_inv/other_inv indicate whether each mapping should be treated
+        // as inverted in this composition.
+        let self_is_inverted = self_inv != self.inverted;
+
+        // Case: UnitNormMap + UnitNormMap (opposite directions)
+        if let Some(other_unm) = other.as_any().downcast_ref::<UnitNormMap>() {
+            let other_effective_inv = other_inv != other_unm.inverted;
+
+            // Must be opposite directions to merge.
+            if self_is_inverted == other_effective_inv {
+                return None;
+            }
+
+            // Check if centres are the same.
+            let centres_equal = self.ncoord() == other_unm.ncoord()
+                && self
+                    .centre
+                    .iter()
+                    .zip(other_unm.centre.iter())
+                    .all(|(&a, &b)| ast_equal(a, b));
+
+            if centres_equal {
+                // Identical centres cancel to UnitMap.
+                // The UnitMap has nin of the forward map.
+                let n = if self_is_inverted {
+                    self.ncoord() + 1
+                } else {
+                    self.ncoord()
+                };
+                return Some(Box::new(UnitMap::new(n)));
+            }
+
+            // Different centres: forward + inverse = ShiftMap
+            if !self_is_inverted && other_effective_inv {
+                // UnitNormMap(forward) + UnitNormMap(inverse) → ShiftMap
+                let shift: Vec<f64> = self
+                    .centre
+                    .iter()
+                    .zip(other_unm.centre.iter())
+                    .map(|(&a, &b)| b - a)
+                    .collect();
+                return Some(Box::new(ShiftMap::new(shift)));
+            }
+
+            return None;
+        }
+
+        // Case: ShiftMap + UnitNormMap(forward)
+        // This is: self = ShiftMap, other = UnitNormMap — but try_merge is called
+        // ON this (the UnitNormMap). So we need to handle:
+        //   - other is a ShiftMap and self is forward → not this case
+        //   - other is a ShiftMap and self is inverted → UnitNormMap(inv) + ShiftMap
+
+        if let Some(shift_map) = other.as_any().downcast_ref::<ShiftMap>() {
+            // UnitNormMap(inverted) + ShiftMap = UnitNormMap(inverted) with adjusted centre
+            if !self_is_inverted {
+                return None; // UnitNormMap(forward) + ShiftMap not supported
+            }
+
+            let shift_effective_inv = other_inv != shift_map.is_inverted();
+            let shift_mult = if shift_effective_inv { -1.0 } else { 1.0 };
+            let shifts = shift_map.shifts();
+
+            if shifts.len() != self.ncoord() {
+                return None;
+            }
+
+            let new_centre: Vec<f64> = self
+                .centre
+                .iter()
+                .zip(shifts.iter())
+                .map(|(&c, &s)| c + shift_mult * s)
+                .collect();
+
+            let mut result = UnitNormMap::new(new_centre);
+            result.invert(); // Return in inverted state
+            return Some(Box::new(result));
+        }
+
+        // Case: UnitNormMap(inverted) + WinMap with unit scale
+        if let Some(win_map) = other.as_any().downcast_ref::<WinMap>() {
+            if !self_is_inverted {
+                return None; // UnitNormMap(forward) + WinMap not supported
+            }
+
+            let win_effective_inv = other_inv != win_map.is_inverted();
+            let shift_mult = if win_effective_inv { -1.0 } else { 1.0 };
+            let scales = win_map.scales();
+            let shifts = win_map.shifts();
+
+            if scales.len() != self.ncoord() {
+                return None;
+            }
+
+            // Check unit scale on all axes.
+            for &s in scales {
+                if !ast_equal(s, 1.0) {
+                    return None;
+                }
+            }
+
+            let new_centre: Vec<f64> = self
+                .centre
+                .iter()
+                .zip(shifts.iter())
+                .map(|(&c, &s)| c + shift_mult * s)
+                .collect();
+
+            let mut result = UnitNormMap::new(new_centre);
+            result.invert(); // Return in inverted state
+            return Some(Box::new(result));
+        }
+
+        // Case: UnitMap → keep self unchanged
+        if other.as_any().downcast_ref::<UnitMap>().is_some() {
+            let mut result = self.clone();
+            result.inverted = self_inv;
+            return Some(Box::new(result));
+        }
+
+        None
+    }
+
+    /// Try to merge when this UnitNormMap is the *second* mapping (other is first).
+    ///
+    /// This handles the cases:
+    /// - ShiftMap + UnitNormMap(forward)
+    /// - WinMap(unit scale) + UnitNormMap(forward)
+    fn do_not_simplify(&self) -> bool {
+        self.do_not_simplify
+    }
+
+    fn set_do_not_simplify(&mut self, flag: bool) {
+        self.do_not_simplify = flag;
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
+    }
+}
+
+/// Try to merge another mapping followed by a UnitNormMap.
+///
+/// This is called from the ShiftMap and WinMap try_merge paths,
+/// or from the simplification engine when iterating over map pairs.
+/// We expose it as a free function so external merge logic can call it.
+pub(crate) fn try_merge_into_unitnormmap(
+    first: &dyn Mapping,
+    first_inv: bool,
+    unm: &UnitNormMap,
+    unm_inv: bool,
+) -> Option<DynMapping> {
+    let unm_is_inverted = unm_inv != unm.inverted;
+
+    // Only supported when UnitNormMap is in the forward direction.
+    if unm_is_inverted {
+        return None;
+    }
+
+    if let Some(shift_map) = first.as_any().downcast_ref::<ShiftMap>() {
+        // ShiftMap + UnitNormMap(forward) = UnitNormMap(forward)
+        let shift_effective_inv = first_inv != shift_map.is_inverted();
+        let shift_mult = if shift_effective_inv { -1.0 } else { 1.0 };
+        let shifts = shift_map.shifts();
+
+        if shifts.len() != unm.ncoord() {
+            return None;
+        }
+
+        let new_centre: Vec<f64> = unm
+            .centre
+            .iter()
+            .zip(shifts.iter())
+            .map(|(&c, &s)| c - shift_mult * s)
+            .collect();
+
+        return Some(Box::new(UnitNormMap::new(new_centre)));
+    }
+
+    if let Some(win_map) = first.as_any().downcast_ref::<WinMap>() {
+        // WinMap(unit scale) + UnitNormMap(forward) = UnitNormMap(forward)
+        let win_effective_inv = first_inv != win_map.is_inverted();
+        let shift_mult = if win_effective_inv { -1.0 } else { 1.0 };
+        let scales = win_map.scales();
+        let shifts = win_map.shifts();
+
+        if scales.len() != unm.ncoord() {
+            return None;
+        }
+
+        // Check unit scale on all axes.
+        for &s in scales {
+            if !ast_equal(s, 1.0) {
+                return None;
+            }
+        }
+
+        let new_centre: Vec<f64> = unm
+            .centre
+            .iter()
+            .zip(shifts.iter())
+            .map(|(&c, &s)| c - shift_mult * s)
+            .collect();
+
+        return Some(Box::new(UnitNormMap::new(new_centre)));
+    }
+
+    None
+}
+
+impl Serializable for UnitNormMap {
+    fn class_name(&self) -> &'static str {
+        "UnitNormMap"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Compute unit vector and norm relative to a centre".to_string());
+        write_mapping_base(&mut node, self);
+
+        // Write centre values (only non-zero values, matching C's conditional write).
+        for (axis, &c) in self.centre.iter().enumerate() {
+            let key = format!("Ctr{}", axis + 1);
+            if c != 0.0 {
+                node.push_double(&key, c, Some(format!("Centre for axis {}", axis + 1)));
+            }
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let base = read_mapping_base(node);
+
+        // The centre length equals the number of spatial axes, which is
+        // always min(nin, nout) in the forward direction. The serialized
+        // Nin/Nout are always the forward (non-inverted) dimensions
+        // regardless of the Invert flag, so ncoord = base.nin (which is
+        // always the smaller of the two for a UnitNormMap).
+        let ncoord = base.nin;
+
+        let mut centre = vec![0.0; ncoord];
+        for (axis, c) in centre.iter_mut().enumerate() {
+            let key = format!("Ctr{}", axis + 1);
+            *c = node.get_double(&key, 0.0);
+        }
+
+        let mut m = UnitNormMap::new(centre);
+        m.do_not_simplify = base.do_not_simplify;
+        if base.inverted {
+            m.invert();
+        }
+        Ok(m)
+    }
+}

@@ -10,6 +10,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::matrix::{MatrixMap, is_diagonal};
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
+use super::unitnormmap::try_merge_into_unitnormmap;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 
@@ -290,6 +291,14 @@ impl Mapping for WinMap {
             return WinMap::new(&new_shifts, &new_scales)
                 .ok()
                 .map(|m| Box::new(m) as DynMapping);
+        }
+
+        // WinMap (unit scale) + UnitNormMap(forward) → UnitNormMap(forward).
+        if let Some(unm) = other
+            .as_any()
+            .downcast_ref::<super::unitnormmap::UnitNormMap>()
+        {
+            return try_merge_into_unitnormmap(self, self_inv, unm, other_inv);
         }
 
         // Extract effective parameters for self (applied first).

@@ -8,6 +8,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::unit::UnitMap;
+use super::unitnormmap::try_merge_into_unitnormmap;
 use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
 
@@ -176,6 +177,14 @@ impl Mapping for ShiftMap {
                 return Some(Box::new(UnitMap::new(self.shift.len())));
             }
             return Some(Box::new(ShiftMap::new(combined)));
+        }
+
+        // ShiftMap + UnitNormMap(forward) → UnitNormMap(forward).
+        if let Some(unm) = other
+            .as_any()
+            .downcast_ref::<super::unitnormmap::UnitNormMap>()
+        {
+            return try_merge_into_unitnormmap(self, self_inv, unm, other_inv);
         }
 
         // Cross-type: ShiftMap + {WinMap, ZoomMap} → WinMap or UnitMap.

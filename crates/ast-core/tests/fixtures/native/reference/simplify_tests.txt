@@ -112,6 +112,10 @@ normmap_inverse_cancel  | simplify_fixtures/normmap_inverse_cancel.map  | simpli
 normmap_duplicate_elim  | simplify_fixtures/normmap_duplicate_elim.map  | simplify_fixtures/normmap_duplicate_elim.simp  |
 unitnormmap_inverse_cancel | simplify_fixtures/unitnormmap_inverse_cancel.map | simplify_fixtures/unitnormmap_inverse_cancel.simp |
 unitnormmap_diff_centre_to_shift | simplify_fixtures/unitnormmap_diff_centre_to_shift.map | simplify_fixtures/unitnormmap_diff_centre_to_shift.simp |
+unitnormmap_shift_fwd_merge | simplify_fixtures/unitnormmap_shift_fwd_merge.map | simplify_fixtures/unitnormmap_shift_fwd_merge.simp |
+unitnormmap_winmap_fwd_merge | simplify_fixtures/unitnormmap_winmap_fwd_merge.map | simplify_fixtures/unitnormmap_winmap_fwd_merge.simp |
+unitnormmap_inv_shift_merge | simplify_fixtures/unitnormmap_inv_shift_merge.map | simplify_fixtures/unitnormmap_inv_shift_merge.simp |
+unitnormmap_inv_winmap_merge | simplify_fixtures/unitnormmap_inv_winmap_merge.map | simplify_fixtures/unitnormmap_inv_winmap_merge.simp |
 grism_zoom_inv_merge    | simplify_fixtures/grism_zoom_inv_merge.map    | simplify_fixtures/grism_zoom_inv_merge.simp    |
 wcsmap_bad_to_unit      | simplify_fixtures/wcsmap_bad_to_unit.map      | simplify_fixtures/wcsmap_bad_to_unit.simp      |
 wcsmap_perm_swap_cancel | simplify_fixtures/wcsmap_perm_swap_cancel.map | simplify_fixtures/wcsmap_perm_swap_cancel.simp |
@@ -210,6 +214,8 @@ neg_wcs_nonperm_between | simplify_fixtures/neg_wcs_nonperm_between.map | simpli
 neg_sph_parallel        | simplify_fixtures/neg_sph_parallel.map        | simplify_fixtures/neg_sph_parallel.map        | yes
 neg_sph_sandwich_full_matrix | simplify_fixtures/neg_sph_sandwich_full_matrix.map | simplify_fixtures/neg_sph_sandwich_full_matrix.map | yes
 neg_normmap_nonnorm_neighbour | simplify_fixtures/neg_normmap_nonnorm_neighbour.map | simplify_fixtures/neg_normmap_nonnorm_neighbour.map | yes
+neg_unitnormmap_nonunit_scale | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | yes
+neg_unitnormmap_nonmergeable | simplify_fixtures/neg_unitnormmap_nonmergeable.map | simplify_fixtures/neg_unitnormmap_nonmergeable.map | yes
 neg_grism_zoom_before_fwd | simplify_fixtures/neg_grism_zoom_before_fwd.map | simplify_fixtures/neg_grism_zoom_before_fwd.map | yes
 neg_grism_nonzoom_before_inv | simplify_fixtures/neg_grism_nonzoom_before_inv.map | simplify_fixtures/neg_grism_nonzoom_before_inv.map | yes
 neg_win_mixed_no_selfsimplify | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | yes

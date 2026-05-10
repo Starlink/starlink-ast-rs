@@ -13,7 +13,7 @@ use crate::frames::{
 };
 use crate::mappings::{
     ChebyMap, CmpMap, DynMapping, GrismMap, LutMap, Mapping, MatrixMap, PcdMap, PermMap, PolyMap,
-    ShiftMap, SlaMap, SpecMap, SphMap, TimeMap, UnitMap, WcsMap, WinMap, ZoomMap,
+    ShiftMap, SlaMap, SpecMap, SphMap, TimeMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -36,8 +36,15 @@ pub(crate) trait Serializable {
 
 /// Write common Mapping attributes (Nin, Nout, IsSimp, Invert, IsA Mapping).
 pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
-    let nin = mapping.nin();
-    let nout = mapping.nout();
+    // Write intrinsic (forward-direction) Nin and Nout, matching the C library
+    // which uses `this->nin` / `this->nout` directly (bypassing the Invert
+    // attribute). When inverted, nin()/nout() return swapped values, so we
+    // undo the swap.
+    let (nin, nout) = if mapping.is_inverted() {
+        (mapping.nout(), mapping.nin())
+    } else {
+        (mapping.nin(), mapping.nout())
+    };
     node.push_int(
         "Nin",
         nin as i64,
@@ -130,6 +137,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "PcdMap" => Ok(Box::new(PcdMap::from_node(node)?)),
         "SphMap" => Ok(Box::new(SphMap::from_node(node)?)),
         "GrismMap" => Ok(Box::new(GrismMap::from_node(node)?)),
+        "UnitNormMap" => Ok(Box::new(UnitNormMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
@@ -199,6 +207,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<GrismMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<UnitNormMap>() {
             return m.to_node();
         }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
@@ -319,6 +330,8 @@ pub enum AnyObject {
     GrismMap(GrismMap),
     /// A [`SphMap`] (Cartesian to spherical coordinate mapping).
     SphMap(SphMap),
+    /// A [`UnitNormMap`] (unit vector + norm decomposition).
+    UnitNormMap(UnitNormMap),
     /// A [`BasicFrame`] (generic coordinate frame).
     BasicFrame(BasicFrame),
     /// A [`SkyFrame`] (celestial coordinate frame).
@@ -359,6 +372,7 @@ impl AnyObject {
             AnyObject::PcdMap(m) => Some(m),
             AnyObject::GrismMap(m) => Some(m),
             AnyObject::SphMap(m) => Some(m),
+            AnyObject::UnitNormMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
@@ -398,7 +412,8 @@ impl AnyObject {
             | AnyObject::TimeMap(_)
             | AnyObject::PcdMap(_)
             | AnyObject::GrismMap(_)
-            | AnyObject::SphMap(_) => None,
+            | AnyObject::SphMap(_)
+            | AnyObject::UnitNormMap(_) => None,
         }
     }
 
@@ -423,6 +438,7 @@ impl AnyObject {
             AnyObject::PcdMap(m) => Some(Box::new(m)),
             AnyObject::GrismMap(m) => Some(Box::new(m)),
             AnyObject::SphMap(m) => Some(Box::new(m)),
+            AnyObject::UnitNormMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
@@ -462,7 +478,8 @@ impl AnyObject {
             | AnyObject::TimeMap(_)
             | AnyObject::PcdMap(_)
             | AnyObject::GrismMap(_)
-            | AnyObject::SphMap(_) => None,
+            | AnyObject::SphMap(_)
+            | AnyObject::UnitNormMap(_) => None,
         }
     }
 }
@@ -491,6 +508,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "PcdMap" => Ok(AnyObject::PcdMap(PcdMap::from_node(node)?)),
         "GrismMap" => Ok(AnyObject::GrismMap(GrismMap::from_node(node)?)),
         "SphMap" => Ok(AnyObject::SphMap(SphMap::from_node(node)?)),
+        "UnitNormMap" => Ok(AnyObject::UnitNormMap(UnitNormMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
@@ -530,6 +548,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::PcdMap(m) => Serializable::to_node(m),
         AnyObject::GrismMap(m) => Serializable::to_node(m),
         AnyObject::SphMap(m) => Serializable::to_node(m),
+        AnyObject::UnitNormMap(m) => Serializable::to_node(m),
         AnyObject::BasicFrame(f) => Serializable::to_node(f),
         AnyObject::SkyFrame(f) => Serializable::to_node(f),
         AnyObject::SpecFrame(f) => Serializable::to_node(f),
