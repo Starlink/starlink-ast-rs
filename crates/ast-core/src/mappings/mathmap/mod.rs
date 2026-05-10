@@ -489,6 +489,7 @@ impl Serializable for MathMap {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new("MathMap");
+        node.class_comment = Some("Transformation using mathematical functions".to_string());
         write_mapping_base(&mut node, self);
 
         // Nfwd (only if different from nout)
@@ -525,12 +526,20 @@ impl Serializable for MathMap {
 
         // SimpFI
         if let Some(v) = self.simp_fi {
-            node.push_int("SimpFI", if v { 1 } else { 0 }, None);
+            node.push_int(
+                "SimpFI",
+                if v { 1 } else { 0 },
+                Some("Forward-inverse pairs may simplify".to_string()),
+            );
         }
 
         // SimpIF
         if let Some(v) = self.simp_if {
-            node.push_int("SimpIF", if v { 1 } else { 0 }, None);
+            node.push_int(
+                "SimpIF",
+                if v { 1 } else { 0 },
+                Some("Inverse-forward pairs may simplify".to_string()),
+            );
         }
 
         // Seed
