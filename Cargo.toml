@@ -20,8 +20,21 @@ nalgebra = { version = "0.34", default-features = false, features = ["std"] }
 ndarray = "0.16"
 
 # Workspace-wide lint configuration. Mirrors CI's
-# `RUSTFLAGS=-D warnings` so warnings surface as errors during local
-# `cargo build`/`cargo test` instead of slipping into the GitHub
-# Actions build. Each crate inherits via `[lints] workspace = true`.
+# `RUSTFLAGS=-D warnings` and `cargo clippy --workspace -- -D warnings`
+# so warnings surface as errors during local `cargo build`/`cargo test`
+# /`cargo clippy` instead of slipping into the GitHub Actions build.
+# Each crate inherits via `[lints] workspace = true`.
 [workspace.lints.rust]
 warnings = "deny"
+
+# Clippy's default lint groups (correctness, suspicious, style,
+# complexity, perf) are denied. CI runs `cargo clippy --workspace`;
+# this config makes that the same as `cargo clippy --workspace --
+# -D warnings` and keeps `cargo clippy` honest locally.
+#
+# `pedantic` is intentionally left at its default (allow). Promoting it
+# is a separate, larger cleanup — the existing code base trips a
+# couple of hundred pedantic lints, several of which are deliberate
+# choices (e.g. range-based loops where iterator chains read worse).
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }

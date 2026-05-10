@@ -70,9 +70,7 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // forward/inverse pairs and merges adjacent linear maps. Doing the
     // same here keeps subsequent numerical Jacobians from accumulating
     // floating-point noise across cancellable mapping steps.
-    let mapping = fs
-        .mapping(FrameRef::Base, FrameRef::Current)?
-        .simplify()?;
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?.simplify()?;
 
     // First-pass extraction via the pre-WcsMap chain. This gives a CRPIX
     // estimate and lets us evaluate CRVAL on the full pixel→world
@@ -116,9 +114,8 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // Linear-only / non-celestial frames keep the pre-WcsMap path.
     let mut cel_crval: Option<Vec<f64>> = None;
     let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(fs) {
-        let parts = projection.and_then(|p| {
-            split_around_wcsmap(mapping.as_ref()).map(|(_, post)| (p, post))
-        });
+        let parts = projection
+            .and_then(|p| split_around_wcsmap(mapping.as_ref()).map(|(_, post)| (p, post)));
         match parts {
             Some((proj, post)) => {
                 let fiducial = fiducial_crval(post.as_ref(), proj, &full_decomp.crval, naxis);
@@ -168,8 +165,8 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     }
 
     // Store CRPIX.
-    for i in 0..naxis {
-        store.crpix[i] = Some(crpix[i]);
+    for (i, &v) in crpix.iter().enumerate().take(naxis) {
+        store.crpix[i] = Some(v);
     }
 
     // Store the CD matrix from the pixel→IWC mapping. For celestial
@@ -228,8 +225,9 @@ fn fiducial_crval(
     if nin >= 2 {
         input[1] = theta0;
     }
-    for i in 2..nin.min(template_crval.len()) {
-        input[i] = template_crval[i];
+    let extra = nin.min(template_crval.len()).saturating_sub(2);
+    if extra > 0 {
+        input[2..2 + extra].copy_from_slice(&template_crval[2..2 + extra]);
     }
 
     let pts = PointSet::from_rows(std::iter::once(input));
@@ -293,10 +291,7 @@ fn build_pixel_to_iwc(
         ));
     }
     let proj = projection.ok_or_else(|| {
-        AstError::new(
-            ErrorCode::Nodef,
-            "build_pixel_to_iwc requires a projection",
-        )
+        AstError::new(ErrorCode::Nodef, "build_pixel_to_iwc requires a projection")
     })?;
 
     let crval_lon = crval_world[lon_axis];
@@ -320,8 +315,11 @@ fn build_pixel_to_iwc(
     wcs_to_iwc.invert();
 
     // pixel→IWC = pixel→WCS ∘ WCS→IWC.
-    let pixel_to_iwc =
-        CmpMap::new(mapping.clone_box(), Box::new(wcs_to_iwc), Composition::Series)?;
+    let pixel_to_iwc = CmpMap::new(
+        mapping.clone_box(),
+        Box::new(wcs_to_iwc),
+        Composition::Series,
+    )?;
 
     let _ = sky;
     Ok(Box::new(pixel_to_iwc))
