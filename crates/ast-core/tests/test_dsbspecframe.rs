@@ -5,7 +5,7 @@
 //! and serialization round-trips.
 
 use ast_core::coords::PointSet;
-use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecSystem, StdOfRest};
+use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, FrameSet, SideBand, SpecSystem, StdOfRest};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 #[test]
@@ -364,4 +364,125 @@ fn deserialize_fixture() {
     assert_eq!(dsb.sideband(), SideBand::USB);
     assert!((dsb.dsb_centre() - 220463127593.87817).abs() < 1.0);
     assert!((dsb.ifr() - (-3999979572.8960571)).abs() < 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// FrameSet integrity and alignment tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn frameset_integrity_sideband_change() {
+    // When SideBand is changed through with_integrity, the internal
+    // mapping should update to reflect the sideband flip.
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    dsb.set_sideband(SideBand::USB);
+
+    // Build a 2-frame FrameSet: base(USB) --identity--> current(USB).
+    let base_frame: Box<dyn Frame> = Box::new(dsb.clone());
+    let current_frame: Box<dyn Frame> = Box::new(dsb);
+    let identity: Box<dyn ast_core::mappings::Mapping> =
+        Box::new(ast_core::mappings::UnitMap::new(1));
+    let mut fs = FrameSet::new(base_frame);
+    fs.add_frame(FrameRef::Base, identity, current_frame)
+        .unwrap();
+
+    // Initially the mapping is identity.
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let mapping_before = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let out_before = mapping_before.transform(&input, true).unwrap();
+    assert!((out_before.point(0)[0] - 225.0e9).abs() < 1.0);
+
+    // Change sideband through with_integrity.
+    fs.with_integrity(|frame| {
+        let dsb_ref = frame.as_any_mut().downcast_mut::<DSBSpecFrame>().unwrap();
+        dsb_ref.set_sideband(SideBand::LSB);
+        Ok(())
+    })
+    .unwrap();
+
+    // After integrity restoration, mapping should include the sideband flip.
+    // Base(USB) → Current(LSB): f_lsb = 2*f_lo - f_usb = 2*224e9 - 225e9 = 223e9
+    let mapping_after = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let out_after = mapping_after.transform(&input, true).unwrap();
+    let expected = 223.0e9;
+    assert!(
+        (out_after.point(0)[0] - expected).abs() < 1.0,
+        "expected {expected}, got {}",
+        out_after.point(0)[0]
+    );
+}
+
+#[test]
+fn alignment_through_frameset() {
+    let mut dsb1 = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb1.set_std_of_rest(StdOfRest::Topocentric);
+    dsb1.set_dsb_centre(220.0e9);
+    dsb1.set_ifr(4.0e9);
+    dsb1.set_sideband(SideBand::USB);
+    dsb1.set_align_sideband(true);
+
+    let mut dsb2 = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb2.set_std_of_rest(StdOfRest::Topocentric);
+    dsb2.set_dsb_centre(220.0e9);
+    dsb2.set_ifr(4.0e9);
+    dsb2.set_sideband(SideBand::LSB);
+    dsb2.set_align_sideband(true);
+
+    let fs = dsb1.convert(&dsb2, &[]).unwrap().unwrap();
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+
+    // USB 226 GHz → LSB: f_lo=224, f_lsb = 2*224-226 = 222 GHz
+    let input = PointSet::from_columns(&[&[226.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    let expected = 222.0e9;
+    assert!(
+        (output.point(0)[0] - expected).abs() < 1.0,
+        "expected {expected}, got {}",
+        output.point(0)[0]
+    );
+
+    // Inverse: LSB 222 GHz → USB 226 GHz
+    let inv_output = mapping.transform(&output, false).unwrap();
+    assert!(
+        (inv_output.point(0)[0] - 226.0e9).abs() < 1.0,
+        "inverse expected 226e9, got {}",
+        inv_output.point(0)[0]
+    );
+}
+
+#[test]
+fn alignment_dsb_to_dsb_different_lo() {
+    // Two DSBSpecFrames with different LO frequencies.
+    let mut dsb1 = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb1.set_std_of_rest(StdOfRest::Topocentric);
+    dsb1.set_dsb_centre(220.0e9);
+    dsb1.set_ifr(4.0e9); // LO = 224 GHz
+    dsb1.set_sideband(SideBand::USB);
+    dsb1.set_align_sideband(true);
+
+    let mut dsb2 = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb2.set_std_of_rest(StdOfRest::Topocentric);
+    dsb2.set_dsb_centre(230.0e9);
+    dsb2.set_ifr(5.0e9); // LO = 235 GHz
+    dsb2.set_sideband(SideBand::USB);
+    dsb2.set_align_sideband(true);
+
+    let fs = dsb1.convert(&dsb2, &[]).unwrap().unwrap();
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+
+    // dsb1 USB 225 GHz:
+    //   → dsb1 observed (LSB, since IF>0): 2*224-225 = 223 GHz
+    //   → parent alignment (topo Freq → topo Freq): identity → 223 GHz
+    //   → dsb2 observed (LSB, since IF>0) → dsb2 USB: 2*235-223 = 247 GHz
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    let expected = 247.0e9;
+    assert!(
+        (output.point(0)[0] - expected).abs() < 1.0,
+        "expected {expected}, got {}",
+        output.point(0)[0]
+    );
 }
