@@ -2,6 +2,7 @@
 
 mod basic;
 mod cmpframe;
+mod dsbspecframe;
 mod fluxframe;
 mod frameset;
 pub(crate) mod sky_convert;
@@ -12,6 +13,7 @@ mod specframe;
 mod timeframe;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
+pub use dsbspecframe::{DSBSpecFrame, SideBand};
 pub use fluxframe::{FluxFrame, FluxSystem};
 pub use frameset::{FrameRef, FrameSet};
 pub use sky_convert::{SkyRefIs, SkySystem};
