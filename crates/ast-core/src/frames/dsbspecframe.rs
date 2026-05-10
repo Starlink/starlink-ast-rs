@@ -5,7 +5,9 @@
 //! frequency split into a DSB centre frequency and an intermediate frequency (IF),
 //! and tracks which sideband (USB, LSB, or LO) the stored spectral values refer to.
 
-use crate::frames::{SpecFrame, SpecSystem, StdOfRest};
+use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::{Frame, SpecFrame, SpecSystem, StdOfRest};
+use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap, WinMap};
 
 // ---------------------------------------------------------------------------
 // SideBand — which sideband the spectral values represent
@@ -256,5 +258,159 @@ impl DSBSpecFrame {
             SideBand::USB => centre + ifr_abs,
             SideBand::LSB | SideBand::LO => centre - ifr_abs,
         }
+    }
+
+    /// Return which sideband the DSB centre frequency is in.
+    ///
+    /// If IF > 0 the DSB centre is in the lower sideband (LO is above);
+    /// otherwise it is in the upper sideband.
+    pub fn observed_sideband(&self) -> SideBand {
+        if self.ifr() > 0.0 {
+            SideBand::LSB
+        } else {
+            SideBand::USB
+        }
+    }
+
+    /// Return the local oscillator frequency in Hz.
+    ///
+    /// This is `dsb_centre + ifr`. Validates that the result is physically
+    /// sensible (non-negative).
+    pub fn lo_freq(&self) -> AstResult<f64> {
+        let lo = self.dsb_centre() + self.ifr();
+        if lo < 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Bdfts,
+                format!(
+                    "DSBSpecFrame LO frequency is negative ({lo} Hz): \
+                     dsb_centre={}, ifr={}",
+                    self.dsb_centre(),
+                    self.ifr()
+                ),
+            ));
+        }
+        Ok(lo)
+    }
+
+    /// Create a mapping from the current spectral system/SOR to topocentric
+    /// frequency in Hz.
+    fn to_topo_mapping(&self) -> AstResult<DynMapping> {
+        let mut topo_frame = SpecFrame::new(SpecSystem::Freq);
+        topo_frame.set_std_of_rest(StdOfRest::Topocentric);
+
+        // Copy observer attributes from self.spec to the topo frame.
+        if let Some(lat) = self.spec.obs_lat() {
+            topo_frame.set_obs_lat(lat);
+        }
+        if let Some(lon) = self.spec.obs_lon() {
+            topo_frame.set_obs_lon(lon);
+        }
+        if let Some(alt) = self.spec.obs_alt() {
+            topo_frame.set_obs_alt(alt);
+        }
+        topo_frame.set_epoch(self.spec.epoch_mjd());
+        if let Some(ra) = self.spec.ref_ra() {
+            topo_frame.set_ref_ra(ra);
+        }
+        if let Some(dec) = self.spec.ref_dec() {
+            topo_frame.set_ref_dec(dec);
+        }
+        if let Some(rf) = self.spec.rest_freq() {
+            topo_frame.set_rest_freq(rf);
+        }
+
+        self.spec.make_spec_mapping(&topo_frame)
+    }
+
+    /// Create a mapping that converts frequencies from the current sideband
+    /// to the upper sideband (USB).
+    ///
+    /// If already USB, returns a unit (identity) mapping.
+    pub fn to_usb_mapping(&self) -> AstResult<DynMapping> {
+        if self.sideband() == SideBand::USB {
+            return Ok(Box::new(UnitMap::new(1)));
+        }
+        let f_lo = self.lo_freq()?;
+        let topo_map = self.to_topo_mapping()?;
+        let flip: DynMapping = match self.sideband() {
+            SideBand::LSB => {
+                // LSB→USB: output = 2*f_lo - input
+                Box::new(WinMap::new(&[2.0 * f_lo], &[-1.0])?)
+            }
+            SideBand::LO => {
+                // LO offset→USB: output = f_lo + offset
+                Box::new(WinMap::new(&[f_lo], &[1.0])?)
+            }
+            SideBand::USB => unreachable!(),
+        };
+        self.compose_sideband_mapping(topo_map, flip)
+    }
+
+    /// Create a mapping that converts frequencies from the current sideband
+    /// to the lower sideband (LSB).
+    ///
+    /// If already LSB, returns a unit (identity) mapping.
+    pub fn to_lsb_mapping(&self) -> AstResult<DynMapping> {
+        if self.sideband() == SideBand::LSB {
+            return Ok(Box::new(UnitMap::new(1)));
+        }
+        let f_lo = self.lo_freq()?;
+        let topo_map = self.to_topo_mapping()?;
+        let flip: DynMapping = match self.sideband() {
+            SideBand::USB => {
+                // USB→LSB: output = 2*f_lo - input
+                Box::new(WinMap::new(&[2.0 * f_lo], &[-1.0])?)
+            }
+            SideBand::LO => {
+                // LO offset→LSB: output = f_lo - offset
+                Box::new(WinMap::new(&[f_lo], &[-1.0])?)
+            }
+            SideBand::LSB => unreachable!(),
+        };
+        self.compose_sideband_mapping(topo_map, flip)
+    }
+
+    /// Create a mapping that converts frequencies from the current sideband
+    /// to the LO offset representation.
+    ///
+    /// If already LO, returns a unit (identity) mapping.
+    pub fn to_lo_mapping(&self) -> AstResult<DynMapping> {
+        if self.sideband() == SideBand::LO {
+            return Ok(Box::new(UnitMap::new(1)));
+        }
+        let f_lo = self.lo_freq()?;
+        let topo_map = self.to_topo_mapping()?;
+        let flip: DynMapping = match self.sideband() {
+            SideBand::USB => {
+                // USB→LO: output = freq - f_lo
+                Box::new(WinMap::new(&[-f_lo], &[1.0])?)
+            }
+            SideBand::LSB => {
+                // LSB→LO: output = f_lo - freq
+                Box::new(WinMap::new(&[f_lo], &[-1.0])?)
+            }
+            SideBand::LO => unreachable!(),
+        };
+        self.compose_sideband_mapping(topo_map, flip)
+    }
+
+    /// Compose a sideband conversion mapping: topo_map → flip → topo_map⁻¹.
+    ///
+    /// This converts from the current spectral system to topocentric frequency,
+    /// applies the sideband flip in topocentric frequency space, then converts
+    /// back to the original system.
+    fn compose_sideband_mapping(
+        &self,
+        topo_map: DynMapping,
+        flip: DynMapping,
+    ) -> AstResult<DynMapping> {
+        // Build the inverse topo mapping (topo freq → current system).
+        let mut inv_topo = self.to_topo_mapping()?;
+        inv_topo.invert();
+
+        // Compose: topo_map → flip → inv_topo
+        let step1 = CmpMap::new(topo_map, flip, Composition::Series)?;
+        let result = CmpMap::new(Box::new(step1), inv_topo, Composition::Series)?;
+        Ok(Box::new(result))
     }
 }

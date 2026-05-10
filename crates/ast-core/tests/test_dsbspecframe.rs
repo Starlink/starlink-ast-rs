@@ -3,7 +3,8 @@
 //! Covers: construction, attribute defaults, sideband derivation from IF sign,
 //! explicit sideband override.
 
-use ast_core::frames::{DSBSpecFrame, SideBand, SpecSystem};
+use ast_core::coords::PointSet;
+use ast_core::frames::{DSBSpecFrame, SideBand, SpecSystem, StdOfRest};
 
 #[test]
 fn construction_defaults() {
@@ -100,4 +101,93 @@ fn observed_sideband_lo() {
     dsb.set_ifr(4.0e9);
     // LO = dsb_centre - ifr (= lower sideband frequency)
     assert_eq!(dsb.observed_freq(), 9.6e10);
+}
+
+#[test]
+fn lo_frequency() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    assert_eq!(dsb.lo_freq().unwrap(), 224.0e9);
+}
+
+#[test]
+fn sideband_flip_usb_to_lsb() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    dsb.set_sideband(SideBand::USB);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+
+    let mapping = dsb.to_lsb_mapping().unwrap();
+
+    let f_usb = 225.0e9;
+    let f_lo = 224.0e9;
+    let expected_lsb = 2.0 * f_lo - f_usb; // 223 GHz
+
+    let input = PointSet::from_columns(&[&[f_usb]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    let result = output.point(0)[0];
+    assert!(
+        (result - expected_lsb).abs() < 1.0,
+        "expected {expected_lsb}, got {result}"
+    );
+}
+
+#[test]
+fn sideband_flip_lsb_to_usb() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    dsb.set_sideband(SideBand::LSB);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+
+    let mapping = dsb.to_usb_mapping().unwrap();
+
+    let f_lsb = 219.0e9;
+    let f_lo = 224.0e9;
+    let expected_usb = 2.0 * f_lo - f_lsb; // 229 GHz
+
+    let input = PointSet::from_columns(&[&[f_lsb]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    let result = output.point(0)[0];
+    assert!(
+        (result - expected_usb).abs() < 1.0,
+        "expected {expected_usb}, got {result}"
+    );
+}
+
+#[test]
+fn sideband_identity_when_already_target() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    dsb.set_sideband(SideBand::USB);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+
+    let mapping = dsb.to_usb_mapping().unwrap();
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    assert!((output.point(0)[0] - 225.0e9).abs() < 1.0);
+}
+
+#[test]
+fn lo_offset_mapping() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    dsb.set_sideband(SideBand::USB);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+
+    let mapping = dsb.to_lo_mapping().unwrap();
+
+    // USB freq 225 GHz, LO = 224 GHz -> offset = 225 - 224 = 1 GHz
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    let expected = 1.0e9;
+    assert!(
+        (output.point(0)[0] - expected).abs() < 1.0,
+        "expected {expected}, got {}",
+        output.point(0)[0]
+    );
 }
