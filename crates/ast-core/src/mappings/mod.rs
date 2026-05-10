@@ -50,6 +50,8 @@ mod normmap;
 pub use normmap::NormMap;
 mod dssmap;
 pub use dssmap::DssMap;
+mod mathmap;
+pub use mathmap::MathMap;
 
 use std::any::Any;
 use std::fmt;

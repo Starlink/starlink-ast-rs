@@ -12,9 +12,9 @@ use crate::frames::{
     TimeFrame,
 };
 use crate::mappings::{
-    ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MatrixMap, NormMap, PcdMap,
-    PermMap, PolyMap, RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap, TimeMap, TranMap,
-    UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+    ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
+    PcdMap, PermMap, PolyMap, RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap, TimeMap,
+    TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -144,6 +144,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "SplineMap" => Ok(Box::new(SplineMap::from_node(node)?)),
         "DssMap" => Ok(Box::new(DssMap::from_node(node)?)),
         "NormMap" => Ok(Box::new(NormMap::from_node(node)?)),
+        "MathMap" => Ok(Box::new(MathMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
@@ -231,6 +232,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<NormMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<MathMap>() {
             return m.to_node();
         }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {

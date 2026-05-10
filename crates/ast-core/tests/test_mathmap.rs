@@ -1,0 +1,316 @@
+//! Tests for MathMap — mathematical expression mapping.
+//!
+//! Ported from reference/starlink-ast/ast_tester/testmathmap.c
+//!
+//! Variable naming convention: the forward transform's input variable names
+//! are taken from the last `nin` inverse expressions' LHS names. The inverse
+//! transform's input variable names are taken from the last `nout` forward
+//! expressions' LHS names. This cross-referencing is how the C library works.
+
+use ast_core::coords::PointSet;
+use ast_core::mappings::{Mapping, MathMap};
+
+/// Helper: transform a single point through a 1-in, 1-out MathMap.
+fn transform_1d(map: &MathMap, x: f64, forward: bool) -> f64 {
+    let pts = PointSet::from_rows(vec![[x]]);
+    let out = map.transform(&pts, forward).unwrap();
+    out.point(0)[0]
+}
+
+/// Helper: transform a single point through a 2-in, 2-out MathMap.
+fn transform_2d(map: &MathMap, x1: f64, x2: f64, forward: bool) -> (f64, f64) {
+    let pts = PointSet::from_rows(vec![[x1, x2]]);
+    let out = map.transform(&pts, forward).unwrap();
+    let row = out.point(0);
+    (row[0], row[1])
+}
+
+#[test]
+fn test_basic_arithmetic() {
+    let map = MathMap::new(1, 1, &["y = x + 1"], &["x = y - 1"]).unwrap();
+
+    assert_eq!(map.nin(), 1);
+    assert_eq!(map.nout(), 1);
+
+    let result = transform_1d(&map, 5.0, true);
+    assert!((result - 6.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, 6.0, false);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_multiplication() {
+    let map = MathMap::new(1, 1, &["y = x * 3"], &["x = y / 3"]).unwrap();
+
+    let result = transform_1d(&map, 4.0, true);
+    assert!((result - 12.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, 12.0, false);
+    assert!((result - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_power_operator() {
+    let map = MathMap::new(1, 1, &["y = x ** 2"], &["x = sqrt(y)"]).unwrap();
+
+    let result = transform_1d(&map, 5.0, true);
+    assert!((result - 25.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, 25.0, false);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_trig_functions() {
+    let map = MathMap::new(1, 1, &["y = sin(x)"], &["x = asin(y)"]).unwrap();
+
+    let result = transform_1d(&map, 0.5, true);
+    assert!((result - 0.5_f64.sin()).abs() < 1e-10);
+
+    let result = transform_1d(&map, 0.5_f64.sin(), false);
+    assert!((result - 0.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_trig_degrees() {
+    let map = MathMap::new(1, 1, &["y = sind(x)"], &["x = asind(y)"]).unwrap();
+
+    let result = transform_1d(&map, 30.0, true);
+    assert!((result - 0.5).abs() < 1e-10);
+
+    let result = transform_1d(&map, 0.5, false);
+    assert!((result - 30.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_system_constants() {
+    let map = MathMap::new(1, 1, &["y = <pi>"], &["x = <pi>"]).unwrap();
+
+    let result = transform_1d(&map, 0.0, true);
+    assert!((result - std::f64::consts::PI).abs() < 1e-14);
+}
+
+#[test]
+fn test_bad_value_propagation() {
+    use ast_core::constants::BAD_VALUE;
+
+    let map = MathMap::new(1, 1, &["y = x + 1"], &["x = y - 1"]).unwrap();
+
+    let result = transform_1d(&map, BAD_VALUE, true);
+    assert_eq!(result, BAD_VALUE);
+}
+
+#[test]
+fn test_isbad_function() {
+    use ast_core::constants::BAD_VALUE;
+
+    let map = MathMap::new(1, 1, &["y = isbad(x)"], &["x = y"]).unwrap();
+
+    let result = transform_1d(&map, 42.0, true);
+    assert!((result - 0.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, BAD_VALUE, true);
+    assert!((result - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_two_dimensional() {
+    // Swap coordinates
+    let map = MathMap::new(
+        2,
+        2,
+        &["yout1 = xin2", "yout2 = xin1"],
+        &["xin1 = yout2", "xin2 = yout1"],
+    )
+    .unwrap();
+
+    let (r1, r2) = transform_2d(&map, 3.0, 7.0, true);
+    assert!((r1 - 7.0).abs() < 1e-10);
+    assert!((r2 - 3.0).abs() < 1e-10);
+
+    let (r1, r2) = transform_2d(&map, 7.0, 3.0, false);
+    assert!((r1 - 3.0).abs() < 1e-10);
+    assert!((r2 - 7.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_intermediate_variables() {
+    let map = MathMap::new(
+        2,
+        2,
+        &[
+            "r = sqrt(xin1*xin1 + xin2*xin2)",
+            "theta = atan2(xin2, xin1)",
+            "yout1 = r",
+            "yout2 = theta",
+        ],
+        &["xin1 = yout1 * cos(yout2)", "xin2 = yout1 * sin(yout2)"],
+    )
+    .unwrap();
+
+    let (r, theta) = transform_2d(&map, 3.0, 4.0, true);
+    assert!((r - 5.0).abs() < 1e-10);
+    assert!((theta - (4.0_f64).atan2(3.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_comparison_operators() {
+    let map = MathMap::new(1, 1, &["y = x > 0"], &["x = y"]).unwrap();
+
+    let result = transform_1d(&map, 5.0, true);
+    assert!((result - 1.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, -5.0, true);
+    assert!(result.abs() < 1e-10);
+}
+
+#[test]
+fn test_max_min_functions() {
+    let map = MathMap::new(1, 1, &["y = max(x, 0, 10)"], &["x = y"]).unwrap();
+
+    let result = transform_1d(&map, -5.0, true);
+    assert!((result - 10.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, 5.0, true);
+    assert!((result - 10.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, 15.0, true);
+    assert!((result - 15.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_exp_log() {
+    let map = MathMap::new(1, 1, &["y = exp(x)"], &["x = log(y)"]).unwrap();
+
+    let result = transform_1d(&map, 1.0, true);
+    assert!((result - std::f64::consts::E).abs() < 1e-10);
+
+    let result = transform_1d(&map, std::f64::consts::E, false);
+    assert!((result - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_abs_function() {
+    let map = MathMap::new(1, 1, &["y = abs(x)"], &["x = y"]).unwrap();
+
+    let result = transform_1d(&map, -3.0, true);
+    assert!((result - 3.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, 3.0, true);
+    assert!((result - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_qif_ternary() {
+    let map = MathMap::new(1, 1, &["y = qif(x > 0, x, -x)"], &["x = y"]).unwrap();
+
+    let result = transform_1d(&map, 5.0, true);
+    assert!((result - 5.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, -5.0, true);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_simplification_simpfi() {
+    // Two identical MathMaps, both with SimpFI set.
+    // Applied in series: first forward, then inverse (other_inv=true).
+    // With other_inv=true, the simplification check uses other.simp_fi.
+    let mut map1 = MathMap::new(1, 1, &["y = x * 2"], &["x = y / 2"]).unwrap();
+    map1.set_simp_fi(true);
+
+    let mut map2 = MathMap::new(1, 1, &["y = x * 2"], &["x = y / 2"]).unwrap();
+    map2.set_simp_fi(true); // With other_inv=true, checks simp_fi
+
+    let result = map1.try_merge(&map2, true, false, true);
+    assert!(
+        result.is_some(),
+        "Identical MathMaps should simplify (forward then inverse)"
+    );
+}
+
+#[test]
+fn test_invert() {
+    let mut map = MathMap::new(1, 1, &["y = x + 10"], &["x = y - 10"]).unwrap();
+
+    let result = transform_1d(&map, 5.0, true);
+    assert!((result - 15.0).abs() < 1e-10);
+
+    map.invert();
+    let result = transform_1d(&map, 15.0, true);
+    assert!((result - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_multipoint_transform() {
+    let map = MathMap::new(1, 1, &["y = x * x"], &["x = sqrt(y)"]).unwrap();
+
+    let pts = PointSet::from_rows(vec![[1.0], [2.0], [3.0], [4.0], [5.0]]);
+    let out = map.transform(&pts, true).unwrap();
+
+    let expected = [1.0, 4.0, 9.0, 16.0, 25.0];
+    for (i, &exp) in expected.iter().enumerate() {
+        assert!((out.point(i)[0] - exp).abs() < 1e-10, "point {} failed", i);
+    }
+}
+
+#[test]
+fn test_division_by_zero() {
+    use ast_core::constants::BAD_VALUE;
+
+    let map = MathMap::new(1, 1, &["y = 1.0 / x"], &["x = 1.0 / y"]).unwrap();
+
+    let result = transform_1d(&map, 0.0, true);
+    assert_eq!(result, BAD_VALUE);
+}
+
+#[test]
+fn test_sqrt_negative() {
+    use ast_core::constants::BAD_VALUE;
+
+    let map = MathMap::new(1, 1, &["y = sqrt(x)"], &["x = y * y"]).unwrap();
+
+    let result = transform_1d(&map, -1.0, true);
+    assert_eq!(result, BAD_VALUE);
+}
+
+#[test]
+fn test_mod_function() {
+    let map = MathMap::new(1, 1, &["y = mod(x, 3)"], &["x = y"]).unwrap();
+
+    let result = transform_1d(&map, 7.0, true);
+    assert!((result - 1.0).abs() < 1e-10);
+
+    let result = transform_1d(&map, -7.0, true);
+    assert!((result - (-1.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_floor_ceil_nint() {
+    let map_floor = MathMap::new(1, 1, &["y = floor(x)"], &["x = y"]).unwrap();
+    let map_ceil = MathMap::new(1, 1, &["y = ceil(x)"], &["x = y"]).unwrap();
+    let map_nint = MathMap::new(1, 1, &["y = nint(x)"], &["x = y"]).unwrap();
+
+    assert!((transform_1d(&map_floor, 2.7, true) - 2.0).abs() < 1e-10);
+    assert!((transform_1d(&map_floor, -2.7, true) - (-3.0)).abs() < 1e-10);
+    assert!((transform_1d(&map_ceil, 2.3, true) - 3.0).abs() < 1e-10);
+    assert!((transform_1d(&map_ceil, -2.3, true) - (-2.0)).abs() < 1e-10);
+    assert!((transform_1d(&map_nint, 2.3, true) - 2.0).abs() < 1e-10);
+    assert!((transform_1d(&map_nint, 2.7, true) - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_boolean_and_tristate() {
+    use ast_core::constants::BAD_VALUE;
+
+    // Three-valued AND: BAD .and. 0 = 0
+    let map = MathMap::new(1, 1, &["y = x && 0"], &["x = y"]).unwrap();
+    let result = transform_1d(&map, BAD_VALUE, true);
+    assert!((result - 0.0).abs() < 1e-10);
+
+    // Three-valued OR: BAD .or. 1 = 1
+    let map = MathMap::new(1, 1, &["y = x || 1"], &["x = y"]).unwrap();
+    let result = transform_1d(&map, BAD_VALUE, true);
+    assert!((result - 1.0).abs() < 1e-10);
+}
