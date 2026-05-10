@@ -712,7 +712,7 @@ impl SpecFrame {
     ///   Step 5: alignment system → frequency (using result rest freq)
     ///   Step 6: frequency in alignment SOR → frequency in result SOR
     ///   Step 7: frequency → result system (in result SOR)
-    fn make_spec_mapping(&self, result: &SpecFrame) -> AstResult<DynMapping> {
+    pub(crate) fn make_spec_mapping(&self, result: &SpecFrame) -> AstResult<DynMapping> {
         let target_system = self.system;
         let result_system = result.system;
         let target_rf = self.rest_freq.unwrap_or(0.0);
