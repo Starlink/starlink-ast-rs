@@ -277,7 +277,7 @@ fn build_iwc_to_sky_mapping(
 ///
 /// Alternatively, use a simple ShiftMap for the special case delta_p = 90° (pole).
 /// For the general case, we use the proper rotation.
-fn build_native_to_celestial_rotation(
+pub(crate) fn build_native_to_celestial_rotation(
     crval_lon: f64,
     crval_lat: f64,
     lonpole: f64,
@@ -285,25 +285,33 @@ fn build_native_to_celestial_rotation(
     use crate::mappings::{MatrixMap, SphMap};
     use ndarray::Array2;
 
-    // The rotation from native to celestial is described by three Euler angles.
-    // Following Calabretta & Greisen (2002):
+    // Mirror the C library's WcsNative recipe (fitschan.c around line
+    // 38246–38281): build the native→celestial rotation as three
+    // elementary rotations applied to the unit matrix. We apply them
+    // as direct 3×3 multiplications here rather than via PAL's
+    // deuler — the two conventions disagree on points near (but not
+    // at) the native pole, which produces a wrong CD when the IWC
+    // composition is applied on the write side.
     //
-    // PAL's deuler("ZYZ", phi, theta, psi) produces the matrix:
-    //   M = Rz(psi) * Ry(theta) * Rz(phi)
-    // using the ERFA/SLALIB passive rotation convention.
+    // The C library's three rotations, with the simplifying choice
+    // (αₚ, δₚ) = (CRVAL_lon, CRVAL_lat) for zenithal projections at
+    // their fiducial point:
+    //   1. R_z(-LONPOLE)        — celestial pole at native (0, 0).
+    //   2. R_y(δₚ - π/2)        — celestial pole at 90° latitude in
+    //                              the rotated frame.
+    //   3. R_z(π + αₚ)          — primary meridian at native 0°.
+    // Combined: M = R_z(π + αₚ) · R_y(δₚ - π/2) · R_z(-LONPOLE).
     //
-    // For the native→celestial rotation, the matrix must map the native pole
-    // (0,0,1) to the celestial direction of (CRVAL_lon, CRVAL_lat). This
-    // requires:
-    //   phi   = LONPOLE - pi  (aligns the celestial pole meridian in native coords)
-    //   theta = pi/2 - CRVAL_lat  (tilt by co-latitude of reference point)
-    //   psi   = pi - CRVAL_lon    (final longitude rotation)
-
-    let phi = lonpole - PI;
-    let theta = PI / 2.0 - crval_lat;
-    let psi = PI - crval_lon;
-
-    let rot_matrix = pal::deuler("ZYZ", phi, theta, psi);
+    // `astMtrRot` post-multiplies into the existing forward matrix,
+    // which is equivalent to pre-multiplying the *rotation* matrix
+    // into M as written above (rightmost rotation applied first to
+    // a vector v: M·v).
+    let alphap = crval_lon;
+    let deltap = crval_lat;
+    let r1 = rot_z(-lonpole);
+    let r2 = rot_y(deltap - PI / 2.0);
+    let r3 = rot_z(PI + alphap);
+    let rot_matrix = mat3_mul(&r3, &mat3_mul(&r2, &r1));
 
     // Build the mapping pipeline:
     //   native (phi, theta) → SphMap(inverted) → 3D Cartesian
@@ -338,6 +346,34 @@ fn build_native_to_celestial_rotation(
     let full = CmpMap::new(Box::new(step1), Box::new(cart_to_sph), Composition::Series).ok()?;
 
     Some(Box::new(full))
+}
+
+/// 3×3 rotation matrix about the Z axis (CCW convention, standard
+/// mathematics). Composed via `mat3_mul` to mirror the C library's
+/// astMtrRot post-multiplication behaviour.
+fn rot_z(angle: f64) -> [[f64; 3]; 3] {
+    let c = angle.cos();
+    let s = angle.sin();
+    [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]]
+}
+
+/// 3×3 rotation matrix about the Y axis (CCW convention).
+fn rot_y(angle: f64) -> [[f64; 3]; 3] {
+    let c = angle.cos();
+    let s = angle.sin();
+    [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]]
+}
+
+fn mat3_mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let mut out = [[0.0_f64; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            for k in 0..3 {
+                out[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------

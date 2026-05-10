@@ -248,8 +248,18 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // is the latitude axis if the frame is celestial, else axis 1. AIPS
     // emits CROTA always (including 0.0) so downstream readers know the
     // rotation is exactly zero rather than unspecified.
+    //
+    // Snap rotations smaller than ~1e-9 rad (~5e-8 deg) to exactly zero.
+    // The IWC composition for celestial frames reconstructs the WcsNative
+    // rotation from CRVAL extracted via numerical Jacobian, so the
+    // round-trip through the Jacobian leaves a tiny non-zero CROTA where
+    // the FITS header had CROTA=0 exactly. The C library doesn't have
+    // this drift because it works with the rotation matrix end-to-end.
     if naxis >= 2 {
-        let crota = pc_vals[[1, 0]].atan2(pc_vals[[1, 1]]).to_degrees();
+        let mut crota = pc_vals[[1, 0]].atan2(pc_vals[[1, 1]]).to_degrees();
+        if crota.abs() < 1e-9 {
+            crota = 0.0;
+        }
         let k = crota_axis(store);
         cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
     }

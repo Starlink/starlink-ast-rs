@@ -8,6 +8,7 @@
 
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
+use super::wcs_celestial::build_native_to_celestial_rotation;
 use super::wcs_decompose::{decompose_linear, split_cd};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
@@ -66,64 +67,159 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // Get the base→current mapping (pixel→world).
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
-    // For CD/PC/CDELT extraction, the C library (fitschan.c CelestialAxes
-    // + MakeIntWorld) splits the pixel→world mapping at the WcsMap and
-    // uses only the pre-WcsMap chain — i.e. pixel→IWC, the linear part
-    // before any spherical deprojection. That is the mapping FITS-WCS
-    // describes via CRPIX/CD/CDELT, and decomposing it gives a CD matrix
-    // free of the cos(δ) factor and projection sign-flip that the full
-    // pixel→world Jacobian carries.
-    //
-    // If no WcsMap is present (purely linear mapping, no celestial
-    // deprojection), the full pixel→world mapping IS the pixel→IWC
-    // mapping and we use it directly.
-    let cd_mapping = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
+    // First-pass extraction via the pre-WcsMap chain. This gives a CRPIX
+    // estimate and lets us evaluate CRVAL on the full pixel→world
+    // mapping. For non-celestial frames (no WcsMap in the chain) this is
+    // the final answer; for celestial frames it's a stepping stone to
+    // the full pixel→IWC composition below.
+    let pre_mapping = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
 
-    // Decompose the pixel→IWC mapping at an arbitrary "root" grid
-    // position g₀ = (1, 1, …). This gives both the CD matrix (the
-    // Jacobian) and w₀ = mapping(g₀) — the IWC vector at g₀.
     let g0: Vec<f64> = vec![1.0; naxis];
-    let cd_decomp = decompose_linear(cd_mapping.as_ref(), naxis, &g0)?;
-
-    // Solve for CRPIX as the C library does in MakeIntWorld:
-    //   w₀ = CD · (g₀ − CRPIX)   ⇒   CRPIX = g₀ − CD⁻¹ · w₀
-    // This is robust to extra UnitMaps, PermMaps, and other no-op steps
-    // that a tree-walking CRPIX extractor would trip over (e.g. the
-    // FrameSet-internal UnitMap leading every base→current mapping).
-    let crpix = solve_crpix_from_decomp(&cd_decomp.cd, &cd_decomp.crval, &g0)
+    let pre_decomp = decompose_linear(pre_mapping.as_ref(), naxis, &g0)?;
+    let mut crpix = solve_crpix_from_decomp(&pre_decomp.cd, &pre_decomp.crval, &g0)
         .unwrap_or_else(|| g0.clone());
+    let mut full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
-    // CRVAL comes from the FULL pixel→world mapping at the resolved
-    // CRPIX — for celestial axes we want the sky coordinates, not the
-    // projected (0, 0) point that the pre-WcsMap mapping outputs there.
-    let full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
+    let projection = extract_projection_from_mapping(mapping.as_ref());
+
+    // For celestial frames, follow the C library's recipe (fitschan.c
+    // CelestialAxes ~5206 + MakeIntWorld): build the full WCS→IWC
+    // mapping from CRVAL/LONPOLE and compose with pixel→WCS to obtain
+    // pixel→IWC. Decomposing that gives the FITS-correct CD matrix —
+    // including any small rotation contributed by the post-WcsMap
+    // chain (e.g. timj's FK4→FK5 SlaMap, which the pre-WcsMap path
+    // misses entirely).
+    //
+    // Linear-only / non-celestial frames keep the pre-WcsMap path.
+    let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(fs) {
+        match build_pixel_to_iwc(
+            mapping.as_ref(),
+            &sky,
+            &full_decomp.crval,
+            lon_axis,
+            lat_axis,
+            projection,
+        ) {
+            Ok(pixel_iwc) => {
+                let iwc_decomp = decompose_linear(pixel_iwc.as_ref(), naxis, &g0)?;
+                if let Some(c) = solve_crpix_from_decomp(&iwc_decomp.cd, &iwc_decomp.crval, &g0) {
+                    crpix = c;
+                    full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
+                }
+                iwc_decomp
+            }
+            Err(_) => pre_decomp,
+        }
+    } else {
+        pre_decomp
+    };
 
     // Store CRPIX.
     for i in 0..naxis {
         store.crpix[i] = Some(crpix[i]);
     }
 
-    // Store the CD matrix from the pre-WcsMap (pixel→IWC) mapping. For
-    // celestial axes the values are still in radians-per-pixel here; the
-    // radian→degree conversion happens in populate_celestial which knows
-    // which axes are sky.
+    // Store the CD matrix from the pixel→IWC mapping. For celestial
+    // axes the values are still in radians-per-pixel here; the
+    // radian→degree conversion happens in populate_celestial which
+    // knows which axes are sky.
     for i in 0..naxis {
         for j in 0..naxis {
             store.cd[i][j] = Some(cd_decomp.cd[[i, j]]);
         }
     }
 
-    // Identify the celestial projection from any WcsMap embedded in the
-    // pixel→world mapping. None means there is no celestial deprojection
-    // step (linear-only or non-celestial frame), in which case the axis-
-    // identification path either skips CTYPE for celestial axes or falls
-    // back to TAN if a SkyFrame appears with no projection mapping.
-    let projection = extract_projection_from_mapping(mapping.as_ref());
-
     // Identify axis types from the current frame and populate CTYPE/CRVAL.
     identify_axes(fs, &full_decomp.crval, &mut store, projection)?;
 
     Ok(store)
+}
+
+/// Find the SkyFrame and its (lon_axis, lat_axis) within a FrameSet's
+/// current frame, when one exists.
+fn celestial_axes(fs: &FrameSet) -> Option<(SkyFrame, usize, usize)> {
+    let current = fs.current();
+    if let Some(sky) = current.as_any().downcast_ref::<SkyFrame>() {
+        return Some((sky.clone(), 0, 1));
+    }
+    if let Some(cmp) = current.as_any().downcast_ref::<CmpFrame>() {
+        if let Some(sky) = cmp.frame1().as_any().downcast_ref::<SkyFrame>() {
+            return Some((sky.clone(), 0, 1));
+        }
+        let n1 = cmp.naxes1();
+        if let Some(sky) = cmp.frame2().as_any().downcast_ref::<SkyFrame>() {
+            return Some((sky.clone(), n1, n1 + 1));
+        }
+    }
+    None
+}
+
+/// Compose pixel→world with WCS→IWC to obtain pixel→IWC for a celestial
+/// frame.
+///
+/// Mirrors the C library (fitschan.c CelestialAxes ~5206): build
+///   IWC→WCS = WcsMap_inverted (forward = projected→native)
+///           ∘ WcsNative (forward = native→celestial)
+/// then invert the composed mapping to get WCS→IWC. Composing pixel→WCS
+/// with WCS→IWC produces a pixel→IWC mapping whose Jacobian gives the
+/// FITS-correct CD matrix.
+///
+/// Restricted to the pure-2D celestial case for now — mixed
+/// celestial+spectral / permuted-axis frames need extra PermMap plumbing
+/// (the C library's `wperm`) we haven't replicated yet. Returns an error
+/// for unsupported shapes; the caller falls back to the pre-WcsMap chain.
+fn build_pixel_to_iwc(
+    mapping: &dyn Mapping,
+    sky: &SkyFrame,
+    crval_world: &[f64],
+    lon_axis: usize,
+    lat_axis: usize,
+    projection: Option<WcsProjection>,
+) -> AstResult<DynMapping> {
+    let naxis = mapping.nout();
+    if naxis != 2 || lon_axis != 0 || lat_axis != 1 {
+        return Err(AstError::new(
+            ErrorCode::Nodef,
+            "build_pixel_to_iwc only handles 2D celestial frames",
+        ));
+    }
+    let proj = projection.ok_or_else(|| {
+        AstError::new(
+            ErrorCode::Nodef,
+            "build_pixel_to_iwc requires a projection",
+        )
+    })?;
+
+    // CRVAL/LONPOLE in radians. SkyFrame stores celestial values in
+    // radians; LONPOLE defaults to 180° for zenithal projections.
+    let crval_lon = crval_world[lon_axis];
+    let crval_lat = crval_world[lat_axis];
+    let lonpole = std::f64::consts::PI;
+
+    let wcs_native =
+        build_native_to_celestial_rotation(crval_lon, crval_lat, lonpole).ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Nodef,
+                "failed to build native→celestial rotation",
+            )
+        })?;
+
+    // IWC→WCS chain (forward direction):
+    //   WcsMap_inverted (projected→native) → WcsNative (native→celestial)
+    let mut wcsmap_inv = WcsMap::new(2, proj, 1, 2)?;
+    wcsmap_inv.invert();
+    let iwc_to_wcs = CmpMap::new(Box::new(wcsmap_inv), wcs_native, Composition::Series)?;
+    let mut wcs_to_iwc = iwc_to_wcs;
+    wcs_to_iwc.invert();
+
+    // pixel→IWC = pixel→WCS ∘ WCS→IWC.
+    let pixel_to_iwc = CmpMap::new(mapping.clone_box(), Box::new(wcs_to_iwc), Composition::Series)?;
+
+    // `sky` parameter retained for future LATPOLE / SkyRef support;
+    // the simple zenithal default does not consult it yet.
+    let _ = sky;
+
+    Ok(Box::new(pixel_to_iwc))
 }
 
 /// Solve the C library's CRPIX equation `w₀ = CD · (g₀ − CRPIX)` for CRPIX.
