@@ -240,10 +240,10 @@ impl CardList {
     /// [`sweep_unused_wcs`] will keep it. This is how the FitsChan write
     /// path tracks which cards the encoder touched during this pass.
     ///
-    /// When overwriting, an existing non-empty comment is preserved over
-    /// the encoder's default. This matches the C library: re-emitting a
-    /// value into an input header keeps that header's comment text rather
-    /// than smashing it with a generic "Reference pixel"-style default.
+    /// When overwriting, the existing comment is preserved only if the
+    /// data value is unchanged. This matches the C library's SetFits: when
+    /// a value is re-written identically, the input header's comment
+    /// survives; when the value changes, the encoder's new comment is used.
     fn put_or_append(&mut self, mut card: FitsCard) {
         card.used = true;
         let kw_upper = card.keyword.to_uppercase();
@@ -252,7 +252,9 @@ impl CardList {
             .iter()
             .position(|c| c.keyword.eq_ignore_ascii_case(&kw_upper))
         {
-            if self.cards[idx].comment.is_some() {
+            if self.cards[idx].comment.is_some()
+                && values_similar(&self.cards[idx].value, &card.value)
+            {
                 card.comment = self.cards[idx].comment.clone();
             }
             self.cards[idx] = card;
@@ -456,6 +458,46 @@ fn is_wcs_keyword(keyword: &str) -> bool {
     }
 
     false
+}
+
+/// Compare two FitsValues for "similarity" (C library semantics).
+///
+/// For strings: case-insensitive comparison ignoring trailing spaces.
+/// For floats: relative tolerance of 1e-10 — this accounts for the
+/// radian→degree round-trip in CRVAL extraction where the C library
+/// achieves exact equality because it keeps the original card value,
+/// but our Rust flow re-derives from the FrameSet.
+/// For integers/logicals: exact equality.
+fn values_similar(a: &FitsValue, b: &FitsValue) -> bool {
+    match (a, b) {
+        (FitsValue::String(sa), FitsValue::String(sb)) => {
+            sa.trim_end().eq_ignore_ascii_case(sb.trim_end())
+        }
+        (FitsValue::Float(fa), FitsValue::Float(fb)) => floats_similar(*fa, *fb),
+        (FitsValue::Int(ia), FitsValue::Int(ib)) => ia == ib,
+        (FitsValue::Logical(la), FitsValue::Logical(lb)) => la == lb,
+        (FitsValue::ComplexFloat(ra, ia), FitsValue::ComplexFloat(rb, ib)) => {
+            floats_similar(*ra, *rb) && floats_similar(*ia, *ib)
+        }
+        (FitsValue::ComplexInt(ra, ia), FitsValue::ComplexInt(rb, ib)) => ra == rb && ia == ib,
+        _ => false,
+    }
+}
+
+/// Check if two floats are "the same value" for comment-preservation.
+///
+/// Uses relative tolerance of 1e-10. This is well below the 8-digit
+/// formatting precision (which loses info at ~1e-8 relative) but above
+/// the radian↔degree round-trip error (~1e-16 relative).
+fn floats_similar(a: f64, b: f64) -> bool {
+    if a == b {
+        return true;
+    }
+    let denom = a.abs().max(b.abs());
+    if denom == 0.0 {
+        return true;
+    }
+    (a - b).abs() / denom < 1e-10
 }
 
 // ---------------------------------------------------------------------------
