@@ -1,10 +1,10 @@
 //! DSBSpecFrame integration tests.
 //!
 //! Covers: construction, attribute defaults, sideband derivation from IF sign,
-//! explicit sideband override.
+//! explicit sideband override, Frame trait basics, and convert/alignment tests.
 
 use ast_core::coords::PointSet;
-use ast_core::frames::{DSBSpecFrame, SideBand, SpecSystem, StdOfRest};
+use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecSystem, StdOfRest};
 
 #[test]
 fn construction_defaults() {
@@ -190,4 +190,106 @@ fn lo_offset_mapping() {
         "expected {expected}, got {}",
         output.point(0)[0]
     );
+}
+
+// ---------------------------------------------------------------------------
+// Frame trait tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn frame_trait_basics() {
+    let dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    assert_eq!(dsb.naxes(), 1);
+}
+
+#[test]
+fn convert_dsb_to_dsb_same_sideband() {
+    let mut from = DSBSpecFrame::new(SpecSystem::Freq);
+    from.set_std_of_rest(StdOfRest::Topocentric);
+    from.set_dsb_centre(220.0e9);
+    from.set_ifr(4.0e9);
+    from.set_sideband(SideBand::USB);
+
+    let mut to = DSBSpecFrame::new(SpecSystem::Freq);
+    to.set_std_of_rest(StdOfRest::Topocentric);
+    to.set_dsb_centre(220.0e9);
+    to.set_ifr(4.0e9);
+    to.set_sideband(SideBand::USB);
+
+    let fs = from.convert(&to, &[]).unwrap().unwrap();
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    assert!((output.point(0)[0] - 225.0e9).abs() < 1.0);
+}
+
+#[test]
+fn convert_dsb_to_dsb_different_sideband_with_align() {
+    let mut from = DSBSpecFrame::new(SpecSystem::Freq);
+    from.set_std_of_rest(StdOfRest::Topocentric);
+    from.set_dsb_centre(220.0e9);
+    from.set_ifr(4.0e9);
+    from.set_sideband(SideBand::USB);
+    from.set_align_sideband(true);
+
+    let mut to = DSBSpecFrame::new(SpecSystem::Freq);
+    to.set_std_of_rest(StdOfRest::Topocentric);
+    to.set_dsb_centre(220.0e9);
+    to.set_ifr(4.0e9);
+    to.set_sideband(SideBand::LSB);
+    to.set_align_sideband(true);
+
+    let fs = from.convert(&to, &[]).unwrap().unwrap();
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+
+    // USB 225 GHz -> LSB: f_lo=224, f_lsb = 2*224 - 225 = 223 GHz
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    let expected = 223.0e9;
+    assert!(
+        (output.point(0)[0] - expected).abs() < 1.0,
+        "expected {expected}, got {}",
+        output.point(0)[0]
+    );
+}
+
+#[test]
+fn convert_dsb_to_dsb_different_sideband_no_align() {
+    let mut from = DSBSpecFrame::new(SpecSystem::Freq);
+    from.set_std_of_rest(StdOfRest::Topocentric);
+    from.set_dsb_centre(220.0e9);
+    from.set_ifr(4.0e9);
+    from.set_sideband(SideBand::USB);
+
+    let mut to = DSBSpecFrame::new(SpecSystem::Freq);
+    to.set_std_of_rest(StdOfRest::Topocentric);
+    to.set_dsb_centre(220.0e9);
+    to.set_ifr(4.0e9);
+    to.set_sideband(SideBand::LSB);
+
+    let fs = from.convert(&to, &[]).unwrap().unwrap();
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+
+    // Without AlignSideBand, value passes through unchanged.
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    assert!((output.point(0)[0] - 225.0e9).abs() < 1.0);
+}
+
+#[test]
+fn convert_dsb_to_specframe() {
+    let mut from = DSBSpecFrame::new(SpecSystem::Freq);
+    from.set_std_of_rest(StdOfRest::Topocentric);
+    from.set_dsb_centre(220.0e9);
+    from.set_ifr(4.0e9);
+    from.set_sideband(SideBand::USB);
+
+    let mut to = ast_core::frames::SpecFrame::new(SpecSystem::Freq);
+    to.set_std_of_rest(StdOfRest::Topocentric);
+
+    let fs = from.convert(&to, &[]).unwrap().unwrap();
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
+    let output = mapping.transform(&input, true).unwrap();
+    assert!((output.point(0)[0] - 225.0e9).abs() < 1.0);
 }

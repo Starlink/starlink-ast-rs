@@ -6,7 +6,8 @@
 //! and tracks which sideband (USB, LSB, or LO) the stored spectral values refer to.
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{Frame, SpecFrame, SpecSystem, StdOfRest};
+use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
+use crate::mappings::helpers::ast_equal;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap, WinMap};
 
 // ---------------------------------------------------------------------------
@@ -412,5 +413,143 @@ impl DSBSpecFrame {
         let step1 = CmpMap::new(topo_map, flip, Composition::Series)?;
         let result = CmpMap::new(Box::new(step1), inv_topo, Composition::Series)?;
         Ok(Box::new(result))
+    }
+
+    /// Mapping from current sideband to the "observed" sideband.
+    ///
+    /// The observed sideband is determined by the sign of the IF:
+    /// positive IF → observed is LSB, negative/zero IF → observed is USB.
+    fn to_observed_mapping(&self) -> AstResult<DynMapping> {
+        match self.observed_sideband() {
+            SideBand::LSB => self.to_lsb_mapping(),
+            SideBand::USB => self.to_usb_mapping(),
+            SideBand::LO => self.to_lo_mapping(),
+        }
+    }
+
+    /// Sideband-aware alignment mapping from `self` to `target`.
+    ///
+    /// Algorithm:
+    /// 1. Map self → self's observed sideband
+    /// 2. Apply parent SpecFrame alignment (observed → observed)
+    /// 3. Map target's observed sideband → target (inverse of target's to_observed)
+    fn make_dsb_mapping_aligned(&self, target: &DSBSpecFrame) -> AstResult<DynMapping> {
+        // map1: self's current → self's observed sideband
+        let map1 = self.to_observed_mapping()?;
+        // parent alignment (observed → observed)
+        let parent_map = self.spec.make_spec_mapping(&target.spec)?;
+        // map2: target's current → target's observed (we need inverse)
+        let mut map2 = target.to_observed_mapping()?;
+        map2.invert();
+        // Compose: map1 → parent_map → map2
+        let step1 = CmpMap::new(map1, parent_map, Composition::Series)?;
+        let result = CmpMap::new(Box::new(step1), map2, Composition::Series)?;
+        Ok(Box::new(result))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Frame trait implementation
+// ---------------------------------------------------------------------------
+
+impl Frame for DSBSpecFrame {
+    fn naxes(&self) -> usize {
+        1
+    }
+
+    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
+        self.spec.format(axis, value)
+    }
+
+    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
+        self.spec.unformat(axis, text)
+    }
+
+    fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        self.spec.distance(a, b)
+    }
+
+    fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        self.spec.angle(a, b, c)
+    }
+
+    fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        self.spec.offset(from, to, dist)
+    }
+
+    fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        self.spec.norm(coords)
+    }
+
+    fn snapshot(&self) -> DynFrame {
+        Box::new(self.clone())
+    }
+
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        if let Some(prev_dsb) = previous.as_any().downcast_ref::<DSBSpecFrame>() {
+            // FrameSet integrity: sideband-aware alignment from previous to self.
+            return prev_dsb.make_dsb_mapping_aligned(self);
+        }
+        // Fallback: delegate to SpecFrame's map_from.
+        self.spec.map_from(previous)
+    }
+
+    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        // 1. Try downcast to DSBSpecFrame.
+        if let Some(to_dsb) = to.as_any().downcast_ref::<DSBSpecFrame>() {
+            let mapping = if self.align_sideband() && to_dsb.align_sideband() {
+                self.make_dsb_mapping_aligned(to_dsb)?
+            } else {
+                self.spec.make_spec_mapping(&to_dsb.spec)?
+            };
+            let mut fs = FrameSet::new(self.snapshot());
+            fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
+            return Ok(Some(fs));
+        }
+        // 2. Try downcast to SpecFrame.
+        if let Some(to_spec) = to.as_any().downcast_ref::<SpecFrame>() {
+            let mapping = self.spec.make_spec_mapping(to_spec)?;
+            let mut fs = FrameSet::new(self.snapshot());
+            fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
+            return Ok(Some(fs));
+        }
+        Ok(None)
+    }
+
+    fn equal(&self, other: &dyn Frame) -> bool {
+        let Some(other_dsb) = other.as_any().downcast_ref::<DSBSpecFrame>() else {
+            return false;
+        };
+        // Compare the underlying SpecFrame.
+        if !self.spec.equal(&other_dsb.spec) {
+            return false;
+        }
+        // Compare DSB-specific fields.
+        if !ast_equal(self.dsb_centre(), other_dsb.dsb_centre()) {
+            return false;
+        }
+        if !ast_equal(self.ifr(), other_dsb.ifr()) {
+            return false;
+        }
+        if self.sideband() != other_dsb.sideband() {
+            return false;
+        }
+        self.align_sideband() == other_dsb.align_sideband()
+    }
+
+    fn obs_lat(&self) -> Option<f64> {
+        self.spec.obs_lat()
+    }
+
+    fn obs_lon(&self) -> Option<f64> {
+        self.spec.obs_lon()
+    }
+
+    fn obs_alt(&self) -> Option<f64> {
+        self.spec.obs_alt()
+    }
+
+    fn system_string(&self) -> Option<&str> {
+        self.spec.system_string()
     }
 }
