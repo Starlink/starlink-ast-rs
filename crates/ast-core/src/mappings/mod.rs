@@ -42,6 +42,8 @@ mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
 mod tranmap;
 pub use tranmap::TranMap;
+mod ratemap;
+pub use ratemap::RateMap;
 
 use std::any::Any;
 use std::fmt;
