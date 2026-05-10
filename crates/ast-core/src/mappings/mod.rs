@@ -32,6 +32,8 @@ mod timemap;
 pub use timemap::{TimeCvtType, TimeMap};
 mod pcdmap;
 pub use pcdmap::PcdMap;
+mod grismmap;
+pub use grismmap::GrismMap;
 mod sphmap;
 pub use sphmap::SphMap;
 mod cmpmap;

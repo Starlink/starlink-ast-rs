@@ -22,6 +22,7 @@ use crate::error::AstResult;
 use crate::mappings::helpers::ast_equal;
 
 use super::cmpmap::{CmpMap, Composition};
+use super::grismmap::GrismMap;
 use super::matrix::{MatrixMap, is_diagonal};
 use super::pcdmap::PcdMap;
 use super::perm::PermMap;
@@ -338,6 +339,10 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
             }
             // Try swapping a PcdMap past a ZoomMap or PermMap.
             if series && try_swap_pcdmap_past_neighbor(list) {
+                continue;
+            }
+            // Try merging ZoomMap + GrismMap(inv) pattern.
+            if series && try_merge_zoom_before_inv_grism(list) {
                 continue;
             }
             // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
@@ -1837,6 +1842,88 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
 /// other side, to avoid infinite swap loops.
 ///
 /// Matches C pcdmap.c:1503-1714 (CanSwap + PcdZoom + PcdPerm).
+/// Try to merge GrismMap with an adjacent ZoomMap in a series list.
+///
+/// Two patterns from the C library's `CanMerge`:
+///
+/// 1. Forward GrismMap followed by ZoomMap:
+///    `list[i]=GrismMap(fwd), list[i+1]=ZoomMap`
+///    The forward GrismMap produces wavelength; the zoom scales it.
+///    Absorbs the zoom factor into the GrismMap's physical parameters.
+///
+/// 2. ZoomMap followed by inverted GrismMap:
+///    `list[i]=ZoomMap, list[i+1]=GrismMap(inv)`
+///    Conceptually inverts the pair to get case 1, absorbs the zoom,
+///    then inverts the result.
+///
+/// These are handled here rather than in `GrismMap::try_merge` because
+/// the `try_merge` API cannot distinguish forward from reverse calls,
+/// and the merges are only valid in specific orderings.
+fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool)>) -> bool {
+    for i in 0..list.len().saturating_sub(1) {
+        // Pattern 1: GrismMap(fwd) + ZoomMap
+        let is_fwd_grism = list[i].0.as_any().is::<GrismMap>() && !list[i].1;
+        let is_zoom_after = list[i + 1].0.as_any().is::<ZoomMap>();
+
+        if is_fwd_grism && is_zoom_after {
+            let grism = list[i].0.as_any().downcast_ref::<GrismMap>().unwrap();
+            let zoom = list[i + 1].0.as_any().downcast_ref::<ZoomMap>().unwrap();
+            let zoom_inv = list[i + 1].1;
+
+            // Get the effective forward zoom factor.
+            // zoom.is_inverted() is always false (normalized in flatten).
+            // If zoom_inv is true, the zoom is applied inversely → z = 1/factor.
+            let mut z = zoom.factor();
+            if zoom_inv && z != 0.0 {
+                z = 1.0 / z;
+            }
+
+            if z == 0.0 {
+                continue;
+            }
+
+            if let Some(merged) = grism.merge_with_zoom(z, false) {
+                list[i] = (merged, false);
+                list.remove(i + 1);
+                return true;
+            }
+        }
+
+        // Pattern 2: ZoomMap + GrismMap(inv)
+        let is_zoom_before = list[i].0.as_any().is::<ZoomMap>();
+        let is_inv_grism = list[i + 1].0.as_any().is::<GrismMap>() && list[i + 1].1;
+
+        if is_zoom_before && is_inv_grism {
+            let zoom = list[i].0.as_any().downcast_ref::<ZoomMap>().unwrap();
+            let zoom_inv = list[i].1;
+            let grism = list[i + 1].0.as_any().downcast_ref::<GrismMap>().unwrap();
+
+            // The C code conceptually inverts the pair to get:
+            //   forward GrismMap + inverted ZoomMap
+            // The zoom factor for the "inverted" ZoomMap is the reciprocal
+            // of its effective forward factor.
+            // zoom.is_inverted() is always false (normalized in flatten).
+            // C code: "if astGetInvert(map1) == inv1 && z != 0.0, z = 1/z"
+            // With is_inverted()=false: if false == zoom_inv → if !zoom_inv → invert z.
+            let mut z = zoom.factor();
+            if !zoom_inv && z != 0.0 {
+                z = 1.0 / z;
+            }
+
+            if z == 0.0 {
+                continue;
+            }
+
+            if let Some(merged) = grism.merge_with_zoom(z, true) {
+                list[i] = (merged, false);
+                list.remove(i + 1);
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn try_swap_pcdmap_past_neighbor(list: &mut Vec<(DynMapping, bool)>) -> bool {
     // Look for a PcdMap that can be swapped towards a merge target.
     let mut i = 0;
