@@ -40,6 +40,8 @@ mod sphmap;
 pub use sphmap::SphMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition};
+mod tranmap;
+pub use tranmap::TranMap;
 
 use std::any::Any;
 use std::fmt;

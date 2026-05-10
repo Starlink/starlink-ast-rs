@@ -28,6 +28,7 @@ use super::pcdmap::PcdMap;
 use super::perm::PermMap;
 use super::shift::ShiftMap;
 use super::sphmap::SphMap;
+use super::tranmap::TranMap;
 use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
 use super::winmap::WinMap;
@@ -69,6 +70,10 @@ fn mapping_fingerprint(mapping: &dyn Mapping) -> u64 {
         (cmp.composition() == Composition::Series).hash(&mut hasher);
         mapping_fingerprint(cmp.first()).hash(&mut hasher);
         mapping_fingerprint(cmp.second()).hash(&mut hasher);
+    }
+    if let Some(tm) = mapping.as_any().downcast_ref::<TranMap>() {
+        mapping_fingerprint(tm.map1()).hash(&mut hasher);
+        mapping_fingerprint(tm.map2()).hash(&mut hasher);
     }
     hasher.finish()
 }

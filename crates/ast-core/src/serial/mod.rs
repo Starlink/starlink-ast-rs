@@ -13,7 +13,8 @@ use crate::frames::{
 };
 use crate::mappings::{
     ChebyMap, CmpMap, DynMapping, GrismMap, LutMap, Mapping, MatrixMap, PcdMap, PermMap, PolyMap,
-    ShiftMap, SlaMap, SpecMap, SphMap, TimeMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+    ShiftMap, SlaMap, SpecMap, SphMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap,
+    ZoomMap,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -138,6 +139,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "SphMap" => Ok(Box::new(SphMap::from_node(node)?)),
         "GrismMap" => Ok(Box::new(GrismMap::from_node(node)?)),
         "UnitNormMap" => Ok(Box::new(UnitNormMap::from_node(node)?)),
+        "TranMap" => Ok(Box::new(TranMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
@@ -210,6 +212,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<UnitNormMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<TranMap>() {
             return m.to_node();
         }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
@@ -332,6 +337,8 @@ pub enum AnyObject {
     SphMap(SphMap),
     /// A [`UnitNormMap`] (unit vector + norm decomposition).
     UnitNormMap(UnitNormMap),
+    /// A [`TranMap`] (compound transformation mapping).
+    TranMap(TranMap),
     /// A [`BasicFrame`] (generic coordinate frame).
     BasicFrame(BasicFrame),
     /// A [`SkyFrame`] (celestial coordinate frame).
@@ -373,6 +380,7 @@ impl AnyObject {
             AnyObject::GrismMap(m) => Some(m),
             AnyObject::SphMap(m) => Some(m),
             AnyObject::UnitNormMap(m) => Some(m),
+            AnyObject::TranMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
@@ -413,7 +421,8 @@ impl AnyObject {
             | AnyObject::PcdMap(_)
             | AnyObject::GrismMap(_)
             | AnyObject::SphMap(_)
-            | AnyObject::UnitNormMap(_) => None,
+            | AnyObject::UnitNormMap(_)
+            | AnyObject::TranMap(_) => None,
         }
     }
 
@@ -439,6 +448,7 @@ impl AnyObject {
             AnyObject::GrismMap(m) => Some(Box::new(m)),
             AnyObject::SphMap(m) => Some(Box::new(m)),
             AnyObject::UnitNormMap(m) => Some(Box::new(m)),
+            AnyObject::TranMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
@@ -479,7 +489,8 @@ impl AnyObject {
             | AnyObject::PcdMap(_)
             | AnyObject::GrismMap(_)
             | AnyObject::SphMap(_)
-            | AnyObject::UnitNormMap(_) => None,
+            | AnyObject::UnitNormMap(_)
+            | AnyObject::TranMap(_) => None,
         }
     }
 }
@@ -509,6 +520,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "GrismMap" => Ok(AnyObject::GrismMap(GrismMap::from_node(node)?)),
         "SphMap" => Ok(AnyObject::SphMap(SphMap::from_node(node)?)),
         "UnitNormMap" => Ok(AnyObject::UnitNormMap(UnitNormMap::from_node(node)?)),
+        "TranMap" => Ok(AnyObject::TranMap(TranMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
@@ -549,6 +561,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::GrismMap(m) => Serializable::to_node(m),
         AnyObject::SphMap(m) => Serializable::to_node(m),
         AnyObject::UnitNormMap(m) => Serializable::to_node(m),
+        AnyObject::TranMap(m) => Serializable::to_node(m),
         AnyObject::BasicFrame(f) => Serializable::to_node(f),
         AnyObject::SkyFrame(f) => Serializable::to_node(f),
         AnyObject::SpecFrame(f) => Serializable::to_node(f),

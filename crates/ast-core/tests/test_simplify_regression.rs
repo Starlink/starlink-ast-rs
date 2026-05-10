@@ -63,7 +63,7 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
     use ast_core::AnyObject;
     use ast_core::mappings::{
         CmpMap, GrismMap, MatrixMap, PcdMap, PermMap, ShiftMap, SlaMap, SpecMap, SphMap, TimeMap,
-        UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+        TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
     };
 
     let obj = if let Some(x) = m.as_any().downcast_ref::<UnitMap>() {
@@ -96,6 +96,8 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
         AnyObject::SphMap(x.clone())
     } else if let Some(x) = m.as_any().downcast_ref::<UnitNormMap>() {
         AnyObject::UnitNormMap(x.clone())
+    } else if let Some(x) = m.as_any().downcast_ref::<TranMap>() {
+        AnyObject::TranMap(x.clone())
     } else {
         return None;
     };
