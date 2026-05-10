@@ -5,6 +5,7 @@
 //! frequency split into a DSB centre frequency and an intermediate frequency (IF),
 //! and tracks which sideband (USB, LSB, or LO) the stored spectral values refer to.
 
+use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::helpers::ast_equal;
@@ -291,6 +292,36 @@ impl DSBSpecFrame {
             ));
         }
         Ok(lo)
+    }
+
+    /// Compute the image-sideband frequency corresponding to the rest frequency.
+    ///
+    /// The rest frequency is reflected across the LO in topocentric frequency
+    /// space, giving the corresponding frequency in the image sideband.
+    /// Requires `rest_freq` to be set; returns an error if not.
+    pub fn imag_freq(&self) -> AstResult<f64> {
+        let rest_freq = self.spec.rest_freq().ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Norsf,
+                "DSBSpecFrame::imag_freq requires rest_freq to be set",
+            )
+        })?;
+
+        let f_lo = self.lo_freq()?;
+
+        // Convert rest_freq to topocentric Hz.
+        let topo_map = self.to_topo_mapping()?;
+        let input = PointSet::from_columns(&[&[rest_freq]])?;
+        let topo_pts = topo_map.transform(&input, true)?;
+        let rest_topo = topo_pts.point(0)[0];
+
+        // Reflect across LO: imag = 2*f_lo - rest
+        let imag_topo = 2.0 * f_lo - rest_topo;
+
+        // Convert back from topocentric Hz to current system.
+        let imag_input = PointSet::from_columns(&[&[imag_topo]])?;
+        let result = topo_map.transform(&imag_input, false)?;
+        Ok(result.point(0)[0])
     }
 
     /// Create a mapping from the current spectral system/SOR to topocentric

@@ -293,3 +293,28 @@ fn convert_dsb_to_specframe() {
     let output = mapping.transform(&input, true).unwrap();
     assert!((output.point(0)[0] - 225.0e9).abs() < 1.0);
 }
+
+// ---------------------------------------------------------------------------
+// ImagFreq computation tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn imag_freq_computation() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+    dsb.set_dsb_centre(220.0e9);
+    dsb.set_ifr(4.0e9);
+    dsb.set_sideband(SideBand::USB);
+    dsb.set_rest_freq(225.0e9);
+
+    // ImagFreq = mirror of rest_freq across LO.
+    // f_lo = 224 GHz, imag = 2*224 - 225 = 223 GHz.
+    let imag = dsb.imag_freq().unwrap();
+    assert!((imag - 223.0e9).abs() < 1.0, "expected 223 GHz, got {imag}");
+}
+
+#[test]
+fn imag_freq_no_rest_freq() {
+    let dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    assert!(dsb.imag_freq().is_err());
+}
