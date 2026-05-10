@@ -243,7 +243,7 @@ fn wcsconv_regression_suite() {
             Ok(()) => passed += 1,
             Err(msg) => {
                 failed += 1;
-                if failures.len() < 3 {
+                if failures.len() < 100 {
                     failures.push(format!("  {} : {}", case.name, msg));
                 }
             }

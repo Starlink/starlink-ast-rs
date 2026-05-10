@@ -51,20 +51,23 @@ pub fn format_significant(value: f64, digits: usize) -> String {
     let abs_v = value.abs();
     let exp = abs_v.log10().floor() as i32;
 
-    // Use fixed notation when exponent is in a reasonable range.
     // The C library uses %G semantics: fixed when exp in [-4, prec-1].
-    let use_fixed = exp >= -4 && exp < (digits as i32);
+    // Special case from C's EncodeFloat: negative values between -0.001
+    // and -0.0001 are forced to scientific notation because the fixed form
+    // is one character longer than exponential, which matters at the FITS
+    // 20-character field limit with the default 15-digit precision.
+    let force_scientific = value > -0.001 && value < -0.0001;
+    let use_fixed = !force_scientific && exp >= -4 && exp < (digits as i32);
 
     if use_fixed {
-        // Number of decimal places: digits - (exp + 1), at least 1.
         let decimal_places = ((digits as i32) - (exp + 1)).max(1) as usize;
         let s = format!("{value:.decimal_places$}");
         trim_trailing_zeros(&s)
     } else {
-        // Scientific notation with digits-1 decimal places in mantissa.
         let mantissa_decimals = (digits - 1).max(1);
         let s = format!("{value:.mantissa_decimals$E}");
-        trim_trailing_zeros_exp(&s)
+        let s = trim_trailing_zeros_exp(&s);
+        ensure_exponent_sign(&s)
     }
 }
 
@@ -92,6 +95,21 @@ fn trim_trailing_zeros_exp(s: &str) -> String {
         let exponent = &s[e_pos..];
         let trimmed = trim_trailing_zeros(mantissa);
         format!("{trimmed}{exponent}")
+    } else {
+        s.to_string()
+    }
+}
+
+/// Ensure the exponent has an explicit sign character (E+N or E-N).
+/// C's %E always includes the sign; Rust's {:E} omits + for positive exponents.
+fn ensure_exponent_sign(s: &str) -> String {
+    if let Some(e_pos) = s.find('E').or_else(|| s.find('e')) {
+        let after_e = &s[e_pos + 1..];
+        if !after_e.starts_with('+') && !after_e.starts_with('-') {
+            format!("{}E+{}", &s[..e_pos], after_e)
+        } else {
+            s.to_string()
+        }
     } else {
         s.to_string()
     }
@@ -181,12 +199,37 @@ mod tests {
     fn format_boundary_cases() {
         // Value near the fixed/scientific boundary.
         let s = format_significant(0.0001, 4);
-        // exp = -4, which is >= -4 so should be fixed.
+        // exp = -4, positive, so stays fixed.
         assert!(s.contains("0.0001"));
 
         let s = format_significant(0.00001, 4);
         // exp = -5, which is < -4 so should be scientific.
         assert!(s.contains('E'));
+    }
+
+    #[test]
+    fn format_negative_special_case() {
+        // Negative values between -0.001 and -0.0001 use scientific notation
+        // (matches C library's EncodeFloat special case).
+        let s = format_significant(-0.00083332205, 8);
+        assert_eq!(s, "-8.3332205E-4");
+
+        let s = format_significant(-0.0002778, 4);
+        assert_eq!(s, "-2.778E-4");
+
+        // Positive value in same range stays fixed.
+        let s = format_significant(0.00083332205, 8);
+        assert_eq!(s, "0.00083332205");
+    }
+
+    #[test]
+    fn format_explicit_exponent_sign() {
+        // Positive exponents must have explicit + sign.
+        let s = format_significant(2.3635893e8, 8);
+        assert_eq!(s, "2.3635893E+8");
+
+        let s = format_significant(1.5e10, 8);
+        assert!(s.contains("E+"), "expected E+ in '{s}'");
     }
 
     #[test]
