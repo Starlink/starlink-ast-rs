@@ -2,6 +2,32 @@
 //!
 //! The tokenizer processes a cleaned (lowercase, no whitespace) expression
 //! string and produces a stream of tokens for the parser.
+//!
+//! # Design choice: hand-rolled vs `logos`
+//!
+//! The design spec called for using the `logos` crate (MIT/Apache-2.0,
+//! derive-macro-based DFA lexer). A hand-rolled tokenizer was chosen
+//! instead because the MathMap token grammar has properties that are
+//! awkward to express in logos's regex-driven model:
+//!
+//! - **Angle-bracket system constants** (`<bad>`, `<pi>`, `<max_10_exp>`)
+//!   require context-sensitive longest-match against a fixed set.
+//! - **Dotted Fortran-style logical operators** (`.and.`, `.or.`, `.not.`,
+//!   `.eqv.`, `.xor.`) overlap with the `.` in floating-point literals.
+//! - **Function recognition** requires longest-match among ~50 names that
+//!   share common prefixes (`sin`/`sinc`/`sind`/`sinh`, `a`/`abs`/`acos`/
+//!   `acosd`/`acosh`/`acoth`/`acsch`/`asech`/`asin`/...).
+//! - The input is pre-cleaned (lowercased, whitespace-stripped) so there
+//!   is no benefit from logos's skip/whitespace handling.
+//!
+//! **If revisiting this decision**, `logos` would provide:
+//! - Compile-time DFA generation (faster tokenization for large expressions)
+//! - Declarative token definitions (easier to audit against the C spec)
+//! - Automatic longest-match semantics
+//!
+//! The trade-off is manageable either way — the hand-rolled version is
+//! ~200 lines and the MathMap expression language is frozen (no new tokens
+//! will be added).
 
 use crate::error::{AstError, AstResult, ErrorCode};
 
