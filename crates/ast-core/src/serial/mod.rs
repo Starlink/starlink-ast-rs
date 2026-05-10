@@ -8,8 +8,8 @@ pub(crate) use node::{Node, NodeValue};
 
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
-    BasicFrame, CmpFrame, DynFrame, FluxFrame, Frame, FrameSet, SkyFrame, SpecFluxFrame, SpecFrame,
-    TimeFrame,
+    BasicFrame, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameSet, SkyFrame,
+    SpecFluxFrame, SpecFrame, TimeFrame,
 };
 use crate::mappings::{
     ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
@@ -268,6 +268,9 @@ impl FrameToNode for dyn Frame {
         if let Some(f) = self.as_any().downcast_ref::<SkyFrame>() {
             return Serializable::to_node(f);
         }
+        if let Some(f) = self.as_any().downcast_ref::<DSBSpecFrame>() {
+            return Serializable::to_node(f);
+        }
         if let Some(f) = self.as_any().downcast_ref::<SpecFrame>() {
             return Serializable::to_node(f);
         }
@@ -295,6 +298,7 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {
         "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(Box::new(SkyFrame::from_node(node)?)),
+        "DSBSpecFrame" => Ok(Box::new(DSBSpecFrame::from_node(node)?)),
         "SpecFrame" => Ok(Box::new(SpecFrame::from_node(node)?)),
         "TimeFrame" => Ok(Box::new(TimeFrame::from_node(node)?)),
         "FluxFrame" => Ok(Box::new(FluxFrame::from_node(node)?)),
@@ -373,6 +377,8 @@ pub enum AnyObject {
     SkyFrame(SkyFrame),
     /// A [`SpecFrame`] (spectral coordinate frame).
     SpecFrame(SpecFrame),
+    /// A [`DSBSpecFrame`] (dual-sideband spectral coordinate frame).
+    DSBSpecFrame(DSBSpecFrame),
     /// A [`TimeFrame`] (time coordinate frame).
     TimeFrame(TimeFrame),
     /// A [`FluxFrame`] (flux/brightness coordinate frame).
@@ -417,6 +423,7 @@ impl AnyObject {
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
+            | AnyObject::DSBSpecFrame(_)
             | AnyObject::TimeFrame(_)
             | AnyObject::FluxFrame(_)
             | AnyObject::SpecFluxFrame(_)
@@ -431,6 +438,7 @@ impl AnyObject {
             AnyObject::BasicFrame(f) => Some(f),
             AnyObject::SkyFrame(f) => Some(f),
             AnyObject::SpecFrame(f) => Some(f),
+            AnyObject::DSBSpecFrame(f) => Some(f),
             AnyObject::TimeFrame(f) => Some(f),
             AnyObject::FluxFrame(f) => Some(f),
             AnyObject::SpecFluxFrame(f) => Some(f),
@@ -493,6 +501,7 @@ impl AnyObject {
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
+            | AnyObject::DSBSpecFrame(_)
             | AnyObject::TimeFrame(_)
             | AnyObject::FluxFrame(_)
             | AnyObject::SpecFluxFrame(_)
@@ -507,6 +516,7 @@ impl AnyObject {
             AnyObject::BasicFrame(f) => Some(Box::new(f)),
             AnyObject::SkyFrame(f) => Some(Box::new(f)),
             AnyObject::SpecFrame(f) => Some(Box::new(f)),
+            AnyObject::DSBSpecFrame(f) => Some(Box::new(f)),
             AnyObject::TimeFrame(f) => Some(Box::new(f)),
             AnyObject::FluxFrame(f) => Some(Box::new(f)),
             AnyObject::SpecFluxFrame(f) => Some(Box::new(f)),
@@ -572,6 +582,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
+        "DSBSpecFrame" => Ok(AnyObject::DSBSpecFrame(DSBSpecFrame::from_node(node)?)),
         "TimeFrame" => Ok(AnyObject::TimeFrame(TimeFrame::from_node(node)?)),
         "FluxFrame" => Ok(AnyObject::FluxFrame(FluxFrame::from_node(node)?)),
         "SpecFluxFrame" => Ok(AnyObject::SpecFluxFrame(SpecFluxFrame::from_node(node)?)),
@@ -617,6 +628,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::BasicFrame(f) => Serializable::to_node(f),
         AnyObject::SkyFrame(f) => Serializable::to_node(f),
         AnyObject::SpecFrame(f) => Serializable::to_node(f),
+        AnyObject::DSBSpecFrame(f) => Serializable::to_node(f),
         AnyObject::TimeFrame(f) => Serializable::to_node(f),
         AnyObject::FluxFrame(f) => Serializable::to_node(f),
         AnyObject::SpecFluxFrame(f) => Serializable::to_node(f),

@@ -10,6 +10,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::helpers::ast_equal;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap, WinMap};
+use crate::serial::{Node, NodeValue, Serializable};
 
 // ---------------------------------------------------------------------------
 // SideBand — which sideband the spectral values represent
@@ -582,5 +583,116 @@ impl Frame for DSBSpecFrame {
 
     fn system_string(&self) -> Option<&str> {
         self.spec.system_string()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Serializable trait implementation
+// ---------------------------------------------------------------------------
+
+impl Serializable for DSBSpecFrame {
+    fn class_name(&self) -> &'static str {
+        "DSBSpecFrame"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        // Get the SpecFrame's node (has all Frame + SpecFrame attrs).
+        let mut node = self.spec.to_node()?;
+
+        // Override class name and comment.
+        node.class = "DSBSpecFrame".to_string();
+        node.class_comment = Some("Dual sideband spectral axis".to_string());
+
+        // Add IsA SpecFrame marker.
+        node.push_isa(
+            "SpecFrame",
+            Some("Description of spectral coordinate system".to_string()),
+        );
+
+        // DSBCen
+        if let Some(dsb_cen) = self.dsb_centre {
+            node.push_double(
+                "DSBCen",
+                dsb_cen,
+                Some("Central frequency (Hz topo)".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "DSBCen",
+                NodeValue::Double(Self::DEFAULT_DSB_CENTRE),
+                Some("Central frequency (Hz topo)".to_string()),
+            );
+        }
+
+        // IF
+        if let Some(ifr) = self.ifr {
+            node.push_double("IF", ifr, Some("Intermediate frequency (Hz)".to_string()));
+        } else {
+            node.push_unset(
+                "IF",
+                NodeValue::Double(Self::DEFAULT_IFR),
+                Some("Intermediate frequency (Hz)".to_string()),
+            );
+        }
+
+        // SideBn (only if explicitly set)
+        if let Some(sb) = self.sideband {
+            let comment = match sb {
+                SideBand::USB => "Represents upper sideband",
+                SideBand::LSB => "Represents lower sideband",
+                SideBand::LO => "Represents offset from LO",
+            };
+            node.push_string("SideBn", sb.as_str(), Some(comment.to_string()));
+        }
+
+        // AlSdBn (only if explicitly set to true)
+        if let Some(true) = self.align_sideband {
+            node.push_int("AlSdBn", 1, Some("Align sidebands?".to_string()));
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        // Deserialize the SpecFrame portion.
+        let spec = SpecFrame::from_node(node)?;
+
+        // DSBCen
+        let dsb_centre = if node.get("DSBCen").is_some() {
+            Some(node.get_double("DSBCen", Self::DEFAULT_DSB_CENTRE))
+        } else {
+            None
+        };
+
+        // IF
+        let ifr = if node.get("IF").is_some() {
+            Some(node.get_double("IF", Self::DEFAULT_IFR))
+        } else {
+            None
+        };
+
+        // SideBn
+        let sideband = {
+            let sb_str = node.get_string("SideBn", "");
+            if sb_str.is_empty() {
+                None
+            } else {
+                SideBand::parse(&sb_str)
+            }
+        };
+
+        // AlSdBn
+        let align_sideband = {
+            let val = node.get_int("AlSdBn", -1);
+            if val < 0 { None } else { Some(val != 0) }
+        };
+
+        Ok(DSBSpecFrame {
+            spec,
+            dsb_centre,
+            ifr,
+            sideband,
+            align_sideband,
+        })
     }
 }

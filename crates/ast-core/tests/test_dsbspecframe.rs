@@ -1,10 +1,12 @@
 //! DSBSpecFrame integration tests.
 //!
 //! Covers: construction, attribute defaults, sideband derivation from IF sign,
-//! explicit sideband override, Frame trait basics, and convert/alignment tests.
+//! explicit sideband override, Frame trait basics, convert/alignment tests,
+//! and serialization round-trips.
 
 use ast_core::coords::PointSet;
 use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecSystem, StdOfRest};
+use ast_core::{AnyObject, from_native_string, to_native_string};
 
 #[test]
 fn construction_defaults() {
@@ -317,4 +319,49 @@ fn imag_freq_computation() {
 fn imag_freq_no_rest_freq() {
     let dsb = DSBSpecFrame::new(SpecSystem::Freq);
     assert!(dsb.imag_freq().is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Serialization tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn serialization_round_trip() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+    dsb.set_dsb_centre(220.463127593878e9);
+    dsb.set_ifr(-3.99997957289606e9);
+    dsb.set_sideband(SideBand::USB);
+    dsb.set_rest_freq(220398676500.0);
+
+    let obj = AnyObject::DSBSpecFrame(dsb.clone());
+    let text = to_native_string(&obj).unwrap();
+
+    assert!(text.contains("Begin DSBSpecFrame"));
+    assert!(text.contains("IsA SpecFrame"));
+    assert!(text.contains("DSBCen"));
+    assert!(text.contains("IF =") || text.contains("IF="));
+
+    let obj2 = from_native_string(&text).unwrap();
+    let dsb2 = match obj2 {
+        AnyObject::DSBSpecFrame(d) => d,
+        other => panic!("expected DSBSpecFrame, got {other:?}"),
+    };
+
+    assert!((dsb2.dsb_centre() - dsb.dsb_centre()).abs() < 1.0);
+    assert!((dsb2.ifr() - dsb.ifr()).abs() < 1.0);
+    assert_eq!(dsb2.sideband(), SideBand::USB);
+}
+
+#[test]
+fn deserialize_fixture() {
+    let fixture = include_str!("fixtures/jan-dsb.ast");
+    let obj = from_native_string(fixture).unwrap();
+    let dsb = match obj {
+        AnyObject::DSBSpecFrame(d) => d,
+        other => panic!("expected DSBSpecFrame, got {other:?}"),
+    };
+    assert_eq!(dsb.sideband(), SideBand::USB);
+    assert!((dsb.dsb_centre() - 220463127593.87817).abs() < 1.0);
+    assert!((dsb.ifr() - (-3999979572.8960571)).abs() < 1.0);
 }

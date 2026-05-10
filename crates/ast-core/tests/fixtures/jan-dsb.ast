@@ -1,0 +1,21 @@
+ Begin DSBSpecFrame 	# Dual sideband spectral axis
+    Naxes = 1 	# Number of coordinate axes
+    Epoch = 2006.8632690742859 	# Julian epoch of observation
+    System = "FREQ" 	# Coordinate system type
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Unit = "Hz" 	# Axis units (Hertz)
+       End Axis
+ IsA Frame 	# Coordinate system description
+    SoR = "Source" 	# Standard of rest
+    RefRA = 0.71100769282139487 	# Reference RA (rads, FK5 J2000)
+    RefDec = 1.0983843929661621 	# Reference Dec (rads, FK5 J2000)
+    RstFrq = 220398676500 	# Rest frequency (Hz)
+    SrcVel = -79989.315688607065 	# Source velocity (m/s)
+    SrcVRF = "LSRK" 	# Source velocity rest frame
+    UFreq = "Hz" 	# Preferred units for frequency
+ IsA SpecFrame 	# Description of spectral coordinate system
+    DSBCen = 220463127593.87817 	# Central frequency (Hz topo)
+    IF = -3999979572.8960571 	# Intermediate frequency (Hz)
+    SideBn = "USB" 	# Represents upper sideband
+ End DSBSpecFrame
