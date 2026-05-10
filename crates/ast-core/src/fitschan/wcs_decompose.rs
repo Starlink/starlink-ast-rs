@@ -12,10 +12,14 @@ use crate::error::AstResult;
 use crate::mappings::Mapping;
 
 /// Result of decomposing a pixel-to-world mapping into linear WCS components.
+///
+/// CRPIX is not stored here — callers pass `ref_pixel` to
+/// [`decompose_linear`] and resolve the final CRPIX algebraically from
+/// `cd` and `crval` via `solve_crpix_from_decomp` (mirrors the C
+/// library's `MakeIntWorld` / `palDmat` step). Keeping CRPIX out of
+/// the struct avoids a stale copy of `ref_pixel` that nothing reads.
 #[derive(Debug)]
 pub(crate) struct LinearDecomposition {
-    /// Reference pixel position (1-based FITS convention, i.e. CRPIX values).
-    pub crpix: Vec<f64>,
     /// CD matrix (combined rotation + scale): cd\[i\]\[j\].
     /// This encodes the linear part: IWC = CD * (pixel - CRPIX).
     pub cd: Array2<f64>,
@@ -25,12 +29,12 @@ pub(crate) struct LinearDecomposition {
 
 /// Decompose a pixel-to-world mapping into linear WCS components.
 ///
-/// Extracts the linear transformation by evaluating the mapping at the
-/// reference pixel and at unit offsets along each axis.
-///
-/// `mapping` is the forward pixel-to-world transform, `naxis` is the
-/// dimensionality, and `ref_pixel` supplies the reference pixel position
-/// (CRPIX).
+/// Extracts the linear transformation by evaluating the mapping at
+/// `ref_pixel` and at unit offsets along each axis. The returned
+/// `crval` is the world coordinate at `ref_pixel`; `cd` is the
+/// numerical Jacobian. CRPIX is not returned — callers resolve it
+/// algebraically from `cd` and `crval` (see `solve_crpix_from_decomp`
+/// in `wcs_write.rs`).
 pub(crate) fn decompose_linear(
     mapping: &dyn Mapping,
     naxis: usize,
@@ -54,11 +58,7 @@ pub(crate) fn decompose_linear(
         }
     }
 
-    Ok(LinearDecomposition {
-        crpix: ref_pixel.to_vec(),
-        cd,
-        crval,
-    })
+    Ok(LinearDecomposition { cd, crval })
 }
 
 /// Split a CD matrix into CDELT (diagonal scale) and PC (rotation) components.
