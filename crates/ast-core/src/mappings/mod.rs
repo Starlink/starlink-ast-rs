@@ -46,6 +46,8 @@ mod tranmap;
 pub use tranmap::TranMap;
 mod ratemap;
 pub use ratemap::RateMap;
+mod dssmap;
+pub use dssmap::DssMap;
 
 use std::any::Any;
 use std::fmt;

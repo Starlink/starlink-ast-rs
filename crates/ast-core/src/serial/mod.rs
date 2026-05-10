@@ -12,9 +12,9 @@ use crate::frames::{
     TimeFrame,
 };
 use crate::mappings::{
-    ChebyMap, CmpMap, DynMapping, GrismMap, LutMap, Mapping, MatrixMap, PcdMap, PermMap, PolyMap,
-    RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap, TimeMap, TranMap, UnitMap, UnitNormMap,
-    WcsMap, WinMap, ZoomMap,
+    ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MatrixMap, PcdMap, PermMap,
+    PolyMap, RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap, TimeMap, TranMap, UnitMap,
+    UnitNormMap, WcsMap, WinMap, ZoomMap,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -142,6 +142,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "TranMap" => Ok(Box::new(TranMap::from_node(node)?)),
         "RateMap" => Ok(Box::new(RateMap::from_node(node)?)),
         "SplineMap" => Ok(Box::new(SplineMap::from_node(node)?)),
+        "DssMap" => Ok(Box::new(DssMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
@@ -223,6 +224,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<SplineMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<DssMap>() {
             return m.to_node();
         }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
@@ -351,6 +355,8 @@ pub enum AnyObject {
     RateMap(RateMap),
     /// A [`SplineMap`] (bivariate B-spline mapping).
     SplineMap(SplineMap),
+    /// A [`DssMap`] (DSS plate fit mapping).
+    DssMap(DssMap),
     /// A [`BasicFrame`] (generic coordinate frame).
     BasicFrame(BasicFrame),
     /// A [`SkyFrame`] (celestial coordinate frame).
@@ -395,6 +401,7 @@ impl AnyObject {
             AnyObject::TranMap(m) => Some(m),
             AnyObject::RateMap(m) => Some(m),
             AnyObject::SplineMap(m) => Some(m),
+            AnyObject::DssMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
@@ -438,7 +445,8 @@ impl AnyObject {
             | AnyObject::UnitNormMap(_)
             | AnyObject::TranMap(_)
             | AnyObject::RateMap(_)
-            | AnyObject::SplineMap(_) => None,
+            | AnyObject::SplineMap(_)
+            | AnyObject::DssMap(_) => None,
         }
     }
 
@@ -467,6 +475,7 @@ impl AnyObject {
             AnyObject::TranMap(m) => Some(Box::new(m)),
             AnyObject::RateMap(m) => Some(Box::new(m)),
             AnyObject::SplineMap(m) => Some(Box::new(m)),
+            AnyObject::DssMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
@@ -510,7 +519,8 @@ impl AnyObject {
             | AnyObject::UnitNormMap(_)
             | AnyObject::TranMap(_)
             | AnyObject::RateMap(_)
-            | AnyObject::SplineMap(_) => None,
+            | AnyObject::SplineMap(_)
+            | AnyObject::DssMap(_) => None,
         }
     }
 }
@@ -543,6 +553,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "TranMap" => Ok(AnyObject::TranMap(TranMap::from_node(node)?)),
         "RateMap" => Ok(AnyObject::RateMap(RateMap::from_node(node)?)),
         "SplineMap" => Ok(AnyObject::SplineMap(SplineMap::from_node(node)?)),
+        "DssMap" => Ok(AnyObject::DssMap(DssMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
@@ -586,6 +597,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::TranMap(m) => Serializable::to_node(m),
         AnyObject::RateMap(m) => Serializable::to_node(m),
         AnyObject::SplineMap(m) => Serializable::to_node(m),
+        AnyObject::DssMap(m) => Serializable::to_node(m),
         AnyObject::BasicFrame(f) => Serializable::to_node(f),
         AnyObject::SkyFrame(f) => Serializable::to_node(f),
         AnyObject::SpecFrame(f) => Serializable::to_node(f),
