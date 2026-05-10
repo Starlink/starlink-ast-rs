@@ -34,6 +34,8 @@ mod pcdmap;
 pub use pcdmap::PcdMap;
 mod grismmap;
 pub use grismmap::GrismMap;
+mod splinemap;
+pub use splinemap::SplineMap;
 pub(crate) mod unitnormmap;
 pub use unitnormmap::UnitNormMap;
 mod sphmap;
