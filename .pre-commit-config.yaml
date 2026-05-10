@@ -1,0 +1,90 @@
+# Pre-commit hooks. Mirrors what `.github/workflows/ci.yml` runs, so a
+# clean `git commit` produces a commit that won't fail CI on lint or
+# format.
+#
+# To enable locally:
+#   pip install pre-commit         # or: uv tool install pre-commit
+#   pre-commit install             # writes .git/hooks/pre-commit
+#   pre-commit run --all-files     # one-off sweep across the repo
+#
+# Bypass for an individual commit (use sparingly):
+#   git commit --no-verify
+
+# Excluded paths — applied to the file-hygiene hooks below. We keep
+# vendored upstream sources (vendor/) and test fixtures (FITS headers,
+# AST native dumps, expected outputs) byte-exact: rewriting whitespace
+# or trailing newlines would either drift them away from the upstream
+# we're tracking or break tests that compare output against the
+# checked-in reference verbatim.
+exclude: |
+  (?x)^(
+    vendor/.*|
+    crates/ast-core/tests/fixtures/.*|
+    reference/.*
+  )$
+
+repos:
+  # Generic file hygiene — strip trailing whitespace, ensure trailing
+  # newlines, validate that YAML/TOML files parse, catch unresolved
+  # merge conflict markers. These are language-agnostic and cheap.
+  # The top-level `exclude` keeps them away from vendored code and
+  # test fixtures.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+
+  # Rust hooks — system invocations of the toolchain pinned in
+  # rust-toolchain.toml, matching what CI runs:
+  #   - cargo fmt --all -- --check       (CI: Format check)
+  #   - cargo clippy --workspace          (CI: Clippy, via [lints])
+  #
+  # `language: system` keeps the toolchain consistent with CI; we
+  # don't want pre-commit's own Rust install path picking a different
+  # rustc and producing different lint output.
+  #
+  # `pass_filenames: false` is required because cargo commands operate
+  # on the workspace, not on individual files. Without it pre-commit
+  # would append each changed `.rs` file to the command line and cargo
+  # would reject the unknown arguments.
+  #
+  # `types: [rust]` skips these on commits that touch no .rs files
+  # (e.g. doc-only commits) — saves a few seconds when the change
+  # genuinely doesn't need linting.
+  - repo: local
+    hooks:
+      # `cargo fmt` (no --check) auto-fixes formatting. If the hook
+      # rewrites any file pre-commit aborts the commit with a clear
+      # message; you re-`git add` and re-commit. That gives
+      # self-contained "already-formatted" commits without needing a
+      # follow-up "fix formatting" commit.
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # Clippy doesn't auto-fix by default — the hook fails and
+      # reports each violation. The intent is to block bad commits
+      # before they're made, not to silently rewrite source. Run
+      # `cargo lint` (the workspace alias added in .cargo/config.toml)
+      # locally to inspect, fix, and try again.
+      #
+      # Scope matches CI: workspace targets only (lib + bin), no
+      # `--all-targets`. Switching to `--all-targets` would also lint
+      # test fixtures, which currently trip a number of pedantic
+      # lints (PI approximations, range-indexed loops); cleaning
+      # those up is a tracked follow-up.
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --
+        language: system
+        types: [rust]
+        pass_filenames: false

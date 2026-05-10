@@ -309,17 +309,17 @@ impl PrjParams {
         inner.p = p_storage.as_mut_ptr();
         inner.p2 = p2_storage.as_mut_ptr();
         inner.flag = 0;
-        
+
         let code = proj.code();
         let mut code_buf = [0u8; 4];
         code_buf[..code.len()].copy_from_slice(code.as_bytes());
         inner.code = code_buf;
-        
+
         let status = unsafe { astPRJset(code_buf.as_ptr(), &mut inner) };
         if status != 0 {
             return Err(AstError::new(ErrorCode::Wcsty, "wcslib projection setup failed"));
         }
-        
+
         Ok(Self { inner, p_storage, p2_storage })
     }
 
@@ -622,7 +622,7 @@ impl SlaMap {
     pub fn new() -> Self {
         Self { conversions: Vec::new(), inverted: false }
     }
-    
+
     pub fn add(&mut self, cvt_type: SlaCvtType, args: &[f64]) {
         self.conversions.push(SlaConversion {
             cvt_type,
@@ -675,12 +675,12 @@ apparent-place parameters.
 impl Mapping for SlaMap {
     fn nin(&self) -> usize { 2 }
     fn nout(&self) -> usize { 2 }
-    
+
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         let fwd = forward != self.inverted;
         let npoint = pts.npoint();
         let mut out = PointSet::zeros(npoint, 2);
-        
+
         for ip in 0..npoint {
             let p = pts.point(ip);
             if p[0] == BAD_VALUE || p[1] == BAD_VALUE {
@@ -688,9 +688,9 @@ impl Mapping for SlaMap {
                 out.point_mut(ip)[1] = BAD_VALUE;
                 continue;
             }
-            
+
             let mut v = crate::pal::dcs2c(p[0], p[1]);
-            
+
             if fwd {
                 for cvt in &self.conversions {
                     Self::apply_conversion(cvt, &mut v, true);
@@ -700,7 +700,7 @@ impl Mapping for SlaMap {
                     Self::apply_conversion(cvt, &mut v, false);
                 }
             }
-            
+
             let (lon, lat) = crate::pal::dcc2s(&v);
             out.point_mut(ip)[0] = lon;
             out.point_mut(ip)[1] = lat;
@@ -723,17 +723,17 @@ Attributes:
 ```rust
 impl Serializable for SlaMap {
     fn class_name(&self) -> &'static str { "SlaMap" }
-    
+
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new("SlaMap");
         node.class_comment = Some("Sequence of celestial coordinate conversions".to_string());
         serial::write_mapping_base(&mut node, self);
-        
+
         if !self.conversions.is_empty() {
             node.push_int("Nsla", self.conversions.len() as i64,
                 Some("Number of conversion steps".to_string()));
         }
-        
+
         let arg_suffix = ['A','B','C','D','E','F','G','H','I','J'];
         for (i, cvt) in self.conversions.iter().enumerate() {
             node.push_string(
@@ -751,12 +751,12 @@ impl Serializable for SlaMap {
         }
         Ok(node)
     }
-    
+
     fn from_node(node: &Node) -> AstResult<Self> {
         let (_nin, _nout, inverted) = serial::read_mapping_base(node);
         let nsla = node.get_int("Nsla", 0) as usize;
         let mut sla = SlaMap::new();
-        
+
         let arg_suffix = ['A','B','C','D','E','F','G','H','I','J'];
         for i in 0..nsla {
             let code = node.get_string(&format!("Sla{}", i + 1), "");
@@ -771,7 +771,7 @@ impl Serializable for SlaMap {
             }
             sla.conversions.push(SlaConversion { cvt_type, args });
         }
-        
+
         if inverted { sla.invert(); }
         Ok(sla)
     }

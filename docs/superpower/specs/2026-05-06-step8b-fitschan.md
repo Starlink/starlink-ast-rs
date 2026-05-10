@@ -176,7 +176,7 @@ impl FitsChan {
     // Construction
     pub fn new() -> Self;
     pub fn from_header(text: &str) -> AstResult<Self>;
-    
+
     // Card manipulation
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()>;
     pub fn put_cards(&mut self, cards: &str) -> AstResult<()>;
@@ -185,7 +185,7 @@ impl FitsChan {
     pub fn retain_fits(&mut self);
     pub fn empty_fits(&mut self);
     pub fn ncard(&self) -> usize;
-    
+
     // Typed value access
     pub fn get_fits_i(&self, name: &str) -> Option<i64>;
     pub fn get_fits_f(&self, name: &str) -> Option<f64>;
@@ -198,7 +198,7 @@ impl FitsChan {
     pub fn set_fits_u(&mut self, name: &str, comment: &str, overwrite: bool); // undefined
     pub fn set_fits_cm(&mut self, comment: &str, overwrite: bool); // comment card
     pub fn test_fits(&self, name: &str) -> (bool, bool); // (exists, has_value)
-    
+
     // Configuration
     pub fn set_encoding(&mut self, enc: Encoding);
     pub fn encoding(&self) -> Encoding;

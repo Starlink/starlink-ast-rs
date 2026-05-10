@@ -142,11 +142,11 @@ impl CardList {
     pub fn new() -> Self;
     pub fn len(&self) -> usize;
     pub fn is_empty(&self) -> bool;
-    
+
     // Insertion
     pub fn push(&mut self, card: FitsCard);
     pub fn put(&mut self, card: FitsCard, overwrite: bool);
-    
+
     // Search
     pub fn find(&self, keyword: &str) -> Option<&FitsCard>;
     pub fn find_next(&mut self, keyword: &str) -> Option<&FitsCard>;
@@ -154,18 +154,18 @@ impl CardList {
     pub fn get_float(&self, keyword: &str) -> Option<f64>;
     pub fn get_string(&self, keyword: &str) -> Option<&str>;
     pub fn get_logical(&self, keyword: &str) -> Option<bool>;
-    
+
     // Deletion
     pub fn delete(&mut self, keyword: &str) -> bool;
     pub fn delete_at_position(&mut self) -> bool;
     pub fn clear(&mut self);
-    
+
     // Position/iteration
     pub fn rewind(&mut self);
     pub fn position(&self) -> usize;
     pub fn set_position(&mut self, pos: usize);
     pub fn at_eof(&self) -> bool;
-    
+
     // Iteration
     pub fn iter(&self) -> impl Iterator<Item = &FitsCard>;
     pub fn cards(&self) -> &[FitsCard];
@@ -299,14 +299,14 @@ pub struct FitsChan {
 impl FitsChan {
     pub fn new() -> Self;
     pub fn from_header(text: &str) -> AstResult<Self>;
-    
+
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()>;
     pub fn put_cards(&mut self, cards: &str) -> AstResult<()>;
     pub fn find_fits(&mut self, name: &str, inc: bool) -> Option<String>;
     pub fn del_fits(&mut self) -> AstResult<()>;
     pub fn empty_fits(&mut self);
     pub fn ncard(&self) -> usize;
-    
+
     pub fn get_fits_i(&self, name: &str) -> Option<i64>;
     pub fn get_fits_f(&self, name: &str) -> Option<f64>;
     pub fn get_fits_s(&self, name: &str) -> Option<String>;
@@ -315,7 +315,7 @@ impl FitsChan {
     pub fn set_fits_f(&mut self, name: &str, value: f64, comment: &str, overwrite: bool);
     pub fn set_fits_s(&mut self, name: &str, value: &str, comment: &str, overwrite: bool);
     pub fn set_fits_l(&mut self, name: &str, value: bool, comment: &str, overwrite: bool);
-    
+
     pub fn set_encoding(&mut self, enc: Encoding);
     pub fn encoding(&self) -> Encoding;
     pub fn set_fits_digits(&mut self, digits: usize);
@@ -337,7 +337,7 @@ impl Channel for FitsChan {
                 "FITS-WCS read not yet implemented"))
         }
     }
-    
+
     fn write(&mut self, obj: &AnyObject) -> AstResult<()> {
         match self.encoding {
             Encoding::Native => {
@@ -348,7 +348,7 @@ impl Channel for FitsChan {
                 "FITS-WCS write not yet implemented"))
         }
     }
-    
+
     fn warnings(&self) -> &[String] { &self.warnings }
     fn config(&self) -> &ChannelConfig { &self.config }
     fn config_mut(&mut self) -> &mut ChannelConfig { &mut self.config }
