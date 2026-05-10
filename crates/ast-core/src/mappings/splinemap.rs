@@ -365,16 +365,14 @@ impl SplineMap {
         if ideriv != km1 {
             let ip1 = i + 1;
             let kpk = k + k;
-            let mut j1 = k;
-            let mut j2 = kpk;
 
-            for j in 1..=kmider {
+            for (jj, j) in (1..=kmider).enumerate() {
+                let j1 = k + jj;
+                let j2 = kpk + jj;
                 let ipj = i + j;
                 work[j1] = t[ipj] - x;
                 let ip1mj = ip1 - j;
                 work[j2] = x - t[ip1mj];
-                j1 += 1;
-                j2 += 1;
             }
 
             let iderp1 = ideriv + 1;
