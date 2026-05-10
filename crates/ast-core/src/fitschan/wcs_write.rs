@@ -64,8 +64,15 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
 
-    // Get the base→current mapping (pixel→world).
-    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    // Get the base→current mapping (pixel→world) and simplify. The C
+    // library's CelestialAxes (fitschan.c ~line 5093) calls astSimplify
+    // before doing anything else, which collapses redundant
+    // forward/inverse pairs and merges adjacent linear maps. Doing the
+    // same here keeps subsequent numerical Jacobians from accumulating
+    // floating-point noise across cancellable mapping steps.
+    let mapping = fs
+        .mapping(FrameRef::Base, FrameRef::Current)?
+        .simplify()?;
 
     // First-pass extraction via the pre-WcsMap chain. This gives a CRPIX
     // estimate and lets us evaluate CRVAL on the full pixel→world
@@ -84,35 +91,81 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
 
     // For celestial frames, follow the C library's recipe (fitschan.c
     // CelestialAxes ~5206 + MakeIntWorld): build the full WCS→IWC
-    // mapping from CRVAL/LONPOLE and compose with pixel→WCS to obtain
-    // pixel→IWC. Decomposing that gives the FITS-correct CD matrix —
-    // including any small rotation contributed by the post-WcsMap
-    // chain (e.g. timj's FK4→FK5 SlaMap, which the pre-WcsMap path
-    // misses entirely).
+    // mapping and compose with pixel→WCS to obtain pixel→IWC.
+    // Decomposing that gives the FITS-correct CD matrix — including any
+    // small rotation contributed by the post-WcsMap chain (e.g. timj's
+    // FK4→FK5 SlaMap, which the pre-WcsMap path misses entirely).
+    //
+    // The C library reuses the FrameSet's own post-WcsMap chain rather
+    // than reconstructing WcsNative from CRVAL — that's how it ends up
+    // with bit-exact cancellation through astSimplify. We do the same:
+    // split the mapping into (pre, post) around the WcsMap and build
+    // WCS→IWC as the inverse of `(WcsMap_inverted ∘ post_chain)`.
+    // Because the same `post_chain` object appears on both sides of
+    // the composition, simplify cancels them exactly, leaving only the
+    // linear pre-WcsMap chain (plus any non-cancellable residue, like
+    // timj's SlaMap, which is the genuine extra rotation FITS needs to
+    // capture in CD).
+    //
+    // CRVAL for the celestial axes comes from the same post chain at
+    // the WcsMap's native fiducial point (mirrors GetFiducialWCS at
+    // fitschan.c ~12823). This gives a CRVAL bit-exact to what the
+    // FrameSet was built around, rather than re-evaluating through
+    // numerical Jacobian on the full pixel→world chain.
     //
     // Linear-only / non-celestial frames keep the pre-WcsMap path.
+    let mut cel_crval: Option<Vec<f64>> = None;
     let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(fs) {
-        match build_pixel_to_iwc(
-            mapping.as_ref(),
-            &sky,
-            &full_decomp.crval,
-            lon_axis,
-            lat_axis,
-            projection,
-        ) {
-            Ok(pixel_iwc) => {
-                let iwc_decomp = decompose_linear(pixel_iwc.as_ref(), naxis, &g0)?;
-                if let Some(c) = solve_crpix_from_decomp(&iwc_decomp.cd, &iwc_decomp.crval, &g0) {
-                    crpix = c;
-                    full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
+        let parts = projection.and_then(|p| {
+            split_around_wcsmap(mapping.as_ref()).map(|(_, post)| (p, post))
+        });
+        match parts {
+            Some((proj, post)) => {
+                let fiducial = fiducial_crval(post.as_ref(), proj, &full_decomp.crval, naxis);
+                let crval_for_iwc = fiducial.as_ref().unwrap_or(&full_decomp.crval);
+                match build_pixel_to_iwc(
+                    mapping.as_ref(),
+                    &sky,
+                    crval_for_iwc,
+                    lon_axis,
+                    lat_axis,
+                    Some(proj),
+                ) {
+                    Ok(pixel_iwc) => {
+                        // Simplify before extracting the Jacobian (the C
+                        // library's MakeIntWorld at fitschan.c ~21858 does
+                        // the same). With the FrameSet's own post chain on
+                        // both sides of the composition, simplify reduces
+                        // the redundant rotation pair to a UnitMap exactly,
+                        // leaving the linear pre-WcsMap CD matrix.
+                        let pixel_iwc = pixel_iwc.simplify().unwrap_or(pixel_iwc);
+                        let iwc_decomp = decompose_linear(pixel_iwc.as_ref(), naxis, &g0)?;
+                        if let Some(c) =
+                            solve_crpix_from_decomp(&iwc_decomp.cd, &iwc_decomp.crval, &g0)
+                        {
+                            crpix = c;
+                            full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
+                        }
+                        cel_crval = fiducial;
+                        iwc_decomp
+                    }
+                    Err(_) => pre_decomp,
                 }
-                iwc_decomp
             }
-            Err(_) => pre_decomp,
+            None => pre_decomp,
         }
     } else {
         pre_decomp
     };
+
+    // For celestial frames, swap the numerically-evaluated CRVAL for
+    // the fiducial-point CRVAL extracted via the post chain. Other
+    // axes keep their numerical-Jacobian values.
+    let mut crval_for_store = full_decomp.crval.clone();
+    if let (Some(fid), Some((_, lon_axis, lat_axis))) = (cel_crval, celestial_axes(fs)) {
+        crval_for_store[lon_axis] = fid[lon_axis];
+        crval_for_store[lat_axis] = fid[lat_axis];
+    }
 
     // Store CRPIX.
     for i in 0..naxis {
@@ -130,9 +183,65 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     }
 
     // Identify axis types from the current frame and populate CTYPE/CRVAL.
-    identify_axes(fs, &full_decomp.crval, &mut store, projection)?;
+    identify_axes(fs, &crval_for_store, &mut store, projection)?;
 
     Ok(store)
+}
+
+/// Compute the celestial coordinate at the WcsMap's native fiducial
+/// point by transforming through the post-WcsMap chain.
+///
+/// Returns `None` if the post chain transform fails or the output isn't
+/// well-formed. The result is in the SkyFrame's native units (radians).
+/// Mirrors fitschan.c's `GetFiducialWCS` — extracting CRVAL this way
+/// avoids the floating-point drift of a numerical-Jacobian evaluation
+/// on the full pixel→world mapping, so reconstructing WcsNative from
+/// the returned CRVAL yields a matrix that exactly cancels the
+/// FrameSet's WcsNative under simplification.
+///
+/// `template_crval` supplies values for any non-celestial axes the
+/// post chain may consume — only its first two slots get rewritten
+/// with the fiducial native (φ₀, θ₀) before the transform.
+fn fiducial_crval(
+    post_mapping: &dyn Mapping,
+    projection: WcsProjection,
+    template_crval: &[f64],
+    naxis: usize,
+) -> Option<Vec<f64>> {
+    use crate::coords::PointSet;
+
+    let wcsmap = WcsMap::new(2, projection, 1, 2).ok()?;
+    let phi0 = wcsmap.nat_lon();
+    let theta0 = wcsmap.nat_lat();
+
+    // The post chain's input dimensionality matches the WcsMap output
+    // dimensionality; it's at most `naxis`. We feed the fiducial native
+    // (φ₀, θ₀) into the celestial slots and use the template values for
+    // any extras. For pure-2D celestial frames the template isn't
+    // consulted because nin == 2.
+    let nin = post_mapping.nin();
+    if nin == 0 || template_crval.len() < naxis {
+        return None;
+    }
+    let mut input = vec![0.0_f64; nin];
+    input[0] = phi0;
+    if nin >= 2 {
+        input[1] = theta0;
+    }
+    for i in 2..nin.min(template_crval.len()) {
+        input[i] = template_crval[i];
+    }
+
+    let pts = PointSet::from_rows(std::iter::once(input));
+    let out = post_mapping.transform(&pts, true).ok()?;
+    if out.npoint() == 0 {
+        return None;
+    }
+    let result = out.point(0).to_vec();
+    if result.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    Some(result)
 }
 
 /// Find the SkyFrame and its (lon_axis, lat_axis) within a FrameSet's
@@ -154,20 +263,20 @@ fn celestial_axes(fs: &FrameSet) -> Option<(SkyFrame, usize, usize)> {
     None
 }
 
-/// Compose pixel→world with WCS→IWC to obtain pixel→IWC for a celestial
-/// frame.
+/// Compose pixel→world with WCS→IWC to obtain pixel→IWC.
 ///
 /// Mirrors the C library (fitschan.c CelestialAxes ~5206): build
-///   IWC→WCS = WcsMap_inverted (forward = projected→native)
-///           ∘ WcsNative (forward = native→celestial)
-/// then invert the composed mapping to get WCS→IWC. Composing pixel→WCS
-/// with WCS→IWC produces a pixel→IWC mapping whose Jacobian gives the
-/// FITS-correct CD matrix.
+///   IWC→WCS = WcsMap_inverted (projected→native)
+///           ∘ WcsNative (native→celestial, rebuilt from CRVAL)
+/// then invert. We deliberately *rebuild* WcsNative from CRVAL rather
+/// than reusing the FrameSet's post chain — using the FrameSet's chain
+/// would cancel any extra rotations baked into the post chain (timj's
+/// FK4→FK5 SlaMap), but those are precisely what FITS needs to capture
+/// in the off-diagonal CD entries. Rebuilding from CRVAL means the
+/// WcsNative pair cancels exactly only when the post chain is *just*
+/// WcsNative; any extra rotations remain visible in the Jacobian.
 ///
-/// Restricted to the pure-2D celestial case for now — mixed
-/// celestial+spectral / permuted-axis frames need extra PermMap plumbing
-/// (the C library's `wperm`) we haven't replicated yet. Returns an error
-/// for unsupported shapes; the caller falls back to the pre-WcsMap chain.
+/// Restricted to the pure-2D celestial case for now.
 fn build_pixel_to_iwc(
     mapping: &dyn Mapping,
     sky: &SkyFrame,
@@ -190,8 +299,6 @@ fn build_pixel_to_iwc(
         )
     })?;
 
-    // CRVAL/LONPOLE in radians. SkyFrame stores celestial values in
-    // radians; LONPOLE defaults to 180° for zenithal projections.
     let crval_lon = crval_world[lon_axis];
     let crval_lat = crval_world[lat_axis];
     let lonpole = std::f64::consts::PI;
@@ -213,12 +320,10 @@ fn build_pixel_to_iwc(
     wcs_to_iwc.invert();
 
     // pixel→IWC = pixel→WCS ∘ WCS→IWC.
-    let pixel_to_iwc = CmpMap::new(mapping.clone_box(), Box::new(wcs_to_iwc), Composition::Series)?;
+    let pixel_to_iwc =
+        CmpMap::new(mapping.clone_box(), Box::new(wcs_to_iwc), Composition::Series)?;
 
-    // `sky` parameter retained for future LATPOLE / SkyRef support;
-    // the simple zenithal default does not consult it yet.
     let _ = sky;
-
     Ok(Box::new(pixel_to_iwc))
 }
 
@@ -267,54 +372,84 @@ fn solve_crpix_from_decomp(cd: &ndarray::Array2<f64>, w0: &[f64], g0: &[f64]) ->
 /// CmpFrame mixing sky+spec axes) is handled because the WcsMap appears
 /// inside one of the series components in practice.
 fn split_pre_wcsmap(mapping: &dyn Mapping) -> Option<DynMapping> {
-    let mut acc: Vec<DynMapping> = Vec::new();
-    if walk_pre_wcsmap(mapping, &mut acc) && !acc.is_empty() {
-        compose_series(acc).ok()
+    let mut pre: Vec<DynMapping> = Vec::new();
+    let mut post: Vec<DynMapping> = Vec::new();
+    let mut found = false;
+    walk_split_wcsmap(mapping, &mut pre, &mut post, &mut found);
+    if found && !pre.is_empty() {
+        compose_series(pre).ok()
     } else {
         None
     }
 }
 
-/// Walk the mapping in execution order, accumulating components in `acc`
-/// until the first WcsMap is hit. Returns true if a WcsMap was found
-/// (and `acc` holds the chain that leads up to it); false if the subtree
-/// contained no WcsMap.
-fn walk_pre_wcsmap(mapping: &dyn Mapping, acc: &mut Vec<DynMapping>) -> bool {
+/// Split the pixel→world mapping at the first [`WcsMap`] and return both
+/// the pre-WcsMap (pixel→WcsMap input) chain and the post-WcsMap
+/// (WcsMap output→world) chain.
+///
+/// The WcsMap itself is not included in either chain. Returns `None` if
+/// no WcsMap is present, or if the chain on either side is empty (which
+/// shouldn't happen in practice for a well-formed celestial mapping).
+///
+/// Used to compute the fiducial CRVAL: transform the WcsMap's native
+/// fiducial native point (e.g. `(0, π/2)` for zenithal projections)
+/// through the post chain to get the exact celestial coordinate the
+/// FrameSet was built around. Mirrors the C library's `GetFiducialWCS`
+/// approach (fitschan.c ~line 12823) which avoids the floating-point
+/// drift that a numerical-Jacobian extraction would introduce.
+fn split_around_wcsmap(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping)> {
+    let mut pre: Vec<DynMapping> = Vec::new();
+    let mut post: Vec<DynMapping> = Vec::new();
+    let mut found = false;
+    walk_split_wcsmap(mapping, &mut pre, &mut post, &mut found);
+    if !found {
+        return None;
+    }
+    let pre_chain = if pre.is_empty() {
+        None
+    } else {
+        compose_series(pre).ok()
+    }?;
+    let post_chain = if post.is_empty() {
+        None
+    } else {
+        compose_series(post).ok()
+    }?;
+    Some((pre_chain, post_chain))
+}
+
+/// Walk the mapping in execution order, accumulating components into
+/// `pre` (everything before the first WcsMap) and `post` (everything
+/// after it). The WcsMap itself is omitted from both chains. Sets
+/// `*found = true` once the WcsMap is encountered; further components
+/// then accumulate into `post`.
+fn walk_split_wcsmap(
+    mapping: &dyn Mapping,
+    pre: &mut Vec<DynMapping>,
+    post: &mut Vec<DynMapping>,
+    found: &mut bool,
+) {
     if mapping.as_any().downcast_ref::<WcsMap>().is_some() {
-        return true;
+        *found = true;
+        return;
     }
     if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
         if cmp.composition() == Composition::Series {
-            // Series: try the first component (applied first to pixel coords).
-            let mut first_acc: Vec<DynMapping> = Vec::new();
-            if walk_pre_wcsmap(cmp.first(), &mut first_acc) {
-                // WcsMap is inside `first`. The pre-WcsMap chain is the
-                // partial chain we accumulated inside the recursive call;
-                // anything in `second` happens *after* the WcsMap so we
-                // discard it.
-                acc.extend(first_acc);
-                return true;
-            }
-            // First contains no WcsMap → it's entirely pre-WcsMap.
-            acc.push(cmp.first().clone_box());
-            // Now look in second.
-            let mut second_acc: Vec<DynMapping> = Vec::new();
-            if walk_pre_wcsmap(cmp.second(), &mut second_acc) {
-                acc.extend(second_acc);
-                return true;
-            }
-            // Neither half contained a WcsMap. Roll back the speculative
-            // push so the caller can decide what to do.
-            acc.pop();
-            return false;
+            walk_split_wcsmap(cmp.first(), pre, post, found);
+            walk_split_wcsmap(cmp.second(), pre, post, found);
+            return;
         }
-        // Parallel composition: a WcsMap living inside one branch is
-        // independent of the other axes, but the linear extraction needs
-        // both branches treated together. Don't split parallel CmpMaps;
-        // let the caller fall back to the full mapping.
-        return false;
+        // Parallel composition isn't handled here — the caller falls
+        // back to the pre-WcsMap chain.
+        return;
     }
-    false
+    // Leaf mapping (not a WcsMap and not a Series CmpMap): goes into
+    // pre or post depending on whether we've passed the WcsMap.
+    if *found {
+        post.push(mapping.clone_box());
+    } else {
+        pre.push(mapping.clone_box());
+    }
 }
 
 /// Compose a non-empty list of mappings in series order.
