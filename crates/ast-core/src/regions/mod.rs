@@ -9,7 +9,11 @@
 pub(crate) mod data;
 
 mod circle;
+mod interval;
+mod nullregion;
 pub use circle::{Circle, CircleBuilder};
+pub use interval::{Interval, IntervalBuilder};
+pub use nullregion::{NullRegion, NullRegionBuilder};
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
