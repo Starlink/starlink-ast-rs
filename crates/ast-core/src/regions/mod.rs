@@ -173,6 +173,17 @@ pub trait Region: Frame + Mapping {
     /// The number of points is approximately [`mesh_size()`](Region::mesh_size).
     fn get_region_mesh(&self) -> AstResult<PointSet>;
 
+    /// Get a grid of points filling the interior of this region.
+    ///
+    /// Returns approximately `npoints` points spread through the volume of
+    /// this region in the base frame. Used by compound regions (e.g. Prism)
+    /// to build cross-product meshes.
+    ///
+    /// The default implementation generates a regular grid in the bounding box
+    /// and filters to keep only interior points. Returns an empty Vec for
+    /// unbounded regions.
+    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>>;
+
     /// Get the defining points of this region in the base frame.
     ///
     /// The meaning depends on the concrete region type (e.g., centre +

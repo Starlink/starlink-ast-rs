@@ -197,6 +197,11 @@ impl Region for NullRegion {
         Ok(PointSet::from_rows(std::iter::once(bad_point.as_slice())))
     }
 
+    fn get_region_grid(&self, _npoints: usize) -> AstResult<Vec<Vec<f64>>> {
+        // NullRegion has no interior points.
+        Ok(Vec::new())
+    }
+
     fn get_region_points(&self) -> AstResult<PointSet> {
         // No defining points.
         let naxes = self.data.frameset.base().naxes();

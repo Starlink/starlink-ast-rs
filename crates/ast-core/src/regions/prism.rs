@@ -198,55 +198,78 @@ impl RegionGeometry for Prism {
         let naxes2 = self.naxes2();
 
         // The boundary of a Prism is:
-        //   (boundary of region1 × interior of region2)
-        //   ∪ (interior of region1 × boundary of region2)
+        //   (interior of region1 × boundary of region2)  — "end caps"
+        //   ∪ (boundary of region1 × interior of region2) — "side walls"
         //
-        // The C library uses a full interior grid for each sub-region,
-        // but we don't have RegGrid yet. As a practical approximation,
-        // we use the centre of each sub-region as the interior
-        // representative. This gives boundary points at:
-        //   - Each mesh point of region1, extended with region2's centre
-        //   - Region1's centre, extended with each mesh point of region2
-        //
-        // This produces a valid boundary mesh (all points are on the Prism
-        // surface) though less dense than the full C implementation.
+        // Following the C library (prism.c RegBaseMesh): we split the Prism's
+        // mesh_size budget between end caps and side walls, get boundary meshes
+        // and interior grids for both sub-regions, then form the cross products.
+
+        let mszp = self.data.mesh_size;
+
+        // Compute mesh/grid sizes for each component region.
+        // For 1-D regions the mesh is always 2 points (lower + upper bound).
+        let msz1 = if naxes1 == 1 {
+            2
+        } else {
+            (0.5 * mszp as f64).sqrt() as usize
+        };
+        let gsz2 = (0.5 * mszp as f64) as usize / msz1.max(1);
+
+        let msz2 = if naxes2 == 1 {
+            2
+        } else {
+            (0.5 * mszp as f64).sqrt() as usize
+        };
+        let gsz1 = (0.5 * mszp as f64) as usize / msz2.max(1);
 
         // Get boundary meshes from both sub-regions.
+        // Use get_region_mesh which uses the sub-region's own mesh_size.
         let mesh1 = self.region1.get_region_mesh()?;
         let mesh2 = self.region2.get_region_mesh()?;
 
-        // Get centres of both sub-regions.
-        let (centre1, _) = self.region1.get_region_disc()?;
-        let (centre2, _) = self.region2.get_region_disc()?;
+        // Get interior grids for both sub-regions using the computed sizes.
+        let grid1 = self.region1.get_region_grid(gsz1)?;
+        let grid2 = self.region2.get_region_grid(gsz2)?;
 
-        let mut result = Vec::new();
+        let actual_msz1 = mesh1.npoint();
+        let actual_gsz1 = grid1.len();
+        let actual_msz2 = mesh2.npoint();
+        let actual_gsz2 = grid2.len();
 
-        // Part 1: boundary of region1 × centre of region2
-        // Each mesh1 point extended with region2's centre coordinates.
-        for i in 0..mesh1.npoint() {
-            let p1 = mesh1.point(i);
-            // Skip BAD points.
-            if p1[..naxes1].iter().any(|&v| is_bad(v)) {
-                continue;
-            }
-            let mut point = Vec::with_capacity(naxes1 + naxes2);
-            point.extend_from_slice(&p1[..naxes1]);
-            point.extend_from_slice(&centre2[..naxes2]);
-            result.push(point);
-        }
+        let total = actual_gsz1 * actual_msz2 + actual_msz1 * actual_gsz2;
+        let mut result = Vec::with_capacity(total);
 
-        // Part 2: centre of region1 × boundary of region2
-        // Region1's centre extended with each mesh2 point.
-        for i in 0..mesh2.npoint() {
+        // End caps: grid1 × mesh2
+        // Replicate the interior grid of region1 at every boundary point
+        // of region2.
+        for i in 0..actual_msz2 {
             let p2 = mesh2.point(i);
-            // Skip BAD points.
             if p2[..naxes2].iter().any(|&v| is_bad(v)) {
                 continue;
             }
-            let mut point = Vec::with_capacity(naxes1 + naxes2);
-            point.extend_from_slice(&centre1[..naxes1]);
-            point.extend_from_slice(&p2[..naxes2]);
-            result.push(point);
+            for grid1_point in &grid1 {
+                let mut point = Vec::with_capacity(naxes1 + naxes2);
+                point.extend_from_slice(&grid1_point[..naxes1]);
+                point.extend_from_slice(&p2[..naxes2]);
+                result.push(point);
+            }
+        }
+
+        // Side walls: mesh1 × grid2
+        // Replicate the interior grid of region2 at every boundary point
+        // of region1.
+        for i in 0..actual_msz1 {
+            let p1 = mesh1.point(i);
+            if p1[..naxes1].iter().any(|&v| is_bad(v)) {
+                continue;
+            }
+            for grid2_point in &grid2 {
+                let mut point = Vec::with_capacity(naxes1 + naxes2);
+                point.extend_from_slice(&p1[..naxes1]);
+                point.extend_from_slice(&grid2_point[..naxes2]);
+                result.push(point);
+            }
         }
 
         Ok(result)
@@ -424,6 +447,10 @@ impl Region for Prism {
         *self.data.cached_base_mesh.borrow_mut() = Some(mesh);
 
         Ok(result)
+    }
+
+    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
+        self.reg_base_grid(npoints)
     }
 
     fn get_region_points(&self) -> AstResult<PointSet> {

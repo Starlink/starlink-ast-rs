@@ -128,6 +128,9 @@ impl Region for DummyRegion {
     fn get_region_mesh(&self) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
+    fn get_region_grid(&self, _npoints: usize) -> AstResult<Vec<Vec<f64>>> {
+        Ok(Vec::new())
+    }
     fn get_region_points(&self) -> AstResult<PointSet> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

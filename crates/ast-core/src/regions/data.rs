@@ -156,6 +156,78 @@ pub(crate) trait RegionGeometry {
     /// `map_region`). The implementation should transform `self.points`
     /// through the given mapping and update any derived quantities.
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()>;
+
+    /// Return a grid of points spread through the interior of the region.
+    ///
+    /// The default implementation generates a regular grid in the bounding box,
+    /// then filters to keep only points inside the region. The `npoints`
+    /// parameter is the approximate target number of interior points; the actual
+    /// count may differ since grid points outside the region are discarded.
+    ///
+    /// For bounded regions only. Returns an empty Vec for unbounded regions.
+    fn reg_base_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
+        // Get the bounding box.
+        let (lbnd, ubnd) = self.reg_base_box()?;
+        let naxes = lbnd.len();
+
+        // Check all axes are bounded.
+        for i in 0..naxes {
+            if is_bad(lbnd[i]) || is_bad(ubnd[i]) {
+                return Ok(Vec::new());
+            }
+        }
+
+        let npoints = npoints.max(1);
+
+        // Compute number of ticks per axis: ntick = npoints^(1/naxes), at least 2.
+        let ntick_per_axis = (npoints as f64).powf(1.0 / naxes as f64).round() as usize;
+        let ntick_per_axis = ntick_per_axis.max(2);
+
+        // Total grid points.
+        let total = ntick_per_axis.pow(naxes as u32);
+
+        // Generate the regular grid filling the bounding box.
+        let mut grid = Vec::with_capacity(total);
+
+        // Compute step sizes.
+        let steps: Vec<f64> = (0..naxes)
+            .map(|i| (ubnd[i] - lbnd[i]) / (ntick_per_axis - 1).max(1) as f64)
+            .collect();
+
+        // Iterate through all grid positions using multi-index.
+        let mut indices = vec![0usize; naxes];
+        for _ in 0..total {
+            // Build point from current indices.
+            let point: Vec<f64> = (0..naxes)
+                .map(|ax| lbnd[ax] + indices[ax] as f64 * steps[ax])
+                .collect();
+            grid.push(point);
+
+            // Advance multi-index (odometer style).
+            let mut ax = 0;
+            while ax < naxes {
+                indices[ax] += 1;
+                if indices[ax] >= ntick_per_axis {
+                    indices[ax] = 0;
+                    ax += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Filter: keep only points inside the region.
+        let pts = PointSet::from_rows(grid.iter().map(|p| p.as_slice()));
+        let inside = self.reg_pins(&pts)?;
+
+        let result: Vec<Vec<f64>> = grid
+            .into_iter()
+            .zip(inside)
+            .filter_map(|(p, is_in)| if is_in { Some(p) } else { None })
+            .collect();
+
+        Ok(result)
+    }
 }
 
 /// Apply a frame-attribute mutation to a Region with integrity enforcement.

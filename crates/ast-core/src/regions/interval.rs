@@ -454,6 +454,10 @@ impl Region for Interval {
         Ok(result)
     }
 
+    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
+        self.reg_base_grid(npoints)
+    }
+
     fn get_region_points(&self) -> AstResult<PointSet> {
         Ok(PointSet::from_rows(
             self.data.points.iter().map(|p| p.as_slice()),

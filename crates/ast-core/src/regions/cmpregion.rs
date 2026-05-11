@@ -553,6 +553,10 @@ impl Region for CmpRegion {
         Ok(result)
     }
 
+    fn get_region_grid(&self, npoints: usize) -> AstResult<Vec<Vec<f64>>> {
+        self.reg_base_grid(npoints)
+    }
+
     fn get_region_points(&self) -> AstResult<PointSet> {
         // CmpRegion has no defining points of its own.
         let naxes = self.data.frameset.base().naxes();
