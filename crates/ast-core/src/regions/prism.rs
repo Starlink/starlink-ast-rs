@@ -194,11 +194,62 @@ impl RegionGeometry for Prism {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        // For the initial implementation, return an empty mesh.
-        // A full implementation would combine boundary meshes from both
-        // sub-regions (e.g., mesh1 extruded through interior of region2,
-        // and interior of region1 crossed with mesh2).
-        Ok(Vec::new())
+        let naxes1 = self.naxes1();
+        let naxes2 = self.naxes2();
+
+        // The boundary of a Prism is:
+        //   (boundary of region1 × interior of region2)
+        //   ∪ (interior of region1 × boundary of region2)
+        //
+        // The C library uses a full interior grid for each sub-region,
+        // but we don't have RegGrid yet. As a practical approximation,
+        // we use the centre of each sub-region as the interior
+        // representative. This gives boundary points at:
+        //   - Each mesh point of region1, extended with region2's centre
+        //   - Region1's centre, extended with each mesh point of region2
+        //
+        // This produces a valid boundary mesh (all points are on the Prism
+        // surface) though less dense than the full C implementation.
+
+        // Get boundary meshes from both sub-regions.
+        let mesh1 = self.region1.get_region_mesh()?;
+        let mesh2 = self.region2.get_region_mesh()?;
+
+        // Get centres of both sub-regions.
+        let (centre1, _) = self.region1.get_region_disc()?;
+        let (centre2, _) = self.region2.get_region_disc()?;
+
+        let mut result = Vec::new();
+
+        // Part 1: boundary of region1 × centre of region2
+        // Each mesh1 point extended with region2's centre coordinates.
+        for i in 0..mesh1.npoint() {
+            let p1 = mesh1.point(i);
+            // Skip BAD points.
+            if p1[..naxes1].iter().any(|&v| is_bad(v)) {
+                continue;
+            }
+            let mut point = Vec::with_capacity(naxes1 + naxes2);
+            point.extend_from_slice(&p1[..naxes1]);
+            point.extend_from_slice(&centre2[..naxes2]);
+            result.push(point);
+        }
+
+        // Part 2: centre of region1 × boundary of region2
+        // Region1's centre extended with each mesh2 point.
+        for i in 0..mesh2.npoint() {
+            let p2 = mesh2.point(i);
+            // Skip BAD points.
+            if p2[..naxes2].iter().any(|&v| is_bad(v)) {
+                continue;
+            }
+            let mut point = Vec::with_capacity(naxes1 + naxes2);
+            point.extend_from_slice(&centre1[..naxes1]);
+            point.extend_from_slice(&p2[..naxes2]);
+            result.push(point);
+        }
+
+        Ok(result)
     }
 
     fn reg_centre(&self) -> AstResult<Vec<f64>> {

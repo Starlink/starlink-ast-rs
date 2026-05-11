@@ -286,10 +286,70 @@ impl RegionGeometry for CmpRegion {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        // For the initial implementation, return an empty mesh.
-        // The full implementation (Task 12: Overlap) will use the sub-region
-        // meshes directly, filtering by the other component.
-        Ok(Vec::new())
+        let naxes = self.data.frameset.base().naxes();
+
+        // Get boundary meshes from both sub-regions. The sub-regions' current
+        // frame = CmpRegion's base frame, so mesh points are already in the
+        // correct coordinate system.
+        let mesh1 = self.region1.get_region_mesh()?;
+        let mesh2 = self.region2.get_region_mesh()?;
+
+        // For AND (intersection): boundary of the intersection consists of
+        // boundary points of region1 that lie inside region2, plus boundary
+        // points of region2 that lie inside region1.
+        //
+        // For OR (union): boundary of the union consists of boundary points
+        // of region1 that lie OUTSIDE region2, plus boundary points of
+        // region2 that lie OUTSIDE region1.
+        //
+        // The C library achieves this by using regions as mappings:
+        // forward-transform passes interior points through, sets exterior to BAD.
+        // For OR it temporarily negates the regions (so "inside" becomes "outside").
+
+        // Use the region transform to filter mesh points.
+        // For AND: transform mesh1 through region2 (keeps points inside region2)
+        //          transform mesh2 through region1 (keeps points inside region1)
+        // For OR:  negate and transform (keeps points outside the other region)
+
+        let (filtered1, filtered2) = match self.operator {
+            CmpOperator::And => {
+                // Transform mesh1 through region2: keeps mesh1 points inside region2
+                let f1 = self.region2.transform(&mesh1, true)?;
+                // Transform mesh2 through region1: keeps mesh2 points inside region1
+                let f2 = self.region1.transform(&mesh2, true)?;
+                (f1, f2)
+            }
+            CmpOperator::Or => {
+                // For OR we need points OUTSIDE the other region.
+                // Use negated copies so the transform keeps exterior points.
+                let neg1 = self.region1.negated_copy();
+                let neg2 = self.region2.negated_copy();
+                // Transform mesh1 through negated region2: keeps mesh1 points outside region2
+                let f1 = neg2.transform(&mesh1, true)?;
+                // Transform mesh2 through negated region1: keeps mesh2 points outside region1
+                let f2 = neg1.transform(&mesh2, true)?;
+                (f1, f2)
+            }
+        };
+
+        // Collect all non-BAD points from both filtered meshes.
+        let mut result = Vec::new();
+
+        for i in 0..filtered1.npoint() {
+            let point = filtered1.point(i);
+            if !point[..naxes].iter().any(|&v| is_bad(v)) {
+                result.push(point[..naxes].to_vec());
+            }
+        }
+
+        for i in 0..filtered2.npoint() {
+            let point = filtered2.point(i);
+            if !point[..naxes].iter().any(|&v| is_bad(v)) {
+                result.push(point[..naxes].to_vec());
+            }
+        }
+
+        Ok(result)
     }
 
     fn reg_centre(&self) -> AstResult<Vec<f64>> {

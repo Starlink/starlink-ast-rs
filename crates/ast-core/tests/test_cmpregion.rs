@@ -533,6 +533,156 @@ fn from_dyn_builder() {
     assert!(!cmp.point_in_region(&[2.0, 0.0]).unwrap());
 }
 
+// ---- Mesh generation ----
+
+#[test]
+fn and_mesh_is_nonempty_and_on_boundary() {
+    // Intersection of a circle (radius 5) and a box [-3,3]x[-3,3].
+    // The mesh should contain points that are on the boundary of the
+    // intersection: circle boundary inside the box, OR box boundary
+    // inside the circle.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+    let bx = BoxRegionBuilder::new(frame, vec![0.0, 0.0], vec![3.0, 3.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(circle, bx, CmpOperator::And)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = cmp.get_region_mesh().unwrap();
+    let npoint = mesh.npoint();
+
+    // Mesh should not be empty.
+    assert!(npoint > 0, "AND mesh should be non-empty");
+
+    // All mesh points should have 2 coordinates and no BAD values.
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        assert_eq!(p.len(), 2);
+        assert!(p[0] != BAD_VALUE && p[1] != BAD_VALUE);
+    }
+
+    // Mesh points should lie on the boundary of the intersection.
+    // For the AND of circle(r=5) and box([-3,3]x[-3,3]):
+    // - Points from the circle mesh that are inside the box (|x|<=3 && |y|<=3)
+    // - Points from the box mesh that are inside the circle (x^2+y^2<=25)
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        let x = p[0];
+        let y = p[1];
+        let dist_sq = x * x + y * y;
+        let in_circle = dist_sq <= 25.0 + 1e-6;
+        let in_box = x.abs() <= 3.0 + 1e-6 && y.abs() <= 3.0 + 1e-6;
+        // Each mesh point should be inside both regions (on the boundary
+        // of one and inside the other).
+        assert!(
+            in_circle && in_box,
+            "Mesh point ({}, {}) should be inside both regions",
+            x,
+            y
+        );
+    }
+}
+
+#[test]
+fn or_mesh_is_nonempty_and_on_boundary() {
+    // Union of two separated circles. The mesh should contain points
+    // on the boundary of each circle that are OUTSIDE the other circle.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let c1 = CircleBuilder::new(frame.clone(), vec![-5.0, 0.0])
+        .unwrap()
+        .radius(2.0)
+        .build()
+        .unwrap();
+    let c2 = CircleBuilder::new(frame, vec![5.0, 0.0])
+        .unwrap()
+        .radius(2.0)
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(c1, c2, CmpOperator::Or)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = cmp.get_region_mesh().unwrap();
+    let npoint = mesh.npoint();
+
+    // Mesh should not be empty.
+    assert!(npoint > 0, "OR mesh should be non-empty");
+
+    // All mesh points should be on the boundary of the union:
+    // boundary of c1 outside c2, or boundary of c2 outside c1.
+    // Since these circles don't overlap, all boundary points of both
+    // should appear in the mesh.
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        assert_eq!(p.len(), 2);
+        assert!(p[0] != BAD_VALUE && p[1] != BAD_VALUE);
+    }
+
+    // For two separated circles, the mesh should contain points from
+    // both circles' boundaries. Check we have points on both sides.
+    let has_left = (0..npoint).any(|i| mesh.point(i)[0] < 0.0);
+    let has_right = (0..npoint).any(|i| mesh.point(i)[0] > 0.0);
+    assert!(has_left, "OR mesh should have points from left circle");
+    assert!(has_right, "OR mesh should have points from right circle");
+}
+
+#[test]
+fn and_mesh_overlapping_circles() {
+    // Two overlapping circles: both centred on the y-axis, overlapping in
+    // the middle. The AND mesh should only have points in the overlap zone.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let c1 = CircleBuilder::new(frame.clone(), vec![0.0, -1.0])
+        .unwrap()
+        .radius(3.0)
+        .build()
+        .unwrap();
+    let c2 = CircleBuilder::new(frame, vec![0.0, 1.0])
+        .unwrap()
+        .radius(3.0)
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(c1, c2, CmpOperator::And)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = cmp.get_region_mesh().unwrap();
+    let npoint = mesh.npoint();
+    assert!(
+        npoint > 0,
+        "Overlapping circles AND mesh should be non-empty"
+    );
+
+    // All points should be inside both circles.
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        let x = p[0];
+        let y = p[1];
+        let dist1_sq = x * x + (y + 1.0) * (y + 1.0);
+        let dist2_sq = x * x + (y - 1.0) * (y - 1.0);
+        assert!(
+            dist1_sq <= 9.0 + 1e-6 && dist2_sq <= 9.0 + 1e-6,
+            "AND mesh point ({}, {}) should be inside both circles (d1={}, d2={})",
+            x,
+            y,
+            dist1_sq.sqrt(),
+            dist2_sq.sqrt()
+        );
+    }
+}
+
 // ---- Accessor methods ----
 
 #[test]

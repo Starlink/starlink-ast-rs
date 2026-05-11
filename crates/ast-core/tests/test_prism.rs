@@ -334,3 +334,118 @@ fn mapping_nin_nout_match() {
     assert_eq!(prism.nin(), 3);
     assert_eq!(prism.nout(), 3);
 }
+
+// ---- Mesh generation ----
+
+#[test]
+fn mesh_is_nonempty_and_correct_dimensionality() {
+    let prism = PrismBuilder::new(make_circle(), make_interval())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = prism.get_region_mesh().unwrap();
+    let npoint = mesh.npoint();
+
+    // Mesh should not be empty.
+    assert!(npoint > 0, "Prism mesh should be non-empty");
+
+    // All mesh points should have 3 coordinates (2D circle + 1D interval).
+    assert_eq!(mesh.ncoord(), 3);
+
+    // No BAD values in mesh points.
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        assert!(
+            p[0] != BAD_VALUE && p[1] != BAD_VALUE && p[2] != BAD_VALUE,
+            "Mesh point {} should not contain BAD values",
+            i
+        );
+    }
+}
+
+#[test]
+fn mesh_points_are_on_prism_boundary() {
+    // A Prism of circle(r=5) x interval[2,8].
+    // The boundary consists of:
+    //   - Circle boundary (r=5) at interior z values (the "side walls")
+    //   - Interior of circle at interval endpoints (the "end caps")
+    let prism = PrismBuilder::new(make_circle(), make_interval())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = prism.get_region_mesh().unwrap();
+    let npoint = mesh.npoint();
+
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        let x = p[0];
+        let y = p[1];
+        let z = p[2];
+        let dist_sq = x * x + y * y;
+
+        // Each mesh point must be on the Prism boundary. This means either:
+        // 1. On the circle boundary (dist ~ 5) AND inside the interval [2,8]
+        // 2. Inside the circle (dist <= 5) AND on the interval boundary (z=2 or z=8)
+        //
+        // Since our simplified mesh uses the centre as the interior
+        // representative, we expect:
+        // - Circle mesh points extended with interval centre (z=5)
+        // - Circle centre (0,0) extended with interval mesh points (z=2, z=8)
+
+        let on_circle_boundary = (dist_sq.sqrt() - 5.0).abs() < 1e-6;
+        let inside_circle = dist_sq <= 25.0 + 1e-6;
+        let on_interval_boundary = (z - 2.0).abs() < 1e-6 || (z - 8.0).abs() < 1e-6;
+        let inside_interval = z >= 2.0 - 1e-6 && z <= 8.0 + 1e-6;
+
+        let valid =
+            (on_circle_boundary && inside_interval) || (inside_circle && on_interval_boundary);
+        assert!(
+            valid,
+            "Mesh point ({}, {}, {}) should be on Prism boundary (dist={:.4}, on_circle={}, in_interval={}, in_circle={}, on_interval={})",
+            x,
+            y,
+            z,
+            dist_sq.sqrt(),
+            on_circle_boundary,
+            inside_interval,
+            inside_circle,
+            on_interval_boundary
+        );
+    }
+}
+
+#[test]
+fn mesh_has_both_face_types() {
+    // Check that the mesh has points from both parts of the boundary:
+    // the "side walls" (circle boundary) and the "end caps" (interval endpoints).
+    let prism = PrismBuilder::new(make_circle(), make_interval())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = prism.get_region_mesh().unwrap();
+    let npoint = mesh.npoint();
+
+    let mut has_side_wall = false;
+    let mut has_end_cap = false;
+
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        let dist = (p[0] * p[0] + p[1] * p[1]).sqrt();
+
+        // Side wall: on circle boundary (dist ~ 5)
+        if (dist - 5.0).abs() < 1e-6 {
+            has_side_wall = true;
+        }
+
+        // End cap: at interval boundary (z=2 or z=8) and inside circle
+        if dist <= 5.0 + 1e-6 && ((p[2] - 2.0).abs() < 1e-6 || (p[2] - 8.0).abs() < 1e-6) {
+            has_end_cap = true;
+        }
+    }
+
+    assert!(has_side_wall, "Prism mesh should have side wall points");
+    assert!(has_end_cap, "Prism mesh should have end cap points");
+}
