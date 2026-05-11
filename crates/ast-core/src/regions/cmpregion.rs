@@ -13,9 +13,9 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameSet};
+use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping};
+use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{CmpOperator, DynRegion, Overlap, Region};
@@ -701,7 +701,37 @@ impl Mapping for CmpRegion {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(self.clone_box())
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let simple_map = map.simplified()?;
+        if simple_map.as_any().is::<UnitMap>() {
+            return Ok(self.clone_box());
+        }
+        // Remap both sub-regions into the current frame using map_region.
+        let current_frame = self.data.frameset.current().snapshot();
+        let new_region1 = self
+            .region1
+            .map_region(simple_map.as_ref(), current_frame.as_ref())?;
+        let new_region2 = self
+            .region2
+            .map_region(simple_map.as_ref(), current_frame.as_ref())?;
+        // Construct new CmpRegion in current frame with fresh FrameSet.
+        let frameset = FrameSet::new(current_frame);
+        let points = Vec::new();
+        let mut data = RegionData::new(frameset, points);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed;
+        data.mesh_size = self.data.mesh_size;
+        data.fill_factor = self.data.fill_factor;
+        data.adaptive = self.data.adaptive;
+        Ok(Box::new(CmpRegion {
+            data,
+            region1: new_region1,
+            region2: new_region2,
+            operator: self.operator,
+        }))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

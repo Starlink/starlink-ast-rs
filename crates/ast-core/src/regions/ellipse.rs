@@ -8,9 +8,9 @@ use std::f64::consts::PI;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameSet};
+use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping};
+use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
@@ -540,7 +540,30 @@ impl Mapping for Ellipse {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(self.clone_box())
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let simple_map = map.simplified()?;
+        if simple_map.as_any().is::<UnitMap>() {
+            return Ok(self.clone_box());
+        }
+        // Transform defining points to current frame.
+        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
+        let transformed = simple_map.transform(&pts, true)?;
+        let current_frame = self.data.frameset.current().snapshot();
+        let naxes = current_frame.naxes();
+        let new_points: Vec<Vec<f64>> = (0..self.data.points.len())
+            .map(|i| transformed.point(i)[..naxes].to_vec())
+            .collect();
+        let frameset = FrameSet::new(current_frame);
+        let mut data = RegionData::new(frameset, new_points);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed;
+        data.mesh_size = self.data.mesh_size;
+        data.fill_factor = self.data.fill_factor;
+        data.adaptive = self.data.adaptive;
+        Ok(Box::new(Ellipse { data }))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
