@@ -152,33 +152,33 @@ impl RegionGeometry for Circle {
         &mut self.data
     }
 
-    fn reg_base_pick(&self, point: &[f64]) -> AstResult<bool> {
-        // Check for BAD coordinates.
-        if point_has_bad(point) {
-            return Ok(false);
-        }
-
+    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+        let npoint = pts.npoint();
         let base_frame = self.data.frameset.base();
         let centre = &self.data.points[0];
-
-        // Compute geodesic distance from point to centre.
-        let dist = base_frame.distance(point, centre)?;
-        if is_bad(dist) {
-            return Ok(false);
-        }
-
-        // Compute the radius.
         let radius = self.radius()?;
+        let closed = self.data.closed;
+
         if is_bad(radius) {
-            return Ok(false);
+            return Ok(vec![false; npoint]);
         }
 
-        // Compare distance to radius, respecting the closed flag.
-        if self.data.closed {
-            Ok(dist <= radius)
-        } else {
-            Ok(dist < radius)
+        let mut result = vec![false; npoint];
+        for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
+            if point_has_bad(point) {
+                continue;
+            }
+            let dist = base_frame.distance(point, centre)?;
+            if is_bad(dist) {
+                continue;
+            }
+            *r = if closed {
+                dist <= radius
+            } else {
+                dist < radius
+            };
         }
+        Ok(result)
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {

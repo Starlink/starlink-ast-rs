@@ -112,12 +112,27 @@ pub(crate) trait RegionGeometry {
     /// Mutable access to the shared region data.
     fn region_data_mut(&mut self) -> &mut RegionData;
 
-    /// Test whether a point (in the *base* frame) is inside the
+    /// Batch predicate: test which points (in the *base* frame) are inside
+    /// the un-negated region boundary.
+    ///
+    /// `pts` is a PointSet with coordinates in the base frame. Returns a
+    /// Vec<bool> with one entry per point (true = inside raw geometry).
+    /// The negation flag is handled by the caller.
+    ///
+    /// This is the primary performance-critical method. Implementations
+    /// should process all points in a tight loop to allow vectorisation.
+    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>>;
+
+    /// Test whether a single point (in the *base* frame) is inside the
     /// un-negated region boundary.
     ///
-    /// The negation flag is handled by the caller; this method tests
-    /// raw geometry only. `point` has length `naxes`.
-    fn reg_base_pick(&self, point: &[f64]) -> AstResult<bool>;
+    /// Default implementation calls `reg_pins` with a 1-point PointSet.
+    /// Override for efficiency if single-point queries are common.
+    fn reg_base_pick(&self, point: &[f64]) -> AstResult<bool> {
+        let pts = PointSet::from_rows(std::iter::once(point));
+        let result = self.reg_pins(&pts)?;
+        Ok(result[0])
+    }
 
     /// Return the bounding box of the un-negated region in the base frame.
     ///
@@ -152,6 +167,9 @@ pub(crate) trait RegionGeometry {
 /// This is the "region transform" described in the C library: forward
 /// maps interior → pass-through, exterior → BAD; inverse always passes
 /// points unchanged.
+///
+/// Uses the batch `reg_pins` predicate for efficient processing of
+/// large point sets (tens of thousands of points at a time).
 pub(crate) fn region_transform<R: RegionGeometry>(
     region: &R,
     pts: &PointSet,
@@ -165,7 +183,7 @@ pub(crate) fn region_transform<R: RegionGeometry>(
         return Ok(pts.clone());
     }
 
-    // Forward transform: test each point for membership.
+    // Forward transform: batch-test all points for membership.
     let data = region.region_data();
     let negated = data.negated;
 
@@ -173,30 +191,30 @@ pub(crate) fn region_transform<R: RegionGeometry>(
     // The region's frameset maps base→current (forward), so we need inverse.
     let base_pts = data.frameset.transform(pts, false)?;
 
+    // Batch predicate: test all points at once.
+    let inside = region.reg_pins(&base_pts)?;
+
+    // Build output: passthrough for inside, BAD for outside.
     let mut out = PointSet::zeros(npoint, ncoord);
-
-    // Fill output with BAD_VALUE initially.
-    for i in 0..npoint {
-        let row = out.point_mut(i);
-        row.fill(BAD_VALUE);
-    }
-
-    for i in 0..npoint {
+    for (i, &is_in) in inside.iter().enumerate() {
         let base_point = base_pts.point(i);
+        let has_bad = base_point.iter().any(|&v| is_bad(v));
 
-        // Skip points with BAD coordinates.
-        if base_point.iter().any(|&v| is_bad(v)) {
-            continue;
-        }
-
-        let inside = region.reg_base_pick(base_point)?;
-        let effective_inside = if negated { !inside } else { inside };
+        let effective_inside = if has_bad {
+            false
+        } else if negated {
+            !is_in
+        } else {
+            is_in
+        };
 
         if effective_inside {
-            // Pass through the *input* coordinates (in current frame).
             let src = pts.point(i);
             let dst = out.point_mut(i);
             dst.copy_from_slice(src);
+        } else {
+            let dst = out.point_mut(i);
+            dst.fill(BAD_VALUE);
         }
     }
 

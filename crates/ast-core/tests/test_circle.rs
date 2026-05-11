@@ -520,3 +520,60 @@ fn clone_is_independent() {
     assert!(circle.point_in_region(&[0.0, 0.0]).unwrap());
     assert!(!clone.point_in_region(&[0.0, 0.0]).unwrap());
 }
+
+// ---- Batch transform (large point sets) ----
+
+#[test]
+fn batch_transform_10k_points() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let circle = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+
+    // Create 10,000 points in a grid from -2 to 2
+    let n = 100;
+    let total = n * n;
+    let mut pts = PointSet::zeros(total, 2);
+    for i in 0..n {
+        for j in 0..n {
+            let idx = i * n + j;
+            let x = -2.0 + 4.0 * i as f64 / (n - 1) as f64;
+            let y = -2.0 + 4.0 * j as f64 / (n - 1) as f64;
+            pts.point_mut(idx)[0] = x;
+            pts.point_mut(idx)[1] = y;
+        }
+    }
+
+    let out = circle.transform(&pts, true).unwrap();
+    assert_eq!(out.npoint(), total);
+
+    // Verify: points inside circle pass through, outside become BAD
+    let mut inside_count = 0;
+    let mut outside_count = 0;
+    for i in 0..total {
+        let p = pts.point(i);
+        let dist = (p[0] * p[0] + p[1] * p[1]).sqrt();
+        let o = out.point(i);
+        if dist <= 1.0 {
+            assert_eq!(o[0], p[0], "point {i} should pass through");
+            assert_eq!(o[1], p[1]);
+            inside_count += 1;
+        } else {
+            assert_eq!(o[0], BAD_VALUE, "point {i} should be BAD");
+            assert_eq!(o[1], BAD_VALUE);
+            outside_count += 1;
+        }
+    }
+
+    // Sanity: we should have a reasonable split
+    assert!(
+        inside_count > 700,
+        "expected >700 inside, got {inside_count}"
+    );
+    assert!(
+        outside_count > 7000,
+        "expected >7000 outside, got {outside_count}"
+    );
+}
