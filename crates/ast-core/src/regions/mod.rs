@@ -7,6 +7,7 @@
 //! [`BAD_VALUE`](crate::constants::BAD_VALUE)).
 
 pub(crate) mod data;
+pub mod masking;
 pub(crate) mod overlap;
 
 mod box_region;
@@ -27,6 +28,8 @@ pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
 pub use polygon::{Polygon, PolygonBuilder};
 pub use prism::{Prism, PrismBuilder};
+
+pub use masking::mask;
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
