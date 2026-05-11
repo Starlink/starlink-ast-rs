@@ -16,6 +16,7 @@ mod interval;
 mod nullregion;
 mod pointlist;
 mod polygon;
+mod prism;
 pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
 pub use cmpregion::{CmpRegion, CmpRegionBuilder};
@@ -24,6 +25,7 @@ pub use interval::{Interval, IntervalBuilder};
 pub use nullregion::{NullRegion, NullRegionBuilder};
 pub use pointlist::{PointList, PointListBuilder};
 pub use polygon::{Polygon, PolygonBuilder};
+pub use prism::{Prism, PrismBuilder};
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
