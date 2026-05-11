@@ -12,7 +12,7 @@ use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::frames::{Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::is_bad;
-use crate::mappings::{AsAny, Mapping, UnitMap};
+use crate::mappings::{Mapping, UnitMap};
 
 use super::DynRegion;
 
@@ -267,56 +267,11 @@ where
     if adaptive {
         // Adaptive: delegate to FrameSet integrity. The current frame
         // changes and the base→current mapping is updated. Defining
-        // points are in the base frame and remain valid.
-        let map_before = data.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
-
-        // Need to re-borrow mutably for the integrity call.
+        // points are in the base frame and remain valid because the
+        // base frame itself is never modified by with_integrity — only
+        // the current frame and the base→current mapping change.
         let data = region.region_data_mut();
         data.frameset.with_integrity(f)?;
-
-        // Get the base→current mapping AFTER the change.
-        let map_after = data.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
-
-        // Compute the net transformation on defining points:
-        // base → old-current (map_before forward) then
-        // new-current → base (map_after inverse).
-        //
-        // For standard region FrameSets (single base frame) this
-        // simplifies to identity, but we check explicitly and apply
-        // the transformation when it is non-trivial.
-        let map_before_simplified = map_before.simplified()?;
-        let map_after_simplified = map_after.simplified()?;
-
-        // If both are UnitMaps, no remapping needed.
-        let before_is_unit = map_before_simplified.as_any().is::<UnitMap>();
-        let after_is_unit = map_after_simplified.as_any().is::<UnitMap>();
-
-        if !before_is_unit || !after_is_unit {
-            // Transform defining points: base→old-current→new-base
-            // This path is hit when the FrameSet already had a non-trivial
-            // base→current mapping before the integrity call.
-            let npoints = data.points.len();
-            if npoints > 0 {
-                let pts = PointSet::from_rows(data.points.iter().map(|p| p.as_slice()));
-
-                // Forward through old mapping (base → old-current)
-                let in_old_current = map_before_simplified.transform(&pts, true)?;
-
-                // Inverse through new mapping (new-current → base)
-                let in_new_base = map_after_simplified.transform(&in_old_current, false)?;
-
-                // Update the defining points.
-                let naxes = data.points[0].len();
-                for i in 0..npoints {
-                    let p = in_new_base.point(i);
-                    // Only update if the transformed point is valid.
-                    if !p[..naxes].iter().any(|&v| is_bad(v)) {
-                        data.points[i] = p[..naxes].to_vec();
-                    }
-                }
-            }
-        }
-
         data.invalidate_cache();
     } else {
         // Non-adaptive: apply the mutation to both base and current frames

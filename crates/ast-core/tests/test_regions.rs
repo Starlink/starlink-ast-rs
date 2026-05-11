@@ -2544,3 +2544,308 @@ fn sky_circle_great_circle_distance_correctness() {
         "Point at equator with same delta-RA is outside"
     );
 }
+
+// ============================================================================
+// System-change and simplification tests
+//
+// These tests verify that regions correctly handle coordinate system changes
+// via with_integrity, and that simplified() produces functionally equivalent
+// regions. This mirrors the patterns in testregions.c where regions are
+// created in one system and then the system attribute is changed.
+// ============================================================================
+
+#[test]
+fn system_change_circle_membership() {
+    // Create a Circle on SkyFrame(ICRS) at (1.0, 0.5) with radius 0.01 rad.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let mut circle = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+
+    // Change system to Galactic via with_integrity.
+    circle
+        .with_integrity(|frame| {
+            let sky_ref = frame.as_any_mut().downcast_mut::<SkyFrame>().unwrap();
+            sky_ref.set_system(SkySystem::Galactic);
+            Ok(())
+        })
+        .unwrap();
+
+    // Convert the centre point from ICRS to Galactic.
+    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+
+    let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
+    let centre_gal = conversion.transform(&centre_pts, true).unwrap();
+    let gal_centre = centre_gal.point(0);
+
+    // The centre (in Galactic coords) should be inside the circle.
+    assert!(
+        circle.point_in_region(gal_centre).unwrap(),
+        "Centre (converted to Galactic) should be inside the system-changed circle"
+    );
+
+    // A point far away in Galactic coords should be outside.
+    let far_point = [gal_centre[0] + 1.0, gal_centre[1]];
+    assert!(
+        !circle.point_in_region(&far_point).unwrap(),
+        "Point far from centre should be outside"
+    );
+}
+
+#[test]
+fn system_change_circle_simplify() {
+    // Create a Circle on SkyFrame(ICRS) and change system to Galactic.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let mut circle = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+
+    circle
+        .with_integrity(|frame| {
+            let sky_ref = frame.as_any_mut().downcast_mut::<SkyFrame>().unwrap();
+            sky_ref.set_system(SkySystem::Galactic);
+            Ok(())
+        })
+        .unwrap();
+
+    // Convert the centre point to Galactic.
+    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+
+    let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
+    let centre_gal = conversion.transform(&centre_pts, true).unwrap();
+    let gal_centre = centre_gal.point(0);
+
+    // Simplify the circle (as a Mapping).
+    let simplified = circle.simplified().unwrap();
+
+    // The simplified mapping should still pass the Galactic centre through
+    // (it is inside the region).
+    let test_pts = PointSet::from_rows([[gal_centre[0], gal_centre[1]]]);
+    let result = simplified.transform(&test_pts, true).unwrap();
+
+    assert_ne!(
+        result.point(0)[0],
+        BAD_VALUE,
+        "Simplified region should pass centre through (inside)"
+    );
+    assert!(
+        (result.point(0)[0] - gal_centre[0]).abs() < 1.0e-10,
+        "Simplified region should preserve coordinate value for interior point"
+    );
+
+    // A point far away should be masked (set to BAD).
+    let far_pts = PointSet::from_rows([[gal_centre[0] + 1.0, gal_centre[1]]]);
+    let far_result = simplified.transform(&far_pts, true).unwrap();
+    assert_eq!(
+        far_result.point(0)[0],
+        BAD_VALUE,
+        "Simplified region should mask exterior points"
+    );
+}
+
+#[test]
+fn system_change_circle_overlap_native_galactic() {
+    // Overlap algorithm currently assumes mesh (base frame) and point_in_region
+    // (current frame) are in the same coordinate system. This works when the
+    // region is created directly in a system (base==current, identity mapping).
+    //
+    // Test: create two circles directly in Galactic and verify overlap is Same.
+    let gal = SkyFrame::new(SkySystem::Galactic);
+    let circle1 = CircleBuilder::new(gal.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+    let circle2 = CircleBuilder::new(gal.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+
+    let result = circle1.overlap(&circle2).unwrap();
+    assert_eq!(
+        result,
+        Overlap::Same,
+        "Identical circles in Galactic should overlap as Same"
+    );
+
+    // A smaller circle should be FirstInside.
+    let small = CircleBuilder::new(gal.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.005)
+        .build()
+        .unwrap();
+    let result2 = small.overlap(&circle1).unwrap();
+    assert_eq!(
+        result2,
+        Overlap::FirstInside,
+        "Smaller circle should be inside larger one"
+    );
+}
+
+#[test]
+fn system_change_box_membership() {
+    // Create a BoxRegion on SkyFrame(ICRS).
+    // Centre at (1.0, 0.5), corner at (1.005, 0.505) — a small box.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let mut bx = BoxRegionBuilder::new(sky.clone(), vec![1.0, 0.5], vec![1.005, 0.505])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Verify centre is inside before system change.
+    assert!(
+        bx.point_in_region(&[1.0, 0.5]).unwrap(),
+        "Centre should be inside the box (ICRS)"
+    );
+
+    // Change system to Galactic via with_integrity.
+    bx.with_integrity(|frame| {
+        let sky_ref = frame.as_any_mut().downcast_mut::<SkyFrame>().unwrap();
+        sky_ref.set_system(SkySystem::Galactic);
+        Ok(())
+    })
+    .unwrap();
+
+    // Convert the centre from ICRS to Galactic.
+    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+
+    let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
+    let centre_gal = conversion.transform(&centre_pts, true).unwrap();
+    let gal_centre = centre_gal.point(0);
+
+    // The centre (in Galactic coords) should be inside the box.
+    assert!(
+        bx.point_in_region(gal_centre).unwrap(),
+        "Centre (converted to Galactic) should be inside the system-changed box"
+    );
+
+    // A point far away should be outside.
+    let far_point = [gal_centre[0] + 1.0, gal_centre[1]];
+    assert!(
+        !bx.point_in_region(&far_point).unwrap(),
+        "Point far from centre should be outside the box"
+    );
+}
+
+#[test]
+fn system_change_simplified_transform_consistent() {
+    // After simplification, verify that the simplified region is functionally
+    // equivalent to the original for multiple test points.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let mut circle = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.02)
+        .build()
+        .unwrap();
+
+    circle
+        .with_integrity(|frame| {
+            let sky_ref = frame.as_any_mut().downcast_mut::<SkyFrame>().unwrap();
+            sky_ref.set_system(SkySystem::Galactic);
+            Ok(())
+        })
+        .unwrap();
+
+    // Convert several test points from ICRS to Galactic.
+    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+
+    // Points: centre, slightly inside, slightly outside, far away.
+    let test_icrs = PointSet::from_rows([
+        [1.0, 0.5],   // centre
+        [1.005, 0.5], // slightly offset in RA (should be inside r=0.02)
+        [1.05, 0.5],  // further offset (likely outside)
+        [2.0, 1.0],   // far away (definitely outside)
+    ]);
+    let test_gal = conversion.transform(&test_icrs, true).unwrap();
+
+    // Transform through the original circle.
+    let orig_result = circle.transform(&test_gal, true).unwrap();
+
+    // Simplify and transform.
+    let simplified = circle.simplified().unwrap();
+    let simp_result = simplified.transform(&test_gal, true).unwrap();
+
+    // Both should agree on which points are inside/outside.
+    for i in 0..4 {
+        let orig_bad = orig_result.point(i)[0] == BAD_VALUE;
+        let simp_bad = simp_result.point(i)[0] == BAD_VALUE;
+        assert_eq!(
+            orig_bad, simp_bad,
+            "Point {i}: original and simplified should agree on membership"
+        );
+        if !orig_bad {
+            // Interior points should pass through with same values.
+            assert!(
+                (orig_result.point(i)[0] - simp_result.point(i)[0]).abs() < 1.0e-10,
+                "Point {i}: interior coordinate values should match"
+            );
+        }
+    }
+}
+
+#[test]
+fn system_change_circle_serialization_roundtrip() {
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    // Create a Circle on SkyFrame(ICRS) and change system to Galactic.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let mut circle = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+
+    circle
+        .with_integrity(|frame| {
+            let sky_ref = frame.as_any_mut().downcast_mut::<SkyFrame>().unwrap();
+            sky_ref.set_system(SkySystem::Galactic);
+            Ok(())
+        })
+        .unwrap();
+
+    // Serialize to native format.
+    let obj = AnyObject::Circle(circle.clone());
+    let text = to_native_string(&obj).unwrap();
+
+    // Deserialize.
+    let restored_obj = from_native_string(&text).unwrap();
+    let restored = match restored_obj {
+        AnyObject::Circle(c) => c,
+        other => panic!("Expected Circle, got {:?}", other),
+    };
+
+    // Convert centre to Galactic for testing.
+    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+
+    let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
+    let centre_gal = conversion.transform(&centre_pts, true).unwrap();
+    let gal_centre = centre_gal.point(0);
+
+    // The restored region should still accept Galactic coordinates.
+    assert!(
+        restored.point_in_region(gal_centre).unwrap(),
+        "Restored circle should recognize centre (in Galactic) as inside"
+    );
+
+    // A far point should still be outside.
+    let far_point = [gal_centre[0] + 1.0, gal_centre[1]];
+    assert!(
+        !restored.point_in_region(&far_point).unwrap(),
+        "Restored circle should reject far point"
+    );
+}
