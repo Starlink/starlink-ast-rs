@@ -154,6 +154,11 @@ impl BoxRegion {
         super::data::with_region_integrity(self, f)
     }
 
+    /// Permute the axes of this region's current frame.
+    pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.data.perm_axes(perm)
+    }
+
     /// Compute the effective lower and upper bounds from centre and corner.
     ///
     /// The box extends symmetrically around the centre: the opposite corner

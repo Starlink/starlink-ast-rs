@@ -107,6 +107,11 @@ impl Interval {
         super::data::with_region_integrity(self, f)
     }
 
+    /// Permute the axes of this region's current frame.
+    pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.data.perm_axes(perm)
+    }
+
     /// Get the effective lower and upper bounds, resolving BAD_VALUE
     /// to ±MAX for internal computations.
     fn effective_bounds(&self) -> (Vec<f64>, Vec<f64>) {

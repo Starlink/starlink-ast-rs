@@ -23,6 +23,9 @@ use super::{DynFrame, Frame, FrameRef, FrameSet};
 pub struct CmpFrame {
     frame1: DynFrame,
     frame2: DynFrame,
+    /// Axis permutation: perm[ext_axis_0based] = original_axis_0based.
+    /// Initially identity.
+    perm: Vec<usize>,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
@@ -34,9 +37,11 @@ impl CmpFrame {
     ///
     /// The resulting frame has `frame1.naxes() + frame2.naxes()` axes.
     pub fn new(frame1: DynFrame, frame2: DynFrame) -> Self {
+        let naxes = frame1.naxes() + frame2.naxes();
         Self {
             frame1,
             frame2,
+            perm: (0..naxes).collect(),
             act_unt: None,
             ident: None,
         }
@@ -69,21 +74,19 @@ impl CmpFrame {
         Ok(())
     }
 
-    /// Route a 1-based compound axis to the owning child frame and its
-    /// local 1-based axis index.
-    ///
-    /// Axes 1..=N1 map to `(frame1, axis)`.
-    /// Axes N1+1..=N1+N2 map to `(frame2, axis - N1)`.
+    /// Route a 1-based external axis to the owning child frame and its
+    /// local 1-based axis index, going through the permutation.
     ///
     /// # Panics
     ///
     /// Panics if `axis` is out of range. Call [`validate_axis`] first.
     fn route_axis(&self, axis: usize) -> (&dyn Frame, usize) {
+        let orig = self.perm[axis - 1] + 1; // convert to 1-based original axis
         let n1 = self.frame1.naxes();
-        if axis <= n1 {
-            (self.frame1.as_ref(), axis)
+        if orig <= n1 {
+            (self.frame1.as_ref(), orig)
         } else {
-            (self.frame2.as_ref(), axis - n1)
+            (self.frame2.as_ref(), orig - n1)
         }
     }
 }
@@ -168,18 +171,40 @@ impl Frame for CmpFrame {
     }
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        let n = self.naxes();
         let n1 = self.frame1.naxes();
-        let (first, second) = coords.split_at_mut(n1);
-        self.frame1.norm(first)?;
-        self.frame2.norm(second)?;
+
+        // Unpermute coordinates to original axis order.
+        let mut orig = vec![0.0; n];
+        for i in 0..n {
+            orig[self.perm[i]] = coords[i];
+        }
+
+        // Normalize via children in original order.
+        self.frame1.norm(&mut orig[..n1])?;
+        self.frame2.norm(&mut orig[n1..])?;
+
+        // Re-permute back to external order.
+        for i in 0..n {
+            coords[i] = orig[self.perm[i]];
+        }
+        Ok(())
+    }
+
+    fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        let n = self.naxes();
+        super::validate_permutation(perm, n)?;
+        let old = self.perm.clone();
+        for i in 0..n {
+            self.perm[i] = old[perm[i] - 1];
+        }
         Ok(())
     }
 
     fn snapshot(&self) -> DynFrame {
-        Box::new(CmpFrame::new(
-            self.frame1.snapshot(),
-            self.frame2.snapshot(),
-        ))
+        let mut cmp = CmpFrame::new(self.frame1.snapshot(), self.frame2.snapshot());
+        cmp.perm = self.perm.clone();
+        Box::new(cmp)
     }
 
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {

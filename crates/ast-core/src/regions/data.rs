@@ -107,6 +107,16 @@ impl RegionData {
     pub(crate) fn invalidate_cache(&self) {
         *self.cached_base_mesh.borrow_mut() = None;
     }
+
+    /// Permute the axes of the encapsulated FrameSet's current frame.
+    ///
+    /// Delegates to [`FrameSet::perm_axes`] which permutes the current
+    /// frame and composes a PermMap onto the edge mapping.
+    pub(crate) fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.frameset.perm_axes(perm)?;
+        self.invalidate_cache();
+        Ok(())
+    }
 }
 
 /// Internal trait providing geometry-specific hooks for a Region.

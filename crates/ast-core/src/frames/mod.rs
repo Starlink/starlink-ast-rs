@@ -24,7 +24,7 @@ pub use timeframe::{TimeFrame, TimeScale, TimeSystem};
 
 use std::fmt;
 
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{AsAny, DynMapping};
 
 /// An owned, dynamically-dispatched Frame.
@@ -110,8 +110,57 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         None
     }
 
+    /// Permute the axes of this frame.
+    ///
+    /// `perm` is a 1-based permutation array of length `naxes`. After the
+    /// call, external axis `i` corresponds to what was previously axis
+    /// `perm[i-1]`. For example, `perm = &[2, 1]` swaps two axes.
+    ///
+    /// The default implementation validates the permutation and returns Ok
+    /// for 1-axis frames (where the only valid permutation is `[1]`).
+    fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        validate_permutation(perm, self.naxes())?;
+        Ok(())
+    }
+
     /// Test whether this frame is equal to another.
     ///
     /// Uses AST's standard floating-point tolerance for numeric comparisons.
     fn equal(&self, other: &dyn Frame) -> bool;
+}
+
+/// Validate that `perm` is a valid 1-based permutation of length `naxes`.
+pub fn validate_permutation(perm: &[usize], naxes: usize) -> AstResult<()> {
+    if perm.len() != naxes {
+        return Err(AstError::new(
+            ErrorCode::Prmin,
+            format!(
+                "permutation array has {} elements but frame has {} axes",
+                perm.len(),
+                naxes
+            ),
+        ));
+    }
+    let mut seen = vec![false; naxes];
+    for (i, &p) in perm.iter().enumerate() {
+        if p < 1 || p > naxes {
+            return Err(AstError::new(
+                ErrorCode::Prmin,
+                format!(
+                    "permutation element {} (at position {}) is out of range 1..={}",
+                    p,
+                    i + 1,
+                    naxes
+                ),
+            ));
+        }
+        if seen[p - 1] {
+            return Err(AstError::new(
+                ErrorCode::Prmin,
+                format!("axis {} appears more than once in permutation", p),
+            ));
+        }
+        seen[p - 1] = true;
+    }
+    Ok(())
 }

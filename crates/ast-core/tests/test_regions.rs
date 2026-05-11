@@ -3055,3 +3055,182 @@ fn fitschan_sky_circle_near_pole_bounds() {
         FRAC_PI_2
     );
 }
+
+// ============================================================================
+// perm_axes tests (ported from testregions.c lines 821-854, 1028, 1936)
+// ============================================================================
+
+#[test]
+fn perm_axes_box_swap_and_transform() {
+    // Create a Box on a SkyFrame and permute axes [2, 1].
+    // After permutation, axis 1 is latitude and axis 2 is longitude.
+    let sky = SkyFrame::new(SkySystem::Galactic);
+    let centre = vec![1.25, 0.75]; // [lon, lat]
+    let corner = vec![1.5, 0.5]; // [lon, lat]
+    let mut box1 = BoxRegionBuilder::new(sky, centre, corner)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Verify a point inside before permutation.
+    let pts_in = PointSet::from_rows(std::iter::once([1.3, 0.7].as_slice()));
+    let result = box1.transform(&pts_in, true).unwrap();
+    assert!(
+        result.point(0)[0] != BAD_VALUE,
+        "point should be inside before perm"
+    );
+
+    // Permute: swap axes.
+    box1.perm_axes(&[2, 1]).unwrap();
+
+    // After permutation, coordinates are [lat, lon]. The same geometric
+    // point [lon=1.3, lat=0.7] is now provided as [0.7, 1.3].
+    let pts_swapped = PointSet::from_rows(std::iter::once([0.7, 1.3].as_slice()));
+    let result2 = box1.transform(&pts_swapped, true).unwrap();
+    assert!(
+        result2.point(0)[0] != BAD_VALUE,
+        "point should be inside after perm (swapped coords)"
+    );
+
+    // The same coords in original order should now be OUTSIDE.
+    let pts_wrong_order = PointSet::from_rows(std::iter::once([1.3, 0.7].as_slice()));
+    let result3 = box1.transform(&pts_wrong_order, true).unwrap();
+    assert_eq!(
+        result3.point(0)[0],
+        BAD_VALUE,
+        "original-order coords should be outside after perm"
+    );
+}
+
+#[test]
+fn perm_axes_double_swap_is_identity() {
+    // Applying [2, 1] twice should return to the original state.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = vec![1.0, 0.5];
+    let corner = vec![1.2, 0.7];
+    let mut box1 = BoxRegionBuilder::new(sky, centre, corner)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Format axis 1 before any permutation.
+    let fmt_before = box1.format(1, 0.25).unwrap();
+
+    // Permute twice.
+    box1.perm_axes(&[2, 1]).unwrap();
+    box1.perm_axes(&[2, 1]).unwrap();
+
+    // Format should be the same as before.
+    let fmt_after = box1.format(1, 0.25).unwrap();
+    assert_eq!(
+        fmt_before, fmt_after,
+        "double permutation should be identity"
+    );
+
+    // Verify transform still works correctly.
+    let pts = PointSet::from_rows(std::iter::once([1.1, 0.6].as_slice()));
+    let result = box1.transform(&pts, true).unwrap();
+    assert!(
+        result.point(0)[0] != BAD_VALUE,
+        "centre point should still be inside after double perm"
+    );
+}
+
+#[test]
+fn perm_axes_format_changes_axis_type() {
+    // After permuting a SkyFrame, axis 1 format should change from
+    // HMS (longitude) to DMS (latitude).
+    let sky = SkyFrame::new(SkySystem::Fk5);
+    let centre = vec![1.0, 0.5];
+    let corner = vec![1.2, 0.7];
+    let mut box1 = BoxRegionBuilder::new(sky, centre, corner)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Before permutation: axis 1 is RA (HMS format).
+    let fmt1_before = box1.format(1, 1.0).unwrap();
+    // axis 2 is Dec (DMS format).
+    let fmt2_before = box1.format(2, 1.0).unwrap();
+
+    // Permute.
+    box1.perm_axes(&[2, 1]).unwrap();
+
+    // After permutation: axis 1 should now be Dec (DMS), axis 2 should be RA (HMS).
+    let fmt1_after = box1.format(1, 1.0).unwrap();
+    let fmt2_after = box1.format(2, 1.0).unwrap();
+
+    assert_eq!(
+        fmt1_after, fmt2_before,
+        "after perm, axis 1 format should match old axis 2"
+    );
+    assert_eq!(
+        fmt2_after, fmt1_before,
+        "after perm, axis 2 format should match old axis 1"
+    );
+}
+
+#[test]
+fn perm_axes_basicframe_box() {
+    // Permute axes on a BasicFrame Box and verify transform.
+    let frame = BasicFrameBuilder::new(3)
+        .label(1, "X")
+        .label(2, "Y")
+        .label(3, "Z")
+        .build()
+        .unwrap();
+    let centre = vec![5.0, 10.0, 15.0];
+    let corner = vec![7.0, 12.0, 17.0];
+    let mut box1 = BoxRegionBuilder::new(frame, centre, corner)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Point inside: [6, 11, 16]
+    let pts_in = PointSet::from_rows(std::iter::once([6.0, 11.0, 16.0].as_slice()));
+    let result = box1.transform(&pts_in, true).unwrap();
+    assert!(result.point(0)[0] != BAD_VALUE, "should be inside");
+
+    // Permute [2, 3, 1]: new axis 1 = old axis 2, new axis 2 = old axis 3, new axis 3 = old axis 1
+    box1.perm_axes(&[2, 3, 1]).unwrap();
+
+    // The same geometric point in permuted order: [Y=11, Z=16, X=6]
+    let pts_perm = PointSet::from_rows(std::iter::once([11.0, 16.0, 6.0].as_slice()));
+    let result2 = box1.transform(&pts_perm, true).unwrap();
+    assert!(
+        result2.point(0)[0] != BAD_VALUE,
+        "permuted coords should be inside"
+    );
+
+    // Original order should fail.
+    let result3 = box1.transform(&pts_in, true).unwrap();
+    assert_eq!(
+        result3.point(0)[0],
+        BAD_VALUE,
+        "original-order coords should be outside after [2,3,1] perm"
+    );
+}
+
+#[test]
+fn perm_axes_circle_preserves_membership() {
+    // Permute a Circle on SkyFrame and verify membership with swapped coords.
+    let sky = SkyFrame::new(SkySystem::Galactic);
+    let centre = vec![0.5, 0.3]; // [lon, lat]
+    let mut circle = CircleBuilder::new(sky, centre)
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    // Point near centre is inside.
+    assert!(circle.point_in_region(&[0.52, 0.31]).unwrap());
+
+    // Permute.
+    circle.perm_axes(&[2, 1]).unwrap();
+
+    // Same point with swapped coords [lat, lon] should be inside.
+    assert!(circle.point_in_region(&[0.31, 0.52]).unwrap());
+
+    // Original order should be outside (0.52 as lat is far from 0.3 lat).
+    assert!(!circle.point_in_region(&[0.52, 0.31]).unwrap());
+}

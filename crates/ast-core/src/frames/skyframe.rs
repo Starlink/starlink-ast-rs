@@ -59,7 +59,12 @@ pub struct SkyFrame {
     align_system: Option<SkySystem>,
 
     // Per-axis properties
-    axes: [SkyAxis; 2], // [longitude, latitude]
+    axes: [SkyAxis; 2], // [longitude, latitude] (physical storage)
+
+    /// Axis permutation: perm[ext_axis] = physical_axis (0-based).
+    /// Physical 0 = longitude, physical 1 = latitude.
+    /// After swap: perm = [1, 0] means external axis 0 → latitude.
+    perm: [usize; 2],
 
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
@@ -95,9 +100,22 @@ impl SkyFrame {
             align_offset: false,
             align_system: None,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
+            perm: [0, 1],
             act_unt: None,
             ident: None,
         }
+    }
+
+    /// Position of longitude in coordinate arrays (0-based).
+    #[inline]
+    fn lon_pos(&self) -> usize {
+        if self.perm[0] == 0 { 0 } else { 1 }
+    }
+
+    /// Position of latitude in coordinate arrays (0-based).
+    #[inline]
+    fn lat_pos(&self) -> usize {
+        if self.perm[0] == 1 { 0 } else { 1 }
     }
 
     // --- SkyFrame-specific attributes ---
@@ -338,9 +356,8 @@ impl Frame for SkyFrame {
                 format!("axis index {} is out of range 1..=2", axis),
             ));
         }
-        let idx = axis - 1;
-        let as_time = self.axes[idx].effective_as_time();
-        // Default precision: 1 decimal place for time, 0 for angle.
+        let phys = self.perm[axis - 1];
+        let as_time = self.axes[phys].effective_as_time();
         let precision = if as_time { 1 } else { 0 };
         Ok(format_sky(value, as_time, precision))
     }
@@ -352,8 +369,8 @@ impl Frame for SkyFrame {
                 format!("axis index {} is out of range 1..=2", axis),
             ));
         }
-        let idx = axis - 1;
-        let as_time = self.axes[idx].effective_as_time();
+        let phys = self.perm[axis - 1];
+        let as_time = self.axes[phys].effective_as_time();
         unformat_sky(text, as_time)
     }
 
@@ -361,66 +378,68 @@ impl Frame for SkyFrame {
         if is_bad(a[0]) || is_bad(a[1]) || is_bad(b[0]) || is_bad(b[1]) {
             return Ok(BAD_VALUE);
         }
-        Ok(pal::dsep(a[0], a[1], b[0], b[1]))
+        let lp = self.lon_pos();
+        let bp = self.lat_pos();
+        Ok(pal::dsep(a[lp], a[bp], b[lp], b[bp]))
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
-        // Angle at point b in triangle a-b-c.
         if a.iter().chain(b.iter()).chain(c.iter()).any(|&v| is_bad(v)) {
             return Ok(BAD_VALUE);
         }
-        let ab = pal::dbear(a[0], a[1], b[0], b[1]);
-        let cb = pal::dbear(c[0], c[1], b[0], b[1]);
+        let lp = self.lon_pos();
+        let bp = self.lat_pos();
+        let ab = pal::dbear(a[lp], a[bp], b[lp], b[bp]);
+        let cb = pal::dbear(c[lp], c[bp], b[lp], b[bp]);
         Ok(pal::drange(ab - cb))
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
-        // Walk along great circle from `from` toward `to` by `dist` radians.
         if from.iter().chain(to.iter()).any(|&v| is_bad(v)) || is_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
 
-        // Convert to 3-vectors.
-        let v1 = pal::dcs2c(from[0], from[1]);
-        let v2 = pal::dcs2c(to[0], to[1]);
+        let lp = self.lon_pos();
+        let bp = self.lat_pos();
 
-        // Cross product gives rotation axis.
+        let v1 = pal::dcs2c(from[lp], from[bp]);
+        let v2 = pal::dcs2c(to[lp], to[bp]);
+
         let axis_vec = pal::dvxv(&v1, &v2);
         let (axis_norm, axis_len) = pal::dvn(&axis_vec);
 
         if axis_len < 1e-20 {
-            // Points coincident or antipodal -- offset along any great circle.
             return Ok(from.to_vec());
         }
 
-        // Scale the rotation axis by the distance.  PAL uses passive
-        // (frame-rotation) convention, so negate to get active rotation
-        // of the vector toward the destination.
         let rot_vec = [
             -axis_norm[0] * dist,
             -axis_norm[1] * dist,
             -axis_norm[2] * dist,
         ];
 
-        // Convert to rotation matrix and apply.
         let rmat = pal::dav2m(&rot_vec);
         let v_out = pal::dmxv(&rmat, &v1);
         let (lon, lat) = pal::dcc2s(&v_out);
 
-        Ok(vec![lon, lat])
+        let mut result = vec![0.0; 2];
+        result[lp] = lon;
+        result[bp] = lat;
+        Ok(result)
     }
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         if coords.len() < 2 {
             return Ok(());
         }
-        if is_bad(coords[0]) || is_bad(coords[1]) {
+        let lp = self.lon_pos();
+        let bp = self.lat_pos();
+        if is_bad(coords[lp]) || is_bad(coords[bp]) {
             return Ok(());
         }
 
-        // Normalize latitude to [-pi/2, pi/2], folding through poles.
-        let mut lat = pal::drange(coords[1]); // [-pi, pi]
-        let mut lon = coords[0];
+        let mut lat = pal::drange(coords[bp]);
+        let mut lon = coords[lp];
 
         if lat > std::f64::consts::FRAC_PI_2 {
             lat = std::f64::consts::PI - lat;
@@ -430,15 +449,22 @@ impl Frame for SkyFrame {
             lon += std::f64::consts::PI;
         }
 
-        // Normalize longitude.
         if self.neglon {
-            lon = pal::drange(lon); // [-pi, pi]
+            lon = pal::drange(lon);
         } else {
-            lon = pal::dranrm(lon); // [0, 2pi]
+            lon = pal::dranrm(lon);
         }
 
-        coords[0] = lon;
-        coords[1] = lat;
+        coords[lp] = lon;
+        coords[bp] = lat;
+        Ok(())
+    }
+
+    fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        super::validate_permutation(perm, 2)?;
+        let old = self.perm;
+        self.perm[0] = old[perm[0] - 1];
+        self.perm[1] = old[perm[1] - 1];
         Ok(())
     }
 

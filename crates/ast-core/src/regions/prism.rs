@@ -114,6 +114,11 @@ impl Prism {
         super::data::with_region_integrity(self, f)
     }
 
+    /// Permute the axes of this region's current frame.
+    pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.data.perm_axes(perm)
+    }
+
     /// Get a reference to the first component region (the extruded region).
     pub fn region1(&self) -> &dyn Region {
         self.region1.as_ref()

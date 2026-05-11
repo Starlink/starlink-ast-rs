@@ -124,6 +124,11 @@ impl Polygon {
     {
         super::data::with_region_integrity(self, f)
     }
+
+    /// Permute the axes of this region's current frame.
+    pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.data.perm_axes(perm)
+    }
 }
 
 // ============================================================================

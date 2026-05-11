@@ -5,7 +5,7 @@ use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, UnitMap};
+use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap};
 use crate::serial::{
     FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
@@ -357,6 +357,58 @@ impl FrameSet {
     /// be selected at runtime (e.g., for different calibration epochs).
     pub fn add_variant(&mut self, map: DynMapping, name: &str) -> AstResult<()> {
         self.variants.push((name.to_string(), map));
+        Ok(())
+    }
+
+    /// Permute the axes of the current frame.
+    ///
+    /// `perm` is a 1-based permutation array. This:
+    /// 1. Permutes the current frame's per-axis data
+    /// 2. Composes a PermMap onto the base→current edge so coordinate
+    ///    values are reordered to match the new axis assignment
+    pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        let naxes = self.current().naxes();
+        super::validate_permutation(perm, naxes)?;
+
+        // Permute the current frame's internal axis data.
+        self.frames[self.current_idx].perm_axes(perm)?;
+
+        // Build a PermMap that reorders coordinate values.
+        // Forward: output[i] = input[perm[i]-1] (reorder to new axis order)
+        // The PermMap uses 1-based encoding.
+        let outperm: Vec<i64> = perm.iter().map(|&p| p as i64).collect();
+
+        // Inverse: inperm[perm[i]-1] = i+1
+        let mut inperm = vec![0i64; naxes];
+        for (i, &p) in perm.iter().enumerate() {
+            inperm[p - 1] = (i + 1) as i64;
+        }
+
+        let pm = PermMap::new(&inperm, &outperm, &[])?;
+
+        // Compose onto the existing edge touching the current frame.
+        // The new mapping is: old_mapping then PermMap (forward direction).
+        let cur_node = self.node_map[self.current_idx];
+        for edge in &mut self.edges {
+            if edge.to == cur_node {
+                // Edge goes from→current: compose PermMap after existing.
+                let combined =
+                    CmpMap::new(edge.mapping.clone(), Box::new(pm), Composition::Series)?;
+                edge.mapping = Box::new(combined);
+                return Ok(());
+            }
+            if edge.from == cur_node {
+                // Edge goes current→to: compose PermMap (inverted) before existing.
+                let mut pm_inv = pm;
+                pm_inv.invert();
+                let combined =
+                    CmpMap::new(Box::new(pm_inv), edge.mapping.clone(), Composition::Series)?;
+                edge.mapping = Box::new(combined);
+                return Ok(());
+            }
+        }
+
+        // No edge (single-frame FrameSet) — nothing to compose onto.
         Ok(())
     }
 

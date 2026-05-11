@@ -130,6 +130,11 @@ impl PointList {
         super::data::with_region_integrity(self, f)
     }
 
+    /// Permute the axes of this region's current frame.
+    pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.data.perm_axes(perm)
+    }
+
     /// Return the number of points in this PointList.
     pub fn list_size(&self) -> usize {
         self.data.points.len()

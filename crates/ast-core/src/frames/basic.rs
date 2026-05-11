@@ -546,6 +546,23 @@ impl Frame for BasicFrame {
         Box::new(self.clone())
     }
 
+    fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        super::validate_permutation(perm, self.naxes)?;
+        fn permute_slice<T: Clone>(v: &mut [T], perm: &[usize]) {
+            let old = v.to_vec();
+            for (i, &p) in perm.iter().enumerate() {
+                v[i] = old[p - 1].clone();
+            }
+        }
+        permute_slice(&mut self.labels, perm);
+        permute_slice(&mut self.units, perm);
+        permute_slice(&mut self.symbols, perm);
+        permute_slice(&mut self.format_strs, perm);
+        permute_slice(&mut self.bottoms, perm);
+        permute_slice(&mut self.tops, perm);
+        Ok(())
+    }
+
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
         Ok(Box::new(UnitMap::new(self.naxes)))
     }
