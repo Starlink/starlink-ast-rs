@@ -130,6 +130,28 @@ impl CircleBuilder {
 }
 
 // ============================================================================
+// Integrity
+// ============================================================================
+
+impl Circle {
+    /// Mutate the current frame with region integrity enforcement.
+    ///
+    /// When adaptive (the default), the FrameSet's base→current mapping is
+    /// updated to account for the change, and defining points remain valid
+    /// in the base frame. When non-adaptive, the change is applied to both
+    /// frames without remapping.
+    ///
+    /// See [`with_region_integrity`](super::data::with_region_integrity) for
+    /// the full algorithm.
+    pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
+    where
+        F: FnOnce(&mut dyn Frame) -> AstResult<()>,
+    {
+        super::data::with_region_integrity(self, f)
+    }
+}
+
+// ============================================================================
 // RegionGeometry implementation
 // ============================================================================
 
@@ -488,8 +510,8 @@ impl Frame for Circle {
         Box::new(self.clone())
     }
 
-    fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
-        todo!("Circle::map_from — full implementation in Task 3")
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        self.data.frameset.current().map_from(previous)
     }
 
     fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {

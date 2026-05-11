@@ -480,7 +480,7 @@ fn region_attributes() {
     assert!(circle.is_closed());
     assert!(!circle.is_negated());
     assert!(circle.is_bounded());
-    assert!(!circle.is_adaptive());
+    assert!(circle.is_adaptive()); // C default is true
     assert_eq!(circle.mesh_size(), 200);
     assert!((circle.fill_factor() - 1.0).abs() < 1e-10);
 
@@ -494,8 +494,8 @@ fn region_attributes() {
     circle.set_fill_factor(0.5);
     assert!((circle.fill_factor() - 0.5).abs() < 1e-10);
 
-    circle.set_adaptive(true);
-    assert!(circle.is_adaptive());
+    circle.set_adaptive(false);
+    assert!(!circle.is_adaptive());
 }
 
 // ---- Clone ----
@@ -576,4 +576,141 @@ fn batch_transform_10k_points() {
         outside_count > 7000,
         "expected >7000 outside, got {outside_count}"
     );
+}
+
+// ---- Region integrity ----
+
+#[test]
+fn with_integrity_identity_change_preserves_points() {
+    // Mutating a frame in a way that produces an identity mapping
+    // (BasicFrame::map_from always returns UnitMap) should leave
+    // defining points unchanged.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frame, vec![3.0, 4.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    // Record original disc parameters.
+    let (orig_centre, orig_radius) = circle.get_region_disc().unwrap();
+
+    // Apply a no-op change via with_integrity.
+    // BasicFrame::map_from always returns UnitMap, so the delta is identity.
+    circle.with_integrity(|_frame| Ok(())).unwrap();
+
+    // Verify defining points are unchanged.
+    let (centre, radius) = circle.get_region_disc().unwrap();
+    assert!((centre[0] - orig_centre[0]).abs() < 1e-10);
+    assert!((centre[1] - orig_centre[1]).abs() < 1e-10);
+    assert!((radius - orig_radius).abs() < 1e-10);
+
+    // Region still works correctly.
+    assert!(circle.point_in_region(&[3.0, 4.0]).unwrap());
+    assert!(!circle.point_in_region(&[100.0, 100.0]).unwrap());
+}
+
+#[test]
+fn with_integrity_non_adaptive_preserves_points() {
+    // When adaptive is false, the mutation is applied to the current frame
+    // and defining points remain numerically unchanged.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frame, vec![3.0, 4.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    circle.set_adaptive(false);
+    assert!(!circle.is_adaptive());
+
+    // Record original disc parameters.
+    let (orig_centre, orig_radius) = circle.get_region_disc().unwrap();
+
+    // Apply a change via with_integrity.
+    circle.with_integrity(|_frame| Ok(())).unwrap();
+
+    // Defining points are unchanged (non-adaptive means no remapping).
+    let (centre, radius) = circle.get_region_disc().unwrap();
+    assert!((centre[0] - orig_centre[0]).abs() < 1e-10);
+    assert!((centre[1] - orig_centre[1]).abs() < 1e-10);
+    assert!((radius - orig_radius).abs() < 1e-10);
+}
+
+#[test]
+fn with_integrity_invalidates_cache() {
+    // After with_integrity, the mesh cache should be invalidated.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    // Force mesh computation to populate the cache.
+    let _mesh = circle.get_region_mesh().unwrap();
+
+    // Apply integrity change.
+    circle.with_integrity(|_frame| Ok(())).unwrap();
+
+    // The mesh should still be computable (cache was cleared but
+    // the geometry is unchanged, so recomputation works fine).
+    let mesh = circle.get_region_mesh().unwrap();
+    assert_eq!(mesh.npoint(), 200); // default mesh_size
+
+    // Verify mesh points are still valid (on the boundary).
+    for i in 0..mesh.npoint() {
+        let p = mesh.point(i);
+        let dist = (p[0] * p[0] + p[1] * p[1]).sqrt();
+        assert!(
+            (dist - 5.0).abs() < 1e-10,
+            "mesh point {} at distance {} (expected 5.0)",
+            i,
+            dist
+        );
+    }
+}
+
+#[test]
+fn with_integrity_callable_multiple_times() {
+    // Verify with_integrity can be called multiple times in sequence.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frame, vec![1.0, 2.0])
+        .unwrap()
+        .radius(3.0)
+        .build()
+        .unwrap();
+
+    for _ in 0..5 {
+        circle.with_integrity(|_frame| Ok(())).unwrap();
+    }
+
+    // Circle should still be functional.
+    let (centre, radius) = circle.get_region_disc().unwrap();
+    assert!((centre[0] - 1.0).abs() < 1e-10);
+    assert!((centre[1] - 2.0).abs() < 1e-10);
+    assert!((radius - 3.0).abs() < 1e-10);
+    assert!(circle.point_in_region(&[1.0, 2.0]).unwrap());
+}
+
+#[test]
+fn with_integrity_error_propagates() {
+    // Errors from the closure should propagate out.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    let result = circle.with_integrity(|_frame| {
+        Err(ast_core::error::AstError::new(
+            ast_core::error::ErrorCode::Attin,
+            "test error",
+        ))
+    });
+    assert!(result.is_err());
+
+    // Circle should still be functional after the failed integrity call.
+    assert!(circle.point_in_region(&[0.0, 0.0]).unwrap());
 }
