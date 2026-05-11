@@ -18,6 +18,70 @@ use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap};
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
 
+/// Compute the 2D convex hull using Andrew's monotone chain algorithm.
+///
+/// Input points are sorted in-place. Returns the hull vertices in
+/// counter-clockwise order. The input must have at least 3 points.
+fn convex_hull_2d(points: &mut [[f64; 2]]) -> Vec<[f64; 2]> {
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+
+    // Sort by x, then by y.
+    points.sort_by(|a, b| {
+        a[0].partial_cmp(&b[0])
+            .unwrap()
+            .then(a[1].partial_cmp(&b[1]).unwrap())
+    });
+
+    // Remove duplicates (points are sorted, so consecutive dupes are adjacent).
+    let mut unique: Vec<[f64; 2]> = Vec::with_capacity(n);
+    for &p in points.iter() {
+        if unique
+            .last()
+            .is_none_or(|last| last[0] != p[0] || last[1] != p[1])
+        {
+            unique.push(p);
+        }
+    }
+    let points = &unique;
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+
+    let mut hull: Vec<[f64; 2]> = Vec::with_capacity(2 * n);
+
+    // Build lower hull.
+    for p in points.iter() {
+        while hull.len() >= 2 && cross(&hull[hull.len() - 2], &hull[hull.len() - 1], p) <= 0.0 {
+            hull.pop();
+        }
+        hull.push(*p);
+    }
+
+    // Build upper hull.
+    let lower_len = hull.len() + 1;
+    for p in points.iter().rev() {
+        while hull.len() >= lower_len
+            && cross(&hull[hull.len() - 2], &hull[hull.len() - 1], p) <= 0.0
+        {
+            hull.pop();
+        }
+        hull.push(*p);
+    }
+
+    // Remove the last point (same as first).
+    hull.pop();
+    hull
+}
+
+/// Cross product of vectors OA and OB (2D).
+fn cross(o: &[f64; 2], a: &[f64; 2], b: &[f64; 2]) -> f64 {
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+}
+
 /// A polygonal region within a 2-D coordinate frame.
 ///
 /// Defined by an ordered list of N vertices (N >= 3). The polygon is
@@ -128,6 +192,73 @@ impl Polygon {
     /// Permute the axes of this region's current frame.
     pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         self.data.perm_axes(perm)
+    }
+
+    /// Compute the convex hull of pixels matching a condition in a 2D array.
+    ///
+    /// Scans the 2D `data` array (stored row-major, dimensions `nx` × `ny`)
+    /// for pixels whose value equals `value` (when `equal` is true) or does
+    /// not equal `value` (when `equal` is false). The grid coordinates of
+    /// matching pixels are computed using `lbnd` (the grid coordinates of
+    /// pixel `[0, 0]`). Returns a Polygon representing the convex hull.
+    ///
+    /// This matches the C library's `astConvexF`.
+    pub fn convex_hull_f32(
+        value: f32,
+        equal: bool,
+        data: &[f32],
+        nx: usize,
+        ny: usize,
+        lbnd: [i64; 2],
+    ) -> AstResult<Self> {
+        use crate::frames::BasicFrameBuilder;
+
+        if data.len() < nx * ny {
+            return Err(AstError::new(
+                ErrorCode::Dimin,
+                format!(
+                    "data array has {} elements but nx*ny = {}",
+                    data.len(),
+                    nx * ny
+                ),
+            ));
+        }
+
+        // Collect grid coordinates of matching pixels.
+        let mut points: Vec<[f64; 2]> = Vec::new();
+        for row in 0..ny {
+            for col in 0..nx {
+                let pixel = data[col + row * nx];
+                let matches = if equal {
+                    pixel == value
+                } else {
+                    pixel != value
+                };
+                if matches {
+                    let x = (lbnd[0] + col as i64) as f64;
+                    let y = (lbnd[1] + row as i64) as f64;
+                    points.push([x, y]);
+                }
+            }
+        }
+
+        if points.len() < 3 {
+            return Err(AstError::new(
+                ErrorCode::Ngdin,
+                format!(
+                    "convex hull requires at least 3 matching pixels, found {}",
+                    points.len()
+                ),
+            ));
+        }
+
+        // Compute convex hull using Andrew's monotone chain algorithm.
+        let hull = convex_hull_2d(&mut points);
+
+        // Build a Polygon from the hull vertices.
+        let frame = BasicFrameBuilder::new(2).build()?;
+        let vertices: Vec<Vec<f64>> = hull.iter().map(|p| vec![p[0], p[1]]).collect();
+        PolygonBuilder::new(frame, vertices)?.build()
     }
 }
 

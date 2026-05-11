@@ -3351,3 +3351,66 @@ fn remove_regions_unit_passthrough() {
     assert!((result.point(0)[0] - 3.0).abs() < 1e-10);
     assert!((result.point(0)[1] - 4.0).abs() < 1e-10);
 }
+
+// ============================================================================
+// convex_hull tests (ported from testregions.c lines 2543-2584)
+// ============================================================================
+
+#[test]
+fn convex_hull_basic() {
+    use ast_core::regions::Polygon;
+
+    // Reproduce the test from testregions.c checkConvex.
+    let nx = 8usize;
+    let ny = 7usize;
+    let lbnd: [i64; 2] = [-10, 3];
+    let mut array = vec![0.0f32; nx * ny];
+
+    // Set pixels (using 1-based C indexing from the test, converted to 0-based).
+    array[5 + 0 * nx] = 1.0; // col=5, row=0 → grid(-5, 3)
+    array[6 + 0 * nx] = 1.0; // col=6, row=0 → grid(-4, 3)
+    array[7 + 0 * nx] = 1.0; // col=7, row=0 → grid(-3, 3)
+    array[6 + 1 * nx] = 1.0; // col=6, row=1 → grid(-4, 4)
+    array[7 + 1 * nx] = 1.0; // col=7, row=1 → grid(-3, 4)
+    array[1 + 2 * nx] = 1.0; // col=1, row=2 → grid(-9, 5)
+    array[7 + 2 * nx] = 1.0; // col=7, row=2 → grid(-3, 5)
+    array[0 + 3 * nx] = 1.0; // col=0, row=3 → grid(-10, 6)
+    array[0 + 5 * nx] = 1.0; // col=0, row=5 → grid(-10, 8)
+    array[1 + 5 * nx] = 1.0; // col=1, row=5 → grid(-9, 8)
+    array[5 + 5 * nx] = 1.0; // col=5, row=5 → grid(-5, 8)
+
+    let poly = Polygon::convex_hull_f32(1.0, true, &array, nx, ny, lbnd).unwrap();
+
+    // The C test expects 7 hull vertices.
+    let pts = poly.get_region_points().unwrap();
+    assert_eq!(
+        pts.npoint(),
+        7,
+        "expected 7 hull vertices, got {}",
+        pts.npoint()
+    );
+
+    // Verify the hull vertices match expected values.
+    // Note: vertex order may differ from C depending on algorithm.
+    // Collect all vertices as a set and check they contain the expected points.
+    let mut vertices: Vec<(i64, i64)> = (0..pts.npoint())
+        .map(|i| {
+            let p = pts.point(i);
+            (p[0].round() as i64, p[1].round() as i64)
+        })
+        .collect();
+    vertices.sort();
+
+    let mut expected = vec![
+        (-10, 6),
+        (-10, 8),
+        (-9, 5),
+        (-5, 3),
+        (-5, 8),
+        (-3, 3),
+        (-3, 5),
+    ];
+    expected.sort();
+
+    assert_eq!(vertices, expected, "hull vertices don't match expected set");
+}
