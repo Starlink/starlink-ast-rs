@@ -7,6 +7,7 @@
 //! [`BAD_VALUE`](crate::constants::BAD_VALUE)).
 
 pub(crate) mod data;
+pub(crate) mod overlap;
 
 mod box_region;
 mod circle;

@@ -446,8 +446,8 @@ impl Region for CmpRegion {
         }
     }
 
-    fn overlap(&self, _other: &dyn Region) -> AstResult<Overlap> {
-        todo!("CmpRegion::overlap — full implementation in Task 12")
+    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
+        super::overlap::compute_overlap(self, other)
     }
 
     fn negated_copy(&self) -> DynRegion {

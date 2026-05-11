@@ -124,8 +124,8 @@ impl Region for NullRegion {
         Ok(self.data.negated)
     }
 
-    fn overlap(&self, _other: &dyn Region) -> AstResult<Overlap> {
-        todo!("NullRegion::overlap — full implementation in Task 12")
+    fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
+        super::overlap::compute_overlap(self, other)
     }
 
     fn negated_copy(&self) -> DynRegion {
