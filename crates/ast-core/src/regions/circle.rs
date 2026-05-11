@@ -141,8 +141,8 @@ impl Circle {
     /// in the base frame. When non-adaptive, the change is applied to both
     /// frames without remapping.
     ///
-    /// See [`with_region_integrity`](super::data::with_region_integrity) for
-    /// the full algorithm.
+    /// See the internal `with_region_integrity` function for the full
+    /// algorithm.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: FnOnce(&mut dyn Frame) -> AstResult<()>,
