@@ -1,0 +1,402 @@
+//! Tests for the Polygon region implementation.
+//!
+//! Covers: construction validation, point inside/outside/boundary for
+//! triangles, squares, and concave polygons, negation, bounding box,
+//! and batch transform.
+
+use ast_core::constants::BAD_VALUE;
+use ast_core::coords::PointSet;
+use ast_core::frames::{BasicFrameBuilder, Frame};
+use ast_core::mappings::Mapping;
+use ast_core::regions::{PolygonBuilder, Region};
+
+// ---- Construction validation ----
+
+#[test]
+fn construct_triangle() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![vec![0.0, 0.0], vec![4.0, 0.0], vec![2.0, 3.0]];
+    let poly = PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(poly.naxes(), 2);
+}
+
+#[test]
+fn construct_rejects_less_than_3_vertices() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
+    let result = PolygonBuilder::new(frame, vertices);
+    assert!(result.is_err());
+}
+
+#[test]
+fn construct_rejects_non_2d_frame() {
+    let frame = BasicFrameBuilder::new(3).build().unwrap();
+    let vertices = vec![
+        vec![0.0, 0.0, 0.0],
+        vec![1.0, 0.0, 0.0],
+        vec![0.0, 1.0, 0.0],
+    ];
+    let result = PolygonBuilder::new(frame, vertices);
+    assert!(result.is_err());
+}
+
+#[test]
+fn construct_rejects_1d_frame() {
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    let vertices = vec![vec![0.0], vec![1.0], vec![2.0]];
+    let result = PolygonBuilder::new(frame, vertices);
+    assert!(result.is_err());
+}
+
+#[test]
+fn construct_rejects_wrong_vertex_length() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.5]]; // Third vertex has wrong length
+    let result = PolygonBuilder::new(frame, vertices);
+    assert!(result.is_err());
+}
+
+// ---- Triangle: point inside/outside/on vertex ----
+
+fn make_triangle() -> ast_core::regions::Polygon {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    // Right triangle with vertices at (0,0), (4,0), (0,3)
+    let vertices = vec![vec![0.0, 0.0], vec![4.0, 0.0], vec![0.0, 3.0]];
+    PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap()
+}
+
+#[test]
+fn triangle_point_inside() {
+    let poly = make_triangle();
+    // Centroid of (0,0),(4,0),(0,3) is (4/3, 1)
+    assert!(poly.point_in_region(&[1.0, 0.5]).unwrap());
+    assert!(poly.point_in_region(&[0.5, 0.5]).unwrap());
+}
+
+#[test]
+fn triangle_point_outside() {
+    let poly = make_triangle();
+    assert!(!poly.point_in_region(&[5.0, 5.0]).unwrap());
+    assert!(!poly.point_in_region(&[-1.0, 0.0]).unwrap());
+    assert!(!poly.point_in_region(&[3.0, 3.0]).unwrap());
+}
+
+#[test]
+fn triangle_point_on_vertex() {
+    let poly = make_triangle();
+    // Vertices are on the boundary; closed polygon includes boundary.
+    assert!(poly.point_in_region(&[0.0, 0.0]).unwrap());
+    assert!(poly.point_in_region(&[4.0, 0.0]).unwrap());
+    assert!(poly.point_in_region(&[0.0, 3.0]).unwrap());
+}
+
+#[test]
+fn triangle_point_on_edge() {
+    let poly = make_triangle();
+    // Midpoint of bottom edge (0,0)-(4,0) is (2,0).
+    assert!(poly.point_in_region(&[2.0, 0.0]).unwrap());
+    // Midpoint of left edge (0,0)-(0,3) is (0,1.5).
+    assert!(poly.point_in_region(&[0.0, 1.5]).unwrap());
+}
+
+// ---- Square: all corners and interior ----
+
+fn make_square() -> ast_core::regions::Polygon {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    // Unit square: (0,0), (1,0), (1,1), (0,1)
+    let vertices = vec![
+        vec![0.0, 0.0],
+        vec![1.0, 0.0],
+        vec![1.0, 1.0],
+        vec![0.0, 1.0],
+    ];
+    PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap()
+}
+
+#[test]
+fn square_interior() {
+    let poly = make_square();
+    assert!(poly.point_in_region(&[0.5, 0.5]).unwrap());
+    assert!(poly.point_in_region(&[0.1, 0.9]).unwrap());
+    assert!(poly.point_in_region(&[0.99, 0.01]).unwrap());
+}
+
+#[test]
+fn square_corners() {
+    let poly = make_square();
+    // All corners are on the boundary (closed).
+    assert!(poly.point_in_region(&[0.0, 0.0]).unwrap());
+    assert!(poly.point_in_region(&[1.0, 0.0]).unwrap());
+    assert!(poly.point_in_region(&[1.0, 1.0]).unwrap());
+    assert!(poly.point_in_region(&[0.0, 1.0]).unwrap());
+}
+
+#[test]
+fn square_outside() {
+    let poly = make_square();
+    assert!(!poly.point_in_region(&[1.5, 0.5]).unwrap());
+    assert!(!poly.point_in_region(&[-0.1, 0.5]).unwrap());
+    assert!(!poly.point_in_region(&[0.5, -0.1]).unwrap());
+    assert!(!poly.point_in_region(&[0.5, 1.1]).unwrap());
+}
+
+// ---- Concave polygon (L-shape) ----
+
+fn make_l_shape() -> ast_core::regions::Polygon {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    // L-shaped polygon:
+    //   (0,0) -> (2,0) -> (2,1) -> (1,1) -> (1,2) -> (0,2)
+    let vertices = vec![
+        vec![0.0, 0.0],
+        vec![2.0, 0.0],
+        vec![2.0, 1.0],
+        vec![1.0, 1.0],
+        vec![1.0, 2.0],
+        vec![0.0, 2.0],
+    ];
+    PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap()
+}
+
+#[test]
+fn l_shape_inside_lower_arm() {
+    let poly = make_l_shape();
+    // Point in the lower-right arm of the L.
+    assert!(poly.point_in_region(&[1.5, 0.5]).unwrap());
+}
+
+#[test]
+fn l_shape_inside_upper_arm() {
+    let poly = make_l_shape();
+    // Point in the upper-left arm of the L.
+    assert!(poly.point_in_region(&[0.5, 1.5]).unwrap());
+}
+
+#[test]
+fn l_shape_in_concavity() {
+    let poly = make_l_shape();
+    // Point in the concave notch (top-right), should be outside.
+    assert!(!poly.point_in_region(&[1.5, 1.5]).unwrap());
+}
+
+#[test]
+fn l_shape_outside() {
+    let poly = make_l_shape();
+    assert!(!poly.point_in_region(&[3.0, 0.5]).unwrap());
+    assert!(!poly.point_in_region(&[-0.5, 1.0]).unwrap());
+}
+
+// ---- Bounding box ----
+
+#[test]
+fn bounding_box_triangle() {
+    let poly = make_triangle();
+    let (lower, upper) = poly.get_region_bounds().unwrap();
+    assert!((lower[0] - 0.0).abs() < 1e-10);
+    assert!((lower[1] - 0.0).abs() < 1e-10);
+    assert!((upper[0] - 4.0).abs() < 1e-10);
+    assert!((upper[1] - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn bounding_box_l_shape() {
+    let poly = make_l_shape();
+    let (lower, upper) = poly.get_region_bounds().unwrap();
+    assert!((lower[0] - 0.0).abs() < 1e-10);
+    assert!((lower[1] - 0.0).abs() < 1e-10);
+    assert!((upper[0] - 2.0).abs() < 1e-10);
+    assert!((upper[1] - 2.0).abs() < 1e-10);
+}
+
+// ---- Negation ----
+
+#[test]
+fn negation_inverts_membership() {
+    let mut poly = make_triangle();
+    // Interior point.
+    assert!(poly.point_in_region(&[1.0, 0.5]).unwrap());
+    // Exterior point.
+    assert!(!poly.point_in_region(&[5.0, 5.0]).unwrap());
+
+    // Negate.
+    poly.negate();
+    assert!(poly.is_negated());
+
+    // Now the interior point is outside.
+    assert!(!poly.point_in_region(&[1.0, 0.5]).unwrap());
+    // And the exterior point is inside.
+    assert!(poly.point_in_region(&[5.0, 5.0]).unwrap());
+}
+
+#[test]
+fn negated_copy_preserves_original() {
+    let poly = make_triangle();
+    let neg = poly.negated_copy();
+
+    assert!(!poly.is_negated());
+    assert!(neg.is_negated());
+
+    // Interior point in original.
+    assert!(poly.point_in_region(&[1.0, 0.5]).unwrap());
+    // Same point is exterior in negated copy.
+    assert!(!neg.point_in_region(&[1.0, 0.5]).unwrap());
+}
+
+// ---- Batch transform ----
+
+#[test]
+fn batch_transform_inside_outside() {
+    let poly = make_square();
+
+    // Create a batch of points: some inside, some outside.
+    let points = PointSet::from_rows(
+        [
+            [0.5, 0.5], // inside
+            [2.0, 2.0], // outside
+            [0.1, 0.1], // inside
+            [5.0, 5.0], // outside
+        ]
+        .iter()
+        .map(|p| p.as_slice()),
+    );
+
+    let result = poly.transform(&points, true).unwrap();
+
+    // Inside points pass through.
+    let p0 = result.point(0);
+    assert!((p0[0] - 0.5).abs() < 1e-10);
+    assert!((p0[1] - 0.5).abs() < 1e-10);
+
+    // Outside points become BAD.
+    let p1 = result.point(1);
+    assert_eq!(p1[0], BAD_VALUE);
+    assert_eq!(p1[1], BAD_VALUE);
+
+    // Another inside.
+    let p2 = result.point(2);
+    assert!((p2[0] - 0.1).abs() < 1e-10);
+    assert!((p2[1] - 0.1).abs() < 1e-10);
+
+    // Another outside.
+    let p3 = result.point(3);
+    assert_eq!(p3[0], BAD_VALUE);
+    assert_eq!(p3[1], BAD_VALUE);
+}
+
+#[test]
+fn batch_transform_bad_input() {
+    let poly = make_square();
+
+    let points = PointSet::from_rows(
+        [[BAD_VALUE, 0.5], [0.5, BAD_VALUE]]
+            .iter()
+            .map(|p| p.as_slice()),
+    );
+
+    let result = poly.transform(&points, true).unwrap();
+
+    // BAD inputs always produce BAD outputs.
+    assert_eq!(result.point(0)[0], BAD_VALUE);
+    assert_eq!(result.point(1)[0], BAD_VALUE);
+}
+
+#[test]
+fn inverse_transform_passes_all() {
+    let poly = make_square();
+
+    let points = PointSet::from_rows([[5.0, 5.0], [0.5, 0.5]].iter().map(|p| p.as_slice()));
+
+    // Inverse transform passes all points unchanged.
+    let result = poly.transform(&points, false).unwrap();
+    let p0 = result.point(0);
+    assert!((p0[0] - 5.0).abs() < 1e-10);
+    assert!((p0[1] - 5.0).abs() < 1e-10);
+}
+
+// ---- Mesh and centroid ----
+
+#[test]
+fn mesh_has_points_on_boundary() {
+    let poly = make_square();
+    let mesh = poly.get_region_mesh().unwrap();
+
+    // All mesh points should be on the boundary of the square.
+    let npoint = mesh.npoint();
+    assert!(npoint > 0);
+
+    for i in 0..npoint {
+        let p = mesh.point(i);
+        let x = p[0];
+        let y = p[1];
+        // Point is on boundary if x==0 or x==1 or y==0 or y==1
+        // (and within the square's bounds).
+        let on_boundary = (x.abs() < 1e-10 || (x - 1.0).abs() < 1e-10)
+            || (y.abs() < 1e-10 || (y - 1.0).abs() < 1e-10);
+        assert!(
+            on_boundary,
+            "Mesh point ({}, {}) is not on the boundary",
+            x, y
+        );
+    }
+}
+
+#[test]
+fn centroid_of_square() {
+    let poly = make_square();
+    let (centre, _radius) = poly.get_region_disc().unwrap();
+    assert!((centre[0] - 0.5).abs() < 1e-10);
+    assert!((centre[1] - 0.5).abs() < 1e-10);
+}
+
+// ---- Open polygon (boundary excluded) ----
+
+#[test]
+fn open_polygon_excludes_boundary() {
+    let mut poly = make_square();
+    poly.set_closed(false);
+
+    // Interior point still inside.
+    assert!(poly.point_in_region(&[0.5, 0.5]).unwrap());
+
+    // Boundary point now excluded.
+    assert!(!poly.point_in_region(&[0.0, 0.5]).unwrap());
+    assert!(!poly.point_in_region(&[1.0, 0.5]).unwrap());
+    assert!(!poly.point_in_region(&[0.5, 0.0]).unwrap());
+    assert!(!poly.point_in_region(&[0.5, 1.0]).unwrap());
+
+    // Vertex excluded.
+    assert!(!poly.point_in_region(&[0.0, 0.0]).unwrap());
+}
+
+// ---- Region attributes ----
+
+#[test]
+fn is_bounded() {
+    let poly = make_triangle();
+    assert!(poly.is_bounded());
+}
+
+#[test]
+fn region_points_returns_vertices() {
+    let poly = make_triangle();
+    let pts = poly.get_region_points().unwrap();
+    assert_eq!(pts.npoint(), 3);
+    assert!((pts.point(0)[0] - 0.0).abs() < 1e-10);
+    assert!((pts.point(0)[1] - 0.0).abs() < 1e-10);
+    assert!((pts.point(1)[0] - 4.0).abs() < 1e-10);
+    assert!((pts.point(1)[1] - 0.0).abs() < 1e-10);
+    assert!((pts.point(2)[0] - 0.0).abs() < 1e-10);
+    assert!((pts.point(2)[1] - 3.0).abs() < 1e-10);
+}

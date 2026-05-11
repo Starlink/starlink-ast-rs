@@ -13,11 +13,13 @@ mod circle;
 mod ellipse;
 mod interval;
 mod nullregion;
+mod polygon;
 pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
 pub use ellipse::{Ellipse, EllipseBuilder};
 pub use interval::{Interval, IntervalBuilder};
 pub use nullregion::{NullRegion, NullRegionBuilder};
+pub use polygon::{Polygon, PolygonBuilder};
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
