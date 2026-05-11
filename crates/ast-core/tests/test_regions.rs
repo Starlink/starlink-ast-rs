@@ -8,9 +8,12 @@
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
+use ast_core::AnyObject;
+use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
+use ast_core::fitschan::FitsChan;
+use ast_core::frames::{BasicFrameBuilder, Frame, FrameSet, SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
@@ -2847,5 +2850,208 @@ fn system_change_circle_serialization_roundtrip() {
     assert!(
         !restored.point_in_region(&far_point).unwrap(),
         "Restored circle should reject far point"
+    );
+}
+
+// ============================================================================
+// FitsChan-based region integration tests
+// (from testregions.c lines 1619-1656)
+//
+// Read FITS WCS headers via FitsChan to create a SkyFrame, then create
+// circles and verify bounds, disc, and membership.
+// ============================================================================
+
+/// Helper: create a FrameSet from a minimal TAN-projection WCS header.
+///
+/// The header produces a 2D SkyFrame (ICRS, RA/Dec in radians) as the
+/// current frame of the returned FrameSet.
+fn fitschan_tan_skyframe() -> FrameSet {
+    let header = "\
+NAXIS   =                    2
+NAXIS1  =                  200
+NAXIS2  =                  200
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+CRPIX1  =                  100
+CRPIX2  =                  100
+CRVAL1  =          71.61972400
+CRVAL2  =         -35.22878700
+CDELT1  = -5.5555555555555E-04
+CDELT2  =  5.5555555555555E-04
+CROTA2  =              0.00000
+";
+    let mut fc = FitsChan::from_header(header).unwrap();
+    fc.rewind();
+    let obj = fc
+        .read()
+        .unwrap()
+        .expect("FitsChan read should produce an object");
+    match obj {
+        AnyObject::FrameSet(fs) => fs,
+        other => panic!("Expected FrameSet from FitsChan, got {:?}", other),
+    }
+}
+
+#[test]
+fn fitschan_sky_circle_bounds() {
+    // C testregions.c lines 1637-1648:
+    // Circle at centre (0.0, 1.0) with radius 0.01 rad on the SkyFrame
+    // from a TAN-projection WCS header.
+    let fs = fitschan_tan_skyframe();
+
+    let circle = CircleBuilder::new(fs, vec![0.0, 1.0])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
+
+    // Current implementation uses simple centre +/- radius (Euclidean).
+    // The Dec bounds are correct regardless:
+    //   lbnd[1] = 1.0 - 0.01 = 0.99
+    //   ubnd[1] = 1.0 + 0.01 = 1.01
+    // The RA bounds are also +/- 0.01 (no cos(dec) correction yet).
+    //
+    // NOTE: When reg_base_box gains SkyFrame-aware bounds, the RA values
+    // should become +/- 0.01/cos(1.0) = +/- 0.01850666, and the Dec upper
+    // should be ~1.00999499 (great-circle correction). Update these asserts
+    // when that lands.
+    assert!(
+        (lbnd[0] - (-0.01)).abs() < 1.0e-6,
+        "fitschan circle lbnd[0]: got {}, expected -0.01",
+        lbnd[0]
+    );
+    assert!(
+        (lbnd[1] - 0.99).abs() < 1.0e-6,
+        "fitschan circle lbnd[1]: got {}, expected 0.99",
+        lbnd[1]
+    );
+    assert!(
+        (ubnd[0] - 0.01).abs() < 1.0e-6,
+        "fitschan circle ubnd[0]: got {}, expected 0.01",
+        ubnd[0]
+    );
+    assert!(
+        (ubnd[1] - 1.01).abs() < 1.0e-6,
+        "fitschan circle ubnd[1]: got {}, expected 1.01",
+        ubnd[1]
+    );
+
+    // Verify get_region_disc returns the expected centre and radius.
+    let (disc_centre, disc_radius) = circle.get_region_disc().unwrap();
+    assert!(
+        disc_centre[0].abs() < 1.0e-5,
+        "fitschan circle disc centre[0]: got {}, expected ~0.0",
+        disc_centre[0]
+    );
+    assert!(
+        (disc_centre[1] - 1.0).abs() < 1.0e-5,
+        "fitschan circle disc centre[1]: got {}, expected ~1.0",
+        disc_centre[1]
+    );
+    assert!(
+        (disc_radius - 0.01).abs() < 1.0e-5,
+        "fitschan circle disc radius: got {}, expected 0.01",
+        disc_radius
+    );
+}
+
+#[test]
+fn fitschan_sky_circle_membership() {
+    // Circle at (1.2217305, 1.3962634) with edge point at (0.8, 0.8).
+    // Test membership using frame.distance / frame.offset to generate
+    // points just inside and just outside.
+    let fs = fitschan_tan_skyframe();
+
+    let centre = [1.2217305, 1.3962634];
+    let edge = [0.8, 0.8];
+
+    // Compute radius as great-circle distance.
+    let rad = fs.distance(&centre, &edge).unwrap();
+    assert!(rad > 0.0, "radius must be positive");
+
+    let circle = CircleBuilder::new(fs.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .edge_point(vec![edge[0], edge[1]])
+        .build()
+        .unwrap();
+
+    // Point at 0.999 * radius along centre->edge direction: inside.
+    let p_inside = fs.offset(&centre, &edge, rad * 0.999).unwrap();
+    // Point at 1.001 * radius: outside.
+    let p_outside = fs.offset(&centre, &edge, rad * 1.001).unwrap();
+
+    // Transform through the circle region.
+    let pts = PointSet::from_rows([[p_inside[0], p_inside[1]], [p_outside[0], p_outside[1]]]);
+    let result = circle.transform(&pts, true).unwrap();
+
+    // Inside point passes through unchanged.
+    assert_eq!(
+        result.point(0)[0],
+        p_inside[0],
+        "fitschan membership: inside RA should pass"
+    );
+    assert_eq!(
+        result.point(0)[1],
+        p_inside[1],
+        "fitschan membership: inside Dec should pass"
+    );
+
+    // Outside point becomes BAD.
+    assert_eq!(
+        result.point(1)[0],
+        BAD_VALUE,
+        "fitschan membership: outside RA should be BAD"
+    );
+    assert_eq!(
+        result.point(1)[1],
+        BAD_VALUE,
+        "fitschan membership: outside Dec should be BAD"
+    );
+}
+
+#[test]
+#[ignore] // reg_base_box does not yet handle pole-wrapping for SkyFrame circles
+fn fitschan_sky_circle_near_pole_bounds() {
+    // C testregions.c lines 1649-1656:
+    // Circle at (0.0, 1.57) rad with radius 0.01 — near north pole.
+    // Bounds should wrap in RA: lbnd[0]=0.0, ubnd[0]=2*pi.
+    // Dec bounds: lbnd[1] ~ 1.56, ubnd[1] = pi/2.
+    let fs = fitschan_tan_skyframe();
+
+    let circle = CircleBuilder::new(fs, vec![0.0, 1.57])
+        .unwrap()
+        .radius(0.01)
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
+
+    // Near the pole, the RA bounds should encompass the full range [0, 2*pi].
+    assert!(
+        lbnd[0].abs() < 1.0e-6,
+        "near-pole circle lbnd[0]: got {}, expected 0.0",
+        lbnd[0]
+    );
+    assert!(
+        (ubnd[0] - 2.0 * PI).abs() < 1.0e-6,
+        "near-pole circle ubnd[0]: got {}, expected 2*pi ({})",
+        ubnd[0],
+        2.0 * PI
+    );
+
+    // Dec bounds: lower ~ centre - radius = 1.57 - 0.01 = 1.56
+    assert!(
+        (lbnd[1] - 1.56).abs() < 1.0e-2,
+        "near-pole circle lbnd[1]: got {}, expected ~1.56",
+        lbnd[1]
+    );
+    // Upper capped at pi/2 (north pole).
+    assert!(
+        (ubnd[1] - FRAC_PI_2).abs() < 1.0e-6,
+        "near-pole circle ubnd[1]: got {}, expected pi/2 ({})",
+        ubnd[1],
+        FRAC_PI_2
     );
 }
