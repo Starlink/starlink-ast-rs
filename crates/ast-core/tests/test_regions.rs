@@ -13,7 +13,7 @@ use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::FitsChan;
-use ast_core::frames::{BasicFrameBuilder, Frame, FrameSet, SkyFrame, SkySystem};
+use ast_core::frames::{BasicFrameBuilder, Frame, FrameSet, SkyFrame, SkySystem, pick_axes};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
@@ -3233,4 +3233,49 @@ fn perm_axes_circle_preserves_membership() {
 
     // Original order should be outside (0.52 as lat is far from 0.3 lat).
     assert!(!circle.point_in_region(&[0.52, 0.31]).unwrap());
+}
+
+// ============================================================================
+// pick_axes tests (ported from testregions.c line 1933)
+// ============================================================================
+
+#[test]
+fn pick_axes_skyframe_one_axis() {
+    // Pick axis 1 (longitude) from a 2-axis SkyFrame.
+    // Result should be a 1-axis BasicFrame.
+    let sky = SkyFrame::new(SkySystem::Fk4);
+    let (picked, mapping) = pick_axes(&sky, &[1]).unwrap();
+
+    assert_eq!(picked.naxes(), 1);
+    assert_eq!(mapping.nin(), 2);
+    assert_eq!(mapping.nout(), 1);
+
+    // Forward transform: [lon, lat] → [lon]
+    let pts = PointSet::from_rows(std::iter::once([1.5, 0.7].as_slice()));
+    let result = mapping.transform(&pts, true).unwrap();
+    assert!((result.point(0)[0] - 1.5).abs() < 1e-10);
+}
+
+#[test]
+fn pick_axes_basicframe_subset() {
+    // Pick axes [1, 3] from a 3-axis BasicFrame.
+    let frame = BasicFrameBuilder::new(3).build().unwrap();
+    let (picked, mapping) = pick_axes(&frame, &[1, 3]).unwrap();
+
+    assert_eq!(picked.naxes(), 2);
+    assert_eq!(mapping.nin(), 3);
+    assert_eq!(mapping.nout(), 2);
+
+    // Forward: [x, y, z] → [x, z]
+    let pts = PointSet::from_rows(std::iter::once([10.0, 20.0, 30.0].as_slice()));
+    let result = mapping.transform(&pts, true).unwrap();
+    assert!((result.point(0)[0] - 10.0).abs() < 1e-10);
+    assert!((result.point(0)[1] - 30.0).abs() < 1e-10);
+
+    // Inverse: [x, z] → [x, BAD, z]
+    let pts2 = PointSet::from_rows(std::iter::once([10.0, 30.0].as_slice()));
+    let result2 = mapping.transform(&pts2, false).unwrap();
+    assert!((result2.point(0)[0] - 10.0).abs() < 1e-10);
+    assert_eq!(result2.point(0)[1], BAD_VALUE);
+    assert!((result2.point(0)[2] - 30.0).abs() < 1e-10);
 }

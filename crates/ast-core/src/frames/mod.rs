@@ -25,7 +25,7 @@ pub use timeframe::{TimeFrame, TimeScale, TimeSystem};
 use std::fmt;
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{AsAny, DynMapping};
+use crate::mappings::{AsAny, DynMapping, PermMap};
 
 /// An owned, dynamically-dispatched Frame.
 pub type DynFrame = Box<dyn Frame>;
@@ -127,6 +127,55 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     ///
     /// Uses AST's standard floating-point tolerance for numeric comparisons.
     fn equal(&self, other: &dyn Frame) -> bool;
+}
+
+/// Extract a subset of axes from a frame, returning a new frame and a mapping.
+///
+/// `axes` is a 1-based array of axis indices to pick from `frame`.
+/// Returns `(new_frame, mapping)` where:
+/// - `new_frame` has `axes.len()` axes, inheriting attributes from the
+///   selected axes of the original frame.
+/// - `mapping` transforms coordinates from the original frame (forward)
+///   to the new frame. The inverse maps from the new frame back to the
+///   original frame (unselected axes get [`BAD_VALUE`](crate::constants::BAD_VALUE)).
+///
+/// For a SkyFrame, picking both axes returns a clone; picking one axis
+/// returns a BasicFrame (a single celestial axis is no longer a sky frame).
+pub fn pick_axes(frame: &dyn Frame, axes: &[usize]) -> AstResult<(DynFrame, DynMapping)> {
+    let naxes = frame.naxes();
+    let nout = axes.len();
+
+    if nout == 0 {
+        return Err(AstError::new(
+            ErrorCode::Naxin,
+            "must pick at least one axis",
+        ));
+    }
+
+    for &ax in axes {
+        if ax < 1 || ax > naxes {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!("axis index {} is out of range 1..={}", ax, naxes),
+            ));
+        }
+    }
+
+    // Build the new frame with the correct number of axes.
+    let new_frame: DynFrame = Box::new(BasicFrameBuilder::new(nout).build()?);
+
+    // Build a PermMap: forward selects the picked axes from the original.
+    // outperm (forward): output[i] = input[axes[i]] (1-based).
+    let outperm: Vec<i64> = axes.iter().map(|&ax| ax as i64).collect();
+    // inperm (inverse): input[axes[i]-1] = output[i+1], others = BAD.
+    let mut inperm = vec![0i64; naxes]; // 0 → BAD_VALUE
+    for (i, &ax) in axes.iter().enumerate() {
+        inperm[ax - 1] = (i + 1) as i64;
+    }
+
+    let mapping: DynMapping = Box::new(PermMap::new(&inperm, &outperm, &[])?);
+
+    Ok((new_frame, mapping))
 }
 
 /// Validate that `perm` is a valid 1-based permutation of length `naxes`.
