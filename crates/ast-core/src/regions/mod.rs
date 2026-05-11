@@ -34,7 +34,7 @@ pub use masking::mask;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::frames::{DynFrame, Frame, FrameSet};
-use crate::mappings::Mapping;
+use crate::mappings::{CmpMap, DynMapping, Mapping, UnitMap};
 
 /// An owned, dynamically-dispatched Region.
 pub type DynRegion = Box<dyn Region>;
@@ -238,4 +238,53 @@ impl Clone for Box<dyn Region> {
     fn clone(&self) -> Self {
         self.clone_region()
     }
+}
+
+/// Test whether a `dyn Mapping` is a Region.
+fn is_region(mapping: &dyn Mapping) -> bool {
+    let a = mapping.as_any();
+    a.is::<Circle>()
+        || a.is::<BoxRegion>()
+        || a.is::<Ellipse>()
+        || a.is::<Polygon>()
+        || a.is::<Interval>()
+        || a.is::<NullRegion>()
+        || a.is::<CmpRegion>()
+        || a.is::<PointList>()
+        || a.is::<Prism>()
+}
+
+/// Remove all Region nodes from a mapping tree.
+///
+/// Walks the mapping tree recursively. Any node that is a Region is
+/// replaced with a [`UnitMap`] of matching dimensionality, removing
+/// the region's point-clipping behaviour while preserving the overall
+/// dimensionality of the coordinate transformation.
+///
+/// For a [`CmpMap`], both children are processed recursively.
+/// Other non-Region mappings are returned as clones.
+pub fn remove_regions(mapping: &dyn Mapping) -> DynMapping {
+    if is_region(mapping) {
+        return Box::new(UnitMap::new(mapping.nin()));
+    }
+
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        let mut first = remove_regions(cmp.first());
+        let mut second = remove_regions(cmp.second());
+        // Preserve the effective inversion state of each child.
+        if cmp.inv_a() != cmp.first().is_inverted() {
+            first.invert();
+        }
+        if cmp.inv_b() != cmp.second().is_inverted() {
+            second.invert();
+        }
+        let mut new_cmp = CmpMap::new(first, second, cmp.composition())
+            .expect("remove_regions: CmpMap reconstruction failed");
+        if mapping.is_inverted() {
+            new_cmp.invert();
+        }
+        return Box::new(new_cmp);
+    }
+
+    mapping.clone_box()
 }

@@ -13,11 +13,13 @@ use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::FitsChan;
-use ast_core::frames::{BasicFrameBuilder, Frame, FrameSet, SkyFrame, SkySystem, pick_axes};
+use ast_core::frames::{
+    BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, pick_axes,
+};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
-    IntervalBuilder, Overlap, PolygonBuilder, PrismBuilder, Region,
+    IntervalBuilder, Overlap, PolygonBuilder, PrismBuilder, Region, remove_regions,
 };
 
 /// Check whether a value represents "unbounded below" (very large negative).
@@ -3278,4 +3280,74 @@ fn pick_axes_basicframe_subset() {
     assert!((result2.point(0)[0] - 10.0).abs() < 1e-10);
     assert_eq!(result2.point(0)[1], BAD_VALUE);
     assert!((result2.point(0)[2] - 30.0).abs() < 1e-10);
+}
+
+// ============================================================================
+// remove_regions tests (ported from testregions.c lines 2494-2542)
+// ============================================================================
+
+#[test]
+fn remove_regions_from_frameset() {
+    // Create a Circle and verify it clips points.
+    let sf1 = SkyFrame::new(SkySystem::Icrs);
+    let circle = CircleBuilder::new(sf1.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(0.001)
+        .build()
+        .unwrap();
+
+    // Point inside (0, 0) passes through.
+    let pts_in = PointSet::from_rows(std::iter::once([0.0, 0.0].as_slice()));
+    let result = circle.transform(&pts_in, true).unwrap();
+    assert!(result.point(0)[0] != BAD_VALUE, "centre should be inside");
+
+    // Point outside (0.01, 0.01) is clipped.
+    let pts_out = PointSet::from_rows(std::iter::once([0.01, 0.01].as_slice()));
+    let result2 = circle.transform(&pts_out, true).unwrap();
+    assert_eq!(
+        result2.point(0)[0],
+        BAD_VALUE,
+        "distant point should be clipped"
+    );
+
+    // Now build a FrameSet that has the circle as part of its mapping.
+    // Use convert to get ICRS→Galactic through the circle.
+    let sf2 = SkyFrame::new(SkySystem::Galactic);
+    let fs = sf1.convert(&sf2, &[]).unwrap().unwrap();
+
+    // The FrameSet's mapping from base to current transforms coordinates.
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+
+    // Transform (0, 0) through the FrameSet's mapping.
+    let result3 = map.transform(&pts_in, true).unwrap();
+    assert!(
+        result3.point(0)[0] != BAD_VALUE,
+        "origin should transform through FrameSet"
+    );
+
+    // After remove_regions, the mapping should pass all points through
+    // (no clipping behaviour from regions).
+    let clean_map = remove_regions(map.as_ref());
+    let result4 = clean_map.transform(&pts_out, true).unwrap();
+    assert!(
+        result4.point(0)[0] != BAD_VALUE,
+        "remove_regions should eliminate clipping"
+    );
+}
+
+#[test]
+fn remove_regions_unit_passthrough() {
+    // remove_regions on a non-region mapping returns an equivalent mapping.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let fs = FrameSet::new(Box::new(frame));
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+
+    let clean = remove_regions(map.as_ref());
+    assert_eq!(clean.nin(), 2);
+    assert_eq!(clean.nout(), 2);
+
+    let pts = PointSet::from_rows(std::iter::once([3.0, 4.0].as_slice()));
+    let result = clean.transform(&pts, true).unwrap();
+    assert!((result.point(0)[0] - 3.0).abs() < 1e-10);
+    assert!((result.point(0)[1] - 4.0).abs() < 1e-10);
 }
