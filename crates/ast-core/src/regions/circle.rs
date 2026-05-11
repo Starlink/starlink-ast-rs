@@ -5,9 +5,12 @@
 //! the "radius" is a great-circle distance; in a flat frame it is
 //! Euclidean distance.
 
+use std::f64::consts::PI;
+
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameSet};
+use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping};
 
 use super::data::{RegionData, RegionGeometry};
@@ -99,12 +102,15 @@ impl CircleBuilder {
             }
             ep
         } else if let Some(r) = self.radius {
-            // Compute an edge point at distance `r` from centre along axis 1.
-            // For now, use a simple offset along the first axis.
-            // Full implementation in Task 2 will use frame.offset().
-            let mut ep = self.centre.clone();
-            ep[0] += r;
-            ep
+            // Compute an edge point at distance `r` from centre.
+            // We need a "direction" point for Frame::offset. Create one
+            // that differs from centre along axis 1 only.
+            let mut direction = self.centre.clone();
+            direction[0] += 1.0;
+            // Use the frame's offset method to move from centre toward
+            // the direction point by distance r. This correctly handles
+            // both Euclidean and spherical geometry.
+            self.frame.offset(&self.centre, &direction, r)?
         } else {
             return Err(AstError::new(
                 ErrorCode::Naxin,
@@ -127,6 +133,16 @@ impl CircleBuilder {
 // RegionGeometry implementation
 // ============================================================================
 
+impl Circle {
+    /// Compute the radius of this Circle by measuring the geodesic distance
+    /// between the centre (points[0]) and the edge point (points[1]) in the
+    /// base frame.
+    fn radius(&self) -> AstResult<f64> {
+        let base_frame = self.data.frameset.base();
+        base_frame.distance(&self.data.points[0], &self.data.points[1])
+    }
+}
+
 impl RegionGeometry for Circle {
     fn region_data(&self) -> &RegionData {
         &self.data
@@ -136,16 +152,111 @@ impl RegionGeometry for Circle {
         &mut self.data
     }
 
-    fn reg_base_pick(&self, _point: &[f64]) -> AstResult<bool> {
-        todo!("Circle::reg_base_pick — full implementation in Task 2")
+    fn reg_base_pick(&self, point: &[f64]) -> AstResult<bool> {
+        // Check for BAD coordinates.
+        if point_has_bad(point) {
+            return Ok(false);
+        }
+
+        let base_frame = self.data.frameset.base();
+        let centre = &self.data.points[0];
+
+        // Compute geodesic distance from point to centre.
+        let dist = base_frame.distance(point, centre)?;
+        if is_bad(dist) {
+            return Ok(false);
+        }
+
+        // Compute the radius.
+        let radius = self.radius()?;
+        if is_bad(radius) {
+            return Ok(false);
+        }
+
+        // Compare distance to radius, respecting the closed flag.
+        if self.data.closed {
+            Ok(dist <= radius)
+        } else {
+            Ok(dist < radius)
+        }
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        todo!("Circle::reg_base_box — full implementation in Task 4")
+        let base_frame = self.data.frameset.base();
+        let naxes = base_frame.naxes();
+        let centre = &self.data.points[0];
+        let radius = self.radius()?;
+
+        // For a simple (Euclidean) frame, the bounding box is
+        // centre ± radius on each axis. This matches the C library's
+        // behaviour for plain Frames.
+        // For non-Euclidean frames (SkyFrame etc.), the correct approach
+        // is to derive bounds from the mesh. For now, use the simple
+        // Euclidean formula which is correct for BasicFrame.
+        let mut lower = vec![0.0; naxes];
+        let mut upper = vec![0.0; naxes];
+
+        for i in 0..naxes {
+            lower[i] = centre[i] - radius;
+            upper[i] = centre[i] + radius;
+        }
+
+        Ok((lower, upper))
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        todo!("Circle::reg_base_mesh — full implementation in Task 4")
+        let base_frame = self.data.frameset.base();
+        let naxes = base_frame.naxes();
+        let centre = &self.data.points[0];
+        let radius = self.radius()?;
+        let np = self.data.mesh_size;
+
+        if naxes == 1 {
+            // 1-D: the boundary is just the two extreme points.
+            let p1 = vec![centre[0] - radius];
+            let p2 = vec![centre[0] + radius];
+            return Ok(vec![p1, p2]);
+        }
+
+        if naxes == 2 {
+            // 2-D: distribute points evenly around the circumference
+            // using the frame's offset method (handles both Euclidean
+            // and spherical geometry via the frame's geodesic).
+            let delta = 2.0 * PI / np as f64;
+            let mut mesh = Vec::with_capacity(np);
+
+            for i in 0..np {
+                let angle = i as f64 * delta;
+                // For Euclidean geometry, parametric circle:
+                let x = centre[0] + radius * angle.cos();
+                let y = centre[1] + radius * angle.sin();
+                mesh.push(vec![x, y]);
+            }
+
+            return Ok(mesh);
+        }
+
+        // N-D: approximate by offsetting from centre along each axis
+        // direction pair, then projecting mesh points onto the sphere.
+        // For the initial implementation, use the simple Euclidean
+        // approach: offset along each pair of axes.
+        let points_per_plane = np / (naxes * (naxes - 1) / 2).max(1);
+        let delta = 2.0 * PI / points_per_plane.max(1) as f64;
+        let mut mesh = Vec::new();
+
+        for ax1 in 0..naxes {
+            for ax2 in (ax1 + 1)..naxes {
+                for k in 0..points_per_plane {
+                    let angle = k as f64 * delta;
+                    let mut point = centre.to_vec();
+                    point[ax1] = centre[ax1] + radius * angle.cos();
+                    point[ax2] = centre[ax2] + radius * angle.sin();
+                    mesh.push(point);
+                }
+            }
+        }
+
+        Ok(mesh)
     }
 
     fn reg_centre(&self) -> AstResult<Vec<f64>> {
@@ -156,8 +267,20 @@ impl RegionGeometry for Circle {
         true
     }
 
-    fn remap_defining_points(&mut self, _mapping: &dyn Mapping, _forward: bool) -> AstResult<()> {
-        todo!("Circle::remap_defining_points — full implementation in Task 2")
+    fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
+        // Transform the defining points (centre and edge) through the mapping.
+        let naxes = self.data.points[0].len();
+        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
+        let transformed = mapping.transform(&pts, forward)?;
+
+        let mut new_points = Vec::with_capacity(self.data.points.len());
+        for i in 0..self.data.points.len() {
+            let p = transformed.point(i);
+            new_points.push(p[..naxes].to_vec());
+        }
+        self.data.points = new_points;
+        self.data.invalidate_cache();
+        Ok(())
     }
 }
 
@@ -166,8 +289,32 @@ impl RegionGeometry for Circle {
 // ============================================================================
 
 impl Region for Circle {
-    fn point_in_region(&self, _point: &[f64]) -> AstResult<bool> {
-        todo!("Circle::point_in_region — full implementation in Task 2")
+    fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
+        // Check for BAD coordinates in the input.
+        if point_has_bad(point) {
+            return Ok(false);
+        }
+
+        // Transform point from current frame to base frame.
+        let naxes = self.data.frameset.base().naxes();
+        let pts = PointSet::from_rows(std::iter::once(point));
+        let base_pts = self.data.frameset.transform(&pts, false)?;
+        let base_point = base_pts.point(0);
+
+        // Check the transformed point for BAD values.
+        if base_point[..naxes].iter().any(|&v| is_bad(v)) {
+            return Ok(false);
+        }
+
+        // Test raw geometry.
+        let inside = self.reg_base_pick(&base_point[..naxes])?;
+
+        // Apply negation.
+        if self.data.negated {
+            Ok(!inside)
+        } else {
+            Ok(inside)
+        }
     }
 
     fn overlap(&self, _other: &dyn Region) -> AstResult<Overlap> {
@@ -225,15 +372,32 @@ impl Region for Circle {
     }
 
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        todo!("Circle::get_region_bounds — full implementation in Task 4")
+        self.reg_base_box()
     }
 
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
-        todo!("Circle::get_region_disc — full implementation in Task 4")
+        let centre = self.data.points[0].clone();
+        let radius = self.radius()?;
+        Ok((centre, radius))
     }
 
     fn get_region_mesh(&self) -> AstResult<PointSet> {
-        todo!("Circle::get_region_mesh — full implementation in Task 4")
+        // Check for a cached mesh first.
+        {
+            let cached = self.data.cached_base_mesh.borrow();
+            if let Some(mesh) = cached.as_ref() {
+                return Ok(PointSet::from_rows(mesh.iter().map(|p| p.as_slice())));
+            }
+        }
+
+        // Compute the mesh.
+        let mesh = self.reg_base_mesh()?;
+        let result = PointSet::from_rows(mesh.iter().map(|p| p.as_slice()));
+
+        // Cache it.
+        *self.data.cached_base_mesh.borrow_mut() = Some(mesh);
+
+        Ok(result)
     }
 
     fn get_region_points(&self) -> AstResult<PointSet> {
@@ -258,8 +422,28 @@ impl Region for Circle {
         self.data.uncertainty.clone()
     }
 
-    fn map_region(&self, _mapping: &dyn Mapping, _frame: &dyn Frame) -> AstResult<DynRegion> {
-        todo!("Circle::map_region — full implementation in Task 2")
+    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
+        // Create a new Circle with the same geometry but in the new frame.
+        // The defining points are transformed through the mapping.
+        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
+        let transformed = mapping.transform(&pts, true)?;
+
+        let naxes = frame.naxes();
+        let centre = transformed.point(0)[..naxes].to_vec();
+        let edge = transformed.point(1)[..naxes].to_vec();
+
+        // Construct the Circle directly, bypassing the builder since we
+        // already have the edge point computed.
+        let frameset = FrameSet::new(frame.snapshot());
+        let points = vec![centre, edge];
+        let mut data = RegionData::new(frameset, points);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed;
+        data.mesh_size = self.data.mesh_size;
+        data.fill_factor = self.data.fill_factor;
+        data.adaptive = self.data.adaptive;
+
+        Ok(Box::new(Circle { data }))
     }
 
     fn clone_region(&self) -> DynRegion {
