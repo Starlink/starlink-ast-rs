@@ -93,7 +93,58 @@ impl Region for DummyRegion {
     fn overlap(&self, _other: &dyn Region) -> AstResult<Overlap> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn negated(&self) -> DynRegion {
+    fn negated_copy(&self) -> DynRegion {
+        panic!("not implemented")
+    }
+    fn negate(&mut self) {}
+    fn is_negated(&self) -> bool {
+        false
+    }
+    fn is_closed(&self) -> bool {
+        true
+    }
+    fn set_closed(&mut self, _closed: bool) {}
+    fn fill_factor(&self) -> f64 {
+        1.0
+    }
+    fn set_fill_factor(&mut self, _factor: f64) {}
+    fn mesh_size(&self) -> usize {
+        200
+    }
+    fn set_mesh_size(&mut self, _size: usize) {}
+    fn is_bounded(&self) -> bool {
+        true
+    }
+    fn is_adaptive(&self) -> bool {
+        true
+    }
+    fn set_adaptive(&mut self, _adaptive: bool) {}
+    fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
+    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
+    fn get_region_mesh(&self) -> AstResult<PointSet> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
+    fn get_region_points(&self) -> AstResult<PointSet> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
+    fn get_region_frame(&self) -> DynFrame {
+        panic!("not implemented")
+    }
+    fn get_region_frameset(&self) -> ast_core::frames::FrameSet {
+        panic!("not implemented")
+    }
+    fn set_uncertainty(&mut self, _unc: DynRegion) {}
+    fn get_uncertainty(&self) -> Option<DynRegion> {
+        None
+    }
+    fn map_region(&self, _mapping: &dyn Mapping, _frame: &dyn Frame) -> AstResult<DynRegion> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
+    fn clone_region(&self) -> DynRegion {
         panic!("not implemented")
     }
 }
