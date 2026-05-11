@@ -14,6 +14,7 @@ mod cmpregion;
 mod ellipse;
 mod interval;
 mod nullregion;
+mod pointlist;
 mod polygon;
 pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
@@ -21,6 +22,7 @@ pub use cmpregion::{CmpRegion, CmpRegionBuilder};
 pub use ellipse::{Ellipse, EllipseBuilder};
 pub use interval::{Interval, IntervalBuilder};
 pub use nullregion::{NullRegion, NullRegionBuilder};
+pub use pointlist::{PointList, PointListBuilder};
 pub use polygon::{Polygon, PolygonBuilder};
 
 use crate::coords::PointSet;
