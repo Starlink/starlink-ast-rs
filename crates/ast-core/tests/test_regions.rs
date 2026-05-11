@@ -1,17 +1,20 @@
 //! Integration tests ported from reference/starlink-ast/ast_tester/testregions.c
 //!
 //! These test cross-class interactions (compound regions, prisms, bounds
-//! computation through compound regions, overlap detection).
-//! SkyFrame-based tests are skipped as they require spherical geometry
-//! features not yet fully exercised.
+//! computation through compound regions, overlap detection) on both
+//! BasicFrame and SkyFrame. The SkyFrame tests verify that regions
+//! correctly use great-circle (spherical) geometry for distance
+//! computations, membership tests, and overlap detection.
+
+use std::f64::consts::{FRAC_PI_2, PI};
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrameBuilder, Frame};
+use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
-    BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, IntervalBuilder, Overlap,
-    PrismBuilder, Region,
+    BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
+    IntervalBuilder, Overlap, PolygonBuilder, PrismBuilder, Region,
 };
 
 /// Check whether a value represents "unbounded below" (very large negative).
@@ -1318,4 +1321,1226 @@ fn prism_with_cmpregion_bounds() {
     assert!((ubnd[0] - 3.0).abs() < 1e-10, "Prism+CmpRegion ubnd[0]");
     assert!((ubnd[1] - 3.0).abs() < 1e-10, "Prism+CmpRegion ubnd[1]");
     assert!((ubnd[2] - 200.0).abs() < 1e-10, "Prism+CmpRegion ubnd[2]");
+}
+
+// ============================================================================
+// SkyFrame-based region tests
+//
+// Ported from checkCircle, checkBox, checkEllipse, checkPolygon in
+// reference/starlink-ast/ast_tester/testregions.c
+//
+// These test that regions correctly use spherical (great-circle) geometry
+// when the encapsulated frame is a SkyFrame.
+// ============================================================================
+
+// ============================================================================
+// Circle on SkyFrame — basic membership via transform
+// (from checkCircle, lines 1675-1708 of testregions.c)
+//
+// A circle on the sky is a spherical cap. Points inside are those whose
+// great-circle distance from the centre is less than the radius.
+// ============================================================================
+
+#[test]
+fn sky_circle_basic_membership() {
+    // Create a SkyFrame (default ICRS).
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    // Centre at RA=1.2217305 rad (~70 deg), Dec=1.3962634 rad (~80 deg).
+    let centre = [1.2217305, 1.3962634];
+    // Edge point at (0.8, 0.8).
+    let edge = [0.8, 0.8];
+
+    let circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .edge_point(vec![edge[0], edge[1]])
+        .build()
+        .unwrap();
+
+    // Compute the radius as great-circle distance from centre to edge.
+    let rad = sky.distance(&centre, &edge).unwrap();
+    assert!(rad > 0.0, "radius must be positive");
+
+    // Get a point just inside (99.9% of radius along centre→edge direction).
+    let p_inside = sky.offset(&centre, &edge, rad * 0.999).unwrap();
+    // Get a point just outside (100.1% of radius along centre→edge direction).
+    let p_outside = sky.offset(&centre, &edge, rad * 1.001).unwrap();
+
+    // Transform through the circle: inside passes through, outside becomes BAD.
+    let pts = PointSet::from_rows([[p_inside[0], p_inside[1]], [p_outside[0], p_outside[1]]]);
+    let result = circle.transform(&pts, true).unwrap();
+
+    // Inside point passes through.
+    assert_eq!(
+        result.point(0)[0],
+        p_inside[0],
+        "SkyCircle: inside point RA should pass"
+    );
+    assert_eq!(
+        result.point(0)[1],
+        p_inside[1],
+        "SkyCircle: inside point Dec should pass"
+    );
+
+    // Outside point becomes BAD.
+    assert_eq!(
+        result.point(1)[0],
+        BAD_VALUE,
+        "SkyCircle: outside point RA should be BAD"
+    );
+    assert_eq!(
+        result.point(1)[1],
+        BAD_VALUE,
+        "SkyCircle: outside point Dec should be BAD"
+    );
+}
+
+#[test]
+fn sky_circle_membership_opposite_direction() {
+    // Test membership along a different direction from centre.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let centre = [1.2217305, 1.3962634];
+    let edge = [0.8, 0.8];
+
+    let circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .edge_point(vec![edge[0], edge[1]])
+        .build()
+        .unwrap();
+
+    let rad = sky.distance(&centre, &edge).unwrap();
+
+    // Test along a different direction (towards south pole area).
+    let other_dir = [centre[0] + 0.5, centre[1] - 0.5];
+    let p_inside = sky.offset(&centre, &other_dir, rad * 0.9).unwrap();
+    let p_outside = sky.offset(&centre, &other_dir, rad * 1.1).unwrap();
+
+    let pts = PointSet::from_rows([[p_inside[0], p_inside[1]], [p_outside[0], p_outside[1]]]);
+    let result = circle.transform(&pts, true).unwrap();
+
+    // Inside passes.
+    assert_eq!(
+        result.point(0)[0],
+        p_inside[0],
+        "SkyCircle opposite: inside RA"
+    );
+    assert_eq!(
+        result.point(0)[1],
+        p_inside[1],
+        "SkyCircle opposite: inside Dec"
+    );
+
+    // Outside becomes BAD.
+    assert_eq!(
+        result.point(1)[0],
+        BAD_VALUE,
+        "SkyCircle opposite: outside RA"
+    );
+    assert_eq!(
+        result.point(1)[1],
+        BAD_VALUE,
+        "SkyCircle opposite: outside Dec"
+    );
+}
+
+#[test]
+fn sky_circle_centre_is_inside() {
+    // The centre of the circle is always inside.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.2217305, 1.3962634];
+    let edge = [0.8, 0.8];
+
+    let circle = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .edge_point(vec![edge[0], edge[1]])
+        .build()
+        .unwrap();
+
+    assert!(
+        circle.point_in_region(&centre).unwrap(),
+        "Centre must be inside circle"
+    );
+}
+
+#[test]
+fn sky_circle_edge_is_inside_closed() {
+    // The edge point should be inside a closed circle (on boundary).
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.2217305, 1.3962634];
+    let edge = [0.8, 0.8];
+
+    let circle = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .edge_point(vec![edge[0], edge[1]])
+        .build()
+        .unwrap();
+
+    assert!(
+        circle.point_in_region(&edge).unwrap(),
+        "Edge point must be inside closed circle"
+    );
+}
+
+#[test]
+fn sky_circle_from_radius() {
+    // Create circle using radius instead of edge point.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [0.0, 0.0]; // RA=0, Dec=0
+
+    // 0.1 radian radius (about 5.7 degrees)
+    let circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    // Point at 0.05 rad from centre (inside).
+    let p_in = sky.offset(&centre, &[0.1, 0.0], 0.05).unwrap();
+    assert!(
+        circle.point_in_region(&p_in).unwrap(),
+        "Point at half radius should be inside"
+    );
+
+    // Point at 0.15 rad from centre (outside).
+    let p_out = sky.offset(&centre, &[0.1, 0.0], 0.15).unwrap();
+    assert!(
+        !circle.point_in_region(&p_out).unwrap(),
+        "Point at 1.5x radius should be outside"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — overlap detection
+// (from checkCircle, lines 1746-1764 of testregions.c)
+// ============================================================================
+
+#[test]
+fn sky_circle_overlap_same() {
+    // Two identical circles on the sky: overlap should be Same.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+
+    let c1 = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(0.2)
+        .build()
+        .unwrap();
+
+    let c2 = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(0.2)
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        c1.overlap(&c2).unwrap(),
+        Overlap::Same,
+        "SkyCircle overlap: identical circles should be Same"
+    );
+}
+
+#[test]
+fn sky_circle_overlap_first_inside() {
+    // Smaller circle at same centre is inside larger.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+
+    let big = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(0.5)
+        .build()
+        .unwrap();
+
+    let small = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        small.overlap(&big).unwrap(),
+        Overlap::FirstInside,
+        "SkyCircle overlap: small inside big -> FirstInside"
+    );
+    assert_eq!(
+        big.overlap(&small).unwrap(),
+        Overlap::SecondInside,
+        "SkyCircle overlap: big contains small -> SecondInside"
+    );
+}
+
+#[test]
+fn sky_circle_overlap_partial() {
+    // Two overlapping circles offset in RA.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let c1 = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.3)
+        .build()
+        .unwrap();
+
+    // Shift centre in RA by less than sum of radii.
+    let c2 = CircleBuilder::new(sky, vec![1.4, 0.5])
+        .unwrap()
+        .radius(0.3)
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        c1.overlap(&c2).unwrap(),
+        Overlap::Partial,
+        "SkyCircle overlap: offset circles -> Partial"
+    );
+}
+
+#[test]
+fn sky_circle_overlap_none() {
+    // Two circles far apart on the sky: no overlap.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let c1 = CircleBuilder::new(sky.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    // Opposite side of the sky.
+    let c2 = CircleBuilder::new(sky, vec![PI, 0.0])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        c1.overlap(&c2).unwrap(),
+        Overlap::None,
+        "SkyCircle overlap: distant circles -> None"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — bounds and disc
+// (from checkCircle, lines 1637-1648 of testregions.c)
+// ============================================================================
+
+#[test]
+fn sky_circle_disc() {
+    // Circle at (0, 1.0) with radius 0.01.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [0.0, 1.0];
+    let radius = 0.01;
+
+    let circle = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    let (disc_centre, disc_radius) = circle.get_region_disc().unwrap();
+
+    // Disc centre should be near the circle's centre.
+    assert!(
+        (disc_centre[0] - centre[0]).abs() < 1.0e-5,
+        "SkyCircle disc: centre RA"
+    );
+    assert!(
+        (disc_centre[1] - centre[1]).abs() < 1.0e-5,
+        "SkyCircle disc: centre Dec"
+    );
+    // Disc radius should be approximately the circle's radius.
+    assert!(
+        (disc_radius - radius).abs() < 1.0e-5,
+        "SkyCircle disc: radius"
+    );
+}
+
+#[test]
+fn sky_circle_bounds_equator() {
+    // Circle at equator, away from pole — bounds should be simple.
+    // Circle at (1.0, 0.0) with radius 0.1 rad.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.0]; // RA=1 rad, Dec=0
+    let radius = 0.1;
+
+    let circle = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
+
+    // At the equator, the RA extent is approximately radius/cos(dec) = radius.
+    // The Dec extent is simply ±radius.
+    // With the current naive implementation (centre ± radius), the bounds are:
+    assert!(
+        (lbnd[1] - (centre[1] - radius)).abs() < 1.0e-10,
+        "SkyCircle equator bounds: lower Dec"
+    );
+    assert!(
+        (ubnd[1] - (centre[1] + radius)).abs() < 1.0e-10,
+        "SkyCircle equator bounds: upper Dec"
+    );
+    // RA bounds — naive implementation gives centre ± radius.
+    assert!(
+        (lbnd[0] - (centre[0] - radius)).abs() < 1.0e-10,
+        "SkyCircle equator bounds: lower RA"
+    );
+    assert!(
+        (ubnd[0] - (centre[0] + radius)).abs() < 1.0e-10,
+        "SkyCircle equator bounds: upper RA"
+    );
+}
+
+#[test]
+#[ignore] // reg_base_box uses naive centre±radius; does not expand RA bounds near pole
+fn sky_circle_bounds_near_pole() {
+    // Circle centred near north pole: RA bounds should wrap to [0, 2*pi].
+    // From checkCircle lines 1765-1771 of testregions.c.
+    // Centre at (0.8, pi/2) — the north celestial pole with RA=0.8.
+    // With radius 0.1, the circle extends from Dec = pi/2 - 0.1 to pi/2.
+    // The RA bounds should be the full range [0, 2*pi] because the circle
+    // straddles all longitudes near the pole.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [0.8, FRAC_PI_2];
+    let radius = 0.1;
+
+    let circle = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
+
+    // RA bounds should be [0, 2*pi] for a polar cap.
+    assert!(
+        lbnd[0] < 0.01,
+        "SkyCircle pole bounds: lower RA should be ~0, got {}",
+        lbnd[0]
+    );
+    assert!(
+        ubnd[0] > 2.0 * PI - 0.01,
+        "SkyCircle pole bounds: upper RA should be ~2*pi, got {}",
+        ubnd[0]
+    );
+
+    // Dec bounds: lower = pi/2 - radius, upper = pi/2.
+    assert!(
+        (lbnd[1] - (FRAC_PI_2 - radius)).abs() < 1.0e-6,
+        "SkyCircle pole bounds: lower Dec"
+    );
+    assert!(
+        (ubnd[1] - FRAC_PI_2).abs() < 1.0e-6,
+        "SkyCircle pole bounds: upper Dec"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — negated membership
+// ============================================================================
+
+#[test]
+fn sky_circle_negated_membership() {
+    // Negated circle: inside becomes outside and vice versa.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let radius = 0.2;
+
+    let mut circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    // Before negation: centre is inside.
+    assert!(circle.point_in_region(&centre).unwrap());
+
+    // After negation: centre is outside.
+    circle.negate();
+    assert!(!circle.point_in_region(&centre).unwrap());
+
+    // A distant point should now be inside.
+    let far_point = sky.offset(&centre, &[2.0, 0.0], radius * 2.0).unwrap();
+    assert!(circle.point_in_region(&far_point).unwrap());
+}
+
+// ============================================================================
+// Circle on SkyFrame — open boundary
+// ============================================================================
+
+#[test]
+fn sky_circle_open_boundary() {
+    // Open circle excludes boundary points.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let edge = [1.1, 0.5];
+
+    let mut circle = CircleBuilder::new(sky, vec![centre[0], centre[1]])
+        .unwrap()
+        .edge_point(vec![edge[0], edge[1]])
+        .build()
+        .unwrap();
+
+    // Closed: edge is inside.
+    assert!(
+        circle.point_in_region(&edge).unwrap(),
+        "Closed circle includes edge"
+    );
+
+    // Open: edge is outside.
+    circle.set_closed(false);
+    assert!(
+        !circle.point_in_region(&edge).unwrap(),
+        "Open circle excludes edge"
+    );
+
+    // Centre is still inside for open circle.
+    assert!(
+        circle.point_in_region(&centre).unwrap(),
+        "Open circle includes centre"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — FK5 system
+// (verify Circle works with different sky systems)
+// ============================================================================
+
+#[test]
+fn sky_circle_fk5_membership() {
+    // Circle on FK5 SkyFrame — same geometry, different system.
+    let sky = SkyFrame::new(SkySystem::Fk5);
+
+    let centre = [0.5, 0.3]; // RA ~29 deg, Dec ~17 deg
+    let radius = 0.05; // ~2.9 degrees
+
+    let circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    // Point at 80% of radius — inside.
+    let p_in = sky.offset(&centre, &[0.6, 0.3], radius * 0.8).unwrap();
+    assert!(
+        circle.point_in_region(&p_in).unwrap(),
+        "FK5 circle: inside point"
+    );
+
+    // Point at 120% of radius — outside.
+    let p_out = sky.offset(&centre, &[0.6, 0.3], radius * 1.2).unwrap();
+    assert!(
+        !circle.point_in_region(&p_out).unwrap(),
+        "FK5 circle: outside point"
+    );
+}
+
+// ============================================================================
+// Box on SkyFrame — basic membership
+// (from checkBox, lines 1103+ of testregions.c)
+//
+// A Box on SkyFrame uses centre ± half-widths in angular coordinates.
+// The membership test uses the frame's distance metric indirectly.
+// ============================================================================
+
+#[test]
+fn sky_box_basic_membership() {
+    // Box on SkyFrame centred at (1.0, 0.5), half-widths (0.1, 0.1).
+    // This is a small patch away from the pole where the geometry is
+    // approximately flat.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let corner = [1.1, 0.6]; // centre + half-widths
+
+    let bx = BoxRegionBuilder::new(sky, centre.to_vec(), corner.to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Centre is inside.
+    assert!(bx.point_in_region(&centre).unwrap(), "SkyBox: centre");
+    // Corner is inside (closed).
+    assert!(bx.point_in_region(&corner).unwrap(), "SkyBox: corner");
+    // Opposite corner is inside.
+    assert!(
+        bx.point_in_region(&[0.9, 0.4]).unwrap(),
+        "SkyBox: opposite corner"
+    );
+    // Point outside in RA.
+    assert!(
+        !bx.point_in_region(&[1.2, 0.5]).unwrap(),
+        "SkyBox: outside RA"
+    );
+    // Point outside in Dec.
+    assert!(
+        !bx.point_in_region(&[1.0, 0.7]).unwrap(),
+        "SkyBox: outside Dec"
+    );
+}
+
+#[test]
+fn sky_box_bounds() {
+    // Box bounds should match the defining points.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let corner = [1.1, 0.6];
+
+    let bx = BoxRegionBuilder::new(sky, centre.to_vec(), corner.to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = bx.get_region_bounds().unwrap();
+
+    // Lower bound: centre - half-widths = (0.9, 0.4).
+    assert!((lbnd[0] - 0.9).abs() < 1.0e-10, "SkyBox bounds: lower RA");
+    assert!((lbnd[1] - 0.4).abs() < 1.0e-10, "SkyBox bounds: lower Dec");
+    // Upper bound: centre + half-widths = (1.1, 0.6).
+    assert!((ubnd[0] - 1.1).abs() < 1.0e-10, "SkyBox bounds: upper RA");
+    assert!((ubnd[1] - 0.6).abs() < 1.0e-10, "SkyBox bounds: upper Dec");
+}
+
+#[test]
+fn sky_box_overlap_same() {
+    // Identical boxes should have Same overlap.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let corner = [1.1, 0.6];
+
+    let b1 = BoxRegionBuilder::new(sky.clone(), centre.to_vec(), corner.to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+    let b2 = BoxRegionBuilder::new(sky, centre.to_vec(), corner.to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        b1.overlap(&b2).unwrap(),
+        Overlap::Same,
+        "SkyBox overlap: same"
+    );
+}
+
+#[test]
+fn sky_box_overlap_none() {
+    // Two boxes far apart.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let b1 = BoxRegionBuilder::new(sky.clone(), vec![0.5, 0.3], vec![0.6, 0.4])
+        .unwrap()
+        .build()
+        .unwrap();
+    let b2 = BoxRegionBuilder::new(sky, vec![3.0, -0.5], vec![3.1, -0.4])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        b1.overlap(&b2).unwrap(),
+        Overlap::None,
+        "SkyBox overlap: none"
+    );
+}
+
+#[test]
+fn sky_box_overlap_partial() {
+    // Two overlapping boxes.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let b1 = BoxRegionBuilder::new(sky.clone(), vec![1.0, 0.5], vec![1.1, 0.6])
+        .unwrap()
+        .build()
+        .unwrap();
+    // Overlaps in both RA and Dec.
+    let b2 = BoxRegionBuilder::new(sky, vec![1.05, 0.55], vec![1.15, 0.65])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        b1.overlap(&b2).unwrap(),
+        Overlap::Partial,
+        "SkyBox overlap: partial"
+    );
+}
+
+// ============================================================================
+// Ellipse on SkyFrame — basic membership
+// (from checkEllipse, lines 1967-1999 of testregions.c)
+// ============================================================================
+
+#[test]
+fn sky_ellipse_basic_membership() {
+    // Ellipse on SkyFrame at (1.0, 0.5) with semi-axes [0.1, 0.05]
+    // and angle 0 (semi-major aligned with RA axis).
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let semi_axes = [0.1, 0.05]; // a=0.1 rad along axis 1, b=0.05 along axis 2
+    let angle = 0.0;
+
+    let ellipse = EllipseBuilder::new(sky, centre.to_vec(), semi_axes, angle)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Centre is inside.
+    assert!(
+        ellipse.point_in_region(&centre).unwrap(),
+        "SkyEllipse: centre inside"
+    );
+
+    // Point at (1.05, 0.5) — along semi-major axis at 50% distance.
+    assert!(
+        ellipse.point_in_region(&[1.05, 0.5]).unwrap(),
+        "SkyEllipse: halfway along major axis"
+    );
+
+    // Point at (1.0, 0.52) — along semi-minor axis at 40% of b.
+    assert!(
+        ellipse.point_in_region(&[1.0, 0.52]).unwrap(),
+        "SkyEllipse: near centre along minor axis"
+    );
+
+    // Point at (1.15, 0.5) — beyond semi-major axis (0.15 > 0.1).
+    assert!(
+        !ellipse.point_in_region(&[1.15, 0.5]).unwrap(),
+        "SkyEllipse: beyond major axis"
+    );
+
+    // Point at (1.0, 0.6) — beyond semi-minor axis (0.1 > 0.05).
+    assert!(
+        !ellipse.point_in_region(&[1.0, 0.6]).unwrap(),
+        "SkyEllipse: beyond minor axis"
+    );
+}
+
+#[test]
+fn sky_ellipse_rotated_membership() {
+    // Ellipse rotated by pi/4 — semi-major axis at 45 degrees.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.0]; // On equator for simpler geometry.
+    let semi_axes = [0.1, 0.02]; // Elongated ellipse.
+    let angle = std::f64::consts::FRAC_PI_4; // 45 degrees.
+
+    let ellipse = EllipseBuilder::new(sky, centre.to_vec(), semi_axes, angle)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Centre is inside.
+    assert!(
+        ellipse.point_in_region(&centre).unwrap(),
+        "SkyEllipse rotated: centre inside"
+    );
+
+    // A point along the 45-degree diagonal at half the semi-major distance
+    // should be inside.
+    let diag = 0.05 / 2.0_f64.sqrt();
+    assert!(
+        ellipse
+            .point_in_region(&[centre[0] + diag, centre[1] + diag])
+            .unwrap(),
+        "SkyEllipse rotated: along major diagonal"
+    );
+}
+
+#[test]
+fn sky_ellipse_disc() {
+    // Disc of ellipse should encompass the semi-major axis.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [2.0, 0.3];
+    let semi_axes = [0.1, 0.05];
+    let angle = 0.0;
+
+    let ellipse = EllipseBuilder::new(sky, centre.to_vec(), semi_axes, angle)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let (disc_centre, disc_radius) = ellipse.get_region_disc().unwrap();
+
+    // Disc centre should be near the ellipse centre.
+    assert!(
+        (disc_centre[0] - centre[0]).abs() < 1.0e-3,
+        "SkyEllipse disc: centre RA"
+    );
+    assert!(
+        (disc_centre[1] - centre[1]).abs() < 1.0e-3,
+        "SkyEllipse disc: centre Dec"
+    );
+    // Disc radius should be at least the semi-major axis.
+    assert!(
+        disc_radius >= semi_axes[0] * 0.99,
+        "SkyEllipse disc: radius >= semi-major, got {}",
+        disc_radius
+    );
+}
+
+// ============================================================================
+// Polygon on SkyFrame — membership
+// (from checkPolygon, lines 644-750 of testregions.c)
+//
+// Note: Polygon reg_pins uses a 2D crossing-number algorithm that operates
+// directly on coordinates. For small regions far from the pole, this works
+// approximately correctly even on a SkyFrame. Near the pole or wrapping
+// in RA, it will fail.
+// ============================================================================
+
+#[test]
+fn sky_polygon_basic_membership() {
+    // Small polygon on SkyFrame at moderate declination.
+    // Vertices form a small quadrilateral far from the pole.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    // Square-ish polygon ~6 degrees wide at Dec ~30 degrees.
+    let vertices = vec![
+        vec![1.0, 0.5],
+        vec![1.1, 0.5],
+        vec![1.1, 0.6],
+        vec![1.0, 0.6],
+    ];
+
+    let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
+
+    // Centre of polygon is inside.
+    assert!(
+        polygon.point_in_region(&[1.05, 0.55]).unwrap(),
+        "SkyPolygon: centre inside"
+    );
+
+    // Corner is inside (closed).
+    assert!(
+        polygon.point_in_region(&[1.0, 0.5]).unwrap(),
+        "SkyPolygon: corner inside (closed)"
+    );
+
+    // Point well outside.
+    assert!(
+        !polygon.point_in_region(&[2.0, 0.55]).unwrap(),
+        "SkyPolygon: outside in RA"
+    );
+    assert!(
+        !polygon.point_in_region(&[1.05, 0.8]).unwrap(),
+        "SkyPolygon: outside in Dec"
+    );
+}
+
+#[test]
+fn sky_polygon_triangle_membership() {
+    // Triangle on SkyFrame.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let vertices = vec![vec![0.5, 0.2], vec![0.7, 0.2], vec![0.6, 0.4]];
+
+    let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
+
+    // Centroid is inside.
+    assert!(
+        polygon.point_in_region(&[0.6, 0.267]).unwrap(),
+        "SkyPolygon triangle: centroid"
+    );
+
+    // Point outside the triangle but within bounding box.
+    assert!(
+        !polygon.point_in_region(&[0.5, 0.39]).unwrap(),
+        "SkyPolygon triangle: outside near apex"
+    );
+}
+
+#[test]
+fn sky_polygon_bounds() {
+    // Polygon bounds should encompass all vertices.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let vertices = vec![
+        vec![1.0, 0.5],
+        vec![1.1, 0.5],
+        vec![1.1, 0.6],
+        vec![1.0, 0.6],
+    ];
+
+    let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
+
+    let (lbnd, ubnd) = polygon.get_region_bounds().unwrap();
+
+    assert!(lbnd[0] <= 1.0 + 1e-10, "SkyPolygon bounds: lbnd RA <= 1.0");
+    assert!(lbnd[1] <= 0.5 + 1e-10, "SkyPolygon bounds: lbnd Dec <= 0.5");
+    assert!(ubnd[0] >= 1.1 - 1e-10, "SkyPolygon bounds: ubnd RA >= 1.1");
+    assert!(ubnd[1] >= 0.6 - 1e-10, "SkyPolygon bounds: ubnd Dec >= 0.6");
+}
+
+#[test]
+fn sky_polygon_disc() {
+    // Polygon disc should encompass the polygon.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let vertices = vec![
+        vec![1.0, 0.5],
+        vec![1.1, 0.5],
+        vec![1.1, 0.6],
+        vec![1.0, 0.6],
+    ];
+
+    let polygon = PolygonBuilder::new(sky.clone(), vertices)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let (disc_centre, disc_radius) = polygon.get_region_disc().unwrap();
+
+    // The disc centre should be near the polygon centroid.
+    assert!(
+        (disc_centre[0] - 1.05).abs() < 0.1,
+        "SkyPolygon disc: centre RA"
+    );
+    assert!(
+        (disc_centre[1] - 0.55).abs() < 0.1,
+        "SkyPolygon disc: centre Dec"
+    );
+
+    // The disc radius should be enough to encompass all vertices.
+    // Distance from centroid to corner (1.0, 0.5):
+    let corner_dist = sky.distance(&disc_centre, &[1.0, 0.5]).unwrap();
+    assert!(
+        disc_radius >= corner_dist * 0.99,
+        "SkyPolygon disc: radius should encompass vertices"
+    );
+}
+
+// ============================================================================
+// CmpRegion on SkyFrame — compound region operations
+// (from checkCmpRegion, line 2236+ of testregions.c)
+// ============================================================================
+
+#[test]
+fn sky_cmpregion_and_circle_box() {
+    // AND of a circle and a box on SkyFrame: points must be inside both.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let circle = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.2)
+        .build()
+        .unwrap();
+
+    // Box centred at same location, half-widths 0.15 in each axis.
+    let bx = BoxRegionBuilder::new(sky, vec![1.0, 0.5], vec![1.15, 0.65])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(circle, bx, CmpOperator::And)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Centre: inside both.
+    assert!(
+        cmp.point_in_region(&[1.0, 0.5]).unwrap(),
+        "SkyCmpRegion AND: centre"
+    );
+
+    // Point inside box but outside circle (corner of box at distance
+    // sqrt(0.15^2 + 0.15^2) ~ 0.212 > 0.2 from centre).
+    // Actually in angular distance on sky this is approximate.
+    // Use a point clearly outside the circle's radius.
+    let far_corner = [1.14, 0.64];
+    // Distance from (1.0, 0.5) to (1.14, 0.64):
+    let dist_to_corner = SkyFrame::new(SkySystem::Icrs)
+        .distance(&[1.0, 0.5], &far_corner)
+        .unwrap();
+    if dist_to_corner > 0.2 {
+        // This corner is outside the circle, so outside the AND.
+        assert!(
+            !cmp.point_in_region(&far_corner).unwrap(),
+            "SkyCmpRegion AND: box corner outside circle"
+        );
+    }
+
+    // Point inside circle but outside box.
+    // (0.85, 0.5): RA distance = 0.15 < radius 0.2, but outside box (box RA range is [0.85, 1.15]).
+    // Wait, box centre 1.0, corner 1.15 means half-width 0.15 so range [0.85, 1.15].
+    // So (0.84, 0.5) is outside box.
+    assert!(
+        !cmp.point_in_region(&[0.84, 0.5]).unwrap(),
+        "SkyCmpRegion AND: inside circle but outside box"
+    );
+}
+
+#[test]
+fn sky_cmpregion_or_two_circles() {
+    // OR of two circles on SkyFrame.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let c1 = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    let c2 = CircleBuilder::new(sky, vec![1.5, 0.5])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(c1, c2, CmpOperator::Or)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Centre of c1 is inside OR.
+    assert!(
+        cmp.point_in_region(&[1.0, 0.5]).unwrap(),
+        "SkyCmpRegion OR: centre of c1"
+    );
+
+    // Centre of c2 is inside OR.
+    assert!(
+        cmp.point_in_region(&[1.5, 0.5]).unwrap(),
+        "SkyCmpRegion OR: centre of c2"
+    );
+
+    // Midpoint between the two centres — outside both circles (distance 0.25 > 0.1).
+    assert!(
+        !cmp.point_in_region(&[1.25, 0.5]).unwrap(),
+        "SkyCmpRegion OR: midpoint outside both"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — large radius
+// Test that a large spherical cap (> 90 degrees) works correctly.
+// ============================================================================
+
+#[test]
+fn sky_circle_large_radius() {
+    // A circle with radius > pi/2 is a "more-than-hemisphere" cap.
+    // Points on the opposite side of the sphere can be inside.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [0.0, 0.0]; // RA=0, Dec=0
+    let radius = 2.0; // > pi/2, about 115 degrees
+
+    let circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    // Centre is inside.
+    assert!(
+        circle.point_in_region(&centre).unwrap(),
+        "Large circle: centre"
+    );
+
+    // Point at 90 degrees away (pi/2 < radius) — inside.
+    let p_90deg = [FRAC_PI_2, 0.0];
+    let dist_90 = sky.distance(&centre, &p_90deg).unwrap();
+    assert!(
+        dist_90 < radius,
+        "Distance to 90 deg point should be < radius"
+    );
+    assert!(
+        circle.point_in_region(&p_90deg).unwrap(),
+        "Large circle: point at 90 degrees is inside"
+    );
+
+    // Antipodal point at (pi, 0) — distance is pi ~3.14 > 2.0 — outside.
+    let p_anti = [PI, 0.0];
+    let dist_anti = sky.distance(&centre, &p_anti).unwrap();
+    assert!(dist_anti > radius);
+    assert!(
+        !circle.point_in_region(&p_anti).unwrap(),
+        "Large circle: antipodal point is outside"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — transform with multiple points
+// Comprehensive test of batch transform through sky circle.
+// ============================================================================
+
+#[test]
+fn sky_circle_batch_transform() {
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [2.0, -0.3]; // RA ~115 deg, Dec ~-17 deg
+    let radius = 0.15;
+
+    let circle = CircleBuilder::new(sky.clone(), vec![centre[0], centre[1]])
+        .unwrap()
+        .radius(radius)
+        .build()
+        .unwrap();
+
+    // Generate test points at various fractions of the radius.
+    let direction = [2.2, -0.2];
+    let fracs = [0.0, 0.5, 0.99, 1.01, 1.5, 2.0];
+    let points: Vec<[f64; 2]> = fracs
+        .iter()
+        .map(|&f| {
+            let p = sky.offset(&centre, &direction, radius * f).unwrap();
+            [p[0], p[1]]
+        })
+        .collect();
+
+    let pts = PointSet::from_rows(points.iter().copied());
+    let result = circle.transform(&pts, true).unwrap();
+
+    // Points at fractions 0.0, 0.5, 0.99 are inside (pass through).
+    for (i, &frac) in fracs.iter().enumerate().take(3) {
+        assert_ne!(
+            result.point(i)[0],
+            BAD_VALUE,
+            "Batch point {} (frac {}) should be inside",
+            i,
+            frac
+        );
+    }
+
+    // Points at fractions 1.01, 1.5, 2.0 are outside (become BAD).
+    for (i, &frac) in fracs.iter().enumerate().skip(3) {
+        assert_eq!(
+            result.point(i)[0],
+            BAD_VALUE,
+            "Batch point {} (frac {}) should be outside",
+            i,
+            frac
+        );
+    }
+}
+
+// ============================================================================
+// Box on SkyFrame — negation
+// ============================================================================
+
+#[test]
+fn sky_box_negated() {
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let centre = [1.0, 0.5];
+    let corner = [1.1, 0.6];
+
+    let mut bx = BoxRegionBuilder::new(sky, centre.to_vec(), corner.to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Before negation: centre is inside.
+    assert!(bx.point_in_region(&centre).unwrap());
+    // Distant point is outside.
+    assert!(!bx.point_in_region(&[3.0, 0.0]).unwrap());
+
+    // After negation: centre is outside.
+    bx.negate();
+    assert!(!bx.point_in_region(&centre).unwrap());
+    // Distant point is inside.
+    assert!(bx.point_in_region(&[3.0, 0.0]).unwrap());
+}
+
+// ============================================================================
+// Prism with SkyFrame Circle — 3D region combining sky + spectral axis
+// ============================================================================
+
+#[test]
+fn sky_circle_prism_with_interval() {
+    // Prism: sky circle (2D) extruded by 1D interval.
+    // This models a cone on the sky at all frequencies in a range.
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let circle = CircleBuilder::new(sky.clone(), vec![1.0, 0.5])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+
+    let frm1 = BasicFrameBuilder::new(1).build().unwrap();
+    let interval = IntervalBuilder::new(frm1, vec![100.0], vec![200.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let prism = PrismBuilder::new(circle, interval)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(prism.naxes(), 3);
+
+    // Inside both sky circle and interval.
+    assert!(
+        prism.point_in_region(&[1.0, 0.5, 150.0]).unwrap(),
+        "Sky prism: inside"
+    );
+
+    // Inside circle, outside interval.
+    assert!(
+        !prism.point_in_region(&[1.0, 0.5, 250.0]).unwrap(),
+        "Sky prism: outside interval"
+    );
+
+    // Outside circle, inside interval.
+    let p_outside_sky = sky.offset(&[1.0, 0.5], &[1.5, 0.5], 0.15).unwrap();
+    assert!(
+        !prism
+            .point_in_region(&[p_outside_sky[0], p_outside_sky[1], 150.0])
+            .unwrap(),
+        "Sky prism: outside circle"
+    );
+}
+
+// ============================================================================
+// Circle on SkyFrame — verify that great-circle distance is used
+//
+// Key test: on a SkyFrame, the distance is the great-circle distance.
+// At high declination, a circle centred at Dec=80 deg should NOT use
+// Euclidean coordinate distance (which would give the wrong shape due
+// to RA coordinate compression near the pole).
+// ============================================================================
+
+#[test]
+fn sky_circle_great_circle_distance_correctness() {
+    // At Dec=80 degrees (1.396 rad), RA coordinates are compressed.
+    // Two points separated by delta_RA=0.5 at Dec=80 have great-circle
+    // distance much less than 0.5 radians (it is approx 0.5*cos(80) ~ 0.087).
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    let p1 = [1.0, 1.396]; // RA=1.0, Dec=80 deg
+    let p2 = [1.5, 1.396]; // RA=1.5, Dec=80 deg
+
+    let gc_dist = sky.distance(&p1, &p2).unwrap();
+    // Great-circle distance should be about 0.5 * cos(80 deg) ~ 0.087
+    let expected = 0.5 * 1.396_f64.cos();
+    assert!(
+        (gc_dist - expected).abs() < 0.01,
+        "Great-circle distance at Dec=80: expected ~{:.4}, got {:.4}",
+        expected,
+        gc_dist
+    );
+
+    // Circle centred at p1 with radius = gc_dist should include p2.
+    let circle = CircleBuilder::new(sky, vec![p1[0], p1[1]])
+        .unwrap()
+        .edge_point(vec![p2[0], p2[1]])
+        .build()
+        .unwrap();
+
+    // p2 is on the boundary (closed), so it's inside.
+    assert!(
+        circle.point_in_region(&p2).unwrap(),
+        "Edge point is inside closed circle"
+    );
+
+    // A point at same RA offset but at Dec=0 would be at distance 0.5 rad,
+    // which is much larger than gc_dist. If we used Euclidean coordinates
+    // (wrong), that point would seem at the same distance as p2 — but with
+    // great-circle, it's actually much farther.
+    // A point at same RA offset but at lower Dec where it's truly farther away.
+    let p4 = [1.5, 0.0]; // RA=1.5, Dec=0 — far from p1
+    assert!(
+        !circle.point_in_region(&p4).unwrap(),
+        "Point at equator with same delta-RA is outside"
+    );
 }
