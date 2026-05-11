@@ -11,6 +11,10 @@ use ast_core::frames::{
 use ast_core::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PermMap, ShiftMap, UnitMap, ZoomMap,
 };
+use ast_core::regions::{
+    BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
+    IntervalBuilder, NullRegionBuilder, PointListBuilder, PolygonBuilder, PrismBuilder, Region,
+};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 use ndarray::array;
 
@@ -1216,4 +1220,277 @@ fn native_byte_exact_round_trip_generated_fixtures() {
             mapping_failures
         );
     }
+}
+
+// ===========================================================================
+// Region serialisation round-trip tests
+// ===========================================================================
+
+#[test]
+fn round_trip_circle() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let circle = CircleBuilder::new(frame, vec![10.0, 20.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    let text = to_native_string(&AnyObject::Circle(circle)).unwrap();
+
+    // Structural markers.
+    assert!(text.contains("Begin Circle"), "missing Begin Circle");
+    assert!(text.contains("End Circle"), "missing End Circle");
+    assert!(text.contains("Points"), "missing Points");
+
+    // Deserialise and verify.
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // Verify the restored region contains the centre.
+    assert!(region.point_in_region(&[10.0, 20.0]).unwrap());
+    // Point far from centre should be outside.
+    assert!(!region.point_in_region(&[100.0, 100.0]).unwrap());
+}
+
+#[test]
+fn round_trip_box_region() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let box_region = BoxRegionBuilder::new(frame, vec![5.0, 5.0], vec![3.0, 4.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let text = to_native_string(&AnyObject::BoxRegion(box_region)).unwrap();
+
+    assert!(text.contains("Begin Box"), "missing Begin Box");
+    assert!(text.contains("End Box"), "missing End Box");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // Centre point inside.
+    assert!(region.point_in_region(&[5.0, 5.0]).unwrap());
+    // Point inside the box (centre=5,5 corner=3,4 means box spans [3,7]x[4,6]).
+    assert!(region.point_in_region(&[6.0, 5.5]).unwrap());
+    // Far outside.
+    assert!(!region.point_in_region(&[50.0, 50.0]).unwrap());
+}
+
+#[test]
+fn round_trip_polygon() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    // Triangle: (0,0), (10,0), (0,10)
+    let polygon = PolygonBuilder::new(
+        frame,
+        vec![vec![0.0, 0.0], vec![10.0, 0.0], vec![0.0, 10.0]],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+
+    let text = to_native_string(&AnyObject::Polygon(polygon)).unwrap();
+
+    assert!(text.contains("Begin Polygon"), "missing Begin Polygon");
+    assert!(text.contains("End Polygon"), "missing End Polygon");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // Centroid is inside.
+    assert!(region.point_in_region(&[2.0, 2.0]).unwrap());
+    // Outside.
+    assert!(!region.point_in_region(&[8.0, 8.0]).unwrap());
+}
+
+#[test]
+fn round_trip_interval() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let interval = IntervalBuilder::new(frame, vec![1.0, 2.0], vec![10.0, 20.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let text = to_native_string(&AnyObject::Interval(interval)).unwrap();
+
+    assert!(text.contains("Begin Interval"), "missing Begin Interval");
+    assert!(text.contains("End Interval"), "missing End Interval");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // Inside.
+    assert!(region.point_in_region(&[5.0, 10.0]).unwrap());
+    // Outside.
+    assert!(!region.point_in_region(&[0.0, 0.0]).unwrap());
+}
+
+#[test]
+fn round_trip_null_region() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let null = NullRegionBuilder::new(frame).build().unwrap();
+
+    let text = to_native_string(&AnyObject::NullRegion(null)).unwrap();
+
+    assert!(
+        text.contains("Begin NullRegion"),
+        "missing Begin NullRegion"
+    );
+    assert!(text.contains("End NullRegion"), "missing End NullRegion");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // NullRegion (un-negated) contains no points.
+    assert!(!region.point_in_region(&[0.0, 0.0]).unwrap());
+}
+
+#[test]
+fn round_trip_ellipse() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let ellipse = EllipseBuilder::new(frame, vec![5.0, 5.0], [3.0, 2.0], 0.0)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let text = to_native_string(&AnyObject::Ellipse(ellipse)).unwrap();
+
+    assert!(text.contains("Begin Ellipse"), "missing Begin Ellipse");
+    assert!(text.contains("End Ellipse"), "missing End Ellipse");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // Centre inside.
+    assert!(region.point_in_region(&[5.0, 5.0]).unwrap());
+    // Far outside.
+    assert!(!region.point_in_region(&[50.0, 50.0]).unwrap());
+}
+
+#[test]
+fn round_trip_pointlist() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let pointlist =
+        PointListBuilder::new(frame, vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]])
+            .unwrap()
+            .build()
+            .unwrap();
+
+    let text = to_native_string(&AnyObject::PointList(pointlist)).unwrap();
+
+    assert!(text.contains("Begin PointList"), "missing Begin PointList");
+    assert!(text.contains("End PointList"), "missing End PointList");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // The PointList contains exactly its defining points.
+    assert!(region.point_in_region(&[1.0, 2.0]).unwrap());
+    assert!(region.point_in_region(&[3.0, 4.0]).unwrap());
+    // Not in the list.
+    assert!(!region.point_in_region(&[0.0, 0.0]).unwrap());
+}
+
+#[test]
+fn round_trip_cmpregion() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let circle1 = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+    let circle2 = CircleBuilder::new(frame, vec![3.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(circle1, circle2, CmpOperator::And)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let text = to_native_string(&AnyObject::CmpRegion(cmp)).unwrap();
+
+    assert!(text.contains("Begin CmpRegion"), "missing Begin CmpRegion");
+    assert!(text.contains("End CmpRegion"), "missing End CmpRegion");
+    assert!(text.contains("RegionA"), "missing RegionA");
+    assert!(text.contains("RegionB"), "missing RegionB");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 2);
+
+    // Point in the intersection.
+    assert!(region.point_in_region(&[1.5, 0.0]).unwrap());
+    // Point in circle1 but not circle2.
+    assert!(!region.point_in_region(&[-4.0, 0.0]).unwrap());
+}
+
+#[test]
+fn round_trip_prism() {
+    let frame2d = BasicFrameBuilder::new(2).build().unwrap();
+    let frame1d = BasicFrameBuilder::new(1).build().unwrap();
+
+    let circle = CircleBuilder::new(frame2d, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+    let interval = IntervalBuilder::new(frame1d, vec![0.0], vec![10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let prism = PrismBuilder::new(circle, interval)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let text = to_native_string(&AnyObject::Prism(prism)).unwrap();
+
+    assert!(text.contains("Begin Prism"), "missing Begin Prism");
+    assert!(text.contains("End Prism"), "missing End Prism");
+    assert!(text.contains("RegionA"), "missing RegionA");
+    assert!(text.contains("RegionB"), "missing RegionB");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+    assert_eq!(region.naxes(), 3);
+
+    // Inside the cylinder.
+    assert!(region.point_in_region(&[0.0, 0.0, 5.0]).unwrap());
+    // Outside (z out of range).
+    assert!(!region.point_in_region(&[0.0, 0.0, 15.0]).unwrap());
+    // Outside (xy out of range).
+    assert!(!region.point_in_region(&[10.0, 10.0, 5.0]).unwrap());
+}
+
+#[test]
+fn round_trip_negated_circle() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let mut circle = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+    circle.negate();
+
+    let text = to_native_string(&AnyObject::Circle(circle)).unwrap();
+
+    assert!(text.contains("Negate"), "missing Negate attribute");
+
+    let restored = from_native_string(&text).unwrap();
+    let region = restored.as_region().unwrap();
+
+    // Negated: centre is now OUTSIDE.
+    assert!(!region.point_in_region(&[0.0, 0.0]).unwrap());
+    // Far point is now INSIDE.
+    assert!(region.point_in_region(&[100.0, 100.0]).unwrap());
 }

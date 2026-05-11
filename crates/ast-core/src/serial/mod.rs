@@ -6,6 +6,8 @@ pub(crate) mod node;
 
 pub(crate) use node::{Node, NodeValue};
 
+use std::cell::RefCell;
+
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
     BasicFrame, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameSet, SkyFrame,
@@ -15,6 +17,11 @@ use crate::mappings::{
     ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
     PcdMap, PermMap, PolyMap, RateMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap, TimeMap,
     TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+};
+use crate::regions::data::RegionData;
+use crate::regions::{
+    BoxRegion, Circle, CmpOperator, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList,
+    Polygon, Prism, Region,
 };
 
 /// Internal trait for serialising AST objects to/from Node trees.
@@ -146,6 +153,16 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "NormMap" => Ok(Box::new(NormMap::from_node(node)?)),
         "MathMap" => Ok(Box::new(MathMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
+        // Regions implement Mapping.
+        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
+        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
+        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
+        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
+        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
+        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
+        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
+        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
+        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Mapping class: {other}"),
@@ -240,6 +257,34 @@ impl MappingToNode for dyn Mapping {
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
             return Serializable::to_node(f);
         }
+        // Regions implement Mapping.
+        if let Some(r) = self.as_any().downcast_ref::<Circle>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<BoxRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Ellipse>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Polygon>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Interval>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<NullRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<CmpRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<PointList>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Prism>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Mapping type for serialisation",
@@ -286,6 +331,34 @@ impl FrameToNode for dyn Frame {
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
             return Serializable::to_node(f);
         }
+        // Regions implement Frame.
+        if let Some(r) = self.as_any().downcast_ref::<Circle>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<BoxRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Ellipse>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Polygon>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Interval>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<NullRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<CmpRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<PointList>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Prism>() {
+            return Serializable::to_node(r);
+        }
         Err(AstError::new(
             ErrorCode::Lderr,
             "unsupported Frame type for serialisation",
@@ -305,10 +378,548 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
         "SpecFluxFrame" => Ok(Box::new(SpecFluxFrame::from_node(node)?)),
         "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
+        // Regions implement Frame.
+        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
+        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
+        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
+        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
+        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
+        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
+        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
+        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
+        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown or unsupported Frame class: {other}"),
         )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PointSet serialisation helpers
+// ---------------------------------------------------------------------------
+
+/// Write a PointSet as a serialised "PointSet" object node.
+///
+/// Our Rust PointSet is row-major (npoint × ncoord), but the C native format
+/// stores values column-major: D1..D{npoint} are axis 1 values,
+/// D{npoint+1}..D{2*npoint} are axis 2 values, etc.
+fn write_pointset_node(points: &[Vec<f64>]) -> Node {
+    let npoint = points.len();
+    let ncoord = if npoint > 0 { points[0].len() } else { 0 };
+
+    let mut node = Node::new("PointSet");
+    node.class_comment = Some("Set of points in a Frame".to_string());
+    node.push_int(
+        "Ncoord",
+        ncoord as i64,
+        Some("Number of coordinates".to_string()),
+    );
+    node.push_int(
+        "Npoint",
+        npoint as i64,
+        Some("Number of points".to_string()),
+    );
+
+    // Write data values column-major: all points for axis 0, then axis 1, etc.
+    // We index [pt][coord] while iterating outer=coord, inner=pt (transposition).
+    let mut idx = 1;
+    #[allow(clippy::needless_range_loop)]
+    for coord in 0..ncoord {
+        for pt in 0..npoint {
+            let key = format!("D{idx}");
+            node.push_double(&key, points[pt][coord], None::<String>);
+            idx += 1;
+        }
+    }
+
+    node
+}
+
+/// Read a PointSet from a serialised "PointSet" node.
+///
+/// Returns `Vec<Vec<f64>>` where `result[i]` is point i (length ncoord).
+/// The C native format stores column-major, so we transpose on read.
+fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
+    let ncoord = node.get_int("Ncoord", 0) as usize;
+    let npoint = node.get_int("Npoint", 0) as usize;
+
+    if ncoord == 0 || npoint == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut points = vec![vec![0.0f64; ncoord]; npoint];
+
+    // Read column-major: D1..D{npoint} are axis 0, etc.
+    // We index [pt][coord] while iterating outer=coord, inner=pt (transposition).
+    let mut idx = 1;
+    #[allow(clippy::needless_range_loop)]
+    for coord in 0..ncoord {
+        for pt in 0..npoint {
+            let key = format!("D{idx}");
+            let val = node.get_double(&key, 0.0);
+            points[pt][coord] = val;
+            idx += 1;
+        }
+    }
+
+    Ok(points)
+}
+
+// ---------------------------------------------------------------------------
+// Region base helpers
+// ---------------------------------------------------------------------------
+
+/// Write common Region attributes to a node.
+///
+/// This writes the Region-level attributes (Negate, Fill, MeshSz, Closed,
+/// Adapt), the encapsulated FrameSet or Frame, the defining points as a
+/// PointSet object, and the optional uncertainty region.
+///
+/// The Mapping base (Nin, Nout, etc.) is written first by the caller.
+pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
+    // Region attributes (only non-defaults are written as active values).
+    if data.negated {
+        node.push_int("Negate", 1, Some("Region negated".to_string()));
+    }
+    if data.fill_factor != 1.0e18 {
+        // The C library uses a default of 1.0e18 as "unset" sentinel for FillFactor.
+        // In practice most regions write 1.0 or don't write at all.
+        // We write only when not the Rust default of 1.0.
+        if data.fill_factor != 1.0 {
+            node.push_double(
+                "Fill",
+                data.fill_factor,
+                Some("Region fill factor".to_string()),
+            );
+        }
+    }
+    if data.mesh_size != 200 {
+        node.push_int(
+            "MeshSz",
+            data.mesh_size as i64,
+            Some("No. of points used to represent boundary".to_string()),
+        );
+    }
+    if !data.closed {
+        node.push_int("Closed", 0, Some("Region is open".to_string()));
+    }
+    if !data.adaptive {
+        node.push_int("Adapt", 0, Some("Region is not adaptive".to_string()));
+    }
+
+    // Write the FrameSet. If the base→current mapping is a UnitMap, write
+    // just the current frame (as "Frm") to save space. Otherwise write the
+    // full FrameSet.
+    let mapping = data.frameset.mapping(
+        crate::frames::FrameRef::Base,
+        crate::frames::FrameRef::Current,
+    );
+    let is_unit = mapping
+        .as_ref()
+        .map(|m| m.as_any().is::<UnitMap>())
+        .unwrap_or(false);
+
+    if is_unit {
+        // Write just the current frame.
+        let frame_node =
+            FrameToNode::to_node(data.frameset.current()).unwrap_or_else(|_| Node::new("Frame"));
+        node.push_object("Frm", frame_node, Some("Encapsulated Frame".to_string()));
+        node.push_int("RegFS", 0, Some("FrameSet not included".to_string()));
+    } else {
+        // Write the full FrameSet.
+        let fs_node =
+            Serializable::to_node(&data.frameset).unwrap_or_else(|_| Node::new("FrameSet"));
+        node.push_object("FrmSet", fs_node, Some("Encapsulated FrameSet".to_string()));
+        node.push_int("RegFS", 1, Some("FrameSet included".to_string()));
+    }
+
+    // Write defining points as a PointSet object.
+    let pts_node = write_pointset_node(&data.points);
+    node.push_object("Points", pts_node, Some("Defining points".to_string()));
+
+    // Write uncertainty if present.
+    if let Some(ref unc) = data.uncertainty {
+        let unc_node =
+            RegionToNode::to_node(unc.as_ref()).unwrap_or_else(|_| Node::new("NullRegion"));
+        node.push_object("Unc", unc_node, Some("Uncertainty Region".to_string()));
+    }
+}
+
+/// Read common Region attributes from a node, returning a RegionData.
+///
+/// This reads the Region-level attributes, the FrameSet or Frame, the
+/// defining points, and the optional uncertainty region.
+pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
+    let negated = node.get_int("Negate", 0) != 0;
+    let fill_factor = node.get_double("Fill", 1.0);
+    let mesh_size = node.get_int("MeshSz", 200) as usize;
+    let closed = node.get_int("Closed", 1) != 0;
+    let adaptive = node.get_int("Adapt", 1) != 0;
+
+    // Read the FrameSet or Frame.
+    let reg_fs = node.get_int("RegFS", -1);
+    let frameset = if reg_fs == 1 {
+        // Full FrameSet stored.
+        let fs_node = node
+            .get_object("FrmSet")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Region: RegFS=1 but missing FrmSet"))?;
+        FrameSet::from_node(fs_node)?
+    } else {
+        // Only a single Frame stored — create a FrameSet with UnitMap.
+        let frm_node = node
+            .get_object("Frm")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Region: missing Frm and FrmSet"))?;
+        let frame = frame_from_node(frm_node)?;
+        FrameSet::new(frame)
+    };
+
+    // Read defining points.
+    let points = if let Some(pts_node) = node.get_object("Points") {
+        read_pointset_node(pts_node)?
+    } else {
+        Vec::new()
+    };
+
+    // Read uncertainty.
+    let uncertainty = if let Some(unc_node) = node.get_object("Unc") {
+        Some(region_from_node(unc_node)?)
+    } else {
+        None
+    };
+
+    Ok(RegionData {
+        frameset,
+        points,
+        negated,
+        closed,
+        mesh_size,
+        fill_factor,
+        adaptive,
+        uncertainty,
+        cached_base_mesh: RefCell::new(None),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Region dispatch
+// ---------------------------------------------------------------------------
+
+/// Extension trait enabling `to_node()` on `dyn Region`.
+pub(crate) trait RegionToNode {
+    /// Serialise this region to a Node tree.
+    fn to_node(&self) -> AstResult<Node>;
+}
+
+impl RegionToNode for dyn Region {
+    fn to_node(&self) -> AstResult<Node> {
+        if let Some(r) = self.as_any().downcast_ref::<Circle>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<BoxRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Ellipse>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Polygon>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Interval>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<NullRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<CmpRegion>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<PointList>() {
+            return Serializable::to_node(r);
+        }
+        if let Some(r) = self.as_any().downcast_ref::<Prism>() {
+            return Serializable::to_node(r);
+        }
+        Err(AstError::new(
+            ErrorCode::Lderr,
+            "unsupported Region type for serialisation",
+        ))
+    }
+}
+
+/// Reconstruct a concrete Region from a Node tree, dispatching by class name.
+pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
+    match node.class.as_str() {
+        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
+        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
+        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
+        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
+        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
+        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
+        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
+        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
+        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
+        other => Err(AstError::new(
+            ErrorCode::Lderr,
+            format!("unknown Region class: {other}"),
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Serializable implementations for Region classes
+// ---------------------------------------------------------------------------
+
+impl Serializable for Circle {
+    fn class_name(&self) -> &'static str {
+        "Circle"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Circular region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(Circle { data })
+    }
+}
+
+impl Serializable for BoxRegion {
+    fn class_name(&self) -> &'static str {
+        "Box"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Box region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(BoxRegion { data })
+    }
+}
+
+impl Serializable for Ellipse {
+    fn class_name(&self) -> &'static str {
+        "Ellipse"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Elliptical region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(Ellipse { data })
+    }
+}
+
+impl Serializable for Polygon {
+    fn class_name(&self) -> &'static str {
+        "Polygon"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Polygonal region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(Polygon { data })
+    }
+}
+
+impl Serializable for Interval {
+    fn class_name(&self) -> &'static str {
+        "Interval"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Axis intervals".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(Interval { data })
+    }
+}
+
+impl Serializable for NullRegion {
+    fn class_name(&self) -> &'static str {
+        "NullRegion"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Null region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(NullRegion { data })
+    }
+}
+
+impl Serializable for PointList {
+    fn class_name(&self) -> &'static str {
+        "PointList"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Collection of points".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+        Ok(PointList { data })
+    }
+}
+
+impl Serializable for CmpRegion {
+    fn class_name(&self) -> &'static str {
+        "CmpRegion"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Compound region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+
+        // CmpRegion-specific: operator and sub-regions.
+        let oper = match self.operator {
+            CmpOperator::And => 1,
+            CmpOperator::Or => 2,
+        };
+        node.push_int("Operator", oper, Some("Combination operator".to_string()));
+
+        let node_a = RegionToNode::to_node(self.region1.as_ref())?;
+        let node_b = RegionToNode::to_node(self.region2.as_ref())?;
+        node.push_object(
+            "RegionA",
+            node_a,
+            Some("First component region".to_string()),
+        );
+        node.push_object(
+            "RegionB",
+            node_b,
+            Some("Second component region".to_string()),
+        );
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+
+        let oper_int = node.get_int("Operator", 1);
+        let operator = match oper_int {
+            2 => CmpOperator::Or,
+            _ => CmpOperator::And,
+        };
+
+        let node_a = node
+            .get_object("RegionA")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionA"))?;
+        let node_b = node
+            .get_object("RegionB")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionB"))?;
+
+        let region1 = region_from_node(node_a)?;
+        let region2 = region_from_node(node_b)?;
+
+        Ok(CmpRegion {
+            data,
+            region1,
+            region2,
+            operator,
+        })
+    }
+}
+
+impl Serializable for Prism {
+    fn class_name(&self) -> &'static str {
+        "Prism"
+    }
+
+    fn to_node(&self) -> AstResult<Node> {
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Extruded region".to_string());
+        write_mapping_base(&mut node, self);
+        write_region_base(&mut node, &self.data);
+
+        // Prism-specific: sub-regions.
+        let node_a = RegionToNode::to_node(self.region1.as_ref())?;
+        let node_b = RegionToNode::to_node(self.region2.as_ref())?;
+        node.push_object(
+            "RegionA",
+            node_a,
+            Some("First component region".to_string()),
+        );
+        node.push_object(
+            "RegionB",
+            node_b,
+            Some("Second component region".to_string()),
+        );
+
+        Ok(node)
+    }
+
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let _base = read_mapping_base(node);
+        let data = read_region_base(node)?;
+
+        let node_a = node
+            .get_object("RegionA")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionA"))?;
+        let node_b = node
+            .get_object("RegionB")
+            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionB"))?;
+
+        let region1 = region_from_node(node_a)?;
+        let region2 = region_from_node(node_b)?;
+
+        Ok(Prism {
+            data,
+            region1,
+            region2,
+        })
     }
 }
 
@@ -389,6 +1000,24 @@ pub enum AnyObject {
     CmpFrame(CmpFrame),
     /// A [`FrameSet`] (frame + inter-frame mappings).
     FrameSet(FrameSet),
+    /// A [`Circle`] (circular / spherical-cap region).
+    Circle(Circle),
+    /// A [`BoxRegion`] (axis-aligned box region).
+    BoxRegion(BoxRegion),
+    /// An [`Ellipse`] (elliptical region).
+    Ellipse(Ellipse),
+    /// A [`Polygon`] (polygonal region).
+    Polygon(Polygon),
+    /// An [`Interval`] (axis interval region).
+    Interval(Interval),
+    /// A [`NullRegion`] (empty / universal region).
+    NullRegion(NullRegion),
+    /// A [`CmpRegion`] (compound region — AND/OR).
+    CmpRegion(CmpRegion),
+    /// A [`PointList`] (collection of discrete points).
+    PointList(PointList),
+    /// A [`Prism`] (extruded region).
+    Prism(Prism),
 }
 
 impl AnyObject {
@@ -420,6 +1049,16 @@ impl AnyObject {
             AnyObject::DssMap(m) => Some(m),
             AnyObject::NormMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
+            // Regions implement Mapping.
+            AnyObject::Circle(r) => Some(r),
+            AnyObject::BoxRegion(r) => Some(r),
+            AnyObject::Ellipse(r) => Some(r),
+            AnyObject::Polygon(r) => Some(r),
+            AnyObject::Interval(r) => Some(r),
+            AnyObject::NullRegion(r) => Some(r),
+            AnyObject::CmpRegion(r) => Some(r),
+            AnyObject::PointList(r) => Some(r),
+            AnyObject::Prism(r) => Some(r),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
@@ -444,6 +1083,16 @@ impl AnyObject {
             AnyObject::SpecFluxFrame(f) => Some(f),
             AnyObject::CmpFrame(f) => Some(f),
             AnyObject::FrameSet(f) => Some(f),
+            // Regions implement Frame.
+            AnyObject::Circle(r) => Some(r),
+            AnyObject::BoxRegion(r) => Some(r),
+            AnyObject::Ellipse(r) => Some(r),
+            AnyObject::Polygon(r) => Some(r),
+            AnyObject::Interval(r) => Some(r),
+            AnyObject::NullRegion(r) => Some(r),
+            AnyObject::CmpRegion(r) => Some(r),
+            AnyObject::PointList(r) => Some(r),
+            AnyObject::Prism(r) => Some(r),
             AnyObject::UnitMap(_)
             | AnyObject::ZoomMap(_)
             | AnyObject::ShiftMap(_)
@@ -498,6 +1147,16 @@ impl AnyObject {
             AnyObject::DssMap(m) => Some(Box::new(m)),
             AnyObject::NormMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
+            // Regions implement Mapping.
+            AnyObject::Circle(r) => Some(Box::new(r)),
+            AnyObject::BoxRegion(r) => Some(Box::new(r)),
+            AnyObject::Ellipse(r) => Some(Box::new(r)),
+            AnyObject::Polygon(r) => Some(Box::new(r)),
+            AnyObject::Interval(r) => Some(Box::new(r)),
+            AnyObject::NullRegion(r) => Some(Box::new(r)),
+            AnyObject::CmpRegion(r) => Some(Box::new(r)),
+            AnyObject::PointList(r) => Some(Box::new(r)),
+            AnyObject::Prism(r) => Some(Box::new(r)),
             AnyObject::BasicFrame(_)
             | AnyObject::SkyFrame(_)
             | AnyObject::SpecFrame(_)
@@ -522,6 +1181,16 @@ impl AnyObject {
             AnyObject::SpecFluxFrame(f) => Some(Box::new(f)),
             AnyObject::CmpFrame(f) => Some(Box::new(f)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
+            // Regions implement Frame.
+            AnyObject::Circle(r) => Some(Box::new(r)),
+            AnyObject::BoxRegion(r) => Some(Box::new(r)),
+            AnyObject::Ellipse(r) => Some(Box::new(r)),
+            AnyObject::Polygon(r) => Some(Box::new(r)),
+            AnyObject::Interval(r) => Some(Box::new(r)),
+            AnyObject::NullRegion(r) => Some(Box::new(r)),
+            AnyObject::CmpRegion(r) => Some(Box::new(r)),
+            AnyObject::PointList(r) => Some(Box::new(r)),
+            AnyObject::Prism(r) => Some(Box::new(r)),
             AnyObject::UnitMap(_)
             | AnyObject::ZoomMap(_)
             | AnyObject::ShiftMap(_)
@@ -545,6 +1214,40 @@ impl AnyObject {
             | AnyObject::SplineMap(_)
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_) => None,
+        }
+    }
+
+    /// Return a reference to the contained object as a `&dyn Region`,
+    /// or `None` if the variant does not implement [`Region`].
+    pub fn as_region(&self) -> Option<&dyn Region> {
+        match self {
+            AnyObject::Circle(r) => Some(r),
+            AnyObject::BoxRegion(r) => Some(r),
+            AnyObject::Ellipse(r) => Some(r),
+            AnyObject::Polygon(r) => Some(r),
+            AnyObject::Interval(r) => Some(r),
+            AnyObject::NullRegion(r) => Some(r),
+            AnyObject::CmpRegion(r) => Some(r),
+            AnyObject::PointList(r) => Some(r),
+            AnyObject::Prism(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Consume `self` and return a [`DynRegion`] (`Box<dyn Region>`),
+    /// or `None` if the variant does not implement [`Region`].
+    pub fn into_region(self) -> Option<DynRegion> {
+        match self {
+            AnyObject::Circle(r) => Some(Box::new(r)),
+            AnyObject::BoxRegion(r) => Some(Box::new(r)),
+            AnyObject::Ellipse(r) => Some(Box::new(r)),
+            AnyObject::Polygon(r) => Some(Box::new(r)),
+            AnyObject::Interval(r) => Some(Box::new(r)),
+            AnyObject::NullRegion(r) => Some(Box::new(r)),
+            AnyObject::CmpRegion(r) => Some(Box::new(r)),
+            AnyObject::PointList(r) => Some(Box::new(r)),
+            AnyObject::Prism(r) => Some(Box::new(r)),
+            _ => None,
         }
     }
 }
@@ -588,6 +1291,16 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "SpecFluxFrame" => Ok(AnyObject::SpecFluxFrame(SpecFluxFrame::from_node(node)?)),
         "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
+        // Regions.
+        "Circle" => Ok(AnyObject::Circle(Circle::from_node(node)?)),
+        "Box" => Ok(AnyObject::BoxRegion(BoxRegion::from_node(node)?)),
+        "Ellipse" => Ok(AnyObject::Ellipse(Ellipse::from_node(node)?)),
+        "Polygon" => Ok(AnyObject::Polygon(Polygon::from_node(node)?)),
+        "Interval" => Ok(AnyObject::Interval(Interval::from_node(node)?)),
+        "NullRegion" => Ok(AnyObject::NullRegion(NullRegion::from_node(node)?)),
+        "CmpRegion" => Ok(AnyObject::CmpRegion(CmpRegion::from_node(node)?)),
+        "PointList" => Ok(AnyObject::PointList(PointList::from_node(node)?)),
+        "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown AST class: {other}"),
@@ -634,6 +1347,16 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::SpecFluxFrame(f) => Serializable::to_node(f),
         AnyObject::CmpFrame(f) => Serializable::to_node(f),
         AnyObject::FrameSet(f) => Serializable::to_node(f),
+        // Regions.
+        AnyObject::Circle(r) => Serializable::to_node(r),
+        AnyObject::BoxRegion(r) => Serializable::to_node(r),
+        AnyObject::Ellipse(r) => Serializable::to_node(r),
+        AnyObject::Polygon(r) => Serializable::to_node(r),
+        AnyObject::Interval(r) => Serializable::to_node(r),
+        AnyObject::NullRegion(r) => Serializable::to_node(r),
+        AnyObject::CmpRegion(r) => Serializable::to_node(r),
+        AnyObject::PointList(r) => Serializable::to_node(r),
+        AnyObject::Prism(r) => Serializable::to_node(r),
     }
 }
 
