@@ -10,12 +10,14 @@ pub(crate) mod data;
 
 mod box_region;
 mod circle;
+mod cmpregion;
 mod ellipse;
 mod interval;
 mod nullregion;
 mod polygon;
 pub use box_region::{BoxRegion, BoxRegionBuilder};
 pub use circle::{Circle, CircleBuilder};
+pub use cmpregion::{CmpRegion, CmpRegionBuilder};
 pub use ellipse::{Ellipse, EllipseBuilder};
 pub use interval::{Interval, IntervalBuilder};
 pub use nullregion::{NullRegion, NullRegionBuilder};

@@ -1,0 +1,660 @@
+//! CmpRegion: a compound region combining two sub-regions with AND or OR.
+//!
+//! A [`CmpRegion`] represents either the intersection (AND) or union (OR)
+//! of two component regions. The component regions must have the same
+//! number of axes and be defined in the same coordinate frame.
+//!
+//! For AND (intersection): a point is inside the CmpRegion if it is
+//! inside *both* component regions.
+//!
+//! For OR (union): a point is inside the CmpRegion if it is inside
+//! *either* (or both) component regions.
+
+use crate::constants::BAD_VALUE;
+use crate::coords::PointSet;
+use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::{DynFrame, Frame, FrameSet};
+use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::{DynMapping, Mapping};
+
+use super::data::{RegionData, RegionGeometry};
+use super::{CmpOperator, DynRegion, Overlap, Region};
+
+/// A compound region combining two sub-regions with AND (intersection)
+/// or OR (union).
+///
+/// The component regions are stored as boxed trait objects and are
+/// tested independently. The CmpRegion's frame is taken from the
+/// first component region.
+#[derive(Debug, Clone)]
+pub struct CmpRegion {
+    /// Shared region data (frameset, defining points, flags).
+    pub(crate) data: RegionData,
+    /// First component region.
+    pub(crate) region1: DynRegion,
+    /// Second component region.
+    pub(crate) region2: DynRegion,
+    /// Boolean operator combining the two regions.
+    pub(crate) operator: CmpOperator,
+}
+
+/// Builder for constructing a [`CmpRegion`].
+pub struct CmpRegionBuilder {
+    region1: DynRegion,
+    region2: DynRegion,
+    operator: CmpOperator,
+    uncertainty: Option<DynRegion>,
+}
+
+impl CmpRegionBuilder {
+    /// Create a builder for a CmpRegion combining two regions.
+    ///
+    /// Both regions must have the same number of axes.
+    pub fn new(
+        region1: impl Region + 'static,
+        region2: impl Region + 'static,
+        operator: CmpOperator,
+    ) -> AstResult<Self> {
+        let n1 = region1.naxes();
+        let n2 = region2.naxes();
+        if n1 != n2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "CmpRegion component regions have different numbers of axes ({} vs {})",
+                    n1, n2
+                ),
+            ));
+        }
+        Ok(CmpRegionBuilder {
+            region1: Box::new(region1),
+            region2: Box::new(region2),
+            operator,
+            uncertainty: None,
+        })
+    }
+
+    /// Create a builder from boxed (dynamic) regions.
+    ///
+    /// Both regions must have the same number of axes.
+    pub fn from_dyn(
+        region1: DynRegion,
+        region2: DynRegion,
+        operator: CmpOperator,
+    ) -> AstResult<Self> {
+        let n1 = region1.naxes();
+        let n2 = region2.naxes();
+        if n1 != n2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "CmpRegion component regions have different numbers of axes ({} vs {})",
+                    n1, n2
+                ),
+            ));
+        }
+        Ok(CmpRegionBuilder {
+            region1,
+            region2,
+            operator,
+            uncertainty: None,
+        })
+    }
+
+    /// Set an uncertainty region.
+    pub fn uncertainty(mut self, unc: DynRegion) -> Self {
+        self.uncertainty = Some(unc);
+        self
+    }
+
+    /// Build the CmpRegion.
+    pub fn build(self) -> AstResult<CmpRegion> {
+        // Use region1's frame as the CmpRegion's frame.
+        let frame = self.region1.get_region_frame();
+        let frameset = FrameSet::new(frame);
+
+        // CmpRegion has no defining points of its own (geometry is in sub-regions).
+        let points = Vec::new();
+        let mut data = RegionData::new(frameset, points);
+        data.uncertainty = self.uncertainty;
+
+        Ok(CmpRegion {
+            data,
+            region1: self.region1,
+            region2: self.region2,
+            operator: self.operator,
+        })
+    }
+}
+
+// ============================================================================
+// Integrity
+// ============================================================================
+
+impl CmpRegion {
+    /// Mutate the current frame with region integrity enforcement.
+    pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
+    where
+        F: FnOnce(&mut dyn Frame) -> AstResult<()>,
+    {
+        super::data::with_region_integrity(self, f)
+    }
+
+    /// Get the boolean operator combining the two component regions.
+    pub fn operator(&self) -> CmpOperator {
+        self.operator
+    }
+
+    /// Get a reference to the first component region.
+    pub fn region1(&self) -> &dyn Region {
+        self.region1.as_ref()
+    }
+
+    /// Get a reference to the second component region.
+    pub fn region2(&self) -> &dyn Region {
+        self.region2.as_ref()
+    }
+}
+
+// ============================================================================
+// RegionGeometry implementation
+// ============================================================================
+
+impl RegionGeometry for CmpRegion {
+    fn region_data(&self) -> &RegionData {
+        &self.data
+    }
+
+    fn region_data_mut(&mut self) -> &mut RegionData {
+        &mut self.data
+    }
+
+    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+        let npoint = pts.npoint();
+        let naxes = self.data.frameset.base().naxes();
+
+        // Test each point against both sub-regions using point_in_region.
+        // The sub-regions handle their own negation and frame conversion internally.
+        // Points arrive in the CmpRegion's base frame, which is the same as
+        // the current frame of the sub-regions (since we use region1's frame).
+        let mut result = vec![false; npoint];
+
+        match self.operator {
+            CmpOperator::And => {
+                // AND (intersection): point must be inside both regions.
+                // Short-circuit: test region1 first, then only test region2
+                // for points that passed region1.
+                for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
+                    if point_has_bad(&point[..naxes]) {
+                        continue;
+                    }
+                    let in1 = self.region1.point_in_region(&point[..naxes])?;
+                    if !in1 {
+                        continue;
+                    }
+                    let in2 = self.region2.point_in_region(&point[..naxes])?;
+                    *r = in2;
+                }
+            }
+            CmpOperator::Or => {
+                // OR (union): point must be inside at least one region.
+                // Short-circuit: test region1 first, only test region2
+                // for points that failed region1.
+                for (r, point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
+                    if point_has_bad(&point[..naxes]) {
+                        continue;
+                    }
+                    let in1 = self.region1.point_in_region(&point[..naxes])?;
+                    if in1 {
+                        *r = true;
+                        continue;
+                    }
+                    let in2 = self.region2.point_in_region(&point[..naxes])?;
+                    *r = in2;
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        let naxes = self.data.frameset.base().naxes();
+
+        // Get bounding boxes of both sub-regions.
+        let (lbnd1, ubnd1) = self.region1.get_region_bounds()?;
+        let (lbnd2, ubnd2) = self.region2.get_region_bounds()?;
+
+        let mut lbnd = vec![0.0; naxes];
+        let mut ubnd = vec![0.0; naxes];
+
+        match self.operator {
+            CmpOperator::And => {
+                // AND (intersection): bounding box is the intersection of
+                // the two component bounding boxes (maximum of lower bounds,
+                // minimum of upper bounds).
+                for i in 0..naxes {
+                    let l1 = lbnd1[i];
+                    let l2 = lbnd2[i];
+                    let u1 = ubnd1[i];
+                    let u2 = ubnd2[i];
+
+                    // Handle BAD values: if either bound is BAD, use the other.
+                    lbnd[i] = if is_bad(l1) {
+                        l2
+                    } else if is_bad(l2) {
+                        l1
+                    } else {
+                        l1.max(l2)
+                    };
+                    ubnd[i] = if is_bad(u1) {
+                        u2
+                    } else if is_bad(u2) {
+                        u1
+                    } else {
+                        u1.min(u2)
+                    };
+                }
+            }
+            CmpOperator::Or => {
+                // OR (union): bounding box is the union (enclosing box) of
+                // the two component bounding boxes (minimum of lower bounds,
+                // maximum of upper bounds).
+                for i in 0..naxes {
+                    let l1 = lbnd1[i];
+                    let l2 = lbnd2[i];
+                    let u1 = ubnd1[i];
+                    let u2 = ubnd2[i];
+
+                    // Handle BAD values: if either is BAD, result is BAD
+                    // (unbounded on that axis).
+                    lbnd[i] = if is_bad(l1) || is_bad(l2) {
+                        BAD_VALUE
+                    } else {
+                        l1.min(l2)
+                    };
+                    ubnd[i] = if is_bad(u1) || is_bad(u2) {
+                        BAD_VALUE
+                    } else {
+                        u1.max(u2)
+                    };
+                }
+            }
+        }
+
+        Ok((lbnd, ubnd))
+    }
+
+    fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
+        // For the initial implementation, return an empty mesh.
+        // The full implementation (Task 12: Overlap) will use the sub-region
+        // meshes directly, filtering by the other component.
+        Ok(Vec::new())
+    }
+
+    fn reg_centre(&self) -> AstResult<Vec<f64>> {
+        // Use the midpoint of the bounding box if available,
+        // otherwise fall back to the first sub-region's centre.
+        let (lbnd, ubnd) = self.reg_base_box()?;
+        let naxes = lbnd.len();
+
+        // Check if any bounds are BAD.
+        let all_valid = (0..naxes).all(|i| !is_bad(lbnd[i]) && !is_bad(ubnd[i]));
+
+        if all_valid {
+            let centre: Vec<f64> = (0..naxes).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect();
+            Ok(centre)
+        } else {
+            // Fall back to first sub-region's centre via get_region_disc.
+            match self.region1.get_region_disc() {
+                Ok((centre, _)) => Ok(centre),
+                Err(_) => {
+                    // If that also fails, return BAD on all axes.
+                    Ok(vec![BAD_VALUE; naxes])
+                }
+            }
+        }
+    }
+
+    fn is_bounded_inner(&self) -> bool {
+        match self.operator {
+            // AND (intersection): bounded if either sub-region is bounded.
+            CmpOperator::And => self.region1.is_bounded() || self.region2.is_bounded(),
+            // OR (union): bounded only if both sub-regions are bounded.
+            CmpOperator::Or => self.region1.is_bounded() && self.region2.is_bounded(),
+        }
+    }
+
+    fn remap_defining_points(&mut self, _mapping: &dyn Mapping, _forward: bool) -> AstResult<()> {
+        // CmpRegion has no defining points of its own.
+        // The sub-regions are immutable once constructed.
+        self.data.invalidate_cache();
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Region trait
+// ============================================================================
+
+impl Region for CmpRegion {
+    fn point_in_region(&self, point: &[f64]) -> AstResult<bool> {
+        // Check for BAD coordinates in the input.
+        if point_has_bad(point) {
+            return Ok(false);
+        }
+
+        // Points arrive in the CmpRegion's current frame. Transform to
+        // base frame for geometry testing.
+        let naxes = self.data.frameset.base().naxes();
+        let pts = PointSet::from_rows(std::iter::once(point));
+        let base_pts = self.data.frameset.transform(&pts, false)?;
+        let base_point = base_pts.point(0);
+
+        // Check the transformed point for BAD values.
+        if base_point[..naxes].iter().any(|&v| is_bad(v)) {
+            return Ok(false);
+        }
+
+        // Test against both sub-regions. The sub-regions' point_in_region
+        // takes points in their current frame. Since the CmpRegion's base
+        // frame = sub-regions' current frame, pass the base point directly.
+        let inside = match self.operator {
+            CmpOperator::And => {
+                let in1 = self.region1.point_in_region(&base_point[..naxes])?;
+                if !in1 {
+                    false
+                } else {
+                    self.region2.point_in_region(&base_point[..naxes])?
+                }
+            }
+            CmpOperator::Or => {
+                let in1 = self.region1.point_in_region(&base_point[..naxes])?;
+                if in1 {
+                    true
+                } else {
+                    self.region2.point_in_region(&base_point[..naxes])?
+                }
+            }
+        };
+
+        // Apply negation.
+        if self.data.negated {
+            Ok(!inside)
+        } else {
+            Ok(inside)
+        }
+    }
+
+    fn overlap(&self, _other: &dyn Region) -> AstResult<Overlap> {
+        todo!("CmpRegion::overlap — full implementation in Task 12")
+    }
+
+    fn negated_copy(&self) -> DynRegion {
+        let mut copy = self.clone();
+        copy.data.negated = !copy.data.negated;
+        Box::new(copy)
+    }
+
+    fn negate(&mut self) {
+        self.data.negated = !self.data.negated;
+    }
+
+    fn is_negated(&self) -> bool {
+        self.data.negated
+    }
+
+    fn is_closed(&self) -> bool {
+        self.data.closed
+    }
+
+    fn set_closed(&mut self, closed: bool) {
+        self.data.closed = closed;
+    }
+
+    fn fill_factor(&self) -> f64 {
+        self.data.fill_factor
+    }
+
+    fn set_fill_factor(&mut self, factor: f64) {
+        self.data.fill_factor = factor;
+    }
+
+    fn mesh_size(&self) -> usize {
+        self.data.mesh_size
+    }
+
+    fn set_mesh_size(&mut self, size: usize) {
+        self.data.mesh_size = size;
+    }
+
+    fn is_bounded(&self) -> bool {
+        self.is_bounded_inner()
+    }
+
+    fn is_adaptive(&self) -> bool {
+        self.data.adaptive
+    }
+
+    fn set_adaptive(&mut self, adaptive: bool) {
+        self.data.adaptive = adaptive;
+    }
+
+    fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        self.reg_base_box()
+    }
+
+    fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
+        // Compute bounding disc from the bounding box.
+        let (lbnd, ubnd) = self.reg_base_box()?;
+        let naxes = lbnd.len();
+
+        // Compute centre as midpoint of bounding box.
+        let mut centre = vec![0.0; naxes];
+        let mut sum_sq = 0.0;
+        for i in 0..naxes {
+            if is_bad(lbnd[i]) || is_bad(ubnd[i]) {
+                return Err(AstError::new(
+                    ErrorCode::Regcn,
+                    "CmpRegion has unbounded axes; cannot compute bounding disc",
+                ));
+            }
+            centre[i] = 0.5 * (lbnd[i] + ubnd[i]);
+            let half_width = 0.5 * (ubnd[i] - lbnd[i]);
+            sum_sq += half_width * half_width;
+        }
+        let radius = sum_sq.sqrt();
+
+        Ok((centre, radius))
+    }
+
+    fn get_region_mesh(&self) -> AstResult<PointSet> {
+        // Check for a cached mesh first.
+        {
+            let cached = self.data.cached_base_mesh.borrow();
+            if let Some(mesh) = cached.as_ref() {
+                return Ok(PointSet::from_rows(mesh.iter().map(|p| p.as_slice())));
+            }
+        }
+
+        // Compute the mesh.
+        let mesh = self.reg_base_mesh()?;
+        if mesh.is_empty() {
+            // Return a single BAD point (matching C behaviour for empty meshes).
+            let naxes = self.data.frameset.base().naxes();
+            let bad_point = vec![BAD_VALUE; naxes];
+            return Ok(PointSet::from_rows(std::iter::once(bad_point.as_slice())));
+        }
+        let result = PointSet::from_rows(mesh.iter().map(|p| p.as_slice()));
+
+        // Cache it.
+        *self.data.cached_base_mesh.borrow_mut() = Some(mesh);
+
+        Ok(result)
+    }
+
+    fn get_region_points(&self) -> AstResult<PointSet> {
+        // CmpRegion has no defining points of its own.
+        let naxes = self.data.frameset.base().naxes();
+        Ok(PointSet::zeros(0, naxes))
+    }
+
+    fn get_region_frame(&self) -> DynFrame {
+        self.data.frameset.current().snapshot()
+    }
+
+    fn get_region_frameset(&self) -> FrameSet {
+        self.data.frameset.clone()
+    }
+
+    fn set_uncertainty(&mut self, unc: DynRegion) {
+        self.data.uncertainty = Some(unc);
+    }
+
+    fn get_uncertainty(&self) -> Option<DynRegion> {
+        self.data.uncertainty.clone()
+    }
+
+    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
+        // Map both component regions into the new frame, then combine.
+        let new_region1 = self.region1.map_region(mapping, frame)?;
+        let new_region2 = self.region2.map_region(mapping, frame)?;
+
+        let frameset = FrameSet::new(frame.snapshot());
+        let points = Vec::new();
+        let mut data = RegionData::new(frameset, points);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed;
+        data.mesh_size = self.data.mesh_size;
+        data.fill_factor = self.data.fill_factor;
+        data.adaptive = self.data.adaptive;
+
+        Ok(Box::new(CmpRegion {
+            data,
+            region1: new_region1,
+            region2: new_region2,
+            operator: self.operator,
+        }))
+    }
+
+    fn clone_region(&self) -> DynRegion {
+        Box::new(self.clone())
+    }
+}
+
+// ============================================================================
+// Frame trait — delegate to encapsulated FrameSet's current frame
+// ============================================================================
+
+impl Frame for CmpRegion {
+    fn naxes(&self) -> usize {
+        self.data.frameset.current().naxes()
+    }
+
+    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
+        self.data.frameset.current().format(axis, value)
+    }
+
+    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
+        self.data.frameset.current().unformat(axis, text)
+    }
+
+    fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
+        self.data.frameset.current().distance(a, b)
+    }
+
+    fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
+        self.data.frameset.current().angle(a, b, c)
+    }
+
+    fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
+        self.data.frameset.current().offset(from, to, dist)
+    }
+
+    fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
+        self.data.frameset.current().norm(coords)
+    }
+
+    fn snapshot(&self) -> DynFrame {
+        Box::new(self.clone())
+    }
+
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        self.data.frameset.current().map_from(previous)
+    }
+
+    fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        self.data.frameset.current().convert(to, domains)
+    }
+
+    fn equal(&self, other: &dyn Frame) -> bool {
+        if let Some(other_cmp) = other.as_any().downcast_ref::<CmpRegion>() {
+            self.data
+                .frameset
+                .current()
+                .equal(other_cmp.data.frameset.current())
+        } else {
+            false
+        }
+    }
+}
+
+// ============================================================================
+// Mapping trait — delegate to region_transform
+// ============================================================================
+
+impl Mapping for CmpRegion {
+    fn nin(&self) -> usize {
+        self.data.frameset.current().naxes()
+    }
+
+    fn nout(&self) -> usize {
+        self.data.frameset.current().naxes()
+    }
+
+    fn is_inverted(&self) -> bool {
+        false
+    }
+
+    fn invert(&mut self) {
+        // No-op for now — region inversion handled via negation.
+    }
+
+    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        super::data::region_transform(self, pts, forward)
+    }
+
+    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
+        let result = self.transform(pts, forward)?;
+        let npoint = result.npoint();
+        let ncoord = result.ncoord();
+        for i in 0..npoint {
+            let src = result.point(i);
+            let dst = out.point_mut(i);
+            dst[..ncoord].copy_from_slice(src);
+        }
+        Ok(())
+    }
+
+    fn simplified(&self) -> AstResult<DynMapping> {
+        Ok(self.clone_box())
+    }
+
+    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn equal(&self, other: &dyn Mapping) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<CmpRegion>() else {
+            return false;
+        };
+        self.data.negated == other.data.negated
+            && self.data.closed == other.data.closed
+            && self.operator == other.operator
+            && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
+    }
+
+    fn clone_box(&self) -> DynMapping {
+        Box::new(self.clone())
+    }
+}
