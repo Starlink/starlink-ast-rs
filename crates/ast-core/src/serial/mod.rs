@@ -10,7 +10,7 @@ use std::cell::RefCell;
 
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
-    BasicFrame, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameSet, SkyFrame,
+    BasicFrame, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameRef, FrameSet, SkyFrame,
     SpecFluxFrame, SpecFrame, TimeFrame,
 };
 use crate::mappings::{
@@ -511,10 +511,7 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
     // Write the FrameSet. If the base→current mapping is a UnitMap, write
     // just the current frame (as "Frm") to save space. Otherwise write the
     // full FrameSet.
-    let mapping = data.frameset.mapping(
-        crate::frames::FrameRef::Base,
-        crate::frames::FrameRef::Current,
-    );
+    let mapping = data.frameset.mapping(FrameRef::Base, FrameRef::Current);
     let is_unit = mapping
         .as_ref()
         .map(|m| m.as_any().is::<UnitMap>())
@@ -566,12 +563,19 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Region: RegFS=1 but missing FrmSet"))?;
         FrameSet::from_node(fs_node)?
     } else {
-        // Only a single Frame stored — create a FrameSet with UnitMap.
+        // Only a single Frame stored — create a 2-frame FrameSet with UnitMap
+        // connecting base to current (matches C library behavior and ensures
+        // with_integrity works correctly).
         let frm_node = node
             .get_object("Frm")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Region: missing Frm and FrmSet"))?;
         let frame = frame_from_node(frm_node)?;
-        FrameSet::new(frame)
+        let naxes = frame.naxes();
+        let current_snap = frame.snapshot();
+        let mut fs = FrameSet::new(frame);
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
+            .expect("adding current frame to region FrameSet");
+        fs
     };
 
     // Read defining points.

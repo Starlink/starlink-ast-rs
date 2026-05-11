@@ -79,8 +79,18 @@ impl RegionData {
     ///   current = user frame).
     /// - `points`: defining points in the base frame.
     pub(crate) fn new(frameset: FrameSet, points: Vec<Vec<f64>>) -> Self {
+        let mut fs = frameset;
+        // Ensure 2-frame structure: base + current connected by UnitMap.
+        // This matches the C library and ensures with_integrity works
+        // (fuse_into_current_edges needs at least one edge to compose the delta).
+        if fs.nframe() == 1 {
+            let naxes = fs.base().naxes();
+            let current_snap = fs.current().snapshot();
+            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
+                .expect("adding current frame to region FrameSet");
+        }
         RegionData {
-            frameset,
+            frameset: fs,
             points,
             negated: false,
             closed: true,
