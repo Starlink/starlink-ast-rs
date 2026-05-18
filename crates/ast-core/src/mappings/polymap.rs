@@ -461,7 +461,22 @@ impl PolyMap {
     /// - Combined forward+Jacobian evaluation: a single power table is computed
     ///   once per point and reused to evaluate both the forward polynomial and
     ///   all Jacobian columns, avoiding redundant power computation.
-    fn newton_raphson_inverse(&self, target: &PointSet, result: &mut PointSet) -> AstResult<()> {
+    ///
+    /// `bad_sentinel` is the value written to outputs that fail (input
+    /// flagged as invalid up-front, singular Jacobian mid-iteration).
+    /// Callers from the BAD_VALUE world pass `BAD_VALUE`; callers in the
+    /// NaN-as-bad protocol pass `f64::NAN` so downstream stages receive
+    /// the protocol-canonical sentinel without an extra post-pass. Pre-
+    /// marking uses [`point_has_bad`], which folds both `BAD_VALUE` and
+    /// `!is_finite()` (NaN, ±∞) into the same "skip this point" decision,
+    /// so the NaN-protocol caller gets the same iteration-skipping the
+    /// BAD caller does.
+    fn newton_raphson_inverse(
+        &self,
+        target: &PointSet,
+        result: &mut PointSet,
+        bad_sentinel: f64,
+    ) -> AstResult<()> {
         let npoint = target.npoint();
         let ncoord = self.nin; // nin == nout for iterative inverse
         debug_assert_eq!(self.nin, self.nout);
@@ -473,12 +488,15 @@ impl PolyMap {
         let tol_sq = self.tol_inverse * self.tol_inverse;
         let mut converged = vec![false; npoint];
 
-        // Mark BAD points as already converged and fill their output with BAD.
+        // Mark invalid-input points as already converged and fill their
+        // output with the sentinel. `point_has_bad` catches both BAD_VALUE
+        // and NaN, so this works for both the BAD caller and the NaN-
+        // protocol caller.
         #[allow(clippy::needless_range_loop)]
         for i in 0..npoint {
             if point_has_bad(target.point(i)) {
                 converged[i] = true;
-                result.point_mut(i).fill(BAD_VALUE);
+                result.point_mut(i).fill(bad_sentinel);
             }
         }
 
@@ -573,7 +591,7 @@ impl PolyMap {
                 if ncoord == 1 {
                     let j00 = jac_matrix[0];
                     if j00.abs() < 1e-30 {
-                        pt.fill(BAD_VALUE);
+                        pt.fill(bad_sentinel);
                         converged[ip] = true;
                         continue;
                     }
@@ -591,7 +609,7 @@ impl PolyMap {
                     let d = jac_matrix[3];
                     let det = a * d - b * c;
                     if det.abs() < 1e-30 {
-                        pt.fill(BAD_VALUE);
+                        pt.fill(bad_sentinel);
                         converged[ip] = true;
                         continue;
                     }
@@ -611,7 +629,7 @@ impl PolyMap {
                     let mut rhs = dy.clone();
                     let ok = solve_linear_system(&mut mat, &mut rhs, ncoord);
                     if !ok {
-                        pt.fill(BAD_VALUE);
+                        pt.fill(bad_sentinel);
                         converged[ip] = true;
                         continue;
                     }
@@ -1060,7 +1078,7 @@ impl Mapping for PolyMap {
                         return Ok(());
                     }
                 }
-                self.newton_raphson_inverse(pts, out)?;
+                self.newton_raphson_inverse(pts, out, BAD_VALUE)?;
             } else {
                 // No inverse available: fill with BAD.
                 for i in 0..pts.npoint() {
@@ -1150,16 +1168,11 @@ impl Mapping for PolyMap {
                     return Ok(());
                 }
             }
-            // Fallback: scalar NR emits BAD_VALUE; translate to NaN so
-            // downstream NaN-aware stages see the protocol-canonical sentinel.
-            self.newton_raphson_inverse(pts, out)?;
-            let mut view = out.view_mut();
-            let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
-            for v in flat.iter_mut() {
-                if *v == BAD_VALUE {
-                    *v = f64::NAN;
-                }
-            }
+            // Fallback: scalar NR with the NaN sentinel — emits f64::NAN
+            // directly for invalid inputs and singular Jacobian, so
+            // downstream NaN-aware stages receive the protocol-canonical
+            // sentinel with no post-pass needed.
+            self.newton_raphson_inverse(pts, out, f64::NAN)?;
         } else {
             // No inverse available: emit NaN (was BAD).
             for i in 0..pts.npoint() {
