@@ -255,6 +255,48 @@ impl CmpMap {
         Ok(combined)
     }
 
+    /// Parallel composition under the NaN-as-bad protocol. The two children
+    /// see disjoint axis slices of the input; we route each slice through
+    /// the child's `transform_into_nan` so the protocol is preserved across
+    /// the parallel branch.
+    fn parallel_transform_into_nan(
+        &self,
+        pts: &PointSet,
+        fwd: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd1 = fwd != self.first_invert_changed();
+        let fwd2 = fwd != self.second_invert_changed();
+
+        let npoint = pts.npoint();
+        let split = self.effective_first_nin(fwd);
+
+        let pts_a = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., ..split]).to_owned());
+        let pts_b = PointSet::from_ndarray(pts.view().slice(ndarray::s![.., split..]).to_owned());
+
+        let nout_a = if fwd1 {
+            self.first.nout()
+        } else {
+            self.first.nin()
+        };
+        let nout_b = if fwd2 {
+            self.second.nout()
+        } else {
+            self.second.nin()
+        };
+        let mut out_a = PointSet::zeros(npoint, nout_a);
+        let mut out_b = PointSet::zeros(npoint, nout_b);
+        self.first.transform_into_nan(&pts_a, fwd1, &mut out_a)?;
+        self.second.transform_into_nan(&pts_b, fwd2, &mut out_b)?;
+
+        let mut view = out.view_mut();
+        view.slice_mut(ndarray::s![.., ..nout_a])
+            .assign(&out_a.view());
+        view.slice_mut(ndarray::s![.., nout_a..])
+            .assign(&out_b.view());
+        Ok(())
+    }
+
     fn parallel_transform_into(
         &self,
         pts: &PointSet,
@@ -356,9 +398,7 @@ impl Mapping for CmpMap {
 
     /// NaN-as-bad threading. Recursively calls each child's
     /// `transform_into_nan`, allocating only intermediate buffers (no
-    /// per-stage BAD scan). The parallel case currently falls back to the
-    /// scalar path since the parallel helper still uses `transform`; threading
-    /// it through `transform_into_nan` is a straightforward follow-up.
+    /// per-stage BAD scan).
     fn transform_into_nan(
         &self,
         pts: &PointSet,
@@ -368,11 +408,7 @@ impl Mapping for CmpMap {
         let fwd = self.effective_forward(forward);
         match self.kind {
             Composition::Series => self.series_transform_into_nan(pts, fwd, out),
-            // TODO: thread NaN protocol through parallel helper too. For now
-            // fall back to the existing path, which re-substitutes at each
-            // sub-mapping boundary — correctness is preserved, perf is the
-            // same as the original `transform_into`.
-            Composition::Parallel => self.parallel_transform_into(pts, fwd, out),
+            Composition::Parallel => self.parallel_transform_into_nan(pts, fwd, out),
         }
     }
 

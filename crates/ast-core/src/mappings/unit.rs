@@ -59,6 +59,12 @@ impl Mapping for UnitMap {
         Ok(())
     }
 
+    // `transform_into_nan` is intentionally not overridden: the inherited
+    // default delegates to `transform_into` above, which is a pure copy with
+    // no per-point `is_bad` check or value-dependent branching. NaN inputs
+    // pass through to NaN outputs naturally, so the trait default already
+    // satisfies the NaN-as-bad protocol.
+
     fn simplified(&self) -> AstResult<DynMapping> {
         Ok(Box::new(UnitMap {
             ncoord: self.ncoord,

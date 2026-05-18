@@ -355,6 +355,30 @@ impl Mapping for ChebyMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. ChebyMap's `transform_into` has two BAD-emit
+    /// sites (the is_bad input gate and the domain-bounds check) and a
+    /// Chebyshev recurrence that propagates NaN cleanly. Cheapest correct
+    /// adaptation is to call `transform_into` and translate any `BAD_VALUE`
+    /// in the output to `f64::NAN` so downstream NaN-aware stages receive
+    /// the protocol-canonical sentinel. The translation is O(N × ncoord),
+    /// comparable to a single per-point is_bad check.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let eff_fwd = self.effective_forward(forward);
 

@@ -135,6 +135,47 @@ impl Mapping for PcdMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. Pure arithmetic (polynomial in dx,dy for
+    /// forward; rational function for inverse); NaN propagates through
+    /// both branches without per-point gating.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        let disco = self.effective_disc();
+        let cen0 = self.effective_pcdcen()[0];
+        let cen1 = self.effective_pcdcen()[1];
+
+        if fwd {
+            for i in 0..pts.npoint() {
+                let inp = pts.point(i);
+                let outp = out.point_mut(i);
+                let dx = inp[0] - cen0;
+                let dy = inp[1] - cen1;
+                let f = 1.0 + disco * (dx * dx + dy * dy);
+                outp[0] = dx * f + cen0;
+                outp[1] = dy * f + cen1;
+            }
+        } else {
+            for i in 0..pts.npoint() {
+                let inp = pts.point(i);
+                let outp = out.point_mut(i);
+                let dxp = inp[0] - cen0;
+                let dyp = inp[1] - cen1;
+                let cr2 = disco * (dxp * dxp + dyp * dyp);
+                let a = (2.0 * cr2 + 1.0) / (3.0 * cr2 + 1.0);
+                let cr2a2 = cr2 * a * a;
+                let f = (2.0 * cr2a2 * a + 1.0) / (3.0 * cr2a2 + 1.0);
+                outp[0] = dxp * f + cen0;
+                outp[1] = dyp * f + cen1;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let disco = self.effective_disc();

@@ -368,6 +368,79 @@ impl Mapping for WcsMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. Same logic as `transform_into`, but the
+    /// is_bad branch and projection-`Err` branch emit `f64::NAN` instead
+    /// of `BAD_VALUE` so downstream NaN-aware stages receive the protocol-
+    /// canonical sentinel rather than a finite -1.8e308 that would
+    /// produce numerical garbage through their arithmetic.
+    ///
+    /// The is_bad gate at the top is *kept* because the underlying
+    /// projection routines (`wcslib`-port `prj.forward`/`reverse`) don't
+    /// handle `BAD_VALUE` or `NaN` inputs gracefully — they may return
+    /// Err, NaN, or garbage depending on which trig path they take. Gating
+    /// here is cheap (one comparison per point per axis) and keeps the
+    /// projection math on the well-tested finite-input path.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        if self.proj == WcsProjection::Unknown {
+            for i in 0..pts.npoint() {
+                out.point_mut(i).copy_from_slice(pts.point(i));
+            }
+            return Ok(());
+        }
+
+        let fwd = self.effective_forward(forward);
+        let mut prj = self.prj.borrow_mut();
+
+        for i in 0..pts.npoint() {
+            let inp = pts.point(i);
+            let outp = out.point_mut(i);
+            outp.copy_from_slice(inp);
+
+            let v1 = inp[self.lonax];
+            let v2 = inp[self.latax];
+
+            if is_bad(v1) || is_bad(v2) {
+                outp[self.lonax] = f64::NAN;
+                outp[self.latax] = f64::NAN;
+                continue;
+            }
+
+            if fwd {
+                let lon_deg = v1.to_degrees();
+                let lat_deg = v2.to_degrees();
+                match prj.forward(lon_deg, lat_deg) {
+                    Ok((x, y)) => {
+                        outp[self.lonax] = x.to_radians();
+                        outp[self.latax] = y.to_radians();
+                    }
+                    Err(_) => {
+                        outp[self.lonax] = f64::NAN;
+                        outp[self.latax] = f64::NAN;
+                    }
+                }
+            } else {
+                let x_deg = v1.to_degrees();
+                let y_deg = v2.to_degrees();
+                match prj.reverse(x_deg, y_deg) {
+                    Ok((phi, theta)) => {
+                        outp[self.lonax] = phi.to_radians();
+                        outp[self.latax] = theta.to_radians();
+                    }
+                    Err(_) => {
+                        outp[self.lonax] = f64::NAN;
+                        outp[self.latax] = f64::NAN;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         // Unknown/blank projection acts as identity — pass through all coords.
         if self.proj == WcsProjection::Unknown {
