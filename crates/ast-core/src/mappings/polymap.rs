@@ -251,6 +251,31 @@ impl PolyMap {
         self.inverse.as_deref()
     }
 
+    /// Gather forward terms per output axis for the 2D SIMD prototype.
+    ///
+    /// Returns `(out0_terms, out1_terms, [max_p0, max_p1])`. Only valid when
+    /// `nin == nout == 2`; the caller guards on shape before invoking this.
+    /// References point into `self.forward`; the returned `Vec<&PolyTerm>`s
+    /// own only the indirection table, not the term bodies.
+    #[cfg(feature = "simd-eval")]
+    pub(crate) fn simd_forward_layout_2d(&self) -> (Vec<&PolyTerm>, Vec<&PolyTerm>, [usize; 2]) {
+        debug_assert_eq!(self.nin, 2);
+        debug_assert_eq!(self.nout, 2);
+        let out0: Vec<&PolyTerm> = self.forward_by_output[0]
+            .iter()
+            .map(|&i| &self.forward[i])
+            .collect();
+        let out1: Vec<&PolyTerm> = self.forward_by_output[1]
+            .iter()
+            .map(|&i| &self.forward[i])
+            .collect();
+        (
+            out0,
+            out1,
+            [self.forward_max_pows[0], self.forward_max_pows[1]],
+        )
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }

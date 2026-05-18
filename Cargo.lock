@@ -44,6 +44,7 @@ dependencies = [
  "levenberg-marquardt",
  "nalgebra",
  "ndarray",
+ "wide",
 ]
 
 [[package]]

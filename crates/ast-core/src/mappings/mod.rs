@@ -20,6 +20,8 @@ pub use lutmap::{LutInterp, LutMap};
 pub(crate) mod polymap;
 pub use polymap::{PolyMap, PolyTerm};
 mod chebymap;
+#[cfg(feature = "simd-eval")]
+pub mod polymap_simd;
 pub use chebymap::ChebyMap;
 mod wcsmap;
 pub use crate::wcslib::WcsProjection;
