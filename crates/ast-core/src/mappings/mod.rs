@@ -127,6 +127,42 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// `(pts.npoint(), self.nin())` for inverse transforms.
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()>;
 
+    /// Transform points using the "NaN-as-bad" internal protocol.
+    ///
+    /// This variant of [`transform_into`] is the low-level entry that
+    /// compositional mappings (e.g. [`CmpMap`]) use to call sub-mappings
+    /// without re-running the boundary BAD↔NaN substitution at each stage.
+    /// Implementers should assume:
+    ///
+    /// - The caller has already converted `BAD_VALUE` inputs to `f64::NAN`
+    ///   exactly once at the top of the pipeline (via
+    ///   [`dyn Mapping::transform_nan_protocol`]).
+    /// - The implementation may skip per-point BAD checks. NaN propagates
+    ///   through arithmetic naturally, so polynomial / linear / trigonometric
+    ///   stages just compute through.
+    /// - The output is allowed to contain `f64::NAN` for bad points; the
+    ///   top-level entry converts NaN → `BAD_VALUE` once at the bottom.
+    ///
+    /// The default implementation delegates to [`transform_into`], which
+    /// preserves the original BAD-checking semantics. Classes that opt in to
+    /// the protocol override this method to drop the per-point checks.
+    ///
+    /// Compositional mappings (`CmpMap`, `FrameSet`-as-Mapping, etc.) should
+    /// override this to recursively call `transform_into_nan` on their
+    /// sub-mappings — that's where the bulk of the saving is, since a chain
+    /// of seven NaN-aware stages avoids seven separate per-point BAD scans.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        // Default: behave exactly like the existing path. Safe because
+        // `is_bad` already includes `!is_finite()`, so a NaN input handed to
+        // an unconverted Mapping still produces BAD output.
+        self.transform_into(pts, forward, out)
+    }
+
     /// Return a simplified version of this mapping.
     ///
     /// The simplified mapping is functionally equivalent but may be more
@@ -229,6 +265,40 @@ impl dyn Mapping {
         Ok(result)
     }
 
+    /// Transform using the NaN-as-bad protocol: substitute `BAD_VALUE → NaN`
+    /// at the input boundary once, delegate to [`Mapping::transform_into_nan`]
+    /// (which compositional mappings thread through their sub-mappings
+    /// without re-substituting), then `NaN → BAD_VALUE` at the output boundary
+    /// once.
+    ///
+    /// This is the fast public entry for transforms that go through a
+    /// multi-stage chain: each stage's `transform_into_nan` skips the
+    /// per-point BAD check that `transform_into` performs, since the protocol
+    /// guarantees there are no `BAD_VALUE` sentinels inside the pipeline.
+    /// Naive Mappings (which only override `transform_into`) still work
+    /// correctly — the default `transform_into_nan` falls through to
+    /// `transform_into`, which re-imposes the BAD-check at that stage. The
+    /// speedup scales with how many stages opt in.
+    ///
+    /// Result is identical to [`Mapping::transform`] modulo NaN-input
+    /// handling: this variant converts any NaN output to `BAD_VALUE` (per
+    /// the CLAUDE.md output contract), whereas an arbitrary `transform`
+    /// implementation might pass NaN through.
+    pub fn transform_nan_protocol(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        // Boundary substitution: BAD_VALUE → NaN. Allocates a new PointSet
+        // rather than mutating the caller's input. For very large inputs we
+        // could add an in-place variant if profiling motivates it.
+        let pts_nan = substitute_bad_to_nan(pts);
+
+        let nout = if forward { self.nout() } else { self.nin() };
+        let mut out = PointSet::zeros(pts.npoint(), nout);
+        self.transform_into_nan(&pts_nan, forward, &mut out)?;
+
+        // Boundary substitution: NaN → BAD_VALUE (in place on the output).
+        substitute_nan_to_bad_in_place(&mut out);
+        Ok(out)
+    }
+
     /// Compose this mapping with `next` in series.
     ///
     /// The resulting `CmpMap` applies `self` first, then `next`.
@@ -243,5 +313,47 @@ impl dyn Mapping {
     /// to disjoint coordinate ranges.
     pub fn alongside(self: Box<Self>, other: DynMapping) -> AstResult<CmpMap> {
         CmpMap::new(self, other, Composition::Parallel)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NaN-as-bad protocol: boundary substitution helpers
+// ---------------------------------------------------------------------------
+
+/// Copy `pts`, substituting `BAD_VALUE` (and any other non-finite value) with
+/// `f64::NAN`. Used by [`dyn Mapping::transform_nan_protocol`] to set up the
+/// internal NaN-as-bad protocol once at the boundary of a transform pipeline.
+///
+/// We substitute *any* non-finite value (matches what [`helpers::is_bad`]
+/// already considers BAD) so that pipelines accepting NaN or ±∞ inputs from
+/// callers behave the same as those receiving the canonical `BAD_VALUE`.
+fn substitute_bad_to_nan(pts: &PointSet) -> PointSet {
+    use crate::constants::BAD_VALUE;
+    let mut out = PointSet::zeros(pts.npoint(), pts.ncoord());
+    let in_view = pts.view();
+    let in_flat: &[f64] = in_view.to_slice().expect("PointSet is C-contiguous");
+    let mut out_view = out.view_mut();
+    let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
+    for (o, &v) in out_flat.iter_mut().zip(in_flat.iter()) {
+        *o = if v == BAD_VALUE || !v.is_finite() {
+            f64::NAN
+        } else {
+            v
+        };
+    }
+    out
+}
+
+/// Replace every `f64::NAN` (and ±∞) value in `pts` with `BAD_VALUE` in
+/// place. Used at the output boundary of [`dyn Mapping::transform_nan_protocol`]
+/// to restore the canonical sentinel value before returning to the caller.
+fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
+    use crate::constants::BAD_VALUE;
+    let mut view = pts.view_mut();
+    let flat: &mut [f64] = view.as_slice_mut().expect("PointSet is C-contiguous");
+    for v in flat.iter_mut() {
+        if !v.is_finite() {
+            *v = BAD_VALUE;
+        }
     }
 }

@@ -21,5 +21,9 @@ wide = { version = "0.7", optional = true }
 # points so that `cargo bench` / examples can compare paths.
 simd-eval = ["dep:wide"]
 
+[[example]]
+name = "bench_polymap_simd"
+required-features = ["simd-eval"]
+
 [build-dependencies]
 cc.workspace = true

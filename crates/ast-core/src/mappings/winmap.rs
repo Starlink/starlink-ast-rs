@@ -197,6 +197,60 @@ impl Mapping for WinMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path. Skips the per-point `is_bad` check on the input
+    /// (the caller has substituted `BAD_VALUE → NaN` at the pipeline boundary
+    /// — see [`dyn Mapping::transform_nan_protocol`]) and lets NaN propagate
+    /// through the linear arithmetic naturally.
+    ///
+    /// The static checks for BAD shifts/scales (an attribute-level invariant,
+    /// not a per-point condition) still apply: we precompute whether any
+    /// channel is structurally invalid and short-circuit to NaN once, rather
+    /// than per-point. For LSST's WinMap (4 finite shifts and scales) this
+    /// branch is never taken.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        let n = self.shifts.len();
+
+        // Per-channel "is this channel statically broken?" mask. Computed
+        // once; used to splat NaN into output lanes that map from a broken
+        // channel (e.g. BAD shift, zero scale on inverse).
+        let bad_channel: Vec<bool> = self
+            .shifts
+            .iter()
+            .zip(self.scales.iter())
+            .map(|(&shift, &scale)| is_bad(shift) || is_bad(scale) || (!fwd && scale == 0.0))
+            .collect();
+        debug_assert_eq!(bad_channel.len(), n);
+
+        for i in 0..pts.npoint() {
+            let inp = pts.point(i);
+            let outp = out.point_mut(i);
+            if fwd {
+                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
+                    *o = if bad_channel[j] {
+                        f64::NAN
+                    } else {
+                        self.shifts[j] + self.scales[j] * v
+                    };
+                }
+            } else {
+                for (j, (o, &v)) in outp.iter_mut().zip(inp.iter()).enumerate() {
+                    *o = if bad_channel[j] {
+                        f64::NAN
+                    } else {
+                        (v - self.shifts[j]) / self.scales[j]
+                    };
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

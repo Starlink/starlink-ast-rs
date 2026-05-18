@@ -196,6 +196,35 @@ impl CmpMap {
         }
     }
 
+    /// Same shape as `series_transform_into` but threads through each child
+    /// via `transform_into_nan`, preserving the NaN-as-bad protocol across
+    /// the chain. Each stage's `transform_into_nan` is its own opt-in: if a
+    /// child hasn't overridden it, the trait default falls through to
+    /// `transform_into`, which re-checks BAD locally — correct but skipping
+    /// the boundary-amortization win for that one stage.
+    fn series_transform_into_nan(
+        &self,
+        pts: &PointSet,
+        fwd: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd1 = fwd != self.first_invert_changed();
+        let fwd2 = fwd != self.second_invert_changed();
+        let mid_n = if fwd {
+            self.effective_first_nout(true)
+        } else {
+            self.effective_second_nin(true)
+        };
+        let mut mid = PointSet::zeros(pts.npoint(), mid_n);
+        if fwd {
+            self.first.transform_into_nan(pts, fwd1, &mut mid)?;
+            self.second.transform_into_nan(&mid, fwd2, out)
+        } else {
+            self.second.transform_into_nan(pts, fwd2, &mut mid)?;
+            self.first.transform_into_nan(&mid, fwd1, out)
+        }
+    }
+
     // ------------------------------------------------------------------ //
     // Parallel helpers                                                     //
     // ------------------------------------------------------------------ //
@@ -321,6 +350,28 @@ impl Mapping for CmpMap {
         let fwd = self.effective_forward(forward);
         match self.kind {
             Composition::Series => self.series_transform_into(pts, fwd, out),
+            Composition::Parallel => self.parallel_transform_into(pts, fwd, out),
+        }
+    }
+
+    /// NaN-as-bad threading. Recursively calls each child's
+    /// `transform_into_nan`, allocating only intermediate buffers (no
+    /// per-stage BAD scan). The parallel case currently falls back to the
+    /// scalar path since the parallel helper still uses `transform`; threading
+    /// it through `transform_into_nan` is a straightforward follow-up.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        match self.kind {
+            Composition::Series => self.series_transform_into_nan(pts, fwd, out),
+            // TODO: thread NaN protocol through parallel helper too. For now
+            // fall back to the existing path, which re-substitutes at each
+            // sub-mapping boundary — correctness is preserved, perf is the
+            // same as the original `transform_into`.
             Composition::Parallel => self.parallel_transform_into(pts, fwd, out),
         }
     }
