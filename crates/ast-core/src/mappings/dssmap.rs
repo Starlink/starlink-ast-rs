@@ -422,6 +422,28 @@ impl Mapping for DssMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. `platepos`/`platepix` are the underlying
+    /// DSS plate-solution routines; both have internal failure modes
+    /// (singular projection, out-of-range coefficients) that emit
+    /// `BAD_VALUE`. Auditing them for NaN-safety is out of scope; use the
+    /// safe delegate-and-post-process adapter.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 

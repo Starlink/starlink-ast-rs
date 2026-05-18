@@ -257,6 +257,32 @@ impl Mapping for MathMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. MathMap evaluates user-supplied expressions
+    /// via a compiled token list. Arithmetic operators propagate NaN
+    /// cleanly per IEEE 754, but conditional operators (`>`, `<`,
+    /// `==`, `?:`, `qif`) follow C-like ordered semantics that return
+    /// false for NaN comparisons and can therefore silently take the
+    /// "wrong" branch. Auditing every operator is out of scope; use the
+    /// delegate-and-post-process pattern so the protocol-canonical
+    /// sentinel reaches downstream stages without re-implementing the
+    /// evaluator.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let effective_forward = forward != self.inverted;
         let npoint = pts.npoint();

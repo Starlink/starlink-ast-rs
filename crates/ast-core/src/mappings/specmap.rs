@@ -1127,6 +1127,29 @@ impl Mapping for SpecMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. Same approach as TimeMap: SpecMap conversion
+    /// steps have per-step `BAD_VALUE` emit conditions (singular Doppler
+    /// shift, light-time domain failures, etc.). Delegate-and-post-process
+    /// is the safest minimal change; per-step audit can come later if a
+    /// hot-path workload motivates it. SpecMap is 1D so the post-pass is
+    /// N comparisons.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 

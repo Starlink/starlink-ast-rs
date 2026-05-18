@@ -161,6 +161,29 @@ impl Mapping for NormMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path. Drops the per-point `is_bad` guard. Every
+    /// `Frame::norm` impl in this crate is value-by-value arithmetic (mod
+    /// 2π wrapping, range checks, etc.) — NaN propagates through that
+    /// cleanly to NaN output. The is_bad guard in `transform_into` is a
+    /// "don't bother normalising garbage" optimisation that doesn't affect
+    /// correctness for the NaN-protocol caller.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let _ = forward;
+        let naxes = self.naxes();
+        for ipoint in 0..pts.npoint() {
+            let inp = pts.point(ipoint);
+            let outp = out.point_mut(ipoint);
+            outp[..naxes].copy_from_slice(&inp[..naxes]);
+            self.frame.norm(&mut outp[..naxes])?;
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

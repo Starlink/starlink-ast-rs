@@ -1212,6 +1212,30 @@ impl Mapping for TimeMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. TimeMap's `apply_step_forward`/`apply_step_inverse`
+    /// helpers each emit `BAD_VALUE` for several intermediate failure
+    /// conditions (invalid arguments to log/asin/etc. in specific time-system
+    /// conversions). Auditing each step is out of scope; delegate to
+    /// `transform_into` and post-process `BAD_VALUE → NaN` so downstream
+    /// NaN-aware stages see the protocol-canonical sentinel. TimeMap is 1D,
+    /// so the post-pass is N comparisons.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 

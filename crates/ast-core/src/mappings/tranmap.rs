@@ -223,6 +223,28 @@ impl Mapping for TranMap {
         }
     }
 
+    /// NaN-as-bad pass-through: delegate to whichever component map's
+    /// `transform_into_nan` is selected for this direction. If a child
+    /// hasn't overridden the trait method it falls back to its own
+    /// `transform_into` (BAD-checking), which is correct but skips the
+    /// per-stage win for that child.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let effective_fwd = forward != self.inverted;
+
+        if effective_fwd {
+            let fwd1 = !self.map1_invert_changed();
+            self.map1.transform_into_nan(pts, fwd1, out)
+        } else {
+            let fwd2 = self.map2_invert_changed();
+            self.map2.transform_into_nan(pts, fwd2, out)
+        }
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

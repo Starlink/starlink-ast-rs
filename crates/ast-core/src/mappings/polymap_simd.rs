@@ -154,6 +154,85 @@ impl PolyMap {
 
         Ok(SimdPath::Took)
     }
+
+    /// Protocol-internal forward SIMD eval (2D).
+    ///
+    /// Same SIMD pipeline as [`forward_simd_2d_into`], but assumes the
+    /// caller is inside the NaN-as-bad protocol (i.e. invocations come
+    /// from `transform_into_nan`). Therefore:
+    ///   - input substitution `BAD_VALUE → NaN` is kept (cheap defence
+    ///     against accidental BAD slipping in; no-op for the canonical
+    ///     NaN inputs the protocol promises);
+    ///   - output substitution `NaN → BAD_VALUE` is **dropped**, because
+    ///     the protocol's contract is "NaN stays inside the pipeline" —
+    ///     converting back to BAD here would leak `-1.8e308` to the next
+    ///     stage's NaN-aware kernel and produce arithmetic garbage.
+    ///
+    /// The boundary-substitution pass at the chain's public entry
+    /// ([`dyn Mapping::transform_nan_protocol`]) handles NaN → BAD on
+    /// final exit, once per pipeline run.
+    pub fn forward_simd_2d_into_nan(
+        &self,
+        input: &PointSet,
+        output: &mut PointSet,
+    ) -> AstResult<SimdPath> {
+        let npoint = input.npoint();
+        if self.nin() != 2 || self.nout() != 2 {
+            return Ok(SimdPath::Fell);
+        }
+        if input.ncoord() != 2 || output.ncoord() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                format!(
+                    "forward_simd_2d_into_nan: input/output must have ncoord = 2 \
+                     (got {}/{})",
+                    input.ncoord(),
+                    output.ncoord()
+                ),
+            ));
+        }
+        if output.npoint() != npoint {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                "forward_simd_2d_into_nan: input/output npoint mismatch",
+            ));
+        }
+        if npoint < SIMD_MIN_POINTS {
+            return Ok(SimdPath::Fell);
+        }
+
+        let mut xin = vec![0.0_f64; npoint];
+        let mut yin = vec![0.0_f64; npoint];
+        let mut xout = vec![0.0_f64; npoint];
+        let mut yout = vec![0.0_f64; npoint];
+
+        // Input: copy through, lifting any BAD that slipped past the
+        // boundary into NaN. Cheap and defensive.
+        let view = input.view();
+        let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
+        for ip in 0..npoint {
+            let x = flat[ip * 2];
+            let y = flat[ip * 2 + 1];
+            xin[ip] = if x == BAD_VALUE { f64::NAN } else { x };
+            yin[ip] = if y == BAD_VALUE { f64::NAN } else { y };
+        }
+
+        let (out0_refs, out1_refs, max_pows) = self.simd_forward_layout_2d();
+        eval_forward_2d_soa(
+            &out0_refs, &out1_refs, max_pows, &xin, &yin, &mut xout, &mut yout,
+        );
+
+        // Output: straight copy — leave NaN as NaN so downstream
+        // protocol-aware stages keep the canonical sentinel.
+        let mut out_view = output.view_mut();
+        let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
+        for ip in 0..npoint {
+            out_flat[ip * 2] = xout[ip];
+            out_flat[ip * 2 + 1] = yout[ip];
+        }
+
+        Ok(SimdPath::Took)
+    }
 }
 
 /// 4-points-at-a-time forward evaluator for `nin = nout = 2` PolyMaps,
@@ -362,6 +441,93 @@ impl PolyMap {
             let y = yr[ip];
             out_flat[ip * 2] = if x.is_nan() { BAD_VALUE } else { x };
             out_flat[ip * 2 + 1] = if y.is_nan() { BAD_VALUE } else { y };
+        }
+
+        Ok(SimdPath::Took)
+    }
+
+    /// Protocol-internal inverse SIMD eval (2D).
+    ///
+    /// See [`forward_simd_2d_into_nan`](Self::forward_simd_2d_into_nan)
+    /// for rationale. Same inverse pipeline as `inverse_simd_2d_into`,
+    /// with the output NaN → BAD substitution dropped so downstream
+    /// NaN-aware stages keep receiving NaN as the canonical "invalid"
+    /// sentinel rather than the finite `BAD_VALUE = -1.8e308`.
+    pub fn inverse_simd_2d_into_nan(
+        &self,
+        target: &PointSet,
+        result: &mut PointSet,
+    ) -> AstResult<SimdPath> {
+        let npoint = target.npoint();
+        if self.nin() != 2 || self.nout() != 2 {
+            return Ok(SimdPath::Fell);
+        }
+        if target.ncoord() != 2 || result.ncoord() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                format!(
+                    "inverse_simd_2d_into_nan: input/output must have ncoord = 2 \
+                     (got {}/{})",
+                    target.ncoord(),
+                    result.ncoord()
+                ),
+            ));
+        }
+        if result.npoint() != npoint {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                "inverse_simd_2d_into_nan: input/output npoint mismatch",
+            ));
+        }
+        if npoint < SIMD_MIN_POINTS {
+            return Ok(SimdPath::Fell);
+        }
+
+        let mut xt = vec![0.0_f64; npoint];
+        let mut yt = vec![0.0_f64; npoint];
+        let mut xr = vec![0.0_f64; npoint];
+        let mut yr = vec![0.0_f64; npoint];
+
+        // Defensive BAD → NaN lift on input; no-op when the caller is
+        // already inside the protocol (canonical NaN already).
+        let view = target.view();
+        let flat: &[f64] = view.to_slice().expect("PointSet is C-contiguous");
+        for ip in 0..npoint {
+            let x = flat[ip * 2];
+            let y = flat[ip * 2 + 1];
+            xt[ip] = if x == BAD_VALUE { f64::NAN } else { x };
+            yt[ip] = if y == BAD_VALUE { f64::NAN } else { y };
+        }
+
+        let (a_inv, b) = match linear_inverse_2d(&self.forward_terms_2d()) {
+            Some(pair) => pair,
+            None => {
+                xr.copy_from_slice(&xt);
+                yr.copy_from_slice(&yt);
+                ([1.0, 0.0, 0.0, 1.0], [0.0, 0.0])
+            }
+        };
+        linear_guess_2d_soa(a_inv, b, &xt, &yt, &mut xr, &mut yr);
+
+        let (out0_refs, out1_refs, max_pows) = self.simd_forward_layout_2d();
+        nr_inverse_2d_soa(
+            &out0_refs,
+            &out1_refs,
+            max_pows,
+            self.niter_inverse(),
+            self.tol_inverse(),
+            &xt,
+            &yt,
+            &mut xr,
+            &mut yr,
+        );
+
+        // Output: straight copy; leave NaN as NaN.
+        let mut out_view = result.view_mut();
+        let out_flat: &mut [f64] = out_view.as_slice_mut().expect("PointSet is C-contiguous");
+        for ip in 0..npoint {
+            out_flat[ip * 2] = xr[ip];
+            out_flat[ip * 2 + 1] = yr[ip];
         }
 
         Ok(SimdPath::Took)

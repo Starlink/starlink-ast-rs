@@ -117,6 +117,30 @@ impl Mapping for UnitNormMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. UnitNormMap has several BAD-emit sites
+    /// (BAD centre, BAD per-axis input, zero-norm "indeterminate
+    /// direction" output, BAD norm on inverse, etc.). All of them
+    /// should appear as NaN inside the NaN-as-bad pipeline so
+    /// downstream stages handle them uniformly. The norm output for the
+    /// zero-vector case is 0.0, which is preserved (it's a genuine
+    /// finite value, not a sentinel).
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         let ncoord = self.ncoord();

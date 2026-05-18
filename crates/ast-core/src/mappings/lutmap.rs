@@ -499,6 +499,33 @@ impl Mapping for LutMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. LutMap's lookup logic has many internal
+    /// `BAD_VALUE` emit sites (binary search, BAD-skip logic, extrapolation
+    /// boundary handling, etc.) and an `idx.round() as i64` cast in the
+    /// Nearest interp path that cannot accept NaN (NaN-as-i64 has unspecified
+    /// behaviour pre-Rust 1.45 and saturates to 0 / i64::MAX after, neither
+    /// of which gives a useful table entry). So we keep the existing logic
+    /// intact and post-process: any `BAD_VALUE` in the output becomes
+    /// `f64::NAN` so downstream NaN-aware stages see the protocol-canonical
+    /// sentinel. Cost is one O(N) sweep over the output (LutMap is 1D, so
+    /// that's just N comparisons).
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
         for i in 0..pts.npoint() {

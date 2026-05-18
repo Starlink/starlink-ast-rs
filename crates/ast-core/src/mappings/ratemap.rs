@@ -235,6 +235,29 @@ impl Mapping for RateMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path. RateMap delegates the per-point work to
+    /// `inner_map.rate(...)`, which computes a numerical Jacobian element
+    /// via finite-difference probes. Whether NaN propagates cleanly through
+    /// that depends on the inner map's `rate` implementation (`numeric_rate`
+    /// uses Mapping::transform internally and may emit BAD_VALUE on the
+    /// failure branch). Safest minimal change is delegate-and-post-process.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

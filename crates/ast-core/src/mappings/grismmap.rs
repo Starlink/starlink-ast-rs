@@ -255,6 +255,56 @@ impl Mapping for GrismMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. Per-point `is_bad` gates are dropped; NaN
+    /// inputs propagate through `atan`/`sin`/`asin`/`tan` cleanly. The
+    /// inverse's domain check `if !(-1.0..=1.0).contains(&sinbeta)` is
+    /// kept (it's a real domain failure for `asin`, not a BAD-input
+    /// gate), but emits NaN instead of `BAD_VALUE` — which is also what
+    /// `(k2 * NaN - k1)` already produces for NaN inputs, so the branch
+    /// fires correctly on both genuine domain failures (`|sinbeta| > 1`)
+    /// and NaN inputs.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+
+        if is_bad(self.k1) || is_bad(self.k2) || is_bad(self.k3) {
+            for i in 0..pts.npoint() {
+                out.point_mut(i)[0] = f64::NAN;
+            }
+            return Ok(());
+        }
+
+        if fwd {
+            // Forward division-by-zero guard: k2 is a constant, not per-
+            // point; if it's zero every output is NaN.
+            if self.k2 == 0.0 {
+                for i in 0..pts.npoint() {
+                    out.point_mut(i)[0] = f64::NAN;
+                }
+                return Ok(());
+            }
+            for i in 0..pts.npoint() {
+                let value_in = pts.point(i)[0];
+                out.point_mut(i)[0] = (self.k1 + (value_in.atan() + self.k3).sin()) / self.k2;
+            }
+        } else {
+            for i in 0..pts.npoint() {
+                let value_in = pts.point(i)[0];
+                let sinbeta = self.k2 * value_in - self.k1;
+                out.point_mut(i)[0] = if !(-1.0..=1.0).contains(&sinbeta) {
+                    f64::NAN
+                } else {
+                    (sinbeta.asin() - self.k3).tan()
+                };
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 

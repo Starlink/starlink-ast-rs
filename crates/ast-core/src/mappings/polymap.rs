@@ -1115,10 +1115,13 @@ impl Mapping for PolyMap {
         let fwd = self.effective_forward(forward);
 
         if fwd {
+            // Use the protocol-internal SIMD variant: NaN stays inside the
+            // pipeline, public-API NaN → BAD post-pass is skipped (the
+            // pipeline-level boundary does it once at the end).
             #[cfg(feature = "simd-eval")]
             {
                 use super::polymap_simd::SimdPath;
-                if self.forward_simd_2d_into(pts, out)? == SimdPath::Took {
+                if self.forward_simd_2d_into_nan(pts, out)? == SimdPath::Took {
                     return Ok(());
                 }
             }
@@ -1161,10 +1164,11 @@ impl Mapping for PolyMap {
                 }
             }
         } else if self.iter_inverse {
+            // Protocol-internal SIMD variant — see forward branch comment.
             #[cfg(feature = "simd-eval")]
             {
                 use super::polymap_simd::SimdPath;
-                if self.inverse_simd_2d_into(pts, out)? == SimdPath::Took {
+                if self.inverse_simd_2d_into_nan(pts, out)? == SimdPath::Took {
                     return Ok(());
                 }
             }

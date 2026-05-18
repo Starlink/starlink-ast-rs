@@ -719,6 +719,30 @@ impl Mapping for SplineMap {
         Ok(out)
     }
 
+    /// NaN-as-bad fast path. B-spline evaluation has knot-domain BAD
+    /// emit sites in the inner `forward_point`/`inverse_point` routines
+    /// (out-of-range coordinate, no monotonic interval, singular
+    /// boundary). Delegate-and-post-process keeps the existing
+    /// well-tested evaluator and translates `BAD_VALUE` outputs to
+    /// `f64::NAN` so downstream NaN-aware stages see the protocol-
+    /// canonical sentinel.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        self.transform_into(pts, forward, out)?;
+        let mut view = out.view_mut();
+        let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+        for v in flat.iter_mut() {
+            if *v == BAD_VALUE {
+                *v = f64::NAN;
+            }
+        }
+        Ok(())
+    }
+
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
 
