@@ -1137,18 +1137,25 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
         skipped
     );
     if !failed.is_empty() {
-        for f in &failed[..failed.len().min(10)] {
+        for f in &failed {
             eprintln!("  FAIL: {f}");
         }
-        if failed.len() > 10 {
-            eprintln!("  ... and {} more", failed.len() - 10);
-        }
     }
-    // Report but don't hard-fail yet — this is aspirational
     eprintln!(
-        "Native round-trip: {}/{} byte-exact",
+        "Native round-trip (simplify_fixtures): {}/{} byte-exact",
         passed,
         passed + failed.len()
+    );
+    // Hard-fail with the full list. Byte-exact round-trip with the C
+    // library is a documented contract (CLAUDE.md: "Native output is
+    // byte-exact with the C library"); silently reporting failures
+    // means new regressions slip in unnoticed. If a class isn't yet
+    // ready, the .map/.simp pair must be excluded from this corpus
+    // explicitly rather than swept under the rug.
+    assert!(
+        failed.is_empty(),
+        "{} simplify-fixture round-trip failures (see eprintln list above)",
+        failed.len()
     );
 }
 
