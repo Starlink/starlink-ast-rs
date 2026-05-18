@@ -86,6 +86,64 @@ fn nan_protocol_inverse_matches_transform() {
 }
 
 #[test]
+fn nan_protocol_slamap_matches_transform() {
+    // Build a minimal SlaMap (Equatorial → Galactic) and exercise the
+    // NaN-as-bad fast path directly, alongside a few BAD-injected points.
+    // The pal-backed `transform_into_nan` should produce results identical
+    // to the BAD-checked `transform_into`, including BAD propagation on
+    // input.
+    use ast_core::mappings::{SlaCvtType, SlaMap};
+
+    let mut map = SlaMap::new();
+    map.add(SlaCvtType::Eqgal, &[]);
+
+    let mut rows: Vec<Vec<f64>> = (0..256)
+        .map(|i| {
+            // RA in [0, 2π), Dec in [-π/2, π/2]
+            let ra = (i as f64) * 0.01;
+            let dec = -0.5 + (i as f64) * 0.001;
+            vec![ra, dec]
+        })
+        .collect();
+    rows[10][0] = BAD_VALUE;
+    rows[42][1] = f64::NAN;
+    rows[100][0] = f64::NAN;
+    rows[100][1] = BAD_VALUE;
+    let pts = PointSet::from_rows(rows);
+
+    let regular = map.transform(&pts, true).expect("scalar");
+    // Wrap as a trait object to access the NaN-protocol entry.
+    let map_dyn: &dyn Mapping = &map;
+    let via_nan = map_dyn
+        .transform_nan_protocol(&pts, true)
+        .expect("nan protocol");
+
+    for i in 0..pts.npoint() {
+        let r = regular.point(i);
+        let n = via_nan.point(i);
+        for axis in 0..2 {
+            // Either both are finite and close, or both are BAD.
+            if r[axis] == BAD_VALUE || n[axis] == BAD_VALUE {
+                assert_eq!(
+                    r[axis], n[axis],
+                    "pt {i} ax {axis}: BAD mismatch r={} n={}",
+                    r[axis], n[axis]
+                );
+            } else {
+                let diff = (r[axis] - n[axis]).abs();
+                assert!(
+                    diff < 1e-14,
+                    "pt {i} ax {axis}: regular={:.17e} nan={:.17e} diff={:.2e}",
+                    r[axis],
+                    n[axis],
+                    diff
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn nan_protocol_propagates_bad_and_nan_inputs() {
     let map = load_lsst();
     let mut rows: Vec<Vec<f64>> = (0..200)

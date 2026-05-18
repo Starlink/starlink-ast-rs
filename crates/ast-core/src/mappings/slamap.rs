@@ -1159,6 +1159,61 @@ impl Mapping for SlaMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path. Drops the per-point `is_bad(lon)/is_bad(lat)`
+    /// gate. The gate in [`transform_into`] exists only to avoid feeding pal
+    /// numerical garbage (BAD_VALUE = -1.8e308 is outside any astronomical
+    /// domain, so pal's transcendentals produce wild numbers) — it isn't a
+    /// safety against pal crashing on the input. Once the caller has
+    /// substituted `BAD_VALUE → NaN` at the pipeline boundary (per
+    /// [`dyn Mapping::transform_nan_protocol`]) the per-step work is all
+    /// `cos`/`sin`/`atan2`/matrix-multiply with no value-dependent
+    /// branches, so NaN propagates cleanly through to a NaN output that
+    /// the boundary post-pass converts back to `BAD_VALUE`. End result is
+    /// identical, with one fewer branch per point per stage.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+
+        let mappa_cache: Vec<Option<[f64; 21]>> = self
+            .conversions
+            .iter()
+            .map(|cvt| match cvt.cvt_type {
+                SlaCvtType::Map | SlaCvtType::Amp => Some(pal::mappa(cvt.args[0], cvt.args[1])),
+                _ => None,
+            })
+            .collect();
+
+        for i in 0..pts.npoint() {
+            let inp = pts.point(i);
+            let outp = out.point_mut(i);
+
+            let lon = inp[0];
+            let lat = inp[1];
+            // No is_bad gate: NaN inputs produce NaN through dcs2c →
+            // conversion steps → dcc2s and reach the boundary post-pass.
+
+            let mut v = pal::dcs2c(lon, lat);
+            if fwd {
+                for (cvt, cached) in self.conversions.iter().zip(mappa_cache.iter()) {
+                    v = apply_step_forward(cvt, v, cached.as_ref());
+                }
+            } else {
+                for (cvt, cached) in self.conversions.iter().rev().zip(mappa_cache.iter().rev()) {
+                    v = apply_step_inverse(cvt, v, cached.as_ref());
+                }
+            }
+            let (out_lon, out_lat) = pal::dcc2s(&v);
+            outp[0] = out_lon;
+            outp[1] = out_lat;
+        }
+
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
