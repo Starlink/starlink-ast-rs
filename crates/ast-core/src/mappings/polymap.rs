@@ -1033,7 +1033,19 @@ impl Mapping for PolyMap {
                     }
                 }
             } else if self.iter_inverse {
-                // Bulk Newton-Raphson iterative inverse.
+                // Try the cross-lane SIMD NR path when the `simd-eval` feature
+                // is built. It handles its own preconditions (shape, npoint
+                // threshold) and returns `Fell` when ineligible, in which case
+                // we drop through to the scalar NR. The SIMD path computes the
+                // same NR fixed point with the same niter/tol, so behaviour is
+                // identical when it runs — only timing differs.
+                #[cfg(feature = "simd-eval")]
+                {
+                    use super::polymap_simd::SimdPath;
+                    if self.inverse_simd_2d_into(pts, out)? == SimdPath::Took {
+                        return Ok(());
+                    }
+                }
                 self.newton_raphson_inverse(pts, out)?;
             } else {
                 // No inverse available: fill with BAD.
