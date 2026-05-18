@@ -6,6 +6,7 @@
 # Scenario fixtures (integration regressions, stay in ast_tester/).
 brad  | brad.map  | brad.simp  |
 lsst1 | lsst1.map | lsst1.simp |
+lsst  | lsst.ast  | lsst.simp  | yes
 rigby | rigby.map | rigby.simp | yes
 
 # Focused rule fixtures (in simplify_fixtures/ subdirectory).
