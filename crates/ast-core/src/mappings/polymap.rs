@@ -488,6 +488,17 @@ impl PolyMap {
         let mut jac_matrix = vec![0.0; ncoord * ncoord];
         let mut dy = vec![0.0; ncoord];
 
+        // Bulk-flat slice access: walking the underlying contiguous buffer
+        // skips per-point ndarray row-view + as_slice + expect machinery
+        // that `point_mut(ip)` performs. With ~50k per-point-iter calls on
+        // the LSST bench, removing that dispatch is measurable.
+        let target_view = target.view();
+        let target_flat: &[f64] = target_view.to_slice().expect("PointSet is C-contiguous");
+        let mut result_view = result.view_mut();
+        let result_flat: &mut [f64] = result_view
+            .as_slice_mut()
+            .expect("PointSet is C-contiguous");
+
         for _iter in 0..max_iter {
             if converged.iter().all(|&c| c) {
                 break;
@@ -499,10 +510,11 @@ impl PolyMap {
                     continue;
                 }
 
-                let inp = result.point(ip);
+                let base = ip * ncoord;
+                let pt = &mut result_flat[base..base + ncoord];
 
-                // Fill power table once for this point.
-                fill_power_table(inp, &nr_max_pows, &mut power_table);
+                // Fill power table once for this point (pt reborrows as &[f64]).
+                fill_power_table(pt, &nr_max_pows, &mut power_table);
 
                 // Evaluate forward polynomial using the power table.
                 for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
@@ -527,22 +539,22 @@ impl PolyMap {
                 }
 
                 // Compute residual: dy = target - forward(guess).
-                let tgt_pt = target.point(ip);
+                let tgt = &target_flat[base..base + ncoord];
                 for ic in 0..ncoord {
-                    dy[ic] = tgt_pt[ic] - fwd_out[ic];
+                    dy[ic] = tgt[ic] - fwd_out[ic];
                 }
 
                 // Solve J * dx = dy.
                 if ncoord == 1 {
                     let j00 = jac_matrix[0];
                     if j00.abs() < 1e-30 {
-                        result.point_mut(ip).fill(BAD_VALUE);
+                        pt.fill(BAD_VALUE);
                         converged[ip] = true;
                         continue;
                     }
                     let dx = dy[0] / j00;
-                    result.point_mut(ip)[0] += dx;
-                    let xlensq = result.point(ip)[0].powi(2);
+                    pt[0] += dx;
+                    let xlensq = pt[0] * pt[0];
                     if dx * dx < tol_sq * xlensq || xlensq == 0.0 {
                         converged[ip] = true;
                     }
@@ -554,16 +566,16 @@ impl PolyMap {
                     let d = jac_matrix[3];
                     let det = a * d - b * c;
                     if det.abs() < 1e-30 {
-                        result.point_mut(ip).fill(BAD_VALUE);
+                        pt.fill(BAD_VALUE);
                         converged[ip] = true;
                         continue;
                     }
                     let dx0 = (d * dy[0] - b * dy[1]) / det;
                     let dx1 = (a * dy[1] - c * dy[0]) / det;
-                    result.point_mut(ip)[0] += dx0;
-                    result.point_mut(ip)[1] += dx1;
+                    pt[0] += dx0;
+                    pt[1] += dx1;
 
-                    let xlensq = result.point(ip)[0].powi(2) + result.point(ip)[1].powi(2);
+                    let xlensq = pt[0] * pt[0] + pt[1] * pt[1];
                     let vlensq = dx0 * dx0 + dx1 * dx1;
                     if vlensq < tol_sq * xlensq || xlensq == 0.0 {
                         converged[ip] = true;
@@ -574,19 +586,16 @@ impl PolyMap {
                     let mut rhs = dy.clone();
                     let ok = solve_linear_system(&mut mat, &mut rhs, ncoord);
                     if !ok {
-                        result.point_mut(ip).fill(BAD_VALUE);
+                        pt.fill(BAD_VALUE);
                         converged[ip] = true;
                         continue;
                     }
                     let mut vlensq = 0.0;
-                    let pt = result.point_mut(ip);
+                    let mut xlensq = 0.0;
                     for (ic, &dx_ic) in rhs.iter().enumerate().take(ncoord) {
                         pt[ic] += dx_ic;
                         vlensq += dx_ic * dx_ic;
-                    }
-                    let mut xlensq = 0.0;
-                    for &x in result.point(ip).iter().take(ncoord) {
-                        xlensq += x * x;
+                        xlensq += pt[ic] * pt[ic];
                     }
                     if vlensq < tol_sq * xlensq || xlensq == 0.0 {
                         converged[ip] = true;
