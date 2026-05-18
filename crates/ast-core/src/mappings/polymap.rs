@@ -982,6 +982,20 @@ impl Mapping for PolyMap {
         let fwd = self.effective_forward(forward);
 
         if fwd {
+            // Try the cross-lane SIMD forward path when the `simd-eval`
+            // feature is built. It handles its own preconditions (shape,
+            // npoint threshold) and returns `Fell` when ineligible, in which
+            // case we drop through to the scalar path. The SIMD path
+            // produces the same polynomial value with the same BAD-value
+            // semantics; only timing differs.
+            #[cfg(feature = "simd-eval")]
+            {
+                use super::polymap_simd::SimdPath;
+                if self.forward_simd_2d_into(pts, out)? == SimdPath::Took {
+                    return Ok(());
+                }
+            }
+
             // Forward transform using pre-computed power-table indices.
             let mut power_table: Vec<Vec<f64>> = self
                 .forward_max_pows
