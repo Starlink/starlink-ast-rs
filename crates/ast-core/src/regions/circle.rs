@@ -195,7 +195,14 @@ impl RegionGeometry for Circle {
             if point_has_bad(point) {
                 continue;
             }
-            let dist = base_frame.distance(point, centre)?;
+            // Match the argument order used by `radius()`
+            // (`distance(centre, edge_point)`). `Frame::distance` is
+            // mathematically symmetric but some libm implementations (e.g.
+            // macOS aarch64) compute `pal::dsep` asymmetrically at the
+            // 1-ULP level depending on argument order. Mixing orders here
+            // and in `radius()` would mis-classify the constructor-supplied
+            // edge point as "outside" a closed circle on those platforms.
+            let dist = base_frame.distance(centre, point)?;
             if is_bad(dist) {
                 continue;
             }

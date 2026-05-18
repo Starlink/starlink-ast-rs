@@ -11,7 +11,17 @@ env:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # Cover both glibc x86_64 (ubuntu-latest) and Apple aarch64 (macos-latest)
+    # so platform-specific libm precision issues surface in CI rather than
+    # only on developer machines. The sky_circle_open_boundary test that
+    # added macos-latest was originally caught only ever revealed itself
+    # locally because pal::dsep happens to be bit-symmetric under glibc
+    # but asymmetric by 1 ULP under Apple's libm.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
