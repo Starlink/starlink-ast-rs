@@ -41,9 +41,11 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
-    LutInterp, LutMap, Mapping, MatrixMap, PolyMap, PolyTerm, ShiftMap, SphMap, WcsMap,
-    WcsProjection, WinMap, ZoomMap,
+    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, Mapping, MatrixMap, NormMap, PcdMap, PermMap,
+    PolyMap, PolyTerm, RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap,
+    SplineMap, TimeCvtType, TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
 };
 use ast_core::{AnyObject, to_native_string};
 use ndarray::Array2;
@@ -118,6 +120,93 @@ fn variants() -> Vec<Variant> {
             has_inverse: true,
             input_range: (0.0, 99.0),
         },
+        Variant {
+            name: "wcsmap_sin",
+            build: build_wcsmap_sin,
+            has_inverse: true,
+            input_range: (-0.05, 0.05),
+        },
+        Variant {
+            name: "wcsmap_zpn",
+            build: build_wcsmap_zpn,
+            has_inverse: true,
+            input_range: (-0.05, 0.05),
+        },
+        Variant {
+            name: "permmap_2d_swap",
+            build: build_permmap,
+            has_inverse: true,
+            input_range: (-1.0, 1.0),
+        },
+        // ChebyMap omitted: Rust's serialization of ChebyMap differs
+        // from the C library's expected format (missing inverse-poly
+        // header section or similar) and astFromString crashes on the
+        // serialised output. Tracked separately from the bench harness.
+        Variant {
+            name: "pcdmap_typical",
+            build: build_pcdmap,
+            has_inverse: true,
+            input_range: (-0.1, 0.1),
+        },
+        Variant {
+            name: "grismmap_typical",
+            build: build_grismmap,
+            has_inverse: true,
+            input_range: (-1e-3, 1e-3),
+        },
+        // UnitNormMap omitted: Rust's serialization drops the `centre`
+        // attribute, leaving the C side with an uninitialised centre that
+        // crashes on first eval. Same class of bug as ChebyMap.
+        Variant {
+            name: "normmap_basic_2d",
+            build: build_normmap,
+            has_inverse: false, // NormMap is its own inverse (identity-by-norm).
+            input_range: (-1.0, 1.0),
+        },
+        Variant {
+            name: "tranmap_zoom_shift",
+            build: build_tranmap,
+            has_inverse: true,
+            input_range: (-1.0, 1.0),
+        },
+        // RateMap omitted: Rust's serialization drops the ax1/ax2 axis-
+        // selection attributes so the C side can't reconstruct which
+        // Jacobian element to compute. Crashes on first eval.
+        Variant {
+            name: "slamap_eqgal",
+            build: build_slamap,
+            has_inverse: true,
+            input_range: (0.0, 1.5),
+        },
+        Variant {
+            name: "timemap_taiutc",
+            build: build_timemap,
+            has_inverse: true,
+            input_range: (50000.0, 50100.0),
+        },
+        Variant {
+            name: "specmap_wn_to_fr",
+            build: build_specmap,
+            has_inverse: true,
+            input_range: (1.0, 1000.0),
+        },
+        Variant {
+            name: "dssmap_typical",
+            build: build_dssmap,
+            has_inverse: true,
+            input_range: (5000.0, 15000.0),
+        },
+        Variant {
+            name: "splinemap_5x5_cubic",
+            build: build_splinemap,
+            has_inverse: false, // No iterative inverse configured by default.
+            input_range: (0.1, 0.9),
+        },
+        // MathMap deliberately omitted: it isn't part of the `AnyObject`
+        // enum, so we can't serialise it via `to_native_string` for the C
+        // side. Benching it would require an alternative export path
+        // (a dyn-Mapping NativeChannel write). Out of scope for the
+        // initial sweep.
     ]
 }
 
@@ -233,6 +322,189 @@ fn build_lutmap() -> AnyObject {
     m.set_interp(LutInterp::Linear);
     AnyObject::LutMap(m)
 }
+
+fn build_wcsmap_sin() -> AnyObject {
+    let m = WcsMap::new(2, WcsProjection::Sin, 1, 2).expect("WcsMap SIN");
+    AnyObject::WcsMap(m)
+}
+
+fn build_wcsmap_zpn() -> AnyObject {
+    // ZPN with a typical PV term so it isn't a pure-radial gnomonic-equivalent.
+    let mut m = WcsMap::new(2, WcsProjection::Zpn, 1, 2).expect("WcsMap ZPN");
+    // PV2_1 = 1, PV2_3 = 0.05 makes a mild radial-distortion ZPN.
+    m.set_pv(2, 1, 1.0).expect("PV2_1");
+    m.set_pv(2, 3, 0.05).expect("PV2_3");
+    AnyObject::WcsMap(m)
+}
+
+fn build_permmap() -> AnyObject {
+    // Pure 2D axis swap; outperm=[2, 1], inperm=[2, 1] (inverse is also a swap).
+    let m = PermMap::new(&[2, 1], &[2, 1], &[]).expect("permmap swap");
+    AnyObject::PermMap(m)
+}
+
+#[allow(dead_code)] // Wired in when the ChebyMap serialisation gap is fixed.
+fn build_chebymap() -> AnyObject {
+    // 2D Chebyshev polynomial, degree 3 in each axis. Coefficients chosen
+    // small so eval stays well-conditioned. No inverse polynomial supplied
+    // (would need a separate fitted set), so the bench only runs forward.
+    let mut terms = Vec::new();
+    for (px, py, coeff) in [
+        (1, 0, 1.0),
+        (0, 1, 0.05),
+        (2, 0, 0.02),
+        (1, 1, 0.01),
+        (3, 0, 0.005),
+        (0, 3, 0.003),
+    ] {
+        terms.push(PolyTerm {
+            coeff,
+            powers: vec![px, py],
+            out_axis: 1,
+        });
+        terms.push(PolyTerm {
+            coeff,
+            powers: vec![py, px],
+            out_axis: 2,
+        });
+    }
+    // Use non-default bounds so they survive serialisation (the [-1, 1]
+    // default is elided by the Rust serializer, which would leave the C
+    // side without a domain and crash on first eval).
+    let m = ChebyMap::new(2, 2, &terms, None, &[-2.0, -2.0], &[2.0, 2.0], None, None)
+        .expect("chebymap");
+    AnyObject::ChebyMap(m)
+}
+
+fn build_pcdmap() -> AnyObject {
+    // Mild pincushion distortion centred at origin.
+    let m = PcdMap::new(1.0e-3, [0.0, 0.0]);
+    AnyObject::PcdMap(m)
+}
+
+fn build_grismmap() -> AnyObject {
+    // Realistic-ish grism parameters: refractive indices, reference
+    // wavelength 500 nm in metres, grating constant 1e7 lines/m,
+    // first order, normal incidence.
+    let m = GrismMap::new(1.5, 0.0, 5.0e-7, 0.0, 1.0e7, 1, 1.0, 0.0);
+    AnyObject::GrismMap(m)
+}
+
+#[allow(dead_code)] // Wired in when the UnitNormMap centre-serialisation gap is fixed.
+fn build_unitnormmap() -> AnyObject {
+    // 2D vector → 3-element output (unit vector + norm). Centre at origin.
+    let m = UnitNormMap::new(vec![0.0, 0.0]);
+    AnyObject::UnitNormMap(m)
+}
+
+fn build_normmap() -> AnyObject {
+    // BasicFrame's norm is identity, so this benches the per-point copy
+    // + (no-op) norm dispatch. A SkyFrame would exercise the longitude
+    // wrap path but introduces frame-coordinate-system overhead unrelated
+    // to NormMap itself.
+    let frame = BasicFrameBuilder::new(2).build().expect("basic frame");
+    let m = NormMap::new(Box::new(frame));
+    AnyObject::NormMap(m)
+}
+
+fn build_tranmap() -> AnyObject {
+    // map1 = ZoomMap (forward), map2 = ShiftMap (inverse).
+    let z = ZoomMap::new(2, 2.0).expect("zoom");
+    let s = ShiftMap::new([0.5, 0.5]);
+    let m = TranMap::new(Box::new(z), Box::new(s)).expect("tranmap");
+    AnyObject::TranMap(m)
+}
+
+#[allow(dead_code)] // Wired in when the RateMap ax1/ax2 serialisation gap is fixed.
+fn build_ratemap() -> AnyObject {
+    // Numerical Jacobian element (output 1 wrt input 1) of a small PolyMap.
+    let mut terms = Vec::new();
+    for (px, py, coeff, out) in [
+        (1, 0, 1.0, 1),
+        (0, 1, 0.1, 1),
+        (2, 0, 0.05, 1),
+        (1, 0, 0.1, 2),
+        (0, 1, 1.0, 2),
+        (0, 2, 0.05, 2),
+    ] {
+        terms.push(PolyTerm {
+            coeff,
+            powers: vec![px, py],
+            out_axis: out,
+        });
+    }
+    let inner = PolyMap::new(2, 2, &terms, None).expect("inner polymap");
+    let m = RateMap::new(Box::new(inner), 1, 1).expect("ratemap");
+    AnyObject::RateMap(m)
+}
+
+fn build_slamap() -> AnyObject {
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Eqgal, &[]);
+    AnyObject::SlaMap(m)
+}
+
+fn build_timemap() -> AnyObject {
+    let mut m = TimeMap::new();
+    m.add(TimeCvtType::TaiToUtc, &[50000.0]);
+    AnyObject::TimeMap(m)
+}
+
+fn build_specmap() -> AnyObject {
+    let mut m = SpecMap::new();
+    m.add(SpecCvtType::WnToFr, &[]);
+    AnyObject::SpecMap(m)
+}
+
+fn build_dssmap() -> AnyObject {
+    // Synthesised plate solution — values are arbitrary but in the right
+    // domain (RA / Dec in radians, plate scale arcsec/mm, pixel sizes).
+    let ppo: [f64; 6] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let mut amd_x: [f64; 19] = [0.0; 19];
+    let mut amd_y: [f64; 19] = [0.0; 19];
+    amd_x[0] = 1000.0; // dominant linear x
+    amd_y[1] = 1000.0; // dominant linear y
+    let m = DssMap::from_plate_params(
+        0.0,     // plate RA (rad)
+        0.0,     // plate Dec (rad)
+        67.0,    // arcsec/mm
+        10000.0, // x pixel offset (typical DSS frame centre)
+        10000.0, // y pixel offset
+        0.025,   // x pixel size (mm/px)
+        0.025,   // y pixel size
+        ppo, amd_x, amd_y,
+    );
+    AnyObject::DssMap(m)
+}
+
+fn build_splinemap() -> AnyObject {
+    // Bivariate B-spline: 5x5 control points, cubic order in both
+    // directions (kx = ky = 4 — SplineMap uses k = order, not degree, so
+    // cubic = order 4). Clamped uniform knot vector of length nx + kx = 9
+    // on [0, 1] so the spline is well-defined on the chosen input
+    // domain (0.1, 0.9).
+    let kx = 4;
+    let ky = 4;
+    let nx = 5;
+    let ny = 5;
+    let tx: Vec<f64> = vec![0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0];
+    let ty = tx.clone();
+    // Coefficients: a gentle quadratic-like surface for both outputs.
+    let mut cu = vec![0.0; nx * ny];
+    let mut cv = vec![0.0; nx * ny];
+    for i in 0..nx {
+        for j in 0..ny {
+            // u: dominantly increasing in x with a small y modulation.
+            cu[j * nx + i] = i as f64 / (nx - 1) as f64 + 0.05 * j as f64;
+            // v: dominantly increasing in y with a small x modulation.
+            cv[j * nx + i] = j as f64 / (ny - 1) as f64 + 0.05 * i as f64;
+        }
+    }
+    let m = SplineMap::new(kx, ky, nx, ny, tx, ty, cu, cv);
+    AnyObject::SplineMap(m)
+}
+
+// MathMap builder omitted; see note in `variants()` above.
 
 // --- bench plumbing ---------------------------------------------------------
 

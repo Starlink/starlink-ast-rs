@@ -154,9 +154,19 @@ static double time_forward(AstMapping *map, double *xin, double *yin, int npoint
 /* Map variant name -> input domain. Must match the Rust side's
  * `Variant.input_range`. Returns 1 on match, 0 if unknown. */
 static int input_range_for(const char *name, double *lo, double *hi) {
-    if (!strcmp(name, "polymap_2d_deg5")) { *lo = -0.5; *hi = 0.5; return 1; }
-    if (!strcmp(name, "wcsmap_tan"))      { *lo = -0.05; *hi = 0.05; return 1; }
-    if (!strcmp(name, "lutmap_100entries")) { *lo = 0.0; *hi = 99.0; return 1; }
+    if (!strcmp(name, "polymap_2d_deg5"))      { *lo = -0.5;     *hi = 0.5;     return 1; }
+    if (!strcmp(name, "wcsmap_tan"))           { *lo = -0.05;    *hi = 0.05;    return 1; }
+    if (!strcmp(name, "wcsmap_sin"))           { *lo = -0.05;    *hi = 0.05;    return 1; }
+    if (!strcmp(name, "wcsmap_zpn"))           { *lo = -0.05;    *hi = 0.05;    return 1; }
+    if (!strcmp(name, "lutmap_100entries"))    { *lo = 0.0;      *hi = 99.0;    return 1; }
+    if (!strcmp(name, "pcdmap_typical"))       { *lo = -0.1;     *hi = 0.1;     return 1; }
+    if (!strcmp(name, "grismmap_typical"))     { *lo = -1e-3;    *hi = 1e-3;    return 1; }
+    if (!strcmp(name, "slamap_eqgal"))         { *lo = 0.0;      *hi = 1.5;     return 1; }
+    if (!strcmp(name, "timemap_taiutc"))       { *lo = 50000.0;  *hi = 50100.0; return 1; }
+    if (!strcmp(name, "specmap_wn_to_fr"))     { *lo = 1.0;      *hi = 1000.0;  return 1; }
+    if (!strcmp(name, "dssmap_typical"))       { *lo = 5000.0;   *hi = 15000.0; return 1; }
+    if (!strcmp(name, "splinemap_5x5_cubic")) { *lo = 0.1;      *hi = 0.9;     return 1; }
+    if (!strcmp(name, "ratemap_polymap"))      { *lo = -0.5;     *hi = 0.5;     return 1; }
     /* Default for the linear / SphMap / etc. variants. */
     *lo = -1.0; *hi = 1.0;
     return 1;
@@ -184,11 +194,17 @@ int main(int argc, char **argv) {
             continue;
         }
 
+        /* Each variant gets its own object-lifetime context. Without
+         * astBegin/astEnd the handle stack accumulates internal objects
+         * (e.g. PolyMap LinearGuess caches, WcsMap projection state) and
+         * eventually crashes after a few dozen variants. astEnd at the
+         * bottom releases everything from this iteration. */
+        astBegin;
         char *text = read_file(ast_path);
-        if (!text) { fprintf(stderr, "cannot read %s\n", ast_path); continue; }
+        if (!text) { fprintf(stderr, "cannot read %s\n", ast_path); astEnd; continue; }
         AstObject *obj = astFromString(text);
         free(text);
-        if (!obj) { fprintf(stderr, "astFromString failed for %s\n", ast_path); continue; }
+        if (!obj) { fprintf(stderr, "astFromString failed for %s\n", ast_path); astEnd; continue; }
         AstMapping *map = (AstMapping *)obj;
         int nin = astGetI(map, "Nin");
 
@@ -255,9 +271,12 @@ int main(int argc, char **argv) {
         }
 
         printf("%-28s\t%-7s\t%7d\t%12.1f\n", variant, direction, npoint, ns_pt);
+        fflush(stdout); /* keep output progressive in case of a later crash */
 
         free_columns(cols, nin);
-        obj = astAnnul(obj);
+        /* astEnd cleans up the AST objects from this iteration; no need
+         * to astAnnul(obj) explicitly. */
+        astEnd;
     }
 
     fclose(mf);
