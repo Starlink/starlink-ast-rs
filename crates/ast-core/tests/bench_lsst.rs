@@ -30,8 +30,20 @@ fn make_points(n: usize) -> PointSet {
 }
 
 fn bench_transform(mapping: &dyn Mapping, npoint: usize, forward: bool) -> std::time::Duration {
-    let pts = make_points(npoint);
+    let pixel_pts = make_points(npoint);
     let label = if forward { "forward" } else { "inverse" };
+
+    // Inverse must be benchmarked on inputs in the *output* domain, not pixel
+    // coords. Producing those by running forward on the same points keeps the
+    // bench aligned with how the inverse is used in practice (round-tripping
+    // sky positions) and matches what bench_lsst_c.c does. Using pixel coords
+    // for the inverse forces NR to iterate on out-of-domain inputs and was
+    // hiding the actual transform performance by an order of magnitude.
+    let pts = if forward {
+        pixel_pts
+    } else {
+        mapping.transform(&pixel_pts, true).expect("forward warmup")
+    };
 
     // Warm up
     let _ = mapping.transform(&pts, forward);
