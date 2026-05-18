@@ -293,6 +293,54 @@ impl Mapping for PermMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path. Permutations are direct copies, so an NaN
+    /// input slot copies to an NaN output slot for free — no per-point
+    /// `is_bad` gate needed.
+    ///
+    /// Two cases need explicit substitution to keep the protocol pure:
+    /// - The constants pool (`p < 0`) is class data, not boundary-
+    ///   substituted, so any `BAD_VALUE` entry is rewritten to NaN once
+    ///   before the loop.
+    /// - The explicit-BAD case (`p == 0`) emits NaN instead of BAD so the
+    ///   sentinel stays canonical inside the pipeline.
+    ///
+    /// The boundary post-pass converts these NaN values back to
+    /// `BAD_VALUE` at the output of the pipeline.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        let perm = if fwd {
+            self.outperm.as_slice()
+        } else {
+            self.inperm.as_slice()
+        };
+        // Convert any BAD_VALUE constants to NaN once at the start so the
+        // per-point copy path is branchless on constant content.
+        let constants_nan: Vec<f64> = self
+            .constants
+            .iter()
+            .map(|&c| if is_bad(c) { f64::NAN } else { c })
+            .collect();
+        for i in 0..pts.npoint() {
+            let inp = pts.point(i);
+            let outp = out.point_mut(i);
+            for (k, &p) in perm.iter().enumerate() {
+                outp[k] = if p > 0 {
+                    inp[(p as usize) - 1]
+                } else if p < 0 {
+                    constants_nan[(-p as usize) - 1]
+                } else {
+                    f64::NAN
+                };
+            }
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

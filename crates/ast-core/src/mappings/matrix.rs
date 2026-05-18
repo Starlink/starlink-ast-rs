@@ -254,6 +254,66 @@ impl Mapping for MatrixMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path. The "zero coefficient masks BAD" semantic of
+    /// [`apply_matrix`] is preserved by keeping the `coeff != 0.0` guard:
+    /// a NaN input in a column whose row has zero coefficient never
+    /// participates in the dot product, so the row's output stays valid
+    /// (matching the BAD-checked path). When the coefficient is non-zero,
+    /// `coeff * NaN = NaN` and the row accumulator becomes NaN naturally.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        let (m, form) = if fwd {
+            (&self.matrix, self.form)
+        } else {
+            match &self.inverse {
+                Some(inv) => (inv, self.inv_form),
+                None => {
+                    return Err(AstError::new(
+                        ErrorCode::Nodef,
+                        "MatrixMap inverse is not defined (non-square or singular matrix)",
+                    ));
+                }
+            }
+        };
+        match form {
+            MatrixForm::Diagonal => {
+                let n = m.nrows();
+                for i in 0..pts.npoint() {
+                    let inp = pts.point(i);
+                    let outp = out.point_mut(i);
+                    for j in 0..n {
+                        let diag = m[[j, j]];
+                        outp[j] = if diag == 0.0 { 0.0 } else { diag * inp[j] };
+                    }
+                }
+            }
+            MatrixForm::Full => {
+                let nout = m.nrows();
+                let nin = m.ncols();
+                for i in 0..pts.npoint() {
+                    let inp = pts.point(i);
+                    let outp = out.point_mut(i);
+                    for row in 0..nout {
+                        let mut sum = 0.0;
+                        for col in 0..nin {
+                            let coeff = m[[row, col]];
+                            if coeff != 0.0 {
+                                sum += coeff * inp[col];
+                            }
+                        }
+                        outp[row] = sum;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

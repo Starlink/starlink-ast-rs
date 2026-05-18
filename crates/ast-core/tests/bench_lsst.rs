@@ -29,6 +29,43 @@ fn make_points(n: usize) -> PointSet {
     PointSet::from_rows(rows)
 }
 
+fn bench_nan_protocol(mapping: &dyn Mapping, npoint: usize, forward: bool) -> std::time::Duration {
+    let pixel_pts = make_points(npoint);
+    let label = if forward { "fwd-nan" } else { "inv-nan" };
+
+    let pts = if forward {
+        pixel_pts
+    } else {
+        mapping.transform(&pixel_pts, true).expect("forward warmup")
+    };
+
+    let _ = mapping.transform_nan_protocol(&pts, forward);
+
+    let iterations = if npoint >= 100_000 {
+        3
+    } else if npoint >= 10_000 {
+        10
+    } else {
+        100
+    };
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _ = mapping.transform_nan_protocol(&pts, forward).unwrap();
+    }
+    let elapsed = start.elapsed();
+    let per_call = elapsed / iterations;
+    let per_point = if npoint > 0 {
+        per_call / npoint as u32
+    } else {
+        per_call
+    };
+
+    println!(
+        "  {label:>7} {npoint:>7} pts: {per_call:>10.3?} total, {per_point:>8.1?}/pt  ({iterations} iters)"
+    );
+    per_call
+}
+
 fn bench_transform(mapping: &dyn Mapping, npoint: usize, forward: bool) -> std::time::Duration {
     let pixel_pts = make_points(npoint);
     let label = if forward { "forward" } else { "inverse" };
@@ -113,6 +150,8 @@ fn benchmark_lsst_frameset() {
         println!("N = {n}:");
         bench_transform(simplified.as_ref(), n, true);
         bench_transform(simplified.as_ref(), n, false);
+        bench_nan_protocol(simplified.as_ref(), n, true);
+        bench_nan_protocol(simplified.as_ref(), n, false);
         println!();
     }
 }

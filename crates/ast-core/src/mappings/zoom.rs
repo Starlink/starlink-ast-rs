@@ -93,6 +93,30 @@ impl Mapping for ZoomMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path: drop the per-point `is_bad(v)` check and let
+    /// the multiplication propagate NaN naturally. `ZoomMap::new` rejects
+    /// `factor == 0.0` so the inverse direction's `1.0 / factor` is always
+    /// well-defined; a BAD or non-finite `factor` produces garbage in both
+    /// the scalar path (which only gates on `v`, not on `scale`) and this
+    /// kernel, so behaviour is unchanged on those inputs.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+        let scale = if fwd { self.factor } else { 1.0 / self.factor };
+        for i in 0..pts.npoint() {
+            let inp = pts.point(i);
+            let outp = out.point_mut(i);
+            for (o, &v) in outp.iter_mut().zip(inp.iter()) {
+                *o = v * scale;
+            }
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));

@@ -1071,6 +1071,104 @@ impl Mapping for PolyMap {
         Ok(())
     }
 
+    /// NaN-as-bad fast path for [`PolyMap`].
+    ///
+    /// Three sub-cases, mirroring `transform_into`:
+    ///
+    /// 1. **Forward polynomial eval.** Tries SIMD when the `simd-eval` feature
+    ///    is built (already NaN-correct end-to-end); otherwise runs the scalar
+    ///    power-table loop with the per-point `point_has_bad` check dropped —
+    ///    NaN inputs produce NaN outputs through the arithmetic.
+    /// 2. **Explicit inverse polynomial.** Same shape as forward — drop the
+    ///    `point_has_bad` check, NaN propagates.
+    /// 3. **Iterative NR inverse.** SIMD path is NaN-correct. The scalar
+    ///    fallback (`newton_raphson_inverse`) emits `BAD_VALUE` for bad inputs;
+    ///    to keep the protocol's "NaN inside the pipeline" invariant we do a
+    ///    cheap one-pass `BAD_VALUE → NaN` translation on the output. This is
+    ///    O(npoint × ncoord) — comparable to the per-point BAD check we saved
+    ///    elsewhere — and only triggers when SIMD is off, so the cost is
+    ///    bounded. Writing a NaN-native NR is follow-up work.
+    fn transform_into_nan(
+        &self,
+        pts: &PointSet,
+        forward: bool,
+        out: &mut PointSet,
+    ) -> AstResult<()> {
+        let fwd = self.effective_forward(forward);
+
+        if fwd {
+            #[cfg(feature = "simd-eval")]
+            {
+                use super::polymap_simd::SimdPath;
+                if self.forward_simd_2d_into(pts, out)? == SimdPath::Took {
+                    return Ok(());
+                }
+            }
+            let mut power_table: Vec<Vec<f64>> = self
+                .forward_max_pows
+                .iter()
+                .map(|&m| vec![0.0; m + 1])
+                .collect();
+            for i in 0..pts.npoint() {
+                let inp = pts.point(i);
+                let outp = out.point_mut(i);
+                // No `point_has_bad` gate: NaN propagates through `eval_term`
+                // multiplications cleanly.
+                fill_power_table(inp, &self.forward_max_pows, &mut power_table);
+                for (out_idx, term_indices) in self.forward_by_output.iter().enumerate() {
+                    let mut sum = 0.0;
+                    for &idx in term_indices {
+                        sum += eval_term_with_table(&self.forward[idx], &power_table);
+                    }
+                    outp[out_idx] = sum;
+                }
+            }
+        } else if let Some(ref inv_terms) = self.inverse {
+            let inv_by_output = self.inverse_by_output.as_ref().unwrap();
+            let mut power_table: Vec<Vec<f64>> = self
+                .inverse_max_pows
+                .iter()
+                .map(|&m| vec![0.0; m + 1])
+                .collect();
+            for i in 0..pts.npoint() {
+                let inp = pts.point(i);
+                let outp = out.point_mut(i);
+                fill_power_table(inp, &self.inverse_max_pows, &mut power_table);
+                for (out_idx, term_indices) in inv_by_output.iter().enumerate() {
+                    let mut sum = 0.0;
+                    for &idx in term_indices {
+                        sum += eval_term_with_table(&inv_terms[idx], &power_table);
+                    }
+                    outp[out_idx] = sum;
+                }
+            }
+        } else if self.iter_inverse {
+            #[cfg(feature = "simd-eval")]
+            {
+                use super::polymap_simd::SimdPath;
+                if self.inverse_simd_2d_into(pts, out)? == SimdPath::Took {
+                    return Ok(());
+                }
+            }
+            // Fallback: scalar NR emits BAD_VALUE; translate to NaN so
+            // downstream NaN-aware stages see the protocol-canonical sentinel.
+            self.newton_raphson_inverse(pts, out)?;
+            let mut view = out.view_mut();
+            let flat = view.as_slice_mut().expect("PointSet is C-contiguous");
+            for v in flat.iter_mut() {
+                if *v == BAD_VALUE {
+                    *v = f64::NAN;
+                }
+            }
+        } else {
+            // No inverse available: emit NaN (was BAD).
+            for i in 0..pts.npoint() {
+                out.point_mut(i).fill(f64::NAN);
+            }
+        }
+        Ok(())
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.do_not_simplify {
             return Ok(Box::new(self.clone()));
