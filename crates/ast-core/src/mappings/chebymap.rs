@@ -588,7 +588,26 @@ impl Serializable for ChebyMap {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        // Start with ChebyMap's own node, write its attributes first.
+        // The C library writes ChebyMap dumps with the following section
+        // structure, reflecting the class hierarchy Mapping -> PolyMap ->
+        // ChebyMap (each `IsA <Parent>` marker terminates the parent's
+        // instance-variable block):
+        //
+        //     Begin ChebyMap
+        //        Nin / Nout / Fwd / Inv      <- Mapping section
+        //     IsA Mapping
+        //        MPF/NCF/CF/PF (+inverse)    <- PolyMap section
+        //     IsA PolyMap
+        //        FSCL/FOFF/ISCL/IOFF         <- ChebyMap section
+        //     End ChebyMap
+        //
+        // The Rust serializer must follow the same order *exactly* — both
+        // for byte-exact round-tripping against the simplify-fixture
+        // corpus and because the C library's astLoadChebyMap reads the
+        // sections in this order; ChebyMap-level attributes that arrive
+        // before `IsA PolyMap` get applied to the PolyMap parent struct
+        // instead and never reach the ChebyMap-specific fields, leading
+        // to a segfault on first eval.
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Chebyshev polynomial transformation".to_string());
         write_mapping_base(&mut node, self);
@@ -605,43 +624,7 @@ impl Serializable for ChebyMap {
             self.poly.nout()
         };
 
-        // Write forward scale and offset.
-        for i in 0..base_nin {
-            node.push_double(
-                &format!("FSCL{}", i + 1),
-                self.scale_f[i],
-                Some(format!("Scale factor on input {}", i + 1)),
-            );
-        }
-        for i in 0..base_nin {
-            node.push_double(
-                &format!("FOFF{}", i + 1),
-                self.offset_f[i],
-                Some(format!("Offset on input {}", i + 1)),
-            );
-        }
-
-        // Write inverse scale and offset (if present).
-        if let Some(si) = &self.scale_i {
-            for (i, &s) in si.iter().enumerate().take(base_nout) {
-                node.push_double(
-                    &format!("ISCL{}", i + 1),
-                    s,
-                    Some(format!("Scale factor on output {}", i + 1)),
-                );
-            }
-        }
-        if let Some(oi) = &self.offset_i {
-            for (i, &o) in oi.iter().enumerate().take(base_nout) {
-                node.push_double(
-                    &format!("IOFF{}", i + 1),
-                    o,
-                    Some(format!("Offset on output {}", i + 1)),
-                );
-            }
-        }
-
-        // Now write the PolyMap coefficient structure.
+        // --- PolyMap section: polynomial coefficient structure ---
         let fwd_terms = self.poly.forward_terms();
         if !fwd_terms.is_empty() {
             // Max power per input axis.
@@ -696,15 +679,20 @@ impl Serializable for ChebyMap {
 
             // Powers.
             iv = 0;
-            for terms in &terms_by_out {
-                for term in terms {
+            for (i, terms) in terms_by_out.iter().enumerate() {
+                for (j, term) in terms.iter().enumerate() {
                     for (k, &p) in term.powers.iter().enumerate() {
                         iv += 1;
                         if p > 0 {
                             node.push_double(
                                 &format!("PF{iv}"),
                                 p as f64,
-                                Some(format!("Power of i/p {} for coeff of fwd poly", k + 1)),
+                                Some(format!(
+                                    "Power of i/p {} for coeff {} of fwd poly {}",
+                                    k + 1,
+                                    j + 1,
+                                    i + 1,
+                                )),
                             );
                         }
                     }
@@ -762,20 +750,62 @@ impl Serializable for ChebyMap {
                 }
 
                 iv = 0;
-                for terms in &terms_by_out {
-                    for term in terms {
+                for (i, terms) in terms_by_out.iter().enumerate() {
+                    for (j, term) in terms.iter().enumerate() {
                         for (k, &p) in term.powers.iter().enumerate() {
                             iv += 1;
                             if p > 0 {
                                 node.push_double(
                                     &format!("PI{iv}"),
                                     p as f64,
-                                    Some(format!("Power of o/p {} for coeff of inv poly", k + 1)),
+                                    Some(format!(
+                                        "Power of o/p {} for coeff {} of inv poly {}",
+                                        k + 1,
+                                        j + 1,
+                                        i + 1,
+                                    )),
                                 );
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // --- IsA marker terminating the PolyMap instance-variable block ---
+        node.push_isa("PolyMap", Some("Polynomial transformation".to_string()));
+
+        // --- ChebyMap section: forward and inverse scale/offset ---
+        for i in 0..base_nin {
+            node.push_double(
+                &format!("FSCL{}", i + 1),
+                self.scale_f[i],
+                Some(format!("Scale factor on input {}", i + 1)),
+            );
+        }
+        for i in 0..base_nin {
+            node.push_double(
+                &format!("FOFF{}", i + 1),
+                self.offset_f[i],
+                Some(format!("Offset on input {}", i + 1)),
+            );
+        }
+        if let Some(si) = &self.scale_i {
+            for (i, &s) in si.iter().enumerate().take(base_nout) {
+                node.push_double(
+                    &format!("ISCL{}", i + 1),
+                    s,
+                    Some(format!("Scale factor on output {}", i + 1)),
+                );
+            }
+        }
+        if let Some(oi) = &self.offset_i {
+            for (i, &o) in oi.iter().enumerate().take(base_nout) {
+                node.push_double(
+                    &format!("IOFF{}", i + 1),
+                    o,
+                    Some(format!("Offset on output {}", i + 1)),
+                );
             }
         }
 
