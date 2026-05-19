@@ -139,16 +139,16 @@ fn variants() -> Vec<Variant> {
             has_inverse: true,
             input_range: (-1.0, 1.0),
         },
-        // ChebyMap intentionally omitted: the Rust serializer is missing
-        // the `IsA PolyMap` inheritance marker and emits FSCL/FOFF (the
-        // ChebyMap-level attributes) before the polynomial coefficients
-        // (the inherited PolyMap section), so the C library's `astFromString`
-        // parses the dump but eval segfaults — the ChebyMap-specific scale
-        // and offset never end up in the right struct field.
-        //
-        // The bug is now pinned in the byte-exact corpus by the new
-        // `neg_chebymap_standalone.map` and `chebymap_inverse_cancel.map`
-        // fixtures; re-enable this variant once that test goes green.
+        Variant {
+            name: "chebymap_2d_deg3",
+            build: build_chebymap,
+            // No inverse polynomial is supplied, so only the forward arm
+            // is exercised.
+            has_inverse: false,
+            // Bounds are [-2, 2]; the input window stays well inside the
+            // Chebyshev domain.
+            input_range: (-1.0, 1.0),
+        },
         Variant {
             name: "pcdmap_typical",
             build: build_pcdmap,
@@ -359,7 +359,6 @@ fn build_permmap() -> AnyObject {
     AnyObject::PermMap(m)
 }
 
-#[allow(dead_code)] // Re-wired in variants() once the IsA-PolyMap dump bug is fixed.
 fn build_chebymap() -> AnyObject {
     // 2D Chebyshev polynomial, degree 3 in each axis. Coefficients chosen
     // small so eval stays well-conditioned. No inverse polynomial supplied
