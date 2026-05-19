@@ -257,14 +257,15 @@ impl SlaCvtType {
         match self {
             Self::Prec => &["From Julian epoch", "To Julian epoch"],
             Self::Prebn => &["From Besselian epoch", "To Besselian epoch"],
-            Self::Fk45z | Self::Fk54z => &["Besselian epoch of FK4 equinox"],
+            Self::Fk45z => &["Besselian epoch of FK4 coordinates"],
+            Self::Fk54z => &["Besselian epoch of FK4 system"],
             Self::Amp => &[
                 "TDB of apparent place (as MJD)",
                 "Julian epoch of mean equinox (FK5)",
             ],
             Self::Map => &[
                 "Julian epoch of mean equinox (FK5)",
-                "TDB of required apparent place (as MJD)",
+                "TDB of apparent place (as MJD)",
             ],
             Self::Ecleq | Self::Eqecl => &["TDB of mean ecliptic (as MJD)"],
             Self::Addet | Self::Subet => &["Besselian epoch of mean equinox (FK4)"],
@@ -275,7 +276,7 @@ impl SlaCvtType {
                 "Heliocentric-Aries-Ecliptic Z value at observer",
             ],
             Self::Hfk5z | Self::Fk5hz => &["Julian epoch of FK5 coordinates"],
-            Self::Heeq | Self::Eqhe => &["TDB of mean ecliptic (as MJD)"],
+            Self::Heeq | Self::Eqhe => &["Modified Julian Date of observation"],
             Self::Dh2e | Self::De2h => &[
                 "Geodetic latitude of observer",
                 "Magnitude of diurnal aberration vector",
@@ -306,8 +307,8 @@ impl SlaCvtType {
             Self::Eqhpc => "J2000.0 equatorial (FK5) to Helioprojective-Cartesian",
             Self::Hpreq => "Helioprojective-Radial to J2000.0 equatorial (FK5)",
             Self::Eqhpr => "J2000.0 equatorial (FK5) to Helioprojective-Radial",
-            Self::Hfk5z => "J2000.0 FK5 to ICRS (no PM or parallax)",
-            Self::Fk5hz => "ICRS to J2000.0 FK5 (no PM or parallax)",
+            Self::Hfk5z => "ICRS to J2000.0 FK5 (no PM or parallax)",
+            Self::Fk5hz => "J2000.0 FK5 to ICRS (no PM or parallax)",
             Self::Heeq => "Helio-ecliptic to equatorial",
             Self::Eqhe => "Equatorial to helio-ecliptic",
             Self::J2000h => "J2000 equatorial (dynamical) to ICRS",

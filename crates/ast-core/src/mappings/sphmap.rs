@@ -34,6 +34,12 @@ use super::{DynMapping, Mapping};
 pub struct SphMap {
     unit_radius: bool,
     polar_long: f64,
+    /// Tracks whether `polar_long` was explicitly set by the user (or read
+    /// from a serialised representation with `set=1`). Mirrors the C
+    /// library's `TestPolarLong` flag so byte-exact round-trip distinguishes
+    /// "default value 0.0 (commented in dump)" from "explicitly set to 0.0
+    /// (uncommented in dump)".
+    polar_long_set: bool,
     inverted: bool,
     do_not_simplify: bool,
 }
@@ -46,6 +52,7 @@ impl SphMap {
         Self {
             unit_radius: false,
             polar_long: 0.0,
+            polar_long_set: false,
             inverted: false,
             do_not_simplify: false,
         }
@@ -69,6 +76,7 @@ impl SphMap {
     /// Set the longitude value returned at either pole (radians).
     pub fn set_polar_long(&mut self, polar_long: f64) {
         self.polar_long = polar_long;
+        self.polar_long_set = true;
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -356,7 +364,7 @@ impl Serializable for SphMap {
                 Some("All input vectors have unit length".to_string()),
             );
         }
-        if self.polar_long != 0.0 {
+        if self.polar_long_set {
             node.push_double(
                 "PlrLg",
                 self.polar_long,
@@ -365,7 +373,7 @@ impl Serializable for SphMap {
         } else {
             node.push_unset(
                 "PlrLg",
-                crate::serial::NodeValue::Double(0.0),
+                crate::serial::NodeValue::Double(self.polar_long),
                 Some("Polar longitude (rad.s)".to_string()),
             );
         }
@@ -373,8 +381,17 @@ impl Serializable for SphMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        use crate::serial::NodeValue;
         let base = read_mapping_base(node);
         let unit_radius = node.get_int("UntRd", 0) != 0;
+        // Distinguish "uncommented PlrLg = …" (explicitly set in source) from
+        // "#   PlrLg = …" (commented default) — only the former counts as set.
+        // `get_any` unwraps `Unset(inner)`, so we have to walk `items` directly.
+        let polar_long_set = node
+            .items
+            .iter()
+            .find(|i| i.key == "PlrLg")
+            .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
         let polar_long_raw = node.get_double("PlrLg", f64::MIN);
         let polar_long = if is_bad(polar_long_raw) {
             0.0
@@ -384,6 +401,7 @@ impl Serializable for SphMap {
         let mut m = SphMap {
             unit_radius,
             polar_long,
+            polar_long_set,
             inverted: false,
             do_not_simplify: base.do_not_simplify,
         };

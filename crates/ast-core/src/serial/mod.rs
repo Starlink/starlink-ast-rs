@@ -71,14 +71,23 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     if mapping.is_inverted() {
         node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
     }
-    if !mapping.has_forward() {
+    // C library writes Fwd/Inv flags using the INTRINSIC (pre-invert) values
+    // of `this->tran_forward` / `this->tran_inverse`. The trait getters return
+    // the effective directions, which flip under `is_inverted()`, so undo that
+    // flip when serialising.
+    let (intrinsic_fwd, intrinsic_inv) = if mapping.is_inverted() {
+        (mapping.has_inverse(), mapping.has_forward())
+    } else {
+        (mapping.has_forward(), mapping.has_inverse())
+    };
+    if !intrinsic_fwd {
         node.push_int(
             "Fwd",
             0,
             Some("Forward transformation not defined".to_string()),
         );
     }
-    if !mapping.has_inverse() {
+    if !intrinsic_inv {
         node.push_int(
             "Inv",
             0,
@@ -701,7 +710,7 @@ impl Serializable for BoxRegion {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Box region".to_string());
+        node.class_comment = Some("Axis intervals".to_string());
         write_mapping_base(&mut node, self);
         write_region_base(&mut node, &self.data);
         Ok(node)

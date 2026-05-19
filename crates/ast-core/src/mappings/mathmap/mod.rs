@@ -555,7 +555,14 @@ impl Serializable for MathMap {
             node.push_int(
                 "SimpFI",
                 if v { 1 } else { 0 },
-                Some("Forward-inverse pairs may simplify".to_string()),
+                Some(
+                    if v {
+                        "Forward-inverse pairs may simplify"
+                    } else {
+                        "Forward-inverse pairs do not simplify"
+                    }
+                    .to_string(),
+                ),
             );
         }
 
@@ -564,7 +571,14 @@ impl Serializable for MathMap {
             node.push_int(
                 "SimpIF",
                 if v { 1 } else { 0 },
-                Some("Inverse-forward pairs may simplify".to_string()),
+                Some(
+                    if v {
+                        "Inverse-forward pairs may simplify"
+                    } else {
+                        "Inverse-forward pairs do not simplify"
+                    }
+                    .to_string(),
+                ),
             );
         }
 

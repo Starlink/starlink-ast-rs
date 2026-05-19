@@ -287,24 +287,48 @@ impl TimeCvtType {
     /// serialisation format. Derived (not stored) slots use empty strings.
     pub fn arg_descriptions(&self) -> &'static [&'static str] {
         match self {
-            Self::MjdToMjd | Self::MjdToJd | Self::JdToMjd => {
-                &["Zero point for input", "Zero point for output", ""]
-            }
-            Self::MjdToBep | Self::BepToMjd | Self::MjdToJep | Self::JepToMjd => {
-                &["Zero point for input", "Zero point for output", "", ""]
-            }
-            Self::TaiToUtc | Self::UtcToTai => &["UTC offset", "TAI offset"],
+            Self::MjdToMjd => &["Input MJD offset", "Output MJD offset", "Combined offset"],
+            Self::MjdToJd => &["MJD offset", "JD offset", "Combined offset"],
+            Self::JdToMjd => &["JD offset", "MJD offset", "Combined offset"],
+            Self::MjdToBep => &[
+                "MJD offset",
+                "Besselian epoch offset",
+                "Combined forward offset",
+                "Combined inverse offset",
+            ],
+            Self::BepToMjd => &[
+                "Besselian epoch offset",
+                "MJD offset",
+                "Combined forward offset",
+                "Combined inverse offset",
+            ],
+            Self::MjdToJep => &[
+                "MJD offset",
+                "Julian epoch offset",
+                "Combined forward offset",
+                "Combined inverse offset",
+            ],
+            Self::JepToMjd => &[
+                "Julian epoch offset",
+                "MJD offset",
+                "Combined forward offset",
+                "Combined inverse offset",
+            ],
+            Self::TaiToUtc | Self::UtcToTai => &["MJD offset", "DTAI"],
             Self::TaiToTt | Self::TtToTai => &["MJD offset"],
             Self::TcgToTt | Self::TtToTcg => &["MJD offset", "TCG offset"],
             Self::TcbToTdb | Self::TdbToTcb => &["MJD offset", "TCB offset"],
+            // External order (Time1a..Time1g) — internal slots [4]=DTAI and
+            // [5]/[6]=derived swap places at the external boundary, see the
+            // `order` map in `to_node`.
             Self::TdbToTt | Self::TtToTdb => &[
                 "MJD offset",
                 "Observer longitude",
                 "Observer latitude",
                 "Observer altitude",
+                "Distance from earth spin axis",
+                "Distance north of equatorial plane",
                 "DTAI",
-                "",
-                "",
             ],
             Self::UtToGmst | Self::GmstToUt => &["MJD offset"],
             Self::GmstToLmst | Self::LmstToGmst => {
@@ -313,7 +337,8 @@ impl TimeCvtType {
             Self::LastToLmst | Self::LmstToLast => {
                 &["MJD offset", "Observer longitude", "Observer latitude"]
             }
-            Self::UtToUtc | Self::UtcToUt | Self::LtToUtc | Self::UtcToLt => &["MJD offset"],
+            Self::UtToUtc | Self::UtcToUt => &["DUT1"],
+            Self::LtToUtc | Self::UtcToLt => &["LTOFF"],
         }
     }
 

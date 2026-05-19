@@ -714,12 +714,21 @@ impl Serializable for SkyFrame {
             Some("Label for axis 2".to_string()),
         );
 
-        // System (always active).
-        node.push_string(
-            "System",
-            self.system.as_str(),
-            Some("Coordinate system type".to_string()),
-        );
+        // System. C library defaults SkyFrame's System to ICRS; for ICRS we
+        // emit commented (default), for any other system uncommented (explicit).
+        if matches!(self.system, SkySystem::Icrs) {
+            node.push_unset(
+                "System",
+                NodeValue::String(self.system.as_str().to_string()),
+                Some("Coordinate system type".to_string()),
+            );
+        } else {
+            node.push_string(
+                "System",
+                self.system.as_str(),
+                Some("Coordinate system type".to_string()),
+            );
+        }
 
         // AlSys (alignment coordinate system, if set).
         if let Some(align_sys) = self.align_system {
@@ -846,20 +855,35 @@ impl Serializable for SkyFrame {
             );
         }
 
-        // Equinox (if explicitly set) as decimal epoch.
-        // Besselian if < 1984, Julian otherwise.
-        if let Some(eqnox_mjd) = self.equinox {
+        // Equinox as decimal epoch (Besselian if < 1984, Julian otherwise).
+        // C library treats Equinox as "helpful" (commented default emitted)
+        // only when the system is FK4, FK4-no-E, FK5 or Ecliptic; for other
+        // systems an unset Equinox is omitted entirely.
+        let eq_helpful = matches!(
+            self.system,
+            SkySystem::Fk4 | SkySystem::Fk4NoE | SkySystem::Fk5 | SkySystem::Ecliptic
+        );
+        if self.equinox.is_some() || eq_helpful {
+            let eqnox_mjd = self
+                .equinox
+                .unwrap_or_else(|| self.system.default_equinox_mjd());
             let jep = pal::epj(eqnox_mjd);
-            let epoch_val = if jep < 1984.0 {
-                pal::epb(eqnox_mjd)
+            let bessyr = jep < 1984.0;
+            let epoch_val = if bessyr { pal::epb(eqnox_mjd) } else { jep };
+            let comment = if bessyr {
+                "Besselian epoch of mean equinox"
             } else {
-                jep
+                "Julian epoch of mean equinox"
             };
-            node.push_double(
-                "Eqnox",
-                epoch_val,
-                Some("Julian epoch of mean equinox".to_string()),
-            );
+            if self.equinox.is_some() {
+                node.push_double("Eqnox", epoch_val, Some(comment.to_string()));
+            } else {
+                node.push_unset(
+                    "Eqnox",
+                    NodeValue::Double(epoch_val),
+                    Some(comment.to_string()),
+                );
+            }
         }
 
         // SRefIs (write if explicitly set, even if Ignored).
@@ -935,9 +959,10 @@ impl Serializable for SkyFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        // Read System.
-        let sys_str = node.get_string("System", "FK5");
-        let system = SkySystem::parse(&sys_str).unwrap_or(SkySystem::Fk5);
+        // Read System. Default is ICRS to match the C library
+        // (`skyframe.c`: AST__ICRS is the default System).
+        let sys_str = node.get_string("System", "ICRS");
+        let system = SkySystem::parse(&sys_str).unwrap_or(SkySystem::Icrs);
 
         let mut sky = SkyFrame::new(system);
 

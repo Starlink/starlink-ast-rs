@@ -277,9 +277,10 @@ impl Serializable for ZoomMap {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Zoom about the origin".to_string());
         write_mapping_base(&mut node, self);
-        if self.factor != 1.0 {
-            node.push_double("Zoom", self.factor, Some("Zoom factor".to_string()));
-        }
+        // C library treats Zoom as set whenever non-zero (`astMAKE_TEST`),
+        // which is always the case for a constructed ZoomMap. Emit
+        // uncommented to match C output.
+        node.push_double("Zoom", self.factor, Some("Zoom factor".to_string()));
         Ok(node)
     }
 

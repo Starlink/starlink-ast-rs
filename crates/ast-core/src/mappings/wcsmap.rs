@@ -613,7 +613,7 @@ fn projection_description(proj: WcsProjection) -> &'static str {
         WcsProjection::Tpn => "TAN with polynomial corrections",
         WcsProjection::Hpx => "HEALPix",
         WcsProjection::Xph => "HEALPix polar",
-        WcsProjection::Unknown => "Unknown",
+        WcsProjection::Unknown => "<null>",
     }
 }
 
