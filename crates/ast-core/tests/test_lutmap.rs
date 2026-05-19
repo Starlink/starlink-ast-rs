@@ -447,13 +447,14 @@ fn lutmap_serialisation_text_content() {
 }
 
 #[test]
-fn lutmap_serialisation_default_omission() {
-    // start=0 and inc=1 are defaults, should be omitted
+fn lutmap_serialisation_default_commented() {
+    // start=0 and inc=1 are defaults; both should appear commented to
+    // match the C library's Dump output (`astWriteDouble` with helpful=1).
     let m = LutMap::new(&[0.0, 10.0, 20.0], 0.0, 1.0).unwrap();
     let text = to_native_string(&AnyObject::LutMap(m)).unwrap();
     assert!(
-        !text.contains("Start"),
-        "Start should be omitted for default 0"
+        text.contains("# ") && text.contains("Start = 0"),
+        "Start should be commented for default 0"
     );
     assert!(
         text.contains("# ") && text.contains("Incr = 1"),

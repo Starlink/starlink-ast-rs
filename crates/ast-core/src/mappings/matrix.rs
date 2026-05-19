@@ -32,6 +32,9 @@ enum MatrixForm {
     Full,
     /// Diagonal matrix: O(N) per-axis multiply per point.
     Diagonal,
+    /// Identity matrix: no elements stored in dump, mathematically a no-op.
+    /// Preserved across round-trip so byte-exact serialisation matches C.
+    Unit,
 }
 
 /// A linear mapping defined by a matrix multiplication.
@@ -135,7 +138,14 @@ impl MatrixMap {
     ///   corresponding input).
     /// - `Full`: O(N²) matrix-vector product (the general case).
     fn apply_matrix(m: &Array2<f64>, form: MatrixForm, pts: &PointSet, out: &mut PointSet) {
+        // Math-wise Unit is just a special-case diagonal.
+        let form = if matches!(form, MatrixForm::Unit) {
+            MatrixForm::Diagonal
+        } else {
+            form
+        };
         match form {
+            MatrixForm::Unit => unreachable!(),
             MatrixForm::Diagonal => {
                 let n = m.nrows();
                 for i in 0..pts.npoint() {
@@ -280,7 +290,13 @@ impl Mapping for MatrixMap {
                 }
             }
         };
+        let form = if matches!(form, MatrixForm::Unit) {
+            MatrixForm::Diagonal
+        } else {
+            form
+        };
         match form {
+            MatrixForm::Unit => unreachable!(),
             MatrixForm::Diagonal => {
                 let n = m.nrows();
                 for i in 0..pts.npoint() {
@@ -595,6 +611,9 @@ impl Serializable for MatrixMap {
         let nin = self.matrix.ncols();
 
         match self.form {
+            MatrixForm::Unit => {
+                // Identity: no elements emitted.
+            }
             MatrixForm::Diagonal => {
                 let nel = nin.min(nout);
                 for i in 0..nel {
@@ -626,6 +645,9 @@ impl Serializable for MatrixMap {
 
         if let Some(ref inv) = self.inverse {
             match self.inv_form {
+                MatrixForm::Unit => {
+                    // Identity inverse: no elements emitted.
+                }
                 MatrixForm::Diagonal => {
                     let nel = nin.min(nout);
                     for i in 0..nel {
@@ -657,6 +679,7 @@ impl Serializable for MatrixMap {
         }
 
         let form_str = match self.form {
+            MatrixForm::Unit => "Unit",
             MatrixForm::Diagonal => "Diagonal",
             MatrixForm::Full => "Full",
         };
@@ -751,8 +774,26 @@ impl Serializable for MatrixMap {
             None => None,
         };
 
-        let form = compute_form(&matrix);
-        let inv_form = inverse.as_ref().map_or(MatrixForm::Full, compute_form);
+        // Preserve the storage form recorded in the source ("Unit" /
+        // "Diagonal" / "Full") so the round-trip matches. For freshly-built
+        // matrices we fall back to deriving the form from the matrix structure.
+        let form_str = node.get_string("Form", "");
+        let form = match form_str.as_str() {
+            "Unit" => MatrixForm::Unit,
+            "Diagonal" => MatrixForm::Diagonal,
+            "Full" => MatrixForm::Full,
+            _ => compute_form(&matrix),
+        };
+        // The inverse storage form follows the forward form when the source
+        // pins it ("Unit"/"Diagonal"/"Full" all imply the inverse uses the
+        // same layout); only fall back to deriving it from the inverse matrix
+        // when no Form was recorded.
+        let inv_form = match form_str.as_str() {
+            "Unit" => MatrixForm::Unit,
+            "Diagonal" => MatrixForm::Diagonal,
+            "Full" => MatrixForm::Full,
+            _ => inverse.as_ref().map_or(MatrixForm::Full, compute_form),
+        };
 
         Ok(MatrixMap {
             matrix,

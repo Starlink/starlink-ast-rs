@@ -678,10 +678,19 @@ impl Serializable for LutMap {
             Some("Number of lookup table elements".to_string()),
         );
 
+        // Match the C library's Dump (`lutmap.c`): both Start (helpful=1,
+        // default 0.0) and Incr (helpful=1, default 1.0) are always emitted —
+        // commented at default, uncommented when explicit.
         if self.start != 0.0 {
             node.push_double(
                 "Start",
                 self.start,
+                Some("Input value at first element".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "Start",
+                NodeValue::Int(0),
                 Some("Input value at first element".to_string()),
             );
         }

@@ -55,6 +55,22 @@ pub struct GrismMap {
     k3: f64,
     inverted: bool,
     do_not_simplify: bool,
+    /// Per-attribute "was this set by the user / source" flags, mirroring
+    /// the C library's `Test*` predicates so we can choose commented vs
+    /// uncommented dump output to match byte-exact.
+    set_flags: GrismSetFlags,
+}
+
+#[derive(Debug, Clone, Default)]
+struct GrismSetFlags {
+    nr: bool,
+    nrp: bool,
+    wave_r: bool,
+    alpha: bool,
+    g: bool,
+    m: bool,
+    eps: bool,
+    theta: bool,
 }
 
 impl GrismMap {
@@ -80,6 +96,10 @@ impl GrismMap {
         eps: f64,
         theta: f64,
     ) -> Self {
+        // `new` is the user-facing constructor: any value supplied here is
+        // by definition explicit, so every attribute starts "set". Matches
+        // the C library where `astGrismMap` parses every parameter and the
+        // resulting Test* predicates are all true.
         let mut map = Self {
             grism_nr: nr,
             grism_nrp: nrp,
@@ -94,6 +114,16 @@ impl GrismMap {
             k3: 0.0,
             inverted: false,
             do_not_simplify: false,
+            set_flags: GrismSetFlags {
+                nr: true,
+                nrp: true,
+                wave_r: true,
+                alpha: true,
+                g: true,
+                m: true,
+                eps: true,
+                theta: true,
+            },
         };
         map.update_constants();
         map
@@ -440,12 +470,13 @@ impl Serializable for GrismMap {
         node.class_comment = Some("Map 1-d coordinates using a spectral disperser".to_string());
         write_mapping_base(&mut node, self);
 
-        // Helper: write a double attribute, using push_unset if at default.
-        let write_attr = |node: &mut Node, key: &str, val: f64, default: f64, comment: &str| {
-            if ast_equal(val, default) {
-                node.push_unset(key, NodeValue::Double(val), Some(comment.to_string()));
-            } else {
+        // Helper: write a double attribute, picking commented vs uncommented
+        // by the per-attribute "set" flag (mirrors C's `Test*` predicate).
+        let write_attr = |node: &mut Node, key: &str, val: f64, set: bool, comment: &str| {
+            if set {
                 node.push_double(key, val, Some(comment.to_string()));
+            } else {
+                node.push_unset(key, NodeValue::Double(val), Some(comment.to_string()));
             }
         };
 
@@ -453,62 +484,62 @@ impl Serializable for GrismMap {
             &mut node,
             "GrmNR",
             self.grism_nr,
-            1.0,
+            self.set_flags.nr,
             "Refractive index at the ref. wavelength",
         );
         write_attr(
             &mut node,
             "GrmNRP",
             self.grism_nrp,
-            0.0,
+            self.set_flags.nrp,
             "Rate of change of refractive index",
         );
         write_attr(
             &mut node,
             "GrmWR",
             self.grism_wave_r,
-            5000.0,
+            self.set_flags.wave_r,
             "Ref. wavelength",
         );
         write_attr(
             &mut node,
             "GrmAlp",
             self.grism_alpha,
-            0.0,
+            self.set_flags.alpha,
             "Angle of incidence of incoming light",
         );
         write_attr(
             &mut node,
             "GrmG",
             self.grism_g,
-            0.0,
+            self.set_flags.g,
             "Grating ruling density",
         );
 
-        // GrmM — integer attribute, default 0
+        // GrmM — integer attribute. Same set-tracking logic.
         let m_val = self.grism_m as f64;
-        if self.grism_m == 0 {
+        if self.set_flags.m {
+            node.push_double("GrmM", m_val, Some("The interference order".to_string()));
+        } else {
             node.push_unset(
                 "GrmM",
                 NodeValue::Double(m_val),
                 Some("The interference order".to_string()),
             );
-        } else {
-            node.push_double("GrmM", m_val, Some("The interference order".to_string()));
         }
 
         write_attr(
             &mut node,
             "GrmEps",
             self.grism_eps,
-            0.0,
+            self.set_flags.eps,
             "Angle between grating normal and dispersion plane",
         );
         write_attr(
             &mut node,
             "GrmTh",
             self.grism_theta,
-            0.0,
+            self.set_flags.theta,
             "Angle between detector normal and reference ray",
         );
 
@@ -516,6 +547,7 @@ impl Serializable for GrismMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        use crate::serial::NodeValue;
         let base = read_mapping_base(node);
         let nr = node.get_double("GrmNR", 1.0);
         let nrp = node.get_double("GrmNRP", 0.0);
@@ -526,7 +558,28 @@ impl Serializable for GrismMap {
         let eps = node.get_double("GrmEps", 0.0);
         let theta = node.get_double("GrmTh", 0.0);
 
+        // Detect which attributes were uncommented (explicit) in the source.
+        // `get_any` unwraps `Unset(inner)` so it can't distinguish commented
+        // from uncommented; walk `items` directly.
+        let is_set = |key: &str| {
+            node.items
+                .iter()
+                .find(|i| i.key == key)
+                .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)))
+        };
+        let set_flags = GrismSetFlags {
+            nr: is_set("GrmNR"),
+            nrp: is_set("GrmNRP"),
+            wave_r: is_set("GrmWR"),
+            alpha: is_set("GrmAlp"),
+            g: is_set("GrmG"),
+            m: is_set("GrmM"),
+            eps: is_set("GrmEps"),
+            theta: is_set("GrmTh"),
+        };
+
         let mut map = GrismMap::new(nr, nrp, wave_r, alpha, g, m, eps, theta);
+        map.set_flags = set_flags;
         map.do_not_simplify = base.do_not_simplify;
         if base.inverted {
             map.invert();
