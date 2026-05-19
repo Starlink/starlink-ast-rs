@@ -790,7 +790,7 @@ impl Serializable for NullRegion {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Null region".to_string());
+        node.class_comment = Some("Boundless region".to_string());
         write_mapping_base(&mut node, self);
         write_region_base(&mut node, &self.data);
         Ok(node)
