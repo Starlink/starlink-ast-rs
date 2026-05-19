@@ -288,7 +288,15 @@ impl SkyFrame {
             }
             SkySystem::Fk4 | SkySystem::Fk4NoE => {
                 let eq = self.equinox_epoch_string();
-                format!("FK4 equatorial coordinates; mean equinox B{eq}")
+                // C library (`skyframe.c` GetTitle) appends the Epoch as a
+                // Besselian year alongside the equinox for FK4 / FK4-no-E.
+                let ep = self.epoch_epoch_string_besselian();
+                let stem = if matches!(self.system, SkySystem::Fk4NoE) {
+                    "FK4 equatorial coordinates; no E-terms"
+                } else {
+                    "FK4 equatorial coordinates"
+                };
+                format!("{stem}; mean equinox B{eq}; epoch B{ep}")
             }
             SkySystem::Galactic => "IAU (1958) galactic coordinates".to_string(),
             SkySystem::Supergalactic => "Supergalactic coordinates".to_string(),
@@ -301,6 +309,27 @@ impl SkyFrame {
             format!("{base}; {proj} projection")
         } else {
             base
+        }
+    }
+
+    /// Format the SkyFrame's epoch as a Besselian-year display string, used
+    /// for FK4 / FK4-no-E titles (matches C's `astFmtDecimalYr(palEpb(epoch))`).
+    /// When `Epoch` has not been explicitly set, mirrors the C
+    /// `GetEpoch` SkyFrame override: B1950.0 for FK4 / FK4-no-E, otherwise
+    /// J2000.0 (here unused — only FK4 titles call this).
+    fn epoch_epoch_string_besselian(&self) -> String {
+        let epoch_mjd = self.epoch.unwrap_or_else(|| {
+            if matches!(self.system, SkySystem::Fk4 | SkySystem::Fk4NoE) {
+                pal::epb2d(1950.0)
+            } else {
+                pal::epj2d(2000.0)
+            }
+        });
+        let bep = pal::epb(epoch_mjd);
+        if bep == bep.trunc() {
+            format!("{:.1}", bep)
+        } else {
+            format!("{}", bep)
         }
     }
 
@@ -686,18 +715,35 @@ impl Serializable for SkyFrame {
             );
         }
 
-        // Epoch: active if explicitly set, otherwise unset with default 2000.
-        if let Some(epoch) = self.epoch {
-            node.push_double(
-                "Epoch",
-                epoch,
-                Some("Julian epoch of observation".to_string()),
-            );
+        // Epoch: store MJD internally; convert to Besselian / Julian year on
+        // output (matches `frame.c` line 14328: `bessyr = epoch < palEpj2d(1984.0)`).
+        // The default MJD depends on the SkyFrame's System — B1950.0 for
+        // FK4 / FK4-no-E, J2000.0 elsewhere.
+        let epoch_mjd = self.epoch.unwrap_or_else(|| {
+            if matches!(self.system, SkySystem::Fk4 | SkySystem::Fk4NoE) {
+                pal::epb2d(1950.0)
+            } else {
+                pal::epj2d(2000.0)
+            }
+        });
+        let bessyr = epoch_mjd < pal::epj2d(1984.0);
+        let epoch_year = if bessyr {
+            pal::epb(epoch_mjd)
+        } else {
+            pal::epj(epoch_mjd)
+        };
+        let epoch_comment = if bessyr {
+            "Besselian epoch of observation"
+        } else {
+            "Julian epoch of observation"
+        };
+        if self.epoch.is_some() {
+            node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
         } else {
             node.push_unset(
                 "Epoch",
-                NodeValue::Double(2000.0),
-                Some("Julian epoch of observation".to_string()),
+                NodeValue::Double(epoch_year),
+                Some(epoch_comment.to_string()),
             );
         }
 
@@ -978,9 +1024,17 @@ impl Serializable for SkyFrame {
             sky.domain = Some(domain);
         }
 
-        // Epoch (MJD).
+        // Epoch is stored as a decimal year on disk (Besselian if < 1984,
+        // Julian otherwise) and converted back to MJD on read. Mirrors
+        // `frame.c` astLoadFrame: `epoch < 1984 ? palEpb2d : palEpj2d`.
         if node.get("Epoch").is_some() {
-            sky.epoch = Some(node.get_double("Epoch", 0.0));
+            let yr = node.get_double("Epoch", 0.0);
+            let mjd = if yr < 1984.0 {
+                pal::epb2d(yr)
+            } else {
+                pal::epj2d(yr)
+            };
+            sky.epoch = Some(mjd);
         }
 
         // Equinox: decimal epoch -> MJD.
