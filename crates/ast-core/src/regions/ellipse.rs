@@ -340,6 +340,7 @@ impl Region for Ellipse {
 
     fn set_closed(&mut self, closed: bool) {
         self.data.closed = closed;
+        self.data.closed_set = true;
     }
 
     fn fill_factor(&self) -> f64 {
@@ -438,6 +439,7 @@ impl Region for Ellipse {
         let mut data = RegionData::new(frameset, points);
         data.negated = self.data.negated;
         data.closed = self.data.closed;
+        data.closed_set = self.data.closed_set;
         data.mesh_size = self.data.mesh_size;
         data.fill_factor = self.data.fill_factor;
         data.adaptive = self.data.adaptive;
@@ -565,6 +567,7 @@ impl Mapping for Ellipse {
         let mut data = RegionData::new(frameset, new_points);
         data.negated = self.data.negated;
         data.closed = self.data.closed;
+        data.closed_set = self.data.closed_set;
         data.mesh_size = self.data.mesh_size;
         data.fill_factor = self.data.fill_factor;
         data.adaptive = self.data.adaptive;

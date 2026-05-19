@@ -105,6 +105,10 @@ impl Frame for CmpFrame {
         self.frame1.naxes() + self.frame2.naxes()
     }
 
+    fn system_string(&self) -> Option<&str> {
+        Some("Compound")
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.validate_axis(axis)?;
         let (child, local_axis) = self.route_axis(axis);
@@ -276,21 +280,21 @@ impl Serializable for CmpFrame {
             Some("Number of coordinate axes".to_string()),
         );
 
-        // Domain: join component domains with "-"
+        // Domain default mirrors C's `CmpFrame::GetDomain` (cmpframe.c
+        // line 3603+): if either child has a non-empty Domain, return
+        // "dom1-dom2"; if both are empty, return the literal "CMP".
         let domain_a = node_a.get_string_any("Domain").unwrap_or("").to_string();
         let domain_b = node_b.get_string_any("Domain").unwrap_or("").to_string();
         let compound_domain = if domain_a.is_empty() && domain_b.is_empty() {
-            String::new()
+            "CMP".to_string()
         } else {
             format!("{}-{}", domain_a, domain_b)
         };
-        if !compound_domain.is_empty() {
-            node.push_unset(
-                "Domain",
-                NodeValue::String(compound_domain),
-                Some("Coordinate system domain".to_string()),
-            );
-        }
+        node.push_unset(
+            "Domain",
+            NodeValue::String(compound_domain),
+            Some("Coordinate system domain".to_string()),
+        );
 
         // Lbl{n} and Uni{n} from child frames
         for ax in 1..=naxes {

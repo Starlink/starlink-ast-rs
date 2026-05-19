@@ -40,6 +40,14 @@ pub(crate) struct RegionData {
     /// or exterior (closed=false).
     pub(crate) closed: bool,
 
+    /// Tracks whether `closed` was explicitly set (by the user, by a
+    /// simplification path, or by a source dump that had `Closed = …`
+    /// uncommented). Mirrors the C library's `TestClosed` predicate
+    /// (`this->closed != -INT_MAX`) so dump emission can distinguish
+    /// "default true" from "explicitly set" — Interval-simplified-to-Box
+    /// fixtures rely on this distinction.
+    pub(crate) closed_set: bool,
+
     /// Number of points used for boundary mesh approximation.
     pub(crate) mesh_size: usize,
 
@@ -63,6 +71,7 @@ impl Clone for RegionData {
             points: self.points.clone(),
             negated: self.negated,
             closed: self.closed,
+            closed_set: self.closed_set,
             mesh_size: self.mesh_size,
             fill_factor: self.fill_factor,
             adaptive: self.adaptive,
@@ -94,6 +103,7 @@ impl RegionData {
             points,
             negated: false,
             closed: true,
+            closed_set: false,
             mesh_size: 200,
             fill_factor: 1.0,
             adaptive: true,

@@ -432,6 +432,10 @@ impl Frame for BasicFrame {
         self.naxes
     }
 
+    fn system_string(&self) -> Option<&str> {
+        Some("Cartesian")
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.validate_axis(axis)?;
         if is_bad(value) {

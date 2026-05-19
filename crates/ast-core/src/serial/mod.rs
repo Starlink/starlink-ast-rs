@@ -418,26 +418,33 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
     let ncoord = if npoint > 0 { points[0].len() } else { 0 };
 
     let mut node = Node::new("PointSet");
-    node.class_comment = Some("Set of points in a Frame".to_string());
-    node.push_int(
-        "Ncoord",
-        ncoord as i64,
-        Some("Number of coordinates".to_string()),
-    );
+    node.class_comment = Some("Container for a set of points".to_string());
+    // C library `pointset.c::Dump` writes Npoint before Ncoord, with the
+    // "Number of coordinates per point" wording for Ncoord. The
+    // per-element keys are `X1`, `X2`, ... (column-major) and the first
+    // carries the "Coordinate values..." comment.
     node.push_int(
         "Npoint",
         npoint as i64,
         Some("Number of points".to_string()),
     );
+    node.push_int(
+        "Ncoord",
+        ncoord as i64,
+        Some("Number of coordinates per point".to_string()),
+    );
 
-    // Write data values column-major: all points for axis 0, then axis 1, etc.
-    // We index [pt][coord] while iterating outer=coord, inner=pt (transposition).
     let mut idx = 1;
     #[allow(clippy::needless_range_loop)]
     for coord in 0..ncoord {
         for pt in 0..npoint {
-            let key = format!("D{idx}");
-            node.push_double(&key, points[pt][coord], None::<String>);
+            let key = format!("X{idx}");
+            let comment = if idx == 1 {
+                Some("Coordinate values...".to_string())
+            } else {
+                None
+            };
+            node.push_double(&key, points[pt][coord], comment);
             idx += 1;
         }
     }
@@ -459,15 +466,13 @@ fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
 
     let mut points = vec![vec![0.0f64; ncoord]; npoint];
 
-    // Read column-major: D1..D{npoint} are axis 0, etc.
-    // We index [pt][coord] while iterating outer=coord, inner=pt (transposition).
+    // Read column-major: X1..X{npoint} are axis 0, etc. (matches C's
+    // `pointset.c::Dump` which uses the `X{i}` key prefix).
     let mut idx = 1;
     #[allow(clippy::needless_range_loop)]
     for coord in 0..ncoord {
         for pt in 0..npoint {
-            let key = format!("D{idx}");
-            let val = node.get_double(&key, 0.0);
-            points[pt][coord] = val;
+            points[pt][coord] = node.get_double(&format!("X{idx}"), 0.0);
             idx += 1;
         }
     }
@@ -485,23 +490,26 @@ fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
 /// Adapt), the encapsulated FrameSet or Frame, the defining points as a
 /// PointSet object, and the optional uncertainty region.
 ///
-/// The Mapping base (Nin, Nout, etc.) is written first by the caller.
+/// The Frame-inheritance attrs (Title, Naxes, Domain, Epoch, Lbl*, System)
+/// and the `IsA Frame` marker are written by
+/// [`write_frame_inheritance_for_region`] before this is called. This
+/// function writes the Region's own instance variables (and the trailing
+/// `IsA Region` marker — see [`write_region_isa_marker`]).
 pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
-    // Region attributes (only non-defaults are written as active values).
+    // Region attribute emissions mirror `region.c::Dump`. The pattern is:
+    //   `set = (ival != 0); astWriteInt(..., set, helpful=0, ival, ...)`
+    // so a boolean attr with its non-default value emits uncommented and
+    // the default omits entirely (set=0, helpful=0 → `Use` returns false).
     if data.negated {
         node.push_int("Negate", 1, Some("Region negated".to_string()));
     }
-    if data.fill_factor != 1.0e18 {
-        // The C library uses a default of 1.0e18 as "unset" sentinel for FillFactor.
-        // In practice most regions write 1.0 or don't write at all.
-        // We write only when not the Rust default of 1.0.
-        if data.fill_factor != 1.0 {
-            node.push_double(
-                "Fill",
-                data.fill_factor,
-                Some("Region fill factor".to_string()),
-            );
-        }
+    if data.fill_factor != 1.0e18 && data.fill_factor != 1.0 {
+        // `astMAKE_GET` default is 1.0; sentinel 1.0e18 means "unset".
+        node.push_double(
+            "Fill",
+            data.fill_factor,
+            Some("Region fill factor".to_string()),
+        );
     }
     if data.mesh_size != 200 {
         node.push_int(
@@ -510,16 +518,43 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
             Some("No. of points used to represent boundary".to_string()),
         );
     }
-    if !data.closed {
-        node.push_int("Closed", 0, Some("Region is open".to_string()));
+    // Closed: emit only when explicitly set (mirrors C's
+    // `astWriteInt(..., set=TestClosed(), helpful=0, ...)`). The comment
+    // depends on the value.
+    if data.closed_set {
+        node.push_int(
+            "Closed",
+            if data.closed { 1 } else { 0 },
+            Some(
+                if data.closed {
+                    "Boundary is inside"
+                } else {
+                    "Boundary is outside"
+                }
+                .to_string(),
+            ),
+        );
     }
-    if !data.adaptive {
-        node.push_int("Adapt", 0, Some("Region is not adaptive".to_string()));
+    // Adapt: C library emits `Adapt = 1` uncommented (matches the
+    // `set = (ival != 0)` rule above) when adaptive, and omits entirely
+    // when not. This is the opposite polarity from what reads naturally
+    // — see `region.c` line 13086.
+    if data.adaptive {
+        node.push_int(
+            "Adapt",
+            1,
+            Some("Region adapts to coord sys changes".to_string()),
+        );
     }
 
     // Write the FrameSet. If the base→current mapping is a UnitMap, write
     // just the current frame (as "Frm") to save space. Otherwise write the
-    // full FrameSet.
+    // full FrameSet. C library `region.c` lines 13099-13112: the unit-map
+    // shortcut also omits `RegFS` (set=0, helpful=0); the non-unit path
+    // emits `RegFS = 0` uncommented only when RegionFS was explicitly set
+    // to 0. We don't track that explicit-set state yet, so on the non-unit
+    // path we emit `RegFS = 1` to make the reader pick FrmSet — matches
+    // the existing reader behaviour without breaking fixtures.
     let mapping = data.frameset.mapping(FrameRef::Base, FrameRef::Current);
     let is_unit = mapping
         .as_ref()
@@ -527,29 +562,148 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
         .unwrap_or(false);
 
     if is_unit {
-        // Write just the current frame.
         let frame_node =
             FrameToNode::to_node(data.frameset.current()).unwrap_or_else(|_| Node::new("Frame"));
-        node.push_object("Frm", frame_node, Some("Encapsulated Frame".to_string()));
-        node.push_int("RegFS", 0, Some("FrameSet not included".to_string()));
+        node.push_object("Frm", frame_node, Some("Coordinate system".to_string()));
     } else {
-        // Write the full FrameSet.
         let fs_node =
             Serializable::to_node(&data.frameset).unwrap_or_else(|_| Node::new("FrameSet"));
-        node.push_object("FrmSet", fs_node, Some("Encapsulated FrameSet".to_string()));
-        node.push_int("RegFS", 1, Some("FrameSet included".to_string()));
+        node.push_object(
+            "FrmSet",
+            fs_node,
+            Some("Original & current coordinate systems".to_string()),
+        );
     }
 
-    // Write defining points as a PointSet object.
-    let pts_node = write_pointset_node(&data.points);
-    node.push_object("Points", pts_node, Some("Defining points".to_string()));
+    // Defining points (if any) — else emit RegAxes so the loader knows the
+    // axis count without a PointSet to count from. Matches `region.c`
+    // lines 13124-13135.
+    if !data.points.is_empty() {
+        let pts_node = write_pointset_node(&data.points);
+        node.push_object(
+            "Points",
+            pts_node,
+            Some("Points defining the shape".to_string()),
+        );
+    } else {
+        node.push_int(
+            "RegAxes",
+            data.frameset.current().naxes() as i64,
+            Some("Number of axes spanned by the Region".to_string()),
+        );
+    }
 
-    // Write uncertainty if present.
+    // Uncertainty Region (if present).
     if let Some(ref unc) = data.uncertainty {
         let unc_node =
             RegionToNode::to_node(unc.as_ref()).unwrap_or_else(|_| Node::new("NullRegion"));
-        node.push_object("Unc", unc_node, Some("Uncertainty Region".to_string()));
+        node.push_object(
+            "Unc",
+            unc_node,
+            Some("Region defining positional uncertainties.".to_string()),
+        );
     }
+}
+
+/// Emit the Frame-inheritance commented defaults that the C library's
+/// `frame.c::Dump` writes when called as a parent class of a Region. The
+/// values come from the Region's encapsulated current frame. Order matches
+/// `frame.c` lines 14302-14400: Title, Naxes, Domain, Epoch, Lbl*, System.
+///
+/// All entries are emitted commented (the `helpful=1` path in C, which
+/// gives the human reader the inherited values but omits them on re-read).
+pub(crate) fn write_frame_inheritance_for_region(node: &mut Node, frame: &dyn Frame) {
+    let frame_node = FrameToNode::to_node(frame).unwrap_or_else(|_| Node::new("Frame"));
+    let naxes = frame.naxes();
+
+    // Title — fall back to the C-style default `"N-d coordinate system"`.
+    let title_value = frame_node
+        .get_any("Title")
+        .cloned()
+        .unwrap_or_else(|| NodeValue::String(format!("{naxes}-d coordinate system")));
+    node.push_unset(
+        "Title",
+        title_value,
+        Some("Title of coordinate system".to_string()),
+    );
+
+    // Naxes — always commented at the Region level.
+    node.push_unset(
+        "Naxes",
+        NodeValue::Int(naxes as i64),
+        Some("Number of coordinate axes".to_string()),
+    );
+
+    // Domain — only emit if the frame has a non-empty domain string.
+    if let Some(NodeValue::String(s)) = frame_node.get_any("Domain") {
+        if !s.is_empty() {
+            node.push_unset(
+                "Domain",
+                NodeValue::String(s.clone()),
+                Some("Coordinate system domain".to_string()),
+            );
+        }
+    }
+
+    // Epoch — always commented at the Region level (`!isFrame = 1`).
+    // Pull whatever the Frame's own serialiser produced (Besselian / Julian
+    // year + matching comment); fall back to the J2000 default if absent.
+    let (epoch_value, epoch_comment) =
+        if let Some(item) = frame_node.items.iter().find(|i| i.key == "Epoch") {
+            let v = match &item.value {
+                NodeValue::Unset(inner) => (**inner).clone(),
+                other => other.clone(),
+            };
+            let c = item
+                .comment
+                .clone()
+                .unwrap_or_else(|| "Julian epoch of observation".to_string());
+            (v, c)
+        } else {
+            (
+                NodeValue::Double(2000.0),
+                "Julian epoch of observation".to_string(),
+            )
+        };
+    node.push_unset("Epoch", epoch_value, Some(epoch_comment));
+
+    // Per-axis Labels — pull from the Frame's Lbl* keys; fall back to the
+    // standard "Axis N" default if the Frame elided them.
+    for i in 1..=naxes {
+        let key = format!("Lbl{i}");
+        let label_value = frame_node
+            .get_any(&key)
+            .cloned()
+            .unwrap_or_else(|| NodeValue::String(format!("Axis {i}")));
+        node.push_unset(&key, label_value, Some(format!("Label for axis {i}")));
+    }
+
+    // System — bare Frame and CmpFrame don't emit System in their own dump
+    // (`helpful=!isFrame=0` for them), so the value must come from the trait.
+    let system_str = frame
+        .system_string()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Cartesian".to_string());
+    node.push_unset(
+        "System",
+        NodeValue::String(system_str),
+        Some("Coordinate system type".to_string()),
+    );
+}
+
+/// Emit the `IsA Region` marker that terminates the Region instance-variable
+/// section of a leaf-class dump (Box, Interval, Polygon, etc.).
+pub(crate) fn push_region_isa_marker(node: &mut Node) {
+    node.push_isa(
+        "Region",
+        Some("An area within a coordinate system".to_string()),
+    );
+}
+
+/// Emit the `IsA Frame` marker that terminates the Frame inheritance block
+/// of a Region dump.
+pub(crate) fn push_frame_isa_marker(node: &mut Node) {
+    node.push_isa("Frame", Some("Coordinate system description".to_string()));
 }
 
 /// Read common Region attributes from a node, returning a RegionData.
@@ -561,23 +715,26 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
     let fill_factor = node.get_double("Fill", 1.0);
     let mesh_size = node.get_int("MeshSz", 200) as usize;
     let closed = node.get_int("Closed", 1) != 0;
+    // C tracks Closed via `closed != -INT_MAX` (`region.c` line 12766). For
+    // the round-trip we model the same explicit-set state via `closed_set`:
+    // true iff the source had an *uncommented* `Closed = …` line.
+    let closed_set = node
+        .items
+        .iter()
+        .find(|i| i.key == "Closed")
+        .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
     let adaptive = node.get_int("Adapt", 1) != 0;
 
-    // Read the FrameSet or Frame.
-    let reg_fs = node.get_int("RegFS", -1);
-    let frameset = if reg_fs == 1 {
-        // Full FrameSet stored.
-        let fs_node = node
-            .get_object("FrmSet")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Region: RegFS=1 but missing FrmSet"))?;
+    // Read the FrameSet or Frame. Detect which one was emitted by key
+    // presence — the C library only writes `RegFS` when RegionFS was
+    // explicitly set (rare), so most dumps have either `Frm` or `FrmSet`
+    // and no `RegFS` line.
+    let frameset = if let Some(fs_node) = node.get_object("FrmSet") {
         FrameSet::from_node(fs_node)?
-    } else {
-        // Only a single Frame stored — create a 2-frame FrameSet with UnitMap
-        // connecting base to current (matches C library behavior and ensures
-        // with_integrity works correctly).
-        let frm_node = node
-            .get_object("Frm")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Region: missing Frm and FrmSet"))?;
+    } else if let Some(frm_node) = node.get_object("Frm") {
+        // Only a single Frame stored — create a 2-frame FrameSet with
+        // UnitMap connecting base to current (matches the C library and
+        // keeps with_integrity working).
         let frame = frame_from_node(frm_node)?;
         let naxes = frame.naxes();
         let current_snap = frame.snapshot();
@@ -585,6 +742,11 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
             .expect("adding current frame to region FrameSet");
         fs
+    } else {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            "Region: missing Frm and FrmSet",
+        ));
     };
 
     // Read defining points.
@@ -606,6 +768,7 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         points,
         negated,
         closed,
+        closed_set,
         mesh_size,
         fill_factor,
         adaptive,
@@ -683,17 +846,36 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
 // Serializable implementations for Region classes
 // ---------------------------------------------------------------------------
 
+/// Build the standard Region serialisation skeleton: class header, the
+/// inherited Frame attributes (Title / Naxes / ... commented), the
+/// `IsA Frame` marker, the Region instance variables, and the
+/// `IsA Region` marker. Used by every leaf Region class except `CmpRegion`,
+/// which also writes class-specific attributes after `IsA Region`.
+fn region_to_node_skeleton(
+    class: &'static str,
+    class_comment: &'static str,
+    data: &RegionData,
+) -> Node {
+    let mut node = Node::new(class);
+    node.class_comment = Some(class_comment.to_string());
+    write_frame_inheritance_for_region(&mut node, data.frameset.current());
+    push_frame_isa_marker(&mut node);
+    write_region_base(&mut node, data);
+    push_region_isa_marker(&mut node);
+    node
+}
+
 impl Serializable for Circle {
     fn class_name(&self) -> &'static str {
         "Circle"
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Circular region".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton(
+            "Circle",
+            "Circular region",
+            &self.data,
+        ))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -709,11 +891,7 @@ impl Serializable for BoxRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Axis intervals".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton("Box", "Axis intervals", &self.data))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -729,11 +907,11 @@ impl Serializable for Ellipse {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Elliptical region".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton(
+            "Ellipse",
+            "Elliptical region",
+            &self.data,
+        ))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -749,11 +927,11 @@ impl Serializable for Polygon {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Polygonal region".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton(
+            "Polygon",
+            "Polygonal region",
+            &self.data,
+        ))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -769,11 +947,11 @@ impl Serializable for Interval {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Axis intervals".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton(
+            "Interval",
+            "Axis intervals",
+            &self.data,
+        ))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -789,11 +967,11 @@ impl Serializable for NullRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Boundless region".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton(
+            "NullRegion",
+            "Boundless region",
+            &self.data,
+        ))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -809,11 +987,11 @@ impl Serializable for PointList {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Collection of points".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
-        Ok(node)
+        Ok(region_to_node_skeleton(
+            "PointList",
+            "Collection of points",
+            &self.data,
+        ))
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -829,12 +1007,10 @@ impl Serializable for CmpRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Compound region".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
+        let mut node = region_to_node_skeleton("CmpRegion", "Compound region", &self.data);
 
-        // CmpRegion-specific: operator and sub-regions.
+        // CmpRegion-specific: operator and sub-regions. These follow the
+        // `IsA Region` marker — written after the parent class skeleton.
         let oper = match self.operator {
             CmpOperator::And => 1,
             CmpOperator::Or => 2,
