@@ -43,9 +43,10 @@ use std::time::Instant;
 use ast_core::coords::PointSet;
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
-    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, Mapping, MatrixMap, NormMap, PcdMap, PermMap,
-    PolyMap, PolyTerm, RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap,
-    SplineMap, TimeCvtType, TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
+    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, Mapping, MathMap, MatrixMap, NormMap, PcdMap,
+    PermMap, PolyMap, PolyTerm, RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap,
+    SphMap, SplineMap, TimeCvtType, TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap,
+    ZoomMap,
 };
 use ast_core::{AnyObject, to_native_string};
 use ndarray::Array2;
@@ -216,11 +217,12 @@ fn variants() -> Vec<Variant> {
             has_inverse: false, // No iterative inverse configured by default.
             input_range: (0.1, 0.9),
         },
-        // MathMap deliberately omitted: it isn't part of the `AnyObject`
-        // enum (the Channel write API only accepts `AnyObject`), so it
-        // can't go through `to_native_string` for the C side. Benching it
-        // would require wiring the variant into `AnyObject` (touches every
-        // serial match-list); tracked as separate cleanup.
+        Variant {
+            name: "mathmap_2d_linear",
+            build: build_mathmap,
+            has_inverse: true,
+            input_range: (-1.0, 1.0),
+        },
     ]
 }
 
@@ -517,7 +519,22 @@ fn build_splinemap() -> AnyObject {
     AnyObject::SplineMap(m)
 }
 
-// MathMap builder omitted; see note in `variants()` above.
+fn build_mathmap() -> AnyObject {
+    // Simple 2-in / 2-out MathMap with paired analytical inverse:
+    //   forward: (u, v) = (x + y, x - y)
+    //   inverse: (x, y) = ((u + v) / 2, (u - v) / 2)
+    // This exercises the parser, the bytecode evaluator's arithmetic path,
+    // and the inverse direction without triggering MathMap's iterative
+    // inverse machinery.
+    let m = MathMap::new(
+        2,
+        2,
+        &["u = x + y", "v = x - y"],
+        &["x = 0.5 * (u + v)", "y = 0.5 * (u - v)"],
+    )
+    .expect("mathmap");
+    AnyObject::MathMap(m)
+}
 
 // --- bench plumbing ---------------------------------------------------------
 
