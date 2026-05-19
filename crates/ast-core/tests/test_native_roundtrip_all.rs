@@ -20,9 +20,9 @@
 
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
-    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, NormMap, PcdMap, PolyMap, PolyTerm, RateMap,
-    ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap, SplineMap, TimeCvtType, TimeMap,
-    TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
+    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, MathMap, NormMap, PcdMap, PolyMap, PolyTerm,
+    RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap, SplineMap, TimeCvtType,
+    TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
 };
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -280,9 +280,18 @@ fn round_trip_splinemap() {
     assert_double_round_trip(AnyObject::SplineMap(m), "SplineMap");
 }
 
-// MathMap is intentionally absent here: it isn't part of AnyObject, so the
-// `to_native_string` helper can't reach it. The first fix is to add a
-// MathMap variant to AnyObject; once that's done, a corresponding test
-// should be added here.
-//
-// Tracked as a separate ticket.
+#[test]
+fn round_trip_mathmap() {
+    // A modest 2-in / 2-out MathMap with paired forward and inverse
+    // expressions. SimpFI/SimpIF stay at their defaults so the round-trip
+    // exercises the full attribute set, including the parsed expression
+    // lists.
+    let m = MathMap::new(
+        2,
+        2,
+        &["u = x + y", "v = x - y"],
+        &["x = 0.5 * (u + v)", "y = 0.5 * (u - v)"],
+    )
+    .unwrap();
+    assert_double_round_trip(AnyObject::MathMap(m), "MathMap");
+}

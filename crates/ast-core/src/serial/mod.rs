@@ -1165,6 +1165,8 @@ pub enum AnyObject {
     TranMap(TranMap),
     /// A [`RateMap`] (differential mapping — Jacobian element).
     RateMap(RateMap),
+    /// A [`MathMap`] (transformation defined by parsed expressions).
+    MathMap(MathMap),
     /// A [`SplineMap`] (bivariate B-spline mapping).
     SplineMap(SplineMap),
     /// A [`DssMap`] (DSS plate fit mapping).
@@ -1234,6 +1236,7 @@ impl AnyObject {
             AnyObject::UnitNormMap(m) => Some(m),
             AnyObject::TranMap(m) => Some(m),
             AnyObject::RateMap(m) => Some(m),
+            AnyObject::MathMap(m) => Some(m),
             AnyObject::SplineMap(m) => Some(m),
             AnyObject::DssMap(m) => Some(m),
             AnyObject::NormMap(m) => Some(m),
@@ -1302,6 +1305,7 @@ impl AnyObject {
             | AnyObject::UnitNormMap(_)
             | AnyObject::TranMap(_)
             | AnyObject::RateMap(_)
+            | AnyObject::MathMap(_)
             | AnyObject::SplineMap(_)
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_) => None,
@@ -1332,6 +1336,7 @@ impl AnyObject {
             AnyObject::UnitNormMap(m) => Some(Box::new(m)),
             AnyObject::TranMap(m) => Some(Box::new(m)),
             AnyObject::RateMap(m) => Some(Box::new(m)),
+            AnyObject::MathMap(m) => Some(Box::new(m)),
             AnyObject::SplineMap(m) => Some(Box::new(m)),
             AnyObject::DssMap(m) => Some(Box::new(m)),
             AnyObject::NormMap(m) => Some(Box::new(m)),
@@ -1400,6 +1405,7 @@ impl AnyObject {
             | AnyObject::UnitNormMap(_)
             | AnyObject::TranMap(_)
             | AnyObject::RateMap(_)
+            | AnyObject::MathMap(_)
             | AnyObject::SplineMap(_)
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_) => None,
@@ -1468,6 +1474,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "UnitNormMap" => Ok(AnyObject::UnitNormMap(UnitNormMap::from_node(node)?)),
         "TranMap" => Ok(AnyObject::TranMap(TranMap::from_node(node)?)),
         "RateMap" => Ok(AnyObject::RateMap(RateMap::from_node(node)?)),
+        "MathMap" => Ok(AnyObject::MathMap(MathMap::from_node(node)?)),
         "SplineMap" => Ok(AnyObject::SplineMap(SplineMap::from_node(node)?)),
         "DssMap" => Ok(AnyObject::DssMap(DssMap::from_node(node)?)),
         "NormMap" => Ok(AnyObject::NormMap(NormMap::from_node(node)?)),
@@ -1524,6 +1531,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::UnitNormMap(m) => Serializable::to_node(m),
         AnyObject::TranMap(m) => Serializable::to_node(m),
         AnyObject::RateMap(m) => Serializable::to_node(m),
+        AnyObject::MathMap(m) => Serializable::to_node(m),
         AnyObject::SplineMap(m) => Serializable::to_node(m),
         AnyObject::DssMap(m) => Serializable::to_node(m),
         AnyObject::NormMap(m) => Serializable::to_node(m),
