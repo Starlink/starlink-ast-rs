@@ -138,10 +138,16 @@ fn variants() -> Vec<Variant> {
             has_inverse: true,
             input_range: (-1.0, 1.0),
         },
-        // ChebyMap omitted: Rust's serialization of ChebyMap differs
-        // from the C library's expected format (missing inverse-poly
-        // header section or similar) and astFromString crashes on the
-        // serialised output. Tracked separately from the bench harness.
+        // ChebyMap intentionally omitted: the Rust serializer is missing
+        // the `IsA PolyMap` inheritance marker and emits FSCL/FOFF (the
+        // ChebyMap-level attributes) before the polynomial coefficients
+        // (the inherited PolyMap section), so the C library's `astFromString`
+        // parses the dump but eval segfaults — the ChebyMap-specific scale
+        // and offset never end up in the right struct field.
+        //
+        // The bug is now pinned in the byte-exact corpus by the new
+        // `neg_chebymap_standalone.map` and `chebymap_inverse_cancel.map`
+        // fixtures; re-enable this variant once that test goes green.
         Variant {
             name: "pcdmap_typical",
             build: build_pcdmap,
@@ -154,9 +160,12 @@ fn variants() -> Vec<Variant> {
             has_inverse: true,
             input_range: (-1e-3, 1e-3),
         },
-        // UnitNormMap omitted: Rust's serialization drops the `centre`
-        // attribute, leaving the C side with an uninitialised centre that
-        // crashes on first eval. Same class of bug as ChebyMap.
+        Variant {
+            name: "unitnormmap_2d_offset",
+            build: build_unitnormmap,
+            has_inverse: true,
+            input_range: (-1.0, 1.0),
+        },
         Variant {
             name: "normmap_basic_2d",
             build: build_normmap,
@@ -169,9 +178,14 @@ fn variants() -> Vec<Variant> {
             has_inverse: true,
             input_range: (-1.0, 1.0),
         },
-        // RateMap omitted: Rust's serialization drops the ax1/ax2 axis-
-        // selection attributes so the C side can't reconstruct which
-        // Jacobian element to compute. Crashes on first eval.
+        Variant {
+            name: "ratemap_polymap",
+            build: build_ratemap,
+            // RateMap has no usable inverse — `astTran2` 0-direction returns
+            // bad-values. Skip the inverse arm.
+            has_inverse: false,
+            input_range: (-0.5, 0.5),
+        },
         Variant {
             name: "slamap_eqgal",
             build: build_slamap,
@@ -203,10 +217,10 @@ fn variants() -> Vec<Variant> {
             input_range: (0.1, 0.9),
         },
         // MathMap deliberately omitted: it isn't part of the `AnyObject`
-        // enum, so we can't serialise it via `to_native_string` for the C
-        // side. Benching it would require an alternative export path
-        // (a dyn-Mapping NativeChannel write). Out of scope for the
-        // initial sweep.
+        // enum (the Channel write API only accepts `AnyObject`), so it
+        // can't go through `to_native_string` for the C side. Benching it
+        // would require wiring the variant into `AnyObject` (touches every
+        // serial match-list); tracked as separate cleanup.
     ]
 }
 
@@ -343,7 +357,7 @@ fn build_permmap() -> AnyObject {
     AnyObject::PermMap(m)
 }
 
-#[allow(dead_code)] // Wired in when the ChebyMap serialisation gap is fixed.
+#[allow(dead_code)] // Re-wired in variants() once the IsA-PolyMap dump bug is fixed.
 fn build_chebymap() -> AnyObject {
     // 2D Chebyshev polynomial, degree 3 in each axis. Coefficients chosen
     // small so eval stays well-conditioned. No inverse polynomial supplied
@@ -390,10 +404,10 @@ fn build_grismmap() -> AnyObject {
     AnyObject::GrismMap(m)
 }
 
-#[allow(dead_code)] // Wired in when the UnitNormMap centre-serialisation gap is fixed.
 fn build_unitnormmap() -> AnyObject {
-    // 2D vector → 3-element output (unit vector + norm). Centre at origin.
-    let m = UnitNormMap::new(vec![0.0, 0.0]);
+    // 2D vector → 3-element output (unit vector + norm). Non-zero centre so
+    // the centre-attribute serialisation participates in the round-trip.
+    let m = UnitNormMap::new(vec![0.5, -0.5]);
     AnyObject::UnitNormMap(m)
 }
 
@@ -415,7 +429,6 @@ fn build_tranmap() -> AnyObject {
     AnyObject::TranMap(m)
 }
 
-#[allow(dead_code)] // Wired in when the RateMap ax1/ax2 serialisation gap is fixed.
 fn build_ratemap() -> AnyObject {
     // Numerical Jacobian element (output 1 wrt input 1) of a small PolyMap.
     let mut terms = Vec::new();

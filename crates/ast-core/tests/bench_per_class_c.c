@@ -167,6 +167,8 @@ static int input_range_for(const char *name, double *lo, double *hi) {
     if (!strcmp(name, "dssmap_typical"))       { *lo = 5000.0;   *hi = 15000.0; return 1; }
     if (!strcmp(name, "splinemap_5x5_cubic")) { *lo = 0.1;      *hi = 0.9;     return 1; }
     if (!strcmp(name, "ratemap_polymap"))      { *lo = -0.5;     *hi = 0.5;     return 1; }
+    if (!strcmp(name, "chebymap_2d_deg3"))     { *lo = -1.0;     *hi = 1.0;     return 1; }
+    if (!strcmp(name, "unitnormmap_2d_offset")){ *lo = -1.0;     *hi = 1.0;     return 1; }
     /* Default for the linear / SphMap / etc. variants. */
     *lo = -1.0; *hi = 1.0;
     return 1;
@@ -212,15 +214,16 @@ int main(int argc, char **argv) {
         input_range_for(variant, &lo, &hi);
         double **cols = make_points(npoint, nin, lo, hi);
 
-        /* Dispatch on dimensionality: astTran1 / astTran2 are convenience
-         * wrappers around astTranN. The current Rust variants span 1D
-         * (LutMap), 2D (most), and 3D-in/2D-out (SphMap forward only). */
+        /* Dispatch by (nin, nout): astTran1 is 1->1 only; astTran2 is
+         * strictly 2->2; everything else (UnitNormMap fwd 2->3, RateMap
+         * 2->1, SphMap 3->2, …) goes through the general astTranN. */
+        int nout = astGetI(map, "Nout");
+        int fwd = !strcmp(direction, "forward") ? 1 : 0;
         double ns_pt = 0.0;
-        if (nin == 1) {
+        if (nin == 1 && nout == 1) {
             /* astTran1: 1D forward/inverse. */
             int iters = iterations_for(npoint);
             double *xout = malloc(sizeof(double) * (size_t)npoint);
-            int fwd = !strcmp(direction, "forward") ? 1 : 0;
             /* Inverse arm: feed inverse with forward's output, matching
              * the Rust round-trip. */
             double *target = cols[0];
@@ -240,34 +243,50 @@ int main(int argc, char **argv) {
             ns_pt = elapsed * 1e9 / ((double)iters * (double)npoint);
             free(xout);
             if (xfwd) free(xfwd);
-        } else if (nin == 2) {
-            if (!strcmp(direction, "forward")) {
+        } else if (nin == 2 && nout == 2) {
+            if (fwd) {
                 ns_pt = time_forward(map, cols[0], cols[1], npoint);
             } else {
                 ns_pt = time_inverse(map, cols[0], cols[1], npoint);
             }
-        } else if (nin == 3) {
-            /* SphMap: 3 in -> 2 out. Use astTranN to handle 3 inputs. */
-            int nout = astGetI(map, "Nout");
+        } else {
+            /* Generic path: astTranN handles arbitrary (nin, nout).
+             * The inverse direction wants the *current Nout* inputs and
+             * produces the *current Nin* outputs (forward/inverse swap
+             * counts). Feed the inverse with forward output so it sees
+             * in-range data, matching the Rust round-trip. */
+            int eff_in  = fwd ? nin  : nout;
+            int eff_out = fwd ? nout : nin;
             int iters = iterations_for(npoint);
-            double *in_flat = malloc(sizeof(double) * (size_t)(npoint * nin));
-            double *out_flat = malloc(sizeof(double) * (size_t)(npoint * nout));
-            for (int axis = 0; axis < nin; axis++) {
-                for (int i = 0; i < npoint; i++) {
-                    in_flat[axis * npoint + i] = cols[axis][i];
+            double *in_flat = malloc(sizeof(double) * (size_t)(npoint * eff_in));
+            double *out_flat = malloc(sizeof(double) * (size_t)(npoint * eff_out));
+            if (fwd) {
+                for (int axis = 0; axis < eff_in; axis++) {
+                    for (int i = 0; i < npoint; i++) {
+                        in_flat[axis * npoint + i] = cols[axis][i];
+                    }
                 }
+            } else {
+                /* Pre-run forward (nin inputs -> nout outputs) and feed
+                 * its output back as the inverse input. */
+                double *fwd_in = malloc(sizeof(double) * (size_t)(npoint * nin));
+                for (int axis = 0; axis < nin; axis++) {
+                    for (int i = 0; i < npoint; i++) {
+                        fwd_in[axis * npoint + i] = cols[axis][i];
+                    }
+                }
+                astTranN(map, npoint, nin, npoint, fwd_in, 1, nout, npoint, in_flat);
+                free(fwd_in);
             }
             /* warmup */
-            astTranN(map, npoint, nin, npoint, in_flat, 1, nout, npoint, out_flat);
+            astTranN(map, npoint, eff_in, npoint, in_flat, fwd, eff_out, npoint, out_flat);
             double t0 = now_sec();
             for (int k = 0; k < iters; k++) {
-                astTranN(map, npoint, nin, npoint, in_flat, 1, nout, npoint, out_flat);
+                astTranN(map, npoint, eff_in, npoint, in_flat, fwd, eff_out, npoint, out_flat);
             }
             double elapsed = now_sec() - t0;
             ns_pt = elapsed * 1e9 / ((double)iters * (double)npoint);
             free(in_flat); free(out_flat);
-        } else {
-            fprintf(stderr, "unsupported nin=%d for variant %s\n", nin, variant);
         }
 
         printf("%-28s\t%-7s\t%7d\t%12.1f\n", variant, direction, npoint, ns_pt);
