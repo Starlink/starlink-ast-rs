@@ -151,11 +151,15 @@ impl Mapping for SelectorMap {
     }
 
     fn has_forward(&self) -> bool {
-        true
+        // Intrinsic forward is defined; intrinsic inverse is not.
+        // When inverted, the effective forward is the intrinsic inverse.
+        !self.inverted
     }
 
     fn has_inverse(&self) -> bool {
-        false
+        // Intrinsic inverse is undefined; only the inverted form has an
+        // effective inverse direction (the intrinsic forward).
+        self.inverted
     }
 
     fn do_not_simplify(&self) -> bool {
