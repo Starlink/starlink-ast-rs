@@ -56,6 +56,8 @@ mod mathmap;
 pub use mathmap::MathMap;
 mod selectormap;
 pub use selectormap::{SelectorMap, SelectorMapBuilder};
+mod switchmap;
+pub use switchmap::SwitchMap;
 
 use std::any::Any;
 use std::fmt;
