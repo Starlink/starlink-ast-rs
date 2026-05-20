@@ -265,6 +265,27 @@ impl dyn Mapping {
     /// merge loop and does NOT set the flag.
     pub fn simplify(&self) -> AstResult<DynMapping> {
         let mut result = self.simplified()?;
+        // Top-level cleanup: an inverted SwitchMap is canonicalised by
+        // folding its inversion into the children (swapping fwd/inv
+        // selectors and inverting each route). This matches the C
+        // library's MapMerge inversion-fold path and is intentionally
+        // not done by SwitchMap::simplified(), so that flatten() inside
+        // a CmpMap can extract inversion via its bool tracker (which is
+        // what enables the inverse-cancel pattern between two paired
+        // SwitchMaps to merge).
+        // Explicit `result.as_ref()` (rather than `result.as_any()`) is
+        // needed: calling `as_any` directly on a `Box<dyn Mapping>`
+        // would resolve via auto-deref but the resulting `&dyn Any`
+        // points at the Box itself, not the inner mapping. `as_ref`
+        // gives us `&dyn Mapping`, on which `as_any` returns the inner
+        // type-erased reference that downcast_ref can match.
+        let r: &dyn Mapping = result.as_ref();
+        if let Some(sw) = r.as_any().downcast_ref::<SwitchMap>() {
+            if let Some(normalized) = sw.normalize_inverted()? {
+                result = Box::new(normalized);
+                result = result.simplified()?;
+            }
+        }
         result.set_do_not_simplify(true);
         Ok(result)
     }

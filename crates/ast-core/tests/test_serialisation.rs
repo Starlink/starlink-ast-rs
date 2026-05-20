@@ -1065,35 +1065,95 @@ fn round_trip_skyframe_fk4_besselian_equinox() {
 // Native read→write byte-exact round-trip tests (Task 9)
 // ===========================================================================
 
+/// Maximum ULP distance permitted between two f64 tokens that differ
+/// as strings but parse to nearly-equal numbers. Covers the ~1 ULP
+/// platform drift between macOS and Linux libm in transcendental-heavy
+/// code paths (e.g. PAL/ERFA time conversions).
+const NUMERIC_TOLERANCE_ULPS: u64 = 4;
+
+/// Compare two f64 values by ULP distance.
+fn within_ulps(a: f64, b: f64, max_ulps: u64) -> bool {
+    if a == b {
+        return true;
+    }
+    if a.is_nan() || b.is_nan() {
+        return false;
+    }
+    if a.is_sign_negative() != b.is_sign_negative() {
+        // Different signs: only +0/-0 are considered equal here, and
+        // those are caught by the a == b path above.
+        return false;
+    }
+    let ai = a.to_bits();
+    let bi = b.to_bits();
+    let diff = if ai > bi { ai - bi } else { bi - ai };
+    diff <= max_ulps
+}
+
+/// Tokenise on whitespace and compare token-by-token. Tokens that are
+/// not byte-equal are treated as equal if both parse as f64 and are
+/// within `NUMERIC_TOLERANCE_ULPS`.
+fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
+    let mut got_tokens = got.split_whitespace();
+    let mut want_tokens = want.split_whitespace();
+    loop {
+        match (got_tokens.next(), want_tokens.next()) {
+            (None, None) => return true,
+            (Some(g), Some(w)) if g == w => continue,
+            (Some(g), Some(w)) => {
+                let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
+                    return false;
+                };
+                if !within_ulps(gv, wv, NUMERIC_TOLERANCE_ULPS) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+}
+
 /// Read a C-generated .ast/.map/.simp file, write it back via to_native_string,
 /// and verify the output is byte-exact with the input.
+///
+/// Tokens that disagree by ≤[`NUMERIC_TOLERANCE_ULPS`] when parsed as
+/// f64 are treated as equal — this absorbs the ~1 ULP platform drift in
+/// libm-driven values (e.g. Time1f computed via ERFA) without weakening
+/// the byte-exact contract on the rest of the dump.
 fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
     let text =
         std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let obj = from_native_string(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
     let output = to_native_string(&obj).map_err(|e| format!("render {}: {e}", path.display()))?;
     if output.trim() == text.trim() {
-        Ok(())
-    } else {
-        // Find first differing line
-        for (i, (got, want)) in output.lines().zip(text.lines()).enumerate() {
-            if got != want {
-                return Err(format!(
-                    "{}: line {} differs:\n  got:  {:?}\n  want: {:?}",
-                    path.file_name().unwrap().to_string_lossy(),
-                    i + 1,
-                    got,
-                    want
-                ));
-            }
+        return Ok(());
+    }
+    // Walk lines: byte-equal lines pass; otherwise fall back to
+    // token-wise comparison with f64 ULP tolerance.
+    for (i, (got, want)) in output.lines().zip(text.lines()).enumerate() {
+        if got == want {
+            continue;
         }
-        let got_lines = output.lines().count();
-        let want_lines = text.lines().count();
-        Err(format!(
+        if lines_numerically_equivalent(got, want) {
+            continue;
+        }
+        return Err(format!(
+            "{}: line {} differs:\n  got:  {:?}\n  want: {:?}",
+            path.file_name().unwrap().to_string_lossy(),
+            i + 1,
+            got,
+            want
+        ));
+    }
+    let got_lines = output.lines().count();
+    let want_lines = text.lines().count();
+    if got_lines != want_lines {
+        return Err(format!(
             "{}: line count differs: got {got_lines}, want {want_lines}",
             path.file_name().unwrap().to_string_lossy()
-        ))
+        ));
     }
+    Ok(())
 }
 
 #[test]

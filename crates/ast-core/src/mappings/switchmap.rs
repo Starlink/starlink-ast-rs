@@ -9,6 +9,31 @@ use crate::mappings::helpers::is_bad;
 
 use super::{DynMapping, Mapping, UnitMap};
 
+/// Simplify an optional selector child Mapping and re-derive its recorded
+/// invert flag so the effective application direction is preserved.
+///
+/// Returns `(simplified, new_recorded_inv)`. Sets `changed` to true if
+/// either the simplified child differs from the original or the recorded
+/// invert flag had to change.
+fn simplify_child_with_invert(
+    child: Option<&DynMapping>,
+    recorded_inv: bool,
+    changed: &mut bool,
+) -> AstResult<(Option<DynMapping>, bool)> {
+    match child {
+        None => Ok((None, recorded_inv)),
+        Some(orig) => {
+            let simp = orig.simplified()?;
+            let effective = recorded_inv != orig.is_inverted();
+            let new_inv = effective != simp.is_inverted();
+            if !simp.equal(orig.as_ref()) || simp.is_inverted() != orig.is_inverted() {
+                *changed = true;
+            }
+            Ok((Some(simp), new_inv))
+        }
+    }
+}
+
 /// A Mapping that dispatches positions to one of several route Mappings
 /// based on a selector value.
 ///
@@ -181,6 +206,36 @@ impl SwitchMap {
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
+    }
+
+    /// Normalise an inverted SwitchMap into an equivalent non-inverted
+    /// SwitchMap, by swapping the forward/inverse selectors and inverting
+    /// each route Mapping.
+    ///
+    /// Returns `None` if `self` is not inverted (no normalisation needed).
+    /// This corresponds to the inversion-fold path in the C library's
+    /// `SwitchMap` `MapMerge` function and is used by the public
+    /// `simplify()` entry point as a final top-level cleanup.
+    pub(crate) fn normalize_inverted(&self) -> AstResult<Option<Self>> {
+        if !self.inverted {
+            return Ok(None);
+        }
+        let mut new_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
+        for rm in &self.route_maps {
+            let mut r = rm.clone();
+            r.invert();
+            new_routes.push(r);
+        }
+        let new_fsmap = self.ismap.clone().map(|mut m| {
+            m.invert();
+            m
+        });
+        let new_ismap = self.fsmap.clone().map(|mut m| {
+            m.invert();
+            m
+        });
+        let normalized = SwitchMap::new(new_fsmap, new_ismap, new_routes)?;
+        Ok(Some(normalized))
     }
 
     /// The forward selector Mapping (if any).
@@ -503,44 +558,44 @@ impl Mapping for SwitchMap {
         // in self.inverted: the merge loop's flatten step extracts the
         // invert flag into its bool tracker, and a top-level inverted
         // SwitchMap is normalised by the simplify driver after merge_loop.
+        //
+        // When a child's simplification changes its is_inverted() flag
+        // (e.g. ZoomMap(2, inverted) → ZoomMap(0.5, forward)), the
+        // recorded fsinv/isinv/route_inv must be re-derived so that the
+        // effective application direction (`recorded_inv != is_inverted`)
+        // is preserved. Otherwise the SwitchMap would silently flip the
+        // child's effective direction.
         let mut changed = false;
 
-        let simp_fs = self.fsmap.as_ref().map(|m| m.simplified()).transpose()?;
-        if let (Some(orig), Some(simp)) = (&self.fsmap, &simp_fs) {
-            if !simp.equal(orig.as_ref()) || simp.is_inverted() != orig.is_inverted() {
-                changed = true;
-            }
-        }
+        let (simp_fs, new_fsinv) =
+            simplify_child_with_invert(self.fsmap.as_ref(), self.fsinv, &mut changed)?;
 
-        let simp_is = self.ismap.as_ref().map(|m| m.simplified()).transpose()?;
-        if let (Some(orig), Some(simp)) = (&self.ismap, &simp_is) {
-            if !simp.equal(orig.as_ref()) || simp.is_inverted() != orig.is_inverted() {
-                changed = true;
-            }
-        }
+        let (simp_is, new_isinv) =
+            simplify_child_with_invert(self.ismap.as_ref(), self.isinv, &mut changed)?;
 
         let mut simp_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
-        for rm in &self.route_maps {
+        let mut simp_route_inv: Vec<bool> = Vec::with_capacity(self.route_maps.len());
+        for (rm, &recorded_inv) in self.route_maps.iter().zip(self.route_inv.iter()) {
             let s = rm.simplified()?;
+            let effective_inv = recorded_inv != rm.is_inverted();
+            let new_inv = effective_inv != s.is_inverted();
             if !s.equal(rm.as_ref()) || s.is_inverted() != rm.is_inverted() {
                 changed = true;
             }
             simp_routes.push(s);
+            simp_route_inv.push(new_inv);
         }
 
         if changed {
-            // Build the rebuilt SwitchMap using from_parts so we can preserve
-            // the recorded fsinv/isinv/route_inv flags.
-            let new_routes = simp_routes;
             let new_fs = simp_fs.or_else(|| self.fsmap.clone());
             let new_is = simp_is.or_else(|| self.ismap.clone());
             let mut new_sw = SwitchMap::from_parts(
                 new_fs,
                 new_is,
-                new_routes,
-                self.fsinv,
-                self.isinv,
-                self.route_inv.clone(),
+                simp_routes,
+                new_fsinv,
+                new_isinv,
+                simp_route_inv,
             )?;
             if self.inverted {
                 new_sw.invert();
