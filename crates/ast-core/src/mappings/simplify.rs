@@ -2433,7 +2433,11 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     // If no simplification occurred, preserve the original tree structure
     // rather than reconstructing (which changes associativity).
     if !changed && list.len() > 1 {
-        return Ok(mapping.clone_box());
+        let mut cloned = mapping.clone_box();
+        if let Some(cmp_mut) = cloned.as_any_mut().downcast_mut::<CmpMap>() {
+            cmp_mut.normalize_unitmap_children();
+        }
+        return Ok(cloned);
     }
 
     reconstruct(list, series)

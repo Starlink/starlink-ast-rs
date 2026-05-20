@@ -107,6 +107,35 @@ impl CmpMap {
         self.inv_b
     }
 
+    /// Recursively clear redundant `InvA` / `InvB` flags on a parallel
+    /// CmpMap whose corresponding child is a `UnitMap`. The C reference
+    /// produces this canonical form: since `UnitMap` is its own inverse,
+    /// the parent's external invert flag is observationally irrelevant
+    /// and is dropped from the recorded snapshot, leaving the child's
+    /// intrinsic `Invert` state untouched. Series CmpMaps are unaffected
+    /// because the `simplify` merge loop already removes UnitMap entries
+    /// from a series chain.
+    pub(crate) fn normalize_unitmap_children(&mut self) {
+        // Recurse into children first.
+        if let Some(child_a) = self.first.as_any_mut().downcast_mut::<CmpMap>() {
+            child_a.normalize_unitmap_children();
+        }
+        if let Some(child_b) = self.second.as_any_mut().downcast_mut::<CmpMap>() {
+            child_b.normalize_unitmap_children();
+        }
+
+        if self.kind != Composition::Parallel {
+            return;
+        }
+
+        if self.inv_a && self.first.as_any().is::<super::unit::UnitMap>() {
+            self.inv_a = false;
+        }
+        if self.inv_b && self.second.as_any().is::<super::unit::UnitMap>() {
+            self.inv_b = false;
+        }
+    }
+
     /// Whether the first child's current Invert differs from the recorded
     /// snapshot — if so, the effective transform direction must flip.
     fn first_invert_changed(&self) -> bool {
