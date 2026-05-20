@@ -286,5 +286,43 @@ pub fn remove_regions(mapping: &dyn Mapping) -> DynMapping {
         return Box::new(new_cmp);
     }
 
+    if let Some(sw) = mapping
+        .as_any()
+        .downcast_ref::<crate::mappings::SwitchMap>()
+    {
+        let new_fs = sw.forward_selector().map(remove_regions);
+        let new_is = sw.inverse_selector().map(remove_regions);
+        let new_routes: Vec<DynMapping> = sw
+            .route_maps()
+            .iter()
+            .map(|r| remove_regions(r.as_ref()))
+            .collect();
+
+        let fs_changed = match (sw.forward_selector(), &new_fs) {
+            (Some(orig), Some(new)) => !new.equal(orig),
+            _ => false,
+        };
+        let is_changed = match (sw.inverse_selector(), &new_is) {
+            (Some(orig), Some(new)) => !new.equal(orig),
+            _ => false,
+        };
+        let routes_changed = sw
+            .route_maps()
+            .iter()
+            .zip(new_routes.iter())
+            .any(|(orig, new)| !new.equal(orig.as_ref()));
+
+        if fs_changed || is_changed || routes_changed {
+            let mut new_sw = crate::mappings::SwitchMap::new(new_fs, new_is, new_routes)
+                .expect("remove_regions: SwitchMap reconstruction failed");
+            if mapping.is_inverted() {
+                new_sw.invert();
+            }
+            return Box::new(new_sw);
+        }
+
+        return mapping.clone_box();
+    }
+
     mapping.clone_box()
 }

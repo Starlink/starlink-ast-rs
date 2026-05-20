@@ -10,7 +10,7 @@ use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
     DynMapping, Mapping, SelectorMapBuilder, SwitchMap, UnitMap, WinMap, ZoomMap,
 };
-use ast_core::regions::{BoxRegionBuilder, DynRegion};
+use ast_core::regions::{BoxRegionBuilder, DynRegion, remove_regions};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 /// Create a SwitchMap with two routes:
@@ -126,6 +126,17 @@ fn switchmap_equal() {
     let sw1 = make_1d_switchmap();
     let sw2 = make_1d_switchmap();
     assert!(sw1.equal(&sw2));
+}
+
+#[test]
+fn switchmap_remove_regions() {
+    let sw = make_1d_switchmap();
+    let cleaned = remove_regions(&sw);
+    // The selector was a SelectorMap containing Regions; after remove_regions,
+    // those Regions become UnitMaps inside the selector. The SwitchMap dimensions
+    // should still match the originals.
+    assert_eq!(cleaned.nin(), 1);
+    assert_eq!(cleaned.nout(), 1);
 }
 
 #[test]
