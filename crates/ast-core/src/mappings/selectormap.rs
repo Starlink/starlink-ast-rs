@@ -348,3 +348,72 @@ impl Mapping for SelectorMap {
         Box::new(self.clone())
     }
 }
+
+impl crate::serial::Serializable for SelectorMap {
+    fn class_name(&self) -> &'static str {
+        "SelectorMap"
+    }
+
+    fn to_node(&self) -> AstResult<crate::serial::Node> {
+        use crate::serial::{Node, RegionToNode, write_mapping_base};
+
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Region identification Mapping".to_string());
+        write_mapping_base(&mut node, self);
+
+        for (i, reg) in self.regions.iter().enumerate() {
+            let key = format!("Reg{}", i + 1);
+            let reg_node = RegionToNode::to_node(reg.as_ref())?;
+            node.push_object(&key, reg_node, Some("Region of input space".to_string()));
+        }
+
+        if !is_bad(self.badval) {
+            node.push_double(
+                "BadVal",
+                self.badval,
+                Some("Output value for bad input positions".to_string()),
+            );
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &crate::serial::Node) -> AstResult<Self> {
+        use crate::serial::{read_mapping_base, region_from_node};
+
+        let base = read_mapping_base(node);
+
+        let mut regions: Vec<DynRegion> = Vec::new();
+        let mut i = 1;
+        loop {
+            let key = format!("Reg{}", i);
+            match node.get_object(&key) {
+                Some(reg_node) => {
+                    regions.push(region_from_node(reg_node)?);
+                }
+                None => break,
+            }
+            i += 1;
+        }
+
+        if regions.is_empty() {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                "SelectorMap: no regions found in serialized data",
+            ));
+        }
+
+        let badval = node.get_double("BadVal", BAD_VALUE);
+
+        let mut sm = SelectorMapBuilder::new(regions)
+            .map_err(|e| AstError::new(ErrorCode::Lderr, format!("SelectorMap: {e}")))?
+            .badval(badval)
+            .build();
+
+        sm.set_do_not_simplify(base.do_not_simplify);
+        if base.inverted {
+            sm.invert();
+        }
+        Ok(sm)
+    }
+}

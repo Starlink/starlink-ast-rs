@@ -7,8 +7,9 @@
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::frames::BasicFrameBuilder;
-use ast_core::mappings::{Mapping, SelectorMapBuilder};
+use ast_core::mappings::{Mapping, SelectorMap, SelectorMapBuilder};
 use ast_core::regions::{BoxRegionBuilder, DynRegion};
+use ast_core::{AnyObject, from_native_string, to_native_string};
 
 fn make_2d_frame() -> ast_core::frames::BasicFrame {
     BasicFrameBuilder::new(2).build().unwrap()
@@ -157,4 +158,33 @@ fn selectormap_inverse_returns_bad() {
     assert_eq!(out.ncoord(), 2);
     assert_eq!(out.point(0)[0], BAD_VALUE);
     assert_eq!(out.point(0)[1], BAD_VALUE);
+}
+
+#[test]
+fn selectormap_serialization_roundtrip() {
+    let regions = make_two_boxes();
+    let sm = SelectorMapBuilder::new(regions)
+        .unwrap()
+        .badval(99.0)
+        .build();
+    let obj = AnyObject::SelectorMap(sm.clone());
+    let text = to_native_string(&obj).unwrap();
+    let obj2 = from_native_string(&text).unwrap();
+    let loaded: SelectorMap = match obj2 {
+        AnyObject::SelectorMap(m) => m,
+        other => panic!("Expected SelectorMap, got {:?}", other),
+    };
+
+    assert_eq!(loaded.regions().len(), 2);
+    assert_eq!(loaded.badval(), 99.0);
+    assert_eq!(loaded.nin(), 2);
+    assert_eq!(loaded.nout(), 1);
+
+    // Functional equivalence check.
+    let pts = PointSet::from_rows([[5.0, 5.0], [25.0, 25.0], [15.0, 15.0]]);
+    let out1 = sm.transform(&pts, true).unwrap();
+    let out2 = loaded.transform(&pts, true).unwrap();
+    for i in 0..3 {
+        assert_eq!(out1.point(i)[0], out2.point(i)[0]);
+    }
 }
