@@ -54,6 +54,8 @@ mod dssmap;
 pub use dssmap::DssMap;
 mod mathmap;
 pub use mathmap::MathMap;
+mod selectormap;
+pub use selectormap::{SelectorMap, SelectorMapBuilder};
 
 use std::any::Any;
 use std::fmt;
