@@ -75,6 +75,21 @@ fn mapping_fingerprint(mapping: &dyn Mapping) -> u64 {
         mapping_fingerprint(tm.map1()).hash(&mut hasher);
         mapping_fingerprint(tm.map2()).hash(&mut hasher);
     }
+    if let Some(sw) = mapping.as_any().downcast_ref::<super::SwitchMap>() {
+        sw.nroute().hash(&mut hasher);
+        if let Some(fs) = sw.forward_selector() {
+            mapping_fingerprint(fs).hash(&mut hasher);
+        }
+        if let Some(is) = sw.inverse_selector() {
+            mapping_fingerprint(is).hash(&mut hasher);
+        }
+        for rm in sw.route_maps() {
+            mapping_fingerprint(rm.as_ref()).hash(&mut hasher);
+        }
+    }
+    if let Some(sel) = mapping.as_any().downcast_ref::<super::SelectorMap>() {
+        sel.regions().len().hash(&mut hasher);
+    }
     hasher.finish()
 }
 
