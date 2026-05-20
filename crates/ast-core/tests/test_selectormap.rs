@@ -161,6 +161,27 @@ fn selectormap_inverse_returns_bad() {
 }
 
 #[test]
+fn selectormap_simplify_inverse_cancel_fixture() {
+    // The fixture: CmpMap(SelectorMap(boxes), inv(SelectorMap(boxes)), series)
+    // Should simplify to UnitMap(2).
+    let input = std::fs::read_to_string(
+        "tests/fixtures/native/reference/simplify_fixtures/selectormap_inverse_cancel.map",
+    )
+    .unwrap();
+    let obj = from_native_string(&input).unwrap();
+    let mapping = obj.into_mapping().unwrap();
+
+    let simplified = mapping.simplify().unwrap();
+    assert!(
+        simplified.as_any().is::<ast_core::mappings::UnitMap>(),
+        "Expected UnitMap, got {:?}",
+        simplified
+    );
+    assert_eq!(simplified.nin(), 2);
+    assert_eq!(simplified.nout(), 2);
+}
+
+#[test]
 fn selectormap_serialization_roundtrip() {
     let regions = make_two_boxes();
     let sm = SelectorMapBuilder::new(regions)

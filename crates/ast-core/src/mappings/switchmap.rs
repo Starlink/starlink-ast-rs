@@ -499,25 +499,10 @@ impl Mapping for SwitchMap {
             return Ok(Box::new(self.clone()));
         }
 
-        if self.inverted {
-            let mut new_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
-            for rm in &self.route_maps {
-                let mut r = rm.clone();
-                r.invert();
-                new_routes.push(r);
-            }
-            let new_fsmap = self.ismap.clone().map(|mut m| {
-                m.invert();
-                m
-            });
-            let new_ismap = self.fsmap.clone().map(|mut m| {
-                m.invert();
-                m
-            });
-            let normalized = SwitchMap::new(new_fsmap, new_ismap, new_routes)?;
-            return normalized.simplified();
-        }
-
+        // Recursively simplify each child Mapping. Inversion is preserved
+        // in self.inverted: the merge loop's flatten step extracts the
+        // invert flag into its bool tracker, and a top-level inverted
+        // SwitchMap is normalised by the simplify driver after merge_loop.
         let mut changed = false;
 
         let simp_fs = self.fsmap.as_ref().map(|m| m.simplified()).transpose()?;
@@ -544,11 +529,22 @@ impl Mapping for SwitchMap {
         }
 
         if changed {
-            let new_sw = SwitchMap::new(
-                simp_fs.or_else(|| self.fsmap.clone()),
-                simp_is.or_else(|| self.ismap.clone()),
-                simp_routes,
+            // Build the rebuilt SwitchMap using from_parts so we can preserve
+            // the recorded fsinv/isinv/route_inv flags.
+            let new_routes = simp_routes;
+            let new_fs = simp_fs.or_else(|| self.fsmap.clone());
+            let new_is = simp_is.or_else(|| self.ismap.clone());
+            let mut new_sw = SwitchMap::from_parts(
+                new_fs,
+                new_is,
+                new_routes,
+                self.fsinv,
+                self.isinv,
+                self.route_inv.clone(),
             )?;
+            if self.inverted {
+                new_sw.invert();
+            }
             Ok(Box::new(new_sw))
         } else {
             Ok(Box::new(self.clone()))
