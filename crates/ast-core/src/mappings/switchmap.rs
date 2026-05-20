@@ -616,3 +616,114 @@ impl Mapping for SwitchMap {
         Box::new(self.clone())
     }
 }
+
+impl crate::serial::Serializable for SwitchMap {
+    fn class_name(&self) -> &'static str {
+        "SwitchMap"
+    }
+
+    fn to_node(&self) -> AstResult<crate::serial::Node> {
+        use crate::serial::{MappingToNode, Node, write_mapping_base};
+
+        let mut node = Node::new(self.class_name());
+        node.class_comment = Some("Alternate regionalised Mapping".to_string());
+        write_mapping_base(&mut node, self);
+
+        if let Some(fs) = self.forward_selector() {
+            let fs_node = MappingToNode::to_node(fs)?;
+            node.push_object(
+                "FSMap",
+                fs_node,
+                Some("Forward selector Mapping".to_string()),
+            );
+            if self.fsinv {
+                node.push_int(
+                    "FSInv",
+                    1,
+                    Some("Fwd selector used in inverse direction".to_string()),
+                );
+            }
+        }
+
+        if let Some(is) = self.inverse_selector() {
+            let is_node = MappingToNode::to_node(is)?;
+            node.push_object(
+                "ISMap",
+                is_node,
+                Some("Inverse selector Mapping".to_string()),
+            );
+            if self.isinv {
+                node.push_int(
+                    "ISInv",
+                    1,
+                    Some("Inv selector used in inverse direction".to_string()),
+                );
+            }
+        }
+
+        for (i, rm) in self.route_maps.iter().enumerate() {
+            let key = format!("RMap{}", i + 1);
+            let rm_node = MappingToNode::to_node(rm.as_ref())?;
+            node.push_object(&key, rm_node, Some("Route Mapping".to_string()));
+
+            if self.route_inv[i] {
+                let inv_key = format!("RInv{}", i + 1);
+                node.push_int(
+                    &inv_key,
+                    1,
+                    Some("Route Mapping used in inverse direction".to_string()),
+                );
+            }
+        }
+
+        Ok(node)
+    }
+
+    fn from_node(node: &crate::serial::Node) -> AstResult<Self> {
+        use crate::serial::{mapping_from_node, read_mapping_base};
+
+        let base = read_mapping_base(node);
+
+        let fsmap = node
+            .get_object("FSMap")
+            .map(mapping_from_node)
+            .transpose()?;
+        let fsinv = node.get_int("FSInv", 0) != 0;
+
+        let ismap = node
+            .get_object("ISMap")
+            .map(mapping_from_node)
+            .transpose()?;
+        let isinv = node.get_int("ISInv", 0) != 0;
+
+        let mut route_maps: Vec<DynMapping> = Vec::new();
+        let mut route_inv: Vec<bool> = Vec::new();
+        let mut i = 1;
+        loop {
+            let key = format!("RMap{}", i);
+            match node.get_object(&key) {
+                Some(rm_node) => {
+                    route_maps.push(mapping_from_node(rm_node)?);
+                    let inv_key = format!("RInv{}", i);
+                    route_inv.push(node.get_int(&inv_key, 0) != 0);
+                }
+                None => break,
+            }
+            i += 1;
+        }
+
+        if route_maps.is_empty() {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                "SwitchMap: no route Mappings found in serialized data",
+            ));
+        }
+
+        let mut sw = SwitchMap::from_parts(fsmap, ismap, route_maps, fsinv, isinv, route_inv)?;
+        sw.set_do_not_simplify(base.do_not_simplify);
+        if base.inverted {
+            sw.invert();
+        }
+        Ok(sw)
+    }
+}

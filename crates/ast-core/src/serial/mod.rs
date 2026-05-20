@@ -16,7 +16,7 @@ use crate::frames::{
 use crate::mappings::{
     ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
     PcdMap, PermMap, PolyMap, RateMap, SelectorMap, ShiftMap, SlaMap, SpecMap, SphMap, SplineMap,
-    TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
+    SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
 };
 use crate::regions::data::RegionData;
 use crate::regions::{
@@ -162,6 +162,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
         "NormMap" => Ok(Box::new(NormMap::from_node(node)?)),
         "MathMap" => Ok(Box::new(MathMap::from_node(node)?)),
         "SelectorMap" => Ok(Box::new(SelectorMap::from_node(node)?)),
+        "SwitchMap" => Ok(Box::new(SwitchMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
         // Regions implement Mapping.
         "Circle" => Ok(Box::new(Circle::from_node(node)?)),
@@ -265,6 +266,9 @@ impl MappingToNode for dyn Mapping {
             return m.to_node();
         }
         if let Some(m) = self.as_any().downcast_ref::<SelectorMap>() {
+            return m.to_node();
+        }
+        if let Some(m) = self.as_any().downcast_ref::<SwitchMap>() {
             return m.to_node();
         }
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
@@ -1179,6 +1183,8 @@ pub enum AnyObject {
     NormMap(NormMap),
     /// A [`SelectorMap`] (region-membership classifier mapping).
     SelectorMap(SelectorMap),
+    /// A [`SwitchMap`] (selector-dispatched route mapping).
+    SwitchMap(SwitchMap),
     /// A [`BasicFrame`] (generic coordinate frame).
     BasicFrame(BasicFrame),
     /// A [`SkyFrame`] (celestial coordinate frame).
@@ -1247,6 +1253,7 @@ impl AnyObject {
             AnyObject::DssMap(m) => Some(m),
             AnyObject::NormMap(m) => Some(m),
             AnyObject::SelectorMap(m) => Some(m),
+            AnyObject::SwitchMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
             // Regions implement Mapping.
             AnyObject::Circle(r) => Some(r),
@@ -1316,7 +1323,8 @@ impl AnyObject {
             | AnyObject::SplineMap(_)
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_)
-            | AnyObject::SelectorMap(_) => None,
+            | AnyObject::SelectorMap(_)
+            | AnyObject::SwitchMap(_) => None,
         }
     }
 
@@ -1349,6 +1357,7 @@ impl AnyObject {
             AnyObject::DssMap(m) => Some(Box::new(m)),
             AnyObject::NormMap(m) => Some(Box::new(m)),
             AnyObject::SelectorMap(m) => Some(Box::new(m)),
+            AnyObject::SwitchMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
             // Regions implement Mapping.
             AnyObject::Circle(r) => Some(Box::new(r)),
@@ -1418,7 +1427,8 @@ impl AnyObject {
             | AnyObject::SplineMap(_)
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_)
-            | AnyObject::SelectorMap(_) => None,
+            | AnyObject::SelectorMap(_)
+            | AnyObject::SwitchMap(_) => None,
         }
     }
 
@@ -1489,6 +1499,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "DssMap" => Ok(AnyObject::DssMap(DssMap::from_node(node)?)),
         "NormMap" => Ok(AnyObject::NormMap(NormMap::from_node(node)?)),
         "SelectorMap" => Ok(AnyObject::SelectorMap(SelectorMap::from_node(node)?)),
+        "SwitchMap" => Ok(AnyObject::SwitchMap(SwitchMap::from_node(node)?)),
         "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
         "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
@@ -1547,6 +1558,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::DssMap(m) => Serializable::to_node(m),
         AnyObject::NormMap(m) => Serializable::to_node(m),
         AnyObject::SelectorMap(m) => Serializable::to_node(m),
+        AnyObject::SwitchMap(m) => Serializable::to_node(m),
         AnyObject::BasicFrame(f) => Serializable::to_node(f),
         AnyObject::SkyFrame(f) => Serializable::to_node(f),
         AnyObject::SpecFrame(f) => Serializable::to_node(f),

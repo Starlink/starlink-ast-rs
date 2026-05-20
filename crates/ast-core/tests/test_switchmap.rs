@@ -11,6 +11,7 @@ use ast_core::mappings::{
     DynMapping, Mapping, SelectorMapBuilder, SwitchMap, UnitMap, WinMap, ZoomMap,
 };
 use ast_core::regions::{BoxRegionBuilder, DynRegion};
+use ast_core::{AnyObject, from_native_string, to_native_string};
 
 /// Create a SwitchMap with two routes:
 /// - Route 1 (x in [0,10]): WinMap scaling [0,10]→[0,100]
@@ -125,4 +126,27 @@ fn switchmap_equal() {
     let sw1 = make_1d_switchmap();
     let sw2 = make_1d_switchmap();
     assert!(sw1.equal(&sw2));
+}
+
+#[test]
+fn switchmap_serialization_roundtrip() {
+    let sw = make_1d_switchmap();
+    let obj = AnyObject::SwitchMap(sw.clone());
+    let text = to_native_string(&obj).unwrap();
+    let obj2 = from_native_string(&text).unwrap();
+    let loaded: SwitchMap = match obj2 {
+        AnyObject::SwitchMap(m) => m,
+        other => panic!("Expected SwitchMap, got {:?}", other),
+    };
+
+    assert_eq!(loaded.nroute(), 2);
+    assert_eq!(loaded.nin(), 1);
+    assert_eq!(loaded.nout(), 1);
+
+    let pts = PointSet::from_rows([[5.0], [25.0], [15.0]]);
+    let out1 = sw.transform(&pts, true).unwrap();
+    let out2 = loaded.transform(&pts, true).unwrap();
+    for i in 0..3 {
+        assert_eq!(out1.point(i)[0], out2.point(i)[0]);
+    }
 }
