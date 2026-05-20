@@ -399,3 +399,41 @@ fn diagonal_matrix_merge_with_winmap_scales() {
     assert!((actual.point(0)[0] - expected.point(0)[0]).abs() < 1e-10);
     assert!((actual.point(0)[1] - expected.point(0)[1]).abs() < 1e-10);
 }
+
+#[test]
+fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    // Same fixture as crates/ast-core/tests/fixtures/native/reference/
+    // simplify_fixtures/matrix_full_to_diagonal.map (Form="Full" with
+    // off-diagonals == 0).
+    let src = r#" Begin MatrixMap
+    Nin = 2
+ IsA Mapping
+    M0 = 2
+    M1 = 0
+    M2 = 0
+    M3 = 3
+    IM0 = 0.5
+    IM1 = 0
+    IM2 = 0
+    IM3 = 0.33333333333333331
+    Form = "Full"
+ End MatrixMap
+"#;
+    let obj = from_native_string(src).unwrap();
+    let map = obj.into_mapping().unwrap();
+    let simp = map.simplified().unwrap();
+    let mm = simp
+        .as_any()
+        .downcast_ref::<MatrixMap>()
+        .expect("still a MatrixMap");
+
+    let s = to_native_string(&AnyObject::MatrixMap(mm.clone())).unwrap();
+    assert!(
+        s.contains("Form = \"Diagonal\""),
+        "expected Diagonal form after simplify, got:\n{s}"
+    );
+    // Diagonal form emits only M0..Mk-1 — no M1/M2 (off-diagonal entries).
+    assert!(!s.contains("M2 ="), "diagonal form should not emit M2");
+}

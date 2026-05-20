@@ -360,6 +360,19 @@ impl Mapping for MatrixMap {
             }
         }
 
+        // Full-form matrix whose off-diagonals are all zero re-stores as
+        // Diagonal. The numeric matrix is unchanged; only `form` / `inv_form`
+        // flip. Mirrors C matrixmap.c MapMerge "compress storage" pass.
+        if matches!(self.form, MatrixForm::Full) && nrows == ncols && is_diagonal(&self.matrix) {
+            let inv_is_diagonal = self.inverse.as_ref().is_none_or(is_diagonal);
+            if inv_is_diagonal {
+                let mut out = self.clone();
+                out.form = MatrixForm::Diagonal;
+                out.inv_form = MatrixForm::Diagonal;
+                return Ok(Box::new(out));
+            }
+        }
+
         Ok(Box::new(self.clone()))
     }
 
