@@ -230,33 +230,29 @@ impl GrismMap {
     ///   - `g /= z` (ruling density scales inversely with wavelength unit)
     ///   - `nrp /= z` (dn/dlambda scales inversely)
     ///   - `wave_r *= z` (reference wavelength scales with wavelength unit)
-    pub(crate) fn merge_with_zoom(
-        &self,
-        zoom_factor: f64,
-        invert_result: bool,
-    ) -> Option<DynMapping> {
+    pub fn merge_with_zoom(&self, zoom_factor: f64, invert_result: bool) -> Option<DynMapping> {
         if zoom_factor == 0.0 {
             return None;
         }
 
-        let new_g = self.grism_g / zoom_factor;
-        let new_nrp = self.grism_nrp / zoom_factor;
-        let new_wave_r = self.grism_wave_r * zoom_factor;
-
-        let mut result = GrismMap::new(
-            self.grism_nr,
-            new_nrp,
-            new_wave_r,
-            self.grism_alpha,
-            new_g,
-            self.grism_m,
-            self.grism_eps,
-            self.grism_theta,
-        );
+        // Clone preserves the source's set_flags; we then only flip flags
+        // for the three attributes that the merge math actually touches:
+        // GrmNRP, GrmWR, GrmG. The others (GrmNR, GrmAlpha, GrmM, GrmEps,
+        // GrmTheta) keep their original explicit/default state.
+        let mut result = self.clone();
+        result.grism_g = self.grism_g / zoom_factor;
+        result.grism_nrp = self.grism_nrp / zoom_factor;
+        result.grism_wave_r = self.grism_wave_r * zoom_factor;
+        result.set_flags.g = true;
+        result.set_flags.nrp = true;
+        result.set_flags.wave_r = true;
+        result.update_constants();
 
         if invert_result {
             result.invert();
         }
+        // Strip simplification-protection bit if the source had it.
+        result.do_not_simplify = false;
 
         Some(Box::new(result))
     }

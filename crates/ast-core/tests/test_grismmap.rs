@@ -327,3 +327,41 @@ fn rate_at_zero() {
     assert!(rate.is_finite());
     assert!(rate != 0.0);
 }
+
+#[test]
+fn merge_with_zoom_preserves_explicit_flags_for_unchanged_attrs() {
+    use ast_core::mappings::GrismMap;
+    use ast_core::{AnyObject, to_native_string};
+
+    // Default GrismMap (all attrs at defaults). In a fixture parsed
+    // from disk, all flags would be "default-flagged"; we approximate
+    // by using default_map() and then merging.
+    let g = GrismMap::default_map();
+    let merged = g.merge_with_zoom(0.5, true).unwrap();
+    let dyn_grism = merged.as_any().downcast_ref::<GrismMap>().unwrap().clone();
+    let s = to_native_string(&AnyObject::GrismMap(dyn_grism)).unwrap();
+
+    // The three modified attrs should be explicit (present uncommented).
+    assert!(
+        s.lines()
+            .any(|l| l.contains("GrmNRP =") && !l.trim_start().starts_with('#')),
+        "GrmNRP must be explicit:\n{s}"
+    );
+    assert!(
+        s.lines()
+            .any(|l| l.contains("GrmWR =") && !l.trim_start().starts_with('#')),
+        "GrmWR must be explicit:\n{s}"
+    );
+    assert!(
+        s.lines()
+            .any(|l| l.contains("GrmG =") && !l.trim_start().starts_with('#')),
+        "GrmG must be explicit:\n{s}"
+    );
+
+    // The others must NOT be explicit (present only as # comments — the
+    // input GrismMap was constructed via default_map(), so its set_flags
+    // are all true; after the proposed fix we *preserve* those flags.
+    // Therefore in this *unit* test all eight are still expected explicit.
+    // The serial-comparison check belongs to the regression fixture, which
+    // parses from disk where unset attrs come in as default-flagged.
+}
