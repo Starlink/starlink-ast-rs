@@ -230,7 +230,11 @@ impl GrismMap {
     ///   - `g /= z` (ruling density scales inversely with wavelength unit)
     ///   - `nrp /= z` (dn/dlambda scales inversely)
     ///   - `wave_r *= z` (reference wavelength scales with wavelength unit)
-    pub fn merge_with_zoom(&self, zoom_factor: f64, invert_result: bool) -> Option<DynMapping> {
+    pub(crate) fn merge_with_zoom(
+        &self,
+        zoom_factor: f64,
+        invert_result: bool,
+    ) -> Option<DynMapping> {
         if zoom_factor == 0.0 {
             return None;
         }
