@@ -608,6 +608,53 @@ impl Mapping for Interval {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
+        // Box-reclassification: an Interval whose bounds are all finite
+        // (no BAD on either side) and well-ordered (lbnd[i] <= ubnd[i])
+        // is mathematically a BoxRegion. The C reference's interval.c
+        // Simplify performs this reclassification before any
+        // base-to-current remap; mirror that ordering. Negated and
+        // not-closed Intervals stay as Intervals — Box's contract is a
+        // closed, non-negated axis-aligned region.
+        // The defining points layout matches what the C native
+        // serialiser emits: `points[i]` holds axis `i`'s two bound
+        // values [lower, upper] (the same shape that
+        // `read_pointset_node` produces from C's `X1..` keys, using
+        // C's `ptr[coord][point]` storage convention). For this
+        // reclassification we therefore read lb[i] = points[i][0],
+        // ub[i] = points[i][1].
+        let naxes = self.data.points.len();
+        if naxes == 0 || self.data.points.iter().any(|p| p.len() < 2) {
+            // Defensive: should not happen for a well-formed Interval.
+        } else {
+            let mut lb = Vec::with_capacity(naxes);
+            let mut ub = Vec::with_capacity(naxes);
+            for i in 0..naxes {
+                lb.push(self.data.points[i][0]);
+                ub.push(self.data.points[i][1]);
+            }
+            let all_finite = lb.iter().chain(ub.iter()).all(|&v| !is_bad(v));
+            let well_ordered = lb.iter().zip(ub.iter()).all(|(&l, &u)| l <= u);
+            if all_finite && well_ordered && !self.data.negated && self.data.closed {
+                // Box stores points in the same layout: points[i] =
+                // [centre_axis_i, corner_axis_i]. Mirrors C box.c
+                // astBox construction from lower/upper bounds.
+                let new_points: Vec<Vec<f64>> = (0..naxes)
+                    .map(|i| vec![0.5 * (lb[i] + ub[i]), ub[i]])
+                    .collect();
+                let frameset = FrameSet::new(self.data.frameset.current().snapshot());
+                let mut data = RegionData::new(frameset, new_points);
+                data.adaptive = self.data.adaptive;
+                data.mesh_size = self.data.mesh_size;
+                data.fill_factor = self.data.fill_factor;
+                data.closed = true;
+                data.closed_set = true;
+                if let Some(unc) = self.data.uncertainty.as_ref() {
+                    data.uncertainty = Some(unc.clone());
+                }
+                return Ok(Box::new(super::BoxRegion { data }));
+            }
+        }
+
         let map = self
             .data
             .frameset
