@@ -105,8 +105,17 @@ pub(crate) fn is_aips_spectral(ctype: &str) -> bool {
     matches!(frame, "LSR" | "LSD" | "HEL" | "GEO" | "EAR" | "OBS" | "TOP")
 }
 
-/// Check for AST native encoding markers in COMMENT cards.
+/// Check for AST native encoding markers in COMMENT cards or BEGAST keyword cards.
+///
+/// Returns `true` when:
+/// - at least one `BEGAST<xx>` keyword card is present (keyword-card native
+///   encoding, mirrors `astKeyFields(this,"BEGAST%2f",…)` in `GetEncoding`), or
+/// - a COMMENT card contains the `"AST +++"` sentinel (comment-card native
+///   encoding).
 fn has_native_markers(cards: &CardList) -> bool {
+    if super::enc_native::has_keyword_native(cards) {
+        return true;
+    }
     cards.iter().any(|card| {
         if card.keyword == "COMMENT" {
             if let FitsValue::Comment(text) = &card.value {
@@ -407,6 +416,18 @@ COMMENT  AST --------------------------------- AST";
         let header = "\
 SIMPLE  =                    T / Standard FITS
 BITPIX  =                  -32 / Bits per pixel";
+        let cards = CardList::from_header(header).unwrap();
+        assert_eq!(guess_encoding(&cards), Encoding::Native);
+    }
+
+    #[test]
+    fn keyword_native_detected_as_native_encoding() {
+        let header = "\
+BEGAST_A= 'FrameSet'
+NFRAME_A=                    2
+ENDAST_A= 'FrameSet'
+END
+";
         let cards = CardList::from_header(header).unwrap();
         assert_eq!(guess_encoding(&cards), Encoding::Native);
     }
