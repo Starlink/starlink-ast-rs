@@ -8,6 +8,7 @@
 //! `fitschan.c::CreateKeyword` (line 8209).
 
 use super::card_list::CardList;
+use crate::fitschan::card::FitsValue;
 
 /// Characters used in the 2-character sequence suffix on every NATIVE
 /// keyword. Matches `SEQ_CHARS` in `fitschan.c` (line 1377).
@@ -86,6 +87,63 @@ pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
     cards
         .iter()
         .any(|card| matches!(classify(&card.keyword), KeywordKind::Begin))
+}
+
+/// Result of formatting a card value for native-text emission.
+#[derive(Debug)]
+// Will be used by Task 6's cards_to_native_text.
+#[allow(dead_code)]
+pub(crate) enum FormattedValue {
+    /// The card has a non-empty scalar value; emit `<key> = <text>`.
+    Scalar(String),
+    /// The card has an empty string value; emit `<key> =` and expect a
+    /// child object to follow on subsequent cards (a `BEGAST<xx>` card).
+    ObjectMarker,
+}
+
+/// Format a `FitsValue` for emission as native-text scalar.
+///
+/// Returns `None` if the value type is not representable in NATIVE encoding
+/// (Comment, Logical, Undefined) — such cards should be ignored by the
+/// keyword-card decoder.
+// Will be used by Task 6's cards_to_native_text.
+#[allow(dead_code)]
+pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
+    match value {
+        FitsValue::String(s) => {
+            let trimmed = s.trim_end();
+            if trimmed.is_empty() {
+                Some(FormattedValue::ObjectMarker)
+            } else {
+                // Quote the string for native text. Embedded double-quotes
+                // are escaped with a backslash; this matches the convention
+                // accepted by `parse_native`.
+                let escaped = trimmed.replace('\\', "\\\\").replace('"', "\\\"");
+                Some(FormattedValue::Scalar(format!("\"{escaped}\"")))
+            }
+        }
+        FitsValue::Int(n) => Some(FormattedValue::Scalar(n.to_string())),
+        FitsValue::Float(f) => Some(FormattedValue::Scalar(format_native_float(*f))),
+        // Logical, Comment, Undefined, Continue, ComplexFloat, ComplexInt are not native scalars.
+        _ => None,
+    }
+}
+
+/// Format a float for NATIVE text emission. Mirrors the C library's choice
+/// of `%.17g` (full double precision) so a NATIVE round-trip is value-exact.
+// Will be used by Task 6's cards_to_native_text.
+#[allow(dead_code)]
+fn format_native_float(x: f64) -> String {
+    if x.is_nan() {
+        // Native format does not have a NaN literal; the AST library uses
+        // the BAD_VALUE sentinel for missing data and never serialises NaN.
+        // Emit a placeholder that downstream parsing will reject loudly.
+        return "<bad>".to_string();
+    }
+    let s = format!("{x:.17e}");
+    // Compress to a more compact form when round-tripping is preserved.
+    // Match parse_native's tolerance for both `1.5` and `1.5e0` styles.
+    s
 }
 
 #[cfg(test)]
@@ -194,5 +252,45 @@ END
             classify("CONTINUE"),
             KeywordKind::Data("contin".to_string())
         );
+    }
+
+    #[test]
+    fn format_value_string_non_empty() {
+        let v = FitsValue::String("FrameSet".to_string());
+        match format_value(&v) {
+            Some(FormattedValue::Scalar(s)) => assert_eq!(s, "\"FrameSet\""),
+            other => panic!("expected Scalar, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn format_value_string_empty_is_object_marker() {
+        let v = FitsValue::String("        ".to_string());
+        assert!(matches!(
+            format_value(&v),
+            Some(FormattedValue::ObjectMarker)
+        ));
+    }
+
+    #[test]
+    fn format_value_int() {
+        let v = FitsValue::Int(42);
+        match format_value(&v) {
+            Some(FormattedValue::Scalar(s)) => assert_eq!(s, "42"),
+            other => panic!("expected Scalar, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn format_value_float_basic() {
+        let v = FitsValue::Float(1.5);
+        match format_value(&v) {
+            Some(FormattedValue::Scalar(s)) => {
+                // Just confirm it's parseable by Rust as 1.5.
+                let parsed: f64 = s.parse().expect("parses");
+                assert_eq!(parsed, 1.5);
+            }
+            other => panic!("expected Scalar, got {other:?}"),
+        }
     }
 }
