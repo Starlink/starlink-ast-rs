@@ -60,7 +60,7 @@ W = write), and one-line root cause.
 
 | #  | Category                                          | Tests | Side  | Root cause |
 |----|---------------------------------------------------|------:|-------|-----------|
-| A  | Native-text parser bugs                           | 6     | R     | Decorative banner line (`AST  Beginning of AST data for X`) not skipped (4 tests); WCSAXES/NAXIS fallback missing (1 test, `car3_native`); axes-swap CmpMap dimension mismatch (1 test, `axes-swap_native`) |
+| A  | Native-encoding & parser bugs                     | 6     | R     | Keyword-card NATIVE encoding (`BEGAST_A=`, `ENDAST_A=`, etc.) not implemented (4 tests, `polco`/`polco2`/`specflux`/`timeplot`); WCSAXES/NAXIS fallback missing (1 test, `car3_native`); axes-swap CmpMap dimension mismatch (1 test, `axes-swap_native`) |
 | B  | CLASS encoder — content & axis convention         | 9     | R+W   | CLASS expects spectral axis as axis 1 (`FREQ` first); read errors when NAXIS absent |
 | C  | Spectral axis collapsed into spatial during write | 12    | W     | `populate_spectral` feeds CRVAL1 from celestial path verbatim; spectral CRVAL ends up as a sky longitude |
 | D  | AIPS / AIPS++ encoder logic                       | ~20   | W     | (i) AIPS++ should emit CDELT+PC not CD when no shear; (ii) CROTA sign wrong; (iii) NCP→SIN missing PROJP; (iv) EPOCH-MJD vs Besselian-year format; (v) SFL→GLS at-origin shift; (vi) missing DATE-OBS / MJD-OBS in several |
@@ -109,7 +109,7 @@ because earlier ones unblock later ones (or remove workarounds).
 
 ### Tier 1 — read-side blockers (~5 tests + unblocks others)
 
-- **A1.** Native parser — skip `^AST\s+(Beginning of|End of) AST data` decorative banner lines. Tests: `polco_native`, `polco2_native`, `specflux_native`, `timeplot_native`. Files: `crates/ast-core/src/serial/native_read.rs`.
+- **A1.** Implement keyword-card NATIVE encoding (`enc_native.rs`). The C library detects this variant via "any keyword starting with BEGAST" (`fitschan.c::Read` line 25699) and routes through the inherited Channel reader using a keyword-card source function that reassembles `BEGAST_xx`/`ENDAST_xx`/data-keyword cards back into a `Begin Class … End Class` text stream. The Rust port currently only supports the COMMENT-card variant. Add a new `crates/ast-core/src/fitschan/enc_native.rs` mirroring the per-encoding pattern of `enc_aips.rs`/`enc_class.rs`/etc. that converts keyword-card NATIVE input to a native-text string; the existing `serial::native_read::parse_native` then takes over. Tests: `polco_native`, `polco2_native`, `specflux_native`, `timeplot_native`.
 - **A2.** Native parser — when WCSAXES and NAXIS both absent, infer axis count from highest CTYPEi index. Test: `car3_native`. Files: `crates/ast-core/src/fitschan/wcs_read.rs`.
 - **A3.** axes-swap CmpMap dimension mismatch — investigate `wcs_read.rs::build_pixel_to_world` PermMap insertion when CTYPE order is permuted. Test: `axes-swap_native`.
 - **B1.** CLASS reader fallback when NAXIS absent. Tests: `jan_fits-class_ast`, `jan_fits-class-rt`. Files: `crates/ast-core/src/fitschan/enc_class.rs`.
