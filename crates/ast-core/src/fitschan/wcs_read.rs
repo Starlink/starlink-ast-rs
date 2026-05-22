@@ -101,83 +101,114 @@ fn build_iwc_to_world(
 
 /// Build the general IWC → world mapping for mixed axis cases.
 ///
-/// Uses parallel composition to handle different axis types. Axes are
-/// processed in order: celestial pair, spectral, then linear.
+/// Uses parallel composition to handle different axis types.  Axes are
+/// walked one at a time in FITS index order.  The celestial mapping is
+/// pushed when the FIRST of the celestial pair is encountered; the second
+/// is skipped.  After parallel composition a `PermMap` is appended when
+/// the natural parallel-output order doesn't match FITS axis order (e.g.
+/// when the celestial pair is non-adjacent, as in axes-swap.head).
 fn build_general_iwc_to_world(
     store: &FitsStore,
     celestial: Option<CelestialResult>,
     spectral: Option<SpectralResult>,
     claimed: &[bool],
 ) -> AstResult<DynMapping> {
+    use crate::mappings::PermMap;
+
     let naxis = store.naxis;
 
-    // Extract axis indices for the celestial pair.
-    let cel_first = celestial.as_ref().map(|c| c.lon_axis.min(c.lat_axis));
-
-    let spec_axis = spectral.as_ref().map(|s| s.axis);
-
+    // Walk axes in FITS index order.  For each axis push the appropriate
+    // mapping into `parts`; record which FITS-axis-index each of that
+    // mapping's outputs corresponds to in `output_to_fits` (length =
+    // total output axes after parallel composition).
     let mut parts: Vec<DynMapping> = Vec::new();
-    let mut cel_used = false;
-    let mut spec_used = false;
+    let mut output_to_fits: Vec<usize> = Vec::new();
 
-    // We need to move celestial/spectral into mutable Option so we can take them.
     let mut celestial = celestial;
     let mut spectral = spectral;
 
-    let mut i = 0;
-    while i < naxis {
-        if !cel_used {
-            if let Some(first_cel) = cel_first {
-                if i == first_cel {
-                    // Consume the celestial mapping (handles 2 axes).
-                    let cel = celestial.take().unwrap();
-                    parts.push(cel.mapping);
-                    cel_used = true;
-                    // Skip both celestial axes.
-                    let second_cel = cel_first.unwrap(); // This is min; we need max.
-                    // Recalculate max from the already-known indices.
-                    // We know the pair spans from first_cel to the other axis.
-                    // Skip to the end of both celestial axes.
-                    i = first_cel + 2; // Assuming consecutive for now
-                    // Actually, they might not be consecutive. In FITS-WCS,
-                    // celestial axes are typically consecutive (axes 1,2),
-                    // but could be separated. For Phase 2, assume consecutive.
-                    let _ = second_cel;
-                    continue;
-                }
+    for (i, &is_claimed) in claimed.iter().enumerate() {
+        // Celestial axis: emit the celestial mapping when we hit the
+        // FIRST of the celestial pair (in FITS order); skip the second
+        // encounter.
+        if let Some(cel) = celestial.as_ref() {
+            let cel_first = cel.lon_axis.min(cel.lat_axis);
+            let cel_second = cel.lon_axis.max(cel.lat_axis);
+            if i == cel_first {
+                let cel = celestial.take().unwrap();
+                let lon_axis = cel.lon_axis;
+                let lat_axis = cel.lat_axis;
+                parts.push(cel.mapping);
+                // The celestial mapping outputs (lon, lat) in that order.
+                output_to_fits.push(lon_axis);
+                output_to_fits.push(lat_axis);
+                continue;
+            }
+            if i == cel_second {
+                continue; // already handled above
             }
         }
 
-        if !spec_used {
-            if let Some(sa) = spec_axis {
-                if i == sa {
-                    let spec = spectral.take().unwrap();
-                    parts.push(spec.mapping);
-                    spec_used = true;
-                    i += 1;
-                    continue;
-                }
+        // Spectral axis.
+        if let Some(spec) = spectral.as_ref() {
+            if i == spec.axis {
+                let spec = spectral.take().unwrap();
+                let axis = spec.axis;
+                parts.push(spec.mapping);
+                output_to_fits.push(axis);
+                continue;
             }
         }
 
-        if !claimed[i] {
-            // Unclaimed axis: apply CRVAL shift.
+        // Linear/unclaimed axis: emit a CRVAL shift.
+        if !is_claimed {
             let crval = store.crval[i].unwrap_or(0.0);
             let shift = ShiftMap::new(vec![crval]);
             parts.push(Box::new(shift));
+            output_to_fits.push(i);
         }
-
-        i += 1;
     }
 
-    // Compose all parts in parallel.
     if parts.is_empty() {
         return Ok(Box::new(UnitMap::new(naxis)));
     }
 
-    let mut result = parts.remove(0);
+    // Compose all parts in parallel.
+    let mut result: DynMapping = parts.remove(0);
     for part in parts {
         result = Box::new(CmpMap::new(result, part, Composition::Parallel)?);
+    }
+
+    // If the parallel-output order differs from FITS axis order, append a
+    // PermMap to permute parallel-output back to FITS axis order.
+    let identity_order: Vec<usize> = (0..naxis).collect();
+    if output_to_fits != identity_order {
+        // Build forward permutation: for each FITS axis position `dest`,
+        // find which parallel-output position holds that value.
+        let mut outperm = vec![0i64; naxis];
+        for (dest, entry) in outperm.iter_mut().enumerate() {
+            let src = output_to_fits
+                .iter()
+                .position(|&fa| fa == dest)
+                .ok_or_else(|| {
+                    crate::error::AstError::new(
+                        crate::error::ErrorCode::Bdfts,
+                        format!(
+                            "internal: FITS axis {dest} not produced by any decoder; \
+                             output_to_fits = {output_to_fits:?}"
+                        ),
+                    )
+                })?;
+            *entry = (src + 1) as i64;
+        }
+        // Inverse permutation: for each parallel-output position `src`,
+        // record which FITS axis it carries (1-based).
+        let inperm: Vec<i64> = output_to_fits
+            .iter()
+            .map(|&dest_fits| (dest_fits + 1) as i64)
+            .collect();
+        let perm = PermMap::new(&inperm, &outperm, &[])?;
+        result = Box::new(CmpMap::new(result, Box::new(perm), Composition::Series)?);
     }
 
     Ok(result)
@@ -382,5 +413,50 @@ mod tests {
         } else {
             panic!("Expected FrameSet");
         }
+    }
+
+    #[test]
+    fn build_pixel_to_world_handles_non_adjacent_celestial_axes() {
+        // FITS axes: 0=DEC, 1=WAVE, 2=RA. Celestial pair non-adjacent
+        // (separated by spectral axis). Reader must produce a working
+        // 3D pixel-to-world mapping.
+        let mut store = FitsStore::new(3);
+        store.ctype[0] = Some("DEC--TAN".to_string());
+        store.ctype[1] = Some("WAVE    ".to_string());
+        store.ctype[2] = Some("RA---TAN".to_string());
+        store.crval[0] = Some(22.0);
+        store.crval[1] = Some(5.0e-7);
+        store.crval[2] = Some(83.6);
+        store.crpix[0] = Some(50.5);
+        store.crpix[1] = Some(25.5);
+        store.crpix[2] = Some(50.5);
+        store.cdelt[0] = Some(2.78e-4);
+        store.cdelt[1] = Some(1.0e-10);
+        store.cdelt[2] = Some(-2.78e-4);
+        store.cunit[1] = Some("m".to_string());
+
+        let obj = decode_wcs(&store).expect("decode succeeds");
+        let AnyObject::FrameSet(ref fs) = obj else {
+            panic!("expected FrameSet")
+        };
+        assert_eq!(fs.base().naxes(), 3);
+        assert_eq!(fs.current().naxes(), 3);
+
+        // At the reference pixel, output axis 0 is DEC (latitude in
+        // radians, since SkyFrame stores radians internally) ~ 22°,
+        // and output axis 2 is RA (longitude in radians) ~ 83.6°.
+        let pts = PointSet::from_columns(&[&[50.5], &[25.5], &[50.5]]).unwrap();
+        let out = fs.transform(&pts, true).unwrap();
+        let point = out.point(0);
+        let dec_deg = point[0].to_degrees();
+        let ra_deg = point[2].to_degrees();
+        assert!(
+            (dec_deg - 22.0).abs() < 1.0,
+            "axis 0 (DEC) at refpix expected ~22°, got {dec_deg}°"
+        );
+        assert!(
+            (ra_deg - 83.6).abs() < 1.0,
+            "axis 2 (RA) at refpix expected ~83.6°, got {ra_deg}°"
+        );
     }
 }
