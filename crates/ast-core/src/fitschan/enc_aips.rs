@@ -248,26 +248,8 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // is the latitude axis if the frame is celestial, else axis 1. AIPS
     // emits CROTA always (including 0.0) so downstream readers know the
     // rotation is exactly zero rather than unspecified.
-    //
-    // Snap rotations smaller than ~1e-9° to exactly zero. The IWC
-    // composition for celestial CD reconstructs WcsNative from CRVAL
-    // and composes with the FrameSet's existing WcsNative — those two
-    // matrices are mathematically identical when the CRVAL extraction
-    // round-trips bit-exactly, so they should cancel under
-    // `astSimplify`. The C library's simplifier deep-traverses nested
-    // CmpMap structures and recognises the internal inverse-pair as
-    // identity, leaving no numerical residue. Our `Mapping::simplify`
-    // is shallower (it only merges adjacent siblings, not arbitrarily
-    // nested chains), so a tiny residue reaches `decompose_linear`
-    // and surfaces here as ~1e-11° CROTA. Snapping is correct
-    // physically — no astronomical use case distinguishes 0° from
-    // 1e-9° — and matches the C library's effective behaviour, even
-    // though it gets there by a different (deeper) simplification path.
     if naxis >= 2 {
-        let mut crota = pc_vals[[1, 0]].atan2(pc_vals[[1, 1]]).to_degrees();
-        if crota.abs() < 1e-9 {
-            crota = 0.0;
-        }
+        let crota = pc_vals[[1, 0]].atan2(pc_vals[[1, 1]]).to_degrees();
         let k = crota_axis(store);
         cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
     }
