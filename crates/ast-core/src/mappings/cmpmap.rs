@@ -136,6 +136,67 @@ impl CmpMap {
         }
     }
 
+    /// Recursively canonicalise CmpMaps so no nested CmpMap carries
+    /// `inverted=true`. For each CmpMap with `inverted=true`, push the
+    /// inversion into its recorded structure (`invert_into_structure`)
+    /// and clear the flag. After this pass, every CmpMap in the tree
+    /// has `inverted=false`. The parent's `inv_a` / `inv_b` snapshots
+    /// are updated to maintain the runtime invariant
+    /// `effective_inversion = inv_a XOR child.is_inverted()`. This is a
+    /// serialisation-canonicalisation pass — runtime behaviour is
+    /// unchanged. Mirrors the C reference's emission of a parallel
+    /// CmpMap with an `InvA=1` CmpMap child as: outer parallel with
+    /// no `InvA`, inner CmpMap with `inv_a`/`inv_b` flipped (and
+    /// children swapped for series).
+    pub(crate) fn canonicalize_inverted_cmpmaps(&mut self) {
+        // Recurse first; children's is_inverted() may flip during the
+        // call, requiring our inv_a/inv_b snapshots to flip in step.
+        let first_was_inverted = self.first.is_inverted();
+        if let Some(cm) = self.first.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.canonicalize_inverted_cmpmaps();
+        }
+        if first_was_inverted != self.first.is_inverted() {
+            self.inv_a = !self.inv_a;
+        }
+
+        let second_was_inverted = self.second.is_inverted();
+        if let Some(cm) = self.second.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.canonicalize_inverted_cmpmaps();
+        }
+        if second_was_inverted != self.second.is_inverted() {
+            self.inv_b = !self.inv_b;
+        }
+
+        // Now canonicalise self.
+        if self.inverted {
+            self.invert_into_structure();
+            self.inverted = false;
+        }
+    }
+
+    /// Push the inversion semantics of "this CmpMap, used in its inverse
+    /// direction" into the recorded structure, leaving `inverted` flag
+    /// unchanged. For parallel CmpMaps this flips `inv_a` / `inv_b`. For
+    /// series CmpMaps it additionally swaps `first` / `second` (since
+    /// `(A;B)^-1 = B^-1; A^-1`). Mathematically equivalent to invert(),
+    /// but produces the canonical serialised form the C reference emits
+    /// when an inverted CmpMap appears as a child of a parallel
+    /// reconstruct.
+    pub(crate) fn invert_into_structure(&mut self) {
+        match self.kind {
+            Composition::Parallel => {
+                self.inv_a = !self.inv_a;
+                self.inv_b = !self.inv_b;
+            }
+            Composition::Series => {
+                std::mem::swap(&mut self.first, &mut self.second);
+                let (new_inv_a, new_inv_b) = (!self.inv_b, !self.inv_a);
+                self.inv_a = new_inv_a;
+                self.inv_b = new_inv_b;
+            }
+        }
+    }
+
     /// Whether the first child's current Invert differs from the recorded
     /// snapshot — if so, the effective transform direction must flip.
     fn first_invert_changed(&self) -> bool {

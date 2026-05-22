@@ -178,3 +178,73 @@ fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
         simp.nout(),
     );
 }
+
+/// A simplified parallel CmpMap that contains an inverted CmpMap child
+/// must serialise without redundant `Invert` flag on the inner CmpMap
+/// AND without `InvA` on the outer parallel — the inversion should be
+/// pushed into the inner's `inv_a`/`inv_b` (with children swapped for
+/// series). Mirrors the cmpmap_series_in_parallel_inverted fixture and
+/// the C cmpmap.c MapMerge canonicalisation. Numerically identical
+/// before and after canonicalisation.
+#[test]
+fn parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation() {
+    use ast_core::mappings::{DynMapping, MathMap};
+    use ast_core::{AnyObject, to_native_string};
+    fn make_inner_series() -> CmpMap {
+        let mut a = MathMap::new(1, 1, &["y=2*x"], &["x=0.5*y"]).unwrap();
+        a.set_simp_fi(true);
+        a.set_simp_if(true);
+        let b = a.clone();
+        CmpMap::new(
+            Box::new(a) as DynMapping,
+            Box::new(b) as DynMapping,
+            Composition::Series,
+        )
+        .unwrap()
+    }
+
+    // outer parallel CmpMap with first child applied in inverse direction.
+    let mut first = make_inner_series();
+    first.invert();
+    let second = make_inner_series();
+    let outer = CmpMap::new(
+        Box::new(first) as DynMapping,
+        Box::new(second) as DynMapping,
+        Composition::Parallel,
+    )
+    .unwrap();
+    let outer_dyn: DynMapping = Box::new(outer);
+
+    let simp = outer_dyn.simplify().unwrap();
+    let cmp = simp.as_any().downcast_ref::<CmpMap>().unwrap().clone();
+    let s = to_native_string(&AnyObject::CmpMap(cmp)).unwrap();
+    // Outer should NOT carry InvA. Inner-A SHOULD carry InvA=1, InvB=1.
+    // We check by counting Begin CmpMap occurrences and the position of
+    // any InvA = 1 line.
+    let begin_indents: Vec<usize> = s
+        .lines()
+        .filter(|l| l.contains("Begin CmpMap"))
+        .map(|l| l.len() - l.trim_start().len())
+        .collect();
+    let outer_indent = begin_indents[0];
+    let outer_inva = s.lines().any(|l| {
+        let ind = l.len() - l.trim_start().len();
+        ind == outer_indent + 4 && l.trim_start().starts_with("InvA = 1")
+    });
+    assert!(
+        !outer_inva,
+        "outer parallel must not have InvA after canonicalisation:\n{s}"
+    );
+    let inner_inva = s.lines().filter(|l| l.contains("InvA = 1")).count();
+    let inner_invb = s.lines().filter(|l| l.contains("InvB = 1")).count();
+    assert!(
+        inner_inva >= 1 && inner_invb >= 1,
+        "inner CmpMap must carry InvA=1 and InvB=1:\n{s}"
+    );
+    // No Invert line on any CmpMap in the canonicalised output.
+    let invert_lines: Vec<&str> = s.lines().filter(|l| l.contains("Invert = 1")).collect();
+    assert!(
+        invert_lines.is_empty(),
+        "no inner CmpMap should carry Invert=1 after canonicalisation:\n{s}"
+    );
+}

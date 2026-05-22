@@ -2413,14 +2413,31 @@ pub(crate) fn reconstruct(list: Vec<(DynMapping, bool)>, series: bool) -> AstRes
     let mut iter = list.into_iter();
     let (mut acc, acc_inv) = iter.next().expect("reconstruct called with empty list");
 
-    // Apply the stored inversion flag.
+    // Helper: apply the stored inversion flag. For a CmpMap child of a
+    // parallel reconstruct, push the inversion into its recorded
+    // structure (flip inv_a/inv_b, swap children for series) so the
+    // serialised form matches the C reference: outer parallel emits no
+    // InvA/InvB, the child CmpMap absorbs the inversion via its own
+    // flags. Mathematically equivalent to plain `invert()`. Mirrors C
+    // cmpmap.c MapMerge, which emits the inversion on the inner child
+    // rather than the outer parallel parent.
+    let apply_inversion = |m: &mut DynMapping| {
+        if !series {
+            if let Some(cm) = m.as_any_mut().downcast_mut::<CmpMap>() {
+                cm.invert_into_structure();
+                return;
+            }
+        }
+        m.invert();
+    };
+
     if acc_inv {
-        acc.invert();
+        apply_inversion(&mut acc);
     }
 
     for (mut m, m_inv) in iter {
         if m_inv {
-            m.invert();
+            apply_inversion(&mut m);
         }
         acc = Box::new(CmpMap::new(acc, m, kind)?);
     }

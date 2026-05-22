@@ -286,6 +286,16 @@ impl dyn Mapping {
                 result = result.simplified()?;
             }
         }
+        // Canonicalise nested CmpMaps with inverted=true so that no
+        // CmpMap in the tree carries a redundant Invert/InvA/InvB pair
+        // (the runtime XOR cancels them but the C reference emits a
+        // single canonical form). The pass preserves runtime behaviour.
+        // Same as_any caveat as the SwitchMap block above: must go
+        // through `as_mut` on the Box first to reach the inner dyn.
+        let rm: &mut dyn Mapping = result.as_mut();
+        if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.canonicalize_inverted_cmpmaps();
+        }
         result.set_do_not_simplify(true);
         Ok(result)
     }
