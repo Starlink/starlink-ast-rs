@@ -264,3 +264,12 @@ nullregion_parallel_merge | simplify_fixtures/nullregion_parallel_merge.map | si
 pointlist_self_simplify | simplify_fixtures/pointlist_self_simplify.map | simplify_fixtures/pointlist_self_simplify.simp |
 normmap_frame_simplifies | simplify_fixtures/normmap_frame_simplifies.map | simplify_fixtures/normmap_frame_simplifies.simp |
 selectormap_region_simplify | simplify_fixtures/selectormap_region_simplify.map | simplify_fixtures/selectormap_region_simplify.simp |
+
+# Wcsconv-derived integration fixture. Captures the pixel->IWC mapping the
+# FitsChan write path simplifies for the gappt_fits-wcs test. Both Rust and
+# C library astSimplify preserve the same ~1e-16 residue inherited from
+# build_pixel_to_iwc — the residue is mathematically real, not a simplifier
+# gap. Verifies our simplify produces transform-equivalent output to C.
+# skip_string_compare=yes because Rust and C lay out the resulting CmpMap
+# differently (both equivalent under astequal()).
+wcsconv_gappt_iwc_residue | simplify_fixtures/wcsconv_gappt_iwc_residue.map | simplify_fixtures/wcsconv_gappt_iwc_residue.simp | yes
