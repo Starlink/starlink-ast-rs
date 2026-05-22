@@ -210,20 +210,25 @@ mis-handling and turn it into a tier-2 simplify fixture:
    The `.simp` file is the canonical post-simplification
    serialisation. Commit both `.map` and `.simp` together with
    a commit message naming the wcsconv case they came from.
-3. **Add a regression test** in
-   `crates/ast-core/tests/test_simplify_*.rs` (whichever file
-   already houses similar fixture tests, alongside
-   `cmpmap_nested_inverse_cancel`). The test loads `.map`,
-   calls `Mapping::simplify`, serialises the result, and
-   compares against `.simp` — both as a string-equality check
-   (round-trip parity) and as a transform-equivalence check.
+3. **Wire it into the manifest.** Add an entry to
+   `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`:
+   ```
+   <name> | simplify_fixtures/<name>.map | simplify_fixtures/<name>.simp |
+   ```
+   The existing manifest-driven harness picks it up
+   automatically — no new Rust test code needed. Place the
+   `.map` and `.simp` files under
+   `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`
+   alongside the existing focused-rule fixtures
+   (`unit_series_elision`, `zoom_series_merge`, etc).
 4. **Develop K against the fixtures.** The tier-2 plan for K
    iterates the simplifier until every captured fixture
    passes; this stays out of the FitsChan code path entirely
    and is independently bisectable.
 
-This is the same pattern as the existing
-`cmpmap_nested_inverse_cancel.{map,simp}` (commit `768b6e9`);
+This is the same pattern as the existing focused-rule
+fixtures under `simplify_fixtures/` (and the integration
+fixture `cmpmap_nested_inverse_cancel` from commit `768b6e9`);
 K extends the fixture set rather than introducing a new
 mechanism. Expected new fixtures, one per category-F wcsconv
 case (names indicative): `gappt_iwc_residue.{map,simp}`,
