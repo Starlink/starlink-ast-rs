@@ -1766,19 +1766,11 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
             outperm_new[j] = idx as i64 + 1;
         }
     } else {
-        // Second component outputs are constants — use the transformed
-        // constants (qb) from component B. Matches C cmpmap.c:2003-2006.
-        for idx in 0..nout_b {
-            let j = npout_new - nout_b + idx;
-            let const_idx = constants_new.len();
-            let val = qb
-                .as_ref()
-                .and_then(|v| v.get(idx).copied())
-                .unwrap_or(BAD_VALUE);
-            constants_new.push(val);
-            outperm_new[j] = -((const_idx + 1) as i64);
-        }
-        // Inputs from the UnitMap portion.
+        // bconstants. C cmpmap.c:1985-2007: push the inperm-side
+        // constants FIRST (referencing positions 0..(npin - nin_b) of
+        // the new PermMap's inputs), THEN the outperm-side transformed
+        // constants (qb). The C ordering determines the resulting
+        // Con1/Con2/... numbering.
         for idx in 0..(npin - nin_b) {
             let src = eff_inperm[idx];
             if src < 0 {
@@ -1793,6 +1785,16 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
                 inperm_new[idx] = src;
             }
         }
+        for idx in 0..nout_b {
+            let j = npout_new - nout_b + idx;
+            let const_idx = constants_new.len();
+            let val = qb
+                .as_ref()
+                .and_then(|v| v.get(idx).copied())
+                .unwrap_or(BAD_VALUE);
+            constants_new.push(val);
+            outperm_new[j] = -((const_idx + 1) as i64);
+        }
     }
 
     if !aconstants {
@@ -1804,17 +1806,10 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
             outperm_new[idx] = j as i64 + 1;
         }
     } else {
-        // First component outputs are constants — use the transformed
-        // constants (qa) from component A. Matches C cmpmap.c:2037-2039.
-        for idx in 0..nout_a {
-            let const_idx = constants_new.len();
-            let val = qa
-                .as_ref()
-                .and_then(|v| v.get(idx).copied())
-                .unwrap_or(BAD_VALUE);
-            constants_new.push(val);
-            outperm_new[idx] = -((const_idx + 1) as i64);
-        }
+        // aconstants. C cmpmap.c:2019-2041: push the inperm-side
+        // constants FIRST (positions nout_b..npin_new), THEN the
+        // outperm-side transformed constants (qa). The C ordering
+        // determines the resulting Con1/Con2/... numbering.
         for idx in nout_b..npin_new {
             let src_idx = idx - nout_b + nin_b;
             if src_idx < eff_inperm.len() {
@@ -1832,23 +1827,50 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
                 }
             }
         }
+        for idx in 0..nout_a {
+            let const_idx = constants_new.len();
+            let val = qa
+                .as_ref()
+                .and_then(|v| v.get(idx).copied())
+                .unwrap_or(BAD_VALUE);
+            constants_new.push(val);
+            outperm_new[idx] = -((const_idx + 1) as i64);
+        }
     }
 
-    // Build the new CmpMap with swapped component order.
-    let Ok(comp_b) = par_list[1].0.simplified() else {
-        return false;
+    // Build the new CmpMap with swapped component order. When
+    // `aconstants` (resp. `bconstants`) is true, component A's (resp.
+    // B's) inputs were absorbed into the new PermMap as transformed
+    // constants. The component is no longer in the chain and must be
+    // replaced by a UnitMap of its output dimension. Mirrors C
+    // permmap.c MapMerge "Swapped CmpMap" branch, where each consumed
+    // component is reduced to a UnitMap before assembling the new
+    // parallel CmpMap.
+    let nout_a = effective_nout(par_list[0].0.as_ref(), par_list[0].1);
+    let nout_b = effective_nout(par_list[1].0.as_ref(), par_list[1].1);
+
+    let new_a: DynMapping = if aconstants {
+        Box::new(UnitMap::new(nout_a))
+    } else {
+        let Ok(mut a) = par_list[0].0.simplified() else {
+            return false;
+        };
+        if par_list[0].1 {
+            a.invert();
+        }
+        a
     };
-    let Ok(comp_a) = par_list[0].0.simplified() else {
-        return false;
+    let new_b: DynMapping = if bconstants {
+        Box::new(UnitMap::new(nout_b))
+    } else {
+        let Ok(mut b) = par_list[1].0.simplified() else {
+            return false;
+        };
+        if par_list[1].1 {
+            b.invert();
+        }
+        b
     };
-    let mut new_b = comp_b;
-    let mut new_a = comp_a;
-    if par_list[1].1 {
-        new_b.invert();
-    }
-    if par_list[0].1 {
-        new_a.invert();
-    }
 
     let Ok(new_cm) = CmpMap::new(new_b, new_a, Composition::Parallel) else {
         return false;
