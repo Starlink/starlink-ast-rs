@@ -35,3 +35,18 @@ fn polco_loads() {
     // Just verify it loads without error. Identity / value checks are out
     // of scope for the encoding-decoder test.
 }
+
+#[test]
+fn polco2_loads() {
+    let _obj = read_fixture("polco2.head");
+}
+
+#[test]
+fn specflux_loads() {
+    let _obj = read_fixture("specflux.head");
+}
+
+#[test]
+fn timeplot_loads() {
+    let _obj = read_fixture("timeplot.head");
+}
