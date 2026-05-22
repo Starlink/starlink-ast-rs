@@ -188,6 +188,54 @@ Once it lands:
 - The `cmpmap_nested_inverse_cancel` fixture's expected-failure
   marker gets removed.
 
+#### K — fixture-driven workflow
+
+The simplifier work must be testable in isolation, with no
+FitsChan code in the loop. For each failing wcsconv case in
+category F, capture the exact mapping that the simplifier is
+mis-handling and turn it into a tier-2 simplify fixture:
+
+1. **Capture the input mapping.** From a diagnostic test, run
+   the wcsconv path up to (but not including) the simplifier
+   call, then `to_native_string` the mapping that's about to
+   be simplified. Write it to
+   `crates/ast-core/tests/fixtures/simplify/<name>.map`.
+2. **Generate the C oracle reference.** Run the C library's
+   `simplify` binary on the captured `.map`:
+   ```sh
+   DYLD_LIBRARY_PATH=reference/starlink-ast/build-ast \
+     reference/starlink-ast/build-ast/ast_tester/simplify \
+     fixtures/simplify/<name>.map fixtures/simplify/<name>.simp
+   ```
+   The `.simp` file is the canonical post-simplification
+   serialisation. Commit both `.map` and `.simp` together with
+   a commit message naming the wcsconv case they came from.
+3. **Add a regression test** in
+   `crates/ast-core/tests/test_simplify_*.rs` (whichever file
+   already houses similar fixture tests, alongside
+   `cmpmap_nested_inverse_cancel`). The test loads `.map`,
+   calls `Mapping::simplify`, serialises the result, and
+   compares against `.simp` — both as a string-equality check
+   (round-trip parity) and as a transform-equivalence check.
+4. **Develop K against the fixtures.** The tier-2 plan for K
+   iterates the simplifier until every captured fixture
+   passes; this stays out of the FitsChan code path entirely
+   and is independently bisectable.
+
+This is the same pattern as the existing
+`cmpmap_nested_inverse_cancel.{map,simp}` (commit `768b6e9`);
+K extends the fixture set rather than introducing a new
+mechanism. Expected new fixtures, one per category-F wcsconv
+case (names indicative): `gappt_iwc_residue.{map,simp}`,
+`ukirt_dtai_iwc_residue.{map,simp}`,
+`galactic_tan_iraf_iwc_residue.{map,simp}`,
+`sin_plain_iraf_iwc_residue.{map,simp}`,
+`fk4_aips_iraf_iwc_residue.{map,simp}`,
+`fits_pc_altgal_iwc_residue.{map,simp}`,
+`pixel_shear_aipspp_iwc_residue.{map,simp}`. If multiple
+cases reduce to the same minimal mapping, dedupe — one
+fixture per distinct simplifier failure mode is enough.
+
 ## Estimated cumulative pass-count
 
 | After tier | Passing |
