@@ -834,6 +834,59 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
     Ok(())
 }
 
+/// Apply the C library's CRVAL near-zero snap: if `|crval[i]|` is below
+/// `sqrt(DBL_EPSILON · cdelt²[i])` where `cdelt²[i] = Σ_j CD[i][j]²`,
+/// set `crval[i]` to 0.
+///
+/// Mirrors `fitschan.c::WcsFromStore` lines 2939-2958. Threshold is
+/// scale-aware: for CD scaled at 1e-3, threshold ≈ 1.5e-11; for CD at
+/// 1.0, threshold ≈ 1.5e-8. This catches FP residue while preserving
+/// physically-meaningful small values.
+#[allow(dead_code)]
+fn snap_crval_residue(crval: &[f64], cd: &ndarray::Array2<f64>) -> Vec<f64> {
+    let naxis = crval.len();
+    let mut out = crval.to_vec();
+    for i in 0..naxis {
+        let cdelt2: f64 = (0..naxis).map(|j| cd[[i, j]] * cd[[i, j]]).sum();
+        let threshold = (f64::EPSILON * cdelt2).sqrt();
+        if out[i].abs() < threshold {
+            out[i] = 0.0;
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snap_crval_near_zero_to_exact_zero() {
+        let cd = ndarray::array![[1e-3, 0.0], [0.0, 1e-3]];
+        let crval = vec![1e-15, 5.0];
+        let snapped = snap_crval_residue(&crval, &cd);
+        // 1e-15 with cdelt² = 1e-6: threshold = sqrt(eps * 1e-6) ≈ 1.5e-11.
+        // 1e-15 < 1.5e-11 so should snap to 0.
+        assert_eq!(snapped[0], 0.0);
+        // 5.0 is way above any threshold; stays.
+        assert_eq!(snapped[1], 5.0);
+    }
+
+    #[test]
+    fn snap_crval_preserves_real_small_values() {
+        let cd = ndarray::array![[1e-3, 0.0], [0.0, 1e-3]];
+        let crval = vec![1e-9, 5.0];
+        // 1e-9 is above threshold (1.5e-11) so should be preserved.
+        let snapped = snap_crval_residue(&crval, &cd);
+        assert_eq!(snapped[0], 1e-9);
+        assert_eq!(snapped[1], 5.0);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostic capture tests for fixture generation
 // ---------------------------------------------------------------------------
