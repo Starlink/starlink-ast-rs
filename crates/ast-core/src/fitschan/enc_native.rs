@@ -9,7 +9,7 @@
 
 use super::card_list::CardList;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::fitschan::card::FitsValue;
+use crate::fitschan::card::{FitsCard, FitsValue};
 
 /// Characters used in the 2-character sequence suffix on every NATIVE
 /// keyword. Matches `SEQ_CHARS` in `fitschan.c` (line 1377).
@@ -167,7 +167,10 @@ fn format_native_float(x: f64) -> String {
 #[allow(dead_code)]
 pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
     let mut out = String::new();
-    for card in cards.iter() {
+    let card_vec: Vec<&FitsCard> = cards.iter().collect();
+    let mut i = 0;
+    while i < card_vec.len() {
+        let card = card_vec[i];
         let kind = classify(&card.keyword);
         match kind {
             KeywordKind::Begin => {
@@ -188,27 +191,33 @@ pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
                 out.push_str(&class);
                 out.push('\n');
             }
-            KeywordKind::Data(name) => match format_value(&card.value) {
-                Some(FormattedValue::Scalar(text)) => {
-                    out.push_str("    ");
-                    out.push_str(&name);
-                    out.push_str(" = ");
-                    out.push_str(&text);
-                    out.push('\n');
+            KeywordKind::Data(name) => {
+                let (formatted, advance) =
+                    format_value_with_continues(&card.value, &card_vec[i + 1..])?;
+                match formatted {
+                    Some(FormattedValue::Scalar(text)) => {
+                        out.push_str("    ");
+                        out.push_str(&name);
+                        out.push_str(" = ");
+                        out.push_str(&text);
+                        out.push('\n');
+                    }
+                    Some(FormattedValue::ObjectMarker) => {
+                        out.push_str("    ");
+                        out.push_str(&name);
+                        out.push_str(" =\n");
+                    }
+                    None => {
+                        // Non-scalar Data card; skip silently. C library gates
+                        // Data emission on AST__STRING|AST__INT|AST__FLOAT
+                        // (fitschan.c::FindAst line 17932).
+                    }
                 }
-                Some(FormattedValue::ObjectMarker) => {
-                    out.push_str("    ");
-                    out.push_str(&name);
-                    out.push_str(" =\n");
-                }
-                None => {
-                    // Non-scalar value type — skip silently. Matches C library
-                    // behaviour in fitschan.c::FindAst line 17932 where the
-                    // Data branch is gated on string/int/float value types.
-                }
-            },
-            KeywordKind::Other => continue,
+                i += advance;
+            }
+            KeywordKind::Other => {}
         }
+        i += 1;
     }
     Ok(out)
 }
@@ -221,6 +230,59 @@ fn expect_class_name(value: &FitsValue, keyword: &str) -> AstResult<String> {
             format!("NATIVE keyword '{keyword}' must have string value, got {value:?}"),
         )),
     }
+}
+
+/// Format a card value, consuming any trailing CONTINUE cards if the value
+/// is a string ending in `&`. Returns the formatted value plus the number
+/// of additional CONTINUE cards consumed.
+///
+/// Mirrors the C library logic at `fitschan.c:17979-18024`.
+fn format_value_with_continues(
+    value: &FitsValue,
+    rest: &[&FitsCard],
+) -> AstResult<(Option<FormattedValue>, usize)> {
+    let FitsValue::String(s) = value else {
+        return Ok((format_value(value), 0));
+    };
+    let trimmed = s.trim_end();
+    if trimmed.is_empty() {
+        return Ok((Some(FormattedValue::ObjectMarker), 0));
+    }
+    if !trimmed.ends_with('&') {
+        return Ok((format_value(value), 0));
+    }
+    // Strip the trailing &, then walk CONTINUE cards.
+    let mut joined = trimmed.trim_end_matches('&').to_string();
+    let mut consumed = 0usize;
+    for next in rest {
+        if next.keyword != "CONTINUE" {
+            break;
+        }
+        consumed += 1;
+        // CONTINUE cards parse with value = FitsValue::Continue(text).
+        let seg = match &next.value {
+            FitsValue::Continue(s) => s,
+            FitsValue::String(s) => s,
+            _ => {
+                return Err(AstError::new(
+                    ErrorCode::Rderr,
+                    "CONTINUE card without string value",
+                ));
+            }
+        };
+        let seg_trimmed = seg.trim_end();
+        let next_continues = seg_trimmed.ends_with('&');
+        let seg_text = seg_trimmed.trim_end_matches('&');
+        joined.push_str(seg_text);
+        if !next_continues {
+            break;
+        }
+    }
+    let escaped = joined.replace('"', "\"\"");
+    Ok((
+        Some(FormattedValue::Scalar(format!("\"{escaped}\""))),
+        consumed,
+    ))
 }
 
 #[cfg(test)]
@@ -431,6 +493,23 @@ END
         assert!(
             after.trim_start().starts_with("Begin Frame"),
             "expected child Begin after object marker, got: {after}"
+        );
+    }
+
+    #[test]
+    fn cards_to_native_text_joins_continue_cards() {
+        let header = "\
+BEGAST_A= 'Frame   '
+TITLE_A = 'first part &'        / first part
+CONTINUE  '   second part'      / continued
+ENDAST_A= 'Frame   '
+END
+";
+        let cards = cards_from(header);
+        let text = cards_to_native_text(&cards).expect("translates");
+        assert!(
+            text.contains("title = \"first part    second part\""),
+            "expected joined string, got: {text}"
         );
     }
 
