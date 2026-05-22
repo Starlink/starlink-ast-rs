@@ -10,6 +10,7 @@ pub(crate) mod enc_aips;
 pub(crate) mod enc_class;
 pub(crate) mod enc_dss;
 pub(crate) mod enc_iraf;
+pub(crate) mod enc_native;
 pub(crate) mod enc_pc;
 pub(crate) mod fits_store;
 pub mod format;
