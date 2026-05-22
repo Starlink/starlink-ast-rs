@@ -486,37 +486,18 @@ fn batch_10k_points() {
 // ---- Native-PointSet layout: agreement with C AST encoding ----
 //
 // The C AST `pointset.c::Dump` emits `X1..X{npoint*ncoord}` keys with
-// outer iteration over `point` and inner iteration over `coord`. So
-// for a PointSet with `npoint=2` and `ncoord=2`, the encoding is:
-//   X1 = (point 0, coord 0)
-//   X2 = (point 0, coord 1)
-//   X3 = (point 1, coord 0)
-//   X4 = (point 1, coord 1)
+// outer iteration over `point` and inner iteration over `coord`. For
+// `npoint=2 ncoord=2` the encoding is:
+//   X1 = (point 0, coord 0)    X2 = (point 0, coord 1)
+//   X3 = (point 1, coord 0)    X4 = (point 1, coord 1)
 //
-// Our `serial::write_pointset_node` and `read_pointset_node` swap this
-// iteration order (coord-outer, pt-inner). Reader and writer remain
-// inverse-pairs of each other, so round-tripping data through our
-// code preserves bytes; but builder-built data serialised by us
-// disagrees with C-emitted bytes for any non-square (npoint != ncoord)
-// or non-symmetric data, and C-emitted .map files parsed by us
-// produce data with `[pt][coord]` indices effectively transposed.
-//
-// The two tests below pin the behaviour expected from a fix and are
-// `#[ignore]`d. Once the loop order in `write_pointset_node` /
-// `read_pointset_node` is swapped to match C, both tests pass — and
-// the simplify-regression fixtures' downstream consumers
-// (`Interval::simplified` Box reclassification, `BoxRegion::try_merge`,
-// `Interval::try_merge`) will need to read points back as
-// `[pt][coord]` rather than the transposed `[axis][bound]` layout
-// used today. See commits 59437d0, b8da8cb, 17ede67 for those
-// downstream sites.
+// `write_pointset_node` and `read_pointset_node` use this same order;
+// the two tests below pin agreement with the C encoding (so a
+// round-trip C → us → C is byte-equivalent).
 
-/// Builder-built Interval with asymmetric 2-D bounds should serialise
-/// to a native string whose X-key sequence matches C's iteration
-/// order (point-outer, coord-inner). Currently fails: our writer
-/// emits column-major bytes (coord-outer, pt-inner).
+/// Builder-built Interval with asymmetric 2-D bounds serialises to a
+/// native string whose X-key sequence matches C's iteration order.
 #[test]
-#[ignore = "exposes pointset_layout bug (writer disagrees with C)"]
 fn builder_serialised_pointset_uses_c_layout() {
     use ast_core::{AnyObject, to_native_string};
 
@@ -545,12 +526,10 @@ fn builder_serialised_pointset_uses_c_layout() {
 }
 
 /// Hand-crafted C-format native string for a 2-D Interval with
-/// asymmetric bounds should parse such that `effective_bounds()`
-/// returns the original lbnd / ubnd. Currently fails: our reader
-/// transposes the X-keys, so `effective_bounds` reports degenerate
-/// bounds for non-symmetric input.
+/// asymmetric bounds parses such that the public-API `transform`
+/// reports the source bounds correctly (i.e. points within the
+/// claimed [3,7] x [4,8] region pass through, not BAD).
 #[test]
-#[ignore = "exposes pointset_layout bug (reader disagrees with C)"]
 fn parsed_c_format_pointset_preserves_bounds() {
     use ast_core::{AnyObject, from_native_string};
 

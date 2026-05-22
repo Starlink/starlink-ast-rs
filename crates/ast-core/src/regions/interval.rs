@@ -615,44 +615,31 @@ impl Mapping for Interval {
         // base-to-current remap; mirror that ordering. Negated and
         // not-closed Intervals stay as Intervals — Box's contract is a
         // closed, non-negated axis-aligned region.
-        // The defining points layout matches what the C native
-        // serialiser emits: `points[i]` holds axis `i`'s two bound
-        // values [lower, upper] (the same shape that
-        // `read_pointset_node` produces from C's `X1..` keys, using
-        // C's `ptr[coord][point]` storage convention). For this
-        // reclassification we therefore read lb[i] = points[i][0],
-        // ub[i] = points[i][1].
-        let naxes = self.data.points.len();
-        if naxes == 0 || self.data.points.iter().any(|p| p.len() < 2) {
-            // Defensive: should not happen for a well-formed Interval.
-        } else {
-            let mut lb = Vec::with_capacity(naxes);
-            let mut ub = Vec::with_capacity(naxes);
-            for i in 0..naxes {
-                lb.push(self.data.points[i][0]);
-                ub.push(self.data.points[i][1]);
+        let lbnd = &self.data.points[0];
+        let ubnd = &self.data.points[1];
+        let all_finite = lbnd.iter().chain(ubnd.iter()).all(|&v| !is_bad(v));
+        let well_ordered = lbnd.iter().zip(ubnd.iter()).all(|(&l, &u)| l <= u);
+        if all_finite && well_ordered && !self.data.negated && self.data.closed {
+            // Box stores defining points as [centre, corner] (point 0 =
+            // centre, point 1 = corner). Mirrors C box.c astBox
+            // construction from lower/upper bounds.
+            let centre: Vec<f64> = lbnd
+                .iter()
+                .zip(ubnd.iter())
+                .map(|(&l, &u)| 0.5 * (l + u))
+                .collect();
+            let corner = ubnd.clone();
+            let frameset = FrameSet::new(self.data.frameset.current().snapshot());
+            let mut data = RegionData::new(frameset, vec![centre, corner]);
+            data.adaptive = self.data.adaptive;
+            data.mesh_size = self.data.mesh_size;
+            data.fill_factor = self.data.fill_factor;
+            data.closed = true;
+            data.closed_set = true;
+            if let Some(unc) = self.data.uncertainty.as_ref() {
+                data.uncertainty = Some(unc.clone());
             }
-            let all_finite = lb.iter().chain(ub.iter()).all(|&v| !is_bad(v));
-            let well_ordered = lb.iter().zip(ub.iter()).all(|(&l, &u)| l <= u);
-            if all_finite && well_ordered && !self.data.negated && self.data.closed {
-                // Box stores points in the same layout: points[i] =
-                // [centre_axis_i, corner_axis_i]. Mirrors C box.c
-                // astBox construction from lower/upper bounds.
-                let new_points: Vec<Vec<f64>> = (0..naxes)
-                    .map(|i| vec![0.5 * (lb[i] + ub[i]), ub[i]])
-                    .collect();
-                let frameset = FrameSet::new(self.data.frameset.current().snapshot());
-                let mut data = RegionData::new(frameset, new_points);
-                data.adaptive = self.data.adaptive;
-                data.mesh_size = self.data.mesh_size;
-                data.fill_factor = self.data.fill_factor;
-                data.closed = true;
-                data.closed_set = true;
-                if let Some(unc) = self.data.uncertainty.as_ref() {
-                    data.uncertainty = Some(unc.clone());
-                }
-                return Ok(Box::new(super::BoxRegion { data }));
-            }
+            return Ok(Box::new(super::BoxRegion { data }));
         }
 
         let map = self
@@ -714,23 +701,15 @@ impl Mapping for Interval {
         let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
         let frameset = FrameSet::new(Box::new(cmp_frame) as crate::frames::DynFrame);
 
-        // Concatenate per-axis bounds. For a 1-D Interval the layout
-        // is unambiguous: data.points = [[lb], [ub]]; extract
-        // [lb_axis_0, ub_axis_0] = [data.points[0][0],
-        // data.points[1][0]]. The merged 2-D Interval is stored in
-        // the same [axis][lb,ub] convention used elsewhere in this
-        // module so that Interval::simplified()'s Box reclassification
-        // path applies uniformly to both parsed and merged data.
-        let nin1 = self.nin();
-        let nin2 = other.nin();
-        let mut new_points: Vec<Vec<f64>> = Vec::with_capacity(nin1 + nin2);
-        for i in 0..nin1 {
-            new_points.push(vec![self.data.points[0][i], self.data.points[1][i]]);
-        }
-        for i in 0..nin2 {
-            new_points.push(vec![other.data.points[0][i], other.data.points[1][i]]);
-        }
-        let mut data = RegionData::new(frameset, new_points);
+        // Concatenate per-axis bounds. Both inputs store data.points =
+        // [lbnd, ubnd] (point 0 = lower bounds, point 1 = upper
+        // bounds). The merged Interval has the same layout with each
+        // point's axis values appended.
+        let mut lbnd = self.data.points[0].clone();
+        lbnd.extend(other.data.points[0].iter().copied());
+        let mut ubnd = self.data.points[1].clone();
+        ubnd.extend(other.data.points[1].iter().copied());
+        let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
         data.adaptive = self.data.adaptive && other.data.adaptive;
         data.closed = self.data.closed && other.data.closed;
         data.closed_set = self.data.closed_set || other.data.closed_set;

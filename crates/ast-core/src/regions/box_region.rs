@@ -725,24 +725,15 @@ impl Mapping for BoxRegion {
         let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
         let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
 
-        // Concatenate defining points axis-wise. For both inputs the
-        // `data.points` are stored in the layout produced by
-        // serial::read_pointset_node — `points[axis] = [centre_axis,
-        // corner_axis]` (1-D entries in this case). Append other's
-        // axes after self's axes; the writer's column-major iteration
-        // then emits the combined Box's PointSet in the same form
-        // the C reference uses for box.c on a CmpFrame.
-        let nin1 = self.nin();
-        let nin2 = other.nin();
-        let mut new_points: Vec<Vec<f64>> = Vec::with_capacity(nin1 + nin2);
-        for i in 0..nin1 {
-            new_points.push(vec![self.data.points[0][i], self.data.points[1][i]]);
-        }
-        for i in 0..nin2 {
-            new_points.push(vec![other.data.points[0][i], other.data.points[1][i]]);
-        }
-
-        let mut data = RegionData::new(frameset, new_points);
+        // Concatenate defining points axis-wise. Both inputs store
+        // data.points = [centre, corner] (point 0 = centre, point 1 =
+        // corner). The merged Box has the same layout, with each
+        // point's axis values appended.
+        let mut centre = self.data.points[0].clone();
+        centre.extend(other.data.points[0].iter().copied());
+        let mut corner = self.data.points[1].clone();
+        corner.extend(other.data.points[1].iter().copied());
+        let mut data = RegionData::new(frameset, vec![centre, corner]);
         // C box.c MapMerge: combine per-component flags. Both inputs
         // closed → result closed (AND). Either negated → result
         // negated (OR). adaptive: AND.

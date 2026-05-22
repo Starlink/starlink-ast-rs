@@ -418,19 +418,20 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
 
 /// Write a PointSet as a serialised "PointSet" object node.
 ///
-/// Our Rust PointSet is row-major (npoint × ncoord), but the C native format
-/// stores values column-major: D1..D{npoint} are axis 1 values,
-/// D{npoint+1}..D{2*npoint} are axis 2 values, etc.
+/// Iteration order matches C `pointset.c::Dump`: outer loop over
+/// points, inner loop over coords. So for `npoint=2 ncoord=2` the
+/// emitted keys are X1=(pt 0, coord 0), X2=(pt 0, coord 1), X3=(pt 1,
+/// coord 0), X4=(pt 1, coord 1) — i.e. each point's coordinates are
+/// contiguous in the X-key sequence. This is the byte layout `libast`
+/// produces and consumes; matching it is required for cross-
+/// implementation interop, not just round-trip fidelity within our
+/// own writer/reader pair.
 fn write_pointset_node(points: &[Vec<f64>]) -> Node {
     let npoint = points.len();
     let ncoord = if npoint > 0 { points[0].len() } else { 0 };
 
     let mut node = Node::new("PointSet");
     node.class_comment = Some("Container for a set of points".to_string());
-    // C library `pointset.c::Dump` writes Npoint before Ncoord, with the
-    // "Number of coordinates per point" wording for Ncoord. The
-    // per-element keys are `X1`, `X2`, ... (column-major) and the first
-    // carries the "Coordinate values..." comment.
     node.push_int(
         "Npoint",
         npoint as i64,
@@ -444,8 +445,8 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
 
     let mut idx = 1;
     #[allow(clippy::needless_range_loop)]
-    for coord in 0..ncoord {
-        for pt in 0..npoint {
+    for pt in 0..npoint {
+        for coord in 0..ncoord {
             let key = format!("X{idx}");
             let comment = if idx == 1 {
                 Some("Coordinate values...".to_string())
@@ -462,8 +463,9 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
 
 /// Read a PointSet from a serialised "PointSet" node.
 ///
-/// Returns `Vec<Vec<f64>>` where `result[i]` is point i (length ncoord).
-/// The C native format stores column-major, so we transpose on read.
+/// Returns `Vec<Vec<f64>>` where `result[i]` is point `i` (length
+/// `ncoord`). Iteration matches C `pointset.c::Dump` (point-outer,
+/// coord-inner) — see `write_pointset_node` for the byte layout.
 fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
     let ncoord = node.get_int("Ncoord", 0) as usize;
     let npoint = node.get_int("Npoint", 0) as usize;
@@ -474,12 +476,10 @@ fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
 
     let mut points = vec![vec![0.0f64; ncoord]; npoint];
 
-    // Read column-major: X1..X{npoint} are axis 0, etc. (matches C's
-    // `pointset.c::Dump` which uses the `X{i}` key prefix).
     let mut idx = 1;
     #[allow(clippy::needless_range_loop)]
-    for coord in 0..ncoord {
-        for pt in 0..npoint {
+    for pt in 0..npoint {
+        for coord in 0..ncoord {
             points[pt][coord] = node.get_double(&format!("X{idx}"), 0.0);
             idx += 1;
         }

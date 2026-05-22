@@ -178,6 +178,11 @@ neg_normmap_parallel    | simplify_fixtures/neg_normmap_parallel.map    | simpli
 neg_perm_no_merge       | simplify_fixtures/neg_perm_no_merge.map       | simplify_fixtures/neg_perm_no_merge.map       | yes
 neg_win_swap_no_simplify | simplify_fixtures/neg_win_swap_no_simplify.map | simplify_fixtures/neg_win_swap_no_simplify.map | yes
 neg_matrix_perm_not_bidirectional | simplify_fixtures/neg_matrix_perm_not_bidirectional.map | simplify_fixtures/neg_matrix_perm_not_bidirectional.map | yes
+# Asymmetric 2-D PointSet — exercises C-compatible point-major X-key
+# encoding (X1=centre[0], X2=centre[1], X3=corner[0], X4=corner[1]).
+# Any layout-iteration bug in serial::{read,write}_pointset_node would
+# corrupt the off-diagonal entries (X2 and X3) here.
+neg_box_asymmetric_2d   | simplify_fixtures/neg_box_asymmetric_2d.map   | simplify_fixtures/neg_box_asymmetric_2d.map   | yes
 neg_ratemap_nonratemap_neighbour | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | yes
 neg_ratemap_different_inner | simplify_fixtures/neg_ratemap_different_inner.map | simplify_fixtures/neg_ratemap_different_inner.map | yes
 neg_sph_polarlong_mismatch | simplify_fixtures/neg_sph_polarlong_mismatch.map | simplify_fixtures/neg_sph_polarlong_mismatch.map | yes
