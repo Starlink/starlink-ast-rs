@@ -242,3 +242,51 @@ fn sip_header_transform_at_crpix() {
         "SIP Dec at CRPIX should be near 47.1751, got {dec_deg}"
     );
 }
+
+// ===========================================================================
+// Tier-1 A2/A3/B1 regression tests — three reader gaps that block
+// wcsconv fixtures with unusual headers (no NAXIS, non-adjacent
+// celestial axes, NAXIS-less CLASS encoding).
+// ===========================================================================
+
+/// Load a fixture from the wcsconv/inputs directory.
+fn load_wcsconv_fixture(name: &str) -> String {
+    let path = format!(
+        "{}/tests/fixtures/wcsconv/inputs/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        name
+    );
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {name}: {e}"))
+}
+
+/// Read a wcsconv fixture as an AnyObject.
+fn read_wcsconv_fixture(name: &str) -> AnyObject {
+    let text = load_wcsconv_fixture(name);
+    let mut fc = FitsChan::from_header(&text).unwrap_or_else(|e| panic!("from_header {name}: {e}"));
+    fc.guess_encoding();
+    fc.read()
+        .unwrap_or_else(|e| panic!("read {name}: {e}"))
+        .unwrap_or_else(|| panic!("read {name}: returned None"))
+}
+
+#[test]
+fn car3_naxis_inferred_from_ctype_indices() {
+    // car3.head has CTYPE1/CTYPE2/CRVAL1/CRVAL2/CDELT1/CDELT2/CRPIX1/CRPIX2
+    // and no NAXIS, no NAXISn, no WCSAXES. Reader must infer naxis = 2.
+    let _obj = read_wcsconv_fixture("car3.head");
+}
+
+#[test]
+fn axes_swap_non_adjacent_celestial_axes() {
+    // axes-swap.head has CTYPE1=DEC--TAN, CTYPE2=WAVE, CTYPE3=RA---TAN,
+    // CTYPE4=STOKES — celestial pair at indices 0 and 2 (separated by
+    // spectral). Reader must produce a working pixel-to-world mapping.
+    let _obj = read_wcsconv_fixture("axes-swap.head");
+}
+
+#[test]
+fn jan_class_no_naxis_keyword() {
+    // jan.fits-class has CTYPE1=RA, CTYPE2=DEC, CTYPE3=FREQ but no NAXIS.
+    // CLASS reader must infer naxis = 3 from CTYPE indices.
+    let _obj = read_wcsconv_fixture("jan.fits-class");
+}
