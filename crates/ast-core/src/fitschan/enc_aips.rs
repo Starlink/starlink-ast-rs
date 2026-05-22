@@ -396,9 +396,12 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
     }
 
-    // LONPOLE, LATPOLE
+    // LONPOLE: only emit when non-default. 180° is the FITS-WCS Paper II
+    // default for zenithal projections; the C library suppresses it.
     if let Some(lonpole) = store.lonpole {
-        cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
+        if lonpole != 180.0 {
+            cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
+        }
     }
     if let Some(latpole) = store.latpole {
         cards.set_float("LATPOLE", latpole, "Native latitude of celestial pole");
@@ -880,14 +883,37 @@ END";
         store.ctype[1] = Some("DEC--TAN".to_string());
         store.cd[0][0] = Some(-0.001);
         store.cd[1][1] = Some(0.001);
+        // 180° is the FITS-WCS default for zenithal projections; suppress it.
         store.lonpole = Some(180.0);
         store.latpole = Some(-30.0);
 
         let mut cards = CardList::new();
         write_to_cards_pp(&store, &mut cards).unwrap();
 
-        assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
+        // Default LONPOLE (180°) must NOT be emitted — matches C library.
+        assert_eq!(cards.get_float("LONPOLE"), None);
+        // Non-default LATPOLE must be emitted.
         assert_eq!(cards.get_float("LATPOLE"), Some(-30.0));
+    }
+
+    #[test]
+    fn write_aipspp_non_default_lonpole_emitted() {
+        // A non-180 LONPOLE is genuinely non-default and must be emitted.
+        let mut store = FitsStore::new(2);
+        store.crpix[0] = Some(256.0);
+        store.crpix[1] = Some(256.0);
+        store.crval[0] = Some(180.0);
+        store.crval[1] = Some(-30.0);
+        store.ctype[0] = Some("RA---TAN".to_string());
+        store.ctype[1] = Some("DEC--TAN".to_string());
+        store.cd[0][0] = Some(-0.001);
+        store.cd[1][1] = Some(0.001);
+        store.lonpole = Some(45.0);
+
+        let mut cards = CardList::new();
+        write_to_cards_pp(&store, &mut cards).unwrap();
+
+        assert_eq!(cards.get_float("LONPOLE"), Some(45.0));
     }
 
     #[test]

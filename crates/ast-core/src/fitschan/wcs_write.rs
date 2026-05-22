@@ -623,8 +623,21 @@ fn populate_celestial(
         }
     }
 
-    // RADESYS.
-    store.radesys = Some(radesys_string(system));
+    // RADESYS: only emit for coordinate systems where RA/DEC axes carry
+    // a reference-frame meaning. Galactic, Supergalactic, Ecliptic, AzEl,
+    // and Unknown don't use RADESYS in FITS (mirrors C library policy in
+    // fitschan.c WcsFromStore).
+    if matches!(
+        system,
+        SkySystem::Icrs
+            | SkySystem::Fk5
+            | SkySystem::Fk4
+            | SkySystem::Fk4NoE
+            | SkySystem::Gappt
+            | SkySystem::J2000
+    ) {
+        store.radesys = Some(radesys_string(system));
+    }
 
     // EQUINOX (as Julian year).
     if system.needs_equinox() {
@@ -769,8 +782,14 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
     if let Some(equinox) = store.equinox {
         cards.set_float("EQUINOX", equinox, "[yr] Epoch of reference equinox");
     }
+    // LONPOLE: only emit when non-default. FITS-WCS Paper II §2.4: the
+    // default φp is 180° for zenithal projections with native fiducial
+    // θ₀ ≥ 0° (TAN/SIN/ZEA/etc.). The C library suppresses the redundant
+    // default value; emitting it would diverge from the canonical output.
     if let Some(lonpole) = store.lonpole {
-        cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
+        if lonpole != 180.0 {
+            cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
+        }
     }
     if let Some(latpole) = store.latpole {
         cards.set_float("LATPOLE", latpole, "Native latitude of celestial pole");
