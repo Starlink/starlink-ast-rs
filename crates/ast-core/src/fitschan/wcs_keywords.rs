@@ -8,6 +8,30 @@ use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+/// Infer the number of WCS axes from the highest-indexed FITS keyword
+/// found in the header.
+///
+/// Scans `NAXIS{n}`, `CTYPE{n}`, `CRVAL{n}`, `CRPIX{n}`, `CDELT{n}` for
+/// `n` in 1..=9 and returns the maximum index seen, or `None` if none
+/// are present. Mirrors the C library's last-resort axis-count guess in
+/// `fitschan.c::AstroSysCelOrder` and related call sites: when no
+/// explicit count is available, the presence of axis-indexed keywords
+/// up to `n` implies at least `n` axes exist.
+pub(crate) fn infer_axis_count_from_indexed_keywords(cards: &CardList) -> Option<usize> {
+    let prefixes = ["NAXIS", "CTYPE", "CRVAL", "CRPIX", "CDELT"];
+    let mut max_n = 0;
+    for n in 1..=9 {
+        for prefix in &prefixes {
+            let key = format!("{prefix}{n}");
+            if cards.find(&key).is_some() {
+                max_n = n;
+                break;
+            }
+        }
+    }
+    if max_n == 0 { None } else { Some(max_n) }
+}
+
 /// Extract FITS-WCS keywords from a [`CardList`] into a [`FitsStore`].
 ///
 /// The returned store contains all WCS keyword values found in the header.
@@ -24,21 +48,12 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList) -> AstResult<FitsStore> {
         (Some(w), _) => w,
         (None, Some(n)) => n,
         (None, None) => {
-            // Fallback: infer from highest-numbered NAXISn keyword.
-            let mut max_n = 0;
-            for i in 1..=9 {
-                let key = format!("NAXIS{i}");
-                if cards.find(&key).is_some() {
-                    max_n = i;
-                }
-            }
-            if max_n == 0 {
-                return Err(AstError::new(
+            infer_axis_count_from_indexed_keywords(cards).ok_or_else(|| {
+                AstError::new(
                     ErrorCode::Bdfts,
-                    "cannot determine number of WCS axes: neither WCSAXES nor NAXIS found",
-                ));
-            }
-            max_n
+                    "cannot determine number of WCS axes: neither WCSAXES, NAXIS, NAXISn, CTYPEn, CRVALn, CRPIXn, nor CDELTn found",
+                )
+            })?
         }
     };
 
@@ -344,6 +359,34 @@ END";
         let cards = cards_from(header);
         let result = extract_wcs_keywords(&cards);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn axis_count_inferred_from_ctype_when_naxis_missing() {
+        let header = "\
+CTYPE1  = 'GLON-CAR'
+CRVAL1  = 1.85e2
+CDELT1  = -1.25e-1
+CRPIX1  = 200.0
+CTYPE2  = 'GLAT-CAR'
+CRVAL2  = -3.5e1
+CDELT2  = 1.25e-1
+CRPIX2  = 200.0
+END
+";
+        let cards = cards_from(header);
+        assert_eq!(infer_axis_count_from_indexed_keywords(&cards), Some(2));
+    }
+
+    #[test]
+    fn axis_count_returns_none_when_no_indexed_keywords() {
+        let header = "\
+SIMPLE  =                    T
+EXTEND  =                    T
+END
+";
+        let cards = cards_from(header);
+        assert_eq!(infer_axis_count_from_indexed_keywords(&cards), None);
     }
 
     #[test]
