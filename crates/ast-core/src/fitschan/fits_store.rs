@@ -40,6 +40,14 @@ pub(crate) struct FitsStore {
     pub latpole: Option<f64>,
     /// Modified Julian Date of observation (MJD-OBS).
     pub mjdobs: Option<f64>,
+    /// Formatted observation date string (DATE-OBS).
+    ///
+    /// Pre-formatted by `populate_celestial` from the (UTC-converted)
+    /// MJD-OBS using the C library's format convention: ISO-8601
+    /// `YYYY-MM-DDTHH:MM:SS.SSS` for MJD ≥ 51179 (1999-01-01), legacy
+    /// `DD/MM/YY` for earlier dates. Mirrors fitschan.c:3594-3608.
+    #[allow(dead_code)]
+    pub dateobs: Option<String>,
     /// Spectral reference frame (SPECSYS).
     pub specsys: Option<String>,
     /// Rest frequency in Hz (RESTFRQ).
@@ -91,6 +99,7 @@ impl FitsStore {
             lonpole: None,
             latpole: None,
             mjdobs: None,
+            dateobs: None,
             specsys: None,
             restfrq: None,
             restwav: None,
