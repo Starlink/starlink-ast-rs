@@ -116,9 +116,11 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
                 Some(FormattedValue::ObjectMarker)
             } else {
                 // Quote the string for native text. Embedded double-quotes
-                // are escaped with a backslash; this matches the convention
-                // accepted by `parse_native`.
-                let escaped = trimmed.replace('\\', "\\\\").replace('"', "\\\"");
+                // are escaped by doubling (`""`), matching the convention
+                // un-escaped by `parse_native::parse_scalar_value`. Backslash
+                // is NOT a metacharacter in this format — it passes through
+                // unchanged.
+                let escaped = trimmed.replace('"', "\"\"");
                 Some(FormattedValue::Scalar(format!("\"{escaped}\"")))
             }
         }
@@ -292,5 +294,30 @@ END
             }
             other => panic!("expected Scalar, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn format_value_string_with_embedded_quotes_roundtrips() {
+        // The encoder doubles literal `"` so the parser's `""` -> `"` un-escape
+        // recovers the original value.
+        let v = FitsValue::String(r#"say "hi""#.to_string());
+        let Some(FormattedValue::Scalar(s)) = format_value(&v) else {
+            panic!("expected Scalar");
+        };
+        // Strip outer quotes, run the parser's inverse transform.
+        assert!(s.starts_with('"') && s.ends_with('"'));
+        let inner = &s[1..s.len() - 1];
+        let decoded = inner.replace("\"\"", "\"");
+        assert_eq!(decoded, r#"say "hi""#);
+    }
+
+    #[test]
+    fn format_value_string_with_backslash_passes_through() {
+        // Backslash is not a metacharacter — it must round-trip as-is.
+        let v = FitsValue::String(r"a\b".to_string());
+        let Some(FormattedValue::Scalar(s)) = format_value(&v) else {
+            panic!("expected Scalar");
+        };
+        assert_eq!(s, r#""a\b""#);
     }
 }
