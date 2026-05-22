@@ -482,3 +482,122 @@ fn batch_10k_points() {
         }
     }
 }
+
+// ---- Native-PointSet layout: agreement with C AST encoding ----
+//
+// The C AST `pointset.c::Dump` emits `X1..X{npoint*ncoord}` keys with
+// outer iteration over `point` and inner iteration over `coord`. So
+// for a PointSet with `npoint=2` and `ncoord=2`, the encoding is:
+//   X1 = (point 0, coord 0)
+//   X2 = (point 0, coord 1)
+//   X3 = (point 1, coord 0)
+//   X4 = (point 1, coord 1)
+//
+// Our `serial::write_pointset_node` and `read_pointset_node` swap this
+// iteration order (coord-outer, pt-inner). Reader and writer remain
+// inverse-pairs of each other, so round-tripping data through our
+// code preserves bytes; but builder-built data serialised by us
+// disagrees with C-emitted bytes for any non-square (npoint != ncoord)
+// or non-symmetric data, and C-emitted .map files parsed by us
+// produce data with `[pt][coord]` indices effectively transposed.
+//
+// The two tests below pin the behaviour expected from a fix and are
+// `#[ignore]`d. Once the loop order in `write_pointset_node` /
+// `read_pointset_node` is swapped to match C, both tests pass — and
+// the simplify-regression fixtures' downstream consumers
+// (`Interval::simplified` Box reclassification, `BoxRegion::try_merge`,
+// `Interval::try_merge`) will need to read points back as
+// `[pt][coord]` rather than the transposed `[axis][bound]` layout
+// used today. See commits 59437d0, b8da8cb, 17ede67 for those
+// downstream sites.
+
+/// Builder-built Interval with asymmetric 2-D bounds should serialise
+/// to a native string whose X-key sequence matches C's iteration
+/// order (point-outer, coord-inner). Currently fails: our writer
+/// emits column-major bytes (coord-outer, pt-inner).
+#[test]
+#[ignore = "exposes pointset_layout bug (writer disagrees with C)"]
+fn builder_serialised_pointset_uses_c_layout() {
+    use ast_core::{AnyObject, to_native_string};
+
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let interval = IntervalBuilder::new(frame, vec![3.0, 4.0], vec![7.0, 8.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let s = to_native_string(&AnyObject::Interval(interval)).unwrap();
+
+    // C convention: lbnd's coords come first (X1=3, X2=4), then ubnd's
+    // coords (X3=7, X4=8). Our writer's transposed iteration emits
+    // X1=3, X2=7, X3=4, X4=8 instead.
+    let expect_c_order = [
+        ("X1 = 3", "lbnd[0]"),
+        ("X2 = 4", "lbnd[1]"),
+        ("X3 = 7", "ubnd[0]"),
+        ("X4 = 8", "ubnd[1]"),
+    ];
+    for (needle, what) in expect_c_order {
+        assert!(
+            s.contains(needle),
+            "expected `{needle}` ({what}) — but native output was:\n{s}"
+        );
+    }
+}
+
+/// Hand-crafted C-format native string for a 2-D Interval with
+/// asymmetric bounds should parse such that `effective_bounds()`
+/// returns the original lbnd / ubnd. Currently fails: our reader
+/// transposes the X-keys, so `effective_bounds` reports degenerate
+/// bounds for non-symmetric input.
+#[test]
+#[ignore = "exposes pointset_layout bug (reader disagrees with C)"]
+fn parsed_c_format_pointset_preserves_bounds() {
+    use ast_core::{AnyObject, from_native_string};
+
+    // C-style PointSet layout (point-outer, coord-inner):
+    //   X1..X2 = point 0 = lbnd = (3, 4)
+    //   X3..X4 = point 1 = ubnd = (7, 8)
+    let s = r#"
+ Begin Interval
+    Naxes = 2
+ IsA Frame
+    Frm =
+       Begin Frame
+          Naxes = 2
+          Ax1 = Begin Axis End Axis
+          Ax2 = Begin Axis End Axis
+       End Frame
+    Points =
+       Begin PointSet
+          Npoint = 2
+          Ncoord = 2
+          X1 = 3
+          X2 = 4
+          X3 = 7
+          X4 = 8
+       End PointSet
+ IsA Region
+ End Interval
+"#;
+    let obj = from_native_string(s).expect("parse Interval native string");
+    let interval = match obj {
+        AnyObject::Interval(i) => i,
+        other => panic!("expected Interval, got {other:?}"),
+    };
+    // Round-trip through public API: contains((3, 4)) should be true
+    // (lbnd is the lower corner, inclusive). contains((7, 8)) likewise
+    // (ubnd is the upper corner). contains((3, 7)) should be true if
+    // bounds are [3, 7] x [4, 8].
+    let pts = PointSet::from_rows([[3.0, 4.0], [7.0, 8.0], [5.0, 6.0]]);
+    let inside = interval.transform(&pts, true).unwrap();
+    for k in 0..3 {
+        let in_x = pts.point(k)[0];
+        let in_y = pts.point(k)[1];
+        let out_x = inside.point(k)[0];
+        assert!(
+            !is_bad(out_x),
+            "({in_x}, {in_y}) should be inside Interval bounds [3,7]x[4,8] — got BAD; \
+             native parsing is producing transposed/degenerate bounds"
+        );
+    }
+}
