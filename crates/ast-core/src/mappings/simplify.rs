@@ -384,6 +384,25 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
             if series && try_distribute_winmap_into_parallel(list) {
                 continue;
             }
+            // Last-resort in-loop UnitMap stripping. The C oracle's
+            // simplify loop nominates each map in turn; UnitMap's
+            // MapMerge removes itself from the list, after which the
+            // outer loop retries the surrounding pairs. We mimic that
+            // by stripping UnitMaps only when no other heuristic
+            // applied — earlier passes give other classes a chance to
+            // react to UnitMap neighbours before they vanish (which
+            // can change e.g. PermMap into its OutCpy form, or fold
+            // SphMap/UnitMap into a MatrixMap).
+            if series && list.len() > 1 {
+                let orig_len = list.len();
+                list.retain(|(m, _)| !m.as_any().is::<UnitMap>());
+                if list.is_empty() {
+                    list.push((Box::new(UnitMap::new(1)), false));
+                }
+                if list.len() != orig_len {
+                    continue;
+                }
+            }
             break;
         }
 
@@ -1338,6 +1357,12 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
     let Ok(result) = reconstruct(simplified_pairs, false) else {
         return false;
     };
+    // Recursively simplify the reconstructed parallel CmpMap so that
+    // e.g. parallel(UnitMap, UnitMap) collapses to a single UnitMap of
+    // the combined dimension via UnitMap::try_merge in parallel mode.
+    // reconstruct() is purely structural; without a follow-up simplify
+    // the merge_loop would not see the parallel children adjacent.
+    let result = simplify_mapping(result.as_ref()).unwrap_or(result);
     list[i] = (result, false);
     list.remove(i + 1);
     true

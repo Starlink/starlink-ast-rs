@@ -150,3 +150,31 @@ fn dyn_mapping_alongside_method() {
     assert!((out.point(0)[0] - 8.0).abs() < 1e-12);
     assert!((out.point(0)[1] - 150.0).abs() < 1e-12);
 }
+
+/// Series pair (M, M^-1) of MathMaps with SimpFI/SimpIF set cancels to
+/// UnitMap via MathMap::try_merge. Mirrors C mathmap.c MapMerge.
+#[test]
+fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
+    use ast_core::mappings::{DynMapping, MathMap};
+
+    let mut m_fwd = MathMap::new(1, 1, &["y=2*x"], &["x=0.5*y"]).unwrap();
+    m_fwd.set_simp_fi(true);
+    m_fwd.set_simp_if(true);
+    let mut m_inv = m_fwd.clone();
+    m_inv.invert();
+
+    let cmp = CmpMap::new(
+        Box::new(m_fwd) as DynMapping,
+        Box::new(m_inv) as DynMapping,
+        Composition::Series,
+    )
+    .unwrap();
+
+    let simp = cmp.simplified().unwrap();
+    assert!(
+        simp.as_any().is::<UnitMap>(),
+        "expected UnitMap after simplify (got nin={}, nout={})",
+        simp.nin(),
+        simp.nout(),
+    );
+}
