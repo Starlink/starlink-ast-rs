@@ -8,6 +8,7 @@
 //! `fitschan.c::CreateKeyword` (line 8209).
 
 use super::card_list::CardList;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::fitschan::card::FitsValue;
 
 /// Characters used in the 2-character sequence suffix on every NATIVE
@@ -146,6 +147,80 @@ fn format_native_float(x: f64) -> String {
     // Compress to a more compact form when round-tripping is preserved.
     // Match parse_native's tolerance for both `1.5` and `1.5e0` styles.
     s
+}
+
+/// Translate a card list with keyword-card NATIVE encoding into the
+/// line-oriented text format consumed by [`crate::serial::native_read::parse_native`].
+///
+/// The card list is walked in order. Cards that are not part of NATIVE
+/// keyword-card encoding (SIMPLE, NAXIS, COMMENT, etc.) are silently
+/// skipped. Data cards whose value type is not representable as a NATIVE
+/// scalar (Logical, Comment, Continue, Undef, complex) are also silently
+/// skipped — this matches the C library's value-type gate in
+/// `fitschan.c::FindAst` (line 17932) where `BEGAST`/`ENDAST`/`ISA`
+/// require `AST__STRING` and data cards require
+/// `AST__STRING | AST__INT | AST__FLOAT`.
+///
+/// Returns an error only if a `BEGAST`/`ENDAST`/`ISA` marker has a
+/// non-string value (an outright invalid header).
+// Will be transitively live once Task 8 wires this into FitsChan::read.
+#[allow(dead_code)]
+pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
+    let mut out = String::new();
+    for card in cards.iter() {
+        let kind = classify(&card.keyword);
+        match kind {
+            KeywordKind::Begin => {
+                let class = expect_class_name(&card.value, &card.keyword)?;
+                out.push_str(" Begin ");
+                out.push_str(&class);
+                out.push('\n');
+            }
+            KeywordKind::End => {
+                let class = expect_class_name(&card.value, &card.keyword)?;
+                out.push_str(" End ");
+                out.push_str(&class);
+                out.push('\n');
+            }
+            KeywordKind::IsA => {
+                let class = expect_class_name(&card.value, &card.keyword)?;
+                out.push_str("    IsA ");
+                out.push_str(&class);
+                out.push('\n');
+            }
+            KeywordKind::Data(name) => match format_value(&card.value) {
+                Some(FormattedValue::Scalar(text)) => {
+                    out.push_str("    ");
+                    out.push_str(&name);
+                    out.push_str(" = ");
+                    out.push_str(&text);
+                    out.push('\n');
+                }
+                Some(FormattedValue::ObjectMarker) => {
+                    out.push_str("    ");
+                    out.push_str(&name);
+                    out.push_str(" =\n");
+                }
+                None => {
+                    // Non-scalar value type — skip silently. Matches C library
+                    // behaviour in fitschan.c::FindAst line 17932 where the
+                    // Data branch is gated on string/int/float value types.
+                }
+            },
+            KeywordKind::Other => continue,
+        }
+    }
+    Ok(out)
+}
+
+fn expect_class_name(value: &FitsValue, keyword: &str) -> AstResult<String> {
+    match value {
+        FitsValue::String(s) => Ok(s.trim().to_string()),
+        _ => Err(AstError::new(
+            ErrorCode::Rderr,
+            format!("NATIVE keyword '{keyword}' must have string value, got {value:?}"),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -319,5 +394,64 @@ END
             panic!("expected Scalar");
         };
         assert_eq!(s, r#""a\b""#);
+    }
+
+    #[test]
+    fn cards_to_native_text_round_trips_a_minimal_frameset() {
+        let header = "\
+BEGAST_A= 'FrameSet'           / Set of inter-related coordinate systems
+NFRAME_A=                    2 / Number of Frames in FrameSet
+ENDAST_A= 'FrameSet'           / End of object definition
+END
+";
+        let cards = cards_from(header);
+        let text = cards_to_native_text(&cards).expect("translates");
+        assert!(text.contains("Begin FrameSet"));
+        assert!(text.contains("nframe = 2"));
+        assert!(text.contains("End FrameSet"));
+    }
+
+    #[test]
+    fn cards_to_native_text_emits_object_marker_for_empty_string() {
+        let header = "\
+BEGAST_A= 'FrameSet'
+FRAMEA_A= '        '           / First component Frame
+BEGAST_B= 'Frame   '
+ENDAST_A= 'Frame   '
+ENDAST_B= 'FrameSet'
+END
+";
+        let cards = cards_from(header);
+        let text = cards_to_native_text(&cards).expect("translates");
+        // The empty-string FRAMEA_A must produce a child-object marker.
+        assert!(text.contains("framea =\n"));
+        // The next emitted line is `Begin Frame`.
+        let pos_marker = text.find("framea =\n").expect("marker present");
+        let after = &text[pos_marker + "framea =\n".len()..];
+        assert!(
+            after.trim_start().starts_with("Begin Frame"),
+            "expected child Begin after object marker, got: {after}"
+        );
+    }
+
+    #[test]
+    fn cards_to_native_text_skips_non_scalar_data_cards() {
+        // A card whose name happens to end in two SEQ_CHARS but whose value
+        // is logical (e.g. SIMPLE = T in a header that also has BEGAST
+        // somewhere) must be silently skipped, not error.
+        let header = "\
+SIMPLE  =                    T / not a NATIVE data card despite name suffix
+BEGAST_A= 'FrameSet'
+NFRAME_A=                    2
+ENDAST_A= 'FrameSet'
+END
+";
+        let cards = cards_from(header);
+        let text = cards_to_native_text(&cards).expect("translates");
+        // SIMPLE -> Data("simp") classification, but value is Logical -> skip.
+        assert!(!text.contains("simp"));
+        // FrameSet body still emitted.
+        assert!(text.contains("Begin FrameSet"));
+        assert!(text.contains("nframe = 2"));
     }
 }
