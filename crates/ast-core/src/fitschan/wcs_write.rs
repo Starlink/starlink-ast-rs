@@ -856,6 +856,24 @@ fn snap_crval_residue(crval: &[f64], cd: &ndarray::Array2<f64>) -> Vec<f64> {
     out
 }
 
+/// Apply the C library's CRPIX micro-pixel rounding: round each CRPIX
+/// to the nearest millionth of a pixel.
+///
+/// Mirrors `fitschan.c::WcsFromStore` line 2966:
+/// `floor( crpix*1.0E6 + 0.5 )*1.0E-6`.
+///
+/// This removes sub-millionth-pixel round-trip drift from numerical
+/// CRPIX solving (`solve_crpix_from_decomp`). Real CRPIX values are
+/// physically meaningful only at pixel-fraction precision, never at
+/// sub-millionth.
+#[allow(dead_code)]
+fn round_crpix_to_micropixel(crpix: &[f64]) -> Vec<f64> {
+    crpix
+        .iter()
+        .map(|x| (x * 1.0e6 + 0.5).floor() * 1.0e-6)
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -884,6 +902,24 @@ mod tests {
         let snapped = snap_crval_residue(&crval, &cd);
         assert_eq!(snapped[0], 1e-9);
         assert_eq!(snapped[1], 5.0);
+    }
+
+    #[test]
+    fn round_crpix_to_micropixel_truncates_subpixel_drift() {
+        let crpix = vec![100.0000001234, 50.5];
+        let rounded = round_crpix_to_micropixel(&crpix);
+        // 100.0000001234 quantizes to 100.0 (within 1e-7 of nearest 1e-6).
+        assert!((rounded[0] - 100.0).abs() < 1e-9);
+        // 50.5 stays exactly.
+        assert_eq!(rounded[1], 50.5);
+    }
+
+    #[test]
+    fn round_crpix_negative_values() {
+        let crpix = vec![-10.5000002];
+        let rounded = round_crpix_to_micropixel(&crpix);
+        // -10.5000002 quantizes to -10.500000 (the 2e-7 drift goes).
+        assert!((rounded[0] - (-10.5)).abs() < 1e-9);
     }
 }
 
