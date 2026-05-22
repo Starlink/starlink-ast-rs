@@ -30,10 +30,21 @@ const C_LIGHT: f64 = 299_792_458.0;
 /// - SPECSYS is derived from the velocity keyword present in the header
 /// - RADESYS/RADECSYS and EQUINOX are read directly
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
-    // Determine the number of axes from NAXIS.
-    let naxis = cards.get_int("NAXIS").map(|v| v as usize).ok_or_else(|| {
-        AstError::new(ErrorCode::Bdfts, "NAXIS keyword not found in CLASS header")
-    })?;
+    // Determine the number of axes. CLASS headers normally carry NAXIS,
+    // but some real-world headers (e.g. ACSIS spectra written by JCMT)
+    // omit it. Fall back to scanning indexed CTYPE/CRVAL/CRPIX/CDELT
+    // keywords like the C library does in `WcsFcRead`'s NAXIS-absent
+    // branch.
+    let naxis = cards
+        .get_int("NAXIS")
+        .map(|v| v as usize)
+        .or_else(|| super::wcs_keywords::infer_axis_count_from_indexed_keywords(cards))
+        .ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Bdfts,
+                "CLASS header has no NAXIS keyword and no axis-indexed keywords (CTYPEn, CRVALn, ...) to infer axis count from",
+            )
+        })?;
 
     if naxis == 0 {
         return Err(AstError::new(ErrorCode::Bdfts, "NAXIS is zero"));
