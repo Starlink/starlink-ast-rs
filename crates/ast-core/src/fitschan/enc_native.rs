@@ -7,28 +7,30 @@
 //! Mirrors C library `fitschan.c::FindAst` (line 17820) and
 //! `fitschan.c::CreateKeyword` (line 8209).
 
+use super::card_list::CardList;
+
 /// Characters used in the 2-character sequence suffix on every NATIVE
 /// keyword. Matches `SEQ_CHARS` in `fitschan.c` (line 1377).
-// Will be used by the keyword decoder in subsequent tasks.
+// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
 #[allow(dead_code)]
 pub(crate) const SEQ_CHARS: &str = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /// Returns true if `c` is a valid sequence-suffix character.
-// Will be used by the keyword decoder in subsequent tasks.
+// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
 #[allow(dead_code)]
 pub(crate) fn is_seq_char(c: char) -> bool {
     SEQ_CHARS.contains(c)
 }
 
 /// Returns true if `s` is exactly two SEQ_CHARS characters.
-// Used by classify; will be transitively live once Task 4 wires classify in.
+// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
 #[allow(dead_code)]
 pub(crate) fn is_two_char_seq_suffix(s: &str) -> bool {
     s.len() == 2 && s.chars().all(is_seq_char)
 }
 
 /// Classification of a keyword card under the NATIVE keyword-card encoding.
-// Used by classify; will be live once Task 4 calls classify.
+// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum KeywordKind {
@@ -47,7 +49,7 @@ pub(crate) enum KeywordKind {
 }
 
 /// Classify a FITS keyword as a NATIVE encoding marker, data card, or other.
-// Will be live once Task 4 calls this function.
+// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
 #[allow(dead_code)]
 pub(crate) fn classify(keyword: &str) -> KeywordKind {
     let len = keyword.len();
@@ -73,9 +75,54 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
     }
 }
 
+/// Returns true if the card list contains at least one `BEGAST<xx>` keyword,
+/// indicating keyword-card NATIVE encoding.
+///
+/// Mirrors the C library check at `fitschan.c::GetEncoding` line 12566:
+/// `astKeyFields( this, "BEGAST%2f", 0, NULL, NULL )`.
+// Will be live once Task 8 wires this into FitsChan::read.
+#[allow(dead_code)]
+pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
+    cards
+        .iter()
+        .any(|card| matches!(classify(&card.keyword), KeywordKind::Begin))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fitschan::FitsChan;
+
+    fn cards_from(text: &str) -> CardList {
+        let fc = FitsChan::from_header(text).expect("from_header");
+        fc.cards_for_test().clone()
+    }
+
+    #[test]
+    fn detects_keyword_native_when_begast_present() {
+        let header = "\
+BEGAST_A= 'FrameSet'           / Set of inter-related coordinate systems
+NFRAME_A=                    2 / Number of Frames in FrameSet
+ENDAST_A= 'FrameSet'           / End of object definition
+END
+";
+        let cards = cards_from(header);
+        assert!(has_keyword_native(&cards));
+    }
+
+    #[test]
+    fn rejects_pure_wcs_header() {
+        let header = "\
+SIMPLE  =                    T / file conforms to FITS standard
+NAXIS   =                    2 / number of data axes
+CTYPE1  = 'RA---TAN'           / coord type
+CRPIX1  =                100.0 / reference pixel
+CRVAL1  =                  0.0 / reference value
+END
+";
+        let cards = cards_from(header);
+        assert!(!has_keyword_native(&cards));
+    }
 
     #[test]
     fn seq_chars_recognises_underscore_and_letters() {

@@ -395,6 +395,12 @@ impl FitsChan {
         self.cards.rewind();
     }
 
+    /// Expose the internal card list for use in unit tests within this crate.
+    #[cfg(test)]
+    pub(crate) fn cards_for_test(&self) -> &CardList {
+        &self.cards
+    }
+
     // -----------------------------------------------------------------------
     // Native encoding helpers
     // -----------------------------------------------------------------------
