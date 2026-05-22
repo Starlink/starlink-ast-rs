@@ -706,6 +706,53 @@ impl Mapping for BoxRegion {
             && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        // Only the parallel case fuses; series of two regions is not a region.
+        if series || self_inv || other_inv {
+            return None;
+        }
+        let other = other.as_any().downcast_ref::<BoxRegion>()?;
+
+        // Build a CmpFrame from the two component frames.
+        let f1 = self.data.frameset.current().snapshot();
+        let f2 = other.data.frameset.current().snapshot();
+        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
+        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        // Concatenate defining points axis-wise. For both inputs the
+        // `data.points` are stored in the layout produced by
+        // serial::read_pointset_node — `points[axis] = [centre_axis,
+        // corner_axis]` (1-D entries in this case). Append other's
+        // axes after self's axes; the writer's column-major iteration
+        // then emits the combined Box's PointSet in the same form
+        // the C reference uses for box.c on a CmpFrame.
+        let nin1 = self.nin();
+        let nin2 = other.nin();
+        let mut new_points: Vec<Vec<f64>> = Vec::with_capacity(nin1 + nin2);
+        for i in 0..nin1 {
+            new_points.push(vec![self.data.points[0][i], self.data.points[1][i]]);
+        }
+        for i in 0..nin2 {
+            new_points.push(vec![other.data.points[0][i], other.data.points[1][i]]);
+        }
+
+        let mut data = RegionData::new(frameset, new_points);
+        // C box.c MapMerge: combine per-component flags. Both inputs
+        // closed → result closed (AND). Either negated → result
+        // negated (OR). adaptive: AND.
+        data.closed = self.data.closed && other.data.closed;
+        data.closed_set = self.data.closed_set || other.data.closed_set;
+        data.negated = self.data.negated || other.data.negated;
+        data.adaptive = self.data.adaptive && other.data.adaptive;
+        Some(Box::new(BoxRegion { data }))
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
