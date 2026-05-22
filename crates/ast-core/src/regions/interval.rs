@@ -696,6 +696,53 @@ impl Mapping for Interval {
             && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        if series || self_inv || other_inv {
+            return None;
+        }
+        let other = other.as_any().downcast_ref::<Interval>()?;
+
+        // Build a CmpFrame from the two component frames.
+        let f1 = self.data.frameset.current().snapshot();
+        let f2 = other.data.frameset.current().snapshot();
+        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
+        let frameset = FrameSet::new(Box::new(cmp_frame) as crate::frames::DynFrame);
+
+        // Concatenate per-axis bounds. For a 1-D Interval the layout
+        // is unambiguous: data.points = [[lb], [ub]]; extract
+        // [lb_axis_0, ub_axis_0] = [data.points[0][0],
+        // data.points[1][0]]. The merged 2-D Interval is stored in
+        // the same [axis][lb,ub] convention used elsewhere in this
+        // module so that Interval::simplified()'s Box reclassification
+        // path applies uniformly to both parsed and merged data.
+        let nin1 = self.nin();
+        let nin2 = other.nin();
+        let mut new_points: Vec<Vec<f64>> = Vec::with_capacity(nin1 + nin2);
+        for i in 0..nin1 {
+            new_points.push(vec![self.data.points[0][i], self.data.points[1][i]]);
+        }
+        for i in 0..nin2 {
+            new_points.push(vec![other.data.points[0][i], other.data.points[1][i]]);
+        }
+        let mut data = RegionData::new(frameset, new_points);
+        data.adaptive = self.data.adaptive && other.data.adaptive;
+        data.closed = self.data.closed && other.data.closed;
+        data.closed_set = self.data.closed_set || other.data.closed_set;
+        data.negated = self.data.negated || other.data.negated;
+
+        // Reclassify if all bounds are finite (mirrors B1's
+        // Interval::simplified): a 2-D Interval with finite bounds is
+        // a BoxRegion.
+        let merged = Interval { data };
+        merged.simplified().ok()
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
