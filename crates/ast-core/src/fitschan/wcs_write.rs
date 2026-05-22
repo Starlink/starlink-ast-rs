@@ -649,10 +649,15 @@ fn populate_celestial(
     // LONPOLE default for zenithal projections.
     store.lonpole = Some(180.0);
 
-    // MJD-OBS from epoch (skip if default J2000.0).
-    let epoch = sky.epoch_mjd();
-    if (epoch - 51544.5).abs() > 0.001 {
-        store.mjdobs = Some(epoch);
+    // MJD-OBS from epoch (skip if default J2000.0). The SkyFrame epoch
+    // is in TT scale; FITS MJD-OBS is UTC. The C library does the same
+    // conversion at fitschan.c:29723-29744 via TDBConv. Also populate
+    // the formatted DATE-OBS string here; an encoder later emits both.
+    let epoch_tt = sky.epoch_mjd();
+    if (epoch_tt - 51544.5).abs() > 0.001 {
+        let epoch_utc = tt_mjd_to_utc(epoch_tt);
+        store.mjdobs = Some(epoch_utc);
+        store.dateobs = Some(mjd_to_date_str(epoch_utc));
     }
 
     Ok(())
@@ -949,13 +954,31 @@ fn clean_store_residue(store: &mut FitsStore) {
 // Calendar helpers
 // ---------------------------------------------------------------------------
 
+/// Convert TT (Terrestrial Time) MJD to UTC MJD.
+///
+/// TT = TAI + 32.184 seconds; UTC = TAI − dat where dat is the
+/// cumulative TAI-UTC leap-second offset. So UTC = TT − (dat + 32.184)
+/// seconds.
+///
+/// `pal::dat(mjd)` returns dat as seconds. The function takes the MJD
+/// in any nearby scale (TAI, TT, UTC); the discrepancy at the leap-
+/// second boundary is at most 0.5 s and doesn't matter for MJD-OBS
+/// at our 3-decimal-second formatting precision.
+///
+/// Mirrors fitschan.c:29723-29744 (TDBConv with output scale UTC).
+/// TDB ≈ TT to 1.7 ms — well below our formatting precision — so
+/// treating epoch_mjd as TT is correct here.
+fn tt_mjd_to_utc(tt_mjd: f64) -> f64 {
+    let dat_seconds = pal::dat(tt_mjd);
+    tt_mjd - (dat_seconds + 32.184) / 86_400.0
+}
+
 /// Decompose an MJD (UTC, Modified Julian Date) into a Gregorian
 /// calendar date + time tuple `(year, month, day, hour, min, sec_frac)`.
 ///
 /// Uses the standard Meeus algorithm (Astronomical Algorithms, §7).
 /// MJD's day boundary is at midnight (JD's day boundary is at noon, so
 /// the algorithm shifts by 0.5).
-#[allow(dead_code)] // called from populate_celestial in Task 3
 fn mjd_to_gregorian(mjd: f64) -> (i32, u32, u32, u32, u32, f64) {
     let jd = mjd + 2_400_000.5_f64;
     let z = (jd + 0.5).floor() as i64;
@@ -1000,7 +1023,6 @@ fn mjd_to_gregorian(mjd: f64) -> (i32, u32, u32, u32, u32, f64) {
 /// Mirrors fitschan.c:3594-3608. Cutoff is MJD 51179 (1999-01-01);
 /// modern dates use ISO-8601 `YYYY-MM-DDTHH:MM:SS.SSS`, legacy dates
 /// use `DD/MM/YY`.
-#[allow(dead_code)] // called from populate_celestial in Task 3
 fn mjd_to_date_str(mjd: f64) -> String {
     const CUTOFF_MJD: f64 = 51179.0; // palCaldj(99, 1, 1)
     let (year, month, day, hour, min, sec_frac) = mjd_to_gregorian(mjd);
