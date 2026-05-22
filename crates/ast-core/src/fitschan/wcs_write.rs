@@ -833,3 +833,167 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Diagnostic capture tests for fixture generation
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod diag_tests {
+    //! Diagnostic tests that capture mappings from the wcsconv write path
+    //! for offline fixture generation. Each test is `#[ignore]`d so it
+    //! doesn't run in normal test suites; run explicitly with --ignored.
+    //!
+    //! Run a capture test with, e.g.:
+    //!   cargo test -p ast-core -- fitschan::wcs_write::diag_tests::capture_gappt_pre_simplify_mapping --ignored --nocapture
+    //!
+    //! The captured `.map` file is then fed to the C oracle's simplify
+    //! binary to generate a `.simp` reference for the simplify regression
+    //! manifest.
+    use super::{
+        build_pixel_to_iwc, celestial_axes, extract_projection_from_mapping, fiducial_crval,
+        solve_crpix_from_decomp, split_around_wcsmap, split_pre_wcsmap,
+    };
+    use crate::channel::Channel;
+    use crate::fitschan::wcs_decompose::decompose_linear;
+    use crate::fitschan::{Encoding, FitsChan};
+    use crate::frames::FrameRef;
+    use crate::mappings::{
+        CmpMap, LutMap, Mapping, MatrixMap, PermMap, ShiftMap, SlaMap, UnitMap, WcsMap, WinMap,
+        ZoomMap,
+    };
+    use crate::serial::{AnyObject, to_native_string};
+
+    /// Convert a `dyn Mapping` reference to `AnyObject` by downcasting to
+    /// the known concrete types used in the wcsconv path.
+    fn mapping_to_any(m: &dyn Mapping) -> AnyObject {
+        let a = m.as_any();
+        if let Some(v) = a.downcast_ref::<CmpMap>() {
+            return AnyObject::CmpMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<UnitMap>() {
+            return AnyObject::UnitMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<ZoomMap>() {
+            return AnyObject::ZoomMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<ShiftMap>() {
+            return AnyObject::ShiftMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<MatrixMap>() {
+            return AnyObject::MatrixMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<WinMap>() {
+            return AnyObject::WinMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<SlaMap>() {
+            return AnyObject::SlaMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<WcsMap>() {
+            return AnyObject::WcsMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<PermMap>() {
+            return AnyObject::PermMap(v.clone());
+        }
+        if let Some(v) = a.downcast_ref::<LutMap>() {
+            return AnyObject::LutMap(v.clone());
+        }
+        panic!("mapping_to_any: unknown concrete Mapping type — extend this helper");
+    }
+
+    fn fixtures_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wcsconv/inputs")
+    }
+
+    /// Captures the pre-simplify and post-simplify pixel→IWC mapping from
+    /// the `gappt_fits-wcs` wcsconv path, replicating the computation in
+    /// `store_from_frameset` up to but not including the `simplify()` call
+    /// at `wcs_write.rs:138`.
+    ///
+    /// Writes:
+    ///   /tmp/gappt_pre_simplify.map      — input for C oracle
+    ///   /tmp/gappt_post_simplify_rust.map — Rust simplify output for diff
+    #[test]
+    #[ignore = "diagnostic only — run manually with --ignored"]
+    fn capture_gappt_pre_simplify_mapping() {
+        let text =
+            std::fs::read_to_string(fixtures_dir().join("gappt.head")).expect("gappt.head found");
+        let mut fc = FitsChan::from_header(&text).expect("FitsChan from gappt.head");
+        fc.set_encoding(Encoding::FitsWcs);
+        let obj = fc.read().expect("read ok").expect("object present");
+        let AnyObject::FrameSet(fs) = obj else {
+            panic!("expected FrameSet from gappt.head");
+        };
+
+        let naxis = fs.base().naxes();
+        let g0 = vec![1.0_f64; naxis];
+
+        // Mirror store_from_frameset: simplify the pixel→world mapping first.
+        let mapping = fs
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .expect("base→current mapping")
+            .simplify()
+            .expect("simplify pixel→world");
+
+        // Compute CRPIX estimate (same as store_from_frameset lines 80-86).
+        let pre_wcs = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
+        let pre_decomp = decompose_linear(pre_wcs.as_ref(), naxis, &g0).expect("pre decomp");
+        let crpix = solve_crpix_from_decomp(&pre_decomp.cd, &pre_decomp.crval, &g0)
+            .unwrap_or_else(|| g0.clone());
+        let full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix).expect("full decomp");
+
+        // Locate projection and celestial axes.
+        let proj = extract_projection_from_mapping(mapping.as_ref())
+            .expect("WcsMap projection in gappt mapping");
+        let (sky, lon_axis, lat_axis) =
+            celestial_axes(&fs).expect("celestial axes in gappt FrameSet");
+
+        // Compute fiducial CRVAL via the post chain (same as store_from_frameset).
+        let (_, post) = split_around_wcsmap(mapping.as_ref()).expect("WcsMap found in mapping");
+        let fiducial = fiducial_crval(post.as_ref(), proj, &full_decomp.crval, naxis);
+        let crval_for_iwc = fiducial.as_ref().unwrap_or(&full_decomp.crval).clone();
+
+        // Build pixel→IWC — this is the mapping passed to simplify() at line 138.
+        let pixel_iwc = build_pixel_to_iwc(
+            mapping.as_ref(),
+            &sky,
+            &crval_for_iwc,
+            lon_axis,
+            lat_axis,
+            Some(proj),
+        )
+        .expect("build_pixel_to_iwc succeeded");
+
+        // Serialize the pre-simplify CmpMap.
+        let cm = pixel_iwc
+            .as_ref()
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .expect("pixel_iwc is a CmpMap");
+        let pre_text = to_native_string(&AnyObject::CmpMap(cm.clone()))
+            .expect("serialize pre-simplify CmpMap");
+        std::fs::write("/tmp/gappt_pre_simplify.map", &pre_text)
+            .expect("write /tmp/gappt_pre_simplify.map");
+        eprintln!(
+            "Pre-simplify mapping → /tmp/gappt_pre_simplify.map ({} chars, {} lines)",
+            pre_text.len(),
+            pre_text.lines().count()
+        );
+        eprintln!(
+            "First 10 lines:\n{}",
+            pre_text.lines().take(10).collect::<Vec<_>>().join("\n")
+        );
+
+        // Serialize the Rust post-simplify result for comparison.
+        let simplified = pixel_iwc.simplify().expect("simplify pixel_iwc");
+        let simp_obj = mapping_to_any(simplified.as_ref());
+        let simp_text = to_native_string(&simp_obj).expect("serialize post-simplify mapping");
+        std::fs::write("/tmp/gappt_post_simplify_rust.map", &simp_text)
+            .expect("write /tmp/gappt_post_simplify_rust.map");
+        eprintln!(
+            "Rust simplified mapping → /tmp/gappt_post_simplify_rust.map ({} chars, {} lines)",
+            simp_text.len(),
+            simp_text.lines().count()
+        );
+    }
+}
