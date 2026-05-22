@@ -3,6 +3,7 @@
 //! The C library accepts NATIVE-encoded headers in two storage forms:
 //!   1. COMMENT-card variant: native text inside `COMMENT  AST +++  AST` markers
 //!   2. Keyword-card variant: BEGAST_xx / ENDAST_xx / data-keyword cards
+//!
 //! Variant 2 is what `polco.head`, `polco2.head`, `specflux.head`,
 //! `timeplot.head` use. This test exercises that path end-to-end.
 
