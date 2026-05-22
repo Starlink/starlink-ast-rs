@@ -108,9 +108,16 @@ impl Node {
 
     /// Look up the first item with the given key, returning its value.
     /// Returns `None` if not found or if the item is `Unset`.
+    ///
+    /// Key comparison is **case-insensitive** (ASCII), mirroring the C AST
+    /// channel reader which uses `strcasecmp`-style matching for attribute
+    /// names. This allows the keyword-card FITS path (which produces
+    /// all-uppercase or capitalize-first key names derived from FITS keywords)
+    /// to find attributes whose canonical names in native text have mid-word
+    /// uppercase letters (e.g. `MapA`, `InvB`, `SimpFI`).
     pub fn get(&self, key: &str) -> Option<&NodeValue> {
         for item in &self.items {
-            if item.key == key {
+            if item.key.eq_ignore_ascii_case(key) {
                 if let NodeValue::Unset(_) = &item.value {
                     return None;
                 }
@@ -128,9 +135,11 @@ impl Node {
 
     /// Look up the first item with the given key, returning its value
     /// whether set or unset. Unwraps `Unset(inner)` to return `inner`.
+    ///
+    /// Key comparison is **case-insensitive** (ASCII); see [`Node::get`].
     pub fn get_any(&self, key: &str) -> Option<&NodeValue> {
         for item in &self.items {
-            if item.key == key {
+            if item.key.eq_ignore_ascii_case(key) {
                 if let NodeValue::Unset(inner) = &item.value {
                     return Some(inner.as_ref());
                 }

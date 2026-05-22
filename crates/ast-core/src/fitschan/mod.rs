@@ -513,10 +513,20 @@ impl Channel for FitsChan {
 
         match self.encoding {
             Encoding::Native => {
-                let text = match self.extract_native_text() {
-                    Some(t) => t,
-                    None => return Ok(None),
+                // Two storage variants: keyword-card (BEGAST_xx / ENDAST_xx)
+                // and COMMENT-card (`COMMENT  AST +++  AST` markers).
+                // The keyword-card variant takes precedence when present.
+                let text = if enc_native::has_keyword_native(&self.cards) {
+                    enc_native::cards_to_native_text(&self.cards)?
+                } else {
+                    match self.extract_native_text() {
+                        Some(t) => t,
+                        None => return Ok(None),
+                    }
                 };
+                if text.trim().is_empty() {
+                    return Ok(None);
+                }
                 let node = serial::native_read::parse_native(&text)?;
                 let obj = serial::any_object_from_node(&node)?;
                 Ok(Some(obj))

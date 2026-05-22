@@ -13,27 +13,19 @@ use crate::fitschan::card::{FitsCard, FitsValue};
 
 /// Characters used in the 2-character sequence suffix on every NATIVE
 /// keyword. Matches `SEQ_CHARS` in `fitschan.c` (line 1377).
-// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
-#[allow(dead_code)]
 pub(crate) const SEQ_CHARS: &str = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /// Returns true if `c` is a valid sequence-suffix character.
-// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
-#[allow(dead_code)]
 pub(crate) fn is_seq_char(c: char) -> bool {
     SEQ_CHARS.contains(c)
 }
 
 /// Returns true if `s` is exactly two SEQ_CHARS characters.
-// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
-#[allow(dead_code)]
 pub(crate) fn is_two_char_seq_suffix(s: &str) -> bool {
     s.len() == 2 && s.chars().all(is_seq_char)
 }
 
 /// Classification of a keyword card under the NATIVE keyword-card encoding.
-// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum KeywordKind {
     /// `BEGAST<xx>` — opens an object block; value is the class name.
@@ -51,8 +43,6 @@ pub(crate) enum KeywordKind {
 }
 
 /// Classify a FITS keyword as a NATIVE encoding marker, data card, or other.
-// Will be transitively live once Task 8 wires has_keyword_native into FitsChan::read.
-#[allow(dead_code)]
 pub(crate) fn classify(keyword: &str) -> KeywordKind {
     let len = keyword.len();
     if len < 3 {
@@ -71,7 +61,19 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
             if head.is_empty() {
                 KeywordKind::Other
             } else {
-                KeywordKind::Data(head.to_ascii_lowercase())
+                // Convert FITS-uppercase head (e.g. "NFRAME") to the
+                // capitalize-first form used in native text (e.g. "Nframe"),
+                // so that keys match the names written by astWriteInt /
+                // astWriteString (e.g. `astWriteInt(this, "Nframe", ...)`).
+                let mut chars = head.chars();
+                let name = match chars.next() {
+                    Some(c) => {
+                        let upper: String = c.to_ascii_uppercase().to_string();
+                        upper + &chars.as_str().to_ascii_lowercase()
+                    }
+                    None => String::new(),
+                };
+                KeywordKind::Data(name)
             }
         }
     }
@@ -82,8 +84,6 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
 ///
 /// Mirrors the C library check at `fitschan.c::GetEncoding` line 12566:
 /// `astKeyFields( this, "BEGAST%2f", 0, NULL, NULL )`.
-// Will be live once Task 8 wires this into FitsChan::read.
-#[allow(dead_code)]
 pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
     cards
         .iter()
@@ -92,8 +92,6 @@ pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
 
 /// Result of formatting a card value for native-text emission.
 #[derive(Debug)]
-// Will be used by Task 6's cards_to_native_text.
-#[allow(dead_code)]
 pub(crate) enum FormattedValue {
     /// The card has a non-empty scalar value; emit `<key> = <text>`.
     Scalar(String),
@@ -107,8 +105,6 @@ pub(crate) enum FormattedValue {
 /// Returns `None` if the value type is not representable in NATIVE encoding
 /// (Comment, Logical, Undefined) — such cards should be ignored by the
 /// keyword-card decoder.
-// Will be used by Task 6's cards_to_native_text.
-#[allow(dead_code)]
 pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
     match value {
         FitsValue::String(s) => {
@@ -134,8 +130,6 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
 
 /// Format a float for NATIVE text emission. Mirrors the C library's choice
 /// of `%.17g` (full double precision) so a NATIVE round-trip is value-exact.
-// Will be used by Task 6's cards_to_native_text.
-#[allow(dead_code)]
 fn format_native_float(x: f64) -> String {
     if x.is_nan() {
         // Native format does not have a NaN literal; the AST library uses
@@ -163,8 +157,6 @@ fn format_native_float(x: f64) -> String {
 ///
 /// Returns an error only if a `BEGAST`/`ENDAST`/`ISA` marker has a
 /// non-string value (an outright invalid header).
-// Will be transitively live once Task 8 wires this into FitsChan::read.
-#[allow(dead_code)]
 pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
     let mut out = String::new();
     let card_vec: Vec<&FitsCard> = cards.iter().collect();
@@ -359,17 +351,20 @@ END
 
     #[test]
     fn classify_recognises_data_card() {
+        // Keys are converted to capitalize-first (e.g. NFRAME → Nframe) so
+        // they match the mixed-case names written by astWriteInt etc. in
+        // native text (e.g. `Nframe = 2`).
         assert_eq!(
             classify("NFRAME_A"),
-            KeywordKind::Data("nframe".to_string())
+            KeywordKind::Data("Nframe".to_string())
         );
         assert_eq!(
             classify("DOMAIN_B"),
-            KeywordKind::Data("domain".to_string())
+            KeywordKind::Data("Domain".to_string())
         );
         assert_eq!(
             classify("FRAMEA_A"),
-            KeywordKind::Data("framea".to_string())
+            KeywordKind::Data("Framea".to_string())
         );
     }
 
@@ -384,12 +379,12 @@ END
         // caller's responsibility, not the keyword-name classifier.
         // C library rejects SIMPLE/COMMENT/CONTINUE via AST card-type check
         // (AST__LOGICAL / AST__COMMENT), which is not visible here.
-        assert_eq!(classify("SIMPLE"), KeywordKind::Data("simp".to_string()));
-        assert_eq!(classify("NAXIS"), KeywordKind::Data("nax".to_string()));
-        assert_eq!(classify("COMMENT"), KeywordKind::Data("comme".to_string()));
+        assert_eq!(classify("SIMPLE"), KeywordKind::Data("Simp".to_string()));
+        assert_eq!(classify("NAXIS"), KeywordKind::Data("Nax".to_string()));
+        assert_eq!(classify("COMMENT"), KeywordKind::Data("Comme".to_string()));
         assert_eq!(
             classify("CONTINUE"),
-            KeywordKind::Data("contin".to_string())
+            KeywordKind::Data("Contin".to_string())
         );
     }
 
@@ -469,7 +464,7 @@ END
         let cards = cards_from(header);
         let text = cards_to_native_text(&cards).expect("translates");
         assert!(text.contains("Begin FrameSet"));
-        assert!(text.contains("nframe = 2"));
+        assert!(text.contains("Nframe = 2"));
         assert!(text.contains("End FrameSet"));
     }
 
@@ -486,9 +481,9 @@ END
         let cards = cards_from(header);
         let text = cards_to_native_text(&cards).expect("translates");
         // The empty-string FRAMEA_A must produce a child-object marker.
-        assert!(text.contains("framea =\n"));
+        assert!(text.contains("Framea =\n"));
         // The next emitted line is `Begin Frame`.
-        let pos_marker = text.find("framea =\n").expect("marker present");
+        let pos_marker = text.find("Framea =\n").expect("marker present");
         let after = &text[pos_marker + "framea =\n".len()..];
         assert!(
             after.trim_start().starts_with("Begin Frame"),
@@ -508,7 +503,7 @@ END
         let cards = cards_from(header);
         let text = cards_to_native_text(&cards).expect("translates");
         assert!(
-            text.contains("title = \"first part    second part\""),
+            text.contains("Title = \"first part    second part\""),
             "expected joined string, got: {text}"
         );
     }
@@ -527,10 +522,10 @@ END
 ";
         let cards = cards_from(header);
         let text = cards_to_native_text(&cards).expect("translates");
-        // SIMPLE -> Data("simp") classification, but value is Logical -> skip.
-        assert!(!text.contains("simp"));
+        // SIMPLE -> Data("Simp") classification, but value is Logical -> skip.
+        assert!(!text.contains("Simp"));
         // FrameSet body still emitted.
         assert!(text.contains("Begin FrameSet"));
-        assert!(text.contains("nframe = 2"));
+        assert!(text.contains("Nframe = 2"));
     }
 }
