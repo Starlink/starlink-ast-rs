@@ -182,6 +182,11 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // Identify axis types from the current frame and populate CTYPE/CRVAL.
     identify_axes(fs, &crval_for_store, &mut store, projection)?;
 
+    // Apply C-library-style numerical cleanups (SplitMat 1e-7, CRVAL
+    // near-zero, CRPIX micro-pixel rounding) so all encoders see clean
+    // values and emit CD/CRVAL/CRPIX cards without FP residue.
+    clean_store_residue(&mut store);
+
     Ok(store)
 }
 
@@ -842,7 +847,6 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
 /// scale-aware: for CD scaled at 1e-3, threshold ≈ 1.5e-11; for CD at
 /// 1.0, threshold ≈ 1.5e-8. This catches FP residue while preserving
 /// physically-meaningful small values.
-#[allow(dead_code)]
 fn snap_crval_residue(crval: &[f64], cd: &ndarray::Array2<f64>) -> Vec<f64> {
     let naxis = crval.len();
     let mut out = crval.to_vec();
@@ -866,12 +870,60 @@ fn snap_crval_residue(crval: &[f64], cd: &ndarray::Array2<f64>) -> Vec<f64> {
 /// CRPIX solving (`solve_crpix_from_decomp`). Real CRPIX values are
 /// physically meaningful only at pixel-fraction precision, never at
 /// sub-millionth.
-#[allow(dead_code)]
 fn round_crpix_to_micropixel(crpix: &[f64]) -> Vec<f64> {
     crpix
         .iter()
         .map(|x| (x * 1.0e6 + 0.5).floor() * 1.0e-6)
         .collect()
+}
+
+/// Apply C-library-style numerical cleanups to the FitsStore before
+/// encoder dispatch. Mirrors three cleanups in fitschan.c:
+///
+/// 1. CD residue snap via SplitMat 1e-7 threshold (line 33238).
+/// 2. CRVAL near-zero zeroing with scale-aware threshold (lines 2939-2958).
+/// 3. CRPIX micro-pixel rounding (line 2966).
+///
+/// Without these, FP rounding noise at the 1e-15 level reaches the
+/// encoder and gets emitted as `CD1_2 = -7.4E-15` cards. The C library
+/// applies these in WcsFromStore; we mirror it so all encodings (FITS-WCS,
+/// AIPS, AIPS++, IRAF, PC) emit clean values.
+fn clean_store_residue(store: &mut FitsStore) {
+    let naxis = store.naxis;
+
+    // Build a CD matrix from store.cd, applying defaults for unset cells.
+    let mut cd_array = ndarray::Array2::zeros((naxis, naxis));
+    for i in 0..naxis {
+        for j in 0..naxis {
+            cd_array[[i, j]] = store.cd[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
+        }
+    }
+
+    // 1. Snap small CD residue via SplitMat-style 1e-7 PC threshold.
+    let cleaned_cd = crate::fitschan::wcs_decompose::clean_cd_residue(&cd_array);
+    for i in 0..naxis {
+        for j in 0..naxis {
+            store.cd[i][j] = Some(cleaned_cd[[i, j]]);
+        }
+    }
+
+    // 2. CRVAL near-zero snap (scale-aware threshold based on cleaned CD).
+    let crval_in: Vec<f64> = (0..naxis).map(|i| store.crval[i].unwrap_or(0.0)).collect();
+    let crval_out = snap_crval_residue(&crval_in, &cleaned_cd);
+    for (slot, val) in store.crval.iter_mut().zip(crval_out.iter()) {
+        if slot.is_some() {
+            *slot = Some(*val);
+        }
+    }
+
+    // 3. CRPIX micro-pixel rounding.
+    let crpix_in: Vec<f64> = (0..naxis).map(|i| store.crpix[i].unwrap_or(1.0)).collect();
+    let crpix_out = round_crpix_to_micropixel(&crpix_in);
+    for (slot, val) in store.crpix.iter_mut().zip(crpix_out.iter()) {
+        if slot.is_some() {
+            *slot = Some(*val);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

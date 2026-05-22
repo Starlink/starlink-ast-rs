@@ -108,8 +108,6 @@ pub(crate) fn split_cd(cd: &Array2<f64>) -> (Vec<f64>, Array2<f64>) {
 /// errors)." The threshold is scale-relative because PC has unit row
 /// magnitude — a PC value of 1e-7 corresponds to a CD value of
 /// 1e-7 × CDELT, which is the round-trip noise floor.
-// Called from wcs_write.rs (Task 5); allow until that task lands.
-#[allow(dead_code)]
 pub(crate) fn clean_cd_residue(cd: &Array2<f64>) -> Array2<f64> {
     let naxis = cd.nrows();
     let (cdelt, mut pc) = split_cd(cd);
