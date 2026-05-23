@@ -24,6 +24,10 @@ pub(crate) struct FitsStore {
     pub cd: Vec<Vec<Option<f64>>>,
     /// Axis type code per axis (CTYPEi), with distortion codes removed.
     pub ctype: Vec<Option<String>>,
+    /// Axis-specific CTYPE comment per axis. When `None`, the writer
+    /// falls back to `"Type of co-ordinate on axis {n}"`. Mirrors C's
+    /// `store->ctype_com` populated by `OtherAxes` (fitschan.c:24380).
+    pub ctype_com: Vec<Option<String>>,
     /// Axis units per axis (CUNITi).
     pub cunit: Vec<Option<String>>,
     /// Axis name per axis (CNAMEi).
@@ -96,6 +100,7 @@ impl FitsStore {
             pc: vec![vec![None; naxis]; naxis],
             cd: vec![vec![None; naxis]; naxis],
             ctype: vec![None; naxis],
+            ctype_com: vec![None; naxis],
             cunit: vec![None; naxis],
             cname: vec![None; naxis],
             pv: vec![vec![None; MAX_PV_PARAMS]; naxis],

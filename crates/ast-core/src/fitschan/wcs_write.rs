@@ -616,21 +616,15 @@ fn identify_axes(
                 } else {
                     (frame2, i - n1 + 1)
                 };
-                store.ctype[i] = Some(
-                    leftover_ctype_for_axis(sub_frame, sub_axis)
-                        .unwrap_or_else(|| format!("AXIS{}", i + 1)),
-                );
+                populate_other_axis(sub_frame, sub_axis, i, store);
                 store.crval[i] = Some(crval[i]);
             }
         }
     } else {
         // BasicFrame or unknown: derive CTYPE per axis from the frame's
-        // label (which the FITS reader sets from CTYPE), or the frame
-        // domain, falling back to AXISn.
+        // symbol (mirrors C's OtherAxes, fitschan.c:24364).
         for i in 0..naxis {
-            store.ctype[i] = Some(
-                leftover_ctype_for_axis(frame, i + 1).unwrap_or_else(|| format!("AXIS{}", i + 1)),
-            );
+            populate_other_axis(frame, i + 1, i, store);
             store.crval[i] = Some(crval[i]);
         }
     }
@@ -638,24 +632,57 @@ fn identify_axes(
     Ok(())
 }
 
-/// Derive a CTYPE value for one axis of a non-celestial, non-spectral frame.
+/// Populate CTYPE / CTYPE comment / CUNIT for one non-celestial,
+/// non-spectral axis using the C library's `OtherAxes` recipe
+/// (fitschan.c:24364-24390):
 ///
-/// Tries the per-axis label first (the FITS reader copies CTYPE into the
-/// label), then the frame domain (e.g. `"PIXEL"`). Returns `None` when
-/// nothing useful is set, letting the caller fall back to a generic AXISn.
-/// The 1-based `axis` index follows the AST convention.
-fn leftover_ctype_for_axis(frame: &dyn crate::frames::Frame, axis: usize) -> Option<String> {
-    let basic = frame.as_any().downcast_ref::<BasicFrame>()?;
-    if let Ok(label) = basic.label(axis) {
-        if !label.is_empty() {
-            return Some(label.to_string());
+/// - CTYPE = axis Symbol (or `"AXIS{n}"` if none).
+/// - CTYPE comment = axis Label when explicitly set and different
+///   from Symbol; otherwise `"Type of co-ordinate on axis {n}"` (left
+///   as None so the writer fills the default).
+/// - CUNIT = axis Unit when set.
+///
+/// `axis` is the 1-based axis index within `frame`; `store_axis` is the
+/// 0-based slot in the store to write to.
+fn populate_other_axis(
+    frame: &dyn crate::frames::Frame,
+    axis: usize,
+    store_axis: usize,
+    store: &mut FitsStore,
+) {
+    let basic = match frame.as_any().downcast_ref::<BasicFrame>() {
+        Some(b) => b,
+        None => {
+            store.ctype[store_axis] = Some(format!("AXIS{axis}"));
+            return;
+        }
+    };
+
+    let symbol = basic.symbol(axis).ok().unwrap_or("");
+    let label = basic.label(axis).ok().unwrap_or("");
+    let label_set = basic.test_label(axis).ok().unwrap_or(false);
+
+    let ctype = if !symbol.is_empty() {
+        symbol.to_string()
+    } else {
+        format!("AXIS{axis}")
+    };
+    store.ctype[store_axis] = Some(ctype);
+
+    if label_set && !label.is_empty() && label != symbol {
+        store.ctype_com[store_axis] = Some(label.to_string());
+        if store.cname[store_axis].is_none() {
+            store.cname[store_axis] = Some(label.to_string());
         }
     }
-    let domain = basic.domain();
-    if !domain.is_empty() {
-        return Some(domain.to_string());
+
+    if basic.test_unit(axis).ok().unwrap_or(false)
+        && let Ok(u) = basic.unit(axis)
+        && !u.is_empty()
+        && store.cunit[store_axis].is_none()
+    {
+        store.cunit[store_axis] = Some(u.to_string());
     }
-    None
 }
 
 /// Populate FitsStore fields for celestial axes.
@@ -873,9 +900,20 @@ fn write_store_to_cards(
     for i in 0..naxis {
         if let Some(ref val) = store.ctype[i] {
             let key = fmt_axis_key("CTYPE", i + 1, s);
-            let comment = format!("Type of co-ordinate on axis {}", i + 1);
+            let comment = store.ctype_com[i]
+                .clone()
+                .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
             cards.set_string(&key, val, &comment);
         }
+    }
+
+    // CD matrix or PC+CDELT.
+    // Emitted before CUNIT to match the C library's WcsFromStore order
+    // (fitschan.c:36867+: CRPIX, CRVAL, CTYPE, CNAME, CD, CDELT, PC, CUNIT).
+    if use_cd {
+        write_cd_matrix(store, cards, s)?;
+    } else {
+        write_pc_cdelt(store, cards, s)?;
     }
 
     // CUNITi{S}
@@ -885,13 +923,6 @@ fn write_store_to_cards(
             let comment = format!("Units for axis {}", i + 1);
             cards.set_string(&key, val, &comment);
         }
-    }
-
-    // CD matrix or PC+CDELT.
-    if use_cd {
-        write_cd_matrix(store, cards, s)?;
-    } else {
-        write_pc_cdelt(store, cards, s)?;
     }
 
     // Plane-shared cards: only emit on primary plane.

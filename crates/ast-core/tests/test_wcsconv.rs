@@ -186,17 +186,22 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
 
         let output = fc_out.to_header();
 
-        // Normalize: trim trailing whitespace per line, skip empty lines.
-        let exp_lines: Vec<&str> = expected_text
-            .lines()
-            .map(|l| l.trim_end())
-            .filter(|l| !l.is_empty())
-            .collect();
-        let out_lines: Vec<&str> = output
-            .lines()
-            .map(|l| l.trim_end())
-            .filter(|l| !l.is_empty())
-            .collect();
+        // Normalize: trim trailing whitespace per line, skip empty lines,
+        // and drop the trailing FITS `END` marker (some upstream expected
+        // files include it, others omit it; our writer always emits one).
+        fn normalize(text: &str) -> Vec<&str> {
+            let mut lines: Vec<&str> = text
+                .lines()
+                .map(|l| l.trim_end())
+                .filter(|l| !l.is_empty())
+                .collect();
+            if lines.last().is_some_and(|l| l.trim() == "END") {
+                lines.pop();
+            }
+            lines
+        }
+        let exp_lines = normalize(&expected_text);
+        let out_lines = normalize(&output);
 
         // Find first difference.
         for (i, (o, e)) in out_lines.iter().zip(exp_lines.iter()).enumerate() {
