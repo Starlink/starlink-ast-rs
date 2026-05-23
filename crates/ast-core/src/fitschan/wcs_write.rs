@@ -18,6 +18,40 @@ use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, WcsProje
 use crate::pal;
 use crate::serial::AnyObject;
 
+// ---------------------------------------------------------------------------
+// Key-formatting helpers
+// ---------------------------------------------------------------------------
+
+/// Format an axis-indexed FITS key with optional version-letter suffix.
+///
+/// `s == ' '` returns the bare key (primary plane); other letters
+/// append the suffix. Mirrors fitschan.c::FormatKey.
+fn fmt_axis_key(name: &str, axis: usize, s: char) -> String {
+    if s == ' ' {
+        format!("{name}{axis}")
+    } else {
+        format!("{name}{axis}{s}")
+    }
+}
+
+/// Format a matrix-element key (e.g. CD1_2A) with optional version letter.
+fn fmt_matrix_key(name: &str, i: usize, j: usize, s: char) -> String {
+    if s == ' ' {
+        format!("{name}{i}_{j}")
+    } else {
+        format!("{name}{i}_{j}{s}")
+    }
+}
+
+/// Format a non-axis FITS key (e.g. WCSAXES, RADESYS) with optional version letter.
+fn fmt_global_key(name: &str, s: char) -> String {
+    if s == ' ' {
+        name.to_string()
+    } else {
+        format!("{name}{s}")
+    }
+}
+
 /// Encode a FrameSet as FITS-WCS keywords into a CardList.
 ///
 /// This is the top-level encoder entry point.
@@ -33,7 +67,7 @@ pub(crate) fn encode_wcs(obj: &AnyObject, cards: &mut CardList, use_cd: bool) ->
     };
 
     let store = store_from_frameset(frameset)?;
-    write_store_to_cards(&store, cards, use_cd)
+    write_store_to_cards(&store, cards, use_cd, ' ', None)
 }
 
 /// Encode a FrameSet via FitsStore with a custom card writer.
@@ -742,43 +776,70 @@ fn specsys_string(sor: StdOfRest) -> String {
 }
 
 /// Write FitsStore contents as FITS keyword cards.
-fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -> AstResult<()> {
+///
+/// `s` is the FITS version letter: `' '` = primary plane (bare keys),
+/// `'A'`–`'Z'` = alt plane (suffixed keys). `frame_name` drives
+/// WCSNAME{S} emission for alt planes; ignored for the primary plane.
+fn write_store_to_cards(
+    store: &FitsStore,
+    cards: &mut CardList,
+    use_cd: bool,
+    s: char,
+    frame_name: Option<&str>,
+) -> AstResult<()> {
     let naxis = store.naxis;
 
-    // WCSAXES
-    cards.set_int("WCSAXES", naxis as i64, "Number of WCS axes");
+    // WCSAXES{S}
+    cards.set_int(
+        &fmt_global_key("WCSAXES", s),
+        naxis as i64,
+        "Number of WCS axes",
+    );
 
-    // CRPIXi
+    // WCSNAME{S} for alt planes: frame domain.
+    if s != ' ' {
+        if let Some(name) = frame_name {
+            if !name.is_empty() {
+                cards.set_string(
+                    &fmt_global_key("WCSNAME", s),
+                    name,
+                    "Reference name for the coord. frame",
+                );
+            }
+        }
+    }
+
+    // CRPIXi{S}
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
+            let key = fmt_axis_key("CRPIX", i + 1, s);
             let comment = format!("Reference pixel on axis {}", i + 1);
             cards.set_float(&key, val, &comment);
         }
     }
 
-    // CRVALi
+    // CRVALi{S}
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
-            let key = format!("CRVAL{}", i + 1);
+            let key = fmt_axis_key("CRVAL", i + 1, s);
             let comment = format!("Value at ref. pixel on axis {}", i + 1);
             cards.set_float(&key, val, &comment);
         }
     }
 
-    // CTYPEi
+    // CTYPEi{S}
     for i in 0..naxis {
         if let Some(ref val) = store.ctype[i] {
-            let key = format!("CTYPE{}", i + 1);
+            let key = fmt_axis_key("CTYPE", i + 1, s);
             let comment = format!("Type of co-ordinate on axis {}", i + 1);
             cards.set_string(&key, val, &comment);
         }
     }
 
-    // CUNITi
+    // CUNITi{S}
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
-            let key = format!("CUNIT{}", i + 1);
+            let key = fmt_axis_key("CUNIT", i + 1, s);
             let comment = format!("Units for axis {}", i + 1);
             cards.set_string(&key, val, &comment);
         }
@@ -786,17 +847,25 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
 
     // CD matrix or PC+CDELT.
     if use_cd {
-        write_cd_matrix(store, cards)?;
+        write_cd_matrix(store, cards, s)?;
     } else {
-        write_pc_cdelt(store, cards)?;
+        write_pc_cdelt(store, cards, s)?;
     }
 
     // Ancillary keywords.
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
+        cards.set_string(
+            &fmt_global_key("RADESYS", s),
+            radesys,
+            "Reference frame for RA/DEC values",
+        );
     }
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "[yr] Epoch of reference equinox");
+        cards.set_float(
+            &fmt_global_key("EQUINOX", s),
+            equinox,
+            "[yr] Epoch of reference equinox",
+        );
     }
     // LONPOLE: only emit when non-default. FITS-WCS Paper II §2.4: the
     // default φp is 180° for zenithal projections with native fiducial
@@ -804,40 +873,64 @@ fn write_store_to_cards(store: &FitsStore, cards: &mut CardList, use_cd: bool) -
     // default value; emitting it would diverge from the canonical output.
     if let Some(lonpole) = store.lonpole {
         if lonpole != 180.0 {
-            cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
+            cards.set_float(
+                &fmt_global_key("LONPOLE", s),
+                lonpole,
+                "Native longitude of celestial pole",
+            );
         }
     }
     if let Some(latpole) = store.latpole {
-        cards.set_float("LATPOLE", latpole, "Native latitude of celestial pole");
-    }
-    if let Some(mjdobs) = store.mjdobs {
-        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-    }
-    // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
-    }
-    if let Some(ref specsys) = store.specsys {
-        cards.set_string("SPECSYS", specsys, "Spectral reference frame");
+        cards.set_float(
+            &fmt_global_key("LATPOLE", s),
+            latpole,
+            "Native latitude of celestial pole",
+        );
     }
     if let Some(restfrq) = store.restfrq {
-        cards.set_float("RESTFRQ", restfrq, "Rest frequency (Hz)");
+        cards.set_float(
+            &fmt_global_key("RESTFRQ", s),
+            restfrq,
+            "Rest frequency (Hz)",
+        );
     }
     if let Some(restwav) = store.restwav {
-        cards.set_float("RESTWAV", restwav, "Rest wavelength (m)");
+        cards.set_float(
+            &fmt_global_key("RESTWAV", s),
+            restwav,
+            "Rest wavelength (m)",
+        );
+    }
+    if let Some(ref specsys) = store.specsys {
+        cards.set_string(
+            &fmt_global_key("SPECSYS", s),
+            specsys,
+            "Spectral reference frame",
+        );
+    }
+
+    // Plane-shared cards: only emit on primary plane.
+    if s == ' ' {
+        if let Some(mjdobs) = store.mjdobs {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+        }
+        // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
     }
 
     Ok(())
 }
 
 /// Write CD matrix keywords.
-fn write_cd_matrix(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult<()> {
     let naxis = store.naxis;
     for i in 0..naxis {
         for j in 0..naxis {
             if let Some(val) = store.cd[i][j] {
                 if val != 0.0 || i == j {
-                    let key = format!("CD{}_{}", i + 1, j + 1);
+                    let key = fmt_matrix_key("CD", i + 1, j + 1, s);
                     cards.set_float(&key, val, "Transformation matrix element");
                 }
             }
@@ -847,7 +940,7 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
 }
 
 /// Write PC matrix + CDELT keywords.
-fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult<()> {
     let naxis = store.naxis;
 
     let mut cd_array = ndarray::Array2::zeros((naxis, naxis));
@@ -858,18 +951,18 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
     }
     let (cdelt, pc) = split_cd(&cd_array);
 
-    // CDELTi
+    // CDELTi{S}
     for (i, &val) in cdelt.iter().enumerate() {
-        let key = format!("CDELT{}", i + 1);
+        let key = fmt_axis_key("CDELT", i + 1, s);
         cards.set_float(&key, val, "Pixel scale");
     }
 
-    // PCi_j (only non-default values)
+    // PCi_j{S} (only non-default values)
     for i in 0..naxis {
         for j in 0..naxis {
             let default = if i == j { 1.0 } else { 0.0 };
             if (pc[[i, j]] - default).abs() > 1e-15 {
-                let key = format!("PC{}_{}", i + 1, j + 1);
+                let key = fmt_matrix_key("PC", i + 1, j + 1, s);
                 cards.set_float(&key, pc[[i, j]], "");
             }
         }
