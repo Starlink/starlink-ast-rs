@@ -32,6 +32,40 @@ pub(crate) fn infer_axis_count_from_indexed_keywords(cards: &CardList) -> Option
     if max_n == 0 { None } else { Some(max_n) }
 }
 
+/// Read the FITS TIMESYS and the MJD-AVG / MJD-OBS / DATE-OBS /
+/// DATE-AVG priority chain into `store.timesys` and `store.mjdobs`.
+///
+/// Mirrors `fitschan.c::ChooseEpoch` (line 6066-6149) but populates
+/// the FitsStore directly instead of returning a converted MJD —
+/// the time-scale conversion to TT happens later in
+/// `wcs_celestial::build_celestial_frame` once we know whether the
+/// frame is celestial.
+///
+/// The chain (highest priority first):
+///   1. MJD-AVG (mid-exposure time, preferred when present)
+///   2. MJD-OBS (start of exposure)
+///   3. DATE-OBS (parsed via date_str_to_mjd)
+///   4. DATE-AVG (parsed via date_str_to_mjd)
+pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
+    store.timesys = cards.get_string("TIMESYS");
+    store.mjdobs = cards
+        .get_float("MJD-AVG")
+        .or_else(|| cards.get_float("MJD-OBS"))
+        .or_else(|| cards.get_float("MJD_OBS"))
+        .or_else(|| {
+            cards
+                .get_string("DATE-OBS")
+                .as_deref()
+                .and_then(super::wcs_write::date_str_to_mjd)
+        })
+        .or_else(|| {
+            cards
+                .get_string("DATE-AVG")
+                .as_deref()
+                .and_then(super::wcs_write::date_str_to_mjd)
+        });
+}
+
 /// Extract FITS-WCS keywords from a [`CardList`] into a [`FitsStore`].
 ///
 /// The returned store contains all WCS keyword values found in the header.
@@ -116,34 +150,10 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList) -> AstResult<FitsStore> {
     store.equinox = cards.get_float("EQUINOX");
     store.lonpole = cards.get_float("LONPOLE");
     store.latpole = cards.get_float("LATPOLE");
-    // TIMESYS — defaults to UTC when absent (FITS standard).
-    store.timesys = cards.get_string("TIMESYS");
-
-    // Epoch of observation. Try in priority order (mirrors C
-    // ChooseEpoch at fitschan.c:6066-6149):
-    //   1. MJD-AVG (mid-exposure time)
-    //   2. MJD-OBS (start of exposure)
-    //   3. DATE-OBS (parsed via date_str_to_mjd)
-    //   4. DATE-AVG (parsed via date_str_to_mjd)
-    // The store.mjdobs field holds the resulting MJD, in the timescale
-    // indicated by store.timesys (UTC by default). Conversion to TT
-    // happens later in wcs_celestial when populating SkyFrame.epoch.
-    store.mjdobs = cards
-        .get_float("MJD-AVG")
-        .or_else(|| cards.get_float("MJD-OBS"))
-        .or_else(|| cards.get_float("MJD_OBS"))
-        .or_else(|| {
-            cards
-                .get_string("DATE-OBS")
-                .as_deref()
-                .and_then(super::wcs_write::date_str_to_mjd)
-        })
-        .or_else(|| {
-            cards
-                .get_string("DATE-AVG")
-                .as_deref()
-                .and_then(super::wcs_write::date_str_to_mjd)
-        });
+    // Epoch of observation (TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
+    // DATE-AVG priority chain). See read_epoch_into_store for the
+    // priority order and the reference to C ChooseEpoch.
+    read_epoch_into_store(cards, &mut store);
     store.specsys = cards.get_string("SPECSYS");
     store.restfrq = cards.get_float("RESTFRQ");
     store.restwav = cards.get_float("RESTWAV");

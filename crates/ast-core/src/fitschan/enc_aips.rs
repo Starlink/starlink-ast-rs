@@ -168,10 +168,9 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         .or_else(|| cards.get_float("RESTFREQ"));
     store.restwav = cards.get_float("RESTWAV");
 
-    // MJD-OBS
-    store.mjdobs = cards
-        .get_float("MJD-OBS")
-        .or_else(|| cards.get_float("MJD_OBS"));
+    // Epoch of observation: TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
+    // DATE-AVG priority chain.
+    super::wcs_keywords::read_epoch_into_store(cards, &mut store);
 
     // PV parameters (AIPS++: PVi_m)
     for i in 0..naxis {

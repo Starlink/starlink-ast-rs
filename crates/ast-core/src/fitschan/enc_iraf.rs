@@ -99,10 +99,9 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         .get_float("EQUINOX")
         .or_else(|| cards.get_float("EPOCH"));
 
-    // MJD-OBS
-    store.mjdobs = cards
-        .get_float("MJD-OBS")
-        .or_else(|| cards.get_float("MJD_OBS"));
+    // Epoch of observation: TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
+    // DATE-AVG priority chain.
+    super::wcs_keywords::read_epoch_into_store(cards, &mut store);
 
     // LONPOLE, LATPOLE (may be present even in IRAF headers)
     store.lonpole = cards.get_float("LONPOLE");
