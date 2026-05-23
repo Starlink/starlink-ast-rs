@@ -12,7 +12,7 @@ use super::wcs_celestial::build_native_to_celestial_rotation;
 use super::wcs_decompose::{decompose_linear, split_cd};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
-    BasicFrame, CmpFrame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
+    BasicFrame, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, WcsProjection};
 use crate::pal;
@@ -59,18 +59,33 @@ pub(crate) fn encode_wcs_to_store(
     writer(&store, cards)
 }
 
-/// Decompose a FrameSet into a FitsStore.
+/// Decompose a FrameSet into a FitsStore using the current frame as the
+/// WCS target (pixel→current mapping).
 pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
+    store_from_frameset_to(fs, fs.current_idx())
+}
+
+/// Decompose a FrameSet into a FitsStore using `target_idx` (0-based) as
+/// the WCS target frame (pixel→target_frame mapping).
+///
+/// Mirrors fitschan.c::AddVersion (line 12241) which takes a frame index
+/// and builds the axis/keyword store for that frame.
+fn store_from_frameset_to(fs: &FrameSet, target_idx: usize) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
 
-    // Get the base→current mapping (pixel→world) and simplify. The C
+    // Get the target frame for axis identification and celestial axes.
+    let target_frame = fs.frame(FrameRef::Index(target_idx + 1))?;
+
+    // Get the base→target mapping (pixel→world) and simplify. The C
     // library's CelestialAxes (fitschan.c ~line 5093) calls astSimplify
     // before doing anything else, which collapses redundant
     // forward/inverse pairs and merges adjacent linear maps. Doing the
     // same here keeps subsequent numerical Jacobians from accumulating
     // floating-point noise across cancellable mapping steps.
-    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?.simplify()?;
+    let mapping = fs
+        .mapping(FrameRef::Base, FrameRef::Index(target_idx + 1))?
+        .simplify()?;
 
     // First-pass extraction via the pre-WcsMap chain. This gives a CRPIX
     // estimate and lets us evaluate CRVAL on the full pixel→world
@@ -113,7 +128,7 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     //
     // Linear-only / non-celestial frames keep the pre-WcsMap path.
     let mut cel_crval: Option<Vec<f64>> = None;
-    let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(fs) {
+    let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(target_frame) {
         let parts = projection
             .and_then(|p| split_around_wcsmap(mapping.as_ref()).map(|(_, post)| (p, post)));
         match parts {
@@ -159,7 +174,7 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
     // the fiducial-point CRVAL extracted via the post chain. Other
     // axes keep their numerical-Jacobian values.
     let mut crval_for_store = full_decomp.crval.clone();
-    if let (Some(fid), Some((_, lon_axis, lat_axis))) = (cel_crval, celestial_axes(fs)) {
+    if let (Some(fid), Some((_, lon_axis, lat_axis))) = (cel_crval, celestial_axes(target_frame)) {
         crval_for_store[lon_axis] = fid[lon_axis];
         crval_for_store[lat_axis] = fid[lat_axis];
     }
@@ -179,8 +194,8 @@ pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
         }
     }
 
-    // Identify axis types from the current frame and populate CTYPE/CRVAL.
-    identify_axes(fs, &crval_for_store, &mut store, projection)?;
+    // Identify axis types from the target frame and populate CTYPE/CRVAL.
+    identify_axes(target_frame, &crval_for_store, &mut store, projection)?;
 
     // Apply C-library-style numerical cleanups (SplitMat 1e-7, CRVAL
     // near-zero, CRPIX micro-pixel rounding) so all encoders see clean
@@ -247,14 +262,12 @@ fn fiducial_crval(
     Some(result)
 }
 
-/// Find the SkyFrame and its (lon_axis, lat_axis) within a FrameSet's
-/// current frame, when one exists.
-fn celestial_axes(fs: &FrameSet) -> Option<(SkyFrame, usize, usize)> {
-    let current = fs.current();
-    if let Some(sky) = current.as_any().downcast_ref::<SkyFrame>() {
+/// Find the SkyFrame and its (lon_axis, lat_axis) within a frame, when one exists.
+fn celestial_axes(frame: &dyn Frame) -> Option<(SkyFrame, usize, usize)> {
+    if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
         return Some((sky.clone(), 0, 1));
     }
-    if let Some(cmp) = current.as_any().downcast_ref::<CmpFrame>() {
+    if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
         if let Some(sky) = cmp.frame1().as_any().downcast_ref::<SkyFrame>() {
             return Some((sky.clone(), 0, 1));
         }
@@ -486,22 +499,21 @@ fn extract_projection_from_mapping(mapping: &dyn Mapping) -> Option<WcsProjectio
     None
 }
 
-/// Identify axis types from the current frame and populate CTYPE, CRVAL, etc.
+/// Identify axis types from the target frame and populate CTYPE, CRVAL, etc.
 #[allow(clippy::needless_range_loop)]
 fn identify_axes(
-    fs: &FrameSet,
+    frame: &dyn Frame,
     crval: &[f64],
     store: &mut FitsStore,
     projection: Option<WcsProjection>,
 ) -> AstResult<()> {
-    let current = fs.current();
     let naxis = store.naxis;
 
-    if let Some(sky) = current.as_any().downcast_ref::<SkyFrame>() {
+    if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
         populate_celestial(sky, crval, store, 0, 1, projection)?;
-    } else if let Some(spec) = current.as_any().downcast_ref::<SpecFrame>() {
+    } else if let Some(spec) = frame.as_any().downcast_ref::<SpecFrame>() {
         populate_spectral(spec, crval, store, 0)?;
-    } else if let Some(cmp) = current.as_any().downcast_ref::<CmpFrame>() {
+    } else if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
         let n1 = cmp.naxes1();
         let frame1 = cmp.frame1();
         let frame2 = cmp.frame2();
@@ -542,7 +554,7 @@ fn identify_axes(
         // domain, falling back to AXISn.
         for i in 0..naxis {
             store.ctype[i] = Some(
-                leftover_ctype_for_axis(current, i + 1).unwrap_or_else(|| format!("AXIS{}", i + 1)),
+                leftover_ctype_for_axis(frame, i + 1).unwrap_or_else(|| format!("AXIS{}", i + 1)),
             );
             store.crval[i] = Some(crval[i]);
         }
@@ -596,7 +608,6 @@ fn populate_celestial(
     // through SkyFrame::norm before the rad→deg conversion mirrors the
     // C library's astNorm step inside CelestialAxes (fitschan.c around
     // line 5138) and keeps CRVAL in the conventional FITS range.
-    use crate::frames::Frame;
     let mut sky_pair = [0.0_f64; 2];
     // SkyFrame is intrinsically 2D with axis 1 = longitude, 2 = latitude.
     sky_pair[0] = crval[lon_axis];
@@ -1179,8 +1190,6 @@ fn gregorian_to_mjd(
 ///     order, skipping any already used in the first pass.
 ///
 /// Returns a Vec of (1-based frame index, version letter) pairs.
-// called from store_from_frameset_with_alts in Task 3
-#[allow(dead_code)]
 pub(crate) fn frames_with_version_letters(fs: &FrameSet) -> Vec<(usize, char)> {
     let nframe = fs.nframe();
     let base_idx = fs.base_idx() + 1; // 1-based to match C
@@ -1236,6 +1245,47 @@ pub(crate) fn frames_with_version_letters(fs: &FrameSet) -> Vec<(usize, char)> {
         .into_iter()
         .filter_map(|(idx, opt)| opt.map(|c| (idx, c)))
         .collect()
+}
+
+/// One FITS alt-WCS plane: a version letter (A-Z), the frame domain
+/// (used to populate WCSNAME{S}), and a FitsStore holding axis-indexed
+/// values for that plane.
+#[allow(dead_code)]
+pub(crate) struct AltPlane {
+    pub(crate) letter: char,
+    pub(crate) domain: String,
+    pub(crate) store: FitsStore,
+}
+
+/// Build the primary FitsStore plus per-frame alt planes.
+///
+/// Returns `(primary_store, alt_planes)` where `alt_planes` is a `Vec` of
+/// [`AltPlane`] values. Alt planes are computed using the same
+/// `store_from_frameset_to` logic with each non-base/non-current frame as
+/// the target.
+///
+/// Mirrors `fitschan.c::FsetToStore` (lines 12169-12259).
+#[allow(dead_code)]
+pub(crate) fn store_from_frameset_with_alts(
+    fs: &FrameSet,
+) -> AstResult<(FitsStore, Vec<AltPlane>)> {
+    let primary = store_from_frameset(fs)?;
+    let assignments = frames_with_version_letters(fs);
+
+    let mut alts = Vec::with_capacity(assignments.len());
+    for (frame_idx_1based, letter) in assignments {
+        let target_idx = frame_idx_1based - 1;
+        let alt_store = store_from_frameset_to(fs, target_idx)?;
+        let frame = fs.frame(FrameRef::Index(frame_idx_1based))?;
+        let domain = frame.domain().to_string();
+        alts.push(AltPlane {
+            letter,
+            domain,
+            store: alt_store,
+        });
+    }
+
+    Ok((primary, alts))
 }
 
 // ---------------------------------------------------------------------------
@@ -1397,6 +1447,36 @@ mod tests {
     }
 
     #[test]
+    fn store_from_frameset_with_alts_emits_two_alts_for_timj() {
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/wcsconv/inputs/timj.ast"
+        ))
+        .expect("read timj.ast");
+        let obj = crate::serial::from_native_string(&text).expect("parse timj");
+        let fs = match obj {
+            crate::serial::AnyObject::FrameSet(fs) => fs,
+            _ => panic!("expected FrameSet"),
+        };
+        let (_primary, alts) = store_from_frameset_with_alts(&fs).expect("alt planes");
+        assert_eq!(alts.len(), 2, "timj has 2 alt planes (PIXEL, AXIS)");
+        assert_eq!(alts[0].letter, 'A');
+        assert_eq!(alts[1].letter, 'B');
+        // Domain naming may vary; just check both PIXEL and AXIS are present.
+        let domains: Vec<&str> = alts.iter().map(|a| a.domain.as_str()).collect();
+        assert!(
+            domains.iter().any(|d| d.eq_ignore_ascii_case("PIXEL")),
+            "domains: {:?}",
+            domains
+        );
+        assert!(
+            domains.iter().any(|d| d.eq_ignore_ascii_case("AXIS")),
+            "domains: {:?}",
+            domains
+        );
+    }
+
+    #[test]
     fn frames_with_version_letters_timj() {
         use crate::serial::AnyObject;
         // timj.ast has 4 frames: GRID(base), PIXEL, AXIS, SKY(current).
@@ -1541,7 +1621,7 @@ mod diag_tests {
         let proj = extract_projection_from_mapping(mapping.as_ref())
             .expect("WcsMap projection in gappt mapping");
         let (sky, lon_axis, lat_axis) =
-            celestial_axes(&fs).expect("celestial axes in gappt FrameSet");
+            celestial_axes(fs.current()).expect("celestial axes in gappt FrameSet");
 
         // Compute fiducial CRVAL via the post chain (same as store_from_frameset).
         let (_, post) = split_around_wcsmap(mapping.as_ref()).expect("WcsMap found in mapping");
