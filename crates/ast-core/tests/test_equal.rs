@@ -813,6 +813,7 @@ fn frameset_different_mapping() {
 // =========================================================================
 
 #[test]
+#[allow(clippy::approx_constant)] // 3.14159 is opaque test zoom factor
 fn serialise_round_trip_zoommap() {
     let original = ZoomMap::new(2, 3.14159).unwrap();
     let native =

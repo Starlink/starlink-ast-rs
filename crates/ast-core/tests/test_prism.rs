@@ -397,7 +397,7 @@ fn mesh_points_are_on_prism_boundary() {
         let on_circle_boundary = (dist_sq.sqrt() - 5.0).abs() < 1e-6;
         let inside_circle = dist_sq <= 25.0 + 1e-6;
         let on_interval_boundary = (z - 2.0).abs() < 1e-6 || (z - 8.0).abs() < 1e-6;
-        let inside_interval = z >= 2.0 - 1e-6 && z <= 8.0 + 1e-6;
+        let inside_interval = (2.0 - 1e-6..=8.0 + 1e-6).contains(&z);
 
         let valid =
             (on_circle_boundary && inside_interval) || (inside_circle && on_interval_boundary);

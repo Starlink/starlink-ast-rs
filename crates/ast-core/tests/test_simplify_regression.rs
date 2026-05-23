@@ -84,7 +84,7 @@ fn ulp_close(a: f64, b: f64, max_ulps: u64) -> bool {
     }
     let ai = a.to_bits();
     let bi = b.to_bits();
-    let diff = if ai > bi { ai - bi } else { bi - ai };
+    let diff = ai.abs_diff(bi);
     diff <= max_ulps
 }
 
@@ -773,9 +773,9 @@ fn winmap_swaps_past_permmap() {
     use ast_core::coords::PointSet;
     use ast_core::mappings::{CmpMap, Composition, Mapping, PermMap, ShiftMap};
 
-    let s1 = ShiftMap::new(&[1.0, 2.0]);
+    let s1 = ShiftMap::new([1.0, 2.0]);
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let s2 = ShiftMap::new(&[3.0, 4.0]);
+    let s2 = ShiftMap::new([3.0, 4.0]);
 
     let c1 = CmpMap::new(Box::new(s1), Box::new(pm), Composition::Series).unwrap();
     let full = CmpMap::new(Box::new(c1), Box::new(s2), Composition::Series).unwrap();
@@ -1030,7 +1030,7 @@ fn matrixmap_seek_through_shiftmap() {
     // because there is a MatrixMap at position i-1 that serves as a merge partner.
     let m1 = array![[1.0, 2.0], [0.0, 1.0]]; // upper triangular (non-diagonal)
     let mm1 = MatrixMap::new(m1).unwrap();
-    let sm = ShiftMap::new(&[1.0, 2.0]);
+    let sm = ShiftMap::new([1.0, 2.0]);
     let m2 = array![[1.0, 0.0], [1.0, 1.0]]; // lower triangular (non-diagonal)
     let mm2 = MatrixMap::new(m2).unwrap();
 

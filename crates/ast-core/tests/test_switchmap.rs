@@ -14,8 +14,10 @@ use ast_core::regions::{BoxRegionBuilder, DynRegion, remove_regions};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 /// Create a SwitchMap with two routes:
+///
 /// - Route 1 (x in [0,10]): WinMap scaling [0,10]→[0,100]
 /// - Route 2 (x in [20,30]): WinMap scaling [20,30]→[200,300]
+///
 /// Forward selector is a SelectorMap over 1D regions.
 fn make_1d_switchmap() -> SwitchMap {
     let frame1 = BasicFrameBuilder::new(1).build().unwrap();

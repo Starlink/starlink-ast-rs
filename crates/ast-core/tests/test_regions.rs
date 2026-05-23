@@ -3367,15 +3367,15 @@ fn convex_hull_basic() {
     let mut array = vec![0.0f32; nx * ny];
 
     // Set pixels (using 1-based C indexing from the test, converted to 0-based).
-    array[5 + 0 * nx] = 1.0; // col=5, row=0 → grid(-5, 3)
-    array[6 + 0 * nx] = 1.0; // col=6, row=0 → grid(-4, 3)
-    array[7 + 0 * nx] = 1.0; // col=7, row=0 → grid(-3, 3)
-    array[6 + 1 * nx] = 1.0; // col=6, row=1 → grid(-4, 4)
-    array[7 + 1 * nx] = 1.0; // col=7, row=1 → grid(-3, 4)
+    array[5] = 1.0; // col=5, row=0 → grid(-5, 3)
+    array[6] = 1.0; // col=6, row=0 → grid(-4, 3)
+    array[7] = 1.0; // col=7, row=0 → grid(-3, 3)
+    array[6 + nx] = 1.0; // col=6, row=1 → grid(-4, 4)
+    array[7 + nx] = 1.0; // col=7, row=1 → grid(-3, 4)
     array[1 + 2 * nx] = 1.0; // col=1, row=2 → grid(-9, 5)
     array[7 + 2 * nx] = 1.0; // col=7, row=2 → grid(-3, 5)
-    array[0 + 3 * nx] = 1.0; // col=0, row=3 → grid(-10, 6)
-    array[0 + 5 * nx] = 1.0; // col=0, row=5 → grid(-10, 8)
+    array[3 * nx] = 1.0; // col=0, row=3 → grid(-10, 6)
+    array[5 * nx] = 1.0; // col=0, row=5 → grid(-10, 8)
     array[1 + 5 * nx] = 1.0; // col=1, row=5 → grid(-9, 8)
     array[5 + 5 * nx] = 1.0; // col=5, row=5 → grid(-5, 8)
 

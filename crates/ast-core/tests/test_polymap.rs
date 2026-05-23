@@ -695,8 +695,8 @@ fn polymap_bulk_nr_inverse_1d() {
     // Inverse: should recover original inputs.
     let inv_out = m.transform(&fwd_out, false).unwrap();
 
-    for i in 0..npoints {
-        let expected = inputs[i][0];
+    for (i, input) in inputs.iter().enumerate().take(npoints) {
+        let expected = input[0];
         let got = inv_out.point(i)[0];
         assert!(
             (got - expected).abs() < 1e-6,
@@ -763,9 +763,9 @@ fn polymap_bulk_nr_inverse_2d() {
     // Inverse: should recover original inputs.
     let inv_out = m.transform(&fwd_out, false).unwrap();
 
-    for i in 0..npoints {
-        let ex = inputs[i][0];
-        let ey = inputs[i][1];
+    for (i, input) in inputs.iter().enumerate().take(npoints) {
+        let ex = input[0];
+        let ey = input[1];
         let gx = inv_out.point(i)[0];
         let gy = inv_out.point(i)[1];
         assert!(

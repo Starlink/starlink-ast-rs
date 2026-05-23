@@ -1592,7 +1592,7 @@ mod tests {
         };
         let assignments = frames_with_version_letters(&fs);
         assert!(
-            assignments.len() >= 1,
+            !assignments.is_empty(),
             "timj should have at least 1 alt plane, got {}",
             assignments.len()
         );

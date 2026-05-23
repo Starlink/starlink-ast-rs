@@ -240,14 +240,11 @@ fn transform_forward_masks_outside() {
         .unwrap();
 
     // Points: (1,1) inside AND, (2.5, 0) inside circle but outside box, (5,5) outside both.
-    let pts = PointSet::from_rows(
-        [
-            [1.0, 1.0].as_slice(),
-            [2.5, 0.0].as_slice(),
-            [5.0, 5.0].as_slice(),
-        ]
-        .into_iter(),
-    );
+    let pts = PointSet::from_rows([
+        [1.0, 1.0].as_slice(),
+        [2.5, 0.0].as_slice(),
+        [5.0, 5.0].as_slice(),
+    ]);
 
     let result = cmp.transform(&pts, true).unwrap();
     assert_eq!(result.npoint(), 3);
@@ -286,7 +283,7 @@ fn transform_inverse_passes_all() {
         .build()
         .unwrap();
 
-    let pts = PointSet::from_rows([[10.0, 10.0].as_slice(), [0.0, 0.0].as_slice()].into_iter());
+    let pts = PointSet::from_rows([[10.0, 10.0].as_slice(), [0.0, 0.0].as_slice()]);
 
     // Inverse transform always passes points through unchanged.
     let result = cmp.transform(&pts, false).unwrap();

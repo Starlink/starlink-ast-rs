@@ -84,7 +84,7 @@ fn test_ratemap_zoommap_rate() {
 fn test_ratemap_shiftmap_rate() {
     // ShiftMap with shifts [5.0, 10.0]: output_1 = input_1 + 5, output_2 = input_2 + 10.
     // d(output_1)/d(input_1) = 1.0 everywhere.
-    let sm: DynMapping = Box::new(ShiftMap::new(&[5.0, 10.0]));
+    let sm: DynMapping = Box::new(ShiftMap::new([5.0, 10.0]));
     let rm = RateMap::new(sm, 1, 1).unwrap();
 
     let pts = ast_core::coords::PointSet::from_columns(&[&[1.0, 2.0], &[3.0, 4.0]]).unwrap();

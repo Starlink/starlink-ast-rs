@@ -1,6 +1,8 @@
 //! Rust equivalent of reference/starlink-ast/ast_tester/testcmpframe.c
 //! Covers: axis concatenation, routing, geometry, format/unformat delegation.
 
+#![allow(clippy::approx_constant)] // 3.14 is intentional opaque test value, not π
+
 use std::f64::consts::PI;
 
 use ast_core::constants::BAD_VALUE;

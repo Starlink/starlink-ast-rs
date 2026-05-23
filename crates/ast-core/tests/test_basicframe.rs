@@ -1,6 +1,8 @@
 //! Rust equivalent of reference/starlink-ast/ast_tester/testframe.c
 //! Covers: construction, per-axis attributes, Euclidean geometry, format/unformat.
 
+#![allow(clippy::approx_constant)] // 3.14 / 3.14159 are intentional opaque test values, not π
+
 use std::f64::consts::PI;
 
 use ast_core::constants::BAD_VALUE;

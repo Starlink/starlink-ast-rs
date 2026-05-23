@@ -71,6 +71,7 @@ fn view_and_into_ndarray() {
 }
 
 #[test]
+#[allow(clippy::assertions_on_constants)] // entire purpose is to verify the constant's properties
 fn bad_value_constant() {
     assert_eq!(BAD_VALUE, -f64::MAX);
     assert!(BAD_VALUE.is_finite());

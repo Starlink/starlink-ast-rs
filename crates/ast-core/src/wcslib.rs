@@ -731,6 +731,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // -3.14 is opaque test parameter, not π
     fn set_and_get_param() {
         let mut prj = PrjParams::new(WcsProjection::Tan).unwrap();
         prj.set_param(0, 5, 42.0);

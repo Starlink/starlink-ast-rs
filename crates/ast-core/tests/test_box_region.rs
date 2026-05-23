@@ -257,7 +257,7 @@ fn transform_passes_interior() {
         .build()
         .unwrap();
 
-    let pts = PointSet::from_rows(&[[5.0, 5.0], [1.0, 1.0]]);
+    let pts = PointSet::from_rows([[5.0, 5.0], [1.0, 1.0]]);
     let result = b.transform(&pts, true).unwrap();
 
     assert_eq!(result.npoint(), 2);
@@ -275,7 +275,7 @@ fn transform_masks_exterior() {
         .build()
         .unwrap();
 
-    let pts = PointSet::from_rows(&[[-1.0, 5.0], [5.0, 11.0]]);
+    let pts = PointSet::from_rows([[-1.0, 5.0], [5.0, 11.0]]);
     let result = b.transform(&pts, true).unwrap();
 
     assert_eq!(result.point(0)[0], BAD_VALUE);
@@ -292,7 +292,7 @@ fn transform_inverse_passes_all() {
         .build()
         .unwrap();
 
-    let pts = PointSet::from_rows(&[[-100.0, 200.0], [5.0, 5.0]]);
+    let pts = PointSet::from_rows([[-100.0, 200.0], [5.0, 5.0]]);
     let result = b.transform(&pts, false).unwrap();
 
     assert!((result.point(0)[0] - (-100.0)).abs() < 1e-10);

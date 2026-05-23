@@ -206,7 +206,7 @@ fn transform_passes_interior() {
         .unwrap();
 
     // Points inside should pass through unchanged.
-    let pts = PointSet::from_rows(&[[1.0, 1.0], [3.0, 4.0]]);
+    let pts = PointSet::from_rows([[1.0, 1.0], [3.0, 4.0]]);
     let result = circle.transform(&pts, true).unwrap();
 
     assert_eq!(result.npoint(), 2);
@@ -226,7 +226,7 @@ fn transform_masks_exterior() {
         .unwrap();
 
     // Points outside should become BAD_VALUE.
-    let pts = PointSet::from_rows(&[[10.0, 0.0], [0.0, -10.0]]);
+    let pts = PointSet::from_rows([[10.0, 0.0], [0.0, -10.0]]);
     let result = circle.transform(&pts, true).unwrap();
 
     assert_eq!(result.npoint(), 2);
@@ -246,7 +246,7 @@ fn transform_mixed() {
         .unwrap();
 
     // Mix of inside and outside points.
-    let pts = PointSet::from_rows(&[[1.0, 1.0], [10.0, 10.0], [0.0, 0.0]]);
+    let pts = PointSet::from_rows([[1.0, 1.0], [10.0, 10.0], [0.0, 0.0]]);
     let result = circle.transform(&pts, true).unwrap();
 
     // Point 0: inside — passed through.
@@ -272,7 +272,7 @@ fn transform_inverse_passes_all() {
         .unwrap();
 
     // Inverse transform always passes points through unchanged.
-    let pts = PointSet::from_rows(&[[10.0, 10.0], [0.0, 0.0]]);
+    let pts = PointSet::from_rows([[10.0, 10.0], [0.0, 0.0]]);
     let result = circle.transform(&pts, false).unwrap();
 
     assert!((result.point(0)[0] - 10.0).abs() < 1e-10);

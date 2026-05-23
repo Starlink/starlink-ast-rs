@@ -363,7 +363,7 @@ fn deserialize_fixture() {
     };
     assert_eq!(dsb.sideband(), SideBand::USB);
     assert!((dsb.dsb_centre() - 220463127593.87817).abs() < 1.0);
-    assert!((dsb.ifr() - (-3999979572.8960571)).abs() < 1.0);
+    assert!((dsb.ifr() - (-3_999_979_572.896_057)).abs() < 1.0);
 }
 
 // ---------------------------------------------------------------------------

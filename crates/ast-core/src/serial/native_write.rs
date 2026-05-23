@@ -337,6 +337,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn fmt_full_precision() {
         // 3.14 is not exactly representable; %.17g shows all 17 digits.
         assert_eq!(format_double_g(3.14, 17), "3.1400000000000001");
@@ -365,7 +366,7 @@ mod tests {
         assert_eq!(format_double_g(1e17, 17), "1e+17");
         assert_eq!(format_double_g(1e100, 17), "1e+100");
         assert_eq!(
-            format_double_g(1.23456789012345678e100, 17),
+            format_double_g(1.234_567_890_123_456_9e100, 17),
             "1.2345678901234569e+100"
         );
     }
@@ -394,6 +395,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn fmt_low_precision() {
         // Precision 1 — one significant digit.
         assert_eq!(format_double_g(3.14, 1), "3");

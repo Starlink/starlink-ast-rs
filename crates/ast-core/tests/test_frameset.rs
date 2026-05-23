@@ -2,6 +2,8 @@
 //! Covers: construction, add_frame, mapping composition, Frame/Mapping delegation,
 //! integrity, remove_frame, remap_frame, set_base/set_current, convert, invert.
 
+#![allow(clippy::approx_constant)] // intentional opaque test values, not π
+
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};

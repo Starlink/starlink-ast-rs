@@ -1086,7 +1086,7 @@ fn within_ulps(a: f64, b: f64, max_ulps: u64) -> bool {
     }
     let ai = a.to_bits();
     let bi = b.to_bits();
-    let diff = if ai > bi { ai - bi } else { bi - ai };
+    let diff = ai.abs_diff(bi);
     diff <= max_ulps
 }
 

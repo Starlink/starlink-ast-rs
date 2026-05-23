@@ -771,10 +771,10 @@ mod tests {
         // The IAU 1976 model (eraPmat76) has small numerical noise
         // at the ~1e-7 level due to epoch→MJD→JD round-trips.
         let m = prec(2000.0, 2000.0);
-        for i in 0..3 {
-            for j in 0..3 {
+        for (i, row) in m.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_close(m[i][j], expected, 1.0e-7);
+                assert_close(val, expected, 1.0e-7);
             }
         }
     }
@@ -798,10 +798,10 @@ mod tests {
     #[test]
     fn test_deuler_identity() {
         let m = deuler("Z", 0.0, 0.0, 0.0);
-        for i in 0..3 {
-            for j in 0..3 {
+        for (i, row) in m.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_close(m[i][j], expected, TOL);
+                assert_close(val, expected, TOL);
             }
         }
     }
@@ -937,10 +937,10 @@ mod tests {
     fn test_dav2m_zero() {
         // Zero axial vector -> identity matrix.
         let m = dav2m(&[0.0, 0.0, 0.0]);
-        for i in 0..3 {
-            for j in 0..3 {
+        for (i, row) in m.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_close(m[i][j], expected, TOL);
+                assert_close(val, expected, TOL);
             }
         }
     }
@@ -979,7 +979,7 @@ mod tests {
     fn gmst_range() {
         // GMST should be in range [0, 2π]
         let g = super::gmst(51544.5);
-        assert!(g >= 0.0 && g < 2.0 * std::f64::consts::PI);
+        assert!((0.0..2.0 * std::f64::consts::PI).contains(&g));
     }
 
     #[test]

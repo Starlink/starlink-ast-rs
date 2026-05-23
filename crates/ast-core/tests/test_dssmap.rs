@@ -15,7 +15,7 @@ use ast_core::{AnyObject, from_native_string, to_native_string};
 /// These values approximate a real DSS plate (POSS-I E survey).
 fn make_test_dssmap() -> DssMap {
     // Plate centre: RA = 10h 47m 57.3s, Dec = -60d 15m 52s
-    let plate_ra = 2.827_237_465_568_411_2; // radians
+    let plate_ra = 2.827_237_465_568_411; // radians
     let plate_dec = -1.051_812_254_050_266_8; // radians
     let plate_scale = 67.2; // arcsec/mm
     let x_pixel_offset = 4201.0;
@@ -86,7 +86,7 @@ fn dssmap_basic_properties() {
     assert_eq!(dm.nin(), 2);
     assert_eq!(dm.nout(), 2);
     assert!(!dm.is_inverted());
-    assert!((dm.plate_ra() - 2.827_237_465_568_411_2).abs() < 1e-12);
+    assert!((dm.plate_ra() - 2.827_237_465_568_411).abs() < 1e-12);
     assert!((dm.plate_dec() - (-1.051_812_254_050_266_8)).abs() < 1e-12);
     assert!((dm.plate_scale() - 67.2).abs() < 1e-10);
 }

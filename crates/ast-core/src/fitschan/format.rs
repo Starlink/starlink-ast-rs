@@ -137,6 +137,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn format_simple_float() {
         let s = format_significant(3.14159265, 8);
         // 8 significant figures of pi: 3.1415927 (rounded)
@@ -233,6 +234,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn format_round_trip() {
         // Various values should round-trip through format+parse.
         let values = [

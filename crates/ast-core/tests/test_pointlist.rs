@@ -287,7 +287,7 @@ fn transform_passes_matching_points() {
         .unwrap();
 
     // Two defining points + one non-matching point.
-    let pts = PointSet::from_rows(&[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]);
+    let pts = PointSet::from_rows([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]);
     let result = pl.transform(&pts, true).unwrap();
 
     assert_eq!(result.npoint(), 3);
@@ -314,7 +314,7 @@ fn transform_inverse_passes_all() {
         .build()
         .unwrap();
 
-    let pts = PointSet::from_rows(&[[99.0, 88.0], [1.0, 2.0]]);
+    let pts = PointSet::from_rows([[99.0, 88.0], [1.0, 2.0]]);
     let result = pl.transform(&pts, false).unwrap();
 
     assert!((result.point(0)[0] - 99.0).abs() < 1e-10);
@@ -334,7 +334,7 @@ fn transform_negated_inverts_mask() {
 
     pl.negate();
 
-    let pts = PointSet::from_rows(&[[1.0, 2.0], [5.0, 6.0]]);
+    let pts = PointSet::from_rows([[1.0, 2.0], [5.0, 6.0]]);
     let result = pl.transform(&pts, true).unwrap();
 
     // Point 0: matches a defining point, but negated — so BAD.

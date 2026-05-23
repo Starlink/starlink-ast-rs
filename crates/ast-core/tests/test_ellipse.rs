@@ -296,15 +296,12 @@ fn transform_forward_passes_interior() {
         .unwrap();
 
     // Points: inside(2,1), outside(6,0), inside(0,0), outside(0,4)
-    let pts = PointSet::from_rows(
-        [
-            [2.0, 1.0].as_slice(),
-            [6.0, 0.0].as_slice(),
-            [0.0, 0.0].as_slice(),
-            [0.0, 4.0].as_slice(),
-        ]
-        .into_iter(),
-    );
+    let pts = PointSet::from_rows([
+        [2.0, 1.0].as_slice(),
+        [6.0, 0.0].as_slice(),
+        [0.0, 0.0].as_slice(),
+        [0.0, 4.0].as_slice(),
+    ]);
 
     let result = ellipse.transform(&pts, true).unwrap();
 
@@ -337,7 +334,7 @@ fn transform_inverse_passes_all() {
         .build()
         .unwrap();
 
-    let pts = PointSet::from_rows([[6.0, 0.0].as_slice(), [100.0, 200.0].as_slice()].into_iter());
+    let pts = PointSet::from_rows([[6.0, 0.0].as_slice(), [100.0, 200.0].as_slice()]);
 
     let result = ellipse.transform(&pts, false).unwrap();
 
