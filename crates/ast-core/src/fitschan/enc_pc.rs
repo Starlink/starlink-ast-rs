@@ -236,6 +236,10 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     if let Some(mjdobs) = store.mjdobs {
         cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
     }
+    // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
+    if let Some(ref dateobs) = store.dateobs {
+        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+    }
 
     Ok(())
 }

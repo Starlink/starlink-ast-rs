@@ -46,7 +46,6 @@ pub(crate) struct FitsStore {
     /// MJD-OBS using the C library's format convention: ISO-8601
     /// `YYYY-MM-DDTHH:MM:SS.SSS` for MJD ≥ 51179 (1999-01-01), legacy
     /// `DD/MM/YY` for earlier dates. Mirrors fitschan.c:3594-3608.
-    #[allow(dead_code)]
     pub dateobs: Option<String>,
     /// Spectral reference frame (SPECSYS).
     pub specsys: Option<String>,
