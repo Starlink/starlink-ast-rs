@@ -142,6 +142,16 @@ impl FrameSet {
         self.frames.len()
     }
 
+    /// 0-based index of the base frame.
+    pub(crate) fn base_idx(&self) -> usize {
+        self.base_idx
+    }
+
+    /// 0-based index of the current frame.
+    pub(crate) fn current_idx(&self) -> usize {
+        self.current_idx
+    }
+
     /// Return a reference to the base frame.
     pub fn base(&self) -> &dyn Frame {
         self.frames[self.base_idx].as_ref()

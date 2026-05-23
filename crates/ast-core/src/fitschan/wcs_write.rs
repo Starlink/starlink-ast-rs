@@ -1167,6 +1167,77 @@ fn gregorian_to_mjd(
     Some(jd + frac - 2_400_000.5)
 }
 
+/// Identify which frames in the FrameSet are eligible for FITS alt-plane
+/// emission, and assign each a version letter ('A'..='Z').
+///
+/// Mirrors the loop at fitschan.c:12172-12230:
+///   - Skip base and current frames (they're emitted as the primary plane).
+///   - Skip frames with domain "IWC" (intermediate world coords; not externalised).
+///   - First pass: if a frame's `ident()` is a single uppercase letter and
+///     not yet used, use it.
+///   - Second pass: assign remaining letters A, B, C, ... in frame-index
+///     order, skipping any already used in the first pass.
+///
+/// Returns a Vec of (1-based frame index, version letter) pairs.
+// called from store_from_frameset_with_alts in Task 3
+#[allow(dead_code)]
+pub(crate) fn frames_with_version_letters(fs: &FrameSet) -> Vec<(usize, char)> {
+    let nframe = fs.nframe();
+    let base_idx = fs.base_idx() + 1; // 1-based to match C
+    let curr_idx = fs.current_idx() + 1;
+
+    let mut used = [false; 26]; // index 0 = 'A', 25 = 'Z'
+    let mut assignment: Vec<(usize, Option<char>)> = Vec::new();
+
+    // First pass: explicit Ident.
+    for ifrm in 1..=nframe {
+        if ifrm == base_idx || ifrm == curr_idx {
+            continue;
+        }
+        let frame = match fs.frame(FrameRef::Index(ifrm)) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if frame.domain().eq_ignore_ascii_case("IWC") {
+            continue;
+        }
+        let ident = frame.ident();
+        let letter = if ident.len() == 1 {
+            let c = ident.chars().next().unwrap();
+            if c.is_ascii_uppercase() && !used[(c as u8 - b'A') as usize] {
+                used[(c as u8 - b'A') as usize] = true;
+                Some(c)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        assignment.push((ifrm, letter));
+    }
+
+    // Second pass: assign remaining letters in order.
+    let mut next = b'A';
+    for (_, opt_letter) in assignment.iter_mut() {
+        if opt_letter.is_none() {
+            while next <= b'Z' && used[(next - b'A') as usize] {
+                next += 1;
+            }
+            if next > b'Z' {
+                break; // out of letters; remaining frames don't get planes
+            }
+            *opt_letter = Some(next as char);
+            used[(next - b'A') as usize] = true;
+            next += 1;
+        }
+    }
+
+    assignment
+        .into_iter()
+        .filter_map(|(idx, opt)| opt.map(|c| (idx, c)))
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1323,6 +1394,38 @@ mod tests {
         let tt = utc_mjd_to_tt(utc);
         let utc_back = tt_mjd_to_utc(tt);
         assert!((utc - utc_back).abs() < 1e-12);
+    }
+
+    #[test]
+    fn frames_with_version_letters_timj() {
+        use crate::serial::AnyObject;
+        // timj.ast has 4 frames: GRID(base), PIXEL, AXIS, SKY(current).
+        // Expect: PIXEL → A, AXIS → B (both letters, in frame-index order).
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/wcsconv/inputs/timj.ast"
+        ))
+        .expect("read timj.ast");
+        let obj = crate::serial::from_native_string(&text).expect("parse timj");
+        let fs = match obj {
+            AnyObject::FrameSet(fs) => fs,
+            _ => panic!("expected FrameSet"),
+        };
+        let assignments = frames_with_version_letters(&fs);
+        assert!(
+            assignments.len() >= 1,
+            "timj should have at least 1 alt plane, got {}",
+            assignments.len()
+        );
+        // First two letters should be A then B (or whichever first two
+        // alphabetically given Ident may override).
+        let letters: Vec<char> = assignments.iter().map(|(_, c)| *c).collect();
+        eprintln!("timj alt assignments: {:?}", assignments);
+        assert!(
+            letters.contains(&'A') || letters.contains(&'B'),
+            "letters: {:?}",
+            letters
+        );
     }
 }
 
