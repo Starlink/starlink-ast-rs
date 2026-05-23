@@ -100,6 +100,7 @@ unsafe extern "C" {
     fn astPalDat(dju: f64) -> f64;
     fn astPalGmst(ut1: f64) -> f64;
     fn astPalEqeqx(date: f64) -> f64;
+    fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
 
     // -- Observer / velocity --
     fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);
@@ -514,6 +515,24 @@ pub(crate) fn gmst(ut1: f64) -> f64 {
 /// Equation of the equinoxes (radians) for a given TDB date (MJD).
 pub(crate) fn eqeqx(date: f64) -> f64 {
     unsafe { astPalEqeqx(date) }
+}
+
+/// Difference TDB − TT in seconds at the geocentre.
+///
+/// Wraps ERFA `eraDtdb`, the full Fairhead & Bretagnon (1990) series
+/// (≤±3 ns absolute accuracy 1950-2050). At the geocentre the
+/// observer-position arguments (`elong`, `u`, `v`) are zero; UT1 is
+/// only required to ~1-day precision so the UTC fractional day is a
+/// safe approximation. Mirrors the way AST's `Rcc` is invoked from
+/// `timemap.c::AST__TDBTOTT` for a barycentric observer.
+///
+/// `tdb` is given as an MJD; the date is split into integer +
+/// fraction parts as ERFA prefers (Note 1 of `eraDtdb`).
+pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
+    let date1 = 2_400_000.5_f64;
+    let date2 = tdb_mjd;
+    let ut_frac = tdb_mjd - tdb_mjd.floor();
+    unsafe { astEraDtdb(date1, date2, ut_frac, 0.0, 0.0, 0.0) }
 }
 
 // ---------------------------------------------------------------------------

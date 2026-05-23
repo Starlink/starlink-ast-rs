@@ -1069,26 +1069,18 @@ fn clean_store_residue(store: &mut FitsStore) {
 // Calendar helpers
 // ---------------------------------------------------------------------------
 
-/// Principal periodic term of TDB − TT in seconds.
+/// Difference TDB − TT in seconds at the geocentre.
 ///
 /// SkyFrame.Epoch in the C library is stored on the TDB scale (see
 /// fitschan.c:29718 "The epoch is in TDB"). TDB and TT differ by a
 /// small periodic offset of amplitude ~1.66 ms — comparable to FITS
 /// DATE-OBS millisecond precision, so it cannot be ignored.
 ///
-/// The full series (eraDtdb) has hundreds of terms; the dominant term
-/// is the Fairhead & Bretagnon (1990) annual periodic, accurate to
-/// ~10 µs — well below DATE-OBS precision:
-///
-///   ΔTDB = 0.001658 · sin(g + 0.0167 · sin(g))   [seconds]
-///   g    = 357.53° + 0.9856003° · (JD − 2 451 545.0)   (Earth mean anomaly)
-///
-/// Argument `mjd` is interpreted as TT or TDB (their difference is
-/// well below the sensitivity of the formula).
+/// Delegates to [`pal::dtdb_geocentre`], which wraps ERFA's full
+/// Fairhead & Bretagnon (1990) series (≤±3 ns absolute, 1950-2050).
+/// AST's `timemap.c::Rcc` is the same algorithm.
 pub(crate) fn tdb_minus_tt_seconds(mjd: f64) -> f64 {
-    let d = mjd + 2_400_000.5 - 2_451_545.0;
-    let g_rad = (357.53 + 0.985_600_3 * d).to_radians();
-    0.001_658 * (g_rad + 0.0167 * g_rad.sin()).sin()
+    pal::dtdb_geocentre(mjd)
 }
 
 /// Convert TDB (Barycentric Dynamical Time) MJD to UTC MJD.
