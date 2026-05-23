@@ -972,9 +972,26 @@ fn clean_store_residue(store: &mut FitsStore) {
 /// Mirrors fitschan.c:29723-29744 (TDBConv with output scale UTC).
 /// TDB ≈ TT to 1.7 ms — well below our formatting precision — so
 /// treating epoch_mjd as TT is correct here.
-fn tt_mjd_to_utc(tt_mjd: f64) -> f64 {
+pub(crate) fn tt_mjd_to_utc(tt_mjd: f64) -> f64 {
     let dat_seconds = pal::dat(tt_mjd);
     tt_mjd - (dat_seconds + 32.184) / 86_400.0
+}
+
+/// Convert UTC MJD to TT (Terrestrial Time) MJD.
+///
+/// Inverse of [`tt_mjd_to_utc`]. Uses the same `pal::dat` value at the
+/// same instant, so round-trips are exact.
+///
+/// `pal::dat(mjd)` returns dat (= TAI − UTC) as seconds. TT = TAI +
+/// 32.184 seconds. So TT_MJD = UTC_MJD + (dat + 32.184) / 86400.
+///
+/// Mirrors `fitschan.c::TDBConv` for the UTC→TDB direction (TDB ≈ TT
+/// to <2ms — below FITS DATE-OBS millisecond precision).
+// Called from wcs_celestial in Task 4.
+#[allow(dead_code)]
+pub(crate) fn utc_mjd_to_tt(utc_mjd: f64) -> f64 {
+    let dat_seconds = pal::dat(utc_mjd);
+    utc_mjd + (dat_seconds + 32.184) / 86_400.0
 }
 
 /// Decompose an MJD (UTC, Modified Julian Date) into a Gregorian
@@ -1050,6 +1067,106 @@ fn mjd_to_date_str(mjd: f64) -> String {
         let yy = year.unsigned_abs() % 100;
         format!("{day:02}/{month:02}/{yy:02}")
     }
+}
+
+/// Parse a FITS DATE-OBS string back to UTC MJD.
+///
+/// Inverse of [`mjd_to_date_str`]. Accepts:
+/// - ISO-8601 `YYYY-MM-DDTHH:MM:SS[.SSS]` (modern format)
+/// - ISO-8601 `YYYY-MM-DD` (date-only; assumes 00:00:00)
+/// - Legacy `DD/MM/YY` (assumes 00:00:00; 2-digit year mapped to
+///   1900–1999 if YY >= 50, else 2000–2049)
+///
+/// Returns `None` if the string doesn't parse.
+///
+/// Mirrors fitschan.c::DateObs at line 8352.
+pub(crate) fn date_str_to_mjd(s: &str) -> Option<f64> {
+    let s = s.trim();
+    // Legacy DD/MM/YY format.
+    if let Some(parts) = parse_legacy_date(s) {
+        let (year, month, day) = parts;
+        return gregorian_to_mjd(year, month, day, 0, 0, 0.0);
+    }
+    // ISO-8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS[.SSS][Z]
+    let (date_part, time_part) = match s.split_once('T') {
+        Some((d, t)) => (d, Some(t)),
+        None => (s, None),
+    };
+    let date_segs: Vec<&str> = date_part.split('-').collect();
+    if date_segs.len() != 3 {
+        return None;
+    }
+    let year: i32 = date_segs[0].parse().ok()?;
+    let month: u32 = date_segs[1].parse().ok()?;
+    let day: u32 = date_segs[2].parse().ok()?;
+
+    let (hour, min, sec_frac) = if let Some(tp) = time_part {
+        let tp = tp.trim_end_matches('Z');
+        let time_segs: Vec<&str> = tp.split(':').collect();
+        if time_segs.len() != 3 {
+            return None;
+        }
+        let h: u32 = time_segs[0].parse().ok()?;
+        let m: u32 = time_segs[1].parse().ok()?;
+        let s: f64 = time_segs[2].parse().ok()?;
+        (h, m, s)
+    } else {
+        (0, 0, 0.0)
+    };
+
+    gregorian_to_mjd(year, month, day, hour, min, sec_frac)
+}
+
+fn parse_legacy_date(s: &str) -> Option<(i32, u32, u32)> {
+    let segs: Vec<&str> = s.split('/').collect();
+    if segs.len() != 3 {
+        return None;
+    }
+    let day: u32 = segs[0].parse().ok()?;
+    let month: u32 = segs[1].parse().ok()?;
+    let yy: i32 = segs[2].parse().ok()?;
+    if !(0..=99).contains(&yy) {
+        return None;
+    }
+    let year = if yy < 50 { 2000 + yy } else { 1900 + yy };
+    Some((year, month, day))
+}
+
+/// Convert (Gregorian Y/M/D + H/M/S) to MJD.
+///
+/// Inverse of `mjd_to_gregorian`. Uses Meeus's algorithm.
+fn gregorian_to_mjd(
+    year: i32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    min: u32,
+    sec_frac: f64,
+) -> Option<f64> {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let (y, m) = if month <= 2 {
+        (year - 1, month + 12)
+    } else {
+        (year, month)
+    };
+    let a = (y as f64 / 100.0).floor() as i64;
+    let b =
+        if year < 1582 || (year == 1582 && month < 10) || (year == 1582 && month == 10 && day < 15)
+        {
+            0
+        } else {
+            2 - a + a / 4
+        };
+
+    let jd = (365.25 * (y as f64 + 4716.0)).floor()
+        + (30.6001 * (m as f64 + 1.0)).floor()
+        + day as f64
+        + b as f64
+        - 1524.5;
+    let frac = (hour as f64 * 3600.0 + min as f64 * 60.0 + sec_frac) / 86400.0;
+    Some(jd + frac - 2_400_000.5)
 }
 
 // ---------------------------------------------------------------------------
@@ -1159,6 +1276,55 @@ mod tests {
         // MJD 51178 = 1998-12-31 → legacy format.
         let s = mjd_to_date_str(51178.0);
         assert_eq!(s, "31/12/98");
+    }
+
+    #[test]
+    fn date_str_to_mjd_iso_modern() {
+        let mjd = date_str_to_mjd("2000-01-01T12:00:00.000").unwrap();
+        assert!((mjd - 51544.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn date_str_to_mjd_iso_no_time() {
+        let mjd = date_str_to_mjd("2000-01-01").unwrap();
+        assert!((mjd - 51544.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn date_str_to_mjd_iso_with_trailing_z() {
+        let mjd = date_str_to_mjd("2000-01-01T12:00:00.000Z").unwrap();
+        assert!((mjd - 51544.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn date_str_to_mjd_legacy() {
+        // 24/05/68 → 1968-05-24 = MJD 40000
+        let mjd = date_str_to_mjd("24/05/68").unwrap();
+        assert!((mjd - 40000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn date_str_to_mjd_roundtrip_modern() {
+        let original = 52414.59f64;
+        let s = mjd_to_date_str(original);
+        let parsed = date_str_to_mjd(&s).unwrap();
+        assert!((parsed - original).abs() < 1e-3);
+    }
+
+    #[test]
+    fn date_str_to_mjd_roundtrip_legacy() {
+        let original = 40000.0f64;
+        let s = mjd_to_date_str(original);
+        let parsed = date_str_to_mjd(&s).unwrap();
+        assert!((parsed - original).abs() < 1e-6);
+    }
+
+    #[test]
+    fn utc_tt_roundtrip() {
+        let utc = 51544.0;
+        let tt = utc_mjd_to_tt(utc);
+        let utc_back = tt_mjd_to_utc(tt);
+        assert!((utc - utc_back).abs() < 1e-12);
     }
 }
 
