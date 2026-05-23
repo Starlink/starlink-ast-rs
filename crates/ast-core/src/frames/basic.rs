@@ -31,7 +31,6 @@ pub struct BasicFrame {
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
-    #[allow(dead_code)]
     ident: Option<String>,
 }
 
@@ -232,6 +231,11 @@ impl BasicFrame {
     /// Clear the domain attribute, reverting to the default.
     pub fn clear_domain(&mut self) {
         self.domain = None;
+    }
+
+    /// Return the frame identification string.
+    pub fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
     }
 
     /// Return the frame epoch, or `None` if not set.
@@ -607,6 +611,14 @@ impl Frame for BasicFrame {
         } else {
             Ok(None)
         }
+    }
+
+    fn domain(&self) -> &str {
+        BasicFrame::domain(self)
+    }
+
+    fn ident(&self) -> &str {
+        BasicFrame::ident(self)
     }
 }
 

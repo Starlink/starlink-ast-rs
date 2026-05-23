@@ -250,6 +250,11 @@ impl SkyFrame {
         self.domain = Some(domain.to_string());
     }
 
+    /// Return the frame identification string.
+    pub fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
     // --- Observer attributes ---
 
     /// Set the observer geodetic latitude in radians.
@@ -637,6 +642,14 @@ impl Frame for SkyFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
+    }
+
+    fn domain(&self) -> &str {
+        SkyFrame::domain(self)
+    }
+
+    fn ident(&self) -> &str {
+        SkyFrame::ident(self)
     }
 }
 

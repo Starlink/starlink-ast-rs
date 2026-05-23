@@ -110,6 +110,17 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         None
     }
 
+    /// Frame domain, e.g. "GRID", "PIXEL", "SKY", "IWC". Empty string if unset.
+    fn domain(&self) -> &str {
+        ""
+    }
+
+    /// Frame identification token (single uppercase letter recommended for
+    /// FITS-WCS alt-plane assignment). Empty string if unset.
+    fn ident(&self) -> &str {
+        ""
+    }
+
     /// Permute the axes of this frame.
     ///
     /// `perm` is a 1-based permutation array of length `naxes`. After the
