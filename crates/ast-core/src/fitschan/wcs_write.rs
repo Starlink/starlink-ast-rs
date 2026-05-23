@@ -699,12 +699,13 @@ fn populate_celestial(
     store.lonpole = Some(180.0);
 
     // MJD-OBS from epoch (skip if default J2000.0). The SkyFrame epoch
-    // is in TT scale; FITS MJD-OBS is UTC. The C library does the same
-    // conversion at fitschan.c:29723-29744 via TDBConv. Also populate
-    // the formatted DATE-OBS string here; an encoder later emits both.
-    let epoch_tt = sky.epoch_mjd();
-    if (epoch_tt - 51544.5).abs() > 0.001 {
-        let epoch_utc = tt_mjd_to_utc(epoch_tt);
+    // is in TDB scale (matching C library convention, fitschan.c:29718);
+    // FITS MJD-OBS is UTC. The C library does the same conversion at
+    // fitschan.c:29723-29744 via TDBConv. Also populate the formatted
+    // DATE-OBS string here; an encoder later emits both.
+    let epoch_tdb = sky.epoch_mjd();
+    if (epoch_tdb - 51544.5).abs() > 0.001 {
+        let epoch_utc = tdb_mjd_to_utc(epoch_tdb);
         store.mjdobs = Some(epoch_utc);
         store.dateobs = Some(mjd_to_date_str(epoch_utc));
     }
@@ -1068,38 +1069,59 @@ fn clean_store_residue(store: &mut FitsStore) {
 // Calendar helpers
 // ---------------------------------------------------------------------------
 
-/// Convert TT (Terrestrial Time) MJD to UTC MJD.
+/// Principal periodic term of TDB − TT in seconds.
 ///
-/// TT = TAI + 32.184 seconds; UTC = TAI − dat where dat is the
-/// cumulative TAI-UTC leap-second offset. So UTC = TT − (dat + 32.184)
-/// seconds.
+/// SkyFrame.Epoch in the C library is stored on the TDB scale (see
+/// fitschan.c:29718 "The epoch is in TDB"). TDB and TT differ by a
+/// small periodic offset of amplitude ~1.66 ms — comparable to FITS
+/// DATE-OBS millisecond precision, so it cannot be ignored.
 ///
-/// `pal::dat(mjd)` returns dat as seconds. The function takes the MJD
-/// in any nearby scale (TAI, TT, UTC); the discrepancy at the leap-
-/// second boundary is at most 0.5 s and doesn't matter for MJD-OBS
-/// at our 3-decimal-second formatting precision.
+/// The full series (eraDtdb) has hundreds of terms; the dominant term
+/// is the Fairhead & Bretagnon (1990) annual periodic, accurate to
+/// ~10 µs — well below DATE-OBS precision:
 ///
-/// Mirrors fitschan.c:29723-29744 (TDBConv with output scale UTC).
-/// TDB ≈ TT to 1.7 ms — well below our formatting precision — so
-/// treating epoch_mjd as TT is correct here.
-pub(crate) fn tt_mjd_to_utc(tt_mjd: f64) -> f64 {
-    let dat_seconds = pal::dat(tt_mjd);
-    tt_mjd - (dat_seconds + 32.184) / 86_400.0
+///   ΔTDB = 0.001658 · sin(g + 0.0167 · sin(g))   [seconds]
+///   g    = 357.53° + 0.9856003° · (JD − 2 451 545.0)   (Earth mean anomaly)
+///
+/// Argument `mjd` is interpreted as TT or TDB (their difference is
+/// well below the sensitivity of the formula).
+pub(crate) fn tdb_minus_tt_seconds(mjd: f64) -> f64 {
+    let d = mjd + 2_400_000.5 - 2_451_545.0;
+    let g_rad = (357.53 + 0.985_600_3 * d).to_radians();
+    0.001_658 * (g_rad + 0.0167 * g_rad.sin()).sin()
 }
 
-/// Convert UTC MJD to TT (Terrestrial Time) MJD.
+/// Convert TDB (Barycentric Dynamical Time) MJD to UTC MJD.
 ///
-/// Inverse of [`tt_mjd_to_utc`]. Uses the same `pal::dat` value at the
-/// same instant, so round-trips are exact.
+/// SkyFrame.Epoch is on the TDB scale to match the C library
+/// (fitschan.c:29718). TT = TAI + 32.184 s; UTC = TAI − dat where dat
+/// is the cumulative TAI-UTC leap-second offset; TT = TDB − ΔTDB. So
+/// UTC = TDB − ΔTDB − (dat + 32.184) seconds, where ΔTDB is computed
+/// by [`tdb_minus_tt_seconds`].
 ///
-/// `pal::dat(mjd)` returns dat (= TAI − UTC) as seconds. TT = TAI +
-/// 32.184 seconds. So TT_MJD = UTC_MJD + (dat + 32.184) / 86400.
+/// `pal::dat(mjd)` returns dat as seconds. The function takes the MJD
+/// in any nearby scale (TAI, TT, UTC, TDB); the discrepancy at the
+/// leap-second boundary is at most 0.5 s and doesn't matter for
+/// MJD-OBS at our 3-decimal-second formatting precision.
 ///
-/// Mirrors `fitschan.c::TDBConv` for the UTC→TDB direction (TDB ≈ TT
-/// to <2ms — below FITS DATE-OBS millisecond precision).
-pub(crate) fn utc_mjd_to_tt(utc_mjd: f64) -> f64 {
+/// Mirrors fitschan.c:29723-29744 (TDBConv with output scale UTC).
+pub(crate) fn tdb_mjd_to_utc(tdb_mjd: f64) -> f64 {
+    let dat_seconds = pal::dat(tdb_mjd);
+    let tdb_tt = tdb_minus_tt_seconds(tdb_mjd);
+    tdb_mjd - (dat_seconds + 32.184 + tdb_tt) / 86_400.0
+}
+
+/// Convert UTC MJD to TDB (Barycentric Dynamical Time) MJD.
+///
+/// Inverse of [`tdb_mjd_to_utc`]. Uses `pal::dat` and the principal
+/// TDB-TT periodic term so round-trips are exact to within the formula
+/// precision (≪1 µs over the date range we care about).
+///
+/// Mirrors `fitschan.c::TDBConv` for the UTC→TDB direction.
+pub(crate) fn utc_mjd_to_tdb(utc_mjd: f64) -> f64 {
     let dat_seconds = pal::dat(utc_mjd);
-    utc_mjd + (dat_seconds + 32.184) / 86_400.0
+    let tdb_tt = tdb_minus_tt_seconds(utc_mjd);
+    utc_mjd + (dat_seconds + 32.184 + tdb_tt) / 86_400.0
 }
 
 /// Decompose an MJD (UTC, Modified Julian Date) into a Gregorian
@@ -1538,11 +1560,24 @@ mod tests {
     }
 
     #[test]
-    fn utc_tt_roundtrip() {
-        let utc = 51544.0;
-        let tt = utc_mjd_to_tt(utc);
-        let utc_back = tt_mjd_to_utc(tt);
+    fn utc_tdb_roundtrip() {
+        let utc = 51544.0_f64;
+        let tdb = utc_mjd_to_tdb(utc);
+        let utc_back = tdb_mjd_to_utc(tdb);
         assert!((utc - utc_back).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tdb_tt_principal_term_amplitude() {
+        // The Fairhead-Bretagnon principal term of TDB-TT has amplitude
+        // ~1.66 ms. Sample one year of MJDs and check the bound holds.
+        let mut max_abs: f64 = 0.0;
+        for d in 0..365 {
+            let mjd = 52000.0 + d as f64;
+            max_abs = max_abs.max(tdb_minus_tt_seconds(mjd).abs());
+        }
+        assert!(max_abs > 0.0015, "amplitude too small: {max_abs}");
+        assert!(max_abs < 0.002, "amplitude too large: {max_abs}");
     }
 
     #[test]

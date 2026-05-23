@@ -81,22 +81,27 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
     }
 
     // Step 7: Set epoch if present, converting from the input
-    // timescale (TIMESYS, default UTC) to TT for storage in
+    // timescale (TIMESYS, default UTC) to TDB for storage in
     // SkyFrame.epoch. Mirrors fitschan.c::ChooseEpoch line 6143-6146:
     //   mjd = TDBConv(mjd, TimeSysToAst(this, timesys, ...), 0, ...);
     if let Some(raw_mjd) = store.mjdobs {
-        let tt_mjd = match store.timesys.as_deref() {
-            Some(s) if s.eq_ignore_ascii_case("TT") => raw_mjd,
-            // TT≈TDB to <2ms — well below FITS DATE-OBS millisecond precision.
+        let tdb_mjd = match store.timesys.as_deref() {
             Some(s) if s.eq_ignore_ascii_case("TDB") => raw_mjd,
-            // TAI: TT = TAI + 32.184s.
-            Some(s) if s.eq_ignore_ascii_case("TAI") => raw_mjd + 32.184 / 86_400.0,
-            // UTC (default), UT1, or unknown: convert via UTC→TT.
+            // TT → TDB: add the principal periodic ΔTDB (~1.66 ms).
+            Some(s) if s.eq_ignore_ascii_case("TT") => {
+                raw_mjd + crate::fitschan::wcs_write::tdb_minus_tt_seconds(raw_mjd) / 86_400.0
+            }
+            // TAI → TDB: TT = TAI + 32.184 s, then add ΔTDB.
+            Some(s) if s.eq_ignore_ascii_case("TAI") => {
+                let tt = raw_mjd + 32.184 / 86_400.0;
+                tt + crate::fitschan::wcs_write::tdb_minus_tt_seconds(tt) / 86_400.0
+            }
+            // UTC (default), UT1, or unknown: convert via UTC→TDB.
             // (Treating UT1 as UTC is the C library's pragmatic
             // approximation per fitschan.c documentation.)
-            _ => crate::fitschan::wcs_write::utc_mjd_to_tt(raw_mjd),
+            _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
         };
-        sky_frame.set_epoch(tt_mjd);
+        sky_frame.set_epoch(tdb_mjd);
     }
 
     // Step 8: Build the mapping.
