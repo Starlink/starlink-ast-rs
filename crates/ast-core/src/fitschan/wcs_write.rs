@@ -66,8 +66,12 @@ pub(crate) fn encode_wcs(obj: &AnyObject, cards: &mut CardList, use_cd: bool) ->
         }
     };
 
-    let store = store_from_frameset(frameset)?;
-    write_store_to_cards(&store, cards, use_cd, ' ', None)
+    let (primary, alts) = store_from_frameset_with_alts(frameset)?;
+    write_store_to_cards(&primary, cards, use_cd, ' ', None)?;
+    for alt in &alts {
+        write_store_to_cards(&alt.store, cards, use_cd, alt.letter, Some(&alt.domain))?;
+    }
+    Ok(())
 }
 
 /// Encode a FrameSet via FitsStore with a custom card writer.
