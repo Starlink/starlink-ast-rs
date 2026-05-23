@@ -856,6 +856,19 @@ fn write_store_to_cards(
         write_pc_cdelt(store, cards, s)?;
     }
 
+    // Plane-shared cards: only emit on primary plane.
+    // Mirrors C library WcsFromStore order (fitschan.c:36867+):
+    // CD matrix, then MJD-OBS / DATE-OBS, then RADESYS / EQUINOX.
+    if s == ' ' {
+        if let Some(mjdobs) = store.mjdobs {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+        }
+        // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
+    }
+
     // Ancillary keywords.
     if let Some(ref radesys) = store.radesys {
         cards.set_string(
@@ -911,17 +924,6 @@ fn write_store_to_cards(
             specsys,
             "Spectral reference frame",
         );
-    }
-
-    // Plane-shared cards: only emit on primary plane.
-    if s == ' ' {
-        if let Some(mjdobs) = store.mjdobs {
-            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-        }
-        // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
-        if let Some(ref dateobs) = store.dateobs {
-            cards.set_string("DATE-OBS", dateobs, "Date of observation");
-        }
     }
 
     Ok(())
