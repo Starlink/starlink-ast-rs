@@ -40,6 +40,14 @@ pub(crate) struct FitsStore {
     pub latpole: Option<f64>,
     /// Modified Julian Date of observation (MJD-OBS).
     pub mjdobs: Option<f64>,
+    /// Time scale used for `mjdobs` and `dateobs` (FITS TIMESYS keyword).
+    ///
+    /// FITS standard default is UTC when the keyword is absent. Stored
+    /// as the raw uppercase string (`"UTC"`, `"TAI"`, `"TT"`, `"TDB"`,
+    /// etc.). Mirrors fitschan.c:29732 / 6144.
+    #[allow(dead_code)]
+    // consumed by wcs_celestial in Task 4
+    pub timesys: Option<String>,
     /// Formatted observation date string (DATE-OBS).
     ///
     /// Pre-formatted by `populate_celestial` from the (UTC-converted)
@@ -98,6 +106,7 @@ impl FitsStore {
             lonpole: None,
             latpole: None,
             mjdobs: None,
+            timesys: None,
             dateobs: None,
             specsys: None,
             restfrq: None,
