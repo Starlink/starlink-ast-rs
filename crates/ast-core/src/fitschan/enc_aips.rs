@@ -259,6 +259,13 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         cards.set_float("EPOCH", equinox, "Epoch of reference equinox");
     }
 
+    // DATE-OBS — AIPS emits only DATE-OBS, not MJD-OBS (mirrors C
+    // AIPSFromStore at fitschan.c:3590-3614). The pre-formatted string
+    // in store.dateobs was derived from MJD-OBS upstream.
+    if let Some(ref dateobs) = store.dateobs {
+        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+    }
+
     // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ)
     if let Some(restfrq) = store.restfrq {
         cards.set_float("RESTFREQ", restfrq, "Rest frequency (Hz)");
@@ -410,9 +417,11 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         cards.set_string("SPECSYS", specsys, "Spectral reference frame");
     }
 
-    // MJD-OBS
-    if let Some(mjdobs) = store.mjdobs {
-        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (mirrors C
+    // AIPSPPFromStore at fitschan.c:3633+). The pre-formatted string
+    // in store.dateobs was derived from MJD-OBS upstream.
+    if let Some(ref dateobs) = store.dateobs {
+        cards.set_string("DATE-OBS", dateobs, "Date of observation");
     }
 
     Ok(())
