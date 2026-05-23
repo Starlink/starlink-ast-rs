@@ -54,8 +54,18 @@ fn fmt_global_key(name: &str, s: char) -> String {
 
 /// Encode a FrameSet as FITS-WCS keywords into a CardList.
 ///
+/// `dim` is the per-axis NAXIS{i} dimension array (in WCS axis order)
+/// extracted from the input header. `None` entries indicate unknown
+/// dimensions; the encoder uses `(1, …, 1)` as the FindBasisVectors
+/// fallback in that case (mirrors fitschan.c:10526).
+///
 /// This is the top-level encoder entry point.
-pub(crate) fn encode_wcs(obj: &AnyObject, cards: &mut CardList, use_cd: bool) -> AstResult<()> {
+pub(crate) fn encode_wcs(
+    obj: &AnyObject,
+    cards: &mut CardList,
+    use_cd: bool,
+    dim: &[Option<f64>],
+) -> AstResult<()> {
     let frameset = match obj {
         AnyObject::FrameSet(fs) => fs,
         _ => {
@@ -66,7 +76,7 @@ pub(crate) fn encode_wcs(obj: &AnyObject, cards: &mut CardList, use_cd: bool) ->
         }
     };
 
-    let (primary, alts) = store_from_frameset_with_alts(frameset)?;
+    let (primary, alts) = store_from_frameset_with_alts(frameset, dim)?;
     write_store_to_cards(&primary, cards, use_cd, ' ', None)?;
     for alt in &alts {
         write_store_to_cards(&alt.store, cards, use_cd, alt.letter, Some(&alt.domain))?;
@@ -81,6 +91,7 @@ pub(crate) fn encode_wcs(obj: &AnyObject, cards: &mut CardList, use_cd: bool) ->
 pub(crate) fn encode_wcs_to_store(
     obj: &AnyObject,
     cards: &mut CardList,
+    dim: &[Option<f64>],
     writer: impl FnOnce(&FitsStore, &mut CardList) -> AstResult<()>,
 ) -> AstResult<()> {
     let frameset = match obj {
@@ -93,22 +104,29 @@ pub(crate) fn encode_wcs_to_store(
         }
     };
 
-    let store = store_from_frameset(frameset)?;
+    let store = store_from_frameset(frameset, dim)?;
     writer(&store, cards)
 }
 
 /// Decompose a FrameSet into a FitsStore using the current frame as the
 /// WCS target (pixel→current mapping).
-pub(crate) fn store_from_frameset(fs: &FrameSet) -> AstResult<FitsStore> {
-    store_from_frameset_to(fs, fs.current_idx())
+pub(crate) fn store_from_frameset(fs: &FrameSet, dim: &[Option<f64>]) -> AstResult<FitsStore> {
+    store_from_frameset_to(fs, fs.current_idx(), dim)
 }
 
 /// Decompose a FrameSet into a FitsStore using `target_idx` (0-based) as
 /// the WCS target frame (pixel→target_frame mapping).
 ///
+/// `dim` carries per-axis NAXIS{i} values (or `None` if unknown); used
+/// to choose the FindBasisVectors root grid position.
+///
 /// Mirrors fitschan.c::AddVersion (line 12241) which takes a frame index
 /// and builds the axis/keyword store for that frame.
-fn store_from_frameset_to(fs: &FrameSet, target_idx: usize) -> AstResult<FitsStore> {
+fn store_from_frameset_to(
+    fs: &FrameSet,
+    target_idx: usize,
+    dim: &[Option<f64>],
+) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
 
@@ -132,10 +150,29 @@ fn store_from_frameset_to(fs: &FrameSet, target_idx: usize) -> AstResult<FitsSto
     // the full pixel→IWC composition below.
     let pre_mapping = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
 
-    let g0: Vec<f64> = vec![1.0; naxis];
+    // FindBasisVectors root grid position (fitschan.c:10506-10528):
+    //   g0[i] = floor(0.5 · (1 + dim[i])) when NAXIS{i} is known,
+    //   g0[i] = 1.0 otherwise.
+    // For non-celestial targets, OtherAxes + MakeIntWorld then sets
+    //   CRVAL = world(g0), CRPIX = g0
+    // (the back-solve crpix = g0 − fullmat⁻¹·w0 collapses since
+    // w0 = world(g0) − CRVAL = 0). The celestial branch below
+    // overrides CRPIX via solve_crpix_from_decomp on the IWC mapping.
+    let g0: Vec<f64> = (0..naxis)
+        .map(|i| match dim.get(i).copied().flatten() {
+            Some(d) => (0.5 * (1.0 + d)).floor(),
+            None => 1.0,
+        })
+        .collect();
     let pre_decomp = decompose_linear(pre_mapping.as_ref(), naxis, &g0)?;
-    let mut crpix = solve_crpix_from_decomp(&pre_decomp.cd, &pre_decomp.crval, &g0)
-        .unwrap_or_else(|| g0.clone());
+
+    let has_celestial = celestial_axes(target_frame).is_some();
+    let mut crpix = if has_celestial {
+        solve_crpix_from_decomp(&pre_decomp.cd, &pre_decomp.crval, &g0)
+            .unwrap_or_else(|| g0.clone())
+    } else {
+        g0.clone()
+    };
     let mut full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
     let projection = extract_projection_from_mapping(mapping.as_ref());
@@ -1381,14 +1418,15 @@ pub(crate) struct AltPlane {
 #[allow(dead_code)]
 pub(crate) fn store_from_frameset_with_alts(
     fs: &FrameSet,
+    dim: &[Option<f64>],
 ) -> AstResult<(FitsStore, Vec<AltPlane>)> {
-    let primary = store_from_frameset(fs)?;
+    let primary = store_from_frameset(fs, dim)?;
     let assignments = frames_with_version_letters(fs);
 
     let mut alts = Vec::with_capacity(assignments.len());
     for (frame_idx_1based, letter) in assignments {
         let target_idx = frame_idx_1based - 1;
-        let alt_store = store_from_frameset_to(fs, target_idx)?;
+        let alt_store = store_from_frameset_to(fs, target_idx, dim)?;
         let frame = fs.frame(FrameRef::Index(frame_idx_1based))?;
         let domain = frame.domain().to_string();
         alts.push(AltPlane {
@@ -1584,7 +1622,7 @@ mod tests {
             crate::serial::AnyObject::FrameSet(fs) => fs,
             _ => panic!("expected FrameSet"),
         };
-        let (_primary, alts) = store_from_frameset_with_alts(&fs).expect("alt planes");
+        let (_primary, alts) = store_from_frameset_with_alts(&fs, &[]).expect("alt planes");
         assert_eq!(alts.len(), 2, "timj has 2 alt planes (PIXEL, AXIS)");
         assert_eq!(alts[0].letter, 'A');
         assert_eq!(alts[1].letter, 'B');

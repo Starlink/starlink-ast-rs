@@ -589,38 +589,52 @@ impl Channel for FitsChan {
                 // encoding does not emit (e.g. CDELT after a CD-matrix write)
                 // and gets swept. Non-WCS cards (SIMPLE, NAXIS, COMMENT, …)
                 // are preserved unconditionally.
+                // Extract NAXISn dims (in WCS axis order) from the input
+                // header before marking cards unused. The encoder uses these
+                // for FindBasisVectors-style central-pixel selection; mirrors
+                // fitschan.c::AddVersion's `dim` parameter.
+                let dims = extract_naxis_dims(&self.cards);
+
                 self.cards.mark_all_unused();
 
                 let result = match self.encoding {
                     Encoding::FitsWcs => {
-                        wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix)
+                        wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix, &dims)
                     }
                     Encoding::FitsIraf => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,
+                        &dims,
                         enc_iraf::write_to_cards,
                     ),
-                    Encoding::FitsPc => {
-                        wcs_write::encode_wcs_to_store(obj, &mut self.cards, enc_pc::write_to_cards)
-                    }
+                    Encoding::FitsPc => wcs_write::encode_wcs_to_store(
+                        obj,
+                        &mut self.cards,
+                        &dims,
+                        enc_pc::write_to_cards,
+                    ),
                     Encoding::FitsAips => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,
+                        &dims,
                         enc_aips::write_to_cards,
                     ),
                     Encoding::FitsAipsPP => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,
+                        &dims,
                         enc_aips::write_to_cards_pp,
                     ),
                     Encoding::FitsClass => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,
+                        &dims,
                         enc_class::write_to_cards,
                     ),
                     Encoding::Dss => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,
+                        &dims,
                         enc_dss::write_to_cards,
                     ),
                     Encoding::Native => unreachable!(),
@@ -648,6 +662,38 @@ impl Channel for FitsChan {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/// Extract NAXISn dimensions from a card list, in WCS axis order
+/// (`NAXIS1` → index 0, `NAXIS2` → index 1, …). The total axis count
+/// comes from the `NAXIS` keyword when present; otherwise we scan
+/// NAXIS{i} keywords directly until one is missing (some `.head`
+/// fixtures omit NAXIS but include NAXIS1, NAXIS2, …). Missing or
+/// non-positive dimensions become `None`. Mirrors the `dim` array
+/// C's `astWriteFitsChan` builds before calling `AddVersion`.
+fn extract_naxis_dims(cards: &CardList) -> Vec<Option<f64>> {
+    let mut dims = Vec::new();
+    if let Some(n) = cards.get_int("NAXIS")
+        && n > 0
+    {
+        for i in 1..=(n as usize) {
+            dims.push(
+                cards
+                    .get_int(&format!("NAXIS{i}"))
+                    .filter(|&d| d > 0)
+                    .map(|d| d as f64),
+            );
+        }
+    } else {
+        for i in 1.. {
+            match cards.get_int(&format!("NAXIS{i}")) {
+                Some(d) if d > 0 => dims.push(Some(d as f64)),
+                Some(_) => dims.push(None),
+                None => break,
+            }
+        }
+    }
+    dims
+}
 
 /// Extract the AST native text line from a COMMENT card's text field.
 ///
