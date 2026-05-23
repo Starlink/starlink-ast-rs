@@ -45,8 +45,6 @@ pub(crate) struct FitsStore {
     /// FITS standard default is UTC when the keyword is absent. Stored
     /// as the raw uppercase string (`"UTC"`, `"TAI"`, `"TT"`, `"TDB"`,
     /// etc.). Mirrors fitschan.c:29732 / 6144.
-    #[allow(dead_code)]
-    // consumed by wcs_celestial in Task 4
     pub timesys: Option<String>,
     /// Formatted observation date string (DATE-OBS).
     ///

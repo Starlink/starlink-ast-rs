@@ -987,8 +987,6 @@ pub(crate) fn tt_mjd_to_utc(tt_mjd: f64) -> f64 {
 ///
 /// Mirrors `fitschan.c::TDBConv` for the UTC→TDB direction (TDB ≈ TT
 /// to <2ms — below FITS DATE-OBS millisecond precision).
-// Called from wcs_celestial in Task 4.
-#[allow(dead_code)]
 pub(crate) fn utc_mjd_to_tt(utc_mjd: f64) -> f64 {
     let dat_seconds = pal::dat(utc_mjd);
     utc_mjd + (dat_seconds + 32.184) / 86_400.0

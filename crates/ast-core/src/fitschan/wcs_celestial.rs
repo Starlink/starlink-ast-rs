@@ -80,9 +80,23 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
         sky_frame.set_equinox(eq_mjd);
     }
 
-    // Step 7: Set epoch if present.
-    if let Some(mjd) = store.mjdobs {
-        sky_frame.set_epoch(mjd);
+    // Step 7: Set epoch if present, converting from the input
+    // timescale (TIMESYS, default UTC) to TT for storage in
+    // SkyFrame.epoch. Mirrors fitschan.c::ChooseEpoch line 6143-6146:
+    //   mjd = TDBConv(mjd, TimeSysToAst(this, timesys, ...), 0, ...);
+    if let Some(raw_mjd) = store.mjdobs {
+        let tt_mjd = match store.timesys.as_deref() {
+            Some(s) if s.eq_ignore_ascii_case("TT") => raw_mjd,
+            // TT≈TDB to <2ms — well below FITS DATE-OBS millisecond precision.
+            Some(s) if s.eq_ignore_ascii_case("TDB") => raw_mjd,
+            // TAI: TT = TAI + 32.184s.
+            Some(s) if s.eq_ignore_ascii_case("TAI") => raw_mjd + 32.184 / 86_400.0,
+            // UTC (default), UT1, or unknown: convert via UTC→TT.
+            // (Treating UT1 as UTC is the C library's pragmatic
+            // approximation per fitschan.c documentation.)
+            _ => crate::fitschan::wcs_write::utc_mjd_to_tt(raw_mjd),
+        };
+        sky_frame.set_epoch(tt_mjd);
     }
 
     // Step 8: Build the mapping.
