@@ -17,7 +17,6 @@ use ndarray::Array2;
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::guess_encoding::is_aips_spectral;
-use super::wcs_decompose::split_cd;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Read AIPS/AIPS++ style WCS keywords from a [`CardList`] into a [`FitsStore`].
@@ -211,28 +210,33 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
+    // CTYPEi — convert standard types back to AIPS spectral format using SPECSYS.
+    // Mirrors AIPSFromStore order (fitschan.c:3536-3557): CTYPE before CDELT.
+    for i in 0..naxis {
+        if let Some(ref ctype) = store.ctype[i] {
+            let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
+            let key = format!("CTYPE{}", i + 1);
+            let comment = store.ctype_com[i]
+                .clone()
+                .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
+            cards.set_string(&key, &aips_ctype, &comment);
+        }
+    }
+
     // Plain AIPS does not store a matrix; it uses CDELT and a single
-    // CROTAk. Factor the store's CD matrix into (CDELT, PC) when only CD
-    // is present, then derive the rotation angle from PC.
-    let (cdelt_vals, pc_vals) = derive_cdelt_pc(store);
+    // CROTAk. Build a CD matrix from the store, derive CROTA via the
+    // C library's two-rho-average (fitschan.c:3415-3467), and start
+    // CDELT from CD's diagonal — for a rotated celestial frame
+    //   CD[i][i] = cdelt_orig · cos(CROTA),
+    // so dividing by cos(CROTA) recovers the original CDELT.
+    let mut cdelt_vals = build_cdelt_diag(store);
+    let cd = build_cd_matrix(store);
+    let crota_deg = compute_crota_and_adjust_cdelt(&mut cdelt_vals, &cd, store);
 
     // CDELTi — always emitted (one per axis).
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
         let key = format!("CDELT{}", i + 1);
         cards.set_float(&key, cdelt_val, "Pixel size");
-    }
-
-    // CTYPEi — convert standard types back to AIPS spectral format using SPECSYS
-    for i in 0..naxis {
-        if let Some(ref ctype) = store.ctype[i] {
-            let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
-            let key = format!("CTYPE{}", i + 1);
-            cards.set_string(
-                &key,
-                &aips_ctype,
-                &format!("Type of co-ordinate on axis {}", i + 1),
-            );
-        }
     }
 
     // CUNITi
@@ -243,12 +247,11 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
-    // CROTAk from PC matrix: atan2(PC[1][0], PC[1][1]) in degrees, where k
-    // is the latitude axis if the frame is celestial, else axis 1. AIPS
-    // emits CROTA always (including 0.0) so downstream readers know the
-    // rotation is exactly zero rather than unspecified.
-    if naxis >= 2 {
-        let crota = pc_vals[[1, 0]].atan2(pc_vals[[1, 1]]).to_degrees();
+    // CROTAk — paired with the latitude axis for celestial frames or with
+    // axis 1 for purely linear frames (mirrors fitschan.c:3578-3584).
+    if let Some(crota) = crota_deg
+        && naxis >= 2
+    {
         let k = crota_axis(store);
         cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
     }
@@ -273,14 +276,20 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     Ok(())
 }
 
-/// Derive CDELT and PC values for emission, factoring the store's CD
-/// matrix into (CDELT × PC) when CDELT/PC are not stored directly.
-///
-/// Mirrors the same logic as `enc_pc::write_to_cards`. Returns identity
-/// defaults when neither matrix form is populated.
-fn derive_cdelt_pc(store: &FitsStore) -> (Vec<f64>, Array2<f64>) {
+/// Build a CD matrix from the store, defaulting absent off-diagonals
+/// to 0 and absent diagonals to 1. Falls back to CDELT × PC when no CD
+/// values are present.
+fn build_cd_matrix(store: &FitsStore) -> Array2<f64> {
     let naxis = store.naxis;
-    if store.has_pc_matrix() || store.cdelt.iter().any(|v| v.is_some()) {
+    if store.has_cd_matrix() {
+        let mut cd = Array2::zeros((naxis, naxis));
+        for i in 0..naxis {
+            for j in 0..naxis {
+                cd[[i, j]] = store.cd[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
+            }
+        }
+        cd
+    } else {
         let cdelt: Vec<f64> = (0..naxis).map(|i| store.cdelt[i].unwrap_or(1.0)).collect();
         let mut pc = Array2::zeros((naxis, naxis));
         for i in 0..naxis {
@@ -288,18 +297,85 @@ fn derive_cdelt_pc(store: &FitsStore) -> (Vec<f64>, Array2<f64>) {
                 pc[[i, j]] = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
             }
         }
-        (cdelt, pc)
-    } else if store.has_cd_matrix() {
         let mut cd = Array2::zeros((naxis, naxis));
         for i in 0..naxis {
             for j in 0..naxis {
-                cd[[i, j]] = store.cd[i][j].unwrap_or(0.0);
+                cd[[i, j]] = cdelt[i] * pc[[i, j]];
             }
         }
-        split_cd(&cd)
-    } else {
-        (vec![1.0; naxis], Array2::eye(naxis))
+        cd
     }
+}
+
+/// Initial CDELT for the AIPS encoder: the diagonal of the CD matrix.
+/// Mirrors fitschan.c:3422 `cdelt[i] = val` (overwrites with `pc[i][i] *
+/// store->cdelt[i]`, which equals CD[i][i]).
+fn build_cdelt_diag(store: &FitsStore) -> Vec<f64> {
+    let cd = build_cd_matrix(store);
+    (0..store.naxis).map(|i| cd[[i, i]]).collect()
+}
+
+/// Compute CROTA in degrees from the CD matrix and adjust the CDELT
+/// values so that the implicit rotation cancels out. Mirrors the C
+/// library `AIPSFromStore` block at fitschan.c:3415-3467.
+///
+/// For celestial frames, CROTA is computed as the average of two
+/// estimates (rho_a from `CD[lat][lon]` and rho_b from `CD[lon][lat]`),
+/// after which CDELT[lon] and CDELT[lat] are divided by cos(CROTA) (or
+/// recomputed from sin(CROTA) when |sin| > |cos|, for numerical
+/// stability near 90°). Returns `None` when the two estimates disagree
+/// by more than 1e-2 rad — the C library treats that as non-AIPS-encodable.
+///
+/// For purely linear frames (no celestial axis pair), returns `Some(0.0)`
+/// without modifying CDELT — AIPS still emits CROTA1 = 0.
+fn compute_crota_and_adjust_cdelt(
+    cdelt: &mut [f64],
+    cd: &Array2<f64>,
+    store: &FitsStore,
+) -> Option<f64> {
+    let naxis = cdelt.len();
+    let (axrot1, axrot2) = match store.celestial_axes() {
+        Some(pair) => pair,
+        None => {
+            if naxis < 2 {
+                return None;
+            }
+            return Some(0.0);
+        }
+    };
+
+    let cdlat_lon = cd[[axrot2, axrot1]];
+    let cdlon_lat = cd[[axrot1, axrot2]];
+
+    let rho_a = if cdlat_lon > 0.0 {
+        cdlat_lon.atan2(cdelt[axrot1])
+    } else if cdlat_lon == 0.0 {
+        0.0
+    } else {
+        (-cdlat_lon).atan2(-cdelt[axrot1])
+    };
+    let rho_b = if cdlon_lat > 0.0 {
+        cdlon_lat.atan2(-cdelt[axrot2])
+    } else if cdlon_lat == 0.0 {
+        0.0
+    } else {
+        (-cdlon_lat).atan2(cdelt[axrot2])
+    };
+
+    if crate::pal::drange(rho_a - rho_b).abs() >= 1.0e-2 {
+        return None;
+    }
+    let crota = 0.5 * (crate::pal::dranrm(rho_a) + crate::pal::dranrm(rho_b));
+    let coscro = crota.cos();
+    let sincro = crota.sin();
+    if coscro.abs() > sincro.abs() {
+        cdelt[axrot2] /= coscro;
+        cdelt[axrot1] /= coscro;
+    } else {
+        cdelt[axrot2] = -cdlon_lat / sincro;
+        cdelt[axrot1] = cdlat_lon / sincro;
+    }
+    Some(crota.to_degrees())
 }
 
 /// Choose the axis index `k` for CROTAk emission.
@@ -706,16 +782,18 @@ END";
 
     #[test]
     fn write_aips_crota() {
+        // Both CDELTs positive so the C library's two-rho-average lands
+        // on +30° rather than the equivalent (CROTA=150°, CDELT signs
+        // flipped) representation.
         let mut store = FitsStore::new(2);
         store.crpix[0] = Some(512.0);
         store.crpix[1] = Some(512.0);
         store.crval[0] = Some(180.0);
         store.crval[1] = Some(-45.0);
-        store.cdelt[0] = Some(-0.0002778);
+        store.cdelt[0] = Some(0.0002778);
         store.cdelt[1] = Some(0.0002778);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        // Rotation by 30 degrees
         let angle = 30.0_f64.to_radians();
         store.pc[0][0] = Some(angle.cos());
         store.pc[0][1] = Some(-angle.sin());
@@ -726,14 +804,13 @@ END";
         let mut cards = CardList::new();
         write_to_cards(&store, &mut cards).unwrap();
 
-        // CROTA2 should be approximately 30 degrees
         let crota2 = cards.get_float("CROTA2").unwrap();
         assert!(
             (crota2 - 30.0).abs() < 1e-10,
             "CROTA2 should be ~30, got {crota2}"
         );
 
-        // Should NOT have PC or CD keywords
+        // Should NOT have PC or CD keywords.
         assert!(cards.get_float("PC1_1").is_none());
         assert!(cards.get_float("CD1_1").is_none());
     }
