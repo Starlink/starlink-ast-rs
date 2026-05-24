@@ -1043,29 +1043,15 @@ impl Serializable for SkyFrame {
             sky.domain = Some(domain);
         }
 
-        // Epoch is stored as a decimal year on disk (Besselian if < 1984,
-        // Julian otherwise) and converted back to MJD on read. Mirrors
-        // `frame.c` astLoadFrame: `epoch < 1984 ? palEpb2d : palEpj2d`.
+        // Epoch and Equinox are stored as decimal years on disk and
+        // converted back to MJD on read using the IAU 1984 rule.
+        // Mirrors `frame.c` astLoadFrame.
+        use crate::frames::date_time::year_to_mjd_iau1984;
         if node.get("Epoch").is_some() {
-            let yr = node.get_double("Epoch", 0.0);
-            let mjd = if yr < 1984.0 {
-                pal::epb2d(yr)
-            } else {
-                pal::epj2d(yr)
-            };
-            sky.epoch = Some(mjd);
+            sky.epoch = Some(year_to_mjd_iau1984(node.get_double("Epoch", 0.0)));
         }
-
-        // Equinox: decimal epoch -> MJD.
-        // If < 1984: Besselian epoch -> pal::epb2d; else Julian -> pal::epj2d.
         if node.get("Eqnox").is_some() {
-            let eqnox = node.get_double("Eqnox", 0.0);
-            let mjd = if eqnox < 1984.0 {
-                pal::epb2d(eqnox)
-            } else {
-                pal::epj2d(eqnox)
-            };
-            sky.equinox = Some(mjd);
+            sky.equinox = Some(year_to_mjd_iau1984(node.get_double("Eqnox", 0.0)));
         }
 
         // Observer attributes.
