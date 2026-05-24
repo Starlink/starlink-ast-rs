@@ -18,6 +18,12 @@ use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, WcsProje
 use crate::pal;
 use crate::serial::AnyObject;
 
+/// Per-axis projection parameters extracted from a `WcsMap`, in
+/// `(m, value)` pairs. Indexed by FITS PV{i}_{m}: the longitude axis
+/// is conventionally `i = 1`, the latitude axis `i = 2`. AST stores
+/// them on both axes; FITS-WCS Paper II uses both.
+type WcsmapPvSlice<'a> = (&'a [(usize, f64)], &'a [(usize, f64)]);
+
 // ---------------------------------------------------------------------------
 // Key-formatting helpers
 // ---------------------------------------------------------------------------
@@ -176,13 +182,22 @@ fn store_from_frameset_to(
     let mut full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
     let projection = extract_projection_from_mapping(mapping.as_ref());
-    let wcsmap_pv: Option<Vec<(usize, f64)>> = find_wcsmap(mapping.as_ref()).map(|wm| {
-        // Collect non-default PV parameters on the latitude axis (the
-        // FITS-WCS convention; AST stores PV on lon/lat consistently).
+    // Collect non-default PV parameters on the longitude AND latitude
+    // axes. FITS-WCS Paper II uses both: most projections only carry
+    // PV{lat,m} (e.g. SIN's PV2_1, PV2_2 or ZPN's PV2_0..20), but a
+    // few — TAN/ARC/STG with non-default fiducial-point offset — use
+    // PV{lon,0} as well (e.g. tan-pv0's `PV1_0 = 0.1`).
+    type WcsmapPvOwned = (Vec<(usize, f64)>, Vec<(usize, f64)>);
+    let wcsmap_pv: Option<WcsmapPvOwned> = find_wcsmap(mapping.as_ref()).map(|wm| {
+        let lon = wm.lonax();
         let lat = wm.latax();
-        (0..16)
+        let lon_pv: Vec<(usize, f64)> = (0..16)
+            .filter_map(|m| wm.get_pv(lon, m).map(|v| (m, v)))
+            .collect();
+        let lat_pv: Vec<(usize, f64)> = (0..16)
             .filter_map(|m| wm.get_pv(lat, m).map(|v| (m, v)))
-            .collect()
+            .collect();
+        (lon_pv, lat_pv)
     });
 
     // For celestial frames, follow the C library's recipe (fitschan.c
@@ -218,6 +233,13 @@ fn store_from_frameset_to(
             Some((proj, post)) => {
                 let fiducial = fiducial_crval(post.as_ref(), proj, &full_decomp.crval, naxis);
                 let crval_for_iwc = fiducial.as_ref().unwrap_or(&full_decomp.crval);
+                // Adopt the fiducial CRVAL whenever we have one — even if
+                // the pure-2D `build_pixel_to_iwc` path below can't
+                // handle the mapping (e.g. 3D celestial+spectral), so
+                // the celestial CRVALs come out at the fiducial point
+                // (CRVAL = sky(CRPIX)) rather than the numerical-Jacobian
+                // sky value at g0 = (1, 1, …).
+                cel_crval = fiducial.clone();
                 match build_pixel_to_iwc(
                     mapping.as_ref(),
                     &sky,
@@ -241,7 +263,6 @@ fn store_from_frameset_to(
                             crpix = c;
                             full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
                         }
-                        cel_crval = fiducial;
                         iwc_decomp
                     }
                     Err(_) => pre_decomp,
@@ -278,12 +299,15 @@ fn store_from_frameset_to(
     }
 
     // Identify axis types from the target frame and populate CTYPE/CRVAL.
+    let pv_refs = wcsmap_pv
+        .as_ref()
+        .map(|(lon, lat)| (lon.as_slice(), lat.as_slice()));
     identify_axes(
         target_frame,
         &crval_for_store,
         &mut store,
         projection,
-        wcsmap_pv.as_deref(),
+        pv_refs,
     )?;
 
     // Apply C-library-style numerical cleanups (SplitMat 1e-7, CRVAL
@@ -614,7 +638,7 @@ fn identify_axes(
     crval: &[f64],
     store: &mut FitsStore,
     projection: Option<WcsProjection>,
-    wcsmap_pv: Option<&[(usize, f64)]>,
+    wcsmap_pv: Option<WcsmapPvSlice<'_>>,
 ) -> AstResult<()> {
     let naxis = store.naxis;
 
@@ -727,7 +751,7 @@ fn populate_celestial(
     lon_axis: usize,
     lat_axis: usize,
     projection: Option<WcsProjection>,
-    wcsmap_pv: Option<&[(usize, f64)]>,
+    wcsmap_pv: Option<WcsmapPvSlice<'_>>,
 ) -> AstResult<()> {
     let system = sky.system();
     // Use the projection from the WcsMap if available, falling back to
@@ -794,12 +818,18 @@ fn populate_celestial(
         store.equinox = Some(eq_year);
     }
 
-    // PV parameters from the WcsMap (latitude axis carries the
-    // projection parameters in AST/FITS convention). This makes
-    // legacy NCP↔SIN and similar projections round-trip with their
-    // computed PV values intact.
-    if let Some(pvs) = wcsmap_pv {
-        for &(m, val) in pvs {
+    // PV parameters from the WcsMap. AST stores them on both lon and
+    // lat axes; FITS-WCS Paper II uses both: most projections only
+    // populate PV{lat,m} (e.g. SIN's PV2_2 for the legacy NCP form, or
+    // ZPN's PV2_0..20), but a few — TAN/ARC/STG with non-default
+    // fiducial-point offset — use PV{lon,0} as well (e.g. PV1_0 = 0.1).
+    if let Some((lon_pvs, lat_pvs)) = wcsmap_pv {
+        for &(m, val) in lon_pvs {
+            if m < store.pv[lon_axis].len() {
+                store.pv[lon_axis][m] = Some(val);
+            }
+        }
+        for &(m, val) in lat_pvs {
             if m < store.pv[lat_axis].len() {
                 store.pv[lat_axis][m] = Some(val);
             }
@@ -809,13 +839,22 @@ fn populate_celestial(
     // LONPOLE default for zenithal projections.
     store.lonpole = Some(180.0);
 
-    // MJD-OBS from epoch (skip if default J2000.0). The SkyFrame epoch
-    // is in TDB scale (matching C library convention, fitschan.c:29718);
-    // FITS MJD-OBS is UTC. The C library does the same conversion at
-    // fitschan.c:29723-29744 via TDBConv. Also populate the formatted
-    // DATE-OBS string here; an encoder later emits both.
-    let epoch_tdb = sky.epoch_mjd();
-    if (epoch_tdb - 51544.5).abs() > 0.001 {
+    // MJD-OBS from epoch. The SkyFrame epoch is in TDB scale (matching
+    // C library convention, fitschan.c:29718); FITS MJD-OBS is UTC.
+    // The C library does the same conversion at fitschan.c:29723-29744
+    // via TDBConv.
+    //
+    // For systems that pin a reference equinox (FK4/FK5/Ecliptic),
+    // emit even when the epoch is the equinox default (J2000): C's
+    // `defdate` test (fitschan.c:29757) compares the implied UTC epoch
+    // with the equinox in degrees, but the units differ so it's
+    // rarely true and the default J2000 epoch ends up written.
+    // For systems that don't carry an equinox (Galactic, GAPPT, ICRS,
+    // AzEl, etc.) C explicitly sets `eq = AST__BAD` (fitschan.c:29789+)
+    // and the corresponding store.mjdobs stays unset when no input
+    // MJD-OBS was supplied, so suppress the write here too.
+    if system.needs_equinox() {
+        let epoch_tdb = sky.epoch_mjd();
         let epoch_utc = tdb_mjd_to_utc(epoch_tdb);
         store.mjdobs = Some(epoch_utc);
         store.dateobs = Some(mjd_to_date_str(epoch_utc));
@@ -905,12 +944,22 @@ fn write_store_to_cards(
 ) -> AstResult<()> {
     let naxis = store.naxis;
 
-    // WCSAXES{S}
-    cards.set_int(
-        &fmt_global_key("WCSAXES", s),
-        naxis as i64,
-        "Number of WCS axes",
-    );
+    // WCSAXES{S} — mirrors fitschan.c:36987-37000. Emit when:
+    //   1. the store explicitly carries a WCSAXES value (the
+    //      MakeIntWorld degenerate-axis case at fitschan.c:22263), OR
+    //   2. the input chan's NAXIS differs from `naxis` — including
+    //      "no NAXIS at all" (e.g. `.ast` inputs whose chan starts
+    //      empty, where the C library treats naxis as -1 and emits).
+    let input_naxis = cards.get_int("NAXIS").map(|v| v as usize);
+    let emit_wcsaxes = store.wcsaxes.is_some()
+        || match input_naxis {
+            Some(n) => n != naxis,
+            None => true,
+        };
+    if emit_wcsaxes {
+        let key = fmt_global_key("WCSAXES", s);
+        cards.set_int(&key, naxis as i64, "Number of WCS axes");
+    }
 
     // WCSNAME{S} for alt planes: frame domain.
     if s != ' ' {
@@ -998,6 +1047,23 @@ fn write_store_to_cards(
         // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
+    }
+
+    // PV{i}_{m} numerical projection parameters. Mirrors WcsFromStore
+    // (fitschan.c:37257-37284) — emitted between TIMESYS/PV (if any)
+    // and RADESYS/EQUINOX. The store's `pv` is keyed by 0-based axis
+    // index, m index; FITS uses 1-based axis numbering.
+    for i in 0..naxis {
+        for (m, val) in store.pv[i].iter().enumerate() {
+            if let Some(v) = val {
+                let key = if s == ' ' {
+                    format!("PV{}_{m}", i + 1)
+                } else {
+                    format!("PV{}_{m}{s}", i + 1)
+                };
+                cards.set_float(&key, *v, "Projection parameter");
+            }
         }
     }
 
