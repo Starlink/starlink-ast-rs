@@ -410,7 +410,7 @@ fn crota_axis(store: &FitsStore) -> usize {
 pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
     let naxis = store.naxis;
 
-    // CRPIXi
+    // CRPIXi.
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = format!("CRPIX{}", i + 1);
@@ -418,7 +418,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         }
     }
 
-    // CRVALi
+    // CRVALi.
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let key = format!("CRVAL{}", i + 1);
@@ -426,20 +426,34 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         }
     }
 
-    // CTYPEi — AIPS spectral convention
+    // CTYPEi — AIPS spectral convention. Use ctype_com when set.
     for i in 0..naxis {
         if let Some(ref ctype) = store.ctype[i] {
             let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(
-                &key,
-                &aips_ctype,
-                &format!("Type of co-ordinate on axis {}", i + 1),
-            );
+            let comment = store.ctype_com[i]
+                .clone()
+                .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
+            cards.set_string(&key, &aips_ctype, &comment);
         }
     }
 
-    // CUNITi
+    // Compute CROTA via the two-rho-average. If consistent (Some), the
+    // adjusted CDELT absorbs the cosine factor and we emit CDELT + CROTA.
+    // Otherwise (None: rotation isn't expressible as a single CROTA),
+    // fall back to the CDi_j matrix. Mirrors fitschan.c:3950-3971,
+    // 4081-4106.
+    let mut cdelt_vals = build_cdelt_diag(store);
+    let cd = build_cd_matrix(store);
+    let crota_deg = compute_crota_and_adjust_cdelt(&mut cdelt_vals, &cd, store);
+
+    // CDELTi — always emitted.
+    for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
+        let key = format!("CDELT{}", i + 1);
+        cards.set_float(&key, cdelt_val, "Pixel size");
+    }
+
+    // CUNITi.
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
@@ -447,56 +461,62 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         }
     }
 
-    // CDi_j matrix: use CD directly if available, otherwise compute from PC x CDELT
-    write_aipspp_cd_matrix(store, cards);
-
-    // EQUINOX (not EPOCH for AIPS++)
-    if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
-    }
-
-    // RADESYS
-    if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
-    }
-
-    // LONPOLE: only emit when non-default. 180° is the FITS-WCS Paper II
-    // default for zenithal projections; the C library suppresses it.
-    if let Some(lonpole) = store.lonpole {
-        if lonpole != 180.0 {
-            cards.set_float("LONPOLE", lonpole, "Native longitude of celestial pole");
+    // CD matrix or CROTA.
+    match crota_deg {
+        None => {
+            // Rotation inconsistent — emit CDi_j (mirrors fitschan.c:4082-4095).
+            for i in 0..naxis {
+                for j in 0..naxis {
+                    let val = cd[[i, j]];
+                    if val != 0.0 {
+                        let key = format!("CD{}_{}", i + 1, j + 1);
+                        cards.set_float(&key, val, "Transformation matrix element");
+                    }
+                }
+            }
         }
-    }
-    if let Some(latpole) = store.latpole {
-        cards.set_float("LATPOLE", latpole, "Native latitude of celestial pole");
+        Some(crota) if crota != 0.0 && naxis >= 2 => {
+            let k = crota_axis(store);
+            cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
+        }
+        _ => {}
     }
 
-    // PV parameters
-    for i in 0..naxis {
-        let axis_num = i + 1;
-        for (m, pv_val) in store.pv[i].iter().enumerate() {
+    // EPOCH (NOT EQUINOX — AIPS++ uses EPOCH per fitschan.c:4109).
+    if let Some(equinox) = store.equinox {
+        cards.set_float("EPOCH", equinox, "Epoch of reference equinox");
+    }
+
+    // LATPOLE / LONPOLE if set (mirrors fitschan.c:4112-4120). LONPOLE
+    // default 180° for zenithal projections is suppressed.
+    if let Some(latpole) = store.latpole {
+        cards.set_float("LATPOLE", latpole, "Latitude of native north pole");
+    }
+    if let Some(lonpole) = store.lonpole
+        && lonpole != 180.0
+    {
+        cards.set_float("LONPOLE", lonpole, "Longitude of native north pole");
+    }
+
+    // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (fitschan.c:4122).
+    if let Some(ref dateobs) = store.dateobs {
+        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+    }
+
+    // Projection parameters: PROJP{m} for celestial latitude axis only
+    // (fitschan.c:4148-4155).
+    if let Some((_, lat_axis)) = store.celestial_axes() {
+        for (m, pv_val) in store.pv[lat_axis].iter().enumerate() {
             if let Some(val) = pv_val {
-                let key = format!("PV{axis_num}_{m}");
-                cards.set_float(&key, *val, "");
+                let key = format!("PROJP{m}");
+                cards.set_float(&key, *val, "Projection parameter");
             }
         }
     }
 
-    // RESTFREQ
+    // RESTFREQ for spectral axis.
     if let Some(restfrq) = store.restfrq {
-        cards.set_float("RESTFREQ", restfrq, "Rest frequency (Hz)");
-    }
-
-    // SPECSYS
-    if let Some(ref specsys) = store.specsys {
-        cards.set_string("SPECSYS", specsys, "Spectral reference frame");
-    }
-
-    // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (mirrors C
-    // AIPSPPFromStore at fitschan.c:3633+). The pre-formatted string
-    // in store.dateobs was derived from MJD-OBS upstream.
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
     }
 
     Ok(())
@@ -505,41 +525,6 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-/// Write the CD matrix for AIPS++.
-///
-/// If the store has CD values directly, use them. Otherwise compute
-/// CD[i][j] = PC[i][j] x CDELT[i].
-fn write_aipspp_cd_matrix(store: &FitsStore, cards: &mut CardList) {
-    let naxis = store.naxis;
-
-    if store.has_cd_matrix() {
-        // Write CD values directly from the store.
-        for i in 0..naxis {
-            for j in 0..naxis {
-                if let Some(val) = store.cd[i][j] {
-                    if val != 0.0 || i == j {
-                        let key = format!("CD{}_{}", i + 1, j + 1);
-                        cards.set_float(&key, val, "Transformation matrix element");
-                    }
-                }
-            }
-        }
-    } else {
-        // Compute CD from PC x CDELT.
-        for i in 0..naxis {
-            let cdelt_i = store.cdelt[i].unwrap_or(1.0);
-            for j in 0..naxis {
-                let pc_ij = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
-                let cd_val = pc_ij * cdelt_i;
-                if cd_val != 0.0 || i == j {
-                    let key = format!("CD{}_{}", i + 1, j + 1);
-                    cards.set_float(&key, cd_val, "Transformation matrix element");
-                }
-            }
-        }
-    }
-}
 
 /// Translate an AIPS spectral CTYPE to standard form, returning (standard_ctype, specsys).
 ///
@@ -869,7 +854,9 @@ END";
     }
 
     #[test]
-    fn write_aipspp_cd_matrix() {
+    fn write_aipspp_cdelt_for_diagonal_cd() {
+        // Pure diagonal CD with no rotation: AIPSPPFromStore (C library
+        // line 3633+) emits CDELT and EPOCH (not CDi_j and EQUINOX).
         let mut store = FitsStore::new(2);
         store.crpix[0] = Some(256.0);
         store.crpix[1] = Some(256.0);
@@ -885,21 +872,23 @@ END";
         let mut cards = CardList::new();
         write_to_cards_pp(&store, &mut cards).unwrap();
 
-        // Should have CDi_j keywords
-        assert_eq!(cards.get_float("CD1_1"), Some(-0.0005));
-        assert_eq!(cards.get_float("CD2_2"), Some(0.0005));
-        // Should use EQUINOX (not EPOCH)
-        assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
-        assert!(cards.get_float("EPOCH").is_none());
-        // Should have RADESYS
-        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
-        // Should NOT have CDELT or CROTA
-        assert!(cards.get_float("CDELT1").is_none());
+        // No rotation → CROTA suppressed (= 0). CDELT emitted from CD diagonal.
+        assert_eq!(cards.get_float("CDELT1"), Some(-0.0005));
+        assert_eq!(cards.get_float("CDELT2"), Some(0.0005));
         assert!(cards.get_float("CROTA2").is_none());
+        assert!(cards.get_float("CD1_1").is_none());
+        // EPOCH (AIPS++ uses EPOCH, not EQUINOX).
+        assert_eq!(cards.get_float("EPOCH"), Some(2000.0));
+        assert!(cards.get_float("EQUINOX").is_none());
+        // No RADESYS field for AIPS++ (mirrors fitschan.c:3633+).
+        assert!(cards.get_string("RADESYS").is_none());
     }
 
     #[test]
-    fn write_aipspp_computes_cd_from_pc() {
+    fn write_aipspp_emits_crota_when_rotation_consistent() {
+        // PC rotation that is expressible as a single CROTA — the
+        // two-rho-average lands on a real angle and AIPSPPFromStore
+        // emits CDELT + CROTA, no CDi_j (mirrors fitschan.c:4097-4106).
         let mut store = FitsStore::new(2);
         store.crpix[0] = Some(100.0);
         store.crpix[1] = Some(100.0);
@@ -907,36 +896,30 @@ END";
         store.crval[1] = Some(60.0);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
-        // PC rotation by 30 degrees
-        store.pc[0][0] = Some(0.866025); // cos(30)
-        store.pc[0][1] = Some(-0.5); // -sin(30)
-        store.pc[1][0] = Some(0.5); // sin(30)
-        store.pc[1][1] = Some(0.866025); // cos(30)
-        store.cdelt[0] = Some(-0.001);
+        let angle = 30.0_f64.to_radians();
+        store.pc[0][0] = Some(angle.cos());
+        store.pc[0][1] = Some(-angle.sin());
+        store.pc[1][0] = Some(angle.sin());
+        store.pc[1][1] = Some(angle.cos());
+        // Both CDELTs positive so the two-rho average lands on +30°
+        // rather than the equivalent (CROTA=150°, CDELTs flipped) form.
+        store.cdelt[0] = Some(0.001);
         store.cdelt[1] = Some(0.001);
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
         write_to_cards_pp(&store, &mut cards).unwrap();
 
-        // CD = PC x CDELT: CD[i][j] = PC[i][j] x CDELT[i]
-        let cd11 = cards.get_float("CD1_1").unwrap();
-        let cd12 = cards.get_float("CD1_2").unwrap();
-        let cd21 = cards.get_float("CD2_1").unwrap();
-        let cd22 = cards.get_float("CD2_2").unwrap();
-
-        // CD1_1 = PC1_1 * CDELT1 = 0.866025 * -0.001
-        assert!((cd11 - (-0.000866025)).abs() < 1e-10);
-        // CD1_2 = PC1_2 * CDELT1 = -0.5 * -0.001
-        assert!((cd12 - 0.0005).abs() < 1e-10);
-        // CD2_1 = PC2_1 * CDELT2 = 0.5 * 0.001
-        assert!((cd21 - 0.0005).abs() < 1e-10);
-        // CD2_2 = PC2_2 * CDELT2 = 0.866025 * 0.001
-        assert!((cd22 - 0.000866025).abs() < 1e-10);
-
-        // Should use EQUINOX (not EPOCH)
-        assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
-        assert!(cards.get_float("EPOCH").is_none());
+        let crota2 = cards.get_float("CROTA2").unwrap();
+        assert!(
+            (crota2 - 30.0).abs() < 1e-10,
+            "CROTA2 should be ~30, got {crota2}"
+        );
+        // CD matrix not emitted when CROTA captures the rotation.
+        assert!(cards.get_float("CD1_1").is_none());
+        // EPOCH (not EQUINOX).
+        assert_eq!(cards.get_float("EPOCH"), Some(2000.0));
+        assert!(cards.get_float("EQUINOX").is_none());
     }
 
     #[test]
@@ -1003,10 +986,11 @@ END";
         let mut cards = CardList::new();
         write_to_cards_pp(&store, &mut cards).unwrap();
 
-        // Spectral axis should be written in AIPS format
+        // Spectral axis should be written in AIPS format. AIPSPPFromStore
+        // bakes the SPECSYS into the CTYPE (e.g. "VELO-LSR") and doesn't
+        // emit a separate SPECSYS card (mirrors fitschan.c:4148-4164).
         assert_eq!(cards.get_string("CTYPE3"), Some("VELO-LSR".to_string()));
-        // SPECSYS should also be written explicitly
-        assert_eq!(cards.get_string("SPECSYS"), Some("LSRK".to_string()));
+        assert!(cards.get_string("SPECSYS").is_none());
     }
 
     #[test]
