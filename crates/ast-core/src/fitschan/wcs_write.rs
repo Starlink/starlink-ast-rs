@@ -82,11 +82,8 @@ pub(crate) fn encode_wcs(
         }
     };
 
-    let (mut primary, mut alts) = store_from_frameset_with_alts(frameset, dim)?;
-    snap_to_input_crpix_crval(&mut primary, cards, ' ');
-    for alt in alts.iter_mut() {
-        snap_to_input_crpix_crval(&mut alt.store, cards, alt.letter);
-    }
+    let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
+    let (primary, alts) = store_from_frameset_with_alts(frameset, dim, &primary_crvals, cards)?;
     write_store_to_cards(&primary, cards, use_cd, ' ', None)?;
     for alt in &alts {
         write_store_to_cards(&alt.store, cards, use_cd, alt.letter, Some(&alt.domain))?;
@@ -94,60 +91,24 @@ pub(crate) fn encode_wcs(
     Ok(())
 }
 
-/// For non-celestial axes, prefer the input header's CRPIX{i} and
-/// CRVAL{i} when both are present. Mirrors how the C library's
-/// `OtherAxes` (fitschan.c:24217) and `SpectralAxes` (fitschan.c:30299)
-/// adopt input CRVAL via `crvals[iax]` and `MakeIntWorld` recovers the
-/// matching CRPIX, leaving the input parameterisation intact for
-/// linear axes that have no spherical-projection complications.
-///
-/// We compute `world_at_input = our_crval + cd[i][i] · (input_crpix −
-/// our_crpix)` and only adopt the input pair if that matches the input
-/// CRVAL within a small relative tolerance — i.e. the input
-/// describes the same line. Celestial axes are skipped (their CRPIX
-/// is already chosen by `solve_crpix_from_decomp` to match the
-/// fiducial CRVAL).
-fn snap_to_input_crpix_crval(store: &mut FitsStore, cards: &CardList, s: char) {
-    let naxis = store.naxis;
-    let cel = store.celestial_axes();
-    for i in 0..naxis {
-        if let Some((lon, lat)) = cel
-            && (i == lon || i == lat)
-        {
-            continue;
-        }
-        let crpix_key = if s == ' ' {
-            format!("CRPIX{}", i + 1)
-        } else {
-            format!("CRPIX{}{s}", i + 1)
-        };
-        let crval_key = if s == ' ' {
-            format!("CRVAL{}", i + 1)
-        } else {
-            format!("CRVAL{}{s}", i + 1)
-        };
-        let (Some(input_crpix), Some(input_crval)) =
-            (cards.get_float(&crpix_key), cards.get_float(&crval_key))
-        else {
-            continue;
-        };
-        let (Some(our_crpix), Some(our_crval), Some(cdii)) =
-            (store.crpix[i], store.crval[i], store.cd[i][i])
-        else {
-            continue;
-        };
-        let world_at_input = our_crval + cdii * (input_crpix - our_crpix);
-        let denom = world_at_input.abs().max(input_crval.abs());
-        let tol = if denom == 0.0 {
-            1.0e-12
-        } else {
-            denom * 1.0e-9
-        };
-        if (world_at_input - input_crval).abs() < tol {
-            store.crpix[i] = Some(input_crpix);
-            store.crval[i] = Some(input_crval);
-        }
-    }
+/// Read the input chan's `CRVAL{i}{s}` cards into a per-axis array.
+/// Mirrors fitschan.c::ReadCrval (line 25775+) — the C library extracts
+/// these *before* per-axis processing so that `OtherAxes`/`SpectralAxes`
+/// can adopt them as the WCS→IWC ShiftMap offsets, and `MakeIntWorld`
+/// then back-solves CRPIX to match. Without an input chan (e.g. `.ast`
+/// inputs), all entries are `None` and the writer falls back to
+/// `world(g0)` per axis.
+fn extract_input_crvals(cards: &CardList, s: char, naxis: usize) -> Vec<Option<f64>> {
+    (0..naxis)
+        .map(|i| {
+            let key = if s == ' ' {
+                format!("CRVAL{}", i + 1)
+            } else {
+                format!("CRVAL{}{s}", i + 1)
+            };
+            cards.get_float(&key)
+        })
+        .collect()
 }
 
 /// Encode a FrameSet via FitsStore with a custom card writer.
@@ -170,15 +131,23 @@ pub(crate) fn encode_wcs_to_store(
         }
     };
 
-    let mut store = store_from_frameset(frameset, dim)?;
-    snap_to_input_crpix_crval(&mut store, cards, ' ');
+    let input_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
+    let store = store_from_frameset(frameset, dim, &input_crvals)?;
     writer(&store, cards)
 }
 
 /// Decompose a FrameSet into a FitsStore using the current frame as the
 /// WCS target (pixel→current mapping).
-pub(crate) fn store_from_frameset(fs: &FrameSet, dim: &[Option<f64>]) -> AstResult<FitsStore> {
-    store_from_frameset_to(fs, fs.current_idx(), dim)
+///
+/// `input_crvals` carries per-axis CRVAL{i} values from the input
+/// chan (matching the primary plane); see [`extract_input_crvals`]
+/// for the rationale.
+pub(crate) fn store_from_frameset(
+    fs: &FrameSet,
+    dim: &[Option<f64>],
+    input_crvals: &[Option<f64>],
+) -> AstResult<FitsStore> {
+    store_from_frameset_to(fs, fs.current_idx(), dim, input_crvals)
 }
 
 /// Decompose a FrameSet into a FitsStore using `target_idx` (0-based) as
@@ -193,6 +162,7 @@ fn store_from_frameset_to(
     fs: &FrameSet,
     target_idx: usize,
     dim: &[Option<f64>],
+    input_crvals: &[Option<f64>],
 ) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
@@ -233,14 +203,37 @@ fn store_from_frameset_to(
         .collect();
     let pre_decomp = decompose_linear(pre_mapping.as_ref(), naxis, &g0)?;
 
-    let has_celestial = celestial_axes(target_frame).is_some();
-    let mut crpix = if has_celestial {
-        solve_crpix_from_decomp(&pre_decomp.cd, &pre_decomp.crval, &g0)
-            .unwrap_or_else(|| g0.clone())
-    } else {
-        g0.clone()
-    };
-    let mut full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
+    // Choose CRVAL per axis. Mirrors fitschan.c:24217 (`OtherAxes`) and
+    // fitschan.c:30299 (`SpectralAxes`):
+    //   crval[i] = crvals ? crvals[i] : world(central_pixel)[i]
+    // The C library extracts crvals via ReadCrval (line 25775+) before
+    // any per-axis processing; we feed it in via `input_crvals`. For
+    // axes with no input override the chosen CRVAL falls back to
+    // world(g0). The celestial branch below replaces the celestial
+    // entries with the projection's fiducial CRVAL (mirrors
+    // GetFiducialWCS at fitschan.c:12823) when one is available.
+    let mut chosen_crval = pre_decomp.crval.clone();
+    for (slot, input) in chosen_crval.iter_mut().zip(input_crvals.iter()).take(naxis) {
+        if let Some(c) = *input {
+            *slot = c;
+        }
+    }
+
+    // CRPIX is the linear-algebra solution to
+    //   pre_decomp.cd · (g0 − CRPIX) = world(g0) − chosen_crval
+    // i.e. find CRPIX such that world(CRPIX) = chosen_crval. Mirrors
+    // MakeIntWorld's palDmat solve (fitschan.c:21943-22095). For axes
+    // without an input override, world(g0) − chosen_crval = 0 and the
+    // solve gives CRPIX[i] = g0[i] (which matches what `OtherAxes`
+    // produces when no `crvals[i]` is supplied).
+    let w0: Vec<f64> = pre_decomp
+        .crval
+        .iter()
+        .zip(chosen_crval.iter())
+        .map(|(w, c)| w - c)
+        .collect();
+    let mut crpix = solve_crpix_from_decomp(&pre_decomp.cd, &w0, &g0).unwrap_or_else(|| g0.clone());
+    let full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
     let projection = extract_projection_from_mapping(mapping.as_ref());
     // Collect non-default PV parameters on the longitude AND latitude
@@ -322,7 +315,6 @@ fn store_from_frameset_to(
                             solve_crpix_from_decomp(&iwc_decomp.cd, &iwc_decomp.crval, &g0)
                         {
                             crpix = c;
-                            full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
                         }
                         iwc_decomp
                     }
@@ -335,10 +327,14 @@ fn store_from_frameset_to(
         pre_decomp
     };
 
-    // For celestial frames, swap the numerically-evaluated CRVAL for
-    // the fiducial-point CRVAL extracted via the post chain. Other
-    // axes keep their numerical-Jacobian values.
-    let mut crval_for_store = full_decomp.crval.clone();
+    // CRVAL for the store: start from the chosen array (input override
+    // or world(g0)), then for celestial axes substitute the fiducial
+    // CRVAL extracted via the post chain. The fiducial value is
+    // bit-exact to what the FrameSet was built around, mirroring
+    // fitschan.c::GetFiducialWCS (~12823); we prefer it over the
+    // input override for celestial axes because the fiducial point
+    // is a property of the projection, not the file header.
+    let mut crval_for_store = chosen_crval;
     if let (Some(fid), Some((_, lon_axis, lat_axis))) = (cel_crval, celestial_axes(target_frame)) {
         crval_for_store[lon_axis] = fid[lon_axis];
         crval_for_store[lat_axis] = fid[lat_axis];
@@ -1640,14 +1636,21 @@ pub(crate) struct AltPlane {
 pub(crate) fn store_from_frameset_with_alts(
     fs: &FrameSet,
     dim: &[Option<f64>],
+    primary_crvals: &[Option<f64>],
+    cards: &CardList,
 ) -> AstResult<(FitsStore, Vec<AltPlane>)> {
-    let primary = store_from_frameset(fs, dim)?;
+    let naxis = fs.base().naxes();
+    let primary = store_from_frameset(fs, dim, primary_crvals)?;
     let assignments = frames_with_version_letters(fs);
 
     let mut alts = Vec::with_capacity(assignments.len());
     for (frame_idx_1based, letter) in assignments {
         let target_idx = frame_idx_1based - 1;
-        let alt_store = store_from_frameset_to(fs, target_idx, dim)?;
+        // Each alt plane gets its own input CRVALs from CRVAL{i}{S}
+        // cards; mirrors the C library re-running ReadCrval per
+        // version letter inside FsetToStore.
+        let alt_crvals = extract_input_crvals(cards, letter, naxis);
+        let alt_store = store_from_frameset_to(fs, target_idx, dim, &alt_crvals)?;
         let frame = fs.frame(FrameRef::Index(frame_idx_1based))?;
         let domain = frame.domain().to_string();
         alts.push(AltPlane {
@@ -1843,7 +1846,9 @@ mod tests {
             crate::serial::AnyObject::FrameSet(fs) => fs,
             _ => panic!("expected FrameSet"),
         };
-        let (_primary, alts) = store_from_frameset_with_alts(&fs, &[]).expect("alt planes");
+        let cards = crate::fitschan::card_list::CardList::new();
+        let (_primary, alts) =
+            store_from_frameset_with_alts(&fs, &[], &[], &cards).expect("alt planes");
         assert_eq!(alts.len(), 2, "timj has 2 alt planes (PIXEL, AXIS)");
         assert_eq!(alts[0].letter, 'A');
         assert_eq!(alts[1].letter, 'B');
