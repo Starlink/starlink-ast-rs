@@ -82,12 +82,72 @@ pub(crate) fn encode_wcs(
         }
     };
 
-    let (primary, alts) = store_from_frameset_with_alts(frameset, dim)?;
+    let (mut primary, mut alts) = store_from_frameset_with_alts(frameset, dim)?;
+    snap_to_input_crpix_crval(&mut primary, cards, ' ');
+    for alt in alts.iter_mut() {
+        snap_to_input_crpix_crval(&mut alt.store, cards, alt.letter);
+    }
     write_store_to_cards(&primary, cards, use_cd, ' ', None)?;
     for alt in &alts {
         write_store_to_cards(&alt.store, cards, use_cd, alt.letter, Some(&alt.domain))?;
     }
     Ok(())
+}
+
+/// For non-celestial axes, prefer the input header's CRPIX{i} and
+/// CRVAL{i} when both are present. Mirrors how the C library's
+/// `OtherAxes` (fitschan.c:24217) and `SpectralAxes` (fitschan.c:30299)
+/// adopt input CRVAL via `crvals[iax]` and `MakeIntWorld` recovers the
+/// matching CRPIX, leaving the input parameterisation intact for
+/// linear axes that have no spherical-projection complications.
+///
+/// We compute `world_at_input = our_crval + cd[i][i] · (input_crpix −
+/// our_crpix)` and only adopt the input pair if that matches the input
+/// CRVAL within a small relative tolerance — i.e. the input
+/// describes the same line. Celestial axes are skipped (their CRPIX
+/// is already chosen by `solve_crpix_from_decomp` to match the
+/// fiducial CRVAL).
+fn snap_to_input_crpix_crval(store: &mut FitsStore, cards: &CardList, s: char) {
+    let naxis = store.naxis;
+    let cel = store.celestial_axes();
+    for i in 0..naxis {
+        if let Some((lon, lat)) = cel
+            && (i == lon || i == lat)
+        {
+            continue;
+        }
+        let crpix_key = if s == ' ' {
+            format!("CRPIX{}", i + 1)
+        } else {
+            format!("CRPIX{}{s}", i + 1)
+        };
+        let crval_key = if s == ' ' {
+            format!("CRVAL{}", i + 1)
+        } else {
+            format!("CRVAL{}{s}", i + 1)
+        };
+        let (Some(input_crpix), Some(input_crval)) =
+            (cards.get_float(&crpix_key), cards.get_float(&crval_key))
+        else {
+            continue;
+        };
+        let (Some(our_crpix), Some(our_crval), Some(cdii)) =
+            (store.crpix[i], store.crval[i], store.cd[i][i])
+        else {
+            continue;
+        };
+        let world_at_input = our_crval + cdii * (input_crpix - our_crpix);
+        let denom = world_at_input.abs().max(input_crval.abs());
+        let tol = if denom == 0.0 {
+            1.0e-12
+        } else {
+            denom * 1.0e-9
+        };
+        if (world_at_input - input_crval).abs() < tol {
+            store.crpix[i] = Some(input_crpix);
+            store.crval[i] = Some(input_crval);
+        }
+    }
 }
 
 /// Encode a FrameSet via FitsStore with a custom card writer.
@@ -110,7 +170,8 @@ pub(crate) fn encode_wcs_to_store(
         }
     };
 
-    let store = store_from_frameset(frameset, dim)?;
+    let mut store = store_from_frameset(frameset, dim)?;
+    snap_to_input_crpix_crval(&mut store, cards, ' ');
     writer(&store, cards)
 }
 
