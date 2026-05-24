@@ -165,7 +165,12 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
             "cdmatrix" => {
                 fc_out.set_cd_matrix(val == "1" || val.eq_ignore_ascii_case("true"));
             }
-            // carlin, sipreplace, sipok, fitsrounding -- not yet supported.
+            "fitsrounding" => {
+                if let Ok(r) = val.parse::<usize>() {
+                    fc_out.set_fits_rounding(r);
+                }
+            }
+            // carlin, sipreplace, sipok -- not yet supported.
             _ => {}
         }
     }

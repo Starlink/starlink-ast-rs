@@ -230,17 +230,26 @@ impl FitsCard {
 
     /// Format the card back to an 80-character FITS header card string.
     /// Format this card as an 80-character FITS header string using a
-    /// specific number of significant digits for float values.
+    /// specific number of significant digits for float values, with the
+    /// formatter's default sequence-rounding protection (`fitsrnd = 10`).
     pub fn format_with_digits(&self, digits: usize) -> String {
-        self.format_internal(digits)
+        self.format_internal(digits, 10)
+    }
+
+    /// Format this card with the given digit count and FitsRounding
+    /// protection. `fitsrnd` is the number of leading significant digits
+    /// the formatter protects from sequence-rounding (mirrors the C
+    /// library's `FitsRounding` attribute).
+    pub fn format_with_digits_and_rounding(&self, digits: usize, fitsrnd: usize) -> String {
+        self.format_internal(digits, fitsrnd)
     }
 
     /// Format this card as an 80-character FITS header string.
     pub fn format(&self) -> String {
-        self.format_internal(15)
+        self.format_internal(15, 10)
     }
 
-    fn format_internal(&self, digits: usize) -> String {
+    fn format_internal(&self, digits: usize, fitsrnd: usize) -> String {
         let mut buf = String::with_capacity(FITS_CARD_LEN);
 
         // Write keyword, left-justified, padded to 8 chars.
@@ -286,7 +295,7 @@ impl FitsCard {
             }
             FitsValue::Float(v) => {
                 buf.push_str("= ");
-                let formatted = format_float(*v, digits);
+                let formatted = format_float(*v, digits, fitsrnd);
                 let width = FITS_RL_COL + 1 - (FITS_NAME_LEN + 2); // 20
                 if formatted.len() < width {
                     for _ in 0..(width - formatted.len()) {
@@ -314,8 +323,8 @@ impl FitsCard {
             }
             FitsValue::ComplexFloat(r, i) => {
                 buf.push_str("= ");
-                let r_fmt = format_float(*r, digits);
-                let i_fmt = format_float(*i, digits);
+                let r_fmt = format_float(*r, digits, fitsrnd);
+                let i_fmt = format_float(*i, digits, fitsrnd);
                 // Right-justify real to col 30, imaginary to col 50.
                 let r_width = FITS_RL_COL + 1 - (FITS_NAME_LEN + 2); // 20
                 if r_fmt.len() < r_width {
@@ -551,9 +560,11 @@ fn try_parse_complex(s: &str) -> Option<FitsValue> {
 /// Format a float value for FITS output.
 /// Uses a representation that preserves precision while staying compact.
 /// Mimics C's `%G` format: uses fixed notation when the exponent is in [-4, 15],
-/// scientific notation otherwise, and trims trailing zeros.
-fn format_float(v: f64, digits: usize) -> String {
-    super::format::format_significant(v, digits)
+/// scientific notation otherwise, and trims trailing zeros. Long
+/// sequences of trailing 9's or 0's beyond the first `fitsrnd`
+/// significant digits are rounded out (C's `RoundFString`).
+fn format_float(v: f64, digits: usize, fitsrnd: usize) -> String {
+    super::format::format_significant_rounded(v, digits, fitsrnd)
 }
 
 /// Format a string value with FITS quoting rules into the buffer.

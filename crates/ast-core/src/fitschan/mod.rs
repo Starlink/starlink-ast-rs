@@ -79,6 +79,9 @@ pub struct FitsChan {
     encoding: Encoding,
     warnings: Vec<String>,
     fits_digits: usize,
+    /// Number of leading significant digits protected from rounding by
+    /// the formatter (mirrors C's `FitsRounding` attribute, default 10).
+    fits_rounding: usize,
     /// Whether to use CD matrix notation (default false).
     cd_matrix: bool,
 }
@@ -92,6 +95,7 @@ impl FitsChan {
             encoding: Encoding::FitsWcs,
             warnings: Vec::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
+            fits_rounding: 10,
             cd_matrix: false,
         }
     }
@@ -108,6 +112,7 @@ impl FitsChan {
             encoding: Encoding::FitsWcs,
             warnings: Vec::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
+            fits_rounding: 10,
             cd_matrix: false,
         })
     }
@@ -219,7 +224,7 @@ impl FitsChan {
         let mut lines: Vec<String> = self
             .cards
             .iter()
-            .map(|card| card.format_with_digits(self.fits_digits))
+            .map(|card| card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding))
             .collect();
         lines.push(format!("{:<80}", "END"));
         lines.join("\n")
@@ -375,6 +380,19 @@ impl FitsChan {
     /// Return the current number of significant digits for floating-point output.
     pub fn fits_digits(&self) -> usize {
         self.fits_digits
+    }
+
+    /// Set the FitsRounding attribute (number of leading significant
+    /// digits protected from sequence-rounding by the float formatter).
+    /// Default 10. Setting to 0 protects only the first significant
+    /// digit (matching C's `fitsrounding < 1 → 1` clamp).
+    pub fn set_fits_rounding(&mut self, fitsrnd: usize) {
+        self.fits_rounding = fitsrnd;
+    }
+
+    /// Return the current FitsRounding value.
+    pub fn fits_rounding(&self) -> usize {
+        self.fits_rounding
     }
 
     /// Set whether to use CD matrix notation for FITS-WCS output.

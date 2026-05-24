@@ -135,28 +135,10 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
     let naxis = store.naxis;
 
-    // CRPIXi
-    for i in 0..naxis {
-        if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
-            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
-        }
-    }
-
-    // CRVALi
-    for i in 0..naxis {
-        if let Some(val) = store.crval[i] {
-            let key = format!("CRVAL{}", i + 1);
-            cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
-        }
-    }
-
-    // CDELTi and PC matrix.
-    // If the store has PC + CDELT directly, use them.
-    // If the store only has a CD matrix (no separate CDELT), factor it using split_cd.
+    // Derive CDELT and PC. If the store has PC + CDELT directly, use them.
+    // Otherwise factor a CD matrix via split_cd.
     let (cdelt_vals, pc_vals) = if store.has_pc_matrix() || store.cdelt.iter().any(|v| v.is_some())
     {
-        // Use the stored PC and CDELT values directly.
         let cdelt: Vec<f64> = (0..naxis).map(|i| store.cdelt[i].unwrap_or(1.0)).collect();
         let mut pc = Array2::zeros((naxis, naxis));
         for i in 0..naxis {
@@ -166,7 +148,6 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
         (cdelt, pc)
     } else if store.has_cd_matrix() {
-        // Factor CD into CDELT × PC using split_cd.
         let mut cd = Array2::zeros((naxis, naxis));
         for i in 0..naxis {
             for j in 0..naxis {
@@ -175,32 +156,62 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
         split_cd(&cd)
     } else {
-        // No matrix info at all — write identity defaults.
         let cdelt = vec![1.0; naxis];
         let pc = Array2::eye(naxis);
         (cdelt, pc)
     };
 
-    // Write CDELTi
-    for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
-        let key = format!("CDELT{}", i + 1);
-        cards.set_float(&key, cdelt_val, "Pixel size");
+    // PC matrix in 3-digit format. Identity values (1.0 on diagonal,
+    // 0.0 off-diagonal) are skipped — mirrors fitschan.c:24586-24598.
+    // Card emission order matches PCFromStore (line 24553+): PC, CDELT,
+    // CRPIX, CRVAL, CTYPE, CUNIT, RADECSYS, EQUINOX, MJD-OBS, DATE-OBS.
+    for i in 0..naxis {
+        for j in 0..naxis {
+            let val = pc_vals[[i, j]];
+            let default = if i == j { 1.0 } else { 0.0 };
+            if (val - default).abs() > 1e-15 {
+                let key = format!("PC{:03}{:03}", i + 1, j + 1);
+                // FITS-PC PC cards carry no comment (fitschan.c:24595).
+                cards.set_float(&key, val, "");
+            }
+        }
     }
 
-    // CTYPEi — translate SFL→GLS, AIT→ATF
+    // CDELTi.
+    for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
+        let key = format!("CDELT{}", i + 1);
+        cards.set_float(&key, cdelt_val, &format!("Pixel scale on axis {}", i + 1));
+    }
+
+    // CRPIXi.
+    for i in 0..naxis {
+        if let Some(val) = store.crpix[i] {
+            let key = format!("CRPIX{}", i + 1);
+            cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
+        }
+    }
+
+    // CRVALi.
+    for i in 0..naxis {
+        if let Some(val) = store.crval[i] {
+            let key = format!("CRVAL{}", i + 1);
+            cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
+        }
+    }
+
+    // CTYPEi — translate SFL→GLS, AIT→ATF.
     for i in 0..naxis {
         if let Some(ref val) = store.ctype[i] {
             let pc_ctype = translate_pc_ctype_write(val);
             let key = format!("CTYPE{}", i + 1);
-            cards.set_string(
-                &key,
-                &pc_ctype,
-                &format!("Type of co-ordinate on axis {}", i + 1),
-            );
+            let comment = store.ctype_com[i]
+                .clone()
+                .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
+            cards.set_string(&key, &pc_ctype, &comment);
         }
     }
 
-    // CUNITi
+    // CUNITi.
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
@@ -208,34 +219,20 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
-    // PC matrix in 3-digit format. Only write non-default values
-    // (off-diagonal != 0.0, diagonal != 1.0).
-    for i in 0..naxis {
-        for j in 0..naxis {
-            let val = pc_vals[[i, j]];
-            let default = if i == j { 1.0 } else { 0.0 };
-            if (val - default).abs() > 1e-15 {
-                let key = format!("PC{:03}{:03}", i + 1, j + 1);
-                cards.set_float(&key, val, "Transformation matrix element");
-            }
-        }
-    }
-
-    // RADECSYS (the PC misspelling)
+    // RADECSYS (the PC misspelling).
     if let Some(ref radesys) = store.radesys {
         cards.set_string("RADECSYS", radesys, "Reference frame for RA/DEC values");
     }
 
-    // EQUINOX
+    // EQUINOX.
     if let Some(equinox) = store.equinox {
         cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
     }
 
-    // MJD-OBS
+    // MJD-OBS / DATE-OBS.
     if let Some(mjdobs) = store.mjdobs {
         cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
     }
-    // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
     if let Some(ref dateobs) = store.dateobs {
         cards.set_string("DATE-OBS", dateobs, "Date of observation");
     }

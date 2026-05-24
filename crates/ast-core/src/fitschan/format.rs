@@ -34,9 +34,21 @@ pub fn format_fits_double(value: f64, digits: usize) -> String {
 
 /// Format a double with the specified number of significant figures.
 ///
-/// This is the unpadded version, useful for testing or when the FITS
-/// field-width padding is not desired.
+/// Applies the C library's [`round_fstring`] post-processing with the
+/// default `fitsrnd = 10` (10 leading significant digits protected
+/// from rounding) — long sequences of trailing 0's or 9's beyond that
+/// limit get rounded out. Use [`format_significant_rounded`] to specify
+/// a different `fitsrnd`.
 pub fn format_significant(value: f64, digits: usize) -> String {
+    format_significant_rounded(value, digits, 10)
+}
+
+/// Like [`format_significant`] but with a caller-controlled
+/// `fitsrnd` (the C library's `FitsRounding` attribute — number of
+/// leading significant digits to protect from sequence-rounding).
+///
+/// `fitsrnd < 1` is treated as 1, matching fitschan.c:26354-26355.
+pub fn format_significant_rounded(value: f64, digits: usize, fitsrnd: usize) -> String {
     let digits = digits.clamp(1, 17);
 
     if value == 0.0 {
@@ -59,7 +71,7 @@ pub fn format_significant(value: f64, digits: usize) -> String {
     let force_scientific = value > -0.001 && value < -0.0001;
     let use_fixed = !force_scientific && exp >= -4 && exp < (digits as i32);
 
-    if use_fixed {
+    let initial = if use_fixed {
         let decimal_places = ((digits as i32) - (exp + 1)).max(1) as usize;
         let s = format!("{value:.decimal_places$}");
         trim_trailing_zeros(&s)
@@ -68,7 +80,197 @@ pub fn format_significant(value: f64, digits: usize) -> String {
         let s = format!("{value:.mantissa_decimals$E}");
         let s = trim_trailing_zeros_exp(&s);
         ensure_exponent_sign(&s)
+    };
+    round_fstring(&initial, fitsrnd)
+}
+
+/// Round out long sequences of adjacent 0's or 9's in a formatted
+/// floating-point string. Mirrors fitschan.c::RoundFString (line 26266+).
+///
+/// `fitsrnd` is the number of leading significant digits to protect
+/// from rounding (treated as 1 if 0). A run of `NSEQ = 4` or more
+/// adjacent 0's or 9's that ends beyond the protected zone gets
+/// collapsed: a 9-run rounds up (carry-propagating into earlier digits,
+/// inserting a leading 1 if the carry reaches the front), and a 0-run
+/// is left in place but any trailing digits beyond it are zeroed.
+/// Trailing zeros after a decimal point are trimmed (keeping at least
+/// one).
+fn round_fstring(text: &str, fitsrnd: usize) -> String {
+    const NSEQ: usize = 4;
+    let fitsrnd = fitsrnd.max(1);
+
+    // Split into mantissa + exponent (if any).
+    let (mantissa, exponent) = match text.find(['E', 'e']) {
+        Some(i) => (&text[..i], &text[i..]),
+        None => (text, ""),
+    };
+
+    // Walk the mantissa as bytes; we'll edit in-place. Add a leading
+    // sentinel space so that a final carry-out has a place to land.
+    let mut buf: Vec<u8> = std::iter::once(b' ').chain(mantissa.bytes()).collect();
+    let n = buf.len();
+
+    // Locate the decimal point and the rounding-protection cutoff
+    // `prnd` (index of the first digit at which rounding may occur:
+    // i.e. the `fitsrnd`-th significant digit from the left).
+    let mut dot = None;
+    let mut prnd = None;
+    let mut started = false;
+    let mut nsig = 0usize;
+    for (i, &b) in buf.iter().enumerate() {
+        if b == b'.' {
+            dot = Some(i);
+        } else if b.is_ascii_digit() {
+            if b != b'0' {
+                started = true;
+            }
+            if started {
+                nsig += 1;
+                if nsig == fitsrnd && prnd.is_none() {
+                    prnd = Some(i);
+                }
+            }
+        }
     }
+
+    // Nothing to do if no significant digits or `fitsrnd` covers the
+    // whole number (no rounding can occur past the protected zone).
+    if !started {
+        return mantissa
+            .trim_start()
+            .to_string()
+            .replace(|c: char| c.is_ascii_digit(), "0");
+    }
+    let prnd = match prnd {
+        Some(p) => p,
+        None => return text.to_string(),
+    };
+
+    // Walk backward over the digits, tracking 9-runs and 0-runs.
+    let mut seq9: Option<usize> = None;
+    let mut seq0: Option<usize> = None;
+    let mut seqlen = 0usize;
+    let mut i = n;
+    while i > 0 {
+        i -= 1;
+        let b = buf[i];
+
+        if let Some(start) = seq9 {
+            if b == b'9' {
+                seqlen += 1;
+            } else if b.is_ascii_digit() {
+                if start > prnd && seqlen >= NSEQ {
+                    // Replace digits at-or-after the run with 0; bump *c.
+                    for byte in &mut buf[(i + 1)..n] {
+                        if byte.is_ascii_digit() {
+                            *byte = b'0';
+                        }
+                    }
+                    buf[i] += 1;
+                }
+                match buf[i] {
+                    b'9' => {
+                        seq9 = Some(i);
+                        seq0 = None;
+                        seqlen = 1;
+                    }
+                    b'0' => {
+                        seq0 = Some(i);
+                        seq9 = None;
+                        seqlen = 1;
+                    }
+                    _ => {
+                        seq9 = None;
+                        seqlen = 0;
+                    }
+                }
+            }
+        } else if let Some(start) = seq0 {
+            if b == b'0' {
+                seqlen += 1;
+            } else if b.is_ascii_digit() {
+                if start > prnd && seqlen >= NSEQ {
+                    for byte in &mut buf[(i + 1)..n] {
+                        if byte.is_ascii_digit() {
+                            *byte = b'0';
+                        }
+                    }
+                }
+                if buf[i] == b'9' {
+                    seq9 = Some(i);
+                    seq0 = None;
+                    seqlen = 1;
+                } else {
+                    seq0 = None;
+                    seqlen = 0;
+                }
+            }
+        } else if i < prnd {
+            // Walked past the protection cutoff with no active run.
+            break;
+        } else if b == b'9' {
+            seq9 = Some(i);
+            seqlen = 1;
+        } else if b == b'0' {
+            seq0 = Some(i);
+            seqlen = 1;
+        }
+    }
+
+    // If a 9-run runs all the way to the front of the number, collapse
+    // and prepend "1" (carry-out). The leading sentinel space gives us
+    // room for that "1" without resizing.
+    if let Some(start) = seq9
+        && start > prnd
+        && seqlen >= NSEQ
+    {
+        let mut first = true;
+        for k in 0..n {
+            if buf[k].is_ascii_digit() {
+                buf[k] = b'0';
+                if first {
+                    // Shift any sign characters one slot left so we
+                    // can place '1' just before this zero.
+                    let mut e = 1usize;
+                    while e < k {
+                        buf[e - 1] = buf[e];
+                        e += 1;
+                    }
+                    buf[k - 1] = b'1';
+                    first = false;
+                }
+            }
+        }
+    }
+
+    // Strip trailing zeros after a decimal point (keep one), but only
+    // when there was a decimal point in the input. Mirrors C's
+    // post-rounding cleanup at fitschan.c:26550-26562.
+    if let Some(dot_idx) = dot {
+        let mut end = n;
+        while end > dot_idx + 1 {
+            let prev = buf[end - 1];
+            if prev == b'0' || prev == b' ' {
+                end -= 1;
+            } else {
+                break;
+            }
+        }
+        // Keep one zero immediately after the decimal point.
+        if end == dot_idx + 1 && end < n {
+            buf[end] = b'0';
+            end += 1;
+        }
+        buf.truncate(end);
+    }
+
+    // Drop the leading sentinel space if it survived.
+    let mantissa_out = if buf.first() == Some(&b' ') {
+        std::str::from_utf8(&buf[1..]).unwrap_or("").to_string()
+    } else {
+        std::str::from_utf8(&buf).unwrap_or("").to_string()
+    };
+    format!("{mantissa_out}{exponent}")
 }
 
 /// Trim trailing zeros from a fixed-point formatted number, keeping at least
@@ -260,5 +462,37 @@ mod tests {
                 "round-trip failed for {val}: got {reparsed}, rel_err={rel_err}"
             );
         }
+    }
+
+    #[test]
+    fn round_fstring_collapses_long_nines_with_low_protection() {
+        // 0.99998719 with fitsrnd=1: the leading "9999" is a 4-nine
+        // run beyond the protection limit and gets rounded to 1.0.
+        // Mirrors C's RoundFString output for the timj.fits-pc fixture.
+        let s = format_significant_rounded(0.99998719, 8, 1);
+        assert_eq!(s, "1.0");
+    }
+
+    #[test]
+    fn round_fstring_preserves_value_with_default_protection() {
+        // With the default fitsrnd=10 (>= digit count), no sequence
+        // can extend past the protection zone — value is preserved.
+        let s = format_significant_rounded(0.99998719, 8, 10);
+        assert_eq!(s, "0.99998719");
+    }
+
+    #[test]
+    fn round_fstring_short_runs_unchanged() {
+        // Three adjacent 9's are below the NSEQ=4 threshold.
+        let s = format_significant_rounded(0.99987, 5, 1);
+        assert_eq!(s, "0.99987");
+    }
+
+    #[test]
+    fn round_fstring_carry_propagation_to_integer_digit() {
+        // 99.99996 with fitsrnd=1: trailing "9999" runs to within the
+        // first significant digit; carry propagates and we get 100.0.
+        let s = format_significant_rounded(99.99996, 7, 1);
+        assert_eq!(s, "100.0");
     }
 }
