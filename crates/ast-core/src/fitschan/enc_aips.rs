@@ -361,36 +361,81 @@ fn build_cdelt_diag(store: &FitsStore) -> Vec<f64> {
     (0..store.naxis).map(|i| cd[[i, i]]).collect()
 }
 
+/// Choose the rotation-axis pair `(axrot1, axrot2)` for the AIPS
+/// CROTA decomposition. Mirrors fitschan.c:3397-3412:
+/// - Celestial pair present: axrot1=lon, axrot2=lat.
+/// - No celestial pair, naxis>2 with a spectral axis: skip the spec
+///   axis and pick the first two remaining axes.
+/// - No celestial pair, naxis>1: axrot2=0, axrot1=1.
+/// - Otherwise: no rotation possible.
+fn aips_rotation_axes(store: &FitsStore) -> Option<(usize, usize)> {
+    if let Some((lon, lat)) = store.celestial_axes() {
+        return Some((lon, lat));
+    }
+    let naxis = store.naxis;
+    let axspec = store.spectral_axis().map(|i| i as isize).unwrap_or(-1);
+    if axspec >= 0 && naxis > 2 {
+        let axspec = axspec as usize;
+        let axrot2 = if axspec == 0 { 1 } else { 0 };
+        let mut axrot1 = axrot2 + 1;
+        if axrot1 == axspec {
+            axrot1 += 1;
+        }
+        if axrot1 < naxis {
+            return Some((axrot1, axrot2));
+        }
+    }
+    if axspec < 0 && naxis > 1 {
+        return Some((1, 0));
+    }
+    None
+}
+
 /// Compute CROTA in degrees from the CD matrix and adjust the CDELT
 /// values so that the implicit rotation cancels out. Mirrors the C
 /// library `AIPSFromStore` block at fitschan.c:3415-3467.
 ///
-/// For celestial frames, CROTA is computed as the average of two
-/// estimates (rho_a from `CD[lat][lon]` and rho_b from `CD[lon][lat]`),
-/// after which CDELT[lon] and CDELT[lat] are divided by cos(CROTA) (or
-/// recomputed from sin(CROTA) when |sin| > |cos|, for numerical
-/// stability near 90°). Returns `None` when the two estimates disagree
-/// by more than 1e-2 rad — the C library treats that as non-AIPS-encodable.
+/// CROTA is the average of two estimates — rho_a from `CD[axrot2,
+/// axrot1]` and rho_b from `CD[axrot1, axrot2]` — after which
+/// `CDELT[axrot1]` and `CDELT[axrot2]` are divided by cos(CROTA) (or
+/// recomputed from sin(CROTA) when |sin| > |cos|). For non-celestial
+/// frames the rotation pair is the first two non-spectral axes
+/// (fitschan.c:3397-3412), so a rotated PIXEL grid encodes as
+/// CDELT + CROTA1 just like a celestial frame.
 ///
-/// For purely linear frames (no celestial axis pair), returns `Some(0.0)`
-/// without modifying CDELT — AIPS still emits CROTA1 = 0.
+/// Returns `None` when:
+/// - the two CROTA estimates disagree by ≥ 1e-2 rad (rotation not
+///   expressible as a single CROTA), or
+/// - any non-(axrot1,axrot2) off-diagonal is non-zero (rotation
+///   spreads beyond the chosen plane). Both cases force the AIPS++
+///   writer to fall back to a CDi_j matrix.
+///
+/// Returns `Some(0.0)` when no rotation pair exists (1-D or all-degenerate).
 fn compute_crota_and_adjust_cdelt(
     cdelt: &mut [f64],
     cd: &Array2<f64>,
     store: &FitsStore,
 ) -> Option<f64> {
-    let _naxis = cdelt.len();
-    let (axrot1, axrot2) = match store.celestial_axes() {
+    let naxis = cdelt.len();
+    let (axrot1, axrot2) = match aips_rotation_axes(store) {
         Some(pair) => pair,
-        None => {
-            // No celestial axes: there's no rotation to encode, so
-            // return 0 — the writer will emit CDELT-only and skip
-            // CROTA / CD entirely. Mirrors fitschan.c:3970 (`else
-            // { crota = 0.0; }` when axrot1/axrot2 are unset) for
-            // both 1D and N-D linear cases.
-            return Some(0.0);
-        }
+        None => return Some(0.0),
     };
+
+    // Validate that all off-diagonal CD entries outside the chosen
+    // (axrot1, axrot2) pair are zero — anything else is not encodable
+    // as a single CROTA. Mirrors fitschan.c:3424-3429.
+    for i in 0..naxis {
+        for j in 0..naxis {
+            if i == j {
+                continue;
+            }
+            let on_pair = (i == axrot2 && j == axrot1) || (i == axrot1 && j == axrot2);
+            if !on_pair && cd[[i, j]] != 0.0 {
+                return None;
+            }
+        }
+    }
 
     let cdlat_lon = cd[[axrot2, axrot1]];
     let cdlon_lat = cd[[axrot1, axrot2]];
