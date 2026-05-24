@@ -256,6 +256,19 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
+    // MJD-OBS — AIPSFromStore doesn't write MJD-OBS (line 3590+ only
+    // computes DATE-OBS from it). The C library preserves an
+    // input-supplied MJD-OBS at its original position via ignore-used
+    // semantics; our sweep would otherwise drop it. Mirror that by
+    // re-emitting MJD-OBS *only* if the input header already carried
+    // one — for FrameSet inputs without an input chan there's nothing
+    // to preserve and the output should not gain a synthetic MJD-OBS.
+    if cards.find("MJD-OBS").is_some()
+        && let Some(mjdobs) = store.mjdobs
+    {
+        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    }
+
     // CROTAk — paired with the latitude axis for celestial frames or with
     // axis 1 for purely linear frames (mirrors fitschan.c:3578-3584).
     if let Some(crota) = crota_deg
@@ -270,9 +283,9 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         cards.set_float("EPOCH", equinox, "Epoch of reference equinox");
     }
 
-    // DATE-OBS — AIPS emits only DATE-OBS, not MJD-OBS (mirrors C
-    // AIPSFromStore at fitschan.c:3590-3614). The pre-formatted string
-    // in store.dateobs was derived from MJD-OBS upstream.
+    // DATE-OBS computed from MJD-OBS (mirrors AIPSFromStore at
+    // fitschan.c:3590-3614). The pre-formatted string in store.dateobs
+    // was derived from MJD-OBS upstream.
     if let Some(ref dateobs) = store.dateobs {
         cards.set_string("DATE-OBS", dateobs, "Date of observation");
     }
@@ -468,6 +481,14 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
             let key = format!("CUNIT{}", i + 1);
             cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
+    }
+
+    // MJD-OBS — preserve at original position if the input chan
+    // carried one. See `enc_aips::write_to_cards` for the rationale.
+    if cards.find("MJD-OBS").is_some()
+        && let Some(mjdobs) = store.mjdobs
+    {
+        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
     }
 
     // CD matrix or CROTA.
