@@ -355,13 +355,15 @@ fn compute_crota_and_adjust_cdelt(
     cd: &Array2<f64>,
     store: &FitsStore,
 ) -> Option<f64> {
-    let naxis = cdelt.len();
+    let _naxis = cdelt.len();
     let (axrot1, axrot2) = match store.celestial_axes() {
         Some(pair) => pair,
         None => {
-            if naxis < 2 {
-                return None;
-            }
+            // No celestial axes: there's no rotation to encode, so
+            // return 0 — the writer will emit CDELT-only and skip
+            // CROTA / CD entirely. Mirrors fitschan.c:3970 (`else
+            // { crota = 0.0; }` when axrot1/axrot2 are unset) for
+            // both 1D and N-D linear cases.
             return Some(0.0);
         }
     };
