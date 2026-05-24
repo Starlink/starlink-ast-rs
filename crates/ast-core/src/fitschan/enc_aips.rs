@@ -206,9 +206,23 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
+    // Determine the spectral axis and its unit-canonicalisation factor.
+    // Mirrors fitschan.c:3350-3376 (factor & canonical unit) +
+    // :3526 (CRVAL *= specfactor) + :3560 (CDELT *= specfactor) +
+    // :3570 (CUNIT replaced with canonical "HZ"/"m/s").
+    let axspec = store.spectral_axis();
+    let spec_remap = axspec
+        .and_then(|i| store.cunit[i].as_deref())
+        .and_then(aips_spectral_unit);
+
     // CRVALi
     for i in 0..naxis {
-        if let Some(val) = store.crval[i] {
+        if let Some(mut val) = store.crval[i] {
+            if let (Some(ax), Some((_, factor))) = (axspec, spec_remap)
+                && i == ax
+            {
+                val *= factor;
+            }
             let key = format!("CRVAL{}", i + 1);
             cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
@@ -243,6 +257,9 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     let crota_deg = compute_crota_and_adjust_cdelt(&mut cdelt_vals, &cd, store);
 
     // CDELTi — always emitted (one per axis).
+    if let (Some(ax), Some((_, factor))) = (axspec, spec_remap) {
+        cdelt_vals[ax] *= factor;
+    }
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
         let key = format!("CDELT{}", i + 1);
         cards.set_float(&key, cdelt_val, "Pixel size");
@@ -252,7 +269,14 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
+            let emitted = if let (Some(ax), Some((canon, _))) = (axspec, spec_remap)
+                && i == ax
+            {
+                canon.to_string()
+            } else {
+                val.clone()
+            };
+            cards.set_string(&key, &emitted, &format!("Units for axis {}", i + 1));
         }
     }
 
@@ -407,6 +431,25 @@ fn compute_crota_and_adjust_cdelt(
 /// Returns the 1-based latitude axis when the store contains a celestial
 /// CTYPE pair (`DEC--`, `GLAT-`, `ELAT-`, `SLAT-`, `EL---`); otherwise
 /// returns 1. Matches the C library convention: CROTA is paired with the
+/// Canonical AIPS spectral unit + scale factor.
+///
+/// Mirrors fitschan.c:3350-3376 / 3854-3880. The AIPS encoder normalises
+/// the spectral axis CUNIT to either "HZ" or "m/s", scaling CRVAL and
+/// CDELT by the matching factor. Returns `None` if the unit is not one
+/// of the recognised AIPS spectral units (which makes the encoding
+/// invalid; the caller leaves the unit unchanged).
+fn aips_spectral_unit(unit: &str) -> Option<(&'static str, f64)> {
+    match unit {
+        "Hz" => Some(("HZ", 1.0)),
+        "kHz" => Some(("HZ", 1.0e3)),
+        "MHz" => Some(("HZ", 1.0e6)),
+        "GHz" => Some(("HZ", 1.0e9)),
+        "m/s" => Some(("m/s", 1.0)),
+        "km/s" => Some(("m/s", 1.0e3)),
+        _ => None,
+    }
+}
+
 /// latitude axis for celestial frames and with axis 1 for purely linear
 /// frames.
 fn crota_axis(store: &FitsStore) -> usize {
@@ -442,9 +485,20 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         }
     }
 
+    // Spectral-axis unit canonicalisation (see write_to_cards above).
+    let axspec = store.spectral_axis();
+    let spec_remap = axspec
+        .and_then(|i| store.cunit[i].as_deref())
+        .and_then(aips_spectral_unit);
+
     // CRVALi.
     for i in 0..naxis {
-        if let Some(val) = store.crval[i] {
+        if let Some(mut val) = store.crval[i] {
+            if let (Some(ax), Some((_, factor))) = (axspec, spec_remap)
+                && i == ax
+            {
+                val *= factor;
+            }
             let key = format!("CRVAL{}", i + 1);
             cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
@@ -472,6 +526,9 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     let crota_deg = compute_crota_and_adjust_cdelt(&mut cdelt_vals, &cd, store);
 
     // CDELTi — always emitted.
+    if let (Some(ax), Some((_, factor))) = (axspec, spec_remap) {
+        cdelt_vals[ax] *= factor;
+    }
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
         let key = format!("CDELT{}", i + 1);
         cards.set_float(&key, cdelt_val, "Pixel size");
@@ -481,7 +538,14 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = format!("CUNIT{}", i + 1);
-            cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
+            let emitted = if let (Some(ax), Some((canon, _))) = (axspec, spec_remap)
+                && i == ax
+            {
+                canon.to_string()
+            } else {
+                val.clone()
+            };
+            cards.set_string(&key, &emitted, &format!("Units for axis {}", i + 1));
         }
     }
 
