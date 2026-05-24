@@ -212,8 +212,24 @@ fn store_from_frameset_to(
     // world(g0). The celestial branch below replaces the celestial
     // entries with the projection's fiducial CRVAL (mirrors
     // GetFiducialWCS at fitschan.c:12823) when one is available.
+    let cel = celestial_axes(target_frame);
     let mut chosen_crval = pre_decomp.crval.clone();
-    for (slot, input) in chosen_crval.iter_mut().zip(input_crvals.iter()).take(naxis) {
+    for (i, (slot, input)) in chosen_crval
+        .iter_mut()
+        .zip(input_crvals.iter())
+        .take(naxis)
+        .enumerate()
+    {
+        // Skip celestial axes — the input CRVAL is in degrees, but the
+        // mapping's output (and pre_decomp.crval) is in radians for
+        // SkyFrame axes. Mixing them in the linear-algebra solve below
+        // would give nonsense. The celestial branch substitutes the
+        // fiducial CRVAL (with correct units) later.
+        if let Some((_, lon, lat)) = cel
+            && (i == lon || i == lat)
+        {
+            continue;
+        }
         if let Some(c) = *input {
             *slot = c;
         }
