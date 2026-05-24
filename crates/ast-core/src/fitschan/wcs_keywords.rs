@@ -161,7 +161,82 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList) -> AstResult<FitsStore> {
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
     extract_sip(cards, &mut store);
 
+    // NCP → SIN normalisation (legacy alias). See [`normalise_ncp_to_sin`].
+    normalise_ncp_to_sin(&mut store);
+
     Ok(store)
+}
+
+/// Test whether a SIN projection in `store` should be re-emitted as
+/// the legacy `-NCP` form. Mirrors fitschan.c:3270-3293. The rewrite
+/// applies when:
+/// - PV{lat,1} is 0 (or unset),
+/// - PV{lat,2} matches `cot(δ_ref)` to within 0.01 (the historical
+///   NCP definition), or has |value| ≥ 1e14 with δ_ref = 0 (the
+///   north-celestial-pole degenerate case).
+///
+/// Returns `false` for any non-SIN projection.
+pub(crate) fn sin_should_emit_as_ncp(store: &FitsStore) -> bool {
+    let Some((_, lat_axis)) = store.celestial_axes() else {
+        return false;
+    };
+    let ctype_is_sin = matches!(&store.ctype[lat_axis],
+        Some(ct) if ct.len() >= 8 && ct[5..8].eq_ignore_ascii_case("SIN"));
+    if !ctype_is_sin {
+        return false;
+    }
+    let Some(crval_lat_deg) = store.crval[lat_axis] else {
+        return false;
+    };
+    let p1 = store.pv[lat_axis].get(1).copied().flatten().unwrap_or(0.0);
+    let p2 = store.pv[lat_axis].get(2).copied().flatten().unwrap_or(0.0);
+    if p1 != 0.0 {
+        return false;
+    }
+    if p2 == 0.0 {
+        return false;
+    }
+    if p2.abs() >= 1.0e14 && crval_lat_deg == 0.0 {
+        return true;
+    }
+    (p2 * crval_lat_deg.to_radians().tan() - 1.0).abs() < 0.01
+}
+
+/// Translate any `*-NCP` celestial CTYPE pair to `*-SIN` and synthesise
+/// the corresponding PV parameters: PV2_1 = 0, PV2_2 = cot(δ_ref).
+///
+/// Mirrors fitschan.c::SpecialTrans (line 31682-31713). The legacy AIPS
+/// NCP projection is the special case of SIN where the projection
+/// reference position lies at the celestial pole. AST's internal
+/// representation only carries the standard projections, so we
+/// canonicalise NCP to SIN at read time.
+pub(crate) fn normalise_ncp_to_sin(store: &mut FitsStore) {
+    let Some((lon_axis, lat_axis)) = store.celestial_axes() else {
+        return;
+    };
+    let is_ncp = matches!(&store.ctype[lat_axis],
+        Some(ct) if ct.len() >= 8 && ct[5..8].eq_ignore_ascii_case("NCP"));
+    if !is_ncp {
+        return;
+    }
+    let Some(crval_lat_deg) = store.crval[lat_axis] else {
+        return;
+    };
+    let sinval = crval_lat_deg.to_radians().sin();
+    if sinval == 0.0 {
+        return;
+    }
+    let cot = crval_lat_deg.to_radians().cos() / sinval;
+    if let Some(ct) = &mut store.ctype[lon_axis] {
+        ct.replace_range(4.., "-SIN");
+    }
+    if let Some(ct) = &mut store.ctype[lat_axis] {
+        ct.replace_range(4.., "-SIN");
+    }
+    if store.pv[lat_axis].len() > 2 {
+        store.pv[lat_axis][1] = Some(0.0);
+        store.pv[lat_axis][2] = Some(cot);
+    }
 }
 
 /// Check for SIP distortion and extract coefficients.

@@ -207,6 +207,23 @@ impl WcsMap {
         self.proj
     }
 
+    /// Get the PV parameter value for the given 1-based axis and
+    /// 0-based parameter index. Returns `None` if the parameter has
+    /// not been set, or `axis` is neither the longitude nor latitude
+    /// axis. Inverse of [`set_pv`].
+    pub fn get_pv(&self, axis: usize, m: usize) -> Option<f64> {
+        let prj_axis = if axis == 0 || axis > self.ncoord {
+            return None;
+        } else if axis - 1 == self.latax {
+            0
+        } else if axis - 1 == self.lonax {
+            1
+        } else {
+            return None;
+        };
+        self.params[prj_axis].get(m).copied().flatten()
+    }
+
     /// Return the 1-based longitude axis index.
     pub fn lonax(&self) -> usize {
         self.lonax + 1

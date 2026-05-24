@@ -171,7 +171,8 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // DATE-AVG priority chain.
     super::wcs_keywords::read_epoch_into_store(cards, &mut store);
 
-    // PV parameters (AIPS++: PVi_m)
+    // PV parameters (AIPS++: PVi_m, also legacy PROJP{m} on the latitude
+    // axis — fitschan.c writes PROJP{m} for AIPS++, see line 4148-4155).
     for i in 0..naxis {
         let axis_num = i + 1;
         for m in 0..store.pv[i].len() {
@@ -179,6 +180,9 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
             store.pv[i][m] = cards.get_float(&key);
         }
     }
+
+    // NCP → SIN normalisation (legacy AIPS alias).
+    super::wcs_keywords::normalise_ncp_to_sin(&mut store);
 
     Ok(store)
 }
@@ -211,10 +215,15 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     }
 
     // CTYPEi — convert standard types back to AIPS spectral format using SPECSYS.
-    // Mirrors AIPSFromStore order (fitschan.c:3536-3557): CTYPE before CDELT.
+    // Also fold SIN-with-NCP-PV back to the legacy `-NCP` projection
+    // suffix (mirrors fitschan.c:3270-3293).
+    let ncp_axes = super::wcs_keywords::sin_should_emit_as_ncp(store);
     for i in 0..naxis {
         if let Some(ref ctype) = store.ctype[i] {
-            let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
+            let mut aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
+            if ncp_axes && aips_ctype.len() >= 8 && aips_ctype[5..8].eq_ignore_ascii_case("SIN") {
+                aips_ctype.replace_range(5.., "NCP");
+            }
             let key = format!("CTYPE{}", i + 1);
             let comment = store.ctype_com[i]
                 .clone()

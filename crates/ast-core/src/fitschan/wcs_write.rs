@@ -176,6 +176,14 @@ fn store_from_frameset_to(
     let mut full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
     let projection = extract_projection_from_mapping(mapping.as_ref());
+    let wcsmap_pv: Option<Vec<(usize, f64)>> = find_wcsmap(mapping.as_ref()).map(|wm| {
+        // Collect non-default PV parameters on the latitude axis (the
+        // FITS-WCS convention; AST stores PV on lon/lat consistently).
+        let lat = wm.latax();
+        (0..16)
+            .filter_map(|m| wm.get_pv(lat, m).map(|v| (m, v)))
+            .collect()
+    });
 
     // For celestial frames, follow the C library's recipe (fitschan.c
     // CelestialAxes ~5206 + MakeIntWorld): build the full WCS→IWC
@@ -270,7 +278,13 @@ fn store_from_frameset_to(
     }
 
     // Identify axis types from the target frame and populate CTYPE/CRVAL.
-    identify_axes(target_frame, &crval_for_store, &mut store, projection)?;
+    identify_axes(
+        target_frame,
+        &crval_for_store,
+        &mut store,
+        projection,
+        wcsmap_pv.as_deref(),
+    )?;
 
     // Apply C-library-style numerical cleanups (SplitMat 1e-7, CRVAL
     // near-zero, CRPIX micro-pixel rounding) so all encoders see clean
@@ -574,6 +588,25 @@ fn extract_projection_from_mapping(mapping: &dyn Mapping) -> Option<WcsProjectio
     None
 }
 
+/// Walk the mapping tree and return a reference to the first
+/// `WcsMap` found. Companion to [`extract_projection_from_mapping`]
+/// for callers that need the full WcsMap (e.g. to pull out PV
+/// parameters in addition to the projection code).
+fn find_wcsmap(mapping: &dyn Mapping) -> Option<&WcsMap> {
+    if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
+        return Some(wm);
+    }
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if let Some(wm) = find_wcsmap(cmp.first()) {
+            return Some(wm);
+        }
+        if let Some(wm) = find_wcsmap(cmp.second()) {
+            return Some(wm);
+        }
+    }
+    None
+}
+
 /// Identify axis types from the target frame and populate CTYPE, CRVAL, etc.
 #[allow(clippy::needless_range_loop)]
 fn identify_axes(
@@ -581,11 +614,12 @@ fn identify_axes(
     crval: &[f64],
     store: &mut FitsStore,
     projection: Option<WcsProjection>,
+    wcsmap_pv: Option<&[(usize, f64)]>,
 ) -> AstResult<()> {
     let naxis = store.naxis;
 
     if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
-        populate_celestial(sky, crval, store, 0, 1, projection)?;
+        populate_celestial(sky, crval, store, 0, 1, projection, wcsmap_pv)?;
     } else if let Some(spec) = frame.as_any().downcast_ref::<SpecFrame>() {
         populate_spectral(spec, crval, store, 0)?;
     } else if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
@@ -594,13 +628,13 @@ fn identify_axes(
         let frame2 = cmp.frame2();
 
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
-            populate_celestial(sky, crval, store, 0, 1, projection)?;
+            populate_celestial(sky, crval, store, 0, 1, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame1.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, 0)?;
         }
 
         if let Some(sky) = frame2.as_any().downcast_ref::<SkyFrame>() {
-            populate_celestial(sky, crval, store, n1, n1 + 1, projection)?;
+            populate_celestial(sky, crval, store, n1, n1 + 1, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame2.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, n1)?;
         }
@@ -693,6 +727,7 @@ fn populate_celestial(
     lon_axis: usize,
     lat_axis: usize,
     projection: Option<WcsProjection>,
+    wcsmap_pv: Option<&[(usize, f64)]>,
 ) -> AstResult<()> {
     let system = sky.system();
     // Use the projection from the WcsMap if available, falling back to
@@ -757,6 +792,18 @@ fn populate_celestial(
         let eq_mjd = sky.equinox_mjd();
         let eq_year = pal::epj(eq_mjd);
         store.equinox = Some(eq_year);
+    }
+
+    // PV parameters from the WcsMap (latitude axis carries the
+    // projection parameters in AST/FITS convention). This makes
+    // legacy NCP↔SIN and similar projections round-trip with their
+    // computed PV values intact.
+    if let Some(pvs) = wcsmap_pv {
+        for &(m, val) in pvs {
+            if m < store.pv[lat_axis].len() {
+                store.pv[lat_axis][m] = Some(val);
+            }
+        }
     }
 
     // LONPOLE default for zenithal projections.

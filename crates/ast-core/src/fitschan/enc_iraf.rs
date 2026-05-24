@@ -143,10 +143,14 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
-    // CTYPEi — translate SFL→GLS back for IRAF
+    // CTYPEi — translate SFL→GLS and SIN-with-NCP-PV back to NCP for IRAF.
+    let ncp_axes = super::wcs_keywords::sin_should_emit_as_ncp(store);
     for i in 0..naxis {
         if let Some(ref val) = store.ctype[i] {
-            let iraf_ctype = translate_iraf_ctype_write(val);
+            let mut iraf_ctype = translate_iraf_ctype_write(val);
+            if ncp_axes && iraf_ctype.len() >= 8 && iraf_ctype[5..8].eq_ignore_ascii_case("SIN") {
+                iraf_ctype.replace_range(5.., "NCP");
+            }
             let key = format!("CTYPE{}", i + 1);
             cards.set_string(
                 &key,
