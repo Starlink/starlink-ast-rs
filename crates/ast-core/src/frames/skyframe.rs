@@ -161,6 +161,27 @@ impl SkyFrame {
         self.epoch = Some(mjd);
     }
 
+    /// Set the epoch from a bare decimal year (e.g. a FITS `EPOCH`
+    /// keyword or the value stored in a native-encoded `Epoch` node).
+    ///
+    /// Applies the IAU 1984 convention to resolve the year to an MJD,
+    /// matching what C does when the value flows through
+    /// `astSet(skyframe, "Epoch=...")` → `astReadDateTime`.
+    pub fn set_epoch_year(&mut self, year: f64) {
+        self.set_epoch(crate::frames::date_time::year_to_mjd_iau1984(year));
+    }
+
+    /// Set the equinox from a bare decimal year (e.g. a FITS
+    /// `EQUINOX` keyword or the value stored in a native-encoded
+    /// `Eqnox` node).
+    ///
+    /// Applies the IAU 1984 convention to resolve the year to an MJD,
+    /// matching what C does when the value flows through
+    /// `astSet(skyframe, "Equinox=...")` → `astReadDateTime`.
+    pub fn set_equinox_year(&mut self, year: f64) {
+        self.set_equinox(crate::frames::date_time::year_to_mjd_iau1984(year));
+    }
+
     /// Return whether longitude increases in the negative direction.
     pub fn neglon(&self) -> bool {
         self.neglon
@@ -1044,14 +1065,14 @@ impl Serializable for SkyFrame {
         }
 
         // Epoch and Equinox are stored as decimal years on disk and
-        // converted back to MJD on read using the IAU 1984 rule.
-        // Mirrors `frame.c` astLoadFrame.
-        use crate::frames::date_time::year_to_mjd_iau1984;
+        // resolved to MJD via the SkyFrame's year-aware setters
+        // (which apply the IAU 1984 rule). Mirrors `frame.c`
+        // astLoadFrame, which delegates to astReadDateTime.
         if node.get("Epoch").is_some() {
-            sky.epoch = Some(year_to_mjd_iau1984(node.get_double("Epoch", 0.0)));
+            sky.set_epoch_year(node.get_double("Epoch", 0.0));
         }
         if node.get("Eqnox").is_some() {
-            sky.equinox = Some(year_to_mjd_iau1984(node.get_double("Eqnox", 0.0)));
+            sky.set_equinox_year(node.get_double("Eqnox", 0.0));
         }
 
         // Observer attributes.
