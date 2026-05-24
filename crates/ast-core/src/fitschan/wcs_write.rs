@@ -884,11 +884,19 @@ fn populate_celestial(
         store.radesys = Some(radesys_string(system));
     }
 
-    // EQUINOX (as Julian year).
+    // EQUINOX. Stored in the form the encoder will emit, mirroring
+    // fitschan.c:29761-29800: FK5 → Julian year, FK4/FK4-NO-E → Besselian
+    // year, Ecliptic → MJD (no conversion). Helioecliptic and the rest
+    // set `eq = AST__BAD` in C (no EQUINOX/EPOCH emitted), but our
+    // `needs_equinox()` excludes them already.
     if system.needs_equinox() {
         let eq_mjd = sky.equinox_mjd();
-        let eq_year = pal::epj(eq_mjd);
-        store.equinox = Some(eq_year);
+        let eq = match system {
+            SkySystem::Fk4 | SkySystem::Fk4NoE => pal::epb(eq_mjd),
+            SkySystem::Ecliptic => eq_mjd,
+            _ => pal::epj(eq_mjd),
+        };
+        store.equinox = Some(eq);
     }
 
     // PV parameters from the WcsMap. AST stores them on both lon and

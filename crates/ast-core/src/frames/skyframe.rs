@@ -150,6 +150,12 @@ impl SkyFrame {
         self.epoch.unwrap_or(51544.5)
     }
 
+    /// Whether the epoch attribute has been explicitly set
+    /// (mirrors `astTestEpoch`).
+    pub fn test_epoch(&self) -> bool {
+        self.epoch.is_some()
+    }
+
     /// Set the epoch as MJD.
     pub fn set_epoch(&mut self, mjd: f64) {
         self.epoch = Some(mjd);

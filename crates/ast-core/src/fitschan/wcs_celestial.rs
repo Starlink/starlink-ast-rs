@@ -16,7 +16,6 @@ use std::f64::consts::PI;
 use super::fits_store::FitsStore;
 use crate::frames::{SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, ZoomMap};
-use crate::pal;
 use crate::wcslib::WcsProjection;
 
 /// Result of building the celestial axes from a FitsStore.
@@ -73,11 +72,12 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
     // Step 5: Create SkyFrame.
     let mut sky_frame = SkyFrame::new(system);
 
-    // Step 6: Set equinox if present.
+    // Step 6: Set equinox if present. FITS EQUINOX is a decimal year
+    // without an explicit B/J prefix; resolve it via the Frame-level
+    // IAU 1984 rule (mirrors what C does when astSetAttrib(skyframe,
+    // "Equinox=...") routes through astReadDateTime in frame.c).
     if let Some(eq) = store.equinox {
-        // FITS EQUINOX is a Julian year (e.g. 2000.0). Convert to MJD.
-        let eq_mjd = pal::epj2d(eq);
-        sky_frame.set_equinox(eq_mjd);
+        sky_frame.set_equinox(crate::frames::date_time::year_to_mjd_iau1984(eq));
     }
 
     // Step 7: Set epoch if present, converting from the input
