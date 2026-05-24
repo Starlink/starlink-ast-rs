@@ -975,7 +975,23 @@ fn write_store_to_cards(
     // Plane-shared cards: only emit on primary plane.
     // Mirrors C library WcsFromStore order (fitschan.c:36867+):
     // CD matrix, then MJD-OBS / DATE-OBS, then RADESYS / EQUINOX.
+    //
+    // If the input chan supplied MJD-AVG, also preserve it: the C
+    // library carries it through via ignore-used semantics, but our
+    // sweep would drop it. We emit MJD-AVG before MJD-OBS so the
+    // position matches the input (MJD-AVG was originally next to the
+    // other time-related cards, before the encoder-added MJD-OBS).
+    // Likewise for TIMESYS — the C library doesn't re-emit it but it
+    // survives in the input chan.
     if s == ' ' {
+        if cards.find("MJD-AVG").is_some()
+            && let Some(mjdobs) = store.mjdobs
+        {
+            cards.set_float("MJD-AVG", mjdobs, "Average MJD of observation");
+        }
+        if let Some(ts) = cards.get_string("TIMESYS") {
+            cards.set_string("TIMESYS", &ts, "Time scale");
+        }
         if let Some(mjdobs) = store.mjdobs {
             cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
         }
