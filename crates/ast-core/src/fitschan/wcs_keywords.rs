@@ -48,10 +48,14 @@ pub(crate) fn infer_axis_count_from_indexed_keywords(cards: &CardList) -> Option
 ///   4. DATE-AVG (parsed via date_str_to_mjd)
 pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
     store.timesys = cards.get_string("TIMESYS");
+    // C only recognises the hyphenated FITS-WCS spellings (MJD-AVG /
+    // MJD-OBS / DATE-OBS / DATE-AVG). Non-standard underscored
+    // variants like MJD_OBS or DATE_OBS (e.g. Spitzer headers) are
+    // ignored — they're carried through as plain header cards but
+    // not interpreted as WCS time values.
     store.mjdobs = cards
         .get_float("MJD-AVG")
         .or_else(|| cards.get_float("MJD-OBS"))
-        .or_else(|| cards.get_float("MJD_OBS"))
         .or_else(|| {
             cards
                 .get_string("DATE-OBS")
@@ -460,7 +464,11 @@ END";
         // Scalar keywords.
         assert_eq!(store.radesys, Some("ICRS".to_string()));
         assert_eq!(store.equinox, Some(2000.0));
-        assert!((store.mjdobs.unwrap() - 54280.135805).abs() < 1e-6);
+        // The Spitzer-style fixture carries MJD_OBS/DATE_OBS with
+        // underscores rather than the FITS-WCS hyphenated form. C
+        // ignores those, so our reader does too — `store.mjdobs`
+        // stays unset.
+        assert!(store.mjdobs.is_none());
     }
 
     #[test]

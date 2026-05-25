@@ -218,6 +218,20 @@ impl CardList {
         for card in &mut self.cards {
             card.used = false;
         }
+        // Initialise the insertion-point cursor to one past the
+        // last existing WCS card in the chan. New cards added by
+        // `put_or_append` will land there, which mirrors the C
+        // library's effect of inserting freshly-synthesised
+        // keywords (MJD-OBS, DATE-OBS, WCSAXES, ...) within the WCS
+        // block rather than appending them to the end of the
+        // header. Falls back to end-of-list when no WCS card is
+        // present in the input.
+        self.position = self
+            .cards
+            .iter()
+            .rposition(|c| is_wcs_keyword(&c.keyword))
+            .map(|i| i + 1)
+            .unwrap_or(self.cards.len());
     }
 
     /// Delete every WCS-keyword card whose `used` flag is false.
@@ -258,8 +272,23 @@ impl CardList {
                 card.comment = self.cards[idx].comment.clone();
             }
             self.cards[idx] = card;
+            // Track the highest position we've touched so future new
+            // cards can be inserted just past it.
+            if idx >= self.position {
+                self.position = idx + 1;
+            }
         } else {
-            self.cards.push(card);
+            // For a brand-new keyword, insert at `position`: the spot
+            // just after the last touched card. Mirrors the effect of
+            // C's SetValue inserting at the current-card pointer
+            // (fitschan.c:28129) — freshly-synthesised keywords
+            // (MJD-OBS, DATE-OBS, WCSAXES) end up clustered with the
+            // WCS region they belong to rather than appended at the
+            // end of the header. When `position` outruns `cards.len()`
+            // (e.g. new-card-only writes), this falls back to push().
+            let pos = self.position.min(self.cards.len());
+            self.cards.insert(pos, card);
+            self.position = pos + 1;
         }
     }
 

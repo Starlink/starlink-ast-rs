@@ -107,6 +107,15 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
             _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
         };
         sky_frame.set_epoch(tdb_mjd);
+    } else if let Some(eq) = store.equinox {
+        // Mirrors fitschan.c:39214-39222: when no MJD-OBS / DATE-OBS
+        // is present in the input but EQUINOX is, fall back to the
+        // equinox MJD as the SkyFrame's epoch (and warn `nomjd-obs`).
+        // Without this, an ICRS / FK5 header with just an EQUINOX
+        // round-trips through write losing the implicit J2000 epoch
+        // C carries — and our writer's defdate-style MJD-OBS emission
+        // never fires.
+        sky_frame.set_epoch_year(eq);
     }
 
     // Step 8: Build the mapping.

@@ -14,6 +14,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
     BasicFrame, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
+use crate::mappings::helpers::ast_equal;
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, PermMap, ShiftMap, UnitMap, WcsMap, WcsProjection,
 };
@@ -1185,25 +1186,38 @@ fn populate_celestial(
     // LONPOLE default for zenithal projections.
     store.lonpole = Some(180.0);
 
-    // MJD-OBS from epoch. The SkyFrame epoch is in TDB scale (matching
-    // C library convention, fitschan.c:29718); FITS MJD-OBS is UTC.
-    // The C library does the same conversion at fitschan.c:29723-29744
-    // via TDBConv.
+    // MJD-OBS / DATE-OBS gated by C's `defdate` flag
+    // (fitschan.c:29721, 29757, 29805):
     //
-    // For systems that pin a reference equinox (FK4/FK5/Ecliptic),
-    // emit even when the epoch is the equinox default (J2000): C's
-    // `defdate` test (fitschan.c:29757) compares the implied UTC epoch
-    // with the equinox in degrees, but the units differ so it's
-    // rarely true and the default J2000 epoch ends up written.
-    // For systems that don't carry an equinox (Galactic, GAPPT, ICRS,
-    // AzEl, etc.) C explicitly sets `eq = AST__BAD` (fitschan.c:29789+)
-    // and the corresponding store.mjdobs stays unset when no input
-    // MJD-OBS was supplied, so suppress the write here too.
-    if system.needs_equinox() {
+    //   ep_tdb  = test_epoch ? get_epoch : BAD
+    //   ep_utc  = TDBConv(ep_tdb, UTC)
+    //   eq_mjd  = astGetEquinox(skyframe)            // SkyFrame
+    //                                                // default applies
+    //                                                // (B1950 MJD for
+    //                                                // FK4*, J2000 MJD
+    //                                                // otherwise).
+    //   defdate = astEQUAL(ep_utc, eq_mjd)
+    //   if (!defdate) SetItem(store->mjdobs, ep_utc)
+    //
+    // - When the SkyFrame's epoch was never explicitly set,
+    //   `sky.test_epoch()` is false: skip emission entirely. C's
+    //   ep_tdb is BAD in that case and SetItem(mjdobs, BAD) is a
+    //   no-op.
+    // - When the explicit epoch *equals* the default equinox MJD
+    //   (e.g. an input MJD-OBS=51544.5 for a GAPPT/Galactic frame
+    //   whose default Equinox attribute is also J2000.0 → 51544.5),
+    //   defdate is true and MJD-OBS is suppressed.
+    // - For systems that pin a non-default equinox (FK4 → B1950
+    //   MJD), the comparison naturally returns false and an explicit
+    //   epoch falls through to MJD-OBS emission.
+    if sky.test_epoch() {
         let epoch_tdb = sky.epoch_mjd();
         let epoch_utc = tdb_mjd_to_utc(epoch_tdb);
-        store.mjdobs = Some(epoch_utc);
-        store.dateobs = Some(mjd_to_date_str(epoch_utc));
+        let eq_default = sky.equinox_mjd();
+        if !ast_equal(epoch_utc, eq_default) {
+            store.mjdobs = Some(epoch_utc);
+            store.dateobs = Some(mjd_to_date_str(epoch_utc));
+        }
     }
 
     Ok(())
