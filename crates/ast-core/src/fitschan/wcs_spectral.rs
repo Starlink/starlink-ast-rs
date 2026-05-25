@@ -68,8 +68,18 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame.set_epoch(mjd);
     }
 
-    // Note: CUNIT is not stored on SpecFrame directly. The system implies
-    // default units, and unit conversions are handled by the mapping pipeline.
+    // Step 8: Set the user-facing unit from the input CUNIT. The
+    // SpecFrame's `unit` attribute records the preferred presentation
+    // unit (e.g. "GHz", "km/s"); the SpecMap that connects two
+    // SpecFrames handles the SI conversion when systems differ. Mirrors
+    // the C SpecFrame attribute machinery (specframe.c SetUnit) so the
+    // value flowing through the FrameSet is in the input CUNIT and
+    // CUNIT survives a round trip.
+    if let Some(ref cunit) = store.cunit[axis] {
+        if !cunit.is_empty() {
+            frame.set_unit(cunit);
+        }
+    }
 
     Some(SpectralResult {
         mapping,

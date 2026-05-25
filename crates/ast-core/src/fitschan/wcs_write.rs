@@ -15,7 +15,7 @@ use crate::frames::{
     BasicFrame, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
 use crate::mappings::{
-    CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WcsProjection,
+    CmpMap, Composition, DynMapping, Mapping, PermMap, ShiftMap, WcsMap, WcsProjection,
 };
 use crate::pal;
 use crate::serial::AnyObject;
@@ -563,14 +563,34 @@ fn build_pixel_to_iwc(
         let mut perm_out = PermMap::new(&inperm, &outperm, &[])?;
         perm_out.invert();
 
-        // Parallel composition: 2D celestial chain || UnitMap(naxis-2),
-        // operating on the leading 2 + remaining axes in permuted layout.
+        // Parallel composition: 2D celestial chain || ShiftMap of
+        // CRVAL on each remaining axis. The shift mirrors C's
+        // `OtherAxes` / `SpectralAxes` step (fitschan.c:24241,
+        // ShiftMap with -crval): they emit a ShiftMap that subtracts
+        // CRVAL when going WCS→IWC, so IWC sits at zero at the
+        // reference pixel. We're constructing IWC→WCS forward here,
+        // so the ShiftMap forward direction *adds* CRVAL. After
+        // inversion of the whole chain, non-celestial axes get the
+        // CRVAL subtracted — without this, `solve_crpix` ends up
+        // dividing the absolute world value by CDELT and yields
+        // CRPIX ≈ −CRVAL/CDELT instead of the input pixel.
         let extra = naxis - 2;
         let parallel: DynMapping = if extra == 0 {
             cel_2d
         } else {
-            let unit = UnitMap::new(extra);
-            Box::new(CmpMap::new(cel_2d, Box::new(unit), Composition::Parallel)?)
+            // Collect CRVAL for the non-celestial axes in their permuted
+            // (post-perm_in) order, which matches outperm[2..].
+            let mut other_shifts: Vec<f64> = Vec::with_capacity(extra);
+            for &ax_1based in &outperm[2..] {
+                let ax = (ax_1based as usize) - 1;
+                other_shifts.push(crval_world.get(ax).copied().unwrap_or(0.0));
+            }
+            let other_shift = ShiftMap::new(other_shifts);
+            Box::new(CmpMap::new(
+                cel_2d,
+                Box::new(other_shift),
+                Composition::Parallel,
+            )?)
         };
 
         // perm_in (original→permuted) → parallel → perm_out (permuted→original)
@@ -1047,7 +1067,15 @@ fn populate_spectral(
 
     store.ctype[axis] = Some(system.as_str().to_string());
     store.crval[axis] = Some(crval[axis]);
-    store.cunit[axis] = Some(system.specmap_units().to_string());
+    // Prefer the SpecFrame's user-facing unit (e.g. "GHz") set by the
+    // reader from CUNIT; fall back to the system's default SI unit
+    // ("Hz", "m", "m/s") when none was set.
+    store.cunit[axis] = Some(
+        spec.unit()
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| system.specmap_units().to_string()),
+    );
 
     let sor = spec.std_of_rest();
     store.specsys = Some(specsys_string(sor));
