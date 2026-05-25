@@ -489,18 +489,25 @@ fn fiducial_crval(
     Some(result)
 }
 
-/// Find the SkyFrame and its (lon_axis, lat_axis) within a frame, when one exists.
+/// Find the SkyFrame and its `(lon_axis, lat_axis)` indices within
+/// the parent frame. Mirrors `astGetLonAxis`/`astGetLatAxis` —
+/// for a SkyFrame whose `LatAxis=0, LonAxis=1` (the sip-3d-swap
+/// case), the returned indices reflect that permutation rather than
+/// always reporting `(0, 1)`.
 fn celestial_axes(frame: &dyn Frame) -> Option<(SkyFrame, usize, usize)> {
     if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
-        return Some((sky.clone(), 0, 1));
+        let (lon, lat) = (sky.lon_axis(), sky.lat_axis());
+        return Some((sky.clone(), lon, lat));
     }
     if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
         if let Some(sky) = cmp.frame1().as_any().downcast_ref::<SkyFrame>() {
-            return Some((sky.clone(), 0, 1));
+            let (lon, lat) = (sky.lon_axis(), sky.lat_axis());
+            return Some((sky.clone(), lon, lat));
         }
         let n1 = cmp.naxes1();
         if let Some(sky) = cmp.frame2().as_any().downcast_ref::<SkyFrame>() {
-            return Some((sky.clone(), n1, n1 + 1));
+            let (lon, lat) = (sky.lon_axis(), sky.lat_axis());
+            return Some((sky.clone(), n1 + lon, n1 + lat));
         }
     }
     None
@@ -963,8 +970,14 @@ fn identify_axes(
 ) -> AstResult<()> {
     let naxis = store.naxis;
 
+    // For SkyFrames, honour the per-frame lon/lat permutation
+    // (`astGetLonAxis`/`astGetLatAxis`) so an input with
+    // CTYPE1='DEC--TAN', CTYPE2='RA---TAN' lands DEC at FITS axis 1
+    // and RA at FITS axis 2.
     if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
-        populate_celestial(sky, crval, store, 0, 1, projection, wcsmap_pv)?;
+        let lon = sky.lon_axis();
+        let lat = sky.lat_axis();
+        populate_celestial(sky, crval, store, lon, lat, projection, wcsmap_pv)?;
     } else if let Some(spec) = frame.as_any().downcast_ref::<SpecFrame>() {
         populate_spectral(spec, crval, store, 0)?;
     } else if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
@@ -973,13 +986,17 @@ fn identify_axes(
         let frame2 = cmp.frame2();
 
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
-            populate_celestial(sky, crval, store, 0, 1, projection, wcsmap_pv)?;
+            let lon = sky.lon_axis();
+            let lat = sky.lat_axis();
+            populate_celestial(sky, crval, store, lon, lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame1.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, 0)?;
         }
 
         if let Some(sky) = frame2.as_any().downcast_ref::<SkyFrame>() {
-            populate_celestial(sky, crval, store, n1, n1 + 1, projection, wcsmap_pv)?;
+            let lon = sky.lon_axis();
+            let lat = sky.lat_axis();
+            populate_celestial(sky, crval, store, n1 + lon, n1 + lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame2.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, n1)?;
         }

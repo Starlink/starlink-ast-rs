@@ -106,16 +106,30 @@ impl SkyFrame {
         }
     }
 
+    /// Position of longitude in coordinate arrays (0-based). Mirrors
+    /// `astGetLonAxis(skyframe)`.
+    #[inline]
+    pub fn lon_axis(&self) -> usize {
+        if self.perm[0] == 0 { 0 } else { 1 }
+    }
+
+    /// Position of latitude in coordinate arrays (0-based). Mirrors
+    /// `astGetLatAxis(skyframe)`.
+    #[inline]
+    pub fn lat_axis(&self) -> usize {
+        if self.perm[0] == 1 { 0 } else { 1 }
+    }
+
     /// Position of longitude in coordinate arrays (0-based).
     #[inline]
     fn lon_pos(&self) -> usize {
-        if self.perm[0] == 0 { 0 } else { 1 }
+        self.lon_axis()
     }
 
     /// Position of latitude in coordinate arrays (0-based).
     #[inline]
     fn lat_pos(&self) -> usize {
-        if self.perm[0] == 1 { 0 } else { 1 }
+        self.lat_axis()
     }
 
     // --- SkyFrame-specific attributes ---

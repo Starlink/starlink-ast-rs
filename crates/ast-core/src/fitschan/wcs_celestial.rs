@@ -69,7 +69,11 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
     // Step 4: Determine the coordinate system from RADESYS.
     let system = determine_sky_system(store);
 
-    // Step 5: Create SkyFrame.
+    // Step 5: Create SkyFrame. The latitude/longitude axis assignment
+    // in the parent CmpFrame is handled separately via the IWC→world
+    // mapping permutation; the SkyFrame itself stays at its default
+    // axis layout so the mapping pipeline continues to feed (lon, lat)
+    // pairs to its outputs in the canonical order.
     let mut sky_frame = SkyFrame::new(system);
 
     // Step 6: Set equinox if present. FITS EQUINOX is a decimal year
