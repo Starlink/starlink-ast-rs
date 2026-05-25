@@ -995,10 +995,32 @@ fn identify_axes(
         let mut src_ra_dec: Option<(f64, f64)> = None;
 
         // For VELOSYS we want the celestial source position to match
-        // C's `RefRA`/`RefDec` exactly — those are the FITS-supplied
-        // CRVAL values in radians. Prefer the input override over the
-        // numerical world(g0) value, which can drift by a fraction of
-        // an arcsec through the FrameSet's projection round-trip.
+        // C's `RefRA`/`RefDec` exactly. C transfers these via
+        // `astSetC( tfs, "RefRA", astFormat( tfs, ilon, reflon ) )`
+        // (fitschan.c:21483) — i.e. it formats to the SkyFrame's
+        // default sexagesimal layout (HMS at 0.1-sec precision for
+        // RA, DMS at 1-arcsec for Dec) and parses the string back.
+        // That round trip quantises the value, so the RefRA used
+        // for VELOSYS is the rounded version, not the bit-exact
+        // CRVAL in radians. Replicate the quantisation here so our
+        // VELOSYS lands on the same number C produces.
+        //
+        // - RA: round to nearest 0.1 sec of time (= 1.5 arcsec) →
+        //   1 second time = 15 arcsec = π/43200 rad, so 0.1 s =
+        //   π/432000 rad.
+        // - Dec: round to nearest 1 arcsec → π/648000 rad.
+        //
+        // (This is C's quirk, not really "correct" — it's losing
+        // input precision — but to match the test fixtures generated
+        // by C we have to do the same thing.)
+        fn quantise_ra(ra_rad: f64) -> f64 {
+            let step = std::f64::consts::PI / 432_000.0;
+            (ra_rad / step).round() * step
+        }
+        fn quantise_dec(dec_rad: f64) -> f64 {
+            let step = std::f64::consts::PI / 648_000.0;
+            (dec_rad / step).round() * step
+        }
         let cap_src = |lon_idx: usize, lat_idx: usize| -> (f64, f64) {
             let ra = input_crvals
                 .get(lon_idx)
@@ -1010,7 +1032,7 @@ fn identify_axes(
                 .and_then(|v| *v)
                 .map(|d| d.to_radians())
                 .unwrap_or(crval[lat_idx]);
-            (ra, dec)
+            (quantise_ra(ra), quantise_dec(dec))
         };
 
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
