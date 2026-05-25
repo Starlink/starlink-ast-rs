@@ -688,27 +688,53 @@ pub(crate) fn velosys_for_sor(
     epoch: f64,
 ) -> f64 {
     use crate::frames::StdOfRest;
-    // All "*_vel" helpers return "velocity of frame X *away from*
-    // source (m/s, heliocentric)". For VELOSYS we want the velocity
-    // of the SOR rest frame *toward* the source as seen from the
-    // topocentric observer: if SOR moves away from the source
-    // faster than topocentric does (in the heliocentric reduction),
-    // the SOR appears to recede from the topocentric observer along
-    // the source line — VELOSYS goes negative. Flip the sign of the
-    // (SOR - topo) helio difference accordingly.
-    let v_topo = topo_vel(ra, dec, obslon, obslat, obsalt, epoch);
-    let v_sor = match sor {
-        StdOfRest::Topocentric => v_topo,
-        StdOfRest::Geocentric => geo_vel(ra, dec, epoch),
-        StdOfRest::Barycentric => bary_vel(ra, dec, epoch),
-        StdOfRest::Heliocentric => 0.0,
-        StdOfRest::Lsrk => lsrk_vel(ra, dec),
-        StdOfRest::Lsrd => lsrd_vel(ra, dec),
-        StdOfRest::LocalGroup => lg_vel(ra, dec),
-        StdOfRest::Galactic => gal_vel(ra, dec),
-        StdOfRest::Source => 0.0, // source rest frame: no offset
-    };
-    v_topo - v_sor
+    // Build a SpecMap chain that mirrors C's ConvertSourceVel
+    // exactly: VlToFr → SOR-to-Helio → Helio-to-Tp → FrToVl. Apply
+    // it to vel=0 and read the result. This is the same evaluation
+    // path C runs internally when astSetSourceVRF triggers a
+    // recalculation of SourceVel — using it here gives bit-exact
+    // agreement with C even when relativistic corrections kick in.
+    //
+    // The rest frequency cancels (it appears in both the VlToFr and
+    // FrToVl conversions), so an arbitrary positive value works.
+    let rf = 1.0e9;
+    let mut chain = SpecMap::new();
+    chain.add(SpecCvtType::VlToFr, &[rf]);
+    match sor {
+        StdOfRest::Topocentric => {
+            chain.add(
+                SpecCvtType::TpF2Hl,
+                &[obslon, obslat, obsalt, epoch, ra, dec],
+            );
+        }
+        StdOfRest::Geocentric => {
+            chain.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
+        }
+        StdOfRest::Barycentric => {
+            chain.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
+        }
+        StdOfRest::Heliocentric => {} // already at helio: no SOR step
+        StdOfRest::Lsrk => chain.add(SpecCvtType::LkF2Hl, &[ra, dec]),
+        StdOfRest::Lsrd => chain.add(SpecCvtType::LdF2Hl, &[ra, dec]),
+        StdOfRest::LocalGroup => chain.add(SpecCvtType::LgF2Hl, &[ra, dec]),
+        StdOfRest::Galactic => chain.add(SpecCvtType::GlF2Hl, &[ra, dec]),
+        StdOfRest::Source => {
+            // Source-rest source vel is 0 by convention in this path.
+            // No SOR conversion needed.
+        }
+    }
+    chain.add(
+        SpecCvtType::HlF2Tp,
+        &[obslon, obslat, obsalt, epoch, ra, dec],
+    );
+    chain.add(SpecCvtType::FrToVl, &[rf]);
+
+    // Apply the chain to vel = 0. The transform takes a 1-D
+    // PointSet with one point.
+    use crate::coords::PointSet;
+    let pts = PointSet::from_rows(std::iter::once(vec![0.0]));
+    let out = chain.transform(&pts, true).expect("velosys SpecMap eval");
+    out.point(0)[0]
 }
 
 /// Velocity of the user-defined frame away from the source (m/s, heliocentric).

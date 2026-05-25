@@ -408,6 +408,7 @@ fn store_from_frameset_to(
     identify_axes(
         target_frame,
         &crval_for_store,
+        input_crvals,
         &mut store,
         projection,
         pv_refs,
@@ -965,6 +966,7 @@ fn extract_sip_into_store(pm: &crate::mappings::PolyMap, store: &mut FitsStore) 
 fn identify_axes(
     frame: &dyn Frame,
     crval: &[f64],
+    input_crvals: &[Option<f64>],
     store: &mut FitsStore,
     projection: Option<WcsProjection>,
     wcsmap_pv: Option<WcsmapPvSlice<'_>>,
@@ -992,10 +994,29 @@ fn identify_axes(
         // the source direction and the observation epoch.
         let mut src_ra_dec: Option<(f64, f64)> = None;
 
+        // For VELOSYS we want the celestial source position to match
+        // C's `RefRA`/`RefDec` exactly — those are the FITS-supplied
+        // CRVAL values in radians. Prefer the input override over the
+        // numerical world(g0) value, which can drift by a fraction of
+        // an arcsec through the FrameSet's projection round-trip.
+        let cap_src = |lon_idx: usize, lat_idx: usize| -> (f64, f64) {
+            let ra = input_crvals
+                .get(lon_idx)
+                .and_then(|v| *v)
+                .map(|d| d.to_radians())
+                .unwrap_or(crval[lon_idx]);
+            let dec = input_crvals
+                .get(lat_idx)
+                .and_then(|v| *v)
+                .map(|d| d.to_radians())
+                .unwrap_or(crval[lat_idx]);
+            (ra, dec)
+        };
+
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
             let lon = sky.lon_axis();
             let lat = sky.lat_axis();
-            src_ra_dec = Some((crval[lon], crval[lat]));
+            src_ra_dec = Some(cap_src(lon, lat));
             populate_celestial(sky, crval, store, lon, lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame1.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, 0)?;
@@ -1004,7 +1025,7 @@ fn identify_axes(
         if let Some(sky) = frame2.as_any().downcast_ref::<SkyFrame>() {
             let lon = sky.lon_axis();
             let lat = sky.lat_axis();
-            src_ra_dec = Some((crval[n1 + lon], crval[n1 + lat]));
+            src_ra_dec = Some(cap_src(n1 + lon, n1 + lat));
             populate_celestial(sky, crval, store, n1 + lon, n1 + lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame2.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, n1)?;
