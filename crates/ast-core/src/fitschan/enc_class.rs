@@ -164,7 +164,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 
     // RESTFREQ
     if let Some(rf) = restfreq {
-        cards.set_float("RESTFREQ", rf, "Rest frequency (Hz)");
+        cards.set_float("RESTFREQ", rf, "[Hz] Rest frequency");
     }
 
     // CRVALi — subtract RESTFREQ from spectral axis

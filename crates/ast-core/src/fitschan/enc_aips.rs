@@ -314,9 +314,9 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         cards.set_string("DATE-OBS", dateobs, "Date of observation");
     }
 
-    // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ)
+    // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ). Mirrors fitschan.c:3622.
     if let Some(restfrq) = store.restfrq {
-        cards.set_float("RESTFREQ", restfrq, "Rest frequency (Hz)");
+        cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
     }
 
     Ok(())
@@ -495,18 +495,17 @@ fn aips_spectral_unit(unit: &str) -> Option<(&'static str, f64)> {
     }
 }
 
-/// latitude axis for celestial frames and with axis 1 for purely linear
-/// frames.
+/// 1-based axis index `k` for CROTAk emission.
+///
+/// Mirrors fitschan.c:3577-3584: when a rotation pair exists,
+/// CROTA is paired with `axrot2 + 1` — the latitude axis for
+/// celestial frames, axis 1 for pure-linear N-D frames (axrot2=0),
+/// or the first non-spectral axis when a spectral axis is present.
+/// Falls back to 1 when no rotation pair was selected.
 fn crota_axis(store: &FitsStore) -> usize {
-    for (i, ctype) in store.ctype.iter().enumerate() {
-        if let Some(s) = ctype {
-            let prefix = s.get(..4).unwrap_or("");
-            if matches!(prefix, "DEC-" | "GLAT" | "ELAT" | "SLAT" | "EL--") {
-                return i + 1;
-            }
-        }
-    }
-    1
+    aips_rotation_axes(store)
+        .map(|(_, axrot2)| axrot2 + 1)
+        .unwrap_or(1)
 }
 
 /// Write a [`FitsStore`] as AIPS++ style WCS keywords into a [`CardList`].

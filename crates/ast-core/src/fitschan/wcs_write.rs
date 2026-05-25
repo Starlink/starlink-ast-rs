@@ -1187,7 +1187,7 @@ fn write_store_to_cards(
         cards.set_float(
             &fmt_global_key("RESTFRQ", s),
             restfrq,
-            "Rest frequency (Hz)",
+            "[Hz] Rest frequency",
         );
     }
     if let Some(restwav) = store.restwav {
