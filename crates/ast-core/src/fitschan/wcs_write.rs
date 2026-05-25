@@ -188,7 +188,19 @@ fn store_from_frameset_to(
     // mapping. For non-celestial frames (no WcsMap in the chain) this is
     // the final answer; for celestial frames it's a stepping stone to
     // the full pixel→IWC composition below.
-    let pre_mapping = split_pre_wcsmap(mapping.as_ref()).unwrap_or_else(|| mapping.clone());
+    //
+    // `pre_split` records whether the WcsMap split succeeded. When it
+    // does, `pre_mapping` outputs IWC (post-projection) coordinates
+    // for celestial axes — small numbers near 0 at the fiducial — so
+    // `pre_decomp.crval` for those axes is *not* a celestial angle,
+    // and we cannot substitute the input CRVAL (degrees → radians)
+    // for them in the CRPIX solve below. When the split fails (e.g.
+    // a 3-D mapping with a parallel CmpMap that hides the WcsMap
+    // from the structural splitter), `pre_mapping == mapping` and
+    // celestial axes carry sky-radian values.
+    let split_pre = split_pre_wcsmap(mapping.as_ref());
+    let pre_split_succeeded = split_pre.is_some();
+    let pre_mapping = split_pre.unwrap_or_else(|| mapping.clone());
 
     // FindBasisVectors root grid position (fitschan.c:10506-10528):
     //   g0[i] = floor(0.5 · (1 + dim[i])) when NAXIS{i} is known,
@@ -223,19 +235,26 @@ fn store_from_frameset_to(
         .take(naxis)
         .enumerate()
     {
-        // Skip celestial axes — the input CRVAL is in degrees, but
-        // the mapping's output (and pre_decomp.crval) is in radians
-        // for SkyFrame axes. Mixing them in the linear-algebra solve
-        // below would give nonsense. The celestial branch
-        // substitutes the fiducial / input CRVAL (with correct
-        // units) later.
-        if let Some((_, lon, lat)) = cel
-            && (i == lon || i == lat)
-        {
-            continue;
-        }
-        if let Some(c) = *input {
-            *slot = c;
+        let is_celestial = matches!(cel, Some((_, lon, lat)) if i == lon || i == lat);
+        // Celestial axes only take the input override when the WcsMap
+        // split failed (i.e. `pre_mapping == mapping`). In that case
+        // `pre_decomp.crval` carries sky-radian values, so feeding the
+        // input CRVAL (FITS-WCS degrees → radians) into the linear
+        // solve recovers the input CRPIX exactly — which is how the
+        // standard `.5` half-pixel CRPIX convention round-trips. When
+        // the split does succeed, `pre_decomp.crval` for celestial
+        // axes is in IWC space (small post-projection coordinates
+        // near 0), and the input CRVAL belongs to a different
+        // reference frame: substituting it would produce a wildly
+        // wrong CRPIX from the solve.
+        if is_celestial && !pre_split_succeeded {
+            if let Some(c) = *input {
+                *slot = c.to_radians();
+            }
+        } else if !is_celestial {
+            if let Some(c) = *input {
+                *slot = c;
+            }
         }
     }
 
@@ -246,13 +265,87 @@ fn store_from_frameset_to(
     // without an input override, world(g0) − chosen_crval = 0 and the
     // solve gives CRPIX[i] = g0[i] (which matches what `OtherAxes`
     // produces when no `crvals[i]` is supplied).
+    //
+    // Wrap longitude differences into [−π, π] for celestial axes so a
+    // 2π discontinuity between `pre_decomp.crval[lon]` (the mapping's
+    // numerical evaluation, which can land outside the canonical FITS
+    // range, e.g. −2.749 rad / +3.534 rad ≡ same RA) and the input
+    // CRVAL doesn't blow up the solve. Sip-3d's pre-WcsMap chain at
+    // CRPIX returns the celestial coordinate in the (−π, π] branch,
+    // while the input is in the [0, 2π) branch — without unwrapping,
+    // `w0[lon] = ±2π` and the solve produces a CRPIX off by ~10⁵
+    // pixels.
     let w0: Vec<f64> = pre_decomp
         .crval
         .iter()
         .zip(chosen_crval.iter())
-        .map(|(w, c)| w - c)
+        .enumerate()
+        .map(|(i, (w, c))| {
+            let diff = w - c;
+            let is_lon = matches!(cel, Some((_, lon, _)) if i == lon);
+            if is_lon && diff.is_finite() {
+                let two_pi = 2.0 * std::f64::consts::PI;
+                diff - two_pi * (diff / two_pi).round()
+            } else {
+                diff
+            }
+        })
         .collect();
     let mut crpix = solve_crpix_from_decomp(&pre_decomp.cd, &w0, &g0).unwrap_or_else(|| g0.clone());
+
+    // Newton refinement: the linearisation above is taken at `g0`,
+    // half a pixel away from `crpix` for the standard `.5` CRPIX
+    // convention. For non-linear projections (TAN et al.) that
+    // half-pixel offset leaves a ~2 µpix residual — formatting as
+    // `50.499998` rather than `50.5` for vopt-geo. Re-decompose at
+    // the first-pass `crpix` and resolve so the second linear
+    // system has its origin near the true reference pixel; the
+    // residual collapses to FP noise.
+    if let Ok(refine_decomp) = decompose_linear(pre_mapping.as_ref(), naxis, &crpix) {
+        let w0_refined: Vec<f64> = refine_decomp
+            .crval
+            .iter()
+            .zip(chosen_crval.iter())
+            .enumerate()
+            .map(|(i, (w, c))| {
+                let diff = w - c;
+                let is_lon = matches!(cel, Some((_, lon, _)) if i == lon);
+                if is_lon && diff.is_finite() {
+                    let two_pi = 2.0 * std::f64::consts::PI;
+                    diff - two_pi * (diff / two_pi).round()
+                } else {
+                    diff
+                }
+            })
+            .collect();
+        if !w0_refined.iter().all(|v| v.is_finite()) {
+            // Skip refinement if any residual is non-finite —
+            // happens when the projection is evaluated at a
+            // singularity (e.g. CRPIX outside the valid native
+            // range after the first solve overshoots).
+        } else if let Some(refined) =
+            solve_crpix_from_decomp(&refine_decomp.cd, &w0_refined, &crpix)
+        {
+            // Only adopt the refinement when (a) the step stays
+            // close (a large jump means the CD matrix at `crpix`
+            // is poorly conditioned — keep the original) and (b)
+            // the step is non-trivial. Sub-1e-9-pixel "refinements"
+            // are FP noise from the finite-difference Jacobian and
+            // re-emitting the CD matrix at the perturbed CRPIX
+            // would overwrite input cards whose values were
+            // already bit-exact, costing comment preservation
+            // for no numerical gain.
+            let max_step = refined
+                .iter()
+                .zip(crpix.iter())
+                .map(|(r, c)| (r - c).abs())
+                .fold(0.0f64, f64::max);
+            if (1.0e-9..1.0).contains(&max_step) {
+                crpix = refined;
+            }
+        }
+    }
+
     let full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
     let projection = extract_projection_from_mapping(mapping.as_ref());
