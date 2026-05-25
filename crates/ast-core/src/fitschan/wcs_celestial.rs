@@ -15,7 +15,7 @@ use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
 use crate::frames::{SkyFrame, SkySystem};
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, ZoomMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap, ZoomMap};
 use crate::wcslib::WcsProjection;
 
 /// Result of building the celestial axes from a FitsStore.
@@ -69,12 +69,25 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
     // Step 4: Determine the coordinate system from RADESYS.
     let system = determine_sky_system(store);
 
-    // Step 5: Create SkyFrame. The latitude/longitude axis assignment
-    // in the parent CmpFrame is handled separately via the IWC→world
-    // mapping permutation; the SkyFrame itself stays at its default
-    // axis layout so the mapping pipeline continues to feed (lon, lat)
-    // pairs to its outputs in the canonical order.
+    // Step 5: Create SkyFrame. When the FITS header places latitude
+    // ahead of longitude in the parent CmpFrame layout (lat_axis <
+    // lon_axis, e.g. CTYPE1='DEC--TAN', CTYPE2='RA---TAN' on
+    // sip-3d-swap), permute the SkyFrame's own axes so external
+    // axis 0 = latitude, axis 1 = longitude. The IWC→world mapping
+    // pipeline (`build_general_iwc_to_world`) already PermMaps the
+    // celestial outputs into FITS axis order (DEC at 0, RA at 1 in
+    // this case), so the SkyFrame's external layout has to agree
+    // with that routing — otherwise the writer's
+    // `celestial_axes()` reports the wrong (lon_axis, lat_axis)
+    // pair and re-emits RA at FITS axis 1 instead of DEC at axis 0.
+    // Mirrors `astSet(skyframe, "AxisPerm=...")` in C.
     let mut sky_frame = SkyFrame::new(system);
+    if lat_axis < lon_axis {
+        // perm_axes is 1-based: [2, 1] swaps so that external axis
+        // 1 maps from the original axis 2 (lat) and external axis
+        // 2 maps from axis 1 (lon).
+        let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
+    }
 
     // Step 6: Set equinox if present. FITS EQUINOX is a decimal year
     // without an explicit B/J prefix; route it through the SkyFrame's
@@ -121,8 +134,33 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
-    let mapping = build_iwc_to_sky_mapping(store, wcsmap, lon_axis, lat_axis)?;
+    let inner = build_iwc_to_sky_mapping(store, wcsmap, lon_axis, lat_axis)?;
 
+    // The inner mapping always treats input slot 0 as lon-side proj
+    // and slot 1 as lat-side proj, with outputs (cel_lon, cel_lat) in
+    // that order. When the FITS layout has DEC ahead of RA
+    // (`lat_axis < lon_axis`), the parent CmpFrame's external axis 0
+    // is the lat axis — and the IWC values FITS encodes at axis 0
+    // are lat-plane values. Sandwich `inner` with a 2D swap so
+    // cel.mapping accepts (lat_proj, lon_proj) and emits (cel_lat,
+    // cel_lon), matching FITS axis order. Mirrors C's PermMap
+    // sandwich at fitschan.c:5247-5296.
+    let mapping: DynMapping = if lat_axis < lon_axis {
+        let pre = PermMap::new(&[2, 1], &[2, 1], &[]).ok()?;
+        let post = PermMap::new(&[2, 1], &[2, 1], &[]).ok()?;
+        let m = CmpMap::new(Box::new(pre), inner, Composition::Series).ok()?;
+        Box::new(CmpMap::new(Box::new(m), Box::new(post), Composition::Series).ok()?)
+    } else {
+        inner
+    };
+
+    // Note: when `lat_axis < lon_axis`, `mapping` outputs (cel_lat,
+    // cel_lon) at slots (0, 1) — matching the SkyFrame's permuted
+    // external layout above. `build_general_iwc_to_world` consults
+    // the returned `lon_axis`/`lat_axis` to PermMap these into the
+    // FITS axis order they belong to, and `lon_axis`/`lat_axis` are
+    // left in their original (FITS-layout) values so downstream
+    // routing keeps working.
     Some(CelestialResult {
         mapping,
         frame: sky_frame,

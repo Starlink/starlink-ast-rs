@@ -1108,13 +1108,19 @@ fn populate_celestial(
     // through SkyFrame::norm before the rad→deg conversion mirrors the
     // C library's astNorm step inside CelestialAxes (fitschan.c around
     // line 5138) and keeps CRVAL in the conventional FITS range.
+    // sky.norm uses the SkyFrame's *external* axis ordering (via
+    // lon_pos / lat_pos), which is also what `lon_axis`/`lat_axis`
+    // here describe. Lay out sky_pair in that ordering so the lon/lat
+    // wrapping doesn't swap them when the SkyFrame has been permuted
+    // (sip-3d-swap layout).
     let mut sky_pair = [0.0_f64; 2];
-    // SkyFrame is intrinsically 2D with axis 1 = longitude, 2 = latitude.
-    sky_pair[0] = crval[lon_axis];
-    sky_pair[1] = crval[lat_axis];
+    let sky_lon = sky.lon_axis();
+    let sky_lat = sky.lat_axis();
+    sky_pair[sky_lon] = crval[lon_axis];
+    sky_pair[sky_lat] = crval[lat_axis];
     sky.norm(&mut sky_pair)?;
-    store.crval[lon_axis] = Some(sky_pair[0].to_degrees());
-    store.crval[lat_axis] = Some(sky_pair[1].to_degrees());
+    store.crval[lon_axis] = Some(sky_pair[sky_lon].to_degrees());
+    store.crval[lat_axis] = Some(sky_pair[sky_lat].to_degrees());
 
     // CD rows for celestial axes were extracted from the pre-WcsMap
     // (pixel→IWC) mapping in store_from_frameset, where IWC is in

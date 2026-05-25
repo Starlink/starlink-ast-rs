@@ -139,9 +139,19 @@ fn build_general_iwc_to_world(
                 let lon_axis = cel.lon_axis;
                 let lat_axis = cel.lat_axis;
                 parts.push(cel.mapping);
-                // The celestial mapping outputs (lon, lat) in that order.
-                output_to_fits.push(lon_axis);
-                output_to_fits.push(lat_axis);
+                // `build_celestial` adapts the mapping so its outputs
+                // come out in FITS axis order: when lat_axis <
+                // lon_axis the wrapped mapping emits (cel_lat,
+                // cel_lon) at slots (0, 1); otherwise it stays at
+                // (cel_lon, cel_lat). Match that by pushing
+                // `output_to_fits` in the same order.
+                if lat_axis < lon_axis {
+                    output_to_fits.push(lat_axis);
+                    output_to_fits.push(lon_axis);
+                } else {
+                    output_to_fits.push(lon_axis);
+                    output_to_fits.push(lat_axis);
+                }
                 continue;
             }
             if i == cel_second {
