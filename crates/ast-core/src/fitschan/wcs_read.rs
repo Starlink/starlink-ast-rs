@@ -255,35 +255,74 @@ fn build_world_frame(
         return Ok(Box::new(spec.frame.clone()));
     }
 
-    // Mixed case: build a CmpFrame.
+    // Mixed case: walk axes in FITS index order and push each frame at
+    // its first encounter. This mirrors `build_general_iwc_to_world`'s
+    // walk so the world-frame axis order matches the mapping output
+    // order — without it, an input header where the spectral axis
+    // comes before the celestial pair (e.g. CTYPE1=FREQ, CTYPE2=RA,
+    // CTYPE3=DEC for class-* fixtures) would build the world CmpFrame
+    // as (Sky, Spec) while the IWC→world mapping outputs (FREQ, RA,
+    // DEC), producing an axis-ordering mismatch in the FrameSet.
+    //
+    // Consecutive linear (unclaimed) axes are grouped into a single
+    // BasicFrame, mirroring the original two-frame layout that the
+    // writer's `identify_axes` expects (the writer's CmpFrame
+    // dispatch only handles two non-nested children, so splitting
+    // each linear axis into its own frame would break headers like
+    // `freq-pixel3d` whose linear-axes group sits after the
+    // spectral axis).
     let mut frames: Vec<DynFrame> = Vec::new();
+    let mut cel_pushed = false;
+    let mut spec_pushed = false;
+    let mut linear_run: Vec<usize> = Vec::new();
 
-    if let Some(cel) = celestial {
-        frames.push(Box::new(cel.frame.clone()));
-    }
-
-    if let Some(spec) = spectral {
-        frames.push(Box::new(spec.frame.clone()));
-    }
-
-    if n_unclaimed > 0 {
-        let mut builder = BasicFrameBuilder::new(n_unclaimed);
-        let mut linear_idx = 0;
-        for (i, &is_claimed) in claimed.iter().enumerate() {
-            if !is_claimed {
-                linear_idx += 1;
-                if let Some(label) = &store.cname[i] {
-                    builder = builder.label(linear_idx, label.clone());
-                } else if let Some(ctype) = &store.ctype[i] {
-                    builder = builder.label(linear_idx, ctype.clone());
-                }
-                if let Some(unit) = &store.cunit[i] {
-                    builder = builder.unit(linear_idx, unit.clone());
-                }
+    let flush_linear = |run: &mut Vec<usize>, frames: &mut Vec<DynFrame>| -> AstResult<()> {
+        if run.is_empty() {
+            return Ok(());
+        }
+        let mut builder = BasicFrameBuilder::new(run.len());
+        for (k, &axis) in run.iter().enumerate() {
+            let lidx_1based = k + 1;
+            if let Some(label) = &store.cname[axis] {
+                builder = builder.label(lidx_1based, label.clone());
+            } else if let Some(ctype) = &store.ctype[axis] {
+                builder = builder.label(lidx_1based, ctype.clone());
+            }
+            if let Some(unit) = &store.cunit[axis] {
+                builder = builder.unit(lidx_1based, unit.clone());
             }
         }
         frames.push(Box::new(builder.build()?));
+        run.clear();
+        Ok(())
+    };
+
+    for (i, &is_claimed) in claimed.iter().enumerate() {
+        if let Some(cel) = celestial.as_ref() {
+            if i == cel.lon_axis || i == cel.lat_axis {
+                flush_linear(&mut linear_run, &mut frames)?;
+                if !cel_pushed {
+                    frames.push(Box::new(cel.frame.clone()));
+                    cel_pushed = true;
+                }
+                continue;
+            }
+        }
+        if let Some(spec) = spectral.as_ref() {
+            if i == spec.axis {
+                flush_linear(&mut linear_run, &mut frames)?;
+                if !spec_pushed {
+                    frames.push(Box::new(spec.frame.clone()));
+                    spec_pushed = true;
+                }
+                continue;
+            }
+        }
+        if !is_claimed {
+            linear_run.push(i);
+        }
     }
+    flush_linear(&mut linear_run, &mut frames)?;
 
     // Compose frames.
     if frames.is_empty() {
