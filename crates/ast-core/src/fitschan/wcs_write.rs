@@ -14,7 +14,9 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
     BasicFrame, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, WcsMap, WcsProjection};
+use crate::mappings::{
+    CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WcsProjection,
+};
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -297,18 +299,21 @@ fn store_from_frameset_to(
     // Linear-only / non-celestial frames keep the pre-WcsMap path.
     let mut cel_crval: Option<Vec<f64>> = None;
     let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(target_frame) {
-        let parts = projection
-            .and_then(|p| split_around_wcsmap(mapping.as_ref()).map(|(_, post)| (p, post)));
-        match parts {
-            Some((proj, post)) => {
-                let fiducial = fiducial_crval(post.as_ref(), proj, &full_decomp.crval, naxis);
+        match projection {
+            Some(proj) => {
+                // Fiducial CRVAL: prefer extracting via the post-WcsMap
+                // chain (mirrors C's GetFiducialWCS, fitschan.c:12823),
+                // which gives a value bit-exact to what the FrameSet
+                // was built around. For mappings whose WcsMap is buried
+                // inside a parallel CmpMap (3D celestial+spectral),
+                // split_around_wcsmap returns None and we fall back to
+                // the numerical world(g0) value — still correct, just
+                // less precise.
+                let post = split_around_wcsmap(mapping.as_ref()).map(|(_, post)| post);
+                let fiducial = post
+                    .as_ref()
+                    .and_then(|p| fiducial_crval(p.as_ref(), proj, &full_decomp.crval, naxis));
                 let crval_for_iwc = fiducial.as_ref().unwrap_or(&full_decomp.crval);
-                // Adopt the fiducial CRVAL whenever we have one — even if
-                // the pure-2D `build_pixel_to_iwc` path below can't
-                // handle the mapping (e.g. 3D celestial+spectral), so
-                // the celestial CRVALs come out at the fiducial point
-                // (CRVAL = sky(CRPIX)) rather than the numerical-Jacobian
-                // sky value at g0 = (1, 1, …).
                 cel_crval = fiducial.clone();
                 match build_pixel_to_iwc(
                     mapping.as_ref(),
@@ -478,7 +483,18 @@ fn celestial_axes(frame: &dyn Frame) -> Option<(SkyFrame, usize, usize)> {
 /// WcsNative pair cancels exactly only when the post chain is *just*
 /// WcsNative; any extra rotations remain visible in the Jacobian.
 ///
-/// Restricted to the pure-2D celestial case for now.
+/// Handles N-D celestial+other frames. The 2D celestial chain
+/// (`WcsMap_inv ∘ WcsNative`) is composed in parallel with a UnitMap
+/// over the remaining N−2 axes, sandwiched between PermMaps that
+/// move the celestial pair to/from the leading two positions —
+/// mirroring the PermMap sandwich at fitschan.c:5247-5296. This
+/// produces a WCS→IWC mapping that operates on all `naxis` axes
+/// (celestial axes get projected, non-celestial axes pass through).
+///
+/// As in our 2D code path, we leave the deg↔rad scale on the
+/// celestial axes implicit: the resulting CD rows for celestial axes
+/// come out in radians-per-pixel, and `populate_celestial` later
+/// multiplies them by 180/π to land in FITS-WCS degrees.
 fn build_pixel_to_iwc(
     mapping: &dyn Mapping,
     sky: &SkyFrame,
@@ -488,10 +504,10 @@ fn build_pixel_to_iwc(
     projection: Option<WcsProjection>,
 ) -> AstResult<DynMapping> {
     let naxis = mapping.nout();
-    if naxis != 2 || lon_axis != 0 || lat_axis != 1 {
+    if naxis < 2 || lon_axis >= naxis || lat_axis >= naxis || lon_axis == lat_axis {
         return Err(AstError::new(
             ErrorCode::Nodef,
-            "build_pixel_to_iwc only handles 2D celestial frames",
+            "build_pixel_to_iwc requires a 2D celestial pair within naxis ≥ 2",
         ));
     }
     let proj = projection.ok_or_else(|| {
@@ -510,20 +526,67 @@ fn build_pixel_to_iwc(
             )
         })?;
 
-    // IWC→WCS chain (forward direction):
+    // 2D celestial IWC→WCS chain (forward direction):
     //   WcsMap_inverted (projected→native) → WcsNative (native→celestial)
     let mut wcsmap_inv = WcsMap::new(2, proj, 1, 2)?;
     wcsmap_inv.invert();
-    let iwc_to_wcs = CmpMap::new(Box::new(wcsmap_inv), wcs_native, Composition::Series)?;
-    let mut wcs_to_iwc = iwc_to_wcs;
+    let cel_2d: DynMapping = Box::new(CmpMap::new(
+        Box::new(wcsmap_inv),
+        wcs_native,
+        Composition::Series,
+    )?);
+
+    // Lift to N-D: parallel-compose with a UnitMap over the remaining
+    // axes, then bracket with PermMaps so the celestial pair sits at
+    // the leading two positions of the parallel composition.
+    let iwc_to_wcs_nd: DynMapping = if naxis == 2 && lon_axis == 0 && lat_axis == 1 {
+        cel_2d
+    } else {
+        // Permutation: original axis order → (lon, lat, others_in_order).
+        // PermMap forward uses outperm; element i is the input axis
+        // (1-based) to copy into output position i.
+        let mut outperm: Vec<i64> = Vec::with_capacity(naxis);
+        outperm.push((lon_axis + 1) as i64);
+        outperm.push((lat_axis + 1) as i64);
+        for ax in 0..naxis {
+            if ax != lon_axis && ax != lat_axis {
+                outperm.push((ax + 1) as i64);
+            }
+        }
+        // inperm is the inverse: position k of inperm tells where
+        // original input k landed in the permuted layout (also 1-based).
+        let mut inperm: Vec<i64> = vec![0; naxis];
+        for (out_i, &in_i) in outperm.iter().enumerate() {
+            inperm[(in_i as usize) - 1] = (out_i + 1) as i64;
+        }
+        let perm_in = PermMap::new(&inperm, &outperm, &[])?;
+        let mut perm_out = PermMap::new(&inperm, &outperm, &[])?;
+        perm_out.invert();
+
+        // Parallel composition: 2D celestial chain || UnitMap(naxis-2),
+        // operating on the leading 2 + remaining axes in permuted layout.
+        let extra = naxis - 2;
+        let parallel: DynMapping = if extra == 0 {
+            cel_2d
+        } else {
+            let unit = UnitMap::new(extra);
+            Box::new(CmpMap::new(cel_2d, Box::new(unit), Composition::Parallel)?)
+        };
+
+        // perm_in (original→permuted) → parallel → perm_out (permuted→original)
+        let chain1 = CmpMap::new(Box::new(perm_in), parallel, Composition::Series)?;
+        Box::new(CmpMap::new(
+            Box::new(chain1),
+            Box::new(perm_out),
+            Composition::Series,
+        )?)
+    };
+
+    let mut wcs_to_iwc = iwc_to_wcs_nd;
     wcs_to_iwc.invert();
 
     // pixel→IWC = pixel→WCS ∘ WCS→IWC.
-    let pixel_to_iwc = CmpMap::new(
-        mapping.clone_box(),
-        Box::new(wcs_to_iwc),
-        Composition::Series,
-    )?;
+    let pixel_to_iwc = CmpMap::new(mapping.clone_box(), wcs_to_iwc, Composition::Series)?;
 
     let _ = sky;
     Ok(Box::new(pixel_to_iwc))
