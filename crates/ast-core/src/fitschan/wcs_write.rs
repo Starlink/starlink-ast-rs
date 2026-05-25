@@ -997,31 +997,29 @@ fn identify_axes(
         // For VELOSYS we want the celestial source position to match
         // C's `RefRA`/`RefDec` exactly. C transfers these via
         // `astSetC( tfs, "RefRA", astFormat( tfs, ilon, reflon ) )`
-        // (fitschan.c:21483) — i.e. it formats to the SkyFrame's
-        // default sexagesimal layout (HMS at 0.1-sec precision for
-        // RA, DMS at 1-arcsec for Dec) and parses the string back.
-        // That round trip quantises the value, so the RefRA used
-        // for VELOSYS is the rounded version, not the bit-exact
-        // CRVAL in radians. Replicate the quantisation here so our
-        // VELOSYS lands on the same number C produces.
-        //
-        // - RA: round to nearest 0.1 sec of time (= 1.5 arcsec) →
-        //   1 second time = 15 arcsec = π/43200 rad, so 0.1 s =
-        //   π/432000 rad.
-        // - Dec: round to nearest 1 arcsec → π/648000 rad.
-        //
-        // (This is C's quirk, not really "correct" — it's losing
-        // input precision — but to match the test fixtures generated
-        // by C we have to do the same thing.)
-        fn quantise_ra(ra_rad: f64) -> f64 {
-            let step = std::f64::consts::PI / 432_000.0;
-            (ra_rad / step).round() * step
-        }
-        fn quantise_dec(dec_rad: f64) -> f64 {
-            let step = std::f64::consts::PI / 648_000.0;
-            (dec_rad / step).round() * step
-        }
-        let cap_src = |lon_idx: usize, lat_idx: usize| -> (f64, f64) {
+        // (fitschan.c:21483) — i.e. it formats with the SkyFrame's
+        // own formatter and parses the string back. That string
+        // round trip quantises the value to whatever precision the
+        // SkyFrame's `Format`/`Digits` attributes specify (default
+        // is HMS at 0.1-sec precision for RA, DMS at 1-arcsec for
+        // Dec), and the rounded RA/Dec is what feeds VELOSYS. To
+        // stay bit-compatible with C-generated fixtures we replay
+        // the same round trip here using the SkyFrame's own
+        // `format`/`unformat` — this way the quantisation tracks
+        // whatever precision rule the formatter uses (currently
+        // hardcoded to default Digits in our SkyFrame, but if/when
+        // we add Digits-aware formatting the quantisation here
+        // follows automatically).
+        let format_round_trip = |sky_frame: &SkyFrame, axis: usize, value: f64| -> f64 {
+            // axis is 1-based per Frame::format / Frame::unformat.
+            sky_frame
+                .format(axis, value)
+                .ok()
+                .and_then(|s| sky_frame.unformat(axis, &s).ok())
+                .map(|(v, _)| v)
+                .unwrap_or(value)
+        };
+        let cap_src = |sky: &SkyFrame, lon_idx: usize, lat_idx: usize| -> (f64, f64) {
             let ra = input_crvals
                 .get(lon_idx)
                 .and_then(|v| *v)
@@ -1032,13 +1030,20 @@ fn identify_axes(
                 .and_then(|v| *v)
                 .map(|d| d.to_radians())
                 .unwrap_or(crval[lat_idx]);
-            (quantise_ra(ra), quantise_dec(dec))
+            // axis 1 = lon (RA-like), axis 2 = lat (Dec-like) in
+            // SkyFrame's external numbering.
+            let lon_ext = sky.lon_axis() + 1;
+            let lat_ext = sky.lat_axis() + 1;
+            (
+                format_round_trip(sky, lon_ext, ra),
+                format_round_trip(sky, lat_ext, dec),
+            )
         };
 
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
             let lon = sky.lon_axis();
             let lat = sky.lat_axis();
-            src_ra_dec = Some(cap_src(lon, lat));
+            src_ra_dec = Some(cap_src(sky, lon, lat));
             populate_celestial(sky, crval, store, lon, lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame1.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, 0)?;
@@ -1047,7 +1052,7 @@ fn identify_axes(
         if let Some(sky) = frame2.as_any().downcast_ref::<SkyFrame>() {
             let lon = sky.lon_axis();
             let lat = sky.lat_axis();
-            src_ra_dec = Some(cap_src(n1 + lon, n1 + lat));
+            src_ra_dec = Some(cap_src(sky, n1 + lon, n1 + lat));
             populate_celestial(sky, crval, store, n1 + lon, n1 + lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame2.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, n1)?;

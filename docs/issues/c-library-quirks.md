@@ -62,9 +62,13 @@ those changes would be in the FP-precision direction (more
 accurate, not less).
 
 **Mirrored in Rust:** `crates/ast-core/src/fitschan/wcs_write.rs`,
-`identify_axes::cap_src` — applies `quantise_ra` (π/432 000 rad ≈
-0.1 s of time) and `quantise_dec` (π/648 000 rad = 1 arcsec) to the
-celestial source position before handing it to `populate_velosys`.
-Without that quantisation the writer's VELOSYS was bit-correct but
-disagreed with C-generated fixtures by ~33 mm/s on sip-3d /
-sip-3d-swap.
+`identify_axes::cap_src` — replays the same lossy round trip via
+`SkyFrame::format` followed by `SkyFrame::unformat` on the source
+RA/Dec before handing them to `populate_velosys`. Going through
+the SkyFrame's own formatter (rather than hardcoded radian-step
+constants) means the quantisation tracks whatever precision rule
+`Frame::format` applies — currently fixed at default Digits, but
+if/when the Rust port grows Digits-aware sky formatting the
+quantisation here follows automatically. Without that round trip
+the writer's VELOSYS was bit-correct but disagreed with
+C-generated fixtures by ~33 mm/s on sip-3d / sip-3d-swap.
