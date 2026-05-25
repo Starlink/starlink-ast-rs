@@ -202,14 +202,20 @@ fn store_from_frameset_to(
     let pre_split_succeeded = split_pre.is_some();
     let pre_mapping = split_pre.unwrap_or_else(|| mapping.clone());
 
-    // FindBasisVectors root grid position (fitschan.c:10506-10528):
-    //   g0[i] = floor(0.5 · (1 + dim[i])) when NAXIS{i} is known,
-    //   g0[i] = 1.0 otherwise.
-    // For non-celestial targets, OtherAxes + MakeIntWorld then sets
-    //   CRVAL = world(g0), CRPIX = g0
-    // (the back-solve crpix = g0 − fullmat⁻¹·w0 collapses since
-    // w0 = world(g0) − CRVAL = 0). The celestial branch below
-    // overrides CRPIX via solve_crpix_from_decomp on the IWC mapping.
+    // FindBasisVectors root grid position (fitschan.c:10506-10528).
+    // C uses `g0[i] = 0.5 · (1 + dim[i])` (no floor), then runs
+    // `FitLine` to extract the CD matrix as a least-squares fit over
+    // the whole axis range, then solves with `palDmat`. We match the
+    // CRVAL substitution and the structural bits, but the CD-extraction
+    // path is still finite-difference-at-`g0`, which carries an
+    // O((Δpixel)²) residual for non-linear projections (TAN, SIP).
+    // Floor `g0` to land on an integer pixel: when the input header's
+    // CRPIX is integer (sip-3d, ncp, skyspec3d), `world(g0)` lands at
+    // CRVAL and the linear solve recovers CRPIX exactly. When CRPIX
+    // sits on the FITS `.5` half-pixel convention (vopt-geo,
+    // freq-ghz-bary), the recovered CRPIX is off by a few µpixel — a
+    // separate failure mode that requires the FitLine + SIPIntWorld
+    // port to mirror C exactly. Tracked in PLAN.md.
     let g0: Vec<f64> = (0..naxis)
         .map(|i| match dim.get(i).copied().flatten() {
             Some(d) => (0.5 * (1.0 + d)).floor(),
@@ -292,60 +298,6 @@ fn store_from_frameset_to(
         })
         .collect();
     let mut crpix = solve_crpix_from_decomp(&pre_decomp.cd, &w0, &g0).unwrap_or_else(|| g0.clone());
-
-    // Newton refinement: the linearisation above is taken at `g0`,
-    // half a pixel away from `crpix` for the standard `.5` CRPIX
-    // convention. For non-linear projections (TAN et al.) that
-    // half-pixel offset leaves a ~2 µpix residual — formatting as
-    // `50.499998` rather than `50.5` for vopt-geo. Re-decompose at
-    // the first-pass `crpix` and resolve so the second linear
-    // system has its origin near the true reference pixel; the
-    // residual collapses to FP noise.
-    if let Ok(refine_decomp) = decompose_linear(pre_mapping.as_ref(), naxis, &crpix) {
-        let w0_refined: Vec<f64> = refine_decomp
-            .crval
-            .iter()
-            .zip(chosen_crval.iter())
-            .enumerate()
-            .map(|(i, (w, c))| {
-                let diff = w - c;
-                let is_lon = matches!(cel, Some((_, lon, _)) if i == lon);
-                if is_lon && diff.is_finite() {
-                    let two_pi = 2.0 * std::f64::consts::PI;
-                    diff - two_pi * (diff / two_pi).round()
-                } else {
-                    diff
-                }
-            })
-            .collect();
-        if !w0_refined.iter().all(|v| v.is_finite()) {
-            // Skip refinement if any residual is non-finite —
-            // happens when the projection is evaluated at a
-            // singularity (e.g. CRPIX outside the valid native
-            // range after the first solve overshoots).
-        } else if let Some(refined) =
-            solve_crpix_from_decomp(&refine_decomp.cd, &w0_refined, &crpix)
-        {
-            // Only adopt the refinement when (a) the step stays
-            // close (a large jump means the CD matrix at `crpix`
-            // is poorly conditioned — keep the original) and (b)
-            // the step is non-trivial. Sub-1e-9-pixel "refinements"
-            // are FP noise from the finite-difference Jacobian and
-            // re-emitting the CD matrix at the perturbed CRPIX
-            // would overwrite input cards whose values were
-            // already bit-exact, costing comment preservation
-            // for no numerical gain.
-            let max_step = refined
-                .iter()
-                .zip(crpix.iter())
-                .map(|(r, c)| (r - c).abs())
-                .fold(0.0f64, f64::max);
-            if (1.0e-9..1.0).contains(&max_step) {
-                crpix = refined;
-            }
-        }
-    }
-
     let full_decomp = decompose_linear(mapping.as_ref(), naxis, &crpix)?;
 
     let projection = extract_projection_from_mapping(mapping.as_ref());
