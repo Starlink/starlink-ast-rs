@@ -28,7 +28,7 @@ pub use crate::wcslib::WcsProjection;
 pub use wcsmap::WcsMap;
 mod slamap;
 pub use slamap::{SlaCvtType, SlaMap};
-mod specmap;
+pub(crate) mod specmap;
 pub use specmap::{SpecCvtType, SpecMap};
 mod timemap;
 pub use timemap::{TimeCvtType, TimeMap};

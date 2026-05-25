@@ -986,9 +986,16 @@ fn identify_axes(
         let frame1 = cmp.frame1();
         let frame2 = cmp.frame2();
 
+        // Track the celestial source position (radians) so that any
+        // SpecFrame in the same CmpFrame can compute VELOSYS — the
+        // topocentric velocity of the SPECSYS rest frame depends on
+        // the source direction and the observation epoch.
+        let mut src_ra_dec: Option<(f64, f64)> = None;
+
         if let Some(sky) = frame1.as_any().downcast_ref::<SkyFrame>() {
             let lon = sky.lon_axis();
             let lat = sky.lat_axis();
+            src_ra_dec = Some((crval[lon], crval[lat]));
             populate_celestial(sky, crval, store, lon, lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame1.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, 0)?;
@@ -997,9 +1004,22 @@ fn identify_axes(
         if let Some(sky) = frame2.as_any().downcast_ref::<SkyFrame>() {
             let lon = sky.lon_axis();
             let lat = sky.lat_axis();
+            src_ra_dec = Some((crval[n1 + lon], crval[n1 + lat]));
             populate_celestial(sky, crval, store, n1 + lon, n1 + lat, projection, wcsmap_pv)?;
         } else if let Some(spec) = frame2.as_any().downcast_ref::<SpecFrame>() {
             populate_spectral(spec, crval, store, n1)?;
+        }
+
+        // Now that both frames have been visited, fill in VELOSYS
+        // when both a SpecFrame and a SkyFrame are present.
+        if let Some((ra, dec)) = src_ra_dec {
+            let spec_opt = frame1
+                .as_any()
+                .downcast_ref::<SpecFrame>()
+                .or_else(|| frame2.as_any().downcast_ref::<SpecFrame>());
+            if let Some(spec) = spec_opt {
+                populate_velosys(spec, ra, dec, store);
+            }
         }
 
         // Remaining axes: pull a per-axis CTYPE from the linear frame
@@ -1286,7 +1306,40 @@ fn populate_spectral(
         store.restfrq = Some(restfrq);
     }
 
+    // VELOSYS: topocentric apparent velocity of the SPECSYS rest
+    // frame. Mirrors fitschan.c:30774-30796 — set the source vel to
+    // 0 in the main rest frame, then compute the source vel after
+    // switching to TPSOR. Needs the SkyFrame source position
+    // (passed via `cel_ra_dec_rad`), the observer's geodetic position
+    // (defaults to geocenter when OBSGEO is absent), and the epoch.
     Ok(())
+}
+
+/// Set `store.velosys` from a SpecFrame plus the celestial source
+/// position (in radians). Mirrors C's VELOSYS computation in
+/// `SpectralAxes` (fitschan.c:30774-30796): the velocity returned is
+/// what the source's Doppler velocity would be in TPSOR if it sits
+/// at rest in the SPECSYS rest frame.
+fn populate_velosys(
+    spec: &crate::frames::SpecFrame,
+    src_ra_rad: f64,
+    src_dec_rad: f64,
+    store: &mut FitsStore,
+) {
+    use crate::frames::Frame;
+    let obs_lon = Frame::obs_lon(spec).unwrap_or(0.0);
+    let obs_lat = Frame::obs_lat(spec).unwrap_or(0.0);
+    let obs_alt = Frame::obs_alt(spec).unwrap_or(0.0);
+    let epoch = spec.epoch_mjd();
+    store.velosys = Some(crate::mappings::specmap::velosys_for_sor(
+        spec.std_of_rest(),
+        src_ra_rad,
+        src_dec_rad,
+        obs_lon,
+        obs_lat,
+        obs_alt,
+        epoch,
+    ));
 }
 
 /// Convert a StdOfRest to the FITS SPECSYS string.
@@ -1441,19 +1494,10 @@ fn write_store_to_cards(
         }
     }
 
-    // SIP distortion coefficients. Mirrors the SetItem/SetValue loops
-    // for `store->asip`/`bsip`/`apsip`/`bpsip` (fitschan.c:28939-28986
-    // and the matching writer that converts them to A_*/B_*/AP_*/BP_*
-    // cards). Only emit on the primary plane (alt-plane SIP isn't part
-    // of the spec).
-    if s == ' ' {
-        write_sip_block(store.sip_a_order, &store.sip_a, "A", cards);
-        write_sip_block(store.sip_b_order, &store.sip_b, "B", cards);
-        write_sip_block(store.sip_ap_order, &store.sip_ap, "AP", cards);
-        write_sip_block(store.sip_bp_order, &store.sip_bp, "BP", cards);
-    }
-
-    // Ancillary keywords.
+    // Ancillary keywords. Emit BEFORE the SIP block so any new
+    // cards (VELOSYS, MJD-OBS, ...) land between the per-axis WCS
+    // section and the SIP coefficients, matching C's WcsFromStore
+    // ordering (fitschan.c:37200-37348).
     if let Some(ref radesys) = store.radesys {
         cards.set_string(
             &fmt_global_key("RADESYS", s),
@@ -1508,6 +1552,25 @@ fn write_store_to_cards(
             specsys,
             "Spectral reference frame",
         );
+    }
+    if let Some(velosys) = store.velosys {
+        cards.set_float(
+            &fmt_global_key("VELOSYS", s),
+            velosys,
+            "[m/s] Topo. apparent velocity of rest frame",
+        );
+    }
+
+    // SIP distortion coefficients. Mirrors the SetItem/SetValue loops
+    // for `store->asip`/`bsip`/`apsip`/`bpsip` (fitschan.c:28939-28986
+    // and the matching writer that converts them to A_*/B_*/AP_*/BP_*
+    // cards). Only emit on the primary plane (alt-plane SIP isn't part
+    // of the spec).
+    if s == ' ' {
+        write_sip_block(store.sip_a_order, &store.sip_a, "A", cards);
+        write_sip_block(store.sip_b_order, &store.sip_b, "B", cards);
+        write_sip_block(store.sip_ap_order, &store.sip_ap, "AP", cards);
+        write_sip_block(store.sip_bp_order, &store.sip_bp, "BP", cards);
     }
 
     Ok(())

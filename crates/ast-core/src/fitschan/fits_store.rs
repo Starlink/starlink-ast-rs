@@ -63,6 +63,8 @@ pub(crate) struct FitsStore {
     pub restfrq: Option<f64>,
     /// Rest wavelength in m (RESTWAV).
     pub restwav: Option<f64>,
+    /// Topocentric apparent velocity of the rest frame (VELOSYS, m/s).
+    pub velosys: Option<f64>,
     /// Number of WCS axes as declared (WCSAXES).
     pub wcsaxes: Option<usize>,
     // -- SIP distortion coefficients --
@@ -114,6 +116,7 @@ impl FitsStore {
             specsys: None,
             restfrq: None,
             restwav: None,
+            velosys: None,
             wcsaxes: None,
             sip_a_order: None,
             sip_b_order: None,

@@ -597,36 +597,36 @@ fn refrac(wavelen: f64) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// Velocity of the kinematic LSR away from the source (m/s, heliocentric).
-fn lsrk_vel(ra: f64, dec: f64) -> f64 {
+pub(crate) fn lsrk_vel(ra: f64, dec: f64) -> f64 {
     -1000.0 * pal::rvlsrk(ra, dec)
 }
 
 /// Velocity of the dynamical LSR away from the source (m/s, heliocentric).
-fn lsrd_vel(ra: f64, dec: f64) -> f64 {
+pub(crate) fn lsrd_vel(ra: f64, dec: f64) -> f64 {
     -1000.0 * pal::rvlsrd(ra, dec)
 }
 
 /// Velocity of the Local Group away from the source (m/s, heliocentric).
-fn lg_vel(ra: f64, dec: f64) -> f64 {
+pub(crate) fn lg_vel(ra: f64, dec: f64) -> f64 {
     -1000.0 * pal::rvlg(ra, dec)
 }
 
 /// Velocity of the galactic centre away from the source (m/s, heliocentric).
-fn gal_vel(ra: f64, dec: f64) -> f64 {
+pub(crate) fn gal_vel(ra: f64, dec: f64) -> f64 {
     let s1 = pal::rvlsrd(ra, dec);
     let s2 = pal::rvgalc(ra, dec);
     -1000.0 * (s1 + s2)
 }
 
 /// Velocity of the earth away from the source (m/s, heliocentric).
-fn geo_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
+pub(crate) fn geo_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
     let v = pal::dcs2c(ra, dec);
     let (_dvb, _dpb, dvh, _dph) = pal::evp(epoch, 2000.0);
     -pal::dvdv(&v, &dvh) * AU_TO_MS
 }
 
 /// Velocity of the earth-sun barycentre away from the source (m/s, heliocentric).
-fn bary_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
+pub(crate) fn bary_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
     let v = pal::dcs2c(ra, dec);
     let (dvb, _dpb, dvh, _dph) = pal::evp(epoch, 2000.0);
     // Heliocentric velocity of the barycentre = dvh - dvb
@@ -635,7 +635,14 @@ fn bary_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
 }
 
 /// Velocity of the observer (topocentric) away from the source (m/s, heliocentric).
-fn topo_vel(ra: f64, dec: f64, obslon: f64, obslat: f64, obsalt: f64, epoch: f64) -> f64 {
+pub(crate) fn topo_vel(
+    ra: f64,
+    dec: f64,
+    obslon: f64,
+    obslat: f64,
+    obsalt: f64,
+    epoch: f64,
+) -> f64 {
     // Get mean-to-apparent parameters
     let amprms = pal::mappa(2000.0, epoch);
 
@@ -656,6 +663,52 @@ fn topo_vel(ra: f64, dec: f64, obslon: f64, obslat: f64, obsalt: f64, epoch: f64
 
     // Total velocity (convert observer part from km/s to m/s)
     vobs * 1000.0 + vearth
+}
+
+/// Velocity of a standard rest frame relative to the topocentric
+/// observer, projected toward the source (m/s).
+///
+/// Mirrors what the C library computes for the `VELOSYS` FITS
+/// keyword (fitschan.c:30774-30796): set the source velocity to 0
+/// in the given SOR, then read it back after switching the source
+/// rest frame to topocentric. The returned value is the apparent
+/// radial velocity of a source at rest in `sor`, as seen by an
+/// observer at the topocentric position `(obslon, obslat, obsalt)`
+/// at the given epoch.
+///
+/// Sign convention (per FITS-WCS Paper III §7.1): positive = source
+/// receding from observer.
+pub(crate) fn velosys_for_sor(
+    sor: crate::frames::StdOfRest,
+    ra: f64,
+    dec: f64,
+    obslon: f64,
+    obslat: f64,
+    obsalt: f64,
+    epoch: f64,
+) -> f64 {
+    use crate::frames::StdOfRest;
+    // All "*_vel" helpers return "velocity of frame X *away from*
+    // source (m/s, heliocentric)". For VELOSYS we want the velocity
+    // of the SOR rest frame *toward* the source as seen from the
+    // topocentric observer: if SOR moves away from the source
+    // faster than topocentric does (in the heliocentric reduction),
+    // the SOR appears to recede from the topocentric observer along
+    // the source line — VELOSYS goes negative. Flip the sign of the
+    // (SOR - topo) helio difference accordingly.
+    let v_topo = topo_vel(ra, dec, obslon, obslat, obsalt, epoch);
+    let v_sor = match sor {
+        StdOfRest::Topocentric => v_topo,
+        StdOfRest::Geocentric => geo_vel(ra, dec, epoch),
+        StdOfRest::Barycentric => bary_vel(ra, dec, epoch),
+        StdOfRest::Heliocentric => 0.0,
+        StdOfRest::Lsrk => lsrk_vel(ra, dec),
+        StdOfRest::Lsrd => lsrd_vel(ra, dec),
+        StdOfRest::LocalGroup => lg_vel(ra, dec),
+        StdOfRest::Galactic => gal_vel(ra, dec),
+        StdOfRest::Source => 0.0, // source rest frame: no offset
+    };
+    v_topo - v_sor
 }
 
 /// Velocity of the user-defined frame away from the source (m/s, heliocentric).
