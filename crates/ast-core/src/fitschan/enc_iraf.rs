@@ -181,6 +181,16 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
     }
 
+    // MJD-OBS — IRAFFromStore (fitschan.c:19103-19127) does not emit
+    // MJD-OBS itself; only DATE-OBS. But the C library's `ignore_used`
+    // semantics leave an input-supplied MJD-OBS card in place, so we
+    // re-emit it only if the input header already carried one.
+    if cards.find("MJD-OBS").is_some()
+        && let Some(mjdobs) = store.mjdobs
+    {
+        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    }
+
     // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
     // IRAFFromStore at fitschan.c:19103-19127). The pre-formatted
     // string in store.dateobs was derived from MJD-OBS upstream.
