@@ -15,7 +15,7 @@ use crate::frames::{
     BasicFrame, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, StdOfRest,
 };
 use crate::mappings::{
-    CmpMap, Composition, DynMapping, Mapping, PermMap, ShiftMap, WcsMap, WcsProjection,
+    CmpMap, Composition, DynMapping, Mapping, PermMap, ShiftMap, UnitMap, WcsMap, WcsProjection,
 };
 use crate::pal;
 use crate::serial::AnyObject;
@@ -297,6 +297,18 @@ fn store_from_frameset_to(
     // numerical Jacobian on the full pixel→world chain.
     //
     // Linear-only / non-celestial frames keep the pre-WcsMap path.
+    // SIP distortion: locate the 2-in/2-out PolyMap (if any) and
+    // build a "stripped" copy of the mapping with that PolyMap
+    // replaced by a UnitMap(2). The stripped mapping feeds
+    // `build_pixel_to_iwc` so the linear CD/CRPIX extraction sees
+    // the FITS-WCS linear model the SIP convention sits on top of.
+    // Mirrors `SIPIntWorld`'s "Mapping equivalent to the input but
+    // without the PolyMap" return value (fitschan.c:29009-29014).
+    let stripped_mapping = strip_sip_polymap(mapping.as_ref());
+    let cd_extract_mapping: &dyn Mapping = stripped_mapping
+        .as_deref()
+        .unwrap_or_else(|| mapping.as_ref());
+
     let mut cel_crval: Option<Vec<f64>> = None;
     let cd_decomp = if let Some((sky, lon_axis, lat_axis)) = celestial_axes(target_frame) {
         match projection {
@@ -309,14 +321,14 @@ fn store_from_frameset_to(
                 // split_around_wcsmap returns None and we fall back to
                 // the numerical world(g0) value — still correct, just
                 // less precise.
-                let post = split_around_wcsmap(mapping.as_ref()).map(|(_, post)| post);
+                let post = split_around_wcsmap(cd_extract_mapping).map(|(_, post)| post);
                 let fiducial = post
                     .as_ref()
                     .and_then(|p| fiducial_crval(p.as_ref(), proj, &full_decomp.crval, naxis));
                 let crval_for_iwc = fiducial.as_ref().unwrap_or(&full_decomp.crval);
                 cel_crval = fiducial.clone();
                 match build_pixel_to_iwc(
-                    mapping.as_ref(),
+                    cd_extract_mapping,
                     &sky,
                     crval_for_iwc,
                     lon_axis,
@@ -376,6 +388,18 @@ fn store_from_frameset_to(
         }
     }
 
+    // SIP distortion: if the FrameSet's mapping carries a 2-in/2-out
+    // PolyMap (the AST shape produced when reading FITS-WCS headers
+    // with -SIP CTYPE codes), extract its coefficients into the store
+    // before identifying axes — `identify_axes` consults
+    // `store.has_sip()` to decide whether to append "-SIP" to the
+    // celestial CTYPEs. Mirrors `SIPIntWorld` (fitschan.c:28699-28990).
+    let has_sip = if let Some(pm) = find_sip_polymap(mapping.as_ref()) {
+        extract_sip_into_store(pm, &mut store)
+    } else {
+        false
+    };
+
     // Identify axis types from the target frame and populate CTYPE/CRVAL.
     let pv_refs = wcsmap_pv
         .as_ref()
@@ -387,6 +411,18 @@ fn store_from_frameset_to(
         projection,
         pv_refs,
     )?;
+
+    // Append `-SIP` to the celestial CTYPEs when SIP coefficients were
+    // extracted (mirrors fitschan.c:28992-29007).
+    if has_sip && let Some((_, lon_axis, lat_axis)) = celestial_axes(target_frame) {
+        for ax in [lon_axis, lat_axis] {
+            if let Some(ref mut ct) = store.ctype[ax] {
+                if !ct.ends_with("-SIP") {
+                    ct.push_str("-SIP");
+                }
+            }
+        }
+    }
 
     // Apply C-library-style numerical cleanups (SplitMat 1e-7, CRVAL
     // near-zero, CRPIX micro-pixel rounding) so all encoders see clean
@@ -785,6 +821,135 @@ fn find_wcsmap(mapping: &dyn Mapping) -> Option<&WcsMap> {
         }
     }
     None
+}
+
+/// Walk the mapping tree and return a reference to the first 2-in,
+/// 2-out [`PolyMap`] (the SIP-distortion shape). Mirrors the C
+/// library's `astMapList` walk in `SIPIntWorld` (fitschan.c:28699-28716)
+/// — we recurse through both Series and Parallel CmpMaps because in
+/// 3D inputs (e.g. RA/DEC + FREQ) the SIP PolyMap sits inside the
+/// celestial branch of a parallel composition.
+fn find_sip_polymap(mapping: &dyn Mapping) -> Option<&crate::mappings::PolyMap> {
+    if let Some(pm) = mapping.as_any().downcast_ref::<crate::mappings::PolyMap>() {
+        if Mapping::nin(pm) == 2 && Mapping::nout(pm) == 2 {
+            return Some(pm);
+        }
+    }
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if let Some(pm) = find_sip_polymap(cmp.first()) {
+            return Some(pm);
+        }
+        if let Some(pm) = find_sip_polymap(cmp.second()) {
+            return Some(pm);
+        }
+    }
+    None
+}
+
+/// Walk the mapping tree and produce a copy with the first 2-in,
+/// 2-out [`PolyMap`] replaced by a [`UnitMap`] of width 2. Returns
+/// `None` if no such PolyMap is present. Mirrors the "Mapping
+/// without the PolyMap" return value at the end of `SIPIntWorld`
+/// (fitschan.c:29009): downstream code can decompose the result
+/// linearly to recover CRPIX and CD without the polynomial
+/// distortion fighting back.
+fn strip_sip_polymap(mapping: &dyn Mapping) -> Option<DynMapping> {
+    if let Some(pm) = mapping.as_any().downcast_ref::<crate::mappings::PolyMap>() {
+        if Mapping::nin(pm) == 2 && Mapping::nout(pm) == 2 {
+            return Some(Box::new(UnitMap::new(2)));
+        }
+    }
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if let Some(new_first) = strip_sip_polymap(cmp.first()) {
+            return CmpMap::new(new_first, cmp.second().clone_box(), cmp.composition())
+                .ok()
+                .map(|c| Box::new(c) as DynMapping);
+        }
+        if let Some(new_second) = strip_sip_polymap(cmp.second()) {
+            return CmpMap::new(cmp.first().clone_box(), new_second, cmp.composition())
+                .ok()
+                .map(|c| Box::new(c) as DynMapping);
+        }
+    }
+    None
+}
+
+/// Extract SIP forward (and inverse, when present) coefficients from
+/// a 2-in, 2-out PolyMap into the FitsStore's `sip_a` / `sip_b` /
+/// `sip_ap` / `sip_bp` matrices. Mirrors the coefficient extraction
+/// loop in `SIPIntWorld` at fitschan.c:28897-28990.
+///
+/// The PolyMap our reader builds (and any SIP-shaped PolyMap) carries
+/// the `+u` and `+v` linear identity terms inline; the SIP convention
+/// stores them as the *additive* correction (so A_1_0 and B_0_1 are 0
+/// when the linear part is identity). We subtract 1.0 from those two
+/// terms when copying them out.
+///
+/// Returns `true` if any forward coefficients were stored. The caller
+/// uses that to decide whether to append `-SIP` to the celestial CTYPEs.
+fn extract_sip_into_store(pm: &crate::mappings::PolyMap, store: &mut FitsStore) -> bool {
+    use crate::mappings::PolyTerm;
+    let emit = |terms: &[PolyTerm], a_buf: &mut Vec<Vec<f64>>, b_buf: &mut Vec<Vec<f64>>| {
+        let mut a_max = 0usize;
+        let mut b_max = 0usize;
+        for t in terms {
+            if t.powers.len() < 2 {
+                continue;
+            }
+            let p = t.powers[0];
+            let q = t.powers[1];
+            match t.out_axis {
+                1 => a_max = a_max.max(p + q),
+                2 => b_max = b_max.max(p + q),
+                _ => {}
+            }
+        }
+        let a_size = a_max + 1;
+        let b_size = b_max + 1;
+        *a_buf = vec![vec![0.0; a_size]; a_size];
+        *b_buf = vec![vec![0.0; b_size]; b_size];
+        for t in terms {
+            if t.powers.len() < 2 {
+                continue;
+            }
+            let p = t.powers[0];
+            let q = t.powers[1];
+            let mut val = t.coeff;
+            // SIP stores additive corrections; subtract the identity
+            // contribution that the inline PolyMap carries.
+            if t.out_axis == 1 && p == 1 && q == 0 {
+                val -= 1.0;
+            }
+            if t.out_axis == 2 && p == 0 && q == 1 {
+                val -= 1.0;
+            }
+            if val == 0.0 {
+                continue;
+            }
+            match t.out_axis {
+                1 => a_buf[p][q] = val,
+                2 => b_buf[p][q] = val,
+                _ => {}
+            }
+        }
+        (a_max, b_max)
+    };
+
+    let (a_max_f, b_max_f) = emit(pm.forward_terms(), &mut store.sip_a, &mut store.sip_b);
+    if !pm.forward_terms().is_empty() {
+        store.sip_a_order = Some(a_max_f);
+        store.sip_b_order = Some(b_max_f);
+    }
+
+    if let Some(inv) = pm.inverse_terms() {
+        let (a_max_i, b_max_i) = emit(inv, &mut store.sip_ap, &mut store.sip_bp);
+        if !inv.is_empty() {
+            store.sip_ap_order = Some(a_max_i);
+            store.sip_bp_order = Some(b_max_i);
+        }
+    }
+
+    !pm.forward_terms().is_empty()
 }
 
 /// Identify axis types from the target frame and populate CTYPE, CRVAL, etc.
@@ -1239,6 +1404,18 @@ fn write_store_to_cards(
         }
     }
 
+    // SIP distortion coefficients. Mirrors the SetItem/SetValue loops
+    // for `store->asip`/`bsip`/`apsip`/`bpsip` (fitschan.c:28939-28986
+    // and the matching writer that converts them to A_*/B_*/AP_*/BP_*
+    // cards). Only emit on the primary plane (alt-plane SIP isn't part
+    // of the spec).
+    if s == ' ' {
+        write_sip_block(store.sip_a_order, &store.sip_a, "A", cards);
+        write_sip_block(store.sip_b_order, &store.sip_b, "B", cards);
+        write_sip_block(store.sip_ap_order, &store.sip_ap, "AP", cards);
+        write_sip_block(store.sip_bp_order, &store.sip_bp, "BP", cards);
+    }
+
     // Ancillary keywords.
     if let Some(ref radesys) = store.radesys {
         cards.set_string(
@@ -1313,6 +1490,46 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) -> AstResul
         }
     }
     Ok(())
+}
+
+/// Emit one SIP coefficient block (A_*, B_*, AP_*, BP_*).
+///
+/// Mirrors `SIPIntWorld`'s store loops (fitschan.c:28939-28986): emit
+/// `<prefix>_ORDER` only when at least one non-zero coefficient exists,
+/// then iterate over the (i, j) grid and emit `<prefix>_i_j` cards
+/// for every non-zero entry. The forward block uses comments
+/// "SIP forward distortion coeff"; the inverse blocks "SIP inverse
+/// distortion coeff" — matching the C library's SIP writer.
+fn write_sip_block(order: Option<usize>, coeffs: &[Vec<f64>], prefix: &str, cards: &mut CardList) {
+    let Some(order) = order else { return };
+    if coeffs.is_empty() {
+        return;
+    }
+    let order_comment = match prefix {
+        "A" => "SIP polynomial order axis 1",
+        "B" => "SIP polynomial order axis 2",
+        "AP" => "SIP inverse polynomial order axis 1",
+        "BP" => "SIP inverse polynomial order axis 2",
+        _ => "SIP polynomial order",
+    };
+    let coeff_comment = match prefix {
+        "AP" | "BP" => "SIP inverse distortion coeff",
+        _ => "SIP forward distortion coeff",
+    };
+    cards.set_int(&format!("{prefix}_ORDER"), order as i64, order_comment);
+    for i in 0..=order {
+        let row = match coeffs.get(i) {
+            Some(r) => r,
+            None => continue,
+        };
+        for j in 0..=order {
+            let val = row.get(j).copied().unwrap_or(0.0);
+            if val == 0.0 {
+                continue;
+            }
+            cards.set_float(&format!("{prefix}_{i}_{j}"), val, coeff_comment);
+        }
+    }
 }
 
 /// Write PC matrix + CDELT keywords.
