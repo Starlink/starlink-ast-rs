@@ -223,11 +223,12 @@ fn store_from_frameset_to(
         .take(naxis)
         .enumerate()
     {
-        // Skip celestial axes — the input CRVAL is in degrees, but the
-        // mapping's output (and pre_decomp.crval) is in radians for
-        // SkyFrame axes. Mixing them in the linear-algebra solve below
-        // would give nonsense. The celestial branch substitutes the
-        // fiducial CRVAL (with correct units) later.
+        // Skip celestial axes — the input CRVAL is in degrees, but
+        // the mapping's output (and pre_decomp.crval) is in radians
+        // for SkyFrame axes. Mixing them in the linear-algebra solve
+        // below would give nonsense. The celestial branch
+        // substitutes the fiducial / input CRVAL (with correct
+        // units) later.
         if let Some((_, lon, lat)) = cel
             && (i == lon || i == lat)
         {
@@ -368,10 +369,29 @@ fn store_from_frameset_to(
     // fitschan.c::GetFiducialWCS (~12823); we prefer it over the
     // input override for celestial axes because the fiducial point
     // is a property of the projection, not the file header.
+    //
+    // When `cel_crval` is `None` (e.g. 3D mapping where
+    // `split_around_wcsmap` can't isolate the WcsMap from a parallel
+    // CmpMap), `chosen_crval` for celestial axes still holds
+    // `pre_decomp.crval = world(g0)`. With our `g0` set to the
+    // central pixel `floor(0.5*(1+dim))`, that's offset half a pixel
+    // from CRPIX in each direction — the projection then drifts by
+    // ~0.5 × CDELT, e.g. ~0.0005° on the freq-ghz-bary fixture.
+    // Mirror what C does in this case (it stores the input CRVAL
+    // directly, not the world(g0) value): when an input override is
+    // available for a celestial axis, take it (deg → rad) instead.
     let mut crval_for_store = chosen_crval;
-    if let (Some(fid), Some((_, lon_axis, lat_axis))) = (cel_crval, celestial_axes(target_frame)) {
-        crval_for_store[lon_axis] = fid[lon_axis];
-        crval_for_store[lat_axis] = fid[lat_axis];
+    let cel = celestial_axes(target_frame);
+    if let (Some(fid), Some((_, lon_axis, lat_axis))) = (&cel_crval, &cel) {
+        crval_for_store[*lon_axis] = fid[*lon_axis];
+        crval_for_store[*lat_axis] = fid[*lat_axis];
+    } else if let Some((_, lon_axis, lat_axis)) = cel {
+        // No fiducial — prefer input CRVAL for celestial axes too.
+        for ax in [lon_axis, lat_axis] {
+            if let Some(Some(deg)) = input_crvals.get(ax) {
+                crval_for_store[ax] = deg.to_radians();
+            }
+        }
     }
 
     // Store CRPIX.
