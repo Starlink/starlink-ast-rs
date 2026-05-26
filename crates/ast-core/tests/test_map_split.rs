@@ -844,3 +844,45 @@ fn cmpmap_split_rejects_invalid() {
     assert!(cm.map_split(&[4]).is_none());
     assert!(cm.map_split(&[0, 0]).is_none());
 }
+
+// MapSplit2 (cmpmap.c ~line 2214) brute-force inverse-side fallback.
+
+#[test]
+fn cmpmap_mapsplit2_no_false_positive_when_genuinely_coupled() {
+    // When the forward decomposition returns None AND no output subset
+    // genuinely depends on only the requested inputs, MapSplit2 must
+    // also return None (no false positives).
+    //
+    // Construction: ShiftMap(2) ; MatrixMap fully-coupled. Output i =
+    // M[i,0]*(x[0]+a0) + M[i,1]*(x[1]+a1) — every output depends on
+    // both inputs. No subset depends only on input 0.
+    use ast_core::mappings::{CmpMap, Composition, MatrixMap, ShiftMap};
+    use ndarray::array;
+    let s = ShiftMap::new(vec![1.0, 2.0]);
+    let m = MatrixMap::new(array![[1.0, 1.0], [1.0, -1.0]]).unwrap();
+    let cm = CmpMap::new(Box::new(s), Box::new(m), Composition::Series).unwrap();
+    // Forward path: MatrixMap.map_split([0]) on a fully-coupled 2x2 fails.
+    // MapSplit2 enumerates subsets {[0], [1]} of outputs; neither
+    // depends only on input 0, so all recursive splits return None.
+    assert!(cm.map_split(&[0]).is_none());
+    assert!(cm.map_split(&[1]).is_none());
+    // Full inputs work via the default full_set_split helper.
+    assert!(cm.map_split(&[0, 1]).is_some());
+}
+
+#[test]
+fn cmpmap_mapsplit2_terminates_on_small_nout() {
+    // MapSplit2 enumerates subset sizes mout in 1..nout. For nout < 2
+    // the loop is empty and the function must return None promptly
+    // without panicking.
+    use ast_core::mappings::{CmpMap, Composition, MatrixMap};
+    use ndarray::array;
+    // 2-in 1-out fully-coupled MatrixMap. nout = 1 → MapSplit2 has
+    // nothing to enumerate.
+    let m1 = MatrixMap::new(array![[1.0, 1.0]]).unwrap();
+    let m2 = MatrixMap::new(array![[2.0]]).unwrap();
+    let cm = CmpMap::new(Box::new(m1), Box::new(m2), Composition::Series).unwrap();
+    // Forward fails (m1 is coupled); MapSplit2 hits early-exit on nout < 2.
+    assert!(cm.map_split(&[0]).is_none());
+    assert!(cm.map_split(&[1]).is_none());
+}
