@@ -571,8 +571,89 @@ impl Mapping for MatrixMap {
             .all(|(a, b)| ast_equal(*a, *b))
     }
 
-    // map_split: faithful astMapSplit-shaped impl lands in Task 1.3.
-    // Falls back to the trait default (full-input case via PermMap+CmpMap).
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors matrixmap.c::MapSplit (~2282). A MatrixMap split succeeds
+        // only when the input/output dependency graph is block-diagonal w.r.t.
+        // the chosen inputs: each output row's nonzero, non-BAD columns must
+        // lie either entirely inside or entirely outside the kept-input set.
+        //
+        // C iterates rows of the *effective forward* matrix (i_matrix if the
+        // MatrixMap is inverted, else f_matrix), classifying each row as
+        // depending on selected and/or unselected inputs. Both 0.0 and
+        // AST__BAD count as "no dependency". A row that depends on selected
+        // inputs only is added to the result; a row that depends on both
+        // returns NULL. The new MatrixMap is constructed with Invert=0 from
+        // the effective-forward sub-matrix, so we do not propagate
+        // is_inverted onto the sub-mapping.
+        //
+        // Project convention: reject duplicate or out-of-range axes (Task
+        // 1.1 set this precedent for UnitMap / ZoomMap / ShiftMap; the C
+        // function only checks the in-range half).
+        let nin = self.nin();
+        let nout = self.nout();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= nin || in_axes[..i].contains(&ix) {
+                return None;
+            }
+        }
+
+        // Pick the effective forward matrix, matching C's `mat` selection.
+        // When inverted but no inverse is available, the split is impossible
+        // (C: `if( !mat || !astOK ) ok = 0`).
+        let m: &Array2<f64> = if self.inverted {
+            self.inverse.as_ref()?
+        } else {
+            &self.matrix
+        };
+
+        // Classify each output row.
+        let kept: std::collections::HashSet<usize> = in_axes.iter().copied().collect();
+        let mut kept_outs: Vec<usize> = Vec::new();
+        let mut good = false;
+        for j in 0..nout {
+            let mut sel = false;
+            let mut unsel = false;
+            for i in 0..nin {
+                let el = m[[j, i]];
+                if el != 0.0 && !is_bad(el) {
+                    if kept.contains(&i) {
+                        sel = true;
+                    } else {
+                        unsel = true;
+                    }
+                }
+            }
+            if sel && unsel {
+                // Cross-coupled: split impossible.
+                return None;
+            }
+            if sel {
+                kept_outs.push(j);
+                // Track whether the row contributes any non-BAD value across
+                // the kept columns (mirrors C's `good` flag).
+                for &i in in_axes {
+                    if !is_bad(m[[j, i]]) {
+                        good = true;
+                    }
+                }
+            }
+        }
+
+        // C requires nout > 0 && good (line 2499).
+        if kept_outs.is_empty() || !good {
+            return None;
+        }
+
+        // Build sub-matrix from kept_outs × in_axes.
+        let mut sub_m = Array2::<f64>::zeros((kept_outs.len(), in_axes.len()));
+        for (rj, &j) in kept_outs.iter().enumerate() {
+            for (ri, &i) in in_axes.iter().enumerate() {
+                sub_m[[rj, ri]] = m[[j, i]];
+            }
+        }
+        let sub = MatrixMap::new(sub_m).ok()?;
+        Some((kept_outs, Box::new(sub)))
+    }
 
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify

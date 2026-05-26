@@ -248,3 +248,101 @@ fn winmap_split_preserves_invert() {
     assert!((out[0] - 5.0).abs() < 1e-12);
     assert!((out[1] - 1.0).abs() < 1e-12);
 }
+
+// ========================================================================
+// MatrixMap
+// ========================================================================
+
+#[test]
+fn matrix_split_diagonal_picks_axis() {
+    use ast_core::mappings::MatrixMap;
+    use ndarray::array;
+    // Diagonal: every axis splits cleanly.
+    let m = array![[2.0_f64, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let (outs, sub) = mm.map_split(&[1]).expect("split");
+    assert_eq!(outs, vec![1]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    let pts = PointSet::from_rows(vec![vec![4.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 12.0).abs() < 1e-12);
+}
+
+#[test]
+fn matrix_split_block_diagonal() {
+    use ast_core::mappings::MatrixMap;
+    use ndarray::array;
+    // Block-diagonal: first 2 axes coupled, third independent.
+    let m = array![[1.0_f64, 2.0, 0.0], [3.0, 4.0, 0.0], [0.0, 0.0, 5.0],];
+    let mm = MatrixMap::new(m).unwrap();
+    let (outs, sub) = mm.map_split(&[2]).expect("split");
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // sub forward: y = 5 * x.
+    let out = fwd_point(sub.as_ref(), &[7.0]);
+    assert!((out[0] - 35.0).abs() < 1e-12);
+    // Picking axes [0, 1] should also succeed (block 1).
+    let (outs2, sub2) = mm.map_split(&[0, 1]).expect("split block 1");
+    assert_eq!(outs2, vec![0, 1]);
+    assert_eq!(sub2.nin(), 2);
+    assert_eq!(sub2.nout(), 2);
+    // Verify forward action: y0 = 1*x0 + 2*x1, y1 = 3*x0 + 4*x1.
+    let out2 = fwd_point(sub2.as_ref(), &[1.0, 1.0]);
+    assert!((out2[0] - 3.0).abs() < 1e-12);
+    assert!((out2[1] - 7.0).abs() < 1e-12);
+}
+
+#[test]
+fn matrix_split_coupled_returns_none() {
+    use ast_core::mappings::MatrixMap;
+    use ndarray::array;
+    // Fully coupled: every output depends on every input, so picking a
+    // proper subset of inputs is impossible.
+    let m = array![[1.0_f64, 1.0], [1.0, 1.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    assert!(mm.map_split(&[0]).is_none());
+    assert!(mm.map_split(&[1]).is_none());
+    // Picking all inputs is fine (default fallback handles full case).
+    let (outs, sub) = mm.map_split(&[0, 1]).expect("full split");
+    assert_eq!(outs, vec![0, 1]);
+    assert_eq!(sub.nin(), 2);
+}
+
+#[test]
+fn matrix_split_inverted_uses_effective_forward() {
+    use ast_core::mappings::MatrixMap;
+    use ndarray::array;
+    // Square matrix whose inverse is itself diagonal. After invert(), the
+    // effective forward is the inverse — which is also block-diagonal, so
+    // the split must succeed against the inverse's row structure.
+    let m = array![[2.0_f64, 0.0], [0.0, 4.0]];
+    let mut mm = MatrixMap::new(m).unwrap();
+    mm.invert();
+    // Now effective forward: y0 = 0.5 * x0, y1 = 0.25 * x1.
+    let (outs, sub) = mm.map_split(&[0]).expect("split");
+    assert_eq!(outs, vec![0]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // Sub forward should be 0.5 * x (the inverse's row 0 entry).
+    let out = fwd_point(sub.as_ref(), &[8.0]);
+    assert!((out[0] - 4.0).abs() < 1e-12);
+}
+
+#[test]
+fn matrix_split_empty_kept_outs_returns_none() {
+    use ast_core::mappings::MatrixMap;
+    use ndarray::array;
+    // Rectangular matrix where the chosen input feeds NO output (all
+    // entries in column 0 are zero). C: nout == 0 => return NULL.
+    let m = array![[0.0_f64, 1.0], [0.0, 2.0], [0.0, 3.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    // Picking input 0 alone yields no in-scope output rows.
+    assert!(mm.map_split(&[0]).is_none());
+    // Picking input 1 yields all three rows.
+    let (outs, sub) = mm.map_split(&[1]).expect("split");
+    assert_eq!(outs, vec![0, 1, 2]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 3);
+}
