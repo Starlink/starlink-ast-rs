@@ -72,3 +72,73 @@ if/when the Rust port grows Digits-aware sky formatting the
 quantisation here follows automatically. Without that round trip
 the writer's VELOSYS was bit-correct but disagreed with
 C-generated fixtures by ~33 mm/s on sip-3d / sip-3d-swap.
+
+---
+
+## MatrixMap MapSplit: uninitialised pmat advance on BAD entries
+
+**C location:** `matrixmap.c:2478-2485` — inside `MapSplit`, building
+the sub-matrix for the kept inputs and outputs:
+
+```c
+for( i = 0; i < nin; i++ ) {
+   if( astISGOOD( prow[ in[ i ] ] ) ) {
+      *(pmat++) = prow[ in[ i ] ];
+      good = 1;
+   }
+}
+```
+
+**Observation:** `pmat` advances *only* when the kept entry passes
+`astISGOOD`. The backing buffer `rmat` is allocated with plain
+`astMalloc` at line 2408 and is never zeroed. The downstream
+`MatrixMap` constructor at line 2500 reads exactly `nin*nout`
+doubles out of `rmat` — so any slot that the loop above skipped is
+read back as whatever bytes the allocator handed out (i.e.
+uninitialised memory). Lines 2444-2447 *do* filter rows whose kept
+columns are all-BAD out of the dependency classification, so the
+pathological case is narrow: an in-scope row that mixes a finite,
+non-zero entry in some kept column with a BAD entry in another
+kept column. When that happens, the resulting sub-matrix has UB
+in the BAD slots and the constructor builds a corrupt MatrixMap
+from it.
+
+**User-visible consequence:** running `astMapSplit` on a MatrixMap
+whose matrix carries `AST__BAD` in some — but not all — kept
+columns of a kept row produces a sub-matrix containing whatever
+heap garbage `astMalloc` returned. Outputs from that sub-matrix
+are therefore non-deterministic across runs and can be arbitrarily
+large, NaN, or coincidentally "look fine". Real-world WCS
+matrices (FITS `CDi_j` / `PCi_j` cards) never carry `AST__BAD`,
+so this never fires in any wcsconv fixture we ship — but it is
+nevertheless undefined behaviour in the C oracle.
+
+**Why discuss with maintainers:** the obvious upstream fix is one
+of (a) zero `rmat` at allocation, (b) write `prow[in[i]]`
+unconditionally and let the constructor see `AST__BAD` slots
+(which it already tolerates elsewhere), or (c) reject the
+sub-MatrixMap when any kept slot is BAD. Each choice has a
+different downstream contract; (b) is closest to "do what the
+caller asked"; (c) is the most conservative.
+
+**How Rust diverges (deliberate, not mirrored):**
+`crates/ast-core/src/mappings/matrix.rs::map_split` allocates a
+zero-initialised `Array2<f64>` and writes every kept entry —
+`AST__BAD` or finite — into it unconditionally. This is a
+*deliberate* divergence from the C oracle:
+
+- Mirroring C's UB would require `unsafe` and an uninitialised
+  heap allocation (`MaybeUninit<f64>` + `assume_init`) for no
+  observable benefit.
+- The pathological case (mixed finite / BAD entries in kept
+  columns of a kept row) does not occur in any fixture the port
+  needs to round-trip; CD/PC matrices read out of FITS headers
+  are always fully populated with finite numbers.
+- The Rust path is deterministic and produces a MatrixMap that
+  the rest of the pipeline can simplify and serialise without
+  surprise.
+
+If a future test fixture exercises the BAD-mixed case and the
+oracle/Rust comparison diverges, the right fix is to reach back
+to the maintainers for a definitive semantic — not to reproduce
+the UB on the Rust side.

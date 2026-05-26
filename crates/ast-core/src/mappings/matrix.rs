@@ -645,6 +645,9 @@ impl Mapping for MatrixMap {
         }
 
         // Build sub-matrix from kept_outs × in_axes.
+        // Note: C's matrixmap.c:2478-2485 advances pmat only on astISGOOD,
+        // leaving uninitialised heap in BAD slots. We write all kept entries
+        // into a zero-initialised Array2 — see docs/issues/c-library-quirks.md.
         let mut sub_m = Array2::<f64>::zeros((kept_outs.len(), in_axes.len()));
         for (rj, &j) in kept_outs.iter().enumerate() {
             for (ri, &i) in in_axes.iter().enumerate() {
