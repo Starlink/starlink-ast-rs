@@ -653,3 +653,194 @@ fn wcs_split_full_set_permuted_simplifies_through() {
         );
     }
 }
+
+// ========================================================================
+// CmpMap (per-class override added in Task 1.6)
+// ========================================================================
+//
+// C ancestor: reference/starlink-ast/src/cmpmap.c::MapSplit (~2788) which
+// dispatches to MapSplit0 (~2405). The Rust port handles the recursive
+// structure directly without the explicit MapList flattening: each child
+// is split in its effective direction (folding self.inverted plus any
+// inv_a/inv_b drift relative to the child's current is_inverted state).
+
+#[test]
+fn cmpmap_parallel_split_per_child() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap};
+    // Parallel of two ShiftMaps: axes 0,1 from first; 2,3 from second.
+    let s1 = ShiftMap::new(vec![1.0, 2.0]);
+    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
+    let (outs, _sub) = cm.map_split(&[2]).expect("split second-child axis");
+    assert_eq!(outs, vec![2]);
+    let (outs2, _) = cm.map_split(&[0, 3]).expect("split mixed");
+    assert_eq!(outs2, vec![0, 3]);
+}
+
+#[test]
+fn cmpmap_series_split_threads_through() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
+    // shift(3) -> zoom(3, 5): linear chain, every axis independent.
+    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let z = ZoomMap::new(3, 5.0).unwrap();
+    let cm = CmpMap::new(Box::new(s), Box::new(z), Composition::Series).unwrap();
+    let (outs, sub) = cm.map_split(&[1]).expect("split");
+    assert_eq!(outs, vec![1]);
+    assert_eq!(sub.nin(), 1);
+    let pts = PointSet::from_rows(vec![vec![3.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    // (3 + 2) * 5 = 25
+    assert!((out.point(0)[0] - 25.0).abs() < 1e-12);
+}
+
+#[test]
+fn cmpmap_parallel_one_child_rejects_returns_none() {
+    use ast_core::mappings::{CmpMap, Composition, MatrixMap, ShiftMap};
+    use ndarray::array;
+    // Parallel of (fully-coupled MatrixMap, ShiftMap). Picking one input
+    // from the matrix half is impossible (matrix.map_split returns None);
+    // the whole CmpMap split must propagate that None.
+    let coupled = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
+    let s = ShiftMap::new(vec![10.0]);
+    let cm = CmpMap::new(Box::new(coupled), Box::new(s), Composition::Parallel).unwrap();
+    // axis 0 belongs to the coupled matrix; matrix rejects partial input.
+    assert!(cm.map_split(&[0]).is_none());
+    // axis 1 also belongs to the matrix.
+    assert!(cm.map_split(&[1]).is_none());
+    // axis 2 belongs to the ShiftMap and splits cleanly.
+    let (outs, sub) = cm.map_split(&[2]).expect("shift axis splits");
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+}
+
+#[test]
+fn cmpmap_nested_series_of_parallel() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
+    // Build (Shift(2) || Shift(2)) -> (Zoom(4)). The inner parallel has
+    // 4 inputs / 4 outputs, then a 4-axis ZoomMap. Splitting on a single
+    // axis must recurse through both layers.
+    let inner1 = ShiftMap::new(vec![1.0, 2.0]);
+    let inner2 = ShiftMap::new(vec![10.0, 20.0]);
+    let parallel = CmpMap::new(Box::new(inner1), Box::new(inner2), Composition::Parallel).unwrap();
+    let zoom = ZoomMap::new(4, 3.0).unwrap();
+    let cm = CmpMap::new(Box::new(parallel), Box::new(zoom), Composition::Series).unwrap();
+    // Pick original input axis 2 (= inner2's axis 0). After shift +10 then
+    // zoom *3, x=4.0 -> (4+10)*3 = 42.
+    let (outs, sub) = cm.map_split(&[2]).expect("split nested");
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    let pts = PointSet::from_rows(vec![vec![4.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 42.0).abs() < 1e-12);
+}
+
+#[test]
+fn cmpmap_inverted_series_split() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
+    // (Shift; Zoom) inverted: forward becomes Zoom^-1 then Shift^-1.
+    // For axis i: y = (x / scale) - shift_i.
+    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let z = ZoomMap::new(3, 5.0).unwrap();
+    let mut cm = CmpMap::new(Box::new(s), Box::new(z), Composition::Series).unwrap();
+    cm.invert();
+    let (outs, sub) = cm.map_split(&[1]).expect("split inverted series");
+    assert_eq!(outs, vec![1]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // Effective: axis 1 forward of the inverted CmpMap is x/5 - 2.
+    // For x = 35: 35/5 - 2 = 5.
+    let pts = PointSet::from_rows(vec![vec![35.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 5.0).abs() < 1e-12);
+}
+
+#[test]
+fn cmpmap_inverted_parallel_split() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap};
+    // (Shift([1,2]) || Shift([10,20])) inverted: forward subtracts the
+    // shifts. After invert(), the CmpMap still has nin=4, nout=4 with the
+    // same axis-to-child partition (axes 0,1 -> first; 2,3 -> second).
+    let s1 = ShiftMap::new(vec![1.0, 2.0]);
+    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let mut cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
+    cm.invert();
+    // Axis 3 = second child's axis 1 = inverse shift -20.
+    let (outs, sub) = cm.map_split(&[3]).expect("split inverted parallel");
+    assert_eq!(outs, vec![3]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    let pts = PointSet::from_rows(vec![vec![100.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 80.0).abs() < 1e-12);
+}
+
+#[test]
+fn cmpmap_series_second_child_couples_returns_none() {
+    use ast_core::mappings::{CmpMap, Composition, MatrixMap, ShiftMap};
+    use ndarray::array;
+    // Shift(2) -> coupled MatrixMap. Splitting on a single input asks the
+    // matrix to split into one of its rows -- it can't, so the whole
+    // series split returns None.
+    let s = ShiftMap::new(vec![1.0, 2.0]);
+    let coupled = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
+    let cm = CmpMap::new(Box::new(s), Box::new(coupled), Composition::Series).unwrap();
+    assert!(cm.map_split(&[0]).is_none());
+    assert!(cm.map_split(&[1]).is_none());
+    // Full inputs in identity order: each child splits, so the result is
+    // a series CmpMap of clones (or a simplification thereof).
+    let (outs, sub) = cm.map_split(&[0, 1]).expect("full identity splits");
+    assert_eq!(outs, vec![0, 1]);
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 2);
+}
+
+#[test]
+fn cmpmap_parallel_input_reorder_via_permmap() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap};
+    // Parallel of two 2-axis Shifts; request the inputs in a non-ascending
+    // order so the per-class impl prepends a PermMap. Verify the forward
+    // action matches feeding the same values through the original CmpMap
+    // at the corresponding axes.
+    let s1 = ShiftMap::new(vec![1.0, 2.0]);
+    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
+    // Request axes in reversed order: [3, 1, 2, 0].
+    let in_axes = [3usize, 1, 2, 0];
+    let (outs, sub) = cm.map_split(&in_axes).expect("split with permutation");
+    // Outputs come back in sorted-axis order (we partition sorted axes
+    // ascending; combined_outs reflects that traversal order). For a
+    // ShiftMap each axis maps to its same-indexed output; with the sort
+    // [0, 1, 2, 3] we get outs = [0, 1, 2, 3].
+    assert_eq!(outs, vec![0, 1, 2, 3]);
+    assert_eq!(sub.nin(), 4);
+    assert_eq!(sub.nout(), 4);
+    // Forward check: feed [a, b, c, d] -> sub-input k corresponds to
+    // original axis in_axes[k]. So sub forward of [u3, u1, u2, u0]
+    // should output [u0+1, u1+2, u2+10, u3+20] (each output i in
+    // sorted-axis order picks up its shift).
+    let pts = PointSet::from_rows(vec![vec![100.0_f64, 50.0, 7.0, 3.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    // sub input -> original axis: 100 -> axis 3; 50 -> axis 1; 7 -> axis 2; 3 -> axis 0.
+    // Output (in sorted-axis order [0,1,2,3]):
+    //   axis 0 = 3 + 1 = 4
+    //   axis 1 = 50 + 2 = 52
+    //   axis 2 = 7 + 10 = 17
+    //   axis 3 = 100 + 20 = 120
+    let row = out.point(0);
+    assert!((row[0] - 4.0).abs() < 1e-12);
+    assert!((row[1] - 52.0).abs() < 1e-12);
+    assert!((row[2] - 17.0).abs() < 1e-12);
+    assert!((row[3] - 120.0).abs() < 1e-12);
+}
+
+#[test]
+fn cmpmap_split_rejects_invalid() {
+    use ast_core::mappings::{CmpMap, Composition, ShiftMap};
+    let s1 = ShiftMap::new(vec![1.0, 2.0]);
+    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
+    assert!(cm.map_split(&[4]).is_none());
+    assert!(cm.map_split(&[0, 0]).is_none());
+}

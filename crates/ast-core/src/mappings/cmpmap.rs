@@ -539,22 +539,152 @@ impl Mapping for CmpMap {
     }
 
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        // Series/Parallel logic - see Task 1.6. For now we override the
-        // default impl with an unconditional `None` so callers get the
-        // correct "not splittable" answer (rather than the default impl's
-        // PermMap+CmpMap full-input fallback, which would re-wrap the
-        // CmpMap inside another CmpMap and feed the simplifier with an
-        // ill-formed intermediate).
+        // Mirrors cmpmap.c::MapSplit (~line 2788) -> MapSplit0 (~line 2405).
+        // The C code flattens the CmpMap into a list of components via
+        // astMapList (which folds in the parent's Invert flag, possibly
+        // reversing series order and inverting children). The Rust port
+        // achieves the same result recursively: for each child we compute
+        // its effective direction (accounting for self.inverted and any
+        // recorded inv_a/inv_b drift relative to the child's current
+        // is_inverted state), then call map_split on the child in that
+        // direction and compose the results.
         //
-        // Validate inputs first so we never produce wrong-shape outputs
-        // even via the fallthrough.
-        let nin = self.nin();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= nin || in_axes[..i].contains(&ix) {
-                return None;
+        // The MapSplit2 brute-force inverse fallback (cmpmap.c ~line 2214)
+        // is intentionally omitted in this first port: it enumerates all
+        // output subsets to look for one whose inputs match the requested
+        // set, and is rarely exercised in practice. The forward path
+        // covers every test that motivated Task 1.6. If future regressions
+        // require it, it should be added as a separate task.
+        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
+
+        let fwd = !self.inverted;
+        let fwd1 = fwd != self.first_invert_changed();
+        let fwd2 = fwd != self.second_invert_changed();
+
+        // Helper: split `child` in the requested direction. If the direction
+        // matches the child's current orientation, just call its map_split.
+        // Otherwise, clone + invert the child and split the inverted view —
+        // this lets the per-class map_split handle the effective forward
+        // form without needing a `forward` parameter on the trait.
+        fn split_child(
+            child: &dyn Mapping,
+            forward: bool,
+            in_axes: &[usize],
+        ) -> Option<(Vec<usize>, DynMapping)> {
+            if forward {
+                child.map_split(in_axes)
+            } else {
+                let mut tmp = child.clone_box();
+                tmp.invert();
+                tmp.map_split(in_axes)
             }
         }
-        None
+
+        match self.kind {
+            Composition::Series => {
+                // External in_axes feed into the child that flows first.
+                // For a non-inverted CmpMap that's `first`; for an inverted
+                // one (data flows second^-1 -> first^-1) it's `second`.
+                let (first_in_flow, second_in_flow, dir1, dir2) = if fwd {
+                    (self.first.as_ref(), self.second.as_ref(), fwd1, fwd2)
+                } else {
+                    (self.second.as_ref(), self.first.as_ref(), fwd2, fwd1)
+                };
+
+                // Stage 1: split the first-in-flow child by external inputs.
+                // mid_outs are indices into that child's outputs, which feed
+                // the next child.
+                let (mid_outs, sub1) = split_child(first_in_flow, dir1, in_axes)?;
+
+                // Stage 2: split the second-in-flow child by mid_outs. C
+                // (cmpmap.c ~2571) treats the failure of any series stage
+                // as a global failure: cin is freed and the loop exits with
+                // result = NULL. The `?` propagates None analogously.
+                let (out_outs, sub2) = split_child(second_in_flow, dir2, &mid_outs)?;
+
+                let composed = CmpMap::new(sub1, sub2, Composition::Series).ok()?;
+                Some((out_outs, Box::new(composed)))
+            }
+            Composition::Parallel => {
+                // Effective input/output counts of each child in the CmpMap's
+                // current forward direction (folds in self.inverted and any
+                // child invert-changed drift).
+                let nin1 = self.effective_first_nin(fwd);
+                let nout1 = self.effective_first_nout(fwd);
+
+                // C (cmpmap.c ~2621) sorts the requested input axes into
+                // ascending order and builds a leading PermMap to undo that
+                // permutation. The components partition along the sorted
+                // axes' boundary with the first child's input range.
+                let n = in_axes.len();
+                let mut sorted_orig: Vec<usize> = (0..n).collect();
+                sorted_orig.sort_by_key(|&i| in_axes[i]);
+                let do_perm = sorted_orig.iter().enumerate().any(|(k, &i)| k != i);
+                let sorted_axes: Vec<usize> = sorted_orig.iter().map(|&i| in_axes[i]).collect();
+
+                // Partition sorted axes between the two children. The second
+                // child's inputs are offset by nin1 in the CmpMap's external
+                // space; subtract to get the child-local index.
+                let mut first_inputs: Vec<usize> = Vec::new();
+                let mut second_inputs: Vec<usize> = Vec::new();
+                for &ax in &sorted_axes {
+                    if ax < nin1 {
+                        first_inputs.push(ax);
+                    } else {
+                        second_inputs.push(ax - nin1);
+                    }
+                }
+
+                let mut combined_outs: Vec<usize> = Vec::new();
+                let result_map: DynMapping =
+                    match (first_inputs.is_empty(), second_inputs.is_empty()) {
+                        (true, true) => return None,
+                        (false, true) => {
+                            let (outs, sub) =
+                                split_child(self.first.as_ref(), fwd1, &first_inputs)?;
+                            combined_outs.extend(outs);
+                            sub
+                        }
+                        (true, false) => {
+                            let (outs, sub) =
+                                split_child(self.second.as_ref(), fwd2, &second_inputs)?;
+                            // Second child's outputs sit above the first
+                            // child's nout in the CmpMap's external output
+                            // space (cmpmap.c ~2704: cout[..] = aout[..] + ibotout).
+                            combined_outs.extend(outs.iter().map(|&o| o + nout1));
+                            sub
+                        }
+                        (false, false) => {
+                            let (outs1, sub1) =
+                                split_child(self.first.as_ref(), fwd1, &first_inputs)?;
+                            combined_outs.extend(outs1);
+                            let (outs2, sub2) =
+                                split_child(self.second.as_ref(), fwd2, &second_inputs)?;
+                            combined_outs.extend(outs2.iter().map(|&o| o + nout1));
+                            Box::new(CmpMap::new(sub1, sub2, Composition::Parallel).ok()?)
+                        }
+                    };
+
+                // If the user supplied input axes in non-ascending order,
+                // prepend a PermMap that re-orders the user's inputs into
+                // the sorted order the partitioned components consumed.
+                // C builds inperm/outperm as inverse permutations of each
+                // other (cmpmap.c ~2645); the same construction here.
+                let final_map: DynMapping = if do_perm {
+                    let outperm: Vec<i64> = sorted_orig.iter().map(|&i| (i as i64) + 1).collect();
+                    let mut inperm: Vec<i64> = vec![0; n];
+                    for (i, &orig) in sorted_orig.iter().enumerate() {
+                        inperm[orig] = (i as i64) + 1;
+                    }
+                    let pmap = super::PermMap::new(&inperm, &outperm, &[]).ok()?;
+                    Box::new(CmpMap::new(Box::new(pmap), result_map, Composition::Series).ok()?)
+                } else {
+                    result_map
+                };
+
+                Some((combined_outs, final_map))
+            }
+        }
     }
 
     fn do_not_simplify(&self) -> bool {
