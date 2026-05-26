@@ -375,6 +375,104 @@ impl Mapping for PermMap {
         }
     }
 
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors permmap.c::MapSplit (~1438). For a PermMap, the split is
+        // determined by walking the effective forward perm: each output `iout`
+        // whose source is one of the kept inputs joins the sub-mapping. The
+        // effective inverse perm then provides each kept input's source — if
+        // that source is an output index it must be in the kept set
+        // (otherwise the split fails); constants (negative entries) and BAD
+        // (0) are passed through verbatim into the sub-PermMap.
+        //
+        // Note vs the plan: outputs whose source is a constant are silently
+        // dropped, NOT cause a None result. The sub-PermMap simply has fewer
+        // outputs. Constants in inperm survive (the same constants pool is
+        // reused).
+        //
+        // Encoding translation: C stores 0-based input/output indices with
+        // negative meaning constant; this Rust port stores 1-based with
+        // negative=constant and 0=BAD. So `p > 0` here matches C's
+        // `iin >= 0 && iin < npin`, and `p <= 0` matches C's `iin < 0`.
+        //
+        // Project convention: reject duplicate or out-of-range axes (Task 1.1
+        // set the precedent; C only checks the in-range half).
+        //
+        // The C `astGetPermSplit(this) != 0` "alternative" mode is not
+        // ported — `PermSplit` is not yet a settable attribute in this
+        // crate, so the default (0 = "normal" method) is the only path.
+        let npin = self.nin();
+        let npout = self.nout();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= npin || in_axes[..i].contains(&ix) {
+                return None;
+            }
+        }
+
+        // Effective forward (`outp`) and inverse (`inp`) perms, accounting
+        // for Invert. Matches C: `outp = this->inperm` when inverted, etc.
+        let (outp, inp) = if self.inverted {
+            (self.inperm.as_slice(), self.outperm.as_slice())
+        } else {
+            (self.outperm.as_slice(), self.inperm.as_slice())
+        };
+
+        // Walk the forward perm: pick outputs whose source input is kept.
+        // `kept_outs[k]` is the original-mapping output index of the k-th
+        // kept output; `outpm[k]` is its (1-based) position in `in_axes`,
+        // i.e. the source-input position in the sub-mapping.
+        let mut kept_outs: Vec<usize> = Vec::with_capacity(npout);
+        let mut outpm: Vec<i64> = Vec::with_capacity(npout);
+        for (iout, &p) in outp.iter().enumerate() {
+            if p > 0 {
+                let iin = (p as usize) - 1;
+                if iin < npin {
+                    if let Some(pos) = in_axes.iter().position(|&v| v == iin) {
+                        outpm.push((pos as i64) + 1);
+                        kept_outs.push(iout);
+                    }
+                }
+            }
+            // p <= 0 (constant or BAD) or p out-of-range: output is dropped.
+        }
+
+        // C: "If the returned Mapping has no outputs, do not return it."
+        if kept_outs.is_empty() {
+            return None;
+        }
+
+        // Walk the inverse perm: each kept input must be fed by either a
+        // constant/BAD (pass through) or by one of the kept outputs.
+        let mut inpm: Vec<i64> = Vec::with_capacity(in_axes.len());
+        for &iin in in_axes {
+            let p = inp[iin];
+            if p > 0 {
+                let iout = (p as usize) - 1;
+                if iout < npout {
+                    // Source is an output index: must be in kept_outs.
+                    match kept_outs.iter().position(|&v| v == iout) {
+                        Some(pos) => inpm.push((pos as i64) + 1),
+                        None => return None,
+                    }
+                } else {
+                    // Out-of-range positive: C transform treats this as BAD;
+                    // canonicalise to 0 so the new constructor accepts it.
+                    inpm.push(0);
+                }
+            } else {
+                // Constant (p < 0) or explicit BAD (p == 0): pass through.
+                inpm.push(p);
+            }
+        }
+
+        // Construct the sub-PermMap. The constants pool is reused as-is —
+        // negative entries in inpm/outpm continue to address the same
+        // constants. The new PermMap has Invert=0; this matches C, where
+        // the effective directions of the parent become the raw directions
+        // of the child (so we do NOT propagate `self.inverted`).
+        let sub = PermMap::new(&inpm, &outpm, &self.constants).ok()?;
+        Some((kept_outs, Box::new(sub)))
+    }
+
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         let perm = if self.inverted {
             &self.inperm

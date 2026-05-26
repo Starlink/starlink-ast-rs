@@ -10,7 +10,7 @@
 //! and the per-class overrides in unitmap.c / zoommap.c / shiftmap.c.
 
 use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, ShiftMap, UnitMap, WinMap, ZoomMap};
+use ast_core::mappings::{Mapping, PermMap, ShiftMap, UnitMap, WinMap, ZoomMap};
 
 /// Helper: run forward through `m` on a single 1-row input.
 fn fwd_point(m: &dyn Mapping, input: &[f64]) -> Vec<f64> {
@@ -345,4 +345,142 @@ fn matrix_split_empty_kept_outs_returns_none() {
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 3);
+}
+
+// ========================================================================
+// PermMap (per-class override added in Task 1.4)
+// ========================================================================
+//
+// C ancestor: reference/starlink-ast/src/permmap.c::MapSplit (~1438).
+// The per-class override walks the effective forward perm to identify
+// outputs whose source is in the kept-input set; the effective inverse
+// perm is then used to construct the sub-PermMap's inperm. Constants in
+// outperm cause that output to be silently dropped (NOT a None result);
+// constants in inperm are passed through verbatim into the sub-PermMap.
+
+#[test]
+fn perm_split_simple_swap() {
+    // Swap axes 0 and 1: outperm = [2, 1] means output 0 takes input 1,
+    // output 1 takes input 0. inperm = [2, 1] is the inverse swap.
+    let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let (outs, sub) = pm.map_split(&[1]).expect("split kept input 1");
+    // Input 1 feeds output 0 (outperm[0] = 2 -> input idx 1 = kept).
+    assert_eq!(outs, vec![0]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // Sub forward: identity (the sub takes the kept input value through).
+    let pts = PointSet::from_rows(vec![vec![5.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 5.0).abs() < 1e-12);
+}
+
+#[test]
+fn perm_split_identity() {
+    // Identity 3-axis PermMap: every input feeds the same-indexed output.
+    let pm = PermMap::new(&[1, 2, 3], &[1, 2, 3], &[]).unwrap();
+    let (outs, sub) = pm.map_split(&[0, 1, 2]).expect("identity split");
+    assert_eq!(outs, vec![0, 1, 2]);
+    assert_eq!(sub.nin(), 3);
+    assert_eq!(sub.nout(), 3);
+    assert_eq!(
+        fwd_point(sub.as_ref(), &[1.0, 2.0, 3.0]),
+        vec![1.0, 2.0, 3.0]
+    );
+}
+
+#[test]
+fn perm_split_constant_outperm_silently_dropped() {
+    // outperm = [1, -1]: output 0 takes input 0; output 1 is constant 42.
+    // Per C MapSplit: constant outputs are silently dropped (the C loop
+    // only adds outputs whose `iin >= 0 && iin < npin`, so iin < 0 simply
+    // skips). The split succeeds with the constant output excluded.
+    //
+    // Plan said "return None"; the C source is authoritative and the
+    // actual behaviour is "drop". The implementation mirrors C.
+    let pm = PermMap::new(&[1], &[1, -1], &[42.0]).unwrap();
+    let (outs, sub) = pm.map_split(&[0]).expect("constant output is dropped");
+    assert_eq!(outs, vec![0]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    let pts = PointSet::from_rows(vec![vec![7.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 7.0).abs() < 1e-12);
+}
+
+#[test]
+fn perm_split_constant_inperm_passed_through() {
+    // inperm = [-1] with constant 42: the inverse of input 0 yields 42.
+    // outperm = [1] is forward identity. Splitting on [0] keeps output 0
+    // and the inperm constant entry is preserved verbatim in the sub.
+    let pm = PermMap::new(&[-1], &[1], &[42.0]).unwrap();
+    let (outs, sub) = pm.map_split(&[0]).expect("constant inperm survives");
+    assert_eq!(outs, vec![0]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // Forward: identity.
+    let pts = PointSet::from_rows(vec![vec![7.0]]);
+    assert!((sub.transform(&pts, true).unwrap().point(0)[0] - 7.0).abs() < 1e-12);
+    // Inverse: yields the constant 42 regardless of input.
+    let inv = sub.transform(&pts, false).unwrap();
+    assert!((inv.point(0)[0] - 42.0).abs() < 1e-12);
+}
+
+#[test]
+fn perm_split_unselected_output_feeds_kept_input_returns_none() {
+    // outperm = [1, 2]: identity forward.
+    // inperm = [2, 1]: inverse swap — input 0's source (in inverse) is
+    // output 1.
+    // Split on [0]: output 1's source is input 1 (not kept), so output 1
+    // is dropped. But input 0's source (in inverse) is output 1 — which
+    // is NOT in the kept output set. The split must return None.
+    let pm = PermMap::new(&[2, 1], &[1, 2], &[]).unwrap();
+    assert!(pm.map_split(&[0]).is_none());
+}
+
+#[test]
+fn perm_split_inverted_uses_effective_forward() {
+    // Construct a PermMap where invert() flips both the dimensions and the
+    // active perm direction. Raw shape: nin=2, nout=1.
+    //   raw inperm  = [-1, 1]   (inverse: input 0 from constant 99,
+    //                            input 1 from output 0)
+    //   raw outperm = [2]       (forward: output 0 from input 1)
+    // Inverted: nin=1, nout=2; effective forward = inperm = [-1, 1]
+    // (output 0 = constant 99, output 1 = input 0); effective inverse =
+    // outperm = [2] (the lone input is fed by output 1).
+    //
+    // Split on in_axes=[0]: output 0 is constant (silently dropped);
+    // output 1 traces back to input 0 (kept). The inverse-direction lookup
+    // for input 0 yields output 1, which is in the kept set, so the split
+    // succeeds with outs=[1] (the surviving original-output index).
+    let mut pm = PermMap::new(&[-1, 1], &[2], &[99.0]).unwrap();
+    pm.invert();
+    let (outs, sub) = pm.map_split(&[0]).expect("split inverted");
+    assert_eq!(outs, vec![1]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // Sub forward: identity (single kept input feeds single kept output).
+    let pts = PointSet::from_rows(vec![vec![42.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 42.0).abs() < 1e-12);
+    // Sanity check: the sub's output corresponds to original output 1,
+    // which the inverted parent computes as `input[0]` directly.
+    let parent_in = PointSet::from_rows(vec![vec![42.0]]);
+    let parent_out = pm.transform(&parent_in, true).unwrap();
+    assert!((parent_out.point(0)[1] - out.point(0)[0]).abs() < 1e-12);
+}
+
+#[test]
+fn perm_split_rejects_duplicate_or_out_of_range() {
+    let pm = PermMap::new(&[1, 2, 3], &[1, 2, 3], &[]).unwrap();
+    assert!(pm.map_split(&[0, 0]).is_none());
+    assert!(pm.map_split(&[0, 3]).is_none());
+}
+
+#[test]
+fn perm_split_unmatched_input_yields_none() {
+    // 1-input → 1-output PermMap whose only output is fed by a constant
+    // (so kept_outs is empty after the forward walk). The split must
+    // return None because there are no surviving outputs.
+    let pm = PermMap::new(&[1], &[-1], &[3.14]).unwrap();
+    assert!(pm.map_split(&[0]).is_none());
 }
