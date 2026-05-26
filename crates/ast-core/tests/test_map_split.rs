@@ -155,8 +155,7 @@ fn shift_split_rejects_invalid() {
 }
 
 // ========================================================================
-// Default Mapping::map_split impl (covered via WinMap, which has no
-// per-class override after Task 1.1).
+// WinMap (per-class override added in Task 1.2)
 // ========================================================================
 
 /// Build a 3-axis `WinMap`: `y_i = shifts[i] + scales[i] * x_i`.
@@ -166,8 +165,8 @@ fn winmap_3axis() -> WinMap {
 
 #[test]
 fn winmap_split_full_inputs_identity_perm() {
-    // Default-impl identity-perm fast path: full inputs in order means
-    // no PermMap is constructed and the sub-mapping is just `self`.
+    // Full inputs in identity order: per-class impl returns a sub-WinMap
+    // identical to `self` (same shifts, same scales) and outs=[0,1,2].
     let w = winmap_3axis();
     let (outs, sub) = w.map_split(&[0, 1, 2]).expect("split");
     assert_eq!(outs, vec![0, 1, 2]);
@@ -183,42 +182,69 @@ fn winmap_split_full_inputs_identity_perm() {
 
 #[test]
 fn winmap_split_full_inputs_permuted() {
-    // Default-impl PermMap+CmpMap+simplify path: full inputs but in a
-    // non-identity order. The returned sub-mapping must apply the
-    // original WinMap to inputs *as permuted by* `in_axes`.
-    //
-    // in_axes = [2, 0, 1] means: sub-input 0 -> original axis 2,
-    // sub-input 1 -> original axis 0, sub-input 2 -> original axis 1.
-    // So sub.transform([a, b, c]) must equal w.transform([b, c, a]).
+    // Full inputs but reordered. Per-class impl returns a sub-WinMap
+    // whose axis i has the (shift, scale) of original axis in_axes[i].
+    // outs == in_axes (same per-axis correspondence), and the sub-output
+    // is computed directly from the picked coefficients — there is no
+    // PermMap/CmpMap fallback because WinMap now has its own MapSplit.
     let w = winmap_3axis();
     let (outs, sub) = w.map_split(&[2, 0, 1]).expect("split");
-    assert_eq!(outs, vec![0, 1, 2]);
+    assert_eq!(outs, vec![2, 0, 1]);
     assert_eq!(sub.nin(), 3);
     assert_eq!(sub.nout(), 3);
-
-    let probe = [5.0, 6.0, 7.0];
-    let permuted = [probe[1], probe[2], probe[0]]; // [b, c, a] = [6, 7, 5]
-    let expected = fwd_point(&w, &permuted);
-    assert_eq!(fwd_point(sub.as_ref(), &probe), expected);
-    // Spot-check: w applied to [6, 7, 5] -> [1+10*6, 2+20*7, 3+30*5]
-    //                                     = [61, 142, 153].
-    assert_eq!(expected, vec![61.0, 142.0, 153.0]);
-}
-
-#[test]
-fn winmap_split_rejects_partial_inputs() {
-    // Default impl rejects any selection with fewer than nin entries.
-    let w = winmap_3axis();
-    assert!(w.map_split(&[0, 1]).is_none());
-    assert!(w.map_split(&[0]).is_none());
-    assert!(w.map_split(&[]).is_none());
+    // sub-input 0 -> axis 2 -> 3 + 30*5 = 153
+    // sub-input 1 -> axis 0 -> 1 + 10*6 = 61
+    // sub-input 2 -> axis 1 -> 2 + 20*7 = 142
+    assert_eq!(
+        fwd_point(sub.as_ref(), &[5.0, 6.0, 7.0]),
+        vec![153.0, 61.0, 142.0]
+    );
 }
 
 #[test]
 fn winmap_split_rejects_duplicate_or_out_of_range() {
-    // Validation in the default impl: duplicates and out-of-range axes
-    // both yield None even with the full count.
+    // Per-class validation: duplicates and out-of-range axes both yield
+    // None (project convention; see UnitMap/ZoomMap/ShiftMap impls).
     let w = winmap_3axis();
     assert!(w.map_split(&[0, 1, 1]).is_none());
     assert!(w.map_split(&[0, 1, 3]).is_none());
+}
+
+#[test]
+fn winmap_split_rejects_empty() {
+    // WinMap requires at least one axis, so `in_axes=[]` yields None
+    // through WinMap::new returning `Badwm`.
+    let w = winmap_3axis();
+    assert!(w.map_split(&[]).is_none());
+}
+
+#[test]
+fn winmap_split_picks_per_axis_coeffs() {
+    // 3-axis WinMap: y_i = shifts[i] + scales[i] * x_i
+    let w = WinMap::new(&[1.0, 2.0, 3.0], &[10.0, 20.0, 30.0]).unwrap();
+    let (outs, sub) = w.map_split(&[2, 0]).expect("split");
+    assert_eq!(outs, vec![2, 0]);
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 2);
+    let pts = PointSet::from_rows(vec![vec![5.0, 1.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    // input pos 0 -> axis 2 -> 3 + 30*5 = 153
+    // input pos 1 -> axis 0 -> 1 + 10*1 = 11
+    assert!((out.point(0)[0] - 153.0).abs() < 1e-12);
+    assert!((out.point(0)[1] - 11.0).abs() < 1e-12);
+}
+
+#[test]
+fn winmap_split_preserves_invert() {
+    // Inverted WinMap: forward becomes (input - shift) / scale. The split
+    // sub-mapping must inherit the inverted flag.
+    let mut w = WinMap::new(&[1.0, 2.0, 3.0], &[10.0, 20.0, 30.0]).unwrap();
+    w.invert();
+    let (outs, sub) = w.map_split(&[2, 0]).expect("split");
+    assert_eq!(outs, vec![2, 0]);
+    // sub-input 0 -> axis 2 -> (153 - 3) / 30 = 5
+    // sub-input 1 -> axis 0 -> (11  - 1) / 10 = 1
+    let out = fwd_point(sub.as_ref(), &[153.0, 11.0]);
+    assert!((out[0] - 5.0).abs() < 1e-12);
+    assert!((out[1] - 1.0).abs() < 1e-12);
 }

@@ -313,8 +313,38 @@ impl Mapping for WinMap {
             && c1.iter().zip(&c2).all(|(a, b)| ast_equal(*a, *b))
     }
 
-    // map_split: faithful astMapSplit-shaped impl lands in Task 1.2.
-    // Falls back to the trait default (full-input case via PermMap+CmpMap).
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors winmap.c::MapSplit (~1864). WinMap is per-axis affine:
+        // y_i = shifts[i] + scales[i] * x_i, so any subset of inputs maps
+        // to the same-indexed outputs via a smaller WinMap built from the
+        // chosen axes' (shift, scale) pairs.
+        //
+        // C uses astWinTerms(this, 0, &a, &b) to fetch the *effective*
+        // forward (shift, scale) (which already folds the Invert flag in)
+        // and stores them in a fresh WinMap with Invert=0. The equivalent
+        // here is to copy the raw (shift, scale) and propagate the
+        // is_inverted flag onto the sub-mapping; the resulting forward
+        // transform is identical, and this keeps the construction symmetric
+        // with the ShiftMap / ZoomMap per-class impls.
+        //
+        // Project convention: reject duplicate or out-of-range axes (Task
+        // 1.1 set this precedent for UnitMap / ZoomMap / ShiftMap; the C
+        // function only checks the in-range half — duplicates would yield
+        // a degenerate but technically valid sub-mapping in C).
+        let nin = self.nin();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= nin || in_axes[..i].contains(&ix) {
+                return None;
+            }
+        }
+        let shifts: Vec<f64> = in_axes.iter().map(|&ix| self.shifts()[ix]).collect();
+        let scales: Vec<f64> = in_axes.iter().map(|&ix| self.scales()[ix]).collect();
+        let mut sub = WinMap::new(&shifts, &scales).ok()?;
+        if self.is_inverted() {
+            sub.invert();
+        }
+        Some((in_axes.to_vec(), Box::new(sub)))
+    }
 
     fn try_merge(
         &self,
