@@ -481,7 +481,7 @@ fn perm_split_unmatched_input_yields_none() {
     // 1-input → 1-output PermMap whose only output is fed by a constant
     // (so kept_outs is empty after the forward walk). The split must
     // return None because there are no surviving outputs.
-    let pm = PermMap::new(&[1], &[-1], &[3.14]).unwrap();
+    let pm = PermMap::new(&[1], &[-1], &[5.0]).unwrap();
     assert!(pm.map_split(&[0]).is_none());
 }
 
