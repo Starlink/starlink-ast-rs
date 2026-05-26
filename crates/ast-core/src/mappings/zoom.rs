@@ -163,16 +163,21 @@ impl Mapping for ZoomMap {
         }
     }
 
-    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
-        if nout_wanted == 0 || first_out + nout_wanted > self.ncoord {
-            return None;
-        }
-        ZoomMap::new(nout_wanted, self.factor).ok().map(|mut z| {
-            if self.inverted {
-                z.invert();
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors zoommap.c::MapSplit (~1164). ZoomMap is per-axis scaling
+        // by a single shared factor, so any subset of inputs maps to the
+        // same-indexed outputs via a smaller ZoomMap with the same factor.
+        let nin = self.nin();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= nin || in_axes[..i].contains(&ix) {
+                return None;
             }
-            Box::new(z) as DynMapping
-        })
+        }
+        let mut sub = ZoomMap::new(in_axes.len(), self.factor).ok()?;
+        if self.inverted {
+            sub.invert();
+        }
+        Some((in_axes.to_vec(), Box::new(sub)))
     }
 
     fn try_merge(

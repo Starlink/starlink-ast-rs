@@ -538,53 +538,23 @@ impl Mapping for CmpMap {
             .all(|((m1, inv1), (m2, inv2))| inv1 == inv2 && m1.equal(m2.as_ref()))
     }
 
-    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
-        if self.kind != Composition::Parallel {
-            return None;
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Series/Parallel logic - see Task 1.6. For now we override the
+        // default impl with an unconditional `None` so callers get the
+        // correct "not splittable" answer (rather than the default impl's
+        // PermMap+CmpMap full-input fallback, which would re-wrap the
+        // CmpMap inside another CmpMap and feed the simplifier with an
+        // ill-formed intermediate).
+        //
+        // Validate inputs first so we never produce wrong-shape outputs
+        // even via the fallthrough.
+        let nin = self.nin();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= nin || in_axes[..i].contains(&ix) {
+                return None;
+            }
         }
-        let na = self.effective_first_nout(!self.inverted);
-        let nb = self.effective_second_nout(!self.inverted);
-
-        if first_out + nout_wanted > na + nb {
-            return None;
-        }
-
-        // Whether each child is effectively inverted relative to the
-        // CmpMap's forward direction.
-        let eff_inv_a = self.inverted != self.first_invert_changed();
-        let eff_inv_b = self.inverted != self.second_invert_changed();
-
-        if first_out == 0 && nout_wanted == na {
-            let mut m = self.first.simplified().ok()?;
-            if eff_inv_a {
-                m.invert();
-            }
-            Some(m)
-        } else if first_out == na && nout_wanted == nb {
-            let mut m = self.second.simplified().ok()?;
-            if eff_inv_b {
-                m.invert();
-            }
-            Some(m)
-        } else if first_out < na && first_out + nout_wanted <= na {
-            if eff_inv_a {
-                let mut sub = self.first.map_split(first_out, nout_wanted)?;
-                sub.invert();
-                Some(sub)
-            } else {
-                self.first.map_split(first_out, nout_wanted)
-            }
-        } else if first_out >= na && first_out + nout_wanted <= na + nb {
-            if eff_inv_b {
-                let mut sub = self.second.map_split(first_out - na, nout_wanted)?;
-                sub.invert();
-                Some(sub)
-            } else {
-                self.second.map_split(first_out - na, nout_wanted)
-            }
-        } else {
-            None
-        }
+        None
     }
 
     fn do_not_simplify(&self) -> bool {

@@ -84,11 +84,18 @@ impl Mapping for UnitMap {
         self.ncoord == other.ncoord
     }
 
-    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
-        if nout_wanted == 0 || first_out + nout_wanted > self.ncoord {
-            return None;
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors unitmap.c::MapSplit (~629). UnitMap is identity per axis,
+        // so any subset of inputs is splittable: the result is just a
+        // smaller UnitMap, and the chosen output indices match the chosen
+        // input indices.
+        let nin = self.nin();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= nin || in_axes[..i].contains(&ix) {
+                return None;
+            }
         }
-        Some(Box::new(UnitMap::new(nout_wanted)))
+        Some((in_axes.to_vec(), Box::new(UnitMap::new(in_axes.len()))))
     }
 
     fn try_merge(

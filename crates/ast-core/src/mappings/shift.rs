@@ -150,16 +150,22 @@ impl Mapping for ShiftMap {
         }
     }
 
-    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
-        if nout_wanted == 0 || first_out + nout_wanted > self.shift.len() {
-            return None;
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors shiftmap.c::MapSplit (~750). ShiftMap is per-axis additive
+        // offset, so a subset of inputs maps to the same-indexed outputs
+        // via a smaller ShiftMap built from the chosen axes' shift values.
+        let nin = self.nin();
+        for (i, &ix) in in_axes.iter().enumerate() {
+            if ix >= nin || in_axes[..i].contains(&ix) {
+                return None;
+            }
         }
-        let sub_shifts = &self.shift[first_out..first_out + nout_wanted];
-        let mut sm = ShiftMap::new(sub_shifts);
+        let shifts: Vec<f64> = in_axes.iter().map(|&ix| self.shift[ix]).collect();
+        let mut sub = ShiftMap::new(shifts);
         if self.inverted {
-            sm.invert();
+            sub.invert();
         }
-        Some(Box::new(sm))
+        Some((in_axes.to_vec(), Box::new(sub)))
     }
 
     fn try_merge(

@@ -313,19 +313,8 @@ impl Mapping for WinMap {
             && c1.iter().zip(&c2).all(|(a, b)| ast_equal(*a, *b))
     }
 
-    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
-        if nout_wanted == 0 || first_out + nout_wanted > self.shifts.len() {
-            return None;
-        }
-        let sub_shifts = &self.shifts[first_out..first_out + nout_wanted];
-        let sub_scales = &self.scales[first_out..first_out + nout_wanted];
-        WinMap::new(sub_shifts, sub_scales).ok().map(|mut w| {
-            if self.inverted {
-                w.invert();
-            }
-            Box::new(w) as DynMapping
-        })
-    }
+    // map_split: faithful astMapSplit-shaped impl lands in Task 1.2.
+    // Falls back to the trait default (full-input case via PermMap+CmpMap).
 
     fn try_merge(
         &self,

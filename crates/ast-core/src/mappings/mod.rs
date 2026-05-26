@@ -212,16 +212,73 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         None
     }
 
-    /// Split this mapping to extract a sub-mapping for a contiguous range of output axes.
+    /// Split this mapping to produce a sub-mapping covering a chosen set of inputs.
     ///
-    /// Given a 0-based output axis range `[first_out .. first_out + nout_wanted)`,
-    /// returns the sub-mapping that produces exactly those outputs, consuming the
-    /// corresponding input axes.
+    /// Mirrors the C library's `astMapSplit` (mapping.c ~7798): given input
+    /// indices `in_axes`, return the output axes those inputs feed into plus
+    /// the sub-mapping that maps `in_axes` -> those outputs. Returns `None`
+    /// when no such split exists - i.e. when some retained input feeds an
+    /// output that *also* depends on a non-retained input, or when some
+    /// non-retained input feeds an output that depends only on retained
+    /// inputs.
     ///
-    /// Returns `None` if the mapping cannot be split at the requested boundary
-    /// (e.g., a full MatrixMap where outputs depend on all inputs).
-    fn map_split(&self, _first_out: usize, _nout_wanted: usize) -> Option<DynMapping> {
-        None
+    /// `in_axes` indices are 0-based and may be in any order. The returned
+    /// `Vec<usize>` has length equal to the sub-mapping's nout. The default
+    /// implementation handles the trivial case `in_axes.len() == self.nin()`
+    /// by composing a `PermMap` with `self`; classes that can split for
+    /// partial input selections override.
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        let mapnin = self.nin();
+        if in_axes.len() != mapnin {
+            return None;
+        }
+        // Validate: each index in range, no duplicates.
+        let mut seen = vec![false; mapnin];
+        for &ix in in_axes {
+            if ix >= mapnin || seen[ix] {
+                return None;
+            }
+            seen[ix] = true;
+        }
+
+        // Mirrors mapping.c::MapSplit (~7902).
+        //
+        // The supplied `in_axes` array can act as the PermMap's "inperm"
+        // array (the inverse-direction perm): for output i of the inverse
+        // transform, take input axis `in_axes[i]` of the new mapping.
+        // The forward direction needs the matching "outperm": for output i
+        // of the forward (= original-mapping input axis i), take input
+        // position `outperm[i]` of the new mapping. Build it by inversion:
+        //     outperm[in_axes[iin]] = iin
+        // This also lets us check that every original input axis is filled
+        // exactly once and detect the identity-permutation fast path.
+        let mut outperm_zb = vec![usize::MAX; mapnin];
+        let mut perm_needed = false;
+        for (iin, &iout) in in_axes.iter().enumerate() {
+            outperm_zb[iout] = iin;
+            if iout != iin {
+                perm_needed = true;
+            }
+        }
+        // (Validation above guarantees no duplicates / out-of-range, so
+        //  every slot of outperm_zb is now filled. No need to re-check.)
+
+        let nout = self.nout();
+        let out_axes: Vec<usize> = (0..nout).collect();
+
+        let sub: DynMapping = if !perm_needed {
+            // No input permutation needed: returned mapping is just self.
+            self.clone_box()
+        } else {
+            // 1-based perm entries (PermMap convention).
+            let inperm: Vec<i64> = in_axes.iter().map(|&v| (v as i64) + 1).collect();
+            let outperm: Vec<i64> = outperm_zb.iter().map(|&v| (v as i64) + 1).collect();
+            let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
+            let cmp = CmpMap::new(Box::new(pm), self.clone_box(), Composition::Series).ok()?;
+            cmp.simplified().ok()?
+        };
+
+        Some((out_axes, sub))
     }
 
     /// Whether the forward transform is defined.

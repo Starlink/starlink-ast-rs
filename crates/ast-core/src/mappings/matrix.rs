@@ -571,31 +571,8 @@ impl Mapping for MatrixMap {
             .all(|(a, b)| ast_equal(*a, *b))
     }
 
-    fn map_split(&self, first_out: usize, nout_wanted: usize) -> Option<DynMapping> {
-        // Only splittable if the matrix is square and diagonal — in that case
-        // each output axis depends only on the corresponding input axis.
-        let n = self.matrix.nrows();
-        if n != self.matrix.ncols() {
-            return None;
-        }
-        if !is_diagonal(&self.matrix) {
-            return None;
-        }
-        if nout_wanted == 0 || first_out + nout_wanted > n {
-            return None;
-        }
-        // Extract diagonal sub-block as a smaller diagonal MatrixMap.
-        let mut sub = Array2::<f64>::zeros((nout_wanted, nout_wanted));
-        for i in 0..nout_wanted {
-            sub[[i, i]] = self.matrix[[first_out + i, first_out + i]];
-        }
-        MatrixMap::new(sub).ok().map(|mut mm| {
-            if self.inverted {
-                mm.invert();
-            }
-            Box::new(mm) as DynMapping
-        })
-    }
+    // map_split: faithful astMapSplit-shaped impl lands in Task 1.3.
+    // Falls back to the trait default (full-input case via PermMap+CmpMap).
 
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify
