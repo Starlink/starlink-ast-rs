@@ -10,6 +10,7 @@ use crate::wcslib::{PrjParams, WcsProjection};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
+use super::perm::PermMap;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -534,6 +535,124 @@ impl Mapping for WcsMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors wcsmap.c::MapSplit (~3342). C first defers to the parent
+        // (basic-Mapping) MapSplit, which only succeeds when every input is
+        // selected (`nin == mapnin`). If that fails, the WcsMap-specific
+        // override runs and handles partial input selections by case:
+        //
+        //   - both celestial axes kept       -> smaller WcsMap
+        //   - neither celestial axis kept    -> UnitMap
+        //   - only one celestial axis kept   -> PermMap that drops that axis
+        //                                       (yields BAD on inverse) — only
+        //                                       valid when nin > 1
+        //
+        // Validation note: project convention rejects out-of-range or
+        // duplicate input indices up front (UnitMap/ZoomMap/ShiftMap/etc. set
+        // this precedent in Tasks 1.1-1.4). C's parent path errors on
+        // out-of-range and rejects duplicates implicitly, while the WcsMap
+        // override only checks the in-range half. The Rust gate is stricter
+        // but never accepts a case C would reject.
+        let mapnin = self.nin();
+        let nin = in_axes.len();
+        let mut seen = vec![false; mapnin];
+        for &ix in in_axes {
+            if ix >= mapnin || seen[ix] {
+                return None;
+            }
+            seen[ix] = true;
+        }
+
+        // Full-set path: parent (basic-Mapping) MapSplit handles this.
+        // For an identity permutation, return self; for any other
+        // permutation, build PermMap+self and simplify (the simplifier may
+        // absorb the perm back into a single WcsMap with permuted axes).
+        if nin == mapnin {
+            let mut outperm_zb = vec![usize::MAX; mapnin];
+            let mut perm_needed = false;
+            for (iin, &iout) in in_axes.iter().enumerate() {
+                outperm_zb[iout] = iin;
+                if iout != iin {
+                    perm_needed = true;
+                }
+            }
+            let nout = self.nout();
+            let out_axes: Vec<usize> = (0..nout).collect();
+            let sub: DynMapping = if !perm_needed {
+                self.clone_box()
+            } else {
+                let inperm: Vec<i64> = in_axes.iter().map(|&v| (v as i64) + 1).collect();
+                let outperm: Vec<i64> = outperm_zb.iter().map(|&v| (v as i64) + 1).collect();
+                let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
+                let cmp = CmpMap::new(Box::new(pm), self.clone_box(), Composition::Series).ok()?;
+                cmp.simplified().ok()?
+            };
+            return Some((out_axes, sub));
+        }
+
+        // Partial-set path: WcsMap-specific override.
+        let lonax = self.lonax;
+        let latax = self.latax;
+        let mut ilon: Option<usize> = None;
+        let mut ilat: Option<usize> = None;
+        let mut ilatlon: usize = 0;
+        let mut result: Vec<usize> = Vec::with_capacity(nin);
+        for (i, &iin) in in_axes.iter().enumerate() {
+            if iin == lonax {
+                ilon = Some(i);
+                ilatlon = i;
+            } else if iin == latax {
+                ilat = Some(i);
+                ilatlon = i;
+            }
+            result.push(iin);
+        }
+
+        match (ilon, ilat) {
+            // Both celestial axes selected: returned mapping is a smaller
+            // WcsMap with the same projection / params and Invert flag, with
+            // the longitude/latitude axes remapped to their positions in the
+            // kept-input ordering. Mirrors C's astWcsMap+CopyPV+SetInvert.
+            (Some(ilon), Some(ilat)) => {
+                let new_wcs = self.with_permuted_axes(nin, ilon, ilat)?;
+                Some((result, Box::new(new_wcs)))
+            }
+            // Neither celestial axis selected: returned mapping is a UnitMap
+            // over the kept pass-through axes. Mirrors C's astUnitMap branch.
+            (None, None) => Some((result, Box::new(UnitMap::new(nin)))),
+            // Only one celestial axis selected: drop it. The C code treats
+            // this as nin > 1 only — for nin == 1 (the lone kept input is
+            // the celestial), it frees the result and returns NULL.
+            _ => {
+                if nin <= 1 {
+                    return None;
+                }
+                // Drop the celestial position from `result` (length becomes
+                // nin - 1, matching the new mapping's nout).
+                result.remove(ilatlon);
+
+                // Build a PermMap with `nin` inputs and `nin - 1` outputs.
+                // Forward: skip the celestial axis at position `ilatlon`.
+                // Inverse: yield BAD at position `ilatlon` (C: INT_MAX, which
+                // AST C's PermMap treats as out-of-range -> AST__BAD; our
+                // PermMap encodes BAD with a 0 entry).
+                let mut inperm: Vec<i64> = vec![0; nin];
+                let mut outperm: Vec<i64> = vec![0; nin - 1];
+                for i in 0..ilatlon {
+                    inperm[i] = (i + 1) as i64;
+                    outperm[i] = (i + 1) as i64;
+                }
+                inperm[ilatlon] = 0; // BAD on inverse for the dropped axis
+                for i in (ilatlon + 1)..nin {
+                    inperm[i] = i as i64;
+                    outperm[i - 1] = (i + 1) as i64;
+                }
+                let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
+                Some((result, Box::new(pm)))
+            }
+        }
     }
 
     fn try_merge(

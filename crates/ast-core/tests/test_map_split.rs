@@ -484,3 +484,172 @@ fn perm_split_unmatched_input_yields_none() {
     let pm = PermMap::new(&[1], &[-1], &[3.14]).unwrap();
     assert!(pm.map_split(&[0]).is_none());
 }
+
+// ========================================================================
+// WcsMap (per-class override added in Task 1.5)
+// ========================================================================
+//
+// C ancestor: reference/starlink-ast/src/wcsmap.c::MapSplit (~3342). C first
+// defers to the basic-Mapping parent (only succeeds when nin == mapnin) and
+// then runs a WcsMap-specific override for partial input selections:
+//
+//   - both celestial axes kept       -> smaller WcsMap with permuted axes
+//   - neither celestial axis kept    -> UnitMap (pass-through subset)
+//   - only one celestial axis kept   -> PermMap dropping that axis
+//                                       (only for nin > 1; otherwise None)
+
+#[test]
+fn wcs_split_full_inputs_succeeds() {
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    let (outs, sub) = wm.map_split(&[0, 1]).expect("full identity split");
+    assert_eq!(outs, vec![0, 1]);
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 2);
+    // Sub forward should reproduce the original WcsMap forward exactly
+    // (it's a clone of self via the parent identity-perm path).
+    let pts = PointSet::from_rows(vec![vec![0.1_f64, 1.4]]);
+    let parent = wm.transform(&pts, true).unwrap();
+    let child = sub.transform(&pts, true).unwrap();
+    assert!((parent.point(0)[0] - child.point(0)[0]).abs() < 1e-12);
+    assert!((parent.point(0)[1] - child.point(0)[1]).abs() < 1e-12);
+}
+
+#[test]
+fn wcs_split_drops_celestial_axis_returns_none_2axis() {
+    // 2-axis WcsMap: dropping either celestial axis leaves nin == 1 and
+    // the lone kept input is celestial. C falls into the `nin > 1` else
+    // branch and frees the result — Rust returns None.
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    assert!(wm.map_split(&[0]).is_none());
+    assert!(wm.map_split(&[1]).is_none());
+}
+
+#[test]
+fn wcs_split_3axis_keeps_both_celestial_yields_wcsmap() {
+    // 3-axis WcsMap, lonax=1, latax=2 (both celestial in the first two
+    // input positions). Pick [0, 1] -> both celestial in kept set; the
+    // result is a 2-axis WcsMap with the same projection.
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    let (outs, sub) = wm.map_split(&[0, 1]).expect("split keeps celestial");
+    assert_eq!(outs, vec![0, 1]);
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 2);
+    // Sub should behave like a 2-axis TAN projection — forward then inverse
+    // recovers the input (TAN is invertible near the origin).
+    let pts = PointSet::from_rows(vec![vec![0.1_f64, 1.4]]);
+    let fwd = sub.transform(&pts, true).unwrap();
+    let back = sub.transform(&fwd, false).unwrap();
+    assert!((back.point(0)[0] - 0.1).abs() < 1e-10);
+    assert!((back.point(0)[1] - 1.4).abs() < 1e-10);
+}
+
+#[test]
+fn wcs_split_3axis_passthrough_only_yields_unitmap() {
+    // 3-axis WcsMap, lonax=1, latax=2 (axes 0 and 1 are celestial).
+    // Picking the pass-through axis [2] alone -> neither celestial in
+    // kept set -> UnitMap with nin = nout = 1.
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    let (outs, sub) = wm.map_split(&[2]).expect("pass-through subset");
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+    // Identity behaviour.
+    assert_eq!(fwd_point(sub.as_ref(), &[42.5]), vec![42.5]);
+}
+
+#[test]
+fn wcs_split_3axis_only_lon_kept_drops_via_permmap() {
+    // 3-axis WcsMap, lonax=1, latax=2. Picking [2, 0] keeps only the
+    // longitude axis among celestial -> C constructs a PermMap that drops
+    // the kept celestial position from the output (C: nin=2, nout=1).
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    let (outs, sub) = wm.map_split(&[2, 0]).expect("split drops celestial");
+    // The kept-input positions are [2, 0]; the longitude axis is at
+    // position 1 (in_axes[1] == 0 == lonax). The C code shifts position
+    // ilatlon=1 out of `result`, leaving result == [2].
+    assert_eq!(outs, vec![2]);
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 1);
+    // Forward: takes both kept inputs, produces a single output that is
+    // the pass-through axis (sub-input 0, == original axis 2).
+    let pts = PointSet::from_rows(vec![vec![123.0_f64, 0.5]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 123.0).abs() < 1e-12);
+    // Inverse: the dropped celestial position should yield BAD.
+    use ast_core::constants::BAD_VALUE;
+    let inv_pts = PointSet::from_rows(vec![vec![7.0_f64]]);
+    let inv = sub.transform(&inv_pts, false).unwrap();
+    assert!((inv.point(0)[0] - 7.0).abs() < 1e-12); // sub-input 0 = forward input 0
+    assert_eq!(inv.point(0)[1], BAD_VALUE); // sub-input 1 = dropped celestial
+}
+
+#[test]
+fn wcs_split_preserves_invert_full_set() {
+    // Inverted WcsMap, full identity split -> the returned sub clones the
+    // original (including the invert flag).
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let mut wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    wm.invert();
+    let (_outs, sub) = wm.map_split(&[0, 1]).expect("full split");
+    assert!(sub.is_inverted());
+}
+
+#[test]
+fn wcs_split_preserves_invert_subset() {
+    // Inverted 3-axis WcsMap, both-celestial subset -> the new WcsMap
+    // inherits the invert flag (C: astSetInvert(newwcs, astGetInvert(this))).
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let mut wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    wm.invert();
+    let (outs, sub) = wm.map_split(&[0, 1]).expect("split keeps celestial");
+    assert_eq!(outs, vec![0, 1]);
+    assert!(sub.is_inverted());
+}
+
+#[test]
+fn wcs_split_rejects_duplicate_or_out_of_range() {
+    // Project convention: validation rejects duplicates and out-of-range
+    // up front. C's WcsMap override only checks the in-range half but the
+    // parent path catches out-of-range; the duplicate case is degenerate
+    // in C either way.
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    assert!(wm.map_split(&[0, 0, 1]).is_none());
+    assert!(wm.map_split(&[0, 1, 3]).is_none());
+}
+
+#[test]
+fn wcs_split_full_set_permuted_simplifies_through() {
+    // Full inputs but reordered: parent path builds PermMap+self and
+    // simplifies. The semantic result is equivalent to running the full
+    // original mapping with the input-axis permutation applied first.
+    use ast_core::mappings::{WcsMap, WcsProjection};
+    let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    let (outs, sub) = wm.map_split(&[2, 0, 1]).expect("permuted full split");
+    assert_eq!(outs, vec![0, 1, 2]);
+    assert_eq!(sub.nin(), 3);
+    assert_eq!(sub.nout(), 3);
+    // Verify forward action against the equivalent permuted call:
+    // sub forward of [a, b, c] should equal original forward of
+    // [in_axes[0]=2 -> sub-input 0=a, in_axes[1]=0 -> sub-input 1=b,
+    //  in_axes[2]=1 -> sub-input 2=c] reordered into original layout.
+    // I.e. parent_input = [b, c, a] (parent input k = sub-input where
+    // in_axes equals k -> outperm[k] = position of k in in_axes).
+    let sub_pts = PointSet::from_rows(vec![vec![10.0_f64, 0.1, 1.4]]);
+    let sub_out = sub.transform(&sub_pts, true).unwrap();
+    let parent_pts = PointSet::from_rows(vec![vec![0.1_f64, 1.4, 10.0]]);
+    let parent_out = wm.transform(&parent_pts, true).unwrap();
+    for i in 0..3 {
+        assert!(
+            (sub_out.point(0)[i] - parent_out.point(0)[i]).abs() < 1e-12,
+            "axis {i} mismatch: sub={} parent={}",
+            sub_out.point(0)[i],
+            parent_out.point(0)[i]
+        );
+    }
+}
