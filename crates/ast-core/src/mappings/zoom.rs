@@ -168,11 +168,7 @@ impl Mapping for ZoomMap {
         // by a single shared factor, so any subset of inputs maps to the
         // same-indexed outputs via a smaller ZoomMap with the same factor.
         let nin = self.nin();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= nin || in_axes[..i].contains(&ix) {
-                return None;
-            }
-        }
+        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
         let mut sub = ZoomMap::new(in_axes.len(), self.factor).ok()?;
         if self.inverted {
             sub.invert();

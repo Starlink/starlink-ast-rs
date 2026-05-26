@@ -332,11 +332,7 @@ impl Mapping for WinMap {
         // function only checks the in-range half — duplicates would yield
         // a degenerate but technically valid sub-mapping in C).
         let nin = self.nin();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= nin || in_axes[..i].contains(&ix) {
-                return None;
-            }
-        }
+        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
         let shifts: Vec<f64> = in_axes.iter().map(|&ix| self.shifts()[ix]).collect();
         let scales: Vec<f64> = in_axes.iter().map(|&ix| self.scales()[ix]).collect();
         let mut sub = WinMap::new(&shifts, &scales).ok()?;

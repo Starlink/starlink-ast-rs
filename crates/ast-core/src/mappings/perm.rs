@@ -402,11 +402,7 @@ impl Mapping for PermMap {
         // crate, so the default (0 = "normal" method) is the only path.
         let npin = self.nin();
         let npout = self.nout();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= npin || in_axes[..i].contains(&ix) {
-                return None;
-            }
-        }
+        crate::mappings::helpers::validate_in_axes(in_axes, npin)?;
 
         // Effective forward (`outp`) and inverse (`inp`) perms, accounting
         // for Invert. Matches C: `outp = this->inperm` when inverted, etc.

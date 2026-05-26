@@ -155,11 +155,7 @@ impl Mapping for ShiftMap {
         // offset, so a subset of inputs maps to the same-indexed outputs
         // via a smaller ShiftMap built from the chosen axes' shift values.
         let nin = self.nin();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= nin || in_axes[..i].contains(&ix) {
-                return None;
-            }
-        }
+        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
         let shifts: Vec<f64> = in_axes.iter().map(|&ix| self.shift[ix]).collect();
         let mut sub = ShiftMap::new(shifts);
         if self.inverted {

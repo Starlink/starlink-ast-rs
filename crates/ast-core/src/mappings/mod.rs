@@ -228,57 +228,7 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// by composing a `PermMap` with `self`; classes that can split for
     /// partial input selections override.
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
-        let mapnin = self.nin();
-        if in_axes.len() != mapnin {
-            return None;
-        }
-        // Validate: each index in range, no duplicates.
-        let mut seen = vec![false; mapnin];
-        for &ix in in_axes {
-            if ix >= mapnin || seen[ix] {
-                return None;
-            }
-            seen[ix] = true;
-        }
-
-        // Mirrors mapping.c::MapSplit (~7902).
-        //
-        // The supplied `in_axes` array can act as the PermMap's "inperm"
-        // array (the inverse-direction perm): for output i of the inverse
-        // transform, take input axis `in_axes[i]` of the new mapping.
-        // The forward direction needs the matching "outperm": for output i
-        // of the forward (= original-mapping input axis i), take input
-        // position `outperm[i]` of the new mapping. Build it by inversion:
-        //     outperm[in_axes[iin]] = iin
-        // This also lets us check that every original input axis is filled
-        // exactly once and detect the identity-permutation fast path.
-        let mut outperm_zb = vec![usize::MAX; mapnin];
-        let mut perm_needed = false;
-        for (iin, &iout) in in_axes.iter().enumerate() {
-            outperm_zb[iout] = iin;
-            if iout != iin {
-                perm_needed = true;
-            }
-        }
-        // (Validation above guarantees no duplicates / out-of-range, so
-        //  every slot of outperm_zb is now filled. No need to re-check.)
-
-        let nout = self.nout();
-        let out_axes: Vec<usize> = (0..nout).collect();
-
-        let sub: DynMapping = if !perm_needed {
-            // No input permutation needed: returned mapping is just self.
-            self.clone_box()
-        } else {
-            // 1-based perm entries (PermMap convention).
-            let inperm: Vec<i64> = in_axes.iter().map(|&v| (v as i64) + 1).collect();
-            let outperm: Vec<i64> = outperm_zb.iter().map(|&v| (v as i64) + 1).collect();
-            let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
-            let cmp = CmpMap::new(Box::new(pm), self.clone_box(), Composition::Series).ok()?;
-            cmp.simplified().ok()?
-        };
-
-        Some((out_axes, sub))
+        helpers::full_set_split(self, in_axes)
     }
 
     /// Whether the forward transform is defined.

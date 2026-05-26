@@ -90,11 +90,7 @@ impl Mapping for UnitMap {
         // smaller UnitMap, and the chosen output indices match the chosen
         // input indices.
         let nin = self.nin();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= nin || in_axes[..i].contains(&ix) {
-                return None;
-            }
-        }
+        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
         Some((in_axes.to_vec(), Box::new(UnitMap::new(in_axes.len()))))
     }
 

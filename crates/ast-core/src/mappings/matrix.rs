@@ -591,11 +591,7 @@ impl Mapping for MatrixMap {
         // function only checks the in-range half).
         let nin = self.nin();
         let nout = self.nout();
-        for (i, &ix) in in_axes.iter().enumerate() {
-            if ix >= nin || in_axes[..i].contains(&ix) {
-                return None;
-            }
-        }
+        crate::mappings::helpers::validate_in_axes(in_axes, nin)?;
 
         // Pick the effective forward matrix, matching C's `mat` selection.
         // When inverted but no inverse is available, the split is impossible

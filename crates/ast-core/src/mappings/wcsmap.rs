@@ -557,42 +557,18 @@ impl Mapping for WcsMap {
         // but never accepts a case C would reject.
         let mapnin = self.nin();
         let nin = in_axes.len();
-        let mut seen = vec![false; mapnin];
-        for &ix in in_axes {
-            if ix >= mapnin || seen[ix] {
-                return None;
-            }
-            seen[ix] = true;
-        }
 
-        // Full-set path: parent (basic-Mapping) MapSplit handles this.
-        // For an identity permutation, return self; for any other
-        // permutation, build PermMap+self and simplify (the simplifier may
-        // absorb the perm back into a single WcsMap with permuted axes).
-        if nin == mapnin {
-            let mut outperm_zb = vec![usize::MAX; mapnin];
-            let mut perm_needed = false;
-            for (iin, &iout) in in_axes.iter().enumerate() {
-                outperm_zb[iout] = iin;
-                if iout != iin {
-                    perm_needed = true;
-                }
-            }
-            let nout = self.nout();
-            let out_axes: Vec<usize> = (0..nout).collect();
-            let sub: DynMapping = if !perm_needed {
-                self.clone_box()
-            } else {
-                let inperm: Vec<i64> = in_axes.iter().map(|&v| (v as i64) + 1).collect();
-                let outperm: Vec<i64> = outperm_zb.iter().map(|&v| (v as i64) + 1).collect();
-                let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
-                let cmp = CmpMap::new(Box::new(pm), self.clone_box(), Composition::Series).ok()?;
-                cmp.simplified().ok()?
-            };
-            return Some((out_axes, sub));
+        // Full-set path: delegate to the shared helper, which mirrors C's
+        // parent (basic-Mapping) MapSplit. For an identity permutation it
+        // returns `self`; for any other permutation it builds PermMap+self
+        // and simplifies (the simplifier may absorb the perm back into a
+        // single WcsMap with permuted axes).
+        if let Some(result) = crate::mappings::helpers::full_set_split(self, in_axes) {
+            return Some(result);
         }
 
         // Partial-set path: WcsMap-specific override.
+        crate::mappings::helpers::validate_in_axes(in_axes, mapnin)?;
         let lonax = self.lonax;
         let latax = self.latax;
         let mut ilon: Option<usize> = None;
