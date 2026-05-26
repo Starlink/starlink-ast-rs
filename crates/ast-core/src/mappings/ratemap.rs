@@ -428,6 +428,54 @@ impl Mapping for RateMap {
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
+
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors ratemap.c::MapSplit (~line 819). The C body first calls
+        // the parent (default) impl, then a per-class fallback that ONLY
+        // succeeds when the RateMap is not inverted (the inverse direction
+        // is undefined for a RateMap). The encapsulated mapping is split
+        // by `in_axes`; success requires that the differentiation input
+        // axis (this->iin / Rust ax2) is among the kept inputs and the
+        // differentiated output axis (this->iout / Rust ax1) is among the
+        // kept outputs of the resulting sub-mapping.
+        if let Some(r) = crate::mappings::helpers::full_set_split(self, in_axes) {
+            return Some(r);
+        }
+        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
+        if self.inverted {
+            return None;
+        }
+
+        // Put the encapsulated mapping in its construction-snapshot
+        // orientation (C: astSetInvert(emap, this->invert)).
+        let emap_child = self.map.as_ref();
+        let emap_view: DynMapping = if emap_child.is_inverted() != self.invert_snapshot {
+            let mut tmp = emap_child.clone_box();
+            tmp.invert();
+            tmp
+        } else {
+            emap_child.clone_box()
+        };
+
+        // Split the encapsulated mapping by the requested inputs.
+        let (eres, remap) = emap_view.map_split(in_axes)?;
+
+        // C's iin/iout are 0-based; Rust ax2/ax1 are 1-based. Convert
+        // to 0-based for the position lookups.
+        let iin_0 = self.ax2 - 1;
+        let iout_0 = self.ax1 - 1;
+
+        // ax2_new: position of the differentiation input in the kept-input
+        // list (0-based). Must be present.
+        let ax2_new = in_axes.iter().position(|&x| x == iin_0)?;
+        // ax1_new: position of the differentiated output in the sub-mapping's
+        // output list (0-based). Must be present.
+        let ax1_new = eres.iter().position(|&x| x == iout_0)?;
+
+        // RateMap::new takes 1-based axis indices.
+        let new_rm = RateMap::new(remap, ax1_new + 1, ax2_new + 1).ok()?;
+        Some((vec![0], Box::new(new_rm)))
+    }
 }
 
 impl Serializable for RateMap {

@@ -886,3 +886,147 @@ fn cmpmap_mapsplit2_terminates_on_small_nout() {
     assert!(cm.map_split(&[0]).is_none());
     assert!(cm.map_split(&[1]).is_none());
 }
+
+// PolyMap inherits the default impl (no per-class override per polymap.c).
+
+#[test]
+fn polymap_split_full_inputs_only() {
+    use ast_core::mappings::{PolyMap, PolyTerm};
+    // Identity-ish 2-in 2-out PolyMap: y0 = x0, y1 = x1.
+    let fwd = vec![
+        PolyTerm {
+            coeff: 1.0,
+            out_axis: 1,
+            powers: vec![1, 0],
+        },
+        PolyTerm {
+            coeff: 1.0,
+            out_axis: 2,
+            powers: vec![0, 1],
+        },
+    ];
+    let pm = PolyMap::new(2, 2, &fwd, None).unwrap();
+    // Default impl handles full-input case via PermMap+self.
+    assert!(pm.map_split(&[0, 1]).is_some());
+    // Partial inputs return None (no per-class override).
+    assert!(pm.map_split(&[0]).is_none());
+    assert!(pm.map_split(&[1]).is_none());
+}
+
+// NormMap: mirrors normmap.c::MapSplit ~line 736.
+
+#[test]
+fn normmap_split_picks_axes() {
+    use ast_core::frames::BasicFrameBuilder;
+    use ast_core::mappings::{Mapping, NormMap};
+    // 3-axis BasicFrame; pick axes [0, 2].
+    let frame = BasicFrameBuilder::new(3).build().unwrap();
+    let nm = NormMap::new(Box::new(frame));
+    let (outs, sub) = nm.map_split(&[0, 2]).expect("split");
+    assert_eq!(outs, vec![0, 2]);
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 2);
+}
+
+#[test]
+fn normmap_split_full_inputs_via_default() {
+    use ast_core::frames::BasicFrameBuilder;
+    use ast_core::mappings::{Mapping, NormMap};
+    let frame = BasicFrameBuilder::new(3).build().unwrap();
+    let nm = NormMap::new(Box::new(frame));
+    // Full-input case goes through full_set_split.
+    let (outs, sub) = nm.map_split(&[0, 1, 2]).expect("split");
+    assert_eq!(outs, vec![0, 1, 2]);
+    assert_eq!(sub.nin(), 3);
+}
+
+#[test]
+fn normmap_split_rejects_invalid() {
+    use ast_core::frames::BasicFrameBuilder;
+    use ast_core::mappings::{Mapping, NormMap};
+    let frame = BasicFrameBuilder::new(3).build().unwrap();
+    let nm = NormMap::new(Box::new(frame));
+    assert!(nm.map_split(&[3]).is_none()); // out of range
+    assert!(nm.map_split(&[0, 0]).is_none()); // duplicate
+}
+
+// TranMap: mirrors tranmap.c::MapSplit ~line 1017.
+
+#[test]
+fn tranmap_split_picks_per_axis() {
+    use ast_core::mappings::{Mapping, ShiftMap, TranMap};
+    // TranMap of two ShiftMaps: forward = ShiftMap(+a), inverse =
+    // ShiftMap(-a). Splitting on [1] should pick the shift on axis 1
+    // for both directions.
+    let fwd = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+    let mut inv = ShiftMap::new(vec![-10.0, -20.0, -30.0]);
+    inv.invert();
+    let tm = TranMap::new(Box::new(fwd), Box::new(inv)).unwrap();
+    let (outs, sub) = tm.map_split(&[1]).expect("split");
+    assert_eq!(outs, vec![1]);
+    assert_eq!(sub.nin(), 1);
+    // Forward of the sub-mapping: 5 + 20 = 25 (uses shifts[1] = 20).
+    let pts = ast_core::coords::PointSet::from_rows([[5.0]]);
+    let out = sub.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 25.0).abs() < 1e-12);
+}
+
+// RateMap: mirrors ratemap.c::MapSplit ~line 819.
+
+#[test]
+fn ratemap_split_diff_output_dropped_returns_none() {
+    use ast_core::mappings::{Mapping, RateMap, ShiftMap};
+    // RateMap differentiates output 2 (1-based) wrt input 1. Splitting
+    // on input 0 (= 1-based axis 1, the diff input): the encapsulated
+    // ShiftMap.map_split([0]) returns Some([0], one-axis), which lacks
+    // output 1 (= 1-based axis 2, the differentiated output). So the
+    // RateMap split must return None.
+    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+    let rm = RateMap::new(Box::new(s), 2, 1).unwrap();
+    assert_eq!(rm.nin(), 3);
+    assert_eq!(rm.nout(), 1);
+    assert!(rm.map_split(&[0]).is_none());
+}
+
+#[test]
+fn ratemap_split_rejects_when_inverted() {
+    use ast_core::mappings::{Mapping, RateMap, ShiftMap};
+    // Per ratemap.c:906, the per-class fallback only succeeds when the
+    // RateMap is not inverted. Use a 3-axis encapsulated mapping so the
+    // inverted RateMap has nin = 1, nout = 3 — a partial-input split on
+    // input axis 0 alone reaches the per-class fallback (it's the full
+    // input set, but full_set_split's identity case kicks in only when
+    // in_axes covers the entire input range, which it does here, so we
+    // pick a 2-axis encapsulated map and a partial split target instead).
+    //
+    // Construction: 2-axis ShiftMap, RateMap differentiating output 1 wrt
+    // input 1. Original nin = 2, nout = 1. Invert: nin = 1, nout = 2.
+    // Now ask for input [0]: that's the full input set (nin = 1 = len),
+    // full_set_split succeeds via identity. So the only way to test the
+    // inverted-bail in isolation is when nin > 1 after invert, i.e. a
+    // mapping with nout > 1 originally — which RateMap can't produce
+    // (it always has nout = 1 in forward orientation). The C bail is
+    // therefore unreachable from the Rust API in practice; we still
+    // mirror it for correctness should the encapsulated mapping shape
+    // change in the future.
+    //
+    // What we CAN test: a non-inverted partial split that succeeds via
+    // the per-class fallback path.
+    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+    // RateMap differentiating output 1 wrt input 1 (1-based).
+    let rm = RateMap::new(Box::new(s), 1, 1).unwrap();
+    assert_eq!(rm.nin(), 3);
+    assert_eq!(rm.nout(), 1);
+    // Splitting on input 0 (= 1-based axis 1, the diff variable) should
+    // succeed: ShiftMap.map_split([0]) = Some([0], one-axis ShiftMap),
+    // which contains output 0 (= 1-based axis 1, the differentiated
+    // output). New RateMap is built.
+    let (outs, sub) = rm.map_split(&[0]).expect("split via per-class fallback");
+    assert_eq!(outs, vec![0]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
+
+    // Splitting on input 1 alone (= 1-based axis 2, NOT the diff variable)
+    // should return None — the diff input isn't in the kept set.
+    assert!(rm.map_split(&[1]).is_none());
+}

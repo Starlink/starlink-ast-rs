@@ -276,6 +276,28 @@ impl Mapping for NormMap {
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
+
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors normmap.c::MapSplit (~line 736). The C body first calls
+        // the parent (default) impl for the full-input case, then falls
+        // back to a per-class implementation for partial selections:
+        // pick the requested axes from the encapsulated Frame and build
+        // a new NormMap.  Output indices equal the input indices because
+        // NormMap is identity per axis.
+        if let Some(r) = crate::mappings::helpers::full_set_split(self, in_axes) {
+            return Some(r);
+        }
+        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
+        // pick_axes is 1-based at the public API.
+        let axes_1based: Vec<usize> = in_axes.iter().map(|&i| i + 1).collect();
+        let (sub_frame, _pick_map) =
+            crate::frames::pick_axes(self.frame.as_ref(), &axes_1based).ok()?;
+        let mut sub = NormMap::new(sub_frame);
+        if self.inverted {
+            sub.invert();
+        }
+        Some((in_axes.to_vec(), Box::new(sub)))
+    }
 }
 
 impl Serializable for NormMap {

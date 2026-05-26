@@ -424,6 +424,80 @@ impl Mapping for TranMap {
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
+
+    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Mirrors tranmap.c::MapSplit (~line 1017). The C body first calls
+        // the parent (default) impl for the full-input case, then a
+        // per-class fallback that splits both the forward and inverse
+        // mappings, verifies they recover the same input set, and builds
+        // a new TranMap from the pair.
+        if let Some(r) = crate::mappings::helpers::full_set_split(self, in_axes) {
+            return Some(r);
+        }
+        crate::mappings::helpers::validate_in_axes(in_axes, self.nin())?;
+
+        // Pick the forward and inverse component mappings, with their
+        // construction-snapshot Invert flags. Mirrors C lines 1115-1125.
+        let (fmap_child, finv, imap_child, iinv) = if !self.inverted {
+            (
+                self.map1.as_ref(),
+                self.inv_a(),
+                self.map2.as_ref(),
+                self.inv_b(),
+            )
+        } else {
+            (
+                self.map2.as_ref(),
+                !self.inv_b(),
+                self.map1.as_ref(),
+                !self.inv_a(),
+            )
+        };
+
+        // Build snapshot-oriented views of each child. C does this by
+        // mutating the child's Invert flag in place and restoring it
+        // afterwards; in Rust we clone+invert when the child's current
+        // state differs from the snapshot.
+        let fmap_view: DynMapping = if fmap_child.is_inverted() != finv {
+            let mut tmp = fmap_child.clone_box();
+            tmp.invert();
+            tmp
+        } else {
+            fmap_child.clone_box()
+        };
+        let imap_view: DynMapping = if imap_child.is_inverted() != iinv {
+            let mut tmp = imap_child.clone_box();
+            tmp.invert();
+            tmp
+        } else {
+            imap_child.clone_box()
+        };
+
+        // Split the forward mapping by the requested inputs.
+        let (out, rfmap) = fmap_view.map_split(in_axes)?;
+
+        // Invert the inverse-mapping view so its forward direction matches
+        // the original-forward semantics, then split by the recovered output
+        // indices. C: astInvert(imap); ires = astMapSplit(imap, nout, out).
+        let mut imap_view_inv = imap_view;
+        imap_view_inv.invert();
+        let (ires, rimap_inv_view) = imap_view_inv.map_split(&out)?;
+
+        // Verify the recovered inputs match the requested inputs in order
+        // (C lines 1151-1158). If not, the TranMap can't be split this way.
+        if ires.len() != in_axes.len() || ires.iter().zip(in_axes).any(|(a, b)| a != b) {
+            return None;
+        }
+
+        // Invert the inverse-side sub-mapping back to the inverse-mapping
+        // orientation (C: astInvert(rimap)).
+        let mut rimap = rimap_inv_view;
+        rimap.invert();
+
+        // Build the new TranMap.
+        let new_tm = TranMap::new(rfmap, rimap).ok()?;
+        Some((out, Box::new(new_tm)))
+    }
 }
 
 impl Serializable for TranMap {
