@@ -58,6 +58,8 @@ mod selectormap;
 pub use selectormap::{SelectorMap, SelectorMapBuilder};
 mod switchmap;
 pub use switchmap::SwitchMap;
+mod linear_approx;
+pub use linear_approx::LinearFit;
 
 use std::any::Any;
 use std::fmt;
@@ -229,6 +231,21 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// partial input selections override.
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         helpers::full_set_split(self, in_axes)
+    }
+
+    /// Best-fit affine approximation to the forward transform over a
+    /// sample box.
+    ///
+    /// Returns `Some(fit)` when the transform is linear (within `tol`,
+    /// Cartesian distance, output space) over the input box `[lbnd,
+    /// ubnd]`; `None` otherwise. Subclasses with an exact linear form
+    /// (e.g. `MatrixMap`, `ZoomMap`) may override for accuracy and
+    /// speed; the default implementation samples and fits, mirroring
+    /// `mapping.c::astLinearApprox`.
+    ///
+    /// `lbnd` / `ubnd` must each have length `self.nin()`.
+    fn linear_approx(&self, lbnd: &[f64], ubnd: &[f64], tol: f64) -> Option<LinearFit> {
+        linear_approx::linear_approx_default(self, lbnd, ubnd, tol)
     }
 
     /// Whether the forward transform is defined.

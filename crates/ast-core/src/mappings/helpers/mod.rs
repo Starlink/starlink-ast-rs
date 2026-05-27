@@ -1,7 +1,6 @@
 //! Shared utilities for Mapping implementations.
 
 pub mod analyse_poly;
-pub mod linear_approx;
 pub mod scale_poly_inputs;
 
 use crate::constants::BAD_VALUE;

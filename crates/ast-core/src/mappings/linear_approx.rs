@@ -1,9 +1,10 @@
 //! Linear-approximation fitting for `Mapping`s.
 //!
-//! Mirrors C `mapping.c::astLinearApprox` (ref starlink-ast, ~line 6459).
-//! Given a `Mapping` and a sample box `[lbnd, ubnd]`, returns the best-fit
-//! affine map `y = matrix · x + shift` if the fit is good (max Cartesian
-//! deviation per test point ≤ `tol`), `None` otherwise.
+//! Backs the [`Mapping::linear_approx`] default trait method. Mirrors
+//! C `mapping.c::astLinearApprox` (ref starlink-ast, ~line 6459):
+//! given a `Mapping` and a sample box `[lbnd, ubnd]`, returns the
+//! best-fit affine map `y = matrix · x + shift` if the fit is good
+//! (max Cartesian deviation per test point ≤ `tol`), `None` otherwise.
 
 // The body uses index-style loops to mirror the C source line-for-line;
 // converting them to iterators would obscure the parallel structure.
@@ -12,15 +13,13 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::mappings::Mapping;
-
-use super::is_bad;
+use crate::mappings::helpers::is_bad;
 
 /// Affine fit to a Mapping over a sample box.
 ///
 /// `shift[i]` is the constant offset for output axis `i`, and
 /// `matrix[i * nin + j]` is the gradient ∂y_i/∂x_j (row-major
 /// `nout × nin`).
-#[allow(dead_code)] // Wired up in Groups 4-6 (make_int_world / sip_int_world).
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearFit {
     /// Constant offset, length `nout`.
@@ -29,7 +28,6 @@ pub struct LinearFit {
     pub matrix: Vec<f64>,
 }
 
-#[allow(dead_code)]
 impl LinearFit {
     /// Number of output axes.
     pub fn nout(&self) -> usize {
@@ -54,7 +52,12 @@ impl LinearFit {
     }
 }
 
-/// Best-fit linear approximation to `map` over `[lbnd, ubnd]`.
+/// Generic body of [`Mapping::linear_approx`]'s default implementation.
+///
+/// Mirrors `mapping.c::astLinearApprox`. Public to the crate so the
+/// trait default in `mappings/mod.rs` can dispatch through here;
+/// external callers should reach for [`Mapping::linear_approx`]
+/// directly rather than naming this function.
 ///
 /// Returns `Some(fit)` when the fit reproduces every test point
 /// within `tol` (Cartesian distance, output space). Returns `None`
@@ -65,10 +68,12 @@ impl LinearFit {
 /// shift set to `BAD_VALUE` and corresponding matrix rows filled
 /// with `BAD_VALUE`; the fit may still succeed for the surviving
 /// outputs (mirrors the C semantics).
-///
-/// Mirrors `mapping.c::astLinearApprox`.
-#[allow(dead_code)] // Wired up in Groups 4-6 (make_int_world / sip_int_world).
-pub fn linear_approx(map: &dyn Mapping, lbnd: &[f64], ubnd: &[f64], tol: f64) -> Option<LinearFit> {
+pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
+    map: &M,
+    lbnd: &[f64],
+    ubnd: &[f64],
+    tol: f64,
+) -> Option<LinearFit> {
     let ndim_in = map.nin();
     let ndim_out = map.nout();
     if lbnd.len() != ndim_in || ubnd.len() != ndim_in {
@@ -316,9 +321,9 @@ pub fn linear_approx(map: &dyn Mapping, lbnd: &[f64], ubnd: &[f64], tol: f64) ->
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::LinearFit;
     use crate::mappings::{
-        DynMapping, MatrixMap, PolyMap, PolyTerm, ShiftMap, WcsMap, WcsProjection, ZoomMap,
+        DynMapping, Mapping, MatrixMap, PolyMap, PolyTerm, ShiftMap, WcsMap, WcsProjection, ZoomMap,
     };
     use ndarray::Array2;
 
@@ -390,7 +395,8 @@ mod tests {
     #[test]
     fn identity_polymap_2x2() {
         let pm = identity_polymap();
-        let fit = linear_approx(pm.as_ref(), &[-1.0, -1.0], &[1.0, 1.0], 0.001)
+        let fit = pm
+            .linear_approx(&[-1.0, -1.0], &[1.0, 1.0], 0.001)
             .expect("rust returned a fit");
         let expected = LINEAR_APPROX_IDENTITY_POLY.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "identity polymap");
@@ -399,7 +405,8 @@ mod tests {
     #[test]
     fn shift_3d() {
         let sm = ShiftMap::new(vec![10.0, 20.0, 30.0]);
-        let fit = linear_approx(&sm, &[0.0, 0.0, 0.0], &[100.0, 100.0, 100.0], 0.001)
+        let fit = sm
+            .linear_approx(&[0.0, 0.0, 0.0], &[100.0, 100.0, 100.0], 0.001)
             .expect("rust returned a fit");
         let expected = LINEAR_APPROX_SHIFT_3D.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "shift 3d");
@@ -408,7 +415,9 @@ mod tests {
     #[test]
     fn zoom_1d() {
         let zm = ZoomMap::new(1, 7.5).expect("zoommap");
-        let fit = linear_approx(&zm, &[-2.0], &[2.0], 0.001).expect("rust returned a fit");
+        let fit = zm
+            .linear_approx(&[-2.0], &[2.0], 0.001)
+            .expect("rust returned a fit");
         let expected = LINEAR_APPROX_ZOOM_1D.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "zoom 1d");
     }
@@ -422,8 +431,9 @@ mod tests {
         let m = Array2::from_shape_vec((3, 2), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
             .expect("array2 shape");
         let mm = MatrixMap::new(m).expect("matrixmap");
-        let fit =
-            linear_approx(&mm, &[-5.0, -5.0], &[5.0, 5.0], 0.001).expect("rust returned a fit");
+        let fit = mm
+            .linear_approx(&[-5.0, -5.0], &[5.0, 5.0], 0.001)
+            .expect("rust returned a fit");
         let expected = LINEAR_APPROX_MATRIX_2X3.expect("oracle returned a fit");
         assert_close(&fit.as_c_layout(), expected, 1e-12, "matrix 2x3");
     }
@@ -435,7 +445,7 @@ mod tests {
         // *exactly* identity even at this scale; with tol=1e-9 it fails).
         // Verify we agree with the C oracle.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).expect("wcsmap");
-        let fit = linear_approx(&wm, &[-0.001, -0.001], &[0.001, 0.001], 1.0e-9);
+        let fit = wm.linear_approx(&[-0.001, -0.001], &[0.001, 0.001], 1.0e-9);
         assert_eq!(LINEAR_APPROX_TAN_TINY, None);
         assert!(
             fit.is_none(),
@@ -447,7 +457,7 @@ mod tests {
     fn tan_too_large_refuses() {
         // TAN over [-1, 1] rad is highly non-linear → C refuses.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).expect("wcsmap");
-        let fit = linear_approx(&wm, &[-1.0, -1.0], &[1.0, 1.0], 0.001);
+        let fit = wm.linear_approx(&[-1.0, -1.0], &[1.0, 1.0], 0.001);
         assert_eq!(LINEAR_APPROX_TAN_LARGE, None);
         assert!(fit.is_none(), "expected non-linear refusal");
     }
@@ -456,6 +466,13 @@ mod tests {
     fn dimension_mismatch_returns_none() {
         let zm = ZoomMap::new(2, 1.0).expect("zoommap");
         // Wrong-length lbnd → None.
-        assert!(linear_approx(&zm, &[0.0], &[1.0, 2.0], 1e-3).is_none());
+        assert!(zm.linear_approx(&[0.0], &[1.0, 2.0], 1e-3).is_none());
+    }
+
+    #[test]
+    fn returns_correct_type() {
+        // Type assertion: trait method returns Option<LinearFit>.
+        let zm = ZoomMap::new(1, 2.0).expect("zoommap");
+        let _: Option<LinearFit> = zm.linear_approx(&[0.0], &[1.0], 1e-3);
     }
 }
