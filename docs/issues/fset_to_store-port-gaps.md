@@ -26,31 +26,19 @@ Group references map back to plan tasks; "Plan §X.Y" means
 **Source:** `crates/ast-core/src/fitschan/fset_to_store/other_axes.rs`
 mirrors `fitschan.c::OtherAxes` (~24030).
 
-### `IsMapLinear` linearity gate — wiring deferred (helper landed)
+### `IsMapLinear` linearity gate — DONE
 
-**Helper status:** ported in
-`crates/ast-core/src/fitschan/fset_to_store/is_map_linear.rs`.
-Mirrors `fitschan.c::IsMapLinear` (~19136) using a corner-sample
-substitute for `astMapBox`.
+Ported in
+`crates/ast-core/src/fitschan/fset_to_store/is_map_linear.rs`,
+wired into `other_axes` as the first branch of the algorithm
+cascade.
 
-**Wiring status:** NOT yet wired into `other_axes` because the
-caller-side branch in C uses the result to choose between the
-`IsMapLinear` (ShiftMap), `LogAxis` (-LOG), `IsMapTab1D` (-TAB)
-algorithms. Until `LogAxis` and `-TAB` are also ported, calling
-`is_map_linear` from `other_axes` would only emit a "non-linear,
-falling through to ShiftMap anyway" signal that doesn't change
-behaviour — the C fallback path also emits a ShiftMap when none
-of the three algorithms match. The wiring lands together with
-`LogAxis` below.
+### `LogAxis` (-LOG algorithm) — DONE
 
-### `LogAxis` (-LOG algorithm)
-
-C: `LogAxis(map, iax, nwcs, lbnd_p, ubnd_p, crval, status)` at
-line 24252. Detects logarithmically-spaced axes and emits a `-LOG`
-CTYPE plus a logarithmic IWC mapping (per FITS-WCS paper III).
-
-**Action:** port `LogAxis` and the supporting helpers, then wire
-into `other_axes` after `IsMapLinear` says "no".
+Ported in
+`crates/ast-core/src/fitschan/fset_to_store/log_axis.rs`, wired
+into `other_axes` as the second branch (after `is_map_linear`).
+Appends `-LOG` to the CTYPE on success.
 
 ### `IsMapTab1D` (-TAB algorithm)
 

@@ -8,22 +8,13 @@
 //!
 //! ## TODO: branches not yet ported
 //!
-//! The C source has three special-case paths around line 24239 that
-//! are NOT yet ported. The Rust body always assumes linearity and
-//! emits a `ShiftMap`. Lack of wcsconv fixture coverage is not an
-//! excuse for under-porting — see
-//! [`feedback_test_coverage_is_separate_from_porting`] in user
-//! memory. Tracked in
-//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
-//!
-//! - **`IsMapLinear`** (C:19136) — verifies the axis is linear over
-//!   the box, with a 20-point fit and an RMS-residual gate. Without
-//!   it, non-linear axes silently produce wrong pixel→IWC mappings.
-//! - **`LogAxis`** (-LOG algorithm) — detects logarithmically
-//!   spaced axes and emits a `-LOG` CTYPE plus a log mapping (FITS-
-//!   WCS paper III).
 //! - **`IsMapTab1D`** (-TAB algorithm) — 1-D tabular look-up tables.
-//!   Blocked on `FitsTable` infrastructure.
+//!   Blocked on `FitsTable` infrastructure not yet ported. Tracked
+//!   in [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md).
+//!
+//! `IsMapLinear` and `LogAxis` are now both wired into the
+//! algorithm cascade below — see the in-line comment at the
+//! per-axis decision.
 
 // Wired up by `fset_to_store` in Group 7; until then nothing in this
 // module is reachable from outside the cfg(test) block, and rustc's
@@ -40,6 +31,9 @@ use crate::fitschan::fits_store::FitsStore;
 use crate::frames::{CmpFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
+
+use super::is_map_linear::is_map_linear;
+use super::log_axis::log_axis;
 
 /// Arguments threaded through the axis-classifier sequence
 /// (`celestial_axes` → `spectral_axes` → `other_axes`). Each builder
@@ -85,6 +79,13 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     let map = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
     let npix = map.nin();
 
+    // Pixel-axis bounds for IsMapLinear / LogAxis. Mirrors C:24187-24191:
+    // lbnd = 1.0, ubnd = dim[i] (500 when unknown).
+    let lbnd_p: Vec<f64> = vec![1.0; npix];
+    let ubnd_p: Vec<f64> = (0..npix)
+        .map(|i| args.dim.get(i).copied().flatten().unwrap_or(500.0))
+        .collect();
+
     let centre_pixel: Vec<f64> = (0..npix)
         .map(|i| match args.dim.get(i).copied().flatten() {
             Some(d) => (0.5 * d).floor(),
@@ -121,13 +122,31 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
 
         args.store.crval[fits_i] = Some(crval);
 
-        // Build the per-axis WCS→IWC mapping: ShiftMap(-crval) on the
-        // single axis, embedded into a nwcs-axis Mapping by
-        // parallel-composing with UnitMaps before/after. Mirrors
-        // C OtherAxes lines 24240-24245 (the non-log non-tab path that
-        // we always take — see module-level deferral note).
-        let shift = ShiftMap::new(vec![-crval]);
-        let axmap = add_unit_maps(Box::new(shift), iax, nwcs)?;
+        // Decide which algorithm fits this axis. Mirrors the
+        // priority cascade at fitschan.c:24239-24347:
+        //   1. IsMapLinear → ShiftMap(-crval).
+        //   2. else LogAxis → -LOG mapping.
+        //   3. else -TAB (NOT YET PORTED — needs FitsTable).
+        //   4. else fallback: pretend-linear ShiftMap (will produce
+        //      a non-linear pixel→IWC that MakeIntWorld rejects).
+        let mut log_axis_used = false;
+        let axmap: DynMapping = if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, iax)? {
+            // Linear path. Mirrors C:24240-24245.
+            let shift = ShiftMap::new(vec![-crval]);
+            add_unit_maps(Box::new(shift), iax, nwcs)?
+        } else if let Some(lm) = log_axis(map.as_ref(), iax, nwcs, &lbnd_p, &ubnd_p, crval)? {
+            // -LOG algorithm path. Mirrors C:24252-24255.
+            log_axis_used = true;
+            lm
+        } else {
+            // Fallback: build the same ShiftMap as the linear case;
+            // make_int_world will reject the resulting non-linear
+            // pixel→IWC. Mirrors C:24341-24347.
+            // -TAB algorithm not yet ported — see
+            // fset_to_store-port-gaps.md.
+            let shift = ShiftMap::new(vec![-crval]);
+            add_unit_maps(Box::new(shift), iax, nwcs)?
+        };
 
         // Compose with the running result. Mirrors C:24350-24356.
         ret = Some(match ret.take() {
@@ -142,6 +161,13 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         let (sub_frame, sub_axis) = resolve_subframe(wcsfrm, iax);
         populate_axis_keywords(sub_frame, sub_axis, fits_i, args.store);
 
+        // Append "-LOG" to CTYPE when the log path fired. Mirrors
+        // C:24369-24373 (SetAlgCode "-LOG"). The C source also handles
+        // "-TAB" here; that branch lands when the -TAB port goes in.
+        if log_axis_used && let Some(ref ctype) = args.store.ctype[fits_i] {
+            args.store.ctype[fits_i] = Some(set_alg_code(ctype, "-LOG"));
+        }
+
         args.axis_done[iax] = true;
     }
 
@@ -151,6 +177,32 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         Some(m) => m.simplified(),
         None => Ok(Box::new(UnitMap::new(nwcs))),
     }
+}
+
+/// Append a 4-character algorithm code (e.g. `"-LOG"`, `"-TAB"`) to a
+/// CTYPE that is currently 4 characters of system name plus the dash
+/// padding (or the pre-suffix string from the C source's
+/// `SetAlgCode`). When the input already has a non-dash 5th-8th
+/// character we replace the suffix; otherwise we append.
+fn set_alg_code(ctype: &str, code: &str) -> String {
+    debug_assert_eq!(code.len(), 4);
+    // CTYPE is 8 characters in FITS-WCS: 4 for system + 4 for
+    // algorithm. If the input is already 4 chars, append; if it's
+    // 5+, replace the trailing 4 chars with the code (the C SetAlgCode
+    // pads with '-' if needed).
+    let mut buf: String = if ctype.len() <= 4 {
+        // Pad to 4 with '-' then append.
+        let mut s = ctype.to_string();
+        while s.len() < 4 {
+            s.push('-');
+        }
+        s
+    } else {
+        // Truncate at index 4.
+        ctype.chars().take(4).collect()
+    };
+    buf.push_str(code);
+    buf
 }
 
 /// Build a Mapping with `nax` inputs/outputs in which `map`'s axes

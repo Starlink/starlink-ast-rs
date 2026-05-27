@@ -19,6 +19,7 @@ mod celestial_axes;
 mod fiducial;
 mod invertable;
 mod is_map_linear;
+mod log_axis;
 mod make_int_world;
 mod orth;
 mod other_axes;
