@@ -13,9 +13,6 @@
 //! in user memory. Tracked in
 //! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
-//! - **`GrismMap` handling** (`-GRI` / `-GRA`). Needs an
-//!   `extract_grism_map(chain)` walker plus GrismMap parameter
-//!   accessors.
 //! - **`-TAB` algorithm**. Blocked on FitsTable infrastructure.
 //! - **`VELOSYS` calculation** — needs the celestial source position
 //!   from `celestial_axes`. Group 7 wiring will deliver it; the
@@ -28,14 +25,17 @@
 //!
 //! What IS now covered: linear-path with `IsMapLinear` gate,
 //! `-X2P` non-linear algorithm cascade (mirrors C:30359-30454)
-//! via `try_x2p_cascade`, `-LOG` algorithm via `LogAxis`, RESTFRQ
-//! vs RESTWAV choice, OBSGEO emission, axis-Label → CTYPE-comment
-//! /CNAME, source-velocity → ZSOURCE/SSYSSRC.
+//! via `try_x2p_cascade`, `-LOG` algorithm via `LogAxis`, `-GRI`/
+//! `-GRA` grism algorithm via `try_grism_cascade` + the
+//! standalone `extract_grism_map` helper, RESTFRQ vs RESTWAV
+//! choice, OBSGEO emission, axis-Label → CTYPE-comment/CNAME,
+//! source-velocity → ZSOURCE/SSYSSRC.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test).
 #![allow(dead_code)]
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::type_complexity)] // try_grism_cascade returns a 4-tuple of (Mapping, String, Vec, f64)
 
 use crate::coords::PointSet;
 use crate::error::AstResult;
@@ -148,6 +148,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         .map(|i| args.dim.get(i).copied().flatten().unwrap_or(500.0))
         .collect();
 
+    let mut crval = crval; // some algorithm paths re-derive crval from the chain.
     let (axmap, ctype): (DynMapping, String) =
         if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, spec_iax)? {
             // Linear path: ShiftMap(-crval).
@@ -172,11 +173,32 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
             // -LOG algorithm. Mirrors C:30467-30477.
             let ctype = format!("{orig_system_str}-LOG");
             (lm, ctype)
+        } else if let Some((axmap, ctype, grism_pv, new_crval)) = try_grism_cascade(
+            specfrm,
+            map.as_ref(),
+            spec_iax,
+            nwcs,
+            &lbnd_p,
+            &ubnd_p,
+            orig_system_str,
+        )? {
+            // -GRI / -GRA grism algorithm. Mirrors C:30480-30599. Stores
+            // the grism PV parameters; reuses the grism-derived CRVAL
+            // (which the C path also overwrites — its `crval` is reset
+            // to grism.wave_r converted into the original system).
+            for (m, value) in grism_pv {
+                if fits_i < args.store.pv.len() && m < args.store.pv[fits_i].len() {
+                    args.store.pv[fits_i][m] = Some(value);
+                }
+            }
+            crval = new_crval;
+            args.store.crval[fits_i] = Some(crval);
+            (axmap, ctype)
         } else {
             // Fallback: build the same ShiftMap as the linear path
             // (without an algorithm-suffix CTYPE). make_int_world
             // will reject the resulting non-linear pixel→IWC.
-            // Grism / -TAB are not yet ported.
+            // -TAB is not yet ported.
             let shift = ShiftMap::new(vec![-crval]);
             let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
             (mapping, orig_system_str.to_string())
@@ -396,6 +418,194 @@ fn try_x2p_cascade(
     Ok(None)
 }
 
+/// Try the grism-algorithm cascade. For each candidate wavelength
+/// system (`Wavelen`, `Airwave`):
+///   1. Build a SpecFrame copy with that wavelength system + unit
+///      "m", and the S→wavelength Mapping via `make_spec_mapping`.
+///   2. Compose pixel→S with S→wave (embedded at `spec_iax`).
+///   3. Try to extract a GrismMap from the resulting pixel→wave
+///      chain via [`super::grism::extract_grism_map`].
+///   4. If extracted AND the GrismMap-free chain is linear at
+///      `spec_iax`, build the WCS→IWC mapping and emit `-GRI` (for
+///      Wavelen) or `-GRA` (for Airwave) CTYPE plus the grism PV
+///      parameters.
+///
+/// On success returns `Some((axmap, ctype, pv_pairs, new_crval))`.
+/// `new_crval` is the grism's reference wavelength converted into
+/// the SpecFrame's original system.
+///
+/// Mirrors `fitschan.c::SpectralAxes` C:30480-30599.
+#[allow(clippy::too_many_arguments)]
+fn try_grism_cascade(
+    specfrm: &SpecFrame,
+    pixel_to_s_map: &dyn crate::mappings::Mapping,
+    spec_iax: usize,
+    nwcs: usize,
+    lbnd_p: &[f64],
+    ubnd_p: &[f64],
+    orig_system_str: &str,
+) -> AstResult<Option<(DynMapping, String, Vec<(usize, f64)>, f64)>> {
+    use crate::mappings::ZoomMap;
+    use std::f64::consts::PI;
+
+    const DR2D: f64 = 180.0 / PI;
+
+    // (wavelength_system, "-GRI"/"-GRA" suffix). Mirrors C:30486-30487.
+    const GRISM_SYSTEMS: [(SpecSystem, &str); 2] =
+        [(SpecSystem::Wavelen, "-GRI"), (SpecSystem::Airwave, "-GRA")];
+
+    for &(wave_sys, suffix) in &GRISM_SYSTEMS {
+        // Build a SpecFrame copy in the trial wavelength system
+        // with default unit. Mirrors C:30487-30488 (`astSetC(fs,
+        // system_attr, ...); astSetC(fs, unit_attr, "m");`).
+        let mut wave_frame = specfrm.clone();
+        wave_frame.set_system(wave_sys);
+        wave_frame.clear_unit();
+
+        // S → wavelength Mapping. If this can't be constructed, skip.
+        let s_to_wave = match specfrm.make_spec_mapping(&wave_frame) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        // Embed at spec_iax and compose with pixel→S to get the
+        // pixel→wavelength chain we'll search for a GrismMap.
+        let s_to_wave_padded = embed_axis(s_to_wave.clone_box(), spec_iax, nwcs)?;
+        let pixel_to_wave: DynMapping = Box::new(CmpMap::new(
+            pixel_to_s_map.clone_box(),
+            s_to_wave_padded,
+            Composition::Series,
+        )?);
+
+        // Simplify the chain — GrismMap usually shows up after
+        // ZoomMap simplification. Mirrors C:30496 (astSimplify).
+        let simplified = pixel_to_wave.simplified()?;
+
+        // Try to extract a GrismMap producing output spec_iax.
+        let (grism, sans_grism) =
+            match super::grism::extract_grism_map(simplified.as_ref(), spec_iax)? {
+                Some(p) => p,
+                None => continue,
+            };
+
+        // The GrismMap-free chain must be linear in pixel coords on
+        // the spectral axis. Mirrors C:30508.
+        if !is_map_linear(sans_grism.as_ref(), lbnd_p, ubnd_p, spec_iax)? {
+            continue;
+        }
+
+        // Recover the grism reference wavelength (in m) and convert
+        // it to the SpecFrame's original system. Mirrors
+        // C:30511-30529.
+        let crval_wave = grism.grism_wave_r();
+        if !crval_wave.is_finite() {
+            continue;
+        }
+        // wave→S forward Mapping for the conversion.
+        let wave_to_s = match wave_frame.make_spec_mapping(specfrm) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let pts_wave = PointSet::from_rows([[crval_wave]]);
+        let pts_s = match wave_to_s.transform(&pts_wave, true) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let new_crval = pts_s.point(0)[0];
+        if !new_crval.is_finite() {
+            continue;
+        }
+
+        // Build S → grism_param. Mirrors C:30531-30536 (the C uses
+        // tmap3 = S→wave then composes with grism.invert() = wave→
+        // grism_param. We mirror that with a fresh S → wave and an
+        // inverted grism clone).
+        let mut grism_inv: DynMapping = Box::new(grism.clone());
+        grism_inv.invert();
+        let s_to_grism: DynMapping = Box::new(CmpMap::new(
+            s_to_wave.clone_box(),
+            grism_inv,
+            Composition::Series,
+        )?);
+
+        // gval = grism parameter at the reference S value. Mirrors
+        // C:30539.
+        let pts_s_at_ref = PointSet::from_rows([[new_crval]]);
+        let pts_g = match s_to_grism.transform(&pts_s_at_ref, true) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let gval = pts_g.point(0)[0];
+        if !gval.is_finite() {
+            continue;
+        }
+
+        // dgbyds at the reference. Mirrors C:30543.
+        let dgbyds = match s_to_grism.rate(&[new_crval], 1, 1) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if !dgbyds.is_finite() || dgbyds == 0.0 {
+            continue;
+        }
+
+        // Build the W → grism_param Mapping then invert. Mirrors
+        // C:30551-30556 (ZoomMap(dgbyds) ∘ ShiftMap(gval), then
+        // invert to get grism_param → w).
+        let zoom = ZoomMap::new(1, dgbyds)?;
+        let shift = ShiftMap::new(vec![gval]);
+        let mut g_to_w: DynMapping = Box::new(CmpMap::new(
+            Box::new(zoom),
+            Box::new(shift),
+            Composition::Series,
+        )?);
+        g_to_w.invert();
+
+        // S → grism_param → w (the IWC mapping). Mirrors C:30564.
+        let s_to_w: DynMapping = Box::new(CmpMap::new(s_to_grism, g_to_w, Composition::Series)?);
+        let axmap = embed_axis(s_to_w, spec_iax, nwcs)?;
+
+        // Build the CTYPE: orig + "-GRI"/"-GRA". Mirrors C:30571-30574.
+        let ctype = format!("{orig_system_str}{suffix}");
+
+        // PV parameters from the GrismMap. Mirrors C:30579-30592 —
+        // skip values that match the FITS-WCS paper III defaults.
+        let mut pv_pairs: Vec<(usize, f64)> = Vec::new();
+        let g = grism.grism_g();
+        if g != 0.0 {
+            pv_pairs.push((0, g));
+        }
+        let m = grism.grism_m() as f64;
+        if m != 0.0 {
+            pv_pairs.push((1, m));
+        }
+        let alpha = grism.grism_alpha();
+        if alpha != 0.0 {
+            pv_pairs.push((2, alpha * DR2D));
+        }
+        let nr = grism.grism_nr();
+        if nr != 1.0 {
+            pv_pairs.push((3, nr));
+        }
+        let nrp = grism.grism_nrp();
+        if nrp != 0.0 {
+            pv_pairs.push((4, nrp));
+        }
+        let eps = grism.grism_eps();
+        if eps != 0.0 {
+            pv_pairs.push((5, eps * DR2D));
+        }
+        let theta = grism.grism_theta();
+        if theta != 0.0 {
+            pv_pairs.push((6, theta * DR2D));
+        }
+
+        return Ok(Some((axmap, ctype, pv_pairs, new_crval)));
+    }
+
+    Ok(None)
+}
+
 /// Recursively descend `frame` to its primary leaf for `axis`
 /// (0-based). Same helper used in celestial_axes / sky_sys.
 fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
@@ -495,6 +705,63 @@ mod tests {
         assert!(result.as_any().is::<UnitMap>());
         assert!(!axis_done[0] && !axis_done[1]);
         assert!(store.ctype[0].is_none() && store.ctype[1].is_none());
+    }
+
+    #[test]
+    fn try_grism_cascade_emits_gri_pv_and_chain() {
+        // Direct test of try_grism_cascade: build a chain
+        // pixel → ShiftMap → GrismMap whose output is read as a
+        // wavelength SpecFrame. The helper should detect the grism
+        // and return the -GRI-tagged WCS→IWC mapping plus the PV
+        // parameter list. (We test the helper directly here rather
+        // than through `spectral_axes`, because for many GrismMap
+        // parameter sets the X2P cascade fires first — the C
+        // priority order makes the grism path unreachable in those
+        // cases. The helper itself needs to be correct in case the
+        // X2P fails on a future fixture.)
+        use crate::mappings::{GrismMap, ShiftMap as Sm};
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let _ = basic; // silence unused-variable warning
+        let spec = SpecFrame::new(SpecSystem::Wavelen);
+
+        // Non-trivial GrismMap (default_map has g=0,m=0 ⇒ degenerate).
+        let g = GrismMap::new(1.0, 0.0, 1.0e-6, 0.0, 1.0e-6, 1, 0.0, 0.0);
+
+        // pixel → ShiftMap → GrismMap (1-D); we extend to 2-D for
+        // realism with axis 0 identity.
+        let chain_1d = crate::mappings::CmpMap::new(
+            Box::new(Sm::new(vec![-50.0])),
+            Box::new(g.clone()),
+            crate::mappings::Composition::Series,
+        )
+        .unwrap();
+        let chain_2d = crate::mappings::CmpMap::new(
+            Box::new(crate::mappings::UnitMap::new(1)),
+            Box::new(chain_1d),
+            crate::mappings::Composition::Parallel,
+        )
+        .unwrap();
+
+        let lbnd_p = vec![1.0, 1.0];
+        let ubnd_p = vec![100.0, 100.0];
+
+        let result = try_grism_cascade(&spec, &chain_2d, 1, 2, &lbnd_p, &ubnd_p, "WAVE")
+            .unwrap()
+            .expect("expected -GRI detection");
+
+        let (axmap, ctype, pv_pairs, new_crval) = result;
+        assert_eq!(ctype, "WAVE-GRI");
+        // Returned mapping has the right shape.
+        assert_eq!(axmap.nin(), 2);
+        assert_eq!(axmap.nout(), 2);
+        // CRVAL is the grism's reference wavelength.
+        assert!((new_crval - g.grism_wave_r()).abs() < 1e-9);
+        // PV parameters: with g != 0 and m != 0 we should emit
+        // PV-0 (= G) and PV-1 (= m).
+        let pv_g = pv_pairs.iter().find(|(m, _)| *m == 0);
+        assert!(pv_g.is_some(), "expected PV-0 (G)");
+        let pv_m = pv_pairs.iter().find(|(m, _)| *m == 1);
+        assert!(pv_m.is_some(), "expected PV-1 (m)");
     }
 
     #[test]

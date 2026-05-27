@@ -214,13 +214,16 @@ spectral axis. On success builds the WCS→IWC chain
 `S → X → −xval → ·dsbydx` and emits `<orig>-<X>2<P>` CTYPE per
 the C suffix table. Mirrors C:30359-30454.
 
-### `GrismMap` handling
+### `GrismMap` handling — DONE
 
-C C:30480-30599 detects a `GrismMap` in the chain after the
-SpecFrame and emits `-GRI`/`-GRA` algorithm codes plus PV
-parameters. The Rust port doesn't yet do this — needs an
-`extract_grism_map(chain)` walker plus accessors for
-`GrismMap::g`/`m`/`alpha`/`nr`/`nrp`/`eps`/`theta`.
+`extract_grism_map` walks a Mapping chain looking for an
+un-inverted GrismMap that produces a specified output directly,
+mirroring `fitschan.c::ExtractGrismMap`. `try_grism_cascade` in
+`spectral_axes` invokes it for each of WAVELEN / AIRWAVE,
+verifies the GrismMap-free chain is linear in pixel coords, then
+builds the `S → grism_param → w` IWC mapping and emits the
+`-GRI` / `-GRA` CTYPE plus the corresponding PV parameters
+(G / m / alpha / NR / NRP / eps / theta). Mirrors C:30480-30599.
 
 ### `VELOSYS` calculation
 

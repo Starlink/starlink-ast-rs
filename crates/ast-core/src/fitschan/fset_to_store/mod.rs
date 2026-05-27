@@ -17,6 +17,7 @@
 
 mod celestial_axes;
 mod fiducial;
+mod grism;
 mod invertable;
 mod is_map_linear;
 mod log_axis;
