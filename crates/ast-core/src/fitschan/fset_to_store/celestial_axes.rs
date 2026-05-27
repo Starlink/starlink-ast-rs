@@ -240,9 +240,20 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
 
     // Step 7b: SkyPole writes LONPOLE / LATPOLE (and the PV-3/PV-4
     // copies on the longitude axis for non-TPN projections). Mirrors
-    // C:5189. Currently zenithal-only — see sky_pole.rs head for
-    // the deferred non-zenithal path.
-    sky_pole(wcsmap, fits_ilon, fits_ilat, args.s, args.store);
+    // C:5189. Both zenithal and non-zenithal branches are ported;
+    // the non-zenithal path inverts the post-WcsMap chain (`post`)
+    // on the celestial north pole and runs wcs_nat_pole to choose
+    // the default LATPOLE.
+    sky_pole(
+        wcsmap,
+        post.as_ref(),
+        ilon,
+        ilat,
+        fits_ilon,
+        fits_ilat,
+        args.s,
+        args.store,
+    )?;
 
     // Step 8: build the WCS→IWC mapping for the celestial pair.
     // Mirrors C:5206-5305 — we construct the IWC→WCS chain and

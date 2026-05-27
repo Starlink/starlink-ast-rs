@@ -152,19 +152,14 @@ should be describable via `-TAB`, not rejected.
 **Action:** port `IsMapTab2D` (depends on `FitsTable`
 infrastructure — same blocker as `IsMapTab1D`).
 
-### `SkyPole` — LONPOLE / LATPOLE storage (C:5189)
+### `SkyPole` — LONPOLE / LATPOLE storage — DONE
 
-C calls `SkyPole(map2, map3, ilon, ilat, wperm, s, store, ...)`
-which writes `store->lonpole` / `store->latpole` based on the
-WcsMap's PV(lonax, 3/4) and the SkyFrame's `SkyRef`. The Rust port
-relies on the `WcsNative`-equivalent rotation built into the
-WCS→IWC mapping at write time, which is correct for round-trip
-output but means we never emit `LONPOLE`/`LATPOLE` keywords.
-Headers that need the keywords (e.g. when the C reader expects
-non-default LONPOLE) won't round-trip.
-
-**Action:** port `SkyPole`. May need `lonpole`/`latpole` in
-FitsStore (the legacy code stores them but only in some encoders).
+Ported in
+`crates/ast-core/src/fitschan/fset_to_store/sky_pole.rs`. Both
+zenithal (PV-3/PV-4 read) and non-zenithal (`wcs_nat_pole` math
+helper applying FITS-WCS paper II equations 8-9-10 plus a
+post-WcsMap-chain inverse on the celestial north pole) branches
+are covered. Wired into `celestial_axes` after `sky_sys`.
 
 ### Auto axis-swap with `WorldAxes` (C:5318–5378)
 
