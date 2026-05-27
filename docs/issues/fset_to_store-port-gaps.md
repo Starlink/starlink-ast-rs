@@ -151,18 +151,21 @@ helper applying FITS-WCS paper II equations 8-9-10 plus a
 post-WcsMap-chain inverse on the celestial north pole) branches
 are covered. Wired into `celestial_axes` after `sky_sys`.
 
-### Auto axis-swap with `WorldAxes` (C:5318–5378)
+### Auto axis-swap with `WorldAxes` (C:5318–5378) — DONE
 
-When `FitsAxisOrder == "<auto>"` and the celestial-rotation
-transposes lon/lat IWC axes, C re-asses the FITS axis numbering
-via `WorldAxes`, swapping `wperm` / CRVAL / CTYPE / CNAME / PV.
-The Rust port skips this entirely (effectively pinning
-`FitsAxisOrder == "lon-lat"` or whatever the SkyFrame's intrinsic
-order is). A header where the FITS layout truly wants the swap
-will get axes labelled wrong.
+`WorldAxes` (bidirectional branch) ported in
+`crates/ast-core/src/fitschan/fset_to_store/world_axes.rs`. The
+swap is wired into `celestial_axes` after `build_wcs_to_iwc`:
+pixel→WCS is composed with WCS→IWC, `world_axes` returns the
+pixel-axis association per WCS axis, and if that transposes
+lon/lat the FITS-side `wperm` / CRVAL / CTYPE / CNAME / PV slots
+are swapped. The C `FitsAxisOrder` attribute gate is implicit —
+the only mode reachable today is the C-default `"<auto>"`. When
+the writer grows a `FitsAxisOrder` knob, gate the swap on it.
 
-**Action:** port `WorldAxes` and the swap block. `FitsAxisOrder`
-is a `FitsChan` attribute we don't yet model on the Rust side.
+The C TAB-only `WorldAxes` branch (forward-only mappings via
+`astMapSplit`) is not ported — celestial WCS→IWC is always
+bidirectional.
 
 ---
 

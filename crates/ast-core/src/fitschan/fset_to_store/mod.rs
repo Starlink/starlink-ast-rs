@@ -27,6 +27,7 @@ mod other_axes;
 mod sky_pole;
 mod sky_sys;
 mod spectral_axes;
+mod world_axes;
 // mod spectral_axes;         // lands in Group 5 (Task 5.4)
 // mod sip_int_world;         // lands in Group 6
 

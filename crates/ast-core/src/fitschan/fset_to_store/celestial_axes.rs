@@ -22,11 +22,13 @@
 //!   `lonpole`/`latpole` keywords from the WcsMap's PV(lonax, 3/4)
 //!   and the SkyFrame's `SkyRef`. Headers that depend on non-default
 //!   LONPOLE/LATPOLE won't round-trip without these.
-//! - **Auto axis-swap** (C:5318-5378). When `FitsAxisOrder ==
-//!   "<auto>"` and the celestial rotation transposes lon/lat IWC
-//!   axes, C re-asseses the FITS axis numbering via `WorldAxes`
-//!   and swaps `wperm`/CRVAL/CTYPE/CNAME/PV. Blocked on the
-//!   `FitsAxisOrder` FitsChan attribute being modelled in Rust.
+//!
+//! Note on `FitsAxisOrder`: the C function gates the auto axis-swap
+//! on `astChrMatch(astGetFitsAxisOrder(this), "<auto>")` (C:5318).
+//! The Rust writer doesn't yet model the `FitsAxisOrder` FitsChan
+//! attribute — the only mode reachable today is `"<auto>"`, which is
+//! also the C library default. Once we add `FitsAxisOrder`, gate the
+//! swap below on it.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test) and downstream sibling modules.
@@ -48,6 +50,7 @@ use crate::wcslib::WcsProjection;
 use super::fiducial::{get_fiducial_nsc, get_fiducial_wcs};
 use super::sky_pole::sky_pole;
 use super::sky_sys::sky_sys;
+use super::world_axes::world_axes;
 
 /// `MXPAR` from wcslib's PV-parameter table — mirrors the C
 /// `WCSLIB_MXPAR` constant used in the PV-loop bound at
@@ -269,9 +272,40 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         [crval_lon_deg, crval_lat_deg],
     )?;
 
+    // Step 8b: auto axis-swap. The spherical rotation can transpose
+    // the IWC lon/lat axes (e.g. LONPOLE = 90°). Compose pixel→WCS
+    // with WCS→IWC to get pixel→IWC, then ask `world_axes` which
+    // pixel axis each IWC axis aligns with. If the celestial pair is
+    // swapped relative to the supplied `wperm`, swap the FITS-side
+    // bookkeeping. Mirrors C:5318-5378.
+    let pixel_to_iwc: DynMapping = Box::new(CmpMap::new(
+        map.clone_box(),
+        ret.clone_box(),
+        Composition::Series,
+    )?);
+    if let Some(tperm) = world_axes(pixel_to_iwc.as_ref(), args.dim, FITS_TOL_DEFAULT)?
+        && tperm[ilon] == fits_ilat
+        && tperm[ilat] == fits_ilon
+    {
+        // Swap FITS axis indices for lon and lat.
+        args.wperm[ilon] = fits_ilat;
+        args.wperm[ilat] = fits_ilon;
+
+        // Swap CRVAL.
+        args.store.crval.swap(fits_ilon, fits_ilat);
+        // Swap CTYPE / CNAME.
+        args.store.ctype.swap(fits_ilon, fits_ilat);
+        args.store.cname.swap(fits_ilon, fits_ilat);
+        // Swap PV vectors at the two axes (the full per-axis vectors).
+        args.store.pv.swap(fits_ilon, fits_ilat);
+    }
+
     // Step 9: simplify and return. Mirrors C:5591-5595.
     ret.simplified()
 }
+
+/// Default `FitsTol` value (matches the C library's FitsChan default).
+const FITS_TOL_DEFAULT: f64 = 0.1;
 
 /// Recursively descend `frame` to its primary leaf frame for axis
 /// `axis` (0-based). Mirrors `astPrimaryFrame`.
@@ -575,6 +609,52 @@ mod tests {
         assert!(result.as_any().is::<UnitMap>());
         assert!(!axis_done[0] && !axis_done[1]);
         assert!(store.crval[0].is_none() && store.crval[1].is_none());
+    }
+
+    /// 2-axis FrameSet whose pixel→sky mapping pre-swaps axes. The
+    /// celestial-axis code should detect this via `world_axes` and
+    /// swap the FITS-side bookkeeping.
+    fn build_swapped_tan_frameset() -> FrameSet {
+        let pixel = BasicFrameBuilder::new(2).domain("GRID").build().unwrap();
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        // PermMap that swaps axes 1↔2 (1-based).
+        let swap = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+        let mut wcsmap = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+        wcsmap.invert();
+        // pixel→sky: swap then WcsMap-inverted.
+        let chain = CmpMap::new(Box::new(swap), Box::new(wcsmap), Composition::Series).unwrap();
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(chain), Box::new(sky))
+            .unwrap();
+        fs
+    }
+
+    #[test]
+    fn auto_axis_swap_fires_when_pixel_to_iwc_transposes() {
+        let fs = build_swapped_tan_frameset();
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        let mut axis_done = vec![false; 2];
+
+        let _ = celestial_axes(CelestialAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            axis_done: &mut axis_done,
+            isoff: 0,
+        })
+        .unwrap();
+
+        // Swap should have fired: wperm reversed.
+        assert_eq!(wperm, vec![1_usize, 0]);
+        // CTYPE values appear at the swapped FITS positions.
+        // Pre-swap: ctype[0]="RA---TAN", ctype[1]="DEC--TAN".
+        // Post-swap: ctype[0]="DEC--TAN", ctype[1]="RA---TAN".
+        assert_eq!(store.ctype[0].as_deref(), Some("DEC--TAN"));
+        assert_eq!(store.ctype[1].as_deref(), Some("RA---TAN"));
     }
 
     #[test]
