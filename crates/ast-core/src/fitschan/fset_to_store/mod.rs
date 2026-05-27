@@ -15,6 +15,7 @@
 //! helper; we use `fset_to_store/` (matching the C entry-point name)
 //! to keep the read/write halves of the pipeline distinguishable.
 
+mod fiducial;
 mod invertable;
 mod make_int_world;
 mod orth;
