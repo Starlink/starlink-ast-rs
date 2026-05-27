@@ -1,0 +1,10 @@
+# Compiled oracle binaries — listed in Makefile's PROGS target.
+# Regenerate with `make` in this directory.
+linear_approx
+analyse_poly
+scale_poly_inputs
+orth_vector_set
+find_basis_vectors
+fit_line
+make_int_world
+sip_int_world

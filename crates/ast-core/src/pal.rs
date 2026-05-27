@@ -101,6 +101,7 @@ unsafe extern "C" {
     fn astPalGmst(ut1: f64) -> f64;
     fn astPalEqeqx(date: f64) -> f64;
     fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
+    fn astEraGd2gc(n: i32, elong: f64, phi: f64, height: f64, xyz: *mut f64) -> i32;
 
     // -- Observer / velocity --
     fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);
@@ -538,6 +539,22 @@ pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
 // ---------------------------------------------------------------------------
 // Group 13: Observer / velocity
 // ---------------------------------------------------------------------------
+
+/// Convert geodetic position (longitude, latitude, altitude) to a
+/// geocentric Cartesian XYZ position vector in metres. Mirrors
+/// `eraGd2gc(1, ...)` (WGS84 reference ellipsoid).
+///
+/// - `lon`: geodetic longitude (radians, east-positive)
+/// - `lat`: geodetic latitude (radians)
+/// - `height`: altitude above reference ellipsoid (metres)
+///
+/// Returns the 3-vector `[x, y, z]` in metres, or `None` if the ERFA
+/// routine signalled an error (e.g. latitude out of range).
+pub(crate) fn gd2gc(lon: f64, lat: f64, height: f64) -> Option<[f64; 3]> {
+    let mut xyz = [0.0_f64; 3];
+    let status = unsafe { astEraGd2gc(1, lon, lat, height, xyz.as_mut_ptr()) };
+    if status == 0 { Some(xyz) } else { None }
+}
 
 /// Observer position and velocity as a 6-vector.
 ///

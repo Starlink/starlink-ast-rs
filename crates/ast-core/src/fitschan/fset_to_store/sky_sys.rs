@@ -271,11 +271,55 @@ pub(crate) fn sky_sys(
     store.ctype[axlon] = Some(format!("{lon_pre}{prj_name}"));
     store.ctype[axlat] = Some(format!("{lat_pre}{prj_name}"));
 
-    // CTYPE comment / CNAME from explicit Label, when set.
-    // Currently no public test_label() / label() on SkyFrame; the
-    // generic Frame trait doesn't expose them either. Skip until the
-    // SkyFrame surface lands those — wcs_write::populate_celestial
-    // takes the same shortcut and produces correct fixtures.
+    // Offset-coordinate AST-extension fields (C:29890-29936).
+    if isoff != 0 {
+        let lonax_in_sky = skyfrm.lon_axis();
+        let latax_in_sky = skyfrm.lat_axis();
+        let sky_ref = skyfrm.sky_ref();
+        let sky_ref_p = skyfrm.sky_ref_p();
+        if isoff > 0 {
+            // C:29893-29909 emits a CTYPE comment of the form
+            // "<symbol-without-leading-letter> offset from <SkyRef>".
+            // We need an axis-symbol getter on SkyFrame to mirror this
+            // exactly; tracked in fset_to_store-port-gaps.md. Without
+            // it, leave ctype_com unset so the writer falls back to
+            // the generic comment.
+        } else {
+            // C:29911-29935 — describing absolute coords with offset
+            // metadata. Write skyrefis / skyref / skyrefp.
+            let skyrefis = if isoff < -2 {
+                "IGNORED"
+            } else if isoff < -1 {
+                "ORIGIN"
+            } else {
+                "POLE"
+            };
+            store.skyrefis = Some(skyrefis.to_string());
+            // Per-axis storage in FITS axis order. Mirrors
+            // C:29928-29935 which writes to (fits_ilon, fits_ilat)
+            // slots — we have axlon/axlat which are those slots.
+            store.skyref[axlon] = Some(sky_ref[lonax_in_sky]);
+            store.skyref[axlat] = Some(sky_ref[latax_in_sky]);
+            store.skyrefp[axlon] = Some(sky_ref_p[lonax_in_sky]);
+            store.skyrefp[axlat] = Some(sky_ref_p[latax_in_sky]);
+        }
+    }
+
+    // Domain → WCSNAME (C:29959-29961). C uses `astTestDomain` to
+    // emit only when the user explicitly set Domain; our SkyFrame
+    // currently lacks that distinction (Domain defaults to "SKY" and
+    // we can't tell whether it was explicitly set to "SKY" or kept
+    // at the default). Track in fset_to_store-port-gaps.md as a
+    // SkyFrame attribute-tracking gap; emit whenever Domain is
+    // non-default for now.
+    let domain = skyfrm.domain();
+    if !domain.is_empty() && domain != "SKY" {
+        store.wcsname = Some(domain.to_string());
+    }
+
+    // CTYPE comment / CNAME from explicit Label (C:29941-29950) —
+    // requires SkyFrame::test_label / SkyFrame::label support that
+    // doesn't exist yet. Tracked in fset_to_store-port-gaps.md.
 
     // Clear CUNIT for celestial axes — they default to degrees in
     // FITS-WCS and an explicit value would mis-trigger the wcslib
@@ -283,10 +327,23 @@ pub(crate) fn sky_sys(
     store.cunit[axlon] = None;
     store.cunit[axlat] = None;
 
-    // Suppress the unused-variable warning on `s` until the offset-
-    // coord AST-extension branch lands.
-    let _ = s;
-    let _ = isoff;
+    // OBSGEO-X/Y/Z (C:29963-29975). Only emitted on the primary
+    // coordinate version (s == ' ') and when both lon and lat are
+    // explicitly set (Option<f64> is the Rust analog of
+    // `astTestObsLon`).
+    if s == ' '
+        && let (Some(geolon), Some(geolat)) = (
+            <SkyFrame as crate::frames::Frame>::obs_lon(skyfrm),
+            <SkyFrame as crate::frames::Frame>::obs_lat(skyfrm),
+        )
+    {
+        let h = <SkyFrame as crate::frames::Frame>::obs_alt(skyfrm).unwrap_or(0.0);
+        if let Some(xyz) = crate::pal::gd2gc(geolon, geolat, h) {
+            store.obsgeox = Some(xyz[0]);
+            store.obsgeoy = Some(xyz[1]);
+            store.obsgeoz = Some(xyz[2]);
+        }
+    }
 
     Ok(true)
 }
@@ -388,6 +445,111 @@ mod tests {
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 1).unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("OFLN-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("OFLT-TAN"));
+    }
+
+    #[test]
+    fn isoff_negative_writes_skyrefis_skyref_skyrefp() {
+        // isoff<0 → describe absolute coords but also emit the
+        // SkyRefIs / SkyRef / SkyRefP AST-extension keywords.
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_sky_ref_is(SkyRefIs::Pole);
+        sky.set_sky_ref(0.5, -0.25);
+        sky.set_sky_ref_p(1.0, 0.5);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -1).unwrap();
+        // isoff = -1 → "POLE".
+        assert_eq!(s.skyrefis.as_deref(), Some("POLE"));
+        assert_eq!(s.skyref[0], Some(0.5));
+        assert_eq!(s.skyref[1], Some(-0.25));
+        assert_eq!(s.skyrefp[0], Some(1.0));
+        assert_eq!(s.skyrefp[1], Some(0.5));
+        // Even though isoff != 0, CTYPE is the absolute form (RA--/DEC-)
+        // because isoff > 0 is the only path that switches to OFLN/OFLT.
+        assert_eq!(s.ctype[0].as_deref(), Some("RA---TAN"));
+    }
+
+    #[test]
+    fn isoff_negative_2_writes_origin() {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_sky_ref_is(SkyRefIs::Origin);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -2).unwrap();
+        assert_eq!(s.skyrefis.as_deref(), Some("ORIGIN"));
+    }
+
+    #[test]
+    fn isoff_negative_3_writes_ignored() {
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', -3).unwrap();
+        assert_eq!(s.skyrefis.as_deref(), Some("IGNORED"));
+    }
+
+    #[test]
+    fn isoff_zero_does_not_emit_skyref_metadata() {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_sky_ref(1.0, 1.0);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
+        assert!(s.skyrefis.is_none());
+        assert!(s.skyref[0].is_none() && s.skyref[1].is_none());
+    }
+
+    #[test]
+    fn obsgeo_emitted_when_observer_position_set() {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        // Observer at Greenwich on the Earth's surface.
+        sky.set_obs_lon(0.0); // 0° east
+        sky.set_obs_lat(51.4778_f64.to_radians()); // ~Greenwich
+        sky.set_obs_alt(0.0);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
+        let x = s.obsgeox.expect("OBSGEO-X");
+        let y = s.obsgeoy.expect("OBSGEO-Y");
+        let z = s.obsgeoz.expect("OBSGEO-Z");
+        // |X| should be ≈ Earth radius * cos(lat) for lon=0.
+        let r = (x * x + y * y + z * z).sqrt();
+        assert!(
+            (r - 6_371_000.0).abs() < 50_000.0,
+            "OBSGEO magnitude {r} should be Earth-radius-ish"
+        );
+        // Greenwich (lon=0) → y ≈ 0.
+        assert!(y.abs() < 1.0e-3, "y={y} should be near zero for lon=0");
+    }
+
+    #[test]
+    fn obsgeo_skipped_for_non_primary_version() {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_obs_lon(0.0);
+        sky.set_obs_lat(0.0);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, 'A', 0).unwrap();
+        assert!(s.obsgeox.is_none());
+    }
+
+    #[test]
+    fn obsgeo_skipped_when_observer_unset() {
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
+        assert!(s.obsgeox.is_none());
+    }
+
+    #[test]
+    fn wcsname_emitted_when_domain_non_default() {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_domain("MY-DOMAIN");
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
+        assert_eq!(s.wcsname.as_deref(), Some("MY-DOMAIN"));
+    }
+
+    #[test]
+    fn wcsname_skipped_for_default_domain() {
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
+        assert!(s.wcsname.is_none());
     }
 
     #[test]

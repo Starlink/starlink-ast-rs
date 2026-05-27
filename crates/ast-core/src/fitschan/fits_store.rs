@@ -84,6 +84,25 @@ pub(crate) struct FitsStore {
     pub sip_ap: Vec<Vec<f64>>,
     /// SIP BP coefficients (inverse), shape [i][j].
     pub sip_bp: Vec<Vec<f64>>,
+    // -- AST-extension SkyFrame offset-coords (fitschan.c::SkySys ~29927) --
+    /// `SkyRefIs`-equivalent string: `"POLE"` / `"ORIGIN"` / `"IGNORED"`.
+    /// Only set when SkySys is called with `isoff < 0` (describe absolute
+    /// coords but include the offset metadata).
+    pub skyrefis: Option<String>,
+    /// `SkyRef` reference-point coords per axis (radians, FITS axis order).
+    pub skyref: Vec<Option<f64>>,
+    /// `SkyRefP` reference-point pole coords per axis.
+    pub skyrefp: Vec<Option<f64>>,
+    // -- WCSNAME (fitschan.c:29960) --
+    /// `WCSNAMEa` from the SkyFrame's `Domain` attribute.
+    pub wcsname: Option<String>,
+    // -- OBSGEO-X/Y/Z (fitschan.c:29965-29975) --
+    /// Geocentric observer position X (metres).
+    pub obsgeox: Option<f64>,
+    /// Geocentric observer position Y (metres).
+    pub obsgeoy: Option<f64>,
+    /// Geocentric observer position Z (metres).
+    pub obsgeoz: Option<f64>,
 }
 
 /// Maximum number of PV parameters per axis.
@@ -126,6 +145,13 @@ impl FitsStore {
             sip_bp_order: None,
             sip_ap: Vec::new(),
             sip_bp: Vec::new(),
+            skyrefis: None,
+            skyref: vec![None; naxis],
+            skyrefp: vec![None; naxis],
+            wcsname: None,
+            obsgeox: None,
+            obsgeoy: None,
+            obsgeoz: None,
         }
     }
 
