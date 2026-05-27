@@ -19,10 +19,10 @@ mod invertable;
 mod make_int_world;
 mod orth;
 mod other_axes;
-// mod celestial_axes;        // lands in Group 5
-// mod spectral_axes;         // lands in Group 5
+mod sky_sys;
+// mod celestial_axes;        // lands in Group 5 (Task 5.3)
+// mod spectral_axes;         // lands in Group 5 (Task 5.4)
 // mod sip_int_world;         // lands in Group 6
-// mod sky_sys;               // lands in Group 5
 
 // Re-exports for Group-7 callers (`fset_to_store::fset_to_store`)
 // landing later. Marked `unused_imports`-allowed so the re-export
