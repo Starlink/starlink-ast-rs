@@ -3142,3 +3142,56 @@ This plan is large. Read the spec (`docs/superpower/specs/2026-05-25-makeintworl
 Each commit group is reviewable on its own. If a commit group passes its finalisation checklist, the next group can start without further review. If it fails, fix it before moving on.
 
 When in doubt, read the C source again. Don't invent rules.
+
+## Post-validation idiomatic-Rust pass (TODO, all groups)
+
+The whole plan — Group 1's `Mapping::map_split` reshape and all the
+`make_int_world` pieces in Groups 2-7 — is being written **C-first**:
+mirror the source line-for-line, leak C idioms (index-style loops,
+`Option<...>` returns where C uses out-pointers, free functions where
+trait methods would fit, `BTreeMap` accumulators that mimic C's
+"build-then-simplify" pattern, and so on) so that bit-for-bit oracle
+comparison stays tractable while the pipeline is being assembled.
+
+Once the writer pipeline is wired up (Group 7) and the wcsconv
+fixtures all pass (Group 8), revisit this work for an
+**idiomatic-Rust pass**:
+
+- Promote free helpers that are conceptually methods to default
+  trait methods (`linear_approx` was already done as a follow-up to
+  Group 2.1 — apply the same lens to anything in `helpers/` that
+  takes a `&dyn Mapping` as its first argument and is logically a
+  Mapping operation). Subclass overrides for closed-form cases
+  (`MatrixMap::linear_approx`, `ZoomMap::linear_approx`, etc.)
+  belong in this pass.
+- Replace index-loop bodies in `mappings/linear_approx.rs`,
+  `helpers/analyse_poly.rs`, `helpers/scale_poly_inputs.rs`, and
+  the per-class `map_split` implementations with iterator pipelines
+  where the result is genuinely clearer. The
+  `#![allow(clippy::needless_range_loop, clippy::manual_memcpy)]`
+  module attributes that were added to keep clippy quiet during the
+  C-mirror phase mark the call sites worth revisiting.
+- Replace `Option<...>` returns that encode C's "0 = failure, set
+  out-pointers on success" idiom with `Result<T, AstError>` or
+  domain-specific enums where the failure modes are meaningful.
+  Specifically: `analyse_poly`'s `AstResult<Option<...>>` collapses
+  badly, and the per-class `map_split` failure modes deserve named
+  variants instead of bare `None`.
+- Reconsider `AnalysePolyResult.map3_matrix: Option<MatrixMap>`
+  (where `None` encodes the UnitMap branch) as an explicit
+  `enum { Identity, Matrix(MatrixMap) }` — the current shape is a
+  C-compat artefact.
+- Audit which `pub` items in `helpers/` are still reachable from
+  outside the crate after the integration work lands. Anything not
+  needed externally should drop to `pub(crate)`.
+- Audit the `#[allow(dead_code)]` attributes added during Groups
+  2-6 (they exist because callers in later groups hadn't landed
+  yet); remove the ones that are now reachable.
+
+**Constraint:** do this pass only after wcsconv green. The
+C-oracle test suite is the safety net; an idiomatic refactor without
+a passing oracle baseline risks regressions that look fine in Rust
+but produce different bytes from C.
+
+Track this in a future plan (`docs/superpower/plans/...-idiomatic-rust.md`)
+once Group 8 lands; don't try to fold it into this plan.
