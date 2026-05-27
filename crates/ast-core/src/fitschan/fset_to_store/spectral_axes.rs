@@ -6,35 +6,36 @@
 //! `axis_done`, and returns the WCS→IWC mapping segment for that
 //! axis.
 //!
-//! ## Deferred branches
+//! ## TODO: branches not yet ported
 //!
-//! The C `SpectralAxes` is ~370 LoC of FITS-WCS-paper-III algorithm
-//! decoding (FREQ ↔ WAVE ↔ AWAV ↔ VELO conversions, GrismMap
-//! handling, the `-LOG` / `-F2W` / `-V2F` / `-OHL` algorithm-code
-//! discovery for non-canonical SpecFrame chains). This Rust port
-//! covers the canonical cases the legacy `wcs_write::populate_spectral`
-//! already handled (the same set that produces 152 passing wcsconv
-//! tests):
+//! This is by far the largest gap in the port — most of the C
+//! function is **not yet implemented**. The Rust body covers only
+//! the canonical-form subset (CTYPE = system name, CUNIT = canonical
+//! unit, single-axis ShiftMap WCS→IWC). Lack of wcsconv fixture
+//! coverage is not an excuse for under-porting — see
+//! [`feedback_test_coverage_is_separate_from_porting`] in user
+//! memory.
 //!
-//! - SpecFrame in canonical FITS form (CTYPE = system name, CUNIT
-//!   = system or user-set unit, ShiftMap-based CRVAL subtraction
-//!   for WCS→IWC).
-//! - SPECSYS / RESTFRQ from SpecFrame attributes.
+//! Tracked in
+//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
-//! Deferred:
-//! - VELOSYS calculation (needs the celestial source position from
-//!   `celestial_axes`; will be wired in Group 7 when the two
-//!   classifiers are sequenced).
-//! - Algorithm-code suffix derivation for non-canonical chains
-//!   (`-LOG`, `-F2W`, `-V2F`, `-OHL`, `-WAV` from `-FRQ`, etc.).
-//! - GrismMap handling (`-GRI` / `-GRA`).
-//! - SpecFrame unit-conversion chain rewriting (`fset` mutation
-//!   when the spectral system requires a unit change to be
-//!   FITS-compliant).
+//! - **Algorithm-code suffix derivation** for non-canonical SpecMap
+//!   chains: `-LOG`, `-F2W`, `-V2F`, `-OHL`, `-WAV-from-FRQ`, etc.
+//!   (FITS-WCS paper III). Without this, headers like
+//!   `vopt-f2w.head`, `wave-f2w.head`, `class-arc.head` get the
+//!   wrong CTYPE.
+//! - **`GrismMap` handling** (`-GRI` / `-GRA`).
+//! - **`VELOSYS` calculation** — needs the celestial source position
+//!   from `celestial_axes`. Wiring step is in Group 7.
+//! - **SpecFrame unit-conversion rewriting** when the spectral
+//!   system requires a unit change to be FITS-compliant.
+//! - **`SourceVel` / `SourceVRF` / Redshift handling**.
 //!
-//! The pipeline retains the same WCS→IWC shape (parallel ShiftMap
-//! over the spectral axis, identity elsewhere) that the existing
-//! wcs_write path produces — Group 7 wiring shouldn't regress.
+//! Until those land, the canonical-form subset matches what the
+//! legacy `wcs_write::populate_spectral` covers, so Group 7 wiring
+//! won't regress against the existing fixtures — but it will
+//! produce wrong output for any new fixture that exercises a
+//! deferred branch.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test).

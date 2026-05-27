@@ -5,25 +5,28 @@
 //! RADESYS / EQUINOX / MJD-OBS) in the supplied [`FitsStore`], and
 //! returns the WCS→IWC mapping segment for those axes.
 //!
-//! ## Deferred branches (mirrors plan §5.3 + 5.5)
+//! ## TODO: branches not yet ported
 //!
-//! These C paths are intentionally not ported here — the legacy
-//! `wcs_write::populate_celestial` doesn't cover them either, and
-//! the existing 152-passing-wcsconv-tests baseline doesn't exercise
-//! them. They land as Group 8 follow-ups if a fixture exposes a gap:
+//! Several C branches are not yet covered. They MUST be ported (lack
+//! of wcsconv fixture coverage is not an excuse — see
+//! [`feedback_test_coverage_is_separate_from_porting`] in user
+//! memory). Tracked in
+//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
-//! - **`-TAB` algorithm** (no WcsMap in chain): C falls through to
-//!   `IsMapTab2D`. We return identity over the celestial axes so the
-//!   downstream pipeline can flag the linearity failure.
-//! - **`SkyPole` / LONPOLE+LATPOLE storage**: the C call at line 5189
-//!   stores the chosen LONPOLE / LATPOLE. Our writer uses the
-//!   `WcsNative`-equivalent rotation built into the WCS→IWC mapping
-//!   directly, so the keywords aren't yet needed in the Store.
-//! - **Auto axis-swap** (C lines 5318-5378): when the IWC rotation
-//!   transposes lon/lat axes, swap `wperm` / CRVAL / CTYPE / CNAME /
-//!   PV between the two FITS slots. Triggered only when
-//!   `FitsAxisOrder == "<auto>"` — we always behave as the
-//!   non-auto path.
+//! - **`-TAB` algorithm fallback** (C:5396-5580). When no WcsMap is
+//!   present in the pixel→WCS chain, C falls through to `IsMapTab2D`.
+//!   The Rust port returns UnitMap, which is silently wrong for
+//!   `-TAB`-describable celestial fixtures. Blocked on `FitsTable`
+//!   infrastructure.
+//! - **`SkyPole` / LONPOLE+LATPOLE storage** (C:5189). C writes
+//!   `lonpole`/`latpole` keywords from the WcsMap's PV(lonax, 3/4)
+//!   and the SkyFrame's `SkyRef`. Headers that depend on non-default
+//!   LONPOLE/LATPOLE won't round-trip without these.
+//! - **Auto axis-swap** (C:5318-5378). When `FitsAxisOrder ==
+//!   "<auto>"` and the celestial rotation transposes lon/lat IWC
+//!   axes, C re-asseses the FITS axis numbering via `WorldAxes`
+//!   and swaps `wperm`/CRVAL/CTYPE/CNAME/PV. Blocked on the
+//!   `FitsAxisOrder` FitsChan attribute being modelled in Rust.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test) and downstream sibling modules.

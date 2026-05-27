@@ -7,23 +7,23 @@
 //! `CTYPE`-comment / `CNAME` / `CUNIT` / `RADESYS` / `EQUINOX` /
 //! `MJD-OBS` / `TIMESYS`) into a [`FitsStore`].
 //!
-//! ## Deferred AST-extension fields
+//! ## TODO: branches not yet ported
 //!
-//! The C `SkySys` writes five fields that the Rust [`FitsStore`]
-//! does not yet carry — we keep stubs in this module's TODO list
-//! and add them in Group 7 / 8 only if a wcsconv fixture exposes
-//! the gap:
+//! Several C branches are not yet covered by this Rust port. They
+//! MUST be ported (lack of wcsconv fixture coverage is not an excuse
+//! for under-porting — see
+//! [`feedback_test_coverage_is_separate_from_porting`] in user
+//! memory). Tracked in
+//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
-//! - `store->skyrefis`, `store->skyref`, `store->skyrefp` — only
-//!   used for the offset-coords AST extension, not part of the FITS
-//!   standard.
-//! - `store->wcsname` — written when the SkyFrame's Domain is set.
-//! - `store->obsgeox/y/z` — observer-position keywords, only
-//!   produced when ObsLon/ObsLat/ObsAlt are explicitly set.
-//!
-//! The legacy `wcs_write::populate_celestial` path doesn't write
-//! any of these either, and the existing 152-passing-wcsconv-tests
-//! baseline doesn't exercise them.
+//! - `store->skyrefis` / `skyref` / `skyrefp` (offset-coord AST
+//!   extension; FitsStore is missing the fields).
+//! - `store->wcsname` (Domain → WCSNAME).
+//! - `store->obsgeox/y/z` (observer-position keywords).
+//! - `TIMESYS` / TDB↔UTC epoch conversion via `TDBConv`.
+//! - Unknown-system CTYPE-prefix path that inspects axis Symbol
+//!   for the `xxLN`/`xxLT` form.
+//! - SkyFrame `Label` → CTYPE comment / CNAME.
 
 // Wired in by celestial_axes (Task 5.3); until then nothing here
 // is reachable from the crate's non-test code.

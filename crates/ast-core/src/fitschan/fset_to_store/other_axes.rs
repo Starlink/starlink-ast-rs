@@ -6,21 +6,24 @@
 //! mapping that subtracts the chosen CRVAL on each axis (identity on
 //! the already-handled ones).
 //!
-//! ## Deliberate deferrals (mirrors plan §3.2)
+//! ## TODO: branches not yet ported
 //!
-//! The C source has three special-case paths around line 24239:
-//! `IsMapLinear` → linear ShiftMap, `LogAxis` → `-LOG` algorithm
-//! mapping, `IsMapTab1D` → `-TAB` algorithm mapping. The plan
-//! explicitly punts on `LogAxis` and `-TAB` and treats every axis as
-//! linear (the same fallback C takes when none of the three match).
-//! This is correct for any axis that is genuinely linear; it produces
-//! a non-linear `pixel→IWC` for log/tab axes that `make_int_world`
-//! will reject downstream — the same outcome the C library reaches
-//! when it falls through to the "pretend linear" path. `IsMapLinear`
-//! is similarly deferred: linearity is asserted by construction
-//! rather than verified, and any failure surfaces later. Track these
-//! deferrals as Group-8 follow-ups if they show up in wcsconv-failed
-//! fixtures.
+//! The C source has three special-case paths around line 24239 that
+//! are NOT yet ported. The Rust body always assumes linearity and
+//! emits a `ShiftMap`. Lack of wcsconv fixture coverage is not an
+//! excuse for under-porting — see
+//! [`feedback_test_coverage_is_separate_from_porting`] in user
+//! memory. Tracked in
+//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
+//!
+//! - **`IsMapLinear`** (C:19136) — verifies the axis is linear over
+//!   the box, with a 20-point fit and an RMS-residual gate. Without
+//!   it, non-linear axes silently produce wrong pixel→IWC mappings.
+//! - **`LogAxis`** (-LOG algorithm) — detects logarithmically
+//!   spaced axes and emits a `-LOG` CTYPE plus a log mapping (FITS-
+//!   WCS paper III).
+//! - **`IsMapTab1D`** (-TAB algorithm) — 1-D tabular look-up tables.
+//!   Blocked on `FitsTable` infrastructure.
 
 // Wired up by `fset_to_store` in Group 7; until then nothing in this
 // module is reachable from outside the cfg(test) block, and rustc's
