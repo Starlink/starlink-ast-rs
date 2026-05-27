@@ -142,3 +142,60 @@ If a future test fixture exercises the BAD-mixed case and the
 oracle/Rust comparison diverges, the right fix is to reach back
 to the maintainers for a definitive semantic — not to reproduce
 the UB on the Rust side.
+
+---
+
+## ScalePolyInputs: stale pointer in inverse-coefficient branch
+
+**C location:** `fitschan.c:26984-27028` — inside `ScalePolyInputs`,
+after the forward-coefficient scaling loop:
+
+```c
+pv = coeffs_f;
+for( ico = 0; ico < ncoeff_f; ico++ ){
+   cof = *pv;
+   pv += 2;
+   scale = scales;                         /* reset each outer iter */
+   for( iin = 0; iin < nin; iin++,scale++,pv++ ){
+      cof *= pow( *scale, *pv );
+   }
+   pv[ -( 2 + nin ) ] = cof;
+}
+
+...
+
+pv = coeffs_i;
+for( ico = 0; ico < ncoeff_i; ico++,pv += 2 + nout ){
+   iin = pv[ 1 ] - 1;
+   pv[ 0 ] *= 1.0/scale[ iin ];           /* `scale` is stale here  */
+}
+```
+
+**Observation:** the inverse-coefficient loop indexes `scale[iin]`
+using the same `scale` pointer that the forward loop ended on.
+After the forward loop completes, `scale == scales + nin` —
+`scale[iin]` therefore reads `scales[nin + iin]`, i.e. one full
+length past the end of the input array. That is undefined
+behaviour when `ncoeff_i > 0`. The intended index is plainly
+`scales[iin]` (matching the loop comment "use it to scale by the
+reciprocal of the scale factor associated with the Mapping
+input").
+
+**Why this never bites in practice:** ScalePolyInputs is only
+called from the SIP-write path
+(`fitschan.c::WcsAddSipDistortion`-adjacent) where the supplied
+PolyMap always has `IterInverse=1` set. With iterative inverse
+the `ncoeff_i` field is zero, so the inverse-coefficient loop's
+body is never executed and the OOB read never happens.
+
+**User-visible consequence:** none today, because the SIP-write
+path doesn't hit it. Anyone who calls `ScalePolyInputs` from new
+code with an explicit-inverse PolyMap would invoke UB.
+
+**How Rust diverges (deliberate):**
+`crates/ast-core/src/mappings/helpers/scale_poly_inputs.rs` writes
+the apparently-intended math directly: `coeff /= scales[iin]`,
+where `iin = (term.out_axis - 1) % nin`. The Rust port also runs
+this branch only when `polymap.inverse_terms()` is `Some(...)`, so
+the SIP-path coverage matches C exactly, while uncommon callers
+get the correct algorithm rather than UB.
