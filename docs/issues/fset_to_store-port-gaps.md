@@ -57,36 +57,32 @@ infrastructure does not yet exist on the Rust side.
 **Source:** `crates/ast-core/src/fitschan/fset_to_store/sky_sys.rs`
 mirrors `fitschan.c::SkySys` (~29599).
 
-### Missing `FitsStore` fields for offset-coord AST extension
+### Missing `FitsStore` fields for offset-coord AST extension — DONE
 
-C lines 29927–29935 write `store->skyrefis`, `store->skyref`,
-`store->skyrefp` when `isoff < 0` — the AST extension that lets a
-header round-trip a SkyFrame with `SkyRefIs == Pole` or `Origin`
-without losing the offset metadata. The Rust `FitsStore` does not
-yet carry these fields.
+`FitsStore` now carries `skyrefis: Option<String>`, `skyref:
+Vec<Option<f64>>`, `skyrefp: Vec<Option<f64>>`. `sky_sys` writes
+them on the `isoff < 0` path. The FITS-WCS encoder/decoder
+(`wcs_write::write_store_to_cards` /
+`wcs_keywords::read_wcs_into_store`) emit and read `SREFISa /
+SREFi[a] / SREFPi[a]` — note the AST 8-char-budget keyword names
+(not `SKYREFIS`). Mirrors C:37185-37216. The PC/IRAF/AIPS/DSS
+encoders don't carry these AST extensions; they're lossy by
+design (they target legacy formats), so no work needed there.
 
-**Action:** add `skyrefis: Option<String>`, `skyref:
-Vec<Option<f64>>`, `skyrefp: Vec<Option<f64>>` to `FitsStore`;
-port the C logic into `sky_sys`; teach the encoders (Native, PC,
-CLASS, IRAF, AIPS, DSS) to read/write the AST-extension keywords.
+### `WCSNAME` from SkyFrame `Domain` — DONE
 
-### `WCSNAME` from SkyFrame `Domain`
+`store.wcsname` is populated by `sky_sys` from the SkyFrame's
+Domain. The FITS-WCS writer now emits it on both primary and alt
+planes (with the C 1-axis-suppression rule when WCSNAME ==
+CTYPE1 case-insensitively); the reader populates it. Mirrors
+C:37005-37011.
 
-C lines 29959–29961 write `store->wcsname` when the SkyFrame's
-`Domain` attribute is set.
+### `OBSGEO-X/Y/Z` (observer geocentric position) — DONE
 
-**Action:** add `wcsname: Option<String>` to `FitsStore`; emit it
-on the writer side; round-trip-test with a Domain-set SkyFrame.
-
-### `OBSGEO-X/Y/Z` (observer geocentric position)
-
-C lines 29965–29975 emit `OBSGEO-X/Y/Z` from `ObsLon`/`ObsLat`/
-`ObsAlt` via `eraGd2gc`. Rust `FitsStore` lacks the `obsgeox/y/z`
-fields and the encoder side doesn't support the keywords.
-
-**Action:** add fields, port the geodetic→geocentric conversion
-(we have `pal::dranrm` etc. but need to verify we expose
-`eraGd2gc`'s equivalent), and wire through the encoders.
+`store.obsgeox/y/z` populated by `sky_sys` (and `spectral_axes`)
+via `pal::gd2gc` from `ObsLon`/`ObsLat`/`ObsAlt`. The FITS-WCS
+writer emits primary-only `OBSGEO-X/Y/Z`; the reader populates
+them. Mirrors C:37363-37372.
 
 ### `TIMESYS` — TDB↔UTC timescale conversion — DONE
 

@@ -162,6 +162,23 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList) -> AstResult<FitsStore> {
     store.restfrq = cards.get_float("RESTFRQ");
     store.restwav = cards.get_float("RESTWAV");
 
+    // AST-extension keywords. Mirrors WcsFromStore writes at
+    // fitschan.c:37005-37372. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,
+    // ZSOURCE, IMAGFREQ, SREFIS / SREF{i} / SREFP{i}.
+    store.wcsname = cards.get_string("WCSNAME");
+    store.obsgeox = cards.get_float("OBSGEO-X");
+    store.obsgeoy = cards.get_float("OBSGEO-Y");
+    store.obsgeoz = cards.get_float("OBSGEO-Z");
+    store.ssyssrc = cards.get_string("SSYSSRC");
+    store.zsource = cards.get_float("ZSOURCE");
+    store.imagfreq = cards.get_float("IMAGFREQ");
+    store.skyrefis = cards.get_string("SREFIS");
+    for i in 0..naxis {
+        let axis_num = i + 1;
+        store.skyref[i] = cards.get_float(&format!("SREF{axis_num}"));
+        store.skyrefp[i] = cards.get_float(&format!("SREFP{axis_num}"));
+    }
+
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
     extract_sip(cards, &mut store);
 

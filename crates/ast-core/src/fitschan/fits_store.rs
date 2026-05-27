@@ -111,9 +111,7 @@ pub(crate) struct FitsStore {
     pub ssyssrc: Option<String>,
     /// `IMAGFREQ` — image-sideband frequency for DSB SpecFrames.
     /// Only populated by `spectral_axes` once the DSBSpecFrame port
-    /// lands; reserved here so the field exists for downstream
-    /// encoders.
-    #[allow(dead_code)]
+    /// lands; the FITS-WCS encoder reads it on output.
     pub imagfreq: Option<f64>,
 }
 

@@ -1501,16 +1501,32 @@ fn write_store_to_cards(
         cards.set_int(&key, naxis as i64, "Number of WCS axes");
     }
 
-    // WCSNAME{S} for alt planes: frame domain.
-    if s != ' ' {
-        if let Some(name) = frame_name {
-            if !name.is_empty() {
-                cards.set_string(
-                    &fmt_global_key("WCSNAME", s),
-                    name,
-                    "Reference name for the coord. frame",
-                );
-            }
+    // WCSNAME{S}: store.wcsname (set by `sky_sys` from the SkyFrame's
+    // Domain) takes precedence over the FrameSet's frame_name. When
+    // either is present, emit on both primary and alt planes. Mirrors
+    // fitschan.c::WcsFromStore lines 37005-37011 — the C library
+    // unconditionally emits WCSNAME (with a 1-axis special case to
+    // suppress when WCSNAME == CTYPE1).
+    let wcsname_to_emit: Option<&str> = store
+        .wcsname
+        .as_deref()
+        .or_else(|| frame_name.filter(|n| !n.is_empty()));
+    if let Some(name) = wcsname_to_emit {
+        // 1-axis suppression: if naxis == 1 and CTYPE0 equals WCSNAME
+        // (case-insensitive), the C library skips the redundant
+        // WCSNAME card. Mirrors the `Similar` check at C:37008.
+        let suppress = naxis == 1
+            && store
+                .ctype
+                .first()
+                .and_then(|c| c.as_deref())
+                .is_some_and(|c| c.eq_ignore_ascii_case(name));
+        if !suppress {
+            cards.set_string(
+                &fmt_global_key("WCSNAME", s),
+                name,
+                "Reference name for the coord. frame",
+            );
         }
     }
 
@@ -1672,6 +1688,74 @@ fn write_store_to_cards(
             velosys,
             "[m/s] Topo. apparent velocity of rest frame",
         );
+    }
+
+    // SSYSSRC / ZSOURCE — source-velocity AST extension. Mirrors
+    // fitschan.c::WcsFromStore C:37330-37338.
+    if let Some(ref ssyssrc) = store.ssyssrc {
+        cards.set_string(
+            &fmt_global_key("SSYSSRC", s),
+            ssyssrc,
+            "Standard of rest for source redshift",
+        );
+    }
+    if let Some(zsource) = store.zsource {
+        cards.set_float(
+            &fmt_global_key("ZSOURCE", s),
+            zsource,
+            "[] Redshift of source",
+        );
+    }
+
+    // IMAGFREQ — DSB image-sideband frequency (AST extension, JACH).
+    // Mirrors C:37358-37361. Primary-only in the C source (no
+    // FormatKey suffix variant exists on this card).
+    if s == ' ' {
+        if let Some(imagfreq) = store.imagfreq {
+            cards.set_float("IMAGFREQ", imagfreq, "[Hz] Image frequency");
+        }
+    }
+
+    // OBSGEO-X/Y/Z — observer geocentric coordinates. FITS-WCS
+    // standard (Calabretta+ 2002 §3.1). Always primary-only — these
+    // describe the observatory, not a coord-version property.
+    // Mirrors C:37363-37372.
+    if s == ' ' {
+        if let Some(x) = store.obsgeox {
+            cards.set_float("OBSGEO-X", x, "[m] Observatory geocentric X");
+        }
+        if let Some(y) = store.obsgeoy {
+            cards.set_float("OBSGEO-Y", y, "[m] Observatory geocentric Y");
+        }
+        if let Some(z) = store.obsgeoz {
+            cards.set_float("OBSGEO-Z", z, "[m] Observatory geocentric Z");
+        }
+    }
+
+    // SREFIS / SREF{i} / SREFP{i} — AST-extension SkyFrame
+    // offset-coords metadata. Note the AST keyword names (8-char
+    // budget: SREFIS / SREF / SREFP) — not SKYREFIS / SKYREF /
+    // SKYREFP. Mirrors C:37185-37216.
+    if let Some(ref skyrefis) = store.skyrefis {
+        cards.set_string(
+            &fmt_global_key("SREFIS", s),
+            skyrefis,
+            "Is SkyRef used as pole or origin?",
+        );
+    }
+    for i in 0..naxis {
+        if let Some(v) = store.skyref[i] {
+            let key = fmt_axis_key("SREF", i + 1, s);
+            let comment = format!("Sky reference position on axis {}", i + 1);
+            cards.set_float(&key, v, &comment);
+        }
+    }
+    for i in 0..naxis {
+        if let Some(v) = store.skyrefp[i] {
+            let key = fmt_axis_key("SREFP", i + 1, s);
+            let comment = format!("Sky primary meridian position on axis {}", i + 1);
+            cards.set_float(&key, v, &comment);
+        }
     }
 
     // SIP distortion coefficients. Mirrors the SetItem/SetValue loops
@@ -2215,6 +2299,77 @@ pub(crate) fn store_from_frameset_with_alts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fitschan::card_list::CardList;
+
+    /// Helper: build a minimal store with the AST-extension fields
+    /// populated and emit it via `write_store_to_cards`.
+    fn write_extension_keywords(s: char) -> CardList {
+        let mut store = FitsStore::new(2);
+        // Required for the ID/CTYPE bookkeeping in write_store_to_cards.
+        store.crpix[0] = Some(100.0);
+        store.crpix[1] = Some(100.0);
+        store.crval[0] = Some(180.0);
+        store.crval[1] = Some(0.0);
+        store.ctype[0] = Some("RA---TAN".to_string());
+        store.ctype[1] = Some("DEC--TAN".to_string());
+
+        // AST-extension fields under test.
+        store.wcsname = Some("MYDOMAIN".to_string());
+        store.obsgeox = Some(1234567.0);
+        store.obsgeoy = Some(2345678.0);
+        store.obsgeoz = Some(3456789.0);
+        store.ssyssrc = Some("LSRK".to_string());
+        store.zsource = Some(0.025);
+        store.imagfreq = Some(2.3e11);
+        store.skyrefis = Some("ORIGIN".to_string());
+        store.skyref[0] = Some(1.5);
+        store.skyref[1] = Some(0.25);
+        store.skyrefp[0] = Some(1.6);
+        store.skyrefp[1] = Some(0.5);
+
+        let mut cards = CardList::new();
+        write_store_to_cards(&store, &mut cards, false, s, None).expect("write");
+        cards
+    }
+
+    #[test]
+    fn primary_plane_emits_ast_extension_keywords() {
+        let cards = write_extension_keywords(' ');
+
+        assert_eq!(cards.get_string("WCSNAME").as_deref(), Some("MYDOMAIN"));
+        assert!((cards.get_float("OBSGEO-X").unwrap() - 1234567.0).abs() < 1e-9);
+        assert!((cards.get_float("OBSGEO-Y").unwrap() - 2345678.0).abs() < 1e-9);
+        assert!((cards.get_float("OBSGEO-Z").unwrap() - 3456789.0).abs() < 1e-9);
+        assert_eq!(cards.get_string("SSYSSRC").as_deref(), Some("LSRK"));
+        assert!((cards.get_float("ZSOURCE").unwrap() - 0.025).abs() < 1e-12);
+        assert!((cards.get_float("IMAGFREQ").unwrap() - 2.3e11).abs() < 1.0);
+        assert_eq!(cards.get_string("SREFIS").as_deref(), Some("ORIGIN"));
+        assert!((cards.get_float("SREF1").unwrap() - 1.5).abs() < 1e-12);
+        assert!((cards.get_float("SREF2").unwrap() - 0.25).abs() < 1e-12);
+        assert!((cards.get_float("SREFP1").unwrap() - 1.6).abs() < 1e-12);
+        assert!((cards.get_float("SREFP2").unwrap() - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn alt_plane_emits_suffixed_versions_and_no_obsgeo() {
+        let cards = write_extension_keywords('A');
+
+        // Per-plane keys: suffix 'A'.
+        assert_eq!(cards.get_string("WCSNAMEA").as_deref(), Some("MYDOMAIN"));
+        assert_eq!(cards.get_string("SSYSSRCA").as_deref(), Some("LSRK"));
+        assert!(cards.get_float("ZSOURCEA").is_some());
+        assert_eq!(cards.get_string("SREFISA").as_deref(), Some("ORIGIN"));
+        assert!(cards.get_float("SREF1A").is_some());
+        assert!(cards.get_float("SREF2A").is_some());
+        assert!(cards.get_float("SREFP1A").is_some());
+        assert!(cards.get_float("SREFP2A").is_some());
+
+        // OBSGEO-{X,Y,Z} and IMAGFREQ are primary-only — not emitted on alt.
+        assert!(cards.find("OBSGEO-X").is_none());
+        assert!(cards.find("OBSGEO-Y").is_none());
+        assert!(cards.find("OBSGEO-Z").is_none());
+        assert!(cards.find("IMAGFREQ").is_none());
+    }
 
     #[test]
     fn snap_crval_near_zero_to_exact_zero() {
