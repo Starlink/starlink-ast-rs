@@ -16,19 +16,19 @@
 //! to keep the read/write halves of the pipeline distinguishable.
 
 mod invertable;
+mod make_int_world;
 mod orth;
 mod other_axes;
 // mod celestial_axes;        // lands in Group 5
 // mod spectral_axes;         // lands in Group 5
-// mod make_int_world;        // lands in Group 4
 // mod sip_int_world;         // lands in Group 6
-// mod orth;                  // lands in Group 4
-// mod invertable;            // lands in Group 4
 // mod sky_sys;               // lands in Group 5
 
 // Re-exports for Group-7 callers (`fset_to_store::fset_to_store`)
 // landing later. Marked `unused_imports`-allowed so the re-export
 // stays in place while no in-crate caller exists yet.
+#[allow(unused_imports)]
+pub(crate) use make_int_world::make_int_world;
 #[allow(unused_imports)]
 pub(crate) use other_axes::{OtherAxesArgs, other_axes};
 

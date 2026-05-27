@@ -71,15 +71,8 @@ pub(crate) fn decompose_linear(
 /// usable). All vectors are length `nout` for `w0` / `tol` and length
 /// `nin` for `g0`.
 ///
-/// Currently exported with `#[allow(dead_code)]` while the
-/// surrounding `MakeIntWorld` port is in progress — the helpers are
-/// fully functional, but wiring them into `store_from_frameset_to`
-/// requires the IWC-mapping reconstruction step that C performs in
-/// `OtherAxes` / `SpectralAxes` / `CelestialAxes` before calling
-/// `MakeIntWorld`. Pulling them in early without that step
-/// regresses fixtures whose CDELT/CD values come from finite-
-/// difference unit-conversion noise.
-#[allow(dead_code)]
+/// Used by [`crate::fitschan::fset_to_store::make_int_world`] (the
+/// MakeIntWorld port).
 #[derive(Debug, Clone)]
 pub(crate) struct BasisVectors {
     /// Root pixel position.
@@ -95,7 +88,6 @@ pub(crate) struct BasisVectors {
 /// `MakeBasisVectors` (fitschan.c:10299-10422). Returns `Some((w0,
 /// step_iwc))` where `step_iwc[i]` is the IWC vector at `g0 + e_i`,
 /// or `None` if any output is non-finite.
-#[allow(dead_code)]
 fn make_basis_vectors(
     mapping: &dyn Mapping,
     nin: usize,
@@ -140,7 +132,6 @@ fn make_basis_vectors(
 /// `0.5*(1+dim)` first, then `(1, 1, …)`, then progressively further
 /// out along the diagonal and individual axes. Returns the chosen
 /// `g0` plus the tolerance derived from the local IWC step sizes.
-#[allow(dead_code)]
 pub(crate) fn find_basis_vectors(
     mapping: &dyn Mapping,
     nin: usize,
@@ -233,7 +224,6 @@ pub(crate) fn find_basis_vectors(
 }
 
 /// RMS-residual gate. Mirrors `FitOK` (fitschan.c:10972).
-#[allow(dead_code)]
 fn fit_ok(actual: &[f64], estimated: &[f64], tol: f64) -> bool {
     let mut s1 = 0.0_f64;
     let mut s2 = 0.0_f64;
@@ -256,7 +246,6 @@ fn fit_ok(actual: &[f64], estimated: &[f64], tol: f64) -> bool {
 /// elements (the column of the CD matrix), or `None` if the fit
 /// is not linear (RMS residual exceeds the supplied tolerance per
 /// output axis). Mirrors `FitLine` (fitschan.c:14835-15075).
-#[allow(dead_code)]
 pub(crate) fn fit_line(
     mapping: &dyn Mapping,
     axis: usize,
@@ -361,7 +350,6 @@ pub(crate) fn fit_line(
 /// `FitLine` call fails (i.e. the mapping is not linear within
 /// tolerance on some axis). Mirrors the per-axis `FitLine` loop in
 /// `MakeIntWorld` (fitschan.c:21978-21995).
-#[allow(dead_code)]
 pub(crate) fn fit_line_cd(
     mapping: &dyn Mapping,
     nin: usize,
