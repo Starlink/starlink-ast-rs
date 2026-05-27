@@ -7,15 +7,11 @@
 //! `CTYPE`-comment / `CNAME` / `CUNIT` / `RADESYS` / `EQUINOX` /
 //! `MJD-OBS` / `TIMESYS`) into a [`FitsStore`].
 //!
-//! ## TODO: branches not yet ported
-//!
-//! Tracked in
-//! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
-//!
-//! - `TIMESYS` / TDB↔UTC epoch conversion via `TDBConv` — the only
-//!   sky_sys gap remaining (the rest are now wired in: skyrefis /
-//!   skyref / skyrefp, WCSNAME, OBSGEO, axis Symbol → unknown-
-//!   system CTYPE prefix, axis Label → CTYPE comment / CNAME).
+//! All known C branches in `SkySys` are now ported. The only
+//! remaining infrastructure gap is the multi-timescale `TIMESYS`
+//! header — `tdb_conv` covers `UTC / TAI / TT / TDB` (the timescales
+//! the writer actually produces); `UT1` / `LT` / sidereal scales
+//! aren't reachable from a SkyFrame today.
 
 // Wired in by celestial_axes (Task 5.3); until then nothing here
 // is reachable from the crate's non-test code.
@@ -248,19 +244,15 @@ pub(crate) fn sky_sys(
     // Equinox / epoch.
     let eq_mjd = skyfrm.equinox_mjd();
     let ep_mjd_explicit = skyfrm.test_epoch();
-    let ep_mjd = if ep_mjd_explicit {
+    let ep_tdb = if ep_mjd_explicit {
         Some(skyfrm.epoch_mjd())
     } else {
         None
     };
 
-    // C converts ep_tdb → ep_utc via TDBConv. Our SkyFrame stores the
-    // epoch as MJD already, but the C library exposes it in TDB. For
-    // wcsconv parity we treat the stored MJD as UTC directly — the
-    // legacy wcs_write::populate_celestial follows the same
-    // simplification, and no wcsconv fixture exposes a TDB↔UTC delta
-    // large enough to flag.
-    let ep_utc = ep_mjd;
+    // C converts ep_tdb → ep_utc via TDBConv. Mirrors fitschan.c:29724.
+    let ep_utc =
+        ep_tdb.and_then(|tdb| crate::pal::tdb_conv(tdb, crate::pal::TdbConvScale::Utc, true));
 
     // Default-date check: when ep_utc == eq, the FITS spec says
     // MJD-OBS / DATE-OBS default to the equinox epoch — so we don't
@@ -691,6 +683,26 @@ mod tests {
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         assert_eq!(s.ctype[0].as_deref(), Some("ZLON-TAN"));
         assert_eq!(s.ctype[1].as_deref(), Some("ZLAT-TAN"));
+    }
+
+    #[test]
+    fn epoch_converts_tdb_to_utc_for_mjdobs() {
+        // Set a SkyFrame epoch well clear of the equinox so MJD-OBS
+        // gets emitted (defdate = false). Verify the stored MJD-OBS
+        // differs from the input TDB by ~70 seconds (TT-TAI 32.184 s
+        // + leap seconds, which in 2026 is ~37 s).
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        let tdb_mjd = 60000.0_f64; // 2023-02-25, well clear of J2000
+        sky.set_epoch(tdb_mjd);
+        let mut s = store(2);
+        sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
+        let utc = s.mjdobs.expect("MJD-OBS should be set");
+        let delta_s = (tdb_mjd - utc) * 86_400.0;
+        // TDB-UTC ≈ 32.184 + ΔAT ≈ 69.184 s in 2023 (37 leap secs).
+        assert!(
+            (60.0..80.0).contains(&delta_s),
+            "TDB-UTC delta {delta_s}s out of expected range"
+        );
     }
 
     #[test]

@@ -518,6 +518,86 @@ pub(crate) fn eqeqx(date: f64) -> f64 {
     unsafe { astPalEqeqx(date) }
 }
 
+/// Convert an MJD between the TDB timescale and one of TAI / TT /
+/// UTC / TDB. Mirrors `fitschan.c::TDBConv` for the subset of
+/// timescales that the FITS-WCS writer actually consults.
+///
+/// - `mjd`: input MJD value.
+/// - `to_scale`: the timescale of the output (or input, when
+///   `from_tdb = false`).
+/// - `from_tdb`: when `true`, `mjd` is in TDB and the result is in
+///   `to_scale`. When `false`, `mjd` is in `to_scale` and the result
+///   is in TDB.
+///
+/// Conversion chain: `TDB ↔ TT ↔ TAI ↔ UTC` via:
+///   - `TDB → TT`: subtract `dtdb_geocentre(mjd)` seconds.
+///   - `TT → TAI`: subtract 32.184 seconds.
+///   - `TAI → UTC`: subtract `dat(tai_mjd)` leap-second offset.
+///
+/// For other timescales (`UT1`, `LT`, sidereal, `TCB`, `TCG`) this
+/// returns `None`. Those cases would need the full TimeFrame
+/// conversion machinery.
+pub(crate) fn tdb_conv(mjd: f64, to_scale: TdbConvScale, from_tdb: bool) -> Option<f64> {
+    if !mjd.is_finite() {
+        return None;
+    }
+    if matches!(to_scale, TdbConvScale::Tdb) {
+        return Some(mjd);
+    }
+    if from_tdb {
+        // TDB → TT
+        let tt = mjd - dtdb_geocentre(mjd) / 86_400.0;
+        if matches!(to_scale, TdbConvScale::Tt) {
+            return Some(tt);
+        }
+        // TT → TAI
+        let tai = tt - 32.184 / 86_400.0;
+        if matches!(to_scale, TdbConvScale::Tai) {
+            return Some(tai);
+        }
+        // TAI → UTC. dat() expects a UTC MJD; near the TAI/UTC step
+        // the leap-second offset is a constant integer for the day,
+        // so feeding tai_mjd in once gives the right answer except
+        // exactly on a leap-second day boundary. The single-step
+        // approximation matches what AST does internally.
+        let leap = dat(tai);
+        Some(tai - leap / 86_400.0)
+    } else {
+        // Reverse: target_scale → TAI → TT → TDB.
+        let tai = match to_scale {
+            TdbConvScale::Tai => mjd,
+            TdbConvScale::Tt => mjd + 32.184 / 86_400.0, // TT → TAI is `-`, so reverse
+            TdbConvScale::Utc => mjd + dat(mjd) / 86_400.0,
+            TdbConvScale::Tdb => unreachable!(),
+        };
+        // TAI → TT
+        let tt = match to_scale {
+            TdbConvScale::Tt => mjd, // already TT
+            TdbConvScale::Tai => mjd + 32.184 / 86_400.0,
+            TdbConvScale::Utc => tai + 32.184 / 86_400.0,
+            TdbConvScale::Tdb => unreachable!(),
+        };
+        // TT → TDB. We need dtdb at the TDB epoch, not TT — but
+        // the offset is small enough (<2 ms) that dtdb(tt) ≈
+        // dtdb(tdb). Mirrors C's iterative-1-pass approximation.
+        Some(tt + dtdb_geocentre(tt) / 86_400.0)
+    }
+}
+
+/// Restricted timescale enum for [`tdb_conv`]. Mirrors the subset of
+/// the TimeFrame `TimeScale` enum that the FITS-WCS writer needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TdbConvScale {
+    /// Coordinated Universal Time.
+    Utc,
+    /// International Atomic Time.
+    Tai,
+    /// Terrestrial Time.
+    Tt,
+    /// Barycentric Dynamical Time.
+    Tdb,
+}
+
 /// Difference TDB − TT in seconds at the geocentre.
 ///
 /// Wraps ERFA `eraDtdb`, the full Fairhead & Bretagnon (1990) series

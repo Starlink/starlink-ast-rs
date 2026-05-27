@@ -88,16 +88,15 @@ fields and the encoder side doesn't support the keywords.
 (we have `pal::dranrm` etc. but need to verify we expose
 `eraGd2gc`'s equivalent), and wire through the encoders.
 
-### `TIMESYS` — TDB↔UTC timescale conversion
+### `TIMESYS` — TDB↔UTC timescale conversion — DONE
 
-C lines 29723–29744 use `TDBConv` to convert the SkyFrame's epoch
-between TDB and the requested timescale (UTC, TAI, TT, etc.). The
-Rust port currently treats the stored MJD as UTC directly. This
-short-circuit is benign for fixtures whose epoch happens to be in
-UTC but produces silently-wrong `MJD-OBS` values for SkyFrames
-constructed with `Epoch=...` in other timescales.
-
-**Action:** port `TDBConv` (a slamap-style time-scale converter).
+`crate::pal::tdb_conv(mjd, scale, from_tdb)` ports the C `TDBConv`
+for the {UTC, TAI, TT, TDB} subset that the FITS-WCS writer
+actually produces. `sky_sys` now converts the SkyFrame's stored
+TDB epoch to UTC before writing `MJD-OBS`. UT1 / LT / sidereal
+scales aren't reachable from a SkyFrame today; if they become
+reachable later, route through `TimeFrame::convert_*` instead of
+extending `tdb_conv`.
 
 ### Unknown-system CTYPE prefix from axis `Symbol` — DONE
 
