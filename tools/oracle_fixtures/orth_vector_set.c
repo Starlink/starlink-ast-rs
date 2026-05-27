@@ -1,0 +1,233 @@
+/*
+ * Captures reference output values for OrthVectorSet tests.
+ *
+ * Both OrthVectorSet and its callee OrthVector are `static` in
+ * fitschan.c, so this oracle inlines verbatim copies (renamed
+ * `orth_vector_set_oracle` / `orth_vector_oracle`) and links
+ * against the public `astPalDmat_` symbol (exported by libast as
+ * the renamed PAL solver — pal2ast.h: palDmat -> astPalDmat).
+ *
+ * For each fixture we emit the captured n-vector set as a
+ * Rust-shaped constant.
+ *
+ * Usage:
+ *   make orth_vector_set
+ *   ./orth_vector_set > /tmp/orth_vector_set.rs
+ *
+ * See docs/superpower/plans/2026-05-25-makeintworld-port.md, Task 4.1.
+ */
+
+#include "ast.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Declaration for the renamed PAL solver (pal2ast.h: palDmat → astPalDmat). */
+extern void astPalDmat(int n, double *a, double *y, double *d, int *jf, int *iw);
+
+static void emit_double(double v) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.17g", v);
+    if (strchr(buf, '.') == NULL && strchr(buf, 'e') == NULL
+        && strchr(buf, 'n') == NULL && strchr(buf, 'i') == NULL) {
+        printf("%s.0", buf);
+    } else {
+        printf("%s", buf);
+    }
+}
+
+/* Verbatim copy of fitschan.c::OrthVector (~23690). Returns a freshly
+ * malloc'd n-vector or NULL if the partial set is degenerate. */
+static double *orth_vector_oracle(int n, int m, double **in) {
+    double *colmag, *d, *e, *mat, *mel, *ret, *rhs;
+    double det, sl;
+    int *colperm, *iw;
+    int done, i, ih, ii, il, j, sing;
+
+    ret = NULL;
+    for (i = 0; i < m; i++) {
+        if (!in[i]) return ret;
+    }
+
+    ret = (double *)malloc(sizeof(double) * (size_t)n);
+    rhs = (double *)malloc(sizeof(double) * (size_t)m);
+    mat = (double *)malloc(sizeof(double) * (size_t)m * (size_t)m);
+    iw = (int *)malloc(sizeof(int) * (size_t)m);
+    colmag = (double *)malloc(sizeof(double) * (size_t)n);
+    colperm = (int *)malloc(sizeof(int) * (size_t)n);
+
+    for (i = 0; i < n; i++) {
+        colperm[i] = i;
+        colmag[i] = 0.0;
+        for (j = 0; j < m; j++) {
+            colmag[i] += in[j][i] * in[j][i];
+        }
+    }
+
+    /* Bubble-sort colperm so colmag[colperm[0]] is largest. */
+    ii = n;
+    done = 0;
+    while (!done) {
+        done = 1;
+        for (i = 1; i < ii; i++) {
+            ih = colperm[i];
+            il = colperm[i - 1];
+            if (colmag[ih] > colmag[il]) {
+                colperm[i] = il;
+                colperm[i - 1] = ih;
+                done = 0;
+            }
+        }
+        ii--;
+    }
+
+    mel = mat;
+    for (i = 0; i < m; i++) {
+        d = in[i];
+        for (j = 0; j < m; j++) *(mel++) = d[colperm[j]];
+        rhs[i] = -d[colperm[m]];
+    }
+
+    astPalDmat(m, mat, rhs, &det, &sing, iw);
+
+    if (sing != 0) {
+        free(ret);
+        ret = NULL;
+    } else {
+        sl = 0.0;
+        e = rhs;
+        for (j = 0; j < m; j++) {
+            sl += (*e) * (*e);
+            ret[colperm[j]] = *(e++);
+        }
+        sl += 1.0;
+        ret[colperm[m]] = 1.0;
+        for (j = m + 1; j < n; j++) ret[colperm[j]] = 0.0;
+        e = ret;
+        sl = sqrt(sl);
+        for (j = 0; j < n; e++, j++) {
+            *e /= sl;
+            if (*e == 0.0) *e = 0.0;
+        }
+    }
+
+    free(rhs);
+    free(mat);
+    free(iw);
+    free(colmag);
+    free(colperm);
+    return ret;
+}
+
+/* Verbatim copy of fitschan.c::OrthVectorSet (~23938). Returns a freshly
+ * allocated `double **` (n vectors of n doubles each), or NULL on
+ * failure. Caller must free the inner arrays AND the outer pointer. */
+static double **orth_vector_set_oracle(int n, int m, double **in) {
+    double **ret;
+    int i;
+    int bad;
+
+    ret = (double **)malloc(sizeof(double *) * (size_t)n);
+    bad = 0;
+    if (ret) {
+        for (i = 0; i < m; i++) {
+            ret[i] = (double *)malloc(sizeof(double) * (size_t)n);
+            memcpy(ret[i], in[i], sizeof(double) * (size_t)n);
+        }
+        for (; i < n; i++) {
+            ret[i] = orth_vector_oracle(n, i, ret);
+            if (!ret[i]) bad = 1;
+        }
+    }
+
+    if (bad) {
+        for (i = 0; ret && i < n; i++) free(ret[i]);
+        free(ret);
+        ret = NULL;
+    }
+
+    return ret;
+}
+
+/* Emit a fixture as a Rust constant block. */
+static void emit_fixture(const char *name, int n, int m, double **in) {
+    double **out = orth_vector_set_oracle(n, m, in);
+
+    printf("    /// Fixture: %s — n=%d, m=%d\n", name, n, m);
+    if (!out) {
+        printf("    pub const %s: Option<&[&[f64]]> = None;\n\n", name);
+        return;
+    }
+
+    printf("    pub const %s: Option<&[&[f64]]> = Some(&[\n", name);
+    for (int i = 0; i < n; ++i) {
+        printf("        &[");
+        for (int j = 0; j < n; ++j) {
+            if (j) printf(", ");
+            emit_double(out[i][j]);
+        }
+        printf("],\n");
+    }
+    printf("    ]);\n\n");
+
+    for (int i = 0; i < n; ++i) free(out[i]);
+    free(out);
+}
+
+int main(void) {
+    astBegin;
+
+    printf("// Auto-generated by tools/oracle_fixtures/orth_vector_set.c.\n");
+    printf("// Do not edit by hand — regenerate with `make orth_vector_set`.\n\n");
+
+    /* Fixture 1: 2-of-3 — two independent vectors, completes to one third. */
+    {
+        double v0[] = {1.0, 0.0, 0.0};
+        double v1[] = {0.0, 1.0, 0.0};
+        double *in[] = {v0, v1};
+        emit_fixture("ORTH_2_OF_3_BASIS_E0E1", 3, 2, in);
+    }
+
+    /* Fixture 2: 1-of-2 — single vector, completes to one orthogonal. */
+    {
+        double v0[] = {1.0, 0.0};
+        double *in[] = {v0};
+        emit_fixture("ORTH_1_OF_2_BASIS_E0", 2, 1, in);
+    }
+
+    /* Fixture 3: skewed 2-of-3. */
+    {
+        double v0[] = {1.0, 1.0, 0.0};
+        double v1[] = {1.0, -1.0, 0.0};
+        double *in[] = {v0, v1};
+        emit_fixture("ORTH_2_OF_3_SKEWED", 3, 2, in);
+    }
+
+    /* Fixture 4: degenerate (parallel) 2-of-3 — expect None. */
+    {
+        double v0[] = {1.0, 2.0, 3.0};
+        double v1[] = {2.0, 4.0, 6.0};
+        double *in[] = {v0, v1};
+        emit_fixture("ORTH_2_OF_3_PARALLEL", 3, 2, in);
+    }
+
+    /* Fixture 5: 1-of-3 with non-unit input. */
+    {
+        double v0[] = {3.0, 0.0, 4.0};
+        double *in[] = {v0};
+        emit_fixture("ORTH_1_OF_3_NONUNIT", 3, 1, in);
+    }
+
+    /* Fixture 6: 3-of-4 (full m=n-1). */
+    {
+        double v0[] = {1.0, 0.0, 0.0, 0.0};
+        double v1[] = {0.0, 1.0, 0.0, 0.0};
+        double v2[] = {0.0, 0.0, 1.0, 0.0};
+        double *in[] = {v0, v1, v2};
+        emit_fixture("ORTH_3_OF_4_BASIS", 4, 3, in);
+    }
+
+    astEnd;
+    return 0;
+}
