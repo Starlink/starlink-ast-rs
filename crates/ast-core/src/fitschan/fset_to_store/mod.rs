@@ -15,13 +15,13 @@
 //! helper; we use `fset_to_store/` (matching the C entry-point name)
 //! to keep the read/write halves of the pipeline distinguishable.
 
+mod celestial_axes;
 mod fiducial;
 mod invertable;
 mod make_int_world;
 mod orth;
 mod other_axes;
 mod sky_sys;
-// mod celestial_axes;        // lands in Group 5 (Task 5.3)
 // mod spectral_axes;         // lands in Group 5 (Task 5.4)
 // mod sip_int_world;         // lands in Group 6
 
