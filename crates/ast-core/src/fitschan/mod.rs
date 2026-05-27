@@ -14,6 +14,7 @@ pub(crate) mod enc_native;
 pub(crate) mod enc_pc;
 pub(crate) mod fits_store;
 pub mod format;
+pub(crate) mod fset_to_store;
 pub(crate) mod guess_encoding;
 pub(crate) mod wcs_celestial;
 pub(crate) mod wcs_decompose;
