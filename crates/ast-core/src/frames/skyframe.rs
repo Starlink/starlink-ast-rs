@@ -61,6 +61,15 @@ pub struct SkyFrame {
     // Per-axis properties
     axes: [SkyAxis; 2], // [longitude, latitude] (physical storage)
 
+    /// Per-axis Label override (physical storage, lon then lat).
+    /// `None` means "use the system-derived default from
+    /// `default_labels`".
+    label_overrides: [Option<String>; 2],
+
+    /// Per-axis Symbol override (physical storage, lon then lat).
+    /// `None` means "use the system-derived default symbol".
+    symbol_overrides: [Option<String>; 2],
+
     /// Axis permutation: perm[ext_axis] = physical_axis (0-based).
     /// Physical 0 = longitude, physical 1 = latitude.
     /// After swap: perm = [1, 0] means external axis 0 → latitude.
@@ -100,6 +109,8 @@ impl SkyFrame {
             align_offset: false,
             align_system: None,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
+            label_overrides: [None, None],
+            symbol_overrides: [None, None],
             perm: [0, 1],
             act_unt: None,
             ident: None,
@@ -130,6 +141,105 @@ impl SkyFrame {
     #[inline]
     fn lat_pos(&self) -> usize {
         self.lat_axis()
+    }
+
+    // --- Per-axis Label / Symbol (1-based external API) ---
+
+    /// Resolve a 1-based external axis index into 0-based physical
+    /// storage (lon=0, lat=1) using the permutation. Returns
+    /// `Err(Axiin)` if `axis` is out of range.
+    fn physical_axis(&self, axis: usize) -> AstResult<usize> {
+        if !(1..=2).contains(&axis) {
+            return Err(AstError::new_tracked(
+                ErrorCode::Axiin,
+                format!("axis index {} is out of range 1..=2", axis),
+            ));
+        }
+        Ok(self.perm[axis - 1])
+    }
+
+    /// Return the explicit Label override for `axis` (1-based) if
+    /// set, falling back to the system-derived default. Mirrors
+    /// `astGetLabel(skyfrm, axis)`.
+    pub fn axis_label(&self, axis: usize) -> AstResult<String> {
+        let phys = self.physical_axis(axis)?;
+        if let Some(s) = &self.label_overrides[phys] {
+            return Ok(s.clone());
+        }
+        let (lon, lat) = self.default_labels();
+        Ok(if phys == 0 {
+            lon.to_string()
+        } else {
+            lat.to_string()
+        })
+    }
+
+    /// Set the Label for `axis` (1-based). Mirrors `astSetLabel`.
+    pub fn set_axis_label(&mut self, axis: usize, label: impl Into<String>) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.label_overrides[phys] = Some(label.into());
+        Ok(())
+    }
+
+    /// Test whether the Label for `axis` (1-based) was explicitly
+    /// set. Mirrors `astTestLabel(skyfrm, axis)`.
+    pub fn test_axis_label(&self, axis: usize) -> AstResult<bool> {
+        let phys = self.physical_axis(axis)?;
+        Ok(self.label_overrides[phys].is_some())
+    }
+
+    /// Clear an explicit Label for `axis` (1-based).
+    pub fn clear_axis_label(&mut self, axis: usize) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.label_overrides[phys] = None;
+        Ok(())
+    }
+
+    /// Default per-axis Symbol from the current celestial system.
+    /// Returns the C library's two-letter / four-letter convention
+    /// (e.g. `("RA", "DEC")` for FK5, `("GLON", "GLAT")` for
+    /// galactic). Used as the fallback when no override is set.
+    fn default_symbols(&self) -> (&'static str, &'static str) {
+        match self.system {
+            SkySystem::Galactic => ("GLON", "GLAT"),
+            SkySystem::Ecliptic => ("ELON", "ELAT"),
+            SkySystem::Helioecliptic => ("HLON", "HLAT"),
+            SkySystem::Supergalactic => ("SLON", "SLAT"),
+            SkySystem::Azel => ("AZ", "EL"),
+            SkySystem::Unknown => ("", ""),
+            // FK4/FK5/ICRS/J2000/GAPPT/FK4NoE all use RA/DEC.
+            _ => ("RA", "DEC"),
+        }
+    }
+
+    /// Return the explicit Symbol override for `axis` (1-based) if
+    /// set, falling back to the system-derived default. Mirrors
+    /// `astGetSymbol(skyfrm, axis)`.
+    pub fn axis_symbol(&self, axis: usize) -> AstResult<String> {
+        let phys = self.physical_axis(axis)?;
+        if let Some(s) = &self.symbol_overrides[phys] {
+            return Ok(s.clone());
+        }
+        let (lon, lat) = self.default_symbols();
+        Ok(if phys == 0 {
+            lon.to_string()
+        } else {
+            lat.to_string()
+        })
+    }
+
+    /// Set the Symbol for `axis` (1-based). Mirrors `astSetSymbol`.
+    pub fn set_axis_symbol(&mut self, axis: usize, symbol: impl Into<String>) -> AstResult<()> {
+        let phys = self.physical_axis(axis)?;
+        self.symbol_overrides[phys] = Some(symbol.into());
+        Ok(())
+    }
+
+    /// Test whether the Symbol for `axis` (1-based) was explicitly
+    /// set. Mirrors `astTestSymbol`.
+    pub fn test_axis_symbol(&self, axis: usize) -> AstResult<bool> {
+        let phys = self.physical_axis(axis)?;
+        Ok(self.symbol_overrides[phys].is_some())
     }
 
     // --- SkyFrame-specific attributes ---

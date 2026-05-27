@@ -99,27 +99,30 @@ constructed with `Epoch=...` in other timescales.
 
 **Action:** port `TDBConv` (a slamap-style time-scale converter).
 
-### Unknown-system CTYPE prefix from axis `Symbol`
+### Unknown-system CTYPE prefix from axis `Symbol` — DONE
 
-C lines 29844–29876 fall through to a path that inspects
-`astGetSymbol(skyfrm, latax/lonax)` for the `xxLN`/`xxLT` or
-`xLON`/`xLAT` form, using it verbatim if it conforms; otherwise
-defaults to `UNLN`/`UNLT`. The Rust port skips the symbol check
-and always uses `UNLN`/`UNLT`. Custom-celestial-system fixtures
-(rare but legal) will receive incorrect CTYPE prefixes.
+`SkyFrame::axis_symbol(axis)` getter added with default-from-system
+plus an override slot. `sky_sys::ctype_prefixes_for` now inspects
+the axis Symbols in the `NOCEL` branch and accepts the
+`xxLN/xxLT` / `xLON/xLAT` forms, falling back to `UNLN/UNLT`
+otherwise. Mirrors C:29844-29876.
 
-**Action:** add `SkyFrame::axis_symbol(axis)` and wire into the
-NOCEL branch.
+### SkyFrame `Label` → CTYPE comment / CNAME — DONE
 
-### SkyFrame `Label` → CTYPE comment / CNAME
+`SkyFrame::axis_label(axis)` / `set_axis_label(axis, ...)` /
+`test_axis_label(axis)` getters added.  `sky_sys` now emits the
+explicit Label as `ctype_com` and `cname` when set. Mirrors
+C:29941-29950.
 
-C lines 29941–29950 emit the explicit Label as the CTYPE comment
-and CNAME when set. The Rust port currently skips this because
-SkyFrame doesn't expose `test_label()` / `label()` on the public
-surface.
+### `isoff > 0` CTYPE comment "`<sym> offset from <SkyRef>`" — DONE
 
-**Action:** add `SkyFrame::test_label(axis)` / `label(axis)`; wire
-in.
+The C C:29893-29909 path emits a CTYPE comment derived from the
+axis Symbol and the SkyRef position when describing offset
+coordinates (`isoff > 0`). Rust now emits the same shape using
+the `axis_symbol` getter. The SkyRef rendering uses a fixed
+`"%.6,%.6"` radian format rather than C's `astGetC(skyfrm,
+"SkyRef")` SkyFrame-formatter dispatch — when SkyFrame's
+formatter chain matures, route through it.
 
 ---
 
