@@ -26,23 +26,22 @@ Group references map back to plan tasks; "Plan §X.Y" means
 **Source:** `crates/ast-core/src/fitschan/fset_to_store/other_axes.rs`
 mirrors `fitschan.c::OtherAxes` (~24030).
 
-### `IsMapLinear` linearity gate (C:19136, ~200 LoC)
+### `IsMapLinear` linearity gate — wiring deferred (helper landed)
 
-C calls `IsMapLinear(map, lbnd_p, ubnd_p, iax, NULL, status)` at
-line 24239 to decide whether the axis can be represented by a simple
-ShiftMap. The Rust port currently asserts linearity by construction
-and falls through. Without the gate, any non-linear single-axis
-mapping (e.g. an axis that is genuinely log-shaped or contains
-sub-pixel non-linearity) silently produces a wrong pixel→IWC
-mapping that propagates downstream.
+**Helper status:** ported in
+`crates/ast-core/src/fitschan/fset_to_store/is_map_linear.rs`.
+Mirrors `fitschan.c::IsMapLinear` (~19136) using a corner-sample
+substitute for `astMapBox`.
 
-**Action:** port `IsMapLinear` (least-squares fit along one output
-axis with a 20-point sweep, RMS-residual gate) and use it in
-`other_axes` to reject non-linear axes early.
-
-**Owner of dependent fixtures:** none — we likely need a wcsconv
-fixture with a known non-linear axis to demonstrate the rejection
-path, or a Rust unit test that constructs such a chain explicitly.
+**Wiring status:** NOT yet wired into `other_axes` because the
+caller-side branch in C uses the result to choose between the
+`IsMapLinear` (ShiftMap), `LogAxis` (-LOG), `IsMapTab1D` (-TAB)
+algorithms. Until `LogAxis` and `-TAB` are also ported, calling
+`is_map_linear` from `other_axes` would only emit a "non-linear,
+falling through to ShiftMap anyway" signal that doesn't change
+behaviour — the C fallback path also emits a ShiftMap when none
+of the three algorithms match. The wiring lands together with
+`LogAxis` below.
 
 ### `LogAxis` (-LOG algorithm)
 
