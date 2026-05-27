@@ -15,7 +15,7 @@
 //! helper; we use `fset_to_store/` (matching the C entry-point name)
 //! to keep the read/write halves of the pipeline distinguishable.
 
-// mod other_axes;            // lands in Task 3.2
+mod other_axes;
 // mod celestial_axes;        // lands in Group 5
 // mod spectral_axes;         // lands in Group 5
 // mod make_int_world;        // lands in Group 4
@@ -24,7 +24,11 @@
 // mod invertable;            // lands in Group 4
 // mod sky_sys;               // lands in Group 5
 
-// pub(crate) use other_axes::{OtherAxesArgs, other_axes};
+// Re-exports for Group-7 callers (`fset_to_store::fset_to_store`)
+// landing later. Marked `unused_imports`-allowed so the re-export
+// stays in place while no in-crate caller exists yet.
+#[allow(unused_imports)]
+pub(crate) use other_axes::{OtherAxesArgs, other_axes};
 
 // Top-level entry — added in Group 7.
 // pub(crate) fn fset_to_store(...) -> AstResult<FitsStore> { ... }
