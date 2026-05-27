@@ -173,66 +173,78 @@ is a `FitsChan` attribute we don't yet model on the Rust side.
 mirrors `fitschan.c::SpectralAxes` (~30050). This is the largest
 gap by far — most of the C function is **not yet ported**.
 
-### Algorithm-code suffix derivation for non-canonical chains
+### Linear / `-LOG` algorithm cascade — DONE
 
-C lines 30245-30700 (approx) discover the FITS algorithm code
-(`-LOG`, `-F2W`, `-V2F`, `-OHL`, `-GRI`, `-GRA`) by inspecting the
-SpecMap chain after the SpecFrame. The Rust port currently emits
-the bare system name as CTYPE — correct for canonical-form chains
-(`FREQ`, `WAVE`, `VELO`) but wrong for any header whose CTYPE
-ends in an algorithm suffix. wcsconv fixtures `vopt-f2w.head`,
-`vopt-geo.head`, `vrad-lsrd.head`, `wave-f2w.head`, `freq-ghz-bary.head`,
-`class-arc.head` are exactly the kind that exercise this.
+`spectral_axes` now mirrors the C C:30340-30477 algorithm
+cascade for the linear and log paths:
 
-**Action:** port the SpecMap-chain inspection and algorithm-code
-selection table. This is the single largest deferred chunk in the
-codebase.
+  1. `is_map_linear` on the pixel→spectral mapping → CTYPE =
+     `<orig_system>` + ShiftMap.
+  2. `log_axis` → CTYPE = `<orig_system>-LOG` + log mapping.
+
+### `SourceVel` → `ZSOURCE` / `SSYSSRC` — DONE
+
+`spectral_axes` now reads `SpecFrame::source_vel` /
+`source_vrf`, converts m/s velocity to dimensionless redshift via
+the relativistic Doppler formula, and emits ZSOURCE + SSYSSRC.
+
+### RESTFRQ vs RESTWAV — DONE
+
+`spectral_axes` now picks RESTWAV (= `c / rest_freq`, in metres)
+for wavelength-domain systems (`WAVE`, `AWAV`, `VOPT`, `ZOPT`)
+and RESTFRQ (Hz) for the rest. Mirrors C:30740-30751.
+
+### `OBSGEO-X/Y/Z` from SpecFrame observer — DONE
+
+`spectral_axes` now emits OBSGEO from `SpecFrame::obs_lon/lat/alt`
+on the primary coord version (using `pal::gd2gc`).
+
+### Axis Label → CTYPE-comment / CNAME — DONE
+
+`SpecFrame::axis_label` / `set_axis_label` / `test_axis_label`
+added; `spectral_axes` emits the explicit Label when set.
+
+### `-X2P` non-linear algorithm cascade
+
+C:30359-30454 tries each of FREQ/WAVE/AWAV/VELO as the X system
+linearly related to pixels and emits a `XXXX-X2P` CTYPE on
+success. The Rust port does NOT yet do this — fixtures whose
+spectral CTYPE includes an algorithm suffix (`vopt-f2w.head`,
+`vopt-geo.head`, `vrad-lsrd.head`, `wave-f2w.head`,
+`freq-ghz-bary.head`, `class-arc.head`) will get the bare system
+name as CTYPE.
+
+**Action:** port the X-system cascade. Needs a SpecFrame
+`convert_to_system(X)`-style Mapping helper that produces the
+`S(X)` chain — i.e. the mapping from a copy of the SpecFrame
+in system X back to the original system. This functionality
+exists on the C side via `astConvert` but isn't exposed yet on
+our SpecFrame API.
 
 ### `GrismMap` handling
 
-C handles `GrismMap` (an AST extension) and emits `-GRI`/`-GRA`
-algorithm codes. We have `GrismMap` in Rust (it's exposed as a
-mapping class) but the writer side doesn't recognise it for
-spectral output.
-
-**Action:** port the GrismMap recognition + parameter extraction.
+C C:30480-30599 detects a `GrismMap` in the chain after the
+SpecFrame and emits `-GRI`/`-GRA` algorithm codes plus PV
+parameters. The Rust port doesn't yet do this — needs an
+`extract_grism_map(chain)` walker plus accessors for
+`GrismMap::g`/`m`/`alpha`/`nr`/`nrp`/`eps`/`theta`.
 
 ### `VELOSYS` calculation
 
-C lines 30774-30796 compute the topocentric apparent velocity of
-the SPECSYS rest frame, using:
-- the celestial source position from `celestial_axes`,
-- the observer's geodetic position (defaulting to geocenter when
-  OBSGEO is absent),
-- the epoch of observation.
-
-We have `populate_velosys` in `wcs_write.rs` (legacy path) — the
-new `spectral_axes` doesn't call anything equivalent.
-
-**Action:** in Group 7 (the wiring step), thread the celestial
-source position from `celestial_axes` into `spectral_axes` and
-reuse the legacy `populate_velosys` math.
+C:30774-30796 — topocentric apparent velocity of the SPECSYS
+rest frame. Needs the celestial source position from
+`celestial_axes` (Group 7 wiring), plus the existing
+`wcs_write::populate_velosys` math. The integration step lives
+in Group 7.
 
 ### SpecFrame unit-conversion chain rewriting
 
-C mutates the input `fset` to rewrite the spectral unit when the
-existing one isn't FITS-compliant (e.g. user-set `MHz` becomes
-`Hz` so the IWC arithmetic stays in canonical SI units). The
-Rust port doesn't do this — it preserves the user's CUNIT but
-uses canonical units in the math, which is internally consistent
-but loses the user-set unit on round-trip.
-
-**Action:** port the `SpecFrame` rewrite + the corresponding
-mapping injection.
-
-### `SourceVel` / `SourceVRF` handling
-
-The C function reads `SourceVel`, `SourceVRF`, `Redshift`-style
-attributes from the SpecFrame and incorporates them into VELOSYS
-and the rest-frame conversions. The Rust port skips this entirely.
-
-**Action:** verify which attributes are exposed on Rust `SpecFrame`
-and port the math.
+C C:30276-30311 mutates the input FrameSet to rewrite the
+spectral unit when the existing one isn't FITS-compliant
+(e.g. user-set `MHz` becomes `Hz` so IWC arithmetic stays in
+canonical SI units). Rust currently preserves the user's CUNIT
+unchanged. Needs SpecFrame's `astConvert` machinery exposed plus
+the FrameSet `remap_frame` plumbing.
 
 ---
 

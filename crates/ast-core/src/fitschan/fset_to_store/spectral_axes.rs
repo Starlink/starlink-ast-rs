@@ -8,34 +8,33 @@
 //!
 //! ## TODO: branches not yet ported
 //!
-//! This is by far the largest gap in the port — most of the C
-//! function is **not yet implemented**. The Rust body covers only
-//! the canonical-form subset (CTYPE = system name, CUNIT = canonical
-//! unit, single-axis ShiftMap WCS→IWC). Lack of wcsconv fixture
-//! coverage is not an excuse for under-porting — see
-//! [`feedback_test_coverage_is_separate_from_porting`] in user
-//! memory.
-//!
-//! Tracked in
+//! Lack of wcsconv fixture coverage is not an excuse for
+//! under-porting — see [`feedback_test_coverage_is_separate_from_porting`]
+//! in user memory. Tracked in
 //! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
-//! - **Algorithm-code suffix derivation** for non-canonical SpecMap
-//!   chains: `-LOG`, `-F2W`, `-V2F`, `-OHL`, `-WAV-from-FRQ`, etc.
-//!   (FITS-WCS paper III). Without this, headers like
-//!   `vopt-f2w.head`, `wave-f2w.head`, `class-arc.head` get the
-//!   wrong CTYPE.
-//! - **`GrismMap` handling** (`-GRI` / `-GRA`).
+//! - **`-X2P` non-linear algorithm cascade** (FITS-WCS paper III):
+//!   try each of `FREQ`/`WAVE`/`AWAV`/`VELO` as the linearly-related
+//!   "X" system and emit a `XXXX-X2P` CTYPE on success. Needs a
+//!   SpecFrame `convert_to_system(X)` Mapping helper that doesn't
+//!   currently exist on the public API.
+//! - **`GrismMap` handling** (`-GRI` / `-GRA`). Needs an
+//!   `extract_grism_map(chain)` walker plus GrismMap parameter
+//!   accessors.
+//! - **`-TAB` algorithm**. Blocked on FitsTable infrastructure.
 //! - **`VELOSYS` calculation** — needs the celestial source position
-//!   from `celestial_axes`. Wiring step is in Group 7.
+//!   from `celestial_axes`. Group 7 wiring will deliver it; the
+//!   existing `wcs_write::populate_velosys` math will be moved here
+//!   when the celestial→spectral sequencing lands.
 //! - **SpecFrame unit-conversion rewriting** when the spectral
-//!   system requires a unit change to be FITS-compliant.
-//! - **`SourceVel` / `SourceVRF` / Redshift handling**.
+//!   system requires a unit change to be FITS-compliant
+//!   (C:30276-30311). Currently the user-set CUNIT is preserved
+//!   unchanged.
 //!
-//! Until those land, the canonical-form subset matches what the
-//! legacy `wcs_write::populate_spectral` covers, so Group 7 wiring
-//! won't regress against the existing fixtures — but it will
-//! produce wrong output for any new fixture that exercises a
-//! deferred branch.
+//! What IS now covered: linear-path with `IsMapLinear` gate,
+//! `-LOG` algorithm via `LogAxis`, RESTFRQ vs RESTWAV choice,
+//! OBSGEO emission, axis-Label → CTYPE-comment/CNAME, source-
+//! velocity → ZSOURCE/SSYSSRC.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test).
@@ -45,10 +44,16 @@
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::fitschan::fits_store::FitsStore;
-use crate::frames::{Frame, FrameRef, FrameSet, SpecFrame, StdOfRest};
+use crate::frames::{Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
 
 use crate::mappings::helpers::is_bad;
+
+use super::is_map_linear::is_map_linear;
+use super::log_axis::log_axis;
+
+/// Speed of light in vacuum (m/s). Mirrors C `AST__C`.
+const SPEED_OF_LIGHT: f64 = 299_792_458.0;
 
 /// Arguments for [`spectral_axes`]. Same shape as
 /// [`super::celestial_axes::CelestialAxesArgs`] minus the `isoff`
@@ -127,7 +132,47 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     args.store.crval[fits_i] = Some(crval);
 
     let system = specfrm.system();
-    args.store.ctype[fits_i] = Some(system.as_str().to_string());
+    let orig_system_str = system.as_str();
+
+    // Step 3a: algorithm cascade. Mirrors C:30340-30609 — try the
+    // linear path first (CTYPE = orig_system); fall through to log
+    // (CTYPE = orig_system + "-LOG"). Non-linear (-X2P), grism
+    // (-GRI/-GRA), and -TAB paths are still TODO; tracked in
+    // fset_to_store-port-gaps.md. When none of the algorithms
+    // matches, fall back to the always-linear ShiftMap (the C
+    // "fallback" doesn't exist in SpectralAxes — when nothing
+    // matches, ctype stays empty and the axis isn't described.
+    // We deviate slightly: build a ShiftMap anyway so callers can
+    // proceed, but emit ctype = orig_system; make_int_world will
+    // reject the resulting non-linear pixel→IWC).
+    let map = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let npix = map.nin();
+    let lbnd_p: Vec<f64> = vec![1.0; npix];
+    let ubnd_p: Vec<f64> = (0..npix)
+        .map(|i| args.dim.get(i).copied().flatten().unwrap_or(500.0))
+        .collect();
+
+    let (axmap, ctype): (DynMapping, String) =
+        if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, spec_iax)? {
+            // Linear path: ShiftMap(-crval).
+            let shift = ShiftMap::new(vec![-crval]);
+            let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
+            (mapping, orig_system_str.to_string())
+        } else if let Some(lm) = log_axis(map.as_ref(), spec_iax, nwcs, &lbnd_p, &ubnd_p, crval)? {
+            // -LOG algorithm. Mirrors C:30467-30477.
+            let ctype = format!("{orig_system_str}-LOG");
+            (lm, ctype)
+        } else {
+            // Fallback: build the same ShiftMap as the linear path
+            // (without an algorithm-suffix CTYPE). make_int_world
+            // will reject the resulting non-linear pixel→IWC.
+            // Non-linear / grism / -TAB are not yet ported.
+            let shift = ShiftMap::new(vec![-crval]);
+            let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
+            (mapping, orig_system_str.to_string())
+        };
+
+    args.store.ctype[fits_i] = Some(ctype);
 
     // CUNIT: explicit user-set unit if present, else the system's
     // SpecMap canonical unit (Hz / m / m/s).
@@ -138,28 +183,73 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         .unwrap_or_else(|| system.specmap_units().to_string());
     args.store.cunit[fits_i] = Some(cunit);
 
+    // CTYPE-comment / CNAME from explicit Label override. Mirrors
+    // C:30716-30722.
+    if specfrm.test_axis_label() {
+        let label = specfrm.axis_label();
+        if !label.is_empty() {
+            args.store.ctype_com[fits_i] = Some(label.clone());
+            args.store.cname[fits_i] = Some(label);
+        }
+    }
+
+    // OBSGEO-X/Y/Z from observer geodetic position. Only emitted on
+    // the primary coord version. Mirrors C:30728-30739.
+    if args.s == ' '
+        && let (Some(geolon), Some(geolat)) = (
+            <SpecFrame as Frame>::obs_lon(specfrm),
+            <SpecFrame as Frame>::obs_lat(specfrm),
+        )
+    {
+        let h = <SpecFrame as Frame>::obs_alt(specfrm).unwrap_or(0.0);
+        if let Some(xyz) = crate::pal::gd2gc(geolon, geolat, h) {
+            args.store.obsgeox = Some(xyz[0]);
+            args.store.obsgeoy = Some(xyz[1]);
+            args.store.obsgeoz = Some(xyz[2]);
+        }
+    }
+
+    // RESTFRQ vs RESTWAV: pick which to emit based on the system.
+    // Mirrors C:30740-30751.
+    if let Some(rf) = specfrm.rest_freq() {
+        if matches!(
+            system,
+            SpecSystem::Wavelen | SpecSystem::Voptical | SpecSystem::Redshift | SpecSystem::Airwave
+        ) {
+            // Wavelength-domain → emit RESTWAV (in metres) instead.
+            args.store.restwav = Some(SPEED_OF_LIGHT / rf);
+        } else {
+            args.store.restfrq = Some(rf);
+        }
+    }
+
     // SPECSYS from the standard-of-rest.
     args.store.specsys = Some(specsys_string(specfrm.std_of_rest()));
 
-    // RESTFRQ if set.
-    if let Some(rf) = specfrm.rest_freq() {
-        args.store.restfrq = Some(rf);
+    // SourceVel → ZSOURCE + SSYSSRC. Mirrors C:30761-30772.
+    if let Some(vsource) = specfrm.source_vel()
+        && vsource.abs() < SPEED_OF_LIGHT
+    {
+        // Convert m/s velocity to dimensionless redshift via the
+        // relativistic Doppler formula (matches C:30764-30765).
+        let zsource = ((SPEED_OF_LIGHT + vsource) / (SPEED_OF_LIGHT - vsource)).sqrt() - 1.0;
+        args.store.zsource = Some(zsource);
+        args.store.ssyssrc = Some(specsys_string(specfrm.source_vrf()));
     }
 
-    // Step 4: build the WCS→IWC mapping for the spectral axis. The
-    // shape is a single-axis ShiftMap (subtract CRVAL) embedded into
-    // a nwcs-axis mapping via parallel UnitMaps. Mirrors C's
-    // wide-axis ShiftMap construction at the tail of SpectralAxes
-    // (which combines the spectral-axis Mapping with UnitMaps on
-    // non-spectral axes via parallel CmpMap and a PermMap to put
-    // the spectral axis at its slot).
-    let shift = ShiftMap::new(vec![-crval]);
-    let mut nd = embed_axis(Box::new(shift), spec_iax, nwcs)?;
+    // Step 4: VELOSYS — topocentric apparent velocity of the SPECSYS
+    // rest frame. Mirrors C:30774-30796. Currently NOT YET WIRED:
+    // VELOSYS depends on the celestial source position from
+    // celestial_axes (RefRA/RefDec on the SpecFrame, plus any
+    // SkyFrame source). The Group 7 wiring will deliver it. The
+    // existing wcs_write::populate_velosys already does this math;
+    // we'll port that into spectral_axes when the celestial→spectral
+    // sequencing lands.
 
     // Mark done and return.
     args.axis_done[spec_iax] = true;
 
-    nd = nd.simplified()?;
+    let nd = axmap.simplified()?;
     Ok(nd)
 }
 
@@ -304,6 +394,148 @@ mod tests {
         let p = out.point(0);
         assert!((p[0] - 10.0).abs() < 1e-9);
         assert!(p[1].abs() < 1e-3);
+    }
+
+    #[test]
+    fn restwav_emitted_for_wavelength_systems() {
+        // Wavelen system + rest_freq → emit RESTWAV (m), not RESTFRQ.
+        let pixel = BasicFrameBuilder::new(2).build().unwrap();
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let mut spec = SpecFrame::new(SpecSystem::Wavelen);
+        spec.set_rest_freq(1.42e9); // 21cm line
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
+            .unwrap();
+
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        let crvals = vec![None, Some(0.21)]; // ~21 cm wavelength
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        assert!(store.restwav.is_some());
+        // Wavelength of 1.42 GHz line ≈ 0.211 m.
+        let rw = store.restwav.unwrap();
+        assert!((rw - SPEED_OF_LIGHT / 1.42e9).abs() < 1e-9);
+        // RESTFRQ NOT emitted on wavelength systems.
+        assert!(store.restfrq.is_none());
+    }
+
+    #[test]
+    fn obsgeo_emitted_when_observer_set() {
+        let pixel = BasicFrameBuilder::new(2).build().unwrap();
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let mut spec = SpecFrame::new(SpecSystem::Freq);
+        spec.set_obs_lon(0.0);
+        spec.set_obs_lat(51.4778_f64.to_radians());
+        spec.set_obs_alt(0.0);
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
+            .unwrap();
+
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        let crvals = vec![None, Some(1.42e9)];
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        let r = (store.obsgeox.unwrap().powi(2)
+            + store.obsgeoy.unwrap().powi(2)
+            + store.obsgeoz.unwrap().powi(2))
+        .sqrt();
+        assert!((r - 6_371_000.0).abs() < 50_000.0);
+    }
+
+    #[test]
+    fn label_override_emits_ctype_comment_and_cname() {
+        let pixel = BasicFrameBuilder::new(2).build().unwrap();
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let mut spec = SpecFrame::new(SpecSystem::Freq);
+        spec.set_axis_label("MyFrequency");
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
+            .unwrap();
+
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        let crvals = vec![None, Some(1.42e9)];
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        assert_eq!(store.ctype_com[1].as_deref(), Some("MyFrequency"));
+        assert_eq!(store.cname[1].as_deref(), Some("MyFrequency"));
+    }
+
+    #[test]
+    fn source_velocity_emits_zsource_ssyssrc() {
+        let pixel = BasicFrameBuilder::new(2).build().unwrap();
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let mut spec = SpecFrame::new(SpecSystem::Freq);
+        // 1000 km/s recession.
+        spec.set_source_vel(1.0e6);
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
+            .unwrap();
+
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        let crvals = vec![None, Some(1.42e9)];
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        let z = store.zsource.expect("ZSOURCE");
+        // Relativistic Doppler: z = sqrt((c+v)/(c-v)) - 1.
+        let expected = ((SPEED_OF_LIGHT + 1.0e6) / (SPEED_OF_LIGHT - 1.0e6)).sqrt() - 1.0;
+        assert!((z - expected).abs() < 1e-9);
+        assert!(store.ssyssrc.is_some());
     }
 
     #[test]

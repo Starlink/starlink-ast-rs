@@ -103,6 +103,18 @@ pub(crate) struct FitsStore {
     pub obsgeoy: Option<f64>,
     /// Geocentric observer position Z (metres).
     pub obsgeoz: Option<f64>,
+    // -- Spectral source-velocity AST extensions
+    //    (fitschan.c::SpectralAxes ~30761-30797) --
+    /// `ZSOURCE` — source redshift.
+    pub zsource: Option<f64>,
+    /// `SSYSSRC` — rest frame in which `SourceVel` was specified.
+    pub ssyssrc: Option<String>,
+    /// `IMAGFREQ` — image-sideband frequency for DSB SpecFrames.
+    /// Only populated by `spectral_axes` once the DSBSpecFrame port
+    /// lands; reserved here so the field exists for downstream
+    /// encoders.
+    #[allow(dead_code)]
+    pub imagfreq: Option<f64>,
 }
 
 /// Maximum number of PV parameters per axis.
@@ -152,6 +164,9 @@ impl FitsStore {
             obsgeox: None,
             obsgeoy: None,
             obsgeoz: None,
+            zsource: None,
+            ssyssrc: None,
+            imagfreq: None,
         }
     }
 

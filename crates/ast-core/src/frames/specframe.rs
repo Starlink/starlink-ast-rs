@@ -275,6 +275,11 @@ pub struct SpecFrame {
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
+
+    /// User-set Label override for this frame's single axis. `None`
+    /// means "use the system-derived default from
+    /// [`SpecSystem::label`]".
+    label_override: Option<String>,
 }
 
 impl SpecFrame {
@@ -304,6 +309,7 @@ impl SpecFrame {
             align_spec_offset: false,
             act_unt: None,
             ident: None,
+            label_override: None,
         }
     }
 
@@ -352,6 +358,32 @@ impl SpecFrame {
     /// Set the alignment standard of rest.
     pub fn set_align_std_of_rest(&mut self, sor: StdOfRest) {
         self.align_std_of_rest = Some(sor);
+    }
+
+    /// Return the explicit Label override if set, otherwise the
+    /// system-derived default ("Frequency", "Wavelength", etc.).
+    /// Mirrors `astGetLabel(specfrm, 0)`.
+    pub fn axis_label(&self) -> String {
+        if let Some(s) = &self.label_override {
+            return s.clone();
+        }
+        self.system.label().to_string()
+    }
+
+    /// Test whether the Label was explicitly set. Mirrors
+    /// `astTestLabel(specfrm, 0)`.
+    pub fn test_axis_label(&self) -> bool {
+        self.label_override.is_some()
+    }
+
+    /// Set an explicit Label override.
+    pub fn set_axis_label(&mut self, label: impl Into<String>) {
+        self.label_override = Some(label.into());
+    }
+
+    /// Clear an explicit Label override.
+    pub fn clear_axis_label(&mut self) {
+        self.label_override = None;
     }
 
     /// Return the rest frequency in Hz.
