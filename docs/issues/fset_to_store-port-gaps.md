@@ -204,22 +204,15 @@ on the primary coord version (using `pal::gd2gc`).
 `SpecFrame::axis_label` / `set_axis_label` / `test_axis_label`
 added; `spectral_axes` emits the explicit Label when set.
 
-### `-X2P` non-linear algorithm cascade
+### `-X2P` non-linear algorithm cascade — DONE
 
-C:30359-30454 tries each of FREQ/WAVE/AWAV/VELO as the X system
-linearly related to pixels and emits a `XXXX-X2P` CTYPE on
-success. The Rust port does NOT yet do this — fixtures whose
-spectral CTYPE includes an algorithm suffix (`vopt-f2w.head`,
-`vopt-geo.head`, `vrad-lsrd.head`, `wave-f2w.head`,
-`freq-ghz-bary.head`, `class-arc.head`) will get the bare system
-name as CTYPE.
-
-**Action:** port the X-system cascade. Needs a SpecFrame
-`convert_to_system(X)`-style Mapping helper that produces the
-`S(X)` chain — i.e. the mapping from a copy of the SpecFrame
-in system X back to the original system. This functionality
-exists on the C side via `astConvert` but isn't exposed yet on
-our SpecFrame API.
+Ported in `spectral_axes::try_x2p_cascade`. Loops over FREQ /
+WAVE / AWAV / VELO as the trial X system; for each, builds the
+S→X mapping via `SpecFrame::make_spec_mapping`, composes
+`pixel→S → S→X` and tests it with `is_map_linear` at the
+spectral axis. On success builds the WCS→IWC chain
+`S → X → −xval → ·dsbydx` and emits `<orig>-<X>2<P>` CTYPE per
+the C suffix table. Mirrors C:30359-30454.
 
 ### `GrismMap` handling
 

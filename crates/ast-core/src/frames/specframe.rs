@@ -348,6 +348,12 @@ impl SpecFrame {
         self.unit = Some(unit.to_string());
     }
 
+    /// Clear the user-set unit override so that the system's default
+    /// unit (`Hz` for `Freq`, `m` for `Wavelen`, etc.) takes effect.
+    pub fn clear_unit(&mut self) {
+        self.unit = None;
+    }
+
     /// Return the alignment standard of rest.
     ///
     /// Defaults to Heliocentric if not explicitly set.

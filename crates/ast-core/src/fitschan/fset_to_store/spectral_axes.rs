@@ -13,11 +13,6 @@
 //! in user memory. Tracked in
 //! [`docs/issues/fset_to_store-port-gaps.md`](../../../../../docs/issues/fset_to_store-port-gaps.md):
 //!
-//! - **`-X2P` non-linear algorithm cascade** (FITS-WCS paper III):
-//!   try each of `FREQ`/`WAVE`/`AWAV`/`VELO` as the linearly-related
-//!   "X" system and emit a `XXXX-X2P` CTYPE on success. Needs a
-//!   SpecFrame `convert_to_system(X)` Mapping helper that doesn't
-//!   currently exist on the public API.
 //! - **`GrismMap` handling** (`-GRI` / `-GRA`). Needs an
 //!   `extract_grism_map(chain)` walker plus GrismMap parameter
 //!   accessors.
@@ -32,9 +27,10 @@
 //!   unchanged.
 //!
 //! What IS now covered: linear-path with `IsMapLinear` gate,
-//! `-LOG` algorithm via `LogAxis`, RESTFRQ vs RESTWAV choice,
-//! OBSGEO emission, axis-Label → CTYPE-comment/CNAME, source-
-//! velocity → ZSOURCE/SSYSSRC.
+//! `-X2P` non-linear algorithm cascade (mirrors C:30359-30454)
+//! via `try_x2p_cascade`, `-LOG` algorithm via `LogAxis`, RESTFRQ
+//! vs RESTWAV choice, OBSGEO emission, axis-Label → CTYPE-comment
+//! /CNAME, source-velocity → ZSOURCE/SSYSSRC.
 
 // Wired in by `fset_to_store::fset_to_store` (Group 7); until then
 // only reachable from cfg(test).
@@ -158,6 +154,20 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
             let shift = ShiftMap::new(vec![-crval]);
             let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
             (mapping, orig_system_str.to_string())
+        } else if let Some((axmap, ctype)) = try_x2p_cascade(
+            specfrm,
+            map.as_ref(),
+            spec_iax,
+            nwcs,
+            &lbnd_p,
+            &ubnd_p,
+            crval,
+            orig_system_str,
+        )? {
+            // Non-linear -X2P algorithm: try each of FREQ/WAVE/AWAV/
+            // VELO as the linearly-related "X" system. Mirrors
+            // C:30359-30454.
+            (axmap, ctype)
         } else if let Some(lm) = log_axis(map.as_ref(), spec_iax, nwcs, &lbnd_p, &ubnd_p, crval)? {
             // -LOG algorithm. Mirrors C:30467-30477.
             let ctype = format!("{orig_system_str}-LOG");
@@ -166,7 +176,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
             // Fallback: build the same ShiftMap as the linear path
             // (without an algorithm-suffix CTYPE). make_int_world
             // will reject the resulting non-linear pixel→IWC.
-            // Non-linear / grism / -TAB are not yet ported.
+            // Grism / -TAB are not yet ported.
             let shift = ShiftMap::new(vec![-crval]);
             let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
             (mapping, orig_system_str.to_string())
@@ -251,6 +261,139 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     let nd = axmap.simplified()?;
     Ok(nd)
+}
+
+/// Try the FITS-WCS paper III non-linear `-X2P` algorithm cascade.
+/// For each trial X system in `{FREQ, WAVE, AWAV, VELO}`:
+///   1. Build a SpecFrame copy with system = X, default unit.
+///   2. Build the X→S mapping via the existing `make_spec_mapping`.
+///   3. Build pixel→X by composing pixel→S with S→X (inverse of X→S),
+///      embed at `spec_iax`.
+///   4. If pixel→X is linear at `spec_iax`, accept this X system:
+///      - xval = invert(X→S) applied to crval.
+///      - dsbydx = rate of S w.r.t. X at xval (from X→S forward).
+///      - WCS→IWC = S→X → ShiftMap(-xval) → ZoomMap(dsbydx),
+///        embedded at spec_iax.
+///      - CTYPE = `<orig>-X2P` per the C convention.
+///
+/// Returns `None` when no X system is linearly related to pixels.
+/// Mirrors `fitschan.c::SpectralAxes` lines 30359-30454.
+#[allow(clippy::too_many_arguments)]
+fn try_x2p_cascade(
+    specfrm: &SpecFrame,
+    pixel_to_s_map: &dyn crate::mappings::Mapping,
+    spec_iax: usize,
+    nwcs: usize,
+    lbnd_p: &[f64],
+    ubnd_p: &[f64],
+    crval: f64,
+    orig_system_str: &str,
+) -> AstResult<Option<(DynMapping, String)>> {
+    // The 4 X systems mirroring the C `x_sys` array at C:30221-30224.
+    const X_SYSTEMS: [SpecSystem; 4] = [
+        SpecSystem::Freq,
+        SpecSystem::Wavelen,
+        SpecSystem::Airwave,
+        SpecSystem::Vrel,
+    ];
+
+    for &x_sys in &X_SYSTEMS {
+        // Skip the trivial case where X == orig_system: that's the
+        // linear path and the caller has already tested it.
+        if x_sys == specfrm.system() {
+            continue;
+        }
+
+        // Build a SpecFrame copy with the trial X system + default
+        // unit. Mirrors the C `astSetC(fs, system_attr, x_sys[ix]);
+        // astClear(fs, unit_attr);` (line 30374-30375) — but we work
+        // on a clone rather than mutating the FrameSet in place.
+        let mut x_frame = specfrm.clone();
+        x_frame.set_system(x_sys);
+        x_frame.clear_unit();
+
+        // X → S mapping (forward). Mirrors C:30412-30417 (which
+        // builds the "S as a function of X" Mapping). Skip this
+        // X system if the conversion isn't constructible.
+        let x2s = match x_frame.make_spec_mapping(specfrm) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        // S→X for the linearity probe and the IWC chain.
+        let mut s2x = x2s.clone_box();
+        s2x.invert();
+        let s2x_padded = embed_axis(s2x.clone_box(), spec_iax, nwcs)?;
+        let pixel_to_x: DynMapping = Box::new(CmpMap::new(
+            pixel_to_s_map.clone_box(),
+            s2x_padded,
+            Composition::Series,
+        )?);
+
+        if !is_map_linear(pixel_to_x.as_ref(), lbnd_p, ubnd_p, spec_iax)? {
+            continue;
+        }
+
+        // Found a linear X. Compute xval and dsbydx.
+        // C:30422 — xval = X(crval), via inverse of X→S applied to
+        // crval (which is in S units). x2s forward is X→S, so the
+        // inverse direction takes S → X.
+        let pts_s = PointSet::from_rows([[crval]]);
+        let pts_x = match x2s.transform(&pts_s, false) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let xval = pts_x.point(0)[0];
+        if !xval.is_finite() {
+            continue;
+        }
+
+        // C:30426 — dsbydx via astRate(tmap5, &xval, 0, 0). tmap5
+        // forward is X→S, so rate(at_xval, output_axis=0,
+        // input_axis=0) = dS/dX at X=xval.
+        let dsbydx = match x2s.rate(&[xval], 1, 1) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if !dsbydx.is_finite() || dsbydx == 0.0 {
+            continue;
+        }
+
+        // Build the WCS→IWC chain (1-D, on S inputs). Mirrors
+        // C:30435-30445:
+        //   S → X (s2x forward) → X − xval (ShiftMap) → (X − xval)·dsbydx (ZoomMap)
+        let shift = ShiftMap::new(vec![-xval]);
+        let zoom = crate::mappings::ZoomMap::new(1, dsbydx)?;
+        let chain_1d: DynMapping = Box::new(CmpMap::new(
+            Box::new(CmpMap::new(s2x, Box::new(shift), Composition::Series)?),
+            Box::new(zoom),
+            Composition::Series,
+        )?);
+        let axmap = embed_axis(chain_1d, spec_iax, nwcs)?;
+
+        // Build the -X2P CTYPE. Mirrors C:30385-30409:
+        //   First 4 chars = orig_system.
+        //   Suffix is "-X2P" where:
+        //     - X = F (FREQ), W (WAVE), A (AWAV), V (VELO).
+        //     - P depends on orig_system.
+        let x_char = match x_sys {
+            SpecSystem::Freq => 'F',
+            SpecSystem::Wavelen => 'W',
+            SpecSystem::Airwave => 'A',
+            SpecSystem::Vrel => 'V',
+            _ => unreachable!("X_SYSTEMS only contains the 4 above"),
+        };
+        let p_char = match orig_system_str {
+            "FREQ" | "ENER" | "WAVN" | "VRAD" => 'F',
+            "WAVE" | "VOPT" | "ZOPT" => 'W',
+            "AWAV" => 'A',
+            _ => 'V',
+        };
+        let ctype = format!("{orig_system_str}-{x_char}2{p_char}");
+        return Ok(Some((axmap, ctype)));
+    }
+
+    Ok(None)
 }
 
 /// Recursively descend `frame` to its primary leaf for `axis`
@@ -352,6 +495,65 @@ mod tests {
         assert!(result.as_any().is::<UnitMap>());
         assert!(!axis_done[0] && !axis_done[1]);
         assert!(store.ctype[0].is_none() && store.ctype[1].is_none());
+    }
+
+    #[test]
+    fn x2p_cascade_picks_freq_for_wavelength_axis() {
+        // Build a FrameSet whose spectral axis is linear in FREQ but
+        // whose displayed system is WAVELEN. Pixel → FREQ is linear
+        // (pixel is the underlying coordinate); WAVELEN = c/FREQ is
+        // non-linear in pixel. The -X2P cascade should pick FREQ as
+        // the X system, emitting CTYPE = "WAVE-F2W".
+        use crate::mappings::MathMap;
+        let pixel = BasicFrameBuilder::new(2).build().unwrap();
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let spec = SpecFrame::new(SpecSystem::Wavelen);
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let mut fs = FrameSet::new(Box::new(pixel));
+
+        // Build pixel→spec with axis 1 linear in pixel→FREQ space:
+        //   freq = 1.0e9 + 1.0e6 * pixel
+        //   wave = c / freq        (the SpecFrame WAVELEN system reports wavelength)
+        // Forward (pixel → wavelength on axis 1):
+        //   axis 0: identity
+        //   axis 1: c / (1.0e9 + 1.0e6 * x2)
+        let c = SPEED_OF_LIGHT;
+        let fwd_x = "s0=x1".to_string();
+        let fwd_y = format!("s1={c}/(1.0e9+1.0e6*x2)");
+        let inv_x = "x1=s0".to_string();
+        let inv_y = format!("x2=({c}/s1-1.0e9)/1.0e6");
+        let pixel_to_wave = MathMap::new(2, 2, &[&fwd_x, &fwd_y], &[&inv_x, &inv_y]).unwrap();
+        // Without explicit pixel→spec mapping this becomes the
+        // pixel→WAVELEN chain.
+        fs.add_frame(FrameRef::Base, Box::new(pixel_to_wave), Box::new(cmp))
+            .unwrap();
+
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        // Explicit CRVAL in WAVELEN = c / 1.05e9 ≈ 0.2855 m.
+        let crval_wave = c / 1.05e9;
+        let crvals = vec![None, Some(crval_wave)];
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        // CTYPE should be "WAVE-F2W" — orig=WAVE, X=F (FREQ), P=W (orig is wavelength domain).
+        assert_eq!(
+            store.ctype[1].as_deref(),
+            Some("WAVE-F2W"),
+            "expected WAVE-F2W, got {:?}",
+            store.ctype[1]
+        );
     }
 
     #[test]
