@@ -46,6 +46,7 @@ use crate::mappings::{
 use crate::wcslib::WcsProjection;
 
 use super::fiducial::{get_fiducial_nsc, get_fiducial_wcs};
+use super::sky_pole::sky_pole;
 use super::sky_sys::sky_sys;
 
 /// `MXPAR` from wcslib's PV-parameter table — mirrors the C
@@ -236,6 +237,12 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     let _ = sky_sys(
         skyfrm, 1, projection, args.store, fits_ilon, fits_ilat, args.s, args.isoff,
     )?;
+
+    // Step 7b: SkyPole writes LONPOLE / LATPOLE (and the PV-3/PV-4
+    // copies on the longitude axis for non-TPN projections). Mirrors
+    // C:5189. Currently zenithal-only — see sky_pole.rs head for
+    // the deferred non-zenithal path.
+    sky_pole(wcsmap, fits_ilon, fits_ilat, args.s, args.store);
 
     // Step 8: build the WCS→IWC mapping for the celestial pair.
     // Mirrors C:5206-5305 — we construct the IWC→WCS chain and
