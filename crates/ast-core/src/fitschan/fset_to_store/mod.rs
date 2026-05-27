@@ -15,6 +15,7 @@
 //! helper; we use `fset_to_store/` (matching the C entry-point name)
 //! to keep the read/write halves of the pipeline distinguishable.
 
+mod invertable;
 mod orth;
 mod other_axes;
 // mod celestial_axes;        // lands in Group 5
