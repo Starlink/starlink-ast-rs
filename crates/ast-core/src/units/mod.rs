@@ -20,11 +20,16 @@
 
 #![allow(dead_code)] // crate-internal; wired into SpecFrame in commit 3
 
+mod cmp;
+mod complicate;
+mod concat;
 mod dim_anal;
+mod invert;
 mod mapper;
 mod parser;
 mod simplify;
 mod table;
+mod to_expr;
 mod tree;
 
 #[cfg(test)]

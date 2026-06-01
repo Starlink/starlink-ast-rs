@@ -1,182 +1,133 @@
-//! Top-level orchestration for `astUnitMapper_`. Mirrors the linear
-//! branches of `unit.c`:5238-5732. The non-linear (MathMap) branch
-//! lands in commit 2; this commit returns `None` for any conversion
-//! that requires a non-linear transformation.
+//! Top-level orchestration for `astUnitMapper_`. Mirrors C
+//! `astUnitMapper_` (`unit.c`:5238-5732) and its helper
+//! `MakeMapping` (`unit.c`:3227-3371).
 //!
-//! ## Why this commit doesn't use `DimAnal`
+//! The algorithm proceeds in five phases:
 //!
-//! The C `astUnitMapper_` (see `unit.c`:5495-5694) does NOT call
-//! `DimAnal`. Instead, it parses both trees with basic=true, applies
-//! `FixUnits` per basic unit, runs the *full* `SimplifyTree(std=1)`
-//! pass (FindFactors / CombineFactors and friends), inverts the
-//! input tree, and concatenates with the output. The end result is
-//! a tree whose head is `LdCon(scale)` for linear conversions and
-//! `MakeMapping` translates that to a `ZoomMap`.
-//!
-//! `DimAnal` (`unit.c`:1373) has a quirk: `LdPi` returns `scale = 1/π`
-//! and `LdE` returns `1/e`. That convention is fine for the `min →
-//! 60 s` style cases (where the constant `60` was inverted to `1/60`
-//! by `InvertConstants` and re-inverted by DimAnal's `1/con` rule),
-//! but it breaks for any unit defined in terms of `pi` (e.g.
-//! `deg = pi/180 rad`) because `LdPi` never went through
-//! `InvertConstants`. The C library uses DimAnal only via
-//! `astUnitAnalyser_`, which has no internal callers.
-//!
-//! For the linear-only subset that commit 1 covers, we implement a
-//! direct tree analyser, [`analyse_tree`], that walks a parsed
-//! `basic=true` unit tree and produces:
-//!
-//! - a per-unit-name power map, and
-//! - the scaling factor that converts `1.0` of the supplied unit
-//!   into the basic-unit form.
-//!
-//! Two unit strings are dimensionally compatible when their power
-//! maps are equal, and the linear conversion factor is then
-//! `in.scale / out.scale`. Commit 2 will switch this to the full
-//! C pipeline so non-linear cases (`log(Hz) → Hz` etc.) produce a
-//! `MathMap`.
+//! 1. Identical-string fast path (`UnitMap`).
+//! 2. Parse both expressions with `create_tree(_, basic=true)` so all
+//!    derived units have been substituted with their basic-unit
+//!    definitions.
+//! 3. Two-pass fixed-unit walk: for each basic unit name, run
+//!    `FixUnits` on both trees, simplify with `std=1`, invert the
+//!    masked input, concatenate with the masked output, simplify
+//!    again. All passes must produce equivalent ("test tree") results
+//!    for the conversion to be possible. (If the forward direction
+//!    fails, retry with the trees swapped, then invert the resulting
+//!    test tree — mirrors the C two-pass loop.)
+//! 4. Dispatch the final test tree to `MakeMapping`, which emits a
+//!    `UnitMap`, `ZoomMap`, or `MathMap` depending on the tree shape.
 
-use std::collections::HashMap;
+use crate::mappings::{DynMapping, MathMap, UnitMap, ZoomMap};
 
-use crate::constants::BAD_VALUE;
-use crate::mappings::{DynMapping, UnitMap, ZoomMap};
-
+use super::cmp::cmp_tree;
+use super::concat::concat_tree;
+use super::dim_anal::{fix_units, locate_units};
+use super::invert::invert_tree;
 use super::parser::{clean_exp, create_tree};
+use super::simplify::simplify_tree;
+use super::to_expr::make_exp;
 use super::tree::{Oper, UnitNode};
 
-/// Walk a `basic=true` unit tree and accumulate
-/// `(unit_name → power)` together with a multiplicative scale
-/// factor. Returns `None` if the tree contains a `Log`, `Ln`, or
-/// `Exp` operation (commit 2 territory) or any other shape we can't
-/// linearly evaluate.
-///
-/// The scale convention is "value in basic-unit-form of `1.0` of
-/// the supplied unit". So for `MHz` we get
-/// `({"s": -1.0}, 1e6)` — i.e. 1 MHz = 1e6 of the basic Hz form
-/// (s^-1).
-fn analyse_tree(node: &UnitNode) -> Option<(HashMap<String, f64>, f64)> {
-    let mut powers: HashMap<String, f64> = HashMap::new();
-    let scale = match node.opcode {
-        // C `DimAnal` uses `*scale = 1.0/node->con`. The trees are
-        // post-`InvertConstants` so this re-inverts, returning the
-        // user-intended numeric value.
-        Oper::LdCon => {
-            if node.con == BAD_VALUE || node.con == 0.0 {
-                return None;
-            }
-            1.0 / node.con
+use crate::constants::BAD_VALUE;
+
+/// Convert a final simplified `UnitNode` tree into a Mapping. Mirrors
+/// C `MakeMapping` (`unit.c`:3227).
+fn make_mapping(tree: &UnitNode) -> Option<DynMapping> {
+    // Pure LDVAR → identity.
+    if tree.opcode == Oper::LdVar {
+        return Some(Box::new(UnitMap::new(1)));
+    }
+
+    // OP_MULT(LdCon(k), LdVar) → UnitMap (k≈1) or ZoomMap.
+    if tree.opcode == Oper::Mult
+        && tree.arg[0].con != BAD_VALUE
+        && tree.arg[1].opcode == Oper::LdVar
+    {
+        let k = tree.arg[0].con;
+        if k == 1.0 {
+            return Some(Box::new(UnitMap::new(1)));
         }
+        return ZoomMap::new(1, k).ok().map(|z| Box::new(z) as DynMapping);
+    }
 
-        // For `LdPi` and `LdE` we use the actual numeric constants.
-        // C `DimAnal` uses `1/π` / `1/e` here (matching its `LdCon`
-        // convention) but those nodes never went through
-        // `InvertConstants` so the C path through `astUnitMapper_`
-        // wouldn't have inverted them either. The SimplifyTree path
-        // in the C mapper compensates via `FindFactors` /
-        // `CombineFactors`; we just use the natural constants.
-        Oper::LdPi => std::f64::consts::PI,
-        Oper::LdE => std::f64::consts::E,
+    // Otherwise build a MathMap. Format the tree as the forward
+    // expression "output_units = <expr>" with `input_units` as the
+    // varying variable. Then invert the tree (using `output_units` as
+    // the new src) and format that as the inverse "input_units = <expr>".
+    let fwd_expr = make_exp(tree);
+    let mut src = UnitNode::new(Oper::LdVar);
+    src.name = Some("output_units".to_string());
+    let inv_tree = invert_tree(tree, Box::new(src))?;
+    let inv_expr = make_exp(&inv_tree);
 
-        Oper::LdVar => {
-            // The unit's name (no multiplier prefix) is the dimension
-            // key. Multiplier scales contribute to the numeric scale
-            // factor. As in `DimAnal` (`unit.c`:1456-1457), the
-            // multiplier on a basic-unit LDVAR contributes
-            // `1/mult.scale`, and the special case `g → kg` adds an
-            // extra `0.001` factor.
-            let name = node.name.as_deref()?;
-            *powers.entry(name.to_string()).or_insert(0.0) += 1.0;
-            let mut s = if let Some(m) = node.mult {
-                1.0 / m.scale
-            } else {
-                1.0
-            };
-            if name == "g" {
-                s *= 0.001;
-            }
-            s
-        }
+    let fwd_eq = format!("output_units={}", fwd_expr);
+    let inv_eq = format!("input_units={}", inv_expr);
 
-        // Transcendentals — defer to commit 2 (MathMap path).
-        Oper::Log | Oper::Ln | Oper::Exp => return None,
-
-        Oper::Sqrt => {
-            let (mut p, s) = analyse_tree(&node.arg[0])?;
-            for v in p.values_mut() {
-                *v *= 0.5;
-            }
-            powers = p;
-            if s < 0.0 {
-                return None;
-            }
-            s.sqrt()
-        }
-
-        Oper::Pow => {
-            let exponent = node.arg[1].con;
-            if exponent == BAD_VALUE {
-                return None;
-            }
-            let (mut p, s) = analyse_tree(&node.arg[0])?;
-            for v in p.values_mut() {
-                *v *= exponent;
-            }
-            powers = p;
-            s.powf(exponent)
-        }
-
-        Oper::Mult => {
-            let (p0, s0) = analyse_tree(&node.arg[0])?;
-            let (p1, s1) = analyse_tree(&node.arg[1])?;
-            for (k, v) in p0 {
-                *powers.entry(k).or_insert(0.0) += v;
-            }
-            for (k, v) in p1 {
-                *powers.entry(k).or_insert(0.0) += v;
-            }
-            s0 * s1
-        }
-
-        Oper::Div => {
-            let (p0, s0) = analyse_tree(&node.arg[0])?;
-            let (p1, s1) = analyse_tree(&node.arg[1])?;
-            for (k, v) in p0 {
-                *powers.entry(k).or_insert(0.0) += v;
-            }
-            for (k, v) in p1 {
-                *powers.entry(k).or_insert(0.0) -= v;
-            }
-            if s1 == 0.0 {
-                return None;
-            }
-            s0 / s1
-        }
-
-        Oper::Null => return None,
-    };
-
-    // Discard zero-power entries so `m * s / s` and `m` compare equal.
-    powers.retain(|_, v| v.abs() > 1.0e-12);
-
-    Some((powers, scale))
+    let fwd_slice: &[&str] = &[&fwd_eq];
+    let inv_slice: &[&str] = &[&inv_eq];
+    let mut mathmap = MathMap::new(1, 1, fwd_slice, inv_slice).ok()?;
+    mathmap.set_simp_fi(true);
+    mathmap.set_simp_if(true);
+    Some(Box::new(mathmap))
 }
 
-fn powers_compatible(a: &HashMap<String, f64>, b: &HashMap<String, f64>) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    for (k, v) in a {
-        match b.get(k) {
-            Some(w) if (v - w).abs() < 1.0e-12 => {}
-            _ => return false,
+/// Run the per-unit fixed-mask loop. Returns the final test tree if
+/// every basic unit produced an equivalent result, or `None` if any
+/// pair failed.
+fn build_test_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> Option<Box<UnitNode>> {
+    // Collect all distinct LdVar names in either tree.
+    let mut names: Vec<String> = Vec::new();
+    locate_units(in_tree, &mut names);
+    locate_units(out_tree, &mut names);
+
+    let mut testtree: Option<Box<UnitNode>> = None;
+
+    for name in names.iter() {
+        // Mask all units other than `name` to 1, then simplify(std=1).
+        let mut intemp = fix_units(in_tree, name);
+        let mut outtemp = fix_units(out_tree, name);
+        simplify_tree(&mut intemp, true);
+        simplify_tree(&mut outtemp, true);
+
+        let in_const = intemp.con != BAD_VALUE;
+        let out_const = outtemp.con != BAD_VALUE;
+
+        if in_const && out_const {
+            // Both are constants — this unit cancels in both
+            // expressions; skip it.
+            continue;
+        }
+
+        if in_const || out_const {
+            // Only one tree depends on this unit — incompatible.
+            return None;
+        }
+
+        // Build inverted intemp using "input_units" as the new leaf,
+        // then concat with outtemp, then simplify.
+        let mut src = UnitNode::new(Oper::LdVar);
+        src.name = Some("input_units".to_string());
+        let inv = invert_tree(&intemp, Box::new(src))?;
+        let mut totaltree = concat_tree(&inv, &outtemp)?;
+        simplify_tree(&mut totaltree, true);
+
+        match testtree.as_ref() {
+            None => testtree = Some(totaltree),
+            Some(prev) => {
+                if cmp_tree(&totaltree, prev, false) != 0 {
+                    return None;
+                }
+            }
         }
     }
-    true
+
+    testtree
 }
 
 /// Build a `Mapping` between two unit strings. Returns `None` if
 /// the units are dimensionally incompatible, unparseable, or
-/// (in this commit) require a non-linear transformation.
+/// uninvertible.
 ///
 /// Mirrors C `astUnitMapper_` (`unit.c`:5238).
 pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> Option<DynMapping> {
@@ -192,30 +143,28 @@ pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> Option<DynMapping> {
         return Some(Box::new(UnitMap::new(1)));
     }
 
-    // Parse both. If either fails, no mapping.
+    // Parse both with basic-unit substitution.
     let in_tree = create_tree(in_unit, true)?;
     let out_tree = create_tree(out_unit, true)?;
 
-    // Analyse both for power vectors and scale.
-    let (in_powers, in_scale) = analyse_tree(&in_tree)?;
-    let (out_powers, out_scale) = analyse_tree(&out_tree)?;
+    // Two-pass loop: try forward direction first; if that fails, swap
+    // and invert. Mirrors `unit.c`:5533-5688.
+    let (testtree, swapped) = match build_test_tree(&in_tree, &out_tree) {
+        Some(t) => (t, false),
+        None => match build_test_tree(&out_tree, &in_tree) {
+            Some(t) => (t, true),
+            None => return None,
+        },
+    };
 
-    // Powers must match exactly for the conversion to be a single
-    // linear scaling.
-    if !powers_compatible(&in_powers, &out_powers) {
-        return None;
-    }
-
-    if out_scale == 0.0 {
-        return None;
-    }
-    let factor = in_scale / out_scale;
-
-    if (factor - 1.0).abs() < 1.0e-15 {
-        Some(Box::new(UnitMap::new(1)))
+    // If we swapped, invert the test tree before constructing the Mapping.
+    let final_tree = if swapped {
+        let mut src = UnitNode::new(Oper::LdVar);
+        src.name = Some("input_units".to_string());
+        invert_tree(&testtree, Box::new(src))?
     } else {
-        ZoomMap::new(1, factor)
-            .ok()
-            .map(|z| Box::new(z) as DynMapping)
-    }
+        testtree
+    };
+
+    make_mapping(&final_tree)
 }

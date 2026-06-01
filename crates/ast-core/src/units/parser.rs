@@ -565,11 +565,20 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
     }
 
     // -------- Branch F: named constants pi / e ---------
+    //
+    // In C, `NewNode(OP_LDPI)` sets `con = PI` (not AST__BAD), so the
+    // node behaves as a constant for `FixConstants` /
+    // `InvertConstants` / `SimplifyTree` purposes. We emit `LdCon`
+    // directly with the numeric value to mirror that: the only
+    // effect of preserving the dedicated `OP_LDPI` opcode in C is on
+    // `CmpTree`'s opcode-based ordering between an LdPi node and a
+    // pure LdCon, which never affects the FindFactors / CombineFactors
+    // canonicalisation of unit-mapper trees.
     if nc == 2 && (head == "pi" || head == "PI") {
-        return Some(Box::new(UnitNode::new(Oper::LdPi)));
+        return Some(UnitNode::ldcon(std::f64::consts::PI));
     }
     if nc == 1 && (head == "e" || head == "E") {
-        return Some(Box::new(UnitNode::new(Oper::LdE)));
+        return Some(UnitNode::ldcon(std::f64::consts::E));
     }
 
     // -------- Branch G: unit symbol (with optional multiplier) ---------

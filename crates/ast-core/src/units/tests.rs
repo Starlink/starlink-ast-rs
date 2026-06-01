@@ -174,3 +174,76 @@ fn arcmin_to_arcsec() {
     let map = unit_mapper("arcmin", "arcsec").expect("arcmin → arcsec");
     assert_zoom_factor(&*map, 60.0);
 }
+
+// ---------------------------------------------------------------------
+// Non-linear (MathMap) cases — commit 2.
+// ---------------------------------------------------------------------
+
+use crate::mappings::MathMap;
+
+/// Drive a sample through the mapping (forward dir) and return its
+/// image. Helper used by the MathMap tests.
+fn forward_sample(map: &dyn Mapping, x: f64) -> f64 {
+    forward_one(map, x)
+}
+
+#[test]
+fn log_hz_to_hz_is_mathmap() {
+    let map = unit_mapper("log(Hz)", "Hz").expect("log(Hz) → Hz");
+    assert!(
+        map.as_any().is::<MathMap>(),
+        "expected MathMap for log(Hz) → Hz"
+    );
+    // Forward: input is in log10(Hz); output is in Hz. Forward(0) =
+    // 10^0 = 1.
+    let y0 = forward_sample(&*map, 0.0);
+    assert!((y0 - 1.0).abs() < 1e-12, "log(Hz)→Hz forward(0) = {}", y0);
+    // Forward(2) = 10^2 = 100.
+    let y2 = forward_sample(&*map, 2.0);
+    assert!((y2 - 100.0).abs() < 1e-9, "log(Hz)→Hz forward(2) = {}", y2);
+}
+
+#[test]
+fn sqrt_hz_to_hz_is_mathmap() {
+    let map = unit_mapper("sqrt(Hz)", "Hz").expect("sqrt(Hz) → Hz");
+    assert!(
+        map.as_any().is::<MathMap>(),
+        "expected MathMap for sqrt(Hz) → Hz"
+    );
+    // Forward: input is in sqrt(Hz); output is Hz. Forward(2) = 4.
+    let y2 = forward_sample(&*map, 2.0);
+    assert!((y2 - 4.0).abs() < 1e-12, "sqrt(Hz)→Hz forward(2) = {}", y2);
+}
+
+#[test]
+fn log_kms_to_ms_is_mathmap() {
+    let map = unit_mapper("log(km/s)", "m/s").expect("log(km/s) → m/s");
+    assert!(
+        map.as_any().is::<MathMap>(),
+        "expected MathMap for log(km/s) → m/s"
+    );
+    // Forward(0) = 10^0 km/s = 1 km/s = 1000 m/s.
+    let y0 = forward_sample(&*map, 0.0);
+    assert!(
+        (y0 - 1000.0).abs() < 1e-9,
+        "log(km/s)→m/s forward(0) = {}",
+        y0
+    );
+}
+
+#[test]
+fn hz_to_log_hz_is_mathmap() {
+    let map = unit_mapper("Hz", "log(Hz)").expect("Hz → log(Hz)");
+    assert!(
+        map.as_any().is::<MathMap>(),
+        "expected MathMap for Hz → log(Hz)"
+    );
+    // Forward: input is Hz, output is log10(Hz). Forward(100) =
+    // log10(100) = 2.
+    let y100 = forward_sample(&*map, 100.0);
+    assert!(
+        (y100 - 2.0).abs() < 1e-12,
+        "Hz→log(Hz) forward(100) = {}",
+        y100
+    );
+}

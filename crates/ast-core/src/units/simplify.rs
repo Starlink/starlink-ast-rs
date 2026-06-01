@@ -281,93 +281,387 @@ pub(crate) fn invert_constants(node: &mut Box<UnitNode>) -> Option<()> {
 }
 
 // ---------------------------------------------------------------------
-// SimplifyTree — minimal subset for commit 1
+// SimplifyTree — full port of `unit.c`:4653-4961
 // ---------------------------------------------------------------------
 
-/// Bottom-up algebraic simplification — the **minimum subset** needed
-/// for commit 1 to detect `UnitMap` / `ZoomMap` shapes. Returns
-/// `true` if a change was made.
-///
-/// Implemented rules (each mirrors a branch of the C `SimplifyTree`
-/// at `unit.c`:4653-4961):
-///
-/// - constant folding via `fix_constants(unity=false)`
-/// - `OP_MULT(x, c) → OP_MULT(c, x)` when arg[1] is constant
-///   (commute constants left)
-/// - `OP_MULT(0, x) → 0`, `OP_MULT(1, x) → x`
-/// - `OP_DIV(x, 1) → x`, `OP_DIV(x, c) → OP_MULT(1/c, x)` when c is
-///   constant and non-zero
-/// - `OP_POW(x, 0) → 1`, `OP_POW(x, 1) → x`
-///
-/// Standardisation rules (ln/log/sqrt rewrites and FindFactors-driven
-/// canonicalisation, from C lines ~4730-4960) are deferred to commit 2.
-pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, _std: bool) -> bool {
-    let mut changed = false;
-
-    // Constant fold first.
-    fix_constants(node, false);
-    if node.opcode == Oper::LdCon {
+/// `astEQUAL`-style fuzzy equality. Approximates pal's `astEQUAL`
+/// macro: tolerant by ~1e-9 relative.
+fn ast_equal(a: f64, b: f64) -> bool {
+    if a == BAD_VALUE || b == BAD_VALUE {
+        return false;
+    }
+    if a == b {
         return true;
     }
+    let scale = a.abs().max(b.abs());
+    (a - b).abs() <= 1e-9 * scale
+}
+
+/// Bottom-up algebraic simplification. Mirrors C `SimplifyTree`
+/// (`unit.c`:4653). When `std=true`, applies the canonical-form
+/// standardisations needed to compare two trees for equivalence
+/// (FindFactors / CombineFactors and the ln/log/sqrt rewrites).
+/// When `std=false`, only genuine simplifications run.
+pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
+    let mut result = false;
+
+    // Constant fold first (C: FixConstants(node, 0)).
+    fix_constants(node, false);
 
     // Recurse into children.
     for child in node.arg.iter_mut() {
-        if simplify_tree(child, _std) {
-            changed = true;
+        if simplify_tree(child, std) {
+            result = true;
         }
     }
 
     let op = node.opcode;
-    let new_node: Option<Box<UnitNode>> = match op {
-        Oper::Mult => {
-            // Commute constant to the left.
-            if node.arg[1].con != BAD_VALUE && node.arg[0].con == BAD_VALUE {
-                let mut new = UnitNode::new(Oper::Mult);
-                *new.arg[0] = (*node.arg[1]).clone();
-                *new.arg[1] = (*node.arg[0]).clone();
-                Some(Box::new(new))
-            } else if node.arg[0].con == 0.0 {
-                Some(UnitNode::ldcon(0.0))
-            } else if node.arg[0].con != BAD_VALUE && (node.arg[0].con - 1.0).abs() < f64::EPSILON {
-                Some(Box::new((*node.arg[1]).clone()))
-            } else {
-                None
-            }
-        }
-        Oper::Div => {
-            if node.arg[1].con != BAD_VALUE && (node.arg[1].con - 1.0).abs() < f64::EPSILON {
-                Some(Box::new((*node.arg[0]).clone()))
-            } else if node.arg[1].con != BAD_VALUE && node.arg[1].con != 0.0 {
-                let recip = 1.0 / node.arg[1].con;
-                Some(UnitNode::binary(
-                    Oper::Mult,
-                    UnitNode::ldcon(recip),
-                    Box::new((*node.arg[0]).clone()),
-                ))
-            } else {
-                None
-            }
-        }
-        Oper::Pow => {
-            if node.arg[1].con == 0.0 {
-                Some(UnitNode::ldcon(1.0))
-            } else if node.arg[1].con != BAD_VALUE && (node.arg[1].con - 1.0).abs() < f64::EPSILON {
-                Some(Box::new((*node.arg[0]).clone()))
-            } else {
-                None
-            }
-        }
-        _ => None,
-    };
+    let mut newnode: Option<Box<UnitNode>> = None;
 
-    if let Some(new) = new_node {
-        *node = new;
-        changed = true;
-        // Re-simplify post-rewrite (mirrors the C tail recursion).
-        simplify_tree(node, _std);
+    match op {
+        // ---- Natural log -------------------------------------------
+        Oper::Ln => {
+            if node.arg[0].opcode == Oper::Exp {
+                // ln(exp(x)) → x
+                newnode = Some(Box::new((*node.arg[0].arg[0]).clone()));
+            } else if std && node.arg[0].opcode == Oper::Pow {
+                // ln(x**k) → k * ln(x)
+                let k = node.arg[0].arg[1].clone();
+                let x = node.arg[0].arg[0].clone();
+                let mut ln_x = UnitNode::new(Oper::Ln);
+                ln_x.arg[0] = x;
+                let mult = UnitNode::binary(Oper::Mult, k, Box::new(ln_x));
+                newnode = Some(mult);
+            }
+        }
+
+        // ---- Common log → ln/ln(10) (when std) ---------------------
+        Oper::Log => {
+            if std {
+                let mut ln = UnitNode::new(Oper::Ln);
+                ln.arg[0] = node.arg[0].clone();
+                let div = UnitNode::binary(Oper::Div, Box::new(ln), UnitNode::ldcon(10.0_f64.ln()));
+                newnode = Some(div);
+            }
+        }
+
+        // ---- Exponential -------------------------------------------
+        Oper::Exp => {
+            if node.arg[0].opcode == Oper::Ln {
+                // exp(ln(x)) → x
+                newnode = Some(Box::new((*node.arg[0].arg[0]).clone()));
+            }
+        }
+
+        // ---- Square root → x**0.5 (when std) -----------------------
+        Oper::Sqrt => {
+            if std {
+                let pow = UnitNode::binary(
+                    Oper::Pow,
+                    Box::new((*node.arg[0]).clone()),
+                    UnitNode::ldcon(0.5),
+                );
+                newnode = Some(pow);
+            }
+        }
+
+        // ---- Exponentiation ----------------------------------------
+        Oper::Pow => {
+            if node.arg[0].opcode == Oper::Exp {
+                // (e**x)**k → e**(k*x)
+                let k = (*node.arg[1]).clone();
+                let x = (*node.arg[0].arg[0]).clone();
+                let mut e = UnitNode::new(Oper::Exp);
+                let mult = UnitNode::binary(Oper::Mult, Box::new(k), Box::new(x));
+                e.arg[0] = mult;
+                newnode = Some(Box::new(e));
+            } else if node.arg[1].con == 0.0 {
+                // x ** 0 → 1
+                newnode = Some(UnitNode::ldcon(1.0));
+            } else if ast_equal(node.arg[1].con, 1.0) {
+                // x ** 1 → x
+                newnode = Some(Box::new((*node.arg[0]).clone()));
+            } else if node.arg[0].opcode == Oper::Pow {
+                // (x**k1)**k2 → x ** (k1*k2)
+                let k1 = node.arg[0].arg[1].con;
+                let k2 = node.arg[1].con;
+                let new_pow = UnitNode::binary(
+                    Oper::Pow,
+                    Box::new((*node.arg[0].arg[0]).clone()),
+                    UnitNode::ldcon(k1 * k2),
+                );
+                newnode = Some(new_pow);
+            } else if std && node.arg[0].opcode == Oper::Mult {
+                // (x*y)**k → (x**k)*(y**k)
+                let k = (*node.arg[1]).clone();
+                let x = (*node.arg[0].arg[0]).clone();
+                let y = (*node.arg[0].arg[1]).clone();
+                let xk = UnitNode::binary(Oper::Pow, Box::new(x), Box::new(k.clone()));
+                let yk = UnitNode::binary(Oper::Pow, Box::new(y), Box::new(k));
+                let mult = UnitNode::binary(Oper::Mult, xk, yk);
+                newnode = Some(mult);
+            }
+        }
+
+        // ---- Division ----------------------------------------------
+        Oper::Div => {
+            if ast_equal(node.arg[1].con, 1.0) {
+                newnode = Some(Box::new((*node.arg[0]).clone()));
+            } else if node.arg[1].con != BAD_VALUE {
+                if node.arg[1].con != 0.0 {
+                    let mult = UnitNode::binary(
+                        Oper::Mult,
+                        UnitNode::ldcon(1.0 / node.arg[1].con),
+                        Box::new((*node.arg[0]).clone()),
+                    );
+                    newnode = Some(mult);
+                }
+                // C reports AST__BADUN on divide-by-zero; we just
+                // leave the node alone, the upper layers will fail.
+            } else if std {
+                // x/y → x * (y**(-1))
+                let pow = UnitNode::binary(
+                    Oper::Pow,
+                    Box::new((*node.arg[1]).clone()),
+                    UnitNode::ldcon(-1.0),
+                );
+                let mult = UnitNode::binary(Oper::Mult, Box::new((*node.arg[0]).clone()), pow);
+                newnode = Some(mult);
+            }
+        }
+
+        // ---- Multiplication ----------------------------------------
+        Oper::Mult => {
+            if node.arg[1].con != BAD_VALUE && node.arg[0].con == BAD_VALUE {
+                // Swap so constant is on the left.
+                let mut sw = UnitNode::new(Oper::Mult);
+                sw.arg[0] = node.arg[1].clone();
+                sw.arg[1] = node.arg[0].clone();
+                newnode = Some(Box::new(sw));
+            } else if node.arg[0].con == 0.0 {
+                newnode = Some(UnitNode::ldcon(0.0));
+            } else if ast_equal(node.arg[0].con, 1.0) {
+                newnode = Some(Box::new((*node.arg[1]).clone()));
+            } else if std {
+                // FindFactors + CombineFactors canonicalisation.
+                let (factors, powers, coeff) = find_factors(node);
+                newnode = combine_factors(&factors, &powers, coeff);
+            }
+        }
+
+        _ => {}
     }
 
-    changed
+    // If the rewrite produced something identical to the existing
+    // node, drop it.
+    if let Some(nn) = newnode.as_ref() {
+        if super::cmp::cmp_tree(nn, node, true) == 0 {
+            newnode = None;
+        } else {
+            result = true;
+        }
+    }
+
+    if let Some(nn) = newnode {
+        *node = nn;
+    }
+
+    // Re-simplify if anything changed (mirrors C tail recursion).
+    if result {
+        simplify_tree(node, std);
+    }
+
+    result
+}
+
+// ---------------------------------------------------------------------
+// FindFactors — `unit.c`:1596-1831
+// ---------------------------------------------------------------------
+
+/// Factor list paired with corresponding powers and an overall
+/// coefficient. Each factor is owned (deep-cloned from the source
+/// tree) so the caller can drop the source tree after collection.
+///
+/// We use `Vec<Box<UnitNode>>` rather than `Vec<UnitNode>` to keep
+/// pointer stability for entries during the collection loop — the
+/// `find_factors_inner` callee inserts into the same vector while
+/// iterating, and the boxing matches the tree's own
+/// `Vec<Box<UnitNode>>` argument storage from `tree.rs`.
+#[allow(clippy::vec_box)]
+pub(crate) fn find_factors(node: &UnitNode) -> (Vec<Box<UnitNode>>, Vec<f64>, f64) {
+    let mut factors: Vec<Box<UnitNode>> = Vec::new();
+    let mut powers: Vec<f64> = Vec::new();
+    let mut coeff: f64 = 1.0;
+    find_factors_inner(node, &mut factors, &mut powers, &mut coeff);
+    (factors, powers, coeff)
+}
+
+#[allow(clippy::vec_box)]
+fn find_factors_inner(
+    node: &UnitNode,
+    factors: &mut Vec<Box<UnitNode>>,
+    powers: &mut Vec<f64>,
+    coeff: &mut f64,
+) {
+    use super::cmp::cmp_tree;
+    match node.opcode {
+        Oper::Mult => {
+            find_factors_inner(&node.arg[0], factors, powers, coeff);
+            let mut fact1: Vec<Box<UnitNode>> = Vec::new();
+            let mut pow1: Vec<f64> = Vec::new();
+            let mut coeff1: f64 = 1.0;
+            find_factors_inner(&node.arg[1], &mut fact1, &mut pow1, &mut coeff1);
+            for (i, fac) in fact1.into_iter().enumerate() {
+                let mut found = None;
+                for (j, existing) in factors.iter().enumerate() {
+                    if cmp_tree(existing, &fac, false) == 0 {
+                        found = Some(j);
+                        break;
+                    }
+                }
+                match found {
+                    Some(j) => powers[j] += pow1[i],
+                    None => {
+                        factors.push(fac);
+                        powers.push(pow1[i]);
+                    }
+                }
+            }
+            *coeff *= coeff1;
+        }
+
+        Oper::Pow => {
+            find_factors_inner(&node.arg[0], factors, powers, coeff);
+            let con = node.arg[1].con;
+            for p in powers.iter_mut() {
+                *p *= con;
+            }
+            // Exponentiate the coefficient.
+            if *coeff >= 0.0 || (con as i64 as f64 == con) {
+                *coeff = coeff.powf(con);
+            }
+            // (C reports AST__BADUN otherwise; we just leave coeff as-is.)
+        }
+
+        Oper::Div => {
+            find_factors_inner(&node.arg[0], factors, powers, coeff);
+            let mut fact1: Vec<Box<UnitNode>> = Vec::new();
+            let mut pow1: Vec<f64> = Vec::new();
+            let mut coeff1: f64 = 1.0;
+            find_factors_inner(&node.arg[1], &mut fact1, &mut pow1, &mut coeff1);
+            for (i, fac) in fact1.into_iter().enumerate() {
+                let mut found = None;
+                for (j, existing) in factors.iter().enumerate() {
+                    if cmp_tree(existing, &fac, false) == 0 {
+                        found = Some(j);
+                        break;
+                    }
+                }
+                match found {
+                    Some(j) => powers[j] -= pow1[i],
+                    None => {
+                        factors.push(fac);
+                        powers.push(-pow1[i]);
+                    }
+                }
+            }
+            if coeff1 != 0.0 {
+                *coeff /= coeff1;
+            }
+        }
+
+        Oper::Sqrt => {
+            find_factors_inner(&node.arg[0], factors, powers, coeff);
+            for p in powers.iter_mut() {
+                *p *= 0.5;
+            }
+            if *coeff >= 0.0 {
+                *coeff = coeff.sqrt();
+            }
+        }
+
+        Oper::LdCon => {
+            *coeff = node.con;
+        }
+
+        // LdPi/LdE: treat as constants (unlike C, which leaves them as
+        // factors — but the C code's coefficient handling falls through
+        // since `node->con != AST__BAD` is false for these). To match
+        // the C exactly, treat them as opaque factors.
+        _ => {
+            // Default: a single factor "node" with power 1.
+            factors.push(Box::new(node.clone()));
+            powers.push(1.0);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// CombineFactors — `unit.c`:673-825
+// ---------------------------------------------------------------------
+
+/// Reorder the factor list canonically (`cmp_tree(_,_,false)` order)
+/// and emit a tree that multiplies them all together with the given
+/// coefficient. Mirrors C `CombineFactors`.
+pub(crate) fn combine_factors(
+    factors: &[Box<UnitNode>],
+    powers: &[f64],
+    coeff: f64,
+) -> Option<Box<UnitNode>> {
+    use super::cmp::cmp_tree;
+
+    // Sort factors+powers in lockstep using the tree-comparison sort.
+    let mut idx: Vec<usize> = (0..factors.len()).collect();
+    idx.sort_by(|&a, &b| {
+        let c = cmp_tree(&factors[a], &factors[b], false);
+        if c < 0 {
+            std::cmp::Ordering::Less
+        } else if c > 0 {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
+
+    // The first root term is the coefficient unless it equals 1.
+    let mut head: Option<Box<UnitNode>> = if !ast_equal(coeff, 1.0) {
+        Some(UnitNode::ldcon(coeff))
+    } else {
+        None
+    };
+    let mut result: Option<Box<UnitNode>> = None;
+
+    for &i in idx.iter() {
+        if powers[i] == 0.0 {
+            continue;
+        }
+        let factor_clone = (*factors[i]).clone();
+        let node2: Box<UnitNode> = if ast_equal(powers[i], 1.0) {
+            Box::new(factor_clone)
+        } else {
+            UnitNode::binary(
+                Oper::Pow,
+                Box::new(factor_clone),
+                UnitNode::ldcon(powers[i]),
+            )
+        };
+
+        if let Some(h) = head.take() {
+            let m = UnitNode::binary(Oper::Mult, h, node2);
+            head = Some(m.clone());
+            result = Some(m);
+        } else {
+            head = Some(node2);
+        }
+    }
+
+    if result.is_none() {
+        result = head;
+    }
+    if result.is_none() {
+        result = Some(UnitNode::ldcon(1.0));
+    }
+    result
 }
 
 #[cfg(test)]
