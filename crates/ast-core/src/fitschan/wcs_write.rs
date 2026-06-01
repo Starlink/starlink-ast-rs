@@ -167,6 +167,37 @@ fn store_from_frameset_to(
     dim: &[Option<f64>],
     input_crvals: &[Option<f64>],
 ) -> AstResult<FitsStore> {
+    // The new path (fset_to_store) reads the FrameSet's current frame
+    // directly; for alt-plane callers (target_idx != current_idx) we
+    // clone the FrameSet and bump its current pointer to the requested
+    // frame before dispatching. The legacy path used a `target_idx`
+    // parameter to thread this through every helper; the new path
+    // localises it here.
+    //
+    // `input_crvals` is no longer consulted: the new path picks each
+    // axis's CRVAL structurally (fiducial point for celestial axes,
+    // central-pixel WCS for others), mirroring the C library's
+    // GetFiducialWCS / world(g0) cascade. Input CRVAL overrides from
+    // the original header are intentionally ignored — the writer's
+    // job is to describe the FrameSet, not to round-trip arbitrary
+    // header text.
+    let _ = input_crvals;
+    let encoding = crate::fitschan::Encoding::FitsWcs;
+    if target_idx == fs.current_idx() {
+        return crate::fitschan::fset_to_store::fset_to_store(fs, dim, encoding);
+    }
+    let mut alt_fs = fs.clone();
+    alt_fs.set_current(FrameRef::Index(target_idx + 1))?;
+    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding)
+}
+
+#[allow(dead_code)]
+fn _legacy_store_from_frameset_to(
+    fs: &FrameSet,
+    target_idx: usize,
+    dim: &[Option<f64>],
+    input_crvals: &[Option<f64>],
+) -> AstResult<FitsStore> {
     let naxis = fs.base().naxes();
     let mut store = FitsStore::new(naxis);
 

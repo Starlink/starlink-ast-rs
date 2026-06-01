@@ -77,11 +77,17 @@ pub(crate) fn fset_to_store(
     dim: &[Option<f64>],
     encoding: Encoding,
 ) -> AstResult<FitsStore> {
-    let naxis = fs.base().naxes();
-    let mut store = FitsStore::new(naxis);
-
     // Step 1: pixel→WCS Mapping from base to current frame.
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    let nwcs = mapping.nout();
+    // FitsStore needs to be wide enough to hold a slot for every WCS
+    // axis as well as every base (pixel) axis: when nwcs > base.naxes()
+    // the FrameSet has degenerate axes whose CRVAL / CTYPE still need
+    // to be stored. The C library handles this via FitsStore's dynamic
+    // SetItem; we pre-size to max(naxes, nwcs).
+    let naxis = fs.base().naxes().max(nwcs);
+    let mut store = FitsStore::new(naxis);
 
     // Reject inputs whose inverse is undefined (mirrors C:2782 — the
     // -TAB fallback path in C is not yet ported, so for now we mirror
@@ -89,8 +95,6 @@ pub(crate) fn fset_to_store(
     if !mapping.has_inverse() {
         return Ok(store);
     }
-
-    let nwcs = mapping.nout();
 
     // Step 2: choose `wperm[i]` — the FITS axis index for each WCS
     // frame axis. Mirrors C:2792-2802 (FitsAxisOrder + WorldAxes
