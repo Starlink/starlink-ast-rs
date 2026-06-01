@@ -6,15 +6,23 @@
 //! `false` when the chain isn't sufficiently linear (mirrors C's
 //! `int` return convention).
 //!
-//! ## SIP-distortion deferral (Group 6)
+//! ## SIP-distortion handling
 //!
-//! Lines 21882-21895 + 21999-22004 of the C source handle the SIP
-//! branch via a separate `SIPIntWorld` helper. This port leaves the
-//! `sipok` parameter on the public signature so callers needn't
-//! change later, but treats it as `false` internally — every axis
-//! goes through `fit_line_cd`. SIP support lands in
-//! `crates/ast-core/src/fitschan/fset_to_store/sip_int_world.rs`
-//! (Group 6 of the plan).
+//! When `sipok` is true and the WCS frame contains a celestial pair,
+//! we route the chain through [`super::sip_int_world::sip_int_world`]
+//! first. On success that helper:
+//!
+//!   - emits the SIP A/B/AP/BP coefficient tables (and the `-SIP`
+//!     CTYPE suffix) into the store;
+//!   - returns the original mapping with its SIP `PolyMap` replaced
+//!     by linear flanks, so the subsequent `fit_line_cd` linearity
+//!     test on the celestial axes succeeds; and
+//!   - returns the celestial CRPIX and CD values directly.
+//!
+//! The CD values overwrite the `partmat` columns for the two
+//! celestial input axes (mirrors fitschan.c:21999-22004) and the
+//! CRPIX values overwrite the per-axis solve result for the same
+//! two axes (mirrors fitschan.c:22096-22102).
 
 // Wired in by `fset_to_store::fset_to_store` in Group 7; until then
 // the function is reachable only from cfg(test).
@@ -33,6 +41,7 @@ use crate::mappings::polymap::solve_linear_system;
 
 use super::invertable::make_invertable;
 use super::orth::orth_vector_set;
+use super::sip_int_world::sip_int_world;
 
 /// Degrees → radians. Matches C's `AST__DD2R`.
 const DD2R: f64 = std::f64::consts::PI / 180.0;
@@ -62,7 +71,9 @@ fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
 /// `dim[i]` is the pixel-axis length (`None` for unknown).
 /// `fitstol` is the maximum departure from linearity (fraction of a
 /// grid pixel) tolerated by the per-axis FitLine fit.
-/// `sipok` is the SIP-on flag (currently ignored — see module docs).
+/// `sipok` enables the SIP-distortion path: when true and the WCS
+/// frame contains a celestial pair, the chain is routed through
+/// [`super::sip_int_world::sip_int_world`] (see module docs).
 ///
 /// Mirrors fitschan.c::MakeIntWorld @ line 21689.
 pub(crate) fn make_int_world(
@@ -74,11 +85,6 @@ pub(crate) fn make_int_world(
     fitstol: f64,
     sipok: bool,
 ) -> AstResult<bool> {
-    // SIP branch wired up in Group 6 — for now, ignore the flag and
-    // fall through to the always-linear path.
-    let _ = sipok;
-    let havesip = false;
-
     let nin = cmap.nin();
     let nout = cmap.nout();
     if nout < nin {
@@ -86,7 +92,7 @@ pub(crate) fn make_int_world(
     }
 
     // Step 1: simplify the supplied mapping. Mirrors C:21858.
-    let map = cmap.simplified()?;
+    let mut map = cmap.simplified()?;
 
     // Step 2: find lonax / latax — the nout-axis indices of the
     // celestial pair (if any). Mirrors C:21863-21875.
@@ -102,7 +108,31 @@ pub(crate) fn make_int_world(
             }
         }
     }
-    let _ = (lonax, latax); // unused until Group 6.
+
+    // Step 2a: if SIP is allowed and we have a celestial pair, route
+    // through sip_int_world. On success it: emits SIP / AP / BP
+    // coefficient tables and the `-SIP` CTYPE suffix into the store,
+    // returns the celestial CRPIX & CD values, and returns a stripped
+    // mapping with the PolyMap collapsed to its linear flanks. The
+    // stripped form is then what feeds find_basis_vectors / fit_line
+    // below — so the celestial axes are linear from the SIP-stripped
+    // chain's point of view, which is the whole point of routing
+    // through SIPIntWorld. Mirrors C:21881-21895.
+    let mut havesip = false;
+    let mut sipax = [0_usize; 2];
+    let mut crpix_sip = [0.0_f64; 2];
+    let mut cd_sip = [0.0_f64; 4];
+    if sipok {
+        if let (Some(lon), Some(lat)) = (lonax, latax) {
+            if let Some(sip) = sip_int_world(map.as_ref(), fitstol, lon, lat, store, dim)? {
+                havesip = true;
+                sipax = sip.in_axes;
+                crpix_sip = sip.crpix;
+                cd_sip = sip.cd;
+                map = sip.stripped;
+            }
+        }
+    }
 
     // Step 3: nwcs — the WCS-frame axis count. Mirrors C:21901.
     let nwcs = fr.naxes();
@@ -142,10 +172,23 @@ pub(crate) fn make_int_world(
         partmat.push(col);
     }
 
-    // (Group 6: replace partmat[sipax[..]] with cd_sip[..].)
+    // If the celestial axes were routed through SIPIntWorld, replace
+    // the four CD entries for the celestial pair with the values it
+    // returned, since the linear-fit values from fit_line_cd above
+    // describe the *stripped* mapping (without the SIP polynomial
+    // distortion), not the original. Mirrors fitschan.c:21999-22004.
+    //
+    // partmat layout: partmat[input_axis][output_axis], so we set the
+    // (sipax[0], lonax), (sipax[1], lonax), (sipax[0], latax),
+    // (sipax[1], latax) entries from cd_sip's row-major order
+    // (CDlon_j1, CDlon_j2, CDlat_j1, CDlat_j2).
     if havesip {
-        // No-op until Group 6. Body intentionally elided here — this
-        // branch is wired up by sip_int_world.rs.
+        let lon = lonax.expect("havesip implies lonax is set");
+        let lat = latax.expect("havesip implies latax is set");
+        partmat[sipax[0]][lon] = cd_sip[0];
+        partmat[sipax[1]][lon] = cd_sip[1];
+        partmat[sipax[0]][lat] = cd_sip[2];
+        partmat[sipax[1]][lat] = cd_sip[3];
     }
 
     // Step 6: pad partial column vectors out to a full nout × nout
@@ -250,8 +293,17 @@ pub(crate) fn make_int_world(
         let colvec: Vec<f64> = (0..nout).map(|i| fullmat[[i, j]]).collect();
 
         let mut crp = if j < nin {
-            basis.g0[j] - y[j]
-            // (SIP overrides — Group 6.)
+            let mut crp = basis.g0[j] - y[j];
+            // SIP overrides for the two celestial input axes —
+            // mirrors fitschan.c:22096-22102.
+            if havesip {
+                if j == sipax[0] {
+                    crp = crpix_sip[0];
+                } else if j == sipax[1] {
+                    crp = crpix_sip[1];
+                }
+            }
+            crp
         } else {
             1.0 - y[j]
         };
@@ -616,6 +668,151 @@ mod tests {
         )
         .unwrap();
         assert!(!ok);
+    }
+
+    #[test]
+    fn sip_chain_routes_through_sip_int_world() {
+        // Build a 2-axis SIP-shaped pixel→IWC chain and a FrameSet
+        // whose current frame is a SkyFrame, so make_int_world can
+        // recognise the celestial pair via primary_frame().
+        //
+        // The numbers come from the same fixture the sip_int_world
+        // unit test consumes; the point of this test is the
+        // make_int_world wiring, not bit-exactness against the C
+        // oracle (that's the sip_int_world test's job).
+        use crate::frames::{SkyFrame, SkySystem};
+        use crate::mappings::{PolyMap, PolyTerm};
+        use ndarray::Array2;
+
+        // Identity + non-trivial SIP A, B, AP, BP. Numbers match the
+        // SIP_2D fixture's `sip_fwd[]` / `sip_inv[]` tables.
+        let mut fwd = vec![
+            PolyTerm {
+                coeff: 1.0,
+                powers: vec![1, 0],
+                out_axis: 1,
+            },
+            PolyTerm {
+                coeff: 1.0,
+                powers: vec![0, 1],
+                out_axis: 2,
+            },
+        ];
+        for &(i, j, c) in &[
+            (0_usize, 2_usize, 2.9656e-06_f64),
+            (0, 3, 3.7746e-09),
+            (1, 1, 2.1886e-05),
+            (2, 0, -2.3863e-05),
+        ] {
+            fwd.push(PolyTerm {
+                coeff: c,
+                powers: vec![i, j],
+                out_axis: 1,
+            });
+        }
+        for &(i, j, c) in &[
+            (0_usize, 2_usize, 2.31e-05_f64),
+            (1, 1, -2.4386e-05),
+            (2, 0, 2.1197e-06),
+        ] {
+            fwd.push(PolyTerm {
+                coeff: c,
+                powers: vec![i, j],
+                out_axis: 2,
+            });
+        }
+        let mut inv = vec![
+            PolyTerm {
+                coeff: 1.0,
+                powers: vec![1, 0],
+                out_axis: 1,
+            },
+            PolyTerm {
+                coeff: 1.0,
+                powers: vec![0, 1],
+                out_axis: 2,
+            },
+        ];
+        for &(i, j, c) in &[
+            (0_usize, 1_usize, -6.4275e-07_f64),
+            (1, 0, -1.4897e-05),
+            (2, 0, 2.4146e-05),
+        ] {
+            inv.push(PolyTerm {
+                coeff: c,
+                powers: vec![i, j],
+                out_axis: 1,
+            });
+        }
+        for &(i, j, c) in &[
+            (0_usize, 1_usize, -1.6588e-05_f64),
+            (1, 1, 2.4753e-05),
+            (3, 0, 2.0482e-08),
+        ] {
+            inv.push(PolyTerm {
+                coeff: c,
+                powers: vec![i, j],
+                out_axis: 2,
+            });
+        }
+
+        let crpix = 128.0;
+        let sm = ShiftMap::new(vec![-crpix, -crpix]);
+        let pm = PolyMap::new(2, 2, &fwd, Some(&inv)).unwrap();
+        let cd = [
+            0.000249756880272355_f64,
+            0.000230177809743655,
+            0.000230428519265417,
+            -0.000249965770576587,
+        ];
+        let mm = MatrixMap::new(Array2::from_shape_vec((2, 2), cd.to_vec()).unwrap()).unwrap();
+        let s_then_p = CmpMap::new(Box::new(sm), Box::new(pm), Composition::Series).unwrap();
+        let chain = CmpMap::new(Box::new(s_then_p), Box::new(mm), Composition::Series).unwrap();
+
+        // FrameSet: Base = pixel BasicFrame, Current = SkyFrame so
+        // primary_frame() identifies the celestial axes.
+        let pixel = BasicFrameBuilder::new(2).domain("GRID").build().unwrap();
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(chain), Box::new(sky))
+            .unwrap();
+
+        let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+        let mut store = FitsStore::new(2);
+        // Pre-populate CTYPE so the -SIP suffix has something to
+        // append to (in production this is set by sky_sys before
+        // make_int_world runs).
+        store.ctype[0] = Some("RA---TAN".into());
+        store.ctype[1] = Some("DEC--TAN".into());
+
+        let dim = vec![Some(256.0), Some(256.0)];
+        let wperm = vec![0_usize, 1];
+        let ok = make_int_world(
+            map.as_ref(),
+            fs.current(),
+            &wperm,
+            &mut store,
+            &dim,
+            0.001,
+            true, // sipok
+        )
+        .unwrap();
+        assert!(ok, "make_int_world succeeded with SIP wired");
+
+        // CRPIX is set by sip_int_world for the celestial pair.
+        // crpix_sip = (128, 128) for this fixture.
+        assert!((store.crpix[0].unwrap() - 128.0).abs() < 1e-6);
+        assert!((store.crpix[1].unwrap() - 128.0).abs() < 1e-6);
+
+        // CTYPE got the -SIP suffix.
+        assert_eq!(store.ctype[0].as_deref(), Some("RA---TAN-SIP"));
+        assert_eq!(store.ctype[1].as_deref(), Some("DEC--TAN-SIP"));
+
+        // SIP coefficient tables populated.
+        assert!(store.sip_a_order.is_some(), "A_ORDER should be set");
+        assert!(store.sip_b_order.is_some(), "B_ORDER should be set");
+        assert!(store.sip_ap_order.is_some(), "AP_ORDER should be set");
+        assert!(store.sip_bp_order.is_some(), "BP_ORDER should be set");
     }
 
     #[test]
