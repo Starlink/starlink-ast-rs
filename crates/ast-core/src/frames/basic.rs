@@ -617,6 +617,10 @@ impl Frame for BasicFrame {
         BasicFrame::domain(self)
     }
 
+    fn test_domain(&self) -> bool {
+        BasicFrame::test_domain(self)
+    }
+
     fn ident(&self) -> &str {
         BasicFrame::ident(self)
     }

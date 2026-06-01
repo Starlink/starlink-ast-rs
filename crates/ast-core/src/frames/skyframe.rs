@@ -90,7 +90,9 @@ impl SkyFrame {
     pub fn new(system: SkySystem) -> Self {
         Self {
             title: None,
-            domain: Some("SKY".to_string()),
+            // None = use the default "SKY". Mirrors C's astTestDomain
+            // returning false until set_domain is called.
+            domain: None,
             epoch: None,
             obs_lat: None,
             obs_lon: None,
@@ -399,6 +401,17 @@ impl SkyFrame {
     /// Set the frame domain.
     pub fn set_domain(&mut self, domain: &str) {
         self.domain = Some(domain.to_string());
+    }
+
+    /// Test whether the domain attribute has been explicitly set.
+    /// Mirrors C's `astTestDomain` for `SkyFrame`.
+    pub fn test_domain(&self) -> bool {
+        self.domain.is_some()
+    }
+
+    /// Clear the domain attribute, reverting to the default `"SKY"`.
+    pub fn clear_domain(&mut self) {
+        self.domain = None;
     }
 
     /// Return the frame identification string.
@@ -797,6 +810,10 @@ impl Frame for SkyFrame {
 
     fn domain(&self) -> &str {
         SkyFrame::domain(self)
+    }
+
+    fn test_domain(&self) -> bool {
+        SkyFrame::test_domain(self)
     }
 
     fn ident(&self) -> &str {

@@ -116,6 +116,15 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         ""
     }
 
+    /// Whether the domain attribute has been explicitly set (non-default).
+    /// Mirrors C's `astTestDomain`. The default implementation returns
+    /// `false`; concrete frames that distinguish "explicit" from
+    /// "default" override this to read their backing `Option<String>`
+    /// state.
+    fn test_domain(&self) -> bool {
+        false
+    }
+
     /// Frame identification token (single uppercase letter recommended for
     /// FITS-WCS alt-plane assignment). Empty string if unset.
     fn ident(&self) -> &str {

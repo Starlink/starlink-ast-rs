@@ -130,7 +130,8 @@ impl FluxFrame {
     pub fn new(system: FluxSystem) -> Self {
         Self {
             title: None,
-            domain: Some("FLUX".to_string()),
+            // None = use the default "FLUX"; mirrors astTestDomain.
+            domain: None,
             system,
             spec_val: None,
             act_unt: None,
@@ -179,6 +180,17 @@ impl FluxFrame {
     /// Set the domain.
     pub fn set_domain(&mut self, domain: &str) {
         self.domain = Some(domain.to_string());
+    }
+
+    /// Test whether the domain attribute has been explicitly set.
+    /// Mirrors C's `astTestDomain` for `FluxFrame`.
+    pub fn test_domain(&self) -> bool {
+        self.domain.is_some()
+    }
+
+    /// Clear the domain attribute, reverting to the default `"FLUX"`.
+    pub fn clear_domain(&mut self) {
+        self.domain = None;
     }
 }
 
@@ -326,6 +338,14 @@ impl Frame for FluxFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
+    }
+
+    fn domain(&self) -> &str {
+        self.domain.as_deref().unwrap_or("FLUX")
+    }
+
+    fn test_domain(&self) -> bool {
+        FluxFrame::test_domain(self)
     }
 }
 

@@ -207,7 +207,8 @@ impl TimeFrame {
         };
         Self {
             title: None,
-            domain: Some("TIME".to_string()),
+            // None = use the default "TIME"; mirrors astTestDomain.
+            domain: None,
             epoch: None,
             obs_lat: None,
             obs_lon: None,
@@ -312,6 +313,17 @@ impl TimeFrame {
     /// Set the domain.
     pub fn set_domain(&mut self, domain: &str) {
         self.domain = Some(domain.to_string());
+    }
+
+    /// Test whether the domain attribute has been explicitly set.
+    /// Mirrors C's `astTestDomain` for `TimeFrame`.
+    pub fn test_domain(&self) -> bool {
+        self.domain.is_some()
+    }
+
+    /// Clear the domain attribute, reverting to the default `"TIME"`.
+    pub fn clear_domain(&mut self) {
+        self.domain = None;
     }
 
     /// Set the observer geodetic latitude (radians).
@@ -775,6 +787,14 @@ impl Frame for TimeFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
+    }
+
+    fn domain(&self) -> &str {
+        self.domain.as_deref().unwrap_or("TIME")
+    }
+
+    fn test_domain(&self) -> bool {
+        TimeFrame::test_domain(self)
     }
 }
 
