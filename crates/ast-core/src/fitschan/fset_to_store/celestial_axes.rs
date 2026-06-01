@@ -477,11 +477,13 @@ fn build_wcs_to_iwc(
     // Native-spherical → WCS rotation. We use the existing
     // wcs_write::wcs_celestial helper since the rotation maths is
     // identical to what C's WcsNative produces. The helper expects
-    // CRVAL in degrees.
+    // all three angles in radians (mirrors C's WcsNative which
+    // multiplies CRVAL by AST__DD2R before passing in — see
+    // fitschan.c:38175).
     let lonpole_rad = PI;
     let wcs_native_rot = crate::fitschan::wcs_celestial::build_native_to_celestial_rotation(
-        crval_deg[0],
-        crval_deg[1],
+        crval_deg[0] * DD2R,
+        crval_deg[1] * DD2R,
         lonpole_rad,
     )
     .ok_or_else(|| {
