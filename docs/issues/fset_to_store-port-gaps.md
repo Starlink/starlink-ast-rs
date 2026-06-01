@@ -232,14 +232,31 @@ rest frame. Needs the celestial source position from
 `wcs_write::populate_velosys` math. The integration step lives
 in Group 7.
 
-### SpecFrame unit-conversion chain rewriting
+### SpecFrame unit-conversion chain rewriting — IN PROGRESS
 
-C C:30276-30311 mutates the input FrameSet to rewrite the
-spectral unit when the existing one isn't FITS-compliant
-(e.g. user-set `MHz` becomes `Hz` so IWC arithmetic stays in
-canonical SI units). Rust currently preserves the user's CUNIT
-unchanged. Needs SpecFrame's `astConvert` machinery exposed plus
-the FrameSet `remap_frame` plumbing.
+Three-commit port of `reference/starlink-ast/src/unit.c` (~6.2k lines)
+landing on `tickets/DM-54793`:
+
+- **Commit 1 (DONE):** `crates/ast-core/src/units/` module with full
+  parser (`CleanExp` / `MakeTree`), full 61-entry `KnownUnit` table
+  + 20-entry SI multiplier table, `RemakeTree` substitution,
+  `FixConstants` / `InvertConstants`, `LocateUnits` / `FixUnits`,
+  minimal `SimplifyTree`, and a linear-only `unit_mapper` returning
+  `UnitMap` / `ZoomMap`. Non-linear conversions return `None`.
+  Linear path uses a custom `analyse_tree` walker (commit 2 will
+  swap in the C `InvertTree` + full `SimplifyTree` + `MakeMapping`
+  pipeline). 21 mapper tests + 27 inline parser/simplify/dim_anal
+  tests pass.
+- **Commit 2:** port `InvertTree`, `ConcatTree`, full
+  `SimplifyTree(std=1)` standardisation rules (`ln(x^k) → k·ln(x)`,
+  `sqrt(x) → x^0.5`, `(xy)^k → x^k·y^k`, …), `FindFactors` /
+  `CombineFactors`, `MakeExp` (tree → algebraic string), and
+  `MakeMapping`. Switch `unit_mapper` to the C pipeline so
+  non-linear conversions produce a `MathMap`.
+- **Commit 3:** wire `unit_mapper` into
+  `SpecFrame::make_spec_mapping` and port the
+  `fitschan.c::SpectralAxes` C:30276-30311 unit-rewrite block.
+  Add wcsconv fixtures with `CUNIT='MHz'` and `CUNIT='log(Hz)'`.
 
 ---
 

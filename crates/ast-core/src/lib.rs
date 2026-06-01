@@ -12,6 +12,7 @@ pub mod mappings;
 pub(crate) mod pal;
 pub mod regions;
 pub(crate) mod serial;
+pub(crate) mod units;
 pub(crate) mod wcslib;
 pub use channel::source_sink::{FileSink, FileSource, StringSink, StringSource};
 pub use channel::{Channel, ChannelConfig, NativeChannel, Sink, Source};
