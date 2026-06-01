@@ -179,11 +179,20 @@ pub(crate) fn fset_to_store(
 
     // Step 8: post-processing.
     //
-    // (a) Store the WCS Frame's Domain as WCSNAME if set. Mirrors
-    //     C:2892-2895.
-    let domain = fs.current().domain();
-    if !domain.is_empty() {
-        store.wcsname = Some(domain.to_string());
+    // (a) Store the WCS Frame's Domain as WCSNAME when explicitly set.
+    //     Mirrors C:2892-2895 (which uses astTestDomain). Each Frame
+    //     class returns true from `test_domain` only when its domain
+    //     attribute has been set by the user, distinguishing that
+    //     from the per-class default ("SKY", "SPECTRUM", "TIME", …).
+    //     Don't overwrite a value sky_sys already populated.
+    if store.wcsname.is_none() {
+        let cur = fs.current();
+        if cur.test_domain() {
+            let d = cur.domain();
+            if !d.is_empty() {
+                store.wcsname = Some(d.to_string());
+            }
+        }
     }
 
     // (b) Snap small-CRVAL residue to zero (when |CRVAL| is much

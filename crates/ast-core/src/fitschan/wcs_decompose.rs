@@ -264,11 +264,13 @@ pub(crate) fn fit_line(
     if !w0.iter().all(|v| v.is_finite()) {
         return None;
     }
-    let dim_v = dim?;
-    if dim_v == 0.0 {
-        return None;
-    }
-    let gap = dim_v / NP_USIZE as f64;
+    // Mirrors C `FitLine` (~line 14950): when dim is BAD/unknown,
+    // use a gap of 1.0 (corresponds to an axis length of NP pixels).
+    let gap = match dim {
+        Some(0.0) => return None,
+        Some(d) => d / NP_USIZE as f64,
+        None => 1.0,
+    };
 
     // Sample NP_USIZE points along input axis `axis`, centred at g0,
     // spaced by `gap`.
