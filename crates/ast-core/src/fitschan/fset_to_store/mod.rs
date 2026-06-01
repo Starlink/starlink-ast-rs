@@ -24,12 +24,11 @@ mod log_axis;
 mod make_int_world;
 mod orth;
 mod other_axes;
+mod sip_int_world;
 mod sky_pole;
 mod sky_sys;
 mod spectral_axes;
 mod world_axes;
-// mod spectral_axes;         // lands in Group 5 (Task 5.4)
-// mod sip_int_world;         // lands in Group 6
 
 // Re-exports for Group-7 callers (`fset_to_store::fset_to_store`)
 // landing later. Marked `unused_imports`-allowed so the re-export
