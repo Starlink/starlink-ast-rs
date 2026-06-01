@@ -41,7 +41,7 @@ use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::fitschan::fits_store::FitsStore;
 use crate::frames::{Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
 
 use crate::mappings::helpers::is_bad;
 
@@ -141,7 +141,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // We deviate slightly: build a ShiftMap anyway so callers can
     // proceed, but emit ctype = orig_system; make_int_world will
     // reject the resulting non-linear pixel→IWC).
-    let map = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let mut map = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
     let npix = map.nin();
     let lbnd_p: Vec<f64> = vec![1.0; npix];
     let ubnd_p: Vec<f64> = (0..npix)
@@ -149,6 +149,44 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         .collect();
 
     let mut crval = crval; // some algorithm paths re-derive crval from the chain.
+
+    // Unit-rewrite preprocessing. Mirrors fitschan.c::SpectralAxes
+    // C:30276-30311. When the SpecFrame has a non-default Unit:
+    //
+    // 1. Build a unit-conversion mapping from user-units to the
+    //    SpecMap canonical default (Hz / m / m/s).
+    // 2. If linear (UnitMap or ZoomMap) → leave the chain alone;
+    //    the writer will emit CUNIT = user-units directly.
+    // 3. If non-linear (MathMap, e.g. log/sqrt wrappers) → absorb
+    //    the conversion into the pixel→spec chain so the algorithm
+    //    cascade sees a chain in canonical units. Override CUNIT and
+    //    CRVAL accordingly.
+    //
+    // The C uses FrameSet auto-remap-on-`astClear` for step 3; our
+    // FrameSet doesn't yet expose that integrity path, so we
+    // compose locally.
+    let default_unit = system.specmap_units();
+    let mut absorbed_unit = false;
+    if let Some(user_unit) = specfrm.unit().filter(|u| !u.is_empty()) {
+        if !default_unit.is_empty() && user_unit != default_unit {
+            if let Some(unit_map) = crate::units::unit_mapper(user_unit, default_unit) {
+                let is_linear =
+                    unit_map.as_any().is::<UnitMap>() || unit_map.as_any().is::<ZoomMap>();
+                if !is_linear {
+                    // Compose pixel→spec[user] with spec[user]→spec[default],
+                    // embedded on the spec axis only.
+                    let embedded = embed_axis(unit_map.clone_box(), spec_iax, nwcs)?;
+                    map = Box::new(CmpMap::new(map, embedded, Composition::Series)?);
+                    // Transform CRVAL through the unit mapping.
+                    let pts = PointSet::from_rows([[crval]]);
+                    let out = unit_map.transform(&pts, true)?;
+                    crval = out.point(0)[0];
+                    args.store.crval[fits_i] = Some(crval);
+                    absorbed_unit = true;
+                }
+            }
+        }
+    }
     let (axmap, ctype): (DynMapping, String) =
         if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, spec_iax)? {
             // Linear path: ShiftMap(-crval).
@@ -207,12 +245,19 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     args.store.ctype[fits_i] = Some(ctype);
 
     // CUNIT: explicit user-set unit if present, else the system's
-    // SpecMap canonical unit (Hz / m / m/s).
-    let cunit = specfrm
-        .unit()
-        .filter(|u| !u.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| system.specmap_units().to_string());
+    // SpecMap canonical unit (Hz / m / m/s). When we absorbed a
+    // non-linear unit conversion above (e.g. log(Hz) → Hz), force
+    // the CUNIT to the canonical default since the chain now
+    // produces values in that unit.
+    let cunit = if absorbed_unit {
+        system.specmap_units().to_string()
+    } else {
+        specfrm
+            .unit()
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| system.specmap_units().to_string())
+    };
     args.store.cunit[fits_i] = Some(cunit);
 
     // CTYPE-comment / CNAME from explicit Label override. Mirrors
@@ -1029,5 +1074,80 @@ mod tests {
 
         // Pixel→WCS is identity, so central-pixel WCS = floor(0.5*200) = 100.
         assert_eq!(store.crval[1], Some(100.0));
+    }
+
+    /// Build a 2-axis FrameSet with a SpecFrame whose Unit attribute
+    /// is set to `unit_str`. Pixel→WCS is identity, so the spec axis
+    /// reads pixel value directly (in `unit_str` units).
+    fn build_spec_fs_with_unit(unit_str: &str, system: SpecSystem) -> FrameSet {
+        let pixel = BasicFrameBuilder::new(2).build().unwrap();
+        let basic = BasicFrameBuilder::new(1).build().unwrap();
+        let mut spec = SpecFrame::new(system);
+        spec.set_unit(unit_str);
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
+            .unwrap();
+        fs
+    }
+
+    #[test]
+    fn linear_unit_mhz_preserves_user_cunit() {
+        // SpecFrame in MHz, FREQ system. Linear conversion → CUNIT
+        // should remain "MHz" (not be overridden to Hz).
+        let fs = build_spec_fs_with_unit("MHz", SpecSystem::Freq);
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        let crvals = vec![None, None];
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        assert_eq!(store.cunit[1].as_deref(), Some("MHz"));
+    }
+
+    #[test]
+    fn nonlinear_unit_log_hz_absorbed_into_chain() {
+        // SpecFrame with Unit="log(Hz)" on a FREQ axis. Non-linear
+        // conversion → spectral_axes should absorb it: CUNIT becomes
+        // the canonical default "Hz", CRVAL is transformed (10^x).
+        let fs = build_spec_fs_with_unit("log(Hz)", SpecSystem::Freq);
+        let dim = vec![Some(100.0), Some(100.0)];
+        let mut wperm = vec![0_usize, 1];
+        let mut store = FitsStore::new(2);
+        // Supply CRVAL = 9.0 (log10 of 1 GHz). The absorbed CRVAL
+        // should be 10^9 = 1e9 Hz.
+        let crvals = vec![None, Some(9.0)];
+        let mut axis_done = vec![false; 2];
+
+        spectral_axes(SpectralAxesArgs {
+            fs: &fs,
+            dim: &dim,
+            wperm: &mut wperm,
+            s: ' ',
+            store: &mut store,
+            crvals: &crvals,
+            axis_done: &mut axis_done,
+        })
+        .unwrap();
+
+        // CUNIT was overridden to the canonical default.
+        assert_eq!(store.cunit[1].as_deref(), Some("Hz"));
+        // CRVAL was transformed through 10^x: 9.0 → 1e9.
+        let crval = store.crval[1].expect("crval");
+        assert!(
+            (crval - 1.0e9).abs() < 1.0,
+            "CRVAL absorbed via 10^x: expected 1e9, got {crval}"
+        );
     }
 }

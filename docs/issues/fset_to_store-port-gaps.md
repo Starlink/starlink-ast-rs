@@ -232,29 +232,37 @@ rest frame. Needs the celestial source position from
 `wcs_write::populate_velosys` math. The integration step lives
 in Group 7.
 
-### SpecFrame unit-conversion chain rewriting — IN PROGRESS
+### SpecFrame unit-conversion chain rewriting — DONE
 
 Three-commit port of `reference/starlink-ast/src/unit.c` (~6.2k lines)
-landing on `tickets/DM-54793`:
+landed on `tickets/DM-54793`:
 
-- **Commit 1 (DONE):** parser + 61-entry `KnownUnit` table +
-  20-entry SI multiplier table + `RemakeTree` + `FixConstants` /
-  `InvertConstants` + `LocateUnits` / `FixUnits` + minimal
-  `SimplifyTree` + linear-only `unit_mapper`. 48 tests.
-- **Commit 2 (DONE):** ported `InvertTree`, `ConcatTree`, `CmpTree`,
-  full `SimplifyTree(std=1)` standardisation rules, `FindFactors` /
-  `CombineFactors`, `ComplicateTree`, `MakeExp`, and `MakeMapping`.
-  `unit_mapper` now uses the full C pipeline (`unit.c`:5238-5732)
-  with the per-basic-unit FixUnits/Simplify loop and
-  forward-then-reverse retry. Non-linear conversions produce a
-  `MathMap` whose forward and inverse are derived from the parsed
-  trees. 4 MathMap tests added (`log(Hz)→Hz`, `sqrt(Hz)→Hz`,
-  `log(km/s)→m/s`, `Hz→log(Hz)`); all 21 linear tests still pass.
-  Total: 770 lib tests (was 760).
-- **Commit 3:** wire `unit_mapper` into
-  `SpecFrame::make_spec_mapping` and port the
-  `fitschan.c::SpectralAxes` C:30276-30311 unit-rewrite block.
-  Add wcsconv fixtures with `CUNIT='MHz'` and `CUNIT='log(Hz)'`.
+- **Commit 1:** parser + 61-entry `KnownUnit` + 20-entry SI prefix +
+  `RemakeTree` + dim-anal + linear-only `unit_mapper`. 48 tests.
+- **Commit 2:** full C pipeline — `InvertTree`, `ConcatTree`,
+  `CmpTree`, `FindFactors`/`CombineFactors`, `ComplicateTree`,
+  `MakeExp`, `MakeMapping`. `unit_mapper` now produces `MathMap` for
+  non-linear conversions (`log(Hz)→Hz`, `sqrt(Hz)→Hz`, etc.).
+- **Commit 3:** wired `unit_mapper` into:
+  - `SpecFrame::make_spec_mapping` — prepends/appends unit-conversion
+    stages at the source/target boundaries when Unit attributes
+    differ from the SpecMap canonical default. Returns
+    `AstError::Badun` on dimensionally-incompatible units (mirrors C
+    `AST__BADUN`).
+  - `spectral_axes` (C:30276-30311) — when SpecFrame has a non-linear
+    user-Unit (e.g. `log(Hz)`), composes the unit-conversion mapping
+    into the pixel→spec chain, transforms CRVAL through it, and
+    overrides CUNIT to the canonical default. Linear user-Units
+    (e.g. `MHz`) are emitted as CUNIT directly without modifying the
+    chain.
+  - 4 SpecFrame `convert` tests + 2 spectral_axes integration tests.
+
+**Note on FrameSet auto-remap:** the C library uses
+`astClear(fs, "Unit(2)")` to trigger automatic re-composition of the
+touching edge. Our FrameSet doesn't yet expose that integrity path;
+`spectral_axes` does the equivalent composition manually. Adding
+general FrameSet auto-remap-on-attribute-clear is a separate
+follow-up if a class needs it beyond the spectral writer pipeline.
 
 ---
 

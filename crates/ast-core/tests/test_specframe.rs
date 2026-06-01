@@ -470,6 +470,59 @@ fn test_wavelen_to_voptical() {
 // BAD_VALUE handling
 // ===========================================================================
 
+// ===========================================================================
+// Unit conversion (commit 3 of the unit-engine port)
+// ===========================================================================
+
+#[test]
+fn test_unit_mhz_to_hz_within_freq() {
+    // Source SpecFrame in MHz, target in default Hz. Conversion
+    // factor: 1 MHz = 1e6 Hz.
+    let mut sf_mhz = SpecFrame::new(SpecSystem::Freq);
+    sf_mhz.set_unit("MHz");
+    let sf_hz = SpecFrame::new(SpecSystem::Freq);
+
+    let fs = sf_mhz.convert(&sf_hz, &[]).unwrap().unwrap();
+    let v = transform_fwd(&fs, 1.0);
+    // 1 MHz = 1e6 Hz.
+    assert_close(v, 1.0e6, 1.0, "mhz_to_hz");
+}
+
+#[test]
+fn test_unit_kms_to_ms_within_vrad() {
+    // 1 km/s = 1e3 m/s.
+    let mut sf_kms = SpecFrame::new(SpecSystem::Vradio);
+    sf_kms.set_unit("km/s");
+    let sf_ms = SpecFrame::new(SpecSystem::Vradio);
+
+    let fs = sf_kms.convert(&sf_ms, &[]).unwrap().unwrap();
+    let v = transform_fwd(&fs, 1.0);
+    assert_close(v, 1.0e3, 1.0e-6, "kms_to_ms");
+}
+
+#[test]
+fn test_unit_unchanged_returns_unitmap() {
+    // Both default (Hz). Same SOR / system → empty SpecMap → UnitMap.
+    let sf_a = SpecFrame::new(SpecSystem::Freq);
+    let sf_b = SpecFrame::new(SpecSystem::Freq);
+    let fs = sf_a.convert(&sf_b, &[]).unwrap().unwrap();
+    let v = transform_fwd(&fs, 42.0);
+    assert_close(v, 42.0, 1.0e-12, "identity");
+}
+
+#[test]
+fn test_unit_round_trip_mhz_to_ghz() {
+    // 1 MHz = 1e-3 GHz.
+    let mut sf_mhz = SpecFrame::new(SpecSystem::Freq);
+    sf_mhz.set_unit("MHz");
+    let mut sf_ghz = SpecFrame::new(SpecSystem::Freq);
+    sf_ghz.set_unit("GHz");
+
+    let fs = sf_mhz.convert(&sf_ghz, &[]).unwrap().unwrap();
+    let v = transform_fwd(&fs, 1000.0);
+    assert_close(v, 1.0, 1.0e-12, "1000 MHz = 1 GHz");
+}
+
 #[test]
 fn test_bad_value_transform() {
     let sf_freq = SpecFrame::new(SpecSystem::Freq);

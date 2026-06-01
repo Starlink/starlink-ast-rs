@@ -4,8 +4,9 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{ast_equal, is_bad};
-use crate::mappings::{DynMapping, SpecCvtType, SpecMap, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, SpecCvtType, SpecMap, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
+use crate::units::unit_mapper;
 
 // ---------------------------------------------------------------------------
 // SpecSystem — spectral coordinate system type
@@ -852,12 +853,53 @@ impl SpecFrame {
             Self::add_freq_to_system(&mut specmap, result_system, result.rest_freq);
         }
 
-        // If the specmap is empty (no steps needed), return a UnitMap.
-        if specmap.is_empty() {
-            return Ok(Box::new(UnitMap::new(1)));
+        // Build the canonical-units chain. SpecMap operates on values
+        // expressed in the canonical SI unit for each system (Hz for
+        // FREQ, m for WAVE, m/s for VEL, etc — see
+        // [`SpecSystem::specmap_units`]).
+        let mut mapping: DynMapping = if specmap.is_empty() {
+            Box::new(UnitMap::new(1))
+        } else {
+            Box::new(specmap)
+        };
+
+        // Wrap in unit-conversion stages at the boundaries when the
+        // user has overridden the default unit. Mirrors the C
+        // pipeline where `astConvert(specfrm, copy_with_unit_cleared)`
+        // produces a unit-conversion mapping; here we attach the
+        // conversion directly so the SpecMap chain stays in canonical
+        // units. Returns Err on dimensionally-incompatible units
+        // (mirrors C `AST__BADUN`).
+        let in_default = target_system.specmap_units();
+        if let Some(in_unit) = self.unit.as_deref() {
+            if !in_unit.is_empty() && !in_default.is_empty() && in_unit != in_default {
+                let pre = unit_mapper(in_unit, in_default).ok_or_else(|| {
+                    AstError::new(
+                        ErrorCode::Badun,
+                        format!(
+                            "SpecFrame Unit '{in_unit}' incompatible with system default '{in_default}'"
+                        ),
+                    )
+                })?;
+                mapping = Box::new(CmpMap::new(pre, mapping, Composition::Series)?);
+            }
+        }
+        let out_default = result_system.specmap_units();
+        if let Some(out_unit) = result.unit.as_deref() {
+            if !out_unit.is_empty() && !out_default.is_empty() && out_unit != out_default {
+                let post = unit_mapper(out_default, out_unit).ok_or_else(|| {
+                    AstError::new(
+                        ErrorCode::Badun,
+                        format!(
+                            "SpecFrame Unit '{out_unit}' incompatible with system default '{out_default}'"
+                        ),
+                    )
+                })?;
+                mapping = Box::new(CmpMap::new(mapping, post, Composition::Series)?);
+            }
         }
 
-        Ok(Box::new(specmap))
+        Ok(mapping)
     }
 }
 
