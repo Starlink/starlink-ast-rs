@@ -77,6 +77,7 @@ pub(crate) fn fset_to_store(
     dim: &[Option<f64>],
     encoding: Encoding,
     s: char,
+    input_crvals: &[Option<f64>],
 ) -> AstResult<FitsStore> {
     // Step 1: pixel→WCS Mapping from base to current frame.
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
@@ -109,11 +110,21 @@ pub(crate) fn fset_to_store(
     // Step 3: per-axis "this axis has been described" flags.
     let mut axis_done = vec![false; nwcs];
 
-    // Step 4: per-axis chosen CRVAL — populated by celestial_axes /
+    // Step 4: per-axis chosen CRVAL — initialised from the caller-
+    // supplied `input_crvals` (the input header's CRVAL{i}, mapped
+    // by FITS axis index) and populated by celestial_axes /
     // spectral_axes for the axes they own; remaining `None` slots
     // carry through to other_axes which falls back to world(g0).
     // Mirrors C's `crvals` array (allocated by ReadCrval @ 2812).
+    //
+    // `input_crvals` is FITS-axis-indexed, but the per-axis writers
+    // address `args.crvals[wcs_iax]`. Permute via `wperm`: the
+    // FITS-axis index for WCS axis i is `wperm[i]`.
     let mut crvals: Vec<Option<f64>> = vec![None; nwcs];
+    for i in 0..nwcs {
+        let fits_i = wperm[i];
+        crvals[i] = input_crvals.get(fits_i).copied().flatten();
+    }
 
     // Step 5: build the WCS→IWC mapping segment by segment.
     //
@@ -282,7 +293,7 @@ mod tests {
         .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ').unwrap();
+        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[]).unwrap();
 
         // Both axes should have CTYPE / CUNIT populated by other_axes.
         assert!(store.ctype[0].is_some(), "CTYPE1 should be set");
@@ -312,7 +323,7 @@ mod tests {
             .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ').unwrap();
+        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ', &[]).unwrap();
         let crpix0 = store.crpix[0].unwrap();
         let crpix1 = store.crpix[1].unwrap();
         // dim=100 ⇒ g0 = floor(0.5*(1+100)) = 50.

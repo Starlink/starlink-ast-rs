@@ -37,11 +37,12 @@ pub(crate) fn collect_plane_stores(
     fs: &FrameSet,
     dim: &[Option<f64>],
     encoding: Encoding,
+    primary_crvals: &[Option<f64>],
 ) -> AstResult<Vec<PlaneStore>> {
     let mut planes = Vec::new();
 
     // Primary plane (letter ' ').
-    let primary_store = fset_to_store(fs, dim, encoding, ' ')?;
+    let primary_store = fset_to_store(fs, dim, encoding, ' ', primary_crvals)?;
     planes.push(PlaneStore {
         letter: ' ',
         store: primary_store,
@@ -58,7 +59,12 @@ pub(crate) fn collect_plane_stores(
         // unchanged).
         let mut alt_fs = fs.clone();
         alt_fs.set_current(FrameRef::Index(frame_idx_1based))?;
-        let alt_store = fset_to_store(&alt_fs, dim, encoding, letter)?;
+        // Alt-plane crvals: caller-managed (the writer extracts
+        // CRVAL{i}{letter} from the input chan). For now pass an
+        // empty slice — `fset_to_store` will fall back to the
+        // central-pixel default. A future commit can plumb
+        // alt_crvals through the encode_wcs entry point.
+        let alt_store = fset_to_store(&alt_fs, dim, encoding, letter, &[])?;
         planes.push(PlaneStore {
             letter,
             store: alt_store,
@@ -82,7 +88,7 @@ mod tests {
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(world))
             .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
-        let planes = collect_plane_stores(&fs, &dim, Encoding::FitsWcs).unwrap();
+        let planes = collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[]).unwrap();
         assert_eq!(planes.len(), 1);
         assert_eq!(planes[0].letter, ' ');
     }
@@ -104,7 +110,7 @@ mod tests {
         fs.set_current(FrameRef::Index(2)).unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let planes = collect_plane_stores(&fs, &dim, Encoding::FitsWcs).unwrap();
+        let planes = collect_plane_stores(&fs, &dim, Encoding::FitsWcs, &[]).unwrap();
         assert_eq!(planes.len(), 2);
         assert_eq!(planes[0].letter, ' ');
         assert_eq!(planes[1].letter, 'A');

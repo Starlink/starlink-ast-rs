@@ -37,11 +37,12 @@
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::type_complexity)] // try_grism_cascade returns a 4-tuple of (Mapping, String, Vec, f64)
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::fitschan::fits_store::FitsStore;
 use crate::frames::{Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, ShiftMap, UnitMap, ZoomMap};
 
 use crate::mappings::helpers::is_bad;
 
@@ -121,6 +122,18 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
             v
         }
     };
+
+    // Step 2b: snap crval so it corresponds to an integer pixel
+    // along the spectral axis. Mirrors fitschan.c::SpectralAxes
+    // line 30333 (`crval = NearestPix(map, crval, iax, status)`).
+    // Without this, half-integer CRPIX inputs (common for AIPS
+    // 0.5-pixel grids on spectral axes) get propagated as
+    // half-integer CRPIX outputs, and CRVAL stays at the input
+    // (typically 0.0 m/s for VRAD or 0.0 Hz for FREQ) — but C's
+    // AIPS encoder expects an integer-pixel reference and bumps
+    // CRVAL to the nearest channel.
+    let map_for_snap = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let crval = nearest_pix_value(map_for_snap.as_ref(), crval, spec_iax)?;
 
     // Step 3: write keywords. Mirrors fitschan.c populate paths
     // (we cover the canonical-form subset that wcs_write::populate_spectral
@@ -691,6 +704,99 @@ fn embed_axis(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> 
         )?);
     }
     Ok(ret)
+}
+
+/// Find an output-axis value `val` that corresponds to an integer
+/// input-pixel value on `axis`. Mirrors `fitschan.c::NearestPix`
+/// (line 23151-23276): inverse-transform `val` (with BAD on the
+/// other output axes) to pixel space, round each input axis to the
+/// nearest integer, then forward-transform back. If the round-trip
+/// yields a finite value, return it; otherwise return `val`
+/// unchanged.
+///
+/// For a multi-axis mapping where the celestial inverse can't run
+/// with BAD celestial inputs, C uses `astMapSplit` to extract a
+/// 1-input-1-output sub-mapping for `axis`. We do the same via
+/// `Mapping::map_split`.
+fn nearest_pix_value(map: &dyn Mapping, val: f64, axis: usize) -> AstResult<f64> {
+    if !val.is_finite() {
+        return Ok(val);
+    }
+    let nin = map.nin();
+    let nout = map.nout();
+    if axis >= nout {
+        return Ok(val);
+    }
+
+    // Try a 1-axis split: invert the map, split on the output axis
+    // (which becomes the input after inversion), then invert back.
+    // Mirrors C `astMapSplit(map, 1, &axis, &tmap)` after `astInvert`.
+    let mut inv_map = map.clone_box();
+    inv_map.invert();
+    let split = inv_map.map_split(&[axis]);
+
+    if let Some((out_axes, mut sub_map)) = split {
+        if out_axes.len() == 1 {
+            // sub_map is 1-in (the WCS-axis value) → 1-out (the
+            // pixel-axis value). Inverting it gives 1-in (pixel) →
+            // 1-out (WCS). Use it directly.
+            let pix_in = vec![val];
+            let pts_in = PointSet::from_rows([pix_in]);
+            // sub_map: WCS → pixel.
+            let pset_pix = sub_map.transform(&pts_in, true)?;
+            let p = pset_pix.point(0)[0];
+            if !p.is_finite() || is_bad(p) {
+                return Ok(val);
+            }
+            let p_round = p.round();
+            // Now go back: pixel → WCS via inverted sub_map.
+            sub_map.invert();
+            let pts_back = PointSet::from_rows([[p_round]]);
+            let pset_back = sub_map.transform(&pts_back, true)?;
+            let result = pset_back.point(0)[0];
+            if result.is_finite() && !is_bad(result) {
+                return Ok(result);
+            }
+            return Ok(val);
+        }
+    }
+
+    // Fallback: full multi-axis NearestPix (mirrors C's else branch
+    // when no split is available — same maths but with BAD on the
+    // other axes).
+    let mut row = vec![BAD_VALUE; nout];
+    row[axis] = val;
+    let pts_out = PointSet::from_rows([row]);
+
+    // Inverse: WCS → pixel.
+    let pset_pix = match map.transform(&pts_out, false) {
+        Ok(p) => p,
+        Err(_) => return Ok(val),
+    };
+
+    // Round each finite pixel coordinate to nearest integer.
+    let mut pix_row = vec![0.0_f64; nin];
+    for i in 0..nin {
+        let v = pset_pix.point(0)[i];
+        if v.is_finite() && !is_bad(v) {
+            pix_row[i] = v.round();
+        } else {
+            return Ok(val);
+        }
+    }
+    let pts_pix = PointSet::from_rows([pix_row]);
+
+    // Forward: pixel → WCS.
+    let pset_back = match map.transform(&pts_pix, true) {
+        Ok(p) => p,
+        Err(_) => return Ok(val),
+    };
+    let result = pset_back.point(0)[axis];
+    if result.is_finite() && !is_bad(result) {
+        Ok(result)
+    } else {
+        Ok(val)
+    }
 }
 
 fn specsys_string(sor: StdOfRest) -> String {
