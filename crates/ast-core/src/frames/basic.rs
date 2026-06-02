@@ -238,6 +238,14 @@ impl BasicFrame {
         self.ident.as_deref().unwrap_or("")
     }
 
+    /// Set the frame identification string. Mirrors `astSetIdent`.
+    /// Used by the FITS-WCS reader to label alternate-plane frames
+    /// with their version letter (`'A'..'Z'`).
+    pub fn set_ident(&mut self, ident: impl Into<String>) {
+        let s = ident.into();
+        self.ident = if s.is_empty() { None } else { Some(s) };
+    }
+
     /// Return the frame epoch, or `None` if not set.
     pub fn epoch(&self) -> Option<f64> {
         self.epoch

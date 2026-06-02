@@ -268,3 +268,13 @@ fn bottom_top_defaults() {
     assert_eq!(frame.bottom(2).unwrap(), -f64::MAX);
     assert_eq!(frame.top(2).unwrap(), f64::MAX);
 }
+
+#[test]
+fn set_ident_round_trip() {
+    let mut f = BasicFrameBuilder::new(2).build().unwrap();
+    assert_eq!(f.ident(), "");
+    f.set_ident("A");
+    assert_eq!(f.ident(), "A");
+    f.set_ident("");
+    assert_eq!(f.ident(), "");
+}
