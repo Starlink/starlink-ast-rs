@@ -655,26 +655,24 @@ fn build_wcs_to_iwc(
     // 2D celestial chain (PPC → WCS):
     //   WcsMap_inverted (PPC → native spherical) → wcs_native_rot
     //
-    // We need a *cloned* WcsMap with the same PV parameters as
-    // `src_wcsmap` and pointed in the inverse direction (PPC →
-    // native).
+    // The first step needs the WcsMap operating in the PPC → native
+    // direction, i.e. `is_inverted() == true`. Clone `src_wcsmap`
+    // (preserving its PV parameters) and force the clone into the
+    // inverted state. `Mapping::invert()` is a toggle (no
+    // `set_inverted(bool)` API exists), so we have to check the
+    // state and toggle only when needed — `clone().invert()` would
+    // flip the orientation relative to whatever `src_wcsmap`
+    // happens to be, which is wrong when the source is already
+    // inverted (the typical case: the WcsMap inside a reader's
+    // pixel→WCS chain runs in the PPC→native direction).
     //
-    // `Mapping::invert()` is a toggle, not a setter for an absolute
-    // state — there is no `set_inverted(bool)` API. So we can't just
-    // call `clone().invert()` and assume we end up inverted: if
-    // `src_wcsmap` was already inverted in the source mapping
-    // (which happens for the WcsMap found inside a pixel→WCS chain,
-    // where the projection is exercised in the PPC→native
-    // direction), toggling would put it *back* to forward. Instead,
-    // ask the absolute state via `is_inverted()` and toggle only
-    // when needed so we always end up with `is_inverted() == true`.
-    //
-    // This matters for non-zenithal projections that carry PV
-    // parameters (NCP via PV2_2 = cot δ, offset SkyFrames, TPN). If
-    // the cloned WcsMap had different PVs (or wrong orientation)
-    // than the source, the simplifier would fail to collapse the
-    // PPC→native→celestial→native→PPC round-trip exactly, leaving
-    // FP residue that propagates into FitLine's per-axis fits.
+    // The PV parameters are essential for non-zenithal projections
+    // (NCP encoded as SIN with PV2_2 = cot δ, offset SkyFrames,
+    // TPN). If the cloned WcsMap had different PVs or a different
+    // orientation from the source, the simplifier could not
+    // collapse the PPC→native→celestial→native→PPC round-trip
+    // exactly, leaving FP residue that propagates into FitLine's
+    // per-axis fits.
     let mut wcsmap_inv = src_wcsmap.clone();
     if !wcsmap_inv.is_inverted() {
         wcsmap_inv.invert();
