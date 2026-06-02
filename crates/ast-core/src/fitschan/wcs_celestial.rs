@@ -31,14 +31,44 @@ fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame) {
     let no_radesys = store.radesys.as_deref().is_none_or(str::is_empty);
     let no_equinox = store.equinox.is_none();
     let no_mjdobs = store.mjdobs.is_none();
-    if no_radesys && no_equinox {
-        // palEpb2d(1950.0). Pre-compute as a constant to avoid pulling
-        // a runtime palEpb2d call into this hot path.
-        const MJD_B1950: f64 = 33281.92345905;
-        sky_frame.set_equinox(MJD_B1950);
-        if no_mjdobs {
-            sky_frame.set_epoch(MJD_B1950);
-        }
+    // C only applies the DefB1950 fallback for *equatorial* systems
+    // with no RADESYS and no EQUINOX (fitschan.c:39172-39192). Galactic
+    // and Ecliptic CTYPE prefixes don't use EQUINOX at all and shouldn't
+    // get a synthetic B1950 epoch — that would emit a spurious
+    // `MJD-OBS = 33281.923` / `DATE-OBS = '31/12/49'` for headers that
+    // never specified a date.
+    if !no_radesys || !no_equinox {
+        return;
+    }
+    // Inspect the (already-decoded) primary CTYPE prefix: only the
+    // RA/DEC family (or no CTYPE at all → equatorial default) takes
+    // the fallback. GLON/GLAT/ELON/ELAT/SLON/SLAT etc. are skipped.
+    let is_equatorial = store
+        .ctype
+        .iter()
+        .find_map(|c| c.as_deref())
+        .map(|c| {
+            let upper = c.to_ascii_uppercase();
+            !(upper.starts_with("GLON")
+                || upper.starts_with("GLAT")
+                || upper.starts_with("ELON")
+                || upper.starts_with("ELAT")
+                || upper.starts_with("SLON")
+                || upper.starts_with("SLAT")
+                || upper.starts_with("HLON")
+                || upper.starts_with("HLAT"))
+        })
+        .unwrap_or(true);
+    if !is_equatorial {
+        return;
+    }
+
+    // palEpb2d(1950.0). Pre-compute as a constant to avoid pulling
+    // a runtime palEpb2d call into this hot path.
+    const MJD_B1950: f64 = 33281.92345905;
+    sky_frame.set_equinox(MJD_B1950);
+    if no_mjdobs {
+        sky_frame.set_epoch(MJD_B1950);
     }
 }
 
