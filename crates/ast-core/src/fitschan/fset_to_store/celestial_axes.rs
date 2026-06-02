@@ -344,59 +344,207 @@ fn find_wcsmap(mapping: &dyn Mapping) -> Option<&WcsMap> {
     None
 }
 
-/// Split the mapping at the first WcsMap, returning `(pre, post)`
-/// chains where the WcsMap itself is excluded from both. Returns
-/// `None` if no WcsMap is present. Empty pre/post sides are filled
-/// with a UnitMap of the right size — mirrors C's `SplitMap` which
-/// returns map1 / map3 even when one side is trivial.
+/// Split the mapping around its first usable WcsMap, returning
+/// `(pre, post)` chains of `nwcs`-axis Mappings where the WcsMap
+/// itself is excluded from both. Returns `None` if no WcsMap is
+/// present.
+///
+/// Mirrors C `SplitMap2` (fitschan.c:32850-33140): the search
+/// algorithm allows for an arbitrary combination of series and
+/// parallel CmpMaps. When a WcsMap is found inside a parallel
+/// branch, the corresponding pre/post slices are padded with
+/// UnitMaps on the other branches' axes.
 fn split_around_wcsmap(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping)> {
-    let mut pre: Vec<DynMapping> = Vec::new();
-    let mut post: Vec<DynMapping> = Vec::new();
-    let mut found = false;
-    walk_split_wcsmap(mapping, &mut pre, &mut post, &mut found);
-    if !found {
-        return None;
-    }
-    // Find the WcsMap so we know the axis-count for any identity
-    // padding we need on either side.
-    let wm = find_wcsmap(mapping)?;
-    let nax = wm.nin();
-
-    let pre_chain = if pre.is_empty() {
-        Box::new(UnitMap::new(nax)) as DynMapping
-    } else {
-        compose_series(pre).ok()?
-    };
-    let post_chain = if post.is_empty() {
-        Box::new(UnitMap::new(nax)) as DynMapping
-    } else {
-        compose_series(post).ok()?
-    };
-    Some((pre_chain, post_chain))
+    let (pre, _wm, post) = split_map2(mapping)?;
+    Some((pre, post))
 }
 
-fn walk_split_wcsmap(
-    mapping: &dyn Mapping,
-    pre: &mut Vec<DynMapping>,
-    post: &mut Vec<DynMapping>,
-    found: &mut bool,
-) {
-    if mapping.as_any().downcast_ref::<WcsMap>().is_some() {
-        *found = true;
-        return;
+/// Decompose `mapping` into `(pre, wcs, post)` such that a series
+/// composition `pre ; wcs ; post` is equivalent to the original.
+///
+/// Returns `None` when there is no usable WcsMap in the chain.
+///
+/// Mirrors C `SplitMap2` recursively: when the input is a series
+/// CmpMap, walk components in order, accumulating into `pre` until
+/// a WcsMap is found, then accumulate into `post`. When the input is
+/// a parallel CmpMap, recurse into each branch; the first branch
+/// that yields a WcsMap is the "wcs" branch, and the WcsMap is
+/// widened from the branch's axis count to the full parallel axis
+/// count via the inserts handled inside `lift_wcsmap_to_full_axes`.
+fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == Composition::Series {
+            return split_map2_series(cmp);
+        } else {
+            return split_map2_parallel(cmp);
+        }
     }
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>()
-        && cmp.composition() == Composition::Series
+    if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
+        let nax = wm.nin();
+        let pre: DynMapping = Box::new(UnitMap::new(nax));
+        let post: DynMapping = Box::new(UnitMap::new(nax));
+        return Some((pre, Box::new(wm.clone()) as DynMapping, post));
+    }
+    None
+}
+
+fn split_map2_series(cmp: &CmpMap) -> Option<(DynMapping, DynMapping, DynMapping)> {
+    // Walk components in series order.
+    let mut comps: Vec<DynMapping> = Vec::new();
+    flatten_series(cmp, &mut comps);
+
+    let mut pre_parts: Vec<DynMapping> = Vec::new();
+    let mut post_parts: Vec<DynMapping> = Vec::new();
+    let mut wcs: Option<DynMapping> = None;
+
+    for comp in comps {
+        if wcs.is_none() {
+            // Try to extract a WcsMap from this component.
+            if let Some((pre_comp, wm_comp, post_comp)) = split_map2(comp.as_ref()) {
+                pre_parts.push(pre_comp);
+                wcs = Some(wm_comp);
+                post_parts.push(post_comp);
+            } else {
+                // No WcsMap in this component — it's pre-WcsMap.
+                pre_parts.push(comp);
+            }
+        } else {
+            // Already past the WcsMap.
+            post_parts.push(comp);
+        }
+    }
+    let wm = wcs?;
+    let pre = compose_series(pre_parts).ok()?;
+    let post = compose_series(post_parts).ok()?;
+    Some((pre, wm, post))
+}
+
+fn split_map2_parallel(cmp: &CmpMap) -> Option<(DynMapping, DynMapping, DynMapping)> {
+    // Decompose into a flat list of parallel branches.
+    let mut branches: Vec<DynMapping> = Vec::new();
+    flatten_parallel(cmp, &mut branches);
+
+    let mut pre_branches: Vec<DynMapping> = Vec::new();
+    let mut post_branches: Vec<DynMapping> = Vec::new();
+    let mut found_wcs: Option<(DynMapping, usize, usize)> = None; // (wcsmap, axis_offset, branch_axes)
+    let mut axis_offset = 0_usize;
+
+    for branch in branches {
+        let branch_axes = branch.nout();
+        if found_wcs.is_none() {
+            if let Some((pre_comp, wm_comp, post_comp)) = split_map2(branch.as_ref()) {
+                pre_branches.push(pre_comp);
+                post_branches.push(post_comp);
+                found_wcs = Some((wm_comp, axis_offset, branch_axes));
+            } else {
+                // No WcsMap in this branch — pass-through on these axes.
+                pre_branches.push(branch.clone_box());
+                post_branches.push(Box::new(UnitMap::new(branch_axes)));
+            }
+        } else {
+            // Past the WcsMap branch — also pass-through.
+            pre_branches.push(branch.clone_box());
+            post_branches.push(Box::new(UnitMap::new(branch_axes)));
+        }
+        axis_offset += branch_axes;
+    }
+
+    let (sub_wcs, wcs_offset, sub_axes) = found_wcs?;
+    let total_axes = axis_offset;
+    // Lift the WcsMap to act on `total_axes` axes: a new WcsMap with
+    // the longitude/latitude axis indices shifted by wcs_offset, and
+    // the remaining axes left unchanged. Mirrors C:33092-33106.
+    let lifted_wm = lift_wcsmap_to_full_axes(sub_wcs.as_ref(), wcs_offset, total_axes, sub_axes)?;
+
+    // Compose the per-branch pre/post lists in parallel.
+    let pre = compose_parallel(pre_branches).ok()?;
+    let post = compose_parallel(post_branches).ok()?;
+
+    Some((pre, lifted_wm, post))
+}
+
+fn flatten_series(cmp: &CmpMap, out: &mut Vec<DynMapping>) {
+    debug_assert_eq!(cmp.composition(), Composition::Series);
+    push_or_recurse(cmp.first(), Composition::Series, out);
+    push_or_recurse(cmp.second(), Composition::Series, out);
+}
+
+fn flatten_parallel(cmp: &CmpMap, out: &mut Vec<DynMapping>) {
+    debug_assert_eq!(cmp.composition(), Composition::Parallel);
+    push_or_recurse(cmp.first(), Composition::Parallel, out);
+    push_or_recurse(cmp.second(), Composition::Parallel, out);
+}
+
+fn push_or_recurse(m: &dyn Mapping, kind: Composition, out: &mut Vec<DynMapping>) {
+    if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>()
+        && cmp.composition() == kind
     {
-        walk_split_wcsmap(cmp.first(), pre, post, found);
-        walk_split_wcsmap(cmp.second(), pre, post, found);
+        if kind == Composition::Series {
+            flatten_series(cmp, out);
+        } else {
+            flatten_parallel(cmp, out);
+        }
         return;
     }
-    if *found {
-        post.push(mapping.clone_box());
-    } else {
-        pre.push(mapping.clone_box());
+    out.push(m.clone_box());
+}
+
+fn lift_wcsmap_to_full_axes(
+    wm_dyn: &dyn Mapping,
+    wcs_offset: usize,
+    total_axes: usize,
+    sub_axes: usize,
+) -> Option<DynMapping> {
+    let wm = wm_dyn.as_any().downcast_ref::<WcsMap>()?;
+    if wcs_offset == 0 && sub_axes == total_axes {
+        return Some(Box::new(wm.clone()));
     }
+    // Build a new WcsMap of total_axes axes, with the lon/lat axes
+    // shifted by wcs_offset (1-based in the C code; WcsMap::new takes
+    // 1-based too). Carry the projection type and PV parameters across.
+    let proj = wm.projection();
+    let lon_1b = wm.lonax() + wcs_offset; // shift 1-based axis
+    let lat_1b = wm.latax() + wcs_offset;
+    let mut new_wm = WcsMap::new(total_axes, proj, lon_1b, lat_1b).ok()?;
+    let inv = wm.is_inverted();
+    // Copy PV parameters: in the source WcsMap, PVs live at
+    // (axlon_1b, m) and (axlat_1b, m); after lift, they belong at
+    // (lon_1b, m) and (lat_1b, m). Mirrors C:33094-33102 which copies
+    // by `i + wcsaxis` (where `wcsaxis` is the parallel axis offset).
+    let src_lon = wm.lonax();
+    let src_lat = wm.latax();
+    for m in 0..100 {
+        if let Some(v) = wm.get_pv(src_lon, m)
+            && v.is_finite()
+        {
+            let _ = new_wm.set_pv(lon_1b, m, v);
+        }
+        if let Some(v) = wm.get_pv(src_lat, m)
+            && v.is_finite()
+        {
+            let _ = new_wm.set_pv(lat_1b, m, v);
+        }
+    }
+    if inv {
+        new_wm.invert();
+    }
+    let _ = sub_axes;
+    Some(Box::new(new_wm))
+}
+
+fn compose_parallel(parts: Vec<DynMapping>) -> AstResult<DynMapping> {
+    if parts.is_empty() {
+        return Err(crate::error::AstError::new(
+            crate::error::ErrorCode::Nodef,
+            "compose_parallel requires at least one component",
+        ));
+    }
+    let mut iter = parts.into_iter();
+    let mut acc = iter.next().unwrap();
+    for next in iter {
+        acc = Box::new(CmpMap::new(acc, next, Composition::Parallel)?);
+    }
+    Ok(acc)
 }
 
 fn compose_series(mut parts: Vec<DynMapping>) -> AstResult<DynMapping> {
