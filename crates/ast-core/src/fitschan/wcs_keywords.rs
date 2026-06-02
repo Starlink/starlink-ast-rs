@@ -58,13 +58,15 @@ pub(crate) fn detect_alt_letters(cards: &CardList) -> Vec<char> {
     found
 }
 
-/// Look up a value from `cards` for an axis-indexed or scalar
-/// FITS-WCS keyword, with the C `GetItem` primary-fallback rule.
+/// Look up a value from `cards` at the version-suffixed key.
 ///
-/// When `s != ' '` and the alt-suffixed key is absent, retry with
-/// `s = ' '` to inherit the primary value. Mirrors the behaviour of
-/// `fitschan.c::GetItem` whose store matrix returns the primary
-/// value when the requested coordinate-version slot is empty.
+/// Mirrors `fitschan.c::GetItem` (line 13008): no primary-fallback —
+/// each coordinate version has its own slot, and the lookup returns
+/// `None` when the alt-suffixed key is absent (C returns AST__BAD
+/// in that case). The CTYPE-prefix-driven defaults that make alt
+/// planes "inherit" most values are applied later in
+/// `wcs_celestial::build_celestial` / `wcs_spectral::build_spectral`,
+/// not at the keyword-extraction layer.
 pub(crate) fn lookup_with_fallback<T, F>(
     cards: &CardList,
     prefix: &str,
@@ -75,12 +77,7 @@ pub(crate) fn lookup_with_fallback<T, F>(
 where
     F: Fn(&CardList, &str) -> Option<T>,
 {
-    let alt = f(cards, &key_for(prefix, axis, s));
-    if alt.is_some() || s == ' ' {
-        alt
-    } else {
-        f(cards, &key_for(prefix, axis, ' '))
-    }
+    f(cards, &key_for(prefix, axis, s))
 }
 
 /// Infer the number of WCS axes from the highest-indexed FITS keyword
@@ -202,37 +199,16 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
         store.cname[i] =
             lookup_with_fallback(cards, "CNAME", Some(axis_num), s, |c, k| c.get_string(k));
 
-        // CD matrix row i (2-index keyword — inline the fallback shape).
+        // CD / PC / PV: per-version, no primary fallback (mirrors C
+        // GetItem semantics — see lookup_with_fallback's doc).
         for j in 0..naxis {
-            let alt_key = key_for_2("CD", axis_num, j + 1, s);
-            let alt = cards.get_float(&alt_key);
-            store.cd[i][j] = if alt.is_some() || s == ' ' {
-                alt
-            } else {
-                cards.get_float(&key_for_2("CD", axis_num, j + 1, ' '))
-            };
+            store.cd[i][j] = cards.get_float(&key_for_2("CD", axis_num, j + 1, s));
         }
-
-        // PC matrix row i (2-index keyword — inline fallback).
         for j in 0..naxis {
-            let alt_key = key_for_2("PC", axis_num, j + 1, s);
-            let alt = cards.get_float(&alt_key);
-            store.pc[i][j] = if alt.is_some() || s == ' ' {
-                alt
-            } else {
-                cards.get_float(&key_for_2("PC", axis_num, j + 1, ' '))
-            };
+            store.pc[i][j] = cards.get_float(&key_for_2("PC", axis_num, j + 1, s));
         }
-
-        // PV parameters (2-index keyword `PV{i}_{m}{S}`).
         for m in 0..store.pv[i].len() {
-            let alt_key = key_for_2("PV", axis_num, m, s);
-            let alt = cards.get_float(&alt_key);
-            store.pv[i][m] = if alt.is_some() || s == ' ' {
-                alt
-            } else {
-                cards.get_float(&key_for_2("PV", axis_num, m, ' '))
-            };
+            store.pv[i][m] = cards.get_float(&key_for_2("PV", axis_num, m, s));
         }
     }
 
@@ -531,7 +507,11 @@ END";
     }
 
     #[test]
-    fn extract_with_alts_reads_two_planes() {
+    fn extract_with_alts_no_primary_fallback() {
+        // Mirrors C GetItem semantics: alt-plane axis keywords are
+        // strictly per-version, no primary fallback. An alt header
+        // that omits CRVAL1A leaves alt.crval[0] = None even though
+        // CRVAL1 is set on the primary.
         let header = "\
 NAXIS   =                    2
 CTYPE1  = 'RA---TAN'
@@ -552,10 +532,10 @@ END";
         let (letter, alt) = &alts[0];
         assert_eq!(*letter, 'A');
         assert_eq!(alt.ctype[0].as_deref(), Some("GLON-TAN"));
-        // Primary fallback for CRVAL/CRPIX/CDELT (alt didn't override).
-        assert_eq!(alt.crval[0], Some(180.0));
-        assert_eq!(alt.crpix[0], Some(50.5));
-        assert_eq!(alt.cdelt[0], Some(-0.01));
+        // Strict per-version: alt did not override CRVAL/CRPIX/CDELT.
+        assert_eq!(alt.crval[0], None);
+        assert_eq!(alt.crpix[0], None);
+        assert_eq!(alt.cdelt[0], None);
     }
 
     #[test]

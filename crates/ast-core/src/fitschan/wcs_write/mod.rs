@@ -146,9 +146,11 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
 }
 
 /// Look up the domain string for the alt frame whose Ident-derived
-/// version letter equals `letter`. Returns None for the primary
-/// plane or if the frame has an empty domain. Used to populate the
-/// per-version `WCSNAME{S}` cards.
+/// version letter equals `letter`. Returns None for the primary plane,
+/// for an empty domain, or for the per-class default domain (which C
+/// suppresses via `astTestDomain` at fitschan.c:29959-29961).
+///
+/// Used to populate the per-version `WCSNAME{S}` cards.
 fn alt_plane_domain(fs: &FrameSet, letter: char) -> Option<String> {
     if letter == ' ' {
         return None;
@@ -157,6 +159,13 @@ fn alt_plane_domain(fs: &FrameSet, letter: char) -> Option<String> {
         if l == letter
             && let Ok(frame) = fs.frame(FrameRef::Index(idx))
         {
+            // Suppress the per-class default domain (the SkyFrame's
+            // "SKY", SpecFrame's "SPECTRUM", TimeFrame's "TIME",
+            // BasicFrame's empty default). C's `astTestDomain` returns
+            // false for those.
+            if !frame.test_domain() {
+                return None;
+            }
             let d = frame.domain();
             if !d.is_empty() {
                 return Some(d.to_string());

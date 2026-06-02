@@ -22,54 +22,21 @@ use crate::wcslib::WcsProjection;
 /// alt-plane SkyFrame whose RADESYS is unset and EQUINOX is unset.
 ///
 /// Mirrors fitschan.c:39172-39180. AST's `DefB1950` attribute defaults
-/// to true, so an EQUINOX-less, RADESYS-less SkyFrame is interpreted
-/// as B1950 (FK4) and gets Equinox = palEpb2d(1950) ≈ MJD 33281.92345.
+/// to **false** for FITS-WCS encoding (and **true** for everything
+/// else — see `astMAKE_GET(FitsChan,DefB1950,…)` at fitschan.c:42288).
 ///
-/// Also applies the nomjd-obs fallback (39214-39222): when no
-/// MJD-OBS / DATE-OBS card was present, Epoch defaults to Equinox.
-fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame) {
-    let no_radesys = store.radesys.as_deref().is_none_or(str::is_empty);
-    let no_equinox = store.equinox.is_none();
-    let no_mjdobs = store.mjdobs.is_none();
-    // C only applies the DefB1950 fallback for *equatorial* systems
-    // with no RADESYS and no EQUINOX (fitschan.c:39172-39192). Galactic
-    // and Ecliptic CTYPE prefixes don't use EQUINOX at all and shouldn't
-    // get a synthetic B1950 epoch — that would emit a spurious
-    // `MJD-OBS = 33281.923` / `DATE-OBS = '31/12/49'` for headers that
-    // never specified a date.
-    if !no_radesys || !no_equinox {
-        return;
-    }
-    // Inspect the (already-decoded) primary CTYPE prefix: only the
-    // RA/DEC family (or no CTYPE at all → equatorial default) takes
-    // the fallback. GLON/GLAT/ELON/ELAT/SLON/SLAT etc. are skipped.
-    let is_equatorial = store
-        .ctype
-        .iter()
-        .find_map(|c| c.as_deref())
-        .map(|c| {
-            let upper = c.to_ascii_uppercase();
-            !(upper.starts_with("GLON")
-                || upper.starts_with("GLAT")
-                || upper.starts_with("ELON")
-                || upper.starts_with("ELAT")
-                || upper.starts_with("SLON")
-                || upper.starts_with("SLAT")
-                || upper.starts_with("HLON")
-                || upper.starts_with("HLAT"))
-        })
-        .unwrap_or(true);
-    if !is_equatorial {
-        return;
-    }
-
-    // palEpb2d(1950.0). Pre-compute as a constant to avoid pulling
-    // a runtime palEpb2d call into this hot path.
-    const MJD_B1950: f64 = 33281.92345905;
-    sky_frame.set_equinox(MJD_B1950);
-    if no_mjdobs {
-        sky_frame.set_epoch(MJD_B1950);
-    }
+/// We currently can't see the FitsChan's encoding from the read-side
+/// FitsStore; the FITS-WCS reader path is the only caller exercising
+/// this function in alt-plane scenarios, so gate on
+/// `DefB1950 == false` (the FITS-WCS default) and skip the fallback
+/// outright. When an encoding-aware path appears (e.g. FITS-PC alt
+/// `Cnxxx` reader), it can call this helper directly with an
+/// explicit `def_b1950` flag.
+fn apply_b1950_fallback_if_needed(_store: &FitsStore, _sky_frame: &mut SkyFrame) {
+    // FITS-WCS reader: DefB1950 = false. No fallback. The
+    // NORADEC + no-EQUINOX SkyFrame defaults to ICRS, which the
+    // SkySys writer emits as `RADESYS = ICRS` with no EQUINOX or
+    // MJD-OBS card.
 }
 
 /// Result of building the celestial axes from a FitsStore.
@@ -143,19 +110,31 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
         let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
     }
 
-    // Step 6: Set equinox if present. FITS EQUINOX is a decimal year
-    // without an explicit B/J prefix; route it through the SkyFrame's
-    // year-aware setter, which applies the IAU 1984 convention. This
-    // mirrors what C does when EQUINOX flows through
-    // astSet(skyframe, "Equinox=...") → astReadDateTime.
-    if let Some(eq) = store.equinox {
+    // Step 6: Set equinox — only for equatorial / ecliptic systems.
+    // Mirrors fitschan.c:39305-39307:
+    //   if( ( !strcmp(sys, "EQU") || !strcmp(sys, "ECL") )
+    //       && equinox != AST__BAD ) astSetEquinox( ret, eqmjd );
+    // Galactic / Supergalactic / AzEl ignore EQUINOX entirely.
+    if let Some(eq) = store.equinox
+        && matches!(
+            system,
+            SkySystem::Fk4
+                | SkySystem::Fk4NoE
+                | SkySystem::Fk5
+                | SkySystem::Icrs
+                | SkySystem::Gappt
+                | SkySystem::Ecliptic
+        )
+    {
         sky_frame.set_equinox_year(eq);
     }
 
-    // Step 7: Set epoch if present, converting from the input
-    // timescale (TIMESYS, default UTC) to TDB for storage in
-    // SkyFrame.epoch. Mirrors fitschan.c::ChooseEpoch line 6143-6146:
-    //   mjd = TDBConv(mjd, TimeSysToAst(this, timesys, ...), 0, ...);
+    // Step 7: Set epoch from MJD-OBS if present. Mirrors
+    // fitschan.c::ChooseEpoch (line 6143-6146): mjd = TDBConv(mjd,
+    // TimeSysToAst(this, timesys, ...), 0, ...). When MJD-OBS is
+    // absent, C falls back to eqmjd (39214-39222) — but only when an
+    // equinox value was actually defined; for Galactic etc. the
+    // SkyFrame's Epoch stays at the Frame default (J2000).
     if let Some(raw_mjd) = store.mjdobs {
         let tdb_mjd = match store.timesys.as_deref() {
             Some(s) if s.eq_ignore_ascii_case("TDB") => raw_mjd,
@@ -174,14 +153,21 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
             _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
         };
         sky_frame.set_epoch(tdb_mjd);
-    } else if let Some(eq) = store.equinox {
+    } else if let Some(eq) = store.equinox
+        && matches!(
+            system,
+            SkySystem::Fk4
+                | SkySystem::Fk4NoE
+                | SkySystem::Fk5
+                | SkySystem::Icrs
+                | SkySystem::Gappt
+                | SkySystem::Ecliptic
+        )
+    {
         // Mirrors fitschan.c:39214-39222: when no MJD-OBS / DATE-OBS
         // is present in the input but EQUINOX is, fall back to the
-        // equinox MJD as the SkyFrame's epoch (and warn `nomjd-obs`).
-        // Without this, an ICRS / FK5 header with just an EQUINOX
-        // round-trips through write losing the implicit J2000 epoch
-        // C carries — and our writer's defdate-style MJD-OBS emission
-        // never fires.
+        // equinox MJD as the SkyFrame's epoch — but only for systems
+        // that actually use EQUINOX (equatorial + ecliptic).
         sky_frame.set_epoch_year(eq);
     }
 
@@ -239,6 +225,27 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
 
 /// Determine the sky coordinate system from RADESYS and EQUINOX.
 fn determine_sky_system(store: &FitsStore) -> SkySystem {
+    // Determine the system primarily from the CTYPE prefix, mirroring
+    // C `WcsCelestial` (fitschan.c:35648-35716) which classifies axes
+    // as `EQU` (RA/DEC), `AZL` (AZ/EL), `G` (GLON/GLAT), `E` (ELON/
+    // ELAT), `S` (SLON/SLAT), `H` (HLON/HLAT — heliocentric ecliptic),
+    // etc. — and only consults RADESYS for the `EQU` branch.
+    let ctype_prefix = store
+        .celestial_axes()
+        .and_then(|(lon, _)| store.ctype[lon].as_deref())
+        .map(|c| c.trim().to_ascii_uppercase());
+
+    let prefix_kind = ctype_prefix.as_deref().and_then(classify_ctype_prefix);
+
+    match prefix_kind {
+        Some(CelKind::Galactic) => return SkySystem::Galactic,
+        Some(CelKind::Ecliptic) => return SkySystem::Ecliptic,
+        Some(CelKind::Supergalactic) => return SkySystem::Supergalactic,
+        Some(CelKind::AzEl) => return SkySystem::Azel,
+        Some(CelKind::Equatorial) | None => {} // fall through to RADESYS / EQUINOX
+    }
+
+    // Equatorial (or no CTYPE prefix at all) → look at RADESYS.
     if let Some(ref radesys) = store.radesys {
         let upper = radesys.trim().to_uppercase();
         match upper.as_str() {
@@ -257,22 +264,53 @@ fn determine_sky_system(store: &FitsStore) -> SkySystem {
             SkySystem::Fk4
         }
     } else {
-        // No RADESYS, no EQUINOX. Check CTYPE to see if it's Galactic.
-        if let Some((lon, _)) = store.celestial_axes() {
-            if let Some(ref ctype) = store.ctype[lon] {
-                let upper = ctype.to_uppercase();
-                if upper.starts_with("GLON") {
-                    return SkySystem::Galactic;
-                } else if upper.starts_with("ELON") {
-                    return SkySystem::Ecliptic;
-                } else if upper.starts_with("SLON") {
-                    return SkySystem::Supergalactic;
-                }
-            }
-        }
-        // Default: ICRS (modern convention)
+        // No RADESYS, no EQUINOX, no CTYPE prefix → ICRS default.
         SkySystem::Icrs
     }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum CelKind {
+    Equatorial,
+    Galactic,
+    Ecliptic,
+    Supergalactic,
+    AzEl,
+}
+
+/// Classify a CTYPE prefix into the C library's celestial-system code.
+/// Mirrors fitschan.c:35648-35716. Recognised prefixes (4-char
+/// before any `-` projection suffix):
+///  - `RA--`, `AZ--`, `EL--` (special 2-char codes)
+///  - `xLON` / `xLAT` (1-letter system + LON/LAT) — `x` ∈ {`G`, `E`,
+///    `S`, `H`} for galactic / ecliptic / supergalactic /
+///    helioecliptic.
+///  - `xyLN` / `xyLT` (2-letter system + LN/LT) — used for offset
+///    sky frames etc.
+fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
+    let ctype = ctype.trim();
+    if ctype.starts_with("RA--") || ctype == "RA" || ctype.starts_with("DEC-") || ctype == "DEC" {
+        return Some(CelKind::Equatorial);
+    }
+    if ctype.starts_with("AZ--") || ctype == "AZ" || ctype.starts_with("EL--") || ctype == "EL" {
+        return Some(CelKind::AzEl);
+    }
+    // 1-letter prefix: xLON / xLAT.
+    if ctype.len() >= 4 {
+        let bytes = ctype.as_bytes();
+        if (&bytes[1..4] == b"LON" || &bytes[1..4] == b"LAT")
+            && let Some(c) = ctype.chars().next()
+        {
+            match c {
+                'G' => return Some(CelKind::Galactic),
+                'E' => return Some(CelKind::Ecliptic),
+                'S' => return Some(CelKind::Supergalactic),
+                'H' => return Some(CelKind::Ecliptic),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// Build the IWC-to-sky mapping for celestial axes.
@@ -628,11 +666,12 @@ mod tests {
     }
 
     #[test]
-    fn equatorial_no_radesys_no_equinox_falls_back_to_b1950() {
-        // RA/DEC primary with no RADESYS/EQUINOX/MJD-OBS — C's
-        // NORADEC + DefB1950 fallback (fitschan.c:39172-39192) only
-        // applies to equatorial systems, so this one DOES get the
-        // B1950 stamp.
+    fn equatorial_no_radesys_no_equinox_defaults_to_icrs() {
+        // RA/DEC primary with no RADESYS/EQUINOX. For FITS-WCS
+        // encoding (DefB1950=false), C just sets radesys=ICRS and
+        // leaves equinox at AST__BAD (fitschan.c:39172-39180,
+        // 42288). The SkyFrame should come out as ICRS with the
+        // system's default equinox (J2000) and no explicit epoch.
         let mut store = FitsStore::new(2);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
@@ -644,10 +683,14 @@ mod tests {
         store.cdelt[1] = Some(0.01);
 
         let result = build_celestial(&store).expect("celestial axes recognised");
+        // System-default equinox (J2000 = MJD 51544.5) — no B1950.
         let eq = result.frame.equinox_mjd();
-        assert!((eq - 33281.923).abs() < 1.0, "equinox = {eq}");
-        let ep = result.frame.epoch_mjd();
-        assert!((ep - 33281.923).abs() < 1.0, "epoch = {ep}");
+        assert!((eq - 51544.5).abs() < 1.0, "equinox = {eq}");
+        // Epoch should NOT be explicitly set.
+        assert!(
+            !result.frame.test_epoch(),
+            "epoch should not be explicitly set"
+        );
     }
 
     #[test]
