@@ -95,6 +95,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
 
     // Step 1: locate the celestial axes via primary-frame walk.
     // Mirrors C:5050-5078.
+
     let mut ilon: Option<usize> = None;
     let mut ilat: Option<usize> = None;
     for iax in 0..nwcs {
@@ -376,9 +377,8 @@ fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMappi
     if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
         if cmp.composition() == Composition::Series {
             return split_map2_series(cmp);
-        } else {
-            return split_map2_parallel(cmp);
         }
+        return split_map2_parallel(cmp);
     }
     if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
         let nax = wm.nin();
@@ -466,17 +466,50 @@ fn split_map2_parallel(cmp: &CmpMap) -> Option<(DynMapping, DynMapping, DynMappi
 
 fn flatten_series(cmp: &CmpMap, out: &mut Vec<DynMapping>) {
     debug_assert_eq!(cmp.composition(), Composition::Series);
-    push_or_recurse(cmp.first(), Composition::Series, out);
-    push_or_recurse(cmp.second(), Composition::Series, out);
+    push_or_recurse(extract_child_effective(cmp, true), Composition::Series, out);
+    push_or_recurse(
+        extract_child_effective(cmp, false),
+        Composition::Series,
+        out,
+    );
 }
 
 fn flatten_parallel(cmp: &CmpMap, out: &mut Vec<DynMapping>) {
     debug_assert_eq!(cmp.composition(), Composition::Parallel);
-    push_or_recurse(cmp.first(), Composition::Parallel, out);
-    push_or_recurse(cmp.second(), Composition::Parallel, out);
+    push_or_recurse(
+        extract_child_effective(cmp, true),
+        Composition::Parallel,
+        out,
+    );
+    push_or_recurse(
+        extract_child_effective(cmp, false),
+        Composition::Parallel,
+        out,
+    );
 }
 
-fn push_or_recurse(m: &dyn Mapping, kind: Composition, out: &mut Vec<DynMapping>) {
+/// Return a clone of the requested child (`first=true` for `cmp.first()`)
+/// with its `inverted` flag normalised to the value that was captured
+/// when the CmpMap was constructed. The CmpMap's runtime transform
+/// composes the children using the captured `inv_a`/`inv_b` snapshots
+/// (so post-construction `child.invert()` doesn't change the
+/// composition); flatten_series / flatten_parallel must do the same to
+/// avoid dimensional mismatches when the child has since been
+/// inverted independently.
+fn extract_child_effective(cmp: &CmpMap, first: bool) -> DynMapping {
+    let (child, captured_inv) = if first {
+        (cmp.first(), cmp.inv_a())
+    } else {
+        (cmp.second(), cmp.inv_b())
+    };
+    let mut clone = child.clone_box();
+    if clone.is_inverted() != captured_inv {
+        clone.invert();
+    }
+    clone
+}
+
+fn push_or_recurse(m: DynMapping, kind: Composition, out: &mut Vec<DynMapping>) {
     if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>()
         && cmp.composition() == kind
     {
@@ -487,7 +520,7 @@ fn push_or_recurse(m: &dyn Mapping, kind: Composition, out: &mut Vec<DynMapping>
         }
         return;
     }
-    out.push(m.clone_box());
+    out.push(m);
 }
 
 fn lift_wcsmap_to_full_axes(
