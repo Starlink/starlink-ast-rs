@@ -18,6 +18,30 @@ use crate::frames::{SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap, ZoomMap};
 use crate::wcslib::WcsProjection;
 
+/// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to an
+/// alt-plane SkyFrame whose RADESYS is unset and EQUINOX is unset.
+///
+/// Mirrors fitschan.c:39172-39180. AST's `DefB1950` attribute defaults
+/// to true, so an EQUINOX-less, RADESYS-less SkyFrame is interpreted
+/// as B1950 (FK4) and gets Equinox = palEpb2d(1950) ≈ MJD 33281.92345.
+///
+/// Also applies the nomjd-obs fallback (39214-39222): when no
+/// MJD-OBS / DATE-OBS card was present, Epoch defaults to Equinox.
+fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame) {
+    let no_radesys = store.radesys.as_deref().is_none_or(str::is_empty);
+    let no_equinox = store.equinox.is_none();
+    let no_mjdobs = store.mjdobs.is_none();
+    if no_radesys && no_equinox {
+        // palEpb2d(1950.0). Pre-compute as a constant to avoid pulling
+        // a runtime palEpb2d call into this hot path.
+        const MJD_B1950: f64 = 33281.92345905;
+        sky_frame.set_equinox(MJD_B1950);
+        if no_mjdobs {
+            sky_frame.set_epoch(MJD_B1950);
+        }
+    }
+}
+
 /// Result of building the celestial axes from a FitsStore.
 pub(crate) struct CelestialResult {
     /// Mapping from IWC (celestial subset, in degrees) to sky (radians).
@@ -130,6 +154,12 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
         // never fires.
         sky_frame.set_epoch_year(eq);
     }
+
+    // Step 7b: NORADEC + DefB1950 fallback for alt SkyFrames with
+    // no RADESYS, no EQUINOX, no MJD-OBS — typical of GALACTIC alt-A
+    // planes. This path produces the 33281.923 MJD-OBS the writer's
+    // last-plane-wins rule emits in fits-pc-gal_fits-pc.
+    apply_b1950_fallback_if_needed(store, &mut sky_frame);
 
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
@@ -557,5 +587,28 @@ mod tests {
             point[1],
             expected_lat
         );
+    }
+
+    #[test]
+    fn alt_galactic_no_radesys_no_equinox_falls_back_to_b1950() {
+        // GALACTIC primary with no RADESYS/EQUINOX/MJD-OBS — the path
+        // matches the alt-A plane in the fits-pc-gal fixture.
+        let mut store = FitsStore::new(2);
+        store.ctype[0] = Some("GLON-TAN".to_string());
+        store.ctype[1] = Some("GLAT-TAN".to_string());
+        store.crval[0] = Some(101.255);
+        store.crval[1] = Some(16.177);
+        store.crpix[0] = Some(50.5);
+        store.crpix[1] = Some(50.5);
+        store.cdelt[0] = Some(-0.01);
+        store.cdelt[1] = Some(0.01);
+
+        let result = build_celestial(&store).expect("celestial axes recognised");
+        // Equinox should be palEpb2d(1950) ≈ 33281.92345.
+        let eq = result.frame.equinox_mjd();
+        assert!((eq - 33281.923).abs() < 1.0, "equinox = {eq}");
+        // Epoch should match.
+        let ep = result.frame.epoch_mjd();
+        assert!((ep - 33281.923).abs() < 1.0, "epoch = {ep}");
     }
 }
