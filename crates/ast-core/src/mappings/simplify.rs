@@ -249,6 +249,24 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
     let mut prev_len = list.len();
     let mut prev_prev_len: usize = 0;
 
+    // Capture the original axis count so the empty-list fallback below
+    // produces a UnitMap of the right size. For a series list, every
+    // map has the same external nin/nout (after the upstream merging
+    // makes them dimension-compatible). For a parallel list, the
+    // composite is `nin = sum of nin`, but the empty-fallback case for
+    // parallel doesn't fire in the strip block (we only strip in
+    // series), so series is what we need to preserve.
+    let original_nin: usize = if list.is_empty() {
+        1
+    } else if series {
+        let (m, inv) = &list[0];
+        if *inv { m.nout() } else { m.nin() }
+    } else {
+        list.iter()
+            .map(|(m, inv)| if *inv { m.nout() } else { m.nin() })
+            .sum()
+    };
+
     loop {
         pass += 1;
         if pass > MAX_MERGE_PASSES {
@@ -397,7 +415,7 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
                 let orig_len = list.len();
                 list.retain(|(m, _)| !m.as_any().is::<UnitMap>());
                 if list.is_empty() {
-                    list.push((Box::new(UnitMap::new(1)), false));
+                    list.push((Box::new(UnitMap::new(original_nin)), false));
                 }
                 if list.len() != orig_len {
                     continue;
@@ -428,7 +446,7 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
             changed = true;
         }
         if list.is_empty() {
-            list.push((Box::new(UnitMap::new(1)), false));
+            list.push((Box::new(UnitMap::new(original_nin)), false));
         }
     }
     changed
