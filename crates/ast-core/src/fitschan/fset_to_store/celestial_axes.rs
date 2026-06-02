@@ -268,6 +268,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         axlon_0,
         axlat_0,
         projection,
+        wcsmap,
         &ppcfid,
         [crval_lon_deg, crval_lat_deg],
     )?;
@@ -603,9 +604,12 @@ fn build_wcs_to_iwc(
     axlon: usize,
     axlat: usize,
     projection: WcsProjection,
+    src_wcsmap: &WcsMap,
     ppcfid: &[f64],
     crval_deg: [f64; 2],
 ) -> AstResult<DynMapping> {
+    let _ = projection; // kept for callers; src_wcsmap.projection() is the source of truth.
+
     // ShiftMap from IWC → PPC: subtract ppcfid (so when PPC == IWC,
     // i.e. ppcfid is zero, this is identity). Mirrors C:5210.
     let shift_iwc_to_ppc = ShiftMap::new(ppcfid.to_vec());
@@ -627,10 +631,15 @@ fn build_wcs_to_iwc(
     // correct celestial-pole solution from `WcsNatPole`. Mirrors C's
     // WcsNative which calls WcsNatPole (fitschan.c:38175-38231) and
     // then assembles the three rotations.
-    let wcsmap_fwd = WcsMap::new(2, projection, 1, 2)?;
+    //
+    // Use the *source* WcsMap (with its PV parameters intact) so that
+    // the simplifier can collapse the PPC→native→celestial→native→PPC
+    // round-trip exactly when this chain is composed against the
+    // pixel→WCS mapping. C does the same via `astClone(map2)` at
+    // fitschan.c:5204.
     let wcs_native_rot =
         crate::fitschan::wcs_celestial::build_native_to_celestial_rotation_for_wcsmap(
-            &wcsmap_fwd,
+            src_wcsmap,
             crval_deg[0] * DD2R,
             crval_deg[1] * DD2R,
             None,
@@ -645,8 +654,17 @@ fn build_wcs_to_iwc(
 
     // 2D celestial chain (PPC → WCS):
     //   WcsMap_inverted (PPC → native spherical) → wcs_native_rot
-    let mut wcsmap_inv = wcsmap_fwd.clone();
-    wcsmap_inv.invert();
+    //
+    // We need a *cloned* WcsMap with the same PV parameters as
+    // `src_wcsmap` and pointed in the inverse direction (PPC →
+    // native). Cloning then ensuring `is_inverted() == true` rather
+    // than blindly toggling means the chain works regardless of
+    // whether `src_wcsmap` was found in its forward or inverse
+    // orientation in the source mapping.
+    let mut wcsmap_inv = src_wcsmap.clone();
+    if !wcsmap_inv.is_inverted() {
+        wcsmap_inv.invert();
+    }
     let cel_2d: DynMapping = Box::new(CmpMap::new(
         Box::new(wcsmap_inv),
         wcs_native_rot,
