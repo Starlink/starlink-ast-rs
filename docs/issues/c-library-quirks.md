@@ -199,3 +199,49 @@ where `iin = (term.out_axis - 1) % nin`. The Rust port also runs
 this branch only when `polymap.inverse_terms()` is `Some(...)`, so
 the SIP-path coverage matches C exactly, while uncommon callers
 get the correct algorithm rather than UB.
+
+---
+
+## 2026-06-01: post-alt-WCS wcsconv residuals
+
+After the alt-WCS support landing (groups 1–6 of the 2026-06-01
+plan), 83 / 192 wcsconv fixtures still differ from the C oracle.
+Classified as the spec requires:
+
+**Bucket A (numeric value mismatch — should fix):** Most failures
+in this bucket trace to one of:
+- Pre-existing reader bugs unmasked by alt-WCS structure
+  (e.g. `multi-wcs_fits-wcs` line 6: primary CTYPE comes out
+  `RA---TAN` instead of `GLON-TAN` because `determine_sky_system`
+  in `wcs_celestial.rs` lets RADESYS override the CTYPE prefix —
+  wrong when the primary plane is Galactic).
+- The FITS-PC alternate-axis encoding (`C1YPE1` etc., distinct from
+  the FITS-WCS `*A` convention). `enc_pc::read_from_cards` parses
+  primary only; alt planes via the `Cnxxx` keys are not yet parsed,
+  so `fits-pc-gal_fits-pc` doesn't see the GALACTIC alt at all.
+- DSS encoding selection / round-trip: out-of-scope per the
+  existing roadmap.
+
+**Bucket B (structural — out of scope):**
+- `dss_*` (DSS encoding selection / structure).
+- `degen1_fits-wcs` (WCSAXES degenerate-axis feature).
+- `multi-wcs-dup_fits-wcs` (RADESYSA card ordering).
+
+**Bucket C (formatting only — out of scope):**
+- `tan-pv0_fits-wcs` (`-0.001` vs `-1.0E-3` formatting).
+
+**Bucket D (comment text — out of scope):**
+- `vopt-geo_fits-aips` line 15: comment text differs (`Channel
+  width (m/s)` vs `Pixel size`).
+
+The full residual list (with line-by-line diffs) is captured in
+`/tmp/wcsconv_residuals.txt` from the post-Group-6 run; re-capture
+with `cargo test -p ast-core --test test_wcsconv -- --nocapture`
+when revisiting.
+
+The residuals share a common structural root: the FITS-PC reader
+needs `Cnxxx` alt-keyword support for the FITS-PC encoder's
+last-plane-wins to do anything useful. That work is out of scope
+for the current alt-WCS design (which is FITS-WCS-suffix-only on
+the reader side per Spec §"Read side: only FITS-WCS uses the
+*A..*Z axis-suffix convention"). Tracking as a separate ticket.
