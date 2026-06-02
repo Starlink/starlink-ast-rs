@@ -184,11 +184,11 @@ fn store_from_frameset_to(
     let _ = input_crvals;
     let encoding = crate::fitschan::Encoding::FitsWcs;
     if target_idx == fs.current_idx() {
-        return crate::fitschan::fset_to_store::fset_to_store(fs, dim, encoding);
+        return crate::fitschan::fset_to_store::fset_to_store(fs, dim, encoding, ' ');
     }
     let mut alt_fs = fs.clone();
     alt_fs.set_current(FrameRef::Index(target_idx + 1))?;
-    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding)
+    crate::fitschan::fset_to_store::fset_to_store(&alt_fs, dim, encoding, ' ')
 }
 
 #[allow(dead_code)]

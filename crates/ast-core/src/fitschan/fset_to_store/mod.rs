@@ -76,6 +76,7 @@ pub(crate) fn fset_to_store(
     fs: &FrameSet,
     dim: &[Option<f64>],
     encoding: Encoding,
+    s: char,
 ) -> AstResult<FitsStore> {
     // Step 1: pixel→WCS Mapping from base to current frame.
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
@@ -129,7 +130,7 @@ pub(crate) fn fset_to_store(
         fs,
         dim,
         wperm: &mut wperm,
-        s: ' ',
+        s,
         store: &mut store,
         axis_done: &mut axis_done,
         isoff: 0,
@@ -139,7 +140,7 @@ pub(crate) fn fset_to_store(
         fs,
         dim,
         wperm: &mut wperm,
-        s: ' ',
+        s,
         store: &mut store,
         crvals: &crvals,
         axis_done: &mut axis_done,
@@ -281,7 +282,7 @@ mod tests {
         .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs).unwrap();
+        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ').unwrap();
 
         // Both axes should have CTYPE / CUNIT populated by other_axes.
         assert!(store.ctype[0].is_some(), "CTYPE1 should be set");
@@ -311,7 +312,7 @@ mod tests {
             .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
-        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs).unwrap();
+        let store = fset_to_store(&fs, &dim, Encoding::FitsWcs, ' ').unwrap();
         let crpix0 = store.crpix[0].unwrap();
         let crpix1 = store.crpix[1].unwrap();
         // dim=100 ⇒ g0 = floor(0.5*(1+100)) = 50.
