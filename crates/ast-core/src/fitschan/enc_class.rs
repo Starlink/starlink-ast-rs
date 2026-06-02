@@ -629,7 +629,7 @@ DELTAV  = -0.106265872717E+003
         let store = read_from_cards(&cards_in).unwrap();
 
         let mut cards_out = CardList::new();
-        write_to_cards(&store, &mut cards_out).unwrap();
+        write_to_cards(&store, &mut cards_out, ' ', true).unwrap();
 
         let store2 = read_from_cards(&cards_out).unwrap();
 
