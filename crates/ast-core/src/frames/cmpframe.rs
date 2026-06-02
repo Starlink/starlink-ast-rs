@@ -47,6 +47,17 @@ impl CmpFrame {
         }
     }
 
+    /// Return the frame identification string.
+    pub fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    /// Set the frame identification string. Mirrors `astSetIdent`.
+    pub fn set_ident(&mut self, ident: impl Into<String>) {
+        let s = ident.into();
+        self.ident = if s.is_empty() { None } else { Some(s) };
+    }
+
     /// Number of axes contributed by the first child frame.
     pub fn naxes1(&self) -> usize {
         self.frame1.naxes()
@@ -103,6 +114,10 @@ impl fmt::Debug for CmpFrame {
 impl Frame for CmpFrame {
     fn naxes(&self) -> usize {
         self.frame1.naxes() + self.frame2.naxes()
+    }
+
+    fn ident(&self) -> &str {
+        CmpFrame::ident(self)
     }
 
     fn system_string(&self) -> Option<&str> {

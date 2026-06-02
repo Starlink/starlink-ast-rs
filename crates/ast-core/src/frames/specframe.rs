@@ -318,6 +318,17 @@ impl SpecFrame {
 
     // --- SpecFrame-specific attributes ---
 
+    /// Return the frame identification string.
+    pub fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    /// Set the frame identification string. Mirrors `astSetIdent`.
+    pub fn set_ident(&mut self, ident: impl Into<String>) {
+        let s = ident.into();
+        self.ident = if s.is_empty() { None } else { Some(s) };
+    }
+
     /// Return the spectral coordinate system.
     pub fn system(&self) -> SpecSystem {
         self.system
@@ -1098,6 +1109,10 @@ impl Frame for SpecFrame {
 
     fn test_domain(&self) -> bool {
         SpecFrame::test_domain(self)
+    }
+
+    fn ident(&self) -> &str {
+        SpecFrame::ident(self)
     }
 }
 
