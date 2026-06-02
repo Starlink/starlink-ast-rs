@@ -123,11 +123,23 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 /// - Subtracts RESTFREQ from the spectral axis CRVAL (absolute → offset)
 /// - Computes and writes DELTAV and VELO-LSR from the spectral axis parameters
 /// - Writes SPECSYS, RADESYS, EQUINOX, MJD-OBS
-pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+///
+/// `s` is the coordinate-version letter; `is_last` gates the
+/// observation-global keyword emission. See `enc_pc::write_to_cards`
+/// for the contract.
+pub(crate) fn write_to_cards(
+    store: &FitsStore,
+    cards: &mut CardList,
+    s: char,
+    is_last: bool,
+) -> AstResult<()> {
+    use super::wcs_keywords::key_for;
     let naxis = store.naxis;
 
-    // NAXIS
-    cards.set_int("NAXIS", naxis as i64, "Number of dimensions");
+    // NAXIS — global, only emit on last plane.
+    if is_last {
+        cards.set_int("NAXIS", naxis as i64, "Number of dimensions");
+    }
 
     // Find spectral axis and rest frequency for later use.
     let spec_idx = store.spectral_axis();
@@ -136,7 +148,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CRPIXi
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
+            let key = key_for("CRPIX", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
@@ -145,7 +157,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(ref ctype) = store.ctype[i] {
             let class_ctype = translate_class_projection_write(ctype);
-            let key = format!("CTYPE{}", i + 1);
+            let key = key_for("CTYPE", Some(i + 1), s);
             cards.set_string(
                 &key,
                 &class_ctype,
@@ -157,13 +169,13 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CUNITi
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
-            let key = format!("CUNIT{}", i + 1);
+            let key = key_for("CUNIT", Some(i + 1), s);
             cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
-    // RESTFREQ
-    if let Some(rf) = restfreq {
+    // RESTFREQ — observation-global; only emit on last plane.
+    if is_last && let Some(rf) = restfreq {
         cards.set_float("RESTFREQ", rf, "[Hz] Rest frequency");
     }
 
@@ -179,7 +191,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
             } else {
                 val
             };
-            let key = format!("CRVAL{}", i + 1);
+            let key = key_for("CRVAL", Some(i + 1), s);
             cards.set_float(
                 &key,
                 output_val,
@@ -191,48 +203,53 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CDELTi
     for i in 0..naxis {
         if let Some(val) = store.cdelt[i] {
-            let key = format!("CDELT{}", i + 1);
+            let key = key_for("CDELT", Some(i + 1), s);
             cards.set_float(&key, val, "Pixel size");
         }
     }
 
-    // Compute DELTAV and VELO-LSR from spectral axis parameters.
-    if let (Some(si), Some(rf)) = (spec_idx, restfreq) {
-        if rf != 0.0 {
-            // DELTAV = -c * CDELT_freq / RESTFREQ (radio velocity convention)
-            if let Some(cdelt_freq) = store.cdelt[si] {
-                let deltav = -C_LIGHT * cdelt_freq / rf;
-                cards.set_float("DELTAV", deltav, "Velocity channel spacing (m/s)");
-            }
+    if is_last {
+        // Compute DELTAV and VELO-LSR from spectral axis parameters.
+        if let (Some(si), Some(rf)) = (spec_idx, restfreq) {
+            if rf != 0.0 {
+                // DELTAV = -c * CDELT_freq / RESTFREQ (radio velocity convention)
+                if let Some(cdelt_freq) = store.cdelt[si] {
+                    let deltav = -C_LIGHT * cdelt_freq / rf;
+                    cards.set_float("DELTAV", deltav, "Velocity channel spacing (m/s)");
+                }
 
-            // VELO-LSR = c * (1 - CRVAL_freq / RESTFREQ)
-            if let Some(crval_freq) = store.crval[si] {
-                let velo_lsr = C_LIGHT * (1.0 - crval_freq / rf);
-                cards.set_float("VELO-LSR", velo_lsr, "Source velocity (m/s)");
+                // VELO-LSR = c * (1 - CRVAL_freq / RESTFREQ)
+                if let Some(crval_freq) = store.crval[si] {
+                    let velo_lsr = C_LIGHT * (1.0 - crval_freq / rf);
+                    cards.set_float("VELO-LSR", velo_lsr, "Source velocity (m/s)");
+                }
             }
+        }
+
+        // SPECSYS — observation-global.
+        if let Some(ref specsys) = store.specsys {
+            cards.set_string("SPECSYS", specsys, "Spectral reference frame");
         }
     }
 
-    // SPECSYS
-    if let Some(ref specsys) = store.specsys {
-        cards.set_string("SPECSYS", specsys, "Spectral reference frame");
-    }
-
-    // RADESYS
+    // RADESYS — per-version-letter.
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADESYS", radesys, "Reference frame for RA/DEC values");
+        let key = key_for("RADESYS", None, s);
+        cards.set_string(&key, radesys, "Reference frame for RA/DEC values");
     }
 
-    // EQUINOX
+    // EQUINOX — per-version-letter.
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
+        let key = key_for("EQUINOX", None, s);
+        cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
-    // DATE-OBS — CLASS emits only DATE-OBS, not MJD-OBS (mirrors C
-    // CLASSFromStore at fitschan.c:6324+). The pre-formatted string in
-    // store.dateobs was derived from MJD-OBS upstream.
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+    if is_last {
+        // DATE-OBS — CLASS emits only DATE-OBS, not MJD-OBS (mirrors C
+        // CLASSFromStore at fitschan.c:6324+).
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
     }
 
     Ok(())
@@ -478,7 +495,7 @@ DELTAV  = -0.106265872717E+003
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // The output CRVAL1 should be approximately 0 (absolute - restfreq)
         let crval1 = cards.get_float("CRVAL1").unwrap();
@@ -510,7 +527,7 @@ DELTAV  = -0.106265872717E+003
         store.restfrq = Some(restfreq);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // DELTAV = -c * CDELT / RESTFREQ
         let expected_deltav = -C_LIGHT * cdelt_freq / restfreq;
@@ -541,7 +558,7 @@ DELTAV  = -0.106265872717E+003
         store.restfrq = Some(restfreq);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // VELO-LSR = c * (1 - CRVAL/RESTFREQ) = c * (1 - 1) = 0
         let velo_lsr = cards.get_float("VELO-LSR").unwrap();
@@ -570,7 +587,7 @@ DELTAV  = -0.106265872717E+003
         store.restfrq = Some(1.0e11);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         assert_eq!(cards.get_string("CTYPE2"), Some("GLON-GLS".to_string()));
         assert_eq!(cards.get_string("CTYPE3"), Some("GLAT-GLS".to_string()));

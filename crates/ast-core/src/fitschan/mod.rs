@@ -653,10 +653,11 @@ impl Channel for FitsChan {
                         Encoding::FitsAipsPP,
                         enc_aips::write_to_cards_pp,
                     ),
-                    Encoding::FitsClass => wcs_write::encode_wcs_to_store(
+                    Encoding::FitsClass => wcs_write::encode_wcs_per_plane(
                         obj,
                         &mut self.cards,
                         &dims,
+                        Encoding::FitsClass,
                         enc_class::write_to_cards,
                     ),
                     Encoding::Dss => wcs_write::encode_wcs_to_store(
