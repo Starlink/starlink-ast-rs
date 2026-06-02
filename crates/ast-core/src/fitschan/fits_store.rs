@@ -121,6 +121,16 @@ pub(crate) struct FitsStore {
     /// UT1 - UTC offset (seconds). Mirrors the FITS DUT1 keyword.
     /// Global per-FrameSet field; emit and read once per header.
     pub dut1: Option<f64>,
+    /// Whether `sky_sys` actually ran on this plane (and so reached
+    /// the date-defaulting branch). Mirrors C SkySys
+    /// (fitschan.c:29807): when SkySys runs and `defdate=false`, it
+    /// unconditionally calls `SetItem(store->mjdobs, ' ', ep)` —
+    /// even when `ep == AST__BAD`. Multi-plane frames (e.g.
+    /// FK5 + FK5 + Galactic) where the last plane lacks an Equinox
+    /// rely on that BAD-overwrite to suppress the primary MJD-OBS.
+    /// Set to `true` whenever the writer's date-block executed,
+    /// regardless of whether `mjdobs` ended up `Some` or `None`.
+    pub mjdobs_skysys_ran: bool,
 }
 
 /// Maximum number of PV parameters per axis.
@@ -175,6 +185,7 @@ impl FitsStore {
             imagfreq: None,
             dtai: None,
             dut1: None,
+            mjdobs_skysys_ran: false,
         }
     }
 

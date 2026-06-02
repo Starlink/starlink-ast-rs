@@ -254,9 +254,9 @@ pub(crate) fn sky_sys(
         None
     };
 
-    // C converts ep_tdb → ep_utc via TDBConv. Mirrors fitschan.c:29724.
-    let ep_utc =
-        ep_tdb.and_then(|tdb| crate::pal::tdb_conv(tdb, crate::pal::TdbConvScale::Utc, true));
+    // C converts ep_tdb → ep_utc via TDBConv (which builds TDB and
+    // UTC TimeFrames and runs astConvert). Mirrors fitschan.c:29724.
+    let ep_utc = ep_tdb.map(crate::fitschan::wcs_write::tdb_mjd_to_utc);
 
     // Default-date check: when ep_utc == eq, the FITS spec says
     // MJD-OBS / DATE-OBS default to the equinox epoch — so we don't
@@ -288,13 +288,23 @@ pub(crate) fn sky_sys(
         store.equinox = Some(y);
     }
     if !defdate {
+        // C SkySys (fitschan.c:29807): SetItem stores the value into
+        // primary MJD-OBS *unconditionally* on the !defdate branch —
+        // including AST__BAD when ep_utc is bad (e.g. a Galactic
+        // alt plane with no Equinox). Record the SkySys-ran flag so
+        // a subsequent plane that runs SkySys with `ep_utc = None`
+        // can suppress the primary's MJD-OBS (last-plane-wins).
+        store.mjdobs_skysys_ran = true;
         if let Some(e) = ep_utc {
             store.mjdobs = Some(e);
-            // Also derive the human-readable DATE-OBS string. C
-            // computes this at write time via the same MJD→date
-            // formatter (fitschan.c:3594-3608). The cutoff at
-            // MJD 51179 (1999-01-01) is encoded in mjd_to_date_str.
+            // Human-readable DATE-OBS — C derives this from the same
+            // MJD value at write time (fitschan.c:3594-3608). The
+            // cutoff at MJD 51179 (1999-01-01) is encoded in
+            // mjd_to_date_str.
             store.dateobs = Some(crate::fitschan::wcs_write::mjd_to_date_str(e));
+        } else {
+            store.mjdobs = None;
+            store.dateobs = None;
         }
     }
 

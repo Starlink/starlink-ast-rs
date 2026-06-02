@@ -13,7 +13,7 @@ use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::wcs_decompose::split_cd;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{FrameRef, FrameSet};
+use crate::frames::{FrameRef, FrameSet, TimeScale};
 use crate::pal;
 use crate::serial::AnyObject;
 
@@ -109,12 +109,26 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     if planes.len() <= 1 {
         return;
     }
-    // C SkySys (fitschan.c:29805) overwrites store->mjdobs only when
-    // it actually computes a new value — i.e. only when it ran on
-    // that frame. Frames that aren't SkyFrames don't trigger SkySys
-    // at all, so they don't overwrite. Mirror that here by taking the
-    // *last* plane that actually has a Some value, walking from the
-    // end backwards.
+
+    // MJD-OBS / DATE-OBS follow last-plane-ran-SkySys-wins semantics
+    // (C fitschan.c:29807): SkySys calls SetItem(mjdobs, ' ', ep)
+    // unconditionally on the !defdate branch — including with
+    // AST__BAD when the plane has no Equinox. Find the last plane
+    // whose `sky_sys` actually executed; whatever it computed
+    // (Some(v) or None) is what primary should carry. Frames that
+    // didn't run SkySys (non-SkyFrames, or SkySys's defdate branch)
+    // leave the slot untouched.
+    let last_mjdobs_plane = planes.iter().rposition(|p| p.store.mjdobs_skysys_ran);
+    if let Some(idx) = last_mjdobs_plane {
+        let mjdobs = planes[idx].store.mjdobs;
+        let dateobs = planes[idx].store.dateobs.clone();
+        planes[0].store.mjdobs = mjdobs;
+        planes[0].store.dateobs = dateobs;
+    }
+
+    // Other observation-globals: last-plane-with-Some-value wins.
+    // These come from SpectralAxes (which doesn't have the
+    // AST__BAD-overwrite quirk) and don't need the SkySys-ran flag.
     fn last_some<T: Clone>(
         planes: &[PlaneStore],
         get: impl Fn(&FitsStore) -> Option<T>,
@@ -126,8 +140,6 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
         }
         None
     }
-    let mjdobs = last_some(planes, |s| s.mjdobs);
-    let dateobs = last_some(planes, |s| s.dateobs.clone());
     let obsgeox = last_some(planes, |s| s.obsgeox);
     let obsgeoy = last_some(planes, |s| s.obsgeoy);
     let obsgeoz = last_some(planes, |s| s.obsgeoz);
@@ -135,8 +147,6 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     let dtai = last_some(planes, |s| s.dtai);
     let dut1 = last_some(planes, |s| s.dut1);
     let primary = &mut planes[0].store;
-    primary.mjdobs = mjdobs.or(primary.mjdobs);
-    primary.dateobs = dateobs.or_else(|| primary.dateobs.clone());
     primary.obsgeox = obsgeox.or(primary.obsgeox);
     primary.obsgeoy = obsgeoy.or(primary.obsgeoy);
     primary.obsgeoz = obsgeoz.or(primary.obsgeoz);
@@ -726,25 +736,49 @@ pub(crate) fn tdb_minus_tt_seconds(mjd: f64) -> f64 {
 
 /// Convert TDB (Barycentric Dynamical Time) MJD to UTC MJD.
 ///
-/// Mirrors fitschan.c:29723-29744 (TDBConv with output scale UTC).
-#[allow(dead_code)] // wired into the writer's DATE-OBS path in Group 6
+/// Mirrors `fitschan.c::TDBConv` (lines 33894-33976): build TDB and
+/// UTC `TimeFrame`s and use `astConvert` to compute the mapping
+/// between them — exactly like the C library's `TDBConv` helper.
 pub(crate) fn tdb_mjd_to_utc(tdb_mjd: f64) -> f64 {
-    let dat_seconds = pal::dat(tdb_mjd);
-    let tdb_tt = tdb_minus_tt_seconds(tdb_mjd);
-    tdb_mjd - (dat_seconds + 32.184 + tdb_tt) / 86_400.0
+    convert_time_mjd(tdb_mjd, TimeScale::Tdb, TimeScale::Utc)
 }
 
 /// Convert UTC MJD to TDB (Barycentric Dynamical Time) MJD.
 ///
-/// Inverse of [`tdb_mjd_to_utc`]. Uses `pal::dat` and the principal
-/// TDB-TT periodic term so round-trips are exact to within the formula
-/// precision (≪1 µs over the date range we care about).
-///
 /// Mirrors `fitschan.c::TDBConv` for the UTC→TDB direction.
 pub(crate) fn utc_mjd_to_tdb(utc_mjd: f64) -> f64 {
-    let dat_seconds = pal::dat(utc_mjd);
-    let tdb_tt = tdb_minus_tt_seconds(utc_mjd);
-    utc_mjd + (dat_seconds + 32.184 + tdb_tt) / 86_400.0
+    convert_time_mjd(utc_mjd, TimeScale::Utc, TimeScale::Tdb)
+}
+
+/// Generic timescale conversion via the `TimeFrame` `astConvert`
+/// pathway. Both source and destination are MJD; only the timescale
+/// differs. Returns the input unchanged on conversion failure (the
+/// C library reports an error in that case; we fall through to the
+/// raw value, which is the historic Rust behaviour and gives the
+/// nearest sensible fallback for tests).
+fn convert_time_mjd(mjd: f64, from: TimeScale, to: TimeScale) -> f64 {
+    use crate::frames::{Frame, TimeFrame, TimeSystem};
+    let mut from_tf = TimeFrame::new(TimeSystem::Mjd);
+    from_tf.set_timescale(from);
+    let mut to_tf = TimeFrame::new(TimeSystem::Mjd);
+    to_tf.set_timescale(to);
+    let Ok(Some(fs)) = Frame::convert(&from_tf, &to_tf, &[]) else {
+        return mjd;
+    };
+    let Ok(mapping) = fs.mapping(
+        crate::frames::FrameRef::Base,
+        crate::frames::FrameRef::Current,
+    ) else {
+        return mjd;
+    };
+    let pts = crate::coords::PointSet::from_rows([[mjd]]);
+    match mapping.transform(&pts, true) {
+        Ok(out) => {
+            let v = out.point(0)[0];
+            if v.is_finite() { v } else { mjd }
+        }
+        Err(_) => mjd,
+    }
 }
 
 /// Decompose an MJD (UTC, Modified Julian Date) into a Gregorian
