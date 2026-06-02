@@ -124,13 +124,23 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 /// - `RADECSYS` (the IRAF misspelling, not `RADESYS`)
 /// - SFL projection is translated back to GLS
 /// - No WCSAXES, LONPOLE, or LATPOLE keywords
-pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+///
+/// `s` is the coordinate-version letter (`' '` primary, `'A'..'Z'`
+/// alt). `is_last` indicates the alphabetically-last plane: only it
+/// emits the observation-global keywords.
+pub(crate) fn write_to_cards(
+    store: &FitsStore,
+    cards: &mut CardList,
+    s: char,
+    is_last: bool,
+) -> AstResult<()> {
+    use super::wcs_keywords::key_for;
     let naxis = store.naxis;
 
     // CRPIXi
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
+            let key = key_for("CRPIX", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
@@ -138,7 +148,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CRVALi
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
-            let key = format!("CRVAL{}", i + 1);
+            let key = key_for("CRVAL", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
@@ -151,7 +161,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
             if ncp_axes && iraf_ctype.len() >= 8 && iraf_ctype[5..8].eq_ignore_ascii_case("SIN") {
                 iraf_ctype.replace_range(5.., "NCP");
             }
-            let key = format!("CTYPE{}", i + 1);
+            let key = key_for("CTYPE", Some(i + 1), s);
             cards.set_string(
                 &key,
                 &iraf_ctype,
@@ -163,39 +173,48 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CUNITi
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
-            let key = format!("CUNIT{}", i + 1);
+            let key = key_for("CUNIT", Some(i + 1), s);
             cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
     // CD matrix: use CD directly if available, otherwise compute from PC × CDELT
-    write_iraf_cd_matrix(store, cards);
+    write_iraf_cd_matrix(store, cards, s);
 
-    // RADECSYS (the IRAF misspelling)
+    // RADECSYS (the IRAF misspelling). Per-version-letter (truncated
+    // to fit the 8-char limit when alt).
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADECSYS", radesys, "Reference frame for RA/DEC values");
+        let key = if s == ' ' {
+            "RADECSYS".to_string()
+        } else {
+            format!("RADECSY{s}")
+        };
+        cards.set_string(&key, radesys, "Reference frame for RA/DEC values");
     }
 
     // EQUINOX
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
+        let key = key_for("EQUINOX", None, s);
+        cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
-    // MJD-OBS — IRAFFromStore (fitschan.c:19103-19127) does not emit
-    // MJD-OBS itself; only DATE-OBS. But the C library's `ignore_used`
-    // semantics leave an input-supplied MJD-OBS card in place, so we
-    // re-emit it only if the input header already carried one.
-    if cards.find("MJD-OBS").is_some()
-        && let Some(mjdobs) = store.mjdobs
-    {
-        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-    }
+    if is_last {
+        // MJD-OBS — IRAFFromStore (fitschan.c:19103-19127) does not emit
+        // MJD-OBS itself; only DATE-OBS. But the C library's `ignore_used`
+        // semantics leave an input-supplied MJD-OBS card in place, so we
+        // re-emit it only if the input header already carried one.
+        if cards.find("MJD-OBS").is_some()
+            && let Some(mjdobs) = store.mjdobs
+        {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+        }
 
-    // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
-    // IRAFFromStore at fitschan.c:19103-19127). The pre-formatted
-    // string in store.dateobs was derived from MJD-OBS upstream.
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
+        // IRAFFromStore at fitschan.c:19103-19127). The pre-formatted
+        // string in store.dateobs was derived from MJD-OBS upstream.
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
     }
 
     Ok(())
@@ -235,7 +254,8 @@ fn translate_iraf_ctype_write(ctype: &str) -> String {
 
 /// Write the CD matrix from the store. If the store has CD values directly,
 /// use them. Otherwise compute CD[i][j] = PC[i][j] × CDELT[i].
-fn write_iraf_cd_matrix(store: &FitsStore, cards: &mut CardList) {
+fn write_iraf_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) {
+    use super::wcs_keywords::key_for_2;
     let naxis = store.naxis;
 
     if store.has_cd_matrix() {
@@ -244,7 +264,7 @@ fn write_iraf_cd_matrix(store: &FitsStore, cards: &mut CardList) {
             for j in 0..naxis {
                 if let Some(val) = store.cd[i][j] {
                     if val != 0.0 || i == j {
-                        let key = format!("CD{}_{}", i + 1, j + 1);
+                        let key = key_for_2("CD", i + 1, j + 1, s);
                         cards.set_float(&key, val, "Transformation matrix element");
                     }
                 }
@@ -258,7 +278,7 @@ fn write_iraf_cd_matrix(store: &FitsStore, cards: &mut CardList) {
                 let pc_ij = store.pc[i][j].unwrap_or(if i == j { 1.0 } else { 0.0 });
                 let cd_val = pc_ij * cdelt_i;
                 if cd_val != 0.0 || i == j {
-                    let key = format!("CD{}_{}", i + 1, j + 1);
+                    let key = key_for_2("CD", i + 1, j + 1, s);
                     cards.set_float(&key, cd_val, "Transformation matrix element");
                 }
             }
@@ -360,7 +380,7 @@ END";
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // Should have CD keywords
         assert_eq!(cards.get_float("CD1_1"), Some(-0.0005));
@@ -395,7 +415,7 @@ END";
         store.cdelt[1] = Some(0.001);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // CD = PC × CDELT: CD[i][j] = PC[i][j] × CDELT[i]
         let cd11 = cards.get_float("CD1_1").unwrap();
@@ -426,7 +446,7 @@ END";
         store.cd[1][1] = Some(0.01);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // SFL should be translated to GLS on IRAF write
         assert_eq!(cards.get_string("CTYPE1"), Some("GLON-GLS".to_string()));
