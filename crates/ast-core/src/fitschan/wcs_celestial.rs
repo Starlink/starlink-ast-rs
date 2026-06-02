@@ -628,9 +628,33 @@ mod tests {
     }
 
     #[test]
-    fn alt_galactic_no_radesys_no_equinox_falls_back_to_b1950() {
-        // GALACTIC primary with no RADESYS/EQUINOX/MJD-OBS — the path
-        // matches the alt-A plane in the fits-pc-gal fixture.
+    fn equatorial_no_radesys_no_equinox_falls_back_to_b1950() {
+        // RA/DEC primary with no RADESYS/EQUINOX/MJD-OBS — C's
+        // NORADEC + DefB1950 fallback (fitschan.c:39172-39192) only
+        // applies to equatorial systems, so this one DOES get the
+        // B1950 stamp.
+        let mut store = FitsStore::new(2);
+        store.ctype[0] = Some("RA---TAN".to_string());
+        store.ctype[1] = Some("DEC--TAN".to_string());
+        store.crval[0] = Some(180.0);
+        store.crval[1] = Some(45.0);
+        store.crpix[0] = Some(50.5);
+        store.crpix[1] = Some(50.5);
+        store.cdelt[0] = Some(-0.01);
+        store.cdelt[1] = Some(0.01);
+
+        let result = build_celestial(&store).expect("celestial axes recognised");
+        let eq = result.frame.equinox_mjd();
+        assert!((eq - 33281.923).abs() < 1.0, "equinox = {eq}");
+        let ep = result.frame.epoch_mjd();
+        assert!((ep - 33281.923).abs() < 1.0, "epoch = {ep}");
+    }
+
+    #[test]
+    fn galactic_no_radesys_no_equinox_does_not_fall_back() {
+        // Galactic primary with no RADESYS/EQUINOX. C does NOT apply
+        // the DefB1950 fallback for Galactic CTYPE prefixes — the
+        // SkyFrame should keep its system-default Equinox / no Epoch.
         let mut store = FitsStore::new(2);
         store.ctype[0] = Some("GLON-TAN".to_string());
         store.ctype[1] = Some("GLAT-TAN".to_string());
@@ -642,11 +666,16 @@ mod tests {
         store.cdelt[1] = Some(0.01);
 
         let result = build_celestial(&store).expect("celestial axes recognised");
-        // Equinox should be palEpb2d(1950) ≈ 33281.92345.
+        // Galactic SkyFrame default equinox is J2000 (51544.5).
         let eq = result.frame.equinox_mjd();
-        assert!((eq - 33281.923).abs() < 1.0, "equinox = {eq}");
-        // Epoch should match.
-        let ep = result.frame.epoch_mjd();
-        assert!((ep - 33281.923).abs() < 1.0, "epoch = {ep}");
+        assert!(
+            (eq - 51544.5).abs() < 1.0,
+            "equinox = {eq} (should be J2000 default for GALACTIC)"
+        );
+        // Epoch should NOT be explicitly set — Frame default kicks in.
+        assert!(
+            !result.frame.test_epoch(),
+            "epoch should not be explicitly set for Galactic primary"
+        );
     }
 }

@@ -200,14 +200,18 @@ fn ctype_prefixes_for(
 }
 
 /// Convert the SkyFrame's stored EquinoxMJD into the FITS Equinox
-/// year. C: `eq = palEpb(eq_mjd)` for FK4 (Besselian), `eq =
-/// palEpj(eq_mjd)` for FK5/Ecliptic (Julian); BAD for ICRS/GAPPT/
-/// galactic/etc. Matches the conditional branches at
-/// `fitschan.c:29761-29800`.
+/// year. C: `eq = palEpb(eq_mjd)` for FK4 (Besselian),
+/// `eq = palEpj(eq_mjd)` for FK5 (Julian); BAD for
+/// ICRS/GAPPT/galactic/etc. Ecliptic falls through with `eq`
+/// untouched (the raw MJD), so the encoder emits the MJD value
+/// directly — matches `fitschan.c:29761-29800` (the `Ecliptic`
+/// branch is the only one that doesn't reassign `eq`).
 fn fits_equinox_year(sys: SkySystem, eq_mjd: f64) -> Option<f64> {
     match sys {
         SkySystem::Fk4 | SkySystem::Fk4NoE => Some(crate::pal::epb(eq_mjd)),
-        SkySystem::Fk5 | SkySystem::Ecliptic => Some(crate::pal::epj(eq_mjd)),
+        SkySystem::Fk5 => Some(crate::pal::epj(eq_mjd)),
+        // Ecliptic: emit eq as raw MJD (matches C).
+        SkySystem::Ecliptic => Some(eq_mjd),
         _ => None,
     }
 }

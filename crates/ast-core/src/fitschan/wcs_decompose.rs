@@ -322,32 +322,43 @@ pub(crate) fn fit_line_cd(
 
 /// Split a CD matrix into CDELT (diagonal scale) and PC (rotation) components.
 ///
-/// CD = diag(CDELT) * PC, where each row of PC is normalised to unit length.
-/// This mirrors the C `SplitMat` function (fitschan.c ~line 33141).
+/// `CD = diag(CDELT) * PC`, where each row of PC is normalised to unit
+/// length. The sign of CDELT[i] is chosen so the diagonal element of the
+/// resulting PC matrix is positive. PC entries with `|val| < 1e-7` are
+/// snapped to 0 to suppress floating-point residue from upstream linear
+/// extraction.
+///
+/// Mirrors C `SplitMat` (fitschan.c:33143-33246).
 pub(crate) fn split_cd(cd: &Array2<f64>) -> (Vec<f64>, Array2<f64>) {
+    const SPLITMAT_THRESHOLD: f64 = 1.0e-7;
+
     let naxis = cd.nrows();
     let mut cdelt = vec![0.0; naxis];
     let mut pc = Array2::zeros((naxis, naxis));
 
     for i in 0..naxis {
+        // Note the sign of the diagonal term *before* magnitude
+        // computation so we can flip CDELT below.
+        let dineg = cd[[i, i]] < 0.0;
+
+        // CDELT magnitude = √(Σ_j CD[i][j]²).
         let mut mag_sq = 0.0;
         for j in 0..naxis {
             mag_sq += cd[[i, j]] * cd[[i, j]];
         }
-        let mag = mag_sq.sqrt();
+        let mut cdlt = mag_sq.sqrt();
+        if dineg {
+            cdlt = -cdlt;
+        }
+        cdelt[i] = cdlt;
 
-        if mag == 0.0 {
-            cdelt[i] = 1.0;
-        } else {
-            cdelt[i] = mag;
-            for j in 0..naxis {
-                pc[[i, j]] = cd[[i, j]] / mag;
-            }
-            if pc[[i, i]] < 0.0 {
-                cdelt[i] = -cdelt[i];
-                for j in 0..naxis {
-                    pc[[i, j]] = -pc[[i, j]];
-                }
+        // PC[i][j] = CD[i][j] / CDELT[i], with the C 1e-7 snap.
+        for j in 0..naxis {
+            if cdlt != 0.0 {
+                let v = cd[[i, j]] / cdlt;
+                pc[[i, j]] = if v.abs() < SPLITMAT_THRESHOLD { 0.0 } else { v };
+            } else {
+                pc[[i, j]] = 0.0;
             }
         }
     }
