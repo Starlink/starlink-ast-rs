@@ -132,7 +132,20 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 /// - PC matrix in 3-digit format (`PC001001`)
 /// - `RADECSYS` (the historical misspelling, not `RADESYS`)
 /// - SFL projection is translated back to GLS; AIT to ATF
-pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+///
+/// `s` is the coordinate-version letter (`' '` primary, `'A'..='Z'`
+/// alt). Per-axis cards are emitted with the suffix appended.
+/// `is_last` indicates whether this is the alphabetically-last
+/// plane: only that plane emits the observation-global keywords
+/// (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DATE-OBS) — last-plane-wins
+/// per the C overwrite contract at fitschan.c:29805.
+pub(crate) fn write_to_cards(
+    store: &FitsStore,
+    cards: &mut CardList,
+    s: char,
+    is_last: bool,
+) -> AstResult<()> {
+    use super::wcs_keywords::key_for;
     let naxis = store.naxis;
 
     // Derive CDELT and PC. If the store has PC + CDELT directly, use them.
@@ -170,7 +183,11 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
             let val = pc_vals[[i, j]];
             let default = if i == j { 1.0 } else { 0.0 };
             if (val - default).abs() > 1e-15 {
-                let key = format!("PC{:03}{:03}", i + 1, j + 1);
+                let key = if s == ' ' {
+                    format!("PC{:03}{:03}", i + 1, j + 1)
+                } else {
+                    format!("PC{:03}{:03}{s}", i + 1, j + 1)
+                };
                 // FITS-PC PC cards carry no comment (fitschan.c:24595).
                 cards.set_float(&key, val, "");
             }
@@ -179,14 +196,14 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 
     // CDELTi.
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
-        let key = format!("CDELT{}", i + 1);
+        let key = key_for("CDELT", Some(i + 1), s);
         cards.set_float(&key, cdelt_val, &format!("Pixel scale on axis {}", i + 1));
     }
 
     // CRPIXi.
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
+            let key = key_for("CRPIX", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
@@ -194,7 +211,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CRVALi.
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
-            let key = format!("CRVAL{}", i + 1);
+            let key = key_for("CRVAL", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
@@ -203,7 +220,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     for i in 0..naxis {
         if let Some(ref val) = store.ctype[i] {
             let pc_ctype = translate_pc_ctype_write(val);
-            let key = format!("CTYPE{}", i + 1);
+            let key = key_for("CTYPE", Some(i + 1), s);
             let comment = store.ctype_com[i]
                 .clone()
                 .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
@@ -214,29 +231,36 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // CUNITi.
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
-            let key = format!("CUNIT{}", i + 1);
+            let key = key_for("CUNIT", Some(i + 1), s);
             cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
 
-    // RADECSYS (the PC misspelling).
+    // RADECSYS (the PC misspelling). Per-version-letter.
     if let Some(ref radesys) = store.radesys {
-        cards.set_string("RADECSYS", radesys, "Reference frame for RA/DEC values");
+        let key = if s == ' ' {
+            "RADECSYS".to_string()
+        } else {
+            format!("RADECSY{s}") // 8-char limit: RADECSYS + s would overflow
+        };
+        cards.set_string(&key, radesys, "Reference frame for RA/DEC values");
     }
 
-    // EQUINOX.
+    // EQUINOX. Per-version-letter.
     if let Some(equinox) = store.equinox {
-        cards.set_float("EQUINOX", equinox, "Epoch of reference equinox");
+        let key = key_for("EQUINOX", None, s);
+        cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
-    // MJD-OBS / DATE-OBS.
-    if let Some(mjdobs) = store.mjdobs {
-        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    // Observation-global cards: only emitted on the last plane.
+    if is_last {
+        if let Some(mjdobs) = store.mjdobs {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+        }
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
     }
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
-    }
-
     Ok(())
 }
 
@@ -393,7 +417,7 @@ END";
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // Should have PC keywords in 3-digit format
         assert!(cards.get_float("PC001001").is_some());
@@ -427,7 +451,7 @@ END";
         store.cd[1][1] = Some(0.001);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // Should have CDELTi (factored from CD)
         let cdelt1 = cards.get_float("CDELT1").unwrap();
@@ -459,7 +483,7 @@ END";
         store.cdelt[1] = Some(0.01);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // SFL should be translated to GLS on PC write
         assert_eq!(cards.get_string("CTYPE1"), Some("GLON-GLS".to_string()));
@@ -506,7 +530,7 @@ END";
         store.pc[1][1] = Some(1.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // Identity PC values should not be written
         assert!(cards.get_float("PC001001").is_none());

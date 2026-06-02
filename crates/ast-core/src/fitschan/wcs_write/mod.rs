@@ -209,6 +209,42 @@ pub(crate) fn encode_wcs_to_store(
     writer(&store, cards)
 }
 
+/// Variant of `encode_wcs_to_store` that drives a per-plane writer.
+///
+/// The writer callback is invoked once per plane in
+/// `collect_plane_stores` order — primary first, then alt planes
+/// alphabetically. The encoder's writer is responsible for
+/// applying the version-letter suffix to per-axis card names; the
+/// `is_last` flag tells the writer whether this plane is the
+/// alphabetically-last one (so it should also emit observation-
+/// global keywords like MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI,
+/// DUT1 — last-plane-wins per the C-library overwrite contract).
+#[allow(dead_code)] // wired into encoders below in Tasks 5.2-5.5
+pub(crate) fn encode_wcs_per_plane(
+    obj: &AnyObject,
+    cards: &mut CardList,
+    dim: &[Option<f64>],
+    encoding: crate::fitschan::Encoding,
+    mut writer: impl FnMut(&FitsStore, &mut CardList, char, bool) -> AstResult<()>,
+) -> AstResult<()> {
+    let frameset = match obj {
+        AnyObject::FrameSet(fs) => fs,
+        _ => {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                "Per-plane FITS encoding requires a FrameSet object",
+            ));
+        }
+    };
+    let planes = collect_plane_stores(frameset, dim, encoding)?;
+    let last_idx = planes.len().saturating_sub(1);
+    for (i, plane) in planes.iter().enumerate() {
+        let is_last = i == last_idx;
+        writer(&plane.store, cards, plane.letter, is_last)?;
+    }
+    Ok(())
+}
+
 /// Decompose a FrameSet into a FitsStore using the current frame as the
 /// WCS target (pixel→current mapping).
 ///
