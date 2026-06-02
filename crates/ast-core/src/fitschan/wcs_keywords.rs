@@ -250,6 +250,10 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     store.specsys = lookup_with_fallback(cards, "SPECSYS", None, s, |c, k| c.get_string(k));
     store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float(k));
     store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float(k));
+    // Observation-global TAI/UT1 offsets. Wired into the SkyFrame in
+    // wcs_celestial::build_celestial.
+    store.dtai = lookup_with_fallback(cards, "DTAI", None, s, |c, k| c.get_float(k));
+    store.dut1 = lookup_with_fallback(cards, "DUT1", None, s, |c, k| c.get_float(k));
 
     // AST-extension keywords. Mirrors WcsFromStore writes at
     // fitschan.c:37005-37372. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,

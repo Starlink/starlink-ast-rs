@@ -155,7 +155,15 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
         sky_frame.set_epoch_year(eq);
     }
 
-    // Step 7b: NORADEC + DefB1950 fallback for alt SkyFrames with
+    // Step 7b: DTAI / DUT1 (TAI-UTC and UT1-UTC offsets in seconds).
+    if let Some(dtai) = store.dtai {
+        sky_frame.set_dtai(dtai);
+    }
+    if let Some(dut1) = store.dut1 {
+        sky_frame.set_dut1(dut1);
+    }
+
+    // Step 7c: NORADEC + DefB1950 fallback for alt SkyFrames with
     // no RADESYS, no EQUINOX, no MJD-OBS — typical of GALACTIC alt-A
     // planes. This path produces the 33281.923 MJD-OBS the writer's
     // last-plane-wins rule emits in fits-pc-gal_fits-pc.

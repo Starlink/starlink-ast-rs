@@ -113,6 +113,14 @@ pub(crate) struct FitsStore {
     /// Only populated by `spectral_axes` once the DSBSpecFrame port
     /// lands; the FITS-WCS encoder reads it on output.
     pub imagfreq: Option<f64>,
+    /// TAI - UTC offset (seconds). Mirrors the FITS DTAI keyword.
+    /// Global per-FrameSet field; emit and read once per header.
+    /// See [`FitsStore::mjdobs`] for the alt-plane last-wins
+    /// contract.
+    pub dtai: Option<f64>,
+    /// UT1 - UTC offset (seconds). Mirrors the FITS DUT1 keyword.
+    /// Global per-FrameSet field; emit and read once per header.
+    pub dut1: Option<f64>,
 }
 
 /// Maximum number of PV parameters per axis.
@@ -165,6 +173,8 @@ impl FitsStore {
             zsource: None,
             ssyssrc: None,
             imagfreq: None,
+            dtai: None,
+            dut1: None,
         }
     }
 

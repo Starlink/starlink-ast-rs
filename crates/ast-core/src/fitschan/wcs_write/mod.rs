@@ -110,7 +110,7 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
         return;
     }
     let last_idx = planes.len() - 1;
-    let (mjdobs, dateobs, obsgeox, obsgeoy, obsgeoz, timesys);
+    let (mjdobs, dateobs, obsgeox, obsgeoy, obsgeoz, timesys, dtai, dut1);
     {
         let last = &planes[last_idx].store;
         mjdobs = last.mjdobs;
@@ -119,6 +119,8 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
         obsgeoy = last.obsgeoy;
         obsgeoz = last.obsgeoz;
         timesys = last.timesys.clone();
+        dtai = last.dtai;
+        dut1 = last.dut1;
     }
     let primary = &mut planes[0].store;
     primary.mjdobs = mjdobs;
@@ -127,6 +129,8 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     primary.obsgeoy = obsgeoy;
     primary.obsgeoz = obsgeoz;
     primary.timesys = timesys;
+    primary.dtai = dtai;
+    primary.dut1 = dut1;
 }
 
 /// Look up the domain string for the alt frame whose Ident-derived
@@ -416,6 +420,13 @@ fn write_store_to_cards(
         // DATE-OBS companion to MJD-OBS. Mirrors fitschan.c:3610-3613.
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
+        // DTAI / DUT1 — observation-global TAI/UT1 offsets.
+        if let Some(dtai) = store.dtai {
+            cards.set_float("DTAI", dtai, "[s] TAI - UTC");
+        }
+        if let Some(dut1) = store.dut1 {
+            cards.set_float("DUT1", dut1, "[s] UT1 - UTC");
         }
     }
 

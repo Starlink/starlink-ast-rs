@@ -279,6 +279,16 @@ pub(crate) fn sky_sys(
         }
     }
 
+    // Observation-global TAI/UT1 offsets — read from the SkyFrame and
+    // copy into the store. Last-plane-wins per the global-card
+    // contract (see FitsStore::mjdobs doc).
+    if let Some(dtai) = skyfrm.dtai() {
+        store.dtai = Some(dtai);
+    }
+    if let Some(dut1) = skyfrm.dut1() {
+        store.dut1 = Some(dut1);
+    }
+
     // CTYPE construction. Skip the projection suffix path when
     // wcstype == 0 (mirrors the C switch at line 29879).
     // Pass 1-based SkyFrame axis indices for the unknown-system
