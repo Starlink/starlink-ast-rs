@@ -42,7 +42,6 @@ pub(crate) fn key_for_2(prefix: &str, i: usize, j: usize, s: char) -> String {
 /// `CDELT{i}{S}` is present for some axis `i ∈ 1..=9`.
 ///
 /// Mirrors C `WcsFromStore`'s per-version axis-key scan.
-#[allow(dead_code)] // wired into FitsChan::read in Task 3.3
 pub(crate) fn detect_alt_letters(cards: &CardList) -> Vec<char> {
     let mut found = Vec::new();
     for c in 'A'..='Z' {
@@ -291,7 +290,6 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
 /// version is absent — see [`extract_wcs_keywords`] for the
 /// fallback rule. Mirrors fitschan.c::WcsFromStore's per-version
 /// loop.
-#[allow(dead_code)] // wired in Task 3.3
 pub(crate) fn extract_wcs_keywords_with_alts(
     cards: &CardList,
 ) -> AstResult<(FitsStore, Vec<(char, FitsStore)>)> {

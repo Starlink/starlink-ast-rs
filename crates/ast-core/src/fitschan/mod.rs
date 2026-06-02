@@ -551,8 +551,13 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsWcs => {
-                let store = wcs_keywords::extract_wcs_keywords(&self.cards, ' ')?;
-                let obj = wcs_read::decode_wcs(&store)?;
+                // FITS-WCS is the only encoding that uses the bare
+                // `*A..*Z` axis-suffix convention for alt planes.
+                // Other FITS-* encodings (FitsPc, FitsIraf, FitsAips,
+                // FitsClass, Dss) carry their own per-encoder
+                // single-plane reader path through enc_*::read_from_cards.
+                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
+                let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
             Encoding::FitsPc => {

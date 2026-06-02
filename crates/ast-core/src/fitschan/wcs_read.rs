@@ -59,6 +59,93 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
     Ok(AnyObject::FrameSet(frameset))
 }
 
+/// Decode the primary plane plus zero or more alt planes into a
+/// FrameSet whose base = pixel grid, current = primary world, and
+/// extra frames = alt-plane world frames (one per detected version
+/// letter).
+///
+/// Each alt frame is added with `add_frame(FrameRef::Base, …)`, so
+/// the native dump shows `Lnk{i}=1` for every alt — matching the C
+/// library's structure exactly. Each alt frame's `Ident` is the
+/// version letter; the writer reads this back to recover the
+/// per-plane suffix on round-trip.
+///
+/// Mirrors fitschan.c::WcsFromStore + the per-version `WcsSkyFrame`
+/// loop.
+pub(crate) fn decode_wcs_with_alts(
+    primary: &FitsStore,
+    alts: &[(char, FitsStore)],
+) -> AstResult<AnyObject> {
+    // Step 1: build the primary FrameSet via the existing decoder.
+    let primary_obj = decode_wcs(primary)?;
+    let mut fs = match primary_obj {
+        AnyObject::FrameSet(f) => f,
+        _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
+    };
+
+    // Remember the primary current frame index so we can restore it
+    // after add_frame moves current to each newly-appended alt.
+    // After the primary is built, it sits at frame index 2.
+    let primary_index = 2;
+
+    // Step 2: append one alt frame per (letter, alt_store).
+    for (letter, alt_store) in alts {
+        let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(alt_store)?;
+        let celestial = wcs_celestial::build_celestial(alt_store);
+        let spectral = wcs_spectral::build_spectral(alt_store);
+        let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
+        let iwc_to_world = build_iwc_to_world(alt_store, celestial, spectral)?;
+        let full_mapping: DynMapping = Box::new(CmpMap::new(
+            pixel_to_iwc,
+            iwc_to_world,
+            Composition::Series,
+        )?);
+
+        // Stamp the version letter onto the alt frame so the writer
+        // can recover it.
+        set_frame_ident(world_frame.as_mut(), &letter.to_string());
+
+        fs.add_frame(FrameRef::Base, full_mapping, world_frame)?;
+    }
+
+    // Restore current to the primary frame (add_frame moved it).
+    if !alts.is_empty() {
+        fs.set_current(FrameRef::Index(primary_index))?;
+    }
+
+    Ok(AnyObject::FrameSet(fs))
+}
+
+/// Helper: stamp `ident` onto a boxed Frame, dispatching by concrete
+/// type. Falls back silently for frame variants we don't yet label.
+fn set_frame_ident(frame: &mut dyn crate::frames::Frame, ident: &str) {
+    use crate::frames::{BasicFrame, CmpFrame, FluxFrame, SkyFrame, SpecFrame, TimeFrame};
+    use crate::mappings::AsAny;
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<BasicFrame>() {
+        f.set_ident(ident);
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<SkyFrame>() {
+        f.set_ident(ident);
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<SpecFrame>() {
+        f.set_ident(ident);
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<TimeFrame>() {
+        f.set_ident(ident);
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<CmpFrame>() {
+        f.set_ident(ident);
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<FluxFrame>() {
+        f.set_ident(ident);
+    }
+}
+
 /// Build the IWC → world mapping (consumes the decoder results).
 ///
 /// This mapping takes an naxis-dimensional IWC vector and produces the
