@@ -365,6 +365,10 @@ fn build_iwc_to_sky_mapping(
     //
     // In the CmpMap composition, we call wcsmap transform with forward=false.
     // But since we're composing mappings, we need to invert the WcsMap object.
+    // Keep a forward-direction clone for wcs_nat_pole (needs forward
+    // WcsMap to read nat_lon/nat_lat); the inverse goes into the
+    // pipeline.
+    let wcsmap_fwd = wcsmap.clone();
     let mut wcsmap_inv = wcsmap;
     wcsmap_inv.invert();
 
@@ -435,7 +439,19 @@ fn build_iwc_to_sky_mapping(
     //
     // For Phase 2: Implement the proper rotation using the Euler formula.
     // We use the SphericalRotation approach: convert to 3-vector, rotate, convert back.
-    let rotation = build_native_to_celestial_rotation(crval_lon, crval_lat, lonpole)?;
+    // Use the WcsMap-aware rotation builder so non-zenithal projections
+    // (SFL, CAR, MER, ...) get a correct native pole via WcsNatPole
+    // — for zenithal projections the fiducial coincides with the
+    // native pole, so this reduces to the legacy `(alphap, deltap) =
+    // (crval_lon, crval_lat)` branch.
+    let latpole_rad = store.latpole.map(|v| v * deg2rad);
+    let rotation = build_native_to_celestial_rotation_for_wcsmap(
+        &wcsmap_fwd,
+        crval_lon,
+        crval_lat,
+        Some(lonpole),
+        latpole_rad,
+    )?;
 
     // Compose: zoom → wcsmap_inv → rotation
     let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
@@ -465,54 +481,80 @@ fn build_iwc_to_sky_mapping(
 ///
 /// Alternatively, use a simple ShiftMap for the special case delta_p = 90° (pole).
 /// For the general case, we use the proper rotation.
-pub(crate) fn build_native_to_celestial_rotation(
+/// Build the native→celestial rotation for a specific WcsMap, using
+/// the proper `WcsNatPole` solution to find the celestial pole's
+/// native coords. This is the C-equivalent path: for non-zenithal
+/// projections (SFL, CAR, MER, ...) the native fiducial is on the
+/// equator, not the pole, so the rotation cannot be derived purely
+/// from `(crval_lon, crval_lat)`.
+///
+/// `lonpole` and `latpole` are FITS-supplied values in radians; pass
+/// `None` for "default — let `wcs_nat_pole` pick".
+///
+/// Mirrors `fitschan.c::WcsNative` (~38188-38302).
+pub(crate) fn build_native_to_celestial_rotation_for_wcsmap(
+    wcsmap: &WcsMap,
     crval_lon: f64,
     crval_lat: f64,
-    lonpole: f64,
+    lonpole: Option<f64>,
+    latpole: Option<f64>,
+) -> Option<DynMapping> {
+    use crate::fitschan::fset_to_store::fiducial::get_fiducial_nsc;
+    use crate::fitschan::fset_to_store::sky_pole::wcs_nat_pole;
+
+    let (phi0, _theta0) = get_fiducial_nsc(wcsmap);
+
+    // Resolve LONPOLE / LATPOLE defaults via WcsNatPole. The function
+    // takes "no value supplied" sentinels (≥ π absolute or non-finite);
+    // we pass +∞ for None.
+    let mut phip = lonpole.unwrap_or(f64::INFINITY);
+    let latpole_arg = latpole.unwrap_or(f64::INFINITY);
+    let mut alphap = 0.0;
+    let mut deltap = 0.0;
+    let ok = wcs_nat_pole(
+        wcsmap,
+        crval_lon,
+        crval_lat,
+        latpole_arg,
+        &mut phip,
+        &mut alphap,
+        &mut deltap,
+    );
+    if !ok {
+        return None;
+    }
+
+    build_rotation_from_pole(phi0, phip, alphap, deltap, crval_lon)
+}
+
+/// Build the rotation pipeline given resolved native-pole celestial
+/// coords `(alphap, deltap)`, native-pole longitude `phip`, native
+/// fiducial longitude `phi0`, and celestial fiducial longitude
+/// `alpha0`. Mirrors `fitschan.c::WcsNative` lines 38239-38301.
+fn build_rotation_from_pole(
+    phi0: f64,
+    phip: f64,
+    alphap: f64,
+    deltap: f64,
+    alpha0: f64,
 ) -> Option<DynMapping> {
     use crate::mappings::{MatrixMap, SphMap};
     use ndarray::Array2;
 
-    // Mirror the C library's WcsNative recipe (fitschan.c around line
-    // 38246–38281): build the native→celestial rotation as three
-    // elementary rotations applied to the unit matrix. We apply them
-    // as direct 3×3 multiplications here rather than via PAL's
-    // deuler — the two conventions disagree on points near (but not
-    // at) the native pole, which produces a wrong CD when the IWC
-    // composition is applied on the write side.
-    //
-    // The C library's three rotations, with the simplifying choice
-    // (αₚ, δₚ) = (CRVAL_lon, CRVAL_lat) for zenithal projections at
-    // their fiducial point:
-    //   1. R_z(-LONPOLE)        — celestial pole at native (0, 0).
-    //   2. R_y(δₚ - π/2)        — celestial pole at 90° latitude in
-    //                              the rotated frame.
-    //   3. R_z(π + αₚ)          — primary meridian at native 0°.
-    // Combined: M = R_z(π + αₚ) · R_y(δₚ - π/2) · R_z(-LONPOLE).
-    //
-    // `astMtrRot` post-multiplies into the existing forward matrix,
-    // which is equivalent to pre-multiplying the *rotation* matrix
-    // into M as written above (rightmost rotation applied first to
-    // a vector v: M·v).
-    let alphap = crval_lon;
-    let deltap = crval_lat;
-    let r1 = rot_z(-lonpole);
+    // Three rotations matching C's astMtrRot sequence at fitschan.c
+    // 38253-38281.
+    let r1 = rot_z(-phip);
     let r2 = rot_y(deltap - PI / 2.0);
     let r3 = rot_z(PI + alphap);
     let rot_matrix = mat3_mul(&r3, &mat3_mul(&r2, &r1));
 
-    // Build the mapping pipeline:
-    //   native (phi, theta) → SphMap(inverted) → 3D Cartesian
-    //     → MatrixMap(rotation) → 3D Cartesian → SphMap(forward) → celestial (lon, lat)
-    //
-    // SphMap forward: (x, y, z) → (lon, lat)  [nin=3, nout=2]
-    // SphMap inverted: (lon, lat) → (x, y, z) [nin=2, nout=3]
-
-    // Step 1: native spherical to Cartesian (SphMap inverted).
+    // sph_to_cart: spherical (lon, lat) → cartesian (x, y, z).
+    // C sets PolarLong = phi0 on this SphMap (line 38244).
     let mut sph_to_cart = SphMap::new();
-    sph_to_cart.invert(); // Now nin=2 (lon,lat), nout=3 (x,y,z)
+    sph_to_cart.invert(); // forward = (lon, lat) → (x, y, z)
+    sph_to_cart.set_polar_long(phi0);
 
-    // Step 2: 3x3 rotation matrix.
+    // 3×3 rotation matrix.
     let mut mat = Array2::zeros((3, 3));
     for i in 0..3 {
         for j in 0..3 {
@@ -521,10 +563,11 @@ pub(crate) fn build_native_to_celestial_rotation(
     }
     let rot_map = MatrixMap::new(mat).ok()?;
 
-    // Step 3: Cartesian to celestial spherical (SphMap forward).
-    let cart_to_sph = SphMap::new(); // nin=3, nout=2
+    // cart_to_sph: cartesian (x, y, z) → spherical (lon, lat).
+    // C sets PolarLong = alpha0 on this SphMap (line 38299).
+    let mut cart_to_sph = SphMap::new();
+    cart_to_sph.set_polar_long(alpha0);
 
-    // Compose: sph_to_cart → rot_map → cart_to_sph
     let step1 = CmpMap::new(
         Box::new(sph_to_cart),
         Box::new(rot_map),
@@ -532,7 +575,6 @@ pub(crate) fn build_native_to_celestial_rotation(
     )
     .ok()?;
     let full = CmpMap::new(Box::new(step1), Box::new(cart_to_sph), Composition::Series).ok()?;
-
     Some(Box::new(full))
 }
 

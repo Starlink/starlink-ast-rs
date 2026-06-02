@@ -25,7 +25,7 @@
 #![allow(clippy::needless_range_loop)]
 
 mod celestial_axes;
-mod fiducial;
+pub(crate) mod fiducial;
 mod grism;
 mod invertable;
 mod is_map_linear;
@@ -34,7 +34,7 @@ mod make_int_world;
 mod orth;
 mod other_axes;
 mod sip_int_world;
-mod sky_pole;
+pub(crate) mod sky_pole;
 mod sky_sys;
 mod spectral_axes;
 mod world_axes;

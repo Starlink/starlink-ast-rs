@@ -242,11 +242,30 @@ pub(crate) fn write_to_cards(
     // Also fold SIN-with-NCP-PV back to the legacy `-NCP` projection
     // suffix (mirrors fitschan.c:3270-3293).
     let ncp_axes = super::wcs_keywords::sin_should_emit_as_ncp(store);
+    // SFL → GLS rename when CRVAL = (0, 0). FITS-AIPS encodes
+    // Sanson-Flamsteed at the celestial origin using the legacy GLS
+    // projection code. Mirrors fitschan.c::AIPSFromStore lines
+    // 3257-3267: when the lat/lon axis pair has prj==SFL and both
+    // CRVAL values are zero, rewrite the projection suffix to GLS.
+    let sfl_to_gls = if let Some((lon_axis, lat_axis)) = store.celestial_axes() {
+        let lon_zero = store.crval[lon_axis].unwrap_or(0.0) == 0.0;
+        let lat_zero = store.crval[lat_axis].unwrap_or(0.0) == 0.0;
+        let is_sfl = store.ctype[lon_axis]
+            .as_deref()
+            .is_some_and(|c| c.len() >= 8 && c[5..8].eq_ignore_ascii_case("SFL"));
+        is_sfl && lon_zero && lat_zero
+    } else {
+        false
+    };
+
     for i in 0..naxis {
         if let Some(ref ctype) = store.ctype[i] {
             let mut aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
             if ncp_axes && aips_ctype.len() >= 8 && aips_ctype[5..8].eq_ignore_ascii_case("SIN") {
                 aips_ctype.replace_range(5.., "NCP");
+            }
+            if sfl_to_gls && aips_ctype.len() >= 8 && aips_ctype[5..8].eq_ignore_ascii_case("SFL") {
+                aips_ctype.replace_range(5.., "GLS");
             }
             let key = key_for("CTYPE", Some(i + 1), s);
             let comment = store.ctype_com[i]

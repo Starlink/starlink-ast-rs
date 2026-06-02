@@ -622,28 +622,30 @@ fn build_wcs_to_iwc(
     diag[[ilat, ilat]] = DD2R;
     let scale = MatrixMap::new(diag)?;
 
-    // Native-spherical → WCS rotation. We use the existing
-    // wcs_write::wcs_celestial helper since the rotation maths is
-    // identical to what C's WcsNative produces. The helper expects
-    // all three angles in radians (mirrors C's WcsNative which
-    // multiplies CRVAL by AST__DD2R before passing in — see
-    // fitschan.c:38175).
-    let lonpole_rad = PI;
-    let wcs_native_rot = crate::fitschan::wcs_celestial::build_native_to_celestial_rotation(
-        crval_deg[0] * DD2R,
-        crval_deg[1] * DD2R,
-        lonpole_rad,
-    )
-    .ok_or_else(|| {
-        crate::error::AstError::new(
-            crate::error::ErrorCode::Nodef,
-            "celestial_axes: failed to build native→celestial rotation",
+    // Native-spherical → WCS rotation. Build via the WcsMap-aware
+    // path so non-zenithal projections (SFL, CAR, MER, ...) get the
+    // correct celestial-pole solution from `WcsNatPole`. Mirrors C's
+    // WcsNative which calls WcsNatPole (fitschan.c:38175-38231) and
+    // then assembles the three rotations.
+    let wcsmap_fwd = WcsMap::new(2, projection, 1, 2)?;
+    let wcs_native_rot =
+        crate::fitschan::wcs_celestial::build_native_to_celestial_rotation_for_wcsmap(
+            &wcsmap_fwd,
+            crval_deg[0] * DD2R,
+            crval_deg[1] * DD2R,
+            None,
+            None,
         )
-    })?;
+        .ok_or_else(|| {
+            crate::error::AstError::new(
+                crate::error::ErrorCode::Nodef,
+                "celestial_axes: failed to build native→celestial rotation",
+            )
+        })?;
 
     // 2D celestial chain (PPC → WCS):
     //   WcsMap_inverted (PPC → native spherical) → wcs_native_rot
-    let mut wcsmap_inv = WcsMap::new(2, projection, 1, 2)?;
+    let mut wcsmap_inv = wcsmap_fwd.clone();
     wcsmap_inv.invert();
     let cel_2d: DynMapping = Box::new(CmpMap::new(
         Box::new(wcsmap_inv),
