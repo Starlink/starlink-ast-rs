@@ -6,6 +6,10 @@
 //!
 //! This mirrors the C library's `FsetToStore()` → `WcsFromStore()` pipeline.
 
+mod plane_stores;
+#[allow(unused_imports)] // wired into encoders in Group 5
+pub(crate) use plane_stores::{PlaneStore, collect_plane_stores};
+
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::wcs_celestial::build_native_to_celestial_rotation;
