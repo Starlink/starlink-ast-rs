@@ -419,6 +419,12 @@ impl SkyFrame {
         self.ident.as_deref().unwrap_or("")
     }
 
+    /// Set the frame identification string. Mirrors `astSetIdent`.
+    pub fn set_ident(&mut self, ident: impl Into<String>) {
+        let s = ident.into();
+        self.ident = if s.is_empty() { None } else { Some(s) };
+    }
+
     // --- Observer attributes ---
 
     /// Set the observer geodetic latitude in radians.
@@ -1796,5 +1802,15 @@ mod tests {
         let lon_err = lon_diff.min(2.0 * PI - lon_diff);
         assert!(lon_err < 1.0e-10, "lon mismatch: {:.2e}", lon_err);
         assert_close(p[1], 0.5, 1.0e-10);
+    }
+
+    #[test]
+    fn skyframe_set_ident_round_trip() {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        assert_eq!(sky.ident(), "");
+        sky.set_ident("A");
+        assert_eq!(sky.ident(), "A");
+        sky.set_ident("");
+        assert_eq!(sky.ident(), "");
     }
 }
