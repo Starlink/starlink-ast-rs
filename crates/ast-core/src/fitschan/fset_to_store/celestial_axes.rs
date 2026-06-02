@@ -657,10 +657,24 @@ fn build_wcs_to_iwc(
     //
     // We need a *cloned* WcsMap with the same PV parameters as
     // `src_wcsmap` and pointed in the inverse direction (PPC →
-    // native). Cloning then ensuring `is_inverted() == true` rather
-    // than blindly toggling means the chain works regardless of
-    // whether `src_wcsmap` was found in its forward or inverse
-    // orientation in the source mapping.
+    // native).
+    //
+    // `Mapping::invert()` is a toggle, not a setter for an absolute
+    // state — there is no `set_inverted(bool)` API. So we can't just
+    // call `clone().invert()` and assume we end up inverted: if
+    // `src_wcsmap` was already inverted in the source mapping
+    // (which happens for the WcsMap found inside a pixel→WCS chain,
+    // where the projection is exercised in the PPC→native
+    // direction), toggling would put it *back* to forward. Instead,
+    // ask the absolute state via `is_inverted()` and toggle only
+    // when needed so we always end up with `is_inverted() == true`.
+    //
+    // This matters for non-zenithal projections that carry PV
+    // parameters (NCP via PV2_2 = cot δ, offset SkyFrames, TPN). If
+    // the cloned WcsMap had different PVs (or wrong orientation)
+    // than the source, the simplifier would fail to collapse the
+    // PPC→native→celestial→native→PPC round-trip exactly, leaving
+    // FP residue that propagates into FitLine's per-axis fits.
     let mut wcsmap_inv = src_wcsmap.clone();
     if !wcsmap_inv.is_inverted() {
         wcsmap_inv.invert();
