@@ -109,28 +109,40 @@ fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
     if planes.len() <= 1 {
         return;
     }
-    let last_idx = planes.len() - 1;
-    let (mjdobs, dateobs, obsgeox, obsgeoy, obsgeoz, timesys, dtai, dut1);
-    {
-        let last = &planes[last_idx].store;
-        mjdobs = last.mjdobs;
-        dateobs = last.dateobs.clone();
-        obsgeox = last.obsgeox;
-        obsgeoy = last.obsgeoy;
-        obsgeoz = last.obsgeoz;
-        timesys = last.timesys.clone();
-        dtai = last.dtai;
-        dut1 = last.dut1;
+    // C SkySys (fitschan.c:29805) overwrites store->mjdobs only when
+    // it actually computes a new value — i.e. only when it ran on
+    // that frame. Frames that aren't SkyFrames don't trigger SkySys
+    // at all, so they don't overwrite. Mirror that here by taking the
+    // *last* plane that actually has a Some value, walking from the
+    // end backwards.
+    fn last_some<T: Clone>(
+        planes: &[PlaneStore],
+        get: impl Fn(&FitsStore) -> Option<T>,
+    ) -> Option<T> {
+        for plane in planes.iter().rev() {
+            if let Some(v) = get(&plane.store) {
+                return Some(v);
+            }
+        }
+        None
     }
+    let mjdobs = last_some(planes, |s| s.mjdobs);
+    let dateobs = last_some(planes, |s| s.dateobs.clone());
+    let obsgeox = last_some(planes, |s| s.obsgeox);
+    let obsgeoy = last_some(planes, |s| s.obsgeoy);
+    let obsgeoz = last_some(planes, |s| s.obsgeoz);
+    let timesys = last_some(planes, |s| s.timesys.clone());
+    let dtai = last_some(planes, |s| s.dtai);
+    let dut1 = last_some(planes, |s| s.dut1);
     let primary = &mut planes[0].store;
-    primary.mjdobs = mjdobs;
-    primary.dateobs = dateobs;
-    primary.obsgeox = obsgeox;
-    primary.obsgeoy = obsgeoy;
-    primary.obsgeoz = obsgeoz;
-    primary.timesys = timesys;
-    primary.dtai = dtai;
-    primary.dut1 = dut1;
+    primary.mjdobs = mjdobs.or(primary.mjdobs);
+    primary.dateobs = dateobs.or_else(|| primary.dateobs.clone());
+    primary.obsgeox = obsgeox.or(primary.obsgeox);
+    primary.obsgeoy = obsgeoy.or(primary.obsgeoy);
+    primary.obsgeoz = obsgeoz.or(primary.obsgeoz);
+    primary.timesys = timesys.or_else(|| primary.timesys.clone());
+    primary.dtai = dtai.or(primary.dtai);
+    primary.dut1 = dut1.or(primary.dut1);
 }
 
 /// Look up the domain string for the alt frame whose Ident-derived
