@@ -274,6 +274,39 @@ pub(crate) fn encode_wcs_per_plane(
     };
     let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
     let planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals)?;
+
+    // Restrict to the primary plane for encodings that the C library
+    // documents as primary-axis-only. Mirrors the per-encoder header
+    // notes:
+    //   - FITS-IRAF: "Only primary axis descriptions are written
+    //     out." (fitschan.c:18864)
+    //   - FITS-PC:   "Only primary axis descriptions are written
+    //     out." (fitschan.c:5xxx — same restriction)
+    //   - FITS-AIPS / FITS-AIPS++: same.
+    //   - FITS-CLASS: same.
+    //
+    // FITS-WCS is the only encoding that supports the full A..Z
+    // letter loop, and it goes through `encode_wcs` (not this
+    // helper).
+    use crate::fitschan::Encoding;
+    let primary_only = matches!(
+        encoding,
+        Encoding::FitsIraf
+            | Encoding::FitsPc
+            | Encoding::FitsAips
+            | Encoding::FitsAipsPP
+            | Encoding::FitsClass
+    );
+
+    if primary_only {
+        if let Some(primary) = planes.first() {
+            // For primary-only encoders, the single plane is the
+            // last (and only) plane — pass `is_last = true`.
+            writer(&primary.store, cards, primary.letter, true)?;
+        }
+        return Ok(());
+    }
+
     let last_idx = planes.len().saturating_sub(1);
     for (i, plane) in planes.iter().enumerate() {
         let is_last = i == last_idx;
