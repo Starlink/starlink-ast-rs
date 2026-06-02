@@ -34,6 +34,31 @@ pub(crate) fn key_for_2(prefix: &str, i: usize, j: usize, s: char) -> String {
     }
 }
 
+/// Discover the set of alt-plane version letters present in a
+/// FITS-WCS card list.
+///
+/// Returns letters in alphabetical order. A letter is included iff
+/// at least one of `CTYPE{i}{S}`, `CRVAL{i}{S}`, `CRPIX{i}{S}`,
+/// `CDELT{i}{S}` is present for some axis `i ∈ 1..=9`.
+///
+/// Mirrors C `WcsFromStore`'s per-version axis-key scan.
+#[allow(dead_code)] // wired into FitsChan::read in Task 3.3
+pub(crate) fn detect_alt_letters(cards: &CardList) -> Vec<char> {
+    let mut found = Vec::new();
+    for c in 'A'..='Z' {
+        let any = (1..=9).any(|i| {
+            cards.find(&format!("CTYPE{i}{c}")).is_some()
+                || cards.find(&format!("CRVAL{i}{c}")).is_some()
+                || cards.find(&format!("CRPIX{i}{c}")).is_some()
+                || cards.find(&format!("CDELT{i}{c}")).is_some()
+        });
+        if any {
+            found.push(c);
+        }
+    }
+    found
+}
+
 /// Look up a value from `cards` for an axis-indexed or scalar
 /// FITS-WCS keyword, with the C `GetItem` primary-fallback rule.
 ///
@@ -255,6 +280,31 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     Ok(store)
 }
 
+/// Extract primary + every detected alt-plane FitsStore from a
+/// CardList.
+///
+/// Wired into `FitsChan::read` for FITS-WCS in Task 3.3.
+///
+/// The returned alt list is in alphabetical letter order. Each alt
+/// FitsStore was extracted with `extract_wcs_keywords(cards, s)`,
+/// which falls back to the primary keyword when the alt-suffixed
+/// version is absent — see [`extract_wcs_keywords`] for the
+/// fallback rule. Mirrors fitschan.c::WcsFromStore's per-version
+/// loop.
+#[allow(dead_code)] // wired in Task 3.3
+pub(crate) fn extract_wcs_keywords_with_alts(
+    cards: &CardList,
+) -> AstResult<(FitsStore, Vec<(char, FitsStore)>)> {
+    let primary = extract_wcs_keywords(cards, ' ')?;
+    let alt_letters = detect_alt_letters(cards);
+    let mut alts = Vec::with_capacity(alt_letters.len());
+    for s in alt_letters {
+        let store = extract_wcs_keywords(cards, s)?;
+        alts.push((s, store));
+    }
+    Ok((primary, alts))
+}
+
 /// Test whether a SIN projection in `store` should be re-emitted as
 /// the legacy `-NCP` form. Mirrors fitschan.c:3270-3293. The rewrite
 /// applies when:
@@ -453,6 +503,57 @@ mod tests {
     fn key_for_2_handles_pc_cd() {
         assert_eq!(key_for_2("PC", 1, 2, ' '), "PC1_2");
         assert_eq!(key_for_2("CD", 1, 1, 'B'), "CD1_1B");
+    }
+
+    #[test]
+    fn detect_alt_letters_empty_when_only_primary() {
+        let header = "\
+NAXIS   =                    2
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+END";
+        let cards = cards_from(header);
+        assert!(detect_alt_letters(&cards).is_empty());
+    }
+
+    #[test]
+    fn detect_alt_letters_finds_a_and_b() {
+        let header = "\
+NAXIS   =                    2
+CTYPE1A = 'GLON-TAN'
+CRPIX1B =                100.0
+END";
+        let cards = cards_from(header);
+        let letters = detect_alt_letters(&cards);
+        assert_eq!(letters, vec!['A', 'B']);
+    }
+
+    #[test]
+    fn extract_with_alts_reads_two_planes() {
+        let header = "\
+NAXIS   =                    2
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+CRVAL1  =                180.0
+CRVAL2  =                 45.0
+CRPIX1  =                 50.5
+CRPIX2  =                 50.5
+CDELT1  =                -0.01
+CDELT2  =                 0.01
+CTYPE1A = 'GLON-TAN'
+CTYPE2A = 'GLAT-TAN'
+END";
+        let cards = cards_from(header);
+        let (primary, alts) = extract_wcs_keywords_with_alts(&cards).unwrap();
+        assert_eq!(primary.ctype[0].as_deref(), Some("RA---TAN"));
+        assert_eq!(alts.len(), 1);
+        let (letter, alt) = &alts[0];
+        assert_eq!(*letter, 'A');
+        assert_eq!(alt.ctype[0].as_deref(), Some("GLON-TAN"));
+        // Primary fallback for CRVAL/CRPIX/CDELT (alt didn't override).
+        assert_eq!(alt.crval[0], Some(180.0));
+        assert_eq!(alt.crpix[0], Some(50.5));
+        assert_eq!(alt.cdelt[0], Some(-0.01));
     }
 
     #[test]
