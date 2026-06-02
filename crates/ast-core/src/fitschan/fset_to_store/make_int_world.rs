@@ -439,7 +439,35 @@ pub(crate) fn make_int_world(
     }
 
     // Step 13: split CD into CDELT + PC and store. Mirrors C:22270-22284.
-    let (cdelt, pc) = split_cd(&cdmat);
+    let (cdelt, mut pc) = split_cd(&cdmat);
+
+    // Numerical-residue cleanup: PC entries below 1e-7 in absolute
+    // value are floating-point noise from the linear-fit path (e.g.
+    // 1e-20 spurious off-diagonals from a rotation that should be
+    // exactly diagonal). Snap them to zero before re-folding into the
+    // emitted CD matrix. Mirrors the per-PC threshold the deleted
+    // `clean_cd_residue` helper applied; the bound matches C
+    // SplitMat at fitschan.c:21399.
+    const PC_SNAP_THRESHOLD: f64 = 1.0e-7;
+    for i in 0..nout {
+        for j in 0..nout {
+            let val = pc[[i, j]];
+            let snap_to = if i == j { 1.0 } else { 0.0 };
+            if (val - snap_to).abs() < PC_SNAP_THRESHOLD {
+                pc[[i, j]] = snap_to;
+            }
+        }
+    }
+
+    // Re-fold cleaned PC × CDELT into the CD matrix that goes into
+    // store.cd, so the writer's CD-matrix path emits clean values too.
+    let mut clean_cdmat = ndarray::Array2::<f64>::zeros((nout, nout));
+    for i in 0..nout {
+        for j in 0..nout {
+            clean_cdmat[[i, j]] = pc[[i, j]] * cdelt[i];
+        }
+    }
+
     for i in 0..nout {
         for j in 0..nout {
             let val = pc[[i, j]];
@@ -466,7 +494,7 @@ pub(crate) fn make_int_world(
     // pipeline keeps it for the writer's CD/PC choice).
     for i in 0..nout {
         for j in 0..nout {
-            store.cd[i][j] = Some(cdmat[[i, j]]);
+            store.cd[i][j] = Some(clean_cdmat[[i, j]]);
         }
     }
 

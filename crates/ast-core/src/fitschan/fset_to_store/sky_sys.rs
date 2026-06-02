@@ -257,10 +257,20 @@ pub(crate) fn sky_sys(
     // Default-date check: when ep_utc == eq, the FITS spec says
     // MJD-OBS / DATE-OBS default to the equinox epoch — so we don't
     // emit them. C: fitschan.c:29757 (defdate = astEQUAL(ep_utc, eq)).
-    let defdate = match (ep_utc, sys) {
-        (Some(e), s) if s.needs_equinox() => (e - eq_mjd).abs() < 1e-9,
-        _ => false,
+    //
+    // Mirrors astEQUAL(a, b): treat as equal when
+    //   |a - b| <= max(1e5 * (|a|+|b|) * DBL_EPSILON, 1e-12)
+    // This loose tolerance is what makes GAPPT (with default equinox
+    // = J2000) suppress MJD-OBS even when the user supplied an
+    // MJD-OBS that matches the J2000 epoch by accident.
+    let defdate = match ep_utc {
+        Some(e) => {
+            let threshold = (1.0e5 * (e.abs() + eq_mjd.abs()) * f64::EPSILON).max(1.0e-12);
+            (e - eq_mjd).abs() <= threshold
+        }
+        None => false,
     };
+    let _ = sys;
 
     // Convert equinox to FITS year. None means "do not emit EQUINOX"
     // (RADEC systems other than FK4/FK5 leave it unset).
