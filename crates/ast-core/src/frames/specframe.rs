@@ -687,6 +687,52 @@ impl SpecFrame {
         }
     }
 
+    /// Topocentric apparent velocity (m/s) of the SpecFrame's
+    /// `StdOfRest`. This is the value emitted as the FITS `VELOSYS`
+    /// keyword.
+    ///
+    /// Mirrors `fitschan.c::SpectralAxes` lines 30774-30796: imagine
+    /// a hypothetical source at rest in the SpecFrame's `StdOfRest`
+    /// (i.e. `SourceVel = 0`, `SourceVRF = StdOfRest`, `SourceSys =
+    /// Vrel`), then convert that source velocity into the topocentric
+    /// frame.
+    ///
+    /// Returns `None` if `StdOfRest` is `Source` (the source rest
+    /// frame is itself the standard of rest, so the topocentric
+    /// velocity is undefined here — C sets `vsource = AST__BAD` in
+    /// that branch).
+    pub fn velosys(&self) -> Option<f64> {
+        let sor = self.std_of_rest();
+        if sor == StdOfRest::Source {
+            return None;
+        }
+
+        let rf = self.rest_freq?;
+
+        // Hypothetical source at rest in the SpecFrame's rest frame.
+        // ConvertSourceVel from (sor, Vrel) to (Topocentric, Vrel)
+        // with SourceVel = 0:
+        //   VlToFr (rf)  → SOR→Helio (sor) → Helio→TPSOR → FrToVl (rf)
+        // (The system-conversion VrToVl etc. is a no-op when both
+        // sides are Vrel.)
+        let mut specmap = SpecMap::new();
+        specmap.add(SpecCvtType::VlToFr, &[rf]);
+        self.add_sor_to_helio(&mut specmap, sor);
+        self.add_helio_to_sor(&mut specmap, StdOfRest::Topocentric);
+        specmap.add(SpecCvtType::FrToVl, &[rf]);
+
+        use crate::coords::PointSet;
+        use crate::mappings::Mapping;
+        let pts = PointSet::from_rows([[0.0]]);
+        match specmap.transform(&pts, true) {
+            Ok(out) => {
+                let v = out.point(0)[0];
+                if is_bad(v) { None } else { Some(v) }
+            }
+            Err(_) => None,
+        }
+    }
+
     /// Add SpecMap steps to convert from the current system to frequency.
     fn add_system_to_freq(specmap: &mut SpecMap, system: SpecSystem, rest_freq: Option<f64>) {
         match system {

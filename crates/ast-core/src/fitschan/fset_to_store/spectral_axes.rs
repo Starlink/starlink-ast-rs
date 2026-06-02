@@ -314,14 +314,17 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         args.store.ssyssrc = Some(specsys_string(specfrm.source_vrf()));
     }
 
-    // Step 4: VELOSYS — topocentric apparent velocity of the SPECSYS
-    // rest frame. Mirrors C:30774-30796. Currently NOT YET WIRED:
-    // VELOSYS depends on the celestial source position from
-    // celestial_axes (RefRA/RefDec on the SpecFrame, plus any
-    // SkyFrame source). The Group 7 wiring will deliver it. The
-    // existing wcs_write::populate_velosys already does this math;
-    // we'll port that into spectral_axes when the celestial→spectral
-    // sequencing lands.
+    // VELOSYS: topocentric apparent velocity of the SpecFrame's
+    // standard of rest. Mirrors C:30774-30796. C achieves this by
+    // temporarily overwriting SourceVRF/SourceVel and re-reading
+    // SourceVel; we compute the equivalent value directly from the
+    // SpecFrame's existing attributes via `velosys()`. Only emitted
+    // on the primary coord version.
+    if args.s == ' '
+        && let Some(v) = specfrm.velosys()
+    {
+        args.store.velosys = Some(v);
+    }
 
     // Mark done and return.
     args.axis_done[spec_iax] = true;

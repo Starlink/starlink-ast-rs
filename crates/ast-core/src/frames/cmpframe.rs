@@ -5,7 +5,7 @@ use std::fmt;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::serial::{FrameToNode, Node, NodeValue, Serializable, frame_from_node};
 
 use super::{DynFrame, Frame, FrameRef, FrameSet};
@@ -71,6 +71,20 @@ impl CmpFrame {
     /// Access the second child frame.
     pub fn frame2(&self) -> &dyn Frame {
         self.frame2.as_ref()
+    }
+
+    /// Mutable access to the first child frame — escape hatch.
+    ///
+    /// Mutations through this reference do not trigger any
+    /// integrity recomputation on enclosing FrameSets. Pair with
+    /// `FrameSet::with_integrity` when needed.
+    pub fn frame1_mut(&mut self) -> &mut dyn Frame {
+        self.frame1.as_mut()
+    }
+
+    /// Mutable access to the second child frame — escape hatch.
+    pub fn frame2_mut(&mut self) -> &mut dyn Frame {
+        self.frame2.as_mut()
     }
 
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
@@ -226,8 +240,67 @@ impl Frame for CmpFrame {
         Box::new(cmp)
     }
 
-    fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
-        Ok(Box::new(UnitMap::new(self.naxes())))
+    fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        let prev = match previous.as_any().downcast_ref::<CmpFrame>() {
+            Some(p) => p,
+            None => return Ok(Box::new(UnitMap::new(self.naxes()))),
+        };
+
+        let n1 = self.frame1.naxes();
+        let n2 = self.frame2.naxes();
+        if prev.frame1.naxes() != n1 || prev.frame2.naxes() != n2 {
+            return Ok(Box::new(UnitMap::new(self.naxes())));
+        }
+
+        // Per-child correction mappings. Each is computed against the
+        // matching child of the snapshot so a System/Equinox/Epoch
+        // change on a primary child propagates as the right
+        // coordinate-conversion mapping.
+        let delta1 = self.frame1.map_from(prev.frame1.as_ref())?;
+        let delta2 = self.frame2.map_from(prev.frame2.as_ref())?;
+
+        // Combine in parallel — order: frame1 axes first, then
+        // frame2 axes (the internal axis layout, before `perm`).
+        let parallel: DynMapping = Box::new(CmpMap::new(delta1, delta2, Composition::Parallel)?);
+
+        // If both perm vectors are identical to the internal layout
+        // (the common case — perm preserves internal ordering), the
+        // parallel mapping is the answer directly.
+        let identity_perm: Vec<usize> = (0..self.naxes()).collect();
+        if self.perm == identity_perm && prev.perm == identity_perm {
+            return Ok(parallel);
+        }
+
+        // General case: sandwich the parallel mapping between two
+        // PermMaps that move external→internal on input and
+        // internal→external on output. Both perms must be identical
+        // for this to be lossless; if they differ, fall back to
+        // identity (a System/Epoch change should not also reorder
+        // axes — that would have come through `perm_axes` separately).
+        if self.perm != prev.perm {
+            return Ok(Box::new(UnitMap::new(self.naxes())));
+        }
+
+        // PermMap encoding (1-based): external axis k holds
+        // self.perm[k]; internal axis i holds the inverse.
+        let n = self.naxes();
+        let mut inv = vec![0usize; n];
+        for (k, &orig) in self.perm.iter().enumerate() {
+            inv[orig] = k;
+        }
+        // ext→int: internal[i] = external[inv[i]]   → outperm[i] = inv[i]+1, inperm[k] = perm[k]+1
+        let outperm_e2i: Vec<i64> = (0..n).map(|i| inv[i] as i64 + 1).collect();
+        let inperm_e2i: Vec<i64> = (0..n).map(|k| self.perm[k] as i64 + 1).collect();
+        let pre = PermMap::new(&inperm_e2i, &outperm_e2i, &[])?;
+
+        // int→ext: external[k] = internal[perm[k]] → outperm[k] = perm[k]+1, inperm[i] = inv[i]+1
+        let outperm_i2e: Vec<i64> = (0..n).map(|k| self.perm[k] as i64 + 1).collect();
+        let inperm_i2e: Vec<i64> = (0..n).map(|i| inv[i] as i64 + 1).collect();
+        let post = PermMap::new(&inperm_i2e, &outperm_i2e, &[])?;
+
+        let m1 = CmpMap::new(Box::new(pre), parallel, Composition::Series)?;
+        let full = CmpMap::new(Box::new(m1), Box::new(post), Composition::Series)?;
+        Ok(Box::new(full))
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
