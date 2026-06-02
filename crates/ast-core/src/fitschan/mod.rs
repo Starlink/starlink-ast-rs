@@ -639,16 +639,18 @@ impl Channel for FitsChan {
                         Encoding::FitsPc,
                         enc_pc::write_to_cards,
                     ),
-                    Encoding::FitsAips => wcs_write::encode_wcs_to_store(
+                    Encoding::FitsAips => wcs_write::encode_wcs_per_plane(
                         obj,
                         &mut self.cards,
                         &dims,
+                        Encoding::FitsAips,
                         enc_aips::write_to_cards,
                     ),
-                    Encoding::FitsAipsPP => wcs_write::encode_wcs_to_store(
+                    Encoding::FitsAipsPP => wcs_write::encode_wcs_per_plane(
                         obj,
                         &mut self.cards,
                         &dims,
+                        Encoding::FitsAipsPP,
                         enc_aips::write_to_cards_pp,
                     ),
                     Encoding::FitsClass => wcs_write::encode_wcs_to_store(

@@ -195,13 +195,23 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 /// - CROTA2 derived from the PC matrix rotation angle
 /// - EPOCH (not EQUINOX)
 /// - RESTFREQ if a rest frequency is present
-pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+///
+/// `s` is the coordinate-version letter; `is_last` gates the
+/// observation-global keyword emission. See `enc_pc::write_to_cards`
+/// for the contract.
+pub(crate) fn write_to_cards(
+    store: &FitsStore,
+    cards: &mut CardList,
+    s: char,
+    is_last: bool,
+) -> AstResult<()> {
+    use super::wcs_keywords::key_for;
     let naxis = store.naxis;
 
     // CRPIXi
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
+            let key = key_for("CRPIX", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
@@ -223,7 +233,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
             {
                 val *= factor;
             }
-            let key = format!("CRVAL{}", i + 1);
+            let key = key_for("CRVAL", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
@@ -238,7 +248,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
             if ncp_axes && aips_ctype.len() >= 8 && aips_ctype[5..8].eq_ignore_ascii_case("SIN") {
                 aips_ctype.replace_range(5.., "NCP");
             }
-            let key = format!("CTYPE{}", i + 1);
+            let key = key_for("CTYPE", Some(i + 1), s);
             let comment = store.ctype_com[i]
                 .clone()
                 .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
@@ -261,14 +271,14 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         cdelt_vals[ax] *= factor;
     }
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
-        let key = format!("CDELT{}", i + 1);
+        let key = key_for("CDELT", Some(i + 1), s);
         cards.set_float(&key, cdelt_val, "Pixel size");
     }
 
     // CUNITi
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
-            let key = format!("CUNIT{}", i + 1);
+            let key = key_for("CUNIT", Some(i + 1), s);
             let emitted = if let (Some(ax), Some((canon, _))) = (axspec, spec_remap)
                 && i == ax
             {
@@ -280,17 +290,18 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         }
     }
 
-    // MJD-OBS — AIPSFromStore doesn't write MJD-OBS (line 3590+ only
-    // computes DATE-OBS from it). The C library preserves an
-    // input-supplied MJD-OBS at its original position via ignore-used
-    // semantics; our sweep would otherwise drop it. Mirror that by
-    // re-emitting MJD-OBS *only* if the input header already carried
-    // one — for FrameSet inputs without an input chan there's nothing
-    // to preserve and the output should not gain a synthetic MJD-OBS.
-    if cards.find("MJD-OBS").is_some()
-        && let Some(mjdobs) = store.mjdobs
-    {
-        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    if is_last {
+        // MJD-OBS — AIPSFromStore doesn't write MJD-OBS (line 3590+ only
+        // computes DATE-OBS from it). The C library preserves an
+        // input-supplied MJD-OBS at its original position via ignore-used
+        // semantics; our sweep would otherwise drop it. Mirror that by
+        // re-emitting MJD-OBS *only* if the input header already carried
+        // one.
+        if cards.find("MJD-OBS").is_some()
+            && let Some(mjdobs) = store.mjdobs
+        {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+        }
     }
 
     // CROTAk — paired with the latitude axis for celestial frames or with
@@ -299,24 +310,32 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
         && naxis >= 2
     {
         let k = crota_axis(store);
-        cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
+        let key = if s == ' ' {
+            format!("CROTA{k}")
+        } else {
+            format!("CROTA{k}{s}")
+        };
+        cards.set_float(&key, crota, "Axis rotation");
     }
 
-    // EPOCH (not EQUINOX for plain AIPS)
+    // EPOCH (not EQUINOX for plain AIPS). Per-version-letter.
     if let Some(equinox) = store.equinox {
-        cards.set_float("EPOCH", equinox, "Epoch of reference equinox");
+        let key = key_for("EPOCH", None, s);
+        cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
-    // DATE-OBS computed from MJD-OBS (mirrors AIPSFromStore at
-    // fitschan.c:3590-3614). The pre-formatted string in store.dateobs
-    // was derived from MJD-OBS upstream.
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
-    }
+    if is_last {
+        // DATE-OBS computed from MJD-OBS (mirrors AIPSFromStore at
+        // fitschan.c:3590-3614). The pre-formatted string in store.dateobs
+        // was derived from MJD-OBS upstream.
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
 
-    // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ). Mirrors fitschan.c:3622.
-    if let Some(restfrq) = store.restfrq {
-        cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
+        // RESTFREQ (AIPS uses RESTFREQ, not RESTFRQ). Mirrors fitschan.c:3622.
+        if let Some(restfrq) = store.restfrq {
+            cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
+        }
     }
 
     Ok(())
@@ -518,13 +537,19 @@ fn crota_axis(store: &FitsStore) -> usize {
 /// - LONPOLE, LATPOLE if present
 /// - PV parameters
 /// - RESTFREQ, SPECSYS
-pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+pub(crate) fn write_to_cards_pp(
+    store: &FitsStore,
+    cards: &mut CardList,
+    s: char,
+    is_last: bool,
+) -> AstResult<()> {
+    use super::wcs_keywords::{key_for, key_for_2};
     let naxis = store.naxis;
 
     // CRPIXi.
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
-            let key = format!("CRPIX{}", i + 1);
+            let key = key_for("CRPIX", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Reference pixel on axis {}", i + 1));
         }
     }
@@ -543,7 +568,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
             {
                 val *= factor;
             }
-            let key = format!("CRVAL{}", i + 1);
+            let key = key_for("CRVAL", Some(i + 1), s);
             cards.set_float(&key, val, &format!("Value at ref. pixel on axis {}", i + 1));
         }
     }
@@ -552,7 +577,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     for i in 0..naxis {
         if let Some(ref ctype) = store.ctype[i] {
             let aips_ctype = translate_aips_spectral_write(ctype, store.specsys.as_deref());
-            let key = format!("CTYPE{}", i + 1);
+            let key = key_for("CTYPE", Some(i + 1), s);
             let comment = store.ctype_com[i]
                 .clone()
                 .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
@@ -574,14 +599,14 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         cdelt_vals[ax] *= factor;
     }
     for (i, &cdelt_val) in cdelt_vals.iter().enumerate() {
-        let key = format!("CDELT{}", i + 1);
+        let key = key_for("CDELT", Some(i + 1), s);
         cards.set_float(&key, cdelt_val, "Pixel size");
     }
 
     // CUNITi.
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
-            let key = format!("CUNIT{}", i + 1);
+            let key = key_for("CUNIT", Some(i + 1), s);
             let emitted = if let (Some(ax), Some((canon, _))) = (axspec, spec_remap)
                 && i == ax
             {
@@ -593,12 +618,14 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         }
     }
 
-    // MJD-OBS — preserve at original position if the input chan
-    // carried one. See `enc_aips::write_to_cards` for the rationale.
-    if cards.find("MJD-OBS").is_some()
-        && let Some(mjdobs) = store.mjdobs
-    {
-        cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    if is_last {
+        // MJD-OBS — preserve at original position if the input chan
+        // carried one. See `enc_aips::write_to_cards` for the rationale.
+        if cards.find("MJD-OBS").is_some()
+            && let Some(mjdobs) = store.mjdobs
+        {
+            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+        }
     }
 
     // CD matrix or CROTA.
@@ -609,7 +636,7 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
                 for j in 0..naxis {
                     let val = cd[[i, j]];
                     if val != 0.0 {
-                        let key = format!("CD{}_{}", i + 1, j + 1);
+                        let key = key_for_2("CD", i + 1, j + 1, s);
                         cards.set_float(&key, val, "Transformation matrix element");
                     }
                 }
@@ -617,30 +644,40 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
         }
         Some(crota) if crota != 0.0 && naxis >= 2 => {
             let k = crota_axis(store);
-            cards.set_float(&format!("CROTA{k}"), crota, "Axis rotation");
+            let key = if s == ' ' {
+                format!("CROTA{k}")
+            } else {
+                format!("CROTA{k}{s}")
+            };
+            cards.set_float(&key, crota, "Axis rotation");
         }
         _ => {}
     }
 
     // EPOCH (NOT EQUINOX — AIPS++ uses EPOCH per fitschan.c:4109).
     if let Some(equinox) = store.equinox {
-        cards.set_float("EPOCH", equinox, "Epoch of reference equinox");
+        let key = key_for("EPOCH", None, s);
+        cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
     // LATPOLE / LONPOLE if set (mirrors fitschan.c:4112-4120). LONPOLE
     // default 180° for zenithal projections is suppressed.
     if let Some(latpole) = store.latpole {
-        cards.set_float("LATPOLE", latpole, "Latitude of native north pole");
+        let key = key_for("LATPOLE", None, s);
+        cards.set_float(&key, latpole, "Latitude of native north pole");
     }
     if let Some(lonpole) = store.lonpole
         && lonpole != 180.0
     {
-        cards.set_float("LONPOLE", lonpole, "Longitude of native north pole");
+        let key = key_for("LONPOLE", None, s);
+        cards.set_float(&key, lonpole, "Longitude of native north pole");
     }
 
-    // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (fitschan.c:4122).
-    if let Some(ref dateobs) = store.dateobs {
-        cards.set_string("DATE-OBS", dateobs, "Date of observation");
+    if is_last {
+        // DATE-OBS — AIPS++ emits only DATE-OBS, not MJD-OBS (fitschan.c:4122).
+        if let Some(ref dateobs) = store.dateobs {
+            cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
     }
 
     // Projection parameters: PROJP{m} for celestial latitude axis only
@@ -648,15 +685,21 @@ pub(crate) fn write_to_cards_pp(store: &FitsStore, cards: &mut CardList) -> AstR
     if let Some((_, lat_axis)) = store.celestial_axes() {
         for (m, pv_val) in store.pv[lat_axis].iter().enumerate() {
             if let Some(val) = pv_val {
-                let key = format!("PROJP{m}");
+                let key = if s == ' ' {
+                    format!("PROJP{m}")
+                } else {
+                    format!("PROJP{m}{s}")
+                };
                 cards.set_float(&key, *val, "Projection parameter");
             }
         }
     }
 
-    // RESTFREQ for spectral axis.
-    if let Some(restfrq) = store.restfrq {
-        cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
+    if is_last {
+        // RESTFREQ for spectral axis.
+        if let Some(restfrq) = store.restfrq {
+            cards.set_float("RESTFREQ", restfrq, "[Hz] Rest frequency");
+        }
     }
 
     Ok(())
@@ -927,7 +970,7 @@ END";
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         let crota2 = cards.get_float("CROTA2").unwrap();
         assert!(
@@ -954,7 +997,7 @@ END";
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // Should write EPOCH (not EQUINOX)
         assert_eq!(cards.get_float("EPOCH"), Some(2000.0));
@@ -971,7 +1014,7 @@ END";
         store.specsys = Some("LSRK".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // VRAD + LSRK -> VELO-LSR
         assert_eq!(cards.get_string("CTYPE1"), Some("VELO-LSR".to_string()));
@@ -987,7 +1030,7 @@ END";
         store.specsys = Some("BARYCENT".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
+        write_to_cards(&store, &mut cards, ' ', true).unwrap();
 
         // FREQ + BARYCENT -> FREQ-HEL
         assert_eq!(cards.get_string("CTYPE1"), Some("FREQ-HEL".to_string()));
@@ -1010,7 +1053,7 @@ END";
         store.radesys = Some("FK5".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards_pp(&store, &mut cards).unwrap();
+        write_to_cards_pp(&store, &mut cards, ' ', true).unwrap();
 
         // No rotation → CROTA suppressed (= 0). CDELT emitted from CD diagonal.
         assert_eq!(cards.get_float("CDELT1"), Some(-0.0005));
@@ -1048,7 +1091,7 @@ END";
         store.equinox = Some(2000.0);
 
         let mut cards = CardList::new();
-        write_to_cards_pp(&store, &mut cards).unwrap();
+        write_to_cards_pp(&store, &mut cards, ' ', true).unwrap();
 
         let crota2 = cards.get_float("CROTA2").unwrap();
         assert!(
@@ -1078,7 +1121,7 @@ END";
         store.latpole = Some(-30.0);
 
         let mut cards = CardList::new();
-        write_to_cards_pp(&store, &mut cards).unwrap();
+        write_to_cards_pp(&store, &mut cards, ' ', true).unwrap();
 
         // Default LONPOLE (180°) must NOT be emitted — matches C library.
         assert_eq!(cards.get_float("LONPOLE"), None);
@@ -1101,7 +1144,7 @@ END";
         store.lonpole = Some(45.0);
 
         let mut cards = CardList::new();
-        write_to_cards_pp(&store, &mut cards).unwrap();
+        write_to_cards_pp(&store, &mut cards, ' ', true).unwrap();
 
         assert_eq!(cards.get_float("LONPOLE"), Some(45.0));
     }
@@ -1124,7 +1167,7 @@ END";
         store.specsys = Some("LSRK".to_string());
 
         let mut cards = CardList::new();
-        write_to_cards_pp(&store, &mut cards).unwrap();
+        write_to_cards_pp(&store, &mut cards, ' ', true).unwrap();
 
         // Spectral axis should be written in AIPS format. AIPSPPFromStore
         // bakes the SPECSYS into the CTYPE (e.g. "VELO-LSR") and doesn't
