@@ -179,6 +179,17 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
         sky_frame.set_dut1(dut1);
     }
 
+    // Step 7d: OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C
+    // fitschan.c:39318-39331: convert geocentric Cartesian to
+    // geodetic via eraGc2gd.
+    if let (Some(x), Some(y), Some(z)) = (store.obsgeox, store.obsgeoy, store.obsgeoz)
+        && let Some((geolon, geolat, h)) = crate::pal::gc2gd([x, y, z])
+    {
+        sky_frame.set_obs_lon(geolon);
+        sky_frame.set_obs_lat(geolat);
+        sky_frame.set_obs_alt(h);
+    }
+
     // Step 7c: NORADEC + DefB1950 fallback for alt SkyFrames with
     // no RADESYS, no EQUINOX, no MJD-OBS — typical of GALACTIC alt-A
     // planes. This path produces the 33281.923 MJD-OBS the writer's

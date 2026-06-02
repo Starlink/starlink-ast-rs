@@ -102,6 +102,13 @@ unsafe extern "C" {
     fn astPalEqeqx(date: f64) -> f64;
     fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
     fn astEraGd2gc(n: i32, elong: f64, phi: f64, height: f64, xyz: *mut f64) -> i32;
+    fn astEraGc2gd(
+        n: i32,
+        xyz: *const f64,
+        elong: *mut f64,
+        phi: *mut f64,
+        height: *mut f64,
+    ) -> i32;
 
     // -- Observer / velocity --
     fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);
@@ -634,6 +641,23 @@ pub(crate) fn gd2gc(lon: f64, lat: f64, height: f64) -> Option<[f64; 3]> {
     let mut xyz = [0.0_f64; 3];
     let status = unsafe { astEraGd2gc(1, lon, lat, height, xyz.as_mut_ptr()) };
     if status == 0 { Some(xyz) } else { None }
+}
+
+/// Geocentric Cartesian → geodetic longitude/latitude/height. Mirrors
+/// `eraGc2gd(1, ...)` (WGS84 reference ellipsoid).
+///
+/// Returns `Some((lon_radians, lat_radians, height_metres))` or
+/// `None` on error.
+pub(crate) fn gc2gd(xyz: [f64; 3]) -> Option<(f64, f64, f64)> {
+    let mut elong = 0.0_f64;
+    let mut phi = 0.0_f64;
+    let mut height = 0.0_f64;
+    let status = unsafe { astEraGc2gd(1, xyz.as_ptr(), &mut elong, &mut phi, &mut height) };
+    if status == 0 {
+        Some((elong, phi, height))
+    } else {
+        None
+    }
 }
 
 /// Observer position and velocity as a 6-vector.

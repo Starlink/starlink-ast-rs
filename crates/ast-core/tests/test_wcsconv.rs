@@ -231,54 +231,28 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     Ok(())
 }
 
-#[test]
-fn wcsconv_regression_suite() {
+/// Look up a case by name in the manifest and run it, panicking on
+/// failure. Used by the per-fixture `#[test]` functions generated in
+/// `build.rs`.
+fn run_named_case(name: &str) {
     let cases = parse_manifest();
-    assert!(!cases.is_empty(), "manifest should have test cases");
+    let case = cases
+        .iter()
+        .find(|c| c.name == name)
+        .unwrap_or_else(|| panic!("manifest has no case named {name:?}"));
 
-    let mut passed = 0;
-    let mut failed = 0;
-    let mut skipped = 0;
-    let mut failures: Vec<String> = Vec::new();
-
-    for case in &cases {
-        // Skip if input file doesn't exist.
-        let input_path = fixtures_dir().join("inputs").join(&case.input_file);
-        if !input_path.exists() {
-            skipped += 1;
-            continue;
-        }
-
-        match run_test_case(case) {
-            Ok(()) => passed += 1,
-            Err(msg) => {
-                failed += 1;
-                if failures.len() < 100 {
-                    failures.push(format!("  {} : {}", case.name, msg));
-                }
-            }
-        }
+    let input_path = fixtures_dir().join("inputs").join(&case.input_file);
+    if !input_path.exists() {
+        // Skip silently: missing input fixture isn't a failure of the
+        // code under test. Use eprintln so the user can see why
+        // `cargo test <name>` reported "ok" without doing real work.
+        eprintln!("[skip] {}: input fixture missing", case.name);
+        return;
     }
 
-    eprintln!(
-        "\n=== wcsconv results: {} passed, {} failed, {} skipped (of {} total) ===",
-        passed,
-        failed,
-        skipped,
-        cases.len()
-    );
-    if !failures.is_empty() {
-        eprintln!("First failures (up to 20):");
-        for f in &failures {
-            eprintln!("{f}");
-        }
+    if let Err(msg) = run_test_case(case) {
+        panic!("{}: {}", case.name, msg);
     }
-
-    // The harness itself should not fail the test suite.
-    // We just report results. As the implementation improves, more will pass.
-    // Only panic if ZERO tests passed (infrastructure broken).
-    assert!(
-        passed > 0,
-        "wcsconv: 0 tests passed -- infrastructure is broken"
-    );
 }
+
+include!(concat!(env!("OUT_DIR"), "/wcsconv_generated.rs"));

@@ -259,6 +259,8 @@ fn is_longitude_ctype(ctype: &str) -> bool {
         || ct.starts_with("ELON")
         || ct.starts_with("HLON")
         || ct.starts_with("SLON")
+        || ct.starts_with("AZ--")
+        || ct.starts_with("OFLN")
 }
 
 /// Check if a CTYPE value represents a celestial latitude axis.
@@ -272,6 +274,8 @@ fn is_latitude_ctype(ctype: &str) -> bool {
         || ct.starts_with("ELAT")
         || ct.starts_with("HLAT")
         || ct.starts_with("SLAT")
+        || ct.starts_with("EL--")
+        || ct.starts_with("OFLT")
 }
 
 /// Check if a CTYPE value represents a spectral axis.

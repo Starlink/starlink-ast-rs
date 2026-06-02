@@ -68,6 +68,16 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame.set_epoch(mjd);
     }
 
+    // OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C
+    // fitschan.c:39534-39550.
+    if let (Some(x), Some(y), Some(z)) = (store.obsgeox, store.obsgeoy, store.obsgeoz)
+        && let Some((geolon, geolat, h)) = crate::pal::gc2gd([x, y, z])
+    {
+        frame.set_obs_lon(geolon);
+        frame.set_obs_lat(geolat);
+        frame.set_obs_alt(h);
+    }
+
     // Step 8: Set the user-facing unit from the input CUNIT. The
     // SpecFrame's `unit` attribute records the preferred presentation
     // unit (e.g. "GHz", "km/s"); the SpecMap that connects two
