@@ -8,6 +8,57 @@ use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+/// Build a FITS keyword name with the version-letter suffix.
+///
+/// `s == ' '` means the primary plane (no suffix).
+/// `s` in `'A'..='Z'` produces the alt-plane key (e.g. `CRVAL1A`).
+///
+/// Mirrors `fitschan.c::FormatKey` for the (axis-indexed, scalar)
+/// keyword shapes used by FITS-WCS.
+pub(crate) fn key_for(prefix: &str, axis: Option<usize>, s: char) -> String {
+    match (axis, s) {
+        (Some(i), ' ') => format!("{prefix}{i}"),
+        (Some(i), c) => format!("{prefix}{i}{c}"),
+        (None, ' ') => prefix.to_string(),
+        (None, c) => format!("{prefix}{c}"),
+    }
+}
+
+/// Build a FITS keyword name for a 2-index keyword (`PC{i}_{j}{S}`,
+/// `CD{i}_{j}{S}`).
+pub(crate) fn key_for_2(prefix: &str, i: usize, j: usize, s: char) -> String {
+    if s == ' ' {
+        format!("{prefix}{i}_{j}")
+    } else {
+        format!("{prefix}{i}_{j}{s}")
+    }
+}
+
+/// Look up a value from `cards` for an axis-indexed or scalar
+/// FITS-WCS keyword, with the C `GetItem` primary-fallback rule.
+///
+/// When `s != ' '` and the alt-suffixed key is absent, retry with
+/// `s = ' '` to inherit the primary value. Mirrors the behaviour of
+/// `fitschan.c::GetItem` whose store matrix returns the primary
+/// value when the requested coordinate-version slot is empty.
+pub(crate) fn lookup_with_fallback<T, F>(
+    cards: &CardList,
+    prefix: &str,
+    axis: Option<usize>,
+    s: char,
+    f: F,
+) -> Option<T>
+where
+    F: Fn(&CardList, &str) -> Option<T>,
+{
+    let alt = f(cards, &key_for(prefix, axis, s));
+    if alt.is_some() || s == ' ' {
+        alt
+    } else {
+        f(cards, &key_for(prefix, axis, ' '))
+    }
+}
+
 /// Infer the number of WCS axes from the highest-indexed FITS keyword
 /// found in the header.
 ///
@@ -77,9 +128,17 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
 /// the number of WCS axes from `WCSAXES` if present, otherwise from `NAXIS`.
 ///
 /// If neither `WCSAXES` nor `NAXIS` is found, returns an error.
-pub(crate) fn extract_wcs_keywords(cards: &CardList) -> AstResult<FitsStore> {
+///
+/// `s` is the coordinate-version letter:
+/// - `' '` (primary) reads bare keys (`CRVAL1`, etc.).
+/// - `'A'..='Z'` (alt plane) reads suffixed keys (`CRVAL1A`); per-axis
+///   keys absent at the alt suffix fall back to the primary key (mirrors
+///   C `GetItem`'s primary-fallback rule).
+pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsStore> {
     // Determine the number of axes.
-    let wcsaxes = cards.get_int("WCSAXES").map(|v| v as usize);
+    let wcsaxes = cards
+        .get_int(&key_for("WCSAXES", None, s))
+        .map(|v| v as usize);
     let naxis_val = cards.get_int("NAXIS").map(|v| v as usize);
 
     let naxis = match (wcsaxes, naxis_val) {
@@ -102,70 +161,78 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList) -> AstResult<FitsStore> {
     let mut store = FitsStore::new(naxis);
     store.wcsaxes = wcsaxes;
 
-    // Extract per-axis keywords.
+    // Extract per-axis keywords with primary fallback when s != ' '.
     for i in 0..naxis {
         let axis_num = i + 1; // FITS 1-based
 
-        // CRPIX
-        let key = format!("CRPIX{axis_num}");
-        store.crpix[i] = cards.get_float(&key);
+        store.crpix[i] =
+            lookup_with_fallback(cards, "CRPIX", Some(axis_num), s, |c, k| c.get_float(k));
+        store.crval[i] =
+            lookup_with_fallback(cards, "CRVAL", Some(axis_num), s, |c, k| c.get_float(k));
+        store.cdelt[i] =
+            lookup_with_fallback(cards, "CDELT", Some(axis_num), s, |c, k| c.get_float(k));
+        store.ctype[i] =
+            lookup_with_fallback(cards, "CTYPE", Some(axis_num), s, |c, k| c.get_string(k));
+        store.cunit[i] =
+            lookup_with_fallback(cards, "CUNIT", Some(axis_num), s, |c, k| c.get_string(k));
+        store.cname[i] =
+            lookup_with_fallback(cards, "CNAME", Some(axis_num), s, |c, k| c.get_string(k));
 
-        // CRVAL
-        let key = format!("CRVAL{axis_num}");
-        store.crval[i] = cards.get_float(&key);
-
-        // CDELT
-        let key = format!("CDELT{axis_num}");
-        store.cdelt[i] = cards.get_float(&key);
-
-        // CTYPE
-        let key = format!("CTYPE{axis_num}");
-        store.ctype[i] = cards.get_string(&key);
-
-        // CUNIT
-        let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = cards.get_string(&key);
-
-        // CNAME
-        let key = format!("CNAME{axis_num}");
-        store.cname[i] = cards.get_string(&key);
-
-        // CD matrix row i
+        // CD matrix row i (2-index keyword — inline the fallback shape).
         for j in 0..naxis {
-            let key = format!("CD{}_{}", axis_num, j + 1);
-            store.cd[i][j] = cards.get_float(&key);
+            let alt_key = key_for_2("CD", axis_num, j + 1, s);
+            let alt = cards.get_float(&alt_key);
+            store.cd[i][j] = if alt.is_some() || s == ' ' {
+                alt
+            } else {
+                cards.get_float(&key_for_2("CD", axis_num, j + 1, ' '))
+            };
         }
 
-        // PC matrix row i
+        // PC matrix row i (2-index keyword — inline fallback).
         for j in 0..naxis {
-            let key = format!("PC{}_{}", axis_num, j + 1);
-            store.pc[i][j] = cards.get_float(&key);
+            let alt_key = key_for_2("PC", axis_num, j + 1, s);
+            let alt = cards.get_float(&alt_key);
+            store.pc[i][j] = if alt.is_some() || s == ' ' {
+                alt
+            } else {
+                cards.get_float(&key_for_2("PC", axis_num, j + 1, ' '))
+            };
         }
 
-        // PV parameters
+        // PV parameters (2-index keyword `PV{i}_{m}{S}`).
         for m in 0..store.pv[i].len() {
-            let key = format!("PV{}_{m}", axis_num);
-            store.pv[i][m] = cards.get_float(&key);
+            let alt_key = key_for_2("PV", axis_num, m, s);
+            let alt = cards.get_float(&alt_key);
+            store.pv[i][m] = if alt.is_some() || s == ' ' {
+                alt
+            } else {
+                cards.get_float(&key_for_2("PV", axis_num, m, ' '))
+            };
         }
     }
 
     // Scalar keywords.
-    store.radesys = cards.get_string("RADESYS");
-    store.equinox = cards.get_float("EQUINOX");
-    store.lonpole = cards.get_float("LONPOLE");
-    store.latpole = cards.get_float("LATPOLE");
+    store.radesys = lookup_with_fallback(cards, "RADESYS", None, s, |c, k| c.get_string(k));
+    store.equinox = lookup_with_fallback(cards, "EQUINOX", None, s, |c, k| c.get_float(k));
+    store.lonpole = lookup_with_fallback(cards, "LONPOLE", None, s, |c, k| c.get_float(k));
+    store.latpole = lookup_with_fallback(cards, "LATPOLE", None, s, |c, k| c.get_float(k));
     // Epoch of observation (TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
     // DATE-AVG priority chain). See read_epoch_into_store for the
-    // priority order and the reference to C ChooseEpoch.
+    // priority order and the reference to C ChooseEpoch. These are
+    // observation-global keywords and don't take a coordinate-version
+    // suffix in C either; primary lookup only.
     read_epoch_into_store(cards, &mut store);
-    store.specsys = cards.get_string("SPECSYS");
-    store.restfrq = cards.get_float("RESTFRQ");
-    store.restwav = cards.get_float("RESTWAV");
+    store.specsys = lookup_with_fallback(cards, "SPECSYS", None, s, |c, k| c.get_string(k));
+    store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float(k));
+    store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float(k));
 
     // AST-extension keywords. Mirrors WcsFromStore writes at
     // fitschan.c:37005-37372. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,
     // ZSOURCE, IMAGFREQ, SREFIS / SREF{i} / SREFP{i}.
-    store.wcsname = cards.get_string("WCSNAME");
+    store.wcsname = lookup_with_fallback(cards, "WCSNAME", None, s, |c, k| c.get_string(k));
+    // OBSGEO-{X,Y,Z} and SSYSSRC etc. are observation-global; primary
+    // lookup only (matches C SkySys's `s = ' '` writes for these).
     store.obsgeox = cards.get_float("OBSGEO-X");
     store.obsgeoy = cards.get_float("OBSGEO-Y");
     store.obsgeoz = cards.get_float("OBSGEO-Z");
@@ -371,6 +438,24 @@ mod tests {
     }
 
     #[test]
+    fn key_for_primary_no_suffix() {
+        assert_eq!(key_for("CRVAL", Some(1), ' '), "CRVAL1");
+        assert_eq!(key_for("RADESYS", None, ' '), "RADESYS");
+    }
+
+    #[test]
+    fn key_for_alt_appends_letter() {
+        assert_eq!(key_for("CRVAL", Some(1), 'A'), "CRVAL1A");
+        assert_eq!(key_for("RADESYS", None, 'A'), "RADESYSA");
+    }
+
+    #[test]
+    fn key_for_2_handles_pc_cd() {
+        assert_eq!(key_for_2("PC", 1, 2, ' '), "PC1_2");
+        assert_eq!(key_for_2("CD", 1, 1, 'B'), "CD1_1B");
+    }
+
+    #[test]
     fn minimal_header() {
         let header = "\
 NAXIS   =                    2 / Number of axes
@@ -384,7 +469,7 @@ CTYPE1  = 'RA---TAN'           / Axis type
 CTYPE2  = 'DEC--TAN'           / Axis type
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards).unwrap();
+        let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
         assert_eq!(store.naxis, 2);
         assert_eq!(store.crpix[0], Some(128.0));
@@ -416,7 +501,7 @@ CTYPE1  = 'RA---TAN'           / Axis type
 CTYPE2  = 'DEC--TAN'           / Axis type
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards).unwrap();
+        let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
         assert!(store.has_cd_matrix());
         assert!(!store.has_pc_matrix());
@@ -435,7 +520,7 @@ CRPIX1  =                  1.0
 CRPIX2  =                  1.0
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards).unwrap();
+        let store = extract_wcs_keywords(&cards, ' ').unwrap();
         assert_eq!(store.naxis, 2);
         assert_eq!(store.wcsaxes, Some(2));
     }
@@ -449,7 +534,7 @@ END";
         ))
         .unwrap();
         let cards = cards_from(&sip_header);
-        let store = extract_wcs_keywords(&cards).unwrap();
+        let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
         // Verify basic keywords.
         assert_eq!(store.naxis, 2);
@@ -492,7 +577,7 @@ END";
     fn no_naxis_returns_error() {
         let header = "SIMPLE  =                    T / Standard\nEND";
         let cards = cards_from(header);
-        let result = extract_wcs_keywords(&cards);
+        let result = extract_wcs_keywords(&cards, ' ');
         assert!(result.is_err());
     }
 
@@ -534,7 +619,7 @@ PV2_1   =                  0.0
 PV2_2   =                  0.0
 END";
         let cards = cards_from(header);
-        let store = extract_wcs_keywords(&cards).unwrap();
+        let store = extract_wcs_keywords(&cards, ' ').unwrap();
         assert_eq!(store.pv[1][1], Some(0.0));
         assert_eq!(store.pv[1][2], Some(0.0));
         assert_eq!(store.pv[0][0], None);

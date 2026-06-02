@@ -551,7 +551,7 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsWcs => {
-                let store = wcs_keywords::extract_wcs_keywords(&self.cards)?;
+                let store = wcs_keywords::extract_wcs_keywords(&self.cards, ' ')?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
