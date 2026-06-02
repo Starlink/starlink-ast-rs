@@ -89,13 +89,79 @@ pub(crate) fn encode_wcs(
         }
     };
 
-    let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let (primary, alts) = store_from_frameset_with_alts(frameset, dim, &primary_crvals, cards)?;
-    write_store_to_cards(&primary, cards, use_cd, ' ', None)?;
-    for alt in &alts {
-        write_store_to_cards(&alt.store, cards, use_cd, alt.letter, Some(&alt.domain))?;
+    let mut planes = collect_plane_stores(frameset, dim, crate::fitschan::Encoding::FitsWcs)?;
+
+    // Last-plane-wins: the alphabetically-last plane's global keyword
+    // values (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI, DUT1, etc.)
+    // overwrite the primary's. Mirrors C's
+    // `SetItem(&store->mjdobs, 0, 0, ' ', ...)` pattern at
+    // fitschan.c:29805 — see FitsStore::mjdobs doc comment.
+    propagate_last_plane_globals_into_primary(&mut planes);
+
+    // Emit the primary plane (which now carries the last-plane
+    // globals) followed by each alt plane (per-axis cards only —
+    // their global emissions are gated by `s == ' '`).
+    if let Some(primary) = planes.first() {
+        write_store_to_cards(&primary.store, cards, use_cd, ' ', None)?;
+    }
+    for plane in planes.iter().skip(1) {
+        let domain = alt_plane_domain(frameset, plane.letter);
+        write_store_to_cards(&plane.store, cards, use_cd, plane.letter, domain.as_deref())?;
     }
     Ok(())
+}
+
+/// Propagate observation-global keyword values from the
+/// alphabetically-last plane back into the primary `PlaneStore` so
+/// that when `write_store_to_cards` emits the primary plane (with
+/// `s = ' '`, which is the only branch that emits global cards), the
+/// values reflect the C library's last-plane-wins overwrite rule.
+///
+/// Mirrors C `SkySys`'s hard-coded
+/// `SetItem(&store->mjdobs, 0, 0, ' ', ...)` writes.
+fn propagate_last_plane_globals_into_primary(planes: &mut [PlaneStore]) {
+    if planes.len() <= 1 {
+        return;
+    }
+    let last_idx = planes.len() - 1;
+    let (mjdobs, dateobs, obsgeox, obsgeoy, obsgeoz, timesys);
+    {
+        let last = &planes[last_idx].store;
+        mjdobs = last.mjdobs;
+        dateobs = last.dateobs.clone();
+        obsgeox = last.obsgeox;
+        obsgeoy = last.obsgeoy;
+        obsgeoz = last.obsgeoz;
+        timesys = last.timesys.clone();
+    }
+    let primary = &mut planes[0].store;
+    primary.mjdobs = mjdobs;
+    primary.dateobs = dateobs;
+    primary.obsgeox = obsgeox;
+    primary.obsgeoy = obsgeoy;
+    primary.obsgeoz = obsgeoz;
+    primary.timesys = timesys;
+}
+
+/// Look up the domain string for the alt frame whose Ident-derived
+/// version letter equals `letter`. Returns None for the primary
+/// plane or if the frame has an empty domain. Used to populate the
+/// per-version `WCSNAME{S}` cards.
+fn alt_plane_domain(fs: &FrameSet, letter: char) -> Option<String> {
+    if letter == ' ' {
+        return None;
+    }
+    for (idx, l) in frames_with_version_letters(fs) {
+        if l == letter
+            && let Ok(frame) = fs.frame(FrameRef::Index(idx))
+        {
+            let d = frame.domain();
+            if !d.is_empty() {
+                return Some(d.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Read the input chan's `CRVAL{i}{s}` cards into a per-axis array.
