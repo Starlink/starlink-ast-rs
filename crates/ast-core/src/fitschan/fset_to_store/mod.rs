@@ -79,6 +79,19 @@ pub(crate) fn fset_to_store(
     s: char,
     input_crvals: &[Option<f64>],
 ) -> AstResult<FitsStore> {
+    // Step 0: build the FITS-WCS-conforming FrameSet. Mirrors C
+    // `MakeFitsFrameSet` (fitschan.c:21083). The relevant action for
+    // bit-exactness is the SpecFrame/SkyFrame fiducial propagation:
+    // when the WCS frame contains both, the SpecFrame's
+    // RefRA/RefDec are overwritten with the celestial axes' fiducial
+    // (computed via the WcsMap), through the FrameSet integrity
+    // machinery — which re-fuses the pixel→spec mapping. Without
+    // this, the bounds returned by astMapBox over the spec axis
+    // can differ from C by O(1e-2 m/s) for typical millimetre-wave
+    // velocity systems.
+    let mut owned_fs = make_fits_frameset(fs)?;
+    let fs = &mut owned_fs;
+
     // Step 1: pixel→WCS Mapping from base to current frame.
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
@@ -216,6 +229,257 @@ pub(crate) fn fset_to_store(
     round_crpix(&mut store);
 
     Ok(store)
+}
+
+/// Mirrors C `MakeFitsFrameSet` (fitschan.c:21083) — the writer-side
+/// preconditioning that ensures the FrameSet matches FITS-WCS paper
+/// requirements before per-axis encoding runs.
+///
+/// Currently models only the SpecFrame/SkyFrame fiducial propagation:
+/// when the WCS Frame contains both a SpecFrame and a SkyFrame, the
+/// SpecFrame's RefRA/RefDec are overwritten with the celestial axes'
+/// fiducial position (computed via the WcsMap), through the FrameSet
+/// integrity machinery — which re-fuses the pixel→spec mapping. C
+/// always overwrites RefRA/RefDec when both attributes are already
+/// set and a SkyFrame is present (see fitschan.c:21344-21509); we
+/// mirror that exactly.
+///
+/// The other branches of C `MakeFitsFrameSet` — adding new sky axes
+/// when the SpecFrame has RefRA/RefDec but no SkyFrame, and remapping
+/// non-SkyFrame celestial axes from radians to degrees — are
+/// out-of-scope for the current fixture coverage and tracked in
+/// docs/issues/fset_to_store-port-gaps.md.
+fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
+    use crate::fitschan::fset_to_store::celestial_axes;
+    use crate::fitschan::fset_to_store::spectral_axes::primary_frame;
+    use crate::frames::{SkySystem, SpecFrame};
+    use crate::mappings::WcsMap;
+
+    let mut owned = fs.clone();
+
+    // Locate spec/sky in the world frame. Walk the axes via
+    // primary_frame, in case the world frame is a CmpFrame whose
+    // children are themselves CmpFrames.
+    let nwcs = owned.current().naxes();
+    let mut spec_axis: Option<usize> = None;
+    let mut sky_lon: Option<usize> = None;
+    let mut sky_lat: Option<usize> = None;
+    for iax in 0..nwcs {
+        let (pframe, paxis) = primary_frame(owned.current(), iax);
+        if pframe.as_any().downcast_ref::<SpecFrame>().is_some()
+            || pframe
+                .as_any()
+                .downcast_ref::<crate::frames::DSBSpecFrame>()
+                .is_some()
+        {
+            if spec_axis.is_some() {
+                // C aborts MakeFitsFrameSet on duplicate spec axes;
+                // for now just return the original FrameSet unchanged.
+                return Ok(owned);
+            }
+            spec_axis = Some(iax);
+        } else if pframe
+            .as_any()
+            .downcast_ref::<crate::frames::SkyFrame>()
+            .is_some()
+        {
+            if paxis == 0 {
+                sky_lon = Some(iax);
+            } else {
+                sky_lat = Some(iax);
+            }
+        }
+    }
+
+    // Only proceed when both a SpecFrame and a SkyFrame (lon+lat) are
+    // present. Mirrors C's gate at fitschan.c:21344-21351 (in the
+    // `else` branch where both RefRA AND RefDec are already set —
+    // which for our wcsconv fixtures is always the case when a
+    // DSBSpecFrame is present in the .ast).
+    let (Some(_spec_iax), Some(ilon), Some(ilat)) = (spec_axis, sky_lon, sky_lat) else {
+        return Ok(owned);
+    };
+
+    // C gate at fitschan.c:21344-21351: only proceed into the
+    // RefRA/RefDec-overwrite branch if both attributes are already
+    // explicitly set on the SpecFrame. Without this gate we trigger a
+    // FrameSet integrity remap on every SpecFrame+SkyFrame fixture —
+    // which is fine when SpecFrame::map_from collapses to identity
+    // for a no-op RefRA change, but produces a non-trivial SpecMap
+    // once MakeSpecMapping mirrors the C non-trivial step3+step6
+    // behaviour (cf. specframe.c:2750-2754 + 2823+2847).
+    let has_ref_radec = peek_spec(owned.current())
+        .map(|s| s.ref_ra().is_some() && s.ref_dec().is_some())
+        .unwrap_or(false);
+    if !has_ref_radec {
+        return Ok(owned);
+    }
+
+    // Save the SkyFrame's current System / Equinox / Epoch so we can
+    // restore them after computing the FK5/J2000 fiducial. Mirrors
+    // C:21446-21459.
+    let (orig_sys, orig_equinox, orig_epoch) = {
+        let cur = owned.current();
+        let Some(sky) = peek_sky(cur) else {
+            return Ok(owned);
+        };
+        (sky.system(), sky.equinox_mjd(), sky.epoch_mjd())
+    };
+
+    // Step 1: switch SkyFrame to FK5/J2000 via FrameSet integrity.
+    // The CmpFrame::map_from delta picks up the SkyFrame change and
+    // re-fuses the pixel→world mapping so the celestial axes now
+    // produce FK5 J2000 RA/Dec. Mirrors C:21452-21459 (which sets
+    // System and Equinox via astSetC on the FrameSet).
+    owned.with_integrity(|cur| {
+        if let Some(sky) = sky_mut(cur) {
+            sky.set_system(SkySystem::Fk5);
+            sky.set_equinox_year(2000.0);
+            sky.set_epoch_year(2000.0);
+        }
+        Ok(())
+    })?;
+
+    // Step 2: compute the celestial fiducial via SplitMap +
+    // GetFiducialWCS. Mirrors C:21468-21474. SplitMap finds the
+    // (map1, WcsMap, map3) triple within the pixel→WCS mapping;
+    // GetFiducialWCS feeds the WcsMap's native fiducial through
+    // map3 to land in the celestial Frame.
+    let mapping = owned.mapping(FrameRef::Base, FrameRef::Current)?;
+    let Some((_map1, map2, map3)) = celestial_axes::split_map2(mapping.as_ref()) else {
+        // No WcsMap found — celestial axes have no reference point;
+        // C falls through and returns the FrameSet as-is. Restore
+        // the SkyFrame's original system/equinox first so we don't
+        // leak the FK5/J2000 override.
+        owned.with_integrity(|cur| {
+            if let Some(sky) = sky_mut(cur) {
+                sky.set_system(orig_sys);
+                sky.set_equinox(orig_equinox);
+                sky.set_epoch(orig_epoch);
+            }
+            Ok(())
+        })?;
+        return Ok(owned);
+    };
+
+    let Some(wcsmap) = map2.as_any().downcast_ref::<WcsMap>() else {
+        owned.with_integrity(|cur| {
+            if let Some(sky) = sky_mut(cur) {
+                sky.set_system(orig_sys);
+                sky.set_equinox(orig_equinox);
+                sky.set_epoch(orig_epoch);
+            }
+            Ok(())
+        })?;
+        return Ok(owned);
+    };
+
+    let fid = fiducial::get_fiducial_wcs(wcsmap, map3.as_ref(), ilon, ilat)?;
+    let Some((reflon, reflat)) = fid else {
+        owned.with_integrity(|cur| {
+            if let Some(sky) = sky_mut(cur) {
+                sky.set_system(orig_sys);
+                sky.set_equinox(orig_equinox);
+                sky.set_epoch(orig_epoch);
+            }
+            Ok(())
+        })?;
+        return Ok(owned);
+    };
+
+    // Step 3: set RefRA/RefDec on the SpecFrame via FrameSet
+    // integrity. The SpecFrame::map_from delta for RefRA/RefDec is
+    // generally identity (these only affect rest-frame conversions),
+    // but going through FrameSet integrity matches C's flow and
+    // ensures any future SpecFrame integrity logic kicks in. Mirrors
+    // C:21483-21484.
+    owned.with_integrity(|cur| {
+        if let Some(spec) = spec_mut(cur) {
+            spec.set_ref_ra(reflon);
+            spec.set_ref_dec(reflat);
+        }
+        Ok(())
+    })?;
+
+    // Step 4: restore SkyFrame's original system/equinox/epoch.
+    // Mirrors C:21503-21505.
+    owned.with_integrity(|cur| {
+        if let Some(sky) = sky_mut(cur) {
+            sky.set_system(orig_sys);
+            sky.set_equinox(orig_equinox);
+            sky.set_epoch(orig_epoch);
+        }
+        Ok(())
+    })?;
+
+    Ok(owned)
+}
+
+fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {
+    use crate::frames::{CmpFrame, DSBSpecFrame, SpecFrame};
+    if let Some(s) = frame.as_any().downcast_ref::<SpecFrame>() {
+        return Some(s);
+    }
+    if let Some(d) = frame.as_any().downcast_ref::<DSBSpecFrame>() {
+        return Some(d.spec());
+    }
+    if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
+        if let Some(s) = peek_spec(cmp.frame1()) {
+            return Some(s);
+        }
+        return peek_spec(cmp.frame2());
+    }
+    None
+}
+
+fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame> {
+    use crate::frames::{CmpFrame, SkyFrame};
+    if let Some(s) = frame.as_any().downcast_ref::<SkyFrame>() {
+        return Some(s);
+    }
+    if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
+        if let Some(s) = peek_sky(cmp.frame1()) {
+            return Some(s);
+        }
+        return peek_sky(cmp.frame2());
+    }
+    None
+}
+
+fn spec_mut(frame: &mut dyn crate::frames::Frame) -> Option<&mut crate::frames::SpecFrame> {
+    use crate::frames::{CmpFrame, DSBSpecFrame, SpecFrame};
+    if frame.as_any().downcast_ref::<SpecFrame>().is_some() {
+        return frame.as_any_mut().downcast_mut::<SpecFrame>();
+    }
+    if frame.as_any().downcast_ref::<DSBSpecFrame>().is_some() {
+        return frame
+            .as_any_mut()
+            .downcast_mut::<DSBSpecFrame>()
+            .map(|d| d.spec_mut());
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        let pick_first = peek_spec(cmp.frame1()).is_some();
+        if pick_first {
+            return spec_mut(cmp.frame1_mut());
+        }
+        return spec_mut(cmp.frame2_mut());
+    }
+    None
+}
+
+fn sky_mut(frame: &mut dyn crate::frames::Frame) -> Option<&mut crate::frames::SkyFrame> {
+    use crate::frames::{CmpFrame, SkyFrame};
+    if frame.as_any().downcast_ref::<SkyFrame>().is_some() {
+        return frame.as_any_mut().downcast_mut::<SkyFrame>();
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        let pick_first = peek_sky(cmp.frame1()).is_some();
+        if pick_first {
+            return sky_mut(cmp.frame1_mut());
+        }
+        return sky_mut(cmp.frame2_mut());
+    }
+    None
 }
 
 /// For each WCS axis: if `|CRVAL| < sqrt(DBL_EPSILON · cdelt²)`, set

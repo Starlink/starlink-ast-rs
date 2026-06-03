@@ -373,7 +373,7 @@ fn split_around_wcsmap(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping)
 /// that yields a WcsMap is the "wcs" branch, and the WcsMap is
 /// widened from the branch's axis count to the full parallel axis
 /// count via the inserts handled inside `lift_wcsmap_to_full_axes`.
-fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
+pub(crate) fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
     if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
         if cmp.composition() == Composition::Series {
             return split_map2_series(cmp);

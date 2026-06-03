@@ -103,50 +103,15 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     let fits_i = args.wperm[spec_iax];
 
-    // Step 2: choose CRVAL — caller override (if non-BAD) wins, else
-    // central-pixel WCS coord. Mirrors C:30331-30340 (which uses
-    // crvals[iax] if non-BAD, else the WCS value at the central pixel).
+    // Step 2: hold the caller's CRVAL override (if any). The
+    // bound-based fallback is computed AFTER unit-absorption (below)
+    // so that the bounds are taken on the same map that the
+    // algorithm cascade sees. Mirrors fitschan.c:30301-30329.
     let crval_input = args.crvals.get(spec_iax).copied().flatten();
-    let crval = match crval_input {
+    let mut crval: f64 = match crval_input {
         Some(v) if !is_bad(v) => v,
-        _ => {
-            // Compute WCS value at the central pixel (mirrors the
-            // OtherAxes central-pixel approach).
-            let map = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
-            let npix = map.nin();
-            let centre: Vec<f64> = (0..npix)
-                .map(|i| match args.dim.get(i).copied().flatten() {
-                    Some(d) => (0.5 * d).floor(),
-                    None => 1.0,
-                })
-                .collect();
-            let pts = PointSet::from_rows([centre]);
-            let out = map.transform(&pts, true)?;
-            let v = out.point(0)[spec_iax];
-            if is_bad(v) {
-                // Can't proceed without a valid CRVAL.
-                return Ok(Box::new(UnitMap::new(nwcs)));
-            }
-            v
-        }
+        _ => BAD_VALUE,
     };
-
-    // Step 2b: snap crval so it corresponds to an integer pixel
-    // along the spectral axis. Mirrors fitschan.c::SpectralAxes
-    // line 30333 (`crval = NearestPix(map, crval, iax, status)`).
-    // Without this, half-integer CRPIX inputs (common for AIPS
-    // 0.5-pixel grids on spectral axes) get propagated as
-    // half-integer CRPIX outputs, and CRVAL stays at the input
-    // (typically 0.0 m/s for VRAD or 0.0 Hz for FREQ) — but C's
-    // AIPS encoder expects an integer-pixel reference and bumps
-    // CRVAL to the nearest channel.
-    let map_for_snap = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
-    let crval = nearest_pix_value(map_for_snap.as_ref(), crval, spec_iax)?;
-
-    // Step 3: write keywords. Mirrors fitschan.c populate paths
-    // (we cover the canonical-form subset that wcs_write::populate_spectral
-    // also covers).
-    args.store.crval[fits_i] = Some(crval);
 
     let system = specfrm.system();
     let orig_system_str = system.as_str();
@@ -169,8 +134,6 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         .map(|i| args.dim.get(i).copied().flatten().unwrap_or(500.0))
         .collect();
 
-    let mut crval = crval; // some algorithm paths re-derive crval from the chain.
-
     // Unit-rewrite preprocessing. Mirrors fitschan.c::SpectralAxes
     // C:30276-30311. When the SpecFrame has a non-default Unit:
     //
@@ -188,26 +151,62 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // compose locally.
     let default_unit = system.specmap_units();
     let mut absorbed_unit = false;
-    if let Some(user_unit) = specfrm.unit().filter(|u| !u.is_empty()) {
-        if !default_unit.is_empty() && user_unit != default_unit {
-            if let Some(unit_map) = crate::units::unit_mapper(user_unit, default_unit) {
-                let is_linear =
-                    unit_map.as_any().is::<UnitMap>() || unit_map.as_any().is::<ZoomMap>();
-                if !is_linear {
-                    // Compose pixel→spec[user] with spec[user]→spec[default],
-                    // embedded on the spec axis only.
-                    let embedded = embed_axis(unit_map.clone_box(), spec_iax, nwcs)?;
-                    map = Box::new(CmpMap::new(map, embedded, Composition::Series)?);
-                    // Transform CRVAL through the unit mapping.
+    // C calls `astGetUnit` here, which always returns a non-NULL string
+    // — the explicit Unit when set, else the system's display default
+    // (km/s for velocity, GHz for FREQ, etc.). Use `unit_or_default`
+    // to match.
+    let user_unit = specfrm.unit_or_default();
+    if !user_unit.is_empty() && !default_unit.is_empty() && user_unit != default_unit {
+        if let Some(unit_map) = crate::units::unit_mapper(user_unit, default_unit) {
+            let is_linear = unit_map.as_any().is::<UnitMap>() || unit_map.as_any().is::<ZoomMap>();
+            if !is_linear {
+                // Compose pixel→spec[user] with spec[user]→spec[default],
+                // embedded on the spec axis only.
+                let embedded = embed_axis(unit_map.clone_box(), spec_iax, nwcs)?;
+                map = Box::new(CmpMap::new(map, embedded, Composition::Series)?);
+                // Transform CRVAL through the unit mapping (only if a
+                // caller-supplied override was provided — otherwise
+                // CRVAL is derived from the post-absorption map below).
+                if !is_bad(crval) {
                     let pts = PointSet::from_rows([[crval]]);
                     let out = unit_map.transform(&pts, true)?;
                     crval = out.point(0)[0];
-                    args.store.crval[fits_i] = Some(crval);
-                    absorbed_unit = true;
                 }
+                absorbed_unit = true;
             }
         }
     }
+
+    // Step 2c: derive default CRVAL from the spectral-axis bounds of
+    // the post-absorption map. Mirrors fitschan.c:30275 + 30308 +
+    // 30323-30329: bounds via astMapBox; if no caller override and
+    // dim is known, use mid-bound; else use lower bound.
+    let bounds = map.map_box(&lbnd_p, &ubnd_p, true, spec_iax)?;
+    let lbnd_s = bounds.lbnd_out;
+    let ubnd_s = bounds.ubnd_out;
+    if is_bad(crval) {
+        let dim_known = args.dim.get(spec_iax).copied().flatten().is_some();
+        if dim_known && !is_bad(lbnd_s) && !is_bad(ubnd_s) {
+            crval = 0.5 * (lbnd_s + ubnd_s);
+        } else if !is_bad(lbnd_s) {
+            crval = lbnd_s;
+        }
+    }
+    if is_bad(crval) {
+        // No usable spectral coordinate available.
+        return Ok(Box::new(UnitMap::new(nwcs)));
+    }
+
+    // Step 2d: snap crval so it corresponds to an integer pixel
+    // along the spectral axis. Mirrors fitschan.c::SpectralAxes
+    // line 30333 (`crval = NearestPix(map, crval, iax, status)`).
+    crval = nearest_pix_value(map.as_ref(), crval, spec_iax)?;
+
+    // Step 3: write keywords. Mirrors fitschan.c populate paths
+    // (we cover the canonical-form subset that wcs_write::populate_spectral
+    // also covers).
+    args.store.crval[fits_i] = Some(crval);
+
     let (axmap, ctype): (DynMapping, String) =
         if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, spec_iax)? {
             // Linear path: ShiftMap(-crval).
@@ -265,19 +264,14 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
 
     args.store.ctype[fits_i] = Some(ctype);
 
-    // CUNIT: explicit user-set unit if present, else the system's
-    // SpecMap canonical unit (Hz / m / m/s). When we absorbed a
-    // non-linear unit conversion above (e.g. log(Hz) → Hz), force
-    // the CUNIT to the canonical default since the chain now
-    // produces values in that unit.
+    // CUNIT: result of C's astGetUnit (explicit unit, else display
+    // default — km/s for velocities, GHz for FREQ, etc). When we
+    // absorbed a non-linear unit conversion above, the chain now
+    // produces canonical values, so force CUNIT to specmap_units.
     let cunit = if absorbed_unit {
         system.specmap_units().to_string()
     } else {
-        specfrm
-            .unit()
-            .filter(|u| !u.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| system.specmap_units().to_string())
+        specfrm.unit_or_default().to_string()
     };
     args.store.cunit[fits_i] = Some(cunit);
 
@@ -700,7 +694,7 @@ fn spec_or_inner(frame: &dyn Frame) -> Option<&SpecFrame> {
     None
 }
 
-fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
+pub(crate) fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
     if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
         let n1 = cmp.naxes1();
         if axis < n1 {
@@ -1032,8 +1026,9 @@ mod tests {
         // Axis 1 is the spectral axis (CmpFrame second component).
         assert!(!axis_done[0] && axis_done[1]);
         assert_eq!(store.ctype[1].as_deref(), Some("FREQ"));
-        // Default CUNIT for FREQ system is "Hz".
-        assert_eq!(store.cunit[1].as_deref(), Some("Hz"));
+        // CUNIT mirrors C's `astGetUnit` which falls back to the
+        // SpecSystem's display default — "GHz" for FREQ.
+        assert_eq!(store.cunit[1].as_deref(), Some("GHz"));
         assert_eq!(store.crval[1], Some(1.42e9));
         // SPECSYS — whatever the SpecFrame default is (typically
         // HELIOCEN). Just assert it was set.
@@ -1193,7 +1188,7 @@ mod tests {
     }
 
     #[test]
-    fn crval_default_uses_central_pixel() {
+    fn crval_default_uses_bounds_midpoint() {
         let fs = build_2axis_spec_fs();
         let dim = vec![Some(100.0), Some(200.0)];
         let mut wperm = vec![0_usize, 1];
@@ -1212,8 +1207,11 @@ mod tests {
         })
         .unwrap();
 
-        // Pixel→WCS is identity, so central-pixel WCS = floor(0.5*200) = 100.
-        assert_eq!(store.crval[1], Some(100.0));
+        // Pixel→WCS is identity. Spec-axis bounds via astMapBox are
+        // [1, 200]; midpoint = 100.5; NearestPix snaps to integer
+        // pixel coordinate 101. Mirrors fitschan.c:30325 (mid value
+        // when dim is known) + :30333 (NearestPix snap).
+        assert_eq!(store.crval[1], Some(101.0));
     }
 
     /// Build a 2-axis FrameSet with a SpecFrame whose Unit attribute

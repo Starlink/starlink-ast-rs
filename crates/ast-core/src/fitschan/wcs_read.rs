@@ -56,14 +56,13 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
     let mut frameset = FrameSet::new(pixel_frame);
     frameset.add_frame(FrameRef::Base, full_mapping, world_frame)?;
 
-    // Step 9: SpecFrame RefRA/RefDec from celestial fiducial (mirrors
-    // C `MakeFitsFrameSet` ~21465). When the world frame holds both
-    // a SpecFrame (with no RefRA/RefDec set) and a SkyFrame, propagate
-    // the celestial reference position to the SpecFrame's RefRA/
-    // RefDec attributes. Done in FK5 J2000: switch the SkyFrame to
-    // FK5/J2000 via FrameSet integrity, transform CRPIX to read the
-    // celestial axes' fiducial in FK5/J2000, set RefRA/RefDec on the
-    // SpecFrame, then restore the SkyFrame's original system.
+    // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
+    // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
+    // fitschan.c:39535. C calls this on the standalone SpecFrame
+    // BEFORE the FrameSet wraps it, so no FrameSet-integrity remap
+    // fires. We achieve the same semantics by using `frame_mut` to
+    // bypass our `with_integrity` machinery, since by this point the
+    // SpecFrame already lives inside the FrameSet.
     set_spec_ref_from_celestial(&mut frameset, store)?;
 
     Ok(AnyObject::FrameSet(frameset))
@@ -74,8 +73,6 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
 /// world frame doesn't contain a SpecFrame and a SkyFrame, or if the
 /// SpecFrame already has both attributes set.
 fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
-    use crate::frames::SkySystem;
-
     // Locate spec/sky child indices and frame-axis indices within the
     // current world frame. If either is absent, nothing to do.
     let Some(info) = locate_spec_sky(fs.current()) else {
@@ -94,69 +91,47 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResul
         }
     }
 
-    // Snapshot SkyFrame's current System / Equinox / Epoch for restore.
-    let (orig_sys, orig_equinox, orig_epoch) = {
-        let cur = fs.current();
-        let sky = peek_sky(cur).expect("locate_spec_sky guarantees a SkyFrame");
-        (sky.system(), sky.equinox_mjd(), sky.epoch_mjd())
-    };
-
-    // Step 1: switch SkyFrame to FK5 / J2000 via FrameSet integrity.
-    // The CmpFrame::map_from delta picks up the SkyFrame change and
-    // re-fuses the pixel→world mapping so the celestial axes now
-    // produce FK5 J2000 RA/Dec.
-    fs.with_integrity(|cur| {
-        if let Some(sky) = sky_mut(cur) {
-            sky.set_system(SkySystem::Fk5);
-            sky.set_equinox_year(2000.0);
-            sky.set_epoch_year(2000.0);
-        }
-        Ok(())
-    })?;
-
-    // Step 2: compute the celestial fiducial. Feed CRPIX (1-based in
-    // FITS, so 0-based here) through the mapping. At CRPIX, the
-    // pixel→IWC step yields IWC = 0 on the celestial axes, the
-    // WcsMap inverse yields native (phi_0, theta_0) = the fiducial
-    // native position, and the post-WcsMap rotation maps that to the
-    // celestial fiducial.
+    // Step 1: compute the celestial fiducial in the SkyFrame's native
+    // system. Mirrors C `WcsCelestial` (fitschan.c:35487+) which
+    // returns reflon/reflat as CRVAL1/CRVAL2 in radians, in the
+    // SkyFrame's coordinate system (RADESYS-determined). Here we feed
+    // CRPIX (1-based in FITS, so the same value here) through the
+    // pixel→world mapping: at CRPIX, the pixel→IWC step yields IWC=0
+    // on the celestial axes, the WcsMap inverse yields the native
+    // fiducial, and the post-WcsMap rotation maps that to the
+    // celestial fiducial in the SkyFrame's native system (i.e.
+    // FK4/Galactic/etc, not yet converted to FK5 J2000).
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
     let naxis = store.naxis;
-    // Pixel coordinates here are FITS-style (CRPIX subtraction
-    // produces IWC=0 directly), so feed raw CRPIX values.
     let crpix: Vec<f64> = (0..naxis).map(|i| store.crpix[i].unwrap_or(1.0)).collect();
 
     use crate::coords::PointSet;
     let pts_in = PointSet::from_rows([crpix.as_slice()]);
     let pts_out = mapping.transform(&pts_in, true)?;
     let world_pt = pts_out.point(0).to_vec();
+    let reflon = world_pt[info.world_lon_axis];
+    let reflat = world_pt[info.world_lat_axis];
 
-    // Read RA/Dec at the celestial axis positions in the world frame.
-    // SkyFrame outputs are radians.
-    let refra = world_pt[info.world_lon_axis];
-    let refdec = world_pt[info.world_lat_axis];
+    // Step 2: clone the SkyFrame so we can hand it to `set_ref_pos`
+    // as the reference frame. Mirrors C's
+    // `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
+    // fitschan.c:39535, where `reffrm` is a clone of the SkyFrame
+    // built by WcsCelestial. `set_ref_pos` performs the
+    // SkyFrame→FK5/J2000 conversion internally.
+    let sky_clone = peek_sky(fs.current())
+        .expect("locate_spec_sky guarantees a SkyFrame")
+        .clone();
 
-    // Step 3: set RefRA/RefDec on the SpecFrame via integrity. The
-    // SpecFrame::map_from delta is identity for this attribute change
-    // (RefRA/RefDec only affect rest-frame conversions, not the
-    // axis value), so the mapping is left alone.
-    fs.with_integrity(|cur| {
-        if let Some(spec) = spec_mut(cur) {
-            spec.set_ref_ra(refra);
-            spec.set_ref_dec(refdec);
-        }
-        Ok(())
-    })?;
-
-    // Step 4: restore SkyFrame's original system / equinox / epoch.
-    fs.with_integrity(|cur| {
-        if let Some(sky) = sky_mut(cur) {
-            sky.set_system(orig_sys);
-            sky.set_equinox(orig_equinox);
-            sky.set_epoch(orig_epoch);
-        }
-        Ok(())
-    })?;
+    // Step 3: call `set_ref_pos` on the SpecFrame via `frame_mut`.
+    // C calls `astSetRefPos` directly on the standalone specfrm
+    // before the FrameSet wraps it; we apply the same direct-set
+    // semantics post-construction via `frame_mut`. `set_ref_pos`
+    // converts (reflon, reflat) from sky_clone's system to FK5/J2000
+    // and stores the result in RefRA/RefDec.
+    let cur = fs.frame_mut(FrameRef::Current)?;
+    if let Some(spec) = spec_mut(cur) {
+        spec.set_ref_pos(Some(&sky_clone), reflon, reflat)?;
+    }
 
     Ok(())
 }
@@ -240,21 +215,6 @@ fn spec_mut(frame: &mut dyn crate::frames::Frame) -> Option<&mut crate::frames::
             return spec_mut(cmp.frame1_mut());
         }
         return spec_mut(cmp.frame2_mut());
-    }
-    None
-}
-
-fn sky_mut(frame: &mut dyn crate::frames::Frame) -> Option<&mut crate::frames::SkyFrame> {
-    use crate::frames::{CmpFrame, SkyFrame};
-    if frame.as_any().downcast_ref::<SkyFrame>().is_some() {
-        return frame.as_any_mut().downcast_mut::<SkyFrame>();
-    }
-    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
-        let pick_first = peek_sky(cmp.frame1()).is_some();
-        if pick_first {
-            return sky_mut(cmp.frame1_mut());
-        }
-        return sky_mut(cmp.frame2_mut());
     }
     None
 }
