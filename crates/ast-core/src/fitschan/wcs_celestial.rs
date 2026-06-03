@@ -549,9 +549,20 @@ fn build_rotation_from_pole(
     let rot_matrix = mat3_mul(&r3, &mat3_mul(&r2, &r1));
 
     // sph_to_cart: spherical (lon, lat) → cartesian (x, y, z).
-    // C sets PolarLong = phi0 on this SphMap (line 38244).
+    // C creates this with `astSphMap("UnitRadius=1", ...)` at
+    // fitschan.c:38239 — the unit-radius flag is what enables the
+    // simplifier to collapse a forward+inverse SphMap pair via
+    // SphMap::try_merge (sphmap.c:748-761). Without it, our
+    // simplifier sees `unit_radius=false` on the forward SphMap and
+    // refuses to cancel the round-trip, leaving the entire WcsMap-
+    // through-rotation chain in the simplified graph and accumulating
+    // ~6e-15 FP residue when FitLine evaluates the supposed-to-be-
+    // linear pixel→IWC chain.
+    //
+    // C also sets PolarLong = phi0 on this SphMap (line 38244).
     let mut sph_to_cart = SphMap::new();
     sph_to_cart.invert(); // forward = (lon, lat) → (x, y, z)
+    sph_to_cart.set_unit_radius(true);
     sph_to_cart.set_polar_long(phi0);
 
     // 3×3 rotation matrix.
@@ -564,8 +575,11 @@ fn build_rotation_from_pole(
     let rot_map = MatrixMap::new(mat).ok()?;
 
     // cart_to_sph: cartesian (x, y, z) → spherical (lon, lat).
+    // C creates this with `astSphMap("UnitRadius=1", ...)` at
+    // fitschan.c:38293 — same reason as above.
     // C sets PolarLong = alpha0 on this SphMap (line 38299).
     let mut cart_to_sph = SphMap::new();
+    cart_to_sph.set_unit_radius(true);
     cart_to_sph.set_polar_long(alpha0);
 
     let step1 = CmpMap::new(
