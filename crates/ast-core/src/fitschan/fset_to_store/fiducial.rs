@@ -41,10 +41,19 @@ pub(crate) fn get_fiducial_nsc(wcsmap: &WcsMap) -> (f64, f64) {
         // PV(axlon, 0) == 0 means "use the projection-reference-point
         // native lon/lat"; PV(axlon, 0) != 0 means "use PV(axlon, 1/2)
         // (in degrees, convert to radians)". Mirrors C:12706-12714.
+        //
+        // FITS-WCS paper II gives defaults for the longitude-axis PV
+        // parameters when not explicitly set: PV1_1 defaults to
+        // `nat_lon` (degrees), PV1_2 defaults to `nat_lat` (degrees).
+        // C's `astGetPV` (wcsmap.c:2125-2144) applies those defaults
+        // before returning. Our raw `get_pv` returns `None` for
+        // unset slots, so we mirror the C default here.
         let pv0 = wcsmap.get_pv(axlon_pv, 0).unwrap_or(0.0);
         if pv0 != 0.0 {
-            let phi_deg = wcsmap.get_pv(axlon_pv, 1).unwrap_or(0.0);
-            let theta_deg = wcsmap.get_pv(axlon_pv, 2).unwrap_or(0.0);
+            let nat_lon_deg = wcsmap.nat_lon().to_degrees();
+            let nat_lat_deg = wcsmap.nat_lat().to_degrees();
+            let phi_deg = wcsmap.get_pv(axlon_pv, 1).unwrap_or(nat_lon_deg);
+            let theta_deg = wcsmap.get_pv(axlon_pv, 2).unwrap_or(nat_lat_deg);
             return (DD2R * phi_deg, DD2R * theta_deg);
         }
     }
