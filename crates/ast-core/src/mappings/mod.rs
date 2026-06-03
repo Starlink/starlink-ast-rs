@@ -60,6 +60,8 @@ mod switchmap;
 pub use switchmap::SwitchMap;
 mod linear_approx;
 pub use linear_approx::LinearFit;
+mod map_box;
+pub use map_box::MapBoxResult;
 
 use std::any::Any;
 use std::fmt;
@@ -246,6 +248,30 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// `lbnd` / `ubnd` must each have length `self.nin()`.
     fn linear_approx(&self, lbnd: &[f64], ubnd: &[f64], tol: f64) -> Option<LinearFit> {
         linear_approx::linear_approx_default(self, lbnd, ubnd, tol)
+    }
+
+    /// Find the bounding box of a nominated output coordinate over a
+    /// constrained input region.
+    ///
+    /// Mirrors C `astMapBox` (mapping.c:7121). Given input bounds
+    /// `lbnd_in`/`ubnd_in` (length = effective `nin` for the chosen
+    /// direction, with `lbnd > ubnd` accepted and silently swapped),
+    /// returns the lowest and highest values of output coordinate
+    /// `coord_out` (zero-based) reached within that input volume,
+    /// together with positions where those bounds are attained.
+    ///
+    /// The default implementation simplifies the Mapping, runs
+    /// SpecialBounds (when nin <= 12) for an initial estimate, then
+    /// refines via the GlobalBounds simplex search. Concrete classes
+    /// with closed-form bounds (e.g. linear maps) may override.
+    fn map_box(
+        &self,
+        lbnd_in: &[f64],
+        ubnd_in: &[f64],
+        forward: bool,
+        coord_out: usize,
+    ) -> AstResult<MapBoxResult> {
+        map_box::map_box_default(self, lbnd_in, ubnd_in, forward, coord_out)
     }
 
     /// Whether the forward transform is defined.
