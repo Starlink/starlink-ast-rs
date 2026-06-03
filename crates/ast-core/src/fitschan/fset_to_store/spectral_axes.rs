@@ -73,11 +73,13 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     let wcsfrm = args.fs.current();
     let nwcs = wcsfrm.naxes();
 
-    // Step 1: locate the spectral axis. Mirrors C:30243-30248.
+    // Step 1: locate the spectral axis. Mirrors C:30243-30248
+    // (`astIsASpecFrame`, which returns true for DSBSpecFrame too —
+    // it's a subclass of SpecFrame in the C type system).
     let mut spec_axis: Option<usize> = None;
     for iax in 0..nwcs {
         let (pframe, _paxis) = primary_frame(wcsfrm, iax);
-        if pframe.as_any().is::<SpecFrame>() {
+        if is_spec_or_dsb(pframe) {
             spec_axis = Some(iax);
             break;
         }
@@ -86,9 +88,15 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         return Ok(Box::new(UnitMap::new(nwcs)));
     };
 
-    // Re-resolve the SpecFrame so we can read its attributes.
+    // Re-resolve the SpecFrame so we can read its attributes. For a
+    // DSBSpecFrame, walk to the inner SpecFrame — the FITS-WCS
+    // mapping treats both as "spectral axis" but the per-attribute
+    // accessors live on SpecFrame. The DSB-specific fields
+    // (DSBCentre, IF, SideBand) are read separately later in the
+    // pipeline (e.g. spectral_axes already calls
+    // `astIsADSBSpecFrame(specfrm)` for IMAGFREQ).
     let (spec_holder, _) = primary_frame(wcsfrm, spec_iax);
-    let specfrm = match spec_holder.as_any().downcast_ref::<SpecFrame>() {
+    let specfrm = match spec_or_inner(spec_holder) {
         Some(s) => s,
         None => return Ok(Box::new(UnitMap::new(nwcs))),
     };
@@ -669,6 +677,29 @@ fn try_grism_cascade(
 
 /// Recursively descend `frame` to its primary leaf for `axis`
 /// (0-based). Same helper used in celestial_axes / sky_sys.
+/// Whether `frame` is a `SpecFrame` or a `DSBSpecFrame` (which is a
+/// SpecFrame subclass in the C type system). Mirrors C's
+/// `astIsASpecFrame` returning true for both.
+fn is_spec_or_dsb(frame: &dyn Frame) -> bool {
+    use crate::frames::DSBSpecFrame;
+    frame.as_any().is::<SpecFrame>() || frame.as_any().is::<DSBSpecFrame>()
+}
+
+/// Return the underlying `SpecFrame` for a `SpecFrame` or for the
+/// inner spec of a `DSBSpecFrame`. Mirrors C's idiom of upcasting a
+/// DSBSpecFrame pointer to SpecFrame for use with SpecFrame
+/// accessors.
+fn spec_or_inner(frame: &dyn Frame) -> Option<&SpecFrame> {
+    use crate::frames::DSBSpecFrame;
+    if let Some(sf) = frame.as_any().downcast_ref::<SpecFrame>() {
+        return Some(sf);
+    }
+    if let Some(dsb) = frame.as_any().downcast_ref::<DSBSpecFrame>() {
+        return Some(dsb.spec());
+    }
+    None
+}
+
 fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
     if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
         let n1 = cmp.naxes1();
