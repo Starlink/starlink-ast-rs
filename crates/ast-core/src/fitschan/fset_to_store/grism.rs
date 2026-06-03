@@ -52,8 +52,15 @@ pub(crate) fn extract_grism_map(
             return Ok(None);
         }
 
-        let mapa = cmp.first();
-        let mapb = cmp.second();
+        // CmpMap composes its children using the `inv_a`/`inv_b`
+        // snapshots captured at construction time, so a child that
+        // has been independently inverted post-construction still
+        // walks in its captured direction. Extract effective clones
+        // of each child whose `is_inverted()` matches the snapshot —
+        // otherwise the recursion sees the wrong nout (parallel
+        // axis split) or the wrong "tail" mapping (series).
+        let mapa = extract_child_effective(cmp, true);
+        let mapb = extract_child_effective(cmp, false);
         let composition = cmp.composition();
 
         match composition {
@@ -61,35 +68,29 @@ pub(crate) fn extract_grism_map(
                 // Series: only the *second* child contributes the
                 // GrismMap "at the end". The first child is left
                 // untouched.
-                if let Some((g, new_mapb)) = extract_grism_map(mapb, iax)? {
-                    let new_chain: DynMapping = Box::new(CmpMap::new(
-                        mapa.clone_box(),
-                        new_mapb,
-                        Composition::Series,
-                    )?);
+                if let Some((g, new_mapb)) = extract_grism_map(mapb.as_ref(), iax)? {
+                    let new_chain: DynMapping =
+                        Box::new(CmpMap::new(mapa, new_mapb, Composition::Series)?);
                     return Ok(Some((g, new_chain)));
                 }
             }
             Composition::Parallel => {
                 // Parallel: the child producing output `iax` is the
-                // candidate. mapa contributes outputs 0..mapa.nout();
-                // mapb contributes outputs mapa.nout()..total.
+                // candidate. `mapa` contributes outputs
+                // 0..mapa.nout(); `mapb` contributes outputs
+                // mapa.nout()..total. We use the effective-clone
+                // `nout()` (post-inversion) so the axis split
+                // matches the CmpMap's runtime layout.
                 let na = mapa.nout();
                 if iax < na {
-                    if let Some((g, new_mapa)) = extract_grism_map(mapa, iax)? {
-                        let new_chain: DynMapping = Box::new(CmpMap::new(
-                            new_mapa,
-                            mapb.clone_box(),
-                            Composition::Parallel,
-                        )?);
+                    if let Some((g, new_mapa)) = extract_grism_map(mapa.as_ref(), iax)? {
+                        let new_chain: DynMapping =
+                            Box::new(CmpMap::new(new_mapa, mapb, Composition::Parallel)?);
                         return Ok(Some((g, new_chain)));
                     }
-                } else if let Some((g, new_mapb)) = extract_grism_map(mapb, iax - na)? {
-                    let new_chain: DynMapping = Box::new(CmpMap::new(
-                        mapa.clone_box(),
-                        new_mapb,
-                        Composition::Parallel,
-                    )?);
+                } else if let Some((g, new_mapb)) = extract_grism_map(mapb.as_ref(), iax - na)? {
+                    let new_chain: DynMapping =
+                        Box::new(CmpMap::new(mapa, new_mapb, Composition::Parallel)?);
                     return Ok(Some((g, new_chain)));
                 }
             }
@@ -97,6 +98,32 @@ pub(crate) fn extract_grism_map(
     }
 
     Ok(None)
+}
+
+/// Return a clone of the requested child (`first=true` for
+/// `cmp.first()`, false for `cmp.second()`) with its `inverted` flag
+/// normalised to the snapshot captured when the CmpMap was
+/// constructed. CmpMap's runtime transform composes children using
+/// those snapshots, so a child that was independently inverted
+/// post-construction still walks in its captured direction. Walks
+/// that recurse into children must mirror the same convention to
+/// keep dimensions and orientation aligned with the CmpMap's
+/// effective transform.
+///
+/// Duplicated from `super::celestial_axes::extract_child_effective`;
+/// the helper would belong in a shared module if grism.rs and
+/// celestial_axes.rs were both retained long-term.
+fn extract_child_effective(cmp: &CmpMap, first: bool) -> DynMapping {
+    let (child, captured_inv) = if first {
+        (cmp.first(), cmp.inv_a())
+    } else {
+        (cmp.second(), cmp.inv_b())
+    };
+    let mut clone = child.clone_box();
+    if clone.is_inverted() != captured_inv {
+        clone.invert();
+    }
+    clone
 }
 
 #[cfg(test)]
