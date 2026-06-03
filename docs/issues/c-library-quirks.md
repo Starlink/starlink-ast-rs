@@ -245,3 +245,104 @@ last-plane-wins to do anything useful. That work is out of scope
 for the current alt-WCS design (which is FITS-WCS-suffix-only on
 the reader side per Spec §"Read side: only FITS-WCS uses the
 *A..*Z axis-suffix convention"). Tracking as a separate ticket.
+
+---
+
+## DATE-OBS fractional-seconds parser drops leading zeros
+
+**C location:** `fitschan.c:8395-8470` — `DateObs()`'s `astSscanf`
+patterns for the modern ISO-8601 form, e.g. line 8453:
+
+```c
+( astSscanf( dateobs, " %4d-%2d-%2dT%2d:%2d:%2d.%d %n", &yy, &mm, &dd,
+          &hr, &mn, &sc, &fsc, &nc ) == 7 ) && ( nc >= len )
+```
+
+The fractional-second field is read with `%d` into `int fsc`, then
+reconstructed digit-by-digit:
+
+```c
+secs = 0.0;
+while ( fsc > 0 ) {
+    rem = ( fsc % 10 );
+    fsc /= 10;
+    secs = 0.1 * ( secs + (double) rem );
+}
+```
+
+**Observation:** `%d` discards any leading zeros, so the *width* of
+the fractional field is lost. For the input
+`"2017-07-21T08:38:39.087"` the parser yields `fsc = 87`, and the
+reconstruction loop produces `secs = 0.87` instead of `0.087`. The
+resulting MJD is wrong by `(0.87 - 0.087) s = 0.783 s`. Round-tripping
+that MJD back to a string via `MakeBanner`/`MJDToDate` writes
+`"08:38:39.870"`.
+
+**Reproduction:**
+
+```
+$ cat /tmp/azel.head
+SIMPLE  =                    T / Fits standard
+BITPIX  =                  -32 / Bits per pixel
+NAXIS   =                    2 / Number of axes
+CTYPE1  = 'AZ---TAN'
+CTYPE2  = 'EL---TAN'
+CRVAL1  = 185.0
+CRVAL2  = 60.0
+CRPIX1  = 50.5
+CRPIX2  = 50.5
+CDELT1  = -0.01
+CDELT2  =  0.01
+DATE-OBS= '2017-07-21T08:38:39.087'
+END
+
+$ wcsconverter /tmp/azel.head fits-wcs /tmp/out.txt 'cdmatrix=1,FitsDigits=8'
+$ grep DATE-OBS /tmp/out.txt
+DATE-OBS= '2017-07-21T08:38:39.870' / Date of observation
+                                ^^^^^ should be .087
+```
+
+The MJD-OBS value computed from the parsed string (`57955.36018368...`)
+is consistent with the wrong `0.87 s` fraction; this is not just a
+formatting bug, it's a parse-and-store bug — the wrong number of
+seconds is being stored on the FrameSet's `Epoch`.
+
+**Why discuss with maintainers:**
+
+- Any DATE-OBS string with a fractional-second field whose first
+  digit is `0` (i.e. less than 100 ms past the whole second, in
+  3-digit "milliseconds" notation) parses incorrectly. With wider
+  fractional fields the same loss applies whenever leading zeros
+  are present.
+- The fix is local: read the fractional field as a string instead
+  of an `int`, and convert via `secs = strtod(buf,…)` after
+  prefixing `"0."` — or equivalently, count the field width via a
+  pair of `%n` markers and divide `fsc / pow(10.0, width)`. Both
+  preserve leading zeros.
+
+**Proposed C patch (sketch):**
+
+```c
+   int fsc_start, fsc_end;
+   /* Replace the two ".%d" patterns with: */
+   ( astSscanf( dateobs, " %4d-%2d-%2dT%2d:%2d:%2d.%n%d%n %n",
+                &yy, &mm, &dd, &hr, &mn, &sc,
+                &fsc_start, &fsc, &fsc_end, &nc ) == 7 )
+   /* … and replace the digit-reconstruction loop with: */
+   if( fsc > 0 ) {
+       int width = fsc_end - fsc_start;
+       secs = (double) fsc / pow( 10.0, (double) width );
+   } else {
+       secs = 0.0;
+   }
+```
+
+(Both `.%d` and `.%dZ` patterns need the same change; the post-Z
+variant should reuse the same width capture.)
+
+**Rust mirror:** `wcs_write::date_str_to_mjd` parses the fractional
+seconds via `f64::parse` on the full `"SS.fff"` substring, which is
+correct (no quirk to mirror). The corresponding test fixture
+`crates/ast-core/tests/fixtures/wcsconv/expected/azel.fits-wcs`
+has been updated to carry the *correct* `08:38:39.087` rather than
+C's buggy round-trip output `08:38:39.870`.
