@@ -470,8 +470,40 @@ impl Serializable for CmpFrame {
             .get_object("FrameB")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameB"))?;
 
-        let frame1 = frame_from_node(node_a)?;
-        let frame2 = frame_from_node(node_b)?;
+        // Determine each child's axis count to split the compound axis
+        // attributes (Lbl{n}, Uni{n}, Sym{n}, Fmt{n}, Dir{n}). C's
+        // CmpFrame::SetAttrib forwards an indexed attribute to the
+        // primary Frame containing that axis (cmpframe.c:8396+);
+        // we materialise the same effect by injecting per-axis
+        // overrides into the child node before parsing.
+        let n1 = node_a.get_int("Naxes", 0) as usize;
+        let n2 = node_b.get_int("Naxes", 0) as usize;
+        let mut node_a = node_a.clone();
+        let mut node_b = node_b.clone();
+        for prefix in ["Lbl", "Uni", "Sym", "Fmt", "Dir"] {
+            for ax in 1..=(n1 + n2) {
+                let cmp_key = format!("{prefix}{ax}");
+                // Forward both set and commented (default) values: the
+                // CmpFrame's `to_node` emits these as `push_unset`, but
+                // when the underlying child has no representation of
+                // this attribute (e.g. a SpecFrame inside a DSBSpecFrame
+                // that lacks a Unit field), the only place we can find
+                // its value on read is on the CmpFrame itself.
+                let Some(value) = node.get_any(&cmp_key).cloned() else {
+                    continue;
+                };
+                let (child, local_ax) = if ax <= n1 {
+                    (&mut node_a, ax)
+                } else {
+                    (&mut node_b, ax - n1)
+                };
+                let child_key = format!("{prefix}{local_ax}");
+                child.replace_or_push(&child_key, value);
+            }
+        }
+
+        let frame1 = frame_from_node(&node_a)?;
+        let frame2 = frame_from_node(&node_b)?;
 
         let mut cmp = CmpFrame::new(frame1, frame2);
 

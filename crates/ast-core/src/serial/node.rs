@@ -106,6 +106,23 @@ impl Node {
         });
     }
 
+    /// Replace the value of the first item matching `key`, or push a new
+    /// item if none exists. Comment is preserved on replace, omitted on push.
+    /// Key comparison is case-insensitive.
+    pub fn replace_or_push(&mut self, key: &str, value: NodeValue) {
+        for item in &mut self.items {
+            if item.key.eq_ignore_ascii_case(key) {
+                item.value = value;
+                return;
+            }
+        }
+        self.items.push(NodeItem {
+            key: key.to_string(),
+            value,
+            comment: None,
+        });
+    }
+
     /// Look up the first item with the given key, returning its value.
     /// Returns `None` if not found or if the item is `Unset`.
     ///
