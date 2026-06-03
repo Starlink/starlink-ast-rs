@@ -465,11 +465,24 @@ impl DSBSpecFrame {
     /// 1. Map self → self's observed sideband
     /// 2. Apply parent SpecFrame alignment (observed → observed)
     /// 3. Map target's observed sideband → target (inverse of target's to_observed)
-    fn make_dsb_mapping_aligned(&self, target: &DSBSpecFrame) -> AstResult<DynMapping> {
+    ///
+    /// `intflag` selects which `make_spec_mapping_*` overload to use for
+    /// the parent SpecFrame alignment: `true` for the FrameSet
+    /// integrity path (mirrors C `AST__INTFLAG` branch), `false` for
+    /// the convert path.
+    fn make_dsb_mapping_aligned(
+        &self,
+        target: &DSBSpecFrame,
+        intflag: bool,
+    ) -> AstResult<DynMapping> {
         // map1: self's current → self's observed sideband
         let map1 = self.to_observed_mapping()?;
         // parent alignment (observed → observed)
-        let parent_map = self.spec.make_spec_mapping(&target.spec)?;
+        let parent_map = if intflag {
+            self.spec.make_spec_mapping_integrity(&target.spec)?
+        } else {
+            self.spec.make_spec_mapping(&target.spec)?
+        };
         // map2: target's current → target's observed (we need inverse)
         let mut map2 = target.to_observed_mapping()?;
         map2.invert();
@@ -520,7 +533,7 @@ impl Frame for DSBSpecFrame {
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         if let Some(prev_dsb) = previous.as_any().downcast_ref::<DSBSpecFrame>() {
             // FrameSet integrity: sideband-aware alignment from previous to self.
-            return prev_dsb.make_dsb_mapping_aligned(self);
+            return prev_dsb.make_dsb_mapping_aligned(self, true);
         }
         // Fallback: delegate to SpecFrame's map_from.
         self.spec.map_from(previous)
@@ -530,7 +543,7 @@ impl Frame for DSBSpecFrame {
         // 1. Try downcast to DSBSpecFrame.
         if let Some(to_dsb) = to.as_any().downcast_ref::<DSBSpecFrame>() {
             let mapping = if self.align_sideband() && to_dsb.align_sideband() {
-                self.make_dsb_mapping_aligned(to_dsb)?
+                self.make_dsb_mapping_aligned(to_dsb, false)?
             } else {
                 self.spec.make_spec_mapping(&to_dsb.spec)?
             };

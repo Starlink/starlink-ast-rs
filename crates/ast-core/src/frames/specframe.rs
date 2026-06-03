@@ -152,12 +152,15 @@ impl SpecSystem {
 
     /// Default display units for this system (user-facing, not SI).
     pub(crate) fn default_display_units(&self) -> &'static str {
+        // Mirrors C's `DefUnit` in specframe.c:901+. Differs from
+        // `specmap_units` (the canonical SI unit used inside SpecMap)
+        // only for velocity systems, which display as km/s by default.
         match self {
             Self::Freq => "GHz",
             Self::Energy => "J",
-            Self::Wavenum => "/m",
+            Self::Wavenum => "1/m",
             Self::Wavelen | Self::Airwave => "Angstrom",
-            Self::Vradio | Self::Voptical | Self::Vrel => "m/s",
+            Self::Vradio | Self::Voptical | Self::Vrel => "km/s",
             Self::Redshift | Self::Beta => "",
         }
     }
@@ -271,6 +274,9 @@ pub struct SpecFrame {
     source_sys: Option<SpecSystem>, // spectral system of source velocity
     spec_origin: Option<f64>, // spectral origin (in default units for current system)
     align_std_of_rest: Option<StdOfRest>,
+    /// Alignment system. Mirrors C `GetAlignSystem` which returns
+    /// `AST__WAVELEN` by default for SpecFrames (specframe.c:1899-1957).
+    align_system: Option<SpecSystem>,
     align_spec_offset: bool,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
@@ -309,6 +315,7 @@ impl SpecFrame {
             source_sys: None,
             spec_origin: None,
             align_std_of_rest: None,
+            align_system: None,
             align_spec_offset: false,
             act_unt: None,
             ident: None,
@@ -362,6 +369,16 @@ impl SpecFrame {
         self.unit = Some(unit.to_string());
     }
 
+    /// Return the user-facing unit, falling back to the system default
+    /// (e.g. "GHz" for FREQ, "km/s" for VRAD). Mirrors C's `astGetUnit`,
+    /// which always returns a non-NULL string.
+    pub fn unit_or_default(&self) -> &str {
+        self.unit
+            .as_deref()
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| self.system.default_display_units())
+    }
+
     /// Clear the user-set unit override so that the system's default
     /// unit (`Hz` for `Freq`, `m` for `Wavelen`, etc.) takes effect.
     pub fn clear_unit(&mut self) {
@@ -378,6 +395,19 @@ impl SpecFrame {
     /// Set the alignment standard of rest.
     pub fn set_align_std_of_rest(&mut self, sor: StdOfRest) {
         self.align_std_of_rest = Some(sor);
+    }
+
+    /// Return the alignment system.
+    ///
+    /// Defaults to `Wavelen` if not explicitly set. Mirrors C
+    /// `GetAlignSystem` (specframe.c:1899-1957).
+    pub fn align_system(&self) -> SpecSystem {
+        self.align_system.unwrap_or(SpecSystem::Wavelen)
+    }
+
+    /// Set the alignment system.
+    pub fn set_align_system(&mut self, sys: SpecSystem) {
+        self.align_system = Some(sys);
     }
 
     /// Return the explicit Label override if set, otherwise the
@@ -434,6 +464,84 @@ impl SpecFrame {
     /// Set the reference Dec (FK5 J2000, radians).
     pub fn set_ref_dec(&mut self, dec: f64) {
         self.ref_dec = Some(dec);
+    }
+
+    /// Set the reference position from a celestial coordinate system.
+    /// Mirrors C `astSetRefPos` (specframe.c:3913-4038).
+    ///
+    /// `frm` is the SkyFrame which defines the celestial coordinate
+    /// system in which the longitude and latitude values are supplied.
+    /// If `None`, the supplied longitude and latitude values are
+    /// assumed to already be FK5 J2000 RA and Dec.
+    ///
+    /// `lon` and `lat` are in radians within `frm`'s coordinate system.
+    pub fn set_ref_pos(
+        &mut self,
+        frm: Option<&super::SkyFrame>,
+        lon: f64,
+        lat: f64,
+    ) -> AstResult<()> {
+        // If no SkyFrame was supplied, just store the supplied values
+        // as RefRA/RefDec directly. Mirrors C:3983-3985.
+        let Some(frm) = frm else {
+            self.set_ref_ra(lon);
+            self.set_ref_dec(lat);
+            return Ok(());
+        };
+
+        // Otherwise, convert the supplied values from the source
+        // SkyFrame's system to FK5 J2000 (the canonical system in
+        // which RefRA/RefDec are stored). Mirrors C:3990-4036.
+        let canonical = super::SkyFrame::new(super::SkySystem::Fk5);
+        // (The C version sets equinox=J2000 explicitly; SkyFrame::new
+        // uses J2000 as the default Equinox, so no explicit set is
+        // needed here.)
+        let Some(fs) = crate::frames::Frame::convert(frm, &canonical, &[])? else {
+            // Conversion was not possible — leave RefRA/RefDec
+            // unchanged (C silently no-ops in this case).
+            return Ok(());
+        };
+
+        // Determine the axis order on each side: SkyFrame may have
+        // its axes permuted (lat-first vs lon-first). C uses
+        // astGetLonAxis on each frame; mirror via SkyFrame::lon_axis.
+        let base = fs.base();
+        let current = fs.current();
+        let base_lon = base
+            .as_any()
+            .downcast_ref::<super::SkyFrame>()
+            .map(|s| s.lon_axis())
+            .unwrap_or(0);
+        let cur_lon = current
+            .as_any()
+            .downcast_ref::<super::SkyFrame>()
+            .map(|s| s.lon_axis())
+            .unwrap_or(0);
+
+        let (xin, yin) = if base_lon == 0 {
+            (lon, lat)
+        } else {
+            (lat, lon)
+        };
+
+        let mapping = fs.mapping(
+            crate::frames::FrameRef::Base,
+            crate::frames::FrameRef::Current,
+        )?;
+        let pts = crate::coords::PointSet::from_rows([[xin, yin]]);
+        let out = mapping.transform(&pts, true)?;
+        let row = out.point(0);
+        let xout = row[0];
+        let yout = row[1];
+
+        let (refra, refdec) = if cur_lon == 0 {
+            (xout, yout)
+        } else {
+            (yout, xout)
+        };
+        self.set_ref_ra(refra);
+        self.set_ref_dec(refdec);
+        Ok(())
     }
 
     /// Return the source velocity (m/s or redshift/beta depending on source_sys).
@@ -813,58 +921,299 @@ impl SpecFrame {
         }
     }
 
-    /// Build the SpecMap for converting from `self` (target) to `result`.
-    ///
-    /// Follows the C `MakeSpecMapping` algorithm:
-    ///   Step 2: target system → frequency (in target SOR)
-    ///   Step 3: frequency in target SOR → frequency in alignment SOR
-    ///   Step 4: frequency → alignment system (if rest freqs differ)
-    ///   Step 5: alignment system → frequency (using result rest freq)
-    ///   Step 6: frequency in alignment SOR → frequency in result SOR
-    ///   Step 7: frequency → result system (in result SOR)
-    pub(crate) fn make_spec_mapping(&self, result: &SpecFrame) -> AstResult<DynMapping> {
-        let target_system = self.system;
-        let result_system = result.system;
-        let target_rf = self.rest_freq.unwrap_or(0.0);
-        let result_rf = result.rest_freq.unwrap_or(0.0);
+    /// Mirrors C `EqualSor` (specframe.c:989-1077). Two SpecFrames
+    /// share the same rest frame only when `std_of_rest` matches AND
+    /// the per-SOR-defining attributes also match (RefRA/RefDec
+    /// always; Epoch + ObsLat/Lon/Alt for topocentric; Epoch alone
+    /// for geocentric/barycentric/heliocentric; SourceVel + SourceVRF
+    /// + SourceSys for source).
+    fn equal_sor(&self, other: &SpecFrame) -> bool {
+        if self.std_of_rest != other.std_of_rest {
+            return false;
+        }
+        if !ast_equal(self.ref_ra.unwrap_or(0.0), other.ref_ra.unwrap_or(0.0)) {
+            return false;
+        }
+        if !ast_equal(self.ref_dec.unwrap_or(0.0), other.ref_dec.unwrap_or(0.0)) {
+            return false;
+        }
+        match self.std_of_rest {
+            StdOfRest::Source => {
+                ast_equal(
+                    self.source_vel.unwrap_or(0.0),
+                    other.source_vel.unwrap_or(0.0),
+                ) && self.source_vrf == other.source_vrf
+                    && self.source_sys == other.source_sys
+            }
+            StdOfRest::Geocentric | StdOfRest::Barycentric | StdOfRest::Heliocentric => {
+                ast_equal(self.epoch_mjd(), other.epoch_mjd())
+            }
+            StdOfRest::Topocentric => {
+                ast_equal(self.epoch_mjd(), other.epoch_mjd())
+                    && ast_equal(self.obs_alt.unwrap_or(0.0), other.obs_alt.unwrap_or(0.0))
+                    && ast_equal(self.obs_lon.unwrap_or(0.0), other.obs_lon.unwrap_or(0.0))
+                    && ast_equal(self.obs_lat.unwrap_or(0.0), other.obs_lat.unwrap_or(0.0))
+            }
+            StdOfRest::Lsrk | StdOfRest::Lsrd | StdOfRest::Galactic | StdOfRest::LocalGroup => true,
+        }
+    }
 
-        // Alignment system: if absolute → Freq, else → Vrel.
-        let align_system = if target_system.is_absolute() && result_system.is_absolute() {
+    /// Add a conversion to `specmap` that transforms frequencies from the
+    /// standard of rest defined by `this` to the standard of rest defined
+    /// by `that`. Mirrors C `SorConvert` (specframe.c:4241-4429).
+    ///
+    /// Always works in the frequency domain regardless of either
+    /// SpecFrame's `System`. The conversion is gated on `!EqualSor(this,
+    /// that)`: if the two rest frames are equal (per `EqualSor` semantics)
+    /// no SpecMap entries are added.
+    fn sor_convert(this: &SpecFrame, that: &SpecFrame, specmap: &mut SpecMap) {
+        // No conversion required if the rest frames are equal.
+        if this.equal_sor(that) {
+            return;
+        }
+
+        // Convert from the "this" rest frame to heliocentric, using
+        // "this"'s attributes.
+        {
+            let from = this.std_of_rest;
+            let ra = this.ref_ra.unwrap_or(0.0);
+            let dec = this.ref_dec.unwrap_or(0.0);
+            let lon = this.obs_lon.unwrap_or(0.0);
+            let lat = this.obs_lat.unwrap_or(0.0);
+            let alt = this.obs_alt.unwrap_or(0.0);
+            let epoch = this.epoch_mjd();
+
+            match from {
+                StdOfRest::Topocentric => {
+                    specmap.add(SpecCvtType::TpF2Hl, &[lon, lat, alt, epoch, ra, dec]);
+                }
+                StdOfRest::Geocentric => {
+                    specmap.add(SpecCvtType::GeF2Hl, &[epoch, ra, dec]);
+                }
+                StdOfRest::Barycentric => {
+                    specmap.add(SpecCvtType::ByF2Hl, &[epoch, ra, dec]);
+                }
+                StdOfRest::Lsrk => {
+                    specmap.add(SpecCvtType::LkF2Hl, &[ra, dec]);
+                }
+                StdOfRest::Lsrd => {
+                    specmap.add(SpecCvtType::LdF2Hl, &[ra, dec]);
+                }
+                StdOfRest::LocalGroup => {
+                    specmap.add(SpecCvtType::LgF2Hl, &[ra, dec]);
+                }
+                StdOfRest::Galactic => {
+                    specmap.add(SpecCvtType::GlF2Hl, &[ra, dec]);
+                }
+                StdOfRest::Source => {
+                    let src_vel = this.convert_source_vel_to_helio_vrel();
+                    specmap.add(SpecCvtType::UsF2Hl, &[src_vel, ra, dec]);
+                }
+                StdOfRest::Heliocentric => {} // already heliocentric, no-op
+            }
+        }
+
+        // Now go from heliocentric to the "that" frame, using "that"'s
+        // attributes.
+        {
+            let to = that.std_of_rest;
+            let ra = that.ref_ra.unwrap_or(0.0);
+            let dec = that.ref_dec.unwrap_or(0.0);
+            let lon = that.obs_lon.unwrap_or(0.0);
+            let lat = that.obs_lat.unwrap_or(0.0);
+            let alt = that.obs_alt.unwrap_or(0.0);
+            let epoch = that.epoch_mjd();
+
+            match to {
+                StdOfRest::Topocentric => {
+                    specmap.add(SpecCvtType::HlF2Tp, &[lon, lat, alt, epoch, ra, dec]);
+                }
+                StdOfRest::Geocentric => {
+                    specmap.add(SpecCvtType::HlF2Ge, &[epoch, ra, dec]);
+                }
+                StdOfRest::Barycentric => {
+                    specmap.add(SpecCvtType::HlF2By, &[epoch, ra, dec]);
+                }
+                StdOfRest::Lsrk => {
+                    specmap.add(SpecCvtType::HlF2Lk, &[ra, dec]);
+                }
+                StdOfRest::Lsrd => {
+                    specmap.add(SpecCvtType::HlF2Ld, &[ra, dec]);
+                }
+                StdOfRest::LocalGroup => {
+                    specmap.add(SpecCvtType::HlF2Lg, &[ra, dec]);
+                }
+                StdOfRest::Galactic => {
+                    specmap.add(SpecCvtType::HlF2Gl, &[ra, dec]);
+                }
+                StdOfRest::Source => {
+                    let src_vel = that.convert_source_vel_to_helio_vrel();
+                    specmap.add(SpecCvtType::HlF2Us, &[src_vel, ra, dec]);
+                }
+                StdOfRest::Heliocentric => {} // already heliocentric, no-op
+            }
+        }
+    }
+
+    /// Build the SpecMap for converting from `self` (target) to `result`
+    /// using the default alignment frame (cloned from target, with target's
+    /// `align_system` and `align_std_of_rest` substituted in for
+    /// System/StdOfRest, mirroring the C `Match`/`SubFrame` setup at
+    /// specframe.c:4856+, 4883-4884) and the non-integrity ("convert")
+    /// path. The two-argument signature is the entry point for `convert`
+    /// callers (FITS WCS construction, user-driven `astConvert`).
+    pub(crate) fn make_spec_mapping(&self, result: &SpecFrame) -> AstResult<DynMapping> {
+        self.make_spec_mapping_full(result, None, false)
+    }
+
+    /// Build the SpecMap for converting from `self` (target) to `result`
+    /// in the FrameSet integrity path: align frame is taken from the
+    /// target's (current's) AlignSystem/AlignStdOfRest applied as
+    /// System/StdOfRest, and `intflag=true` so SorConvert sees the
+    /// per-SOR-defining attributes of the original alignment frame
+    /// rather than overlaying target/result attributes onto it.
+    pub(crate) fn make_spec_mapping_integrity(&self, result: &SpecFrame) -> AstResult<DynMapping> {
+        self.make_spec_mapping_full(result, None, true)
+    }
+
+    /// Full-form port of C `MakeSpecMapping` (specframe.c:2488-2966).
+    ///
+    /// Parameters mirror C exactly:
+    ///   * `target` = `self`, `result` = `result`
+    ///   * `align_frm = None` → derive from target as in C `Match`:
+    ///     copy target, then set System=target.AlignSystem and
+    ///     StdOfRest=target.AlignStdOfRest (mirrors C lines 4867+ and
+    ///     4883-4884).
+    ///   * `intflag = true` → FrameSet integrity path (C
+    ///     AST__INTFLAG branch, lines 2667-2670). `align_target` and
+    ///     `align_result` are clones of `align_frm` retaining its own
+    ///     SOR-defining attributes.
+    ///   * `intflag = false` → "convert" path (C lines 2676-2696):
+    ///     `align_target` and `align_result` are copies of `align_frm`
+    ///     with target's / result's per-SOR-defining attributes
+    ///     (Epoch, RefRA, RefDec, SourceVRF, SourceVel, ObsLat, ObsLon,
+    ///     ObsAlt) substituted in.
+    fn make_spec_mapping_full(
+        &self,
+        result: &SpecFrame,
+        align_frm: Option<&SpecFrame>,
+        intflag: bool,
+    ) -> AstResult<DynMapping> {
+        let target = self;
+
+        // Derive default alignment frame (mirrors C Match/SubFrame setup
+        // at specframe.c:4867 + 4883-4884: align_frm = copy(target) then
+        // System=AlignSystem, StdOfRest=AlignStdOfRest).
+        let derived_align;
+        let align_frm: &SpecFrame = match align_frm {
+            Some(f) => f,
+            None => {
+                let mut a = target.clone();
+                a.system = target.align_system();
+                a.std_of_rest = target.align_std_of_rest();
+                derived_align = a;
+                &derived_align
+            }
+        };
+
+        // C lines 2629-2634.
+        let target_rf = target.rest_freq.unwrap_or(0.0);
+        let result_rf = result.rest_freq.unwrap_or(0.0);
+        let target_system = target.system;
+        let result_system = result.system;
+        let mut align_system = align_frm.system;
+
+        // C lines 2667-2696. `align_target` / `align_result`
+        // construction depends on the integrity flag.
+        let (align_target, align_result) = if intflag {
+            // Clones — keep align_frm's attributes intact.
+            (align_frm.clone(), align_frm.clone())
+        } else {
+            // Copies, then substitute target/result's per-SOR-defining
+            // attributes in. C unconditionally calls astSetEpoch /
+            // astSetRefRA / etc, so we mirror that by always populating
+            // these fields (using each side's effective default if
+            // unset, mirroring the GET behaviour of the corresponding
+            // astGet*).
+            let mut at = align_frm.clone();
+            at.epoch = Some(target.epoch_mjd());
+            at.ref_ra = Some(target.ref_ra.unwrap_or(0.0));
+            at.ref_dec = Some(target.ref_dec.unwrap_or(0.0));
+            at.source_vrf = Some(target.source_vrf());
+            at.source_vel = Some(target.source_vel.unwrap_or(0.0));
+            at.obs_lat = Some(target.obs_lat.unwrap_or(0.0));
+            at.obs_lon = Some(target.obs_lon.unwrap_or(0.0));
+            at.obs_alt = Some(target.obs_alt.unwrap_or(0.0));
+
+            let mut ar = align_frm.clone();
+            ar.epoch = Some(result.epoch_mjd());
+            ar.ref_ra = Some(result.ref_ra.unwrap_or(0.0));
+            ar.ref_dec = Some(result.ref_dec.unwrap_or(0.0));
+            ar.source_vrf = Some(result.source_vrf());
+            ar.source_vel = Some(result.source_vel.unwrap_or(0.0));
+            ar.obs_lat = Some(result.obs_lat.unwrap_or(0.0));
+            ar.obs_lon = Some(result.obs_lon.unwrap_or(0.0));
+            ar.obs_alt = Some(result.obs_alt.unwrap_or(0.0));
+
+            (at, ar)
+        };
+
+        // C line 2713: align in Freq if alignment system is absolute,
+        // else in Vrel.
+        align_system = if align_system.is_absolute() {
             SpecSystem::Freq
         } else {
             SpecSystem::Vrel
         };
 
-        // Determine which steps are needed (optimisation from C code).
-        let mut step2 = target_system != SpecSystem::Freq;
-        let mut step3 = self.std_of_rest != result.std_of_rest;
-        let step4;
-        let step5;
-        let mut step6 = self.std_of_rest != result.std_of_rest;
-        let mut step7 = result_system != SpecSystem::Freq;
+        // C lines 2738-2743: initialise all steps to "needed".
+        let mut step2 = true;
+        let mut step3 = true;
+        let mut step4 = true;
+        let mut step5 = true;
+        let mut step6 = true;
+        let mut step7 = true;
 
-        // Steps 4 and 5: only needed if alignment is in Vrel AND rest freqs differ.
+        // C line 2746.
+        if target_system == SpecSystem::Freq {
+            step2 = false;
+        }
+
+        // C line 2750.
+        if target.equal_sor(&align_target) {
+            step3 = false;
+        }
+
+        // C line 2754.
+        if result.equal_sor(&align_result) {
+            step6 = false;
+        }
+
+        // C line 2757.
+        if result_system == SpecSystem::Freq {
+            step7 = false;
+        }
+
+        // C line 2761: steps 4 and 5 are not necessary if alignment
+        // system is frequency, or target/result rest frequencies are
+        // equal.
         if align_system == SpecSystem::Freq || ast_equal(result_rf, target_rf) {
             step4 = false;
             step5 = false;
-        } else {
-            step4 = true;
-            step5 = true;
         }
 
-        // Steps 3 and 6: not needed if steps 4/5 not needed AND SOR same.
-        if !step4 && !step5 && self.std_of_rest == result.std_of_rest {
+        // C line 2765.
+        if !step4 && !step5 && target.equal_sor(result) {
             step3 = false;
             step6 = false;
         }
 
-        // Steps 2 and 7: not needed if steps 3-6 not needed AND same system
-        // (for relative systems, also need same rest freq).
+        // C lines 2771-2774.
         if !step3
             && !step4
             && !step5
             && !step6
-            && self.std_of_rest == result.std_of_rest
+            && target.equal_sor(result)
             && target_system == result_system
             && (target_system.is_absolute() || ast_equal(result_rf, target_rf))
         {
@@ -875,51 +1224,40 @@ impl SpecFrame {
         // Build the SpecMap.
         let mut specmap = SpecMap::new();
 
-        // Step 2: target system → frequency.
+        // Step 2: target system → frequency in target rest frame
+        // (C lines 2782-2819).
         if step2 {
-            Self::add_system_to_freq(&mut specmap, target_system, self.rest_freq);
+            Self::add_system_to_freq(&mut specmap, target_system, target.rest_freq);
         }
 
-        // Step 3: frequency in target SOR → frequency in alignment SOR.
+        // Step 3: frequency in target SOR → frequency in alignment SOR
+        // (C line 2823). Uses target's attrs on the from side and
+        // align_target's attrs on the to side.
         if step3 {
-            self.add_sor_to_helio(&mut specmap, self.std_of_rest);
-            // Now we are in heliocentric; go to the alignment SOR if it differs.
-            // For the target side, the alignment frame inherits target properties.
-            // But alignment SOR defaults to heliocentric, so typically this is a no-op
-            // for step 3 since we go target→helio, and alignment=helio.
-            // Actually per the C code: step 3 is SorConvert(target, align_target)
-            // which goes from target's SOR to the alignment frame's SOR (heliocentric default).
-            // We simplify: go from self.std_of_rest → helio (the alignment pivot).
-            // Already done above. If align_std_of_rest != Heliocentric, adjust:
-            let align_sor = self.align_std_of_rest();
-            if align_sor != StdOfRest::Heliocentric {
-                // helio → alignment SOR (using target's properties)
-                self.add_helio_to_sor(&mut specmap, align_sor);
-            }
+            Self::sor_convert(target, &align_target, &mut specmap);
         }
 
-        // Step 4: frequency → alignment system (Vrel).
+        // Step 4: frequency in alignment SOR → alignment system in
+        // alignment SOR (C lines 2828-2833). Uses target rest freq.
         if step4 && align_system == SpecSystem::Vrel {
             specmap.add(SpecCvtType::FrToVl, &[target_rf]);
         }
 
-        // Step 5: alignment system → frequency (using result rest freq).
+        // Step 5: alignment system in alignment SOR → frequency in
+        // alignment SOR (C lines 2838-2843). Uses result rest freq.
         if step5 && align_system == SpecSystem::Vrel {
             specmap.add(SpecCvtType::VlToFr, &[result_rf]);
         }
 
-        // Step 6: frequency in alignment SOR → frequency in result SOR.
+        // Step 6: frequency in alignment SOR → frequency in result SOR
+        // (C line 2847). Uses align_result's attrs on the from side
+        // and result's attrs on the to side.
         if step6 {
-            let align_sor = result.align_std_of_rest();
-            if align_sor != StdOfRest::Heliocentric {
-                // alignment SOR → helio (using result's properties)
-                result.add_sor_to_helio(&mut specmap, align_sor);
-            }
-            // helio → result SOR
-            result.add_helio_to_sor(&mut specmap, result.std_of_rest);
+            Self::sor_convert(&align_result, result, &mut specmap);
         }
 
-        // Step 7: frequency → result system.
+        // Step 7: frequency in result SOR → result system in result
+        // SOR (C lines 2851-2888).
         if step7 {
             Self::add_freq_to_system(&mut specmap, result_system, result.rest_freq);
         }
@@ -934,40 +1272,47 @@ impl SpecFrame {
             Box::new(specmap)
         };
 
-        // Wrap in unit-conversion stages at the boundaries when the
-        // user has overridden the default unit. Mirrors the C
-        // pipeline where `astConvert(specfrm, copy_with_unit_cleared)`
-        // produces a unit-conversion mapping; here we attach the
-        // conversion directly so the SpecMap chain stays in canonical
-        // units. Returns Err on dimensionally-incompatible units
+        // Wrap in unit-conversion stages at the boundaries to match
+        // C's MakeSpecMapping (specframe.c:2891+). C uses `astGetUnit`,
+        // which always returns a non-NULL string (the explicit Unit if
+        // set, else the system's display default). Wrap whenever the
+        // effective Unit differs from the SpecMap's canonical unit
+        // (e.g. km/s vs m/s for VRAD), even when no explicit Unit is
+        // set. Returns Err on dimensionally-incompatible units
         // (mirrors C `AST__BADUN`).
         let in_default = target_system.specmap_units();
-        if let Some(in_unit) = self.unit.as_deref() {
-            if !in_unit.is_empty() && !in_default.is_empty() && in_unit != in_default {
-                let pre = unit_mapper(in_unit, in_default).ok_or_else(|| {
-                    AstError::new(
-                        ErrorCode::Badun,
-                        format!(
-                            "SpecFrame Unit '{in_unit}' incompatible with system default '{in_default}'"
-                        ),
-                    )
-                })?;
-                mapping = Box::new(CmpMap::new(pre, mapping, Composition::Series)?);
-            }
+        let in_unit = target
+            .unit
+            .as_deref()
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| target_system.default_display_units());
+        if !in_unit.is_empty() && !in_default.is_empty() && in_unit != in_default {
+            let pre = unit_mapper(in_unit, in_default).ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Badun,
+                    format!(
+                        "SpecFrame Unit '{in_unit}' incompatible with system default '{in_default}'"
+                    ),
+                )
+            })?;
+            mapping = Box::new(CmpMap::new(pre, mapping, Composition::Series)?);
         }
         let out_default = result_system.specmap_units();
-        if let Some(out_unit) = result.unit.as_deref() {
-            if !out_unit.is_empty() && !out_default.is_empty() && out_unit != out_default {
-                let post = unit_mapper(out_default, out_unit).ok_or_else(|| {
-                    AstError::new(
-                        ErrorCode::Badun,
-                        format!(
-                            "SpecFrame Unit '{out_unit}' incompatible with system default '{out_default}'"
-                        ),
-                    )
-                })?;
-                mapping = Box::new(CmpMap::new(mapping, post, Composition::Series)?);
-            }
+        let out_unit = result
+            .unit
+            .as_deref()
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| result_system.default_display_units());
+        if !out_unit.is_empty() && !out_default.is_empty() && out_unit != out_default {
+            let post = unit_mapper(out_default, out_unit).ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Badun,
+                    format!(
+                        "SpecFrame Unit '{out_unit}' incompatible with system default '{out_default}'"
+                    ),
+                )
+            })?;
+            mapping = Box::new(CmpMap::new(mapping, post, Composition::Series)?);
         }
 
         Ok(mapping)
@@ -1083,7 +1428,9 @@ impl Frame for SpecFrame {
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         let prev = previous.as_any().downcast_ref::<SpecFrame>();
         match prev {
-            Some(prev_spec) => prev_spec.make_spec_mapping(self),
+            // FrameSet integrity path (C AST__INTFLAG branch in
+            // MakeSpecMapping, specframe.c:2667-2670).
+            Some(prev_spec) => prev_spec.make_spec_mapping_integrity(self),
             None => {
                 // Previous was not a SpecFrame — return UnitMap.
                 Ok(Box::new(UnitMap::new(1)))
@@ -1336,6 +1683,15 @@ impl Serializable for SpecFrame {
             );
         }
 
+        // AlSys (AlignSystem, only if explicitly set).
+        if let Some(ref asys) = self.align_system {
+            node.push_string(
+                "AlSys",
+                asys.as_str(),
+                Some("Alignment coordinate system".to_string()),
+            );
+        }
+
         // RefRA (if set).
         if let Some(ref_ra) = self.ref_ra {
             node.push_double(
@@ -1451,8 +1807,15 @@ impl Serializable for SpecFrame {
         if !unit_str.is_empty() {
             sf.unit = Some(unit_str);
         } else {
-            // Fall back to Axis child Unit attribute.
-            if let Some(axis_node) = node.get_object("Ax1") {
+            // Fall back to Uni1 (the per-axis attribute used by CmpFrame
+            // overrides), then to the Axis child Unit attribute. C reaches
+            // the same effect because CmpFrame's SetAttrib forwards
+            // "Unit(N)" into the inner SpecFrame which stores it on both
+            // the Axis and `usedunits[system]`.
+            let uni1 = node.get_string("Uni1", "");
+            if !uni1.is_empty() {
+                sf.unit = Some(uni1);
+            } else if let Some(axis_node) = node.get_object("Ax1") {
                 let axis_unit = axis_node.get_string("Unit", "");
                 if !axis_unit.is_empty() {
                     sf.unit = Some(axis_unit);
@@ -1464,6 +1827,12 @@ impl Serializable for SpecFrame {
         let alsor_str = node.get_string("AlSoR", "");
         if !alsor_str.is_empty() {
             sf.align_std_of_rest = StdOfRest::parse(&alsor_str);
+        }
+
+        // AlSys (AlignSystem).
+        let alsys_str = node.get_string("AlSys", "");
+        if !alsys_str.is_empty() {
+            sf.align_system = SpecSystem::parse(&alsys_str);
         }
 
         // RefRA.
