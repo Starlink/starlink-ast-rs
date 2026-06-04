@@ -31,6 +31,41 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     // Translations are added one per task in this module's order.
 }
 
+/// Move a keyword's value and comment from `from` to `to`, deleting
+/// the original card.
+///
+/// If `to` is already present, the source is dropped (matches C
+/// `SpecTrans` semantics: an existing standard value is never
+/// overwritten by its non-standard alias). Both string-valued and
+/// float-valued cards are handled; integer values are formatted
+/// as floats since the destinations in this module are all
+/// continuous numeric quantities.
+///
+/// Returns `true` if a rename actually occurred (i.e. `from` was
+/// present and `to` was absent).
+fn rename_keyword(cards: &mut CardList, from: &str, to: &str) -> bool {
+    if cards.find(to).is_some() {
+        // Destination present — discard the source.
+        cards.delete(from);
+        return false;
+    }
+    let comment = cards
+        .find(from)
+        .and_then(|c| c.comment.clone())
+        .unwrap_or_default();
+    if let Some(value) = cards.get_float(from) {
+        cards.delete(from);
+        cards.set_float(to, value, &comment);
+        return true;
+    }
+    if let Some(value) = cards.get_string(from) {
+        cards.delete(from);
+        cards.set_string(to, &value, &comment);
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,5 +87,45 @@ mod tests {
         let after = cards.iter().count();
         assert_eq!(before, after);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn rename_keyword_moves_value_and_comment_to_new_name() {
+        let mut cards =
+            CardList::from_header("RADECSYS= 'FK5     '           / Reference frame\nEND").unwrap();
+        assert!(rename_keyword(&mut cards, "RADECSYS", "RADESYS"));
+        assert!(cards.find("RADECSYS").is_none());
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn rename_keyword_no_op_when_source_absent() {
+        let mut cards = CardList::from_header("END").unwrap();
+        assert!(!rename_keyword(&mut cards, "RADECSYS", "RADESYS"));
+        assert!(cards.find("RADECSYS").is_none());
+        assert!(cards.find("RADESYS").is_none());
+    }
+
+    #[test]
+    fn rename_keyword_no_op_when_destination_already_present() {
+        let mut cards = CardList::from_header(
+            "RADECSYS= 'FK4     '           / Old\n\
+             RADESYS = 'FK5     '           / New\n\
+             END",
+        )
+        .unwrap();
+        assert!(!rename_keyword(&mut cards, "RADECSYS", "RADESYS"));
+        // Source consumed; destination preserved.
+        assert!(cards.find("RADECSYS").is_none());
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn rename_keyword_handles_float_values() {
+        let mut cards =
+            CardList::from_header("LONGPOLE=                180.0 / Old name\nEND").unwrap();
+        assert!(rename_keyword(&mut cards, "LONGPOLE", "LONPOLE"));
+        assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
+        assert!(cards.find("LONGPOLE").is_none());
     }
 }
