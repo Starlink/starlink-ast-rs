@@ -586,8 +586,345 @@ fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList) {
         // C (`GetUsedPolyTan` returns 0 when the attribute is unset).
     }
 }
-fn translate_iraf_zpx(_cards: &mut CardList) {}
-fn translate_iraf_tnx(_cards: &mut CardList) {}
+/// Translation #17 helper: IRAF -ZPX projections.
+///
+/// Replace `-ZPX` with `-ZPN-ZPX` (ZPN projection with ZPX
+/// distortion code) on both celestial CTYPEs, then look at the
+/// `WAT1_*` and `WAT2_*` strings on each axis for `projp{n}=value`
+/// terms; each one becomes `PV<axlat>_n`.
+///
+/// Mirrors fitschan.c:31444-31538. Primary plane only; no encoding
+/// gate.
+fn translate_iraf_zpx(cards: &mut CardList) {
+    let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
+        return;
+    };
+    // Confirm projection is ZPX on the longitude axis (C only checks
+    // longitude; lon/lat are usually consistent).
+    let Some(ctype_lon) = cards.get_string(&format!("CTYPE{axlon}")) else {
+        return;
+    };
+    if !projection_suffix(ctype_lon.trim()).is_some_and(|p| p.eq_ignore_ascii_case("ZPX")) {
+        return;
+    }
+    // Replace CTYPE -ZPX with -ZPN-ZPX. Stretch the suffix to the
+    // 12-char form (4 chars system + 4 chars projection + 4 chars
+    // distortion). C uses `lontype + 4 = "-ZPN-ZPX"` which is a
+    // mid-string write into a 12-char buffer.
+    for ax in [axlon, axlat] {
+        let key = format!("CTYPE{ax}");
+        let Some(ctype) = cards.get_string(&key) else {
+            continue;
+        };
+        let prefix = ctype[..4.min(ctype.len())].to_string();
+        let new_ctype = format!("{prefix}-ZPN-ZPX");
+        let comment = cards
+            .find(&key)
+            .and_then(|c| c.comment.clone())
+            .unwrap_or_default();
+        cards.set_string(&key, &new_ctype, &comment);
+    }
+    // Walk WAT strings for both axes, extracting `projp{n}=value`.
+    for ax in [axlon, axlat] {
+        let watmem = concat_wat(cards, ax);
+        if watmem.is_empty() {
+            continue;
+        }
+        for n in 0..10 {
+            let needle = format!("projp{n}=");
+            if let Some(pos) = watmem.find(&needle) {
+                let rest = &watmem[pos + needle.len()..];
+                let value: f64 = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | 'e' | 'E'))
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(f64::NAN);
+                if value.is_finite() {
+                    cards.set_float(&format!("PV{axlat}_{n}"), value, "ZPN projection parameter");
+                }
+            }
+        }
+    }
+}
+
+/// Translation #18 helper: IRAF -TNX projections.
+///
+/// Replace `-TNX` with `-TPN` on both celestial CTYPEs and parse
+/// the polynomial coefficients from the `WAT1_*` and `WAT2_*`
+/// strings into `PV<axis>_m` cards (mirrors fitschan.c:31488-31538).
+///
+/// When the polynomial cannot be represented as a TPN (i.e. order
+/// greater than 7, asymmetric axis orders, or full cross-terms) C
+/// issues an `ASTWARN`; we silently leave the partially-translated
+/// CTYPE in place. The caller's downstream reader will reject the
+/// resulting broken TPN.
+fn translate_iraf_tnx(cards: &mut CardList) {
+    let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
+        return;
+    };
+    let Some(ctype_lon) = cards.get_string(&format!("CTYPE{axlon}")) else {
+        return;
+    };
+    if !projection_suffix(ctype_lon.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TNX")) {
+        return;
+    }
+    for ax in [axlon, axlat] {
+        let key = format!("CTYPE{ax}");
+        replace_projection_suffix(cards, &key, "TPN");
+    }
+    // Parse the polynomial coefficients out of the WAT strings.
+    // Mirrors fitschan.c:31508-31538.
+    for (i, axis) in [(0_usize, axlon), (1_usize, axlat)].iter().copied() {
+        let watmem = concat_wat(cards, axis);
+        if watmem.is_empty() {
+            continue;
+        }
+        if let Some(pvs) = wat_coeffs(&watmem, i) {
+            for (m, value) in pvs {
+                cards.set_float(&format!("PV{axis}_{m}"), value, "TAN projection parameter");
+            }
+        }
+    }
+}
+
+/// Port of fitschan.c::WATCoeffs (line 35102-35355). Extract
+/// polynomial coefficients from the IRAF WAT-string `lngcor` /
+/// `latcor` block and convert them into a list of (m, value) pairs
+/// suitable for FITS-WCS `PVi_m` keys.
+///
+/// `iaxis` is 0 for longitude, 1 for latitude.
+///
+/// Returns `None` when the polynomial cannot be represented as a
+/// TPN (corresponds to C `*ok = 0`).
+fn wat_coeffs(watstr: &str, iaxis: usize) -> Option<Vec<(usize, f64)>> {
+    // Look for `<axis>cor = "..."` and extract the quoted body.
+    // C uses regex `cor *= *"(.*)"`. We approximate by hunting for
+    // the first `cor = "` after either `lngcor` or `latcor`.
+    let body_start = watstr.find("cor")?;
+    let after_cor = &watstr[body_start + 3..];
+    let q1 = after_cor.find('"')?;
+    let after_q1 = &after_cor[q1 + 1..];
+    let q2 = after_q1.find('"')?;
+    let body = &after_q1[..q2];
+
+    // Split into whitespace-delimited words.
+    let words: Vec<&str> = body.split_ascii_whitespace().collect();
+    if words.len() < 8 {
+        return None;
+    }
+    let parsed: Vec<f64> = words
+        .iter()
+        .map(|w| w.parse::<f64>().unwrap_or(f64::NAN))
+        .collect();
+    if parsed.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+
+    // word 0: surface type. 1 = chebyshev, 3 = simple polynomial,
+    // 2 = legendre (unsupported).
+    let cheb = match parsed[0] as i64 {
+        1 => true,
+        3 => false,
+        _ => return None,
+    };
+    // words 1, 2: orders in xi/eta; must be equal, in 1..=7.
+    let order = parsed[1] as i64;
+    if !(1..=7).contains(&order) {
+        return None;
+    }
+    if parsed[2] as i64 != order {
+        return None;
+    }
+    let order = order as usize;
+    // word 3: cross-term type; 2 = half-cross terms (only one
+    // supported).
+    if parsed[3] as i64 != 2 {
+        return None;
+    }
+    // words 4-7: ximin, ximax, etamin, etamax.
+    let ximin = parsed[4];
+    let ximax = parsed[5];
+    let etamin = parsed[6];
+    let etamax = parsed[7];
+
+    // Number of half-cross-term coefficients per order. Indexed
+    // by porder = order - 1.
+    const NAB: [usize; 8] = [1, 3, 6, 10, 15, 21, 28, 36];
+    let porder = order - 1;
+    if words.len() != 8 + NAB[porder] {
+        return None;
+    }
+
+    // Fill an order×order matrix as if full cross terms were given.
+    // Half-cross-term layout: xi power decreases from `order` down
+    // to zero as we move through the coefficients (eta increments
+    // when xi rolls under).
+    let mut coeff = vec![0.0_f64; order * order];
+    let mut xiorder = 0_usize;
+    let mut etaorder = 0_usize;
+    for &dval in parsed.iter().skip(8) {
+        if etaorder >= order {
+            break;
+        }
+        coeff[xiorder + order * etaorder] = dval;
+        xiorder += 1;
+        if xiorder == order - etaorder {
+            xiorder = 0;
+            etaorder += 1;
+        }
+    }
+
+    // Convert from chebyshev to simple polynomial form if needed.
+    if cheb {
+        coeff = cheb2poly(&coeff, order, order, ximin, ximax, etamin, etamax);
+    }
+
+    // The polynomials are corrections; bump the linear coefficient
+    // on the active axis by 1 so the result is the full mapping.
+    if iaxis == 1 {
+        coeff[order] += 1.0;
+    } else {
+        coeff[1] += 1.0;
+    }
+
+    // Walk the coefficient grid, emitting non-default entries.
+    let mut out: Vec<(usize, f64)> = Vec::new();
+    let mut pc = 0_usize;
+    for et in 0..order {
+        for xi in 0..order {
+            let mn = xi + et;
+            let default = if mn == 1 { 1.0 } else { 0.0 };
+            if coeff[pc] != default {
+                let mut m = mn * (1 + mn) / 2 + mn / 2;
+                m += if iaxis == 1 { xi } else { et };
+                out.push((m, coeff[pc]));
+            }
+            pc += 1;
+        }
+    }
+    Some(out)
+}
+
+/// Convert a 2-D Chebyshev polynomial to standard polynomial form.
+/// Mirrors fitschan.c::Cheb2Poly (line 5677-5825). `c` holds the
+/// Chebyshev coefficients in column-major order
+/// (`c[i + j*nx]` = coefficient of `Ti(u)·Tj(v)`); the returned
+/// vector uses the same layout for power coefficients
+/// (`d[i + j*nx]` = coefficient of `x^i · y^j`).
+fn cheb2poly(
+    c: &[f64],
+    nx: usize,
+    ny: usize,
+    xmin: f64,
+    xmax: f64,
+    ymin: f64,
+    ymax: f64,
+) -> Vec<f64> {
+    let mut d = vec![0.0_f64; nx * ny];
+
+    // Process each row (chebyshev in u for fixed Tj(v)).
+    for j in 0..ny {
+        let row_in: &[f64] = &c[j * nx..(j + 1) * nx];
+        let mut tmp = vec![0.0_f64; nx];
+        chpc1(row_in, &mut tmp);
+        let mut row_out = vec![0.0_f64; nx];
+        shpc1(xmin, xmax, &tmp, &mut row_out);
+        d[j * nx..(j + 1) * nx].copy_from_slice(&row_out);
+    }
+
+    // Process each column (chebyshev in v for fixed power-of-x).
+    for i in 0..nx {
+        let mut col_in = vec![0.0_f64; ny];
+        for j in 0..ny {
+            col_in[j] = d[i + j * nx];
+        }
+        let mut tmp = vec![0.0_f64; ny];
+        chpc1(&col_in, &mut tmp);
+        let mut col_out = vec![0.0_f64; ny];
+        shpc1(ymin, ymax, &tmp, &mut col_out);
+        for j in 0..ny {
+            d[i + j * nx] = col_out[j];
+        }
+    }
+    d
+}
+
+/// Mirrors fitschan.c::Chpc1 (line 6152-6260). Convert a 1-D
+/// Chebyshev polynomial to the equivalent simple polynomial.
+fn chpc1(c: &[f64], d: &mut [f64]) {
+    let n = c.len();
+    debug_assert_eq!(n, d.len());
+    if n == 0 {
+        return;
+    }
+    for slot in d.iter_mut() {
+        *slot = 0.0;
+    }
+    if n == 1 {
+        d[0] = c[0];
+        return;
+    }
+    let mut w0 = vec![0_i64; n];
+    let mut w1 = vec![0_i64; n];
+    w0[0] = 1;
+    w1[1] = 1;
+    d[0] = c[0];
+    d[1] = c[1];
+    for k in 1..(n - 1) {
+        // Update w1 to coefficients of T_{k+1}.
+        for j in (1..n).rev() {
+            let sv = w0[j];
+            w0[j] = w1[j];
+            w1[j] = 2 * w1[j - 1] - sv;
+        }
+        let sv = w0[0];
+        w0[0] = w1[0];
+        w1[0] = -sv;
+        let coef = c[k + 1];
+        for j in 0..=(k + 1) {
+            d[j] += coef * (w1[j] as f64);
+        }
+    }
+}
+
+/// Mirrors fitschan.c::Shpc1 (line 28140-28265). Rescale a 1-D
+/// polynomial defined on the unit interval to one defined on
+/// `[xmin, xmax]`.
+fn shpc1(xmin: f64, xmax: f64, d: &[f64], w: &mut [f64]) {
+    let n = d.len();
+    debug_assert_eq!(n, w.len());
+    if n == 0 {
+        return;
+    }
+    let a = 2.0 / (xmax - xmin);
+    let b = (xmin + xmax) / (xmin - xmax);
+    for slot in w.iter_mut() {
+        *slot = 0.0;
+    }
+    w[0] = d[n - 1];
+    for i in 1..n {
+        for j in (1..=i).rev() {
+            w[j] = b * w[j] + a * w[j - 1];
+        }
+        w[0] = d[n - i - 1] + b * w[0];
+    }
+}
+
+/// Concatenate all `WAT{axis}_{nnn}` strings for the given 1-based
+/// axis. Mirrors C `ConcatWAT` (fitschan.c:7999-8090) — IRAF emits
+/// the WAT keys with 3-digit zero-padded indices.
+fn concat_wat(cards: &CardList, axis: usize) -> String {
+    let mut out = String::new();
+    for n in 1..=999 {
+        let key = format!("WAT{axis}_{n:03}");
+        let Some(value) = cards.get_string(&key) else {
+            break;
+        };
+        out.push_str(&value);
+    }
+    out
+}
 fn translate_msx_car(_cards: &mut CardList) {}
 fn translate_restfreq(_cards: &mut CardList) {}
 fn translate_aips_spectral_ctype(_cards: &mut CardList) {}
@@ -1487,6 +1824,30 @@ mod tests {
              END",
         )
         .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
+    }
+
+    #[test]
+    fn translates_zpx_to_zpn_and_extracts_projp() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---ZPX'\n\
+             CTYPE2  = 'DEC--ZPX'\n\
+             WAT2_001= 'projp1=1.0 projp2=-0.4'\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---ZPN-ZPX".to_string()));
+        assert_eq!(cards.get_float("PV2_1"), Some(1.0));
+        assert_eq!(cards.get_float("PV2_2"), Some(-0.4));
+    }
+
+    #[test]
+    fn translates_tnx_to_tpn() {
+        let mut cards =
+            CardList::from_header("CTYPE1  = 'RA---TNX'\nCTYPE2  = 'DEC--TNX'\nEND").unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
