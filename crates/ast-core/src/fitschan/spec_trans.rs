@@ -26,9 +26,10 @@ use super::card_list::CardList;
 /// only; AIPS spectral CTYPE rewrites are AIPS-only). Translations
 /// not gated by encoding apply to all FITS encodings uniformly.
 pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
-    let _ = cards;
     let _ = encoding;
-    // Translations are added one per task in this module's order.
+
+    // Translation 1 (fitschan.c:31114-31120): RADECSYS → RADESYS.
+    rename_keyword(cards, "RADECSYS", "RADESYS");
 }
 
 /// Move a keyword's value and comment from `from` to `to`, deleting
@@ -117,6 +118,23 @@ mod tests {
         assert!(!rename_keyword(&mut cards, "RADECSYS", "RADESYS"));
         // Source consumed; destination preserved.
         assert!(cards.find("RADECSYS").is_none());
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn translates_radecsys_to_radesys() {
+        let mut cards =
+            CardList::from_header("RADECSYS= 'FK5     '           / Old-style frame\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("RADECSYS").is_none());
+        assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn keeps_radesys_when_both_present() {
+        let mut cards =
+            CardList::from_header("RADECSYS= 'FK4     '\nRADESYS = 'FK5     '\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
     }
 
