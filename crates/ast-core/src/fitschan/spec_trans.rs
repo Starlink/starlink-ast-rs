@@ -73,6 +73,10 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     // Translation 9 (fitschan.c:31634-31655): DATE-OBS → MJD-OBS
     // when MJD-OBS is absent. Primary plane only; no encoding gate.
     translate_date_obs(cards);
+
+    // Translation 11 (fitschan.c:31682-31775): AIPS NCP/GLS
+    // projections. Per-version letter; no encoding gate.
+    translate_ncp_gls(cards);
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -179,6 +183,106 @@ fn primary_naxis(cards: &CardList) -> usize {
         }
     }
     max
+}
+
+/// Translation #11 helper: AIPS `-NCP` / `-GLS` projections.
+///
+/// `-NCP` is replaced with `-SIN` and PV<axlat>_1=0, PV<axlat>_2=cot(δ_ref)
+/// per FITS-WCS paper II Sec. 5.1.5. Skipped when sin(δ_ref) is zero
+/// (the limit doesn't apply at the equator).
+///
+/// `-GLS` is renamed to `-SFL`. The C source has a "shifted" branch
+/// for non-origin CRVAL but it's permanently disabled (`if( 0 &&
+/// shifted )`); we mirror the disabled state.
+///
+/// Mirrors fitschan.c:31682-31775. Per-version letter; no encoding gate.
+fn translate_ncp_gls(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        let Some((axlon, axlat)) = celestial_axes(cards, s) else {
+            continue;
+        };
+        let key = |prefix: &str, n: usize| {
+            if s == ' ' {
+                format!("{prefix}{n}")
+            } else {
+                format!("{prefix}{n}{s}")
+            }
+        };
+        let lon_ctype = match cards.get_string(&key("CTYPE", axlon)) {
+            Some(c) => c.trim().to_string(),
+            None => continue,
+        };
+        let lat_ctype = match cards.get_string(&key("CTYPE", axlat)) {
+            Some(c) => c.trim().to_string(),
+            None => continue,
+        };
+        let lon_prj = projection_suffix(&lon_ctype);
+        let lat_prj = projection_suffix(&lat_ctype);
+        if lon_prj != lat_prj {
+            continue;
+        }
+        let Some(prj) = lon_prj else { continue };
+        if prj.eq_ignore_ascii_case("NCP") {
+            // Need CRVAL{axlat}{s} for the cot calculation.
+            let Some(crval_lat_deg) = cards.get_float(&key("CRVAL", axlat)) else {
+                continue;
+            };
+            let sinval = crval_lat_deg.to_radians().sin();
+            if sinval == 0.0 {
+                continue;
+            }
+            let cot = crval_lat_deg.to_radians().cos() / sinval;
+            // Replace -NCP with -SIN on both CTYPEs.
+            replace_projection_suffix(cards, &key("CTYPE", axlon), "SIN");
+            replace_projection_suffix(cards, &key("CTYPE", axlat), "SIN");
+            // PV{axlat}_1 = 0, PV{axlat}_2 = cot(δ_ref).
+            let pv_key = |i: usize, m: usize| {
+                if s == ' ' {
+                    format!("PV{i}_{m}")
+                } else {
+                    format!("PV{i}_{m}{s}")
+                }
+            };
+            cards.set_float(&pv_key(axlat, 1), 0.0, "Projection parameter");
+            cards.set_float(&pv_key(axlat, 2), cot, "Projection parameter");
+        } else if prj.eq_ignore_ascii_case("GLS") {
+            // Rename -GLS to -SFL on both CTYPEs.
+            replace_projection_suffix(cards, &key("CTYPE", axlon), "SFL");
+            replace_projection_suffix(cards, &key("CTYPE", axlat), "SFL");
+        }
+    }
+}
+
+/// Return the 3-letter projection suffix at characters 5-7 of a CTYPE
+/// (e.g. "TAN" for "RA---TAN"). Returns `None` when the CTYPE is
+/// shorter than 8 characters or has no `-` at position 4.
+fn projection_suffix(ctype: &str) -> Option<&str> {
+    if ctype.len() < 8 {
+        return None;
+    }
+    if &ctype[4..5] != "-" {
+        return None;
+    }
+    Some(&ctype[5..8])
+}
+
+/// Replace the 3-letter projection suffix in `cards[key]` with `new_prj`.
+/// No-op if the card is missing or its value isn't an 8-char CTYPE.
+fn replace_projection_suffix(cards: &mut CardList, key: &str, new_prj: &str) {
+    let Some(ctype) = cards.get_string(key) else {
+        return;
+    };
+    let ctype = ctype.trim_end();
+    if ctype.len() < 8 {
+        return;
+    }
+    let mut new_ctype = ctype[..5].to_string();
+    new_ctype.push_str(new_prj);
+    let comment = cards
+        .find(key)
+        .and_then(|c| c.comment.clone())
+        .unwrap_or_default();
+    cards.set_string(key, &new_ctype, &comment);
 }
 
 /// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31634-31655).
@@ -841,6 +945,51 @@ mod tests {
         .unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_float("MJD-OBS"), Some(50000.0));
+    }
+
+    #[test]
+    fn translates_ncp_to_sin_with_pv2_2() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---NCP'\n\
+             CTYPE2  = 'DEC--NCP'\n\
+             CRVAL2  =                 30.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---SIN".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SIN".to_string()));
+        let cot30 = 1.0 / 30.0_f64.to_radians().tan();
+        assert!((cards.get_float("PV2_2").unwrap() - cot30).abs() < 1e-10);
+        assert_eq!(cards.get_float("PV2_1"), Some(0.0));
+    }
+
+    #[test]
+    fn translates_gls_to_sfl() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---GLS'\n\
+             CTYPE2  = 'DEC--GLS'\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---SFL".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SFL".to_string()));
+    }
+
+    #[test]
+    fn ncp_at_equator_left_alone() {
+        // sin(0) = 0 → C gives up rather than divide by zero. We
+        // mirror that: the CTYPE keeps its original NCP form.
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---NCP'\n\
+             CTYPE2  = 'DEC--NCP'\n\
+             CRVAL2  =                  0.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--NCP".to_string()));
     }
 
     #[test]
