@@ -16,6 +16,7 @@ pub(crate) mod fits_store;
 pub mod format;
 pub(crate) mod fset_to_store;
 pub(crate) mod guess_encoding;
+pub(crate) mod spec_trans;
 pub(crate) mod wcs_celestial;
 pub(crate) mod wcs_decompose;
 pub(crate) mod wcs_keywords;
