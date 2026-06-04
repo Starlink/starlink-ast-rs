@@ -69,6 +69,10 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     // Translations 7, 8, 10 (fitschan.c:31580-31633): EPOCH /
     // EQUINOX normalisation. Primary plane only; no encoding gate.
     translate_epoch_equinox(cards);
+
+    // Translation 9 (fitschan.c:31634-31655): DATE-OBS → MJD-OBS
+    // when MJD-OBS is absent. Primary plane only; no encoding gate.
+    translate_date_obs(cards);
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -175,6 +179,25 @@ fn primary_naxis(cards: &CardList) -> usize {
         }
     }
     max
+}
+
+/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31634-31655).
+///
+/// Only fires when DATE-OBS is present and MJD-OBS is absent. The
+/// DATE-OBS card is left in place — C marks it as "used" but doesn't
+/// delete it; downstream readers see only MJD-OBS take effect because
+/// MJD-OBS has priority in `read_time_keywords`.
+fn translate_date_obs(cards: &mut CardList) {
+    if cards.find("MJD-OBS").is_some() {
+        return;
+    }
+    let Some(date) = cards.get_string("DATE-OBS") else {
+        return;
+    };
+    let Some(mjd) = crate::fitschan::wcs_write::date_str_to_mjd(&date) else {
+        return;
+    };
+    cards.set_float("MJD-OBS", mjd, "Date of observation");
 }
 
 /// Translations 7, 8, 10 (fitschan.c:31580-31633). Three steps that
@@ -797,6 +820,27 @@ mod tests {
         let mut cards = CardList::from_header("EQUINOX = 'J2000.0'\nEND").unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
+    }
+
+    #[test]
+    fn translates_date_obs_to_mjd_obs() {
+        let mut cards = CardList::from_header("DATE-OBS= '2000-01-15T12:00:00'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        let mjd = cards.get_float("MJD-OBS").unwrap();
+        assert!((mjd - 51558.5).abs() < 1e-6);
+        // DATE-OBS stays in the chan; downstream readers ignore it
+        // when MJD-OBS is present.
+        assert!(cards.find("DATE-OBS").is_some());
+    }
+
+    #[test]
+    fn date_obs_skipped_when_mjd_obs_present() {
+        let mut cards = CardList::from_header(
+            "DATE-OBS= '2000-01-15T12:00:00'\nMJD-OBS =              50000.0\nEND",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_float("MJD-OBS"), Some(50000.0));
     }
 
     #[test]
