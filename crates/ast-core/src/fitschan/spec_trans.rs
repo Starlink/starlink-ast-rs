@@ -457,9 +457,135 @@ fn translate_sao_co(cards: &mut CardList) {
         }
     }
 }
-fn translate_atf_to_ait(_cards: &mut CardList) {}
-fn translate_qv_to_pv(_cards: &mut CardList) {}
-fn translate_tpv_and_polytan_to_tpn(_cards: &mut CardList) {}
+/// Translation #14 helper: CLASS "ATF" projection → AIT.
+///
+/// Mirrors fitschan.c:31716-31734. Per-version letter; no encoding gate.
+fn translate_atf_to_ait(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        let Some((axlon, axlat)) = celestial_axes(cards, s) else {
+            continue;
+        };
+        let key = |prefix: &str, n: usize| {
+            if s == ' ' {
+                format!("{prefix}{n}")
+            } else {
+                format!("{prefix}{n}{s}")
+            }
+        };
+        let Some(ctype) = cards.get_string(&key("CTYPE", axlon)) else {
+            continue;
+        };
+        if projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("ATF")) {
+            replace_projection_suffix(cards, &key("CTYPE", axlon), "AIT");
+            replace_projection_suffix(cards, &key("CTYPE", axlat), "AIT");
+        }
+    }
+}
+
+/// Translation #15 helper: QV<i>_<m> → PV<i>_<m>. If any QV card is
+/// found while the projection is `-TAN`, the projection is also
+/// rewritten to `-TPN` (mirrors fitschan.c:31774-31420).
+///
+/// Per-version letter; no encoding gate.
+fn translate_qv_to_pv(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        // Collect (key_from, key_to) pairs first since modifying the
+        // CardList during iteration is awkward.
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        for c in cards.iter() {
+            let kw = &c.keyword;
+            // Match QV{i}_{m}{s} where s == version letter.
+            if !kw.starts_with("QV") {
+                continue;
+            }
+            let body = &kw[2..];
+            // Split off the version letter (last char) when s != ' '.
+            let (numeric, suffix) = if s == ' ' {
+                (body, "")
+            } else if let Some(stripped) = body.strip_suffix(s) {
+                (stripped, &kw[kw.len() - 1..])
+            } else {
+                continue;
+            };
+            // numeric should look like "<i>_<m>".
+            if !numeric.contains('_') {
+                continue;
+            }
+            let pv_key = format!("PV{}{}", numeric, suffix);
+            pairs.push((kw.clone(), pv_key));
+        }
+        if pairs.is_empty() {
+            continue;
+        }
+        let any_qv = true;
+        for (from, to) in pairs {
+            // Don't overwrite an existing PV card.
+            if cards.find(&to).is_some() {
+                cards.delete(&from);
+                continue;
+            }
+            if let Some(value) = cards.get_float(&from) {
+                let comment = cards
+                    .find(&from)
+                    .and_then(|c| c.comment.clone())
+                    .unwrap_or_default();
+                cards.delete(&from);
+                cards.set_float(&to, value, &comment);
+            }
+        }
+        // If QV was found and the projection is TAN, rewrite to TPN.
+        if any_qv {
+            if let Some((axlon, axlat)) = celestial_axes(cards, s) {
+                let key = |prefix: &str, n: usize| {
+                    if s == ' ' {
+                        format!("{prefix}{n}")
+                    } else {
+                        format!("{prefix}{n}{s}")
+                    }
+                };
+                let Some(ctype) = cards.get_string(&key("CTYPE", axlon)) else {
+                    continue;
+                };
+                if projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TAN")) {
+                    replace_projection_suffix(cards, &key("CTYPE", axlon), "TPN");
+                    replace_projection_suffix(cards, &key("CTYPE", axlat), "TPN");
+                }
+            }
+        }
+    }
+}
+
+/// Translation #16 helper: TPV → TPN, and TAN+PolyTan → TPN.
+///
+/// Mirrors fitschan.c:31425-31447. The PolyTan attribute is an AST
+/// FitsChan setting; in the absence of an explicit AST attribute
+/// model we mirror the default (PolyTan = false), so only the
+/// `-TPV` rename branch fires.
+///
+/// Per-version letter; no encoding gate.
+fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        let Some((axlon, axlat)) = celestial_axes(cards, s) else {
+            continue;
+        };
+        let key = |prefix: &str, n: usize| {
+            if s == ' ' {
+                format!("{prefix}{n}")
+            } else {
+                format!("{prefix}{n}{s}")
+            }
+        };
+        let Some(ctype) = cards.get_string(&key("CTYPE", axlon)) else {
+            continue;
+        };
+        if projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TPV")) {
+            replace_projection_suffix(cards, &key("CTYPE", axlon), "TPN");
+            replace_projection_suffix(cards, &key("CTYPE", axlat), "TPN");
+        }
+        // PolyTan branch deliberately omitted — defaults to false in
+        // C (`GetUsedPolyTan` returns 0 when the attribute is unset).
+    }
+}
 fn translate_iraf_zpx(_cards: &mut CardList) {}
 fn translate_iraf_tnx(_cards: &mut CardList) {}
 fn translate_msx_car(_cards: &mut CardList) {}
@@ -1309,9 +1435,10 @@ mod tests {
         )
         .unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
-        // CTYPE rewrites.
-        assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPV".to_string()));
-        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPV".to_string()));
+        // CTYPE rewrites: SAO writes TPV, then translation 16 rewrites
+        // TPV→TPN before this assertion runs.
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
         // PV1_5 = co[0][5] (1-based: CO1_6 — but only CO1_5=0.5 set).
         // PV1_1 = co[0][1] = CO1_2 = 1.0; PV1_2 = co[0][2] = CO1_3 = 0.0.
         assert_eq!(cards.get_float("PV1_1"), Some(1.0));
@@ -1319,6 +1446,50 @@ mod tests {
         // Identity PC + unit CDELT (the SAO polynomial subsumes them).
         assert_eq!(cards.get_float("PC1_1"), Some(1.0));
         assert_eq!(cards.get_float("CDELT1"), Some(1.0));
+    }
+
+    #[test]
+    fn translates_atf_to_ait() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---ATF'\n\
+             CTYPE2  = 'DEC--ATF'\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsClass);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---AIT".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--AIT".to_string()));
+    }
+
+    #[test]
+    fn translates_qv_to_pv_and_tan_to_tpn() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---TAN'\n\
+             CTYPE2  = 'DEC--TAN'\n\
+             QV2_1   =                  0.5\n\
+             QV2_2   =                  0.7\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
+        assert_eq!(cards.get_float("PV2_1"), Some(0.5));
+        assert_eq!(cards.get_float("PV2_2"), Some(0.7));
+        assert!(cards.find("QV2_1").is_none());
+    }
+
+    #[test]
+    fn translates_tpv_to_tpn() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---TPV'\n\
+             CTYPE2  = 'DEC--TPV'\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
     }
 
     #[test]
