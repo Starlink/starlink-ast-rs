@@ -65,6 +65,10 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
         translate_cnxxx(cards);
     }
+
+    // Translations 7, 8, 10 (fitschan.c:31580-31633): EPOCH /
+    // EQUINOX normalisation. Primary plane only; no encoding gate.
+    translate_epoch_equinox(cards);
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -171,6 +175,67 @@ fn primary_naxis(cards: &CardList) -> usize {
         }
     }
     max
+}
+
+/// Translations 7, 8, 10 (fitschan.c:31580-31633). Three steps that
+/// run in sequence on the primary plane:
+///
+///  1. EPOCH (float) → EQUINOX (float) when EQUINOX is absent. A
+///     value of 0.0 is treated as 1950.0 (mirrors C:31585-31592).
+///
+///  2. String-valued EQUINOX with a 'B' or 'J' prefix is parsed,
+///     converted to Julian via palEpj(palEpb2d(...)) when Besselian,
+///     and stored as a float. C does this *after* the EPOCH branch
+///     so a string EQUINOX wins over an EPOCH value.
+///
+///  3. EQUINOX = 0.0 (float) is replaced with 1950.0 (mirrors
+///     C:31618-31625).
+fn translate_epoch_equinox(cards: &mut CardList) {
+    // Step 1: EPOCH → EQUINOX (when EQUINOX absent).
+    if let Some(epoch) = cards.get_float("EPOCH") {
+        let comment = cards
+            .find("EPOCH")
+            .and_then(|c| c.comment.clone())
+            .unwrap_or_else(|| "Reference equinox".to_string());
+        cards.delete("EPOCH");
+        let value = if epoch == 0.0 { 1950.0 } else { epoch };
+        if cards.find("EQUINOX").is_none() {
+            cards.set_float("EQUINOX", value, &comment);
+        }
+        // Else: EQUINOX wins; EPOCH already consumed by delete above.
+    }
+
+    // Step 2: String EQUINOX 'B...' or 'J...' → numeric Julian.
+    if let Some(s) = cards.get_string("EQUINOX") {
+        let s = s.trim();
+        let prefix = s.chars().next().map(|c| c.to_ascii_uppercase());
+        if matches!(prefix, Some('B') | Some('J')) {
+            let bj = prefix.unwrap();
+            if let Ok(year) = s[1..].trim().parse::<f64>() {
+                let julian = if bj == 'B' {
+                    crate::pal::epj(crate::pal::epb2d(year))
+                } else {
+                    year
+                };
+                let comment = cards
+                    .find("EQUINOX")
+                    .and_then(|c| c.comment.clone())
+                    .unwrap_or_else(|| "Reference equinox".to_string());
+                cards.delete("EQUINOX");
+                cards.set_float("EQUINOX", julian, &comment);
+            }
+        }
+    }
+
+    // Step 3: EQUINOX = 0 → 1950.
+    if let Some(0.0) = cards.get_float("EQUINOX") {
+        let comment = cards
+            .find("EQUINOX")
+            .and_then(|c| c.comment.clone())
+            .unwrap_or_else(|| "Reference equinox".to_string());
+        cards.delete("EQUINOX");
+        cards.set_float("EQUINOX", 1950.0, &comment);
+    }
 }
 
 /// Translation #6 helper: rewrite the FITS-PC alt-axis form
@@ -679,6 +744,59 @@ mod tests {
         .unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
+    }
+
+    #[test]
+    fn translates_epoch_to_equinox() {
+        let mut cards = CardList::from_header("EPOCH   =               1995.0\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("EPOCH").is_none());
+        assert_eq!(cards.get_float("EQUINOX"), Some(1995.0));
+    }
+
+    #[test]
+    fn epoch_zero_becomes_b1950_equinox() {
+        let mut cards = CardList::from_header("EPOCH   =                  0.0\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
+    }
+
+    #[test]
+    fn epoch_consumed_when_equinox_present() {
+        let mut cards = CardList::from_header(
+            "EPOCH   =               1995.0\nEQUINOX =               2000.0\nEND",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("EPOCH").is_none());
+        assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
+    }
+
+    #[test]
+    fn equinox_zero_becomes_b1950() {
+        let mut cards = CardList::from_header("EQUINOX =                  0.0\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
+    }
+
+    #[test]
+    fn translates_equinox_b1995_string_to_julian_number() {
+        let mut cards = CardList::from_header("EQUINOX = 'B1995.0'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        let eq = cards.get_float("EQUINOX").unwrap_or(-1.0);
+        // B1995 → MJD ≈ 49718.2 → J ≈ 1994.9988 (Besselian and
+        // Julian years drift ~1 day per ~70 years between epochs).
+        assert!(
+            (eq - 1994.9988293).abs() < 1e-4,
+            "expected ~1994.9988, got {eq}"
+        );
+    }
+
+    #[test]
+    fn translates_equinox_j2000_string_to_plain_number() {
+        let mut cards = CardList::from_header("EQUINOX = 'J2000.0'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
     }
 
     #[test]
