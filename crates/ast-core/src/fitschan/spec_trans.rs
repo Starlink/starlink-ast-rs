@@ -30,6 +30,9 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
 
     // Translation 1 (fitschan.c:31114-31120): RADECSYS → RADESYS.
     rename_keyword(cards, "RADECSYS", "RADESYS");
+
+    // Translation 2 (fitschan.c:31125-31131): LONGPOLE → LONPOLE.
+    rename_keyword(cards, "LONGPOLE", "LONPOLE");
 }
 
 /// Move a keyword's value and comment from `from` to `to`, deleting
@@ -136,6 +139,15 @@ mod tests {
             CardList::from_header("RADECSYS= 'FK4     '\nRADESYS = 'FK5     '\nEND").unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn translates_longpole_to_lonpole() {
+        let mut cards =
+            CardList::from_header("LONGPOLE=                180.0 / Old name\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("LONGPOLE").is_none());
+        assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
     }
 
     #[test]
