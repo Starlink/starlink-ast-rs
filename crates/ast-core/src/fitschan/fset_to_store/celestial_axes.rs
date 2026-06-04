@@ -134,7 +134,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // C:5109-5111 (`SplitMap`). For the WcsMap-less case we fall
     // through to a deferred path (TAB or non-celestial fallback) and
     // return identity over the celestial axes.
-    let (_pre, post) = match split_around_wcsmap(map.as_ref()) {
+    let (_pre, wm_lifted, post) = match split_around_wcsmap(map.as_ref()) {
         Some(parts) => parts,
         None => {
             // No WcsMap → `-TAB` path is not yet ported. Mirrors the
@@ -146,17 +146,33 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         }
     };
 
-    // Locate the WcsMap object inside `map` so we can read PV /
-    // axes. Mirrors `astGetWcsAxis(map2, …)` and `astTestPV` /
-    // `astGetPV` calls at C:5127, 5150-5163.
+    // Use the *lifted* WcsMap returned by SplitMap2 so the
+    // longitude / latitude axis indices report the full-pipeline
+    // positions (mirrors C `astGetWcsAxis(map2, …)` after the lift
+    // at C:33092-33106). Falling back to `find_wcsmap` would yield
+    // the un-lifted 2-axis WcsMap embedded inside a parallel
+    // composition, whose internal axes are 0,1 regardless of where
+    // the celestial pair sits in the FrameSet.
+    //
+    // `wcsmap_full` carries the full-pipeline axis indices and is
+    // what we hand to PV-aware reads (`get_pv`, `lonax`, `latax`).
+    // `wcsmap` (a 2-axis copy with internal axes 0,1) is what
+    // `build_wcs_to_iwc` uses to build the celestial rotation —
+    // that helper already embeds the 2-axis chain into the
+    // larger pipeline via PermMaps, so passing the lifted WcsMap
+    // would double-count the embedding.
+    let wcsmap_full = match wm_lifted.as_any().downcast_ref::<WcsMap>() {
+        Some(w) => w.clone(),
+        None => return Ok(Box::new(UnitMap::new(nwcs))),
+    };
     let wcsmap = match find_wcsmap(map.as_ref()) {
         Some(w) => w,
         None => return Ok(Box::new(UnitMap::new(nwcs))),
     };
-    let axlon_0 = wcsmap.lonax_0based();
-    let axlat_0 = wcsmap.latax_0based();
-    let axlon_1 = wcsmap.lonax();
-    let axlat_1 = wcsmap.latax();
+    let axlon_0 = wcsmap_full.lonax_0based();
+    let axlat_0 = wcsmap_full.latax_0based();
+    let axlon_1 = wcsmap_full.lonax();
+    let axlat_1 = wcsmap_full.latax();
     let projection = wcsmap.projection();
     let tpn = projection == WcsProjection::Tpn;
 
@@ -168,7 +184,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // fiducial native-spherical point is at (0, π/2); for non-zenithal
     // it can be PV-overridden — `get_fiducial_wcs` handles both.
     let (skyfid_lon_rad, skyfid_lat_rad) =
-        match get_fiducial_wcs(wcsmap, post.as_ref(), ilon, ilat)? {
+        match get_fiducial_wcs(&wcsmap_full, post.as_ref(), ilon, ilat)? {
             Some((a, b)) => (a, b),
             None => return Ok(Box::new(UnitMap::new(nwcs))),
         };
@@ -202,8 +218,12 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // Step 5: copy PV parameters into the store. Mirrors C:5150-5163.
     // The longitude axis skips slots 3 and 4 (LONPOLE/LATPOLE
     // overrides) for non-TPN projections.
+    //
+    // PV reads use `wcsmap_full` (the lifted WcsMap) so the
+    // `(axlon_1, axlat_1)` indices match the full-pipeline axis
+    // numbering.
     for m in 0..WCSLIB_MXPAR {
-        if let Some(pv) = wcsmap.get_pv(axlon_1, m)
+        if let Some(pv) = wcsmap_full.get_pv(axlon_1, m)
             && pv.is_finite()
             && (m < 3 || m > 4 || tpn)
             && fits_ilon < args.store.pv.len()
@@ -211,7 +231,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         {
             args.store.pv[fits_ilon][m] = Some(pv);
         }
-        if let Some(pv) = wcsmap.get_pv(axlat_1, m)
+        if let Some(pv) = wcsmap_full.get_pv(axlat_1, m)
             && pv.is_finite()
             && fits_ilat < args.store.pv.len()
             && m < args.store.pv[fits_ilat].len()
@@ -226,7 +246,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // point, so PPC ≠ IWC and a translation is needed. We compute it
     // by inverting the WcsMap on the native fiducial.
     let mut ppcfid = vec![0.0_f64; nwcs];
-    if !tpn && wcsmap.get_pv(axlon_1, 0).unwrap_or(0.0) != 0.0 {
+    if !tpn && wcsmap_full.get_pv(axlon_1, 0).unwrap_or(0.0) != 0.0 {
         if let Some((x0, y0)) = compute_fiducial_ppc(wcsmap)? {
             // x0/y0 are radians at the native lon/lat axes — convert
             // to degrees for IWC and place at ilon/ilat positions in
@@ -355,10 +375,14 @@ fn find_wcsmap(mapping: &dyn Mapping) -> Option<&WcsMap> {
 /// algorithm allows for an arbitrary combination of series and
 /// parallel CmpMaps. When a WcsMap is found inside a parallel
 /// branch, the corresponding pre/post slices are padded with
-/// UnitMaps on the other branches' axes.
-fn split_around_wcsmap(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping)> {
-    let (pre, _wm, post) = split_map2(mapping)?;
-    Some((pre, post))
+/// UnitMaps on the other branches' axes, and the WcsMap itself
+/// is lifted to the full axis count with its lon/lat axes shifted
+/// by the WcsMap branch's offset (mirrors C:33092-33106). The
+/// lifted WcsMap is returned alongside `(pre, post)` so callers
+/// reading `axlon`/`axlat` see the full-pipeline axis indices.
+fn split_around_wcsmap(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
+    let (pre, wm, post) = split_map2(mapping)?;
+    Some((pre, wm, post))
 }
 
 /// Decompose `mapping` into `(pre, wcs, post)` such that a series

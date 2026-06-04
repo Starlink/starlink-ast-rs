@@ -42,7 +42,7 @@ mod world_axes;
 use crate::error::AstResult;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
-use crate::frames::{FrameRef, FrameSet};
+use crate::frames::{Frame, FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping};
 
 use celestial_axes::{CelestialAxesArgs, celestial_axes};
@@ -393,10 +393,33 @@ fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
     // but going through FrameSet integrity matches C's flow and
     // ensures any future SpecFrame integrity logic kicks in. Mirrors
     // C:21483-21484.
+    //
+    // C uses `astSetC(tfs, "RefRA", astFormat(tfs, ilon, reflon))` —
+    // i.e. it formats the radian value through the SkyFrame's
+    // sexagesimal HMS/DMS formatter at the SkyFrame's default
+    // digit precision and then re-parses the result, lossily
+    // quantising the value to ~0.1 s of time / ~1 arcsec. We mirror
+    // this quirk so the resulting VELOSYS computation matches C's
+    // bit-exact output (see `docs/issues/c-library-quirks.md` —
+    // "VELOSYS drift via lossy `RefRA`/`RefDec` round-trip").
+    // SkyFrame's `format` / `unformat` index its own two axes (1 =
+    // longitude, 2 = latitude in the 1-based external API). Use those
+    // local indices regardless of where the celestial pair sits in
+    // the surrounding pipeline.
+    let (reflon_quant, reflat_quant) = {
+        let cur = owned.current();
+        let sky = peek_sky(cur).expect("SkyFrame still present after switch to FK5/J2000");
+        let lon_str = sky.format(1, reflon).unwrap_or_default();
+        let lat_str = sky.format(2, reflat).unwrap_or_default();
+        let lon_round = sky.unformat(1, &lon_str).map(|(v, _)| v).unwrap_or(reflon);
+        let lat_round = sky.unformat(2, &lat_str).map(|(v, _)| v).unwrap_or(reflat);
+        (lon_round, lat_round)
+    };
+
     owned.with_integrity(|cur| {
         if let Some(spec) = spec_mut(cur) {
-            spec.set_ref_ra(reflon);
-            spec.set_ref_dec(reflat);
+            spec.set_ref_ra(reflon_quant);
+            spec.set_ref_dec(reflat_quant);
         }
         Ok(())
     })?;
