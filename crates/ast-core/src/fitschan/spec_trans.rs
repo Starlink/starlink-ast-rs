@@ -33,6 +33,18 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
 
     // Translation 2 (fitschan.c:31125-31131): LONGPOLE → LONPOLE.
     rename_keyword(cards, "LONGPOLE", "LONPOLE");
+
+    // Translation 3 (fitschan.c:31206-31238): CDjjjiii → CDj_i.
+    // The old 6-digit IRAF form encodes a CD matrix; we rewrite to
+    // the standard CDj_i form so the existing CD reader handles it.
+    // Limited to the 9×9 grid that fits in 6-digit indexed names.
+    for j in 1..=9 {
+        for i in 1..=9 {
+            let from = format!("CD{j:03}{i:03}");
+            let to = format!("CD{j}_{i}");
+            rename_keyword(cards, &from, &to);
+        }
+    }
 }
 
 /// Move a keyword's value and comment from `from` to `to`, deleting
@@ -148,6 +160,35 @@ mod tests {
         spec_trans(&mut cards, Encoding::FitsPc);
         assert!(cards.find("LONGPOLE").is_none());
         assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
+    }
+
+    #[test]
+    fn translates_cdjjjiii_to_cdj_i() {
+        let mut cards = CardList::from_header(
+            "CD001001=                  1.0\n\
+             CD001002=                  0.0\n\
+             CD002001=                  0.0\n\
+             CD002002=                  1.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("CD001001").is_none());
+        assert_eq!(cards.get_float("CD1_1"), Some(1.0));
+        assert_eq!(cards.get_float("CD2_2"), Some(1.0));
+    }
+
+    #[test]
+    fn cdjjjiii_does_not_overwrite_cdj_i() {
+        let mut cards = CardList::from_header(
+            "CD001001=                  1.0\n\
+             CD1_1   =                  2.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        // The CDj_i form wins.
+        assert_eq!(cards.get_float("CD1_1"), Some(2.0));
     }
 
     #[test]
