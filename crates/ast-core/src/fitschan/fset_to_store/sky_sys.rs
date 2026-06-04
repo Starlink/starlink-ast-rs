@@ -732,7 +732,7 @@ mod tests {
         // + leap seconds, which in 2026 is ~37 s).
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         let tdb_mjd = 60000.0_f64; // 2023-02-25, well clear of J2000
-        sky.set_epoch(tdb_mjd);
+        sky.set_epoch_mjd(tdb_mjd);
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 0).unwrap();
         let utc = s.mjdobs.expect("MJD-OBS should be set");

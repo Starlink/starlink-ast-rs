@@ -309,6 +309,13 @@ fn imag_freq_computation() {
     dsb.set_sideband(SideBand::USB);
     dsb.set_rest_freq(225.0e9);
 
+    // The rest frequency is interpreted in the source's rest frame
+    // (mirrors C `astGetImagFreq`). Pin the source rest frame to be
+    // identical to topocentric so the LO reflection yields exactly
+    // the analytic answer with no Doppler-shift residue.
+    dsb.spec_mut().set_source_vrf(StdOfRest::Topocentric);
+    dsb.spec_mut().set_source_vel(0.0);
+
     // ImagFreq = mirror of rest_freq across LO.
     // f_lo = 224 GHz, imag = 2*224 - 225 = 223 GHz.
     let imag = dsb.imag_freq().unwrap();

@@ -314,8 +314,8 @@ fn native_round_trip_zoommap() {
 #[test]
 fn native_round_trip_skyframe() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    sky.set_epoch(51544.0); // J2000.0
-    sky.set_equinox(51544.0);
+    sky.set_epoch_mjd(51544.0); // J2000.0
+    sky.set_equinox_mjd(51544.0);
 
     let obj = AnyObject::SkyFrame(sky);
 

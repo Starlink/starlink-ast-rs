@@ -217,8 +217,24 @@ impl DSBSpecFrame {
     }
 
     /// Set the epoch as MJD.
-    pub fn set_epoch(&mut self, mjd: f64) {
-        self.spec.set_epoch(mjd);
+    pub fn set_epoch_mjd(&mut self, mjd: f64) {
+        self.spec.set_epoch_mjd(mjd);
+    }
+
+    /// Set the epoch from a decimal year (IAU 1984 rule).
+    pub fn set_epoch_year(&mut self, year: f64) {
+        self.spec.set_epoch_year(year);
+    }
+
+    /// Return the epoch as MJD.
+    pub fn epoch_mjd(&self) -> f64 {
+        self.spec.epoch_mjd()
+    }
+
+    /// Return the epoch as a decimal year (Besselian / Julian per
+    /// the IAU 1984 rule).
+    pub fn epoch_year(&self) -> f64 {
+        self.spec.epoch_year()
     }
 
     /// Set the observer geodetic latitude (radians).
@@ -295,10 +311,17 @@ impl DSBSpecFrame {
         Ok(lo)
     }
 
-    /// Compute the image-sideband frequency corresponding to the rest frequency.
+    /// Compute the image-sideband frequency corresponding to the rest
+    /// frequency.
     ///
-    /// The rest frequency is reflected across the LO in topocentric frequency
-    /// space, giving the corresponding frequency in the image sideband.
+    /// Mirrors `dsbspecframe.c::GetImagFreq` (line 599): the rest
+    /// frequency is interpreted as an observed-sideband frequency in
+    /// the source's rest frame (Hz). The mapping from observed to
+    /// the opposite sideband is built on a temporary copy with
+    /// `StdOfRest=Source`, `System=Freq`, `Unit=Hz`,
+    /// `SideBand=observed`; that mapping is applied to the rest
+    /// frequency to yield the image-sideband frequency.
+    ///
     /// Requires `rest_freq` to be set; returns an error if not.
     pub fn imag_freq(&self) -> AstResult<f64> {
         let rest_freq = self.spec.rest_freq().ok_or_else(|| {
@@ -308,20 +331,31 @@ impl DSBSpecFrame {
             )
         })?;
 
-        let f_lo = self.lo_freq()?;
+        // Copy and reset to canonical "rest-frequency frame":
+        // SoR=Source, System=Freq, Unit=Hz, SideBand=observed. This
+        // matches C's `astSetStdOfRest(rf_frame, AST__SCSOR);
+        // astSetSystem(rf_frame, AST__FREQ); astSetUnit(rf_frame, 0,
+        // "Hz"); astSetC(rf_frame, "SideBand", "observed");`.
+        let mut rf_frame = self.clone();
+        rf_frame.spec.set_std_of_rest(StdOfRest::Source);
+        rf_frame.spec.set_system(SpecSystem::Freq);
+        rf_frame.spec.clear_unit();
+        rf_frame.set_sideband(self.observed_sideband());
 
-        // Convert rest_freq to topocentric Hz.
-        let topo_map = self.to_topo_mapping()?;
+        // Mapping from observed sideband to the opposite sideband.
+        let map = match self.observed_sideband() {
+            SideBand::USB => rf_frame.to_lsb_mapping()?,
+            SideBand::LSB => rf_frame.to_usb_mapping()?,
+            SideBand::LO => {
+                return Err(AstError::new(
+                    ErrorCode::Inter,
+                    "DSBSpecFrame::imag_freq: observed sideband cannot be LO",
+                ));
+            }
+        };
+
         let input = PointSet::from_columns(&[&[rest_freq]])?;
-        let topo_pts = topo_map.transform(&input, true)?;
-        let rest_topo = topo_pts.point(0)[0];
-
-        // Reflect across LO: imag = 2*f_lo - rest
-        let imag_topo = 2.0 * f_lo - rest_topo;
-
-        // Convert back from topocentric Hz to current system.
-        let imag_input = PointSet::from_columns(&[&[imag_topo]])?;
-        let result = topo_map.transform(&imag_input, false)?;
+        let result = map.transform(&input, true)?;
         Ok(result.point(0)[0])
     }
 
@@ -341,7 +375,7 @@ impl DSBSpecFrame {
         if let Some(alt) = self.spec.obs_alt() {
             topo_frame.set_obs_alt(alt);
         }
-        topo_frame.set_epoch(self.spec.epoch_mjd());
+        topo_frame.set_epoch_mjd(self.spec.epoch_mjd());
         if let Some(ra) = self.spec.ref_ra() {
             topo_frame.set_ref_ra(ra);
         }

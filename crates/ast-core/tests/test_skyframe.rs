@@ -122,14 +122,14 @@ fn default_equinox_fk4() {
 #[test]
 fn set_get_epoch() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    sky.set_epoch(53000.0);
+    sky.set_epoch_mjd(53000.0);
     assert_close(sky.epoch_mjd(), 53000.0, TOL, "epoch");
 }
 
 #[test]
 fn set_get_equinox() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
-    sky.set_equinox(55000.0);
+    sky.set_equinox_mjd(55000.0);
     assert_close(sky.equinox_mjd(), 55000.0, TOL, "equinox");
 }
 
@@ -766,7 +766,7 @@ fn serialise_default_fk5() {
 fn serialise_preserves_equinox() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     let j2010_mjd = 55197.0;
-    original.set_equinox(j2010_mjd);
+    original.set_equinox_mjd(j2010_mjd);
 
     let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("Eqnox"), "missing Eqnox");
@@ -810,7 +810,7 @@ fn serialise_preserves_all_attributes() {
     let mut original = SkyFrame::new(SkySystem::Galactic);
     original.set_title("Test Sky");
     original.set_domain("CUSTOM");
-    original.set_epoch(53000.0);
+    original.set_epoch_mjd(53000.0);
     original.set_neglon(true);
     original.set_sky_tol(1.0e-7);
     original.set_projection("SIN");
@@ -848,8 +848,8 @@ fn serialise_preserves_all_attributes() {
 fn double_round_trip_skyframe() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     original.set_title("Double RT");
-    original.set_epoch(53000.0);
-    original.set_equinox(51544.5);
+    original.set_epoch_mjd(53000.0);
+    original.set_equinox_mjd(51544.5);
     original.set_neglon(true);
     original.set_sky_ref_is(SkyRefIs::Pole);
     original.set_sky_ref(0.5, 0.25);

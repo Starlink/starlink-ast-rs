@@ -152,7 +152,7 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
             // approximation per fitschan.c documentation.)
             _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
         };
-        sky_frame.set_epoch(tdb_mjd);
+        sky_frame.set_epoch_mjd(tdb_mjd);
     } else if let Some(eq) = store.equinox
         && matches!(
             system,

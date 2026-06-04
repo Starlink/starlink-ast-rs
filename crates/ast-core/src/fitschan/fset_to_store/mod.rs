@@ -354,8 +354,8 @@ fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
         owned.with_integrity(|cur| {
             if let Some(sky) = sky_mut(cur) {
                 sky.set_system(orig_sys);
-                sky.set_equinox(orig_equinox);
-                sky.set_epoch(orig_epoch);
+                sky.set_equinox_mjd(orig_equinox);
+                sky.set_epoch_mjd(orig_epoch);
             }
             Ok(())
         })?;
@@ -366,8 +366,8 @@ fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
         owned.with_integrity(|cur| {
             if let Some(sky) = sky_mut(cur) {
                 sky.set_system(orig_sys);
-                sky.set_equinox(orig_equinox);
-                sky.set_epoch(orig_epoch);
+                sky.set_equinox_mjd(orig_equinox);
+                sky.set_epoch_mjd(orig_epoch);
             }
             Ok(())
         })?;
@@ -379,8 +379,8 @@ fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
         owned.with_integrity(|cur| {
             if let Some(sky) = sky_mut(cur) {
                 sky.set_system(orig_sys);
-                sky.set_equinox(orig_equinox);
-                sky.set_epoch(orig_epoch);
+                sky.set_equinox_mjd(orig_equinox);
+                sky.set_epoch_mjd(orig_epoch);
             }
             Ok(())
         })?;
@@ -406,8 +406,8 @@ fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
     owned.with_integrity(|cur| {
         if let Some(sky) = sky_mut(cur) {
             sky.set_system(orig_sys);
-            sky.set_equinox(orig_equinox);
-            sky.set_epoch(orig_epoch);
+            sky.set_equinox_mjd(orig_equinox);
+            sky.set_epoch_mjd(orig_epoch);
         }
         Ok(())
     })?;

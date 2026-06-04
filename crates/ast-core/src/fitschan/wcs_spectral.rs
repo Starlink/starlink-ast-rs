@@ -65,7 +65,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
 
     // Step 7: Set epoch if present.
     if let Some(mjd) = store.mjdobs {
-        frame.set_epoch(mjd);
+        frame.set_epoch_mjd(mjd);
     }
 
     // OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C

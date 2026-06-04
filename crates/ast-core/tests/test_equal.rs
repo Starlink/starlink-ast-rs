@@ -685,16 +685,16 @@ fn skyframe_different_system() {
 #[test]
 fn skyframe_different_equinox() {
     let mut a = SkyFrame::new(SkySystem::Fk5);
-    a.set_equinox(50000.0);
+    a.set_equinox_mjd(50000.0);
     let mut b = SkyFrame::new(SkySystem::Fk5);
-    b.set_equinox(51000.0);
+    b.set_equinox_mjd(51000.0);
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn skyframe_equinox_set_vs_unset() {
     let mut a = SkyFrame::new(SkySystem::Fk5);
-    a.set_equinox(51544.5);
+    a.set_equinox_mjd(51544.5);
     let b = SkyFrame::new(SkySystem::Fk5);
     assert!(!a.equal(&b));
 }
@@ -702,9 +702,9 @@ fn skyframe_equinox_set_vs_unset() {
 #[test]
 fn skyframe_different_epoch() {
     let mut a = SkyFrame::new(SkySystem::Fk5);
-    a.set_epoch(50000.0);
+    a.set_epoch_mjd(50000.0);
     let mut b = SkyFrame::new(SkySystem::Fk5);
-    b.set_epoch(51000.0);
+    b.set_epoch_mjd(51000.0);
     assert!(!a.equal(&b));
 }
 
@@ -842,8 +842,8 @@ fn serialise_round_trip_shiftmap() {
 #[test]
 fn serialise_round_trip_skyframe() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
-    original.set_epoch(52000.0);
-    original.set_equinox(51544.5);
+    original.set_epoch_mjd(52000.0);
+    original.set_equinox_mjd(51544.5);
     original.set_neglon(true);
     original.set_title("Test Sky");
 

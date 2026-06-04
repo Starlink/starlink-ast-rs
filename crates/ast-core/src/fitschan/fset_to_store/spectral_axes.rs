@@ -313,6 +313,18 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         } else {
             args.store.restfrq = Some(rf);
         }
+
+        // IMAGFREQ — DSB image-sideband frequency. C:30752-30757
+        // emits this when the SpecFrame is actually a DSBSpecFrame
+        // and its ImagFreq attribute is defined.
+        if let Some(dsb) = spec_holder
+            .as_any()
+            .downcast_ref::<crate::frames::DSBSpecFrame>()
+            && let Ok(imagfreq) = dsb.imag_freq()
+            && !is_bad(imagfreq)
+        {
+            args.store.imagfreq = Some(imagfreq);
+        }
     }
 
     // SPECSYS from the standard-of-rest.

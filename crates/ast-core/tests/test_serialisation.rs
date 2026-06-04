@@ -389,13 +389,13 @@ fn round_trip_basic_frame_geometry() {
 #[test]
 fn round_trip_basic_frame_with_epoch() {
     let mut original = BasicFrameBuilder::new(1).build().unwrap();
-    original.set_epoch(2000.0);
+    original.set_epoch_year(2000.0);
     let text = to_native_string(&AnyObject::BasicFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
     match restored {
         AnyObject::BasicFrame(ref bf) => {
-            assert_eq!(bf.epoch(), Some(2000.0));
+            assert_eq!(bf.epoch_year(), Some(2000.0));
         }
         _ => panic!("expected BasicFrame variant"),
     }
@@ -846,7 +846,7 @@ fn round_trip_skyframe_default_fk5() {
 fn round_trip_skyframe_galactic_with_attributes() {
     let mut original = SkyFrame::new(SkySystem::Galactic);
     original.set_title("Galactic Test");
-    original.set_epoch(53000.0);
+    original.set_epoch_mjd(53000.0);
     original.set_neglon(true);
     original.set_sky_tol(1.0e-7);
     original.set_projection("TAN");
@@ -881,7 +881,7 @@ fn round_trip_skyframe_with_equinox() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     // Set equinox to J2010.0 MJD.
     let j2010_mjd = 55197.0; // approximate MJD for 2010-01-01
-    original.set_equinox(j2010_mjd);
+    original.set_equinox_mjd(j2010_mjd);
 
     let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("Eqnox"), "missing Eqnox");
@@ -985,8 +985,8 @@ fn round_trip_skyframe_geometry() {
 fn double_round_trip_skyframe() {
     let mut original = SkyFrame::new(SkySystem::Fk5);
     original.set_title("Double RT");
-    original.set_epoch(53000.0);
-    original.set_equinox(51544.5);
+    original.set_epoch_mjd(53000.0);
+    original.set_equinox_mjd(51544.5);
     original.set_neglon(true);
     original.set_sky_ref_is(SkyRefIs::Pole);
     original.set_sky_ref(0.5, 0.25);
@@ -1046,7 +1046,7 @@ fn round_trip_skyframe_fk4_besselian_equinox() {
     let mut original = SkyFrame::new(SkySystem::Fk4);
     // B1950.0 is the default, but set it explicitly to force serialisation.
     let b1950_mjd = 33281.92346; // approximate B1950 MJD
-    original.set_equinox(b1950_mjd);
+    original.set_equinox_mjd(b1950_mjd);
 
     let text = to_native_string(&AnyObject::SkyFrame(original)).unwrap();
     assert!(text.contains("Eqnox"), "missing Eqnox for FK4");

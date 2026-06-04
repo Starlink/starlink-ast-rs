@@ -595,9 +595,30 @@ impl SpecFrame {
         self.epoch.unwrap_or(51544.5)
     }
 
+    /// Return the epoch as a decimal year (Besselian if MJD < J1984,
+    /// Julian otherwise — mirrors `frame.c::Dump`).
+    pub fn epoch_year(&self) -> f64 {
+        let mjd = self.epoch_mjd();
+        if mjd < crate::pal::epj2d(1984.0) {
+            crate::pal::epb(mjd)
+        } else {
+            crate::pal::epj(mjd)
+        }
+    }
+
     /// Set the epoch as MJD.
-    pub fn set_epoch(&mut self, mjd: f64) {
+    pub fn set_epoch_mjd(&mut self, mjd: f64) {
         self.epoch = Some(mjd);
+    }
+
+    /// Set the epoch as a decimal year.
+    ///
+    /// Years strictly less than 1984.0 are interpreted as Besselian
+    /// epochs; >= 1984.0 as Julian epochs (IAU 1984 rule). Mirrors
+    /// `astReadDateTime` (frame.c:9028-9032) when called from
+    /// `astSetEpoch` via the `epoch=…` setting.
+    pub fn set_epoch_year(&mut self, year: f64) {
+        self.epoch = Some(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
     /// Set the title.
@@ -1569,18 +1590,28 @@ impl Serializable for SpecFrame {
             );
         }
 
-        // Epoch: active if explicitly set, otherwise unset with default 2000.
-        if let Some(epoch) = self.epoch {
-            node.push_double(
-                "Epoch",
-                epoch,
-                Some("Julian epoch of observation".to_string()),
-            );
+        // Epoch: stored internally as MJD, written as Besselian /
+        // Julian decimal year per the IAU 1984 rule (mirrors
+        // `frame.c::Dump` lines 14325-14336).
+        let epoch_mjd = self.epoch.unwrap_or(51544.5);
+        let bessyr = epoch_mjd < crate::pal::epj2d(1984.0);
+        let epoch_year = if bessyr {
+            crate::pal::epb(epoch_mjd)
+        } else {
+            crate::pal::epj(epoch_mjd)
+        };
+        let epoch_comment = if bessyr {
+            "Besselian epoch of observation"
+        } else {
+            "Julian epoch of observation"
+        };
+        if self.epoch.is_some() {
+            node.push_double("Epoch", epoch_year, Some(epoch_comment.to_string()));
         } else {
             node.push_unset(
                 "Epoch",
-                NodeValue::Double(2000.0),
-                Some("Julian epoch of observation".to_string()),
+                NodeValue::Double(epoch_year),
+                Some(epoch_comment.to_string()),
             );
         }
 
@@ -1776,9 +1807,13 @@ impl Serializable for SpecFrame {
             sf.domain = Some(domain);
         }
 
-        // Epoch (MJD).
+        // Epoch. AST Native stores Epoch as a decimal year ("Julian
+        // epoch of observation" / "Besselian epoch of observation");
+        // convert to MJD via the IAU 1984 rule. Mirrors C
+        // `astReadDateTime` invoked from `frame.c::SetAttrib` for
+        // the "epoch=..." setting (frame.c:10185).
         if node.get("Epoch").is_some() {
-            sf.epoch = Some(node.get_double("Epoch", 0.0));
+            sf.set_epoch_year(node.get_double("Epoch", 0.0));
         }
 
         // Observer attributes.

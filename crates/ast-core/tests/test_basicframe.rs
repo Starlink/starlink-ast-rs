@@ -105,9 +105,9 @@ fn epoch_attribute() {
     assert!(!frame.test_epoch());
     assert_eq!(frame.epoch(), None);
 
-    frame.set_epoch(2000.0);
+    frame.set_epoch_year(2000.0);
     assert!(frame.test_epoch());
-    assert_eq!(frame.epoch(), Some(2000.0));
+    assert_eq!(frame.epoch_year(), Some(2000.0));
 
     frame.clear_epoch();
     assert!(!frame.test_epoch());

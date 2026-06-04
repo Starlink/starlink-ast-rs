@@ -264,8 +264,19 @@ impl SkyFrame {
             .unwrap_or_else(|| self.system.default_equinox_mjd())
     }
 
+    /// Return the equinox as a decimal year (Besselian if MJD <
+    /// J1984, Julian otherwise — mirrors `frame.c::Dump`).
+    pub fn equinox_year(&self) -> f64 {
+        let mjd = self.equinox_mjd();
+        if mjd < pal::epj2d(1984.0) {
+            pal::epb(mjd)
+        } else {
+            pal::epj(mjd)
+        }
+    }
+
     /// Set the equinox as MJD.
-    pub fn set_equinox(&mut self, mjd: f64) {
+    pub fn set_equinox_mjd(&mut self, mjd: f64) {
         self.equinox = Some(mjd);
     }
 
@@ -276,6 +287,17 @@ impl SkyFrame {
         self.epoch.unwrap_or(51544.5)
     }
 
+    /// Return the epoch as a decimal year (Besselian if MJD <
+    /// J1984, Julian otherwise — mirrors `frame.c::Dump`).
+    pub fn epoch_year(&self) -> f64 {
+        let mjd = self.epoch_mjd();
+        if mjd < pal::epj2d(1984.0) {
+            pal::epb(mjd)
+        } else {
+            pal::epj(mjd)
+        }
+    }
+
     /// Whether the epoch attribute has been explicitly set
     /// (mirrors `astTestEpoch`).
     pub fn test_epoch(&self) -> bool {
@@ -283,7 +305,7 @@ impl SkyFrame {
     }
 
     /// Set the epoch as MJD.
-    pub fn set_epoch(&mut self, mjd: f64) {
+    pub fn set_epoch_mjd(&mut self, mjd: f64) {
         self.epoch = Some(mjd);
     }
 
@@ -294,7 +316,7 @@ impl SkyFrame {
     /// matching what C does when the value flows through
     /// `astSet(skyframe, "Epoch=...")` → `astReadDateTime`.
     pub fn set_epoch_year(&mut self, year: f64) {
-        self.set_epoch(crate::frames::date_time::year_to_mjd_iau1984(year));
+        self.set_epoch_mjd(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
     /// Set the equinox from a bare decimal year (e.g. a FITS
@@ -305,7 +327,7 @@ impl SkyFrame {
     /// matching what C does when the value flows through
     /// `astSet(skyframe, "Equinox=...")` → `astReadDateTime`.
     pub fn set_equinox_year(&mut self, year: f64) {
-        self.set_equinox(crate::frames::date_time::year_to_mjd_iau1984(year));
+        self.set_equinox_mjd(crate::frames::date_time::year_to_mjd_iau1984(year));
     }
 
     /// Return whether longitude increases in the negative direction.
@@ -1378,14 +1400,14 @@ mod tests {
     #[test]
     fn set_epoch() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_epoch(53000.0);
+        sky.set_epoch_mjd(53000.0);
         assert_close(sky.epoch_mjd(), 53000.0, TOL);
     }
 
     #[test]
     fn set_equinox() {
         let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_equinox(53000.0);
+        sky.set_equinox_mjd(53000.0);
         assert_close(sky.equinox_mjd(), 53000.0, TOL);
     }
 

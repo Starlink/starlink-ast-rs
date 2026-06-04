@@ -497,13 +497,13 @@ fn write_store_to_cards(
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
         }
-        // DTAI / DUT1 — observation-global TAI/UT1 offsets.
-        if let Some(dtai) = store.dtai {
-            cards.set_float("DTAI", dtai, "[s] TAI - UTC");
-        }
-        if let Some(dut1) = store.dut1 {
-            cards.set_float("DUT1", dut1, "[s] UT1 - UTC");
-        }
+        // DTAI / DUT1: not emitted by FitsWcs. The C library reads these
+        // when present (fitschan.c:36495-36506) but never writes them —
+        // see fitschan.c:773-778 which explicitly notes "DUT1 is not
+        // written out as yet when writing a FrameSet to a foreign FITS
+        // header". The store carries them on the read path so that
+        // round-tripping through SkyFrame/Frame attributes preserves
+        // the values, but the writer suppresses them.
     }
 
     // PV{i}_{m} numerical projection parameters. Mirrors WcsFromStore
@@ -561,37 +561,16 @@ fn write_store_to_cards(
             "Native latitude of celestial pole",
         );
     }
-    if let Some(restfrq) = store.restfrq {
-        cards.set_float(
-            &fmt_global_key("RESTFRQ", s),
-            restfrq,
-            "[Hz] Rest frequency",
-        );
-    }
-    if let Some(restwav) = store.restwav {
-        cards.set_float(
-            &fmt_global_key("RESTWAV", s),
-            restwav,
-            "Rest wavelength (m)",
-        );
-    }
+    // Spectral block. Mirrors fitschan.c::WcsFromStore order
+    // (C:37325-37361): SPECSYS, SSYSSRC, ZSOURCE, VELOSYS, RESTFRQ,
+    // RESTWAV, IMAGFREQ.
     if let Some(ref specsys) = store.specsys {
         cards.set_string(
             &fmt_global_key("SPECSYS", s),
             specsys,
-            "Spectral reference frame",
+            "Standard of rest for spectral axis",
         );
     }
-    if let Some(velosys) = store.velosys {
-        cards.set_float(
-            &fmt_global_key("VELOSYS", s),
-            velosys,
-            "[m/s] Topo. apparent velocity of rest frame",
-        );
-    }
-
-    // SSYSSRC / ZSOURCE — source-velocity AST extension. Mirrors
-    // fitschan.c::WcsFromStore C:37330-37338.
     if let Some(ref ssyssrc) = store.ssyssrc {
         cards.set_string(
             &fmt_global_key("SSYSSRC", s),
@@ -604,6 +583,27 @@ fn write_store_to_cards(
             &fmt_global_key("ZSOURCE", s),
             zsource,
             "[] Redshift of source",
+        );
+    }
+    if let Some(velosys) = store.velosys {
+        cards.set_float(
+            &fmt_global_key("VELOSYS", s),
+            velosys,
+            "[m/s] Topo. apparent velocity of rest frame",
+        );
+    }
+    if let Some(restfrq) = store.restfrq {
+        cards.set_float(
+            &fmt_global_key("RESTFRQ", s),
+            restfrq,
+            "[Hz] Rest frequency",
+        );
+    }
+    if let Some(restwav) = store.restwav {
+        cards.set_float(
+            &fmt_global_key("RESTWAV", s),
+            restwav,
+            "[m] Rest wavelength",
         );
     }
 
@@ -744,7 +744,7 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> AstResult
     // CDELTi{S}
     for (i, &val) in cdelt.iter().enumerate() {
         let key = fmt_axis_key("CDELT", i + 1, s);
-        cards.set_float(&key, val, "Pixel scale");
+        cards.set_float(&key, val, &format!("Pixel size on axis {}", i + 1));
     }
 
     // PCi_j{S} (only non-default values)

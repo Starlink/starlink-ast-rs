@@ -246,14 +246,23 @@ impl BasicFrame {
         self.ident = if s.is_empty() { None } else { Some(s) };
     }
 
-    /// Return the frame epoch, or `None` if not set.
+    /// Return the frame epoch as a decimal year, or `None` if not
+    /// set. `BasicFrame` stores the epoch as a year (matching the
+    /// `Epoch = …` value emitted in native serialization); use
+    /// `set_epoch_year` / `epoch_year` for the explicit-units API.
+    pub fn epoch_year(&self) -> Option<f64> {
+        self.epoch
+    }
+
+    /// Backwards-compatible accessor; equivalent to `epoch_year`.
     pub fn epoch(&self) -> Option<f64> {
         self.epoch
     }
 
-    /// Set the frame epoch.
-    pub fn set_epoch(&mut self, epoch: f64) {
-        self.epoch = Some(epoch);
+    /// Set the frame epoch as a decimal year (the unit used in AST
+    /// native serialization). The value is stored as-is.
+    pub fn set_epoch_year(&mut self, year: f64) {
+        self.epoch = Some(year);
     }
 
     /// Test whether the epoch attribute has been explicitly set.

@@ -63,7 +63,7 @@ fn test_specframe_attributes() {
     sf.set_ref_ra(1.234);
     sf.set_ref_dec(0.567);
     sf.set_std_of_rest(StdOfRest::Lsrk);
-    sf.set_epoch(51544.5);
+    sf.set_epoch_mjd(51544.5);
 
     assert_eq!(sf.system(), SpecSystem::Wavelen);
     assert_eq!(sf.std_of_rest(), StdOfRest::Lsrk);
@@ -354,7 +354,7 @@ fn test_serialise_roundtrip() {
     sf.set_source_vel(25000.0);
     sf.set_source_vrf(StdOfRest::Heliocentric);
     sf.set_source_sys(SpecSystem::Vrel);
-    sf.set_epoch(51544.5);
+    sf.set_epoch_mjd(51544.5);
     sf.set_obs_lat(0.5);
     sf.set_obs_lon(-1.0);
     sf.set_obs_alt(100.0);
