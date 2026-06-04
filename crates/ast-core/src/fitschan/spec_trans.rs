@@ -266,7 +266,78 @@ fn primary_naxis(cards: &CardList) -> usize {
 // considered complete.
 // =============================================================
 
-fn translate_early_paper_iii_spectral(_cards: &mut CardList) {}
+/// Translation #12 helper: early paper-III spectral CTYPE codes.
+///
+/// Maps the obsolete algorithm codes `-WAV`, `-FRQ`, `-VEL` to the
+/// modern `-X2P` form. The "X" character comes from the algorithm
+/// code (W/F/V), and the "P" character from the system prefix:
+/// FREQ/ENER/WAVN/VRAD → P=F; WAVE/VOPT/ZOPT → P=W; AWAV → P=A;
+/// VELO/BETA → P=V.
+///
+/// When X equals P (e.g. WAVE-WAV would yield WAVE-W2W), C replaces
+/// the algorithm code with blanks (or `----` for 12-char CTYPE) to
+/// avoid the redundant code.
+///
+/// Mirrors fitschan.c:31082-31132. Per-version letter, no encoding gate.
+fn translate_early_paper_iii_spectral(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        for j in 1..=9 {
+            let key = if s == ' ' {
+                format!("CTYPE{j}")
+            } else {
+                format!("CTYPE{j}{s}")
+            };
+            let Some(ctype) = cards.get_string(&key) else {
+                continue;
+            };
+            // Skip celestial axes — the per-version loop in C does
+            // this implicitly because axlon/axlat consume those CTYPEs
+            // earlier.
+            if classify_celestial(ctype.trim()).is_some() {
+                continue;
+            }
+            if ctype.len() < 8 {
+                continue;
+            }
+            let suffix = &ctype[4..8];
+            let x_char = match suffix {
+                "-WAV" => 'W',
+                "-FRQ" => 'F',
+                "-VEL" => 'V',
+                _ => continue,
+            };
+            let prefix = &ctype[..4];
+            let p_char = match prefix {
+                "FREQ" | "ENER" | "WAVN" | "VRAD" => 'F',
+                "WAVE" | "VOPT" | "ZOPT" => 'W',
+                "AWAV" => 'A',
+                "VELO" | "BETA" => 'V',
+                _ => continue,
+            };
+            let mut new_ctype = String::with_capacity(8);
+            new_ctype.push_str(prefix);
+            if x_char == p_char {
+                // C blanks the algorithm code when X == P (or fills
+                // with '-' for 12-char CTYPEs, which is uncommon).
+                if ctype.len() > 8 {
+                    new_ctype.push_str("----");
+                } else {
+                    new_ctype.push_str("    ");
+                }
+            } else {
+                new_ctype.push('-');
+                new_ctype.push(x_char);
+                new_ctype.push('2');
+                new_ctype.push(p_char);
+            }
+            let comment = cards
+                .find(&key)
+                .and_then(|c| c.comment.clone())
+                .unwrap_or_default();
+            cards.set_string(&key, &new_ctype, &comment);
+        }
+    }
+}
 fn translate_sao_co(_cards: &mut CardList) {}
 fn translate_atf_to_ait(_cards: &mut CardList) {}
 fn translate_qv_to_pv(_cards: &mut CardList) {}
@@ -1085,6 +1156,22 @@ mod tests {
         .unwrap();
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--NCP".to_string()));
+    }
+
+    #[test]
+    fn early_paper_iii_wave_frq_becomes_wave_f2w() {
+        let mut cards = CardList::from_header("CTYPE3  = 'WAVE-FRQ'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE3"), Some("WAVE-F2W".to_string()));
+    }
+
+    #[test]
+    fn early_paper_iii_velo_vel_redundant_blanks() {
+        // VELO with X='V' and P='V' (because VELO maps to V) → blanks.
+        let mut cards = CardList::from_header("CTYPE3  = 'VELO-VEL'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        // Trailing-blank padding to 8 chars.
+        assert_eq!(cards.get_string("CTYPE3"), Some("VELO    ".to_string()));
     }
 
     #[test]
