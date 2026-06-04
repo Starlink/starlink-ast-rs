@@ -77,6 +77,79 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     // Translation 11 (fitschan.c:31682-31775): AIPS NCP/GLS
     // projections. Per-version letter; no encoding gate.
     translate_ncp_gls(cards);
+
+    // Translation 12 (fitschan.c:31082-31132): early paper-III
+    // spectral CTYPE algorithm codes. Per-version letter, no
+    // encoding gate. CTYPE values like "WAVE-FRQ" become
+    // "WAVE-F2W" (the modern -X2P form).
+    translate_early_paper_iii_spectral(cards);
+
+    // Translation 13 (fitschan.c:31660-31680): SAO COi_j → PV<axlat>_m
+    // distortion + CTYPE TAN→TPN. Per-version letter, no encoding gate.
+    translate_sao_co(cards);
+
+    // Translation 14 (fitschan.c:31716-31734): CLASS "ATF" projection
+    // → AIT. Per-version letter, no encoding gate.
+    translate_atf_to_ait(cards);
+
+    // Translation 15 (fitschan.c:31774-31420): QV<i>_<m> → PV<i>_<m>.
+    // If any QV is found and the projection is TAN, rename TAN to
+    // TPN as well. Per-version letter, no encoding gate.
+    translate_qv_to_pv(cards);
+
+    // Translation 16 (fitschan.c:31425-31447): TPV → TPN; TAN with
+    // PolyTan attribute non-zero → TPN. Per-version letter, no
+    // encoding gate. (PolyTan is an AST attribute, defaulting to
+    // false; we mirror by treating it as off.)
+    translate_tpv_and_polytan_to_tpn(cards);
+
+    // Translation 17 (fitschan.c:31444-31538): IRAF ZPX projection.
+    // Replace -ZPX with -ZPN-ZPX (ZPN with ZPX distortion code) and
+    // parse PROJP coefficients out of the WAT strings on the
+    // celestial axes. Per-version letter, no encoding gate.
+    translate_iraf_zpx(cards);
+
+    // Translation 18 (fitschan.c:31488-31570): IRAF TNX projection.
+    // Replace -TNX with -TPN and parse polynomial coefficients out
+    // of the WAT strings; if not exactly representable in FITS-WCS
+    // an `ASTWARN` warning is issued. Per-version letter, no
+    // encoding gate.
+    translate_iraf_tnx(cards);
+
+    // Translation 19 (fitschan.c:31541-31571): MSX CAR projection.
+    // Some MSX images have CAR projections whose CRPIX puts the
+    // valid native longitude range entirely outside the image; C
+    // shifts CRPIX1 by ±360°/CDELT1 to bring it back in range.
+    // Per-version letter, no encoding gate.
+    translate_msx_car(cards);
+
+    // Translation 20 (fitschan.c:31573-31614): RESTFREQ → RESTFRQ
+    // with MHz/GHz unit detection from the comment. Per-version
+    // letter, no encoding gate.
+    translate_restfreq(cards);
+
+    // Translation 21 (fitschan.c:31616-31647): AIPS spectral CTYPE
+    // (e.g. VELO-LSR → VRAD with SPECSYS=LSRK) and
+    // LAMBDA → WAVE. Per-version letter, no encoding gate.
+    translate_aips_spectral_ctype(cards);
+
+    // Translation 22 (fitschan.c:31649-31681): CUNIT case-insensitive
+    // canonicalisation: "Hz", "Angstrom", "km/s", "m/s" → canonical
+    // case. Per-version letter, no encoding gate.
+    translate_cunit_case(cards);
+
+    // Translation 23 (fitschan.c:31256-31328): CLASS-specific
+    // rewrites. Mirrors the `ClassTrans` helper called inside the
+    // per-version loop; only fires for primary plane + FITS-CLASS
+    // encoding.
+    if encoding == Encoding::FitsClass {
+        translate_class(cards);
+    }
+
+    // Translation 24 (fitschan.c:31686-31710): IRAF mini-WCS
+    // keyword strip (WAT*, MWCS*, WSV*, LTM*, LTV*). Outside the
+    // per-version loop in C; runs once. No encoding gate.
+    translate_iraf_mini_wcs_strip(cards);
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -184,6 +257,28 @@ fn primary_naxis(cards: &CardList) -> usize {
     }
     max
 }
+
+// =============================================================
+// Translations 12-24: stubs (each ported in its own commit
+// following this one). The stubs are no-ops so the entry-point
+// `spec_trans` compiles while the per-translation work proceeds.
+// Each stub is replaced by the real port before this file is
+// considered complete.
+// =============================================================
+
+fn translate_early_paper_iii_spectral(_cards: &mut CardList) {}
+fn translate_sao_co(_cards: &mut CardList) {}
+fn translate_atf_to_ait(_cards: &mut CardList) {}
+fn translate_qv_to_pv(_cards: &mut CardList) {}
+fn translate_tpv_and_polytan_to_tpn(_cards: &mut CardList) {}
+fn translate_iraf_zpx(_cards: &mut CardList) {}
+fn translate_iraf_tnx(_cards: &mut CardList) {}
+fn translate_msx_car(_cards: &mut CardList) {}
+fn translate_restfreq(_cards: &mut CardList) {}
+fn translate_aips_spectral_ctype(_cards: &mut CardList) {}
+fn translate_cunit_case(_cards: &mut CardList) {}
+fn translate_class(_cards: &mut CardList) {}
+fn translate_iraf_mini_wcs_strip(_cards: &mut CardList) {}
 
 /// Translation #11 helper: AIPS `-NCP` / `-GLS` projections.
 ///
