@@ -761,27 +761,32 @@ fn translate_aips_spectral_read(ctype: &str) -> (String, String) {
 /// If the CTYPE is not a spectral type that maps to an AIPS convention, it is
 /// returned unchanged.
 fn translate_aips_spectral_write(ctype: &str, specsys: Option<&str>) -> String {
-    let aips_prefix = match ctype {
-        "VRAD" => Some("VELO"),
-        "FREQ" => Some("FREQ"),
-        "VOPT" => Some("FELO"),
-        _ => None,
-    };
-
-    let Some(prefix) = aips_prefix else {
-        return ctype.to_string();
+    // Mirrors fitschan.c::AIPSFromStore lines 3320-3327. The AIPS
+    // encoder only knows three modern spectral CTYPE values, all
+    // matched against the trimmed prefix:
+    //   FREQ      → FREQ
+    //   VRAD      → VELO
+    //   VOPT-F2W  → FELO
+    // Anything else falls through unchanged; the encoder's caller
+    // marks the result as not-AIPS-encodable.
+    let trimmed = ctype.trim_end();
+    let aips_prefix = match trimmed {
+        "FREQ" => "FREQ",
+        "VRAD" => "VELO",
+        "VOPT-F2W" => "FELO",
+        _ => return ctype.to_string(),
     };
 
     let frame = match specsys {
-        Some("LSRK") => "LSR",
-        Some("LSRD") => "LSD",
-        Some("BARYCENT") => "HEL",
-        Some("GEOCENTR") => "GEO",
-        Some("TOPOCENT") => "OBS",
-        _ => "LSR", // default to LSR if SPECSYS not specified
+        Some(s) if s.starts_with("LSRK") => "LSR",
+        Some(s) if s.starts_with("LSRD") => "LSD",
+        Some(s) if s.starts_with("BARYCENT") => "HEL",
+        Some(s) if s.starts_with("GEOCENTR") => "GEO",
+        Some(s) if s.starts_with("TOPOCENT") => "OBS",
+        _ => return ctype.to_string(),
     };
 
-    format!("{prefix}-{frame}")
+    format!("{aips_prefix}-{frame}")
 }
 
 // ---------------------------------------------------------------------------
