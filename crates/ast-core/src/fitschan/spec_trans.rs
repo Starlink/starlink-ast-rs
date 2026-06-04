@@ -1127,22 +1127,124 @@ fn translate_cunit_case(cards: &mut CardList) {
     }
 }
 
-/// Translation #23 helper: CLASS-specific rewrites (`ClassTrans` in
-/// C, fitschan.c:11030-11200). Only fires for `Encoding::FitsClass`
-/// + primary plane.
+/// Translation #23 helper: CLASS-specific rewrites.
+///
+/// Mirrors fitschan.c::ClassTrans (line 6955-7129):
+///
+///  1. The spectral axis (the one that's neither lon nor lat) must
+///     be `FREQ`. CRVAL on that axis is shifted by RESTFREQ (CLASS
+///     stores spectral CRVAL as an offset from the rest frequency).
+///  2. SPECSYS becomes `SOURCE`.
+///  3. If CTYPE for the celestial pair has an empty projection
+///     suffix, default to `-GLS` (which translation #11 then maps to
+///     `-SFL`). C runs ClassTrans from inside the SpecTrans loop
+///     before the GLS rewrite, so the rewrite chain works.
+///  4. Pick a velocity reference from VELO-HEL / VELO-OBS / VELO-TOP
+///     / VELO-EAR / VELO-GEO / VELO-LSR / VLSR; emit SSYSSRC and
+///     ZSOURCE based on that reference.
+///
+/// FitsClass-only; primary plane only.
 fn translate_class(cards: &mut CardList) {
-    // ClassTrans is a complex helper that:
-    //  - subtracts RESTFREQ from CRVAL on the spectral axis,
-    //  - rewrites CTYPE3='FREQ' to 'FREQ-OLSR' or similar,
-    //  - mirrors a series of CLASS-specific quirks documented in
-    //    `fitschan.c:11030-11200`.
-    //
-    // The full port is roughly 200 lines and depends on a port of
-    // `astChrSplit` and the CLASS-specific spectral-axis lookup.
-    // Stubbed for now; tracked as a follow-up since the FITS-CLASS
-    // wcsconv fixtures all currently fail on the encoder (write)
-    // side rather than the reader.
-    let _ = cards;
+    // Need the celestial pair to determine which axis is spectral.
+    let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
+        return;
+    };
+    // Spectral axis = the one that's neither lon nor lat among
+    // {1, 2, 3}. Mirrors C:7027-7035 (uses 1-based axis indices).
+    let axspec = match (axlon, axlat) {
+        (1, 2) | (2, 1) => 3,
+        (1, 3) | (3, 1) => 2,
+        (2, 3) | (3, 2) => 1,
+        _ => return, // unsupported axis layout
+    };
+
+    // Get RESTFREQ. Try the standard then the AIPS-spelling.
+    let restfreq = cards
+        .get_float("RESTFRQ")
+        .or_else(|| cards.get_float("RESTFREQ"));
+    let Some(restfreq) = restfreq else {
+        // C errors out; we silently skip. Downstream readers will
+        // produce a clearer error.
+        return;
+    };
+
+    // Grab CRVAL on the spectral axis up-front so we can compute
+    // v0 below, even after we mutate the card.
+    let crval_spec_orig = cards.get_float(&format!("CRVAL{axspec}")).unwrap_or(0.0);
+
+    // Spectral CTYPE check + CRVAL shift.
+    if let Some(ctype_spec) = cards.get_string(&format!("CTYPE{axspec}")) {
+        let trimmed = ctype_spec.trim();
+        if trimmed.eq_ignore_ascii_case("FREQ") {
+            // CRVAL_spec += RESTFREQ.
+            let new_crval = crval_spec_orig + restfreq;
+            let comment = cards
+                .find(&format!("CRVAL{axspec}"))
+                .and_then(|c| c.comment.clone())
+                .unwrap_or_default();
+            cards.set_float(&format!("CRVAL{axspec}"), new_crval, &comment);
+        }
+        // C errors out for non-FREQ axes; we silently skip.
+    }
+
+    // SPECSYS = SOURCE. CLASS frequency axes describe source-frame
+    // frequencies.
+    cards.set_string("SPECSYS", "SOURCE", "Standard of rest");
+
+    // Default empty projection suffix to -GLS (later remapped to
+    // -SFL by translation #11). The CTYPE may have trailing blanks
+    // already that look like an "empty" suffix.
+    for ax in [axlon, axlat] {
+        let key = format!("CTYPE{ax}");
+        if let Some(ctype) = cards.get_string(&key)
+            && ctype.len() > 4
+            && ctype[4..].chars().all(|c| c == ' ' || c == '\0')
+        {
+            let mut new_ctype = ctype[..4].to_string();
+            new_ctype.push_str("-GLS");
+            let comment = cards
+                .find(&key)
+                .and_then(|c| c.comment.clone())
+                .unwrap_or_default();
+            cards.set_string(&key, &new_ctype, &comment);
+        }
+    }
+
+    // Look for velocity-reference keywords.
+    let (ssyssrc, vref) = if let Some(v) = cards.get_float("VELO-HEL") {
+        ("BARYCENT", v)
+    } else if let Some(v) = cards
+        .get_float("VELO-OBS")
+        .or_else(|| cards.get_float("VELO-TOP"))
+    {
+        ("TOPOCENT", v)
+    } else if let Some(v) = cards
+        .get_float("VELO-EAR")
+        .or_else(|| cards.get_float("VELO-GEO"))
+    {
+        ("GEOCENTR", v)
+    } else if let Some(v) = cards
+        .get_float("VELO-LSR")
+        .or_else(|| cards.get_float("VLSR"))
+    {
+        ("LSRK", v)
+    } else {
+        ("LSRK", 0.0)
+    };
+
+    // Compute radio velocity at the reference channel:
+    //   v0 = c * (restfreq - crval_spec_orig) / restfreq
+    // (C uses the *original* spectral CRVAL, not the post-shift
+    // value — see fitschan.c:7117).
+    const C_LIGHT_M_S: f64 = 299_792_458.0;
+    let v0 = C_LIGHT_M_S * (restfreq - crval_spec_orig) / restfreq;
+    let vsource = vref - v0;
+
+    cards.set_string("SSYSSRC", ssyssrc, "Source standard of rest");
+
+    // Convert from radio velocity to redshift; ZSOURCE = c/(c-vsource) - 1.
+    let zsource = C_LIGHT_M_S / (C_LIGHT_M_S - vsource) - 1.0;
+    cards.set_float("ZSOURCE", zsource, "Redshift of source");
 }
 
 /// Translation #24 helper: strip IRAF mini-WCS keywords (`WAT*`,
@@ -2171,6 +2273,30 @@ mod tests {
         assert!(cards.find("LTM1_1").is_none());
         assert!(cards.find("LTV1").is_none());
         assert!(cards.find("WSV1_LEN").is_none());
+    }
+
+    #[test]
+    fn translates_class_spectral_crval_and_specsys() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---GLS'\n\
+             CTYPE2  = 'DEC--GLS'\n\
+             CTYPE3  = 'FREQ    '\n\
+             CRVAL1  =                  0.0\n\
+             CRVAL2  =                  0.0\n\
+             CRVAL3  =                  0.0\n\
+             RESTFREQ=                1.0E9 / [Hz] Rest frequency\n\
+             VELO-LSR=               1.0E4\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsClass);
+        // Spectral CRVAL was 0; after CLASS shift = RESTFREQ.
+        assert_eq!(cards.get_float("CRVAL3"), Some(1.0e9));
+        assert_eq!(cards.get_string("SPECSYS"), Some("SOURCE".to_string()));
+        assert_eq!(cards.get_string("SSYSSRC"), Some("LSRK".to_string()));
+        // ZSOURCE non-zero (vsource non-zero because vref=1e4 and v0=0
+        // when crval_orig == restfreq, but here crval_orig=0 so v0=c).
+        assert!(cards.find("ZSOURCE").is_some());
     }
 
     #[test]
