@@ -51,6 +51,13 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     // celestial axes. The latitude axis's CROTA wins over the
     // longitude axis's when both are present.
     translate_crota(cards);
+
+    // Translation 5 (fitschan.c:31386-31435): PROJPi → PV<axlat>_i.
+    // Primary plane only, FITS-PC / FITS-IRAF only, gated on
+    // PROJP-vs-PV disagreement heuristic.
+    if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
+        translate_projp(cards);
+    }
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -157,6 +164,67 @@ fn primary_naxis(cards: &CardList) -> usize {
         }
     }
     max
+}
+
+/// Translation #5 helper: PROJPi → PV<axlat>_i. Mirrors
+/// fitschan.c:31386-31435. Primary plane only.
+fn translate_projp(cards: &mut CardList) {
+    // Need celestial axes (specifically the latitude axis) to know
+    // where to write PV cards.
+    let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
+        return;
+    };
+    // Determine which PROJP indices are present.
+    let mut projp_indices: Vec<usize> = Vec::new();
+    for i in 0..=9 {
+        if cards.find(&format!("PROJP{i}")).is_some() {
+            projp_indices.push(i);
+        }
+    }
+    if projp_indices.is_empty() {
+        return;
+    }
+    // Decide whether to use PROJP. Default: yes. C's
+    // disagreement-detection at fitschan.c:31390-31419: if any PV
+    // values exist anywhere in the chan, default to using them — but
+    // re-enable PROJP when PV{axlon}_{0..2} indicate the user's PV
+    // set is incomplete.
+    let any_pv = (1..=9).any(|i| (0..=9).any(|m| cards.find(&format!("PV{i}_{m}")).is_some()));
+    let mut use_projp = true;
+    if any_pv {
+        use_projp = false;
+        let pv_lon_0 = cards.find(&format!("PV{axlon}_0")).is_some();
+        let pv_lon_1 = cards.find(&format!("PV{axlon}_1")).is_some();
+        let pv_lon_2 = cards.find(&format!("PV{axlon}_2")).is_some();
+        if pv_lon_1 || pv_lon_2 {
+            // PV present but PV0 missing → use PROJP.
+            if !pv_lon_0 {
+                use_projp = true;
+            }
+        } else if pv_lon_0 {
+            // Only PV0 present → use PROJP.
+            use_projp = true;
+        }
+    }
+    if !use_projp {
+        // Drop the PROJP cards anyway (they've been "used").
+        for i in projp_indices {
+            cards.delete(&format!("PROJP{i}"));
+        }
+        return;
+    }
+    for i in projp_indices {
+        let from = format!("PROJP{i}");
+        let Some(value) = cards.get_float(&from) else {
+            continue;
+        };
+        let comment = cards
+            .find(&from)
+            .and_then(|c| c.comment.clone())
+            .unwrap_or_default();
+        cards.delete(&from);
+        cards.set_float(&format!("PV{axlat}_{i}"), value, &comment);
+    }
 }
 
 fn translate_crota(cards: &mut CardList) {
@@ -406,6 +474,62 @@ mod tests {
         assert!(cards.find("CROTA2").is_none());
         // PC values were not overwritten.
         assert_eq!(cards.get_float("PC1_1"), Some(1.0));
+    }
+
+    #[test]
+    fn translates_projp_to_pv_on_latitude_axis() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---ZPN'\n\
+             CTYPE2  = 'DEC--ZPN'\n\
+             PROJP0  =                  0.0\n\
+             PROJP1  =                  1.0\n\
+             PROJP2  =                 -0.4\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("PROJP0").is_none());
+        assert!(cards.find("PROJP1").is_none());
+        assert_eq!(cards.get_float("PV2_0"), Some(0.0));
+        assert_eq!(cards.get_float("PV2_1"), Some(1.0));
+        assert_eq!(cards.get_float("PV2_2"), Some(-0.4));
+    }
+
+    #[test]
+    fn projp_skipped_when_consistent_pv_set_present() {
+        // PV0+PV1+PV2 all set on lon → C trusts PV, PROJP dropped.
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---ZPN'\n\
+             CTYPE2  = 'DEC--ZPN'\n\
+             PROJP0  =                999.0\n\
+             PV1_0   =                  0.0\n\
+             PV1_1   =                  1.0\n\
+             PV1_2   =                 -0.4\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        // PROJP card consumed, PV2_0 not written from PROJP.
+        assert!(cards.find("PROJP0").is_none());
+        assert!(cards.find("PV2_0").is_none());
+    }
+
+    #[test]
+    fn projp_used_when_pv_set_is_incomplete() {
+        // PV1+PV2 set but PV0 missing → C says PV is incomplete,
+        // falls back to PROJP for the parameter set.
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---ZPN'\n\
+             CTYPE2  = 'DEC--ZPN'\n\
+             PROJP0  =                  0.0\n\
+             PV1_1   =                  1.0\n\
+             PV1_2   =                 -0.4\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        // PROJP0 consumed and rewritten as PV2_0.
+        assert_eq!(cards.get_float("PV2_0"), Some(0.0));
     }
 
     #[test]
