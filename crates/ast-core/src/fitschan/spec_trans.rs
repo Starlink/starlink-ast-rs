@@ -338,7 +338,125 @@ fn translate_early_paper_iii_spectral(cards: &mut CardList) {
         }
     }
 }
-fn translate_sao_co(_cards: &mut CardList) {}
+/// Translation #13 helper: SAO COi_j → PV<axis>_m + CTYPE TAN→TPV.
+///
+/// The SAO platepos.c representation encodes a distorted TAN
+/// projection in 13 polynomial coefficients per axis (CO1_1..CO1_13,
+/// CO2_1..CO2_13). Translate to FITS-WCS paper II PV form and
+/// rewrite the CTYPE projection from `-TAN` to `-TPV`.
+///
+/// Mirrors fitschan.c::SAOTrans (line 26630-26880). Per-version
+/// letter is C's responsibility; the SAO header form is primary
+/// only by convention.
+fn translate_sao_co(cards: &mut CardList) {
+    // Probe for any CO1_1 / CO2_1 — the SAO header form requires
+    // both to be present.
+    if cards.find("CO1_1").is_none() && cards.find("CO2_1").is_none() {
+        return;
+    }
+    // Read the 13 coefficients per axis. Missing values (after
+    // index 3) are treated as 0; missing values at indices 1-3
+    // mark this as "not an SAO header" and abort.
+    const NC: usize = 13;
+    let mut co = [[0.0_f64; NC]; 2];
+    let mut ok = true;
+    let mut is_sao = true;
+    for (i, row) in co.iter_mut().enumerate() {
+        let mut row_ok = false;
+        for (m, slot) in row.iter_mut().enumerate() {
+            let key = format!("CO{}_{}", i + 1, m + 1);
+            match cards.get_float(&key) {
+                Some(v) => {
+                    *slot = v;
+                    if v != 0.0 && m > 0 {
+                        row_ok = true;
+                    }
+                }
+                None => {
+                    if m < 3 {
+                        is_sao = false;
+                    }
+                    break;
+                }
+            }
+        }
+        if !row_ok {
+            ok = false;
+        }
+    }
+    if !is_sao {
+        return;
+    }
+    if !ok {
+        // Mirror C: Warn message; we silently drop the CO cards
+        // (no warning machinery in this port yet).
+        return;
+    }
+
+    // Build PV<i>_m values per the SAO→TPV mapping at fitschan.c
+    // :26730-26835. Each PV value is a sum of named CO coefficients;
+    // we list them as (output_key, [co_indices_to_sum]) where CO
+    // indices are 1-based to mirror the C source verbatim.
+    let pv_axis1: &[(&str, &[(usize, usize)])] = &[
+        ("PV1_0", &[(0, 0)]),
+        ("PV1_1", &[(0, 1)]),
+        ("PV1_2", &[(0, 2)]),
+        ("PV1_4", &[(0, 3), (0, 10)]),
+        ("PV1_5", &[(0, 5)]),
+        ("PV1_6", &[(0, 4), (0, 10)]),
+        ("PV1_7", &[(0, 6), (0, 11)]),
+        ("PV1_8", &[(0, 8), (0, 12)]),
+        ("PV1_9", &[(0, 9), (0, 11)]),
+        ("PV1_10", &[(0, 7), (0, 12)]),
+    ];
+    let pv_axis2: &[(&str, &[(usize, usize)])] = &[
+        ("PV2_0", &[(1, 0)]),
+        ("PV2_1", &[(1, 2)]),
+        ("PV2_2", &[(1, 1)]),
+        ("PV2_4", &[(1, 4), (1, 10)]),
+        ("PV2_5", &[(1, 5)]),
+        ("PV2_6", &[(1, 3), (1, 10)]),
+        ("PV2_7", &[(1, 7), (1, 12)]),
+        ("PV2_8", &[(1, 9), (1, 11)]),
+        ("PV2_9", &[(1, 8), (1, 12)]),
+        ("PV2_10", &[(1, 6), (1, 11)]),
+    ];
+    for (key, indices) in pv_axis1.iter().chain(pv_axis2.iter()) {
+        let pv: f64 = indices.iter().map(|(a, m)| co[*a][*m]).sum();
+        cards.set_float(key, pv, "Projection parameter");
+    }
+
+    // Mark all CO cards consumed.
+    for i in 0..2 {
+        for m in 1..=NC {
+            cards.delete(&format!("CO{}_{}", i + 1, m));
+        }
+    }
+
+    // The SAO polynomial subsumes the CD/PC/CDELT/CROTA scaling, so
+    // C marks all of them as used and replaces with identity values
+    // (mirrors C:26845-26880).
+    for key in [
+        "CD1_1", "CD1_2", "CD2_1", "CD2_2", "PC1_1", "PC1_2", "PC2_1", "PC2_2", "CDELT1", "CDELT2",
+        "CROTA1", "CROTA2",
+    ] {
+        cards.delete(key);
+    }
+    cards.set_float("PC1_1", 1.0, "PC matrix element");
+    cards.set_float("PC2_2", 1.0, "PC matrix element");
+    cards.set_float("CDELT1", 1.0, "Pixel scale");
+    cards.set_float("CDELT2", 1.0, "Pixel scale");
+
+    // Convert CTYPE TAN → TPV. Per-version letter not used here
+    // because SAO headers are always primary (no SAO version
+    // letters exist in practice).
+    if let Some((axlon, axlat)) = celestial_axes(cards, ' ') {
+        for ax in [axlon, axlat] {
+            let key = format!("CTYPE{ax}");
+            replace_projection_suffix(cards, &key, "TPV");
+        }
+    }
+}
 fn translate_atf_to_ait(_cards: &mut CardList) {}
 fn translate_qv_to_pv(_cards: &mut CardList) {}
 fn translate_tpv_and_polytan_to_tpn(_cards: &mut CardList) {}
@@ -1172,6 +1290,35 @@ mod tests {
         spec_trans(&mut cards, Encoding::FitsPc);
         // Trailing-blank padding to 8 chars.
         assert_eq!(cards.get_string("CTYPE3"), Some("VELO    ".to_string()));
+    }
+
+    #[test]
+    fn translates_sao_co_to_pv_and_tpv() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---TAN'\n\
+             CTYPE2  = 'DEC--TAN'\n\
+             CO1_1   =                  0.0\n\
+             CO1_2   =                  1.0\n\
+             CO1_3   =                  0.0\n\
+             CO1_5   =                  0.5\n\
+             CO2_1   =                  0.0\n\
+             CO2_2   =                  1.0\n\
+             CO2_3   =                  0.0\n\
+             CO2_5   =                  0.7\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        // CTYPE rewrites.
+        assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPV".to_string()));
+        assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPV".to_string()));
+        // PV1_5 = co[0][5] (1-based: CO1_6 — but only CO1_5=0.5 set).
+        // PV1_1 = co[0][1] = CO1_2 = 1.0; PV1_2 = co[0][2] = CO1_3 = 0.0.
+        assert_eq!(cards.get_float("PV1_1"), Some(1.0));
+        assert_eq!(cards.get_float("PV2_2"), Some(1.0));
+        // Identity PC + unit CDELT (the SAO polynomial subsumes them).
+        assert_eq!(cards.get_float("PC1_1"), Some(1.0));
+        assert_eq!(cards.get_float("CDELT1"), Some(1.0));
     }
 
     #[test]
