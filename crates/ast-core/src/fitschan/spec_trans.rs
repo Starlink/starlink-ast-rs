@@ -925,12 +925,256 @@ fn concat_wat(cards: &CardList, axis: usize) -> String {
     }
     out
 }
-fn translate_msx_car(_cards: &mut CardList) {}
-fn translate_restfreq(_cards: &mut CardList) {}
-fn translate_aips_spectral_ctype(_cards: &mut CardList) {}
-fn translate_cunit_case(_cards: &mut CardList) {}
-fn translate_class(_cards: &mut CardList) {}
-fn translate_iraf_mini_wcs_strip(_cards: &mut CardList) {}
+/// Translation #19 helper: MSX CAR projection longitude wrap.
+///
+/// CAR images that span more than 360° in pixel space need their
+/// CRPIX shifted so the image's mid-pixel longitude lies in
+/// [-180°, 180°]. Mirrors fitschan.c:31944-31972. Primary plane only;
+/// no encoding gate. The C code is gated on `astGetCarLin(this)`
+/// being false (the default); we mirror this default unconditionally
+/// since FitsChan attribute support isn't wired through to
+/// `spec_trans` yet.
+fn translate_msx_car(cards: &mut CardList) {
+    let Some((axlon, _axlat)) = celestial_axes(cards, ' ') else {
+        return;
+    };
+    let Some(ctype_lon) = cards.get_string(&format!("CTYPE{axlon}")) else {
+        return;
+    };
+    if !projection_suffix(ctype_lon.trim()).is_some_and(|p| p.eq_ignore_ascii_case("CAR")) {
+        return;
+    }
+    let Some(cdelti) = cards.get_float(&format!("CDELT{axlon}")) else {
+        return;
+    };
+    let Some(crpix_old) = cards.get_float(&format!("CRPIX{axlon}")) else {
+        return;
+    };
+    if cdelti == 0.0 {
+        return;
+    }
+    let dim = cards.get_int(&format!("NAXIS{axlon}")).unwrap_or(0) as f64;
+    let offset = 0.5 * (dim + 1.0);
+    // C: dval = offset + DR2D * palDrange(DD2R * (dval - offset) * cdelti) / cdelti.
+    // palDrange wraps to [-π, π]. We use `rem_euclid` then shift.
+    let theta_rad = (crpix_old - offset) * cdelti.to_radians();
+    let wrapped = crate::pal::drange(theta_rad);
+    let crpix_new = offset + wrapped.to_degrees() / cdelti;
+    let comment = cards
+        .find(&format!("CRPIX{axlon}"))
+        .and_then(|c| c.comment.clone())
+        .unwrap_or_default();
+    cards.set_float(&format!("CRPIX{axlon}"), crpix_new, &comment);
+}
+
+/// Translation #20 helper: RESTFREQ → RESTFRQ with MHz/GHz unit
+/// detection from the comment string. Mirrors fitschan.c:31975-32008.
+/// Per-version letter; no encoding gate.
+fn translate_restfreq(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        let from = if s == ' ' {
+            "RESTFREQ".to_string()
+        } else {
+            format!("RESTFREQ{s}")
+        };
+        let to = if s == ' ' {
+            "RESTFRQ".to_string()
+        } else {
+            format!("RESTFRQ{s}")
+        };
+        let Some(value) = cards.get_float(&from) else {
+            continue;
+        };
+        let comment = cards
+            .find(&from)
+            .and_then(|c| c.comment.clone())
+            .unwrap_or_default();
+        // Detect MHz / GHz suffix in the original comment and scale.
+        let (scaled, new_comment) = if comment.contains("GHz") {
+            (value * 1.0e9, "[Hz] Rest Frequency".to_string())
+        } else if comment.contains("MHz") {
+            (value * 1.0e6, "[Hz] Rest Frequency".to_string())
+        } else {
+            (value, comment)
+        };
+        cards.delete(&from);
+        if cards.find(&to).is_none() {
+            cards.set_float(&to, scaled, &new_comment);
+        }
+    }
+}
+
+/// Translation #21 helper: AIPS spectral CTYPE → modern FITS-WCS
+/// equivalents (`VELO-LSR` → `VRAD` + SPECSYS=LSRK etc.) plus
+/// `LAMBDA` → `WAVE`.
+///
+/// Mirrors fitschan.c:32021-32046 + the `IsAIPSSpectral` helper at
+/// fitschan.c:20122-20218. Per-version letter; no encoding gate.
+fn translate_aips_spectral_ctype(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        for j in 1..=9 {
+            let key = if s == ' ' {
+                format!("CTYPE{j}")
+            } else {
+                format!("CTYPE{j}{s}")
+            };
+            let Some(ctype) = cards.get_string(&key) else {
+                continue;
+            };
+            let trimmed = ctype.trim_end();
+            if trimmed.len() == 8 {
+                if let Some((wctype, wspecsys)) = is_aips_spectral(trimmed) {
+                    let comment = cards
+                        .find(&key)
+                        .and_then(|c| c.comment.clone())
+                        .unwrap_or_default();
+                    cards.set_string(&key, wctype, &comment);
+                    let specsys_key = if s == ' ' {
+                        "SPECSYS".to_string()
+                    } else {
+                        format!("SPECSYS{s}")
+                    };
+                    cards.set_string(&specsys_key, wspecsys, "Spectral reference frame");
+                    // C: `break` out of the per-axis loop after the
+                    // first AIPS spectral hit.
+                    break;
+                }
+            }
+            if trimmed == "LAMBDA" {
+                let comment = cards
+                    .find(&key)
+                    .and_then(|c| c.comment.clone())
+                    .unwrap_or_default();
+                cards.set_string(&key, "WAVE", &comment);
+                break;
+            }
+        }
+    }
+}
+
+/// Mirrors fitschan.c::IsAIPSSpectral (line 20122-20218). Returns
+/// `Some((wctype, wspecsys))` for an AIPS spectral 8-char CTYPE,
+/// otherwise `None`.
+fn is_aips_spectral(ctype: &str) -> Option<(&'static str, &'static str)> {
+    if ctype.len() != 8 {
+        return None;
+    }
+    let prefix = &ctype[..4];
+    let suffix = &ctype[4..];
+    let wctype = match prefix {
+        "FREQ" => "FREQ    ",
+        "VELO" => "VRAD    ",
+        "FELO" => "VOPT-F2W",
+        "WAVELENG" => "WAVE    ",
+        _ => return None,
+    };
+    let wspecsys = if suffix.starts_with("-LSR") || suffix.starts_with("LSRK") {
+        "LSRK"
+    } else if suffix.starts_with("-LSD") {
+        "LSRD"
+    } else if suffix.starts_with("-HEL") {
+        "BARYCENT"
+    } else if suffix.starts_with("-EAR") || suffix.starts_with("-GEO") {
+        "GEOCENTR"
+    } else if suffix.starts_with("-OBS") || suffix.starts_with("-TOP") {
+        "TOPOCENT"
+    } else {
+        return None;
+    };
+    // C also requires both wctype and wspecsys to be set (already
+    // ensured by the early-returns above).
+    Some((wctype, wspecsys))
+}
+
+/// Translation #22 helper: case-insensitive CUNIT canonicalisation.
+///
+/// Maps "Hz" / "ANGSTROM" / "Km/S" etc. variants to the canonical
+/// case. Mirrors fitschan.c:32049-32081. Per-version letter; no
+/// encoding gate.
+fn translate_cunit_case(cards: &mut CardList) {
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        for j in 1..=9 {
+            let key = if s == ' ' {
+                format!("CUNIT{j}")
+            } else {
+                format!("CUNIT{j}{s}")
+            };
+            let Some(value) = cards.get_string(&key) else {
+                continue;
+            };
+            let trimmed = value.trim_end();
+            let canon = if trimmed.is_empty() {
+                None
+            } else if trimmed.eq_ignore_ascii_case("Hz") {
+                Some("Hz")
+            } else if trimmed.eq_ignore_ascii_case("Angstrom") {
+                Some("Angstrom")
+            } else if trimmed.eq_ignore_ascii_case("km/s") {
+                Some("km/s")
+            } else if trimmed.eq_ignore_ascii_case("m/s") {
+                Some("m/s")
+            } else {
+                None
+            };
+            if let Some(c) = canon {
+                let comment = cards
+                    .find(&key)
+                    .and_then(|c| c.comment.clone())
+                    .unwrap_or_default();
+                cards.set_string(&key, c, &comment);
+            }
+        }
+    }
+}
+
+/// Translation #23 helper: CLASS-specific rewrites (`ClassTrans` in
+/// C, fitschan.c:11030-11200). Only fires for `Encoding::FitsClass`
+/// + primary plane.
+fn translate_class(cards: &mut CardList) {
+    // ClassTrans is a complex helper that:
+    //  - subtracts RESTFREQ from CRVAL on the spectral axis,
+    //  - rewrites CTYPE3='FREQ' to 'FREQ-OLSR' or similar,
+    //  - mirrors a series of CLASS-specific quirks documented in
+    //    `fitschan.c:11030-11200`.
+    //
+    // The full port is roughly 200 lines and depends on a port of
+    // `astChrSplit` and the CLASS-specific spectral-axis lookup.
+    // Stubbed for now; tracked as a follow-up since the FITS-CLASS
+    // wcsconv fixtures all currently fail on the encoder (write)
+    // side rather than the reader.
+    let _ = cards;
+}
+
+/// Translation #24 helper: strip IRAF mini-WCS keywords (`WAT*`,
+/// `MWCS*`, `WSV*`, `LTM*`, `LTV*`). These are IRAF-specific
+/// equivalents of the AST native serialisation; carrying them
+/// through the read pipeline causes encoding ambiguity.
+///
+/// Mirrors fitschan.c:32084-32110. No encoding gate; runs once.
+fn translate_iraf_mini_wcs_strip(cards: &mut CardList) {
+    let mut to_remove: Vec<String> = Vec::new();
+    for c in cards.iter() {
+        let kw = c.keyword.as_str();
+        let starts_with_digit_pair = |prefix: &str| {
+            // Match patterns like "WAT1_001" / "MWCS3" / "WSV1_LEN".
+            kw.starts_with(prefix) && {
+                let rest = &kw[prefix.len()..];
+                rest.chars().next().is_some_and(|c| c.is_ascii_digit())
+            }
+        };
+        if starts_with_digit_pair("WAT")
+            || starts_with_digit_pair("MWCS")
+            || starts_with_digit_pair("LTM")
+            || starts_with_digit_pair("LTV")
+            || starts_with_digit_pair("WSV")
+        {
+            to_remove.push(kw.to_string());
+        }
+    }
+    for kw in to_remove {
+        cards.delete(&kw);
+    }
+}
 
 /// Translation #11 helper: AIPS `-NCP` / `-GLS` projections.
 ///
@@ -1851,6 +2095,82 @@ mod tests {
         spec_trans(&mut cards, Encoding::FitsPc);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
+    }
+
+    #[test]
+    fn translates_msx_car_wraps_crpix() {
+        // CRPIX so far outside [-180, 180] that the image would
+        // be empty; expect CRPIX to wrap.
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---CAR'\n\
+             CTYPE2  = 'DEC--CAR'\n\
+             NAXIS1  =                  100\n\
+             CRPIX1  =               1000.0\n\
+             CDELT1  =                 -1.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        // CRPIX should now lie close to the image (within one full
+        // wrap cycle of the original).
+        let crpix1 = cards.get_float("CRPIX1").unwrap();
+        assert!(crpix1.abs() < 200.0 + 50.0, "CRPIX1 not wrapped: {crpix1}");
+    }
+
+    #[test]
+    fn translates_restfreq_to_restfrq_with_ghz_scale() {
+        let mut cards =
+            CardList::from_header("RESTFREQ=                1.42 / Rest frequency in GHz\nEND")
+                .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("RESTFREQ").is_none());
+        let restfrq = cards.get_float("RESTFRQ").unwrap();
+        assert!((restfrq - 1.42e9).abs() < 1.0);
+    }
+
+    #[test]
+    fn translates_velo_lsr_to_vrad_plus_specsys() {
+        let mut cards = CardList::from_header("CTYPE3  = 'VELO-LSR'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE3"), Some("VRAD    ".to_string()));
+        assert_eq!(cards.get_string("SPECSYS"), Some("LSRK".to_string()));
+    }
+
+    #[test]
+    fn translates_lambda_to_wave() {
+        let mut cards = CardList::from_header("CTYPE3  = 'LAMBDA  '\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CTYPE3"), Some("WAVE".to_string()));
+    }
+
+    #[test]
+    fn translates_cunit_case_insensitively() {
+        let mut cards = CardList::from_header(
+            "CUNIT1  = 'HZ      '\n\
+             CUNIT2  = 'M/S     '\n\
+             CUNIT3  = 'KM/S    '\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_string("CUNIT1"), Some("Hz".to_string()));
+        assert_eq!(cards.get_string("CUNIT2"), Some("m/s".to_string()));
+        assert_eq!(cards.get_string("CUNIT3"), Some("km/s".to_string()));
+    }
+
+    #[test]
+    fn iraf_mini_wcs_keywords_stripped() {
+        let mut cards = CardList::from_header(
+            "WAT1_001= 'foo'\nWAT2_001= 'bar'\nMWCS1   =                   1\nLTM1_1  =                  1.0\nLTV1    =                  0.0\nWSV1_LEN=                   3\nEND",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("WAT1_001").is_none());
+        assert!(cards.find("WAT2_001").is_none());
+        assert!(cards.find("MWCS1").is_none());
+        assert!(cards.find("LTM1_1").is_none());
+        assert!(cards.find("LTV1").is_none());
+        assert!(cards.find("WSV1_LEN").is_none());
     }
 
     #[test]
