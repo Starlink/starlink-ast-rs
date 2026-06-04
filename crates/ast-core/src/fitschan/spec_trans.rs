@@ -58,6 +58,13 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
     if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
         translate_projp(cards);
     }
+
+    // Translation 6 (fitschan.c:31437-31578): C{m}{VAL/PIX/YPE/NIT/ELT}{i}
+    // → CRVAL{i}{S} / CRPIX{i}{S} / CTYPE{i}{S} / CUNIT{i}{S} /
+    // CDELT{i}{S} where S = 'A' + (m-1). FITS-PC / FITS-IRAF only.
+    if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
+        translate_cnxxx(cards);
+    }
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -164,6 +171,94 @@ fn primary_naxis(cards: &CardList) -> usize {
         }
     }
     max
+}
+
+/// Translation #6 helper: rewrite the FITS-PC alt-axis form
+/// `C{m}{VAL,PIX,YPE,NIT,ELT}{i}` to the standard
+/// `{CRVAL,CRPIX,CTYPE,CUNIT,CDELT}{i}{S}` form (S = 'A' + m-1).
+/// Mirrors fitschan.c:31437-31578.
+///
+/// The CmELTi → CDELTi{S} branch additionally backfills zero
+/// CDELT values from the corresponding CRVAL (× 0.01), or 1.0 when
+/// CRVAL is also zero — to match C's "redundant axis" workaround
+/// (fitschan.c:31543-31548).
+///
+/// The CmELTi branch in C also propagates a per-version PC matrix
+/// from any 6-digit `PC{jjj}{iii}` cards present (fitschan.c:31556-
+/// 31573). That branch only ever fires under FITS-IRAF (which is
+/// the only encoding that emits `PC{jjj}{iii}` form on write); we
+/// port it as-is so the round-trip is exact.
+fn translate_cnxxx(cards: &mut CardList) {
+    // Discover (m, axis_max) ranges. m ∈ 1..=9 (alt letter A..I).
+    for m in 1..=9 {
+        let alt = (b'A' + (m - 1) as u8) as char;
+        // Translate value-style cards (CRVAL/CRPIX/CTYPE/CUNIT) one-for-one.
+        for kind in ["VAL", "PIX", "YPE", "NIT"] {
+            let dst_prefix = match kind {
+                "VAL" => "CRVAL",
+                "PIX" => "CRPIX",
+                "YPE" => "CTYPE",
+                "NIT" => "CUNIT",
+                _ => unreachable!(),
+            };
+            for i in 1..=9 {
+                let from = format!("C{m}{kind}{i}");
+                let to = format!("{dst_prefix}{i}{alt}");
+                rename_keyword(cards, &from, &to);
+            }
+        }
+        // CmELTi → CDELTi{S} with the zero-fix and PC propagation.
+        // First find naxis (highest C{m}ELT index).
+        let mut naxis_m = 0;
+        for j in 1..=9 {
+            if cards.find(&format!("C{m}ELT{j}")).is_some() {
+                naxis_m = j;
+            }
+        }
+        if naxis_m == 0 {
+            continue;
+        }
+        // Per-row CDELT.
+        for j in 1..=naxis_m {
+            let cdelt_key = format!("C{m}ELT{j}");
+            let mut cdeltj = cards.get_float(&cdelt_key).unwrap_or(0.0);
+            cards.delete(&cdelt_key);
+            if cdeltj == 0.0 {
+                // Fill in from CRVAL{j}{S} (already translated above).
+                let crval_alt = cards.get_float(&format!("CRVAL{j}{alt}")).unwrap_or(0.0);
+                cdeltj = 0.01 * crval_alt;
+                if cdeltj == 0.0 {
+                    cdeltj = 1.0;
+                }
+            }
+            cards.set_float(&format!("CDELT{j}{alt}"), cdeltj, "Pixel scale");
+        }
+        // PCjjjiii → PCj_i{S} for the CmELTi block (mirrors C:31556-31573).
+        for j in 1..=naxis_m {
+            for i in 1..=naxis_m {
+                let pc_3digit = format!("PC{j:03}{i:03}");
+                let value = cards.get_float(&pc_3digit);
+                let dval = match value {
+                    Some(v) => v,
+                    None => {
+                        if i == j {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                };
+                cards.set_float(&format!("PC{j}_{i}{alt}"), dval, "PC matrix element");
+            }
+        }
+    }
+    // Drop any leftover PCjjjiii cards (consumed above for FITS-IRAF
+    // alt-axis CDELT branch). C marks them used; we delete.
+    for j in 1..=9 {
+        for i in 1..=9 {
+            cards.delete(&format!("PC{j:03}{i:03}"));
+        }
+    }
 }
 
 /// Translation #5 helper: PROJPi → PV<axlat>_i. Mirrors
@@ -530,6 +625,60 @@ mod tests {
         spec_trans(&mut cards, Encoding::FitsPc);
         // PROJP0 consumed and rewritten as PV2_0.
         assert_eq!(cards.get_float("PV2_0"), Some(0.0));
+    }
+
+    #[test]
+    fn translates_cnxxx_to_alt_letter_form_for_fits_pc() {
+        let mut cards = CardList::from_header(
+            "C1YPE1  = 'GLON-TAN'\n\
+             C1YPE2  = 'GLAT-TAN'\n\
+             C1VAL1  =              101.255\n\
+             C1VAL2  =               16.177\n\
+             C1PIX1  =                 50.5\n\
+             C1PIX2  =                 50.5\n\
+             C1ELT1  =                -0.01\n\
+             C1ELT2  =                 0.01\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert!(cards.find("C1YPE1").is_none());
+        assert!(cards.find("C1ELT1").is_none());
+        assert_eq!(cards.get_string("CTYPE1A"), Some("GLON-TAN".to_string()));
+        assert_eq!(cards.get_string("CTYPE2A"), Some("GLAT-TAN".to_string()));
+        assert_eq!(cards.get_float("CRVAL1A"), Some(101.255));
+        assert_eq!(cards.get_float("CRPIX1A"), Some(50.5));
+        assert_eq!(cards.get_float("CDELT1A"), Some(-0.01));
+        // Default-identity PC matrix for an alt CDELT block (no
+        // PCjjjiii present in input, so diagonals = 1, off-diags = 0).
+        assert_eq!(cards.get_float("PC1_1A"), Some(1.0));
+        assert_eq!(cards.get_float("PC1_2A"), Some(0.0));
+        assert_eq!(cards.get_float("PC2_2A"), Some(1.0));
+    }
+
+    #[test]
+    fn cnxxx_translation_skipped_for_fits_wcs() {
+        // FITS-WCS uses *A..*Z directly; Cnxxx is foreign and should
+        // be left alone.
+        let mut cards = CardList::from_header("C1YPE1  = 'GLON-TAN'\nEND").unwrap();
+        spec_trans(&mut cards, Encoding::FitsWcs);
+        assert!(cards.find("C1YPE1").is_some());
+        assert!(cards.find("CTYPE1A").is_none());
+    }
+
+    #[test]
+    fn cnxxx_zero_cdelt_falls_back_to_crval_or_one() {
+        // CmELTi = 0 should be replaced by 0.01 * CRVAL or 1.0
+        // (mirrors C:31543-31548).
+        let mut cards = CardList::from_header(
+            "C1YPE1  = 'GLON-TAN'\n\
+             C1VAL1  =                100.0\n\
+             C1ELT1  =                  0.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
     }
 
     #[test]
