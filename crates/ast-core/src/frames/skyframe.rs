@@ -47,15 +47,30 @@ pub struct SkyFrame {
 
     // SkyFrame-specific
     system: SkySystem,
+    /// Tracks whether `system` was set via `set_system` or loaded
+    /// from a native node (mirrors C `astTestSystem` for SkyFrame).
+    system_set: bool,
     equinox: Option<f64>, // MJD of mean equinox
     projection: Option<String>,
     neglon: bool,
+    /// Tracks whether `neglon` was explicitly set (mirrors C
+    /// `astTestNegLon`).
+    neglon_set: bool,
     sky_tol: Option<f64>, // smallest significant distance (radians)
     sky_ref: [f64; 2],    // offset origin/pole [lon, lat] (radians)
-    sky_ref_p: [f64; 2],  // offset meridian point [lon, lat]
+    /// Per-axis "explicitly set" flags for `sky_ref` (mirrors C
+    /// `astTestSkyRef`).
+    sky_ref_set: [bool; 2],
+    sky_ref_p: [f64; 2], // offset meridian point [lon, lat]
+    /// Per-axis "explicitly set" flags for `sky_ref_p` (mirrors C
+    /// `astTestSkyRefP`).
+    sky_ref_p_set: [bool; 2],
     sky_ref_is: SkyRefIs,
     sky_ref_is_set: bool,
     align_offset: bool,
+    /// Tracks whether `align_offset` was explicitly set (mirrors C
+    /// `astTestAlignOffset`).
+    align_offset_set: bool,
     align_system: Option<SkySystem>,
 
     // Per-axis properties
@@ -110,15 +125,24 @@ impl SkyFrame {
             dtai: None,
             dut1: None,
             system,
+            // ICRS is the SkyFrame default (mirrors C: AST__ICRS is the
+            // default System). Only mark the attribute as explicitly
+            // set when the caller picks something else; the matching
+            // serialisation treats ICRS as the "unset default".
+            system_set: !matches!(system, SkySystem::Icrs),
             equinox: None,
             projection: None,
             neglon: false,
+            neglon_set: false,
             sky_tol: None,
             sky_ref: [0.0, 0.0],
+            sky_ref_set: [false, false],
             sky_ref_p: [0.0, std::f64::consts::FRAC_PI_2],
+            sky_ref_p_set: [false, false],
             sky_ref_is: SkyRefIs::Ignored,
             sky_ref_is_set: false,
             align_offset: false,
+            align_offset_set: false,
             align_system: None,
             axes: [SkyAxis::longitude(), SkyAxis::latitude()],
             label_overrides: [None, None],
@@ -269,6 +293,31 @@ impl SkyFrame {
     /// Set the celestial coordinate system.
     pub fn set_system(&mut self, sys: SkySystem) {
         self.system = sys;
+        self.system_set = true;
+    }
+
+    /// Test whether the `System` attribute has been explicitly set.
+    /// Mirrors C `astTestSystem` for `SkyFrame`.
+    pub fn test_system(&self) -> bool {
+        self.system_set
+    }
+
+    /// Return the alignment coordinate system.
+    ///
+    /// If not explicitly set, returns ICRS (mirrors C
+    /// `GetAlignSystem` for `SkyFrame`, skyframe.c:4281).
+    pub fn align_system(&self) -> SkySystem {
+        self.align_system.unwrap_or(SkySystem::Icrs)
+    }
+
+    /// Set the alignment coordinate system.
+    pub fn set_align_system(&mut self, sys: SkySystem) {
+        self.align_system = Some(sys);
+    }
+
+    /// Test whether the `AlignSystem` attribute has been explicitly set.
+    pub fn test_align_system(&self) -> bool {
+        self.align_system.is_some()
     }
 
     /// Return the equinox as MJD.
@@ -353,6 +402,12 @@ impl SkyFrame {
     /// Set whether longitude increases in the negative direction.
     pub fn set_neglon(&mut self, neg: bool) {
         self.neglon = neg;
+        self.neglon_set = true;
+    }
+
+    /// Test whether the `NegLon` attribute has been explicitly set.
+    pub fn test_neglon(&self) -> bool {
+        self.neglon_set
     }
 
     /// Return the sky reference point `[lon, lat]` in radians.
@@ -363,6 +418,13 @@ impl SkyFrame {
     /// Set the sky reference point.
     pub fn set_sky_ref(&mut self, lon: f64, lat: f64) {
         self.sky_ref = [lon, lat];
+        self.sky_ref_set = [true, true];
+    }
+
+    /// Test whether axis `axis` (0-based) of `SkyRef` has been
+    /// explicitly set.
+    pub fn test_sky_ref(&self, axis: usize) -> bool {
+        self.sky_ref_set.get(axis).copied().unwrap_or(false)
     }
 
     /// Return the interpretation of the sky reference point.
@@ -376,6 +438,11 @@ impl SkyFrame {
         self.sky_ref_is_set = true;
     }
 
+    /// Test whether `SkyRefIs` has been explicitly set.
+    pub fn test_sky_ref_is(&self) -> bool {
+        self.sky_ref_is_set
+    }
+
     /// Return the sky reference meridian point `[lon, lat]` in radians.
     pub fn sky_ref_p(&self) -> [f64; 2] {
         self.sky_ref_p
@@ -384,6 +451,13 @@ impl SkyFrame {
     /// Set the sky reference meridian point.
     pub fn set_sky_ref_p(&mut self, lon: f64, lat: f64) {
         self.sky_ref_p = [lon, lat];
+        self.sky_ref_p_set = [true, true];
+    }
+
+    /// Test whether axis `axis` (0-based) of `SkyRefP` has been
+    /// explicitly set.
+    pub fn test_sky_ref_p(&self, axis: usize) -> bool {
+        self.sky_ref_p_set.get(axis).copied().unwrap_or(false)
     }
 
     /// Return the sky tolerance in radians.
@@ -398,6 +472,16 @@ impl SkyFrame {
         self.sky_tol = Some(tol);
     }
 
+    /// Test whether `SkyTol` has been explicitly set.
+    pub fn test_sky_tol(&self) -> bool {
+        self.sky_tol.is_some()
+    }
+
+    /// Test whether `Equinox` has been explicitly set.
+    pub fn test_equinox(&self) -> bool {
+        self.equinox.is_some()
+    }
+
     /// Return whether alignment uses offset coordinates.
     pub fn align_offset(&self) -> bool {
         self.align_offset
@@ -406,6 +490,12 @@ impl SkyFrame {
     /// Set whether alignment uses offset coordinates.
     pub fn set_align_offset(&mut self, ao: bool) {
         self.align_offset = ao;
+        self.align_offset_set = true;
+    }
+
+    /// Test whether `AlignOffset` has been explicitly set.
+    pub fn test_align_offset(&self) -> bool {
+        self.align_offset_set
     }
 
     /// Return the projection description, if set.
@@ -416,6 +506,21 @@ impl SkyFrame {
     /// Set the projection description.
     pub fn set_projection(&mut self, proj: &str) {
         self.projection = Some(proj.to_string());
+    }
+
+    /// Test whether `Projection` has been explicitly set.
+    pub fn test_projection(&self) -> bool {
+        self.projection.is_some()
+    }
+
+    /// Test whether `Title` has been explicitly set.
+    pub fn test_title(&self) -> bool {
+        self.title.is_some()
+    }
+
+    /// Clear the title attribute.
+    pub fn clear_title(&mut self) {
+        self.title = None;
     }
 
     // --- Frame-level attributes ---
@@ -914,6 +1019,443 @@ impl Frame for SkyFrame {
     fn ident(&self) -> &str {
         SkyFrame::ident(self)
     }
+
+    // -----------------------------------------------------------------
+    // Match / SubFrame / Overlay (skyframe.c:6604 / 9869 / 8010).
+    // -----------------------------------------------------------------
+
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        skyframe_overlay(template, template_axes, self)
+    }
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<super::find_frame::MatchResult>> {
+        // Mirrors skyframe.c:6604. Step 1: defer to the parent (Frame
+        // class) Match for axis-count + Domain pre-checks. We only
+        // need the boolean from that call; the returned objects are
+        // discarded just as the C does (the axis-association arrays
+        // are reconstructed below).
+        let parent = super::find_frame::default_match(self, target, match_sub)?;
+        if parent.is_none() {
+            return Ok(None);
+        }
+
+        let target_naxes = target.naxes();
+
+        // Step 2: locate two axes in the target that are derived from
+        // a single underlying SkyFrame, in either order. CmpFrame
+        // walking is not yet implemented (it lands with Task 8); for
+        // now treat a direct SkyFrame target as the only supported
+        // case (mirrors the result that astPrimaryFrame produces for
+        // a bare SkyFrame: each axis maps to itself with iaxis_local
+        // equal to the axis index).
+        let Some(target_sky) = target.as_any().downcast_ref::<SkyFrame>() else {
+            return Ok(None);
+        };
+        if target_naxes != 2 {
+            return Ok(None);
+        }
+        // After PermAxes the target's underlying physical axis 0
+        // (longitude) sits at external position perm[0]. The C code
+        // searches the target axes in order and identifies the
+        // underlying axis index of each (`iaxis0`, `iaxis1`); this is
+        // the inverse permutation.
+        let target_axis0 = 0usize;
+        let target_axis1 = 1usize;
+        let iaxis0 = target_sky.perm[0];
+        let iaxis1 = target_sky.perm[1];
+        // Sanity check: the underlying primary axes must be 0 and 1
+        // in either order (skyframe.c:6800-6802).
+        if !((iaxis0 == 0 && iaxis1 == 1) || (iaxis0 == 1 && iaxis1 == 0)) {
+            return Ok(None);
+        }
+
+        // Step 3: axis-swap detection (skyframe.c:6813-6827).
+        // swap1: does the template's permutation reverse axis 0?
+        let swap1 = self.perm[0] != 0;
+        // swap2: are the underlying primary axes reversed in the target?
+        let swap2 = iaxis0 != 0;
+        let swap = swap1 != swap2;
+        if swap && !self.permute() {
+            return Ok(None);
+        }
+
+        // Step 4: build the association arrays (skyframe.c:6831-6849).
+        let preserve_axes = self.preserve_axes();
+        let (template_axes_vec, target_axes_vec) = if preserve_axes {
+            (
+                vec![if swap { 1 } else { 0 }, if swap { 0 } else { 1 }],
+                vec![target_axis0 as i32, target_axis1 as i32],
+            )
+        } else {
+            (
+                vec![0i32, 1],
+                if swap {
+                    vec![target_axis1 as i32, target_axis0 as i32]
+                } else {
+                    vec![target_axis0 as i32, target_axis1 as i32]
+                },
+            )
+        };
+
+        // Step 5: defer to the target's SubFrame to build the result
+        // and Mapping (skyframe.c:6856-6857).
+        let Some((map, result)) =
+            target.sub_frame(Some(self), 2, &target_axes_vec, &template_axes_vec)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(super::find_frame::MatchResult {
+            template_axes: template_axes_vec,
+            target_axes: target_axes_vec,
+            map,
+            result,
+        }))
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        skyframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
+    }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        // Whole-frame extraction: a copy with the requested axis
+        // permutation (mirrors the SkyFrame branch of skyframe.c
+        // SubFrame at line 10029).
+        if target_axes.len() == 2
+            && ((target_axes[0] == 0 && target_axes[1] == 1)
+                || (target_axes[0] == 1 && target_axes[1] == 0))
+        {
+            let mut snap = self.clone();
+            // Apply axis permutation: target_axes is zero-based.
+            if target_axes[0] != 0 {
+                let _ = snap.perm_axes(&[2, 1]);
+            }
+            return Ok(Box::new(snap));
+        }
+
+        // Partial / oversized selection: produce a BasicFrame whose
+        // per-axis attributes follow the picked SkyFrame axes.
+        // Mirrors the parent_subframe branch of skyframe.c SubFrame
+        // (line 10128), but only the metadata-carrying portion: the
+        // Mapping is built by the caller (default_sub_frame).
+        let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
+        if self.test_domain() {
+            bf.set_domain(self.domain().to_string());
+        }
+        for (i, &t) in target_axes.iter().enumerate() {
+            if t < 0 || (t as usize) >= 2 {
+                continue;
+            }
+            // Use the SkyFrame's effective per-axis label/unit/symbol
+            // for axis `t` (1-based) -> result axis `i + 1`.
+            let _ = bf.set_label(i + 1, self.axis_label(t as usize + 1)?);
+            let (u_lon, u_lat) = self.default_units();
+            let unit = if t == 0 { u_lon } else { u_lat };
+            let _ = bf.set_unit(i + 1, unit.to_string());
+            let _ = bf.set_symbol(i + 1, self.axis_symbol(t as usize + 1)?);
+        }
+        Ok(Box::new(bf))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Match / SubFrame / Overlay helpers
+// ---------------------------------------------------------------------------
+
+/// Mirrors C `Overlay` for SkyFrame (skyframe.c:8010).
+///
+/// `result` is the Frame receiving the new attribute values; `template`
+/// is the SkyFrame supplying them. Only attributes the template has
+/// explicitly set are transferred. When `result` is itself a SkyFrame
+/// and the System or SkyRef changes, axis-level state that no longer
+/// applies (Title and per-axis Label/Unit/Symbol overrides) is cleared
+/// first so the new system's defaults take effect.
+fn skyframe_overlay(
+    template: &dyn Frame,
+    template_axes: &[i32],
+    result: &mut dyn Frame,
+) -> AstResult<()> {
+    let template_sky = match template.as_any().downcast_ref::<SkyFrame>() {
+        Some(s) => s,
+        None => return Ok(()),
+    };
+
+    // Branch 1: result is a SkyFrame.
+    if let Some(result_sky) = result.as_any_mut().downcast_mut::<SkyFrame>() {
+        let old_system = result_sky.system;
+        let new_system = template_sky.system;
+        let skyref_changed = template_sky.sky_ref[0] != result_sky.sky_ref[0]
+            || template_sky.sky_ref[1] != result_sky.sky_ref[1];
+
+        // If the System will change (and is set on the template), or
+        // SkyRef differs, the result Frame's Title is cleared
+        // (skyframe.c:8117-8120).
+        if (new_system != old_system && template_sky.test_system()) || skyref_changed {
+            result_sky.clear_title();
+
+            // If the equatorial-ness changes, clear per-axis overrides
+            // so the new system's defaults take over (skyframe.c:
+            // 8124-8140).
+            if is_equatorial(new_system) != is_equatorial(old_system) || skyref_changed {
+                for axis in 0..2 {
+                    result_sky.label_overrides[axis] = None;
+                    result_sky.symbol_overrides[axis] = None;
+                    // Format / AsTime / Direction / Unit live on the
+                    // SkyAxis. Reset the per-axis state to its
+                    // default by replacing the axis. Latitude vs
+                    // longitude is determined by the physical slot.
+                    result_sky.axes[axis] = if axis == 0 {
+                        super::skyaxis::SkyAxis::longitude()
+                    } else {
+                        super::skyaxis::SkyAxis::latitude()
+                    };
+                }
+            }
+        }
+
+        // Parent Frame attributes (Domain, Title, Epoch, observer
+        // attrs) — mirror Frame::Overlay (frame.c:8567-8574). Title
+        // copy comes after the optional clear above.
+        if template_sky.test_domain() {
+            result_sky.set_domain(template_sky.domain());
+        }
+        if template_sky.test_title() {
+            result_sky.set_title(template_sky.title());
+        }
+        if template_sky.test_epoch() {
+            result_sky.set_epoch_mjd(template_sky.epoch_mjd());
+        }
+        if let Some(v) = template_sky.obs_lat {
+            result_sky.set_obs_lat(v);
+        }
+        if let Some(v) = template_sky.obs_lon {
+            result_sky.set_obs_lon(v);
+        }
+        if let Some(v) = template_sky.obs_alt {
+            result_sky.set_obs_alt(v);
+        }
+        if let Some(v) = template_sky.dtai {
+            result_sky.set_dtai(v);
+        }
+        if let Some(v) = template_sky.dut1 {
+            result_sky.set_dut1(v);
+        }
+
+        // System / AlignSystem (frame.c:8580-8594).
+        if template_sky.test_system() {
+            result_sky.set_system(template_sky.system);
+        }
+        if template_sky.test_align_system() {
+            result_sky.set_align_system(template_sky.align_system());
+        }
+
+        // SkyFrame-specific OVERLAY block (skyframe.c:8198-8205).
+        if template_sky.test_equinox() {
+            result_sky.set_equinox_mjd(template_sky.equinox_mjd());
+        }
+        if template_sky.test_projection() {
+            if let Some(p) = template_sky.projection() {
+                result_sky.set_projection(p);
+            }
+        }
+        if template_sky.test_neglon() {
+            result_sky.set_neglon(template_sky.neglon());
+        }
+        if template_sky.test_sky_tol() {
+            result_sky.set_sky_tol(template_sky.sky_tol());
+        }
+        if template_sky.test_align_offset() {
+            result_sky.set_align_offset(template_sky.align_offset());
+        }
+        if template_sky.test_sky_ref_is() {
+            result_sky.set_sky_ref_is(template_sky.sky_ref_is());
+        }
+
+        // OVERLAY2 macro: per-axis SkyRef / SkyRefP entries indexed
+        // by template_axes (skyframe.c:8204-8205).
+        let (tax0, tax1) = if !template_axes.is_empty() {
+            (
+                template_axes[0],
+                if template_axes.len() > 1 {
+                    template_axes[1]
+                } else {
+                    -1
+                },
+            )
+        } else {
+            (0, 1)
+        };
+        for (result_axis, &t_axis) in [tax0, tax1].iter().enumerate() {
+            if t_axis < 0 || (t_axis as usize) >= 2 {
+                continue;
+            }
+            let t = t_axis as usize;
+            if template_sky.test_sky_ref(t) {
+                let mut sr = result_sky.sky_ref;
+                sr[result_axis] = template_sky.sky_ref[t];
+                result_sky.sky_ref = sr;
+                result_sky.sky_ref_set[result_axis] = true;
+            }
+            if template_sky.test_sky_ref_p(t) {
+                let mut sr = result_sky.sky_ref_p;
+                sr[result_axis] = template_sky.sky_ref_p[t];
+                result_sky.sky_ref_p = sr;
+                result_sky.sky_ref_p_set[result_axis] = true;
+            }
+        }
+
+        return Ok(());
+    }
+
+    // Branch 2: result is not a SkyFrame. Skip System/AlignSystem and
+    // any SkyFrame-specific axis attributes; only Frame-level
+    // attributes flow through (skyframe.c:8146-8154 — which
+    // temporarily clears System/AlignSystem on the template before
+    // calling parent_overlay; we achieve the same by skipping them
+    // here and routing non-system attributes through the BasicFrame's
+    // overlay below).
+    if template_sky.test_domain() {
+        // Use the result's `set_domain` via type-specific dispatch.
+        if let Some(bf) = result
+            .as_any_mut()
+            .downcast_mut::<super::basic::BasicFrame>()
+        {
+            bf.set_domain(template_sky.domain().to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Returns true if `system` is one of the equatorial SkyFrame systems
+/// (FK4, FK4-no-E, FK5, ICRS, J2000, GAPPT). Mirrors C `IsEquatorial`
+/// (skyframe.c).
+fn is_equatorial(system: SkySystem) -> bool {
+    matches!(
+        system,
+        SkySystem::Fk4
+            | SkySystem::Fk4NoE
+            | SkySystem::Fk5
+            | SkySystem::Icrs
+            | SkySystem::J2000
+            | SkySystem::Gappt
+    )
+}
+
+/// Mirrors C `SubFrame` for SkyFrame (skyframe.c:9869).
+fn skyframe_sub_frame(
+    target: &SkyFrame,
+    template: Option<&dyn Frame>,
+    result_naxes: usize,
+    target_axes: &[i32],
+    template_axes: &[i32],
+) -> AstResult<Option<(DynMapping, DynFrame)>> {
+    // Result-is-a-SkyFrame branch (skyframe.c:10003-10117).
+    if result_naxes == 2
+        && target_axes.len() == 2
+        && ((target_axes[0] == 0 && target_axes[1] == 1)
+            || (target_axes[0] == 1 && target_axes[1] == 0))
+    {
+        // Form the result from a copy of the target (skyframe.c:10029)
+        // and apply the requested axis permutation.
+        let mut result = target.clone();
+        if target_axes[0] != 0 {
+            result.perm_axes(&[2, 1])?;
+        }
+
+        // If a template was supplied, overlay it onto the result and
+        // pick the alignment system from the template
+        // (skyframe.c:10036-10042). We call the overlay helper
+        // directly on `&mut result` to avoid round-tripping through a
+        // DynFrame box.
+        let align_sys = if let Some(t) = template {
+            skyframe_overlay(t, template_axes, &mut result)?;
+            if let Some(template_sky) = t.as_any().downcast_ref::<SkyFrame>() {
+                template_sky.align_system()
+            } else {
+                target.align_system()
+            }
+        } else {
+            target.align_system()
+        };
+
+        // Build the Mapping that takes account of changes between
+        // target and result systems (skyframe.c:10071-10074). The
+        // AlignOffset / AST__INTFLAG short-circuit (10055-10065) is
+        // currently unused by the Rust callers — they always go
+        // through MakeSkyMapping.
+        let mut map: DynMapping = make_sky_mapping(
+            target.system,
+            target.equinox_mjd(),
+            target.epoch_mjd(),
+            result.system,
+            result.equinox_mjd(),
+            result.epoch_mjd(),
+            align_sys,
+            target.obs_lat.unwrap_or(0.0),
+            0.0,
+            result.obs_lat.unwrap_or(0.0),
+            0.0,
+        )?;
+
+        // Prepend source offset removal (offset→standard).
+        if let Some(off_map) =
+            make_offset_mapping(target.sky_ref, target.sky_ref_p, target.sky_ref_is)?
+        {
+            map = Box::new(CmpMap::new(off_map, map, Composition::Series)?);
+        }
+
+        // Append target offset application (standard→offset = inverse).
+        if let Some(mut off_map) =
+            make_offset_mapping(result.sky_ref, result.sky_ref_p, result.sky_ref_is)?
+        {
+            off_map.invert();
+            map = Box::new(CmpMap::new(map, off_map, Composition::Series)?);
+        }
+
+        // Coordinate-order swaps (skyframe.c:10082-10116). The
+        // Mapping built above operates in (longitude, latitude) order
+        // — if either the target or the result presents axes in a
+        // different external order, prepend / append a 2×2 PermMap.
+        // target_swap: axis-0 of the target points at latitude.
+        let target_swap = target.perm[0] != 0;
+        // result_swap: was the target presented in a different order
+        // than the result requires? When target_axes selects axis 1
+        // first, the resulting coordinate pair flows through
+        // longitude, latitude; result_swap mirrors the C expression
+        // `target_swap != (target_axes[0] != 0)`.
+        let result_swap = target_swap != (target_axes[0] != 0);
+        if target_swap || result_swap {
+            let perm_inperm: [i64; 2] = [2, 1];
+            let perm_outperm: [i64; 2] = [2, 1];
+            let permmap = crate::mappings::PermMap::new(&perm_inperm, &perm_outperm, &[])?;
+            if target_swap {
+                let pm = Box::new(permmap.clone());
+                map = Box::new(CmpMap::new(pm, map, Composition::Series)?);
+            }
+            if result_swap {
+                let pm = Box::new(permmap);
+                map = Box::new(CmpMap::new(map, pm, Composition::Series)?);
+            }
+        }
+
+        let result_box: DynFrame = Box::new(result);
+        return Ok(Some((map, result_box)));
+    }
+
+    // Result is not a SkyFrame (skyframe.c:10128-10199). Build a
+    // BasicFrame snapshot whose per-axis attributes follow the picked
+    // SkyFrame axes, then defer to the default Frame-level
+    // SubFrame to construct the Mapping.
+    super::find_frame::default_sub_frame(target, template, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------
@@ -1287,6 +1829,10 @@ impl Serializable for SkyFrame {
         let system = SkySystem::parse(&sys_str).unwrap_or(SkySystem::Icrs);
 
         let mut sky = SkyFrame::new(system);
+        // If the System node was explicitly present, mark it as set.
+        if node.get("System").is_some() {
+            sky.system_set = true;
+        }
 
         // Title.
         let title = node.get_string("Title", "");
@@ -1334,7 +1880,10 @@ impl Serializable for SkyFrame {
             sky.projection = Some(proj);
         }
 
-        sky.neglon = node.get_int("NegLon", 0) != 0;
+        if node.get("NegLon").is_some() {
+            sky.neglon = node.get_int("NegLon", 0) != 0;
+            sky.neglon_set = true;
+        }
 
         if node.get("SkyTol").is_some() {
             sky.sky_tol = Some(node.get_double("SkyTol", 0.0));
@@ -1354,20 +1903,27 @@ impl Serializable for SkyFrame {
         // SRef1, SRef2.
         if node.get("SRef1").is_some() {
             sky.sky_ref[0] = node.get_double("SRef1", 0.0);
+            sky.sky_ref_set[0] = true;
         }
         if node.get("SRef2").is_some() {
             sky.sky_ref[1] = node.get_double("SRef2", 0.0);
+            sky.sky_ref_set[1] = true;
         }
 
         // SRefP1, SRefP2.
         if node.get("SRefP1").is_some() {
             sky.sky_ref_p[0] = node.get_double("SRefP1", 0.0);
+            sky.sky_ref_p_set[0] = true;
         }
         if node.get("SRefP2").is_some() {
             sky.sky_ref_p[1] = node.get_double("SRefP2", 0.0);
+            sky.sky_ref_p_set[1] = true;
         }
 
-        sky.align_offset = node.get_int("AlOff", 0) != 0;
+        if node.get("AlOff").is_some() {
+            sky.align_offset = node.get_int("AlOff", 0) != 0;
+            sky.align_offset_set = true;
+        }
 
         // AlSys (alignment system).
         let alsys_str = node.get_string("AlSys", "");
@@ -1901,5 +2457,126 @@ mod tests {
         assert_eq!(sky.ident(), "A");
         sky.set_ident("");
         assert_eq!(sky.ident(), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // Match / SubFrame / Overlay (skyframe.c:6604 / 9869 / 8010)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn overlay_template_copies_set_system() {
+        // Template has System explicitly set to Galactic; result starts
+        // life as FK5. After overlay the result must be Galactic and
+        // its Title cleared (since the system changed and the template
+        // had System set).
+        let mut template = SkyFrame::new(SkySystem::Galactic);
+        // SkyFrame::new for Galactic auto-sets system_set = true.
+        assert!(template.test_system());
+        let target = SkyFrame::new(SkySystem::Fk5);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0, 1]).unwrap();
+        let result_sky = result.as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(result_sky.system(), SkySystem::Galactic);
+        // Set a known title on the template; after overlay it should
+        // copy through.
+        template.set_title("custom");
+        let mut r2: DynFrame = Box::new(SkyFrame::new(SkySystem::Fk5));
+        r2.overlay_template(&template, &[0, 1]).unwrap();
+        let r2_sky = r2.as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(r2_sky.title(), "custom");
+    }
+
+    #[test]
+    fn overlay_template_skips_unset_attrs() {
+        // Template default-constructs as ICRS without any other
+        // attributes set. Overlaying onto a Galactic target must NOT
+        // overwrite the target's system (template ICRS isn't marked as
+        // explicitly set by `SkyFrame::new(Icrs)`).
+        let template = SkyFrame::new(SkySystem::Icrs);
+        assert!(!template.test_system());
+        let target = SkyFrame::new(SkySystem::Galactic);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0, 1]).unwrap();
+        let r = result.as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(r.system(), SkySystem::Galactic);
+    }
+
+    #[test]
+    fn sub_frame_skyframe_to_skyframe() {
+        // FK5 target → Galactic template via SubFrame must produce a
+        // 2-axis Mapping and a Galactic result Frame.
+        let target = SkyFrame::new(SkySystem::Fk5);
+        let template = SkyFrame::new(SkySystem::Galactic);
+        let template_axes = [0i32, 1];
+        let target_axes = [0i32, 1];
+        let (map, result) = target
+            .sub_frame(Some(&template), 2, &target_axes, &template_axes)
+            .unwrap()
+            .expect("should match");
+        assert_eq!(map.nin(), 2);
+        assert_eq!(map.nout(), 2);
+        let result_sky = result.as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(result_sky.system(), SkySystem::Galactic);
+    }
+
+    #[test]
+    fn match_template_skyframe_self() {
+        let target = SkyFrame::new(SkySystem::Fk5);
+        let template = SkyFrame::new(SkySystem::Galactic);
+        let m = template
+            .match_template(&target, false)
+            .unwrap()
+            .expect("should match");
+        // Both axes accounted for.
+        assert_eq!(m.template_axes.len(), 2);
+        assert_eq!(m.target_axes.len(), 2);
+        // Result must be a SkyFrame in Galactic.
+        let r = m.result.as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(r.system(), SkySystem::Galactic);
+    }
+
+    #[test]
+    fn match_template_skyframe_swap_blocked_when_permute_false() {
+        // Target has its axes swapped; template's Permute defaults to
+        // false. The swap-detection logic in skyframe.c:6826 should
+        // refuse the match.
+        let mut target = SkyFrame::new(SkySystem::Fk5);
+        target.perm_axes(&[2, 1]).unwrap();
+        let template = SkyFrame::new(SkySystem::Galactic);
+        assert!(!template.permute());
+        let result = template.match_template(&target, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn match_template_skyframe_swap_allowed_when_permute_true() {
+        let mut target = SkyFrame::new(SkySystem::Fk5);
+        target.perm_axes(&[2, 1]).unwrap();
+        let mut template = SkyFrame::new(SkySystem::Galactic);
+        template.set_permute(true);
+        let m = template
+            .match_template(&target, false)
+            .unwrap()
+            .expect("should match with permute on");
+        assert_eq!(m.template_axes.len(), 2);
+    }
+
+    #[test]
+    fn pick_axes_snapshot_skyframe_full() {
+        // Picking both axes in canonical order yields a SkyFrame copy.
+        let target = SkyFrame::new(SkySystem::Galactic);
+        let snap = target.pick_axes_snapshot(&[0, 1]).unwrap();
+        let s = snap.as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(s.system(), SkySystem::Galactic);
+    }
+
+    #[test]
+    fn pick_axes_snapshot_skyframe_partial() {
+        // Picking just one axis yields a 1-axis BasicFrame (no longer
+        // a SkyFrame).
+        let target = SkyFrame::new(SkySystem::Galactic);
+        let snap = target.pick_axes_snapshot(&[1]).unwrap();
+        assert_eq!(snap.naxes(), 1);
+        assert!(snap.as_any().downcast_ref::<SkyFrame>().is_none());
     }
 }
