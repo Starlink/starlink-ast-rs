@@ -1096,6 +1096,210 @@ fn pick_result_axes(frame: &dyn Frame, picks: &[i32]) -> AstResult<DynFrame> {
     frame.pick_axes_snapshot(picks)
 }
 
+/// Match a CmpFrame template against a target by recursing into one
+/// of the template's component Frames. Mirrors C `ComponentMatch`
+/// (cmpframe.c:1972).
+///
+/// Behaves like `template_component.match_template(target, …)`, then
+/// rewraps the result so that the returned `MatchResult` refers to
+/// the *full* template CmpFrame (rather than just the component the
+/// match actually used). `icomp` selects which component to try
+/// (0 = `frame1`, 1 = `frame2`).
+///
+/// This is the entry point used when the template is a CmpFrame but
+/// the target is a non-CmpFrame Frame whose axes correspond to just
+/// one of the template's components — the standard "find a SkyFrame
+/// inside a CmpFrame" case once the dispatch flips around (the
+/// caller of `astFindFrame` invokes match through the template-side
+/// trampoline, which lands here for a CmpFrame template against a
+/// non-CmpFrame target).
+///
+/// PreserveAxes is honoured per the C contract: when set on the
+/// template, the result Frame shape matches the target; when not,
+/// the result has a CmpFrame shape that mirrors the *template*
+/// CmpFrame, with the matched component's axes filled and the other
+/// component's axes carried through unchanged (its values become BAD
+/// on the inverse direction since this Mapping has no input slot for
+/// them).
+#[allow(dead_code)] // wired in by CmpFrame::Match (subsequent commit).
+pub(crate) fn component_match(
+    template: &CmpFrame,
+    target: &dyn Frame,
+    matchsub: bool,
+    icomp: usize,
+) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
+    use crate::frames::find_frame::MatchResult;
+    use crate::mappings::{CmpMap, Composition, PermMap};
+
+    debug_assert!(icomp <= 1);
+
+    // Snapshot the selected component so we can override its
+    // PreserveAxes attribute without mutating the original (mirrors
+    // cmpframe.c:2120-2129 — C does an in-place set/restore).
+    let component_src: &dyn Frame = if icomp == 0 {
+        template.frame1()
+    } else {
+        template.frame2()
+    };
+    let mut ctemplate = component_src.snapshot();
+    ctemplate.set_preserve_axes(template.preserve_axes());
+
+    // Run the inner Match on the component template against the
+    // target. The returned m.template_axes / m.target_axes refer to
+    // the component Frame; we rewire them to refer to the full
+    // template CmpFrame below.
+    let Some(m) = ctemplate.match_template(target, matchsub)? else {
+        return Ok(None);
+    };
+
+    let nax1 = template.frame1().naxes();
+    let nax2 = template.frame2().naxes();
+    let template_naxes = nax1 + nax2;
+
+    // External→internal permutation. operm[internal] = external.
+    let perm = template.perm();
+    let mut operm = vec![0usize; template_naxes];
+    for (external, &internal) in perm.iter().enumerate() {
+        operm[internal] = external;
+    }
+
+    // Path 1: PreserveAxes = true (cmpframe.c:2170-2204).
+    // Result Frame and Mapping carry through unchanged. Adjust the
+    // template_axes from component-internal to full-CmpFrame-external
+    // numbering. target_axes pass through verbatim.
+    if template.preserve_axes() {
+        let result_naxes = m.result.naxes();
+        let mut out_template_axes = vec![0i32; result_naxes];
+        for (axis, &t) in m.template_axes.iter().enumerate().take(result_naxes) {
+            if t == -1 {
+                out_template_axes[axis] = -1;
+            } else {
+                let internal = if icomp == 1 {
+                    t as usize + nax1
+                } else {
+                    t as usize
+                };
+                out_template_axes[axis] = operm[internal] as i32;
+            }
+        }
+        return Ok(Some(MatchResult {
+            template_axes: out_template_axes,
+            target_axes: m.target_axes,
+            map: m.map,
+            result: m.result,
+        }));
+    }
+
+    // Path 2: PreserveAxes = false (cmpframe.c:2208-2299).
+    // The result Frame becomes a CmpFrame whose shape mirrors the
+    // template: matched component is replaced by `m.result`, the
+    // other component is carried through as a deep copy of the
+    // template's child.
+    let naxr = m.result.naxes();
+    let result_naxes = if icomp == 1 { nax1 } else { nax2 } + naxr;
+
+    let result_frame: DynFrame = if icomp == 1 {
+        let other = template.frame1().snapshot();
+        Box::new(CmpFrame::new(other, m.result))
+    } else {
+        let other = template.frame2().snapshot();
+        Box::new(CmpFrame::new(m.result, other))
+    };
+
+    // Suffix PermMap that lifts the partial-component Mapping's naxr
+    // outputs into the full result_naxes axis space. C uses NULL
+    // arrays when icomp=0 (identity for axes 0..naxr; defaults
+    // (BAD inverse) for the trailing axes); when icomp=1, it builds
+    // explicit arrays so the matched axes land at slots [nax1..]
+    // and slots [0..nax1) are unmapped.
+    //
+    // Rust encoding: 1-based; 0 = BAD. So for the icomp=0 / NULL
+    // case, outperm[i] = (i+1) for i<naxr else 0; inperm[i] = (i+1)
+    // for i<naxr (i.e. identity within the input range). For icomp=1:
+    //   outperm[i] = 0 for i<nax1; outperm[i] = (i - nax1 + 1) for
+    //               nax1 <= i < nax1+naxr.
+    //   inperm[i]  = (i + nax1 + 1) for 0 <= i < naxr.
+    let (inperm, outperm) = if icomp == 1 {
+        let mut outperm_v = vec![0i64; result_naxes];
+        let mut inperm_v = vec![0i64; naxr];
+        for axis in 0..naxr {
+            outperm_v[axis + nax1] = (axis as i64) + 1;
+            inperm_v[axis] = (axis + nax1) as i64 + 1;
+        }
+        (inperm_v, outperm_v)
+    } else {
+        // icomp == 0: identity for axes 0..naxr; rest defaults to 0.
+        let mut outperm_v = vec![0i64; result_naxes];
+        let mut inperm_v = vec![0i64; naxr];
+        for axis in 0..naxr {
+            outperm_v[axis] = (axis as i64) + 1;
+            inperm_v[axis] = (axis as i64) + 1;
+        }
+        (inperm_v, outperm_v)
+    };
+    let pm = PermMap::new(&inperm, &outperm, &[])?;
+    let final_map: DynMapping = Box::new(CmpMap::new(m.map, Box::new(pm), Composition::Series)?);
+
+    // Build template_axes list that addresses the full template
+    // CmpFrame in external numbering (cmpframe.c:2256-2284).
+    #[allow(clippy::needless_range_loop)] // axis index is needed by both arrays.
+    let out_template_axes: Vec<i32> = {
+        let mut v = vec![0i32; result_naxes];
+        if icomp == 1 {
+            // Slots [0..nax1): the carry-through frame1 axes.
+            for axis in 0..nax1 {
+                v[axis] = operm[axis] as i32;
+            }
+            // Slots [nax1..result_naxes): from the inner match
+            // (template-component-internal → permuted-internal → external).
+            for axis in nax1..result_naxes {
+                let part = m.template_axes[axis - nax1];
+                v[axis] = if part == -1 {
+                    -1
+                } else {
+                    operm[nax1 + part as usize] as i32
+                };
+            }
+        } else {
+            // Slots [0..nax1): from the inner match (component-internal
+            // axis index, then permute via operm).
+            for axis in 0..nax1.min(result_naxes) {
+                let part = m.template_axes[axis];
+                v[axis] = if part == -1 {
+                    -1
+                } else {
+                    operm[part as usize] as i32
+                };
+            }
+            // Slots [nax1..result_naxes): the carry-through frame2 axes,
+            // referenced by their internal indices nax1..nax1+nax2.
+            for axis in nax1..result_naxes {
+                v[axis] = operm[axis] as i32;
+            }
+        }
+        v
+    };
+
+    // target_axes: C bookkeeping (cmpframe.c:2289-2295) places the
+    // inner match's target_axes at the *front* slots [0..naxr) and
+    // pads -1 for [naxr..result_naxes), regardless of `icomp`. This
+    // is inconsistent with the result Frame's ordering when icomp=1
+    // (where the matched axes live at slots [nax1..) and carry-
+    // through at [0..nax1)) but mirrors the C contract exactly. The
+    // caller (CmpFrame::Match) treats this array as a separate
+    // "match-association" ordering, not as an index into the result
+    // Frame.
+    let mut out_target_axes = vec![-1i32; result_naxes];
+    out_target_axes[..naxr].copy_from_slice(&m.target_axes[..naxr]);
+
+    Ok(Some(MatchResult {
+        template_axes: out_template_axes,
+        target_axes: out_target_axes,
+        map: final_map,
+        result: result_frame,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1255,6 +1459,105 @@ mod tests {
     // target.sub_frame() on a CmpFrame target returns None (the
     // trait default), so part_match() against a CmpFrame target
     // unconditionally returns None.
+
+    /// PreserveAxes=true path (cmpframe.c:2170-2204). Template is a
+    /// CmpFrame; component 0 (frame1) matches a 2-axis BasicFrame
+    /// target. With PreserveAxes set on the template, the result
+    /// Frame keeps the target's axis count and the template_axes
+    /// list lists the component's axes in external (post-perm) order.
+    #[test]
+    fn component_match_preserve_axes_returns_target_shape() {
+        let mut template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        template.set_preserve_axes(true);
+        let target = BasicFrameBuilder::new(2).build().unwrap();
+
+        let m = component_match(&template, &target, false, 0)
+            .unwrap()
+            .expect("match");
+        assert_eq!(m.result.naxes(), 2);
+        // template_axes index into the *full* CmpFrame's external axis
+        // space; with identity perm the template's axes 0,1 fall out.
+        assert_eq!(m.template_axes, vec![0, 1]);
+        // target_axes match the inner BasicFrame match (identity).
+        assert_eq!(m.target_axes, vec![0, 1]);
+    }
+
+    /// PreserveAxes=false path (cmpframe.c:2208+). Component 0
+    /// (frame1, 2 axes) matches a 2-axis BasicFrame target; the
+    /// result Frame is a CmpFrame whose first child is the matched
+    /// result and whose second child is the carried-through frame2
+    /// (1 axis). The combined Mapping pads outputs from naxr=2 to
+    /// result_naxes=3.
+    #[test]
+    fn component_match_default_axes_wraps_in_cmpframe() {
+        let template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        assert!(!template.preserve_axes());
+        let target = BasicFrameBuilder::new(2).build().unwrap();
+
+        let m = component_match(&template, &target, false, 0)
+            .unwrap()
+            .expect("match");
+        // Result is a 3-axis CmpFrame: matched 2 axes + carried 1 axis.
+        assert_eq!(m.result.naxes(), 3);
+        // First two slots reference the matched component axes;
+        // last slot references the carried-through frame2 axis (index 2).
+        assert_eq!(m.template_axes, vec![0, 1, 2]);
+        // target_axes: matched slots come from the inner match (0, 1);
+        // carry-through slot is unassociated (-1).
+        assert_eq!(m.target_axes, vec![0, 1, -1]);
+        // Mapping shape: 2 inputs (target naxes), 3 outputs
+        // (result_naxes after the suffix PermMap).
+        assert_eq!(m.map.nin(), 2);
+        assert_eq!(m.map.nout(), 3);
+    }
+
+    /// icomp=1 — match against the *second* component. Indices into
+    /// the full template are then offset by nax1 (= 2 here).
+    #[test]
+    fn component_match_icomp1_offsets_template_axes() {
+        let template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let target = BasicFrameBuilder::new(1).build().unwrap();
+
+        let m = component_match(&template, &target, false, 1)
+            .unwrap()
+            .expect("match");
+        // Result_naxes = nax1 + naxr = 2 + 1 = 3 (default-axes path).
+        assert_eq!(m.result.naxes(), 3);
+        // Slots [0..2) carry the template's frame1 axes (0,1);
+        // slot 2 is the matched second-component axis (template
+        // external index 2).
+        assert_eq!(m.template_axes, vec![0, 1, 2]);
+        // C bookkeeping: target_axes is laid out with matched axes at
+        // the front and -1 padding at the back, regardless of icomp
+        // (cmpframe.c:2289-2295). This is *not* the result Frame's
+        // axis ordering — the caller treats this as a separate
+        // match-association list.
+        assert_eq!(m.target_axes, vec![0, -1, -1]);
+        // Mapping: 1 input → 3 outputs.
+        assert_eq!(m.map.nin(), 1);
+        assert_eq!(m.map.nout(), 3);
+    }
+
+    #[test]
+    fn component_match_returns_none_on_axis_count_mismatch() {
+        let template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        // Target is 1-axis BasicFrame; component 0 expects 2.
+        let target = BasicFrameBuilder::new(1).build().unwrap();
+        let result = component_match(&template, &target, false, 0).unwrap();
+        assert!(result.is_none());
+    }
 
     /// Clean-partition path (cmpframe.c:262-380): template
     /// `CmpFrame(SkyFrame(Galactic), SpecFrame)` overlaid onto a result
