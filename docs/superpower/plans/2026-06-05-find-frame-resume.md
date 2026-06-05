@@ -5,11 +5,11 @@
 ## Snapshot (state at end of session)
 
 - Branch: `tickets/DM-54793`
-- Last commit landing find_frame work: `db2ab1a frames: port SpecFluxFrame::Match + SubFrame + Overlay`
-- Test counts: **909 lib tests passing**, **13/14 test_find_frame** (1 ignored — needs SkyFrame walking into CmpFrame components), **173/192 test_wcsconv** (19 pre-existing failures unchanged).
+- Last commit landing find_frame work: `dbf0fa6 fitschan: port CLASS Az/El emission via SkyFrame find_frame`
+- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **173/192 test_wcsconv** (19 pre-existing failures unchanged — CLASS fixtures still differ on AZIMUTH/ELEVATIO due to LAST gap, see `project_skyframe_last_gap` memory).
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings` clean.
 
-Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet) all complete. Remaining: Task 11 (CLASS encoder using find_frame), Task 13 (Region overrides), Task 14 (audit existing find_frame consumers), and the deferred `cmpframe_match_against_skyframe_template_with_max_axes` test (needs `astPrimaryFrame` walk into CmpFrame components — a separate piece of infrastructure).
+Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet), 11 (CLASS encoder — AddEncodingFrame + spectral CRVAL conversion + AzEl emission infrastructure) all complete. Remaining: SkyFrame LAST plumbing (separate piece — see `project_skyframe_last_gap`), Task 13 (Region overrides), Task 14 (audit existing find_frame consumers).
 
 ## Tasks done
 
@@ -32,6 +32,10 @@ Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (Frame
 | 9 | FluxFrame::Match + SubFrame + Overlay | `838f1f6` | fluxframe.c |
 | 9c | TimeFrame::Match + SubFrame + Overlay | `0dba1b5` | timeframe.c |
 | 9b | SpecFluxFrame::Match + SubFrame + Overlay | `db2ab1a` | specfluxframe.c:1216 / 1428 |
+| (extra) | primary_frame_walk + Sky/Spec/Flux/Time CmpFrame walking | `b94e6f6` | astPrimaryFrame |
+| 11a | AddEncodingFrame for FITS-CLASS | `a735559` | fitschan.c:2435 |
+| 11b | CLASS spectral CRVAL conversion via SpecFrame find_frame | `a9b1053` | fitschan.c:6843-6898 |
+| 11c | CLASS AZ/EL emission via SkyFrame find_frame | `dbf0fa6` | fitschan.c:6901-6944 |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
