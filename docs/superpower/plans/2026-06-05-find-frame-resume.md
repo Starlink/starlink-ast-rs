@@ -5,8 +5,8 @@
 ## Snapshot (state at end of session)
 
 - Branch: `tickets/DM-54793`
-- Last commit landing find_frame work: `faddba8 frames: port DSBSpecFrame::Match + SubFrame + Overlay`
-- Test counts: **855 lib tests passing**, **5/5 test_find_frame**, **173/192 test_wcsconv** (19 failures pre-existing CLASS/CRPIX/etc).
+- Last commit landing find_frame work: `b27562e frames: port CmpFrame helpers and PartMatch (cmpframe.c)`
+- Test counts: **871 lib tests passing** (was 855 + 16 cmpframe), **5/5 test_find_frame**, **173/192 test_wcsconv** (19 pre-existing failures unchanged).
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings` clean.
 
 ## Tasks done
@@ -19,12 +19,31 @@
 | 6 | SkyFrame::Match + SubFrame + Overlay | `359ea82` | skyframe.c:6604 + 9869 + Overlay |
 | 7 | SpecFrame::Match + SubFrame + Overlay | `4edf007` | specframe.c:2998 + 4705 + Overlay |
 | 7b | DSBSpecFrame::Match + SubFrame + Overlay | `faddba8` | dsbspecframe.c:976 + 1470 + 1154 |
+| 8a | CmpFrame::Overlay + apply_template_overlay dispatcher | `55560b2` | cmpframe.c:169-432 |
+| 8b | GenAxisSelection helper | `f4977ec` | cmpframe.c:204 |
+| 8c | AddExtraAxes / RenumberAxes / GoodPerm / PartMatch | `b27562e` | cmpframe.c:929 / 7651 / 4562 / 6591 |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
 ## Tasks remaining (in priority order)
 
-### Task 8 — CmpFrame::Match + SubFrame + Overlay (largest)
+### Task 8 — CmpFrame::Match + SubFrame (Overlay + helpers landed)
+
+**Landed already (2026-06-05):**
+- `apply_template_overlay()` dispatcher in `crates/ast-core/src/frames/find_frame.rs` — single template-side polymorphism point. CmpFrame templates route through C's `CmpFrame::Overlay` algorithm; everything else falls through to `result.overlay_template()`. `default_sub_frame()` now uses this dispatcher, so SkyFrame/SpecFrame/BasicFrame results inherit attributes from CmpFrame templates correctly.
+- `gen_axis_selection()`, `add_extra_axes()`, `renumber_axes()`, `good_perm()`, `part_match()` — all in `cmpframe.rs` as `pub(crate)` helpers, gated `#[allow(dead_code)]` until `CmpFrame::Match` lands.
+- `CmpFrame::perm()` public accessor (mirrors `astGetPerm`).
+- 16 cmpframe tests (overlay + helpers + 2 part_match smoke tests).
+
+**Important caveat:** `part_match` calls `target.sub_frame(None, axes, ...)` to extract sub-frames from the target. For a non-CmpFrame target this works via the trait default. **For a CmpFrame target it returns None today** (CmpFrame inherits the trait default `Ok(None)`), which is why the part_match tests currently use BasicFrame targets only. CmpFrame::sub_frame is the missing piece.
+
+**C source still to port:**
+- `Match` lines 5051-5572 (~520 lines).
+- `SubFrame` lines 9184-9706 (~520 lines).
+- `ComponentMatch` lines 1972-2526 (~555 lines).
+- C dumps still at `/tmp/cmpframe_*.c`.
+
+### Task 8 (legacy task notes for reference) — CmpFrame::Match + SubFrame + Overlay (largest)
 
 **C source:** `reference/starlink-ast/src/cmpframe.c` (extracted to `/tmp/cmpframe_*.c`):
 - `Match` lines 5051-5572 (~520 lines).
