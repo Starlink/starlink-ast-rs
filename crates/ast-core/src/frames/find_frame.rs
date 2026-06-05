@@ -14,7 +14,7 @@
 //!   `FrameSet::FindFrame` (frameset.c:3790) for FrameSet targets.
 
 use crate::error::AstResult;
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{CmpFrame, DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::{DynMapping, PermMap, UnitMap};
 
 /// Result of a successful `match_template` call.
@@ -107,6 +107,216 @@ pub(crate) fn default_find_frame(
     Ok(Some(fs))
 }
 
+/// Overlay `template`'s explicitly-set attributes onto `result`.
+///
+/// Mirrors the polymorphic dispatch performed by C `astOverlay` on the
+/// template's class. In Rust the trait method `overlay_template` is
+/// dispatched on the *result* frame (`&mut self`), so this free
+/// function inserts the missing template-side dispatch:
+///
+/// - When `template` is a [`CmpFrame`], the C `CmpFrame::Overlay`
+///   algorithm (cmpframe.c:169) is reproduced here: build per-component
+///   axis-association arrays and recurse into `apply_template_overlay`
+///   with each component as a sub-template.
+/// - For any other template class, fall through to
+///   `result.overlay_template(template, template_axes)` so the per-class
+///   override (SkyFrame, SpecFrame, …) handles the copy.
+///
+/// `template_axes` has length equal to `result.naxes()` and gives, for
+/// each result axis, the (zero-based) *external* template axis index
+/// from which axis-dependent attributes should be obtained, or `-1` for
+/// "no association".
+pub(crate) fn apply_template_overlay(
+    template: &dyn Frame,
+    template_axes: &[i32],
+    result: &mut dyn Frame,
+) -> AstResult<()> {
+    // Non-CmpFrame templates: defer to the per-class result-side
+    // overlay implementation.
+    let Some(template_cmp) = template.as_any().downcast_ref::<CmpFrame>() else {
+        return result.overlay_template(template, template_axes);
+    };
+
+    // CmpFrame template: mirrors cmpframe.c:169-427.
+    let perm = template_cmp.perm();
+    let nc1 = template_cmp.frame1().naxes();
+    let nres = result.naxes();
+
+    // Helper: external template axis index for result external axis i.
+    // Mirrors `template_axes ? template_axes[j] : j` in the C source.
+    let template_ext_axis = |result_ext: usize| -> Option<usize> {
+        if template_axes.is_empty() {
+            Some(result_ext)
+        } else {
+            let v = template_axes[result_ext];
+            if v < 0 { None } else { Some(v as usize) }
+        }
+    };
+
+    let mut done = false;
+
+    // Branch 1 — result is a CmpFrame (cmpframe.c:262-380). When each
+    // result subframe's axes all derive from a single template
+    // subframe, we recurse into the result's children with the
+    // matching template child as the sub-template.
+    if result.as_any().downcast_ref::<CmpFrame>().is_some() {
+        // Borrow the result CmpFrame immutably first to read perm /
+        // child sizes; release the borrow before mutably re-entering
+        // for the recursive overlay calls.
+        let (nres1, nres2, rperm) = {
+            let res_cmp = result.as_any().downcast_ref::<CmpFrame>().unwrap();
+            (
+                res_cmp.frame1().naxes(),
+                res_cmp.frame2().naxes(),
+                res_cmp.perm().to_vec(),
+            )
+        };
+        let nres_total = nres1 + nres2;
+        debug_assert_eq!(nres_total, nres);
+
+        let mut axes1 = vec![0i32; nres1];
+        let mut axes2 = vec![0i32; nres2];
+
+        // Per-internal-axis loop for result.frame1.
+        let mut isfirst = false;
+        let mut issecond = false;
+        let mut clean = true;
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..nres1 {
+            // Find external result axis j such that rperm[j] == i.
+            let Some(j) = (0..nres_total).find(|&j| rperm[j] == i) else {
+                clean = false;
+                break;
+            };
+            // Map result external axis j to a template internal axis.
+            let Some(t_ext) = template_ext_axis(j) else {
+                // No template association: treat as if it's outside
+                // both subframes (analogous to a no-op axis). We can
+                // still preserve the partition by recording -1 in the
+                // axes array; we choose to mark which side it belongs
+                // to based on the previously-established correspondence
+                // and leave attribute overlay alone for that axis.
+                // To stay strictly faithful to the C — which doesn't
+                // pass NULL or -1 entries on this code path because
+                // template_axes always comes from astMatch with valid
+                // indices — bail out of the clean partition.
+                clean = false;
+                break;
+            };
+            let icmp = perm[t_ext];
+            if icmp < nc1 {
+                if issecond {
+                    clean = false;
+                    break;
+                }
+                isfirst = true;
+                axes1[i] = icmp as i32;
+            } else {
+                if isfirst {
+                    clean = false;
+                    break;
+                }
+                issecond = true;
+                axes1[i] = (icmp - nc1) as i32;
+            }
+        }
+        let sub1_is_first = isfirst;
+        let sub1_used = isfirst || issecond;
+
+        // Per-internal-axis loop for result.frame2.
+        let mut isfirst = false;
+        let mut issecond = false;
+        if clean {
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..nres2 {
+                let Some(j) = (0..nres_total).find(|&j| rperm[j] == i + nres1) else {
+                    clean = false;
+                    break;
+                };
+                let Some(t_ext) = template_ext_axis(j) else {
+                    clean = false;
+                    break;
+                };
+                let icmp = perm[t_ext];
+                if icmp < nc1 {
+                    if issecond {
+                        clean = false;
+                        break;
+                    }
+                    isfirst = true;
+                    axes2[i] = icmp as i32;
+                } else {
+                    if isfirst {
+                        clean = false;
+                        break;
+                    }
+                    issecond = true;
+                    axes2[i] = (icmp - nc1) as i32;
+                }
+            }
+        }
+        let sub2_is_first = isfirst;
+        let sub2_used = isfirst || issecond;
+
+        // Both result subframes must end up associated with *different*
+        // template subframes (cmpframe.c:365 — `sub1 == sub2 → done=0`).
+        let sides_distinct = sub1_used && sub2_used && sub1_is_first != sub2_is_first;
+
+        if clean && sides_distinct {
+            // Recurse with each template child as a sub-template,
+            // mirroring `astOverlay(sub1, axes1, res->frame1)` etc.
+            let result_cmp = result
+                .as_any_mut()
+                .downcast_mut::<CmpFrame>()
+                .expect("result was CmpFrame above");
+
+            // To avoid simultaneous borrows of template_cmp's children
+            // and result_cmp's children we resolve template ptrs first.
+            // (`template_cmp` is borrowed immutably; `result_cmp`
+            // mutably — different objects, so no aliasing.)
+            let (sub1_ref, sub2_ref): (&dyn Frame, &dyn Frame) = if sub1_is_first {
+                (template_cmp.frame1(), template_cmp.frame2())
+            } else {
+                (template_cmp.frame2(), template_cmp.frame1())
+            };
+
+            apply_template_overlay(sub1_ref, &axes1, result_cmp.frame1_mut())?;
+            apply_template_overlay(sub2_ref, &axes2, result_cmp.frame2_mut())?;
+            done = true;
+        }
+    }
+
+    // Branch 2 — fall-back (cmpframe.c:382-427). For each result axis,
+    // assign it to whichever template component the corresponding
+    // template axis lives in, leaving the other component's slot at -1.
+    // Then call overlay with each component template into the *whole*
+    // result Frame.
+    if !done {
+        let mut axes1 = vec![-1i32; nres];
+        let mut axes2 = vec![-1i32; nres];
+        for i in 0..nres {
+            let Some(t_ext) = template_ext_axis(i) else {
+                continue;
+            };
+            let icmp = perm[t_ext];
+            if icmp < nc1 {
+                axes1[i] = icmp as i32;
+            } else {
+                axes2[i] = (icmp - nc1) as i32;
+            }
+        }
+        // Two recursive calls: each with one of the template
+        // components as the sub-template. The component overlay impls
+        // (SkyFrame::overlay_template, SpecFrame::overlay_template,
+        // BasicFrame::overlay_template) inspect the supplied axes and
+        // skip those marked -1 / out of range.
+        apply_template_overlay(template_cmp.frame1(), &axes1, result)?;
+        apply_template_overlay(template_cmp.frame2(), &axes2, result)?;
+    }
+
+    Ok(())
+}
+
 /// Default `SubFrame` body for plain Frames — mirrors C
 /// `Frame::SubFrame` (frame.c:10838).
 ///
@@ -159,7 +369,7 @@ pub(crate) fn default_sub_frame(
     // was supplied.
     let mut result = target.pick_axes_snapshot(target_axes)?;
     if let Some(t) = template {
-        result.overlay_template(t, template_axes)?;
+        apply_template_overlay(t, template_axes, result.as_mut())?;
     }
 
     // Mapping construction: UnitMap if no permutation/selection,

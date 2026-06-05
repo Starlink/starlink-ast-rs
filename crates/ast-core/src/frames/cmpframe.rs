@@ -74,6 +74,13 @@ impl CmpFrame {
         self.frame1.naxes()
     }
 
+    /// External-to-internal axis permutation. `perm[ext]` returns the
+    /// zero-based original (internal, pre-`perm_axes`) axis index that
+    /// external axis `ext` references. Mirrors C `astGetPerm`.
+    pub fn perm(&self) -> &[usize] {
+        &self.perm
+    }
+
     /// Access the first child frame.
     pub fn frame1(&self) -> &dyn Frame {
         self.frame1.as_ref()
@@ -583,5 +590,101 @@ impl Serializable for CmpFrame {
         }
 
         Ok(cmp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::find_frame::apply_template_overlay;
+    use crate::frames::specframe::SpecSystem;
+    use crate::frames::{BasicFrameBuilder, SkyFrame, SkySystem, SpecFrame};
+
+    /// Clean-partition path (cmpframe.c:262-380): template
+    /// `CmpFrame(SkyFrame(Galactic), SpecFrame)` overlaid onto a result
+    /// `CmpFrame(SkyFrame(FK5), SpecFrame)` with identity axis
+    /// associations should propagate the template's explicitly-set
+    /// system-driven attributes onto the matching result component.
+    #[test]
+    fn overlay_template_clean_partition_copies_skyframe_system() {
+        let mut sky_template = SkyFrame::new(SkySystem::Galactic);
+        sky_template.set_title("custom-galactic");
+        let template = CmpFrame::new(
+            Box::new(sky_template),
+            Box::new(SpecFrame::new(SpecSystem::Freq)),
+        );
+
+        let result_sky = SkyFrame::new(SkySystem::Fk5);
+        let mut result: DynFrame = Box::new(CmpFrame::new(
+            Box::new(result_sky),
+            Box::new(SpecFrame::new(SpecSystem::Freq)),
+        ));
+
+        // Identity association: result axis i ↔ template axis i.
+        let template_axes: Vec<i32> = (0..result.naxes() as i32).collect();
+        apply_template_overlay(&template, &template_axes, result.as_mut()).unwrap();
+
+        let result_cmp = result.as_any().downcast_ref::<CmpFrame>().unwrap();
+        let result_sky = result_cmp
+            .frame1()
+            .as_any()
+            .downcast_ref::<SkyFrame>()
+            .unwrap();
+        assert_eq!(result_sky.system(), SkySystem::Galactic);
+        assert_eq!(result_sky.title(), "custom-galactic");
+    }
+
+    /// Fall-back path (cmpframe.c:382-427): template is a CmpFrame but
+    /// the result is *not* a CmpFrame. Each template component is
+    /// overlaid onto the whole result with the slots that don't match
+    /// that component marked as `-1`.
+    #[test]
+    fn overlay_template_fallback_non_cmpframe_result() {
+        let template = CmpFrame::new(
+            Box::new(SkyFrame::new(SkySystem::Galactic)),
+            Box::new(SpecFrame::new(SpecSystem::Freq)),
+        );
+
+        // Result is a plain BasicFrame with same axis count. Without
+        // any matching downcast the SkyFrame / SpecFrame component
+        // overlays will be no-ops; the call must still succeed.
+        let mut result: DynFrame =
+            Box::new(BasicFrameBuilder::new(template.naxes()).build().unwrap());
+        let template_axes: Vec<i32> = (0..template.naxes() as i32).collect();
+        apply_template_overlay(&template, &template_axes, result.as_mut()).unwrap();
+        assert_eq!(result.naxes(), template.naxes());
+    }
+
+    /// When the template's permutation makes the first result subframe
+    /// see attributes from *both* of the template's components, the
+    /// clean-partition heuristic must give up and fall through to the
+    /// per-axis branch (cmpframe.c:305-322).
+    #[test]
+    fn overlay_template_falls_through_when_partition_unclean() {
+        // Template: CmpFrame(SkyFrame(2 axes), SpecFrame(1 axis))
+        //   internal order = (lon, lat, freq).
+        // Permute to external order (lon, freq, lat):
+        //   external 0 -> internal 0 (lon, in frame1)
+        //   external 1 -> internal 2 (freq, in frame2)
+        //   external 2 -> internal 1 (lat, in frame1)
+        let mut template = CmpFrame::new(
+            Box::new(SkyFrame::new(SkySystem::Galactic)),
+            Box::new(SpecFrame::new(SpecSystem::Freq)),
+        );
+        template.perm_axes(&[1, 3, 2]).unwrap();
+
+        // Result: identity-permuted CmpFrame(SkyFrame, SpecFrame).
+        // result.frame1 = SkyFrame (2 axes), result.frame2 = SpecFrame (1 axis).
+        // Identity template_axes maps result external axis i to template
+        // external axis i.
+        let mut result: DynFrame = Box::new(CmpFrame::new(
+            Box::new(SkyFrame::new(SkySystem::Fk5)),
+            Box::new(SpecFrame::new(SpecSystem::Freq)),
+        ));
+        let template_axes: Vec<i32> = vec![0, 1, 2];
+        // First result subframe (SkyFrame, 2 axes) receives (lon, freq) from
+        // the template, which crosses the partition boundary, so the
+        // clean-partition path must abort and the fall-back path runs.
+        apply_template_overlay(&template, &template_axes, result.as_mut()).unwrap();
     }
 }
