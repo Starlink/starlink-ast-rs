@@ -342,19 +342,35 @@ impl FrameSet {
     }
 
     // ------------------------------------------------------------------ //
-    // find_frame (stub)                                                   //
+    // find_frame                                                          //
     // ------------------------------------------------------------------ //
 
-    /// Search for a frame matching a template.
+    /// Search for a frame in the FrameSet matching a template.
     ///
-    /// This is a stub that always returns `None`. A full implementation
-    /// will match against domain, class, and axis properties.
+    /// Mirrors C `FrameSet::FindFrame` (frameset.c:3790) — iterates the
+    /// internal frames in priority order (current → base → others),
+    /// invokes `Frame::find_frame_template` on each with the supplied
+    /// domain field, and prefixes the FrameSet's base→that-frame
+    /// Mapping when a match is found. The result is a 2-frame FrameSet
+    /// whose base is `self.base()` and current is the matched Frame.
+    ///
+    /// `domains` is a comma-priority list: each non-empty field is
+    /// tried in turn; an empty field permits any domain.
     pub fn find_frame(
         &self,
-        _template: &dyn Frame,
-        _domains: &[&str],
+        template: &dyn Frame,
+        domains: &[&str],
     ) -> AstResult<Option<FrameSet>> {
-        Ok(None)
+        // Synthesize the comma-separated string domainlist from the
+        // slice form. An empty slice → "" (allows any). Any empty
+        // entry appears in the synthesised string as adjacent commas
+        // (which the canonicaliser reads as "blank field").
+        let joined = if domains.is_empty() {
+            String::new()
+        } else {
+            domains.join(",")
+        };
+        Frame::find_frame_template(self, template, &joined)
     }
 
     // ------------------------------------------------------------------ //
@@ -652,6 +668,14 @@ impl Frame for FrameSet {
         self.current().convert(to, domains)
     }
 
+    fn find_frame_template(
+        &self,
+        template: &dyn Frame,
+        domainlist: &str,
+    ) -> AstResult<Option<FrameSet>> {
+        frameset_find_frame(self, template, domainlist)
+    }
+
     fn obs_lat(&self) -> Option<f64> {
         self.current().obs_lat()
     }
@@ -670,6 +694,80 @@ impl Frame for FrameSet {
     fn system_string(&self) -> Option<&str> {
         self.current().system_string()
     }
+}
+
+/// `FrameSet::FindFrame` override (frameset.c:3790).
+///
+/// Iterate the FrameSet's frames in priority order — current first,
+/// base next, then everything else — calling
+/// `Frame::find_frame_template` on each. The first successful match
+/// wins. The resulting Mapping is prefixed by the FrameSet's
+/// base→matched-frame Mapping and simplified, then packaged as a
+/// 2-frame FrameSet (base = self.base, current = matched-frame's
+/// result).
+///
+/// `domainlist` is the standard comma-separated, case-insensitive,
+/// whitespace-stripped priority list. Each field (including the
+/// blank one introduced by adjacent commas) is tried in order.
+fn frameset_find_frame(
+    target: &FrameSet,
+    template: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<FrameSet>> {
+    let nframe = target.nframe();
+    let current_idx = target.current_idx() + 1; // 1-based
+    let base_idx = target.base_idx() + 1;
+
+    // Build search order: current, then base (if different), then
+    // every other frame in 1..=nframe (cmpframe.c:3922-3934 in C).
+    let mut order: Vec<usize> = Vec::with_capacity(nframe);
+    order.push(current_idx);
+    if base_idx != current_idx {
+        order.push(base_idx);
+    }
+    for i in 1..=nframe {
+        if i != current_idx && i != base_idx {
+            order.push(i);
+        }
+    }
+
+    // Iterate the comma-separated domainlist fields. Trailing comma
+    // semantics: an explicit empty field (e.g. "FOO,," or just "")
+    // matches any domain.
+    let fields: Vec<String> = if domainlist.is_empty() {
+        vec![String::new()]
+    } else {
+        domainlist.split(',').map(|s| s.to_string()).collect()
+    };
+
+    for domain_field in &fields {
+        for &target_idx_1based in &order {
+            let selected = target.frame(FrameRef::Index(target_idx_1based))?;
+            let Some(found) = Frame::find_frame_template(selected, template, domain_field)? else {
+                continue;
+            };
+
+            // `found` is a 2-frame FrameSet with base = selected and
+            // current = result. Extract the base→current Mapping and
+            // the current Frame (snapshot).
+            let map_inner = found.mapping(FrameRef::Base, FrameRef::Current)?;
+            let result_frame = found.current().snapshot();
+
+            // Prefix the FrameSet's base→selected Mapping (or
+            // identity when selected is the base itself).
+            let prefix = target.mapping(FrameRef::Base, FrameRef::Index(target_idx_1based))?;
+            let combined: DynMapping =
+                Box::new(CmpMap::new(prefix, map_inner, Composition::Series)?);
+            let simplified = crate::mappings::Mapping::simplified(combined.as_ref())?;
+
+            // Build the result 2-frame FrameSet.
+            let mut result_fs = FrameSet::new(target.base().snapshot());
+            result_fs.add_frame(FrameRef::Base, simplified, result_frame)?;
+            return Ok(Some(result_fs));
+        }
+    }
+
+    Ok(None)
 }
 
 // ====================================================================== //

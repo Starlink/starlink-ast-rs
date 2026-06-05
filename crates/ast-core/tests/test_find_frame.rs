@@ -207,6 +207,99 @@ fn cmpframe_match_with_default_max_axes_fails() {
 /// lands. The `cmpframe_match_with_default_max_axes_fails` test
 /// above confirms the cardinality side of the contract works
 /// today.
+// ---------------------------------------------------------------------
+// FrameSet::find_frame_template integration tests (Task 10).
+// ---------------------------------------------------------------------
+use ast_core::frames::{FrameRef, FrameSet};
+use ast_core::mappings::UnitMap;
+
+/// `frameset_find_frame_self_returns_current` — a 2-frame FrameSet
+/// containing two BasicFrames is searched with a 2-axis template.
+/// The current frame is the first candidate in the search order, so
+/// the returned FrameSet's current matches the original FrameSet's
+/// current.
+#[test]
+fn frameset_find_frame_self_returns_current() {
+    let mut fs = FrameSet::new(Box::new(bf(2)));
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(bf(2)))
+        .unwrap();
+    let template = bf(2);
+    let result = fs
+        .find_frame(&template, &[])
+        .unwrap()
+        .expect("self-match should succeed");
+    assert_eq!(result.nframe(), 2);
+    assert_eq!(result.base().naxes(), 2);
+    assert_eq!(result.current().naxes(), 2);
+}
+
+/// `frameset_find_frame_priority_order` — when several frames in
+/// the FrameSet would match the template, the *current* frame wins.
+/// Distinguish them with their Domain attribute and confirm the
+/// returned FrameSet's current Domain matches the FrameSet's
+/// current Domain.
+#[test]
+fn frameset_find_frame_priority_order() {
+    let mut base = bf(2);
+    base.set_domain("BASE");
+    let mut current = bf(2);
+    current.set_domain("CURRENT");
+
+    let mut fs = FrameSet::new(Box::new(base));
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(current))
+        .unwrap();
+    // After add_frame, the current is the newly-added frame
+    // (Domain="CURRENT").
+
+    let template = bf(2);
+    let result = fs
+        .find_frame(&template, &[])
+        .unwrap()
+        .expect("priority order match");
+    // Current Frame in the search order wins → result.current's
+    // Domain should be "CURRENT".
+    assert_eq!(result.current().domain(), "CURRENT");
+}
+
+/// `frameset_find_frame_domain_filter` — domain-list filter restricts
+/// which frames inside the FrameSet are considered. Setting the list
+/// to "BASE" should prefer the base frame even though it is not the
+/// current one.
+#[test]
+fn frameset_find_frame_domain_filter() {
+    let mut base = bf(2);
+    base.set_domain("BASE");
+    let mut current = bf(2);
+    current.set_domain("CURRENT");
+
+    let mut fs = FrameSet::new(Box::new(base));
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(current))
+        .unwrap();
+
+    let template = bf(2);
+    let result = fs
+        .find_frame(&template, &["BASE"])
+        .unwrap()
+        .expect("BASE domain filter");
+    assert_eq!(result.current().domain(), "BASE");
+}
+
+/// `frameset_find_frame_no_match_returns_none` — domain-list lists
+/// a domain that no frame has → no match.
+#[test]
+fn frameset_find_frame_no_match_returns_none() {
+    let mut base = bf(2);
+    base.set_domain("BASE");
+    let mut current = bf(2);
+    current.set_domain("CURRENT");
+    let mut fs = FrameSet::new(Box::new(base));
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(current))
+        .unwrap();
+    let template = bf(2);
+    let result = fs.find_frame(&template, &["NOSUCH"]).unwrap();
+    assert!(result.is_none());
+}
+
 #[ignore = "needs SkyFrame::match_template walk into CmpFrame component (skyframe.c:6759-6803)"]
 #[test]
 fn cmpframe_match_against_skyframe_template_with_max_axes() {
