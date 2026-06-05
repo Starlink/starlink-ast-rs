@@ -552,36 +552,49 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsWcs => {
-                // FITS-WCS is the only encoding that uses the bare
-                // `*A..*Z` axis-suffix convention for alt planes.
-                // Other FITS-* encodings (FitsPc, FitsIraf, FitsAips,
-                // FitsClass, Dss) carry their own per-encoder
-                // single-plane reader path through enc_*::read_from_cards.
+                // Run SpecTrans first to normalise non-standard
+                // keywords. Although FITS-WCS is the canonical form,
+                // SpecTrans translations 7-10, 17-22, 24 still apply
+                // (EPOCH/EQUINOX, AIPS spectral CTYPE, RESTFREQ, CUNIT
+                // case, IRAF mini-WCS strip, etc.).
+                spec_trans::spec_trans(&mut self.cards, Encoding::FitsWcs);
                 let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
                 let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
             Encoding::FitsPc => {
-                let store = enc_pc::read_from_cards(&self.cards)?;
-                let obj = wcs_read::decode_wcs(&store)?;
+                // Run SpecTrans first to normalise non-standard
+                // keywords (Cnxxx alt-axis form, CDjjjiii, CROTA,
+                // PROJP, etc.) into their canonical equivalents.
+                // After SpecTrans, alt-axis cards are in the *A..*Z
+                // form, so we route through the multi-plane
+                // FitsWcs decoder to pick up secondary planes.
+                spec_trans::spec_trans(&mut self.cards, Encoding::FitsPc);
+                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
+                let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
-                let store = enc_iraf::read_from_cards(&self.cards)?;
-                let obj = wcs_read::decode_wcs(&store)?;
+                spec_trans::spec_trans(&mut self.cards, Encoding::FitsIraf);
+                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
+                let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
+                spec_trans::spec_trans(&mut self.cards, self.encoding);
                 let store = enc_aips::read_from_cards(&self.cards)?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
+                spec_trans::spec_trans(&mut self.cards, Encoding::FitsClass);
                 let store = enc_class::read_from_cards(&self.cards)?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
             Encoding::Dss => {
+                // Dss is a separate format; SpecTrans's translations
+                // are mostly inapplicable. Keep the existing reader.
                 let store = enc_dss::read_from_cards(&self.cards)?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))

@@ -22,6 +22,10 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// - `EPOCH` is used as fallback for `EQUINOX`
 /// - Legacy projection codes NCP and GLS are translated to SIN and SFL
 /// - The 3-digit CD format (`CD001001`) is also checked
+///
+/// Now that `spec_trans` normalises FITS-IRAF keywords, the live
+/// read path no longer calls this function. Kept for tests.
+#[allow(dead_code)]
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // Determine the number of axes from WCSAXES or NAXIS.
     let wcsaxes = cards.get_int("WCSAXES").map(|v| v as usize);
@@ -227,6 +231,7 @@ pub(crate) fn write_to_cards(
 /// Translate IRAF legacy projection codes on read:
 /// - NCP → SIN (North Celestial Pole variant of SIN)
 /// - GLS → SFL (Global Sinusoidal → Sanson-Flamsteed)
+#[allow(dead_code)]
 fn translate_iraf_ctype_read(ctype: &str) -> String {
     if ctype.len() >= 8 {
         let suffix = &ctype[5..8];

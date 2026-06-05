@@ -55,6 +55,14 @@ pub(crate) fn guess_encoding(cards: &CardList) -> Encoding {
         return Encoding::FitsPc;
     }
 
+    // FITS-PC alt-axis form: any C{m}{VAL,PIX,YPE,NIT,ELT}{i} card
+    // implies FITS-PC even when none of the other PC-specific
+    // markers are present. SpecTrans translation 6 will rewrite
+    // these into the standard *A..*Z form before reading.
+    if has_wcs && has_cnxxx(cards) {
+        return Encoding::FitsPc;
+    }
+
     if has_wcs && has_cd_3digit(cards) {
         return Encoding::FitsIraf;
     }
@@ -220,6 +228,21 @@ fn is_cd_3digit_keyword(keyword: &str) -> bool {
 }
 
 /// Check for old-style RADECSYS keyword (misspelled, missing the 'A').
+/// Detect any FITS-PC alt-axis keyword of the form
+/// `C{m}{VAL,PIX,YPE,NIT,ELT}{i}`. m, i ∈ 1..=9.
+fn has_cnxxx(cards: &CardList) -> bool {
+    for m in 1..=9 {
+        for i in 1..=9 {
+            for kind in ["VAL", "PIX", "YPE", "NIT", "ELT"] {
+                if cards.find(&format!("C{m}{kind}{i}")).is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 fn has_radecsys_old(cards: &CardList) -> bool {
     cards.find("RADECSYS").is_some()
 }

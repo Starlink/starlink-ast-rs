@@ -28,6 +28,12 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// - `CDELT` is always separate from the PC matrix
 /// - `RADECSYS` (misspelling) is checked before `RADESYS`
 /// - Legacy projection codes GLS and ATF are translated to SFL and AIT
+///
+/// Now that `spec_trans` normalises FITS-PC keywords on the read side
+/// of every encoder, this single-plane reader is only kept for
+/// historical / testing access; the live read path runs through
+/// `wcs_keywords::extract_wcs_keywords_with_alts`.
+#[allow(dead_code)]
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // Determine the number of axes from WCSAXES or NAXIS.
     let wcsaxes = cards.get_int("WCSAXES").map(|v| v as usize);
@@ -271,6 +277,7 @@ pub(crate) fn write_to_cards(
 /// Translate FITS-PC legacy projection codes on read:
 /// - GLS → SFL (Global Sinusoidal → Sanson-Flamsteed)
 /// - ATF → AIT (old Aitoff → Hammer-Aitoff)
+#[allow(dead_code)]
 fn translate_pc_ctype_read(ctype: &str) -> String {
     if ctype.len() >= 8 {
         let suffix = &ctype[5..8];

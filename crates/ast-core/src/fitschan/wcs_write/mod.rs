@@ -273,7 +273,14 @@ pub(crate) fn encode_wcs_per_plane(
         }
     };
     let primary_crvals = extract_input_crvals(cards, ' ', frameset.base().naxes());
-    let planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals)?;
+    let mut planes = collect_plane_stores(frameset, dim, encoding, &primary_crvals)?;
+
+    // Last-plane-wins for observation-global keywords (MJD-OBS,
+    // DATE-OBS, OBSGEO, TIMESYS, DTAI, DUT1). Mirrors C's `SkySys`
+    // contract — every plane's sky_sys writes unconditionally to
+    // the primary slot, so the alphabetically-last plane's values
+    // win even when the encoder is primary-axis-only.
+    propagate_last_plane_globals_into_primary(&mut planes);
 
     // Restrict to the primary plane for encodings that the C library
     // documents as primary-axis-only. Mirrors the per-encoder header
