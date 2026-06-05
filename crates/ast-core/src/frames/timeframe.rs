@@ -185,7 +185,11 @@ pub struct TimeFrame {
 
     // TimeFrame-specific
     system: TimeSystem,
+    /// Whether `system` was set explicitly (mirrors C `astTestSystem`).
+    system_set: bool,
     timescale: TimeScale,
+    /// Whether `timescale` was set explicitly. Mirrors `astTestTimeScale`.
+    timescale_set: bool,
     time_origin: Option<f64>, // in default units for current system
     lt_offset: Option<f64>,   // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
@@ -193,6 +197,13 @@ pub struct TimeFrame {
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
+
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    min_axes_opt: Option<usize>,
+    max_axes_opt: Option<usize>,
+    match_end_opt: Option<bool>,
+    preserve_axes_opt: Option<bool>,
+    permute_opt: Option<bool>,
 }
 
 impl TimeFrame {
@@ -216,13 +227,70 @@ impl TimeFrame {
             dut1: None,
             dtai: None,
             system,
+            // Match the SpecFrame convention: when the constructor is
+            // called with the default system (MJD here), treat it as
+            // unset; otherwise mark it as explicitly set so it can act
+            // as a template-side discriminator.
+            system_set: !matches!(system, TimeSystem::Mjd),
             timescale,
+            timescale_set: false,
             time_origin: None,
             lt_offset: None,
             align_timescale: None,
             act_unt: None,
             ident: None,
+            min_axes_opt: None,
+            max_axes_opt: None,
+            match_end_opt: None,
+            preserve_axes_opt: None,
+            permute_opt: None,
         }
+    }
+
+    /// Whether `System` has been explicitly set on this TimeFrame.
+    /// Mirrors C `astTestSystem`.
+    pub fn test_system(&self) -> bool {
+        self.system_set
+    }
+
+    /// Clear the explicit-set state of System.
+    pub fn clear_system(&mut self) {
+        self.system_set = false;
+    }
+
+    /// Whether `TimeScale` has been explicitly set.
+    pub fn test_timescale(&self) -> bool {
+        self.timescale_set
+    }
+
+    /// Frame Title accessor. Returns the empty string when unset.
+    pub fn title(&self) -> &str {
+        self.title.as_deref().unwrap_or("")
+    }
+
+    /// Whether Title has been explicitly set.
+    pub fn test_title(&self) -> bool {
+        self.title.is_some()
+    }
+
+    /// Clear the Title attribute.
+    pub fn clear_title(&mut self) {
+        self.title = None;
+    }
+
+    /// Whether `TimeOrigin` has been explicitly set.
+    pub fn test_time_origin(&self) -> bool {
+        self.time_origin.is_some()
+    }
+
+    /// Whether `LtOffset` has been explicitly set.
+    pub fn test_lt_offset(&self) -> bool {
+        self.lt_offset.is_some()
+    }
+
+    /// Whether `AlignTimeScale` has been explicitly set.
+    pub fn test_align_timescale(&self) -> bool {
+        self.align_timescale.is_some()
     }
 
     // --- TimeFrame-specific attributes ---
@@ -246,6 +314,7 @@ impl TimeFrame {
     /// Set the time coordinate system.
     pub fn set_system(&mut self, sys: TimeSystem) {
         self.system = sys;
+        self.system_set = true;
     }
 
     /// Return the time scale.
@@ -258,6 +327,7 @@ impl TimeFrame {
     /// Note: Besselian epoch system only supports TT timescale.
     pub fn set_timescale(&mut self, ts: TimeScale) {
         self.timescale = ts;
+        self.timescale_set = true;
     }
 
     /// Return the alignment time scale.
@@ -828,6 +898,225 @@ impl Frame for TimeFrame {
     fn ident(&self) -> &str {
         TimeFrame::ident(self)
     }
+
+    // -----------------------------------------------------------------
+    // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
+    // -----------------------------------------------------------------
+
+    fn min_axes(&self) -> usize {
+        self.min_axes_opt.unwrap_or(1)
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.min_axes_opt = Some(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.min_axes_opt.is_some()
+    }
+    fn max_axes(&self) -> usize {
+        self.max_axes_opt.unwrap_or(1)
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.max_axes_opt = Some(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.max_axes_opt.is_some()
+    }
+    fn match_end(&self) -> bool {
+        self.match_end_opt.unwrap_or(false)
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.match_end_opt = Some(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.match_end_opt.is_some()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.unwrap_or(false)
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.preserve_axes_opt = Some(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.is_some()
+    }
+    fn permute(&self) -> bool {
+        // TimeFrame is 1-axis: permutations are degenerate. C
+        // inherits the parent Frame default of 1 (true).
+        self.permute_opt.unwrap_or(true)
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.permute_opt = Some(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.permute_opt.is_some()
+    }
+
+    // -----------------------------------------------------------------
+    // Match / SubFrame / Overlay (timeframe.c).
+    // -----------------------------------------------------------------
+
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        timeframe_overlay(template, template_axes, self)
+    }
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<super::find_frame::MatchResult>> {
+        // Step 1: parent (Frame class) Match for cardinality + Domain.
+        let parent = super::find_frame::default_match(self, target, match_sub)?;
+        if parent.is_none() {
+            return Ok(None);
+        }
+
+        // Step 2: target must be a TimeFrame (CmpFrame walking is
+        // deferred). Bare-TimeFrame target is the only supported case.
+        let Some(_target_time) = target.as_any().downcast_ref::<TimeFrame>() else {
+            return Ok(None);
+        };
+
+        // Step 3: trivial 1-axis associations.
+        let template_axes_vec = vec![0i32];
+        let target_axes_vec = vec![0i32];
+
+        // Step 4: defer to target's SubFrame.
+        let Some((map, result)) =
+            target.sub_frame(Some(self), 1, &target_axes_vec, &template_axes_vec)?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(super::find_frame::MatchResult {
+            template_axes: template_axes_vec,
+            target_axes: target_axes_vec,
+            map,
+            result,
+        }))
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        timeframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
+    }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        if target_axes.len() == 1 && target_axes[0] == 0 {
+            return Ok(Box::new(self.clone()));
+        }
+        let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
+        if self.test_domain() {
+            bf.set_domain(self.domain().to_string());
+        }
+        Ok(Box::new(bf))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Match / SubFrame / Overlay helpers
+// ---------------------------------------------------------------------------
+
+/// Mirrors C `Overlay` for TimeFrame (timeframe.c). Only attributes
+/// the template TimeFrame has explicitly set are transferred onto the
+/// result. When `result` is itself a TimeFrame and overlaying System
+/// would change the coordinate type, the result's Title is cleared
+/// first so the new system's defaults take effect.
+fn timeframe_overlay(
+    template: &dyn Frame,
+    _template_axes: &[i32],
+    result: &mut dyn Frame,
+) -> AstResult<()> {
+    let template_time = match template.as_any().downcast_ref::<TimeFrame>() {
+        Some(t) => t,
+        None => return Ok(()),
+    };
+
+    if let Some(result_time) = result.as_any_mut().downcast_mut::<TimeFrame>() {
+        let old_system = result_time.system;
+        let new_system = template_time.system;
+
+        // If System changes (and template explicitly set it), clear
+        // Title so the new system's default takes effect.
+        if new_system != old_system && template_time.test_system() {
+            result_time.clear_title();
+        }
+
+        if template_time.test_domain() {
+            result_time.set_domain(template_time.domain());
+        }
+        if template_time.test_title() {
+            if let Some(ref t) = template_time.title {
+                result_time.set_title(t);
+            }
+        }
+        if template_time.test_system() {
+            result_time.set_system(template_time.system);
+        }
+        if template_time.test_timescale() {
+            result_time.set_timescale(template_time.timescale);
+        }
+        if template_time.test_align_timescale() {
+            if let Some(ts) = template_time.align_timescale {
+                result_time.set_align_timescale(ts);
+            }
+        }
+        if template_time.test_time_origin() {
+            if let Some(v) = template_time.time_origin {
+                result_time.set_time_origin(v);
+            }
+        }
+        if template_time.test_lt_offset() {
+            if let Some(v) = template_time.lt_offset {
+                result_time.set_lt_offset(v);
+            }
+        }
+        return Ok(());
+    }
+
+    // Result is not a TimeFrame — copy only Frame-level attributes
+    // that have a setter on the result type.
+    if template_time.test_domain() {
+        if let Some(bf) = result
+            .as_any_mut()
+            .downcast_mut::<super::basic::BasicFrame>()
+        {
+            bf.set_domain(template_time.domain().to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Mirrors C `SubFrame` for TimeFrame.
+fn timeframe_sub_frame(
+    target: &TimeFrame,
+    template: Option<&dyn Frame>,
+    result_naxes: usize,
+    target_axes: &[i32],
+    template_axes: &[i32],
+) -> AstResult<Option<(DynMapping, DynFrame)>> {
+    // Result-is-a-TimeFrame branch.
+    if result_naxes == 1 && target_axes.len() == 1 && target_axes[0] == 0 {
+        // Result is a copy of the target, with template attributes
+        // overlaid.
+        let mut result = target.clone();
+        if let Some(t) = template {
+            timeframe_overlay(t, template_axes, &mut result)?;
+        }
+
+        // Build the conversion Mapping using TimeFrame's existing
+        // make_time_mapping infrastructure.
+        let map: DynMapping = target.make_time_mapping(&result)?;
+        return Ok(Some((map, Box::new(result))));
+    }
+
+    // parent_subframe branch — produce a BasicFrame-shaped result
+    // via the default Frame::SubFrame.
+    super::find_frame::default_sub_frame(target, template, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------
@@ -1073,11 +1362,13 @@ impl Serializable for TimeFrame {
             tf.dtai = Some(node.get_double("Dtai", 0.0));
         }
 
-        // TmScl (TimeScale).
+        // TmScl (TimeScale). Use set_timescale to flip the
+        // timescale_set flag so test_timescale reports true after
+        // round-trip.
         let ts_str = node.get_string("TmScl", "");
         if !ts_str.is_empty() {
             if let Some(ts) = TimeScale::parse(&ts_str) {
-                tf.timescale = ts;
+                tf.set_timescale(ts);
             }
         }
 
@@ -1110,5 +1401,84 @@ impl Serializable for TimeFrame {
         }
 
         Ok(tf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_system_default_is_mjd_unset() {
+        let f = TimeFrame::new(TimeSystem::Mjd);
+        assert!(!f.test_system());
+        let mut f = TimeFrame::new(TimeSystem::Mjd);
+        f.set_system(TimeSystem::Jd);
+        assert!(f.test_system());
+    }
+
+    #[test]
+    fn match_template_timeframe_self() {
+        let template = TimeFrame::new(TimeSystem::Jd);
+        let target = TimeFrame::new(TimeSystem::Jd);
+        let m = template
+            .match_template(&target, false)
+            .unwrap()
+            .expect("self-match");
+        assert_eq!(m.template_axes, vec![0]);
+        assert_eq!(m.target_axes, vec![0]);
+    }
+
+    #[test]
+    fn match_template_timeframe_against_basicframe_fails() {
+        let template = TimeFrame::new(TimeSystem::Jd);
+        let target = crate::frames::BasicFrameBuilder::new(1).build().unwrap();
+        let result = template.match_template(&target, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn sub_frame_timeframe_to_timeframe_identity() {
+        let target = TimeFrame::new(TimeSystem::Jd);
+        let template = TimeFrame::new(TimeSystem::Jd);
+        let (map, result) = target
+            .sub_frame(Some(&template), 1, &[0], &[0])
+            .unwrap()
+            .expect("identity sub_frame");
+        assert_eq!(map.nin(), 1);
+        assert_eq!(map.nout(), 1);
+        let r = result.as_any().downcast_ref::<TimeFrame>().unwrap();
+        assert_eq!(r.system(), TimeSystem::Jd);
+    }
+
+    #[test]
+    fn overlay_template_copies_set_system() {
+        let mut template = TimeFrame::new(TimeSystem::Mjd);
+        template.set_system(TimeSystem::Jepoch);
+        assert!(template.test_system());
+        let target = TimeFrame::new(TimeSystem::Mjd);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<TimeFrame>().unwrap();
+        assert_eq!(r.system(), TimeSystem::Jepoch);
+    }
+
+    #[test]
+    fn overlay_template_skips_unset_system() {
+        let template = TimeFrame::new(TimeSystem::Mjd);
+        assert!(!template.test_system());
+        let target = TimeFrame::new(TimeSystem::Jd);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<TimeFrame>().unwrap();
+        assert_eq!(r.system(), TimeSystem::Jd);
+    }
+
+    #[test]
+    fn pick_axes_snapshot_full_returns_timeframe() {
+        let target = TimeFrame::new(TimeSystem::Jd);
+        let snap = target.pick_axes_snapshot(&[0]).unwrap();
+        let r = snap.as_any().downcast_ref::<TimeFrame>().unwrap();
+        assert_eq!(r.system(), TimeSystem::Jd);
     }
 }
