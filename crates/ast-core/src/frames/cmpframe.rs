@@ -643,6 +643,459 @@ pub(crate) fn gen_axis_selection(naxes: usize, nselect: usize, axes: &mut [i32])
     axes[nselect - 1] < naxes as i32
 }
 
+/// Replace `-1` slots in `axes[i1..=i2]` with new indices that locate
+/// the missing axes relative to neighbouring valid ones. Mirrors C
+/// `AddExtraAxes` (cmpframe.c:929).
+///
+/// `following` chooses the side: `false` associates each new index
+/// with the *preceding* valid index (numbered one greater); `true`
+/// associates it with the *following* valid index (numbered one less,
+/// shifting subsequent valid indices upward).
+///
+/// All entries of `axes` are candidates for renumbering even outside
+/// `i1..=i2`, since duplicates anywhere must be eliminated. Some
+/// indices may end up unused.
+#[allow(dead_code)] // wired in by part_match below.
+pub(crate) fn add_extra_axes(axes: &mut [i32], i1: usize, i2: usize, following: bool) {
+    let naxes = axes.len();
+    if naxes == 0 || i1 > i2 || i2 >= naxes {
+        return;
+    }
+
+    // Establish a default "extra" index by scanning in the direction
+    // dictated by `following`, looking for the first valid axis index
+    // (anywhere in the full array, not just i1..=i2 — see C's loop
+    // bounds at cmpframe.c:1020-1029).
+    let mut extra: i32 = 0;
+    let mut found = false;
+    let scan = |from_back: bool| -> Option<(usize, i32)> {
+        if from_back {
+            for i in (0..naxes).rev() {
+                if axes[i] != -1 {
+                    return Some((i, axes[i]));
+                }
+            }
+        } else {
+            for (i, &v) in axes.iter().enumerate() {
+                if v != -1 {
+                    return Some((i, v));
+                }
+            }
+        }
+        None
+    };
+
+    // First scan in the natural direction.
+    if let Some((_, v)) = scan(following) {
+        extra = v + if following { 1 } else { 0 };
+        found = true;
+    }
+    // Fallback scan in the opposite direction (handles arrays that
+    // start with -1's in the natural direction).
+    if !found {
+        if let Some((_, v)) = scan(!following) {
+            extra = v + if !following { 1 } else { 0 };
+        }
+        // If still nothing was found, `extra` stays at 0 (an array
+        // entirely filled with -1).
+    }
+
+    // Now scan only the slice [i1..=i2] in the natural direction.
+    let indices: Box<dyn Iterator<Item = usize>> = if following {
+        Box::new((i1..=i2).rev())
+    } else {
+        Box::new(i1..=i2)
+    };
+
+    for i in indices {
+        if axes[i] == -1 {
+            // Bump every valid index >= extra to dodge duplicates.
+            for v in axes.iter_mut() {
+                if *v != -1 && *v >= extra {
+                    *v += 1;
+                }
+            }
+            axes[i] = extra;
+            // Step extra: forward direction → +1 so subsequent extras
+            // come after; backward direction → 0 so subsequent extras
+            // shift the previously-assigned one upward.
+            if !following {
+                extra += 1;
+            }
+        } else {
+            // Reset extra relative to the just-seen valid index.
+            extra = axes[i] + if following { 0 } else { 1 };
+        }
+    }
+}
+
+/// Replace each entry of `axes` by its rank when the values are
+/// sorted in ascending order. Eliminates "missing" indices while
+/// preserving relative order. Mirrors C `RenumberAxes`
+/// (cmpframe.c:7651).
+#[allow(dead_code)] // wired in by part_match below.
+pub(crate) fn renumber_axes(axes: &mut [i32]) {
+    let naxes = axes.len();
+    if naxes == 0 {
+        return;
+    }
+    // Compute the rank of each entry by sort order.
+    let mut order: Vec<usize> = (0..naxes).collect();
+    order.sort_by_key(|&i| axes[i]);
+    // After this pass, the i-th entry in sort order is at axes[order[i]];
+    // its new value should be i.
+    let mut new_values = vec![0i32; naxes];
+    for (rank, &orig_idx) in order.iter().enumerate() {
+        new_values[orig_idx] = rank as i32;
+    }
+    axes.copy_from_slice(&new_values);
+}
+
+/// Return `true` if a `PermMap(inperm, outperm)` would have a
+/// non-trivial effect (i.e. it differs from a [`UnitMap`] of the
+/// same size). Mirrors C `GoodPerm` (cmpframe.c:4562).
+#[allow(dead_code)] // wired in by part_match below.
+pub(crate) fn good_perm(inperm: &[i64], outperm: &[i64]) -> bool {
+    if inperm.len() != outperm.len() {
+        return true;
+    }
+    for (axis, &v) in inperm.iter().enumerate() {
+        if v != (axis + 1) as i64 {
+            return true;
+        }
+    }
+    for (axis, &v) in outperm.iter().enumerate() {
+        if v != (axis + 1) as i64 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Match a CmpFrame template against a target Frame using a specific
+/// partitioning of the target axes between the two template
+/// components. Mirrors C `PartMatch` (cmpframe.c:6591).
+///
+/// The caller must supply `axes1` and `axes2`, two disjoint lists of
+/// (zero-based) target axis indices that together cover every target
+/// axis. `axes1` is matched against `template.frame1`; `axes2` is
+/// matched against `template.frame2`. The function tries the match
+/// and, if both child matches succeed, builds the full result Frame +
+/// Mapping by parallel composition plus prefix / suffix PermMaps to
+/// align target and result axis ordering.
+///
+/// Per the C contract, the result Frame's axis count is governed by
+/// the template's `PreserveAxes` attribute: when set, it equals the
+/// target's axis count; otherwise it equals the template's.
+/// `MatchEnd` controls which subset is selected when those counts
+/// differ. Both attributes are inherited by the children when they
+/// have not been explicitly set on those children individually
+/// (cmpframe.c:233-294); the prior values are restored before
+/// returning so that the template's child attributes are not
+/// permanently modified.
+#[allow(dead_code)] // wired in by CmpFrame::Match port.
+pub(crate) fn part_match(
+    template: &CmpFrame,
+    target: &dyn Frame,
+    matchsub: bool,
+    axes1: &[i32],
+    axes2: &[i32],
+) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
+    use crate::frames::find_frame::MatchResult;
+    use crate::mappings::{CmpMap, Composition, PermMap};
+
+    // Step 1: select the two sub-Frames from the target via SubFrame.
+    // We pass `template = None` to obtain a snapshot without overlaying
+    // attributes (matches `astSubFrame(target, NULL, ...)` in C). The
+    // returned Mapping is discarded.
+    let frame1 = match target.sub_frame(None, axes1.len(), axes1, &[])? {
+        Some((_map, f)) => f,
+        None => return Ok(None),
+    };
+    let frame2 = match target.sub_frame(None, axes2.len(), axes2, &[])? {
+        Some((_map, f)) => f,
+        None => return Ok(None),
+    };
+
+    // Step 2: temporarily push the template's component attributes
+    // before calling each child match. C does this by mutating the
+    // template's children in-place and restoring them afterwards; we
+    // achieve the same effect by snapshotting the children and
+    // mutating the snapshot.
+    let prepare_child = |child: &dyn Frame| -> DynFrame {
+        let mut snap = child.snapshot();
+        if !child.test_match_end() {
+            snap.set_match_end(template.match_end());
+        }
+        if !child.test_preserve_axes() {
+            snap.set_preserve_axes(template.preserve_axes());
+        }
+        // Always force Permute=1 on the snapshot so the child Match
+        // considers axis permutations; the CmpFrame-level Permute is
+        // applied in the parent CmpFrame::Match (cmpframe.c:5343).
+        snap.set_permute(true);
+        snap
+    };
+
+    let frame1_template = prepare_child(template.frame1());
+    let frame2_template = prepare_child(template.frame2());
+
+    let m1 = frame1_template.match_template(frame1.as_ref(), matchsub)?;
+    let m2 = frame2_template.match_template(frame2.as_ref(), matchsub)?;
+    let (Some(m1), Some(m2)) = (m1, m2) else {
+        return Ok(None);
+    };
+
+    // Step 3: lay out the result Frame.
+    let target_naxes = target.naxes();
+    let result_naxes1 = m1.result.naxes();
+    let result_naxes2 = m2.result.naxes();
+    let result_naxes = result_naxes1 + result_naxes2;
+    let template_naxes1 = template.frame1().naxes();
+    let template_naxes = template.naxes();
+
+    let match_end1 = frame1_template.match_end();
+    let match_end2 = frame2_template.match_end();
+    let match_end = template.match_end();
+
+    // Inverse of the template's external→internal permutation: maps
+    // internal axis index back to external (cmpframe.c:323-329).
+    let perm = template.perm();
+    let mut invperm = vec![0usize; template_naxes];
+    for (template_axis, &p) in perm.iter().enumerate() {
+        invperm[p] = template_axis;
+    }
+
+    // Step 4: per-result-axis association arrays (cmpframe.c:339-405).
+    let mut template_assoc = vec![0i32; result_naxes];
+    let mut target_assoc = vec![0i32; result_naxes];
+    for result_axis in 0..result_naxes {
+        let first = result_axis < result_naxes1;
+        let part_result_axis = if first {
+            result_axis
+        } else {
+            result_axis - result_naxes1
+        };
+        let part_template_axis = if first {
+            m1.template_axes[part_result_axis]
+        } else {
+            m2.template_axes[part_result_axis]
+        };
+        let part_target_axis = if first {
+            m1.target_axes[part_result_axis]
+        } else {
+            m2.target_axes[part_result_axis]
+        };
+
+        template_assoc[result_axis] = if part_template_axis == -1 {
+            -1
+        } else {
+            let internal = if first {
+                part_template_axis as usize
+            } else {
+                part_template_axis as usize + template_naxes1
+            };
+            invperm[internal] as i32
+        };
+
+        target_assoc[result_axis] = if part_target_axis == -1 {
+            -1
+        } else if first {
+            axes1[part_target_axis as usize]
+        } else {
+            axes2[part_target_axis as usize]
+        };
+    }
+
+    // Step 5: build the basic result CmpFrame from the two child
+    // results in parallel (cmpframe.c:419-420).
+    let mut result_frame: DynFrame = Box::new(CmpFrame::new(m1.result, m2.result));
+
+    // Step 6: permute the result axes to match the reference Frame
+    // (template if PreserveAxes==0, target if PreserveAxes==1).
+    let preserve_axes = template.preserve_axes();
+    let ref_naxes = if preserve_axes {
+        target_naxes
+    } else {
+        template_naxes
+    };
+
+    let mut result_order = if preserve_axes {
+        target_assoc.clone()
+    } else {
+        template_assoc.clone()
+    };
+
+    // Replace -1 entries with synthesised positions (cmpframe.c:458-461).
+    add_extra_axes(
+        &mut result_order,
+        0,
+        result_naxes1.saturating_sub(1),
+        match_end1,
+    );
+    add_extra_axes(
+        &mut result_order,
+        result_naxes1,
+        result_naxes.saturating_sub(1),
+        match_end2,
+    );
+
+    // Compress out gaps (cmpframe.c:467).
+    renumber_axes(&mut result_order);
+
+    // Build the inverse permutation (cmpframe.c:474-480).
+    let mut result_perm = vec![0usize; result_naxes];
+    for (axis, &order) in result_order.iter().enumerate() {
+        result_perm[order as usize] = axis;
+    }
+
+    // Apply (1-based perm_axes interface).
+    let perm_args: Vec<usize> = result_perm.iter().map(|&p| p + 1).collect();
+    result_frame.perm_axes(&perm_args)?;
+
+    // Step 7: when the reference axis count differs, pick a
+    // sub-/super-set (cmpframe.c:486-525).
+    if ref_naxes != result_naxes {
+        let mut pick = vec![-1i32; ref_naxes];
+        for (output_axis, slot) in pick.iter_mut().enumerate() {
+            let full_axis: i32 = if match_end {
+                (output_axis as i32) + (result_naxes as i32 - ref_naxes as i32)
+            } else {
+                output_axis as i32
+            };
+            if (0..result_naxes as i32).contains(&full_axis) {
+                *slot = full_axis;
+            }
+        }
+        // Pick the requested axes from result_frame.
+        result_frame = pick_result_axes(result_frame.as_ref(), &pick)?;
+    }
+
+    // Step 8: build the final association arrays for the picked /
+    // permuted axes (cmpframe.c:533-565).
+    let mut out_template_axes = vec![0i32; ref_naxes];
+    let mut out_target_axes = vec![0i32; ref_naxes];
+    for output_axis in 0..ref_naxes {
+        let full_axis: i32 = if match_end {
+            (output_axis as i32) + (result_naxes as i32 - ref_naxes as i32)
+        } else {
+            output_axis as i32
+        };
+        if (0..result_naxes as i32).contains(&full_axis) {
+            let result_axis = result_perm[full_axis as usize];
+            out_template_axes[output_axis] = template_assoc[result_axis];
+            out_target_axes[output_axis] = target_assoc[result_axis];
+        } else {
+            out_template_axes[output_axis] = -1;
+            out_target_axes[output_axis] = -1;
+        }
+    }
+
+    // Step 9: build the output Mapping (cmpframe.c:572-687).
+    // Inner Mapping: parallel composition of the two child Maps, with
+    // input order (axes1 ‖ axes2) and output order (m1.result ‖ m2.result).
+    let inner_map: DynMapping = Box::new(CmpMap::new(m1.map, m2.map, Composition::Parallel)?);
+
+    // Prefix PermMap: align the target's natural axis order with the
+    // (axes1 ‖ axes2) order expected by inner_map.
+    let mut inperm = vec![0i64; target_naxes];
+    let mut outperm = vec![0i64; target_naxes];
+    #[allow(clippy::needless_range_loop)]
+    for target_axis in 0..target_naxes {
+        let first = target_axis < axes1.len();
+        let part_target_axis = if first {
+            target_axis
+        } else {
+            target_axis - axes1.len()
+        };
+        let original = if first {
+            axes1[part_target_axis]
+        } else {
+            axes2[part_target_axis]
+        };
+        // outperm[target_axis] = original (1-based)
+        outperm[target_axis] = (original as i64) + 1;
+        // inperm[original] = target_axis + 1 (1-based)
+        inperm[original as usize] = (target_axis as i64) + 1;
+    }
+
+    let mut current_map: DynMapping = inner_map;
+    if good_perm(&inperm, &outperm) {
+        let prefix = PermMap::new(&inperm, &outperm, &[])?;
+        current_map = Box::new(CmpMap::new(
+            Box::new(prefix),
+            current_map,
+            Composition::Series,
+        )?);
+    }
+
+    // Suffix PermMap: align inner output (result_naxes axes in the
+    // pre-perm_axes order) with the requested ref_naxes order.
+    let mut inperm2 = vec![0i64; result_naxes];
+    let mut outperm2 = vec![0i64; ref_naxes];
+    #[allow(clippy::needless_range_loop)]
+    for output_axis in 0..ref_naxes {
+        let full_axis: i32 = if match_end {
+            (output_axis as i32) + (result_naxes as i32 - ref_naxes as i32)
+        } else {
+            output_axis as i32
+        };
+        if (0..result_naxes as i32).contains(&full_axis) {
+            let result_axis = result_perm[full_axis as usize];
+            outperm2[output_axis] = (result_axis as i64) + 1;
+            inperm2[result_axis] = (output_axis as i64) + 1;
+        }
+        // else outperm2[output_axis] stays 0 = "BAD" sentinel.
+    }
+    // C tests good_perm with `target_naxes` for both lengths
+    // (cmpframe.c:672) — that's a deliberate choice to skip the
+    // suffix when both lists are shorter than target_naxes (which
+    // suggests the suffix would amount to a near-identity). We
+    // reproduce it bit-for-bit: the function returns true iff the
+    // permutation differs from identity within the shared prefix.
+    let differs = inperm2
+        .iter()
+        .enumerate()
+        .any(|(axis, &v)| axis < target_naxes && v != (axis + 1) as i64)
+        || outperm2
+            .iter()
+            .enumerate()
+            .any(|(axis, &v)| axis < target_naxes && v != (axis + 1) as i64)
+        || inperm2.len() != target_naxes
+        || outperm2.len() != target_naxes;
+    if differs {
+        let suffix = PermMap::new(&inperm2, &outperm2, &[])?;
+        current_map = Box::new(CmpMap::new(
+            current_map,
+            Box::new(suffix),
+            Composition::Series,
+        )?);
+    }
+
+    Ok(Some(MatchResult {
+        template_axes: out_template_axes,
+        target_axes: out_target_axes,
+        map: current_map,
+        result: result_frame,
+    }))
+}
+
+/// Pick `picks.len()` axes (1-based after `+1`) from `frame`, with
+/// `-1` entries producing default axes. Mirrors `astPickAxes` in the
+/// PartMatch flow at cmpframe.c:519. Used only for the result-frame
+/// shrink/expand step; we delegate to [`pick_axes`] for the natural
+/// case and synthesise a wider Frame manually when `picks` selects
+/// extra unused axes.
+fn pick_result_axes(frame: &dyn Frame, picks: &[i32]) -> AstResult<DynFrame> {
+    // The current Rust `pick_axes` helper only handles the strict
+    // pick path (no -1 / new-axis synthesis). For PartMatch we may
+    // see -1 entries when `ref_naxes > result_naxes` — i.e. when the
+    // template asks for more axes than the matching produced. Use
+    // pick_axes_snapshot which already accepts -1 entries (frame.c
+    // PickAxes default impl).
+    frame.pick_axes_snapshot(picks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,6 +1167,94 @@ mod tests {
         let mut axes: Vec<i32> = vec![];
         assert!(!gen_axis_selection(5, 0, &mut axes));
     }
+
+    /// Replace -1 slots with new indices preceding the surrounding
+    /// valid entries (`following=false`).
+    #[test]
+    fn add_extra_axes_following_false() {
+        // Start: [0, -1, 2]. Default (following=false) places the new
+        // index *after* the preceding valid one (0), bumping all
+        // valid indices >= 1 upward to make room.
+        let mut axes = vec![0i32, -1, 2];
+        add_extra_axes(&mut axes, 0, 2, false);
+        // Slot 1 takes the slot just after the preceding valid (0)
+        // → extra=1; existing valid 2 gets bumped to 3.
+        assert_eq!(axes, vec![0, 1, 3]);
+    }
+
+    /// Same input, `following=true`: new index displaces the
+    /// following valid index upward.
+    #[test]
+    fn add_extra_axes_following_true() {
+        let mut axes = vec![0i32, -1, 2];
+        add_extra_axes(&mut axes, 0, 2, true);
+        // Following the next valid (2): extra = 2; existing valid 2
+        // gets bumped to 3, the slot takes 2.
+        assert_eq!(axes, vec![0, 2, 3]);
+    }
+
+    #[test]
+    fn renumber_axes_compresses_gaps() {
+        // [3, 7, 1] → ranks [1, 2, 0].
+        let mut axes = vec![3i32, 7, 1];
+        renumber_axes(&mut axes);
+        assert_eq!(axes, vec![1, 2, 0]);
+    }
+
+    #[test]
+    fn good_perm_identity_returns_false() {
+        assert!(!good_perm(&[1, 2, 3], &[1, 2, 3]));
+    }
+
+    #[test]
+    fn good_perm_swap_returns_true() {
+        assert!(good_perm(&[2, 1], &[2, 1]));
+    }
+
+    #[test]
+    fn good_perm_size_mismatch_returns_true() {
+        assert!(good_perm(&[1, 2], &[1, 2, 3]));
+    }
+
+    /// Smoke test for `part_match` using BasicFrame components, which
+    /// have working `match_template` / `sub_frame` via the trait
+    /// default. Template = CmpFrame(BasicFrame(2), BasicFrame(1)),
+    /// Target = BasicFrame(3). Partitioning axes1=[0,1], axes2=[2]
+    /// matches both children and produces a 3-axis result.
+    #[test]
+    fn part_match_basicframe_partition_succeeds() {
+        let template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let target = BasicFrameBuilder::new(3).build().unwrap();
+        let m = part_match(&template, &target, false, &[0, 1], &[2])
+            .unwrap()
+            .expect("3-axis partition match");
+        assert_eq!(m.result.naxes(), 3);
+        assert_eq!(m.template_axes.len(), 3);
+        assert_eq!(m.target_axes.len(), 3);
+    }
+
+    /// When the partitioning gives a child too few axes
+    /// (axes1=[0] vs a 2-axis template.frame1), part_match returns
+    /// None because the inner `BasicFrame::Match` rejects.
+    #[test]
+    fn part_match_returns_none_on_axis_count_mismatch() {
+        let template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let target = BasicFrameBuilder::new(3).build().unwrap();
+        let result = part_match(&template, &target, false, &[0], &[1, 2]).unwrap();
+        assert!(result.is_none());
+    }
+
+    // Tests exercising part_match with CmpFrame *targets* land
+    // alongside CmpFrame::sub_frame (Task 6). Until then,
+    // target.sub_frame() on a CmpFrame target returns None (the
+    // trait default), so part_match() against a CmpFrame target
+    // unconditionally returns None.
 
     /// Clean-partition path (cmpframe.c:262-380): template
     /// `CmpFrame(SkyFrame(Galactic), SpecFrame)` overlaid onto a result
