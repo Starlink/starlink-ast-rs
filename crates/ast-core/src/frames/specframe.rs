@@ -263,6 +263,11 @@ pub struct SpecFrame {
 
     // SpecFrame-specific
     system: SpecSystem,
+    /// Whether System has been explicitly set. Mirrors C's `astTestSystem`
+    /// for `SpecFrame`. The constructor leaves this `false` when the
+    /// requested system equals the C default (`AST__FREQ`); any other
+    /// constructor argument or call to `set_system` flips it `true`.
+    system_set: bool,
     std_of_rest: StdOfRest,
     sor_set: bool,           // whether std_of_rest was explicitly set (vs defaulting)
     unit: Option<String>,    // user-facing unit for the current system (e.g. "GHz")
@@ -278,6 +283,9 @@ pub struct SpecFrame {
     /// `AST__WAVELEN` by default for SpecFrames (specframe.c:1899-1957).
     align_system: Option<SpecSystem>,
     align_spec_offset: bool,
+    /// Whether AlignSpecOffset was explicitly set. Mirrors C
+    /// `astTestAlignSpecOffset`.
+    align_spec_offset_set: bool,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
@@ -311,6 +319,11 @@ impl SpecFrame {
             obs_lon: None,
             obs_alt: None,
             system,
+            // C SpecFrame default System is AST__FREQ (specframe.c
+            // GetSystem). Match SkyFrame's pattern: only flag System as
+            // explicitly set when the constructor argument differs from
+            // the class default.
+            system_set: !matches!(system, SpecSystem::Freq),
             std_of_rest: StdOfRest::Heliocentric,
             sor_set: false,
             unit: None,
@@ -324,6 +337,7 @@ impl SpecFrame {
             align_std_of_rest: None,
             align_system: None,
             align_spec_offset: false,
+            align_spec_offset_set: false,
             act_unt: None,
             ident: None,
             label_override: None,
@@ -356,6 +370,20 @@ impl SpecFrame {
     /// Set the spectral coordinate system.
     pub fn set_system(&mut self, sys: SpecSystem) {
         self.system = sys;
+        self.system_set = true;
+    }
+
+    /// Test whether System has been explicitly set. Mirrors C
+    /// `astTestSystem` for SpecFrame.
+    pub fn test_system(&self) -> bool {
+        self.system_set
+    }
+
+    /// Clear System back to its class default (`Freq`). Mirrors
+    /// C `astClearSystem` for SpecFrame.
+    pub fn clear_system(&mut self) {
+        self.system = SpecSystem::Freq;
+        self.system_set = false;
     }
 
     /// Return the standard of rest.
@@ -369,6 +397,11 @@ impl SpecFrame {
         self.sor_set = true;
     }
 
+    /// Test whether StdOfRest has been explicitly set.
+    pub fn test_std_of_rest(&self) -> bool {
+        self.sor_set
+    }
+
     /// Return the user-facing unit for the current system (e.g. "GHz" for FREQ).
     ///
     /// Returns `None` if no unit has been explicitly set.
@@ -379,6 +412,12 @@ impl SpecFrame {
     /// Set the user-facing unit for the current system.
     pub fn set_unit(&mut self, unit: &str) {
         self.unit = Some(unit.to_string());
+    }
+
+    /// Test whether Unit has been explicitly set on this SpecFrame's
+    /// (single) axis.
+    pub fn test_unit(&self) -> bool {
+        self.unit.is_some()
     }
 
     /// Return the user-facing unit, falling back to the system default
@@ -409,6 +448,11 @@ impl SpecFrame {
         self.align_std_of_rest = Some(sor);
     }
 
+    /// Test whether AlignStdOfRest has been explicitly set.
+    pub fn test_align_std_of_rest(&self) -> bool {
+        self.align_std_of_rest.is_some()
+    }
+
     /// Return the alignment system.
     ///
     /// Defaults to `Wavelen` if not explicitly set. Mirrors C
@@ -420,6 +464,16 @@ impl SpecFrame {
     /// Set the alignment system.
     pub fn set_align_system(&mut self, sys: SpecSystem) {
         self.align_system = Some(sys);
+    }
+
+    /// Test whether AlignSystem has been explicitly set.
+    pub fn test_align_system(&self) -> bool {
+        self.align_system.is_some()
+    }
+
+    /// Clear AlignSystem back to its class default (`Wavelen`).
+    pub fn clear_align_system(&mut self) {
+        self.align_system = None;
     }
 
     /// Return the explicit Label override if set, otherwise the
@@ -458,6 +512,11 @@ impl SpecFrame {
         self.rest_freq = Some(hz);
     }
 
+    /// Test whether RestFreq has been explicitly set.
+    pub fn test_rest_freq(&self) -> bool {
+        self.rest_freq.is_some()
+    }
+
     /// Return the reference RA (FK5 J2000, radians).
     pub fn ref_ra(&self) -> Option<f64> {
         self.ref_ra
@@ -468,6 +527,11 @@ impl SpecFrame {
         self.ref_ra = Some(ra);
     }
 
+    /// Test whether RefRA has been explicitly set.
+    pub fn test_ref_ra(&self) -> bool {
+        self.ref_ra.is_some()
+    }
+
     /// Return the reference Dec (FK5 J2000, radians).
     pub fn ref_dec(&self) -> Option<f64> {
         self.ref_dec
@@ -476,6 +540,11 @@ impl SpecFrame {
     /// Set the reference Dec (FK5 J2000, radians).
     pub fn set_ref_dec(&mut self, dec: f64) {
         self.ref_dec = Some(dec);
+    }
+
+    /// Test whether RefDec has been explicitly set.
+    pub fn test_ref_dec(&self) -> bool {
+        self.ref_dec.is_some()
     }
 
     /// Set the reference position from a celestial coordinate system.
@@ -566,6 +635,11 @@ impl SpecFrame {
         self.source_vel = Some(vel);
     }
 
+    /// Test whether SourceVel has been explicitly set.
+    pub fn test_source_vel(&self) -> bool {
+        self.source_vel.is_some()
+    }
+
     /// Return the source velocity rest frame.
     ///
     /// Defaults to Heliocentric if not set.
@@ -576,6 +650,11 @@ impl SpecFrame {
     /// Set the source velocity rest frame.
     pub fn set_source_vrf(&mut self, sor: StdOfRest) {
         self.source_vrf = Some(sor);
+    }
+
+    /// Test whether SourceVRF has been explicitly set.
+    pub fn test_source_vrf(&self) -> bool {
+        self.source_vrf.is_some()
     }
 
     /// Return the source velocity spectral system.
@@ -590,6 +669,11 @@ impl SpecFrame {
         self.source_sys = Some(sys);
     }
 
+    /// Test whether SourceSys has been explicitly set.
+    pub fn test_source_sys(&self) -> bool {
+        self.source_sys.is_some()
+    }
+
     /// Return the spectral origin (in default units for current system).
     pub fn spec_origin(&self) -> Option<f64> {
         self.spec_origin
@@ -598,6 +682,11 @@ impl SpecFrame {
     /// Set the spectral origin.
     pub fn set_spec_origin(&mut self, origin: f64) {
         self.spec_origin = Some(origin);
+    }
+
+    /// Test whether SpecOrigin has been explicitly set.
+    pub fn test_spec_origin(&self) -> bool {
+        self.spec_origin.is_some()
     }
 
     /// Return the epoch as MJD.
@@ -623,6 +712,11 @@ impl SpecFrame {
         self.epoch = Some(mjd);
     }
 
+    /// Test whether Epoch has been explicitly set.
+    pub fn test_epoch(&self) -> bool {
+        self.epoch.is_some()
+    }
+
     /// Set the epoch as a decimal year.
     ///
     /// Years strictly less than 1984.0 are interpreted as Besselian
@@ -636,6 +730,16 @@ impl SpecFrame {
     /// Set the title.
     pub fn set_title(&mut self, title: &str) {
         self.title = Some(title.to_string());
+    }
+
+    /// Test whether Title has been explicitly set.
+    pub fn test_title(&self) -> bool {
+        self.title.is_some()
+    }
+
+    /// Clear Title back to its (computed) default.
+    pub fn clear_title(&mut self) {
+        self.title = None;
     }
 
     /// Compute the default title from the system label and standard of rest.
@@ -687,6 +791,12 @@ impl SpecFrame {
     /// Set whether to align in offset coordinate system.
     pub fn set_align_spec_offset(&mut self, val: bool) {
         self.align_spec_offset = val;
+        self.align_spec_offset_set = true;
+    }
+
+    /// Test whether AlignSpecOffset has been explicitly set.
+    pub fn test_align_spec_offset(&self) -> bool {
+        self.align_spec_offset_set
     }
 
     // --- Conversion helpers ---
@@ -1590,6 +1700,313 @@ impl Frame for SpecFrame {
     fn ident(&self) -> &str {
         SpecFrame::ident(self)
     }
+
+    // -----------------------------------------------------------------
+    // Match / SubFrame / Overlay (specframe.c:2998 / 4705 / 3381).
+    // -----------------------------------------------------------------
+
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        specframe_overlay(template, template_axes, self)
+    }
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<super::find_frame::MatchResult>> {
+        // Mirrors specframe.c:2998. Step 1: defer to the parent (Frame
+        // class) Match for the axis-count + Domain pre-checks. The
+        // axis association arrays returned by the parent are
+        // discarded — SpecFrame is a 1-axis class so we know exactly
+        // what they should be.
+        let parent = super::find_frame::default_match(self, target, match_sub)?;
+        if parent.is_none() {
+            return Ok(None);
+        }
+
+        // Step 2 (specframe.c:3143-3155): walk the target's primary
+        // frames looking for a SpecFrame axis. CmpFrame walking lands
+        // with Task 8; for now the only supported case is a target
+        // that is itself a SpecFrame (astPrimaryFrame on a bare
+        // SpecFrame returns the SpecFrame itself).
+        let Some(_target_spec) = target.as_any().downcast_ref::<SpecFrame>() else {
+            return Ok(None);
+        };
+
+        // Step 3 (specframe.c:3162-3163): SpecFrame has 1 axis; build
+        // the trivial association arrays.
+        let template_axes_vec = vec![0i32];
+        let target_axes_vec = vec![0i32];
+
+        // Step 4 (specframe.c:3170-3171): defer to the target's
+        // SubFrame to build the result + Mapping.
+        let Some((map, result)) =
+            target.sub_frame(Some(self), 1, &target_axes_vec, &template_axes_vec)?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(super::find_frame::MatchResult {
+            template_axes: template_axes_vec,
+            target_axes: target_axes_vec,
+            map,
+            result,
+        }))
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        specframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
+    }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        // SpecFrame is 1-axis, so the only SpecFrame-preserving
+        // selection is `[0]` — a direct copy of self. Any other
+        // selection (including a `[-1]` "no-association" entry) falls
+        // through to a BasicFrame snapshot, mirroring the
+        // parent_subframe branch of specframe.c SubFrame at line 4946.
+        if target_axes.len() == 1 && target_axes[0] == 0 {
+            return Ok(Box::new(self.clone()));
+        }
+
+        let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
+        if self.test_domain() {
+            bf.set_domain(self.domain().to_string());
+        }
+        for (i, &t) in target_axes.iter().enumerate() {
+            if t == 0 {
+                let _ = bf.set_label(i + 1, self.axis_label());
+                let _ = bf.set_unit(i + 1, self.unit_or_default().to_string());
+            }
+        }
+        Ok(Box::new(bf))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Match / SubFrame / Overlay helpers
+// ---------------------------------------------------------------------------
+
+/// Mirrors C `Overlay` for SpecFrame (specframe.c:3381).
+///
+/// Only attributes the template SpecFrame has explicitly set are
+/// transferred onto the result Frame. When `result` is itself a
+/// SpecFrame and overlaying System would change the coordinate type,
+/// the result's Title (and per-axis Unit / Label / Symbol overrides
+/// where appropriate) are cleared first so the new system's defaults
+/// take effect.
+fn specframe_overlay(
+    template: &dyn Frame,
+    template_axes: &[i32],
+    result: &mut dyn Frame,
+) -> AstResult<()> {
+    let _ = template_axes; // SpecFrame is 1-axis: per-axis OVERLAY uses
+    // axis 0 unconditionally (specframe.c:3536-3554 — the OVERLAY macro
+    // takes no axis argument because the SpecFrame attributes it
+    // copies are scalar).
+    let template_spec = match template.as_any().downcast_ref::<SpecFrame>() {
+        Some(s) => s,
+        None => return Ok(()),
+    };
+
+    // Branch: result is a SpecFrame.
+    if let Some(result_spec) = result.as_any_mut().downcast_mut::<SpecFrame>() {
+        let old_system = result_spec.system;
+        let new_system = template_spec.system;
+
+        // specframe.c:3494-3510 — if the System will change AND the
+        // template explicitly sets it, clear Title (+ Label and Unit
+        // when their default depends on the system).
+        if new_system != old_system && template_spec.test_system() {
+            result_spec.clear_title();
+
+            // Clear Unit only when the new and old systems' default
+            // units differ. This mirrors the C `DefUnit` comparison at
+            // specframe.c:3499-3502.
+            let new_def = new_system.specmap_units();
+            let old_def = old_system.specmap_units();
+            if new_def != old_def {
+                result_spec.clear_unit();
+            }
+
+            // Clear axis Label override (specframe.c:3508-3509).
+            // (Symbol has no per-axis storage in the Rust port — the
+            // SpecFrame returns a fixed default — so nothing to do.)
+            result_spec.clear_axis_label();
+        }
+
+        // Parent-class Frame::Overlay copies (frame.c:8567-8594).
+        // Mirrors the call at specframe.c:3527.
+        if template_spec.test_domain() {
+            result_spec.set_domain(template_spec.domain());
+        }
+        if template_spec.test_title() {
+            if let Some(ref t) = template_spec.title {
+                result_spec.set_title(t);
+            }
+        }
+        if template_spec.test_epoch() {
+            result_spec.set_epoch_mjd(template_spec.epoch_mjd());
+        }
+        if let Some(v) = template_spec.obs_lat {
+            result_spec.set_obs_lat(v);
+        }
+        if let Some(v) = template_spec.obs_lon {
+            result_spec.set_obs_lon(v);
+        }
+        if let Some(v) = template_spec.obs_alt {
+            result_spec.set_obs_alt(v);
+        }
+        if template_spec.test_system() {
+            result_spec.set_system(template_spec.system);
+        }
+        if template_spec.test_align_system() {
+            result_spec.set_align_system(template_spec.align_system());
+        }
+        if template_spec.test_unit() {
+            if let Some(ref u) = template_spec.unit {
+                result_spec.set_unit(u);
+            }
+        }
+
+        // SpecFrame-specific OVERLAY block (specframe.c:3545-3554).
+        // Note: SourceVRF must be overlayed before SourceVel — this
+        // mirrors the explicit ordering call-out at specframe.c:3542.
+        if template_spec.test_align_std_of_rest() {
+            result_spec.set_align_std_of_rest(template_spec.align_std_of_rest());
+        }
+        if template_spec.test_align_spec_offset() {
+            result_spec.set_align_spec_offset(template_spec.align_spec_offset());
+        }
+        if template_spec.test_ref_dec() {
+            if let Some(v) = template_spec.ref_dec {
+                result_spec.set_ref_dec(v);
+            }
+        }
+        if template_spec.test_ref_ra() {
+            if let Some(v) = template_spec.ref_ra {
+                result_spec.set_ref_ra(v);
+            }
+        }
+        if template_spec.test_rest_freq() {
+            if let Some(v) = template_spec.rest_freq {
+                result_spec.set_rest_freq(v);
+            }
+        }
+        if template_spec.test_source_sys() {
+            result_spec.set_source_sys(template_spec.source_sys());
+        }
+        if template_spec.test_source_vrf() {
+            result_spec.set_source_vrf(template_spec.source_vrf());
+        }
+        if template_spec.test_source_vel() {
+            if let Some(v) = template_spec.source_vel {
+                result_spec.set_source_vel(v);
+            }
+        }
+        if template_spec.test_std_of_rest() {
+            result_spec.set_std_of_rest(template_spec.std_of_rest);
+        }
+        if template_spec.test_spec_origin() {
+            if let Some(v) = template_spec.spec_origin {
+                result_spec.set_spec_origin(v);
+            }
+        }
+
+        return Ok(());
+    }
+
+    // Branch: result is not a SpecFrame. Mirrors specframe.c:3516-3522
+    // (clears System and AlignSystem on a deep copy of the template
+    // before invoking parent_overlay) — we reproduce the same
+    // observable effect by skipping System/AlignSystem here and
+    // copying only Frame-level attributes.
+    if template_spec.test_domain() {
+        if let Some(bf) = result
+            .as_any_mut()
+            .downcast_mut::<super::basic::BasicFrame>()
+        {
+            bf.set_domain(template_spec.domain().to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Mirrors C `SubFrame` for SpecFrame (specframe.c:4705).
+fn specframe_sub_frame(
+    target: &SpecFrame,
+    template: Option<&dyn Frame>,
+    result_naxes: usize,
+    target_axes: &[i32],
+    template_axes: &[i32],
+) -> AstResult<Option<(DynMapping, DynFrame)>> {
+    // Result-is-a-SpecFrame branch (specframe.c:4840-4895).
+    if result_naxes == 1 && target_axes.len() == 1 && target_axes[0] == 0 {
+        // Form the result from a copy of the target (specframe.c:4843).
+        let mut result = target.clone();
+
+        // If a template was supplied, overlay it onto the result and
+        // pick the alignment frame from the template (specframe.c:
+        // 4853-4868).
+        let align_frm = if let Some(t) = template {
+            specframe_overlay(t, template_axes, &mut result)?;
+            if let Some(template_spec) = t.as_any().downcast_ref::<SpecFrame>() {
+                template_spec.clone()
+            } else {
+                target.clone()
+            }
+        } else {
+            // No template — align in the target's own SOR
+            // (specframe.c:4872-4876). The C VerifyAttrs check that
+            // StdOfRest is set is currently elided; downstream
+            // MakeSpecMapping carries enough state to fail loudly when
+            // alignment is genuinely impossible.
+            target.clone()
+        };
+
+        // The MakeSpecMapping function uses System and StdOfRest to
+        // define the alignment frame, but C `SubFrame` substitutes
+        // AlignSystem/AlignStdOfRest there (specframe.c:4883-4884).
+        let mut align_frm = align_frm;
+        align_frm.system = align_frm.align_system();
+        align_frm.std_of_rest = align_frm.align_std_of_rest();
+
+        // Build the Mapping target → result, taking account of the
+        // alignment frame (specframe.c:4891).
+        let mapping = target.make_spec_mapping_full(&result, Some(&align_frm), false)?;
+
+        let result_box: DynFrame = Box::new(result);
+        return Ok(Some((mapping, result_box)));
+    }
+
+    // Result is not a SpecFrame (specframe.c:4905-4951). Make a copy,
+    // explicitly set Frame-level / per-axis defaults, clear System and
+    // AlignSystem (since their values are SpecFrame-specific), then
+    // defer to the default Frame-level SubFrame.
+    let mut temp = target.clone();
+    if !temp.test_title() {
+        temp.set_title(&temp.default_title());
+    }
+    if !temp.test_domain() {
+        temp.set_domain("SPECTRUM");
+    }
+    if !temp.test_axis_label() {
+        let lbl = temp.axis_label();
+        temp.set_axis_label(lbl);
+    }
+    if !temp.test_unit() {
+        let u = temp.unit_or_default().to_string();
+        temp.set_unit(&u);
+    }
+    temp.clear_system();
+    temp.clear_align_system();
+
+    super::find_frame::default_sub_frame(&temp, template, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------
@@ -1854,8 +2271,14 @@ impl Serializable for SpecFrame {
         // Read System.
         let sys_str = node.get_string("System", "FREQ");
         let system = SpecSystem::parse(&sys_str).unwrap_or(SpecSystem::Freq);
+        let system_present = node.get("System").is_some();
 
         let mut sf = SpecFrame::new(system);
+        // SpecFrame::new only flags the system as set when the
+        // requested system differs from the C default `FREQ`. When the
+        // serialised form has an explicit `System=` line we honour
+        // that regardless.
+        sf.system_set = system_present;
 
         // Title.
         let title = node.get_string("Title", "");
@@ -1965,8 +2388,9 @@ impl Serializable for SpecFrame {
         }
 
         // AlSpOf (AlignSpecOffset).
-        if node.get_int("AlSpOf", 0) != 0 {
-            sf.align_spec_offset = true;
+        if node.get("AlSpOf").is_some() {
+            sf.align_spec_offset = node.get_int("AlSpOf", 0) != 0;
+            sf.align_spec_offset_set = true;
         }
 
         // SpOrg (SpecOrigin).
@@ -1987,5 +2411,152 @@ impl Serializable for SpecFrame {
         }
 
         Ok(sf)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::{Frame, SpecFrame, SpecSystem, StdOfRest};
+
+    // -----------------------------------------------------------------
+    // Match / SubFrame / Overlay (specframe.c:2998 / 4705 / 3381)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn overlay_template_copies_set_system() {
+        // Template has System explicitly set to VRAD; result starts as
+        // FREQ. After overlay the result must be VRAD and its Title
+        // cleared (since the system changed and the template had
+        // System set).
+        let template = SpecFrame::new(SpecSystem::Vradio);
+        assert!(template.test_system());
+        let target = SpecFrame::new(SpecSystem::Freq);
+        assert!(!target.test_system());
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
+        assert_eq!(r.system(), SpecSystem::Vradio);
+    }
+
+    #[test]
+    fn overlay_template_skips_unset_attrs() {
+        // Template default-constructs as FREQ without any explicit
+        // System; overlaying onto a VRAD target must leave the
+        // target's system unchanged.
+        let template = SpecFrame::new(SpecSystem::Freq);
+        assert!(!template.test_system());
+        let target = SpecFrame::new(SpecSystem::Vradio);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
+        assert_eq!(r.system(), SpecSystem::Vradio);
+    }
+
+    #[test]
+    fn overlay_template_copies_rest_freq_when_set() {
+        let mut template = SpecFrame::new(SpecSystem::Freq);
+        template.set_rest_freq(1.420405751e9);
+        let target = SpecFrame::new(SpecSystem::Freq);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
+        assert_eq!(r.rest_freq(), Some(1.420405751e9));
+    }
+
+    #[test]
+    fn sub_frame_specframe_to_specframe() {
+        // FREQ/Heliocentric target → VRAD/LSRK template via SubFrame
+        // must produce a 1-axis Mapping and a SpecFrame result whose
+        // system is VRAD and SOR is LSRK.
+        let mut target = SpecFrame::new(SpecSystem::Freq);
+        target.set_std_of_rest(StdOfRest::Heliocentric);
+        target.set_rest_freq(1.420405751e9);
+
+        let mut template = SpecFrame::new(SpecSystem::Vradio);
+        template.set_std_of_rest(StdOfRest::Lsrk);
+        template.set_rest_freq(1.420405751e9);
+
+        let template_axes = [0i32];
+        let target_axes = [0i32];
+        let (map, result) = target
+            .sub_frame(Some(&template), 1, &target_axes, &template_axes)
+            .unwrap()
+            .expect("should match");
+        assert_eq!(map.nin(), 1);
+        assert_eq!(map.nout(), 1);
+        let result_spec = result.as_any().downcast_ref::<SpecFrame>().unwrap();
+        assert_eq!(result_spec.system(), SpecSystem::Vradio);
+        assert_eq!(result_spec.std_of_rest(), StdOfRest::Lsrk);
+    }
+
+    #[test]
+    fn match_template_specframe_self() {
+        let target = SpecFrame::new(SpecSystem::Freq);
+        let template = SpecFrame::new(SpecSystem::Vradio);
+        let m = template
+            .match_template(&target, false)
+            .unwrap()
+            .expect("should match");
+        assert_eq!(m.template_axes.len(), 1);
+        assert_eq!(m.target_axes.len(), 1);
+        assert_eq!(m.template_axes[0], 0);
+        assert_eq!(m.target_axes[0], 0);
+        let r = m.result.as_any().downcast_ref::<SpecFrame>().unwrap();
+        assert_eq!(r.system(), SpecSystem::Vradio);
+    }
+
+    #[test]
+    fn match_template_specframe_against_basicframe_fails() {
+        // SpecFrame template against a non-SpecFrame target must not
+        // match (specframe.c:3147 — the astPrimaryFrame / IsASpecFrame
+        // check rejects anything whose primary frame is not a
+        // SpecFrame).
+        let template = SpecFrame::new(SpecSystem::Freq);
+        let target = super::super::basic::BasicFrameBuilder::new(1)
+            .build()
+            .unwrap();
+        let result = template.match_template(&target, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn match_template_specframe_supports_max_axes_oversized() {
+        // 1-axis SpecFrame template with MaxAxes=2 should match a
+        // 2-axis target only if the underlying target has a SpecFrame
+        // axis. Until CmpFrame walking lands the CmpFrame/SkyFrame
+        // case is rejected (returns None); a bare 2-axis BasicFrame
+        // target is therefore the only oversized case we can
+        // exercise. Confirm the oversized template is rejected (no
+        // SpecFrame axis present in the target).
+        let mut template = SpecFrame::new(SpecSystem::Freq);
+        template.set_max_axes(2);
+        let target = super::super::basic::BasicFrameBuilder::new(2)
+            .build()
+            .unwrap();
+        let result = template.match_template(&target, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn pick_axes_snapshot_specframe_full() {
+        // Picking axis 0 yields a SpecFrame copy.
+        let target = SpecFrame::new(SpecSystem::Vradio);
+        let snap = target.pick_axes_snapshot(&[0]).unwrap();
+        let s = snap.as_any().downcast_ref::<SpecFrame>().unwrap();
+        assert_eq!(s.system(), SpecSystem::Vradio);
+    }
+
+    #[test]
+    fn pick_axes_snapshot_specframe_partial() {
+        // Picking with `-1` (no association) yields a 1-axis BasicFrame.
+        let target = SpecFrame::new(SpecSystem::Vradio);
+        let snap = target.pick_axes_snapshot(&[-1]).unwrap();
+        assert_eq!(snap.naxes(), 1);
+        assert!(snap.as_any().downcast_ref::<SpecFrame>().is_none());
     }
 }
