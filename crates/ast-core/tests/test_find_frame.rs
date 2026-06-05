@@ -70,3 +70,157 @@ fn find_frame_basic_domain_list_miss() {
     let result = target.find_frame_template(&template, "GRID,SKY").unwrap();
     assert!(result.is_none());
 }
+
+// ---------------------------------------------------------------------
+// CmpFrame integration tests (Task 8 from
+// docs/superpower/plans/2026-06-05-find-frame-resume.md).
+// ---------------------------------------------------------------------
+
+use ast_core::frames::{CmpFrame, SkyFrame, SkySystem, SpecFrame, SpecSystem};
+
+/// `cmpframe_overlay_template_copies_domain` (resume doc).
+///
+/// CmpFrame Overlay's Domain handling — the dispatcher in
+/// `apply_template_overlay` (find_frame.rs) recurses into each
+/// template component as a sub-template against the corresponding
+/// result component, and Frame-level Domain on the *template
+/// CmpFrame itself* acts only as the Match-time gate (frame.c:7256-
+/// 7281), not as an overlay source. So:
+///
+///   - template Domain matches target Domain: match succeeds.
+///   - template Domain mismatches target Domain: match rejected.
+///
+/// This test exercises both directions of the gate, which together
+/// verify Domain handling at the CmpFrame level.
+#[test]
+fn cmpframe_overlay_template_copies_domain() {
+    let mut template = CmpFrame::new(
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+        Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+    );
+    template.set_domain("MYCMP");
+
+    // Matching Domain on target → Match passes the Domain gate.
+    let mut target = CmpFrame::new(
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+        Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+    );
+    target.set_domain("MYCMP");
+    let result = target
+        .find_frame_template(&template, "")
+        .unwrap()
+        .expect("matching Domain → match");
+    assert_eq!(result.nframe(), 2);
+    assert_eq!(result.current().naxes(), 3);
+
+    // Different Domain → Match rejects.
+    let mut other_target = CmpFrame::new(
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+        Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+    );
+    other_target.set_domain("OTHER");
+    assert!(
+        other_target
+            .find_frame_template(&template, "")
+            .unwrap()
+            .is_none()
+    );
+}
+
+/// `cmpframe_sub_frame_identity` (resume doc).
+///
+/// Identity axis pick on a CmpFrame target produces a UnitMap-shaped
+/// (3 in, 3 out) Mapping to a 3-axis result Frame.
+#[test]
+fn cmpframe_sub_frame_identity() {
+    let target = CmpFrame::new(
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+        Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+    );
+    let target_axes: Vec<i32> = (0..3).collect();
+    let template_axes: Vec<i32> = (0..3).collect();
+    let (map, result) = target
+        .sub_frame(None, 3, &target_axes, &template_axes)
+        .unwrap()
+        .expect("identity sub_frame on CmpFrame target");
+    assert_eq!(map.nin(), 3);
+    assert_eq!(map.nout(), 3);
+    assert_eq!(result.naxes(), 3);
+}
+
+/// `cmpframe_match_against_cmpframe_template` (resume doc).
+///
+/// Template = CmpFrame(SkyFrame(FK5), SpecFrame(Freq))   3 axes.
+/// Target  = CmpFrame(SkyFrame(FK5), SpecFrame(Freq))   3 axes.
+///
+/// Same-shape CmpFrame match. Default MinAxes/MaxAxes both equal 3 so
+/// the cardinality gate passes; no Domain set, so the domain gate
+/// passes; PartMatch runs the standard partition loop and finds a
+/// match with axes1=[0,1] / axes2=[2].
+#[test]
+fn cmpframe_match_against_cmpframe_template() {
+    let template = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+        Box::new(SpecFrame::new(SpecSystem::Freq)),
+    );
+    let target = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+        Box::new(SpecFrame::new(SpecSystem::Freq)),
+    );
+    let m = template
+        .match_template(&target, false)
+        .unwrap()
+        .expect("CmpFrame ↔ CmpFrame match");
+    assert_eq!(m.result.naxes(), 3);
+    assert_eq!(m.template_axes.len(), 3);
+    assert_eq!(m.target_axes.len(), 3);
+}
+
+/// `cmpframe_match_with_default_max_axes_fails` (resume doc).
+///
+/// SkyFrame template (default MinAxes=MaxAxes=2) cannot match a
+/// 3-axis CmpFrame target. Cardinality gate in `default_match`
+/// rejects.
+#[test]
+fn cmpframe_match_with_default_max_axes_fails() {
+    let template = SkyFrame::new(SkySystem::Fk5);
+    let target = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+        Box::new(SpecFrame::new(SpecSystem::Freq)),
+    );
+    let result = template.match_template(&target, false).unwrap();
+    assert!(result.is_none());
+}
+
+/// `cmpframe_match_against_skyframe_template_with_max_axes` (resume
+/// doc).
+///
+/// SkyFrame template with MaxAxes=3, MinAxes=2 against a CmpFrame
+/// target containing a SkyFrame component. The cardinality gate now
+/// accepts (3 axes within [2..=3]); the SkyFrame::match_template
+/// downcast then needs to walk into the CmpFrame to find the
+/// SkyFrame component. That walk requires a Rust equivalent of C's
+/// `astPrimaryFrame` and is not yet implemented (the SkyFrame::Match
+/// only handles direct SkyFrame targets — see skyframe.rs:1049-1057).
+///
+/// Marked #[ignore] until the SkyFrame walk into CmpFrame components
+/// lands. The `cmpframe_match_with_default_max_axes_fails` test
+/// above confirms the cardinality side of the contract works
+/// today.
+#[ignore = "needs SkyFrame::match_template walk into CmpFrame component (skyframe.c:6759-6803)"]
+#[test]
+fn cmpframe_match_against_skyframe_template_with_max_axes() {
+    let mut template = SkyFrame::new(SkySystem::Fk5);
+    template.set_max_axes(3);
+    template.set_min_axes(2);
+    let target = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+        Box::new(SpecFrame::new(SpecSystem::Freq)),
+    );
+    let m = template
+        .match_template(&target, false)
+        .unwrap()
+        .expect("SkyFrame template should walk into CmpFrame's SkyFrame component");
+    // Result is a 2-axis SkyFrame in FK5.
+    assert_eq!(m.result.naxes(), 2);
+}
