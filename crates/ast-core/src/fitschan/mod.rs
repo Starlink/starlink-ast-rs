@@ -672,13 +672,22 @@ impl Channel for FitsChan {
                         Encoding::FitsAipsPP,
                         enc_aips::write_to_cards_pp,
                     ),
-                    Encoding::FitsClass => wcs_write::encode_wcs_per_plane(
-                        obj,
-                        &mut self.cards,
-                        &dims,
-                        Encoding::FitsClass,
-                        enc_class::write_to_cards,
-                    ),
+                    Encoding::FitsClass => {
+                        wcs_write::encode_wcs_per_plane(
+                            obj,
+                            &mut self.cards,
+                            &dims,
+                            Encoding::FitsClass,
+                            enc_class::write_to_cards,
+                        )?;
+                        // Then run the SpecFrame velocity computation
+                        // that needs the FrameSet directly. Mirrors
+                        // fitschan.c:6843-6898.
+                        if let AnyObject::FrameSet(fs) = obj {
+                            enc_class::write_velocities_from_frameset(fs, &mut self.cards)?;
+                        }
+                        Ok(())
+                    }
                     Encoding::Dss => wcs_write::encode_wcs_to_store(
                         obj,
                         &mut self.cards,

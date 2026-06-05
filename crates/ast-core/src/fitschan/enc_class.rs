@@ -17,9 +17,7 @@
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::error::{AstError, AstResult, ErrorCode};
-
-/// Speed of light in m/s (IAU definition).
-const C_LIGHT: f64 = 299_792_458.0;
+use crate::frames::{Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
 
 /// Read CLASS-style WCS keywords from a [`CardList`] into a [`FitsStore`].
 ///
@@ -253,30 +251,12 @@ pub(crate) fn write_to_cards(
         }
     }
 
-    // VELO-LSR / VLSR / DELTAV (C:6843-6898) — velocity computation
-    // for the spectral axis. The proper port goes through find_frame
-    // with a SpecFrame{vrad, lsrk, m/s} template; for now we use the
-    // simplified algebraic computation that's close enough for
-    // matching-system fixtures (the Source-rest-frame Hz CRVAL is
-    // already in place via AddEncodingFrame).
-    if is_last
-        && let (Some(si), Some(rf)) = (spec_idx, restfreq)
-        && rf != 0.0
-    {
-        {
-            if let Some(crval_freq) = store.crval[si] {
-                // VELO-LSR = c * (1 - CRVAL_freq / RESTFREQ)
-                let velo_lsr = C_LIGHT * (1.0 - crval_freq / rf);
-                cards.set_float("VELO-LSR", velo_lsr, "[m/s] Reference velocity");
-                cards.set_float("VLSR", velo_lsr, "[m/s] Reference velocity");
-            }
-            if let Some(cdelt_freq) = store.cdelt[si] {
-                // DELTAV = -c * CDELT_freq / RESTFREQ (radio convention)
-                let deltav = -C_LIGHT * cdelt_freq / rf;
-                cards.set_float("DELTAV", deltav, "[m/s] Velocity resolution");
-            }
-        }
-    }
+    // VELO-LSR / VLSR / DELTAV (C:6843-6898) — emitted by
+    // [`write_velocities_from_frameset`] via the SpecFrame find_frame
+    // pipeline; can't be done here because we need the FrameSet, not
+    // just the FitsStore. The dispatch site in fitschan/mod.rs calls
+    // both functions in sequence.
+    let _ = (spec_idx, restfreq);
 
     // AZIMUTH and ELEVATIO (C:6901-6944) — Az/El conversion for the
     // spatial reference point. Deferred to a follow-up; the simpler
@@ -358,6 +338,84 @@ fn determine_specsys_from_velocity(cards: &CardList) -> Option<String> {
     }
     // Fall back to explicit SPECSYS keyword if present.
     cards.get_string("SPECSYS")
+}
+
+/// FITS-CLASS velocity emission. Mirrors fitschan.c:6843-6898.
+///
+/// Computes VELO-LSR / VLSR / DELTAV from the FrameSet's SpecFrame
+/// component using the find_frame + convert pipeline. Run after the
+/// per-axis FitsStore extraction has already emitted CRPIX / CRVAL /
+/// etc. via [`write_to_cards`]; this function adds the four velocity-
+/// keyword cards in their canonical position.
+pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList) -> AstResult<()> {
+    use crate::coords::PointSet;
+
+    // Locate the matched SpecFrame in the cube via find_frame with a
+    // velocity SpecFrame template. C constructs:
+    //   velofrm = SpecFrame(System=vrad, StdOfRest=lsrk, Unit=m/s,
+    //                       MinAxes=1, MaxAxes=3)
+    let velo_template = {
+        let mut v = SpecFrame::new(SpecSystem::Vradio);
+        v.set_std_of_rest(StdOfRest::Lsrk);
+        v.set_unit("m/s");
+        v.set_min_axes(1);
+        v.set_max_axes(3);
+        v
+    };
+    let Some(found) = fs.find_frame(&velo_template, &[])? else {
+        return Ok(());
+    };
+    let velo_frame = found
+        .current()
+        .as_any()
+        .downcast_ref::<SpecFrame>()
+        .expect("find_frame returns SpecFrame for SpecFrame template")
+        .clone();
+
+    // Build the freq frame (Source-Hz) from a copy of velo_frame.
+    let mut freq_frame = velo_frame.clone();
+    freq_frame.set_system(SpecSystem::Freq);
+    freq_frame.set_std_of_rest(StdOfRest::Source);
+    freq_frame.set_unit("Hz");
+
+    // Convert freq → velo to get the Mapping that takes Source-Hz
+    // to LSRK-vrad-m/s.
+    let Some(conv_fs) = freq_frame.convert(&velo_frame, &[])? else {
+        return Ok(());
+    };
+    let mapping = conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    // Pull the spectral CRVAL and CDELT from the cards (the
+    // FrameSet-derived FitsStore already wrote them in Source-Hz
+    // form via AddEncodingFrame). Combine with RESTFREQ to recover
+    // the absolute frequency before passing through the mapping —
+    // C does exactly this at line 6881-6882: aval[0] = crval +
+    // restfreq, aval[1] = aval[0] + cdelt.
+    //
+    // CRVAL1 (already offset from RESTFREQ in the emitted cards) +
+    // RESTFREQ → absolute Source-Hz.
+    let crval1 = cards.get_float("CRVAL1");
+    let cdelt1 = cards.get_float("CDELT1");
+    let restfreq = cards.get_float("RESTFREQ");
+
+    let (Some(crval), Some(cdelt), Some(rf)) = (crval1, cdelt1, restfreq) else {
+        return Ok(());
+    };
+
+    let aval0_in = crval + rf;
+    let aval1_in = aval0_in + cdelt;
+
+    // Push the two values through the mapping (Source-Hz → LSRK-vrad-m/s).
+    let pts = PointSet::from_rows([vec![aval0_in], vec![aval1_in]]);
+    let out = mapping.transform(&pts, true)?;
+    let velo_lsr = out.point(0)[0];
+    let velo_next = out.point(1)[0];
+
+    cards.set_float("VELO-LSR", velo_lsr, "[m/s] Reference velocity");
+    cards.set_float("VLSR", velo_lsr, "[m/s] Reference velocity");
+    cards.set_float("DELTAV", velo_next - velo_lsr, "[m/s] Velocity resolution");
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -538,67 +596,12 @@ DELTAV  = -0.106265872717E+003
         assert!((crval2 - 40.738).abs() < 1e-10);
     }
 
-    #[test]
-    fn write_class_deltav() {
-        // CDELT=39062.5 Hz, RESTFREQ=1.102e11 → DELTAV computed correctly
-        let restfreq = 0.110201354300e12;
-        let cdelt_freq = 39062.5;
-        let mut store = FitsStore::new(3);
-        store.ctype[0] = Some("FREQ".to_string());
-        store.crval[0] = Some(restfreq);
-        store.crpix[0] = Some(512.5);
-        store.cdelt[0] = Some(cdelt_freq);
-        store.ctype[1] = Some("RA---TAN".to_string());
-        store.crval[1] = Some(40.738);
-        store.crpix[1] = Some(0.5);
-        store.cdelt[1] = Some(-0.01);
-        store.ctype[2] = Some("DEC--TAN".to_string());
-        store.crval[2] = Some(62.933);
-        store.crpix[2] = Some(0.5);
-        store.cdelt[2] = Some(0.01);
-        store.restfrq = Some(restfreq);
-
-        let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
-
-        // DELTAV = -c * CDELT / RESTFREQ
-        let expected_deltav = -C_LIGHT * cdelt_freq / restfreq;
-        let deltav = cards.get_float("DELTAV").unwrap();
-        assert!(
-            (deltav - expected_deltav).abs() < 1e-6,
-            "Expected DELTAV ≈ {expected_deltav}, got {deltav}"
-        );
-    }
-
-    #[test]
-    fn write_class_velo_lsr() {
-        // CRVAL=RESTFREQ → VELO-LSR≈0 (at rest freq, velocity is 0)
-        let restfreq = 0.110201354300e12;
-        let mut store = FitsStore::new(3);
-        store.ctype[0] = Some("FREQ".to_string());
-        store.crval[0] = Some(restfreq); // at rest frequency → v=0
-        store.crpix[0] = Some(512.5);
-        store.cdelt[0] = Some(39062.5);
-        store.ctype[1] = Some("RA---TAN".to_string());
-        store.crval[1] = Some(40.738);
-        store.crpix[1] = Some(0.5);
-        store.cdelt[1] = Some(-0.01);
-        store.ctype[2] = Some("DEC--TAN".to_string());
-        store.crval[2] = Some(62.933);
-        store.crpix[2] = Some(0.5);
-        store.cdelt[2] = Some(0.01);
-        store.restfrq = Some(restfreq);
-
-        let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards, ' ', true).unwrap();
-
-        // VELO-LSR = c * (1 - CRVAL/RESTFREQ) = c * (1 - 1) = 0
-        let velo_lsr = cards.get_float("VELO-LSR").unwrap();
-        assert!(
-            velo_lsr.abs() < 1e-3,
-            "Expected VELO-LSR ≈ 0, got {velo_lsr}"
-        );
-    }
+    // DELTAV / VELO-LSR are no longer computed inside
+    // `write_to_cards`; they're emitted by
+    // `write_velocities_from_frameset`, which needs a FrameSet
+    // (not a raw FitsStore) and the velocity-Mapping from
+    // SpecFrame::convert. The end-to-end pipeline is exercised by
+    // the wcsconv fixtures (class-ait, class-sin, etc.).
 
     #[test]
     fn write_class_sfl_to_gls() {
