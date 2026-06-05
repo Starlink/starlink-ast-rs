@@ -4,6 +4,7 @@ mod basic;
 mod cmpframe;
 pub(crate) mod date_time;
 mod dsbspecframe;
+pub(crate) mod find_frame;
 mod fluxframe;
 mod frameset;
 pub(crate) mod sky_convert;
@@ -231,6 +232,80 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     ///
     /// Uses AST's standard floating-point tolerance for numeric comparisons.
     fn equal(&self, other: &dyn Frame) -> bool;
+
+    // -----------------------------------------------------------------
+    // astFindFrame / astMatch / astSubFrame trampoline.
+    // See `find_frame.rs` for the algorithm; per-class overrides
+    // implement the celestial / spectral / compound matching kernels.
+    // -----------------------------------------------------------------
+
+    /// Match `target` against this template.
+    ///
+    /// Returns `Some(MatchResult)` if `target` can be reached from
+    /// this template's coordinate system, `None` otherwise. Mirrors C
+    /// `astMatch` (frame.c:7073).
+    ///
+    /// `match_sub`: when `true`, allow the target to be a more
+    /// specialised class than the template (the target is cast down).
+    /// `false` requires the target to be the same class or more
+    /// specialised. Mirrors the `matchsub` parameter handled by C's
+    /// `astMatch_` global wrapper.
+    ///
+    /// Default implementation returns `Ok(None)` — the trampoline is
+    /// only meaningful once a per-class override lands. Concrete
+    /// classes override with their own matching kernels.
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<find_frame::MatchResult>> {
+        let _ = (target, match_sub);
+        Ok(None)
+    }
+
+    /// Select axes from `self` (the target), overlaying `template`'s
+    /// explicitly-set attributes on the result.
+    ///
+    /// `result_naxes` is the number of axes in the final result Frame
+    /// (equal to `target_axes.len()` in canonical use). `target_axes`
+    /// holds zero-based axis indices into `self` (or `-1` for "no
+    /// association"); `template_axes` is the parallel array of zero-
+    /// based template indices.
+    ///
+    /// Returns `Some((map, result))` where `map` transforms `self`
+    /// (target) coordinates into `result` coordinates. Mirrors C
+    /// `astSubFrame` (frame.c:10838).
+    ///
+    /// Default implementation returns `Ok(None)`.
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        let _ = (template, result_naxes, target_axes, template_axes);
+        Ok(None)
+    }
+
+    /// Top-level FindFrame — search self (or, in FrameSet / CmpFrame
+    /// overrides, self's components) for a Frame the supplied
+    /// template matches.
+    ///
+    /// `domainlist` is a comma-separated, case-insensitive priority
+    /// list. An empty field permits any domain. Mirrors C
+    /// `astFindFrame` (frame.c:3735).
+    ///
+    /// Default implementation: try `template.match_template(self, …)`,
+    /// gate on domain match, and wrap the result as a 2-frame
+    /// FrameSet.
+    fn find_frame_template(
+        &self,
+        template: &dyn Frame,
+        domainlist: &str,
+    ) -> AstResult<Option<find_frame::FindFrameResult>> {
+        find_frame::default_find_frame(self.snapshot(), template, domainlist)
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.
