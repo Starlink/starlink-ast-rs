@@ -287,6 +287,13 @@ pub struct SpecFrame {
     /// means "use the system-derived default from
     /// [`SpecSystem::label`]".
     label_override: Option<String>,
+
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    min_axes_opt: Option<usize>,
+    max_axes_opt: Option<usize>,
+    match_end_opt: Option<bool>,
+    preserve_axes_opt: Option<bool>,
+    permute_opt: Option<bool>,
 }
 
 impl SpecFrame {
@@ -320,6 +327,11 @@ impl SpecFrame {
             act_unt: None,
             ident: None,
             label_override: None,
+            min_axes_opt: None,
+            max_axes_opt: None,
+            match_end_opt: None,
+            preserve_axes_opt: None,
+            permute_opt: None,
         }
     }
 
@@ -1444,6 +1456,56 @@ impl Frame for SpecFrame {
 
     fn snapshot(&self) -> DynFrame {
         Box::new(self.clone())
+    }
+
+    // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
+    // SpecFrame defaults Permute to `false` (a 1-axis class can't
+    // have a permuted match anyway, and C's specframe.c sets the
+    // default to 0).
+    fn min_axes(&self) -> usize {
+        self.min_axes_opt.unwrap_or(1)
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.min_axes_opt = Some(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.min_axes_opt.is_some()
+    }
+    fn max_axes(&self) -> usize {
+        self.max_axes_opt.unwrap_or(1)
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.max_axes_opt = Some(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.max_axes_opt.is_some()
+    }
+    fn match_end(&self) -> bool {
+        self.match_end_opt.unwrap_or(false)
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.match_end_opt = Some(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.match_end_opt.is_some()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.unwrap_or(false)
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.preserve_axes_opt = Some(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.is_some()
+    }
+    fn permute(&self) -> bool {
+        self.permute_opt.unwrap_or(false)
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.permute_opt = Some(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.permute_opt.is_some()
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {

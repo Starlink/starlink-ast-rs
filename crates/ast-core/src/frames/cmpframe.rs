@@ -30,6 +30,12 @@ pub struct CmpFrame {
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    min_axes_opt: Option<usize>,
+    max_axes_opt: Option<usize>,
+    match_end_opt: Option<bool>,
+    preserve_axes_opt: Option<bool>,
+    permute_opt: Option<bool>,
 }
 
 impl CmpFrame {
@@ -44,6 +50,11 @@ impl CmpFrame {
             perm: (0..naxes).collect(),
             act_unt: None,
             ident: None,
+            min_axes_opt: None,
+            max_axes_opt: None,
+            match_end_opt: None,
+            preserve_axes_opt: None,
+            permute_opt: None,
         }
     }
 
@@ -238,6 +249,58 @@ impl Frame for CmpFrame {
         let mut cmp = CmpFrame::new(self.frame1.snapshot(), self.frame2.snapshot());
         cmp.perm = self.perm.clone();
         Box::new(cmp)
+    }
+
+    // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
+    // CmpFrame's MinAxes / MaxAxes default in C are derived from
+    // the components' MinAxes / MaxAxes (sum for max, max for min);
+    // here we use naxes() as the default if not explicitly set,
+    // matching the simpler convention sufficient for `astFindFrame`'s
+    // use of these attributes from the *template* side.
+    fn min_axes(&self) -> usize {
+        self.min_axes_opt.unwrap_or_else(|| self.naxes())
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.min_axes_opt = Some(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.min_axes_opt.is_some()
+    }
+    fn max_axes(&self) -> usize {
+        self.max_axes_opt.unwrap_or_else(|| self.naxes())
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.max_axes_opt = Some(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.max_axes_opt.is_some()
+    }
+    fn match_end(&self) -> bool {
+        self.match_end_opt.unwrap_or(false)
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.match_end_opt = Some(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.match_end_opt.is_some()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.unwrap_or(false)
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.preserve_axes_opt = Some(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.is_some()
+    }
+    fn permute(&self) -> bool {
+        self.permute_opt.unwrap_or(true)
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.permute_opt = Some(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.permute_opt.is_some()
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {

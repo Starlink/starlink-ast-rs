@@ -131,6 +131,89 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         ""
     }
 
+    // -----------------------------------------------------------------
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    // Mirrors the C virtual getters / setters / testers — see
+    // frame.c (default impls), skyframe.c / specframe.c (overrides).
+    // -----------------------------------------------------------------
+
+    /// Minimum acceptable target axis count when this Frame is used as
+    /// a template. Mirrors C `astGetMinAxes` (frame.c). Default: the
+    /// number of axes in self.
+    fn min_axes(&self) -> usize {
+        self.naxes()
+    }
+
+    /// Set the minimum acceptable target axis count.
+    fn set_min_axes(&mut self, _n: usize) {}
+
+    /// Test whether `MinAxes` has been explicitly set.
+    fn test_min_axes(&self) -> bool {
+        false
+    }
+
+    /// Maximum acceptable target axis count when this Frame is used as
+    /// a template. Mirrors C `astGetMaxAxes`. Default: the number of
+    /// axes in self.
+    fn max_axes(&self) -> usize {
+        self.naxes()
+    }
+
+    /// Set the maximum acceptable target axis count.
+    fn set_max_axes(&mut self, _n: usize) {}
+
+    /// Test whether `MaxAxes` has been explicitly set.
+    fn test_max_axes(&self) -> bool {
+        false
+    }
+
+    /// `MatchEnd`: when the template has fewer axes than the target,
+    /// match the *final* template axes onto the *final* target axes
+    /// (preserving end-alignment) rather than the default initial-axis
+    /// alignment. Mirrors C `astGetMatchEnd`. Default: `false` (`0`).
+    fn match_end(&self) -> bool {
+        false
+    }
+
+    /// Set the `MatchEnd` attribute.
+    fn set_match_end(&mut self, _v: bool) {}
+
+    /// Test whether `MatchEnd` has been explicitly set.
+    fn test_match_end(&self) -> bool {
+        false
+    }
+
+    /// `PreserveAxes`: when set, `Match` returns a result Frame whose
+    /// axis count equals the target's (rather than the template's).
+    /// Mirrors C `astGetPreserveAxes`. Default: `false` (`0`).
+    fn preserve_axes(&self) -> bool {
+        false
+    }
+
+    /// Set the `PreserveAxes` attribute.
+    fn set_preserve_axes(&mut self, _v: bool) {}
+
+    /// Test whether `PreserveAxes` has been explicitly set.
+    fn test_preserve_axes(&self) -> bool {
+        false
+    }
+
+    /// `Permute`: whether the template is willing to match a target
+    /// whose axes are in a permuted order. Mirrors C `astGetPermute`.
+    /// Default: `true` (`1`) for plain Frame; `false` (`0`) for
+    /// SkyFrame and SpecFrame (overridden in those classes).
+    fn permute(&self) -> bool {
+        true
+    }
+
+    /// Set the `Permute` attribute.
+    fn set_permute(&mut self, _v: bool) {}
+
+    /// Test whether `Permute` has been explicitly set.
+    fn test_permute(&self) -> bool {
+        false
+    }
+
     /// Permute the axes of this frame.
     ///
     /// `perm` is a 1-based permutation array of length `naxes`. After the

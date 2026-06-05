@@ -32,6 +32,12 @@ pub struct BasicFrame {
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    min_axes_opt: Option<usize>,
+    max_axes_opt: Option<usize>,
+    match_end_opt: Option<bool>,
+    preserve_axes_opt: Option<bool>,
+    permute_opt: Option<bool>,
 }
 
 /// Builder for [`BasicFrame`].
@@ -175,6 +181,11 @@ impl BasicFrameBuilder {
             tops: self.tops,
             act_unt: self.act_unt,
             ident: self.ident,
+            min_axes_opt: None,
+            max_axes_opt: None,
+            match_end_opt: None,
+            preserve_axes_opt: None,
+            permute_opt: None,
         })
     }
 }
@@ -569,6 +580,54 @@ impl Frame for BasicFrame {
 
     fn snapshot(&self) -> DynFrame {
         Box::new(self.clone())
+    }
+
+    // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
+    fn min_axes(&self) -> usize {
+        self.min_axes_opt.unwrap_or(self.naxes)
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.min_axes_opt = Some(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.min_axes_opt.is_some()
+    }
+    fn max_axes(&self) -> usize {
+        self.max_axes_opt.unwrap_or(self.naxes)
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.max_axes_opt = Some(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.max_axes_opt.is_some()
+    }
+    fn match_end(&self) -> bool {
+        self.match_end_opt.unwrap_or(false)
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.match_end_opt = Some(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.match_end_opt.is_some()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.unwrap_or(false)
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.preserve_axes_opt = Some(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.is_some()
+    }
+    fn permute(&self) -> bool {
+        // Plain Frame's Permute defaults to true (1) — see frame.c.
+        self.permute_opt.unwrap_or(true)
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.permute_opt = Some(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.permute_opt.is_some()
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

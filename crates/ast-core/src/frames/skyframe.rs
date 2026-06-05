@@ -79,6 +79,16 @@ pub struct SkyFrame {
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
+
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    // None = "use the trait default" (which returns 2 for SkyFrame's
+    // naxes-based attributes, false/false/false for the booleans
+    // overridden below).
+    min_axes_opt: Option<usize>,
+    max_axes_opt: Option<usize>,
+    match_end_opt: Option<bool>,
+    preserve_axes_opt: Option<bool>,
+    permute_opt: Option<bool>,
 }
 
 impl SkyFrame {
@@ -116,6 +126,11 @@ impl SkyFrame {
             perm: [0, 1],
             act_unt: None,
             ident: None,
+            min_axes_opt: None,
+            max_axes_opt: None,
+            match_end_opt: None,
+            preserve_axes_opt: None,
+            permute_opt: None,
         }
     }
 
@@ -692,6 +707,58 @@ impl Frame for SkyFrame {
         self.perm[0] = old[perm[0] - 1];
         self.perm[1] = old[perm[1] - 1];
         Ok(())
+    }
+
+    // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
+    // SkyFrame defaults Permute to false (mirrors skyframe.c at the
+    // SetPermute line); the others inherit the trait default
+    // (`naxes()` for cardinality, `false` for booleans).
+    fn min_axes(&self) -> usize {
+        self.min_axes_opt.unwrap_or(2)
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.min_axes_opt = Some(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.min_axes_opt.is_some()
+    }
+    fn max_axes(&self) -> usize {
+        self.max_axes_opt.unwrap_or(2)
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.max_axes_opt = Some(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.max_axes_opt.is_some()
+    }
+    fn match_end(&self) -> bool {
+        self.match_end_opt.unwrap_or(false)
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.match_end_opt = Some(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.match_end_opt.is_some()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.unwrap_or(false)
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.preserve_axes_opt = Some(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.is_some()
+    }
+    /// SkyFrame's Permute defaults to `false` — mirrors the C behaviour
+    /// where SkyFrame's permute attribute defaults to 0.
+    fn permute(&self) -> bool {
+        self.permute_opt.unwrap_or(false)
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.permute_opt = Some(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.permute_opt.is_some()
     }
 
     fn snapshot(&self) -> DynFrame {
