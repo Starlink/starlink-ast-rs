@@ -15,7 +15,7 @@
 
 use crate::error::AstResult;
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
-use crate::mappings::DynMapping;
+use crate::mappings::{DynMapping, PermMap, UnitMap};
 
 /// Result of a successful `match_template` call.
 ///
@@ -105,4 +105,149 @@ pub(crate) fn default_find_frame(
     let mut fs = FrameSet::new(target);
     fs.add_frame(FrameRef::Base, map, m.result)?;
     Ok(Some(fs))
+}
+
+/// Default `SubFrame` body for plain Frames — mirrors C
+/// `Frame::SubFrame` (frame.c:10838).
+///
+/// Builds a Mapping from `target` to a result Frame whose axes are
+/// selected by `target_axes`. If `target_naxes == result_naxes` and
+/// the selection is the identity, a `UnitMap` is returned; otherwise
+/// a `PermMap` is constructed.
+///
+/// `target_axes` and `template_axes` are zero-based axis indices
+/// (with `-1` meaning "no association"). The result Frame is built
+/// from `target.pick_axes_snapshot(target_axes)` and any explicitly-
+/// set template attributes are then overlaid via
+/// `Frame::overlay_template`.
+pub(crate) fn default_sub_frame(
+    target: &dyn Frame,
+    template: Option<&dyn Frame>,
+    target_axes: &[i32],
+    template_axes: &[i32],
+) -> AstResult<Option<(DynMapping, DynFrame)>> {
+    let target_naxes = target.naxes();
+    let result_naxes = target_axes.len();
+
+    // outperm (forward target -> result, length result_naxes):
+    //   outperm[result_axis] = target_axis (1-based) or 0 if unassociated.
+    // inperm (inverse result -> target, length target_naxes):
+    //   inperm[target_axis] = result_axis (1-based) or 0 if no result
+    //   axis is associated with this target axis.
+    //
+    // Mirrors frame.c:10987-11015 with the only difference being the
+    // 1-based / 0-as-BAD encoding of our PermMap (vs the C 0-based /
+    // -1-as-unassociated encoding).
+    let mut outperm = vec![0i64; result_naxes];
+    let mut inperm = vec![0i64; target_naxes];
+    let mut unit = target_naxes == result_naxes;
+    for (result_axis, &t) in target_axes.iter().enumerate() {
+        if t < 0 || (t as usize) >= target_naxes {
+            outperm[result_axis] = 0;
+            unit = false;
+        } else {
+            outperm[result_axis] = (t as i64) + 1;
+            inperm[t as usize] = (result_axis as i64) + 1;
+            if t as usize != result_axis {
+                unit = false;
+            }
+        }
+    }
+
+    // Build the result Frame: snapshot the target with only the
+    // chosen axes, then overlay template attributes if a template
+    // was supplied.
+    let mut result = target.pick_axes_snapshot(target_axes)?;
+    if let Some(t) = template {
+        result.overlay_template(t, template_axes)?;
+    }
+
+    // Mapping construction: UnitMap if no permutation/selection,
+    // PermMap otherwise. Mirrors frame.c:11062-11072.
+    let map: DynMapping = if unit {
+        Box::new(UnitMap::new(result_naxes))
+    } else {
+        Box::new(PermMap::new(&inperm, &outperm, &[])?)
+    };
+
+    Ok(Some((map, result)))
+}
+
+/// Default `Match` body — mirrors C `Frame::Match` (frame.c:7073).
+///
+/// Checks axis-cardinality bounds (`MinAxes` / `MaxAxes`), gates on
+/// `Domain` equality if the template has its Domain explicitly set,
+/// builds the `template_axes` / `target_axes` association arrays per
+/// the `MatchEnd` attribute, and defers to `target.sub_frame` to
+/// produce the (Mapping, result Frame) pair.
+pub(crate) fn default_match(
+    template: &dyn Frame,
+    target: &dyn Frame,
+    _match_sub: bool,
+) -> AstResult<Option<MatchResult>> {
+    // Cardinality check (frame.c:7244-7254).
+    let target_naxes = target.naxes();
+    let min_axes = template.min_axes();
+    let max_axes = template.max_axes();
+    if target_naxes < min_axes || target_naxes > max_axes {
+        return Ok(None);
+    }
+
+    // Domain check (frame.c:7256-7281). Only applies when the
+    // template has its Domain explicitly set; the target's domain may
+    // be defaulted.
+    if template.test_domain() && template.domain() != target.domain() {
+        return Ok(None);
+    }
+
+    // PreserveAxes / MatchEnd / template axis count
+    // (frame.c:7283-7293).
+    let preserve_axes = template.preserve_axes();
+    let match_end = template.match_end();
+    let template_naxes = template.naxes();
+    let result_naxes = if preserve_axes {
+        target_naxes
+    } else {
+        template_naxes
+    };
+
+    // Build the per-result-axis association arrays
+    // (frame.c:7300-7327).
+    let mut template_axes = vec![0i32; result_naxes];
+    let mut target_axes = vec![0i32; result_naxes];
+    let template_offset = (template_naxes as i32) - (result_naxes as i32);
+    let target_offset = (target_naxes as i32) - (result_naxes as i32);
+    for result_axis in 0..result_naxes {
+        let mut t_idx = result_axis as i32;
+        let mut tg_idx = result_axis as i32;
+        if match_end {
+            t_idx += template_offset;
+            tg_idx += target_offset;
+        }
+        template_axes[result_axis] = if t_idx < 0 || t_idx >= template_naxes as i32 {
+            -1
+        } else {
+            t_idx
+        };
+        target_axes[result_axis] = if tg_idx < 0 || tg_idx >= target_naxes as i32 {
+            -1
+        } else {
+            tg_idx
+        };
+    }
+
+    // Defer to the target's SubFrame to build the result + Mapping
+    // (frame.c:7332-7334).
+    let Some((map, result)) =
+        target.sub_frame(Some(template), result_naxes, &target_axes, &template_axes)?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(MatchResult {
+        template_axes,
+        target_axes,
+        map,
+        result,
+    }))
 }

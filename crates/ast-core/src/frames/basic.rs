@@ -700,6 +700,64 @@ impl Frame for BasicFrame {
     fn ident(&self) -> &str {
         BasicFrame::ident(self)
     }
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<super::find_frame::MatchResult>> {
+        super::find_frame::default_match(self, target, match_sub)
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        _result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        super::find_frame::default_sub_frame(self, template, target_axes, template_axes)
+    }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        let mut snap = BasicFrameBuilder::new(target_axes.len()).build()?;
+        if self.test_domain() {
+            snap.set_domain(self.domain());
+        }
+        if let Some(ref title) = self.title {
+            snap.set_title(title.clone());
+        }
+        for (i, &t) in target_axes.iter().enumerate() {
+            if t < 0 || (t as usize) >= self.naxes {
+                continue;
+            }
+            let src = t as usize;
+            if let Some(ref l) = self.labels[src] {
+                let _ = snap.set_label(i + 1, l.clone());
+            }
+            if let Some(ref u) = self.units[src] {
+                let _ = snap.set_unit(i + 1, u.clone());
+            }
+            if let Some(ref s) = self.symbols[src] {
+                let _ = snap.set_symbol(i + 1, s.clone());
+            }
+            if let Some(ref f) = self.format_strs[src] {
+                let _ = snap.set_format_str(i + 1, f.clone());
+            }
+        }
+        Ok(Box::new(snap))
+    }
+
+    fn overlay_template(&mut self, template: &dyn Frame, _template_axes: &[i32]) -> AstResult<()> {
+        // Mirrors C `Frame::Overlay`: copy any template attribute that
+        // has been explicitly set onto the target. For BasicFrame the
+        // only Frame-level attribute we care about here is Domain;
+        // per-axis attributes flow through `pick_axes_snapshot`.
+        if template.test_domain() {
+            self.set_domain(template.domain().to_string());
+        }
+        Ok(())
+    }
 }
 
 impl Serializable for BasicFrame {
@@ -889,5 +947,64 @@ impl Serializable for BasicFrame {
         }
 
         builder.build()
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::coords::PointSet;
+
+    fn bf(naxes: usize) -> BasicFrame {
+        BasicFrameBuilder::new(naxes).build().unwrap()
+    }
+
+    #[test]
+    fn sub_frame_select_2_of_3_axes() {
+        // Pick axes (1, 3) (zero-based 0, 2) from a 3-axis BasicFrame.
+        let target = bf(3);
+        let target_axes: Vec<i32> = vec![0, 2];
+        let template_axes: Vec<i32> = vec![0, 1];
+        let (map, frame) = target
+            .sub_frame(None, 2, &target_axes, &template_axes)
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame.naxes(), 2);
+        assert_eq!(map.nin(), 3);
+        assert_eq!(map.nout(), 2);
+        let pts = PointSet::from_rows([[10.0_f64, 20.0, 30.0]]);
+        let out = map.transform(&pts, true).unwrap();
+        let row = out.point(0);
+        assert!((row[0] - 10.0).abs() < 1e-12);
+        assert!((row[1] - 30.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn match_template_basic_2axes_2axes() {
+        let template = bf(2);
+        let target = bf(2);
+        let m = template.match_template(&target, false).unwrap().unwrap();
+        assert_eq!(m.template_axes, vec![0, 1]);
+        assert_eq!(m.target_axes, vec![0, 1]);
+        assert_eq!(m.result.naxes(), 2);
+        assert_eq!(m.map.nin(), 2);
+        assert_eq!(m.map.nout(), 2);
+    }
+
+    #[test]
+    fn match_template_basic_axis_mismatch() {
+        let template = bf(3);
+        let target = bf(2);
+        let m = template.match_template(&target, false).unwrap();
+        assert!(m.is_none(), "MaxAxes/MinAxes default to template's naxes");
+    }
+
+    #[test]
+    fn match_template_basic_domain_mismatch() {
+        let mut template = bf(2);
+        template.set_domain("A");
+        let mut target = bf(2);
+        target.set_domain("B");
+        let m = template.match_template(&target, false).unwrap();
+        assert!(m.is_none(), "Domains differ; should fail to match");
     }
 }
