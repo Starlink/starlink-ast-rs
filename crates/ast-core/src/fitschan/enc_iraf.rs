@@ -174,16 +174,16 @@ pub(crate) fn write_to_cards(
         }
     }
 
-    // CUNITi
+    // CD matrix: use CD directly if available, otherwise compute from PC × CDELT
+    write_iraf_cd_matrix(store, cards, s);
+
+    // CUNITi (mirror C IRAFFromStore: CUNIT is emitted after the CD matrix)
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = key_for("CUNIT", Some(i + 1), s);
             cards.set_string(&key, val, &format!("Units for axis {}", i + 1));
         }
     }
-
-    // CD matrix: use CD directly if available, otherwise compute from PC × CDELT
-    write_iraf_cd_matrix(store, cards, s);
 
     // RADECSYS (the IRAF misspelling). Per-version-letter (truncated
     // to fit the 8-char limit when alt).
