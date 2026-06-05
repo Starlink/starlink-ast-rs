@@ -261,21 +261,39 @@ pub(crate) fn sip_int_world(
         return Ok(None);
     }
 
-    // Step 8: handle non-celestial trailing axes. The synthetic SIP
-    // chain may have nout > 2; build the parallel sub-mapping that
-    // produces the remaining outputs.
+    // Step 8: handle non-celestial trailing axes. Mirrors
+    // fitschan.c:28852-28877. When the supplied mapping has more than
+    // the two celestial outputs, split out a sub-mapping that produces
+    // the remaining (non-celestial) outputs so it can be put in
+    // parallel with the (cleaned) celestial 2-in/2-out chain when the
+    // result mapping is rebuilt.
     //
-    // (This mirrors fitschan.c:28855-28876, but the C bug aliases nout
-    // and nin so the branch never fires for synthetic SIP_2D / SIP_3D
-    // fixtures where they're equal. We mirror the bug.)
-    let inax2: Option<Vec<usize>> = None;
-    let tmap2: Option<DynMapping> = None;
+    // Note: per the C bug at fitschan.c:28673-28674 (`nout = astGetNin(map)`)
+    // the local `nout` here equals `nin`; we mirror the bug.
+    let mut inax2: Option<Vec<usize>> = None;
+    let mut tmap2: Option<DynMapping> = None;
     if nout > 2 {
-        // Even though the C bug means we can't reach this branch from
-        // the in-tree fset_to_store flow, keep the structural mirror
-        // so that a future caller passing the pre-bug nout can drive
-        // the path.
-        return Ok(None);
+        let mut outrem: Vec<usize> = Vec::with_capacity(nout - 2);
+        for iout in 0..nout {
+            if iout != lonax && iout != latax {
+                outrem.push(iout);
+            }
+        }
+
+        // Mirrors C's astInvert/astMapSplit/astInvert dance: invert
+        // map, split on `outrem` (now inputs of the inverse), invert
+        // map back. We work on a clone so we don't mutate the caller's
+        // mapping.
+        let mut inverted2 = map.clone_box();
+        inverted2.invert();
+        match inverted2.map_split(&outrem) {
+            Some((axes, mut t2)) => {
+                t2.invert();
+                inax2 = Some(axes);
+                tmap2 = Some(t2);
+            }
+            None => return Ok(None),
+        }
     } else if nout != 2 || nin != 2 {
         return Ok(None);
     }

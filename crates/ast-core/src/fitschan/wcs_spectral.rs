@@ -91,10 +91,24 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // CUNIT → SpecFrame unit. Recorded as the user-facing presentation
     // unit; the SpecMap that connects two SpecFrames handles the SI
     // conversion when systems differ. Mirrors specframe.c::SetUnit.
-    if let Some(ref cunit) = store.cunit[axis] {
-        if !cunit.is_empty() {
-            frame.set_unit(cunit);
-        }
+    //
+    // C `WcsSpectral` (fitschan.c:39509-39517) always calls
+    // `astSetUnit(specfrm, 0, cunit)`, falling back to the FITS-WCS
+    // Paper III default unit (the value `IsSpectral` returns — "Hz" for
+    // FREQ, "m" for WAVE, "m/s" for VRAD/VOPT/VELO, etc) when no
+    // CUNIT keyword is present. Without this fallback the SpecFrame
+    // carries no explicit Unit, and the writer falls back to the
+    // SpecSystem's display default ("GHz" for FREQ) — diverging from
+    // the C library's CUNIT round-trip.
+    let cunit = store
+        .cunit
+        .get(axis)
+        .and_then(|v| v.as_deref())
+        .filter(|u| !u.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| system.specmap_units().to_string());
+    if !cunit.is_empty() {
+        frame.set_unit(&cunit);
     }
 
     // Step 4: Build the IWC→S mapping. For a linear axis (no algcode)

@@ -12,6 +12,7 @@ pub(crate) use plane_stores::{PlaneStore, collect_plane_stores};
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::wcs_decompose::split_cd;
+use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{FrameRef, FrameSet, TimeScale};
 use crate::pal;
@@ -698,41 +699,63 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) -> AstResul
 
 /// Emit one SIP coefficient block (A_*, B_*, AP_*, BP_*).
 ///
-/// Mirrors `SIPIntWorld`'s store loops (fitschan.c:28939-28986): emit
-/// `<prefix>_ORDER` only when at least one non-zero coefficient exists,
-/// then iterate over the (i, j) grid and emit `<prefix>_i_j` cards
-/// for every non-zero entry. The forward block uses comments
-/// "SIP forward distortion coeff"; the inverse blocks "SIP inverse
-/// distortion coeff" — matching the C library's SIP writer.
+/// Mirrors `SIPIntWorld`'s store loops (fitschan.c:28939-28986) and
+/// the C writer at fitschan.c:37378-37413. The store table is
+/// initialised with `AST__BAD` for every (i, jm) pair `≤ (imax,
+/// jmmax)`, then real coefficients overwrite some slots. The C
+/// `WcsFromStore` writer iterates `p ∈ [0, pmax]` × `q ∈ [0, qmax]`
+/// and emits a card only when `GetItem` returns a non-`AST__BAD`
+/// value. The order keyword `<prefix>_ORDER` is emitted only when
+/// at least one good coefficient was emitted, with the value being
+/// the maximum `p + q` across emitted cards.
+///
+/// The forward block uses comments "SIP forward distortion coeff";
+/// the inverse blocks "SIP inverse distortion coeff" — matching the
+/// C library's SIP writer's `SetValue` calls.
 fn write_sip_block(order: Option<usize>, coeffs: &[Vec<f64>], prefix: &str, cards: &mut CardList) {
-    let Some(order) = order else { return };
+    let Some(_order) = order else { return };
     if coeffs.is_empty() {
         return;
     }
-    let order_comment = match prefix {
-        "A" => "SIP polynomial order axis 1",
-        "B" => "SIP polynomial order axis 2",
-        "AP" => "SIP inverse polynomial order axis 1",
-        "BP" => "SIP inverse polynomial order axis 2",
-        _ => "SIP polynomial order",
-    };
+    let order_comment = "SIP max order";
     let coeff_comment = match prefix {
         "AP" | "BP" => "SIP inverse distortion coeff",
         _ => "SIP forward distortion coeff",
     };
-    cards.set_int(&format!("{prefix}_ORDER"), order as i64, order_comment);
-    for i in 0..=order {
-        let row = match coeffs.get(i) {
+
+    let pmax = coeffs.len().saturating_sub(1);
+    let qmax = coeffs
+        .iter()
+        .map(|r| r.len())
+        .max()
+        .unwrap_or(0)
+        .saturating_sub(1);
+
+    let mut emitted_order: usize = 0;
+    let mut any = false;
+    for p in 0..=pmax {
+        let row = match coeffs.get(p) {
             Some(r) => r,
             None => continue,
         };
-        for j in 0..=order {
-            let val = row.get(j).copied().unwrap_or(0.0);
-            if val == 0.0 {
+        for q in 0..=qmax {
+            let val = row.get(q).copied().unwrap_or(BAD_VALUE);
+            if val == BAD_VALUE {
                 continue;
             }
-            cards.set_float(&format!("{prefix}_{i}_{j}"), val, coeff_comment);
+            cards.set_float(&format!("{prefix}_{p}_{q}"), val, coeff_comment);
+            if p + q > emitted_order {
+                emitted_order = p + q;
+            }
+            any = true;
         }
+    }
+    if any {
+        cards.set_int(
+            &format!("{prefix}_ORDER"),
+            emitted_order as i64,
+            order_comment,
+        );
     }
 }
 

@@ -200,7 +200,19 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     };
 
     // Create the 2-in, 2-out PolyMap for the SIP axes.
-    let polymap = PolyMap::new(2, 2, &forward_terms, inv)?;
+    let mut polymap = PolyMap::new(2, 2, &forward_terms, inv)?;
+    // Mirrors fitschan.c:29361-29382: when no explicit AP/BP inverse
+    // coefficients are supplied, the C library calls astPolyTran to
+    // fit a polynomial inverse (under SipReplace=1, the default); if
+    // that fails it falls back to IterInverse=1. The Rust port hasn't
+    // ported astPolyTran yet, so we enable the iterative inverse only
+    // when no explicit inverse coefficients are present. When AP/BP
+    // are supplied we leave IterInverse off so that downstream
+    // analysis (notably AnalysePoly in `sip_int_world`) preserves the
+    // explicit inverse coefficients verbatim.
+    if inverse_terms.is_empty() {
+        polymap.set_iter_inverse(true);
+    }
 
     if naxis == 2 {
         // Simple case: SIP applies to both axes directly.
