@@ -1,8 +1,36 @@
-# wcsconv residual classification (55 failures, 2026-06-02)
+# wcsconv residual classification (26 failures, 2026-06-04)
 
-Snapshot of remaining `cargo test -p ast-core --test wcsconv -- --include-ignored` failures
-on `tickets/DM-54793` after the alt-WCS landing and successive easy-win passes
-(passing 137/192).
+Snapshot of remaining `cargo test -p ast-core --test test_wcsconv -- --include-ignored`
+failures on `tickets/DM-54793` after the SpecTrans port (166/192 passing).
+
+Cleared since the original 2026-06-02 snapshot:
+- **Bucket A (FITS-PC alt-axis Cnxxx reader)** — 8 fixtures cleared by the
+  SpecTrans port (translation 6 rewrites Cnxxx → *A..*Z).
+- **Bucket D (F2W CTYPE)** — 2 fixtures cleared by the SpecTrans translation
+  18 + the wcs_spectral NonLinSpecWcs port.
+- **Bucket J (SFL-at-origin AIPS)** — 4 fixtures cleared by the AIPS
+  encoder fix.
+- Several singletons (azel, fits-iraf-cd-old, vopt-geo on aips++, …).
+
+Remaining 26 fixtures cluster around 7 buckets (write-side issues
+mostly; the SpecTrans port covered the read side comprehensively):
+
+| Bucket | Count | Description | Path forward |
+|--------|------:|-------------|--------------|
+| B (CLASS encoder) | 8+2 | class_*_fits_class + jan_*_class | Port C `ClassFromStore` (write side) |
+| H (SIP write) | 4 | sip*_fits_wcs | SIP encoder + comment leak |
+| I (offset-sky) | 2 | offset-sky*_fits_wcs | OFLN-OFFSET branch |
+| K (CRPIX integer-snap, 1D/3D) | 4 | vopt-geo, zpn, longslit, a20070718_fits_iraf | Port AIPS spectral integer-snap |
+| Singletons | 4 | degen1, lsst, dss×3 | Per-fixture |
+| FITS-PC last-plane-wins | 2 | fits-pc-altgal, fits-pc-gal | Galactic alt-plane B1950 epoch fallback (writer-side propagation) |
+| Singletons (CLASS) | 1 | skyspec3d-class | CLASS spectral CRPIX |
+
+The previous classification (kept below for context) was written
+when 55 fixtures failed.
+
+---
+
+## Original snapshot (2026-06-02)
 
 Each bucket lists the fixtures and the root cause that makes them fail.
 **No bucket should be addressed with a heuristic** — each one corresponds to a
