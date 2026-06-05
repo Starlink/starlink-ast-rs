@@ -89,7 +89,7 @@ pub(crate) fn fset_to_store(
     // this, the bounds returned by astMapBox over the spec axis
     // can differ from C by O(1e-2 m/s) for typical millimetre-wave
     // velocity systems.
-    let mut owned_fs = make_fits_frameset(fs)?;
+    let mut owned_fs = make_fits_frameset(fs, encoding)?;
     let fs = &mut owned_fs;
 
     // Step 1: pixel→WCS Mapping from base to current frame.
@@ -249,7 +249,7 @@ pub(crate) fn fset_to_store(
 /// non-SkyFrame celestial axes from radians to degrees — are
 /// out-of-scope for the current fixture coverage and tracked in
 /// docs/issues/fset_to_store-port-gaps.md.
-fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
+fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> {
     use crate::fitschan::fset_to_store::celestial_axes;
     use crate::fitschan::fset_to_store::spectral_axes::primary_frame;
     use crate::frames::{SkySystem, SpecFrame};
@@ -435,7 +435,197 @@ fn make_fits_frameset(fs: &FrameSet) -> AstResult<FrameSet> {
         Ok(())
     })?;
 
+    // Step 5 (fitschan.c:21517 → AddEncodingFrame at fitschan.c:2435):
+    // per-encoding postprocessing. For FITS-CLASS this swaps the
+    // current Frame for a CmpFrame(SpecFrame{Freq,Source,Hz},
+    // SkyFrame{FK5/FK4/Galactic}) so the downstream FitsStore
+    // extraction sees Source-rest-frame Hz CRVALs.
+    if matches!(encoding, Encoding::FitsClass) {
+        add_encoding_frame_class(&mut owned)?;
+    }
+
     Ok(owned)
+}
+
+/// Mirrors C `AddEncodingFrame` (fitschan.c:2359) for the FITS-CLASS
+/// branch (lines 2433-2513).
+///
+/// When the FrameSet's current Frame contains both a SpecFrame and a
+/// SkyFrame component, build a new `CmpFrame(SpecFrame{Freq,Source,
+/// Hz}, SkyFrame{FK5/FK4/Galactic})` and add it as the new current
+/// Frame.
+///
+/// The C path uses `astConvert(curfrm, cmpfrm)` to compute the
+/// CmpFrame→CmpFrame conversion Mapping; that walks each component
+/// pair and composes the per-component conversions in parallel. Our
+/// CmpFrame::convert today returns a UnitMap for same-axes targets,
+/// which would defeat the purpose. Instead we go a step lower:
+/// compute the per-component Mappings (SpecFrame→SpecFrame using the
+/// existing `SpecFrame::convert`, SkyFrame→SkyFrame using
+/// `SkyFrame::convert`) and parallel-compose them via CmpMap. The
+/// resulting Mapping shifts the CRVAL through the SpecMap chain that
+/// converts Barycentric Hz to Source Hz.
+fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
+    use crate::frames::{
+        CmpFrame, DSBSpecFrame, SkyFrame, SkySystem, SpecFrame, SpecSystem, StdOfRest,
+    };
+
+    // Locate SpecFrame and SkyFrame components in the current Frame
+    // by walking primary frames (mirrors C:2440-2448).
+    let cfrm_naxes = fs.current().naxes();
+    let mut spec_present = false;
+    let mut sky_present = false;
+    for iax in 0..cfrm_naxes {
+        let (pframe, _) = crate::frames::specframe::primary_frame_walk(fs.current(), iax);
+        if pframe.as_any().downcast_ref::<SpecFrame>().is_some()
+            || pframe.as_any().downcast_ref::<DSBSpecFrame>().is_some()
+        {
+            spec_present = true;
+        } else if pframe.as_any().downcast_ref::<SkyFrame>().is_some() {
+            sky_present = true;
+        }
+    }
+
+    // Cannot proceed without both components. Mirrors C:2451.
+    if !(spec_present && sky_present) {
+        return Ok(());
+    }
+
+    // Locate the matched SpecFrame inside the FrameSet via find_frame
+    // with a Source-Hz SpecFrame template (matches the C
+    // SpecFrame template construction with MinAxes/MaxAxes widened).
+    let spec_template = {
+        let mut spec = SpecFrame::new(SpecSystem::Freq);
+        spec.set_min_axes(1);
+        spec.set_max_axes(3);
+        spec
+    };
+    let Some(found_spec_fs) = fs.find_frame(&spec_template, &[])? else {
+        return Ok(());
+    };
+    let matched_spec = found_spec_fs
+        .current()
+        .as_any()
+        .downcast_ref::<SpecFrame>()
+        .expect("find_frame returns SpecFrame for SpecFrame template")
+        .clone();
+
+    // Build the Source-Hz target SpecFrame: a copy of the matched
+    // SpecFrame with System=Freq, StdOfRest=Source, Unit=Hz forced
+    // (C:2456-2463).
+    let mut source_spec = matched_spec.clone();
+    source_spec.set_system(SpecSystem::Freq);
+    source_spec.set_std_of_rest(StdOfRest::Source);
+    source_spec.set_unit("Hz");
+
+    // Mapping that converts the matched SpecFrame's coordinates to
+    // the Source-Hz frame.
+    let Some(spec_conv_fs) = matched_spec.convert(&source_spec, &[])? else {
+        return Ok(());
+    };
+    let spec_mapping = spec_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    // Locate the matched SkyFrame in the FrameSet.
+    let sky_template = {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_min_axes(2);
+        sky.set_max_axes(3);
+        sky
+    };
+    let Some(found_sky_fs) = fs.find_frame(&sky_template, &[])? else {
+        return Ok(());
+    };
+    let matched_sky = found_sky_fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .expect("find_frame returns SkyFrame for SkyFrame template")
+        .clone();
+
+    // Build a CLASS-acceptable target SkyFrame (C:2466-2477):
+    // System ∈ {FK4, FK5, Galactic}; FK5 ⇒ J2000.0; FK4 ⇒ B1950.0.
+    let mut target_sky = matched_sky.clone();
+    let sys = target_sky.system();
+    let class_sys = match sys {
+        SkySystem::Fk4 | SkySystem::Fk5 | SkySystem::Galactic => sys,
+        _ => SkySystem::Fk5,
+    };
+    if class_sys != sys {
+        target_sky.set_system(class_sys);
+    }
+    match class_sys {
+        SkySystem::Fk5 => target_sky.set_equinox_mjd(51544.5), // J2000.0
+        SkySystem::Fk4 => target_sky.set_equinox_mjd(33281.92345905), // B1950.0
+        _ => {}
+    }
+
+    let Some(sky_conv_fs) = matched_sky.convert(&target_sky, &[])? else {
+        return Ok(());
+    };
+    let sky_mapping = sky_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    // Build the new CmpFrame(source_spec, target_sky) and the
+    // parallel CmpMap composing the two per-component conversions.
+    // The original CmpFrame's axis order is (spec, sky) when the
+    // SpecFrame is the first component. For now, only handle that
+    // common case by checking the original current Frame's component
+    // order.
+    let cur = fs.current();
+    let cur_cmp = cur.as_any().downcast_ref::<CmpFrame>();
+    let Some(cur_cmp) = cur_cmp else {
+        // Non-CmpFrame current — skip; AddEncodingFrame is only
+        // meaningful for the cube case.
+        return Ok(());
+    };
+    let frame1_is_spec = cur_cmp
+        .frame1()
+        .as_any()
+        .downcast_ref::<SpecFrame>()
+        .is_some()
+        || cur_cmp
+            .frame1()
+            .as_any()
+            .downcast_ref::<DSBSpecFrame>()
+            .is_some();
+    let frame1_is_sky = cur_cmp
+        .frame1()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .is_some();
+
+    if !(frame1_is_spec || frame1_is_sky) {
+        // Components are not in (spec, sky) or (sky, spec) layout —
+        // bail out.
+        return Ok(());
+    }
+
+    use crate::mappings::{CmpMap, Composition};
+    let (new_cmp, parallel_map): (crate::frames::DynFrame, crate::mappings::DynMapping) =
+        if frame1_is_spec {
+            (
+                Box::new(CmpFrame::new(Box::new(source_spec), Box::new(target_sky))),
+                Box::new(CmpMap::new(
+                    spec_mapping,
+                    sky_mapping,
+                    Composition::Parallel,
+                )?),
+            )
+        } else {
+            (
+                Box::new(CmpFrame::new(Box::new(target_sky), Box::new(source_spec))),
+                Box::new(CmpMap::new(
+                    sky_mapping,
+                    spec_mapping,
+                    Composition::Parallel,
+                )?),
+            )
+        };
+
+    // Add the new Frame as the new current. Subsequent extraction
+    // (CelestialAxes/SpectralAxes) operates on this new Frame.
+    fs.add_frame(FrameRef::Current, parallel_map, new_cmp)?;
+
+    Ok(())
 }
 
 fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {

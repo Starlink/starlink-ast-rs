@@ -1818,7 +1818,7 @@ impl Frame for SpecFrame {
 /// the primary Frame. CmpFrame routes through its perm to one of
 /// its components and recurses; SkyFrame applies its own perm to
 /// expose the underlying lon/lat axis order.
-pub(super) fn primary_frame_walk(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
+pub(crate) fn primary_frame_walk(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
     if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
         // External axis → internal axis via perm.
         let internal = cmp.perm()[axis];

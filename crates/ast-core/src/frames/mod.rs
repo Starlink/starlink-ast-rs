@@ -11,7 +11,7 @@ pub(crate) mod sky_convert;
 pub(crate) mod skyaxis;
 mod skyframe;
 mod specfluxframe;
-mod specframe;
+pub(crate) mod specframe;
 mod timeframe;
 pub use basic::{BasicFrame, BasicFrameBuilder};
 pub use cmpframe::CmpFrame;
