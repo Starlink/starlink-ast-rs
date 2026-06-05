@@ -685,6 +685,7 @@ impl Channel for FitsChan {
                         // fitschan.c:6843-6898.
                         if let AnyObject::FrameSet(fs) = obj {
                             enc_class::write_velocities_from_frameset(fs, &mut self.cards)?;
+                            enc_class::write_azel_from_frameset(fs, &mut self.cards)?;
                         }
                         Ok(())
                     }

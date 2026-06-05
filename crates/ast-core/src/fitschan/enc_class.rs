@@ -17,7 +17,9 @@
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
+use crate::frames::{
+    Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, SpecSystem, StdOfRest,
+};
 
 /// Read CLASS-style WCS keywords from a [`CardList`] into a [`FitsStore`].
 ///
@@ -362,7 +364,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
         v.set_max_axes(3);
         v
     };
-    let Some(found) = fs.find_frame(&velo_template, &[])? else {
+    let Some(found) = Frame::find_frame_template(fs.current(), &velo_template, "")? else {
         return Ok(());
     };
     let velo_frame = found
@@ -414,6 +416,95 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     cards.set_float("VELO-LSR", velo_lsr, "[m/s] Reference velocity");
     cards.set_float("VLSR", velo_lsr, "[m/s] Reference velocity");
     cards.set_float("DELTAV", velo_next - velo_lsr, "[m/s] Velocity resolution");
+
+    Ok(())
+}
+
+/// FITS-CLASS AZIMUTH / ELEVATIO emission. Mirrors fitschan.c:6901-6944.
+///
+/// Takes the spatial reference point's (RA, Dec) in radians, converts
+/// it to (Az, El) in radians, normalises, and emits AZIMUTH / ELEVATIO
+/// in degrees.
+///
+/// The conversion goes through two find_frame calls:
+/// 1. find_frame(curfrm, SkyFrame{Permute=0, MinAxes=3, MaxAxes=3})
+///    → Mapping curfrm → matched RA/Dec frame, "fsconv1".
+/// 2. find_frame(curfrm, SkyFrame{System=AzEl, Permute=0, MinAxes=3,
+///    MaxAxes=3}) → Mapping curfrm → matched Az/El frame, "fsconv2".
+///
+/// Composing fsconv1.inverse with fsconv2 gives radec → azel.
+///
+/// Note: SkyFrame::map_from currently hard-codes LAST = 0 when
+/// generating the AzEl Mapping (skyframe.rs near line 895), so the
+/// emitted AZIMUTH value is offset from the C reference by the
+/// LAST-derived rotation. The infrastructure here is in place; the
+/// full LAST plumbing (computed from MJD-OBS, ObsLon, dut1) is a
+/// separate piece of work tracked by the
+/// "full LAST plumbing for SkyFrame AzEl conversion" project memory.
+pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> AstResult<()> {
+    use crate::coords::PointSet;
+    use crate::mappings::{CmpMap, Composition};
+
+    // CRVAL2 / CRVAL3: spatial reference point in degrees.
+    let (Some(crval_lon), Some(crval_lat)) = (cards.get_float("CRVAL2"), cards.get_float("CRVAL3"))
+    else {
+        return Ok(());
+    };
+
+    // C invokes astFindFrame on the current Frame (extracted via
+    // astGetFrame), not on the FrameSet itself. So the dispatch is
+    // through the Frame trait's find_frame_template method.
+    let curfrm = fs.current();
+
+    // SkyFrame template for the source-RA/Dec frame. Mirrors C:6908.
+    let radec_template = {
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        sky.set_permute(false);
+        sky.set_min_axes(3);
+        sky.set_max_axes(3);
+        sky
+    };
+    let Some(fsconv1) = Frame::find_frame_template(curfrm, &radec_template, "")? else {
+        return Ok(());
+    };
+
+    // SkyFrame template for the AzEl frame. Mirrors C:6912.
+    let azel_template = {
+        let mut sky = SkyFrame::new(SkySystem::Azel);
+        sky.set_permute(false);
+        sky.set_min_axes(3);
+        sky.set_max_axes(3);
+        sky
+    };
+    let Some(fsconv2) = Frame::find_frame_template(curfrm, &azel_template, "")? else {
+        return Ok(());
+    };
+
+    // Compose fsconv1 (radec → curfrm via Current → Base) ∘
+    // fsconv2 (curfrm → azel via Base → Current) = radec → azel.
+    // Mirrors C:6918-6920.
+    let map_radec_to_cur = fsconv1.mapping(FrameRef::Current, FrameRef::Base)?;
+    let map_cur_to_azel = fsconv2.mapping(FrameRef::Base, FrameRef::Current)?;
+    let map_radec_to_azel: crate::mappings::DynMapping = Box::new(CmpMap::new(
+        map_radec_to_cur,
+        map_cur_to_azel,
+        Composition::Series,
+    )?);
+
+    // Convert (CRVAL_lon, CRVAL_lat) deg → rad and push through.
+    const D2R: f64 = std::f64::consts::PI / 180.0;
+    const R2D: f64 = 180.0 / std::f64::consts::PI;
+    let pts = PointSet::from_rows([vec![crval_lon * D2R, crval_lat * D2R]]);
+    let out = map_radec_to_azel.transform(&pts, true)?;
+    let mut azel = [out.point(0)[0], out.point(0)[1]];
+
+    // Normalise via the matched AzEl SkyFrame (C:6929).
+    if let Some(azel_frame) = fsconv2.current().as_any().downcast_ref::<SkyFrame>() {
+        azel_frame.norm(&mut azel)?;
+    }
+
+    cards.set_float("AZIMUTH", azel[0] * R2D, "[Deg] Telescope azimuth");
+    cards.set_float("ELEVATIO", azel[1] * R2D, "[Deg] Telescope elevation");
 
     Ok(())
 }
