@@ -87,6 +87,26 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
         }
     }
 
+    // Propagate LONPOLE/LATPOLE into PVi_3 / PVi_4 on the longitude
+    // axis, mirroring fitschan.c:38199-38217. C: when LONPOLE/LATPOLE
+    // are stored as the dedicated keywords (not as PV3/PV4), copy
+    // them across so the FrameSet→Store round trip recovers them.
+    // Skip for TPN — PV3/PV4 there are polynomial coefficients.
+    let is_tpn = matches!(proj, WcsProjection::Tpn);
+    if !is_tpn {
+        let deg2rad_local = PI / 180.0;
+        if wcsmap.get_pv(1, 3).is_none()
+            && let Some(lon_deg) = store.lonpole
+        {
+            let _ = wcsmap.set_pv(1, 3, lon_deg * deg2rad_local);
+        }
+        if wcsmap.get_pv(1, 4).is_none()
+            && let Some(lat_deg) = store.latpole
+        {
+            let _ = wcsmap.set_pv(1, 4, lat_deg * deg2rad_local);
+        }
+    }
+
     // Step 4: Determine the coordinate system from RADESYS.
     let system = determine_sky_system(store);
 

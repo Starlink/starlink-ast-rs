@@ -258,6 +258,22 @@ pub(crate) fn write_to_cards(
         cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
+    // LATPOLE — fitschan.c:24782-24786. Mirrors C: written by primary
+    // axis only (s == ' ').
+    if s == ' '
+        && let Some(latpole) = store.latpole
+    {
+        cards.set_float("LATPOLE", latpole, "Latitude of native north pole");
+    }
+
+    // LONGPOLE — fitschan.c:24796-24800. Note C uses keyword "LONGPOLE"
+    // (not "LONPOLE") for FITS-PC encoding.
+    if s == ' '
+        && let Some(lonpole) = store.lonpole
+    {
+        cards.set_float("LONGPOLE", lonpole, "Longitude of native north pole");
+    }
+
     // Observation-global cards: only emitted on the last plane.
     if is_last {
         if let Some(mjdobs) = store.mjdobs {
@@ -265,6 +281,35 @@ pub(crate) fn write_to_cards(
         }
         if let Some(ref dateobs) = store.dateobs {
             cards.set_string("DATE-OBS", dateobs, "Date of observation");
+        }
+    }
+
+    // Old-style PROJPm projection parameters — only on the latitude
+    // axis, only for the primary axis description, and only when the
+    // projection isn't TAN. Mirrors fitschan.c:24862-24887.
+    //
+    // PC encoding ignores PVs on the longitude axis. PVs on any axis
+    // other than the celestial latitude/longitude pair, or PVs at
+    // m >= 10 on the latitude axis, would cause C to fall back to
+    // FITS-WCS encoding (the PCFromStore returns 0). We don't model
+    // that fallback here yet — projects with such PV layouts are
+    // already known not to round-trip via FITS-PC.
+    if s == ' '
+        && let Some((_axlon, axlat)) = store.celestial_axes()
+    {
+        // Determine projection from CTYPE on the latitude axis.
+        let prj_is_tan = store
+            .ctype
+            .get(axlat)
+            .and_then(|c| c.as_deref())
+            .is_some_and(|ct| ct.len() >= 8 && ct[5..8].eq_ignore_ascii_case("TAN"));
+        if !prj_is_tan && axlat < store.pv.len() {
+            for m in 0..store.pv[axlat].len().min(10) {
+                if let Some(val) = store.pv[axlat][m] {
+                    let key = format!("PROJP{m}");
+                    cards.set_float(&key, val, "Projection parameter");
+                }
+            }
         }
     }
     Ok(())
