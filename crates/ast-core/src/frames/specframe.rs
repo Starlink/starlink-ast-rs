@@ -1725,18 +1725,26 @@ impl Frame for SpecFrame {
         }
 
         // Step 2 (specframe.c:3143-3155): walk the target's primary
-        // frames looking for a SpecFrame axis. CmpFrame walking lands
-        // with Task 8; for now the only supported case is a target
-        // that is itself a SpecFrame (astPrimaryFrame on a bare
-        // SpecFrame returns the SpecFrame itself).
-        let Some(_target_spec) = target.as_any().downcast_ref::<SpecFrame>() else {
+        // frames looking for a SpecFrame axis. Stop when one is
+        // found and remember the (zero-based) external axis index.
+        let target_naxes = target.naxes();
+        let mut target_axis0: Option<usize> = None;
+        for iaxis in 0..target_naxes {
+            let (primary, _local_axis) = primary_frame_walk(target, iaxis);
+            if primary.as_any().downcast_ref::<SpecFrame>().is_some() {
+                target_axis0 = Some(iaxis);
+                break;
+            }
+        }
+        let Some(target_axis0) = target_axis0 else {
             return Ok(None);
         };
 
         // Step 3 (specframe.c:3162-3163): SpecFrame has 1 axis; build
-        // the trivial association arrays.
+        // the trivial association arrays. The target axis index
+        // points to the spectral component within the target.
         let template_axes_vec = vec![0i32];
-        let target_axes_vec = vec![0i32];
+        let target_axes_vec = vec![target_axis0 as i32];
 
         // Step 4 (specframe.c:3170-3171): defer to the target's
         // SubFrame to build the result + Mapping.
@@ -1800,6 +1808,37 @@ impl Frame for SpecFrame {
 /// the result's Title (and per-axis Unit / Label / Symbol overrides
 /// where appropriate) are cleared first so the new system's defaults
 /// take effect.
+/// Walk a Frame's components to find the primary Frame underlying
+/// the supplied (zero-based) external axis. Mirrors C
+/// `astPrimaryFrame` (frame.c).
+///
+/// For each frame class along the way, the external axis is
+/// translated through any axis permutation the class carries, so the
+/// returned `local_axis` is the *internal* physical axis index of
+/// the primary Frame. CmpFrame routes through its perm to one of
+/// its components and recurses; SkyFrame applies its own perm to
+/// expose the underlying lon/lat axis order.
+pub(super) fn primary_frame_walk(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
+    if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
+        // External axis → internal axis via perm.
+        let internal = cmp.perm()[axis];
+        let n1 = cmp.naxes1();
+        if internal < n1 {
+            primary_frame_walk(cmp.frame1(), internal)
+        } else {
+            primary_frame_walk(cmp.frame2(), internal - n1)
+        }
+    } else if let Some(sky) = frame.as_any().downcast_ref::<crate::frames::SkyFrame>() {
+        // SkyFrame stores an external→internal axis permutation in
+        // its `perm` field (after `perm_axes` calls). Apply it so
+        // the returned local axis is the underlying physical axis
+        // (0 = lon, 1 = lat).
+        (frame, sky.axis_permutation()[axis])
+    } else {
+        (frame, axis)
+    }
+}
+
 fn specframe_overlay(
     template: &dyn Frame,
     template_axes: &[i32],

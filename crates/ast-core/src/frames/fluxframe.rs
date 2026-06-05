@@ -482,19 +482,25 @@ impl Frame for FluxFrame {
             return Ok(None);
         }
 
-        // Step 2: walk the target's primary frames looking for a
-        // FluxFrame axis. CmpFrame walking is the same shape as
-        // SkyFrame's; for now the only supported case is a target
-        // that is itself a FluxFrame (astPrimaryFrame on a bare
-        // FluxFrame returns the FluxFrame itself).
-        let Some(_target_flux) = target.as_any().downcast_ref::<FluxFrame>() else {
+        // Step 2 (fluxframe.c:2425-2438): walk astPrimaryFrame on
+        // each target axis looking for a FluxFrame.
+        let target_naxes = target.naxes();
+        let mut target_axis0: Option<usize> = None;
+        for iaxis in 0..target_naxes {
+            let (primary, _) = crate::frames::specframe::primary_frame_walk(target, iaxis);
+            if primary.as_any().downcast_ref::<FluxFrame>().is_some() {
+                target_axis0 = Some(iaxis);
+                break;
+            }
+        }
+        let Some(target_axis0) = target_axis0 else {
             return Ok(None);
         };
 
-        // Step 3 (fluxframe.c:2442-2444): build the trivial axis
+        // Step 3 (fluxframe.c:2442-2444): build the axis
         // associations.
         let template_axes_vec = vec![0i32];
-        let target_axes_vec = vec![0i32];
+        let target_axes_vec = vec![target_axis0 as i32];
 
         // Step 4 (fluxframe.c:2451-2452): defer to target's SubFrame.
         let Some((map, result)) =

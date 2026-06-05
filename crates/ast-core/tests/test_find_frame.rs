@@ -300,7 +300,6 @@ fn frameset_find_frame_no_match_returns_none() {
     assert!(result.is_none());
 }
 
-#[ignore = "needs SkyFrame::match_template walk into CmpFrame component (skyframe.c:6759-6803)"]
 #[test]
 fn cmpframe_match_against_skyframe_template_with_max_axes() {
     let mut template = SkyFrame::new(SkySystem::Fk5);

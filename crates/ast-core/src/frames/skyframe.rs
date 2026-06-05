@@ -158,6 +158,15 @@ impl SkyFrame {
         }
     }
 
+    /// External-to-internal axis permutation. `axis_permutation()[i]`
+    /// returns the (zero-based) physical axis index (0 = longitude,
+    /// 1 = latitude) currently exposed at external axis `i`. Mirrors
+    /// the Frame `perm` array used by C `astPrimaryFrame`.
+    #[inline]
+    pub fn axis_permutation(&self) -> [usize; 2] {
+        self.perm
+    }
+
     /// Position of longitude in coordinate arrays (0-based). Mirrors
     /// `astGetLonAxis(skyframe)`.
     #[inline]
@@ -1046,27 +1055,40 @@ impl Frame for SkyFrame {
         let target_naxes = target.naxes();
 
         // Step 2: locate two axes in the target that are derived from
-        // a single underlying SkyFrame, in either order. CmpFrame
-        // walking is not yet implemented (it lands with Task 8); for
-        // now treat a direct SkyFrame target as the only supported
-        // case (mirrors the result that astPrimaryFrame produces for
-        // a bare SkyFrame: each axis maps to itself with iaxis_local
-        // equal to the axis index).
-        let Some(target_sky) = target.as_any().downcast_ref::<SkyFrame>() else {
+        // a single underlying SkyFrame (in either physical order).
+        // Mirrors skyframe.c:6759-6803: walk astPrimaryFrame on each
+        // target axis and check whether the resulting primary Frame
+        // is a SkyFrame; the two SkyFrame axes need not be adjacent
+        // in the target's external axis order.
+        let mut target_sky_owned: Option<&SkyFrame> = None;
+        let mut target_axis0: Option<usize> = None;
+        let mut target_axis1: Option<usize> = None;
+        let mut iaxis0: usize = 0;
+        let mut iaxis1: usize = 0;
+        for iaxis in 0..target_naxes {
+            let (primary, local_axis) = crate::frames::specframe::primary_frame_walk(target, iaxis);
+            if let Some(sky) = primary.as_any().downcast_ref::<SkyFrame>() {
+                if target_axis0.is_none() {
+                    target_sky_owned = Some(sky);
+                    target_axis0 = Some(iaxis);
+                    iaxis0 = local_axis;
+                } else {
+                    // Both SkyFrame axes must come from the same
+                    // primary instance.
+                    if !std::ptr::eq(target_sky_owned.unwrap() as *const _, sky as *const _) {
+                        return Ok(None);
+                    }
+                    target_axis1 = Some(iaxis);
+                    iaxis1 = local_axis;
+                    break;
+                }
+            }
+        }
+        let (Some(target_axis0), Some(target_axis1), Some(_target_sky)) =
+            (target_axis0, target_axis1, target_sky_owned)
+        else {
             return Ok(None);
         };
-        if target_naxes != 2 {
-            return Ok(None);
-        }
-        // After PermAxes the target's underlying physical axis 0
-        // (longitude) sits at external position perm[0]. The C code
-        // searches the target axes in order and identifies the
-        // underlying axis index of each (`iaxis0`, `iaxis1`); this is
-        // the inverse permutation.
-        let target_axis0 = 0usize;
-        let target_axis1 = 1usize;
-        let iaxis0 = target_sky.perm[0];
-        let iaxis1 = target_sky.perm[1];
         // Sanity check: the underlying primary axes must be 0 and 1
         // in either order (skyframe.c:6800-6802).
         if !((iaxis0 == 0 && iaxis1 == 1) || (iaxis0 == 1 && iaxis1 == 0)) {

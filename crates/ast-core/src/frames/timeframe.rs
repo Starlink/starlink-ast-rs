@@ -970,15 +970,24 @@ impl Frame for TimeFrame {
             return Ok(None);
         }
 
-        // Step 2: target must be a TimeFrame (CmpFrame walking is
-        // deferred). Bare-TimeFrame target is the only supported case.
-        let Some(_target_time) = target.as_any().downcast_ref::<TimeFrame>() else {
+        // Step 2: walk astPrimaryFrame on each target axis looking
+        // for a TimeFrame.
+        let target_naxes = target.naxes();
+        let mut target_axis0: Option<usize> = None;
+        for iaxis in 0..target_naxes {
+            let (primary, _) = crate::frames::specframe::primary_frame_walk(target, iaxis);
+            if primary.as_any().downcast_ref::<TimeFrame>().is_some() {
+                target_axis0 = Some(iaxis);
+                break;
+            }
+        }
+        let Some(target_axis0) = target_axis0 else {
             return Ok(None);
         };
 
-        // Step 3: trivial 1-axis associations.
+        // Step 3: 1-axis associations.
         let template_axes_vec = vec![0i32];
-        let target_axes_vec = vec![0i32];
+        let target_axes_vec = vec![target_axis0 as i32];
 
         // Step 4: defer to target's SubFrame.
         let Some((map, result)) =
