@@ -593,12 +593,127 @@ impl Serializable for CmpFrame {
     }
 }
 
+/// Generate the next axis selection in lexicographic order.
+///
+/// Mirrors C `GenAxisSelection` (cmpframe.c:204). On entry, `axes`
+/// holds `nselect` distinct zero-based axis indices in
+/// strictly-increasing order; on exit the indices are advanced to the
+/// lexicographically-next selection of the same size from `0..naxes`.
+///
+/// Initialise with `axes = [0, 1, …, nselect-1]`. Repeated invocation
+/// then enumerates every `nselect`-choose-`naxes` subset.
+///
+/// Returns `true` if the array now holds a valid successor selection,
+/// `false` once every selection has been emitted (in which case the
+/// array contents are exhausted and must not be used).
+#[allow(dead_code)] // wired in by CmpFrame::Match port (subsequent commit).
+pub(crate) fn gen_axis_selection(naxes: usize, nselect: usize, axes: &mut [i32]) -> bool {
+    // C returns 0 when `nselect == 0` regardless of the loop body —
+    // its final check is `nselect > 0 && axes[nselect-1] < naxes`. We
+    // short-circuit here both for clarity and to avoid an out-of-range
+    // read of `axes[nselect+1]` in the empty case.
+    if nselect == 0 {
+        return false;
+    }
+    debug_assert_eq!(axes.len(), nselect);
+
+    let mut iselect: usize = 0;
+    loop {
+        // Increment the current axis index if it is the final one, or
+        // it can be incremented without equalling the one which follows
+        // (this ensures the indices remain in increasing order).
+        let can_increment = iselect == nselect - 1 || axes[iselect + 1] > axes[iselect] + 1;
+        if can_increment {
+            axes[iselect] += 1;
+            // After incrementing an index, reset all previous indices
+            // to their starting values 0, 1, …, iselect-1.
+            for (i, slot) in axes.iter_mut().enumerate().take(iselect) {
+                *slot = i as i32;
+            }
+            break;
+        }
+        // If this axis index can't be incremented, consider the next
+        // one. Quit if we go beyond the end of the selection array.
+        iselect += 1;
+        if iselect >= nselect {
+            break;
+        }
+    }
+
+    axes[nselect - 1] < naxes as i32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::frames::find_frame::apply_template_overlay;
     use crate::frames::specframe::SpecSystem;
     use crate::frames::{BasicFrameBuilder, SkyFrame, SkySystem, SpecFrame};
+
+    /// Enumerate every selection produced by repeated calls to
+    /// `gen_axis_selection`, starting from the canonical seed
+    /// `[0, 1, …, k-1]`. Returns the list of selections, each as a
+    /// fresh Vec.
+    fn enumerate_selections(naxes: usize, nselect: usize) -> Vec<Vec<i32>> {
+        let mut axes: Vec<i32> = (0..nselect as i32).collect();
+        let mut out = vec![axes.clone()];
+        while gen_axis_selection(naxes, nselect, &mut axes) {
+            out.push(axes.clone());
+        }
+        out
+    }
+
+    #[test]
+    fn gen_axis_selection_choose_2_of_4() {
+        // 4 choose 2 = 6, in lexicographic order.
+        let got = enumerate_selections(4, 2);
+        assert_eq!(
+            got,
+            vec![
+                vec![0, 1],
+                vec![0, 2],
+                vec![1, 2],
+                vec![0, 3],
+                vec![1, 3],
+                vec![2, 3],
+            ]
+        );
+    }
+
+    #[test]
+    fn gen_axis_selection_choose_3_of_5() {
+        // 5 choose 3 = 10.
+        let got = enumerate_selections(5, 3);
+        assert_eq!(got.len(), 10);
+        assert_eq!(got[0], vec![0, 1, 2]);
+        assert_eq!(got[9], vec![2, 3, 4]);
+        // Every entry is strictly increasing and within range.
+        for sel in &got {
+            assert!(sel.windows(2).all(|w| w[0] < w[1]));
+            for &a in sel {
+                assert!((0..5).contains(&a));
+            }
+        }
+    }
+
+    #[test]
+    fn gen_axis_selection_choose_1_of_3() {
+        // 3 choose 1 = 3 (each single element on its own).
+        assert_eq!(enumerate_selections(3, 1), vec![vec![0], vec![1], vec![2]]);
+    }
+
+    #[test]
+    fn gen_axis_selection_choose_n_of_n() {
+        // The single full-set selection.
+        let got = enumerate_selections(3, 3);
+        assert_eq!(got, vec![vec![0, 1, 2]]);
+    }
+
+    #[test]
+    fn gen_axis_selection_zero_select_returns_false_immediately() {
+        let mut axes: Vec<i32> = vec![];
+        assert!(!gen_axis_selection(5, 0, &mut axes));
+    }
 
     /// Clean-partition path (cmpframe.c:262-380): template
     /// `CmpFrame(SkyFrame(Galactic), SpecFrame)` overlaid onto a result
