@@ -5,9 +5,11 @@
 ## Snapshot (state at end of session)
 
 - Branch: `tickets/DM-54793`
-- Last commit landing find_frame work: `b27562e frames: port CmpFrame helpers and PartMatch (cmpframe.c)`
-- Test counts: **871 lib tests passing** (was 855 + 16 cmpframe), **5/5 test_find_frame**, **173/192 test_wcsconv** (19 pre-existing failures unchanged).
+- Last commit landing find_frame work: `db2ab1a frames: port SpecFluxFrame::Match + SubFrame + Overlay`
+- Test counts: **909 lib tests passing**, **13/14 test_find_frame** (1 ignored — needs SkyFrame walking into CmpFrame components), **173/192 test_wcsconv** (19 pre-existing failures unchanged).
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings` clean.
+
+Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet) all complete. Remaining: Task 11 (CLASS encoder using find_frame), Task 13 (Region overrides), Task 14 (audit existing find_frame consumers), and the deferred `cmpframe_match_against_skyframe_template_with_max_axes` test (needs `astPrimaryFrame` walk into CmpFrame components — a separate piece of infrastructure).
 
 ## Tasks done
 
@@ -22,6 +24,14 @@
 | 8a | CmpFrame::Overlay + apply_template_overlay dispatcher | `55560b2` | cmpframe.c:169-432 |
 | 8b | GenAxisSelection helper | `f4977ec` | cmpframe.c:204 |
 | 8c | AddExtraAxes / RenumberAxes / GoodPerm / PartMatch | `b27562e` | cmpframe.c:929 / 7651 / 4562 / 6591 |
+| 8d | ComponentMatch | `94cf2e7` | cmpframe.c:1972-2321 |
+| 8e | CmpFrame::Match orchestration | `ff7edb8` | cmpframe.c:5051 |
+| 8f | CmpFrame::SubFrame + Domain/Title accessors | `f5c3d58` | cmpframe.c:9184 |
+| 8g | CmpFrame integration tests | `ca2c0ef` | tests |
+| 10 | FrameSet::find_frame_template override | `29d5973` | frameset.c:3790 |
+| 9 | FluxFrame::Match + SubFrame + Overlay | `838f1f6` | fluxframe.c |
+| 9c | TimeFrame::Match + SubFrame + Overlay | `0dba1b5` | timeframe.c |
+| 9b | SpecFluxFrame::Match + SubFrame + Overlay | `db2ab1a` | specfluxframe.c:1216 / 1428 |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
