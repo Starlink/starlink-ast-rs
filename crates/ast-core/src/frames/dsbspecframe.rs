@@ -631,6 +631,218 @@ impl Frame for DSBSpecFrame {
     fn system_string(&self) -> Option<&str> {
         self.spec.system_string()
     }
+
+    // -----------------------------------------------------------------
+    // Match-control attributes — delegate to the underlying SpecFrame
+    // (same MinAxes / MaxAxes / Permute defaults).
+    // -----------------------------------------------------------------
+    fn min_axes(&self) -> usize {
+        self.spec.min_axes()
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.spec.set_min_axes(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.spec.test_min_axes()
+    }
+    fn max_axes(&self) -> usize {
+        self.spec.max_axes()
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.spec.set_max_axes(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.spec.test_max_axes()
+    }
+    fn match_end(&self) -> bool {
+        self.spec.match_end()
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.spec.set_match_end(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.spec.test_match_end()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.spec.preserve_axes()
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.spec.set_preserve_axes(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.spec.test_preserve_axes()
+    }
+    fn permute(&self) -> bool {
+        self.spec.permute()
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.spec.set_permute(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.spec.test_permute()
+    }
+
+    // -----------------------------------------------------------------
+    // astFindFrame / astMatch / astSubFrame trampoline.
+    // Mirrors dsbspecframe.c:976 (Match), 1470 (SubFrame), 1154 (Overlay).
+    // -----------------------------------------------------------------
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
+        // dsbspecframe.c:976-1152 — Match defers to the parent
+        // SpecFrame::Match for axis-count / Domain / SpecFrame-target
+        // downcast checks. Then, if the target is a DSBSpecFrame,
+        // re-runs target.sub_frame with `self` (the DSB template) so
+        // the result Frame is a DSBSpecFrame.
+        //
+        // The Rust SpecFrame::match_template downcasts target to
+        // SpecFrame; when target is a DSBSpecFrame the downcast
+        // fails. Handle the DSBSpecFrame target case directly here
+        // by constructing the parent match result from
+        // default_match + a manual SubFrame call.
+
+        let target_is_dsb = target.as_any().is::<DSBSpecFrame>();
+        let target_is_spec = target.as_any().is::<SpecFrame>();
+
+        if target_is_dsb {
+            // Treat the DSBSpecFrame target as a SpecFrame for the
+            // axis-count / Domain check (the parent Frame::Match
+            // doesn't care about class), then build the result via
+            // target.sub_frame so the DSBSpecFrame override builds
+            // a DSBSpecFrame result with sideband-aware Mapping.
+            let parent =
+                crate::frames::find_frame::default_match(self as &dyn Frame, target, match_sub)?;
+            let Some(_) = parent else {
+                return Ok(None);
+            };
+            let template_axes = vec![0i32];
+            let target_axes = vec![0i32];
+            let Some((map, result)) =
+                target.sub_frame(Some(self as &dyn Frame), 1, &target_axes, &template_axes)?
+            else {
+                return Ok(None);
+            };
+            return Ok(Some(crate::frames::find_frame::MatchResult {
+                template_axes,
+                target_axes,
+                map,
+                result,
+            }));
+        }
+
+        if target_is_spec {
+            // Plain SpecFrame target — defer to parent SpecFrame match.
+            return self.spec.match_template(target, match_sub);
+        }
+
+        // Anything else (BasicFrame, CmpFrame in this code path):
+        // not a match for a DSBSpecFrame template.
+        Ok(None)
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        // Mirrors dsbspecframe.c:1470. First defer to the parent
+        // SpecFrame::SubFrame to build a result Frame of the right
+        // shape and the SpecFrame-level Mapping. If `self` is being
+        // used as the target and the template is a DSBSpecFrame, the
+        // result will be a DSBSpecFrame and we may need to extend
+        // the Mapping with sideband-specific transforms.
+        let parent = self
+            .spec
+            .sub_frame(template, result_naxes, target_axes, template_axes)?;
+        let Some((mut map, result)) = parent else {
+            return Ok(None);
+        };
+
+        // C dsbspecframe.c:1610-1900 modifies the Mapping when both
+        // template and result are DSBSpecFrames. Our SpecFrame-level
+        // SubFrame produces a SpecFrame result Frame in this code path
+        // (because `parent_subframe` calls SpecFrame::SubFrame which
+        // builds a SpecFrame snapshot). Upgrade the result to a
+        // DSBSpecFrame snapshot when the template is a DSBSpecFrame
+        // and the target (self) is a DSBSpecFrame.
+        let mut final_result: DynFrame = result;
+        if let Some(t) = template
+            && t.as_any().is::<DSBSpecFrame>()
+        {
+            // Build a DSBSpecFrame result starting from a snapshot of
+            // self, then apply the template's Overlay (which copies
+            // DSBCentre/IF/SideBand/AlignSideBand).
+            let mut dsb = self.clone();
+            // Overlay the template's DSB-specific attributes.
+            if let Some(t_dsb) = t.as_any().downcast_ref::<DSBSpecFrame>() {
+                if let Some(v) = t_dsb.dsb_centre {
+                    dsb.set_dsb_centre(v);
+                }
+                if let Some(v) = t_dsb.ifr {
+                    dsb.set_ifr(v);
+                }
+                if let Some(v) = t_dsb.sideband {
+                    dsb.set_sideband(v);
+                }
+                if let Some(v) = t_dsb.align_sideband {
+                    dsb.set_align_sideband(v);
+                }
+
+                // If both AlignSideBand flags are set, build the
+                // sideband-aware Mapping (mirrors dsbspecframe.c:1640+).
+                // Otherwise fall back to the SpecFrame-level Mapping
+                // already produced.
+                if self.align_sideband() && t_dsb.align_sideband() {
+                    map = self.make_dsb_mapping_aligned(&dsb, false)?;
+                }
+            }
+            final_result = Box::new(dsb);
+        }
+
+        Ok(Some((map, final_result)))
+    }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        // DSBSpecFrame is 1-axis. If target_axes is [0] (or [-1]),
+        // return a DSBSpecFrame snapshot. Otherwise fall back to the
+        // SpecFrame snapshot (which itself falls back to BasicFrame
+        // for non-trivial axis layouts).
+        if target_axes == [0] {
+            Ok(Box::new(self.clone()))
+        } else {
+            self.spec.pick_axes_snapshot(target_axes)
+        }
+    }
+
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        // dsbspecframe.c:1154-1251 — first overlay parent SpecFrame
+        // attributes via the inherited overlay_template, then copy the
+        // DSB-specific attributes (DSBCentre, IF, SideBand,
+        // AlignSideBand) when explicitly set on the template.
+        self.spec.overlay_template(template, template_axes)?;
+
+        if let Some(t_dsb) = template.as_any().downcast_ref::<DSBSpecFrame>() {
+            if let Some(v) = t_dsb.dsb_centre {
+                self.set_dsb_centre(v);
+            }
+            if let Some(v) = t_dsb.ifr {
+                self.set_ifr(v);
+            }
+            if let Some(v) = t_dsb.sideband {
+                self.set_sideband(v);
+            }
+            if let Some(v) = t_dsb.align_sideband {
+                self.set_align_sideband(v);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -741,5 +953,94 @@ impl Serializable for DSBSpecFrame {
             sideband,
             align_sideband,
         })
+    }
+}
+
+#[cfg(test)]
+mod find_frame_tests {
+    use super::*;
+    use crate::frames::{BasicFrameBuilder, SpecFrame};
+
+    #[test]
+    fn dsb_overlay_template_copies_set_attributes() {
+        let mut template = DSBSpecFrame::new(SpecSystem::Freq);
+        template.set_dsb_centre(2.5e10);
+        template.set_ifr(3.0e9);
+        template.set_sideband(SideBand::USB);
+        template.set_align_sideband(true);
+
+        let mut target = DSBSpecFrame::new(SpecSystem::Freq);
+        target
+            .overlay_template(&template, &[0])
+            .expect("overlay ok");
+        assert_eq!(target.dsb_centre(), 2.5e10);
+        assert_eq!(target.ifr(), 3.0e9);
+        assert_eq!(target.sideband(), SideBand::USB);
+        assert!(target.align_sideband());
+    }
+
+    #[test]
+    fn dsb_overlay_template_skips_unset_attributes() {
+        // Unset template — target's existing values must survive.
+        let template = DSBSpecFrame::new(SpecSystem::Freq);
+        let mut target = DSBSpecFrame::new(SpecSystem::Freq);
+        target.set_dsb_centre(7.7e10);
+        target.set_ifr(1.5e9);
+        target
+            .overlay_template(&template, &[0])
+            .expect("overlay ok");
+        assert_eq!(target.dsb_centre(), 7.7e10);
+        assert_eq!(target.ifr(), 1.5e9);
+    }
+
+    #[test]
+    fn dsb_match_self_succeeds() {
+        let template = DSBSpecFrame::new(SpecSystem::Freq);
+        let target = DSBSpecFrame::new(SpecSystem::Freq);
+        let m = template
+            .match_template(&target, false)
+            .expect("match ok")
+            .expect("match found");
+        assert_eq!(m.target_axes, vec![0]);
+        assert_eq!(m.template_axes, vec![0]);
+        assert_eq!(m.result.naxes(), 1);
+    }
+
+    #[test]
+    fn dsb_match_against_specframe_target_blocked_by_domain() {
+        // A DSBSpecFrame template defaults to Domain="DSBSPECTRUM"
+        // while a plain SpecFrame defaults to Domain="SPECTRUM". The
+        // parent Frame::Match Domain check rejects this combination
+        // even with `match_sub=true`. Mirrors dsbspecframe.c:1098-1103
+        // semantics — when the user has explicitly set a DSB-only
+        // Domain, the template won't match a plain SpecFrame target.
+        let template = DSBSpecFrame::new(SpecSystem::Freq);
+        let target = SpecFrame::new(SpecSystem::Freq);
+        assert!(
+            template
+                .match_template(&target, true)
+                .expect("match ok")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn dsb_match_against_basicframe_target_returns_none() {
+        let template = DSBSpecFrame::new(SpecSystem::Freq);
+        let target = BasicFrameBuilder::new(1).build().unwrap();
+        assert!(
+            template
+                .match_template(&target, false)
+                .expect("match ok")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn dsb_pick_axes_snapshot_full() {
+        let dsb = DSBSpecFrame::new(SpecSystem::Freq);
+        let snap = dsb.pick_axes_snapshot(&[0]).expect("pick ok");
+        assert!(snap.as_any().is::<DSBSpecFrame>());
+        assert_eq!(snap.naxes(), 1);
     }
 }
