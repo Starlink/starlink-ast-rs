@@ -226,10 +226,18 @@ impl CardList {
         // block rather than appending them to the end of the
         // header. Falls back to end-of-list when no WCS card is
         // present in the input.
+        //
+        // The match set here mirrors C's `FindWcs` (fitschan.c
+        // :10710) — narrower than the sweep set (`is_wcs_keyword`)
+        // because some non-canonical keywords (RESTFREQ, EPOCH,
+        // ...) are processed by SpecTrans into canonical forms but
+        // are not part of the FindWcs match set, so the C library
+        // anchors the cursor on the canonical block and inserts
+        // new cards before any non-canonical trailing keyword.
         self.position = self
             .cards
             .iter()
-            .rposition(|c| is_wcs_keyword(&c.keyword))
+            .rposition(|c| is_findwcs_keyword(&c.keyword))
             .map(|i| i + 1)
             .unwrap_or(self.cards.len());
     }
@@ -474,6 +482,145 @@ fn is_wcs_keyword(keyword: &str) -> bool {
     }
 
     // Alternate version keywords: CnVAL, CnPIX, CnELT, CnYPE, CnNIT.
+    if kw.len() >= 5 && kw.starts_with('C') && kw.as_bytes()[1].is_ascii_digit() {
+        let suffix = &kw[2..];
+        if suffix.starts_with("VAL")
+            || suffix.starts_with("PIX")
+            || suffix.starts_with("ELT")
+            || suffix.starts_with("YPE")
+            || suffix.starts_with("NIT")
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Cursor-anchor predicate mirroring C's `FindWcs` match list
+/// (fitschan.c:10810-10866). Used only by [`CardList::mark_all_unused`]
+/// to position the new-card insertion cursor: C inserts freshly
+/// synthesised WCS cards in front of "the card just past the last
+/// FindWcs-recognised keyword in the input", which is **not** the
+/// same set as the sweep set ([`is_wcs_keyword`]). For example
+/// RESTFREQ — the AIPS misspelling — is processed as part of the
+/// SpecTrans rename pipeline and so is in the sweep set, but it's
+/// not in C's FindWcs list, so C inserts new cards *before* a
+/// trailing RESTFREQ card rather than after it.
+fn is_findwcs_keyword(keyword: &str) -> bool {
+    let kw = keyword.to_uppercase();
+
+    // Exact-match keywords from FindWcs (with `%0c` alt-letter
+    // suffix expansions handled by the optional-trailing-letter
+    // logic below).
+    let bare = if !kw.is_empty() && kw.as_bytes()[kw.len() - 1].is_ascii_uppercase() {
+        // Optional alt-letter suffix: try stripping one letter.
+        let stripped = &kw[..kw.len() - 1];
+        match stripped {
+            "LONPOLE" | "LATPOLE" | "EQUINOX" | "RADESYS" | "RESTFRQ" | "WCSNAME" | "SPECSYS"
+            | "SSYSSRC" | "ZSOURCE" | "VELOSYS" | "MJD_AVG" => return true,
+            _ => &kw[..],
+        }
+    } else {
+        &kw[..]
+    };
+    if matches!(
+        bare,
+        "LONGPOLE"
+            | "LONPOLE"
+            | "LATPOLE"
+            | "EPOCH"
+            | "EQUINOX"
+            | "MJD-OBS"
+            | "DATE-OBS"
+            | "TIMESYS"
+            | "RADECSYS"
+            | "RADESYS"
+            | "WCSNAME"
+            | "SPECSYS"
+            | "SSYSSRC"
+            | "ZSOURCE"
+            | "VELOSYS"
+            | "RESTFRQ"
+            | "MJD_AVG"
+            | "OBSGEO-X"
+            | "OBSGEO-Y"
+            | "OBSGEO-Z"
+            | "CNPIX1"
+            | "CNPIX2"
+            | "XPIXELSZ"
+            | "YPIXELSZ"
+            | "PLTRAH"
+            | "PLTRAM"
+            | "PLTRAS"
+            | "PLTDECD"
+            | "PLTDECM"
+            | "PLTDECS"
+            | "PLTDECSN"
+            | "PLTSCALE"
+            | "PPO1"
+            | "PPO2"
+            | "PPO4"
+            | "PPO5"
+    ) {
+        return true;
+    }
+
+    // Per-axis WCS keywords (CRPIXn, CRVALn, etc.) and PC/CD/PV/PS
+    // matrices. Same patterns as `is_wcs_keyword`, but excludes
+    // the AIPS-specific aliases (RESTFREQ, etc.) and DSS-only
+    // keywords already enumerated above.
+    if kw.len() >= 6 {
+        let prefix5 = &kw[..5];
+        if matches!(prefix5, "CRPIX" | "CRVAL" | "CDELT" | "CTYPE" | "CUNIT") {
+            let rest = &kw[5..];
+            if rest
+                .chars()
+                .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
+            {
+                return true;
+            }
+        }
+        if kw.starts_with("CROTA") {
+            return true;
+        }
+    }
+    if kw.starts_with("CD") && kw.len() >= 4 {
+        let rest = &kw[2..];
+        if rest.contains('_') && rest.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            return true;
+        }
+        if rest.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    if kw.starts_with("PC") && kw.len() >= 4 {
+        let rest = &kw[2..];
+        if rest.contains('_') && rest.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            return true;
+        }
+        if rest.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    if (kw.starts_with("PV") || kw.starts_with("PS")) && kw.len() >= 4 {
+        let rest = &kw[2..];
+        if rest.contains('_') && rest.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            return true;
+        }
+    }
+    if kw.starts_with("PROJP") {
+        return true;
+    }
+    if kw.starts_with("AMDX") || kw.starts_with("AMDY") {
+        return true;
+    }
+    if kw.starts_with("PPO") && kw.len() >= 4 {
+        let rest = &kw[3..];
+        if rest.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
     if kw.len() >= 5 && kw.starts_with('C') && kw.as_bytes()[1].is_ascii_digit() {
         let suffix = &kw[2..];
         if suffix.starts_with("VAL")

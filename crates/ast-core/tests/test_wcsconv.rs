@@ -107,14 +107,18 @@ fn input_encoding_from_ext(filename: &str) -> Option<Encoding> {
     }
 }
 
-/// Load an AST object from input. Returns the object or an error description.
-fn load_input(case: &TestCase) -> Result<AnyObject, String> {
+/// Load an AST object from input. Returns the object plus, for FITS-encoded
+/// inputs, the FitsChan it was read through. Mirrors `ast_tester/wcsconverter.c`
+/// which reuses the same FitsChan for both read and write.
+fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> {
     let input_path = fixtures_dir().join("inputs").join(&case.input_file);
     let text = std::fs::read_to_string(&input_path).map_err(|e| format!("read input: {e}"))?;
 
     if case.input_file.ends_with(".ast") {
         // Native AST text -- parse directly via the public API.
-        ast_core::from_native_string(&text).map_err(|e| format!("from_native_string: {e}"))
+        let obj =
+            ast_core::from_native_string(&text).map_err(|e| format!("from_native_string: {e}"))?;
+        Ok((obj, None))
     } else {
         // FITS header -- load via FitsChan.
         let mut fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
@@ -127,31 +131,31 @@ fn load_input(case: &TestCase) -> Result<AnyObject, String> {
             }
         }
 
-        fc.read()
+        let obj = fc
+            .read()
             .map_err(|e| format!("read: {e}"))?
-            .ok_or_else(|| "read returned None".to_string())
+            .ok_or_else(|| "read returned None".to_string())?;
+        Ok((obj, Some(fc)))
     }
 }
 
 /// Run a single test case. Returns Ok on pass, Err with description on failure.
 fn run_test_case(case: &TestCase) -> Result<(), String> {
-    // Load input object.
-    let obj = load_input(case)?;
+    // Load input object plus the FitsChan it was read through.
+    let (obj, fc_in) = load_input(case)?;
 
     // Determine target encoding.
     let target_enc = encoding_from_str(&case.encoding)
         .ok_or_else(|| format!("unknown encoding: {}", case.encoding))?;
 
-    // Set up output FitsChan. For FITS header inputs, pre-load the input
-    // cards so write() can purge old WCS keywords while preserving non-WCS
-    // structural keywords (SIMPLE, NAXIS, etc.). This mirrors wcsconverter.
-    let mut fc_out = if !case.input_file.ends_with(".ast") {
-        let input_path = fixtures_dir().join("inputs").join(&case.input_file);
-        let text = std::fs::read_to_string(&input_path).map_err(|e| format!("read input: {e}"))?;
-        FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?
-    } else {
-        FitsChan::new()
-    };
+    // Reuse the input FitsChan for write, mirroring
+    // `ast_tester/wcsconverter.c`. wcsconverter reads cards, calls
+    // astRead (which marks consumed cards as USED on the FitsChan),
+    // then sets ENCODING and writes back to the same chan. Reusing
+    // the chan ensures the post-read USED flags and any cards
+    // spec_trans translated *into the same chan* (RESTFREQ→RESTFRQ
+    // etc.) are visible to the write path's mark/sweep logic.
+    let mut fc_out = fc_in.unwrap_or_else(FitsChan::new);
     fc_out.set_encoding(target_enc);
 
     // Apply attributes.

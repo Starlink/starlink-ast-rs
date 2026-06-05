@@ -556,9 +556,14 @@ impl Channel for FitsChan {
                 // keywords. Although FITS-WCS is the canonical form,
                 // SpecTrans translations 7-10, 17-22, 24 still apply
                 // (EPOCH/EQUINOX, AIPS spectral CTYPE, RESTFREQ, CUNIT
-                // case, IRAF mini-WCS strip, etc.).
-                spec_trans::spec_trans(&mut self.cards, Encoding::FitsWcs);
-                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
+                // case, IRAF mini-WCS strip, etc.). Returns a
+                // separate "trans" CardList so the original
+                // self.cards layout is preserved for write-time
+                // round-trip — mirrors fitschan.c:11430-11438 which
+                // creates a temporary FitsChan `ret` and deletes it
+                // after WcsToStore.
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsWcs);
+                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                 let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
@@ -569,26 +574,26 @@ impl Channel for FitsChan {
                 // After SpecTrans, alt-axis cards are in the *A..*Z
                 // form, so we route through the multi-plane
                 // FitsWcs decoder to pick up secondary planes.
-                spec_trans::spec_trans(&mut self.cards, Encoding::FitsPc);
-                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsPc);
+                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                 let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
-                spec_trans::spec_trans(&mut self.cards, Encoding::FitsIraf);
-                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&self.cards)?;
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsIraf);
+                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                 let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
-                spec_trans::spec_trans(&mut self.cards, self.encoding);
-                let store = enc_aips::read_from_cards(&self.cards)?;
+                let trans = spec_trans::spec_trans(&self.cards, self.encoding);
+                let store = enc_aips::read_from_cards(&trans)?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
-                spec_trans::spec_trans(&mut self.cards, Encoding::FitsClass);
-                let store = enc_class::read_from_cards(&self.cards)?;
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass);
+                let store = enc_class::read_from_cards(&trans)?;
                 let obj = wcs_read::decode_wcs(&store)?;
                 Ok(Some(obj))
             }
