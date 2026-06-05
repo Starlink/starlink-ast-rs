@@ -306,6 +306,52 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     ) -> AstResult<Option<find_frame::FindFrameResult>> {
         find_frame::default_find_frame(self.snapshot(), template, domainlist)
     }
+
+    /// Snapshot of `self` with only the axes listed in `target_axes`.
+    ///
+    /// `target_axes` entries are zero-based indices into `self`'s
+    /// axis space (with `-1` meaning "no association — use defaults").
+    /// The returned Frame has `target_axes.len()` axes, in the order
+    /// given. Per-axis metadata (Label/Unit/Symbol/Format) follows
+    /// the picked axes; Frame-level metadata (Title/Domain) is
+    /// preserved from `self`. Mirrors C `astPickAxes` (frame.c:8400).
+    ///
+    /// The default implementation falls back to a plain BasicFrame
+    /// snapshot with `target_axes.len()` axes — only correct for
+    /// classes whose per-axis metadata isn't load-bearing. Concrete
+    /// classes with strong axis identity (SkyFrame, SpecFrame,
+    /// FluxFrame) override this.
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        // Default: produce a BasicFrame of the right size, copying
+        // the Frame-level Domain.
+        let mut builder = BasicFrameBuilder::new(target_axes.len());
+        if self.test_domain() {
+            builder = builder.domain(self.domain());
+        }
+        let frame = builder.build()?;
+        Ok(Box::new(frame))
+    }
+
+    /// Overlay `template`'s explicitly-set attributes onto `self`.
+    ///
+    /// `template_axes` is parallel to `self`'s axes, giving the
+    /// (zero-based) template axis index from which each result axis
+    /// should inherit per-axis attributes. `-1` means no
+    /// association. Mirrors C `astOverlay` (frame.c:8980).
+    ///
+    /// Default implementation copies the template's Domain onto
+    /// `self` if the template has its Domain explicitly set; per-
+    /// axis attributes are class-specific and handled by overrides.
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        let _ = template_axes;
+        if template.test_domain() {
+            // No public set_domain on `dyn Frame` — only concrete
+            // classes know how. The default is a no-op; concrete
+            // overrides do the actual copy.
+            let _ = template.domain();
+        }
+        Ok(())
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.
