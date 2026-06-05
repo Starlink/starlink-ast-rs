@@ -19,14 +19,28 @@ use crate::serial::AnyObject;
 /// - Base frame: pixel coordinates (domain "GRID")
 /// - Current frame: world coordinates (SkyFrame, SpecFrame, CmpFrame, or BasicFrame)
 /// - Mapping: pixel → world
+#[cfg(test)]
 pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
+    decode_wcs_with_def_b1950(store, false)
+}
+
+/// Encoding-aware variant of [`decode_wcs`]. `def_b1950` mirrors the
+/// FitsChan `DefB1950` attribute (fitschan.c:42288): true for every
+/// FITS encoding except FITS-WCS. Forwards into
+/// [`wcs_celestial::build_celestial_with_def_b1950`] which uses the
+/// flag to drive the NORADEC fallback for alt SkyFrames with no
+/// RADESYS / EQUINOX / MJD-OBS.
+pub(crate) fn decode_wcs_with_def_b1950(
+    store: &FitsStore,
+    def_b1950: bool,
+) -> AstResult<AnyObject> {
     let naxis = store.naxis;
 
     // Step 1: Build the pixel → IWC mapping.
     let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(store)?;
 
     // Step 2: Try to decode celestial axes.
-    let celestial = wcs_celestial::build_celestial(store);
+    let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950);
 
     // Step 3: Try to decode spectral axis.
     let spectral = wcs_spectral::build_spectral(store);
@@ -236,8 +250,17 @@ pub(crate) fn decode_wcs_with_alts(
     primary: &FitsStore,
     alts: &[(char, FitsStore)],
 ) -> AstResult<AnyObject> {
+    decode_wcs_with_alts_def_b1950(primary, alts, false)
+}
+
+/// Encoding-aware variant. See [`decode_wcs_with_def_b1950`].
+pub(crate) fn decode_wcs_with_alts_def_b1950(
+    primary: &FitsStore,
+    alts: &[(char, FitsStore)],
+    def_b1950: bool,
+) -> AstResult<AnyObject> {
     // Step 1: build the primary FrameSet via the existing decoder.
-    let primary_obj = decode_wcs(primary)?;
+    let primary_obj = decode_wcs_with_def_b1950(primary, def_b1950)?;
     let mut fs = match primary_obj {
         AnyObject::FrameSet(f) => f,
         _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
@@ -251,7 +274,7 @@ pub(crate) fn decode_wcs_with_alts(
     // Step 2: append one alt frame per (letter, alt_store).
     for (letter, alt_store) in alts {
         let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(alt_store)?;
-        let celestial = wcs_celestial::build_celestial(alt_store);
+        let celestial = wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950);
         let spectral = wcs_spectral::build_spectral(alt_store);
         let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
         let iwc_to_world = build_iwc_to_world(alt_store, celestial, spectral)?;

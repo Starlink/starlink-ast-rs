@@ -24,19 +24,19 @@ use crate::wcslib::WcsProjection;
 /// Mirrors fitschan.c:39172-39180. AST's `DefB1950` attribute defaults
 /// to **false** for FITS-WCS encoding (and **true** for everything
 /// else — see `astMAKE_GET(FitsChan,DefB1950,…)` at fitschan.c:42288).
-///
-/// We currently can't see the FitsChan's encoding from the read-side
-/// FitsStore; the FITS-WCS reader path is the only caller exercising
-/// this function in alt-plane scenarios, so gate on
-/// `DefB1950 == false` (the FITS-WCS default) and skip the fallback
-/// outright. When an encoding-aware path appears (e.g. FITS-PC alt
-/// `Cnxxx` reader), it can call this helper directly with an
-/// explicit `def_b1950` flag.
-fn apply_b1950_fallback_if_needed(_store: &FitsStore, _sky_frame: &mut SkyFrame) {
-    // FITS-WCS reader: DefB1950 = false. No fallback. The
-    // NORADEC + no-EQUINOX SkyFrame defaults to ICRS, which the
-    // SkySys writer emits as `RADESYS = ICRS` with no EQUINOX or
-    // MJD-OBS card.
+/// When the fallback fires, the SkyFrame is given B1950 equinox plus
+/// the corresponding Besselian MJD as its observation epoch.
+fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame, def_b1950: bool) {
+    if !def_b1950 {
+        return;
+    }
+    if store.radesys.is_some() || store.equinox.is_some() || store.mjdobs.is_some() {
+        return;
+    }
+    // B1950.0 → Julian MJD via palEpb2d.
+    let mjd_b1950 = crate::pal::epb2d(1950.0);
+    sky_frame.set_equinox_mjd(mjd_b1950);
+    sky_frame.set_epoch_mjd(mjd_b1950);
 }
 
 /// Result of building the celestial axes from a FitsStore.
@@ -58,7 +58,20 @@ pub(crate) struct CelestialResult {
 /// produces 2 outputs (longitude, latitude in radians).
 ///
 /// Returns `None` if no celestial axis pair is found.
+#[cfg(test)]
 pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
+    build_celestial_with_def_b1950(store, false)
+}
+
+/// Encoding-aware variant. `def_b1950` mirrors the FitsChan
+/// `DefB1950` attribute (fitschan.c:42288): true for FITS-PC /
+/// FITS-IRAF / FITS-AIPS / FITS-AIPS++ / FITS-CLASS / DSS, false
+/// for FITS-WCS. Triggers the NORADEC fallback (`apply_b1950_fallback_if_needed`)
+/// when the alt-plane SkyFrame has no RADESYS / EQUINOX / MJD-OBS.
+pub(crate) fn build_celestial_with_def_b1950(
+    store: &FitsStore,
+    def_b1950: bool,
+) -> Option<CelestialResult> {
     // Step 1: Find the celestial axis pair.
     let (lon_axis, lat_axis) = store.celestial_axes()?;
 
@@ -214,7 +227,7 @@ pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
     // no RADESYS, no EQUINOX, no MJD-OBS — typical of GALACTIC alt-A
     // planes. This path produces the 33281.923 MJD-OBS the writer's
     // last-plane-wins rule emits in fits-pc-gal_fits-pc.
-    apply_b1950_fallback_if_needed(store, &mut sky_frame);
+    apply_b1950_fallback_if_needed(store, &mut sky_frame, def_b1950);
 
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.

@@ -576,32 +576,32 @@ impl Channel for FitsChan {
                 // FitsWcs decoder to pick up secondary planes.
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsPc);
                 let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
+                let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsIraf);
                 let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
-                let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
+                let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
                 let trans = spec_trans::spec_trans(&self.cards, self.encoding);
                 let store = enc_aips::read_from_cards(&trans)?;
-                let obj = wcs_read::decode_wcs(&store)?;
+                let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass);
                 let store = enc_class::read_from_cards(&trans)?;
-                let obj = wcs_read::decode_wcs(&store)?;
+                let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
                 Ok(Some(obj))
             }
             Encoding::Dss => {
                 // Dss is a separate format; SpecTrans's translations
                 // are mostly inapplicable. Keep the existing reader.
                 let store = enc_dss::read_from_cards(&self.cards)?;
-                let obj = wcs_read::decode_wcs(&store)?;
+                let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
                 Ok(Some(obj))
             }
         }
