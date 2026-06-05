@@ -346,3 +346,55 @@ correct (no quirk to mirror). The corresponding test fixture
 `crates/ast-core/tests/fixtures/wcsconv/expected/azel.fits-wcs`
 has been updated to carry the *correct* `08:38:39.087` rather than
 C's buggy round-trip output `08:38:39.870`.
+
+---
+
+## `SIPIntWorld` reads `nout` from `astGetNin` (typo bug)
+
+**C location:** `fitschan.c:28673-28674` — inside `SIPIntWorld`,
+just after declaring `nin` and `nout`:
+
+```c
+   nin = astGetNin( map );
+   nout = astGetNin( map );
+```
+
+Both fields are populated from `astGetNin`. The second line is
+clearly meant to call `astGetNout`.
+
+**Observation:** For a Mapping where Nin == Nout (the usual case
+for a pixel→IWC chain) the typo is invisible. But when the
+caller passes a Mapping where Nin ≠ Nout — e.g. a 3-pixel-axis
+(WAVE/RA/DEC) cube whose celestial pair is split off into a
+2-output sub-mapping at some upstream layer — `nout` ends up
+holding the input dimension instead of the output dimension.
+Downstream branches that index a per-output array (`outax`,
+the `astMapSplit` retained-output list, `&map_temp` reductions)
+read past the real output count.
+
+**Consequence:** Subtle. In practice the function only reaches
+the affected branches when SIP detection succeeds on a non-square
+sub-mapping, which the wcsconv fixtures exercise via the SIP-3D
+shapes (sip-3d, sip-3d-swap). The Rust port doesn't reproduce the
+typo, so our `SIPIntWorld` works correctly when the C library
+silently misreports `nout` and falls through to a NULL return.
+
+**Why discuss with maintainers:** It's a one-line typo. Replacing
+the second `astGetNin` with `astGetNout` is harmless: `nout` is
+read via `outax` indexing a few lines later, and the NULL-return
+fallback would be slightly stricter (catching genuinely
+non-square Mappings that previously squeaked through).
+
+**Proposed C patch:**
+
+```c
+   nin = astGetNin( map );
+-  nout = astGetNin( map );
++  nout = astGetNout( map );
+```
+
+**Rust mirror:** `crates/ast-core/src/fitschan/fset_to_store/sip_int_world.rs`
+(this directory; the function is the SIP write-side counterpart
+of C `SIPIntWorld`). The Rust port reads `map.nout()` correctly,
+so we don't carry the quirk forward; record it here only so the
+maintainer-side fix can be coordinated.
