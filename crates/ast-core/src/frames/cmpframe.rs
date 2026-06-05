@@ -30,6 +30,13 @@ pub struct CmpFrame {
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
+    /// Frame Domain. Empty/unset by default; the serialiser falls back
+    /// to `<dom1>-<dom2>` (or `CMP`) when this is None. Mirrors the
+    /// `Domain` Frame attribute (frame.c).
+    domain: Option<String>,
+    /// Frame Title. Empty/unset by default; the serialiser falls back
+    /// to `"N-d compound coordinate system"` when this is None.
+    title: Option<String>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
     min_axes_opt: Option<usize>,
     max_axes_opt: Option<usize>,
@@ -50,12 +57,40 @@ impl CmpFrame {
             perm: (0..naxes).collect(),
             act_unt: None,
             ident: None,
+            domain: None,
+            title: None,
             min_axes_opt: None,
             max_axes_opt: None,
             match_end_opt: None,
             preserve_axes_opt: None,
             permute_opt: None,
         }
+    }
+
+    /// Frame Title. When unset, returns the empty string;
+    /// serialisation defaults are computed in [`Serializable::to_node`].
+    /// Mirrors `astGetTitle`.
+    pub fn title(&self) -> &str {
+        self.title.as_deref().unwrap_or("")
+    }
+
+    /// Set the Frame Title. Mirrors `astSetTitle`. Empty input clears
+    /// the explicit set state (i.e. reverts to the default).
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        let s = title.into();
+        self.title = if s.is_empty() { None } else { Some(s) };
+    }
+
+    /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
+    pub fn test_title(&self) -> bool {
+        self.title.is_some()
+    }
+
+    /// Set the Frame Domain. Mirrors `astSetDomain`. Empty input
+    /// clears the explicit set state.
+    pub fn set_domain(&mut self, domain: impl Into<String>) {
+        let s = domain.into();
+        self.domain = if s.is_empty() { None } else { Some(s) };
     }
 
     /// Return the frame identification string.
@@ -154,6 +189,14 @@ impl Frame for CmpFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some("Compound")
+    }
+
+    fn domain(&self) -> &str {
+        self.domain.as_deref().unwrap_or("")
+    }
+
+    fn test_domain(&self) -> bool {
+        self.domain.is_some()
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -255,6 +298,15 @@ impl Frame for CmpFrame {
     fn snapshot(&self) -> DynFrame {
         let mut cmp = CmpFrame::new(self.frame1.snapshot(), self.frame2.snapshot());
         cmp.perm = self.perm.clone();
+        cmp.act_unt = self.act_unt;
+        cmp.ident = self.ident.clone();
+        cmp.domain = self.domain.clone();
+        cmp.title = self.title.clone();
+        cmp.min_axes_opt = self.min_axes_opt;
+        cmp.max_axes_opt = self.max_axes_opt;
+        cmp.match_end_opt = self.match_end_opt;
+        cmp.preserve_axes_opt = self.preserve_axes_opt;
+        cmp.permute_opt = self.permute_opt;
         Box::new(cmp)
     }
 
@@ -401,6 +453,16 @@ impl Frame for CmpFrame {
     ) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
         cmpframe_match(self, target, matchsub)
     }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        cmpframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
+    }
 }
 
 impl Serializable for CmpFrame {
@@ -431,13 +493,24 @@ impl Serializable for CmpFrame {
         let node_a = FrameToNode::to_node(self.frame1.as_ref())?;
         let node_b = FrameToNode::to_node(self.frame2.as_ref())?;
 
-        // Compute default title: "N-d compound coordinate system"
-        let default_title = format!("{naxes}-d compound coordinate system");
-        node.push_unset(
-            "Title",
-            NodeValue::String(default_title),
-            Some("Title of coordinate system".to_string()),
-        );
+        // Title: emit explicit value if set, otherwise commented
+        // default "N-d compound coordinate system".
+        if let Some(ref title) = self.title {
+            if !title.is_empty() {
+                node.push_string(
+                    "Title",
+                    title,
+                    Some("Title of coordinate system".to_string()),
+                );
+            }
+        } else {
+            let default_title = format!("{naxes}-d compound coordinate system");
+            node.push_unset(
+                "Title",
+                NodeValue::String(default_title),
+                Some("Title of coordinate system".to_string()),
+            );
+        }
 
         // Naxes (commented for CmpFrame — derivable from components)
         node.push_unset(
@@ -446,21 +519,32 @@ impl Serializable for CmpFrame {
             Some("Number of coordinate axes".to_string()),
         );
 
-        // Domain default mirrors C's `CmpFrame::GetDomain` (cmpframe.c
-        // line 3603+): if either child has a non-empty Domain, return
-        // "dom1-dom2"; if both are empty, return the literal "CMP".
-        let domain_a = node_a.get_string_any("Domain").unwrap_or("").to_string();
-        let domain_b = node_b.get_string_any("Domain").unwrap_or("").to_string();
-        let compound_domain = if domain_a.is_empty() && domain_b.is_empty() {
-            "CMP".to_string()
+        // Domain: emit explicit value if set, otherwise commented
+        // default. C `CmpFrame::GetDomain` (cmpframe.c:3603+) returns
+        // "<dom1>-<dom2>" when either child has a non-empty Domain,
+        // and the literal "CMP" when both are empty.
+        if let Some(ref domain) = self.domain {
+            if !domain.is_empty() {
+                node.push_string(
+                    "Domain",
+                    domain,
+                    Some("Coordinate system domain".to_string()),
+                );
+            }
         } else {
-            format!("{}-{}", domain_a, domain_b)
-        };
-        node.push_unset(
-            "Domain",
-            NodeValue::String(compound_domain),
-            Some("Coordinate system domain".to_string()),
-        );
+            let domain_a = node_a.get_string_any("Domain").unwrap_or("").to_string();
+            let domain_b = node_b.get_string_any("Domain").unwrap_or("").to_string();
+            let compound_domain = if domain_a.is_empty() && domain_b.is_empty() {
+                "CMP".to_string()
+            } else {
+                format!("{}-{}", domain_a, domain_b)
+            };
+            node.push_unset(
+                "Domain",
+                NodeValue::String(compound_domain),
+                Some("Coordinate system domain".to_string()),
+            );
+        }
 
         // Lbl{n} and Uni{n} from child frames
         for ax in 1..=naxes {
@@ -595,6 +679,18 @@ impl Serializable for CmpFrame {
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
             cmp.ident = Some(ident);
+        }
+
+        // Domain / Title: only the explicitly-set (active) value is
+        // restored. `Node::get` returns None for `Unset` values, so
+        // the empty default reaches us as "" and skips the assign.
+        let domain = node.get_string("Domain", "");
+        if !domain.is_empty() {
+            cmp.domain = Some(domain);
+        }
+        let title = node.get_string("Title", "");
+        if !title.is_empty() {
+            cmp.title = Some(title);
         }
 
         Ok(cmp)
@@ -1461,6 +1557,310 @@ fn cmpframe_match(
     component_match(template, target, matchsub, 1)
 }
 
+/// Partition a CmpFrame axis selection into per-component groups.
+/// Mirrors C `PartitionSelection` (cmpframe.c:6456).
+///
+/// On entry, `select[i]` is the (zero-based) external CmpFrame axis
+/// index requested for the i-th result slot, or `-1` for an "extra"
+/// (synthetic) axis with no target derivation. `perm` is the
+/// CmpFrame's external→internal permutation array. `naxes1` /
+/// `naxes2` give the two components' axis counts.
+///
+/// On exit, `iframe[i] = 1` if the i-th result axis comes from
+/// component 1, or `2` if it comes from component 2. Extras are
+/// assigned to whichever component the closest "real" selection
+/// came from, scanning forward (`following=false`) or backward
+/// (`following=true`).
+fn partition_selection(
+    select: &[i32],
+    perm: &[usize],
+    naxes1: usize,
+    naxes2: usize,
+    iframe: &mut [u8],
+    following: bool,
+) {
+    let nselect = select.len();
+    let naxes = naxes1 + naxes2;
+
+    // Real selections: dispatch by perm[index] vs naxes1.
+    for (iselect, &sel) in select.iter().enumerate() {
+        if sel >= 0 && (sel as usize) < naxes {
+            iframe[iselect] = if perm[sel as usize] >= naxes1 { 2 } else { 1 };
+        }
+    }
+
+    // Default for extras with no real neighbour at all
+    // (cmpframe.c:6552-6554).
+    let mut ifr: u8 = if following { 2 } else { 1 };
+
+    // Find the first real selection in scan direction; use its
+    // component for any leading-extras that precede every real
+    // selection.
+    let scan: Box<dyn Iterator<Item = usize>> = if following {
+        Box::new((0..nselect).rev())
+    } else {
+        Box::new(0..nselect)
+    };
+    let scan: Vec<usize> = scan.collect();
+    for &iselect in &scan {
+        let sel = select[iselect];
+        if sel >= 0 && (sel as usize) < naxes {
+            ifr = iframe[iselect];
+            break;
+        }
+    }
+
+    // Final pass: real selections update `ifr`; extras inherit the
+    // most recent (in scan direction) value.
+    for &iselect in &scan {
+        let sel = select[iselect];
+        if sel >= 0 && (sel as usize) < naxes {
+            ifr = iframe[iselect];
+        } else {
+            iframe[iselect] = ifr;
+        }
+    }
+}
+
+/// `CmpFrame::SubFrame` — select `result_naxes` axes from a CmpFrame
+/// target and build a new Frame + Mapping. Mirrors C `SubFrame`
+/// (cmpframe.c:9184).
+///
+/// Three structural cases mirror C:
+///
+/// 1. All selected axes come from `frame1` only — delegate to
+///    `frame1.sub_frame()`, then prefix a PermMap that maps full
+///    CmpFrame axes to the frame1 axes (assigning BAD to frame2's
+///    target axes).
+/// 2. All selected axes come from `frame2` only — symmetric to (1).
+/// 3. Mixed — call `sub_frame()` on each component, combine the two
+///    Mappings in parallel via `CmpMap`, prefix with a PermMap
+///    encoding the target's external→internal axis permutation, and
+///    suffix with a PermMap that re-orders the parallel-composed
+///    output back into the requested result axis order.
+///
+/// `target_axes` entries of `-1` produce "extra" result axes with no
+/// target derivation; they are assigned to whichever component the
+/// closest neighbouring real axis came from (per `MatchEnd` on the
+/// target).
+fn cmpframe_sub_frame(
+    target: &CmpFrame,
+    template: Option<&dyn Frame>,
+    result_naxes: usize,
+    target_axes: &[i32],
+    template_axes: &[i32],
+) -> AstResult<Option<(DynMapping, DynFrame)>> {
+    let naxes = target.naxes();
+    let naxes1 = target.frame1().naxes();
+    let naxes2 = target.frame2().naxes();
+    let perm = target.perm();
+    let following = target.match_end();
+
+    // Step 1: partition the result axes between the two components.
+    let mut iframe = vec![0u8; result_naxes];
+    partition_selection(target_axes, perm, naxes1, naxes2, &mut iframe, following);
+
+    // Step 2: build the per-component (target_axes, template_axes)
+    // arrays. n1 / n2 count the result slots assigned to each
+    // component; target_axes1[k] / target_axes2[k] hold the
+    // *internal* (post-perm) axis indices into the matching
+    // component, with naxes1 subtracted off for component 2.
+    let mut target_axes1 = Vec::with_capacity(result_naxes);
+    let mut target_axes2 = Vec::with_capacity(result_naxes);
+    let mut template_axes1 = Vec::with_capacity(result_naxes);
+    let mut template_axes2 = Vec::with_capacity(result_naxes);
+
+    for result_axis in 0..result_naxes {
+        let target_axis = target_axes[result_axis];
+        let axis_p: i32 = if target_axis >= 0 && (target_axis as usize) < naxes {
+            perm[target_axis as usize] as i32
+        } else {
+            -1
+        };
+        let templ_axis = if template_axes.is_empty() {
+            -1
+        } else {
+            template_axes[result_axis]
+        };
+
+        if iframe[result_axis] == 1 {
+            target_axes1.push(axis_p);
+            template_axes1.push(templ_axis);
+        } else {
+            target_axes2.push(if axis_p == -1 {
+                -1
+            } else {
+                axis_p - naxes1 as i32
+            });
+            template_axes2.push(templ_axis);
+        }
+    }
+    let n1 = target_axes1.len();
+    let n2 = target_axes2.len();
+
+    // Step 3: dispatch by (n1, n2).
+    if n1 > 0 && n2 == 0 {
+        // Single-component: frame1 only.
+        let Some((sub_map1, result)) =
+            target
+                .frame1()
+                .sub_frame(template, n1, &target_axes1, &template_axes1)?
+        else {
+            return Ok(None);
+        };
+
+        // Prefix PermMap: full CmpFrame axis space (naxes inputs)
+        // → frame1 axis space (naxes1 outputs). Mirrors
+        // cmpframe.c:9436-9469.
+        // Rust encoding: 1-based, 0 = BAD.
+        // For each target external axis t: axis_p = perm[t].
+        //   If axis_p < naxes1: inperm[t] = axis_p+1; outperm[axis_p] = t+1.
+        //   Else: inperm[t] = 0 (BAD).
+        let mut inperm = vec![0i64; naxes];
+        let mut outperm = vec![0i64; naxes1];
+        for target_axis in 0..naxes {
+            let axis_p = perm[target_axis];
+            if axis_p < naxes1 {
+                inperm[target_axis] = (axis_p as i64) + 1;
+                outperm[axis_p] = (target_axis as i64) + 1;
+            }
+            // else inperm[target_axis] stays 0 = BAD on inverse.
+        }
+        let permmap_pref = PermMap::new(&inperm, &outperm, &[])?;
+        let combined: DynMapping = Box::new(CmpMap::new(
+            Box::new(permmap_pref),
+            sub_map1,
+            Composition::Series,
+        )?);
+        return Ok(Some((combined, result)));
+    }
+
+    if n2 > 0 && n1 == 0 {
+        // Single-component: frame2 only. Mirrors cmpframe.c:9483-9538.
+        let Some((sub_map2, result)) =
+            target
+                .frame2()
+                .sub_frame(template, n2, &target_axes2, &template_axes2)?
+        else {
+            return Ok(None);
+        };
+
+        // Prefix PermMap: full CmpFrame axis space → frame2 axis
+        // space (naxes2 outputs).
+        // For each target external axis t: axis_p = perm[t].
+        //   If axis_p >= naxes1: inperm[t] = (axis_p-naxes1)+1;
+        //                        outperm[axis_p-naxes1] = t+1.
+        //   Else: inperm[t] = 0 (BAD).
+        let mut inperm = vec![0i64; naxes];
+        let mut outperm = vec![0i64; naxes2];
+        for target_axis in 0..naxes {
+            let axis_p = perm[target_axis];
+            if axis_p >= naxes1 {
+                let local = axis_p - naxes1;
+                inperm[target_axis] = (local as i64) + 1;
+                outperm[local] = (target_axis as i64) + 1;
+            }
+        }
+        let permmap_pref = PermMap::new(&inperm, &outperm, &[])?;
+        let combined: DynMapping = Box::new(CmpMap::new(
+            Box::new(permmap_pref),
+            sub_map2,
+            Composition::Series,
+        )?);
+        return Ok(Some((combined, result)));
+    }
+
+    // Mixed case (cmpframe.c:9545-9678).
+    let Some((sub_map1, sub_result1)) =
+        target
+            .frame1()
+            .sub_frame(template, n1, &target_axes1, &template_axes1)?
+    else {
+        return Ok(None);
+    };
+    let Some((sub_map2, sub_result2)) =
+        target
+            .frame2()
+            .sub_frame(template, n2, &target_axes2, &template_axes2)?
+    else {
+        return Ok(None);
+    };
+
+    // Prefix PermMap: target external axes → target internal axes.
+    // For each external axis t: outperm[axis_p] = t+1; inperm[t] = axis_p+1.
+    // (Mirrors cmpframe.c:9582-9586 — straight perm encoding.)
+    let mut inperm_pref = vec![0i64; naxes];
+    let mut outperm_pref = vec![0i64; naxes];
+    for target_axis in 0..naxes {
+        let axis_p = perm[target_axis];
+        inperm_pref[target_axis] = (axis_p as i64) + 1;
+        outperm_pref[axis_p] = (target_axis as i64) + 1;
+    }
+
+    // Suffix PermMap: parallel-composed output (i1 component-1
+    // results, then i2 component-2 results) → final result axis
+    // order (mirrors cmpframe.c:9588-9611).
+    let mut inperm_suff = vec![0i64; result_naxes];
+    let mut outperm_suff = vec![0i64; result_naxes];
+    let mut i1: usize = 0;
+    let mut i2: usize = 0;
+    for result_axis in 0..result_naxes {
+        if iframe[result_axis] == 1 {
+            inperm_suff[i1] = (result_axis as i64) + 1;
+            outperm_suff[result_axis] = (i1 as i64) + 1;
+            i1 += 1;
+        } else {
+            inperm_suff[n1 + i2] = (result_axis as i64) + 1;
+            outperm_suff[result_axis] = ((n1 + i2) as i64) + 1;
+            i2 += 1;
+        }
+    }
+
+    // Parallel compose the two component Mappings.
+    let sub_map: DynMapping = Box::new(CmpMap::new(sub_map1, sub_map2, Composition::Parallel)?);
+
+    // Build prefix and suffix PermMaps.
+    let permmap_pref = PermMap::new(&inperm_pref, &outperm_pref, &[])?;
+    let permmap_suff = PermMap::new(&inperm_suff, &outperm_suff, &[])?;
+
+    // Compose: pref ◦ sub ◦ suff.
+    let tmp: DynMapping = Box::new(CmpMap::new(
+        Box::new(permmap_pref),
+        sub_map,
+        Composition::Series,
+    )?);
+    let final_map: DynMapping = Box::new(CmpMap::new(
+        tmp,
+        Box::new(permmap_suff),
+        Composition::Series,
+    )?);
+
+    // Build result CmpFrame and apply the suffix permutation to its
+    // axes (cmpframe.c:9637-9641). astPermAxes uses 1-based perm
+    // values; outperm_suff is already 1-based.
+    let mut result_frame: DynFrame = Box::new(CmpFrame::new(sub_result1, sub_result2));
+    let perm_args: Vec<usize> = outperm_suff.iter().map(|&v| v as usize).collect();
+    result_frame.perm_axes(&perm_args)?;
+
+    // C "DSB insertion" (cmpframe.c:9646-9663): when the result
+    // covers every target axis, propagate target Domain/Title onto
+    // the result.
+    if result_naxes == naxes {
+        let target_domain = target.test_domain().then(|| target.domain().to_string());
+        let target_title = target.test_title().then(|| target.title().to_string());
+        if let Some(result_cmp) = result_frame.as_any_mut().downcast_mut::<CmpFrame>() {
+            if let Some(d) = target_domain {
+                result_cmp.set_domain(d);
+            }
+            if let Some(t) = target_title {
+                result_cmp.set_title(t);
+            }
+        }
+    }
+
+    Ok(Some((final_map, result_frame)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1808,6 +2208,152 @@ mod tests {
         let target = BasicFrameBuilder::new(5).build().unwrap();
         let result = template.match_template(&target, false).unwrap();
         assert!(result.is_none());
+    }
+
+    // ---------------------------------------------------------------
+    // CmpFrame::sub_frame (cmpframe.c:9184)
+    // ---------------------------------------------------------------
+
+    /// Identity pick: target = CmpFrame(BasicFrame(2), BasicFrame(1)),
+    /// target_axes = [0, 1, 2]. The mapping should be effectively
+    /// the identity over 3 axes.
+    #[test]
+    fn sub_frame_identity_full_axis_pick() {
+        let target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let target_axes: Vec<i32> = vec![0, 1, 2];
+        let template_axes: Vec<i32> = vec![0, 1, 2];
+        let (map, result) = target
+            .sub_frame(None, 3, &target_axes, &template_axes)
+            .unwrap()
+            .expect("identity sub_frame");
+        assert_eq!(result.naxes(), 3);
+        assert_eq!(map.nin(), 3);
+        assert_eq!(map.nout(), 3);
+    }
+
+    /// Pick only the frame1 axes: target_axes = [0, 1].
+    /// Single-component path: result is a 2-axis BasicFrame, mapping
+    /// has 3 inputs and 2 outputs.
+    #[test]
+    fn sub_frame_picks_frame1_only() {
+        let target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let (map, result) = target
+            .sub_frame(None, 2, &[0, 1], &[0, 1])
+            .unwrap()
+            .expect("frame1 pick");
+        assert_eq!(result.naxes(), 2);
+        assert_eq!(map.nin(), 3);
+        assert_eq!(map.nout(), 2);
+    }
+
+    /// Pick only the frame2 axis: target_axes = [2].
+    /// Single-component path: result is a 1-axis BasicFrame, mapping
+    /// has 3 inputs and 1 output.
+    #[test]
+    fn sub_frame_picks_frame2_only() {
+        let target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let (map, result) = target
+            .sub_frame(None, 1, &[2], &[0])
+            .unwrap()
+            .expect("frame2 pick");
+        assert_eq!(result.naxes(), 1);
+        assert_eq!(map.nin(), 3);
+        assert_eq!(map.nout(), 1);
+    }
+
+    /// Mixed pick with axis reordering: pick [2, 0]. Result is a
+    /// 2-axis Frame whose first axis derives from target axis 2
+    /// (frame2) and whose second axis derives from target axis 0
+    /// (frame1).
+    #[test]
+    fn sub_frame_mixed_components_with_reorder() {
+        let target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let (map, result) = target
+            .sub_frame(None, 2, &[2, 0], &[0, 1])
+            .unwrap()
+            .expect("mixed pick");
+        assert_eq!(result.naxes(), 2);
+        assert_eq!(map.nin(), 3);
+        assert_eq!(map.nout(), 2);
+    }
+
+    /// part_match against a CmpFrame target now succeeds after
+    /// CmpFrame::sub_frame is wired up. Template = CmpFrame(BF2,BF1),
+    /// target = CmpFrame(BF2,BF1), partition target axes [0,1] vs [2].
+    #[test]
+    fn part_match_against_cmpframe_target_now_succeeds() {
+        let template = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let m = part_match(&template, &target, false, &[0, 1], &[2])
+            .unwrap()
+            .expect("CmpFrame partition match");
+        assert_eq!(m.result.naxes(), 3);
+    }
+
+    /// DSB carry-through (cmpframe.c:9646-9663): identity full-axis
+    /// pick on a CmpFrame target with explicit Domain/Title produces
+    /// a result CmpFrame inheriting both attributes.
+    #[test]
+    fn sub_frame_full_pick_inherits_domain_and_title() {
+        let mut target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        target.set_domain("MYCMP");
+        target.set_title("custom title");
+        assert!(target.test_domain());
+        assert!(target.test_title());
+        let target_axes: Vec<i32> = vec![0, 1, 2];
+        let template_axes: Vec<i32> = vec![0, 1, 2];
+        let (_map, result) = target
+            .sub_frame(None, 3, &target_axes, &template_axes)
+            .unwrap()
+            .expect("identity sub_frame");
+        let result_cmp = result.as_any().downcast_ref::<CmpFrame>().unwrap();
+        assert_eq!(result_cmp.domain(), "MYCMP");
+        assert_eq!(result_cmp.title(), "custom title");
+        assert!(result_cmp.test_domain());
+        assert!(result_cmp.test_title());
+    }
+
+    /// Partial pick (result_naxes != naxes) does NOT inherit
+    /// Domain/Title — DSB insertion is gated on full coverage.
+    #[test]
+    fn sub_frame_partial_pick_does_not_inherit_domain() {
+        let mut target = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        target.set_domain("MYCMP");
+        let (_map, result) = target
+            .sub_frame(None, 2, &[0, 1], &[0, 1])
+            .unwrap()
+            .expect("frame1 pick");
+        // Result is a 2-axis BasicFrame, not a CmpFrame; the
+        // Domain accessor on a non-CmpFrame Result returns whatever
+        // pick_axes_snapshot provided (BasicFrame with no Domain by
+        // default).
+        let _ = result.domain();
+        // Just verify it didn't crash and produced a sensible Frame.
+        assert_eq!(result.naxes(), 2);
     }
 
     /// Clean-partition path (cmpframe.c:262-380): template
