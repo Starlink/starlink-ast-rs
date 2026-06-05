@@ -116,11 +116,20 @@ pub struct FluxFrame {
 
     // FluxFrame-specific
     system: FluxSystem,
+    /// Whether `system` was set explicitly (mirrors C `astTestSystem`).
+    system_set: bool,
     spec_val: Option<f64>, // spectral position at which flux is measured
 
     // Object-level attributes
     act_unt: Option<bool>,
     ident: Option<String>,
+
+    // Match-control attributes (used by `astFindFrame` / `astMatch`).
+    min_axes_opt: Option<usize>,
+    max_axes_opt: Option<usize>,
+    match_end_opt: Option<bool>,
+    preserve_axes_opt: Option<bool>,
+    permute_opt: Option<bool>,
 }
 
 impl FluxFrame {
@@ -133,10 +142,46 @@ impl FluxFrame {
             // None = use the default "FLUX"; mirrors astTestDomain.
             domain: None,
             system,
+            // Match the SpecFrame convention: when the constructor is
+            // called with the default system (FluxDen here), treat it
+            // as unset; otherwise mark it as explicitly set so it can
+            // act as a template-side discriminator.
+            system_set: !matches!(system, FluxSystem::FluxDen),
             spec_val: None,
             act_unt: None,
             ident: None,
+            min_axes_opt: None,
+            max_axes_opt: None,
+            match_end_opt: None,
+            preserve_axes_opt: None,
+            permute_opt: None,
         }
+    }
+
+    /// Whether `System` has been explicitly set on this FluxFrame.
+    /// Mirrors C `astTestSystem`.
+    pub fn test_system(&self) -> bool {
+        self.system_set
+    }
+
+    /// Clear the explicit-set state of System.
+    pub fn clear_system(&mut self) {
+        self.system_set = false;
+    }
+
+    /// Frame Title accessor. Returns the empty string when unset.
+    pub fn title(&self) -> &str {
+        self.title.as_deref().unwrap_or("")
+    }
+
+    /// Whether Title has been explicitly set. Mirrors `astTestTitle`.
+    pub fn test_title(&self) -> bool {
+        self.title.is_some()
+    }
+
+    /// Clear the Title attribute.
+    pub fn clear_title(&mut self) {
+        self.title = None;
     }
 
     // --- FluxFrame-specific attributes ---
@@ -160,6 +205,7 @@ impl FluxFrame {
     /// Set the flux coordinate system.
     pub fn set_system(&mut self, sys: FluxSystem) {
         self.system = sys;
+        self.system_set = true;
     }
 
     /// Return the spectral position at which flux values are measured.
@@ -362,6 +408,237 @@ impl Frame for FluxFrame {
     fn ident(&self) -> &str {
         FluxFrame::ident(self)
     }
+
+    // -----------------------------------------------------------------
+    // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
+    // -----------------------------------------------------------------
+
+    fn min_axes(&self) -> usize {
+        self.min_axes_opt.unwrap_or(1)
+    }
+    fn set_min_axes(&mut self, n: usize) {
+        self.min_axes_opt = Some(n);
+    }
+    fn test_min_axes(&self) -> bool {
+        self.min_axes_opt.is_some()
+    }
+    fn max_axes(&self) -> usize {
+        self.max_axes_opt.unwrap_or(1)
+    }
+    fn set_max_axes(&mut self, n: usize) {
+        self.max_axes_opt = Some(n);
+    }
+    fn test_max_axes(&self) -> bool {
+        self.max_axes_opt.is_some()
+    }
+    fn match_end(&self) -> bool {
+        self.match_end_opt.unwrap_or(false)
+    }
+    fn set_match_end(&mut self, v: bool) {
+        self.match_end_opt = Some(v);
+    }
+    fn test_match_end(&self) -> bool {
+        self.match_end_opt.is_some()
+    }
+    fn preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.unwrap_or(false)
+    }
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.preserve_axes_opt = Some(v);
+    }
+    fn test_preserve_axes(&self) -> bool {
+        self.preserve_axes_opt.is_some()
+    }
+    fn permute(&self) -> bool {
+        // FluxFrame is 1-axis: permutations are degenerate. C defaults
+        // Permute to 1 (true) for FluxFrame because the parent Frame
+        // class default applies (fluxframe.c does not override).
+        self.permute_opt.unwrap_or(true)
+    }
+    fn set_permute(&mut self, v: bool) {
+        self.permute_opt = Some(v);
+    }
+    fn test_permute(&self) -> bool {
+        self.permute_opt.is_some()
+    }
+
+    // -----------------------------------------------------------------
+    // Match / SubFrame / Overlay (fluxframe.c:2280 / 2888 / 2470).
+    // -----------------------------------------------------------------
+
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        fluxframe_overlay(template, template_axes, self)
+    }
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<super::find_frame::MatchResult>> {
+        // Mirrors fluxframe.c:2280. Step 1: parent (Frame class)
+        // Match handles axis-count and Domain pre-checks.
+        let parent = super::find_frame::default_match(self, target, match_sub)?;
+        if parent.is_none() {
+            return Ok(None);
+        }
+
+        // Step 2: walk the target's primary frames looking for a
+        // FluxFrame axis. CmpFrame walking is the same shape as
+        // SkyFrame's; for now the only supported case is a target
+        // that is itself a FluxFrame (astPrimaryFrame on a bare
+        // FluxFrame returns the FluxFrame itself).
+        let Some(_target_flux) = target.as_any().downcast_ref::<FluxFrame>() else {
+            return Ok(None);
+        };
+
+        // Step 3 (fluxframe.c:2442-2444): build the trivial axis
+        // associations.
+        let template_axes_vec = vec![0i32];
+        let target_axes_vec = vec![0i32];
+
+        // Step 4 (fluxframe.c:2451-2452): defer to target's SubFrame.
+        let Some((map, result)) =
+            target.sub_frame(Some(self), 1, &target_axes_vec, &template_axes_vec)?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(super::find_frame::MatchResult {
+            template_axes: template_axes_vec,
+            target_axes: target_axes_vec,
+            map,
+            result,
+        }))
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        fluxframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
+    }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        // FluxFrame is 1-axis; pick `[0]` returns a clone, anything
+        // else falls through to a BasicFrame snapshot (mirrors the
+        // parent_subframe branch of fluxframe.c SubFrame).
+        if target_axes.len() == 1 && target_axes[0] == 0 {
+            return Ok(Box::new(self.clone()));
+        }
+        let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
+        if self.test_domain() {
+            bf.set_domain(self.domain().to_string());
+        }
+        Ok(Box::new(bf))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Match / SubFrame / Overlay helpers
+// ---------------------------------------------------------------------------
+
+/// Mirrors C `Overlay` for FluxFrame (fluxframe.c:2470). Only
+/// attributes the template FluxFrame has explicitly set are
+/// transferred onto the result. When `result` is itself a FluxFrame
+/// and overlaying System would change the coordinate type, the
+/// result's Title is cleared first so the new system's defaults take
+/// effect.
+fn fluxframe_overlay(
+    template: &dyn Frame,
+    _template_axes: &[i32],
+    result: &mut dyn Frame,
+) -> AstResult<()> {
+    let template_flux = match template.as_any().downcast_ref::<FluxFrame>() {
+        Some(f) => f,
+        None => return Ok(()),
+    };
+
+    if let Some(result_flux) = result.as_any_mut().downcast_mut::<FluxFrame>() {
+        let old_system = result_flux.system;
+        let new_system = template_flux.system;
+
+        // fluxframe.c:2570-2590 — if the System will change AND the
+        // template explicitly sets it, clear Title.
+        if new_system != old_system && template_flux.test_system() {
+            result_flux.clear_title();
+        }
+
+        // Parent Frame::Overlay copies (Domain / Title / SpecVal /
+        // System).
+        if template_flux.test_domain() {
+            result_flux.set_domain(template_flux.domain());
+        }
+        if template_flux.test_title() {
+            if let Some(ref t) = template_flux.title {
+                result_flux.set_title(t);
+            }
+        }
+        if template_flux.test_system() {
+            result_flux.set_system(template_flux.system);
+        }
+        // SpecVal: copied when the template has it set
+        // (fluxframe.c:2636 OVERLAY(SpecVal)).
+        if let Some(v) = template_flux.spec_val {
+            result_flux.set_spec_val(v);
+        }
+        return Ok(());
+    }
+
+    // Result is not a FluxFrame — fluxframe.c:2602-2611 temporarily
+    // clears System and AlignSystem before invoking parent_overlay.
+    // Reproduce the observable effect: copy only Frame-level
+    // attributes that exist on the result type.
+    if template_flux.test_domain() {
+        if let Some(bf) = result
+            .as_any_mut()
+            .downcast_mut::<super::basic::BasicFrame>()
+        {
+            bf.set_domain(template_flux.domain().to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Mirrors C `SubFrame` for FluxFrame (fluxframe.c:2888).
+fn fluxframe_sub_frame(
+    target: &FluxFrame,
+    template: Option<&dyn Frame>,
+    result_naxes: usize,
+    target_axes: &[i32],
+    template_axes: &[i32],
+) -> AstResult<Option<(DynMapping, DynFrame)>> {
+    // Result-is-a-FluxFrame branch (fluxframe.c:3019-3062).
+    if result_naxes == 1 && target_axes.len() == 1 && target_axes[0] == 0 {
+        // Result is a copy of the target.
+        let mut result = target.clone();
+
+        // If a template was supplied, overlay it onto the result.
+        if let Some(t) = template {
+            fluxframe_overlay(t, template_axes, &mut result)?;
+        }
+
+        // Build the conversion Mapping. The full FluxFrame ↔
+        // FluxFrame conversion (MakeFluxMapping) requires the
+        // SpecFrame defining the spectral position, which we don't
+        // wire up in this port. For same-system targets the result
+        // is identity; for different systems we return None to
+        // signal "not yet supported" — same behaviour as the
+        // existing FluxFrame::convert. This deliberately does not
+        // paper over the gap with a fake mapping.
+        if target.system == result.system {
+            let map: DynMapping = Box::new(UnitMap::new(1));
+            return Ok(Some((map, Box::new(result))));
+        }
+        return Ok(None);
+    }
+
+    // parent_subframe branch (fluxframe.c:3072+). Delegate to the
+    // default Frame::SubFrame path which produces a BasicFrame-shaped
+    // result.
+    super::find_frame::default_sub_frame(target, template, target_axes, template_axes)
 }
 
 // ---------------------------------------------------------------------------
@@ -474,5 +751,103 @@ impl Serializable for FluxFrame {
         }
 
         Ok(ff)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_system_default_is_fluxden_unset() {
+        // FluxFrame::new(FluxDen) must report system as not-explicitly-
+        // set (matches the SpecFrame pattern).
+        let f = FluxFrame::new(FluxSystem::FluxDen);
+        assert!(!f.test_system());
+        // After explicit set, test_system flips.
+        let mut f = FluxFrame::new(FluxSystem::FluxDen);
+        f.set_system(FluxSystem::SBright);
+        assert!(f.test_system());
+    }
+
+    #[test]
+    fn match_template_fluxframe_self() {
+        let template = FluxFrame::new(FluxSystem::SBright);
+        let target = FluxFrame::new(FluxSystem::SBright);
+        let m = template
+            .match_template(&target, false)
+            .unwrap()
+            .expect("FluxFrame ↔ FluxFrame match");
+        assert_eq!(m.template_axes, vec![0]);
+        assert_eq!(m.target_axes, vec![0]);
+        let r = m.result.as_any().downcast_ref::<FluxFrame>().unwrap();
+        assert_eq!(r.system(), FluxSystem::SBright);
+    }
+
+    #[test]
+    fn match_template_fluxframe_against_basicframe_fails() {
+        // FluxFrame template requires a FluxFrame target.
+        let template = FluxFrame::new(FluxSystem::SBright);
+        let target = crate::frames::BasicFrameBuilder::new(1).build().unwrap();
+        let result = template.match_template(&target, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn match_template_fluxframe_different_system_returns_none() {
+        // SubFrame returns None for cross-system because the full
+        // MakeFluxMapping conversion is not yet ported. Match should
+        // therefore fail rather than return a fake mapping.
+        let template = FluxFrame::new(FluxSystem::SBright);
+        let target = FluxFrame::new(FluxSystem::FluxDenW);
+        let result = template.match_template(&target, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn sub_frame_fluxframe_to_fluxframe_identity() {
+        let target = FluxFrame::new(FluxSystem::SBright);
+        let template = FluxFrame::new(FluxSystem::SBright);
+        let (map, result) = target
+            .sub_frame(Some(&template), 1, &[0], &[0])
+            .unwrap()
+            .expect("identity sub_frame");
+        assert_eq!(map.nin(), 1);
+        assert_eq!(map.nout(), 1);
+        let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
+        assert_eq!(r.system(), FluxSystem::SBright);
+    }
+
+    #[test]
+    fn overlay_template_copies_set_system() {
+        let mut template = FluxFrame::new(FluxSystem::FluxDen);
+        template.set_system(FluxSystem::SBright);
+        assert!(template.test_system());
+        let target = FluxFrame::new(FluxSystem::FluxDen);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
+        assert_eq!(r.system(), FluxSystem::SBright);
+    }
+
+    #[test]
+    fn overlay_template_skips_unset_system() {
+        // Default-constructed template (FluxDen) is unset; overlaying
+        // it onto an SBright target must leave the target's system.
+        let template = FluxFrame::new(FluxSystem::FluxDen);
+        assert!(!template.test_system());
+        let target = FluxFrame::new(FluxSystem::SBright);
+        let mut result: DynFrame = Box::new(target);
+        result.overlay_template(&template, &[0]).unwrap();
+        let r = result.as_any().downcast_ref::<FluxFrame>().unwrap();
+        assert_eq!(r.system(), FluxSystem::SBright);
+    }
+
+    #[test]
+    fn pick_axes_snapshot_full_returns_fluxframe() {
+        let target = FluxFrame::new(FluxSystem::SBright);
+        let snap = target.pick_axes_snapshot(&[0]).unwrap();
+        let r = snap.as_any().downcast_ref::<FluxFrame>().unwrap();
+        assert_eq!(r.system(), FluxSystem::SBright);
     }
 }
