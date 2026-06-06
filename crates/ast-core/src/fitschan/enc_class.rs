@@ -509,9 +509,18 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     // through the Frame trait's find_frame_template method.
     let curfrm = fs.current();
 
-    // SkyFrame template for the source-RA/Dec frame. Mirrors C:6908.
+    // SkyFrame template for the source celestial frame. Mirrors
+    // C:6908 — `astSkyFrame("Permute=0,MinAxes=3,MaxAxes=3")`
+    // leaves the System attribute unset, which lets it inherit from
+    // the matched target axes. For class-gal that's Galactic; for
+    // FK5 inputs it stays FK5. SkyFrame::new(Icrs) leaves
+    // `system_set = false` (the SkyFrame default), so the template's
+    // System acts as "any" rather than forcing FK5 — without this,
+    // the resulting Mapping would expect FK5 RA/Dec input even when
+    // the CTYPE was GLON/GLAT, miscomputing AZIMUTH for galactic
+    // inputs by O(degrees).
     let radec_template = {
-        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        let mut sky = SkyFrame::new(SkySystem::Icrs);
         sky.set_permute(false);
         sky.set_min_axes(3);
         sky.set_max_axes(3);
