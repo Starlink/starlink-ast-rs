@@ -18,26 +18,12 @@ fn main() {
         ast_core::from_native_string(&text).expect("native parse")
     } else {
         let mut fc = FitsChan::from_header(&text).unwrap();
-        // Match test_wcsconv.rs: pick encoding from extension.
-        let in_enc = if fixture.ends_with(".fits-wcs") {
-            Encoding::FitsWcs
-        } else if fixture.ends_with(".fits-pc") {
-            Encoding::FitsPc
-        } else if fixture.ends_with(".fits-iraf") {
-            Encoding::FitsIraf
-        } else if fixture.ends_with(".fits-aips") {
-            Encoding::FitsAips
-        } else if fixture.ends_with(".fits-aips++") {
-            Encoding::FitsAipsPP
-        } else if fixture.ends_with(".fits-class") {
-            Encoding::FitsClass
-        } else if fixture.ends_with(".fits-dss") || fixture.ends_with(".dss") {
-            Encoding::Dss
-        } else {
+        // Match test_wcsconv.rs / C wcsconverter.c: only run
+        // guess_encoding for `.head` fixtures; otherwise leave the
+        // FitsChan at its default (FITS-WCS).
+        if fixture.ends_with(".head") {
             fc.guess_encoding();
-            fc.encoding()
-        };
-        fc.set_encoding(in_enc);
+        }
         let o = fc.read().unwrap().expect("input parses");
         fc_in_opt = Some(fc);
         o

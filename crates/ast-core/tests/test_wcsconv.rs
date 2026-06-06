@@ -82,6 +82,7 @@ fn encoding_from_str(s: &str) -> Option<Encoding> {
     }
 }
 
+#[allow(dead_code)]
 fn input_encoding_from_ext(filename: &str) -> Option<Encoding> {
     if filename.ends_with(".head") {
         None // Use guess
@@ -120,16 +121,21 @@ fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> 
             ast_core::from_native_string(&text).map_err(|e| format!("from_native_string: {e}"))?;
         Ok((obj, None))
     } else {
-        // FITS header -- load via FitsChan.
+        // FITS header -- load via FitsChan. Mirror C wcsconverter.c
+        // which creates the FitsChan with default encoding (FITS-WCS),
+        // applies attrs from the test, and reads. The .head extension
+        // → no encoding (Rust uses guess_encoding for that). For
+        // explicit encoding-extension files (.fits-pc, .fits-class,
+        // etc.), DO NOT pre-set the encoding — that decision should
+        // be left to the FitsChan's encoding default (which depends
+        // on DefB1950 default semantics in C, fitschan.c:42286). C's
+        // wcsconverter does NOT set encoding before reading.
         let mut fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
-
-        // Determine encoding.
-        match input_encoding_from_ext(&case.input_file) {
-            Some(enc) => fc.set_encoding(enc),
-            None => {
-                fc.guess_encoding();
-            }
+        // Only auto-detect when file ends in `.head` (no encoding hint).
+        if case.input_file.ends_with(".head") {
+            fc.guess_encoding();
         }
+        // Otherwise leave encoding at FitsChan default (FITS-WCS).
 
         let obj = fc
             .read()
