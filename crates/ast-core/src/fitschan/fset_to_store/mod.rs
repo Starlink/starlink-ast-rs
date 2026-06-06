@@ -228,6 +228,15 @@ pub(crate) fn fset_to_store(
     //     Mirrors C:2945-2954.
     round_crpix(&mut store);
 
+    // (d) FITS-CLASS spatial-CRVAL adjustment when the spatial pixel
+    //     axes are degenerate. Mirrors fitschan.c:6465-6496 inside
+    //     CLASSFromStore. Done here (rather than in the enc_class
+    //     writer) because it mutates the FitsStore based on the
+    //     FrameSet, which the writer does not have access to.
+    if matches!(encoding, Encoding::FitsClass) {
+        class_adjust_spatial_crval(fs, &mut store, dim, &wperm)?;
+    }
+
     Ok(store)
 }
 
@@ -471,44 +480,34 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     };
 
     // Locate SpecFrame and SkyFrame components in the current Frame
-    // by walking primary frames (mirrors C:2440-2448).
+    // by walking primary frames and copying the first match of each
+    // (mirrors C:2440-2448 — `astPrimaryFrame` + `astCopy(pfrm)`).
     let cfrm_naxes = fs.current().naxes();
-    let mut spec_present = false;
-    let mut sky_present = false;
+    let mut matched_spec: Option<SpecFrame> = None;
+    let mut matched_sky: Option<SkyFrame> = None;
     for iax in 0..cfrm_naxes {
         let (pframe, _) = crate::frames::specframe::primary_frame_walk(fs.current(), iax);
-        if pframe.as_any().downcast_ref::<SpecFrame>().is_some()
-            || pframe.as_any().downcast_ref::<DSBSpecFrame>().is_some()
+        if matched_spec.is_none() {
+            if let Some(spec) = pframe.as_any().downcast_ref::<SpecFrame>() {
+                matched_spec = Some(spec.clone());
+            } else if let Some(dsb) = pframe.as_any().downcast_ref::<DSBSpecFrame>() {
+                // DSBSpecFrame inherits from SpecFrame; downgrade to its
+                // SpecFrame component for the encoding target. The
+                // sideband-specific attributes are not used by CLASS.
+                matched_spec = Some(dsb.spec().clone());
+            }
+        }
+        if matched_sky.is_none()
+            && let Some(sky) = pframe.as_any().downcast_ref::<SkyFrame>()
         {
-            spec_present = true;
-        } else if pframe.as_any().downcast_ref::<SkyFrame>().is_some() {
-            sky_present = true;
+            matched_sky = Some(sky.clone());
         }
     }
 
     // Cannot proceed without both components. Mirrors C:2451.
-    if !(spec_present && sky_present) {
-        return Ok(());
-    }
-
-    // Locate the matched SpecFrame inside the FrameSet via find_frame
-    // with a Source-Hz SpecFrame template (matches the C
-    // SpecFrame template construction with MinAxes/MaxAxes widened).
-    let spec_template = {
-        let mut spec = SpecFrame::new(SpecSystem::Freq);
-        spec.set_min_axes(1);
-        spec.set_max_axes(3);
-        spec
-    };
-    let Some(found_spec_fs) = fs.find_frame(&spec_template, &[])? else {
+    let (Some(matched_spec), Some(matched_sky)) = (matched_spec, matched_sky) else {
         return Ok(());
     };
-    let matched_spec = found_spec_fs
-        .current()
-        .as_any()
-        .downcast_ref::<SpecFrame>()
-        .expect("find_frame returns SpecFrame for SpecFrame template")
-        .clone();
 
     // Build the Source-Hz target SpecFrame: a copy of the matched
     // SpecFrame with System=Freq, StdOfRest=Source, Unit=Hz forced
@@ -524,23 +523,6 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
         return Ok(());
     };
     let spec_mapping = spec_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
-
-    // Locate the matched SkyFrame in the FrameSet.
-    let sky_template = {
-        let mut sky = SkyFrame::new(SkySystem::Fk5);
-        sky.set_min_axes(2);
-        sky.set_max_axes(3);
-        sky
-    };
-    let Some(found_sky_fs) = fs.find_frame(&sky_template, &[])? else {
-        return Ok(());
-    };
-    let matched_sky = found_sky_fs
-        .current()
-        .as_any()
-        .downcast_ref::<SkyFrame>()
-        .expect("find_frame returns SkyFrame for SkyFrame template")
-        .clone();
 
     // Build a CLASS-acceptable target SkyFrame (C:2466-2477):
     // System ∈ {FK4, FK5, Galactic}; FK5 ⇒ J2000.0; FK4 ⇒ B1950.0.
@@ -722,6 +704,139 @@ fn snap_small_crval(store: &mut FitsStore, wperm: &[usize], nwcs: usize) {
             store.crval[fits_i] = Some(0.0);
         }
     }
+}
+
+/// Find longitude / latitude / spectral axis indices in a FitsStore by
+/// inspecting CTYPE prefixes. Mirrors `fitschan.c::FindLonLatSpecAxes`
+/// (line 10571). Returns `(axlon, axlat, axspec)`, each `None` when no
+/// matching axis is found.
+fn find_lon_lat_spec_axes(store: &FitsStore) -> (Option<usize>, Option<usize>, Option<usize>) {
+    let mut axlon: Option<usize> = None;
+    let mut axlat: Option<usize> = None;
+    let mut axspec: Option<usize> = None;
+    let wcsaxes = store.wcsaxes.unwrap_or(store.naxis);
+    let nax = wcsaxes.min(store.ctype.len());
+    for i in 0..nax {
+        let ctype = match store.ctype[i].as_deref() {
+            Some(s) => s,
+            None => continue,
+        };
+        // Spectral axes: handled by the spectral_axes writer; we
+        // recognise "FREQ", "VRAD" etc. via a 4-char check on common
+        // forms, plus AIPS-style "FELO-LSR" / "VELO-OBS". A simpler
+        // pragmatic check matches the FITS-WCS Paper III spectral
+        // CTYPE prefixes used by AST.
+        let ct4: &str = if ctype.len() >= 4 { &ctype[..4] } else { ctype };
+        if matches!(
+            ct4,
+            "FREQ" | "ENER" | "WAVN" | "VRAD" | "WAVE" | "VOPT" | "ZOPT" | "AWAV" | "VELO" | "BETA"
+        ) {
+            axspec = Some(i);
+            continue;
+        }
+        // AIPS-style spectral codes "FELO-...", "VELO-..." both already
+        // match the VELO branch above; explicit "FELO" prefix:
+        if ctype.starts_with("FELO") {
+            axspec = Some(i);
+            continue;
+        }
+        // Celestial axes: 5th char must be '-' (e.g. "RA---TAN",
+        // "GLON-TAN", "DEC--TAN"). C: ctype[4] == '-'.
+        if ctype.len() <= 4 || ctype.as_bytes()[4] != b'-' {
+            continue;
+        }
+        let b = ctype.as_bytes();
+        // Longitude: "RA--", "AZ--", "xLON", "xxLN".
+        let is_lon = (&b[..4] == b"RA--")
+            || (&b[..4] == b"AZ--")
+            || (b.len() >= 4 && &b[1..4] == b"LON")
+            || (b.len() >= 4 && &b[2..4] == b"LN");
+        if is_lon {
+            axlon = Some(i);
+            continue;
+        }
+        // Latitude: "DEC-", "EL--", "xLAT", "xxLT".
+        let is_lat = (&b[..4] == b"DEC-")
+            || (&b[..4] == b"EL--")
+            || (b.len() >= 4 && &b[1..4] == b"LAT")
+            || (b.len() >= 4 && &b[2..4] == b"LT");
+        if is_lat {
+            axlat = Some(i);
+        }
+    }
+    (axlon, axlat, axspec)
+}
+
+/// FITS-CLASS spatial-CRVAL adjustment for degenerate spatial axes.
+///
+/// Mirrors `fitschan.c::CLASSFromStore` lines 6465-6496: when both
+/// spatial pixel axes span exactly one pixel (`dim[axlon] == 1.0 &&
+/// dim[axlat] == 1.0`), re-evaluate the WCS at pixel `(1, 1, 1)` and
+/// update `store.crval[axlon]`, `store.crval[axlat]`, and the two
+/// CRPIX values to put the reference at the centre of the one and
+/// only spatial pixel.
+fn class_adjust_spatial_crval(
+    fs: &FrameSet,
+    store: &mut FitsStore,
+    dim: &[Option<f64>],
+    wperm: &[usize],
+) -> AstResult<()> {
+    use crate::coords::PointSet;
+
+    let (axlon, axlat, _axspec) = find_lon_lat_spec_axes(store);
+    let (Some(axlon), Some(axlat)) = (axlon, axlat) else {
+        return Ok(());
+    };
+
+    if store.naxis < 3 {
+        return Ok(());
+    }
+    let lon_is_degen = matches!(dim.get(axlon).copied().flatten(), Some(d) if d == 1.0);
+    let lat_is_degen = matches!(dim.get(axlat).copied().flatten(), Some(d) if d == 1.0);
+    if !(lon_is_degen && lat_is_degen) {
+        return Ok(());
+    }
+
+    // Transform pixel (1, 1, 1) through pixel→WCS. The resulting xout
+    // is indexed by WCS axis (output of the FrameSet mapping), not by
+    // FITS axis. C uses `astHasAttribute(curfrm, "IsLonAxis(i+1)")`
+    // to find which output axis is lon vs lat; we already have wperm,
+    // which maps WCS axis → FITS axis, so the WCS axis whose
+    // wperm[wcs_iax] == axlon is the longitude output.
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let nin = mapping.nin();
+    let nout = mapping.nout();
+    if nin < 3 || nout < 3 {
+        return Ok(());
+    }
+    let pts = PointSet::from_rows([vec![1.0; nin]]);
+    let out = mapping.transform(&pts, true)?;
+    let xout = out.point(0);
+
+    let mut lon_world_idx: Option<usize> = None;
+    let mut lat_world_idx: Option<usize> = None;
+    for (wi, &fi) in wperm.iter().enumerate() {
+        if fi == axlon {
+            lon_world_idx = Some(wi);
+        } else if fi == axlat {
+            lat_world_idx = Some(wi);
+        }
+    }
+    let (Some(lon_world_idx), Some(lat_world_idx)) = (lon_world_idx, lat_world_idx) else {
+        return Ok(());
+    };
+
+    let lonval_rad = xout[lon_world_idx];
+    let latval_rad = xout[lat_world_idx];
+    if !lonval_rad.is_finite() || !latval_rad.is_finite() {
+        return Ok(());
+    }
+    const D2R: f64 = std::f64::consts::PI / 180.0;
+    store.crval[axlon] = Some(lonval_rad / D2R);
+    store.crval[axlat] = Some(latval_rad / D2R);
+    store.crpix[axlon] = Some(1.0);
+    store.crpix[axlat] = Some(1.0);
+    Ok(())
 }
 
 /// Round each CRPIX value to the nearest microsecond-of-a-pixel.

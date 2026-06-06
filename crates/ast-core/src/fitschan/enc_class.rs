@@ -214,6 +214,13 @@ pub(crate) fn write_to_cards(
         cards.set_float(&key, equinox, "Epoch of reference equinox");
     }
 
+    // SSYSOBS — CLASSFromStore doesn't emit it; preserve the input
+    // card's position if present. Mirrors C's ignore-used semantics:
+    // the keyword carries through the FitsChan untouched.
+    if is_last {
+        cards.mark_used("SSYSOBS");
+    }
+
     // MJD-OBS — CLASSFromStore doesn't write MJD-OBS (C:6798 only
     // computes DATE-OBS from it). The C library preserves an
     // input-supplied MJD-OBS at its original position via the
@@ -225,6 +232,31 @@ pub(crate) fn write_to_cards(
         && let Some(mjdobs) = store.mjdobs
     {
         cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
+    }
+
+    // OBSGEO-X/Y/Z — observatory geocentric position. Like SSYSOBS,
+    // CLASSFromStore doesn't emit these; they pass through unchanged.
+    // When the store has a value (loaded from the input or from the
+    // FrameSet's Sky/SpecFrame observer attrs) and the input had a
+    // matching card, preserve it; otherwise emit fresh (rare for the
+    // CLASS path because OBSGEO is normally an input-only keyword).
+    if is_last {
+        for (key, val) in [
+            ("OBSGEO-X", store.obsgeox),
+            ("OBSGEO-Y", store.obsgeoy),
+            ("OBSGEO-Z", store.obsgeoz),
+        ] {
+            if cards.find(key).is_some() {
+                cards.mark_used(key);
+            } else if let Some(v) = val {
+                let comment = match key {
+                    "OBSGEO-X" => "[m] Observatory geocentric X",
+                    "OBSGEO-Y" => "[m] Observatory geocentric Y",
+                    _ => "[m] Observatory geocentric Z",
+                };
+                cards.set_float(key, v, comment);
+            }
+        }
     }
 
     // DATE-OBS (C:6797-6821) — only on last plane.

@@ -67,6 +67,26 @@ impl CardList {
             .find(|c| c.keyword.eq_ignore_ascii_case(keyword))
     }
 
+    /// Mark the first card matching the given keyword as `used`, so it
+    /// survives a subsequent [`sweep_unused_wcs`] pass.
+    ///
+    /// Returns `true` when a card was found and marked, `false` when no
+    /// such card existed. This is the Rust equivalent of the C library's
+    /// "card was already in the input header — leave it alone" behaviour
+    /// for keywords that an encoder doesn't itself emit.
+    pub(crate) fn mark_used(&mut self, keyword: &str) -> bool {
+        if let Some(card) = self
+            .cards
+            .iter_mut()
+            .find(|c| c.keyword.eq_ignore_ascii_case(keyword))
+        {
+            card.used = true;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Search forward from the current position for a card matching keyword.
     ///
     /// If found, advances position past the result and returns a reference.
