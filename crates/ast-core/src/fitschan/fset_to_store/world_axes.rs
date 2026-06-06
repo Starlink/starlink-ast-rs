@@ -153,6 +153,9 @@ pub(crate) fn world_axes(
             for j in 0..nin {
                 if let Some(t) = tn[i * nin + j] {
                     let w = wt[i * nin + j];
+                    // Mirror C:40008-40018 — strict `<` for "smaller",
+                    // astEQUAL only kicks in on the elseif when the new
+                    // value is greater-or-equal but tolerantly equal.
                     match tnmin {
                         None => {
                             tnmin = Some(t);
@@ -160,7 +163,7 @@ pub(crate) fn world_axes(
                             imin = i;
                             jmin = j;
                         }
-                        Some(cur) if t < cur && !ast_equal(t, cur) => {
+                        Some(cur) if t < cur => {
                             tnmin = Some(t);
                             wtmax = w;
                             imin = i;
