@@ -603,6 +603,30 @@ impl SkyFrame {
         self.dut1 = Some(dut1);
     }
 
+    /// Local Apparent Sidereal Time, in radians, at this SkyFrame's
+    /// Epoch and observer location.
+    ///
+    /// Mirrors `skyframe.c::CalcLAST`: builds a TDB-MJD TimeFrame and a
+    /// LAST-MJD TimeFrame, both stamped with the SkyFrame's
+    /// `obs_lon`/`obs_lat`/`obs_alt`/`dut1`/`dtai`, then transforms the
+    /// SkyFrame's Epoch through the TDB→LAST conversion and folds the
+    /// fractional day into radians.
+    ///
+    /// Returns 0.0 when the longitude/latitude are unset — the AzEl
+    /// pipeline only consults LAST when the observer is known anyway,
+    /// so this matches the C behaviour where a missing ObsLon defaults
+    /// to 0 and the resulting LAST is meaningless but harmless.
+    pub(crate) fn compute_last(&self) -> AstResult<f64> {
+        compute_last(
+            self.epoch_mjd(),
+            self.obs_lon.unwrap_or(0.0),
+            self.obs_lat.unwrap_or(0.0),
+            self.obs_alt.unwrap_or(0.0),
+            self.dut1.unwrap_or(0.0),
+            self.dtai,
+        )
+    }
+
     // --- Private helpers for serialisation defaults ---
 
     /// Default title for the current system and equinox.
@@ -883,6 +907,8 @@ impl Frame for SkyFrame {
         let prev = previous.as_any().downcast_ref::<SkyFrame>();
         match prev {
             Some(prev_sky) => {
+                let prev_last = prev_sky.compute_last()?;
+                let self_last = self.compute_last()?;
                 let mut mapping: DynMapping = make_sky_mapping(
                     prev_sky.system,
                     prev_sky.equinox_mjd(),
@@ -892,9 +918,9 @@ impl Frame for SkyFrame {
                     self.epoch_mjd(),
                     self.system, // align in current system
                     prev_sky.obs_lat.unwrap_or(0.0),
-                    0.0, // LAST=0 for non-AZEL (full LAST deferred)
+                    prev_last,
                     self.obs_lat.unwrap_or(0.0),
-                    0.0,
+                    self_last,
                 )?;
 
                 // Prepend source offset removal (offset→standard).
@@ -956,6 +982,8 @@ impl Frame for SkyFrame {
         let to_sky = to.as_any().downcast_ref::<SkyFrame>();
         match to_sky {
             Some(to_sky) => {
+                let self_last = self.compute_last()?;
+                let to_last = to_sky.compute_last()?;
                 let mut mapping: DynMapping = make_sky_mapping(
                     self.system,
                     self.equinox_mjd(),
@@ -965,9 +993,9 @@ impl Frame for SkyFrame {
                     to_sky.epoch_mjd(),
                     SkySystem::Fk5, // align through FK5
                     self.obs_lat.unwrap_or(0.0),
-                    0.0,
+                    self_last,
                     to_sky.obs_lat.unwrap_or(0.0),
-                    0.0,
+                    to_last,
                 )?;
 
                 // Prepend source offset removal (offset→standard).
@@ -1193,6 +1221,71 @@ impl Frame for SkyFrame {
 // Match / SubFrame / Overlay helpers
 // ---------------------------------------------------------------------------
 
+/// Compute Local Apparent Sidereal Time, in radians, at the given
+/// epoch and observer location.
+///
+/// Mirrors `skyframe.c::CalcLAST`: builds a TDB-MJD TimeFrame and a
+/// LAST-MJD TimeFrame, applies the observer parameters to both,
+/// transforms the (split) epoch through TDB→LAST and converts the
+/// fractional day to radians.
+///
+/// Splitting the epoch into integer + fractional parts via TimeOrigin
+/// preserves precision; mirrors the C `(int) epoch` trick at
+/// skyframe.c:1303-1308.
+fn compute_last(
+    epoch_mjd: f64,
+    obs_lon: f64,
+    obs_lat: f64,
+    obs_alt: f64,
+    dut1: f64,
+    dtai: Option<f64>,
+) -> AstResult<f64> {
+    use crate::frames::{TimeFrame, TimeScale, TimeSystem};
+
+    let origin = epoch_mjd.floor();
+    let epoch_off = epoch_mjd - origin;
+
+    let mut tdb = TimeFrame::new(TimeSystem::Mjd);
+    tdb.set_timescale(TimeScale::Tdb);
+    tdb.set_time_origin(origin);
+    tdb.set_obs_lon(obs_lon);
+    tdb.set_obs_lat(obs_lat);
+    tdb.set_obs_alt(obs_alt);
+    tdb.set_dut1(dut1);
+    if let Some(d) = dtai {
+        tdb.set_dtai(d);
+    }
+
+    let mut last_tf = TimeFrame::new(TimeSystem::Mjd);
+    last_tf.set_timescale(TimeScale::Last);
+    last_tf.set_time_origin(origin);
+    last_tf.set_obs_lon(obs_lon);
+    last_tf.set_obs_lat(obs_lat);
+    last_tf.set_obs_alt(obs_alt);
+    last_tf.set_dut1(dut1);
+    if let Some(d) = dtai {
+        last_tf.set_dtai(d);
+    }
+
+    let fs = match tdb.convert(&last_tf, &[])? {
+        Some(fs) => fs,
+        None => {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "compute_last: TimeFrame TDB->LAST conversion failed",
+            ));
+        }
+    };
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    let pts = crate::coords::PointSet::from_columns(&[&[epoch_off][..]])?;
+    let out = mapping.transform(&pts, true)?;
+    let last_off_mjd = out.point(0)[0];
+
+    let frac = last_off_mjd - last_off_mjd.floor();
+    Ok(frac * 2.0 * std::f64::consts::PI)
+}
+
 /// Mirrors C `Overlay` for SkyFrame (skyframe.c:8010).
 ///
 /// `result` is the Frame receiving the new attribute values; `template`
@@ -1414,6 +1507,8 @@ fn skyframe_sub_frame(
         // AlignOffset / AST__INTFLAG short-circuit (10055-10065) is
         // currently unused by the Rust callers — they always go
         // through MakeSkyMapping.
+        let target_last = target.compute_last()?;
+        let result_last = result.compute_last()?;
         let mut map: DynMapping = make_sky_mapping(
             target.system,
             target.equinox_mjd(),
@@ -1423,9 +1518,9 @@ fn skyframe_sub_frame(
             result.epoch_mjd(),
             align_sys,
             target.obs_lat.unwrap_or(0.0),
-            0.0,
+            target_last,
             result.obs_lat.unwrap_or(0.0),
-            0.0,
+            result_last,
         )?;
 
         // Prepend source offset removal (offset→standard).
