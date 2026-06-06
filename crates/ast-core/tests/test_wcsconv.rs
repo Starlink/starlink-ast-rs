@@ -179,8 +179,19 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
         }
     }
 
-    // Write.
-    fc_out.write(&obj).map_err(|e| format!("write: {e}"))?;
+    // For Native target, mirror C `wcsconverter.c`'s use of an
+    // astChannel rather than the FitsChan: serialise the object to a
+    // native AST text dump.
+    let native_output = if target_enc == Encoding::Native {
+        Some(ast_core::to_native_string(&obj).map_err(|e| format!("to_native_string: {e}"))?)
+    } else {
+        None
+    };
+
+    // Write into the FitsChan for FITS encodings.
+    if native_output.is_none() {
+        fc_out.write(&obj).map_err(|e| format!("write: {e}"))?;
+    }
 
     // Verify output is non-empty.
     if fc_out.ncard() == 0 && target_enc != Encoding::Native {
@@ -193,7 +204,10 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
         let expected_text =
             std::fs::read_to_string(&expected_path).map_err(|e| format!("read expected: {e}"))?;
 
-        let output = fc_out.to_header();
+        let output = match &native_output {
+            Some(s) => s.clone(),
+            None => fc_out.to_header(),
+        };
 
         // Normalize: trim trailing whitespace per line, skip empty lines,
         // and drop the trailing FITS `END` marker (some upstream expected
