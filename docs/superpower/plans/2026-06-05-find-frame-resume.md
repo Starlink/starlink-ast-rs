@@ -5,11 +5,11 @@
 ## Snapshot (state at end of session)
 
 - Branch: `tickets/DM-54793`
-- Last commit landing find_frame work: `600c39f skyframe: thread diurnal aberration through AzEl SLA chain`
-- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **174/192 test_wcsconv** (class-ait_fits-class now passes; remaining 18 fail on unrelated CLASS issues — VELO-LSR drift, CTYPE selection, keyword ordering).
+- Last commit landing find_frame work: `3d93d28 specmap: mirror C float-cast in LsrkVel/LsrdVel/LgVel/GalVel`
+- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **176/192 test_wcsconv** (class-ait, class-arc, class-sin all pass; remaining 16 fail on unrelated issues — CTYPE selection, keyword ordering).
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings` clean.
 
-Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet), 11 (CLASS encoder — AddEncodingFrame + spectral CRVAL conversion + AzEl emission infrastructure), 12 (SkyFrame LAST), and 12b (diurnal aberration) all complete. Remaining: Task 13 (Region overrides), Task 14 (audit existing find_frame consumers), and the unrelated wcsconv CLASS residuals.
+Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet), 11 (CLASS encoder — AddEncodingFrame + spectral CRVAL conversion + AzEl emission infrastructure), 12 (SkyFrame LAST), 12b (diurnal aberration), and 12c (SpecMap LSRK float-cast) all complete. Remaining: Task 13 (Region overrides), Task 14 (audit existing find_frame consumers), and the unrelated wcsconv CLASS residuals.
 
 ## Tasks done
 
@@ -38,6 +38,7 @@ Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (Frame
 | 11c | CLASS AZ/EL emission via SkyFrame find_frame | `dbf0fa6` | fitschan.c:6901-6944 |
 | 12  | SkyFrame LAST via TimeFrame TDB→LAST | `848731e` | skyframe.c:1218 (CalcLAST) |
 | 12b | Diurnal aberration in AzEl SLA chain | `600c39f` | skyframe.c:3735 (GetDiurab) + 6181/6292 |
+| 12c | Mirror C float-cast in SpecMap LSRK helpers | `3d93d28` | specmap.c:1764, 1768, 1980, 2030, 2080 |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
