@@ -513,14 +513,13 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     // C:6908 — `astSkyFrame("Permute=0,MinAxes=3,MaxAxes=3")`
     // leaves the System attribute unset, which lets it inherit from
     // the matched target axes. For class-gal that's Galactic; for
-    // FK5 inputs it stays FK5. SkyFrame::new(Icrs) leaves
-    // `system_set = false` (the SkyFrame default), so the template's
-    // System acts as "any" rather than forcing FK5 — without this,
-    // the resulting Mapping would expect FK5 RA/Dec input even when
-    // the CTYPE was GLON/GLAT, miscomputing AZIMUTH for galactic
-    // inputs by O(degrees).
+    // FK5 inputs it stays FK5. Without `unset_system` the template
+    // would force the result to a specific system, miscomputing
+    // AZIMUTH for galactic inputs by O(degrees) since the chain
+    // would expect FK5 RA/Dec while CLASS feeds the lon/lat CRVAL
+    // in whatever the CTYPE system is.
     let radec_template = {
-        let mut sky = SkyFrame::new(SkySystem::Icrs);
+        let mut sky = SkyFrame::unset_system();
         sky.set_permute(false);
         sky.set_min_axes(3);
         sky.set_max_axes(3);

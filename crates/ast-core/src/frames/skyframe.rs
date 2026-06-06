@@ -107,11 +107,33 @@ pub struct SkyFrame {
 }
 
 impl SkyFrame {
+    /// Create a new `SkyFrame` with no explicit coordinate system —
+    /// the equivalent of C's `astSkyFrame("")`.
+    ///
+    /// `system_set` is left `false`, so when this SkyFrame is used as
+    /// a `find_frame` template, the System attribute acts as "any"
+    /// and is inherited from the matched target. The struct-level
+    /// `system` field defaults to `Icrs` (AST's `AST__ICRS` default),
+    /// but is treated as unset until [`SkyFrame::set_system`] is
+    /// called. Use [`SkyFrame::new`] when you know the system at
+    /// construction time and want it marked as set.
+    pub fn unset_system() -> Self {
+        // Re-use SkyFrame::new(Icrs) — that branch already leaves
+        // `system_set = false` for ICRS. Mirrors C `astSkyFrame("")`.
+        Self::new(SkySystem::Icrs)
+    }
+
     /// Create a new `SkyFrame` with the given coordinate system.
     ///
     /// The default domain is `"SKY"`, the default epoch is J2000.0
     /// (MJD 51544.5), and the default equinox is determined by the
     /// coordinate system.
+    ///
+    /// Passing `SkySystem::Icrs` leaves `system_set = false` (the
+    /// SkyFrame default per AST), which makes the resulting frame
+    /// behave as "system unspecified" when used as a `find_frame`
+    /// template. Use [`SkyFrame::unset_system`] for a self-documenting
+    /// call site when that's the intent.
     pub fn new(system: SkySystem) -> Self {
         Self {
             title: None,
