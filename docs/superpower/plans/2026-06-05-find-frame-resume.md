@@ -5,11 +5,11 @@
 ## Snapshot (state at end of session)
 
 - Branch: `tickets/DM-54793`
-- Last commit landing find_frame work: `dbf0fa6 fitschan: port CLASS Az/El emission via SkyFrame find_frame`
-- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **173/192 test_wcsconv** (19 pre-existing failures unchanged — CLASS fixtures still differ on AZIMUTH/ELEVATIO due to LAST gap, see `project_skyframe_last_gap` memory).
+- Last commit landing find_frame work: `848731e skyframe: compute LAST via TimeFrame TDB->LAST conversion`
+- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **173/192 test_wcsconv** (19 failures unchanged in count, but CLASS bucket content has improved — AZIMUTH now matches C, ELEVATIO drift reduced to ~10⁻⁶ deg numeric residual; see `project_skyframe_last_gap`).
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings` clean.
 
-Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet), 11 (CLASS encoder — AddEncodingFrame + spectral CRVAL conversion + AzEl emission infrastructure) all complete. Remaining: SkyFrame LAST plumbing (separate piece — see `project_skyframe_last_gap`), Task 13 (Region overrides), Task 14 (audit existing find_frame consumers).
+Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet), 11 (CLASS encoder — AddEncodingFrame + spectral CRVAL conversion + AzEl emission infrastructure), and SkyFrame LAST plumbing all complete. Remaining: TimeMap precision investigation (residual ELEVATIO mismatch ~30 mas; see `project_skyframe_last_gap`), Task 13 (Region overrides), Task 14 (audit existing find_frame consumers).
 
 ## Tasks done
 
@@ -36,6 +36,7 @@ Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (Frame
 | 11a | AddEncodingFrame for FITS-CLASS | `a735559` | fitschan.c:2435 |
 | 11b | CLASS spectral CRVAL conversion via SpecFrame find_frame | `a9b1053` | fitschan.c:6843-6898 |
 | 11c | CLASS AZ/EL emission via SkyFrame find_frame | `dbf0fa6` | fitschan.c:6901-6944 |
+| 12  | SkyFrame LAST via TimeFrame TDB→LAST | `848731e` | skyframe.c:1218 (CalcLAST) |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
