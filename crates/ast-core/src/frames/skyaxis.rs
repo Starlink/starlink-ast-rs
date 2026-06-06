@@ -124,6 +124,38 @@ impl Serializable for SkyAxis {
 /// - `precision`: decimal places on the seconds field
 ///
 /// If `value` is `BAD_VALUE` or NaN, returns `"<bad>"`.
+/// Normalise a right-ascension (or any 2π-cyclic angle) into `[0, 2π)`.
+///
+/// Mirrors `eraAnp` (SOFA "Angle, Normalize, Positive"): the canonical
+/// range used by SLALIB / palGaleq for celestial RA values stored in
+/// `SkyFrame` and `SpecFrame::ref_ra`. Values that come out of an
+/// `atan2`-based pipeline (e.g. our SlaMap's Cartesian round-trip)
+/// land in `(-π, π]`; without this normalisation they don't match
+/// the C library's f64 storage bit-for-bit even when the angle is
+/// physically identical.
+pub(crate) fn normalise_ra(angle: f64) -> f64 {
+    let two_pi = 2.0 * std::f64::consts::PI;
+    let r = angle.rem_euclid(two_pi);
+    // rem_euclid can return exactly two_pi for tiny negative inputs
+    // due to FP rounding; clamp to strictly < 2π to match `eraAnp`.
+    if r >= two_pi { 0.0 } else { r }
+}
+
+/// Normalise a declination-style angle into `(-π, π]`.
+///
+/// Mirrors `eraAnpm` (SOFA "Angle, Normalize, Plus/Minus pi"). Used by
+/// `SpecFrame::set_ref_pos` for `RefDec` so the stored value matches C
+/// after a coordinate-system conversion.
+pub(crate) fn normalise_dec(angle: f64) -> f64 {
+    let two_pi = 2.0 * std::f64::consts::PI;
+    let r = angle.rem_euclid(two_pi);
+    if r > std::f64::consts::PI {
+        r - two_pi
+    } else {
+        r
+    }
+}
+
 pub(crate) fn format_sky(value: f64, as_time: bool, precision: usize) -> String {
     if is_bad(value) {
         return "<bad>".to_string();

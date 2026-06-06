@@ -258,7 +258,7 @@ pub(crate) fn fset_to_store(
 /// non-SkyFrame celestial axes from radians to degrees — are
 /// out-of-scope for the current fixture coverage and tracked in
 /// docs/issues/fset_to_store-port-gaps.md.
-fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> {
+pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> {
     use crate::fitschan::fset_to_store::celestial_axes;
     use crate::fitschan::fset_to_store::spectral_axes::primary_frame;
     use crate::frames::{SkySystem, SpecFrame};
@@ -411,10 +411,14 @@ fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> 
     // this quirk so the resulting VELOSYS computation matches C's
     // bit-exact output (see `docs/issues/c-library-quirks.md` —
     // "VELOSYS drift via lossy `RefRA`/`RefDec` round-trip").
-    // SkyFrame's `format` / `unformat` index its own two axes (1 =
-    // longitude, 2 = latitude in the 1-based external API). Use those
-    // local indices regardless of where the celestial pair sits in
-    // the surrounding pipeline.
+    //
+    // After the format/reparse, also normalise to AST's canonical
+    // ranges: RA in `[0, 2π)` (via `eraAnp`), Dec in `(-π, π]` (via
+    // `eraAnpm`). Without this, the SlaMap output's `(-π, π]` RA
+    // representation gives a different f64 from C's `[0, 2π)` one,
+    // which after the f32-cast inside SpecMap's LSRK fcorr produces
+    // a velocity drift of ~30 mm/s for sources near RA≈0/2π.
+    use crate::frames::skyaxis::{normalise_dec, normalise_ra};
     let (reflon_quant, reflat_quant) = {
         let cur = owned.current();
         let sky = peek_sky(cur).expect("SkyFrame still present after switch to FK5/J2000");
@@ -422,7 +426,7 @@ fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> 
         let lat_str = sky.format(2, reflat).unwrap_or_default();
         let lon_round = sky.unformat(1, &lon_str).map(|(v, _)| v).unwrap_or(reflon);
         let lat_round = sky.unformat(2, &lat_str).map(|(v, _)| v).unwrap_or(reflat);
-        (lon_round, lat_round)
+        (normalise_ra(lon_round), normalise_dec(lat_round))
     };
 
     owned.with_integrity(|cur| {

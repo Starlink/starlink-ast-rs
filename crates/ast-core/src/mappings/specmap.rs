@@ -713,7 +713,15 @@ fn user_vel(ra: f64, dec: f64, veluser: f64, refra: f64, refdec: f64) -> f64 {
 fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
     match cvt.cvt_type {
         SpecCvtType::FrToVl => {
-            // Frequency to relativistic velocity: v = c*(rf^2 - f^2)/(rf^2 + f^2)
+            // Frequency to relativistic velocity:
+            //   v = c * ((rf² - f²) / (rf² + f²))
+            // C `specmap.c::SystemChange` (line 3143) groups the
+            // division before the multiplication: `AST__C * ((temp -
+            // f2) / d)`. f64 is not associative, so the equivalent
+            // grouping `c * (rf2 - f2) / d` (left-to-right) drifts
+            // by ~6e-5 in the output for typical mm-wave inputs,
+            // surfacing as a ~30 mm/s VELO-LSR error after the
+            // VlToVr step. Match C's grouping exactly.
             if cvt.args[0] == BAD_VALUE {
                 return BAD_VALUE;
             }
@@ -721,7 +729,7 @@ fn system_change_forward(cvt: &SpecConversion, val: f64) -> f64 {
             let f2 = val * val;
             let d = rf2 + f2;
             if d > 0.0 {
-                let result = C_LIGHT * (rf2 - f2) / d;
+                let result = C_LIGHT * ((rf2 - f2) / d);
                 if result.is_finite() {
                     result
                 } else {

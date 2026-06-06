@@ -384,6 +384,19 @@ fn determine_specsys_from_velocity(cards: &CardList) -> Option<String> {
 pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList) -> AstResult<()> {
     use crate::coords::PointSet;
 
+    // Mirror C's CLASSFromStore which receives the post-MakeFitsFrameSet
+    // FrameSet (RefRA/RefDec quantised via astFormat+astSetC, plus the
+    // CLASS encoding frame appended by AddEncodingFrame). Without this
+    // preconditioning, Source-Hz CRVAL extraction and the SpecFrame's
+    // RefRA range / quantisation differ from C, producing small numeric
+    // drifts in VELO-LSR / DELTAV (~0.03 m/s for galactic input where
+    // RefRA crosses the [-π, π] vs [0, 2π) representation boundary).
+    let fs_owned = crate::fitschan::fset_to_store::make_fits_frameset(
+        fs,
+        crate::fitschan::Encoding::FitsClass,
+    )?;
+    let fs = &fs_owned;
+
     // Locate the matched SpecFrame in the cube via find_frame with a
     // velocity SpecFrame template. C constructs:
     //   velofrm = SpecFrame(System=vrad, StdOfRest=lsrk, Unit=m/s,
@@ -482,6 +495,14 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     else {
         return Ok(());
     };
+
+    // Mirror C's CLASSFromStore which receives the post-MakeFitsFrameSet
+    // FrameSet. See `write_velocities_from_frameset` for the rationale.
+    let fs_owned = crate::fitschan::fset_to_store::make_fits_frameset(
+        fs,
+        crate::fitschan::Encoding::FitsClass,
+    )?;
+    let fs = &fs_owned;
 
     // C invokes astFindFrame on the current Frame (extracted via
     // astGetFrame), not on the FrameSet itself. So the dispatch is

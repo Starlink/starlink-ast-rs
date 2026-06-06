@@ -620,8 +620,18 @@ impl SpecFrame {
         } else {
             (yout, xout)
         };
-        self.set_ref_ra(refra);
-        self.set_ref_dec(refdec);
+        // RefRA must lie in [0, 2π); RefDec must lie in (-π, π]. AST
+        // (and SLALIB / palGaleq, via eraAnp / eraAnpm) normalises to
+        // those ranges; our SlaMap goes through Cartesian and ends up
+        // in (-π, π] for the longitude. Re-apply the standard ranges
+        // so RefRA matches C's f64 representation bit-for-bit —
+        // without this, a galactic source with RA ~ 332° comes out as
+        // -28° in f64, and the f32 cast inside SpecMap's LSRK fcorr
+        // (see c-library-quirks.md "SpecMap velocity routines cast
+        // RefRA/RefDec to float") produces a slightly different
+        // velocity, drifting DELTAV by ~30 mm/s.
+        self.set_ref_ra(crate::frames::skyaxis::normalise_ra(refra));
+        self.set_ref_dec(crate::frames::skyaxis::normalise_dec(refdec));
         Ok(())
     }
 
