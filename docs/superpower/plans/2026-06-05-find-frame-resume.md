@@ -5,8 +5,8 @@
 ## Snapshot (state at end of session)
 
 - Branch: `tickets/DM-54793`
-- Last commit landing find_frame work: `8891171 fitschan: fix CLASS DELTAV drift (FrToVl op grouping + RefRA range)`
-- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **177/192 test_wcsconv** (class-ait, class-arc, class-sin, class-olddate all pass; class-gal VELO-LSR / DELTAV / VLSR now match C bit-for-bit but fixture still fails on a later AZIMUTH precision issue. Remaining 15 fail on assorted issues — CRVAL precision drift, OBSGEO ordering for non-CLASS encoders, CRPIX algorithmic mismatch in jan_fits-class-rt).
+- Last commit landing find_frame work: `3e78716 fitschan: leave radec template System unset for CLASS AzEl`
+- Test counts: **907 lib tests passing**, **14/14 test_find_frame**, **178/192 test_wcsconv** (class-ait, class-arc, class-sin, class-olddate, class-gal all pass; remaining 14 fail on assorted issues — CRVAL precision drift, OBSGEO ordering for non-CLASS encoders, CRPIX algorithmic mismatch in jan_fits-class-rt).
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings` clean.
 
 Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (FrameSet), 11 (CLASS encoder — AddEncodingFrame + spectral CRVAL conversion + AzEl emission infrastructure), 12 (SkyFrame LAST), 12b (diurnal aberration), and 12c (SpecMap LSRK float-cast) all complete. Remaining: Task 13 (Region overrides), Task 14 (audit existing find_frame consumers), and the unrelated wcsconv CLASS residuals.
@@ -41,6 +41,7 @@ Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (Frame
 | 12c | Mirror C float-cast in SpecMap LSRK helpers | `3d93d28` | specmap.c:1764, 1768, 1980, 2030, 2080 |
 | 12d | Walk primary frames in AddEncodingFrame; CLASS spatial-CRVAL adjust; SSYSOBS/OBSGEO preservation | `5be33c4` | fitschan.c:2440-2448, 6465-6496, 10571 |
 | 12e | FrToVl operator grouping + RefRA/Dec normalisation + CLASS write-helper preconditioning | `8891171` | specmap.c:3143; SOFA eraAnp/eraAnpm |
+| 12f | CLASS AzEl radec template System left unset (was forced FK5) | `3e78716` | fitschan.c:6908 |
 
 Each commit is a focused, self-contained port. Tests added per class.
 
