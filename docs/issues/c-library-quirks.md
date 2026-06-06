@@ -398,3 +398,50 @@ non-square Mappings that previously squeaked through).
 of C `SIPIntWorld`). The Rust port reads `map.nout()` correctly,
 so we don't carry the quirk forward; record it here only so the
 maintainer-side fix can be coordinated.
+
+---
+
+## SpecMap velocity routines cast `RefRA`/`RefDec` to `float`
+
+**C location:** `specmap.c:1764`, `specmap.c:1768`, `specmap.c:1980`,
+`specmap.c:2030`, `specmap.c:2080` — inside the per-rest-frame
+velocity helpers `LsrkVel`, `LsrdVel`, `LgVel`, `GalVel`:
+
+```c
+return -1000.0*palRvlsrk( (float) ra, (float) dec );
+return -1000.0*palRvlsrd( (float) ra, (float) dec );
+return -1000.0*palRvlg  ( (float) ra, (float) dec );
+s1 = (double) palRvlsrd( (float) ra, (float) dec );
+s2 = (double) palRvgalc( (float) ra, (float) dec );
+```
+
+**Observation:** The four palRv* routines have always been C-double
+in their `pal/` implementations, but `specmap.c` casts the source
+RA/Dec down to `float` before calling them. The cast is a hangover
+from the original SLALIB Fortran signatures, which used REAL (single
+precision). It loses ~1e-7 rad of angular precision (~20 mas), which
+maps to ~1 mm/s of LSRK velocity for typical 20 km/s magnitudes —
+small but enough to perturb `VELO-LSR` / `VLSR` in the FITS-CLASS
+encoder and to break exact-string fixture round-trips.
+
+**Consequence:** Without the cast, the Rust port produces VELO-LSR
+values ~1.3 mm/s different from C. With the cast, the chain matches
+to f64 precision (verified against the wcsconverter binary on
+class-arc and class-sin).
+
+**Why discuss with maintainers:** The cast looks like a porting
+artefact rather than a deliberate choice — modern starlink-pal is
+double-precision throughout, so removing the cast would *improve*
+accuracy without changing the API. The four affected callsites are
+all in `specmap.c`. Coordinating an upstream fix would let us drop
+the matching cast in the Rust port (see below).
+
+**Rust mirror:** `crates/ast-core/src/mappings/specmap.rs` —
+`lsrk_vel`, `lsrd_vel`, `lg_vel`, `gal_vel` each call
+`pal::rv*(ra as f32 as f64, dec as f32 as f64)` to reproduce the C
+truncation. If the C library is ever fixed to remove the cast, drop
+the `as f32 as f64` round-trips in those four functions and update
+the comments that point at this entry. The bary/topo/geo/user
+helpers (`bary_vel`, `topo_vel`, `geo_vel`, `user_vel`) do **not**
+cast in C, so they don't need the truncation in Rust either — keep
+those passing the f64 values straight through.
