@@ -344,8 +344,9 @@ fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
     }
 }
 
+/// C `ZEROANG(aa) (fabs(aa) < 1.0E-9)` from fitschan.c:1392.
 fn zero_angle(v: f64) -> bool {
-    v.abs() < 1.0e-12
+    v.abs() < 1.0e-9
 }
 
 /// Walk the mapping for the first `WcsMap` and return a reference to
