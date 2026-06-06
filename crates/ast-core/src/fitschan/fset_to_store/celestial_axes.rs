@@ -273,6 +273,8 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         post.as_ref(),
         ilon,
         ilat,
+        axlon_0,
+        axlat_0,
         fits_ilon,
         fits_ilat,
         args.s,
@@ -292,6 +294,8 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         wcsmap,
         &ppcfid,
         [crval_lon_deg, crval_lat_deg],
+        args.store.lonpole,
+        args.store.latpole,
     )?;
 
     // Step 8b: auto axis-swap. The spherical rotation can transpose
@@ -665,6 +669,8 @@ fn build_wcs_to_iwc(
     src_wcsmap: &WcsMap,
     ppcfid: &[f64],
     crval_deg: [f64; 2],
+    store_lonpole: Option<f64>,
+    store_latpole: Option<f64>,
 ) -> AstResult<DynMapping> {
     let _ = projection; // kept for callers; src_wcsmap.projection() is the source of truth.
 
@@ -695,13 +701,28 @@ fn build_wcs_to_iwc(
     // round-trip exactly when this chain is composed against the
     // pixel→WCS mapping. C does the same via `astClone(map2)` at
     // fitschan.c:5204.
+    // C celestial_axes (fitschan.c:5189-5226) calls SkyPole to populate
+    // store->lonpole / store->latpole, then makes a copy of the WcsMap
+    // with PV3/PV4 cleared, then passes that copy to WcsNative. With
+    // PV3/PV4 cleared, WcsNative (fitschan.c:38205-38216) falls through
+    // to read LONPOLE/LATPOLE from store->lonpole / store->latpole.
+    //
+    // The Rust `build_native_to_celestial_rotation_for_wcsmap` accepts
+    // lonpole/latpole as parameters — pass the FitsStore values
+    // (degrees → radians) so the resulting native→celestial rotation
+    // uses the same LONPOLE/LATPOLE as the read-side pipeline. Without
+    // this the (pixel→WCS) ∘ (WCS→IWC) composition leaves a residual
+    // rotation in IWC and `world_axes` mis-permutes celestial axes
+    // (e.g. longslit's CTYPE2/3 swap).
+    let lonpole_rad = store_lonpole.map(|v| v * DD2R);
+    let latpole_rad = store_latpole.map(|v| v * DD2R);
     let wcs_native_rot =
         crate::fitschan::wcs_celestial::build_native_to_celestial_rotation_for_wcsmap(
             src_wcsmap,
             crval_deg[0] * DD2R,
             crval_deg[1] * DD2R,
-            None,
-            None,
+            lonpole_rad,
+            latpole_rad,
         )
         .ok_or_else(|| {
             crate::error::AstError::new(

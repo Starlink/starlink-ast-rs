@@ -13,12 +13,34 @@ fn main() {
     let attrs = args.get(3).cloned().unwrap_or_default();
 
     let text = std::fs::read_to_string(fixture).unwrap();
+    let mut fc_in_opt: Option<FitsChan> = None;
     let obj = if fixture.ends_with(".ast") {
         ast_core::from_native_string(&text).expect("native parse")
     } else {
         let mut fc = FitsChan::from_header(&text).unwrap();
-        fc.guess_encoding();
-        fc.read().unwrap().expect("input parses")
+        // Match test_wcsconv.rs: pick encoding from extension.
+        let in_enc = if fixture.ends_with(".fits-wcs") {
+            Encoding::FitsWcs
+        } else if fixture.ends_with(".fits-pc") {
+            Encoding::FitsPc
+        } else if fixture.ends_with(".fits-iraf") {
+            Encoding::FitsIraf
+        } else if fixture.ends_with(".fits-aips") {
+            Encoding::FitsAips
+        } else if fixture.ends_with(".fits-aips++") {
+            Encoding::FitsAipsPP
+        } else if fixture.ends_with(".fits-class") {
+            Encoding::FitsClass
+        } else if fixture.ends_with(".fits-dss") || fixture.ends_with(".dss") {
+            Encoding::Dss
+        } else {
+            fc.guess_encoding();
+            fc.encoding()
+        };
+        fc.set_encoding(in_enc);
+        let o = fc.read().unwrap().expect("input parses");
+        fc_in_opt = Some(fc);
+        o
     };
 
     if let AnyObject::FrameSet(ref fs) = obj {
@@ -48,11 +70,7 @@ fn main() {
         other => panic!("unknown encoding {other}"),
     };
 
-    let mut fc_out = if fixture.ends_with(".ast") {
-        FitsChan::new()
-    } else {
-        FitsChan::from_header(&text).unwrap()
-    };
+    let mut fc_out = fc_in_opt.unwrap_or_else(FitsChan::new);
     fc_out.set_encoding(enc);
     fc_out.set_fits_digits(8);
     for kv in attrs.split(',') {

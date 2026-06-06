@@ -74,12 +74,23 @@ fn is_zenithal(proj: WcsProjection) -> bool {
 /// FITS-axis indices for the celestial pair (after `wperm`
 /// permutation). `s` is the FITS coordinate-version character.
 ///
-/// Mirrors the full body of `fitschan.c::SkyPole`.
+/// `axlon_full_0based` / `axlat_full_0based` are the WcsMap's longitude
+/// and latitude axis indices in the full pipeline (i.e. after the
+/// 2-axis WcsMap has been lifted into the wider FrameSet via PermMap).
+/// They index `map3`'s in/out spaces, which carry the full pipeline
+/// width. Pass the 2-axis WcsMap directly via `wcsmap` — the embedded
+/// projection — and the lifted indices via these arguments.
+///
+/// Mirrors the full body of `fitschan.c::SkyPole`. C's
+/// `axlon = astGetWcsAxis(map2, 0)` (line 29485) is the lifted index;
+/// the 2-axis `wcsmap` here exposes only `0`/`1` via `lonax_0based()`.
 pub(crate) fn sky_pole(
     wcsmap: &WcsMap,
     map3: &dyn Mapping,
     ilon: usize,
     ilat: usize,
+    axlon_full_0based: usize,
+    axlat_full_0based: usize,
     fits_ilon: usize,
     fits_ilat: usize,
     s: char,
@@ -89,8 +100,8 @@ pub(crate) fn sky_pole(
 
     let proj = wcsmap.projection();
     let axlon_1based = wcsmap.lonax();
-    let axlon_0based = wcsmap.lonax_0based();
-    let axlat_0based = wcsmap.latax_0based();
+    let axlon_0based = axlon_full_0based;
+    let axlat_0based = axlat_full_0based;
 
     let mut lonpole_rad: Option<f64> = None;
     let mut latpole_rad: Option<f64> = None;
@@ -378,7 +389,7 @@ mod tests {
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
         let map3 = unit_map3(2);
         let mut store = FitsStore::new(2);
-        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, ' ', &mut store).unwrap();
+        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, 0, 1, ' ', &mut store).unwrap();
         assert!(store.lonpole.is_none());
         assert!(store.latpole.is_none());
         assert!(store.pv[0][3].is_none());
@@ -394,7 +405,7 @@ mod tests {
         wm.set_pv(1, 4, 45.0_f64.to_radians()).unwrap();
         let map3 = unit_map3(2);
         let mut store = FitsStore::new(2);
-        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, ' ', &mut store).unwrap();
+        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, 0, 1, ' ', &mut store).unwrap();
         let lon = store.lonpole.unwrap();
         let lat = store.latpole.unwrap();
         assert!((lon - 90.0).abs() < 1e-9, "lonpole={lon}");
@@ -414,7 +425,7 @@ mod tests {
         let _ = wm.set_pv(1, 4, 99.0_f64.to_radians());
         let map3 = unit_map3(2);
         let mut store = FitsStore::new(2);
-        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, ' ', &mut store).unwrap();
+        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, 0, 1, ' ', &mut store).unwrap();
         // store.lonpole / latpole stay None.
         assert!(store.lonpole.is_none());
         assert!(store.latpole.is_none());
@@ -439,7 +450,7 @@ mod tests {
         let wm = WcsMap::new(2, WcsProjection::Car, 1, 2).unwrap();
         let map3 = unit_map3(2);
         let mut store = FitsStore::new(2);
-        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, ' ', &mut store).unwrap();
+        sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, 0, 1, ' ', &mut store).unwrap();
         // Specific values depend on CAR fiducial conventions; just
         // verify the call ran without erroring.
     }
