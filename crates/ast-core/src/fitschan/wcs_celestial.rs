@@ -18,14 +18,25 @@ use crate::frames::{SkyFrame, SkySystem};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap, ZoomMap};
 use crate::wcslib::WcsProjection;
 
-/// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to an
-/// alt-plane SkyFrame whose RADESYS is unset and EQUINOX is unset.
+/// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to a
+/// SkyFrame whose RADESYS / EQUINOX / MJD-OBS are all unset. Mirrors
+/// the second-pass logic in fitschan.c:39168-39316:
 ///
-/// Mirrors fitschan.c:39172-39180. AST's `DefB1950` attribute defaults
-/// to **false** for FITS-WCS encoding (and **true** for everything
-/// else — see `astMAKE_GET(FitsChan,DefB1950,…)` at fitschan.c:42288).
-/// When the fallback fires, the SkyFrame is given B1950 equinox plus
-/// the corresponding Besselian MJD as its observation epoch.
+/// - When the CTYPE is equatorial and DefB1950 is true:
+///   `radesys = FK4`, `equinox = B1950` (fitschan.c:39184-39187).
+///   The SkyFrame's `System` is set to FK4 and `Equinox` to the
+///   B1950 MJD (line 39316, gated by `sys=="EQU"`).
+/// - For *every* system (EQU, ECL, Galactic, …) the SkyFrame's
+///   `Epoch` is set to the equinox MJD when MJD-OBS is unset
+///   (fitschan.c:39222-39231 + 39311) — so a Galactic alt plane
+///   under DefB1950 still gets `Epoch=B1950 MJD`, just with
+///   `System=Galactic` and no Equinox.
+/// - Ecliptic also gets `Equinox=B1950 MJD` (line 39315).
+///
+/// Without these the SkyFrame ends up with `System=ICRS` (or
+/// Galactic) and a Java-default Epoch of J2000, which on a later
+/// `astConvert` ICRS↔FK5 produces large (degree-scale) errors via
+/// the FK4↔FK5 path that picks the wrong frame tie.
 fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame, def_b1950: bool) {
     if !def_b1950 {
         return;
@@ -33,9 +44,32 @@ fn apply_b1950_fallback_if_needed(store: &FitsStore, sky_frame: &mut SkyFrame, d
     if store.radesys.is_some() || store.equinox.is_some() || store.mjdobs.is_some() {
         return;
     }
-    // B1950.0 → Julian MJD via palEpb2d.
     let mjd_b1950 = crate::pal::epb2d(1950.0);
-    sky_frame.set_equinox_mjd(mjd_b1950);
+    let sys = sky_frame.system();
+    let is_equ = matches!(
+        sys,
+        crate::frames::SkySystem::Fk5
+            | crate::frames::SkySystem::Fk4
+            | crate::frames::SkySystem::Fk4NoE
+            | crate::frames::SkySystem::Icrs
+            | crate::frames::SkySystem::Gappt
+    );
+    let is_ecl = matches!(
+        sys,
+        crate::frames::SkySystem::Ecliptic | crate::frames::SkySystem::Helioecliptic
+    );
+
+    if is_equ {
+        // C: radesys = FK4 (fitschan.c:39186), system stored as FK4
+        // when astSkyFrame is built (line 39249).
+        sky_frame.set_system(crate::frames::SkySystem::Fk4);
+        sky_frame.set_equinox_mjd(mjd_b1950);
+    } else if is_ecl {
+        sky_frame.set_equinox_mjd(mjd_b1950);
+    }
+    // Epoch is set on every system (fitschan.c:39311) — the
+    // ChooseEpoch fallback gives equinox MJD to all SkyFrames when
+    // MJD-OBS is missing.
     sky_frame.set_epoch_mjd(mjd_b1950);
 }
 
