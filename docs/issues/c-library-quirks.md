@@ -445,3 +445,74 @@ the comments that point at this entry. The bary/topo/geo/user
 helpers (`bary_vel`, `topo_vel`, `geo_vel`, `user_vel`) do **not**
 cast in C, so they don't need the truncation in Rust either — keep
 those passing the f64 values straight through.
+
+---
+
+## CLASSFromStore: spectral CDELT multiplied by `specfactor` twice
+
+**C location:** `fitschan.c:6787` and `fitschan.c:6882` — inside
+`CLASSFromStore`'s spectral CDELT handling and VELO-LSR computation:
+
+```c
+   /* CDELT values */
+6787:   if( axspec != -1 ) cdelt[ axspec ] *= specfactor;
+6788:   for( i = 0; i < naxis; i++ ){
+6789:      SetValue( this, FormatKey( "CDELT", i + 1, -1, s, status ), cdelt + i,
+                    AST__FLOAT, "Pixel size", status );
+6790:   }
+   ...
+   /* Use this Mapping to convert the spectral crval value from frequency to
+      velocity. Also convert the value for the neighbouring channel. */
+6881:   aval[ 0 ] = crval[ axspec ]*specfactor;
+6882:   aval[ 1 ] = aval[ 0 ] + cdelt[ axspec ]*specfactor;   /* <- specfactor again */
+6883:   astTran1( fsconv1, 2, aval, 1, aval );
+```
+
+**Observation:** Line 6787 mutates `cdelt[axspec]` in-place to convert
+from store-units to Hz (e.g. kHz → Hz multiplies by 1e3). Line 6882
+then multiplies the *already-converted* `cdelt[axspec]` by `specfactor`
+**again** when feeding the channel-spacing input to the velocity
+mapping. For `CUNIT='kHz'` this would scale DELTAV by 1000×.
+
+**Why we don't currently observe this in the wild:** `CLASSFromStore`
+is invoked after `MakeFitsFrameSet`, which runs `AddEncodingFrame`
+(fitschan.c:2462). That helper *forces* the SpecFrame's Unit to "Hz"
+before the encoder runs:
+
+```c
+2461:    /* Ensure the standard of rest is Source and units are "Hz". */
+2462:    astSetUnit( specfrm, 0, "Hz" );
+```
+
+so by the time line 6882 executes, `specfactor == 1.0` and the bug
+is dormant. **Verified by patching line 2462 to `"kHz"` and rebuilding:**
+DELTAV jumps from -211056.3 m/s (correct) to -211056299.4 m/s
+(1000× wrong); CRVAL1 and the formatted CDELT1 card stay correct.
+
+The bug is therefore latent — it only matters if AddEncodingFrame is
+ever changed to leave the SpecFrame's Unit alone, or if a future
+encoder path reaches CLASSFromStore via a different route.
+
+**Why discuss with maintainers:** Even if currently dead code, it
+silently encodes the wrong physics — DELTAV claims to be a velocity
+but is actually scaled by the *units* of the input axis. The fix is
+one character: drop `*specfactor` on line 6882 (or compute
+`cdelt_hz` once and reuse). A regression test that supplies a
+non-Hz spec axis to FITS-CLASS write would have caught this when
+the AddEncodingFrame Hz-force was added.
+
+**Proposed C patch:**
+
+```c
+-  aval[ 1 ] = aval[ 0 ] + cdelt[ axspec ]*specfactor;
++  aval[ 1 ] = aval[ 0 ] + cdelt[ axspec ];
+```
+
+**Rust mirror:** `crates/ast-core/src/fitschan/enc_class.rs`
+(`write_velocities_from_frameset`) reads CRVAL1/CDELT1 from the
+already-emitted cards (post-RESTFREQ-subtract for CRVAL1; raw for
+CDELT1). Because our CDELT1 card has the same value as C's CDELT1
+card (specfactor applied once at SetValue time), our `aval1_in =
+aval0_in + cdelt` matches C's broken `aval[1]` only when
+`specfactor == 1`. We do **not** mirror the bug — if the C library
+is fixed, our code remains correct.
