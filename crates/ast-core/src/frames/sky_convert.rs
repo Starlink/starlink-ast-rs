@@ -171,6 +171,11 @@ impl SkyRefIs {
 /// - `align_sys` — the intermediate system used for epoch alignment.
 /// - `from_obs_lat`, `to_obs_lat` — observer latitude in radians (AZEL only).
 /// - `from_last`, `to_last` — Local Apparent Sidereal Time in radians (AZEL only).
+/// - `from_diurab`, `to_diurab` — diurnal aberration vector magnitude in
+///   radians (AZEL only). Mirrors `skyframe.c::GetDiurab` (line 3735):
+///   `diurab = 2π · uau · SOLSID / C` where `uau` is the equatorial
+///   distance from the spin axis returned by `palGeoc(obs_lat, obs_alt)`.
+///   Pass `0.0` if AZEL is unused or the observer is unknown.
 ///
 /// # Errors
 ///
@@ -186,8 +191,10 @@ pub(crate) fn make_sky_mapping(
     align_sys: SkySystem,
     from_obs_lat: f64,
     from_last: f64,
+    from_diurab: f64,
     to_obs_lat: f64,
     to_last: f64,
+    to_diurab: f64,
 ) -> AstResult<DynMapping> {
     // Both UNKNOWN: return identity.
     if from_sys == SkySystem::Unknown && to_sys == SkySystem::Unknown {
@@ -252,6 +259,7 @@ pub(crate) fn make_sky_mapping(
             from_ep_mjd,
             from_obs_lat,
             from_last,
+            from_diurab,
         );
     }
 
@@ -264,19 +272,22 @@ pub(crate) fn make_sky_mapping(
             from_ep_mjd,
             from_obs_lat,
             from_last,
+            from_diurab,
         );
     }
 
     // Step 3: align_sys → FK5 J2000.0 (using to epoch/equinox)
     if step3 {
         add_system_to_fk5(
-            &mut sla, align_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last,
+            &mut sla, align_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last, to_diurab,
         );
     }
 
     // Step 4: FK5 J2000.0 → to_sys
     if step4 {
-        add_fk5_to_system(&mut sla, to_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last);
+        add_fk5_to_system(
+            &mut sla, to_sys, to_eq_mjd, to_ep_mjd, to_obs_lat, to_last, to_diurab,
+        );
     }
 
     if sla.is_empty() {
@@ -291,6 +302,7 @@ pub(crate) fn make_sky_mapping(
 // ---------------------------------------------------------------------------
 
 /// Add SlaMap steps to convert from `system` to FK5 J2000.0.
+#[allow(clippy::too_many_arguments)]
 fn add_system_to_fk5(
     sla: &mut SlaMap,
     system: SkySystem,
@@ -298,6 +310,7 @@ fn add_system_to_fk5(
     epoch_mjd: f64,
     obs_lat: f64,
     last: f64,
+    diurab: f64,
 ) {
     let equinox_j = pal::epj(equinox_mjd);
     let equinox_b = pal::epb(equinox_mjd);
@@ -364,9 +377,10 @@ fn add_system_to_fk5(
         }
 
         SkySystem::Azel => {
-            // Horizon → equatorial (ha, dec) → RA shift → mean place
-            // TODO: compute diurnal aberration from observer parameters
-            sla.add(SlaCvtType::Dh2e, &[obs_lat, 0.0]);
+            // Horizon → equatorial (ha, dec) → RA shift → mean place.
+            // Mirrors skyframe.c:6181 `TRANSFORM_2( "H2E", lat, diurab )`
+            // followed by H2R(last) and AMP(epoch).
+            sla.add(SlaCvtType::Dh2e, &[obs_lat, diurab]);
             sla.add(SlaCvtType::H2r, &[last]);
             sla.add(SlaCvtType::Amp, &[2000.0, epoch_mjd]);
         }
@@ -382,6 +396,7 @@ fn add_system_to_fk5(
 // ---------------------------------------------------------------------------
 
 /// Add SlaMap steps to convert from FK5 J2000.0 to `system`.
+#[allow(clippy::too_many_arguments)]
 fn add_fk5_to_system(
     sla: &mut SlaMap,
     system: SkySystem,
@@ -389,6 +404,7 @@ fn add_fk5_to_system(
     epoch_mjd: f64,
     obs_lat: f64,
     last: f64,
+    diurab: f64,
 ) {
     let equinox_j = pal::epj(equinox_mjd);
     let equinox_b = pal::epb(equinox_mjd);
@@ -450,11 +466,12 @@ fn add_fk5_to_system(
         }
 
         SkySystem::Azel => {
-            // Mean place → geocentric apparent → RA shift → horizon
+            // Mean place → geocentric apparent → RA shift → horizon.
+            // Mirrors skyframe.c:6290-6292: MAP(2000,epoch), R2H(last),
+            // E2H(lat, diurab).
             sla.add(SlaCvtType::Map, &[2000.0, epoch_mjd]);
             sla.add(SlaCvtType::R2h, &[last]);
-            // TODO: compute diurnal aberration from observer parameters
-            sla.add(SlaCvtType::De2h, &[obs_lat, 0.0]);
+            sla.add(SlaCvtType::De2h, &[obs_lat, diurab]);
         }
 
         SkySystem::Unknown => {
@@ -862,6 +879,8 @@ mod tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
         )
         .unwrap();
 
@@ -887,6 +906,8 @@ mod tests {
             j2000_eq(),
             j2000_mjd(),
             SkySystem::Fk5,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -924,6 +945,8 @@ mod tests {
             eq_j2050,
             j2000_mjd(),
             SkySystem::Icrs, // align in ICRS to expose equinox difference
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -968,6 +991,8 @@ mod tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
         )
         .unwrap();
 
@@ -993,6 +1018,8 @@ mod tests {
             j2000_eq(),
             j2000_mjd(),
             SkySystem::Fk5,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -1027,6 +1054,8 @@ mod tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
         )
         .unwrap();
 
@@ -1052,6 +1081,8 @@ mod tests {
             j2000_eq(),
             j2000_mjd(),
             SkySystem::Fk5,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -1120,8 +1151,10 @@ mod tests {
                 SkySystem::Fk5,
                 obs_lat,
                 last,
+                0.0,
                 obs_lat,
                 last,
+                0.0,
             )
             .unwrap();
 
@@ -1166,6 +1199,8 @@ mod tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
         )
         .unwrap();
         assert!(map.as_any().is::<UnitMap>());
@@ -1181,6 +1216,8 @@ mod tests {
             j2000_eq(),
             j2000_mjd(),
             SkySystem::Fk5,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -1209,6 +1246,8 @@ mod tests {
             SkySystem::Fk5,
             obs_lat,
             last,
+            0.0,
+            0.0,
             0.0,
             0.0,
         )
@@ -1248,6 +1287,8 @@ mod tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
         )
         .unwrap();
 
@@ -1273,6 +1314,8 @@ mod tests {
             j2000_eq(),
             j2000_mjd(),
             SkySystem::Fk5,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -1308,6 +1351,8 @@ mod tests {
             j2000_eq(),
             ep2,
             SkySystem::Galactic,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,

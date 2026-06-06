@@ -627,6 +627,26 @@ impl SkyFrame {
         )
     }
 
+    /// Diurnal aberration vector magnitude, in radians, at this
+    /// SkyFrame's observer location.
+    ///
+    /// Mirrors `skyframe.c::GetDiurab` (line 3735):
+    /// `diurab = 2π · uau · SOLSID / C` with `uau` from
+    /// `palGeoc(obs_lat, obs_alt)`. The constants `SOLSID = 1.00273790935`
+    /// (sidereal/solar ratio) and `C = 173.14463331` (speed of light in
+    /// AU/day) are taken verbatim from skyframe.c:381-382.
+    ///
+    /// Returns 0.0 when neither obs_lat nor obs_alt is set — matches the
+    /// C library's behaviour that uau is computed from default zeros.
+    pub(crate) fn compute_diurab(&self) -> f64 {
+        const SOLSID: f64 = 1.00273790935;
+        const C: f64 = 173.14463331;
+        let lat = self.obs_lat.unwrap_or(0.0);
+        let alt = self.obs_alt.unwrap_or(0.0);
+        let (uau, _vau) = pal::geoc(lat, alt);
+        2.0 * std::f64::consts::PI * uau * SOLSID / C
+    }
+
     // --- Private helpers for serialisation defaults ---
 
     /// Default title for the current system and equinox.
@@ -919,8 +939,10 @@ impl Frame for SkyFrame {
                     self.system, // align in current system
                     prev_sky.obs_lat.unwrap_or(0.0),
                     prev_last,
+                    prev_sky.compute_diurab(),
                     self.obs_lat.unwrap_or(0.0),
                     self_last,
+                    self.compute_diurab(),
                 )?;
 
                 // Prepend source offset removal (offset→standard).
@@ -994,8 +1016,10 @@ impl Frame for SkyFrame {
                     SkySystem::Fk5, // align through FK5
                     self.obs_lat.unwrap_or(0.0),
                     self_last,
+                    self.compute_diurab(),
                     to_sky.obs_lat.unwrap_or(0.0),
                     to_last,
+                    to_sky.compute_diurab(),
                 )?;
 
                 // Prepend source offset removal (offset→standard).
@@ -1519,8 +1543,10 @@ fn skyframe_sub_frame(
             align_sys,
             target.obs_lat.unwrap_or(0.0),
             target_last,
+            target.compute_diurab(),
             result.obs_lat.unwrap_or(0.0),
             result_last,
+            result.compute_diurab(),
         )?;
 
         // Prepend source offset removal (offset→standard).
