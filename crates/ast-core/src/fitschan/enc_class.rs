@@ -384,18 +384,13 @@ fn determine_specsys_from_velocity(cards: &CardList) -> Option<String> {
 pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList) -> AstResult<()> {
     use crate::coords::PointSet;
 
-    // Mirror C's CLASSFromStore which receives the post-MakeFitsFrameSet
-    // FrameSet (RefRA/RefDec quantised via astFormat+astSetC, plus the
-    // CLASS encoding frame appended by AddEncodingFrame). Without this
-    // preconditioning, Source-Hz CRVAL extraction and the SpecFrame's
-    // RefRA range / quantisation differ from C, producing small numeric
-    // drifts in VELO-LSR / DELTAV (~0.03 m/s for galactic input where
-    // RefRA crosses the [-π, π] vs [0, 2π) representation boundary).
-    let fs_owned = crate::fitschan::fset_to_store::make_fits_frameset(
-        fs,
-        crate::fitschan::Encoding::FitsClass,
-    )?;
-    let fs = &fs_owned;
+    // C `CLASSFromStore` receives the ORIGINAL input FrameSet (the
+    // `(AstFrameSet*) object` passed to FitsFromStore at fitschan.c:40417),
+    // NOT the post-MakeFitsFrameSet FrameSet. The modifications applied by
+    // MakeFitsFrameSet (RefRA/RefDec format/parse roundtrip, AddEncodingFrame)
+    // operate on a *copy* and feed only into the FitsStore extraction.
+    // The SpecFrame used by `astFindFrame(curfrm, velofrm, "")` here keeps
+    // its astRead-derived high-precision RefRA/RefDec.
 
     // Locate the matched SpecFrame in the cube via find_frame with a
     // velocity SpecFrame template. C constructs:
@@ -496,13 +491,9 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
         return Ok(());
     };
 
-    // Mirror C's CLASSFromStore which receives the post-MakeFitsFrameSet
-    // FrameSet. See `write_velocities_from_frameset` for the rationale.
-    let fs_owned = crate::fitschan::fset_to_store::make_fits_frameset(
-        fs,
-        crate::fitschan::Encoding::FitsClass,
-    )?;
-    let fs = &fs_owned;
+    // C `CLASSFromStore` receives the ORIGINAL input FrameSet, NOT the
+    // post-MakeFitsFrameSet one (see `write_velocities_from_frameset`).
+    // The current Frame here is the user-supplied frame as read by astRead.
 
     // C invokes astFindFrame on the current Frame (extracted via
     // astGetFrame), not on the FrameSet itself. So the dispatch is
