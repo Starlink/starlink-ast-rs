@@ -290,11 +290,22 @@ pub(crate) fn make_sky_mapping(
         );
     }
 
-    if sla.is_empty() {
-        Ok(Box::new(UnitMap::new(2)))
+    // Mirror C `MakeSkyMapping` (skyframe.c:6583): simplify the
+    // assembled mapping before returning. C does this at the end to
+    // collapse redundant conversions (e.g. Hfk5z+Fk5hz at the same
+    // epoch reduces to identity within a single SlaMap). Without
+    // this, downstream callers receive two separate SlaMap objects
+    // when ICRS→FK5→ICRS appears across two SubFrame invocations,
+    // and the cross-SlaMap cancellation has to fall to the
+    // simplifier — where the cart-sph normalisation side-effect of
+    // each SlaMap can introduce semantic drift if the simplifier
+    // collapses the pair to UnitMap.
+    let result: DynMapping = if sla.is_empty() {
+        Box::new(UnitMap::new(2))
     } else {
-        Ok(Box::new(sla))
-    }
+        Box::new(sla)
+    };
+    result.simplified()
 }
 
 // ---------------------------------------------------------------------------
