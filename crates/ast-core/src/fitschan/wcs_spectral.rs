@@ -15,7 +15,69 @@
 use super::fits_store::FitsStore;
 use crate::error::AstResult;
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, ZoomMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
+
+/// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
+/// the other axes. Identity-fast for `naxis == 1`. Mirrors C
+/// `fitschan.c:38304-38347` — PermMap + parallel CmpMap + inverse
+/// PermMap sandwich, but specialised to a single non-passthrough
+/// axis.
+fn embed_1axis_in_naxis(
+    inner: DynMapping,
+    naxis: usize,
+    axis_0based: usize,
+) -> AstResult<DynMapping> {
+    use crate::mappings::PermMap;
+
+    debug_assert_eq!(inner.nin(), 1);
+    debug_assert_eq!(inner.nout(), 1);
+
+    if naxis == 1 {
+        return Ok(inner);
+    }
+
+    // perm_to_first: route axis `axis_0based` to slot 0; route the
+    // remaining axes into slots 1..naxis (in original FITS order).
+    let others: Vec<usize> = (0..naxis).filter(|&i| i != axis_0based).collect();
+
+    let mut outperm_to_first: Vec<i64> = Vec::with_capacity(naxis);
+    outperm_to_first.push((axis_0based as i64) + 1);
+    for &k in &others {
+        outperm_to_first.push((k as i64) + 1);
+    }
+    let mut inperm_to_first: Vec<i64> = vec![0; naxis];
+    inperm_to_first[axis_0based] = 1;
+    for (k, &orig) in others.iter().enumerate() {
+        inperm_to_first[orig] = (k as i64) + 2;
+    }
+    let perm_to_first = PermMap::new(&inperm_to_first, &outperm_to_first, &[])?;
+
+    // Inverse permutation.
+    let mut outperm_back: Vec<i64> = vec![0; naxis];
+    outperm_back[axis_0based] = 1;
+    for (k, &orig) in others.iter().enumerate() {
+        outperm_back[orig] = (k as i64) + 2;
+    }
+    let mut inperm_back: Vec<i64> = Vec::with_capacity(naxis);
+    inperm_back.push((axis_0based as i64) + 1);
+    for &k in &others {
+        inperm_back.push((k as i64) + 1);
+    }
+    let perm_back = PermMap::new(&inperm_back, &outperm_back, &[])?;
+
+    // Parallel: inner (1-axis) || UnitMap(naxis - 1)
+    let unit_rest = UnitMap::new(naxis - 1);
+    let parallel = CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel)?;
+
+    // Sandwich.
+    let s1 = CmpMap::new(
+        Box::new(perm_to_first),
+        Box::new(parallel),
+        Composition::Series,
+    )?;
+    let s2 = CmpMap::new(Box::new(s1), Box::new(perm_back), Composition::Series)?;
+    Ok(Box::new(s2))
+}
 
 /// Result of building the spectral axis from a FitsStore.
 pub(crate) struct SpectralResult {
@@ -132,6 +194,12 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         // (currently a TODO in this function); fall back to linear
         // until they're ported.
         Box::new(ShiftMap::new(vec![crval]))
+    };
+
+    let naxis = store.naxis;
+    let mapping = match embed_1axis_in_naxis(mapping, naxis, axis) {
+        Ok(m) => m,
+        Err(_) => return None,
     };
 
     Some(SpectralResult {
@@ -273,8 +341,8 @@ mod tests {
         let spec = result.unwrap();
         assert_eq!(spec.axis, 2);
         assert_eq!(spec.frame.system(), SpecSystem::Freq);
-        assert_eq!(spec.mapping.nin(), 1);
-        assert_eq!(spec.mapping.nout(), 1);
+        assert_eq!(spec.mapping.nin(), 3);
+        assert_eq!(spec.mapping.nout(), 3);
     }
 
     #[test]
@@ -347,5 +415,31 @@ mod tests {
         let pts2 = PointSet::from_columns(&[&[1.0e6]]).unwrap();
         let out2 = result.mapping.transform(&pts2, true).unwrap();
         assert!((out2.point(0)[0] - (1.4e9 + 1.0e6)).abs() < 1.0);
+    }
+
+    #[test]
+    fn naxis_spectral_passthrough_other_axes() {
+        use crate::coords::PointSet;
+
+        // 3-axis: celestial pair at 0, 1; spectral at 2.
+        let mut store = FitsStore::new(3);
+        store.ctype[0] = Some("RA---TAN".to_string());
+        store.ctype[1] = Some("DEC--TAN".to_string());
+        store.ctype[2] = Some("FREQ".to_string());
+        store.crval[2] = Some(1.4e9);
+
+        let spec = build_spectral(&store).expect("spectral axis recognised");
+        assert_eq!(spec.axis, 2);
+        assert_eq!(spec.mapping.nin(), 3);
+        assert_eq!(spec.mapping.nout(), 3);
+
+        // Pass IWC (a, b, 0) — axes 0, 1 must come out unchanged;
+        // axis 2 picks up CRVAL.
+        let pts = PointSet::from_columns(&[&[42.0], &[7.0], &[0.0]]).unwrap();
+        let out = spec.mapping.transform(&pts, true).unwrap();
+        let p = out.point(0);
+        assert!((p[0] - 42.0).abs() < 1e-12, "axis 0 was {}", p[0]);
+        assert!((p[1] - 7.0).abs() < 1e-12, "axis 1 was {}", p[1]);
+        assert!((p[2] - 1.4e9).abs() < 1.0);
     }
 }
