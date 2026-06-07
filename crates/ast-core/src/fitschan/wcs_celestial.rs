@@ -320,16 +320,19 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
     let inner = build_iwc_to_sky_mapping(store, wcsmap, store.naxis, lon_axis, lat_axis)?;
 
-    // The inner mapping always treats input slot 0 as lon-side proj
-    // and slot 1 as lat-side proj, with outputs (cel_lon, cel_lat) in
-    // that order. When the FITS layout has DEC ahead of RA
-    // (`lat_axis < lon_axis`), the parent CmpFrame's external axis 0
-    // is the lat axis — and the IWC values FITS encodes at axis 0
-    // are lat-plane values. Sandwich `inner` with a 2D swap so
-    // cel.mapping accepts (lat_proj, lon_proj) and emits (cel_lat,
-    // cel_lon), matching FITS axis order. Mirrors C's PermMap
-    // sandwich at fitschan.c:5247-5296.
-    let mapping: DynMapping = if lat_axis < lon_axis {
+    // For `naxis == 2` with `lat_axis < lon_axis` the rotation
+    // embedding short-circuits to the bare 2-axis rotation, which
+    // expects `(lon, lat)` at slots `(0, 1)` — but the WcsMap+zoom
+    // pipeline has emitted `(lat, lon)` at those slots because
+    // `lat_axis = 0` and `lon_axis = 1`. Sandwich `inner` with a 2D
+    // swap so cel.mapping accepts `(lat_proj, lon_proj)` and emits
+    // `(cel_lat, cel_lon)`, matching FITS axis order. Mirrors C's
+    // PermMap sandwich at fitschan.c:5247-5296.
+    //
+    // For `naxis >= 3` the rotation embedding's PermMap sandwich
+    // already routes lon/lat to the rotation's slots `(0, 1)` and
+    // back to FITS positions, so no extra outer swap is needed.
+    let mapping: DynMapping = if store.naxis == 2 && lat_axis < lon_axis {
         let pre = PermMap::new(&[2, 1], &[2, 1], &[]).ok()?;
         let post = PermMap::new(&[2, 1], &[2, 1], &[]).ok()?;
         let m = CmpMap::new(Box::new(pre), inner, Composition::Series).ok()?;

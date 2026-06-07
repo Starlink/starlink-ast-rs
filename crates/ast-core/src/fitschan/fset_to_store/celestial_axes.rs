@@ -746,12 +746,33 @@ fn build_wcs_to_iwc(
     // collapse the PPC→native→celestial→native→PPC round-trip
     // exactly, leaving FP residue that propagates into FitLine's
     // per-axis fits.
-    let mut wcsmap_inv = src_wcsmap.clone();
-    if !wcsmap_inv.is_inverted() {
-        wcsmap_inv.invert();
+    // Project src_wcsmap (which may be N-axis after the read-side
+    // refactor lifted WcsMap from 2-axis to full pipeline rank) onto a
+    // 2-axis WcsMap suitable for the 2D celestial chain. PV parameters
+    // are copied from the source's lon/lat axes onto the new map's
+    // 1/2 axes. The 2-axis chain is then embedded into nwcs below by
+    // the PermMap-around-Parallel sandwich.
+    let proj_src = src_wcsmap.projection();
+    let mut wcsmap_2d = WcsMap::new(2, proj_src, 1, 2)?;
+    let src_lon_1b = src_wcsmap.lonax();
+    let src_lat_1b = src_wcsmap.latax();
+    for m in 0..WCSLIB_MXPAR {
+        if let Some(v) = src_wcsmap.get_pv(src_lon_1b, m)
+            && v.is_finite()
+        {
+            let _ = wcsmap_2d.set_pv(1, m, v);
+        }
+        if let Some(v) = src_wcsmap.get_pv(src_lat_1b, m)
+            && v.is_finite()
+        {
+            let _ = wcsmap_2d.set_pv(2, m, v);
+        }
+    }
+    if !wcsmap_2d.is_inverted() {
+        wcsmap_2d.invert();
     }
     let cel_2d: DynMapping = Box::new(CmpMap::new(
-        Box::new(wcsmap_inv),
+        Box::new(wcsmap_2d),
         wcs_native_rot,
         Composition::Series,
     )?);

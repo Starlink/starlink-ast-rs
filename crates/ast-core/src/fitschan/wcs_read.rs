@@ -504,28 +504,21 @@ fn build_iwc_to_world(
 
 /// Build the general IWC → world mapping for mixed axis cases.
 ///
-/// Uses parallel composition to handle different axis types.  Axes are
-/// walked one at a time in FITS index order.  The celestial mapping is
-/// pushed when the FIRST of the celestial pair is encountered; the second
-/// is skipped.  After parallel composition a `PermMap` is appended when
-/// the natural parallel-output order doesn't match FITS axis order (e.g.
-/// when the celestial pair is non-adjacent, as in axes-swap.head).
+/// Each per-class mapping (celestial, spectral, linear shift) is built as
+/// a full N-axis mapping with identity on the axes it doesn't own; the
+/// contributions are composed in series. Mirrors C `WcsMapFrm`
+/// (fitschan.c:37632), which composes N-axis WcsCelestial /
+/// WcsSpectral / WcsOthers contributions in series and lets
+/// `astSimplify` flatten the resulting chain.
 fn build_general_iwc_to_world(
     store: &FitsStore,
     celestial: Option<CelestialResult>,
     spectral: Option<SpectralResult>,
     claimed: &[bool],
 ) -> AstResult<DynMapping> {
-    use crate::mappings::PermMap;
-
     let naxis = store.naxis;
 
-    // Walk axes in FITS index order.  For each axis push the appropriate
-    // mapping into `parts`; record which FITS-axis-index each of that
-    // mapping's outputs corresponds to in `output_to_fits` (length =
-    // total output axes after parallel composition).
     let mut parts: Vec<DynMapping> = Vec::new();
-    let mut output_to_fits: Vec<usize> = Vec::new();
 
     let mut celestial = celestial;
     let mut spectral = spectral;
@@ -533,52 +526,40 @@ fn build_general_iwc_to_world(
     for (i, &is_claimed) in claimed.iter().enumerate() {
         // Celestial axis: emit the celestial mapping when we hit the
         // FIRST of the celestial pair (in FITS order); skip the second
-        // encounter.
+        // encounter. Post-Phase-B the celestial mapping is full N-axis
+        // with identity on the non-celestial axes.
         if let Some(cel) = celestial.as_ref() {
             let cel_first = cel.lon_axis.min(cel.lat_axis);
             let cel_second = cel.lon_axis.max(cel.lat_axis);
             if i == cel_first {
                 let cel = celestial.take().unwrap();
-                let lon_axis = cel.lon_axis;
-                let lat_axis = cel.lat_axis;
                 parts.push(cel.mapping);
-                // `build_celestial` adapts the mapping so its outputs
-                // come out in FITS axis order: when lat_axis <
-                // lon_axis the wrapped mapping emits (cel_lat,
-                // cel_lon) at slots (0, 1); otherwise it stays at
-                // (cel_lon, cel_lat). Match that by pushing
-                // `output_to_fits` in the same order.
-                if lat_axis < lon_axis {
-                    output_to_fits.push(lat_axis);
-                    output_to_fits.push(lon_axis);
-                } else {
-                    output_to_fits.push(lon_axis);
-                    output_to_fits.push(lat_axis);
-                }
                 continue;
             }
             if i == cel_second {
-                continue; // already handled above
-            }
-        }
-
-        // Spectral axis.
-        if let Some(spec) = spectral.as_ref() {
-            if i == spec.axis {
-                let spec = spectral.take().unwrap();
-                let axis = spec.axis;
-                parts.push(spec.mapping);
-                output_to_fits.push(axis);
                 continue;
             }
         }
 
-        // Linear/unclaimed axis: emit a CRVAL shift.
+        // Spectral axis: emit the spectral mapping when we hit it.
+        // Post-Phase-B, it's also full N-axis.
+        if let Some(spec) = spectral.as_ref() {
+            if i == spec.axis {
+                let spec = spectral.take().unwrap();
+                parts.push(spec.mapping);
+                continue;
+            }
+        }
+
+        // Linear/unclaimed axis: emit a CRVAL shift, lifted to N-axis
+        // form. A length-`naxis` shift vector with zeros on the other
+        // axes and CRVAL on `i` makes the contribution N-axis identity-
+        // on-others, so series composition is correct.
         if !is_claimed {
-            let crval = store.crval[i].unwrap_or(0.0);
-            let shift = ShiftMap::new(vec![crval]);
+            let mut shifts = vec![0.0; naxis];
+            shifts[i] = store.crval[i].unwrap_or(0.0);
+            let shift = ShiftMap::new(shifts);
             parts.push(Box::new(shift));
-            output_to_fits.push(i);
         }
     }
 
@@ -586,42 +567,14 @@ fn build_general_iwc_to_world(
         return Ok(Box::new(UnitMap::new(naxis)));
     }
 
-    // Compose all parts in parallel.
+    // Compose all parts in SERIES. Each part is full N-axis with
+    // identity on the axes it doesn't own, so series composition is
+    // correct and produces a flat top-level chain that astSimplify can
+    // flatten and merge across. Mirrors C `WcsMapFrm`
+    // (fitschan.c:37632).
     let mut result: DynMapping = parts.remove(0);
     for part in parts {
-        result = Box::new(CmpMap::new(result, part, Composition::Parallel)?);
-    }
-
-    // If the parallel-output order differs from FITS axis order, append a
-    // PermMap to permute parallel-output back to FITS axis order.
-    let identity_order: Vec<usize> = (0..naxis).collect();
-    if output_to_fits != identity_order {
-        // Build forward permutation: for each FITS axis position `dest`,
-        // find which parallel-output position holds that value.
-        let mut outperm = vec![0i64; naxis];
-        for (dest, entry) in outperm.iter_mut().enumerate() {
-            let src = output_to_fits
-                .iter()
-                .position(|&fa| fa == dest)
-                .ok_or_else(|| {
-                    crate::error::AstError::new(
-                        crate::error::ErrorCode::Bdfts,
-                        format!(
-                            "internal: FITS axis {dest} not produced by any decoder; \
-                             output_to_fits = {output_to_fits:?}"
-                        ),
-                    )
-                })?;
-            *entry = (src + 1) as i64;
-        }
-        // Inverse permutation: for each parallel-output position `src`,
-        // record which FITS axis it carries (1-based).
-        let inperm: Vec<i64> = output_to_fits
-            .iter()
-            .map(|&dest_fits| (dest_fits + 1) as i64)
-            .collect();
-        let perm = PermMap::new(&inperm, &outperm, &[])?;
-        result = Box::new(CmpMap::new(result, Box::new(perm), Composition::Series)?);
+        result = Box::new(CmpMap::new(result, part, Composition::Series)?);
     }
 
     Ok(result)
