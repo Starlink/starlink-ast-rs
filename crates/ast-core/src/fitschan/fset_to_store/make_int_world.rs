@@ -34,7 +34,7 @@ use ndarray::Array2;
 use crate::error::AstResult;
 use crate::fitschan::fits_store::FitsStore;
 use crate::fitschan::wcs_decompose::{find_basis_vectors, fit_line_cd, split_cd};
-use crate::frames::{BasicFrame, CmpFrame, Frame, SkyFrame};
+use crate::frames::{BasicFrame, Frame, SkyFrame};
 use crate::mappings::Mapping;
 use crate::mappings::helpers::ast_equal;
 use crate::mappings::polymap::solve_linear_system;
@@ -47,20 +47,11 @@ use super::sip_int_world::sip_int_world;
 const DD2R: f64 = std::f64::consts::PI / 180.0;
 
 /// Resolve a 0-based output axis to its primary (leaf) frame and the
-/// 0-based axis within that frame. Mirrors `astPrimaryFrame` for the
-/// `Frame` types we care about: `CmpFrame` recurses into the
-/// appropriate child; everything else returns `(self, axis)`.
+/// 0-based axis within that frame. Mirrors `astPrimaryFrame` —
+/// applies each frame's internal axis permutation so `paxis` is the
+/// underlying physical axis (0 = lon, 1 = lat for SkyFrame).
 fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
-        let n1 = cmp.naxes1();
-        if axis < n1 {
-            primary_frame(cmp.frame1(), axis)
-        } else {
-            primary_frame(cmp.frame2(), axis - n1)
-        }
-    } else {
-        (frame, axis)
-    }
+    crate::frames::specframe::primary_frame_walk(frame, axis)
 }
 
 /// Extract `CRPIX` / `CD` / `PC` / `CDELT` (and `WCSAXES`) from a

@@ -707,16 +707,7 @@ fn spec_or_inner(frame: &dyn Frame) -> Option<&SpecFrame> {
 }
 
 pub(crate) fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
-        let n1 = cmp.naxes1();
-        if axis < n1 {
-            primary_frame(cmp.frame1(), axis)
-        } else {
-            primary_frame(cmp.frame2(), axis - n1)
-        }
-    } else {
-        (frame, axis)
-    }
+    crate::frames::specframe::primary_frame_walk(frame, axis)
 }
 
 /// Embed a 1-axis mapping into an `nax`-axis Mapping at position `iax`,

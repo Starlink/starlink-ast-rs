@@ -38,12 +38,13 @@ fn main() {
                 );
                 if let Some(sky) = f.as_any().downcast_ref::<ast_core::frames::SkyFrame>() {
                     eprintln!(
-                        "    SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={} sky_ref_is={:?}",
+                        "    SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={} sky_ref_is={:?} perm={:?}",
                         sky.test_epoch(),
                         sky.epoch_mjd(),
                         sky.test_equinox(),
                         sky.equinox_mjd(),
-                        sky.sky_ref_is()
+                        sky.sky_ref_is(),
+                        sky.axis_permutation(),
                     );
                 }
                 if let Some(cmp) = f.as_any().downcast_ref::<ast_core::frames::CmpFrame>() {
@@ -58,11 +59,12 @@ fn main() {
                         if let Some(sky) = sub.as_any().downcast_ref::<ast_core::frames::SkyFrame>()
                         {
                             eprintln!(
-                                "      SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={}",
+                                "      SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={} perm={:?}",
                                 sky.test_epoch(),
                                 sky.epoch_mjd(),
                                 sky.test_equinox(),
-                                sky.equinox_mjd()
+                                sky.equinox_mjd(),
+                                sky.axis_permutation(),
                             );
                         }
                         if let Some(spec) =

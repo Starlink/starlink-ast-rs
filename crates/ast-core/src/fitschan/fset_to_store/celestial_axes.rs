@@ -334,18 +334,12 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
 const FITS_TOL_DEFAULT: f64 = 0.1;
 
 /// Recursively descend `frame` to its primary leaf frame for axis
-/// `axis` (0-based). Mirrors `astPrimaryFrame`.
+/// `axis` (0-based). Mirrors `astPrimaryFrame` — applies each frame's
+/// internal axis permutation so the returned `paxis` is the *original
+/// underlying* axis (0 = lon, 1 = lat for SkyFrame), regardless of any
+/// `perm_axes` reorderings.
 fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
-        let n1 = cmp.naxes1();
-        if axis < n1 {
-            primary_frame(cmp.frame1(), axis)
-        } else {
-            primary_frame(cmp.frame2(), axis - n1)
-        }
-    } else {
-        (frame, axis)
-    }
+    crate::frames::specframe::primary_frame_walk(frame, axis)
 }
 
 /// C `ZEROANG(aa) (fabs(aa) < 1.0E-9)` from fitschan.c:1392.
