@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
 use crate::frames::{SkyFrame, SkySystem};
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap};
 use crate::wcslib::WcsProjection;
 
 /// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to a
@@ -604,76 +604,79 @@ fn build_iwc_to_sky_mapping(
         latpole_rad,
     )?;
 
-    // The rotation is intrinsically 2-axis. Embed it in N-axis form
-    // via PermMap + parallel CmpMap (with UnitMap_(N-2) on the other
-    // axes) + inverse PermMap. Mirrors C fitschan.c:38304-38347
-    // (the nax_rem > 0 branch and the surrounding PermMap sandwich
-    // at 38325-38346).
-    use crate::mappings::UnitMap;
-    let rotation_naxis: DynMapping = if naxis == 2 {
-        rotation
-    } else {
-        // perm_to_2d: naxis-input → naxis-output PermMap that puts
-        // (lon_axis, lat_axis) into the first two output slots and
-        // the remaining (naxis-2) axes into slots 2..naxis,
-        // preserving their original FITS order.
-        // perm_back: the inverse permutation.
-        let others: Vec<usize> = (0..naxis)
-            .filter(|&i| i != lon_axis && i != lat_axis)
-            .collect();
-        // Output slots 0, 1 = lon_axis, lat_axis (FITS-relative);
-        // slots 2..naxis come from `others` in order.
-        // Build perm_to_2d.outperm[j] = (input axis at slot j) + 1.
-        let mut outperm_to_2d: Vec<i64> = Vec::with_capacity(naxis);
-        outperm_to_2d.push((lon_axis as i64) + 1);
-        outperm_to_2d.push((lat_axis as i64) + 1);
-        for &k in &others {
-            outperm_to_2d.push((k as i64) + 1);
-        }
-        // inperm describes the inverse direction: inperm[i] gives the
-        // (1-based) output slot to read in order to recover original
-        // input i. PermMap requires both directions explicitly.
-        let mut inperm_to_2d: Vec<i64> = vec![0; naxis];
-        for (slot_idx, &input_idx) in [lon_axis, lat_axis].iter().chain(others.iter()).enumerate() {
-            inperm_to_2d[input_idx] = (slot_idx as i64) + 1;
-        }
-        let perm_to_2d = PermMap::new(&inperm_to_2d, &outperm_to_2d, &[]).ok()?;
-
-        // Inverse permutation: outperm_back[i] = "which slot j of the
-        // permuted layout holds original axis i".
-        let mut outperm_back: Vec<i64> = vec![0; naxis];
-        outperm_back[lon_axis] = 1;
-        outperm_back[lat_axis] = 2;
-        for (k, &orig) in others.iter().enumerate() {
-            outperm_back[orig] = (k as i64) + 3;
-        }
-        let mut inperm_back: Vec<i64> = Vec::with_capacity(naxis);
-        inperm_back.push((lon_axis as i64) + 1);
-        inperm_back.push((lat_axis as i64) + 1);
-        for &k in &others {
-            inperm_back.push((k as i64) + 1);
-        }
-        let perm_back = PermMap::new(&inperm_back, &outperm_back, &[]).ok()?;
-
-        // Parallel: rotation (2-axis) || UnitMap(naxis - 2)
-        let unit_rest = UnitMap::new(naxis - 2);
-        let parallel = CmpMap::new(rotation, Box::new(unit_rest), Composition::Parallel).ok()?;
-
-        // PermMap sandwich: perm_to_2d ; parallel ; perm_back
-        let s1 = CmpMap::new(
-            Box::new(perm_to_2d),
-            Box::new(parallel),
-            Composition::Series,
-        )
-        .ok()?;
-        let s2 = CmpMap::new(Box::new(s1), Box::new(perm_back), Composition::Series).ok()?;
-        Box::new(s2)
-    };
+    let rotation_naxis = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis)?;
 
     // Pipeline: zoom (N→N diagonal) → wcsmap_inv (N→N) → rotation_naxis (N→N)
     let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
     let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series).ok()?;
     Some(Box::new(full))
+}
+
+/// Embed a 2-axis mapping that operates on (lon, lat) into an
+/// `naxis`-rank mapping that passes the other axes through unchanged.
+/// Identity-fast for `naxis == 2` (returns `inner` directly).
+///
+/// Internally, the embedding is implemented as
+/// `PermMap_to_2d ; (inner || UnitMap_(N-2)) ; PermMap_back` —
+/// mirrors C `fitschan.c:38304-38347` (the nax_rem > 0 branch and
+/// the surrounding PermMap sandwich at 38325-38346).
+fn embed_celestial_in_naxis(
+    inner: DynMapping,
+    naxis: usize,
+    lon_axis_0based: usize,
+    lat_axis_0based: usize,
+) -> Option<DynMapping> {
+    debug_assert_eq!(inner.nin(), 2);
+    debug_assert_eq!(inner.nout(), 2);
+
+    if naxis == 2 {
+        return Some(inner);
+    }
+
+    let others: Vec<usize> = (0..naxis)
+        .filter(|&i| i != lon_axis_0based && i != lat_axis_0based)
+        .collect();
+
+    let mut outperm_to_2d: Vec<i64> = Vec::with_capacity(naxis);
+    outperm_to_2d.push((lon_axis_0based as i64) + 1);
+    outperm_to_2d.push((lat_axis_0based as i64) + 1);
+    for &k in &others {
+        outperm_to_2d.push((k as i64) + 1);
+    }
+    let mut inperm_to_2d: Vec<i64> = vec![0; naxis];
+    for (slot_idx, &input_idx) in [lon_axis_0based, lat_axis_0based]
+        .iter()
+        .chain(others.iter())
+        .enumerate()
+    {
+        inperm_to_2d[input_idx] = (slot_idx as i64) + 1;
+    }
+    let perm_to_2d = PermMap::new(&inperm_to_2d, &outperm_to_2d, &[]).ok()?;
+
+    let mut outperm_back: Vec<i64> = vec![0; naxis];
+    outperm_back[lon_axis_0based] = 1;
+    outperm_back[lat_axis_0based] = 2;
+    for (k, &orig) in others.iter().enumerate() {
+        outperm_back[orig] = (k as i64) + 3;
+    }
+    let mut inperm_back: Vec<i64> = Vec::with_capacity(naxis);
+    inperm_back.push((lon_axis_0based as i64) + 1);
+    inperm_back.push((lat_axis_0based as i64) + 1);
+    for &k in &others {
+        inperm_back.push((k as i64) + 1);
+    }
+    let perm_back = PermMap::new(&inperm_back, &outperm_back, &[]).ok()?;
+
+    let unit_rest = UnitMap::new(naxis - 2);
+    let parallel = CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel).ok()?;
+    let s1 = CmpMap::new(
+        Box::new(perm_to_2d),
+        Box::new(parallel),
+        Composition::Series,
+    )
+    .ok()?;
+    let s2 = CmpMap::new(Box::new(s1), Box::new(perm_back), Composition::Series).ok()?;
+    Some(Box::new(s2))
 }
 
 /// Build the native-to-celestial rotation mapping.
