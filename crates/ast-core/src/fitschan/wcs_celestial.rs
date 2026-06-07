@@ -114,23 +114,26 @@ pub(crate) fn build_celestial_with_def_b1950(
     let proj = WcsProjection::from_code(&proj_code)?;
 
     // Step 3: Create WcsMap.
-    // WcsMap axes are 1-based; our celestial subset is always (1=lon, 2=lat).
-    let mut wcsmap = WcsMap::new(2, proj, 1, 2).ok()?;
+    // N-axis WcsMap: ncoord = full naxis, with this pair's lon/lat
+    // axes pointed at FITS positions (1-based). The pass-through
+    // axes here are conceptually for the rest of the pipeline; for
+    // Phase A they're peeled back inside build_iwc_to_sky_mapping
+    // so the outer mapping stays 2D. Phase B/C remove the peel-back.
+    let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1).ok()?;
 
     // Set any PV projection parameters on the latitude axis.
     // In FITS-WCS, PV parameters on the latitude axis (typically axis 2)
     // control the projection. We assign them to the WcsMap's latitude axis.
     for m in 0..store.pv[lat_axis].len() {
         if let Some(val) = store.pv[lat_axis][m] {
-            // WcsMap set_pv uses 1-based axis: latitude is axis 2 in our 2D WcsMap.
-            let _ = wcsmap.set_pv(2, m, val);
+            // WcsMap set_pv uses 1-based FITS axis indices.
+            let _ = wcsmap.set_pv(lat_axis + 1, m, val);
         }
     }
     // PV parameters on the longitude axis.
     for m in 0..store.pv[lon_axis].len() {
         if let Some(val) = store.pv[lon_axis][m] {
-            // longitude is axis 1 in our 2D WcsMap.
-            let _ = wcsmap.set_pv(1, m, val);
+            let _ = wcsmap.set_pv(lon_axis + 1, m, val);
         }
     }
 
@@ -142,15 +145,15 @@ pub(crate) fn build_celestial_with_def_b1950(
     let is_tpn = matches!(proj, WcsProjection::Tpn);
     if !is_tpn {
         let deg2rad_local = PI / 180.0;
-        if wcsmap.get_pv(1, 3).is_none()
+        if wcsmap.get_pv(lon_axis + 1, 3).is_none()
             && let Some(lon_deg) = store.lonpole
         {
-            let _ = wcsmap.set_pv(1, 3, lon_deg * deg2rad_local);
+            let _ = wcsmap.set_pv(lon_axis + 1, 3, lon_deg * deg2rad_local);
         }
-        if wcsmap.get_pv(1, 4).is_none()
+        if wcsmap.get_pv(lon_axis + 1, 4).is_none()
             && let Some(lat_deg) = store.latpole
         {
-            let _ = wcsmap.set_pv(1, 4, lat_deg * deg2rad_local);
+            let _ = wcsmap.set_pv(lon_axis + 1, 4, lat_deg * deg2rad_local);
         }
     }
 
@@ -312,7 +315,7 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
-    let inner = build_iwc_to_sky_mapping(store, wcsmap, lon_axis, lat_axis)?;
+    let inner = build_iwc_to_sky_mapping(store, wcsmap, store.naxis, lon_axis, lat_axis)?;
 
     // The inner mapping always treats input slot 0 as lon-side proj
     // and slot 1 as lat-side proj, with outputs (cel_lon, cel_lat) in
@@ -474,6 +477,7 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
 fn build_iwc_to_sky_mapping(
     store: &FitsStore,
     wcsmap: WcsMap,
+    naxis: usize,
     lon_axis: usize,
     lat_axis: usize,
 ) -> Option<DynMapping> {
@@ -587,10 +591,46 @@ fn build_iwc_to_sky_mapping(
         latpole_rad,
     )?;
 
-    // Compose: zoom → wcsmap_inv → rotation
-    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
-    let full = CmpMap::new(Box::new(step1), rotation, Composition::Series).ok()?;
+    // Phase A invariant: the outer mapping is 2-input/2-output
+    // (Phase B converts to fully N-axis). The WcsMap is now N-axis,
+    // so sandwich it between a "lift 2D into the N-D slot" PermMap
+    // and a "drop back to 2D" PermMap, keeping the wider WcsMap.
+    //
+    // Lift PermMap: 2 inputs, naxis outputs. Output `lon_axis` (0-
+    // based) takes input 0 (the lon component); output `lat_axis`
+    // takes input 1; every other output takes constant 0.0 (the
+    // pass-through axes never reach the WcsMap's lon/lat math).
+    //
+    // Drop PermMap: naxis inputs, 2 outputs. Output 0 (lon) takes
+    // input `lon_axis`; output 1 (lat) takes input `lat_axis`. The
+    // other inputs are discarded.
+    // lift: nin = 2 (zoom outputs), nout = naxis (WcsMap inputs).
+    // Forward: outperm[lon_axis] = 1 (lon-rad), outperm[lat_axis] = 2
+    // (lat-rad), other slots get constant 0.0.
+    // Inverse: inperm[0] = lon_axis + 1 (recover lon from forward
+    // output slot lon_axis), inperm[1] = lat_axis + 1.
+    let lift_inperm: Vec<i64> = vec![(lon_axis as i64) + 1, (lat_axis as i64) + 1];
+    let mut lift_outperm: Vec<i64> = vec![-1; naxis]; // -1 = constant 0.0
+    lift_outperm[lon_axis] = 1;
+    lift_outperm[lat_axis] = 2;
+    let lift = PermMap::new(&lift_inperm, &lift_outperm, &[0.0]).ok()?;
 
+    let mut drop_inperm: Vec<i64> = vec![-1; naxis];
+    drop_inperm[lon_axis] = 1;
+    drop_inperm[lat_axis] = 2;
+    let drop_outperm: Vec<i64> = vec![(lon_axis as i64) + 1, (lat_axis as i64) + 1];
+    let drop = PermMap::new(&drop_inperm, &drop_outperm, &[0.0]).ok()?;
+
+    // Pipeline: zoom (2D) → lift (2→N) → wcsmap_inv (N→N) → drop (N→2) → rotation (2→2)
+    let zoom_then_lift = CmpMap::new(Box::new(zoom), Box::new(lift), Composition::Series).ok()?;
+    let with_wm = CmpMap::new(
+        Box::new(zoom_then_lift),
+        Box::new(wcsmap_inv),
+        Composition::Series,
+    )
+    .ok()?;
+    let with_drop = CmpMap::new(Box::new(with_wm), Box::new(drop), Composition::Series).ok()?;
+    let full = CmpMap::new(Box::new(with_drop), rotation, Composition::Series).ok()?;
     Some(Box::new(full))
 }
 
@@ -892,6 +932,29 @@ mod tests {
             !result.frame.test_epoch(),
             "epoch should not be explicitly set"
         );
+    }
+
+    #[test]
+    fn naxis_wcsmap_built_with_full_rank() {
+        // 3-axis FITS header with celestial pair at axes 0, 1 and a
+        // spectral axis at 2. The decoder should ultimately still
+        // return a 2-input/2-output mapping (Phase A invariant), but
+        // the inner WcsMap's `ncoord` must reflect the full naxis.
+        let mut store = FitsStore::new(3);
+        store.ctype[0] = Some("RA---TAN".to_string());
+        store.ctype[1] = Some("DEC--TAN".to_string());
+        store.ctype[2] = Some("FREQ".to_string());
+        store.crval[0] = Some(180.0);
+        store.crval[1] = Some(45.0);
+        store.crval[2] = Some(1.4e9);
+
+        let result = build_celestial(&store).expect("celestial axes recognised");
+        assert_eq!(result.lon_axis, 0);
+        assert_eq!(result.lat_axis, 1);
+        // Phase A invariant: the outer mapping is still 2D (the
+        // peel-back sandwich removes the extra pass-through axis).
+        assert_eq!(result.mapping.nin(), 2);
+        assert_eq!(result.mapping.nout(), 2);
     }
 
     #[test]
