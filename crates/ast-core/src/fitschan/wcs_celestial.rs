@@ -15,7 +15,7 @@ use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
 use crate::frames::{SkyFrame, SkySystem};
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap, ZoomMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap};
 use crate::wcslib::WcsProjection;
 
 /// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to a
@@ -491,8 +491,15 @@ fn build_iwc_to_sky_mapping(
     let lonpole = store.lonpole.unwrap_or(180.0) * deg2rad;
     let _latpole = store.latpole.map(|v| v * deg2rad);
 
-    // Step 1: Degrees to radians (2D zoom).
-    let zoom = ZoomMap::new(2, deg2rad).ok()?;
+    // Step 1: Degrees to radians on the celestial axes only; identity
+    // elsewhere. Diagonal MatrixMap, recognised by MatrixMap::form()
+    // as MatrixForm::Diagonal — O(N) per point. Mirrors C
+    // fitschan.c:35820-35828.
+    use ndarray::Array2;
+    let mut zoom_mat: Array2<f64> = Array2::eye(naxis);
+    zoom_mat[[lon_axis, lon_axis]] = deg2rad;
+    zoom_mat[[lat_axis, lat_axis]] = deg2rad;
+    let zoom = crate::mappings::MatrixMap::new(zoom_mat).ok()?;
 
     // Step 2: WcsMap inverse maps from projected plane to native spherical.
     // The WcsMap forward direction is: native spherical → projected.
@@ -591,46 +598,75 @@ fn build_iwc_to_sky_mapping(
         latpole_rad,
     )?;
 
-    // Phase A invariant: the outer mapping is 2-input/2-output
-    // (Phase B converts to fully N-axis). The WcsMap is now N-axis,
-    // so sandwich it between a "lift 2D into the N-D slot" PermMap
-    // and a "drop back to 2D" PermMap, keeping the wider WcsMap.
-    //
-    // Lift PermMap: 2 inputs, naxis outputs. Output `lon_axis` (0-
-    // based) takes input 0 (the lon component); output `lat_axis`
-    // takes input 1; every other output takes constant 0.0 (the
-    // pass-through axes never reach the WcsMap's lon/lat math).
-    //
-    // Drop PermMap: naxis inputs, 2 outputs. Output 0 (lon) takes
-    // input `lon_axis`; output 1 (lat) takes input `lat_axis`. The
-    // other inputs are discarded.
-    // lift: nin = 2 (zoom outputs), nout = naxis (WcsMap inputs).
-    // Forward: outperm[lon_axis] = 1 (lon-rad), outperm[lat_axis] = 2
-    // (lat-rad), other slots get constant 0.0.
-    // Inverse: inperm[0] = lon_axis + 1 (recover lon from forward
-    // output slot lon_axis), inperm[1] = lat_axis + 1.
-    let lift_inperm: Vec<i64> = vec![(lon_axis as i64) + 1, (lat_axis as i64) + 1];
-    let mut lift_outperm: Vec<i64> = vec![-1; naxis]; // -1 = constant 0.0
-    lift_outperm[lon_axis] = 1;
-    lift_outperm[lat_axis] = 2;
-    let lift = PermMap::new(&lift_inperm, &lift_outperm, &[0.0]).ok()?;
+    // The rotation is intrinsically 2-axis. Embed it in N-axis form
+    // via PermMap + parallel CmpMap (with UnitMap_(N-2) on the other
+    // axes) + inverse PermMap. Mirrors C fitschan.c:38304-38347
+    // (the nax_rem > 0 branch and the surrounding PermMap sandwich
+    // at 38325-38346).
+    use crate::mappings::UnitMap;
+    let rotation_naxis: DynMapping = if naxis == 2 {
+        rotation
+    } else {
+        // perm_to_2d: naxis-input → naxis-output PermMap that puts
+        // (lon_axis, lat_axis) into the first two output slots and
+        // the remaining (naxis-2) axes into slots 2..naxis,
+        // preserving their original FITS order.
+        // perm_back: the inverse permutation.
+        let others: Vec<usize> = (0..naxis)
+            .filter(|&i| i != lon_axis && i != lat_axis)
+            .collect();
+        // Output slots 0, 1 = lon_axis, lat_axis (FITS-relative);
+        // slots 2..naxis come from `others` in order.
+        // Build perm_to_2d.outperm[j] = (input axis at slot j) + 1.
+        let mut outperm_to_2d: Vec<i64> = Vec::with_capacity(naxis);
+        outperm_to_2d.push((lon_axis as i64) + 1);
+        outperm_to_2d.push((lat_axis as i64) + 1);
+        for &k in &others {
+            outperm_to_2d.push((k as i64) + 1);
+        }
+        // Inverse: build inperm[i] for forward = the slot that
+        // produced original input i. We construct the back-perm
+        // independently and let PermMap derive its own inverse.
+        let mut inperm_to_2d: Vec<i64> = vec![0; naxis];
+        for (slot_idx, &input_idx) in [lon_axis, lat_axis].iter().chain(others.iter()).enumerate() {
+            inperm_to_2d[input_idx] = (slot_idx as i64) + 1;
+        }
+        let perm_to_2d = PermMap::new(&inperm_to_2d, &outperm_to_2d, &[]).ok()?;
 
-    let mut drop_inperm: Vec<i64> = vec![-1; naxis];
-    drop_inperm[lon_axis] = 1;
-    drop_inperm[lat_axis] = 2;
-    let drop_outperm: Vec<i64> = vec![(lon_axis as i64) + 1, (lat_axis as i64) + 1];
-    let drop = PermMap::new(&drop_inperm, &drop_outperm, &[0.0]).ok()?;
+        // Inverse permutation: outperm_back[i] = "which slot j of the
+        // permuted layout holds original axis i".
+        let mut outperm_back: Vec<i64> = vec![0; naxis];
+        outperm_back[lon_axis] = 1;
+        outperm_back[lat_axis] = 2;
+        for (k, &orig) in others.iter().enumerate() {
+            outperm_back[orig] = (k as i64) + 3;
+        }
+        let mut inperm_back: Vec<i64> = Vec::with_capacity(naxis);
+        inperm_back.push((lon_axis as i64) + 1);
+        inperm_back.push((lat_axis as i64) + 1);
+        for &k in &others {
+            inperm_back.push((k as i64) + 1);
+        }
+        let perm_back = PermMap::new(&inperm_back, &outperm_back, &[]).ok()?;
 
-    // Pipeline: zoom (2D) → lift (2→N) → wcsmap_inv (N→N) → drop (N→2) → rotation (2→2)
-    let zoom_then_lift = CmpMap::new(Box::new(zoom), Box::new(lift), Composition::Series).ok()?;
-    let with_wm = CmpMap::new(
-        Box::new(zoom_then_lift),
-        Box::new(wcsmap_inv),
-        Composition::Series,
-    )
-    .ok()?;
-    let with_drop = CmpMap::new(Box::new(with_wm), Box::new(drop), Composition::Series).ok()?;
-    let full = CmpMap::new(Box::new(with_drop), rotation, Composition::Series).ok()?;
+        // Parallel: rotation (2-axis) || UnitMap(naxis - 2)
+        let unit_rest = UnitMap::new(naxis - 2);
+        let parallel = CmpMap::new(rotation, Box::new(unit_rest), Composition::Parallel).ok()?;
+
+        // PermMap sandwich: perm_to_2d ; parallel ; perm_back
+        let s1 = CmpMap::new(
+            Box::new(perm_to_2d),
+            Box::new(parallel),
+            Composition::Series,
+        )
+        .ok()?;
+        let s2 = CmpMap::new(Box::new(s1), Box::new(perm_back), Composition::Series).ok()?;
+        Box::new(s2)
+    };
+
+    // Pipeline: zoom (N→N diagonal) → wcsmap_inv (N→N) → rotation_naxis (N→N)
+    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
+    let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series).ok()?;
     Some(Box::new(full))
 }
 
@@ -951,10 +987,35 @@ mod tests {
         let result = build_celestial(&store).expect("celestial axes recognised");
         assert_eq!(result.lon_axis, 0);
         assert_eq!(result.lat_axis, 1);
-        // Phase A invariant: the outer mapping is still 2D (the
-        // peel-back sandwich removes the extra pass-through axis).
-        assert_eq!(result.mapping.nin(), 2);
-        assert_eq!(result.mapping.nout(), 2);
+        // Phase B invariant: the outer mapping is now full-rank.
+        assert_eq!(result.mapping.nin(), 3);
+        assert_eq!(result.mapping.nout(), 3);
+    }
+
+    #[test]
+    fn naxis_celestial_passthrough_axes_are_identity() {
+        // 3-axis: celestial pair at 0, 1; spectral at 2. After Phase B,
+        // the celestial mapping operates as identity on axis 2.
+        let mut store = FitsStore::new(3);
+        store.ctype[0] = Some("RA---TAN".to_string());
+        store.ctype[1] = Some("DEC--TAN".to_string());
+        store.ctype[2] = Some("FREQ".to_string());
+        store.crval[0] = Some(180.0);
+        store.crval[1] = Some(45.0);
+        store.crval[2] = Some(1.4e9);
+
+        let result = build_celestial(&store).expect("celestial axes recognised");
+        assert_eq!(result.mapping.nin(), 3);
+        assert_eq!(result.mapping.nout(), 3);
+
+        // Send IWC (0, 0, 12345.0) through. axes 0, 1 should land on
+        // CRVAL in radians; axis 2 should pass through unchanged.
+        let pts = PointSet::from_columns(&[&[0.0], &[0.0], &[12345.0]]).unwrap();
+        let out = result.mapping.transform(&pts, true).unwrap();
+        let p = out.point(0);
+        assert!((p[0] - 180.0_f64.to_radians()).abs() < 1e-6);
+        assert!((p[1] - 45.0_f64.to_radians()).abs() < 1e-6);
+        assert!((p[2] - 12345.0).abs() < 1e-12, "axis 2 was {}", p[2]);
     }
 
     #[test]
