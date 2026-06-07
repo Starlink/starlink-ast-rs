@@ -728,30 +728,18 @@ fn build_wcs_to_iwc(
     // 2D celestial chain (PPC → WCS):
     //   WcsMap_inverted (PPC → native spherical) → wcs_native_rot
     //
-    // The first step needs the WcsMap operating in the PPC → native
-    // direction, i.e. `is_inverted() == true`. Clone `src_wcsmap`
-    // (preserving its PV parameters) and force the clone into the
-    // inverted state. `Mapping::invert()` is a toggle (no
-    // `set_inverted(bool)` API exists), so we have to check the
-    // state and toggle only when needed — `clone().invert()` would
-    // flip the orientation relative to whatever `src_wcsmap`
-    // happens to be, which is wrong when the source is already
-    // inverted (the typical case: the WcsMap inside a reader's
-    // pixel→WCS chain runs in the PPC→native direction).
-    //
-    // The PV parameters are essential for non-zenithal projections
-    // (NCP encoded as SIN with PV2_2 = cot δ, offset SkyFrames,
-    // TPN). If the cloned WcsMap had different PVs or a different
-    // orientation from the source, the simplifier could not
-    // collapse the PPC→native→celestial→native→PPC round-trip
-    // exactly, leaving FP residue that propagates into FitLine's
-    // per-axis fits.
-    // Project src_wcsmap (which may be N-axis after the read-side
-    // refactor lifted WcsMap from 2-axis to full pipeline rank) onto a
-    // 2-axis WcsMap suitable for the 2D celestial chain. PV parameters
-    // are copied from the source's lon/lat axes onto the new map's
-    // 1/2 axes. The 2-axis chain is then embedded into nwcs below by
-    // the PermMap-around-Parallel sandwich.
+    // Project src_wcsmap (which is N-axis at the top of the
+    // pixel→WCS chain) onto a 2-axis WcsMap suitable for this
+    // chain, then invert it so the forward direction runs PPC →
+    // native. Mirrors C `fitschan.c:5189-5226`. PVs are copied
+    // from the source's `lonax()`/`latax()` slots onto the new
+    // map's axes 1/2 — they are essential for non-zenithal
+    // projections (NCP encoded as SIN with PV2_2 = cot δ, offset
+    // SkyFrames, TPN). Without exact PVs the simplifier cannot
+    // collapse the PPC→native→celestial→native→PPC round-trip,
+    // leaving FP residue that propagates into FitLine's per-axis
+    // fits. The 2-axis chain is embedded into nwcs by the
+    // PermMap-around-Parallel sandwich below.
     let proj_src = src_wcsmap.projection();
     let mut wcsmap_2d = WcsMap::new(2, proj_src, 1, 2)?;
     let src_lon_1b = src_wcsmap.lonax();
@@ -760,17 +748,17 @@ fn build_wcs_to_iwc(
         if let Some(v) = src_wcsmap.get_pv(src_lon_1b, m)
             && v.is_finite()
         {
+            // set_pv cannot fail: axis is 1 (lon), m < MXPAR.
             let _ = wcsmap_2d.set_pv(1, m, v);
         }
         if let Some(v) = src_wcsmap.get_pv(src_lat_1b, m)
             && v.is_finite()
         {
+            // set_pv cannot fail: axis is 2 (lat), m < MXPAR.
             let _ = wcsmap_2d.set_pv(2, m, v);
         }
     }
-    if !wcsmap_2d.is_inverted() {
-        wcsmap_2d.invert();
-    }
+    wcsmap_2d.invert();
     let cel_2d: DynMapping = Box::new(CmpMap::new(
         Box::new(wcsmap_2d),
         wcs_native_rot,

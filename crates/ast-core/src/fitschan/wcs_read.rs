@@ -526,8 +526,8 @@ fn build_general_iwc_to_world(
     for (i, &is_claimed) in claimed.iter().enumerate() {
         // Celestial axis: emit the celestial mapping when we hit the
         // FIRST of the celestial pair (in FITS order); skip the second
-        // encounter. Post-Phase-B the celestial mapping is full N-axis
-        // with identity on the non-celestial axes.
+        // encounter. The celestial mapping is full N-axis with
+        // identity on the non-celestial axes.
         if let Some(cel) = celestial.as_ref() {
             let cel_first = cel.lon_axis.min(cel.lat_axis);
             let cel_second = cel.lon_axis.max(cel.lat_axis);
@@ -542,7 +542,8 @@ fn build_general_iwc_to_world(
         }
 
         // Spectral axis: emit the spectral mapping when we hit it.
-        // Post-Phase-B, it's also full N-axis.
+        // Like celestial, it's full N-axis with identity on the
+        // non-spectral axes.
         if let Some(spec) = spectral.as_ref() {
             if i == spec.axis {
                 let spec = spectral.take().unwrap();
