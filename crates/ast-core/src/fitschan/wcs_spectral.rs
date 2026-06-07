@@ -15,7 +15,7 @@
 use super::fits_store::FitsStore;
 use crate::error::AstResult;
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, ShiftMap, UnitMap, ZoomMap};
 
 /// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
 /// the other axes. Identity-fast for `naxis == 1`. Mirrors C
@@ -27,10 +27,9 @@ fn embed_1axis_in_naxis(
     naxis: usize,
     axis_0based: usize,
 ) -> AstResult<DynMapping> {
-    use crate::mappings::PermMap;
-
     debug_assert_eq!(inner.nin(), 1);
     debug_assert_eq!(inner.nout(), 1);
+    debug_assert!(axis_0based < naxis);
 
     if naxis == 1 {
         return Ok(inner);
