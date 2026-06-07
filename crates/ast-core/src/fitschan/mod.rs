@@ -78,7 +78,13 @@ const DEFAULT_FITS_DIGITS: usize = 8;
 pub struct FitsChan {
     config: ChannelConfig,
     cards: CardList,
-    encoding: Encoding,
+    /// Explicit `Encoding` set by the user via [`FitsChan::set_encoding`].
+    /// `None` means "not set" — [`FitsChan::encoding`] auto-detects from
+    /// the cards on demand. Mirrors C's `astTestEncoding` /
+    /// `astGetEncoding` (fitschan.c:12466). The `DefB1950` default also
+    /// keys off whether the encoding has been explicitly set
+    /// (fitschan.c:42286).
+    encoding: Option<Encoding>,
     warnings: Vec<String>,
     fits_digits: usize,
     /// Number of leading significant digits protected from rounding by
@@ -89,12 +95,16 @@ pub struct FitsChan {
 }
 
 impl FitsChan {
-    /// Create an empty FitsChan with default encoding (FitsWcs).
+    /// Create an empty FitsChan with no explicit encoding.
+    ///
+    /// The encoding is left unset — [`FitsChan::encoding`] returns the
+    /// auto-detected encoding (default `FitsWcs` for an empty chan).
+    /// Mirrors C `astFitsChan(...)` followed by `astTestEncoding == 0`.
     pub fn new() -> Self {
         Self {
             config: ChannelConfig::default(),
             cards: CardList::new(),
-            encoding: Encoding::FitsWcs,
+            encoding: None,
             warnings: Vec::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
@@ -111,7 +121,7 @@ impl FitsChan {
         Ok(Self {
             config: ChannelConfig::default(),
             cards,
-            encoding: Encoding::FitsWcs,
+            encoding: None,
             warnings: Vec::new(),
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
@@ -353,25 +363,41 @@ impl FitsChan {
     // Attribute accessors
     // -----------------------------------------------------------------------
 
-    /// Set the encoding format.
+    /// Set the encoding format explicitly.
+    ///
+    /// After this call [`FitsChan::test_encoding`] returns `true` and
+    /// [`FitsChan::encoding`] returns the supplied value verbatim.
+    /// Mirrors C `astSetEncoding`.
     pub fn set_encoding(&mut self, enc: Encoding) {
-        self.encoding = enc;
+        self.encoding = Some(enc);
     }
 
-    /// Return the current encoding format.
+    /// Clear the explicit encoding setting.
+    ///
+    /// After this call [`FitsChan::test_encoding`] returns `false` and
+    /// [`FitsChan::encoding`] auto-detects from the cards on demand.
+    /// Mirrors C `astClearEncoding`.
+    pub fn clear_encoding(&mut self) {
+        self.encoding = None;
+    }
+
+    /// Whether the encoding has been explicitly set. Mirrors C
+    /// `astTestEncoding`.
+    pub fn test_encoding(&self) -> bool {
+        self.encoding.is_some()
+    }
+
+    /// Return the current encoding.
+    ///
+    /// If the user explicitly set the encoding via
+    /// [`FitsChan::set_encoding`], that value is returned. Otherwise the
+    /// encoding is auto-detected from the header cards on each call —
+    /// no internal state is mutated. Mirrors C `astGetEncoding`
+    /// (fitschan.c:12466) which lazily evaluates the encoding from the
+    /// cards when no explicit value has been set via `astSetEncoding`.
     pub fn encoding(&self) -> Encoding {
         self.encoding
-    }
-
-    /// Auto-detect the encoding format from the current header cards.
-    ///
-    /// Examines keyword signatures to determine which WCS encoding the
-    /// header uses. Returns the detected encoding and updates the internal
-    /// encoding attribute.
-    pub fn guess_encoding(&mut self) -> Encoding {
-        let enc = guess_encoding::guess_encoding(&self.cards);
-        self.encoding = enc;
-        enc
+            .unwrap_or_else(|| guess_encoding::guess_encoding(&self.cards))
     }
 
     /// Set the number of significant digits for floating-point output.
@@ -531,7 +557,8 @@ impl Channel for FitsChan {
     fn read(&mut self) -> AstResult<Option<AnyObject>> {
         self.warnings.clear();
 
-        match self.encoding {
+        let enc = self.encoding();
+        match enc {
             Encoding::Native => {
                 // Two storage variants: keyword-card (BEGAST_xx / ENDAST_xx)
                 // and COMMENT-card (`COMMENT  AST +++  AST` markers).
@@ -586,7 +613,7 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
-                let trans = spec_trans::spec_trans(&self.cards, self.encoding);
+                let trans = spec_trans::spec_trans(&self.cards, enc);
                 let store = enc_aips::read_from_cards(&trans)?;
                 let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
                 Ok(Some(obj))
@@ -610,7 +637,8 @@ impl Channel for FitsChan {
     fn write(&mut self, obj: &AnyObject) -> AstResult<()> {
         self.warnings.clear();
 
-        match self.encoding {
+        let enc = self.encoding();
+        match enc {
             Encoding::Native => {
                 let node = serial::any_object_to_node(obj)?;
                 let options = serial::native_write::RenderOptions {
@@ -640,7 +668,7 @@ impl Channel for FitsChan {
 
                 self.cards.mark_all_unused();
 
-                let result = match self.encoding {
+                let result = match enc {
                     Encoding::FitsWcs => {
                         wcs_write::encode_wcs(obj, &mut self.cards, self.cd_matrix, &dims)
                     }
@@ -806,7 +834,10 @@ mod tests {
     fn new_fitschan_is_empty() {
         let fc = FitsChan::new();
         assert_eq!(fc.ncard(), 0);
-        assert_eq!(fc.encoding(), Encoding::FitsWcs);
+        // No explicit encoding set; auto-detect on an empty chan
+        // returns Native per C `astGetEncoding` (fitschan.c:12509).
+        assert_eq!(fc.encoding(), Encoding::Native);
+        assert!(!fc.test_encoding());
         assert_eq!(fc.fits_digits(), DEFAULT_FITS_DIGITS);
     }
 

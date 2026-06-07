@@ -35,7 +35,6 @@ END
 #[test]
 fn fits_wcs_multi_reads_into_three_frame_frameset() {
     let mut fc = FitsChan::from_header(FITS_WCS_MULTI_HEAD).unwrap();
-    fc.guess_encoding();
     let obj = fc.read().unwrap().unwrap();
     let fs = match obj {
         AnyObject::FrameSet(fs) => fs,

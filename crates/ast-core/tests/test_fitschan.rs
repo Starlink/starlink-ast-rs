@@ -351,9 +351,11 @@ fn native_round_trip_skyframe() {
 // ===========================================================================
 
 #[test]
-fn encoding_default_is_fitswcs() {
+fn encoding_default_for_empty_chan_is_native() {
+    // Mirrors C `astGetEncoding` (fitschan.c:12509): when none of the
+    // recognised WCS keywords are present, Native encoding is assumed.
     let fc = FitsChan::new();
-    assert_eq!(fc.encoding(), Encoding::FitsWcs);
+    assert_eq!(fc.encoding(), Encoding::Native);
 }
 
 #[test]
@@ -377,7 +379,12 @@ fn encoding_set_and_get() {
 }
 
 #[test]
-fn encoding_from_header_defaults_to_fitswcs() {
+fn encoding_from_header_auto_detects() {
+    // SIP header has CDi_j but no RADECSYS / PROJP / CmVAL, so
+    // C's `astGetEncoding` (fitschan.c:12502) skips case 6 (FITS-IRAF
+    // requires CDi_j AND one of RADECSYS/PROJP/CmVAL) and falls
+    // through to case 9 (CRVALi → FITS-WCS). Mirrors C's lazy
+    // auto-detection when no explicit encoding has been set.
     let text = load_sip_header();
     let fc = FitsChan::from_header(&text).unwrap();
     assert_eq!(fc.encoding(), Encoding::FitsWcs);

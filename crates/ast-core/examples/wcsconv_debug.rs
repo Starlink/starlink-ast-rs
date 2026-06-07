@@ -18,12 +18,8 @@ fn main() {
         ast_core::from_native_string(&text).expect("native parse")
     } else {
         let mut fc = FitsChan::from_header(&text).unwrap();
-        // Match test_wcsconv.rs / C wcsconverter.c: only run
-        // guess_encoding for `.head` fixtures; otherwise leave the
-        // FitsChan at its default (FITS-WCS).
-        if fixture.ends_with(".head") {
-            fc.guess_encoding();
-        }
+        // Mirror C wcsconverter.c: leave the FitsChan with no explicit
+        // encoding; the `read()` path will lazily auto-detect.
         let o = fc.read().unwrap().expect("input parses");
         fc_in_opt = Some(fc);
         o
@@ -56,7 +52,7 @@ fn main() {
         other => panic!("unknown encoding {other}"),
     };
 
-    let mut fc_out = fc_in_opt.unwrap_or_else(FitsChan::new);
+    let mut fc_out = fc_in_opt.unwrap_or_default();
     fc_out.set_encoding(enc);
     fc_out.set_fits_digits(8);
     for kv in attrs.split(',') {

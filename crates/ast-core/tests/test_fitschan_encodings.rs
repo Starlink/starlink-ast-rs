@@ -29,8 +29,8 @@ fn load_fixture(name: &str) -> String {
 fn guess_encoding_iraf() {
     // serpens.head has CDi_j matrix keywords + RADECSYS -> FitsIraf
     let text = load_fixture("serpens.head");
-    let mut fc = FitsChan::from_header(&text).unwrap();
-    let enc = fc.guess_encoding();
+    let fc = FitsChan::from_header(&text).unwrap();
+    let enc = fc.encoding();
     assert_eq!(
         enc,
         Encoding::FitsIraf,
@@ -42,8 +42,8 @@ fn guess_encoding_iraf() {
 fn guess_encoding_pc() {
     // pc-sparse.head has PC001001 keyword -> FitsPc
     let text = load_fixture("pc-sparse.head");
-    let mut fc = FitsChan::from_header(&text).unwrap();
-    let enc = fc.guess_encoding();
+    let fc = FitsChan::from_header(&text).unwrap();
+    let enc = fc.encoding();
     assert_eq!(
         enc,
         Encoding::FitsPc,
@@ -55,8 +55,8 @@ fn guess_encoding_pc() {
 fn guess_encoding_aips() {
     // velo-aips.head has AIPS-convention spectral CTYPE (VELO-LSR) -> FitsAips
     let text = load_fixture("velo-aips.head");
-    let mut fc = FitsChan::from_header(&text).unwrap();
-    let enc = fc.guess_encoding();
+    let fc = FitsChan::from_header(&text).unwrap();
+    let enc = fc.encoding();
     assert_eq!(
         enc,
         Encoding::FitsAips,
@@ -68,8 +68,8 @@ fn guess_encoding_aips() {
 fn guess_encoding_class() {
     // class-write.head has DELTAV + VELO-LSR -> FitsClass
     let text = load_fixture("class-write.head");
-    let mut fc = FitsChan::from_header(&text).unwrap();
-    let enc = fc.guess_encoding();
+    let fc = FitsChan::from_header(&text).unwrap();
+    let enc = fc.encoding();
     assert_eq!(
         enc,
         Encoding::FitsClass,
@@ -81,8 +81,8 @@ fn guess_encoding_class() {
 fn guess_encoding_dss() {
     // dss.dss has PLTRAH keyword -> Dss
     let text = load_fixture("dss.dss");
-    let mut fc = FitsChan::from_header(&text).unwrap();
-    let enc = fc.guess_encoding();
+    let fc = FitsChan::from_header(&text).unwrap();
+    let enc = fc.encoding();
     assert_eq!(
         enc,
         Encoding::Dss,

@@ -263,7 +263,6 @@ fn load_wcsconv_fixture(name: &str) -> String {
 fn read_wcsconv_fixture(name: &str) -> AnyObject {
     let text = load_wcsconv_fixture(name);
     let mut fc = FitsChan::from_header(&text).unwrap_or_else(|e| panic!("from_header {name}: {e}"));
-    fc.guess_encoding();
     fc.read()
         .unwrap_or_else(|e| panic!("read {name}: {e}"))
         .unwrap_or_else(|| panic!("read {name}: returned None"))

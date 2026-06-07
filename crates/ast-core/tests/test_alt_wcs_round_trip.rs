@@ -10,7 +10,6 @@ const FITS_WCS_MULTI: &str = include_str!("fixtures/wcsconv/inputs/multi-wcs.hea
 #[test]
 fn fits_wcs_multi_native_round_trip_preserves_alt() {
     let mut fc = FitsChan::from_header(FITS_WCS_MULTI).unwrap();
-    fc.guess_encoding();
     let obj = fc.read().unwrap().unwrap();
 
     // Render to native and re-parse.

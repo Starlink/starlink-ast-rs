@@ -122,21 +122,13 @@ fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> 
         Ok((obj, None))
     } else {
         // FITS header -- load via FitsChan. Mirror C wcsconverter.c
-        // which creates the FitsChan with default encoding (FITS-WCS),
-        // applies attrs from the test, and reads. The .head extension
-        // → no encoding (Rust uses guess_encoding for that). For
-        // explicit encoding-extension files (.fits-pc, .fits-class,
-        // etc.), DO NOT pre-set the encoding — that decision should
-        // be left to the FitsChan's encoding default (which depends
-        // on DefB1950 default semantics in C, fitschan.c:42286). C's
-        // wcsconverter does NOT set encoding before reading.
-        let mut fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
-        // Only auto-detect when file ends in `.head` (no encoding hint).
-        if case.input_file.ends_with(".head") {
-            fc.guess_encoding();
-        }
-        // Otherwise leave encoding at FitsChan default (FITS-WCS).
-
+        // (lines 86-113) which creates the FitsChan with no explicit
+        // encoding, applies attrs from the test, and reads. The
+        // FitsChan auto-detects the encoding from the cards on read
+        // when no explicit encoding has been set — same semantics as
+        // C `astGetEncoding` (fitschan.c:12466).
+        let fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
+        let mut fc = fc;
         let obj = fc
             .read()
             .map_err(|e| format!("read: {e}"))?
