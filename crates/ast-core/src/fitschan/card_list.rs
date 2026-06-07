@@ -659,10 +659,7 @@ fn is_findwcs_keyword(keyword: &str) -> bool {
 /// Compare two FitsValues for "similarity" (C library semantics).
 ///
 /// For strings: case-insensitive comparison ignoring trailing spaces.
-/// For floats: relative tolerance of 1e-10 — this accounts for the
-/// radian→degree round-trip in CRVAL extraction where the C library
-/// achieves exact equality because it keeps the original card value,
-/// but our Rust flow re-derives from the FrameSet.
+/// For floats: C `astEQUAL` tolerance — see [`floats_similar`].
 /// For integers/logicals: exact equality.
 fn values_similar(a: &FitsValue, b: &FitsValue) -> bool {
     match (a, b) {
@@ -682,18 +679,23 @@ fn values_similar(a: &FitsValue, b: &FitsValue) -> bool {
 
 /// Check if two floats are "the same value" for comment-preservation.
 ///
-/// Uses relative tolerance of 1e-10. This is well below the 8-digit
-/// formatting precision (which loses info at ~1e-8 relative) but above
-/// the radian↔degree round-trip error (~1e-16 relative).
+/// Mirrors C's `EQUAL` macro (object.h ~244, fitschan.c ~1389):
+///   `fabs(a - b) <= 1.0E5 * max((|a| + |b|) * DBL_EPSILON, DBL_MIN)`
+///
+/// This is what C's `SetFits` (fitschan.c:15648) compares against
+/// when deciding whether to preserve an existing card's comment on
+/// overwrite. The 1e5 multiplier on machine epsilon gives roughly
+/// `1.1e-11 * (|a| + |b|)` of absolute tolerance, generous enough
+/// to absorb the kind of FP residue a `pixel → IWC → spectral`
+/// re-derivation can accumulate (~5e-9 relative on a 1.4204e9 Hz
+/// CRVAL, for instance).
 fn floats_similar(a: f64, b: f64) -> bool {
     if a == b {
         return true;
     }
-    let denom = a.abs().max(b.abs());
-    if denom == 0.0 {
-        return true;
-    }
-    (a - b).abs() / denom < 1e-10
+    let scale = (a.abs() + b.abs()) * f64::EPSILON;
+    let tol = 1.0e5 * scale.max(f64::MIN_POSITIVE);
+    (a - b).abs() <= tol
 }
 
 // ---------------------------------------------------------------------------

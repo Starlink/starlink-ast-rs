@@ -203,15 +203,15 @@ pub(crate) fn write_to_cards(
     }
 
     if is_last {
-        // MJD-OBS — IRAFFromStore (fitschan.c:19103-19127) does not emit
-        // MJD-OBS itself; only DATE-OBS. But the C library's `ignore_used`
-        // semantics leave an input-supplied MJD-OBS card in place, so we
-        // re-emit it only if the input header already carried one.
-        if cards.find("MJD-OBS").is_some()
-            && let Some(mjdobs) = store.mjdobs
-        {
-            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-        }
+        // MJD-OBS — IRAFFromStore (fitschan.c:19103-19127) does not
+        // emit MJD-OBS itself; only DATE-OBS. The input MJD-OBS card
+        // is left at its original position by C's `ignore_used`
+        // semantics. Mark the existing card used (so sweep keeps it)
+        // but do NOT re-emit — re-emitting would round-trip the
+        // value through SkyFrame::epoch (TDB) and back via
+        // `tdb_mjd_to_utc`, which is asymmetric in the rubber-second
+        // era (pre-MJD-41317). See `docs/issues/c-library-quirks.md`.
+        let _ = cards.mark_used("MJD-OBS");
 
         // DATE-OBS — IRAF emits only DATE-OBS, not MJD-OBS (mirrors C
         // IRAFFromStore at fitschan.c:19103-19127). The pre-formatted

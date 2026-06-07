@@ -516,3 +516,64 @@ card (specfactor applied once at SetValue time), our `aval1_in =
 aval0_in + cdelt` matches C's broken `aval[1]` only when
 `specfactor == 1`. We do **not** mirror the bug — if the C library
 is fixed, our code remains correct.
+
+---
+
+## astDat inverse-direction divisor wrong in pre-1972 rubber-second era
+
+**File:** `src/timemap.c:1653-1727` (`astDat_` inverse branch).
+
+For UTC MJD < 41317 (pre-1972, before atomic-leap-second model),
+TAI-UTC follows a piecewise-linear formula
+
+```c
+// forward: ast_dat(utc, 1) — TAI-UTC at UTC=mjd
+result = 4.2131700 + (mjd - 39126.0) * 0.002592;
+```
+
+The inverse branch (TAI→UTC) divides by `1.02592`:
+
+```c
+// inverse: ast_dat(tai, 0) — UTC-TAI at TAI=mjd
+result = -(4.2131700 + (mjd - 39126.0) * 0.002592) / 1.02592;
+```
+
+The slope `0.002592` has units of **seconds per day**; to invert
+the linear relationship `tai = utc + (a + b*(utc - 39126))/SPD` and
+solve for `utc - tai` at `tai = mjd`, the divisor needs to be
+`1 + b/SPD ≈ 1.00000003`, **not** `1.02592` (which would correspond
+to `b = 0.02592` seconds per second — about 1.7 hours of daily
+drift, which never happened).
+
+The numerical effect is large: a UTC→TAI→UTC round-trip at
+MJD 40000 leaks ~1.89×10⁻⁶ days (~164 ms) instead of the
+DBL_EPSILON-level error you'd expect from a faithful inverse.
+
+The same divisor appears for every rubber-second-era branch
+(starting at 1.02592 for the 0.002592 slope era, but the same
+algebra error pattern presumably appears in the 1.001296 / 1.0011232
+divisors too — the C code uses `1.001296`/`1.0011232` for those,
+which is closer to right but still off by a units factor).
+
+**Why it matters for the Rust port:** the `fk4_aips_*` wcsconv
+fixtures use `MJD-OBS = 40000.0` (1968). C's `AIPSFromStore`
+(fitschan.c:3590-3614) and `IRAFFromStore` (fitschan.c:19103-19127)
+sidestep the bug by **not** re-emitting MJD-OBS — they read it from
+the FitsStore but only emit DATE-OBS — leaving the input header's
+MJD-OBS card untouched. C's `PCFromStore` (fitschan.c:24810-24814)
+does re-emit, and would exhibit the drift visibly.
+
+**Rust mirror:** `crates/ast-core/src/mappings/timemap.rs`
+(`ast_dat`) preserves the C divisors verbatim — necessary because
+`fset_to_store::sky_sys` calls `tdb_mjd_to_utc` whose inverse path
+hits this code, and downstream tests compare bit-for-bit against
+C-generated golden output. Our `enc_aips`, `enc_iraf`, and
+`enc_aips++` writers mark the input MJD-OBS card used (so the
+sweep doesn't drop it) but do not re-emit it, exactly mirroring
+C's intent.
+
+**Evidence:** added probe at MJD 40000 confirmed
+`utc_mjd_to_tdb(40000.0) = 40000.000447495673143` and
+`tdb_mjd_to_utc(0.000447...) = 40000.000001894462912`. Round-trip
+delta = 1.894e-6 day. The same delta appears in C if you wire up a
+direct `TDBConv(TDBConv(40000.0, AST__UTC, 0), AST__UTC, 1)` test.

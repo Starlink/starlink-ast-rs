@@ -310,17 +310,16 @@ pub(crate) fn write_to_cards(
     }
 
     if is_last {
-        // MJD-OBS — AIPSFromStore doesn't write MJD-OBS (line 3590+ only
-        // computes DATE-OBS from it). The C library preserves an
-        // input-supplied MJD-OBS at its original position via ignore-used
-        // semantics; our sweep would otherwise drop it. Mirror that by
-        // re-emitting MJD-OBS *only* if the input header already carried
-        // one.
-        if cards.find("MJD-OBS").is_some()
-            && let Some(mjdobs) = store.mjdobs
-        {
-            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-        }
+        // MJD-OBS — `AIPSFromStore` (fitschan.c:3590-3614) reads
+        // store->mjdobs but only emits DATE-OBS; the input header's
+        // MJD-OBS is left in place untouched. Mirror that exactly:
+        // mark the existing card used so the sweep keeps it, but do
+        // NOT re-emit. Re-emitting would round-trip the value through
+        // SkyFrame::epoch (TDB) and back via `tdb_mjd_to_utc`, which
+        // is asymmetric in the rubber-second era (pre-MJD-41317).
+        // See `docs/issues/c-library-quirks.md` for the C-library
+        // origin of that asymmetry.
+        let _ = cards.mark_used("MJD-OBS");
     }
 
     // CROTAk — paired with the latitude axis for celestial frames or with
@@ -638,13 +637,13 @@ pub(crate) fn write_to_cards_pp(
     }
 
     if is_last {
-        // MJD-OBS — preserve at original position if the input chan
-        // carried one. See `enc_aips::write_to_cards` for the rationale.
-        if cards.find("MJD-OBS").is_some()
-            && let Some(mjdobs) = store.mjdobs
-        {
-            cards.set_float("MJD-OBS", mjdobs, "Modified Julian Date of observation");
-        }
+        // MJD-OBS — `AIPSPPFromStore` (fitschan.c:4122) only emits
+        // DATE-OBS; the input MJD-OBS is left at its original
+        // position. Mark the existing card used so the sweep keeps
+        // it; do not re-emit (would re-round-trip through TDB and
+        // drift in the rubber-second era — see
+        // `docs/issues/c-library-quirks.md`).
+        let _ = cards.mark_used("MJD-OBS");
     }
 
     // CD matrix or CROTA.
