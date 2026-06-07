@@ -498,7 +498,8 @@ fn build_iwc_to_world(
         }
     }
 
-    // General case: build a composite mapping using parallel composition.
+    // General case: compose the per-class N-axis contributions in
+    // series. See `build_general_iwc_to_world`.
     build_general_iwc_to_world(store, celestial, spectral, &claimed)
 }
 

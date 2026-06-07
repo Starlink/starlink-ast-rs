@@ -117,16 +117,17 @@ pub(crate) fn build_celestial_with_def_b1950(
     let proj = WcsProjection::from_code(&proj_code)?;
 
     // Step 3: Create WcsMap.
-    // N-axis WcsMap: ncoord = full naxis, with this pair's lon/lat
-    // axes pointed at FITS positions (1-based). The pass-through
-    // axes here are conceptually for the rest of the pipeline; for
-    // Phase A they're peeled back inside build_iwc_to_sky_mapping
-    // so the outer mapping stays 2D. Phase B/C remove the peel-back.
+    // Full-rank N-axis WcsMap: `ncoord` is the full pipeline rank,
+    // and the lon/lat axes point at the FITS positions (1-based).
+    // Non-celestial axes pass through unchanged. Mirrors C
+    // `WcsCelestial` (fitschan.c:35458) which builds the celestial
+    // contribution as an N-axis mapping at the top level.
     let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1).ok()?;
 
-    // Set any PV projection parameters on the latitude axis.
-    // In FITS-WCS, PV parameters on the latitude axis (typically axis 2)
-    // control the projection. We assign them to the WcsMap's latitude axis.
+    // Set any PV projection parameters on the latitude FITS axis.
+    // FITS-WCS places the projection-controlling PVs on the latitude
+    // axis; here we forward them to the WcsMap at the latitude axis's
+    // FITS position.
     for m in 0..store.pv[lat_axis].len() {
         if let Some(val) = store.pv[lat_axis][m] {
             // WcsMap set_pv uses 1-based FITS axis indices.
@@ -982,9 +983,8 @@ mod tests {
     #[test]
     fn naxis_wcsmap_built_with_full_rank() {
         // 3-axis FITS header with celestial pair at axes 0, 1 and a
-        // spectral axis at 2. The decoder should ultimately still
-        // return a 2-input/2-output mapping (Phase A invariant), but
-        // the inner WcsMap's `ncoord` must reflect the full naxis.
+        // spectral axis at 2. The decoder returns a full-rank N-axis
+        // mapping with the inner WcsMap's `ncoord` matching naxis.
         let mut store = FitsStore::new(3);
         store.ctype[0] = Some("RA---TAN".to_string());
         store.ctype[1] = Some("DEC--TAN".to_string());
