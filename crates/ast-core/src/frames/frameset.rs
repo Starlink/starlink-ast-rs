@@ -280,23 +280,170 @@ impl FrameSet {
         Ok(())
     }
 
-    /// Replace the first edge touching a frame.
+    /// Modify a Frame's relationship to other Frames in the FrameSet.
     ///
-    /// This replaces the mapping on the first edge whose `from` or `to`
-    /// matches the resolved frame index.
+    /// Mirrors C `astRemapFrame` (frameset.c:8486). The supplied `map`
+    /// describes how the new (modified) frame relates to the old (pre-
+    /// modification) frame: forward direction takes old-frame coords
+    /// into new-frame coords. The old node retains its position in the
+    /// graph; a new node is created associated with the named frame
+    /// (so subsequent mappings touch the new node), with `map` as the
+    /// link from old to new. Then [`tidy_nodes`](Self::tidy_nodes) is
+    /// run to collapse any redundant nodes left in the graph.
     pub fn remap_frame(&mut self, which: FrameRef, map: DynMapping) -> AstResult<()> {
         let idx = self.resolve(which)?;
-        let node = self.node_map[idx];
-        for edge in &mut self.edges {
-            if edge.from == node || edge.to == node {
-                edge.mapping = map;
-                return Ok(());
-            }
+        let old_node = self.node_map[idx];
+
+        // Validate map dimensions match the frame's axis count.
+        let naxes = self.frames[idx].naxes();
+        if map.nin() != naxes || map.nout() != naxes {
+            return Err(AstError::new_tracked(
+                ErrorCode::Ncpin,
+                format!(
+                    "remap_frame: map dims {}/{} do not match frame axes {}",
+                    map.nin(),
+                    map.nout(),
+                    naxes,
+                ),
+            ));
         }
-        Err(AstError::new_tracked(
-            ErrorCode::Frsin,
-            format!("no edge found touching frame {} in FrameSet", idx + 1),
-        ))
+
+        // Add a new node connected to the old via `map`. The frame
+        // moves from old_node to new_node — old_node becomes
+        // referenced only by the new edge plus whatever existing
+        // edges touched it, so TidyNodes can later prune it.
+        let new_node = self.nnode;
+        self.nnode += 1;
+        self.edges.push(Edge {
+            from: old_node,
+            to: new_node,
+            mapping: map,
+        });
+        self.node_map[idx] = new_node;
+
+        // Run TidyNodes to remove any node that, after the remap, is
+        // referenced by exactly two edges and no frame — combining
+        // and simplifying the bridged mapping. Mirrors C's
+        // post-RemapFrame `TidyNodes` call (frameset.c:8669).
+        self.tidy_nodes()?;
+        Ok(())
+    }
+
+    /// Remove redundant nodes from the FrameSet's node graph.
+    ///
+    /// Mirrors C `TidyNodes` (frameset.c:11076-11250). A node is
+    /// "redundant" when it has no associated frame and is referenced
+    /// by exactly two edges; it joins two mappings without
+    /// contributing structurally. We collapse the two edges into a
+    /// single edge whose mapping is `(left ; right).simplified()`.
+    /// Repeats until no more redundant nodes are found.
+    pub(crate) fn tidy_nodes(&mut self) -> AstResult<()> {
+        loop {
+            // Build a per-node reference count: count how many edges
+            // touch each node (either end), and count how many
+            // frames are associated with each node.
+            let mut frame_count: Vec<usize> = vec![0; self.nnode];
+            for &n in &self.node_map {
+                frame_count[n] += 1;
+            }
+            let mut edges_at_node: Vec<Vec<usize>> = vec![Vec::new(); self.nnode];
+            for (eidx, edge) in self.edges.iter().enumerate() {
+                edges_at_node[edge.from].push(eidx);
+                edges_at_node[edge.to].push(eidx);
+            }
+
+            // Find a redundant node.
+            let mut found: Option<usize> = None;
+            for node in 0..self.nnode {
+                if frame_count[node] != 0 {
+                    continue;
+                }
+                if edges_at_node[node].len() == 2 {
+                    found = Some(node);
+                    break;
+                }
+            }
+            let Some(node) = found else {
+                break;
+            };
+
+            // The two edges touching the redundant node — exactly
+            // one has it as its destination (incoming) and one has
+            // it as its source (outgoing).
+            let e_indices = edges_at_node[node].clone();
+            let e1 = e_indices[0];
+            let e2 = e_indices[1];
+
+            // Determine direction: combine into a single edge from
+            // some "from" to some "to", inserting an inversion if
+            // the original edges' directions don't align with a
+            // forward composition.
+            let (left_map, left_inv, mid_a) = {
+                let edge = &self.edges[e1];
+                if edge.to == node {
+                    (edge.mapping.clone_box(), false, edge.from)
+                } else {
+                    // edge.from == node — left half goes from `mid` to `node`,
+                    // so we need to invert it to get mid → ... composition.
+                    (edge.mapping.clone_box(), true, edge.to)
+                }
+            };
+            let (right_map, right_inv, mid_b) = {
+                let edge = &self.edges[e2];
+                if edge.from == node {
+                    (edge.mapping.clone_box(), false, edge.to)
+                } else {
+                    (edge.mapping.clone_box(), true, edge.from)
+                }
+            };
+
+            // The new edge spans mid_a → mid_b. Build the combined
+            // mapping (left[, inverted] ; right[, inverted]).
+            let mut left_inverted = left_map;
+            if left_inv {
+                left_inverted.invert();
+            }
+            let mut right_inverted = right_map;
+            if right_inv {
+                right_inverted.invert();
+            }
+            let combined: DynMapping = Box::new(CmpMap::new(
+                left_inverted,
+                right_inverted,
+                Composition::Series,
+            )?);
+            let simplified = combined.simplified()?;
+
+            // Remove the two edges (highest index first) and insert
+            // the combined edge.
+            let (a, b) = if e1 > e2 { (e1, e2) } else { (e2, e1) };
+            self.edges.remove(a);
+            self.edges.remove(b);
+            self.edges.push(Edge {
+                from: mid_a,
+                to: mid_b,
+                mapping: simplified,
+            });
+
+            // Renumber nodes to close the gap left by the removed
+            // node (so `nnode` stays compact and node indices are
+            // contiguous).
+            for n in &mut self.node_map {
+                if *n > node {
+                    *n -= 1;
+                }
+            }
+            for edge in &mut self.edges {
+                if edge.from > node {
+                    edge.from -= 1;
+                }
+                if edge.to > node {
+                    edge.to -= 1;
+                }
+            }
+            self.nnode -= 1;
+        }
+        Ok(())
     }
 
     // ------------------------------------------------------------------ //
@@ -328,8 +475,14 @@ impl FrameSet {
     /// Mutate the current frame with integrity enforcement.
     ///
     /// Takes a snapshot of the current frame, applies `f` to mutate it,
-    /// then computes the correction mapping via `map_from` and fuses it
-    /// into all edges that touch the current frame.
+    /// then computes the correction mapping via `map_from` and adds a
+    /// new node carrying the delta as a fresh edge (mirrors C
+    /// `astRemapFrame` + `TidyNodes`, frameset.c:8486 / 11076).
+    /// `tidy_nodes` runs at the end to collapse any node that became
+    /// redundant — combining and simplifying the bridged mapping in
+    /// the process, which is where adjacent inverse pairs (e.g.
+    /// Hfk5z+Fk5hz from a SetSystem ICRS → FK5 → ICRS round-trip)
+    /// finally cancel.
     pub fn with_integrity<F>(&mut self, f: F) -> AstResult<()>
     where
         F: FnOnce(&mut dyn Frame) -> AstResult<()>,
@@ -337,7 +490,11 @@ impl FrameSet {
         let snap = self.frames[self.current_idx].snapshot();
         f(self.frames[self.current_idx].as_mut())?;
         let delta = self.frames[self.current_idx].map_from(snap.as_ref())?;
-        self.fuse_into_current_edges(delta)?;
+        let delta = delta.simplified()?;
+        if delta.as_any().is::<UnitMap>() {
+            return Ok(());
+        }
+        self.remap_frame(FrameRef::Current, delta)?;
         Ok(())
     }
 
@@ -555,42 +712,6 @@ impl FrameSet {
                 to + 1,
             ),
         ))
-    }
-
-    /// Fuse a delta mapping into all edges touching the current frame.
-    ///
-    /// For edges arriving at current (`edge.to == current_idx`):
-    ///   new = CmpMap(old, delta, Series)
-    ///
-    /// For edges leaving current (`edge.from == current_idx`):
-    ///   new = CmpMap(delta_inv, old, Series)
-    ///
-    /// Skips if the simplified delta is a `UnitMap` (a class-membership
-    /// test mirroring C's `astIsAUnitMap`).
-    fn fuse_into_current_edges(&mut self, delta: DynMapping) -> AstResult<()> {
-        let delta = delta.simplified()?;
-        if delta.as_any().is::<UnitMap>() {
-            return Ok(());
-        }
-
-        let cur_node = self.node_map[self.current_idx];
-        for edge in &mut self.edges {
-            if edge.to == cur_node {
-                // Arriving at current: compose old then delta.
-                let old =
-                    std::mem::replace(&mut edge.mapping, Box::new(UnitMap::new(1)) as DynMapping);
-                let delta_copy = delta.simplified()?;
-                edge.mapping = Box::new(CmpMap::new(old, delta_copy, Composition::Series)?);
-            } else if edge.from == cur_node {
-                // Leaving current: compose delta_inv then old.
-                let old =
-                    std::mem::replace(&mut edge.mapping, Box::new(UnitMap::new(1)) as DynMapping);
-                let mut delta_inv = delta.simplified()?;
-                delta_inv.invert();
-                edge.mapping = Box::new(CmpMap::new(delta_inv, old, Composition::Series)?);
-            }
-        }
-        Ok(())
     }
 }
 

@@ -358,7 +358,11 @@ fn remove_current_resets_to_first() {
 // ---- remap_frame ----
 
 #[test]
-fn remap_frame_replaces_mapping() {
+fn remap_frame_appends_delta() {
+    // Mirrors C `astRemapFrame` semantics: the supplied map is the
+    // forward mapping from the OLD coordinates of the named frame to
+    // its NEW coordinates. The old base→current mapping survives;
+    // the new mapping is then composed on top.
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Base, z, make_frame(2)).unwrap();
@@ -368,11 +372,12 @@ fn remap_frame_replaces_mapping() {
     let out = fs.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[2.0, 4.0]);
 
-    // Remap current to a shift instead.
+    // Remap current with an additional shift. New base→current =
+    // old_zoom ∘ shift, so (1, 2) → (2, 4) → (7, 9).
     let s: DynMapping = Box::new(ShiftMap::new([5.0, 5.0]));
     fs.remap_frame(FrameRef::Current, s).unwrap();
     let out = fs.transform(&pts, true).unwrap();
-    assert_eq!(out.point(0), &[6.0, 7.0]);
+    assert_eq!(out.point(0), &[7.0, 9.0]);
 }
 
 // ---- invert ----
