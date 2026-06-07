@@ -274,9 +274,6 @@ impl Mapping for SphMap {
             return None;
         }
         let other_sph = other.as_any().downcast_ref::<SphMap>()?;
-        if !ast_equal(self.polar_long, other_sph.polar_long) {
-            return None;
-        }
 
         // Determine which direction each map is applied in.
         // SphMap forward: 3D Cartesian → 2D spherical (cart→sph), nin=3, nout=2
@@ -285,31 +282,38 @@ impl Mapping for SphMap {
         // self_inv == true means self is applied in its INVERSE direction (sph→cart)
         // self_inv == false means self is applied FORWARD (cart→sph)
         //
-        // Cancellation rules (matching C sphmap.c:748-761):
+        // Cancellation rules — mirror C sphmap.c MapMerge (lines 753-768):
         //
-        // - Inverse→forward (sph→cart then cart→sph): always cancels.
-        //   palDcs2c always produces unit vectors, so the intermediate
-        //   3D vector is guaranteed to lie on the unit sphere.
+        // - Inverse→forward (sph→cart then cart→sph): cancels only if
+        //   PolarLong is equal on both — the spherical interpretation
+        //   on each side must match for the round-trip to be identity.
+        //   Result: 2-axis UnitMap (input side).
         //
         // - Forward→inverse (cart→sph then sph→cart): cancels only if
-        //   UnitRadius is set on the forward map. Without it, magnitude
-        //   information is lost in the forward step and the round-trip
-        //   is not identity for non-unit inputs.
-        if !self_inv {
-            // Self is forward (cart→sph), other is inverse (sph→cart).
-            // Pattern: forward→inverse needs UnitRadius on the forward map.
+        //   UnitRadius is set on the *forward* map. The intermediate
+        //   cart→sph drops magnitude; round-trip is identity in
+        //   3-vector space iff the input was already on the unit sphere.
+        //   No PolarLong check is required: the cartesian round-trip
+        //   ignores the spherical-coord interpretation. Result: 3-axis
+        //   UnitMap (input side).
+        let nin_pair = if self_inv {
+            // self is inverse (sph→cart), other is forward (cart→sph).
+            // C path: invert_list[imap1]==1 && invert_list[imap2]==0.
+            // Requires PolarLong equality.
+            if !ast_equal(self.polar_long, other_sph.polar_long) {
+                return None;
+            }
+            2
+        } else {
+            // self is forward (cart→sph), other is inverse (sph→cart).
+            // C path: invert_list[imap1]==0 && invert_list[imap2]==1.
+            // Requires UnitRadius on the forward (self) map. C does
+            // NOT check PolarLong here.
             if !self.unit_radius {
                 return None;
             }
-        }
-        // If self is inverse (sph→cart) and other is forward (cart→sph):
-        // No UnitRadius check needed — palDcs2c always produces unit vectors,
-        // so the intermediate 3D vector is guaranteed on the unit sphere.
-
-        // UnitMap dimension: the "input" side of the cancelling pair.
-        // If self is inverse (sph->cart, input is 2D), pair input is 2D.
-        // If self is forward (cart->sph, input is 3D), pair input is 3D.
-        let nin_pair = if self_inv { 2 } else { 3 };
+            3
+        };
         Some(Box::new(UnitMap::new(nin_pair)))
     }
 
