@@ -85,16 +85,14 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         .or_else(|| cards.get_float("RESTFRQ"));
     store.restfrq = restfreq;
 
-    // Find the spectral axis and apply offset correction.
-    if let Some(spec_idx) = store.spectral_axis() {
-        if let (Some(crval), Some(rf)) = (store.crval[spec_idx], restfreq) {
-            // CLASS convention: header CRVAL is offset from RESTFREQ
-            store.crval[spec_idx] = Some(crval + rf);
-        }
-    }
-
-    // Determine SPECSYS from velocity keywords.
-    store.specsys = determine_specsys_from_velocity(cards);
+    // CRVAL adjustment, SPECSYS, SSYSSRC, and ZSOURCE are all
+    // injected by `spec_trans::translate_class` (fitschan.c:6955-7129)
+    // before this reader runs. We just pass through the cards as
+    // standard FITS-WCS at this point. SPECSYS/SSYSSRC/etc. are
+    // picked up by the generic FITS-WCS keyword reader downstream.
+    store.specsys = cards.get_string("SPECSYS");
+    store.ssyssrc = cards.get_string("SSYSSRC");
+    store.zsource = cards.get_float("ZSOURCE");
 
     // RADESYS / RADECSYS
     store.radesys = cards
@@ -353,27 +351,6 @@ fn translate_class_projection_write(ctype: &str) -> String {
         .replace("ait", "ATF")
 }
 
-/// Determine SPECSYS from velocity keywords present in the header.
-///
-/// Priority:
-/// - VELO-LSR or VLSR → "LSRK"
-/// - VELO-HEL → "BARYCENT"
-/// - VELO-OBS or VELO-EAR → "TOPOCENT"
-/// - Explicit SPECSYS keyword (fallback)
-fn determine_specsys_from_velocity(cards: &CardList) -> Option<String> {
-    if cards.find("VELO-LSR").is_some() || cards.find("VLSR").is_some() {
-        return Some("LSRK".to_string());
-    }
-    if cards.find("VELO-HEL").is_some() {
-        return Some("BARYCENT".to_string());
-    }
-    if cards.find("VELO-OBS").is_some() || cards.find("VELO-EAR").is_some() {
-        return Some("TOPOCENT".to_string());
-    }
-    // Fall back to explicit SPECSYS keyword if present.
-    cards.get_string("SPECSYS")
-}
-
 /// FITS-CLASS velocity emission. Mirrors fitschan.c:6843-6898.
 ///
 /// Computes VELO-LSR / VLSR / DELTAV from the FrameSet's SpecFrame
@@ -427,20 +404,56 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
     };
     let mapping = conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
-    // Pull the spectral CRVAL and CDELT from the cards (the
-    // FrameSet-derived FitsStore already wrote them in Source-Hz
-    // form via AddEncodingFrame). Combine with RESTFREQ to recover
-    // the absolute frequency before passing through the mapping —
-    // C does exactly this at line 6881-6882: aval[0] = crval +
-    // restfreq, aval[1] = aval[0] + cdelt.
+    // Pull the spectral CRVAL and CDELT from the cards. The
+    // spectral FITS axis is whichever CTYPEi is FREQ-/WAVE-/etc;
+    // C uses the `axspec` index returned by FindLonLatSpecAxes
+    // (fitschan.c:3214) and reads `crval[axspec]` and
+    // `cdelt[axspec]`. We scan the CTYPE cards to find the same
+    // 1-based index. Mirrors C:6881-6882.
     //
-    // CRVAL1 (already offset from RESTFREQ in the emitted cards) +
-    // RESTFREQ → absolute Source-Hz.
-    let crval1 = cards.get_float("CRVAL1");
-    let cdelt1 = cards.get_float("CDELT1");
+    // The FitsStore's CRVAL for the spectral axis was emitted as an
+    // offset from RESTFREQ (see `write_to_cards` above), so adding
+    // RESTFREQ recovers the absolute Source-Hz frequency.
     let restfreq = cards.get_float("RESTFREQ");
+    let Some(rf) = restfreq else {
+        return Ok(());
+    };
 
-    let (Some(crval), Some(cdelt), Some(rf)) = (crval1, cdelt1, restfreq) else {
+    let mut spec_axis_1based: Option<usize> = None;
+    for i in 1..=99 {
+        let key = format!("CTYPE{i}");
+        if let Some(ct) = cards.get_string(&key) {
+            let prefix = ct.get(..4).unwrap_or("");
+            if matches!(
+                prefix,
+                "FREQ"
+                    | "ENER"
+                    | "WAVN"
+                    | "VRAD"
+                    | "WAVE"
+                    | "VOPT"
+                    | "ZOPT"
+                    | "AWAV"
+                    | "VELO"
+                    | "BETA"
+            ) {
+                spec_axis_1based = Some(i);
+                break;
+            }
+        } else if i > 1 {
+            break;
+        }
+    }
+    let Some(axspec_1) = spec_axis_1based else {
+        return Ok(());
+    };
+
+    let crval_key = format!("CRVAL{axspec_1}");
+    let cdelt_key = format!("CDELT{axspec_1}");
+    let crval = cards.get_float(&crval_key);
+    let cdelt = cards.get_float(&cdelt_key);
+
+    let (Some(crval), Some(cdelt)) = (crval, cdelt) else {
         return Ok(());
     };
 
@@ -568,6 +581,22 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fitschan::Encoding;
+    use crate::fitschan::spec_trans::spec_trans;
+
+    /// Apply CLASS-encoding `spec_trans` translations to a header
+    /// before reading. Tests that exercise CLASS-specific keyword
+    /// translations (CRVAL→CRVAL+RESTFREQ shift, SSYSSRC/ZSOURCE
+    /// synthesis, GLS→SFL CTYPE rewrites) must go through this
+    /// pipeline because [`read_from_cards`] expects already-
+    /// translated cards (mirrors C's runtime: `astRead` calls
+    /// `SpecTrans` before the per-axis store extraction). Direct
+    /// callers of `read_from_cards` on un-translated CLASS headers
+    /// will see absolute frequencies that haven't been shifted.
+    fn translated(header: &str) -> CardList {
+        let cards = CardList::from_header(header).unwrap();
+        spec_trans(&cards, Encoding::FitsClass)
+    }
 
     /// Standard CLASS header for testing.
     const CLASS_HEADER: &str = "\
@@ -596,7 +625,7 @@ MJD-OBS =            52413.59
     #[test]
     fn read_class_offset_frequency() {
         // CRVAL1=0, RESTFREQ=1.102e11 → store.crval[0] ≈ 1.102e11
-        let cards = CardList::from_header(CLASS_HEADER).unwrap();
+        let cards = translated(CLASS_HEADER);
         let store = read_from_cards(&cards).unwrap();
 
         let restfreq = 0.110201354300e12;
@@ -629,7 +658,7 @@ RESTFREQ=  0.110201354300E+012
 VELO-LSR=  0.250000000000E+004
 DELTAV  = -0.106265872717E+003
 ";
-        let cards = CardList::from_header(header).unwrap();
+        let cards = translated(header);
         let store = read_from_cards(&cards).unwrap();
 
         let restfreq = 0.110201354300e12;
@@ -663,7 +692,7 @@ RESTFREQ=  0.110201354300E+012
 VELO-LSR=  0.250000000000E+004
 DELTAV  = -0.106265872717E+003
 ";
-        let cards = CardList::from_header(header).unwrap();
+        let cards = translated(header);
         let store = read_from_cards(&cards).unwrap();
 
         assert_eq!(store.ctype[1], Some("GLON-SFL".to_string()));
@@ -671,17 +700,20 @@ DELTAV  = -0.106265872717E+003
     }
 
     #[test]
-    fn read_class_specsys_from_velo() {
-        // VELO-LSR present → specsys="LSRK"
-        let cards = CardList::from_header(CLASS_HEADER).unwrap();
+    fn read_class_ssyssrc_from_velo_lsr() {
+        // CLASS data is always in SOURCE rest frame. VELO-LSR
+        // present → ssyssrc="LSRK". Mirrors C `ClassTrans`
+        // (fitschan.c:7057-7113).
+        let cards = translated(CLASS_HEADER);
         let store = read_from_cards(&cards).unwrap();
 
-        assert_eq!(store.specsys, Some("LSRK".to_string()));
+        assert_eq!(store.specsys, Some("SOURCE".to_string()));
+        assert_eq!(store.ssyssrc, Some("LSRK".to_string()));
     }
 
     #[test]
-    fn read_class_specsys_from_velo_hel() {
-        // VELO-HEL present → specsys="BARYCENT"
+    fn read_class_ssyssrc_from_velo_hel() {
+        // VELO-HEL present → ssyssrc="BARYCENT" (specsys still SOURCE).
         let header = "\
 NAXIS   =                    3
 CTYPE1  = 'FREQ    '
@@ -700,10 +732,11 @@ RESTFREQ=  0.110201354300E+012
 VELO-HEL=  0.250000000000E+004
 DELTAV  = -0.106265872717E+003
 ";
-        let cards = CardList::from_header(header).unwrap();
+        let cards = translated(header);
         let store = read_from_cards(&cards).unwrap();
 
-        assert_eq!(store.specsys, Some("BARYCENT".to_string()));
+        assert_eq!(store.specsys, Some("SOURCE".to_string()));
+        assert_eq!(store.ssyssrc, Some("BARYCENT".to_string()));
     }
 
     #[test]
@@ -802,14 +835,17 @@ DELTAV  = -0.106265872717E+003
 
     #[test]
     fn round_trip_class() {
-        // Read → write → read should preserve values
-        let cards_in = CardList::from_header(CLASS_HEADER).unwrap();
+        // Read → write → read should preserve values when both reads
+        // go through the spec_trans pipeline (which mirrors C's
+        // runtime path).
+        let cards_in = translated(CLASS_HEADER);
         let store = read_from_cards(&cards_in).unwrap();
 
         let mut cards_out = CardList::new();
         write_to_cards(&store, &mut cards_out, ' ', true).unwrap();
 
-        let store2 = read_from_cards(&cards_out).unwrap();
+        let cards_out_translated = spec_trans(&cards_out, Encoding::FitsClass);
+        let store2 = read_from_cards(&cards_out_translated).unwrap();
 
         // Spectral axis should round-trip
         let crval1_orig = store.crval[0].unwrap();

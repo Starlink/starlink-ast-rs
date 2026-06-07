@@ -968,7 +968,13 @@ impl SpecFrame {
             return None;
         }
 
-        let rf = self.rest_freq?;
+        // Mirror C `astGetRestFreq` default of 1.0E14 Hz when RestFreq
+        // has not been set (specframe.c:6020). The actual value is
+        // immaterial to the result because the chain is VlToFr → SOR
+        // convert → FrToVl with the same `rf` on both ends — the rest
+        // frequency cancels out — but a finite value is required for
+        // SpecMap to evaluate.
+        let rf = self.rest_freq.unwrap_or(1.0e14);
 
         // Hypothetical source at rest in the SpecFrame's rest frame.
         // ConvertSourceVel from (sor, Vrel) to (Topocentric, Vrel)

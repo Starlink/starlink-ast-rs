@@ -333,6 +333,13 @@ impl SkyFrame {
         self.system_set
     }
 
+    /// Clear the explicit-set flag on `System` so the attribute
+    /// reverts to "not set" while keeping the current default value.
+    /// Mirrors C `astClearSystem` for `SkyFrame`.
+    pub fn clear_system(&mut self) {
+        self.system_set = false;
+    }
+
     /// Return the alignment coordinate system.
     ///
     /// If not explicitly set, returns ICRS (mirrors C
@@ -397,6 +404,18 @@ impl SkyFrame {
     /// (mirrors `astTestEpoch`).
     pub fn test_epoch(&self) -> bool {
         self.epoch.is_some()
+    }
+
+    /// Clear the explicit `Epoch` value so the attribute reverts to
+    /// its default. Mirrors C `astClearEpoch`.
+    pub fn clear_epoch(&mut self) {
+        self.epoch = None;
+    }
+
+    /// Clear the explicit `Equinox` value so the attribute reverts
+    /// to its default. Mirrors C `astClearEquinox`.
+    pub fn clear_equinox(&mut self) {
+        self.equinox = None;
     }
 
     /// Set the epoch as MJD.

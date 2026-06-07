@@ -324,27 +324,43 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
         return Ok(owned);
     }
 
-    // Save the SkyFrame's current System / Equinox / Epoch so we can
-    // restore them after computing the FK5/J2000 fiducial. Mirrors
-    // C:21446-21459.
-    let (orig_sys, orig_equinox, orig_epoch) = {
+    // Save the SkyFrame's System / Equinox is-set state plus the
+    // current values so we can restore them after computing the
+    // FK5/J2000 fiducial. Mirrors C:21446-21459 — C uses `astTest`
+    // and only re-sets the attribute if it was originally set.
+    // We must not silently "restore" an unset attribute by calling
+    // set_*: that would mark it as explicitly set with the default
+    // value, which then trips downstream attribute-test gates (e.g.
+    // `astTestEpoch` in SkySys at fitschan.c:29721, which controls
+    // whether MJD-OBS is emitted).
+    //
+    // Epoch is intentionally NOT touched here — C's
+    // MakeFitsFrameSet (fitschan.c:21441-21505) only saves and
+    // restores System and Equinox on the celestial axes; it never
+    // reaches Epoch.
+    let (orig_sys_set, orig_sys, orig_eqn_set, orig_equinox) = {
         let cur = owned.current();
         let Some(sky) = peek_sky(cur) else {
             return Ok(owned);
         };
-        (sky.system(), sky.equinox_mjd(), sky.epoch_mjd())
+        (
+            sky.test_system(),
+            sky.system(),
+            sky.test_equinox(),
+            sky.equinox_mjd(),
+        )
     };
 
     // Step 1: switch SkyFrame to FK5/J2000 via FrameSet integrity.
     // The CmpFrame::map_from delta picks up the SkyFrame change and
     // re-fuses the pixel→world mapping so the celestial axes now
     // produce FK5 J2000 RA/Dec. Mirrors C:21452-21459 (which sets
-    // System and Equinox via astSetC on the FrameSet).
+    // System and Equinox via astSetC on the FrameSet — Epoch is
+    // intentionally not touched).
     owned.with_integrity(|cur| {
         if let Some(sky) = sky_mut(cur) {
             sky.set_system(SkySystem::Fk5);
             sky.set_equinox_year(2000.0);
-            sky.set_epoch_year(2000.0);
         }
         Ok(())
     })?;
@@ -354,45 +370,45 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     // (map1, WcsMap, map3) triple within the pixel→WCS mapping;
     // GetFiducialWCS feeds the WcsMap's native fiducial through
     // map3 to land in the celestial Frame.
+    // Helper: restore SkyFrame system/equinox to their pre-step-1
+    // is-set state. Mirrors C:21503-21505 — only re-set attributes
+    // that were originally set; clear those that weren't, so the
+    // FK5/J2000 override doesn't leak as an explicit value.
+    let restore_sky = |cur: &mut dyn crate::frames::Frame| -> AstResult<()> {
+        if let Some(sky) = sky_mut(cur) {
+            if orig_sys_set {
+                sky.set_system(orig_sys);
+            } else {
+                sky.set_system(orig_sys);
+                sky.clear_system();
+            }
+            if orig_eqn_set {
+                sky.set_equinox_mjd(orig_equinox);
+            } else {
+                sky.clear_equinox();
+            }
+        }
+        Ok(())
+    };
+
     let mapping = owned.mapping(FrameRef::Base, FrameRef::Current)?;
     let Some((_map1, map2, map3)) = celestial_axes::split_map2(mapping.as_ref()) else {
         // No WcsMap found — celestial axes have no reference point;
         // C falls through and returns the FrameSet as-is. Restore
         // the SkyFrame's original system/equinox first so we don't
         // leak the FK5/J2000 override.
-        owned.with_integrity(|cur| {
-            if let Some(sky) = sky_mut(cur) {
-                sky.set_system(orig_sys);
-                sky.set_equinox_mjd(orig_equinox);
-                sky.set_epoch_mjd(orig_epoch);
-            }
-            Ok(())
-        })?;
+        owned.with_integrity(restore_sky)?;
         return Ok(owned);
     };
 
     let Some(wcsmap) = map2.as_any().downcast_ref::<WcsMap>() else {
-        owned.with_integrity(|cur| {
-            if let Some(sky) = sky_mut(cur) {
-                sky.set_system(orig_sys);
-                sky.set_equinox_mjd(orig_equinox);
-                sky.set_epoch_mjd(orig_epoch);
-            }
-            Ok(())
-        })?;
+        owned.with_integrity(restore_sky)?;
         return Ok(owned);
     };
 
     let fid = fiducial::get_fiducial_wcs(wcsmap, map3.as_ref(), ilon, ilat)?;
     let Some((reflon, reflat)) = fid else {
-        owned.with_integrity(|cur| {
-            if let Some(sky) = sky_mut(cur) {
-                sky.set_system(orig_sys);
-                sky.set_equinox_mjd(orig_equinox);
-                sky.set_epoch_mjd(orig_epoch);
-            }
-            Ok(())
-        })?;
+        owned.with_integrity(restore_sky)?;
         return Ok(owned);
     };
 
@@ -437,16 +453,9 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
         Ok(())
     })?;
 
-    // Step 4: restore SkyFrame's original system/equinox/epoch.
-    // Mirrors C:21503-21505.
-    owned.with_integrity(|cur| {
-        if let Some(sky) = sky_mut(cur) {
-            sky.set_system(orig_sys);
-            sky.set_equinox_mjd(orig_equinox);
-            sky.set_epoch_mjd(orig_epoch);
-        }
-        Ok(())
-    })?;
+    // Step 4: restore SkyFrame's original system/equinox is-set
+    // state. Mirrors C:21503-21505.
+    owned.with_integrity(restore_sky)?;
 
     // Step 5 (fitschan.c:21517 → AddEncodingFrame at fitschan.c:2435):
     // per-encoding postprocessing. For FITS-CLASS this swaps the

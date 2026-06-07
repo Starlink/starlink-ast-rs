@@ -36,6 +36,50 @@ fn main() {
                     f.ident(),
                     f.system_string()
                 );
+                if let Some(sky) = f.as_any().downcast_ref::<ast_core::frames::SkyFrame>() {
+                    eprintln!(
+                        "    SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={}",
+                        sky.test_epoch(),
+                        sky.epoch_mjd(),
+                        sky.test_equinox(),
+                        sky.equinox_mjd()
+                    );
+                }
+                if let Some(cmp) = f.as_any().downcast_ref::<ast_core::frames::CmpFrame>() {
+                    let dump_sub = |idx: usize, sub: &dyn ast_core::frames::Frame| {
+                        eprintln!(
+                            "    Sub {}: domain={:?} sys={:?} naxes={}",
+                            idx,
+                            sub.domain(),
+                            sub.system_string(),
+                            sub.naxes()
+                        );
+                        if let Some(sky) = sub.as_any().downcast_ref::<ast_core::frames::SkyFrame>()
+                        {
+                            eprintln!(
+                                "      SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={}",
+                                sky.test_epoch(),
+                                sky.epoch_mjd(),
+                                sky.test_equinox(),
+                                sky.equinox_mjd()
+                            );
+                        }
+                        if let Some(spec) =
+                            sub.as_any().downcast_ref::<ast_core::frames::SpecFrame>()
+                        {
+                            eprintln!(
+                                "      SpecFrame: test_epoch={} rest_freq={:?} sor={:?} svrf={:?} svel={:?}",
+                                spec.test_epoch(),
+                                spec.rest_freq(),
+                                spec.std_of_rest(),
+                                spec.source_vrf(),
+                                spec.source_vel()
+                            );
+                        }
+                    };
+                    dump_sub(1, cmp.frame1());
+                    dump_sub(2, cmp.frame2());
+                }
             }
         }
     }
