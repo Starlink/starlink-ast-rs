@@ -110,6 +110,28 @@ pub(crate) fn encode_wcs(
         let domain = alt_plane_domain(frameset, plane.letter);
         write_store_to_cards(&plane.store, cards, use_cd, plane.letter, domain.as_deref())?;
     }
+
+    // SIP block: emitted after all axis planes. Mirrors C
+    // `WcsFromStore` (fitschan.c:37378-37413) which emits A_*/B_*/AP_*/BP_*
+    // cards at the end of the per-encoding writer, after the
+    // alt-plane axis loop. Only the primary plane's SIP is meaningful
+    // (alt-plane SIP isn't part of the FITS-WCS spec).
+    if let Some(primary) = planes.first() {
+        write_sip_block(primary.store.sip_a_order, &primary.store.sip_a, "A", cards);
+        write_sip_block(primary.store.sip_b_order, &primary.store.sip_b, "B", cards);
+        write_sip_block(
+            primary.store.sip_ap_order,
+            &primary.store.sip_ap,
+            "AP",
+            cards,
+        );
+        write_sip_block(
+            primary.store.sip_bp_order,
+            &primary.store.sip_bp,
+            "BP",
+            cards,
+        );
+    }
     Ok(())
 }
 
@@ -666,17 +688,10 @@ fn write_store_to_cards(
         }
     }
 
-    // SIP distortion coefficients. Mirrors the SetItem/SetValue loops
-    // for `store->asip`/`bsip`/`apsip`/`bpsip` (fitschan.c:28939-28986
-    // and the matching writer that converts them to A_*/B_*/AP_*/BP_*
-    // cards). Only emit on the primary plane (alt-plane SIP isn't part
-    // of the spec).
-    if s == ' ' {
-        write_sip_block(store.sip_a_order, &store.sip_a, "A", cards);
-        write_sip_block(store.sip_b_order, &store.sip_b, "B", cards);
-        write_sip_block(store.sip_ap_order, &store.sip_ap, "AP", cards);
-        write_sip_block(store.sip_bp_order, &store.sip_bp, "BP", cards);
-    }
+    // SIP distortion coefficients are emitted by the caller after
+    // the per-plane axis loop (so alt-plane axis cards land between
+    // the primary axis block and the SIP coefficient block, matching
+    // C `WcsFromStore`'s tail emission at fitschan.c:37378-37413).
 
     Ok(())
 }

@@ -686,6 +686,15 @@ fn build_world_frame(
         let mut builder = BasicFrameBuilder::new(run.len());
         for (k, &axis) in run.iter().enumerate() {
             let lidx_1based = k + 1;
+            // CTYPE → axis Symbol (mirrors fitschan.c:38837 —
+            // `astSetSymbol(*frm, i, buf2)` where buf2 is the
+            // CTYPE value with any algorithm code stripped).
+            // Without this, the round-trip writer can't recover the
+            // CTYPE because it falls back to GetDefaultSymbol's
+            // `<Domain><axis>` format.
+            if let Some(ctype) = &store.ctype[axis] {
+                builder = builder.symbol(lidx_1based, ctype.clone());
+            }
             if let Some(label) = &store.cname[axis] {
                 builder = builder.label(lidx_1based, label.clone());
             } else if let Some(ctype) = &store.ctype[axis] {

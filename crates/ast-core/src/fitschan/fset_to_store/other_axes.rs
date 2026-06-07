@@ -159,7 +159,7 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         // the WCS frame, with CmpFrame transparently routing to the
         // right sub-frame.
         let (sub_frame, sub_axis) = resolve_subframe(wcsfrm, iax);
-        populate_axis_keywords(sub_frame, sub_axis, fits_i, args.store);
+        populate_axis_keywords(sub_frame, sub_axis, iax + 1, fits_i, args.store);
 
         // Append "-LOG" to CTYPE when the log path fired. Mirrors
         // C:24369-24373 (SetAlgCode "-LOG"). The C source also handles
@@ -251,7 +251,24 @@ fn resolve_subframe(frame: &dyn Frame, iax: usize) -> (&dyn Frame, usize) {
 /// becomes CTYPE (with `AXIS{n}` fallback), label becomes the comment
 /// when explicitly set and distinct from symbol, unit becomes CUNIT
 /// when set.
-fn populate_axis_keywords(frame: &dyn Frame, axis: usize, fits_i: usize, store: &mut FitsStore) {
+///
+/// `axis` is the 1-based axis index *within `frame`* (after
+/// resolve_subframe routing through any enclosing CmpFrame). C
+/// passes this as the WCS-frame axis to `astGetSymbol`, where the
+/// `MAKE_GET` macro permutes external→internal before calling
+/// `GetDefaultSymbol(internal_axis)`.
+///
+/// `wcs_axis_1based` is the un-permuted FrameSet WCS-axis loop
+/// counter (1-based). C's CTYPE comment uses `iax+1` (this index),
+/// not the FITS axis index, when no per-axis label is explicitly set
+/// (fitschan.c:24383). Pass-through unchanged from the caller.
+fn populate_axis_keywords(
+    frame: &dyn Frame,
+    axis: usize,
+    wcs_axis_1based: usize,
+    fits_i: usize,
+    store: &mut FitsStore,
+) {
     use crate::frames::BasicFrame;
 
     let basic = match frame.as_any().downcast_ref::<BasicFrame>() {
@@ -267,22 +284,52 @@ fn populate_axis_keywords(frame: &dyn Frame, axis: usize, fits_i: usize, store: 
         }
     };
 
-    let symbol = basic.symbol(axis).ok().unwrap_or("");
-    let label = basic.label(axis).ok().unwrap_or("");
+    // Mirrors C `astGetSymbol`. When the axis Symbol is unset, C falls
+    // back to `GetDefaultSymbol` (frame.c:5401-5459) which produces
+    // `<Domain><axis_index+1>` when the Frame's Domain is set, or just
+    // `<axis_index+1>` (with literal "x" prefix from the Axis class
+    // default) otherwise. White space in the resulting string is
+    // replaced by underscores. We mirror that here so alt-plane CTYPE
+    // values come out as e.g. "NORMEDPIXELS1" instead of "AXIS1".
+    let symbol_set = basic.test_symbol(axis).ok().unwrap_or(false);
+    let symbol_owned: String = if symbol_set {
+        basic.symbol(axis).ok().unwrap_or("").to_string()
+    } else if frame.test_domain() {
+        let mut s = format!("{}{}", frame.domain(), axis);
+        // C `AddUnderscores` (frame.c) replaces white space with '_'.
+        s = s
+            .chars()
+            .map(|c| if c.is_whitespace() { '_' } else { c })
+            .collect();
+        s
+    } else {
+        // C Axis-class default symbol is "x"; combined with the axis
+        // index this gives e.g. "x1", "x2".
+        format!("x{axis}")
+    };
+    let label = basic.label(axis).ok().unwrap_or("").to_string();
     let label_set = basic.test_label(axis).ok().unwrap_or(false);
 
-    let ctype = if !symbol.is_empty() {
-        symbol.to_string()
+    let ctype = if !symbol_owned.is_empty() {
+        symbol_owned.clone()
     } else {
         format!("AXIS{axis}")
     };
     store.ctype[fits_i] = Some(ctype);
 
-    if label_set && !label.is_empty() && label != symbol {
-        store.ctype_com[fits_i] = Some(label.to_string());
+    if label_set && !label.is_empty() && label != symbol_owned {
+        store.ctype_com[fits_i] = Some(label.clone());
         if store.cname[fits_i].is_none() {
-            store.cname[fits_i] = Some(label.to_string());
+            store.cname[fits_i] = Some(label);
         }
+    } else {
+        // C `OtherAxes` (fitschan.c:24382-24385) writes the default
+        // CTYPE comment using the WCS-frame loop index (`iax+1`),
+        // *not* the FITS axis index. The two differ whenever
+        // `wperm` permutes the WCS axes — and the comment must
+        // mirror C verbatim because alt-plane fixtures encode this
+        // detail.
+        store.ctype_com[fits_i] = Some(format!("Type of co-ordinate on axis {wcs_axis_1based}"));
     }
 
     if basic.test_unit(axis).ok().unwrap_or(false)
@@ -503,7 +550,11 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(store.ctype[0].as_deref(), Some("AXIS1"));
+        // C `GetDefaultSymbol` (frame.c:5448) for a Frame with no
+        // explicit Symbol and no Domain falls back to the Axis
+        // class's "x" default symbol followed by `axis_index + 1`,
+        // giving "x1" / "x2" / etc.
+        assert_eq!(store.ctype[0].as_deref(), Some("x1"));
         assert!(store.cunit[0].is_none());
         assert!(store.cname[0].is_none());
     }
