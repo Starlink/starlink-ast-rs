@@ -296,7 +296,140 @@ pub(crate) fn decode_wcs_with_alts_def_b1950(
         fs.set_current(FrameRef::Index(primary_index))?;
     }
 
+    // Tidy up offset SkyFrames. Mirrors C `TidyOffsets`
+    // (fitschan.c:34368-34540): converts the SKY_POLE / SKY_ORIGIN
+    // domain markers stamped by `WcsSkyFrame` into actual SkyRefIs
+    // attribute values, and removes redundant SKY_OFFSETS Frames
+    // when a corresponding absolute SkyFrame exists.
+    tidy_offsets(&mut fs)?;
+
     Ok(AnyObject::FrameSet(fs))
+}
+
+/// Apply C `TidyOffsets` (fitschan.c:34368-34540) to a freshly-read
+/// FrameSet. Two passes:
+///
+/// 1. For every Frame containing a SkyFrame whose Domain is
+///    `SKY_POLE` or `SKY_ORIGIN`, set its SkyRefIs attribute and
+///    clear the marker domain. Note which Frames hold absolute
+///    SkyFrames vs offset (`SKY_OFFSETS`) ones.
+/// 2. If at least one absolute and one offset SkyFrame are present,
+///    remove every offset Frame from the FrameSet — the absolute
+///    SkyFrame's SkyRefIs already encodes the offset interpretation,
+///    so AST stores both forms in a single Frame.
+///
+/// When only offset Frames are present (e.g. a header that has
+/// CTYPE = OFLN/OFLT and SREFIS but no separate absolute axis
+/// description), the SkyFrame is left in place — its SkyRefIs is
+/// promoted from the SKY_POLE/SKY_ORIGIN marker domain in pass 1.
+fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
+    use crate::frames::{CmpFrame, SkyFrame, SkyRefIs};
+    // `current_idx()` is 0-based; FrameRef::Index is 1-based.
+    let icurr_1 = fs.current_idx() + 1;
+
+    // Pass 1: walk every Frame, look for a SkyFrame child, examine
+    // its domain, classify (absolute / offset / marker), and apply
+    // SkyRefIs to absolute SkyFrames carrying SKY_POLE/SKY_ORIGIN
+    // markers. Mirrors C:34435-34471.
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+    enum FrameKind {
+        Absolute,
+        Offset,
+        Other,
+    }
+
+    fn classify(frame: &dyn crate::frames::Frame) -> (FrameKind, Option<SkyRefIs>) {
+        // Find the SkyFrame's domain. Recurse into CmpFrame children.
+        fn first_sky_domain(frame: &dyn crate::frames::Frame) -> Option<String> {
+            if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
+                return Some(sky.domain().to_string());
+            }
+            if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
+                if let Some(d) = first_sky_domain(cmp.frame1()) {
+                    return Some(d);
+                }
+                if let Some(d) = first_sky_domain(cmp.frame2()) {
+                    return Some(d);
+                }
+            }
+            None
+        }
+        let Some(domain) = first_sky_domain(frame) else {
+            return (FrameKind::Other, None);
+        };
+        match domain.as_str() {
+            "SKY_OFFSETS" => (FrameKind::Offset, None),
+            "SKY" | "" => (FrameKind::Absolute, None),
+            "SKY_POLE" => (FrameKind::Absolute, Some(SkyRefIs::Pole)),
+            "SKY_ORIGIN" => (FrameKind::Absolute, Some(SkyRefIs::Origin)),
+            _ => (FrameKind::Other, None),
+        }
+    }
+
+    fn apply_skyrefis(frame: &mut dyn crate::frames::Frame, skyrefis: SkyRefIs) {
+        if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
+            sky.set_sky_ref_is(skyrefis);
+            sky.set_domain("SKY");
+            return;
+        }
+        if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+            apply_skyrefis(cmp.frame1_mut(), skyrefis);
+            apply_skyrefis(cmp.frame2_mut(), skyrefis);
+        }
+    }
+
+    let nfrm = fs.nframe();
+    let mut kinds = Vec::with_capacity(nfrm);
+    for ifrm in 1..=nfrm {
+        let (kind, marker) = {
+            let f = fs.frame(FrameRef::Index(ifrm))?;
+            classify(f)
+        };
+        if let Some(skyrefis) = marker {
+            let f = fs.frame_mut(FrameRef::Index(ifrm))?;
+            apply_skyrefis(f, skyrefis);
+        }
+        kinds.push(kind);
+    }
+
+    let has_abs = kinds.contains(&FrameKind::Absolute);
+    let has_off = kinds.contains(&FrameKind::Offset);
+
+    // Pass 2: only remove offset Frames when an absolute counterpart
+    // exists — otherwise the offset Frame is the only sky description
+    // we have and removing it would lose the SkyRef information.
+    // Mirrors C:34476-34540.
+    if has_abs && has_off {
+        // Remove offsets in reverse order so the indices stay valid
+        // as we delete.
+        for ifrm in (1..=nfrm).rev() {
+            if kinds[ifrm - 1] == FrameKind::Offset {
+                fs.remove_frame(FrameRef::Index(ifrm))?;
+            }
+        }
+        // remove_frame may have invalidated `icurr_1`; the C library
+        // re-resolves the current index through the original Frame
+        // pointer. We approximate by clamping to the last absolute
+        // Frame if the original was an offset.
+        let new_nfrm = fs.nframe();
+        let original_was_offset = icurr_1 <= kinds.len() && kinds[icurr_1 - 1] == FrameKind::Offset;
+        if icurr_1 > new_nfrm || original_was_offset {
+            // Pick the highest-index non-removed absolute Frame.
+            for ifrm in (1..=new_nfrm).rev() {
+                if kinds[ifrm - 1] == FrameKind::Absolute {
+                    fs.set_current(FrameRef::Index(ifrm))?;
+                    break;
+                }
+            }
+        } else if icurr_1 <= new_nfrm {
+            fs.set_current(FrameRef::Index(icurr_1))?;
+        }
+    } else {
+        // No removals — restore the original current.
+        fs.set_current(FrameRef::Index(icurr_1))?;
+    }
+
+    Ok(())
 }
 
 /// Helper: stamp `ident` onto a boxed Frame, dispatching by concrete

@@ -150,6 +150,14 @@ pub(crate) fn fset_to_store(
     //
     // Each segment defaults to UnitMap on the axes it doesn't claim,
     // so series composition leaves those axes untouched.
+    // Detect whether the current Frame contains an offset SkyFrame
+    // (SkyRefIs == Pole or Origin). Mirrors C `IsSkyOff`
+    // (fitschan.c:20222), called from FsetToStore at line 12155
+    // before the primary AddVersion. When set, SkySys writes
+    // `OFLN`/`OFLT` CTYPEs and `WCSNAME = 'SKY_POLE'` /
+    // `'SKY_ORIGIN'` instead of the standard equatorial CTYPEs.
+    let isoff = sky_sys::is_sky_off(fs, fs.current_idx());
+
     let cel_seg = celestial_axes(CelestialAxesArgs {
         fs,
         dim,
@@ -157,7 +165,7 @@ pub(crate) fn fset_to_store(
         s,
         store: &mut store,
         axis_done: &mut axis_done,
-        isoff: 0,
+        isoff,
     })?;
 
     let spec_seg = spectral_axes(SpectralAxesArgs {

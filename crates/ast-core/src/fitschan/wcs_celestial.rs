@@ -157,6 +157,15 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 4: Determine the coordinate system from RADESYS.
     let system = determine_sky_system(store);
 
+    // Detect whether the CTYPE prefix indicates an offset sky frame
+    // (CTYPE = OFLN/OFLT). C `WcsSkyFrame` (fitschan.c:39277) tags
+    // the resulting SkyFrame with Domain = SKY_OFFSETS so TidyOffsets
+    // can identify it.
+    let ctype_is_offset = store.ctype[lon_axis]
+        .as_deref()
+        .map(|c| classify_ctype_prefix(c) == Some(CelKind::OffsetSky))
+        .unwrap_or(false);
+
     // Step 5: Create SkyFrame. When the FITS header places latitude
     // ahead of longitude in the parent CmpFrame layout (lat_axis <
     // lon_axis, e.g. CTYPE1='DEC--TAN', CTYPE2='RA---TAN' on
@@ -263,6 +272,43 @@ pub(crate) fn build_celestial_with_def_b1950(
     // last-plane-wins rule emits in fits-pc-gal_fits-pc.
     apply_b1950_fallback_if_needed(store, &mut sky_frame, def_b1950);
 
+    // Step 7d: CTYPE = OFLN/OFLT → Domain = SKY_OFFSETS. Mirrors
+    // C `WcsSkyFrame` (fitschan.c:39277) — tags the Frame so
+    // `tidy_offsets` can identify offset-sky planes later. SREFIS
+    // below may overwrite this domain with SKY_POLE / SKY_ORIGIN.
+    if ctype_is_offset {
+        sky_frame.set_domain("SKY_OFFSETS");
+    }
+
+    // Step 7e: SREF / SREFP — non-standard AST keywords describing
+    // the SkyRef / SkyRefP positions for an offset SkyFrame. Mirrors
+    // C `WcsSkyFrame` (fitschan.c:39331-39340).
+    if let (Some(refl), Some(refb)) = (store.skyref[lon_axis], store.skyref[lat_axis]) {
+        sky_frame.set_sky_ref(refl, refb);
+    }
+    if let (Some(refpl), Some(refpb)) = (store.skyrefp[lon_axis], store.skyrefp[lat_axis]) {
+        sky_frame.set_sky_ref_p(refpl, refpb);
+    }
+
+    // Step 7f: SREFIS — non-standard AST keyword recording whether
+    // SkyRef should be interpreted as the offset Pole or Origin.
+    // Mirrors C `WcsSkyFrame` (fitschan.c:39342-39354): the value is
+    // stashed as a Domain marker (`SKY_POLE` or `SKY_ORIGIN`) which
+    // `tidy_offsets` later converts back into the actual SkyRefIs
+    // attribute. Domain markers are required (rather than direct
+    // SkyRefIs) because applying SkyRefIs at this point would re-map
+    // the SkyFrame to offset coordinates *before* the FrameSet has
+    // been assembled — TidyOffsets needs the chance to inspect the
+    // raw FITS-emitted layout.
+    if let Some(ref skyrefis) = store.skyrefis {
+        let upper = skyrefis.trim().to_uppercase();
+        match upper.as_str() {
+            "POLE" => sky_frame.set_domain("SKY_POLE"),
+            "ORIGIN" => sky_frame.set_domain("SKY_ORIGIN"),
+            _ => {}
+        }
+    }
+
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
@@ -320,7 +366,11 @@ fn determine_sky_system(store: &FitsStore) -> SkySystem {
         Some(CelKind::Ecliptic) => return SkySystem::Ecliptic,
         Some(CelKind::Supergalactic) => return SkySystem::Supergalactic,
         Some(CelKind::AzEl) => return SkySystem::Azel,
-        Some(CelKind::Equatorial) | None => {} // fall through to RADESYS / EQUINOX
+        // Offset sky and equatorial both fall through to the RADESYS
+        // / EQUINOX rules — the offset SkyFrame inherits its
+        // underlying system from the same lookup C does in
+        // WcsSkyFrame after the OF early-out.
+        Some(CelKind::Equatorial) | Some(CelKind::OffsetSky) | None => {}
     }
 
     // Equatorial (or no CTYPE prefix at all) → look at RADESYS.
@@ -354,6 +404,12 @@ enum CelKind {
     Ecliptic,
     Supergalactic,
     AzEl,
+    /// Offset sky-frame indicator (CTYPE prefix `OF`, suffix `LN`/`LT`).
+    /// Mirrors C `sys = "OF"` (fitschan.c:39277). The resulting
+    /// SkyFrame inherits its underlying system from RADESYS (default
+    /// FK5/ICRS via the equatorial fallback) and is tagged with
+    /// Domain = SKY_OFFSETS.
+    OffsetSky,
 }
 
 /// Classify a CTYPE prefix into the C library's celestial-system code.
@@ -386,6 +442,17 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
                 'H' => return Some(CelKind::Ecliptic),
                 _ => {}
             }
+        }
+    }
+    // 2-letter prefix: xyLN / xyLT. The only one we recognise here
+    // is `OF` (offset sky), used with codes `OFLN` / `OFLT`. C
+    // labels these as `sys = "OF"` (fitschan.c:39277) and tags the
+    // resulting Frame with Domain = SKY_OFFSETS so TidyOffsets can
+    // identify it later.
+    if ctype.len() >= 4 {
+        let bytes = ctype.as_bytes();
+        if (&bytes[2..4] == b"LN" || &bytes[2..4] == b"LT") && &bytes[0..2] == b"OF" {
+            return Some(CelKind::OffsetSky);
         }
     }
     None

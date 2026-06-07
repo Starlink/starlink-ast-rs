@@ -38,11 +38,12 @@ fn main() {
                 );
                 if let Some(sky) = f.as_any().downcast_ref::<ast_core::frames::SkyFrame>() {
                     eprintln!(
-                        "    SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={}",
+                        "    SkyFrame: test_epoch={} epoch_mjd={} test_equinox={} equinox_mjd={} sky_ref_is={:?}",
                         sky.test_epoch(),
                         sky.epoch_mjd(),
                         sky.test_equinox(),
-                        sky.equinox_mjd()
+                        sky.equinox_mjd(),
+                        sky.sky_ref_is()
                     );
                 }
                 if let Some(cmp) = f.as_any().downcast_ref::<ast_core::frames::CmpFrame>() {
