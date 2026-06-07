@@ -7,8 +7,11 @@
 //! The transformation from IWC to celestial coordinates is:
 //!
 //! ```text
-//! IWC (degrees) → ZoomMap (deg→rad) → WcsMap inverse (projected→native)
-//!     → rotation (native→celestial via CRVAL/LONPOLE/LATPOLE)
+//! IWC (N axes, degrees) → diagonal MatrixMap (deg→rad on lon/lat,
+//!     identity elsewhere) → N-axis WcsMap inverse (projected→native)
+//!     → N-axis rotation (the 2-axis native→celestial rotation
+//!     embedded via a PermMap-around-Parallel-CmpMap sandwich,
+//!     identity on the non-celestial axes)
 //! ```
 
 use std::f64::consts::PI;
@@ -624,9 +627,9 @@ fn build_iwc_to_sky_mapping(
         for &k in &others {
             outperm_to_2d.push((k as i64) + 1);
         }
-        // Inverse: build inperm[i] for forward = the slot that
-        // produced original input i. We construct the back-perm
-        // independently and let PermMap derive its own inverse.
+        // inperm describes the inverse direction: inperm[i] gives the
+        // (1-based) output slot to read in order to recover original
+        // input i. PermMap requires both directions explicitly.
         let mut inperm_to_2d: Vec<i64> = vec![0; naxis];
         for (slot_idx, &input_idx) in [lon_axis, lat_axis].iter().chain(others.iter()).enumerate() {
             inperm_to_2d[input_idx] = (slot_idx as i64) + 1;
