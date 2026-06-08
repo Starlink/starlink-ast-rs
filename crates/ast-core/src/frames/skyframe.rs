@@ -6,7 +6,7 @@ use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{ast_equal, is_bad};
-use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::pal;
 use crate::serial::{Node, NodeValue, Serializable};
 
@@ -1001,7 +1001,14 @@ impl Frame for SkyFrame {
                     mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
                 }
 
-                Ok(mapping)
+                // Wrap in PermMap swap when either Frame's external axis
+                // 0 is its physical latitude axis (perm = [lat, lon]).
+                // Mirrors C `SubFrame` (skyframe.c:10082-10117): the
+                // make_sky_mapping output is in internal (lon, lat)
+                // order, but the FrameSet's chain feeds and consumes
+                // values in each Frame's external order. Without these
+                // swaps the delta is applied to the wrong axes.
+                Ok(wrap_with_axis_swap(mapping, prev_sky, self))
             }
             None => {
                 // Previous was not a SkyFrame -- return UnitMap.
@@ -1077,6 +1084,11 @@ impl Frame for SkyFrame {
                     off_map.invert();
                     mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
                 }
+
+                // Wrap in PermMap swap so the mapping operates on each
+                // Frame's external axis order. See `map_from` for the
+                // C reference (skyframe.c:10082-10117).
+                let mapping = wrap_with_axis_swap(mapping, self, to_sky);
 
                 let mut fs = FrameSet::new(self.snapshot());
                 fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
@@ -1513,6 +1525,44 @@ fn skyframe_overlay(
         }
     }
     Ok(())
+}
+
+/// Wrap an internal-axis-order (lon, lat) → (lon, lat) mapping with
+/// PermMap swaps so it operates on each SkyFrame's external axis
+/// order. Mirrors C `SubFrame` (skyframe.c:10082-10117): when the
+/// target's external axis 0 is its physical latitude axis, prepend a
+/// `[lat,lon]→[lon,lat]` PermMap; when the result's external axis 0
+/// is its physical latitude axis, append a `[lon,lat]→[lat,lon]`
+/// PermMap. Both checks are independent because the two SkyFrames may
+/// have different perms (rare, but supported).
+///
+/// Identity-fast when neither needs swapping. The `PermMap::new` and
+/// `CmpMap::new` calls below are infallible for a fixed 2-axis perm
+/// against an already-2-input/2-output mapping; the `expect` messages
+/// document the invariant.
+fn wrap_with_axis_swap(mapping: DynMapping, target: &SkyFrame, result: &SkyFrame) -> DynMapping {
+    let target_swap = target.axis_permutation()[0] != 0;
+    let result_swap = result.axis_permutation()[0] != 0;
+    if !target_swap && !result_swap {
+        return mapping;
+    }
+    let mut out = mapping;
+    if target_swap {
+        let pre = PermMap::new(&[2, 1], &[2, 1], &[]).expect("trivial 2-axis PermMap construction");
+        out = Box::new(
+            CmpMap::new(Box::new(pre), out, Composition::Series)
+                .expect("compose 2-axis PermMap with 2-axis mapping"),
+        );
+    }
+    if result_swap {
+        let post =
+            PermMap::new(&[2, 1], &[2, 1], &[]).expect("trivial 2-axis PermMap construction");
+        out = Box::new(
+            CmpMap::new(out, Box::new(post), Composition::Series)
+                .expect("compose 2-axis mapping with 2-axis PermMap"),
+        );
+    }
+    out
 }
 
 /// Returns true if `system` is one of the equatorial SkyFrame systems

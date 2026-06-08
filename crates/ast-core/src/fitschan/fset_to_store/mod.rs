@@ -446,10 +446,27 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     let (reflon_quant, reflat_quant) = {
         let cur = owned.current();
         let sky = peek_sky(cur).expect("SkyFrame still present after switch to FK5/J2000");
-        let lon_str = sky.format(1, reflon).unwrap_or_default();
-        let lat_str = sky.format(2, reflat).unwrap_or_default();
-        let lon_round = sky.unformat(1, &lon_str).map(|(v, _)| v).unwrap_or(reflon);
-        let lat_round = sky.unformat(2, &lat_str).map(|(v, _)| v).unwrap_or(reflat);
+        // Format/unformat by the SkyFrame's lon/lat axis indices, not
+        // by the literal 1/2 FITS positions. For a perm_axes'd
+        // lat-first SkyFrame (e.g. CTYPE1=DEC, CTYPE2=RA), external
+        // axis 0 is lat and external axis 1 is lon. Format() picks
+        // the as_time flag from the *physical* axis behind whichever
+        // external slot is asked for, so without honouring the perm
+        // a lon value gets DMS-formatted (or a lat value HMS), which
+        // quantises to ~5e-6 rad of error — propagating downstream to
+        // a wrong VELOSYS via SpecMap's RefRA/RefDec dependence.
+        let lon_axis_1b = sky.lon_axis() + 1;
+        let lat_axis_1b = sky.lat_axis() + 1;
+        let lon_str = sky.format(lon_axis_1b, reflon).unwrap_or_default();
+        let lat_str = sky.format(lat_axis_1b, reflat).unwrap_or_default();
+        let lon_round = sky
+            .unformat(lon_axis_1b, &lon_str)
+            .map(|(v, _)| v)
+            .unwrap_or(reflon);
+        let lat_round = sky
+            .unformat(lat_axis_1b, &lat_str)
+            .map(|(v, _)| v)
+            .unwrap_or(reflat);
         (normalise_ra(lon_round), normalise_dec(lat_round))
     };
 

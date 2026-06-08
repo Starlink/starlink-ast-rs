@@ -165,6 +165,11 @@ fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
     // typical layout produced by build_world_frame). For nested
     // CmpFrames recurse; this matches what we build, even if the
     // pure-C primary-frame walk is more general.
+    //
+    // For a SkyFrame, honour its `axis_permutation`: when the frame
+    // has been `perm_axes`'d to lat-first (e.g. CTYPE1=DEC,
+    // CTYPE2=RA), the world-frame's external axis 0 is lat and
+    // axis 1 is lon. Mirrors C `astGetLonAxis` / `astGetLatAxis`.
     fn find(
         frame: &dyn crate::frames::Frame,
         offset: usize,
@@ -174,9 +179,11 @@ fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
             if out.0.is_none() {
                 out.0 = Some(offset);
             }
-        } else if let Some(_sky) = frame.as_any().downcast_ref::<SkyFrame>() {
+        } else if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
             if out.1.is_none() {
-                out.1 = Some((offset, offset + 1));
+                let lon_local = sky.lon_axis();
+                let lat_local = sky.lat_axis();
+                out.1 = Some((offset + lon_local, offset + lat_local));
             }
         } else if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
             find(c.frame1(), offset, out);
