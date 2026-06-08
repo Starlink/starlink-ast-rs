@@ -342,13 +342,14 @@ pub(crate) fn build_celestial_with_def_b1950(
         inner
     };
 
-    // Note: when `lat_axis < lon_axis`, `mapping` outputs (cel_lat,
-    // cel_lon) at slots (0, 1) — matching the SkyFrame's permuted
-    // external layout above. `build_general_iwc_to_world` consults
-    // the returned `lon_axis`/`lat_axis` to PermMap these into the
-    // FITS axis order they belong to, and `lon_axis`/`lat_axis` are
-    // left in their original (FITS-layout) values so downstream
-    // routing keeps working.
+    // For `naxis >= 3` `mapping` is a full-rank N-axis mapping that
+    // emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS slot
+    // `lat_axis`, with identity on every other axis. For `naxis == 2`
+    // with `lat_axis < lon_axis` the wrapping above produces
+    // (cel_lat, cel_lon) at slots (0, 1), matching the SkyFrame's
+    // permuted external layout. Either way `build_general_iwc_to_world`
+    // composes the per-class mappings in series — no axis-permute
+    // step is needed at the composer.
     Some(CelestialResult {
         mapping,
         frame: sky_frame,

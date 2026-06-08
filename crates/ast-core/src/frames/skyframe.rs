@@ -1800,7 +1800,22 @@ impl Serializable for SkyFrame {
         }
 
         // Axis labels (always unset with system-appropriate defaults).
-        let (lbl1, lbl2) = self.default_labels();
+        // `default_labels` returns (lon_label, lat_label) by physical
+        // axis. External axes 1/2 follow the SkyFrame's perm — for a
+        // lat-first frame (perm = [1, 0]) external axis 1 is lat, so
+        // emit Lbl1 = lat_label. Mirrors C `GetLabel` (skyframe.c
+        // :3621) which permutes via `astValidateAxis`.
+        let (lon_label, lat_label) = self.default_labels();
+        let lbl1 = if self.perm[0] == 0 {
+            lon_label
+        } else {
+            lat_label
+        };
+        let lbl2 = if self.perm[1] == 0 {
+            lon_label
+        } else {
+            lat_label
+        };
         node.push_unset(
             "Lbl1",
             NodeValue::String(lbl1.to_string()),
@@ -1838,7 +1853,18 @@ impl Serializable for SkyFrame {
         }
 
         // Axis units (always unset with system-appropriate defaults).
-        let (uni1, uni2) = self.default_units();
+        // Same perm-aware pattern as Lbl1/Lbl2 above.
+        let (lon_unit, lat_unit) = self.default_units();
+        let uni1 = if self.perm[0] == 0 {
+            lon_unit
+        } else {
+            lat_unit
+        };
+        let uni2 = if self.perm[1] == 0 {
+            lon_unit
+        } else {
+            lat_unit
+        };
         node.push_unset(
             "Uni1",
             NodeValue::String(uni1.to_string()),
@@ -1857,14 +1883,20 @@ impl Serializable for SkyFrame {
             Some("Plot axis 1 in reverse direction".to_string()),
         );
 
-        // Bot2/Top2: latitude axis limits (always unset).
+        // Bot{N}/Top{N}: per-axis legal range. The latitude axis has
+        // [-π/2, π/2]; the longitude axis has [-DBL_MAX, DBL_MAX].
+        // Mirrors C `GetBottom` / `GetTop` (skyframe.c:2963/3234)
+        // which validate/permute via `astValidateAxis`. For a
+        // lat-first SkyFrame these emit at Bot1/Top1; for the
+        // standard layout at Bot2/Top2.
+        let lat_external_axis = self.lat_axis() + 1; // 1-based
         node.push_unset(
-            "Bot2",
+            &format!("Bot{lat_external_axis}"),
             NodeValue::Double(-std::f64::consts::FRAC_PI_2),
             Some("Lowest legal axis value".to_string()),
         );
         node.push_unset(
-            "Top2",
+            &format!("Top{lat_external_axis}"),
             NodeValue::Double(std::f64::consts::FRAC_PI_2),
             Some("Highest legal axis value".to_string()),
         );
