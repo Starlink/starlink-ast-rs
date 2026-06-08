@@ -561,15 +561,23 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     const R2D: f64 = 180.0 / std::f64::consts::PI;
     let pts = PointSet::from_rows([vec![crval_lon * D2R, crval_lat * D2R]]);
     let out = map_radec_to_azel.transform(&pts, true)?;
-    let mut azel = [out.point(0)[0], out.point(0)[1]];
+    let mut out_pair = [out.point(0)[0], out.point(0)[1]];
 
-    // Normalise via the matched AzEl SkyFrame (C:6929).
-    if let Some(azel_frame) = fsconv2.current().as_any().downcast_ref::<SkyFrame>() {
-        azel_frame.norm(&mut azel)?;
-    }
+    // Normalise via the matched AzEl SkyFrame (C:6929) and read the
+    // azimuth / elevation back from the SkyFrame's external axes
+    // (perm-aware: a lat-first AzEl frame returns El at slot 0 and
+    // Az at slot 1).
+    let (az, el) = if let Some(azel_frame) = fsconv2.current().as_any().downcast_ref::<SkyFrame>() {
+        azel_frame.norm(&mut out_pair)?;
+        let lon = out_pair[azel_frame.lon_axis()];
+        let lat = out_pair[azel_frame.lat_axis()];
+        (lon, lat)
+    } else {
+        (out_pair[0], out_pair[1])
+    };
 
-    cards.set_float("AZIMUTH", azel[0] * R2D, "[Deg] Telescope azimuth");
-    cards.set_float("ELEVATIO", azel[1] * R2D, "[Deg] Telescope elevation");
+    cards.set_float("AZIMUTH", az * R2D, "[Deg] Telescope azimuth");
+    cards.set_float("ELEVATIO", el * R2D, "[Deg] Telescope elevation");
 
     Ok(())
 }
