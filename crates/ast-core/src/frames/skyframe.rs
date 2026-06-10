@@ -1040,12 +1040,14 @@ impl Frame for SkyFrame {
         if !equinox_eq {
             return false;
         }
+        // Title is descriptive only and never affects C Frame equality
+        // (frame.c Equal is conversion-based); compare effective Domain
+        // strings so an explicitly-set default equals an unset one.
         self.sky_ref_is == other.sky_ref_is
             && ast_equal(self.sky_ref[0], other.sky_ref[0])
             && ast_equal(self.sky_ref[1], other.sky_ref[1])
             && self.neglon == other.neglon
-            && self.title == other.title
-            && self.domain == other.domain
+            && SkyFrame::domain(self) == SkyFrame::domain(other)
     }
 
     fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {

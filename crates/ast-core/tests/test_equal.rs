@@ -600,10 +600,12 @@ fn basicframe_different_naxes() {
 }
 
 #[test]
-fn basicframe_different_title() {
+fn basicframe_different_title_is_equal() {
+    // Title is descriptive only: C Frame equality (frame.c Equal) is
+    // conversion-based and ignores it.
     let a = BasicFrameBuilder::new(2).title("A").build().unwrap();
     let b = BasicFrameBuilder::new(2).title("B").build().unwrap();
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 #[test]
@@ -628,10 +630,11 @@ fn basicframe_epoch_set_vs_unset() {
 }
 
 #[test]
-fn basicframe_different_labels() {
+fn basicframe_different_labels_is_equal() {
+    // Labels are descriptive only: C Frame equality ignores them.
     let a = BasicFrameBuilder::new(2).label(1, "X").build().unwrap();
     let b = BasicFrameBuilder::new(2).label(1, "Y").build().unwrap();
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 // =========================================================================
@@ -653,12 +656,14 @@ fn cmpframe_same() {
 
 #[test]
 fn cmpframe_different_child() {
+    // The differing attribute must be one that affects equality
+    // (Domain); cosmetic differences like Title are ignored per C.
     let a = CmpFrame::new(
-        Box::new(BasicFrameBuilder::new(1).title("A").build().unwrap()),
+        Box::new(BasicFrameBuilder::new(1).domain("A").build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
     );
     let b = CmpFrame::new(
-        Box::new(BasicFrameBuilder::new(1).title("B").build().unwrap()),
+        Box::new(BasicFrameBuilder::new(1).domain("B").build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
     );
     assert!(!a.equal(&b));
@@ -733,12 +738,13 @@ fn skyframe_different_neglon() {
 }
 
 #[test]
-fn skyframe_different_title() {
+fn skyframe_different_title_is_equal() {
+    // Title is descriptive only: C Frame equality ignores it.
     let mut a = SkyFrame::new(SkySystem::Fk5);
     a.set_title("A");
     let mut b = SkyFrame::new(SkySystem::Fk5);
     b.set_title("B");
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 // =========================================================================

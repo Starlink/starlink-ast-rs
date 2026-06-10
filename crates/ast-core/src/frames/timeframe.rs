@@ -860,7 +860,9 @@ impl Frame for TimeFrame {
         if !origin_eq {
             return false;
         }
-        self.title == other.title && self.domain == other.domain
+        // Title is descriptive only and never affects C Frame equality;
+        // compare effective Domain strings.
+        self.domain.as_deref().unwrap_or("TIME") == other.domain.as_deref().unwrap_or("TIME")
     }
 
     fn obs_lat(&self) -> Option<f64> {

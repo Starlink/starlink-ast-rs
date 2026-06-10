@@ -658,7 +658,12 @@ impl Frame for BasicFrame {
         if self.naxes != other.naxes {
             return false;
         }
-        if self.title != other.title || self.domain != other.domain {
+        // C Frame equality (frame.c Equal) is "the conversion between the
+        // two frames simplifies to a UnitMap", so purely descriptive
+        // attributes (Title, Label, Symbol, Format) never affect it.
+        // Compare effective Domain strings so an explicitly-set default
+        // equals an unset one.
+        if BasicFrame::domain(self) != BasicFrame::domain(other) {
             return false;
         }
         let epoch_eq = match (self.epoch, other.epoch) {
@@ -669,10 +674,7 @@ impl Frame for BasicFrame {
         if !epoch_eq {
             return false;
         }
-        self.labels == other.labels
-            && self.units == other.units
-            && self.symbols == other.symbols
-            && self.format_strs == other.format_strs
+        self.units == other.units
     }
 
     fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {

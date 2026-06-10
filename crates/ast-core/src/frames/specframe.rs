@@ -1686,7 +1686,10 @@ impl Frame for SpecFrame {
         if !rf_eq {
             return false;
         }
-        self.title == other.title && self.domain == other.domain
+        // Title is descriptive only and never affects C Frame equality;
+        // compare effective Domain strings.
+        self.domain.as_deref().unwrap_or("SPECTRUM")
+            == other.domain.as_deref().unwrap_or("SPECTRUM")
     }
 
     fn obs_lat(&self) -> Option<f64> {

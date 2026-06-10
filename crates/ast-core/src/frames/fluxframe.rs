@@ -390,7 +390,9 @@ impl Frame for FluxFrame {
         if !spec_eq {
             return false;
         }
-        self.title == other.title && self.domain == other.domain
+        // Title is descriptive only and never affects C Frame equality;
+        // compare effective Domain strings.
+        self.domain.as_deref().unwrap_or("FLUX") == other.domain.as_deref().unwrap_or("FLUX")
     }
 
     fn system_string(&self) -> Option<&str> {
