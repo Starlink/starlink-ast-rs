@@ -8,8 +8,8 @@ Every item was verified by reading the code at the cited locations.
 
 Work top to bottom; each entry cites the detailed section.
 
-1. **Transform-definedness flags** (6g, 6h, 6i): CmpMap hardcodes `tran_forward`/`tran_inverse` true; PolyMap, ChebyMap, and MatrixMap never override `has_forward`/`has_inverse`.
-   One coordinated fix across four classes; everything else that reasons about one-way mappings depends on it.
+1. **Transform-definedness flags** (6g, 6h, 6i) — **FIXED 2026-06-10**: CmpMap/TranMap now derive `tran_forward`/`tran_inverse` from their components, PolyMap/ChebyMap/MatrixMap override `has_forward`/`has_inverse`, and native dumps mirror C by writing `Fwd`/`Inv` from constructor-time flags via `Mapping::dump_tran_flags` (only CmpMap, RateMap, SelectorMap, SwitchMap, LutMap, MathMap pass computed values in C).
+   Tests: `tests/test_tran_definedness.rs`.
 2. **PolyMap inverse priority + `astPolyTran`** (6h, section 1): IterInverse must beat explicit inverse coefficients; port PolyTran and unwind the `fitschan/wcs_matrix.rs:205` workaround.
 3. **FrameSet repair** (6b): `remove_frame` graph disconnection, full current-frame delegation (~113 missing forwards), `simplified()` must return a FrameSet, Current default = last frame.
 4. **SkyFrame `angle` + SkyTol** (6d): wrong bearing math and the dead 0.001-arcsec tolerance that should collapse FK5↔ICRS-class chains to UnitMap.
@@ -17,8 +17,8 @@ Work top to bottom; each entry cites the detailed section.
 6. **SpecFrame SpecOrigin** (6e): MakeSpecMapping steps 0/9 and system-change rescaling.
 7. **Frame base** (6): `astConvert`/ConvertX, matchsub cast-retry, 2-D signed `angle`, `offset` BAD semantics, printf Format + Digits, then the missing method family (Offset2/Ax\*/Resolve/Intersect/NormBox/MatchAxes/ActiveUnit/PrimaryFrame — unwinding the two fitschan `primary_frame` copies).
 8. **Mapping base** (6a): `rate` interval-search continue-vs-break and h0 seed; `linear_approx` all-BAD success case.
-9. **Frame equality** (6l): conversion-based `Equal` once ConvertX lands (interim: stop comparing cosmetic attributes); PermMap referenced-constant equality.
-   Presents as "astSimplify didn't simplify" — likely behind historical astEqual/astSimplify complaints.
+9. **Frame equality** (6l) — **interim fix applied 2026-06-10**: Title/Label/Symbol/Format no longer affect frame equality and Domain is compared as effective strings (BasicFrame/SkyFrame/SpecFrame/TimeFrame/FluxFrame; compound frames delegate), so cosmetic differences no longer block NormMap-style cancellation (tests: `tests/test_frame_equality.rs`).
+   Still pending: full conversion-based `Equal` once ConvertX lands, and PermMap referenced-constant equality.
 10. **Medium tail**: CmpFrame epoch/obs forwarding and per-axis accessors (6c), SkyFrame offset/epoch/Bottom/Top (6d), TimeFrame iso Format + Epoch-from-TimeOrigin (6f), FluxFrame `MakeFluxMapping` chain (6f), PermMap constant-index laxity + `astMtrRot`/`astMtrMult` (6i), CmpMap chain-rule `rate` (6g), DSB capi unit conversions (6e), 1-based/0-based `map_split` convention (6l).
 11. **Re-verify the 2026-05-08 mapping audit** (section 4) — several items are confirmed fixed (2.1, 2.2, 2.4, 2.5, 3.11, 4.1-4.3, 4.8-4.9, 5.1 partially; 2.3 half-fixed, see 6l); strike the stale ones and fold survivors into the simplify backlog (6g pairwise-protocol note).
 12. **Deferred with their delivery steps**: Rebin/Resample/TranGrid/QuadApprox, Plot-support Frame methods (Gap/Abbrev/Fields/FrameGrid/LineDef family), IntraMap/XphMap/Moc, wcslib 6a, JSON renderer, PLAN.md reconstruction (section 1/2).
@@ -335,7 +335,7 @@ Compared `cmpmap.c`/`tranmap.c` against `mappings/cmpmap.rs`, `mappings/tranmap.
 The engine is in much better shape than the 2026-05-08 audit snapshot: `flatten` mirrors `astMapList` with correct invert bookkeeping (inverted-series order reversal, double-inversion cancellation — tested), a fingerprint-based oscillation guard plus pass caps cover C's PatternCheck/recursion-guard role (old audit items 4.2/4.3), merged CmpMaps are re-expanded into the list (old 4.1), `CmpMap::equal` compares canonically flattened lists (old 2.1), `CmpMap::map_split` includes the MapSplit2 brute-force inverse fallback, and `TranMap::simplified`/`try_merge` reproduce C's MapMerge rules (invert normalisation, per-component simplification, replace-by-map1 when `map1 ∘ inv(map2)` simplifies to UnitMap, neighbour-TranMap merging).
 Several old-audit simplification items are therefore FIXED — section 4's re-verification instruction stands.
 
-- **[HIGH] CmpMap — `tran_forward`/`tran_inverse` are hardcoded `true`.**
+- **[HIGH] CmpMap — `tran_forward`/`tran_inverse` are hardcoded `true`.** *(FIXED 2026-06-10, incl. TranMap and the dump-flag separation; see section 0 item 1.)*
   `CmpMap::new` (`cmpmap.rs:99-100`) sets both flags unconditionally; C `GetTranForward`/`GetTranInverse` (`cmpmap.c`) derive them from the components (AND over both children in the applied direction, respecting their invert flags).
   Consequently `has_forward()`/`has_inverse()` lie for any composition containing a one-way mapping (e.g. forward-only PolyMaps in SIP chains), and the C guarantee that simplification preserves transform-definedness cannot be enforced.
   Fix in `new()` (and verify `from_node` restores stored values).
@@ -355,7 +355,7 @@ Compared `polymap.c`/`chebymap.c` against `mappings/polymap.rs`, `mappings/cheby
 Strong parity in most areas: IterInverse/NiterInverse/TolInverse defaults match C (off, 4, 1e-6), the Newton-Raphson inverse uses C's linear-truncation initial guess, term evaluation uses C's power-table scheme, coefficient consolidation and linear decomposition (MatrixMap/WinMap/ShiftMap replacement) are implemented in `simplified()` — old-audit items 4.8/4.9 are FIXED — and `rate` matches C (which also uses generic numeric differentiation for PolyMap).
 Findings:
 
-- **[HIGH] PolyMap/ChebyMap — `has_forward`/`has_inverse` not overridden.**
+- **[HIGH] PolyMap/ChebyMap — `has_forward`/`has_inverse` not overridden.** *(FIXED 2026-06-10.)*
   C `GetTranForward` returns whether forward coefficients exist and `GetTranInverse` returns `ncoeff_i || IterInverse` (`polymap.c:2222,2285`); neither Rust class overrides the trait defaults, so a forward-only PolyMap claims to have an inverse.
   Same bug class as the CmpMap finding in section 6g — fix together.
 
@@ -383,7 +383,7 @@ Healthy overall: every class has an analytic `rate` override and a `map_split` (
 Merge-rule completeness for this family is tracked separately (old audit sections 3/4 + `simplify-serialization-gaps.md`).
 Findings:
 
-- **[HIGH, joins the 6g/6h flag bucket] MatrixMap — `has_forward`/`has_inverse` not overridden.**
+- **[HIGH, joins the 6g/6h flag bucket] MatrixMap — `has_forward`/`has_inverse` not overridden.** *(FIXED 2026-06-10.)*
   A singular or non-square MatrixMap stores `inverse: None` and errors on inverse transform, but still reports `has_inverse() == true` via the trait default; C `GetTranInverse` reports whether the inverse matrix exists.
   Fix together with CmpMap/PolyMap/ChebyMap.
 
@@ -428,7 +428,7 @@ The known residual items are already tracked elsewhere: SlaMap adjacent-run conc
 
 Focused follow-up on the three historically problematic entry points, covering what sections 6-6k left unverified: Frame-side equality, old-audit equality items 2.2-2.4, and the MapSplit algorithm bodies.
 
-- **[HIGH] Frame equality is attribute-based; C's is conversion-based.**
+- **[HIGH] Frame equality is attribute-based; C's is conversion-based.** *(Interim fix 2026-06-10: cosmetic attributes excluded, effective-Domain comparison; conversion-based Equal still pending on ConvertX.)*
   C `Frame::Equal` (`frame.c:3549-3573`) defines equality as: same class AND `astConvert(that, this, \"\")` succeeds AND the resulting mapping simplifies to a UnitMap — and **no Frame subclass overrides Equal** (verified: no `static int Equal(` in skyframe/specframe/timeframe/cmpframe/fluxframe.c).
   Rust frames compare attributes instead, including cosmetic ones — `BasicFrame::equal` (`basic.rs:654`) compares title, labels, units, symbols, and format strings.
   Consequence: NormMap pair cancellation (`normmap.rs:221,230`) and every other frame-equality-gated merge under-cancels relative to C whenever two frames differ only cosmetically; this presents as \"astSimplify didn't simplify\" bugs.
