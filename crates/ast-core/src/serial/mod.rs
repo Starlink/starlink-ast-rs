@@ -71,15 +71,10 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     if mapping.is_inverted() {
         node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
     }
-    // C library writes Fwd/Inv flags using the INTRINSIC (pre-invert) values
-    // of `this->tran_forward` / `this->tran_inverse`. The trait getters return
-    // the effective directions, which flip under `is_inverted()`, so undo that
-    // flip when serialising.
-    let (intrinsic_fwd, intrinsic_inv) = if mapping.is_inverted() {
-        (mapping.has_inverse(), mapping.has_forward())
-    } else {
-        (mapping.has_forward(), mapping.has_inverse())
-    };
+    // C writes Fwd/Inv from the Mapping base-struct fields, which only
+    // CmpMap populates with computed values — dynamic per-class
+    // definedness (PolyMap, MatrixMap, TranMap, ...) is never dumped.
+    let (intrinsic_fwd, intrinsic_inv) = mapping.dump_tran_flags();
     if !intrinsic_fwd {
         node.push_int(
             "Fwd",

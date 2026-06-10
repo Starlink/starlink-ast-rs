@@ -384,6 +384,12 @@ impl Mapping for SwitchMap {
         self.ismap.is_some()
     }
 
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        // C passes the computed selector availability to astInitMapping
+        // (switchmap.c).
+        (self.fsmap.is_some(), self.ismap.is_some())
+    }
+
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify
     }

@@ -649,6 +649,12 @@ impl Mapping for LutMap {
         self.tran_inverse
     }
 
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        // C passes the monotonicity-derived inverse availability to
+        // astInitMapping (lutmap.c).
+        (true, self.tran_inverse)
+    }
+
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify
     }

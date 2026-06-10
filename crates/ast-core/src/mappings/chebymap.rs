@@ -573,6 +573,17 @@ impl Mapping for ChebyMap {
         self.do_not_simplify = flag;
     }
 
+    // The inner PolyMap's Invert state is kept in sync by
+    // `ChebyMap::invert`, so its definedness flags already reflect this
+    // ChebyMap's orientation.
+    fn has_forward(&self) -> bool {
+        self.poly.has_forward()
+    }
+
+    fn has_inverse(&self) -> bool {
+        self.poly.has_inverse()
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }

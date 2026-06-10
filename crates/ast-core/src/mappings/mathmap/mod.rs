@@ -245,6 +245,12 @@ impl Mapping for MathMap {
         }
     }
 
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        // C passes the function-list availability to astInitMapping
+        // (mathmap.c).
+        (self.has_forward, self.has_inverse)
+    }
+
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         let effective_forward = forward != self.inverted;
         let ncoord_out = if effective_forward {

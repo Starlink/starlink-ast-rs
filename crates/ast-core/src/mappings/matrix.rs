@@ -662,6 +662,25 @@ impl Mapping for MatrixMap {
         self.do_not_simplify = flag;
     }
 
+    // The inverse transformation exists only when the inverse matrix
+    // could be computed (square and non-singular). Mirrors C
+    // matrixmap.c GetTranForward / GetTranInverse.
+    fn has_forward(&self) -> bool {
+        if self.inverted {
+            self.inverse.is_some()
+        } else {
+            true
+        }
+    }
+
+    fn has_inverse(&self) -> bool {
+        if self.inverted {
+            true
+        } else {
+            self.inverse.is_some()
+        }
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }

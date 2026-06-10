@@ -162,6 +162,11 @@ impl Mapping for SelectorMap {
         self.inverted
     }
 
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        // C passes (1, 0) to astInitMapping (selectormap.c).
+        (true, false)
+    }
+
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify
     }

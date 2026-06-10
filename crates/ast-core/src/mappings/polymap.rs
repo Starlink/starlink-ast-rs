@@ -251,6 +251,20 @@ impl PolyMap {
         self.inverse.as_deref()
     }
 
+    /// Whether the original (uninverted) forward transformation is
+    /// defined, i.e. forward coefficients were supplied. Mirrors C
+    /// `GetTranForward` (polymap.c:2222).
+    fn forward_defined(&self) -> bool {
+        !self.forward.is_empty()
+    }
+
+    /// Whether the original (uninverted) inverse transformation is
+    /// defined: inverse coefficients were supplied or the iterative
+    /// inverse is enabled. Mirrors C `GetTranInverse` (polymap.c:2285).
+    fn inverse_defined(&self) -> bool {
+        self.inverse.as_ref().is_some_and(|v| !v.is_empty()) || self.iter_inverse
+    }
+
     /// Gather forward terms per output axis for the 2D SIMD prototype.
     ///
     /// Returns `(out0_terms, out1_terms, [max_p0, max_p1])`. Only valid when
@@ -1392,6 +1406,22 @@ impl Mapping for PolyMap {
 
     fn set_do_not_simplify(&mut self, flag: bool) {
         self.do_not_simplify = flag;
+    }
+
+    fn has_forward(&self) -> bool {
+        if self.inverted {
+            self.inverse_defined()
+        } else {
+            self.forward_defined()
+        }
+    }
+
+    fn has_inverse(&self) -> bool {
+        if self.inverted {
+            self.forward_defined()
+        } else {
+            self.inverse_defined()
+        }
     }
 
     fn clone_box(&self) -> DynMapping {

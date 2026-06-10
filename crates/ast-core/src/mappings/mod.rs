@@ -284,6 +284,19 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         true
     }
 
+    /// Intrinsic (pre-invert) transform-definedness flags as written to
+    /// native dumps.
+    ///
+    /// C dumps `Fwd`/`Inv` from the Mapping base-struct fields, which
+    /// only CmpMap populates with computed values at construction —
+    /// every other class passes `(1, 1)` to `astInitMapping` and
+    /// reports availability dynamically via `GetTranForward` /
+    /// `GetTranInverse`, which the Dump function never consults.
+    /// Override only where the C class passes computed flags.
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        (true, true)
+    }
+
     /// Whether this mapping should be protected from simplification.
     ///
     /// When true, `simplified()` returns self unchanged and `try_merge()`

@@ -417,6 +417,11 @@ impl Mapping for RateMap {
         self.inverted
     }
 
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        // C passes (1, 0) to astInitMapping (ratemap.c).
+        (true, false)
+    }
+
     fn do_not_simplify(&self) -> bool {
         self.do_not_simplify
     }

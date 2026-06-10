@@ -82,13 +82,20 @@ impl TranMap {
         let inv_a = map1.is_inverted();
         let inv_b = map2.is_inverted();
 
+        // The forward transformation applies map1 forwards and the inverse
+        // applies map2 backwards, so each direction is defined only when
+        // the corresponding component direction is (tranmap.c
+        // GetTranForward / GetTranInverse).
+        let tran_forward = map1.has_forward();
+        let tran_inverse = map2.has_inverse();
+
         Ok(Self {
             map1,
             map2,
             inverted: false,
             do_not_simplify: false,
-            tran_forward: true,
-            tran_inverse: true,
+            tran_forward,
+            tran_inverse,
             inv_a,
             inv_b,
         })
@@ -406,11 +413,19 @@ impl Mapping for TranMap {
     }
 
     fn has_forward(&self) -> bool {
-        self.tran_forward
+        if self.inverted {
+            self.tran_inverse
+        } else {
+            self.tran_forward
+        }
     }
 
     fn has_inverse(&self) -> bool {
-        self.tran_inverse
+        if self.inverted {
+            self.tran_forward
+        } else {
+            self.tran_inverse
+        }
     }
 
     fn do_not_simplify(&self) -> bool {
@@ -559,18 +574,31 @@ impl Serializable for TranMap {
         let map_a = mapping_from_node(node_a)?;
         let map_b = mapping_from_node(node_b)?;
 
+        // Definedness is dynamic in C (GetTranForward/GetTranInverse
+        // consult the components; the dumped base flags are always 1 for
+        // TranMap), so recompute from the loaded components rather than
+        // trusting the file. inv_a/inv_b give each component's invert
+        // state as applied, which may differ from its serialized state.
+        let tran_forward = if map_a.is_inverted() == inv_a {
+            map_a.has_forward()
+        } else {
+            map_a.has_inverse()
+        };
+        let tran_inverse = if map_b.is_inverted() == inv_b {
+            map_b.has_inverse()
+        } else {
+            map_b.has_forward()
+        };
         let mut tm = Self {
             map1: map_a,
             map2: map_b,
             inverted: false,
             do_not_simplify: false,
-            tran_forward: true,
-            tran_inverse: true,
+            tran_forward,
+            tran_inverse,
             inv_a,
             inv_b,
         };
-        tm.tran_forward = base.has_forward;
-        tm.tran_inverse = base.has_inverse;
         tm.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             tm.invert();

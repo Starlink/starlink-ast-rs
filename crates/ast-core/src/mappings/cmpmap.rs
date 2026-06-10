@@ -90,14 +90,20 @@ impl CmpMap {
         }
         let inv_a = first.is_inverted();
         let inv_b = second.is_inverted();
+        // Both the series forward path and the parallel forward path apply
+        // both components forwards, so each direction is defined only when
+        // it is defined for both components (cmpmap.c GetTranForward /
+        // GetTranInverse).
+        let tran_forward = first.has_forward() && second.has_forward();
+        let tran_inverse = first.has_inverse() && second.has_inverse();
         Ok(Self {
             first,
             second,
             kind,
             inverted: false,
             do_not_simplify: false,
-            tran_forward: true,
-            tran_inverse: true,
+            tran_forward,
+            tran_inverse,
             inv_a,
             inv_b,
         })
@@ -756,11 +762,23 @@ impl Mapping for CmpMap {
     }
 
     fn has_forward(&self) -> bool {
-        self.tran_forward
+        if self.inverted {
+            self.tran_inverse
+        } else {
+            self.tran_forward
+        }
     }
 
     fn has_inverse(&self) -> bool {
-        self.tran_inverse
+        if self.inverted {
+            self.tran_forward
+        } else {
+            self.tran_inverse
+        }
+    }
+
+    fn dump_tran_flags(&self) -> (bool, bool) {
+        (self.tran_forward, self.tran_inverse)
     }
 
     fn clone_box(&self) -> DynMapping {
