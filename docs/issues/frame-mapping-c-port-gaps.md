@@ -10,8 +10,8 @@ Work top to bottom; each entry cites the detailed section.
 
 1. **Transform-definedness flags** (6g, 6h, 6i) — **FIXED 2026-06-10**: CmpMap/TranMap now derive `tran_forward`/`tran_inverse` from their components, PolyMap/ChebyMap/MatrixMap override `has_forward`/`has_inverse`, and native dumps mirror C by writing `Fwd`/`Inv` from constructor-time flags via `Mapping::dump_tran_flags` (only CmpMap, RateMap, SelectorMap, SwitchMap, LutMap, MathMap pass computed values in C).
    Tests: `tests/test_tran_definedness.rs`.
-2. **PolyMap inverse priority + `astPolyTran`** (6h, section 1) — **FIXED 2026-06-10** (priority reorder in both transform paths; `PolyMap::poly_tran` ported with the C sampling/fitting/zeroing pipeline; tests in `tests/test_polymap.rs` and `tests/test_polytran.rs`).
-   Remaining: the fitschan SIP read path still uses the IterInverse fallback instead of calling poly_tran — see the section 1 PolyTran entry for the C-oracle threshold question that blocks adoption.
+2. **PolyMap inverse priority + `astPolyTran`** (6h, section 1) — **FIXED 2026-06-10**, including fitschan SIP adoption: the fit is verified bit-compatible with cminpack against a built reference libast, the previously-unknown C `IterInverse` default (`ncoeff_i == 0`, polymap.c:6311) is ported, and the FitsChan `SipReplace` attribute (default true) now drives the C PolyTran call in `wcs_matrix.rs`.
+   One deliberate deferral: ChebyMap keeps the iterative-inverse default disabled because the Rust Newton-Raphson machinery is power-basis-specific (C iterates through the virtual astTransform); noted in `chebymap.rs`.
 3. **FrameSet repair** (6b): `remove_frame` graph disconnection, full current-frame delegation (~113 missing forwards), `simplified()` must return a FrameSet, Current default = last frame.
 4. **SkyFrame `angle` + SkyTol** (6d): wrong bearing math and the dead 0.001-arcsec tolerance that should collapse FK5↔ICRS-class chains to UnitMap.
 5. **CmpFrame geometry + defaults** (6c): component-aware distance/angle/offset, MinAxes/MaxAxes 0/1000000 defaults, `"DOM1-DOM2"` domain default, attribute forwarding to components.
@@ -28,11 +28,11 @@ Work top to bottom; each entry cites the detailed section.
 
 Ordered roughly by impact.
 
-- **[HIGH→PORTED 2026-06-10] PolyMap — `astPolyTran`.**
-  `PolyMap::poly_tran` now ports polymap.c `ReplaceTransformation`/`SamplePoly1D`/`SamplePoly2D`/`FitPoly1D`/`FitPoly2D` (grid of `2*order` points per axis, unit-RMS column scaling, linear least squares via the `levenberg_marquardt` crate, insignificant-coefficient zeroing, increasing order with the `acc`/`maxacc`/`maxorder` acceptance rule, IterInverse cleared in the result); tests in `tests/test_polytran.rs`.
-  **Remaining blocker — fitschan SIP adoption** (`wcs_matrix.rs` still takes the IterInverse fallback): on the wcsconv SIP fixtures the fully-converged Rust fit reaches racc ≈ 6.5e-3 at order 7 (accepted, since maxacc = 0.01), but the C oracle outputs show C *rejected* its fit (exact CRPIX, no AP/BP, iterative-inverse behaviour) — C's racc must land above 0.01.
-  The polynomial space, sampling grid, scaling, and racc formula were all verified identical, so the most likely cause is cminpack `lmder1` stopping short of the minimum on this ill-conditioned order-7 problem; confirm against a built reference libast (instrument `ReplaceTransformation`'s racc per order on the sip2 header) before switching the fitschan path over.
-  The `FitsStore.dims` plumbing (NAXISn → PolyTran bounds) is already in place.
+- **[HIGH→PORTED 2026-06-10, adoption complete] PolyMap — `astPolyTran`.**
+  `PolyMap::poly_tran` ports polymap.c `ReplaceTransformation`/`SamplePoly1D`/`SamplePoly2D`/`FitPoly1D`/`FitPoly2D` (grid of `2*order` points per axis, unit-RMS column scaling, linear least squares via the `levenberg_marquardt` crate, insignificant-coefficient zeroing, increasing order with the `acc`/`maxacc`/`maxorder` acceptance rule, IterInverse cleared in the result); tests in `tests/test_polytran.rs`.
+  The fit was verified **bit-compatible with the reference C library** by building libast and probing `astPolyTran` on the sip2 header: per-order racc agrees to 7 significant figures (order 7: C 6.463631e-3 vs Rust 6.4636e-3) and the fitted inverse at the origin matches to 7 digits — neither minimiser is "more robust"; both fully converge on this linear problem.
+  The earlier fixture mismatch had a different cause entirely: the wcsconv cases pass `sipreplace=0` (so the C oracle never ran PolyTran there), and C's `IterInverse` *default* is `ncoeff_i == 0` (polymap.c:6311) — both now mirrored: the IterInverse default is ported, the FitsChan `SipReplace` attribute exists (default true, honoured pre-read by the test harness as in `wcsconverter.c:87`), and `wcs_matrix.rs` makes the real C PolyTran call with the IterInverse=1/Niter=6/Tol=1e-8 fallback.
+  The old workaround is gone; behaviour tests in `tests/test_fitschan_wcs.rs`.
 
 - **[HIGH] FluxFrame — `MakeFluxMapping` not ported.**
   C `fluxframe.c` converts between flux systems (FLXDN/FLXDNW/SFLUX/SFLUXW) using `SpecVal`.

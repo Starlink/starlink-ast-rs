@@ -92,6 +92,10 @@ pub struct FitsChan {
     fits_rounding: usize,
     /// Whether to use CD matrix notation (default false).
     cd_matrix: bool,
+    /// The SipReplace attribute (fitschan.c default 1): when reading a
+    /// SIP header, replace any supplied inverse by an astPolyTran fit
+    /// (falling back to the iterative inverse if the fit fails).
+    sip_replace: bool,
 }
 
 impl FitsChan {
@@ -109,6 +113,7 @@ impl FitsChan {
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
             cd_matrix: false,
+            sip_replace: true,
         }
     }
 
@@ -126,6 +131,7 @@ impl FitsChan {
             fits_digits: DEFAULT_FITS_DIGITS,
             fits_rounding: 10,
             cd_matrix: false,
+            sip_replace: true,
         })
     }
 
@@ -431,6 +437,13 @@ impl FitsChan {
         self.cd_matrix = use_cd;
     }
 
+    /// Set the SipReplace attribute (mirrors C `SipReplace`, default
+    /// true): controls whether reading a SIP header refits the inverse
+    /// via `PolyMap::poly_tran`.
+    pub fn set_sip_replace(&mut self, v: bool) {
+        self.sip_replace = v;
+    }
+
     /// Return whether CD matrix notation is enabled.
     pub fn cd_matrix(&self) -> bool {
         self.cd_matrix
@@ -590,7 +603,11 @@ impl Channel for FitsChan {
                 // creates a temporary FitsChan `ret` and deletes it
                 // after WcsToStore.
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsWcs);
-                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                primary.sip_replace = self.sip_replace;
+                for (_, st) in &mut alts {
+                    st.sip_replace = self.sip_replace;
+                }
                 let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
                 Ok(Some(obj))
             }
@@ -602,13 +619,21 @@ impl Channel for FitsChan {
                 // form, so we route through the multi-plane
                 // FitsWcs decoder to pick up secondary planes.
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsPc);
-                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                primary.sip_replace = self.sip_replace;
+                for (_, st) in &mut alts {
+                    st.sip_replace = self.sip_replace;
+                }
                 let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsIraf);
-                let (primary, alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
+                primary.sip_replace = self.sip_replace;
+                for (_, st) in &mut alts {
+                    st.sip_replace = self.sip_replace;
+                }
                 let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
                 Ok(Some(obj))
             }

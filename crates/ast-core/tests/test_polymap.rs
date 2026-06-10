@@ -94,9 +94,44 @@ fn polymap_defaults() {
         out_axis: 1,
     }];
     let m = PolyMap::new(1, 1, &terms, None).unwrap();
-    assert!(!m.iter_inverse());
+    // IterInverse defaults to "no inverse coefficients supplied"
+    // (polymap.c:6311), so this forward-only PolyMap iterates by default.
+    assert!(m.iter_inverse());
     assert_eq!(m.niter_inverse(), 4);
     assert!((m.tol_inverse() - 1e-6).abs() < 1e-15);
+}
+
+#[test]
+fn polymap_iter_inverse_default_follows_inverse_coefficients() {
+    // C: GetIterInverse defaults to (ncoeff_i == 0) — polymap.c:6311.
+    let fwd = vec![PolyTerm {
+        coeff: 2.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m = PolyMap::new(1, 1, &fwd, None).unwrap();
+    assert!(m.iter_inverse(), "no inverse coefficients: default on");
+    // The default makes the inverse usable immediately: x = y/2.
+    let pts = PointSet::from_columns(&[&[8.0_f64]]).unwrap();
+    let out = m.transform(&pts, false).unwrap();
+    assert!((out.point(0)[0] - 4.0).abs() < 1e-6);
+
+    let inv = vec![PolyTerm {
+        coeff: 0.5,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let m2 = PolyMap::new(1, 1, &fwd, Some(&inv)).unwrap();
+    assert!(
+        !m2.iter_inverse(),
+        "inverse coefficients present: default off"
+    );
+
+    // An explicit setting beats the default in both directions.
+    let mut m3 = PolyMap::new(1, 1, &fwd, None).unwrap();
+    m3.set_iter_inverse(false);
+    assert!(!m3.iter_inverse());
+    assert!(!m3.has_inverse());
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +297,10 @@ fn polymap_no_inverse_returns_bad() {
         powers: vec![2],
         out_axis: 1,
     }];
-    let m = PolyMap::new(1, 1, &fwd, None).unwrap();
+    // IterInverse defaults on for an inverse-less PolyMap
+    // (polymap.c:6311); disable it to exercise the no-inverse path.
+    let mut m = PolyMap::new(1, 1, &fwd, None).unwrap();
+    m.set_iter_inverse(false);
 
     let pts = PointSet::from_rows(vec![vec![3.0]]);
     let out = m.transform(&pts, false).unwrap();

@@ -42,7 +42,9 @@ pub struct PolyMap {
     nout: usize,
     forward: Vec<PolyTerm>,
     inverse: Option<Vec<PolyTerm>>,
-    iter_inverse: bool,
+    /// IterInverse attribute. `None` = unset; the effective default is
+    /// "no inverse coefficients supplied" (polymap.c:6311).
+    iter_inverse: Option<bool>,
     niter_inverse: usize,
     tol_inverse: f64,
     inverted: bool,
@@ -188,12 +190,12 @@ impl PolyMap {
             (None, Vec::new())
         };
 
-        Ok(Self {
+        let mut pm = Self {
             nin,
             nout,
             forward: fwd_vec,
             inverse: inv,
-            iter_inverse: false,
+            iter_inverse: None,
             niter_inverse: 4,
             tol_inverse: 1e-6,
             inverted: false,
@@ -203,20 +205,50 @@ impl PolyMap {
             forward_max_pows,
             inverse_by_output,
             inverse_max_pows,
-        })
+        };
+        // The IterInverse default may enable the iterative inverse
+        // immediately, so pre-build the Jacobian cache it relies on.
+        if pm.nin == pm.nout && pm.iter_inverse() {
+            pm.jacobian_terms = Some(pm.compute_jacobian_terms());
+        }
+        Ok(pm)
     }
 
-    /// Whether iterative (Levenberg-Marquardt) inverse is enabled.
+    /// Whether the iterative (Newton-Raphson) inverse is enabled.
+    ///
+    /// When unset, defaults to "no inverse coefficients were supplied"
+    /// — mirrors C `GetIterInverse` (polymap.c:6311), which makes a
+    /// forward-only PolyMap invertible out of the box.
     pub fn iter_inverse(&self) -> bool {
         self.iter_inverse
+            .unwrap_or_else(|| self.inverse.as_ref().is_none_or(|v| v.is_empty()))
     }
 
     /// Enable or disable the iterative inverse.
     pub fn set_iter_inverse(&mut self, v: bool) {
-        self.iter_inverse = v;
+        self.iter_inverse = Some(v);
         if v && self.nin == self.nout && self.jacobian_terms.is_none() {
             self.jacobian_terms = Some(self.compute_jacobian_terms());
         } else if !v {
+            self.jacobian_terms = None;
+        }
+    }
+
+    /// Whether IterInverse has been explicitly set. Mirrors C
+    /// `astTestIterInverse`.
+    pub fn test_iter_inverse(&self) -> bool {
+        self.iter_inverse.is_some()
+    }
+
+    /// Clear IterInverse back to its default. Mirrors C
+    /// `astClearIterInverse`.
+    pub fn clear_iter_inverse(&mut self) {
+        self.iter_inverse = None;
+        if self.nin == self.nout && self.iter_inverse() {
+            if self.jacobian_terms.is_none() {
+                self.jacobian_terms = Some(self.compute_jacobian_terms());
+            }
+        } else {
             self.jacobian_terms = None;
         }
     }
@@ -262,7 +294,7 @@ impl PolyMap {
     /// defined: inverse coefficients were supplied or the iterative
     /// inverse is enabled. Mirrors C `GetTranInverse` (polymap.c:2285).
     fn inverse_defined(&self) -> bool {
-        self.inverse.as_ref().is_some_and(|v| !v.is_empty()) || self.iter_inverse
+        self.inverse.as_ref().is_some_and(|v| !v.is_empty()) || self.iter_inverse()
     }
 
     /// Fit a replacement forward or inverse transformation by least
@@ -1155,7 +1187,7 @@ impl Mapping for PolyMap {
             // any supplied inverse coefficients (polymap.c:6092) — the
             // coefficients are typically only an approximation of the true
             // inverse (the FITS-SIP convention).
-            if self.iter_inverse {
+            if self.iter_inverse() {
                 // Try the cross-lane SIMD NR path when the `simd-eval` feature
                 // is built. It handles its own preconditions (shape, npoint
                 // threshold) and returns `Fell` when ineligible, in which case
@@ -1261,7 +1293,7 @@ impl Mapping for PolyMap {
                     outp[out_idx] = sum;
                 }
             }
-        } else if self.iter_inverse {
+        } else if self.iter_inverse() {
             // The iterative inverse takes priority over any supplied inverse
             // coefficients (polymap.c:6092).
             // Protocol-internal SIMD variant — see forward branch comment.
@@ -1424,11 +1456,11 @@ impl Mapping for PolyMap {
         let mut pm = PolyMap::new(self.nin, self.nout, new_fwd, new_inv)?;
 
         // Preserve attributes.
-        if self.iter_inverse {
-            pm.set_iter_inverse(true);
-            pm.set_niter_inverse(self.niter_inverse);
-            pm.set_tol_inverse(self.tol_inverse);
+        if let Some(v) = self.iter_inverse {
+            pm.set_iter_inverse(v);
         }
+        pm.set_niter_inverse(self.niter_inverse);
+        pm.set_tol_inverse(self.tol_inverse);
         if self.inverted {
             pm.invert();
         }
@@ -1705,9 +1737,15 @@ impl Serializable for PolyMap {
             }
         }
 
-        // Iterative inverse attributes.
-        if self.iter_inverse {
-            node.push_int("IterInv", 1, Some("Use an iterative inverse".to_string()));
+        // Iterative inverse attributes. C writes IterInv only when the
+        // attribute is explicitly set (TestIterInverse).
+        if let Some(v) = self.iter_inverse {
+            let comment = if v {
+                "Use an iterative inverse"
+            } else {
+                "Do not use an iterative inverse"
+            };
+            node.push_int("IterInv", v as i64, Some(comment.to_string()));
         }
         if self.niter_inverse != 4 {
             node.push_int(
@@ -1830,8 +1868,10 @@ impl Serializable for PolyMap {
             None
         };
 
-        // Read iterative inverse attributes.
-        let iter_inv = node.get_int("IterInv", 0) != 0;
+        // Read iterative inverse attributes. An absent IterInv leaves
+        // the attribute unset so the C default (no inverse coefficients
+        // supplied) applies.
+        let iter_inv = node.get_int_any("IterInv").map(|v| v != 0);
         let niter_inv = {
             let v = node.get_int("NiterInv", 4);
             if v <= 0 { 4 } else { v as usize }
@@ -1843,8 +1883,14 @@ impl Serializable for PolyMap {
 
         // Build directly rather than using `new()` to avoid re-validation
         // of terms that may include BAD_VALUE sentinel coefficients from the
-        // serialised format.
-        let jacobian_terms = if iter_inv && nin == nout {
+        // serialised format. The Jacobian cache is needed whenever the
+        // effective IterInverse (explicit or default) is on.
+        let iter_effective = iter_inv.unwrap_or_else(|| {
+            inverse
+                .as_ref()
+                .is_none_or(|v: &Vec<PolyTerm>| v.is_empty())
+        });
+        let jacobian_terms = if iter_effective && nin == nout {
             Some(compute_jacobian_terms_from(&forward, nin))
         } else {
             None

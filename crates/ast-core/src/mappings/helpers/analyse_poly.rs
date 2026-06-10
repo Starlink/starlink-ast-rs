@@ -579,14 +579,17 @@ mod tests {
 
     #[test]
     fn no_iter_inverse_returns_none() {
-        // PolyMap without iter_inverse cannot be analysed.
-        let pm = PolyMap::new(
+        // A PolyMap with the iterative inverse disabled cannot be
+        // analysed. IterInverse defaults on for an inverse-less PolyMap
+        // (polymap.c:6311), so disable it explicitly.
+        let mut pm = PolyMap::new(
             2,
             2,
             &[term(1.0, 1, 1, 0), term(1.0, 2, 0, 1), term(0.001, 1, 1, 1)],
             None,
         )
         .expect("polymap");
+        pm.set_iter_inverse(false);
         assert!(analyse_poly(&pm).expect("ok").is_none());
     }
 

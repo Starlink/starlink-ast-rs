@@ -129,6 +129,13 @@ fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> 
         // C `astGetEncoding` (fitschan.c:12466).
         let fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
         let mut fc = fc;
+        // C wcsconverter applies the attribute string *before* astRead
+        // (wcsconverter.c:87-113); SipReplace affects the read.
+        for (key, val) in &case.attrs {
+            if key.as_str() == "sipreplace" {
+                fc.set_sip_replace(val == "1" || val.eq_ignore_ascii_case("true"));
+            }
+        }
         let obj = fc
             .read()
             .map_err(|e| format!("read: {e}"))?
@@ -172,7 +179,8 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
                     fc_out.set_fits_rounding(r);
                 }
             }
-            // carlin, sipreplace, sipok -- not yet supported.
+            // sipreplace is read-side and applied in load_input.
+            // carlin, sipok -- not yet supported.
             _ => {}
         }
     }

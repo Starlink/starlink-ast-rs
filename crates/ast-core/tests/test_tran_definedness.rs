@@ -11,14 +11,19 @@ use ast_core::mappings::{
 };
 use ndarray::Array2;
 
-/// A 1-in/1-out PolyMap with forward coefficients only: y = x^2.
+/// A 1-in/1-out PolyMap with no usable inverse: forward coefficients
+/// only and the iterative inverse explicitly disabled (IterInverse
+/// otherwise *defaults on* when no inverse coefficients are supplied —
+/// polymap.c:6311).
 fn fwd_only_polymap() -> PolyMap {
     let fwd = vec![PolyTerm {
         coeff: 1.0,
         powers: vec![2],
         out_axis: 1,
     }];
-    PolyMap::new(1, 1, &fwd, None).unwrap()
+    let mut pm = PolyMap::new(1, 1, &fwd, None).unwrap();
+    pm.set_iter_inverse(false);
+    pm
 }
 
 #[test]
@@ -46,6 +51,9 @@ fn polymap_invert_swaps_definedness() {
 
 #[test]
 fn chebymap_forward_only_has_no_inverse() {
+    // Unlike PolyMap, ChebyMap keeps the iterative inverse disabled
+    // (the Rust NR machinery is power-basis-specific), so a
+    // forward-only ChebyMap genuinely has no inverse.
     let terms = vec![PolyTerm {
         coeff: 1.0,
         powers: vec![1],

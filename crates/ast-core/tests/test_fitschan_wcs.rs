@@ -289,3 +289,66 @@ fn jan_class_no_naxis_keyword() {
     // CLASS reader must infer naxis = 3 from CTYPE indices.
     let _obj = read_wcsconv_fixture("jan.fits-class");
 }
+
+// ===========================================================================
+// SipReplace: reading a SIP header refits the inverse via PolyTran
+// ===========================================================================
+
+#[test]
+fn sip_read_default_refits_inverse_via_polytran() {
+    // With SipReplace at its default (true), reading a SIP header
+    // replaces the inverse by an astPolyTran fit over three times the
+    // image area (fitschan.c:29346-29383). The fit on this header
+    // achieves ~6.5e-3 pixel accuracy (verified bit-compatible with
+    // the reference C library's cminpack fit), so pixel→sky→pixel
+    // round trips inside the image must land within 0.02 pixels.
+    let text = load_sip_header();
+    let mut fc = FitsChan::from_header(&text).unwrap();
+    fc.set_encoding(Encoding::FitsWcs);
+    let obj = fc.read().unwrap().expect("frameset");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("expected FrameSet");
+    };
+
+    let xs = [20.0_f64, 128.0, 230.0];
+    let ys = [40.0_f64, 128.0, 200.0];
+    let pix = PointSet::from_columns(&[&xs, &ys]).unwrap();
+    let sky = ast_core::mappings::Mapping::transform(&fs, &pix, true).unwrap();
+    let back = ast_core::mappings::Mapping::transform(&fs, &sky, false).unwrap();
+    for i in 0..3 {
+        assert!(
+            (back.point(i)[0] - xs[i]).abs() < 0.02 && (back.point(i)[1] - ys[i]).abs() < 0.02,
+            "round trip {i}: got ({}, {}), want ({}, {})",
+            back.point(i)[0],
+            back.point(i)[1],
+            xs[i],
+            ys[i]
+        );
+    }
+}
+
+#[test]
+fn sip_read_sipreplace_off_keeps_supplied_inverse() {
+    // With SipReplace disabled the supplied AP/BP inverse (or the
+    // IterInverse default when none is supplied) is used as-is.
+    let text = load_sip_header();
+    let mut fc = FitsChan::from_header(&text).unwrap();
+    fc.set_encoding(Encoding::FitsWcs);
+    fc.set_sip_replace(false);
+    let obj = fc.read().unwrap().expect("frameset");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("expected FrameSet");
+    };
+
+    let pix = PointSet::from_columns(&[&[128.0_f64], &[128.0_f64]]).unwrap();
+    let sky = ast_core::mappings::Mapping::transform(&fs, &pix, true).unwrap();
+    let back = ast_core::mappings::Mapping::transform(&fs, &sky, false).unwrap();
+    // sip.head carries explicit AP/BP approximate inverse coefficients;
+    // they are good to better than a pixel near the reference point.
+    assert!(
+        (back.point(0)[0] - 128.0).abs() < 1.0 && (back.point(0)[1] - 128.0).abs() < 1.0,
+        "round trip: got ({}, {})",
+        back.point(0)[0],
+        back.point(0)[1]
+    );
+}

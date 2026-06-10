@@ -201,25 +201,34 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
 
     // Create the 2-in, 2-out PolyMap for the SIP axes.
     let mut polymap = PolyMap::new(2, 2, &forward_terms, inv)?;
-    // Mirrors fitschan.c:29361-29382 in OBSERVED behaviour: C (under
-    // SipReplace=1, the default) calls astPolyTran(pmap, ncoeff_f==0,
-    // 0.0001, 0.01, 7, -dim, 2*dim) and falls back to IterInverse=1 /
-    // NiterInverse=6 / TolInverse=1e-8 when the fit fails — and for
-    // every SIP fixture in the wcsconv corpus the C fit *does* fail
-    // (the oracle outputs carry exact CRPIX values and no AP/BP, which
-    // only the iterative inverse produces). `PolyMap::poly_tran` is
-    // ported, but its fully-converged least-squares fit lands at
-    // racc ≈ 6.5e-3 < maxacc on those same headers — the opposite side
-    // of C's acceptance threshold, presumably because cminpack's
-    // lmder1 stops short of the minimum on this ill-conditioned
-    // problem. Until that can be confirmed against a built C oracle
-    // (and the threshold behaviour mirrored), take the fallback branch
-    // directly. The explicit-AP/BP case also mirrors observed C output
-    // (coefficients preserved verbatim).
-    if inverse_terms.is_empty() {
-        polymap.set_iter_inverse(true);
-        polymap.set_niter_inverse(6);
-        polymap.set_tol_inverse(1.0e-8);
+    // Mirrors fitschan.c:29346-29383: under SipReplace (default true)
+    // the inverse transformations supplied within SIP headers are often
+    // inaccurate, so replace the missing transformation — or any
+    // existing inverse — by fitting a polynomial to samples of the
+    // supplied transformation over an area three times the image size.
+    // If the fit fails to reach 0.01 pixel accuracy, fall back to the
+    // (slower) iterative inverse. With SipReplace off, the PolyMap is
+    // used as supplied; an inverse-less PolyMap still inverts because
+    // IterInverse defaults on when no inverse coefficients exist
+    // (polymap.c:6311).
+    if store.sip_replace {
+        let lbnd = [
+            store.dims[0].map_or(-1000.0, |d| -d),
+            store.dims[1].map_or(-1000.0, |d| -d),
+        ];
+        let ubnd = [
+            store.dims[0].map_or(2000.0, |d| 2.0 * d),
+            store.dims[1].map_or(2000.0, |d| 2.0 * d),
+        ];
+        let replace_forward = forward_terms.is_empty();
+        match polymap.poly_tran(replace_forward, 0.0001, 0.01, 7, &lbnd, &ubnd)? {
+            Some(fitted) => polymap = fitted,
+            None => {
+                polymap.set_iter_inverse(true);
+                polymap.set_niter_inverse(6);
+                polymap.set_tol_inverse(1.0e-8);
+            }
+        }
     }
 
     if naxis == 2 {

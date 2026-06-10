@@ -22,6 +22,8 @@ pub(crate) struct FitsStore {
     /// `dim` array C threads through WcsMapFrm/SIPMapping for the
     /// astPolyTran sampling bounds.
     pub dims: Vec<Option<f64>>,
+    /// The reading FitsChan's SipReplace attribute (C default 1).
+    pub sip_replace: bool,
     /// PC rotation matrix, shape [row][col] (PCi_j).
     pub pc: Vec<Vec<Option<f64>>>,
     /// CD matrix, shape [row][col] (CDi_j).
@@ -151,6 +153,7 @@ impl FitsStore {
             crval: vec![None; naxis],
             cdelt: vec![None; naxis],
             dims: vec![None; naxis],
+            sip_replace: true,
             pc: vec![vec![None; naxis]; naxis],
             cd: vec![vec![None; naxis]; naxis],
             ctype: vec![None; naxis],
