@@ -265,6 +265,106 @@ impl PolyMap {
         self.inverse.as_ref().is_some_and(|v| !v.is_empty()) || self.iter_inverse
     }
 
+    /// Fit a replacement forward or inverse transformation by least
+    /// squares, returning a new PolyMap that uses the fit.
+    ///
+    /// Mirrors `astPolyTran` (polymap.c:4746 / ReplaceTransformation):
+    /// the *other* transformation is sampled on a regular grid of
+    /// `2*order` points per axis over the rectangle `[lbnd, ubnd]`
+    /// (in the replaced transformation's input space), and polynomials
+    /// of increasing order are fitted until the RMS residual is below
+    /// `acc` or `maxorder` is reached; the max-order fit is accepted
+    /// if its RMS residual is below `maxacc`.
+    ///
+    /// `forward` selects the (effective-orientation) transformation to
+    /// replace. `maxorder` is one more than the maximum power, so 3
+    /// allows a quadratic; values below 2 are treated as 2.
+    ///
+    /// Returns `Ok(None)` — without an error — when no fit achieves
+    /// `maxacc`. The returned PolyMap always has `IterInverse`
+    /// cleared, so the new fit is used in preference to any iterative
+    /// inverse. Only 1- and 2-dimensional PolyMaps with equal input
+    /// and output counts are supported, and the transformation being
+    /// sampled must have explicit coefficients (an iterative inverse
+    /// cannot be sampled).
+    pub fn poly_tran(
+        &self,
+        forward: bool,
+        acc: f64,
+        maxacc: f64,
+        maxorder: usize,
+        lbnd: &[f64],
+        ubnd: &[f64],
+    ) -> AstResult<Option<PolyMap>> {
+        use crate::mappings::Mapping;
+
+        // Dimensional checks (polymap.c:5132-5143).
+        let ndim = self.nin();
+        if self.nout() != ndim {
+            return Err(AstError::new(
+                ErrorCode::Badni,
+                format!(
+                    "astPolyTran(PolyMap): supplied PolyMap has different number of inputs \
+                     ({ndim}) and outputs ({})",
+                    self.nout()
+                ),
+            ));
+        }
+        if ndim > 2 {
+            return Err(AstError::new(
+                ErrorCode::Badni,
+                format!(
+                    "astPolyTran(PolyMap): supplied PolyMap has too many inputs and outputs \
+                     ({ndim}) - must be 1 or 2"
+                ),
+            ));
+        }
+
+        // The transformation to be sampled must have explicit
+        // coefficients (polymap.c:5145-5158): C tests ncoeff_f/ncoeff_i
+        // directly, so an iterative inverse does not qualify.
+        if forward == self.inverted {
+            if self.forward.is_empty() {
+                return Err(AstError::new(
+                    ErrorCode::Nodef,
+                    "astPolyTran(PolyMap): supplied PolyMap has no forward transformation",
+                ));
+            }
+        } else if self.inverse.as_ref().is_none_or(|v| v.is_empty()) {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                "astPolyTran(PolyMap): supplied PolyMap has no inverse transformation",
+            ));
+        }
+
+        let Some(new_terms) = crate::mappings::helpers::poly_tran::replace_transformation(
+            self, forward, acc, maxacc, maxorder, lbnd, ubnd,
+        )?
+        else {
+            return Ok(None);
+        };
+
+        // Store the fitted terms in the original-orientation slot for
+        // the replaced transformation (polymap.c StoreArrays swaps when
+        // the PolyMap is inverted).
+        let replace_original_forward = forward != self.inverted;
+        let mut pm = if replace_original_forward {
+            PolyMap::new(self.nin, self.nout, &new_terms, self.inverse.as_deref())?
+        } else {
+            PolyMap::new(self.nin, self.nout, &self.forward, Some(&new_terms))?
+        };
+
+        // Carry over attributes as astCopy would, except IterInverse,
+        // which C clears so the new fit takes priority.
+        pm.niter_inverse = self.niter_inverse;
+        pm.tol_inverse = self.tol_inverse;
+        pm.do_not_simplify = self.do_not_simplify;
+        if self.inverted {
+            pm.invert();
+        }
+        Ok(Some(pm))
+    }
+
     /// Gather forward terms per output axis for the 2D SIMD prototype.
     ///
     /// Returns `(out0_terms, out1_terms, [max_p0, max_p1])`. Only valid when
@@ -1051,8 +1151,26 @@ impl Mapping for PolyMap {
                 }
             }
         } else {
-            // Inverse transform.
-            if let Some(ref inv_terms) = self.inverse {
+            // Inverse transform. The iterative inverse takes priority over
+            // any supplied inverse coefficients (polymap.c:6092) — the
+            // coefficients are typically only an approximation of the true
+            // inverse (the FITS-SIP convention).
+            if self.iter_inverse {
+                // Try the cross-lane SIMD NR path when the `simd-eval` feature
+                // is built. It handles its own preconditions (shape, npoint
+                // threshold) and returns `Fell` when ineligible, in which case
+                // we drop through to the scalar NR. The SIMD path computes the
+                // same NR fixed point with the same niter/tol, so behaviour is
+                // identical when it runs — only timing differs.
+                #[cfg(feature = "simd-eval")]
+                {
+                    use super::polymap_simd::SimdPath;
+                    if self.inverse_simd_2d_into(pts, out)? == SimdPath::Took {
+                        return Ok(());
+                    }
+                }
+                self.newton_raphson_inverse(pts, out, BAD_VALUE)?;
+            } else if let Some(ref inv_terms) = self.inverse {
                 // Explicit inverse terms: the inverse maps from nout-space
                 // to nin-space. Input powers have length nout, output goes
                 // to nin axes.
@@ -1078,21 +1196,6 @@ impl Mapping for PolyMap {
                         }
                     }
                 }
-            } else if self.iter_inverse {
-                // Try the cross-lane SIMD NR path when the `simd-eval` feature
-                // is built. It handles its own preconditions (shape, npoint
-                // threshold) and returns `Fell` when ineligible, in which case
-                // we drop through to the scalar NR. The SIMD path computes the
-                // same NR fixed point with the same niter/tol, so behaviour is
-                // identical when it runs — only timing differs.
-                #[cfg(feature = "simd-eval")]
-                {
-                    use super::polymap_simd::SimdPath;
-                    if self.inverse_simd_2d_into(pts, out)? == SimdPath::Took {
-                        return Ok(());
-                    }
-                }
-                self.newton_raphson_inverse(pts, out, BAD_VALUE)?;
             } else {
                 // No inverse available: fill with BAD.
                 for i in 0..pts.npoint() {
@@ -1158,6 +1261,22 @@ impl Mapping for PolyMap {
                     outp[out_idx] = sum;
                 }
             }
+        } else if self.iter_inverse {
+            // The iterative inverse takes priority over any supplied inverse
+            // coefficients (polymap.c:6092).
+            // Protocol-internal SIMD variant — see forward branch comment.
+            #[cfg(feature = "simd-eval")]
+            {
+                use super::polymap_simd::SimdPath;
+                if self.inverse_simd_2d_into_nan(pts, out)? == SimdPath::Took {
+                    return Ok(());
+                }
+            }
+            // Fallback: scalar NR with the NaN sentinel — emits f64::NAN
+            // directly for invalid inputs and singular Jacobian, so
+            // downstream NaN-aware stages receive the protocol-canonical
+            // sentinel with no post-pass needed.
+            self.newton_raphson_inverse(pts, out, f64::NAN)?;
         } else if let Some(ref inv_terms) = self.inverse {
             let inv_by_output = self.inverse_by_output.as_ref().unwrap();
             let mut power_table: Vec<Vec<f64>> = self
@@ -1177,20 +1296,6 @@ impl Mapping for PolyMap {
                     outp[out_idx] = sum;
                 }
             }
-        } else if self.iter_inverse {
-            // Protocol-internal SIMD variant — see forward branch comment.
-            #[cfg(feature = "simd-eval")]
-            {
-                use super::polymap_simd::SimdPath;
-                if self.inverse_simd_2d_into_nan(pts, out)? == SimdPath::Took {
-                    return Ok(());
-                }
-            }
-            // Fallback: scalar NR with the NaN sentinel — emits f64::NAN
-            // directly for invalid inputs and singular Jacobian, so
-            // downstream NaN-aware stages receive the protocol-canonical
-            // sentinel with no post-pass needed.
-            self.newton_raphson_inverse(pts, out, f64::NAN)?;
         } else {
             // No inverse available: emit NaN (was BAD).
             for i in 0..pts.npoint() {

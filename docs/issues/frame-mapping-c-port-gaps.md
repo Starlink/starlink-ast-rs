@@ -10,7 +10,8 @@ Work top to bottom; each entry cites the detailed section.
 
 1. **Transform-definedness flags** (6g, 6h, 6i) — **FIXED 2026-06-10**: CmpMap/TranMap now derive `tran_forward`/`tran_inverse` from their components, PolyMap/ChebyMap/MatrixMap override `has_forward`/`has_inverse`, and native dumps mirror C by writing `Fwd`/`Inv` from constructor-time flags via `Mapping::dump_tran_flags` (only CmpMap, RateMap, SelectorMap, SwitchMap, LutMap, MathMap pass computed values in C).
    Tests: `tests/test_tran_definedness.rs`.
-2. **PolyMap inverse priority + `astPolyTran`** (6h, section 1): IterInverse must beat explicit inverse coefficients; port PolyTran and unwind the `fitschan/wcs_matrix.rs:205` workaround.
+2. **PolyMap inverse priority + `astPolyTran`** (6h, section 1) — **FIXED 2026-06-10** (priority reorder in both transform paths; `PolyMap::poly_tran` ported with the C sampling/fitting/zeroing pipeline; tests in `tests/test_polymap.rs` and `tests/test_polytran.rs`).
+   Remaining: the fitschan SIP read path still uses the IterInverse fallback instead of calling poly_tran — see the section 1 PolyTran entry for the C-oracle threshold question that blocks adoption.
 3. **FrameSet repair** (6b): `remove_frame` graph disconnection, full current-frame delegation (~113 missing forwards), `simplified()` must return a FrameSet, Current default = last frame.
 4. **SkyFrame `angle` + SkyTol** (6d): wrong bearing math and the dead 0.001-arcsec tolerance that should collapse FK5↔ICRS-class chains to UnitMap.
 5. **CmpFrame geometry + defaults** (6c): component-aware distance/angle/offset, MinAxes/MaxAxes 0/1000000 defaults, `"DOM1-DOM2"` domain default, attribute forwarding to components.
@@ -27,11 +28,11 @@ Work top to bottom; each entry cites the detailed section.
 
 Ordered roughly by impact.
 
-- **[HIGH] PolyMap — `astPolyTran` not ported.**
-  C `polymap.c` fits an inverse (or forward) polynomial by least squares (`PolyTran`/`FitPoly1D`/`FitPoly2D`, iterative order increase, `acc`/`maxacc`/`maxorder`).
-  Nothing in Rust (`grep poly_tran` → 0 implementations).
-  `crates/ast-core/src/fitschan/wcs_matrix.rs:205-208` explicitly works around the gap by enabling only the iterative inverse for SIP headers — exactly the C-divergence this report exists to eliminate.
-  Fix: port `PolyTran` and its fitting machinery, then remove the wcs_matrix workaround.
+- **[HIGH→PORTED 2026-06-10] PolyMap — `astPolyTran`.**
+  `PolyMap::poly_tran` now ports polymap.c `ReplaceTransformation`/`SamplePoly1D`/`SamplePoly2D`/`FitPoly1D`/`FitPoly2D` (grid of `2*order` points per axis, unit-RMS column scaling, linear least squares via the `levenberg_marquardt` crate, insignificant-coefficient zeroing, increasing order with the `acc`/`maxacc`/`maxorder` acceptance rule, IterInverse cleared in the result); tests in `tests/test_polytran.rs`.
+  **Remaining blocker — fitschan SIP adoption** (`wcs_matrix.rs` still takes the IterInverse fallback): on the wcsconv SIP fixtures the fully-converged Rust fit reaches racc ≈ 6.5e-3 at order 7 (accepted, since maxacc = 0.01), but the C oracle outputs show C *rejected* its fit (exact CRPIX, no AP/BP, iterative-inverse behaviour) — C's racc must land above 0.01.
+  The polynomial space, sampling grid, scaling, and racc formula were all verified identical, so the most likely cause is cminpack `lmder1` stopping short of the minimum on this ill-conditioned order-7 problem; confirm against a built reference libast (instrument `ReplaceTransformation`'s racc per order on the sip2 header) before switching the fitschan path over.
+  The `FitsStore.dims` plumbing (NAXISn → PolyTran bounds) is already in place.
 
 - **[HIGH] FluxFrame — `MakeFluxMapping` not ported.**
   C `fluxframe.c` converts between flux systems (FLXDN/FLXDNW/SFLUX/SFLUXW) using `SpecVal`.
@@ -359,7 +360,7 @@ Findings:
   C `GetTranForward` returns whether forward coefficients exist and `GetTranInverse` returns `ncoeff_i || IterInverse` (`polymap.c:2222,2285`); neither Rust class overrides the trait defaults, so a forward-only PolyMap claims to have an inverse.
   Same bug class as the CmpMap finding in section 6g — fix together.
 
-- **[HIGH] PolyMap — explicit inverse coefficients take priority over IterInverse.**
+- **[HIGH] PolyMap — explicit inverse coefficients take priority over IterInverse.** *(FIXED 2026-06-10.)*
   C uses the iterative inverse *in preference to* any supplied inverse coefficients whenever IterInverse is set (`polymap.c:6092`); Rust uses explicit inverse terms first and iterates only when none exist (`polymap.rs:1036-1081`).
   The common FITS-SIP configuration supplies *approximate* inverse coefficients AND sets IterInverse, expecting iteration; Rust silently uses the approximation.
 

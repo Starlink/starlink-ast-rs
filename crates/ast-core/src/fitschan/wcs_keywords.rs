@@ -192,6 +192,9 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
             lookup_with_fallback(cards, "CRVAL", Some(axis_num), s, |c, k| c.get_float(k));
         store.cdelt[i] =
             lookup_with_fallback(cards, "CDELT", Some(axis_num), s, |c, k| c.get_float(k));
+        // NAXISn is never alternate-suffixed; used for the astPolyTran
+        // sampling bounds when reading SIP headers.
+        store.dims[i] = cards.get_float(&format!("NAXIS{axis_num}"));
         store.ctype[i] =
             lookup_with_fallback(cards, "CTYPE", Some(axis_num), s, |c, k| c.get_string(k));
         store.cunit[i] =

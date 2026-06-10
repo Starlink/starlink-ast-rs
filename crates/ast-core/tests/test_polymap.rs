@@ -1138,3 +1138,43 @@ fn polymap_bulk_nr_inverse_bad_values() {
     assert_eq!(inv.point(3)[0], BAD_VALUE);
     assert_eq!(inv.point(3)[1], BAD_VALUE);
 }
+
+// ---------------------------------------------------------------------------
+// IterInverse priority over explicit inverse coefficients
+// ---------------------------------------------------------------------------
+
+#[test]
+fn iter_inverse_takes_priority_over_explicit_inverse_coefficients() {
+    // C uses the iterative inverse in preference to any inverse
+    // coefficients whenever IterInverse is set (polymap.c:6092) — the
+    // supplied coefficients are typically only an approximation (the
+    // FITS-SIP convention). Forward: y = 2x. Supplied inverse is the
+    // deliberately wrong x = y so the two paths are distinguishable.
+    let fwd = vec![PolyTerm {
+        coeff: 2.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let inv = vec![PolyTerm {
+        coeff: 1.0,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let mut m = PolyMap::new(1, 1, &fwd, Some(&inv)).unwrap();
+
+    // Without IterInverse the explicit (approximate) coefficients are used.
+    let pts = PointSet::from_columns(&[&[8.0_f64]]).unwrap();
+    let out = m.transform(&pts, false).unwrap();
+    assert!((out.point(0)[0] - 8.0).abs() < 1e-12);
+
+    // With IterInverse set, the iterative inverse must win: x = y/2.
+    m.set_iter_inverse(true);
+    m.set_niter_inverse(20);
+    m.set_tol_inverse(1e-10);
+    let out = m.transform(&pts, false).unwrap();
+    assert!(
+        (out.point(0)[0] - 4.0).abs() < 1e-6,
+        "expected iterative inverse (4.0), got {}",
+        out.point(0)[0]
+    );
+}

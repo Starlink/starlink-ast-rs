@@ -1,6 +1,7 @@
 //! Shared utilities for Mapping implementations.
 
 pub mod analyse_poly;
+pub(crate) mod poly_tran;
 pub mod scale_poly_inputs;
 
 use crate::constants::BAD_VALUE;

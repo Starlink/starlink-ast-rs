@@ -18,6 +18,10 @@ pub(crate) struct FitsStore {
     pub crval: Vec<Option<f64>>,
     /// Pixel scale per axis (CDELTi).
     pub cdelt: Vec<Option<f64>>,
+    /// Image dimension per axis (NAXISi), when known. Mirrors the
+    /// `dim` array C threads through WcsMapFrm/SIPMapping for the
+    /// astPolyTran sampling bounds.
+    pub dims: Vec<Option<f64>>,
     /// PC rotation matrix, shape [row][col] (PCi_j).
     pub pc: Vec<Vec<Option<f64>>>,
     /// CD matrix, shape [row][col] (CDi_j).
@@ -146,6 +150,7 @@ impl FitsStore {
             crpix: vec![None; naxis],
             crval: vec![None; naxis],
             cdelt: vec![None; naxis],
+            dims: vec![None; naxis],
             pc: vec![vec![None; naxis]; naxis],
             cd: vec![vec![None; naxis]; naxis],
             ctype: vec![None; naxis],
