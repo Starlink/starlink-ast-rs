@@ -532,27 +532,9 @@ impl Frame for BasicFrame {
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
-        if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
-            return Ok(BAD_VALUE);
-        }
-        // Vectors BA and BC.
-        let n = self.naxes;
-        let mut dot = 0.0;
-        let mut mag_ba = 0.0;
-        let mut mag_bc = 0.0;
-        for i in 0..n {
-            let ba = a[i] - b[i];
-            let bc = c[i] - b[i];
-            dot += ba * bc;
-            mag_ba += ba * ba;
-            mag_bc += bc * bc;
-        }
-        let denom = (mag_ba * mag_bc).sqrt();
-        if denom == 0.0 {
-            return Ok(0.0);
-        }
-        let cos_angle = (dot / denom).clamp(-1.0, 1.0);
-        Ok(cos_angle.acos())
+        // Frame-class algorithm (frame.c:1230-1320): signed in 2-D,
+        // AST__BAD for bad inputs or zero-length vectors.
+        Ok(super::cartesian_angle(a, b, c))
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
@@ -560,8 +542,16 @@ impl Frame for BasicFrame {
             return Ok(vec![BAD_VALUE; self.naxes]);
         }
         let total = self.distance(from, to)?;
-        if total == 0.0 || is_bad(total) {
-            // Can't determine direction; return from point.
+        if is_bad(total) {
+            return Ok(vec![BAD_VALUE; self.naxes]);
+        }
+        // Coincident points define no direction: C returns bad
+        // coordinates unless the requested offset is zero
+        // (frame.c:8470-8490).
+        if total == 0.0 {
+            if dist != 0.0 {
+                return Ok(vec![BAD_VALUE; self.naxes]);
+            }
             return Ok(from.to_vec());
         }
         let scale = dist / total;

@@ -142,12 +142,15 @@ fn distance_bad_value() {
 
 #[test]
 fn angle_right_angle() {
+    // In 2 dimensions the Frame angle is *signed* (frame.c:1230-1320):
+    // positive sense rotates from +Y towards +X, so going from A on
+    // the +X axis to C on the +Y axis is -pi/2.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let a = &[1.0, 0.0];
     let b = &[0.0, 0.0];
     let c = &[0.0, 1.0];
     let angle = frame.angle(a, b, c).unwrap();
-    assert!((angle - PI / 2.0).abs() < 1e-12);
+    assert!((angle + PI / 2.0).abs() < 1e-12, "got {angle}");
 }
 
 #[test]

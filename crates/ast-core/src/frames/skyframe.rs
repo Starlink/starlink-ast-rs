@@ -861,17 +861,34 @@ impl Frame for SkyFrame {
         let v1 = pal::dcs2c(from[lp], from[bp]);
         let v2 = pal::dcs2c(to[lp], to[bp]);
 
-        let axis_vec = pal::dvxv(&v1, &v2);
+        // C reverses the vector order (palDvxv(v2, v1) — skyframe.c:7585)
+        // and rotates by +offset; keep that exact form so results match
+        // bit-for-bit even where rounding noise dominates the cross
+        // product (nearly coincident points).
+        let axis_vec = pal::dvxv(&v2, &v1);
         let (axis_norm, axis_len) = pal::dvn(&axis_vec);
 
-        if axis_len < 1e-20 {
-            return Ok(from.to_vec());
+        // Coincident or diametrically opposite points define no great
+        // circle. C generates output only when the offset is an exact
+        // multiple of pi (rotating v1 by cos(offset)); otherwise the
+        // result is bad (skyframe.c:7592-7615).
+        if axis_len == 0.0 {
+            if dist.sin() == 0.0 {
+                let scale = dist.cos();
+                let v3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale];
+                let (lon, lat) = pal::dcc2s(&v3);
+                let mut result = vec![0.0; 2];
+                result[lp] = lon;
+                result[bp] = lat;
+                return Ok(result);
+            }
+            return Ok(vec![BAD_VALUE; 2]);
         }
 
         let rot_vec = [
-            -axis_norm[0] * dist,
-            -axis_norm[1] * dist,
-            -axis_norm[2] * dist,
+            axis_norm[0] * dist,
+            axis_norm[1] * dist,
+            axis_norm[2] * dist,
         ];
 
         let rmat = pal::dav2m(&rot_vec);

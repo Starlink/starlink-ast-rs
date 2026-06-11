@@ -16,7 +16,8 @@ use super::{DynFrame, Frame, FrameRef, FrameSet};
 /// `CmpFrame` has N1 + N2 axes. Axes 1..=N1 are served by the first
 /// child and axes N1+1..=N1+N2 by the second.
 ///
-/// Geometry methods (`distance`, `angle`, `offset`) use Euclidean
+/// Geometry methods (`distance`, `angle`, `offset`) delegate to the
+/// component frames (great-circle for sky components) and use Euclidean
 /// (Cartesian) formulae over the full compound axis space.
 /// Per-axis operations (`format`, `unformat`, `norm`) are delegated
 /// to the owning child frame.
@@ -43,6 +44,18 @@ pub struct CmpFrame {
     match_end_opt: Option<bool>,
     preserve_axes_opt: Option<bool>,
     permute_opt: Option<bool>,
+    /// Epoch (TDB MJD) set on the compound frame itself. Setting it
+    /// also forwards to both components (cmpframe.c SetEpoch).
+    epoch: Option<f64>,
+    /// Observer attributes set on the compound frame itself; setters
+    /// forward to both components (cmpframe.c SetObsLat etc.).
+    obs_lat: Option<f64>,
+    obs_lon: Option<f64>,
+    obs_alt: Option<f64>,
+    dtai: Option<f64>,
+    /// Cache for the computed default Domain ("<dom1>-<dom2>" / "CMP"),
+    /// invalidated whenever a component becomes reachable mutably.
+    domain_default: std::cell::OnceCell<String>,
 }
 
 impl CmpFrame {
@@ -64,6 +77,12 @@ impl CmpFrame {
             match_end_opt: None,
             preserve_axes_opt: None,
             permute_opt: None,
+            epoch: None,
+            obs_lat: None,
+            obs_lon: None,
+            obs_alt: None,
+            dtai: None,
+            domain_default: std::cell::OnceCell::new(),
         }
     }
 
@@ -104,6 +123,63 @@ impl CmpFrame {
         self.ident = if s.is_empty() { None } else { Some(s) };
     }
 
+    /// Epoch as TDB MJD: the compound frame's own value if set, else
+    /// the first component's set value, else the second's, else J2000
+    /// (cmpframe.c:3965-3990 Test-chain).
+    pub fn epoch_mjd(&self) -> f64 {
+        self.epoch
+            .or_else(|| super::frame_epoch_if_set(self.frame1.as_ref()))
+            .or_else(|| super::frame_epoch_if_set(self.frame2.as_ref()))
+            .unwrap_or(51544.5)
+    }
+
+    /// Whether Epoch has been set on the compound frame itself or on
+    /// either component.
+    pub fn test_epoch(&self) -> bool {
+        self.epoch.is_some()
+            || super::frame_epoch_if_set(self.frame1.as_ref()).is_some()
+            || super::frame_epoch_if_set(self.frame2.as_ref()).is_some()
+    }
+
+    /// Set the Epoch (TDB MJD), forwarding to both components
+    /// (cmpframe.c:8800-8812).
+    pub fn set_epoch_mjd(&mut self, mjd: f64) {
+        self.epoch = Some(mjd);
+        super::set_frame_epoch_mjd(self.frame1.as_mut(), mjd);
+        super::set_frame_epoch_mjd(self.frame2.as_mut(), mjd);
+    }
+
+    /// Set the observer's geodetic latitude (radians), forwarding to
+    /// both components.
+    pub fn set_obs_lat(&mut self, v: f64) {
+        self.obs_lat = Some(v);
+        super::set_frame_obs(self.frame1.as_mut(), 0, v);
+        super::set_frame_obs(self.frame2.as_mut(), 0, v);
+    }
+
+    /// Set the observer's geodetic longitude (radians), forwarding to
+    /// both components.
+    pub fn set_obs_lon(&mut self, v: f64) {
+        self.obs_lon = Some(v);
+        super::set_frame_obs(self.frame1.as_mut(), 1, v);
+        super::set_frame_obs(self.frame2.as_mut(), 1, v);
+    }
+
+    /// Set the observer's altitude (metres), forwarding to both
+    /// components.
+    pub fn set_obs_alt(&mut self, v: f64) {
+        self.obs_alt = Some(v);
+        super::set_frame_obs(self.frame1.as_mut(), 2, v);
+        super::set_frame_obs(self.frame2.as_mut(), 2, v);
+    }
+
+    /// Set TAI-UTC (seconds), forwarding to both components.
+    pub fn set_dtai(&mut self, v: f64) {
+        self.dtai = Some(v);
+        super::set_frame_obs(self.frame1.as_mut(), 3, v);
+        super::set_frame_obs(self.frame2.as_mut(), 3, v);
+    }
+
     /// Number of axes contributed by the first child frame.
     pub fn naxes1(&self) -> usize {
         self.frame1.naxes()
@@ -132,11 +208,13 @@ impl CmpFrame {
     /// integrity recomputation on enclosing FrameSets. Pair with
     /// `FrameSet::with_integrity` when needed.
     pub fn frame1_mut(&mut self) -> &mut dyn Frame {
+        self.domain_default = std::cell::OnceCell::new();
         self.frame1.as_mut()
     }
 
     /// Mutable access to the second child frame — escape hatch.
     pub fn frame2_mut(&mut self) -> &mut dyn Frame {
+        self.domain_default = std::cell::OnceCell::new();
         self.frame2.as_mut()
     }
 
@@ -178,6 +256,20 @@ impl fmt::Debug for CmpFrame {
     }
 }
 
+/// Whether every axis of `f` ultimately belongs to a plain Cartesian
+/// [`BasicFrame`] — the CmpFrame Angle Cartesian-shortcut condition
+/// (cmpframe.c:1170-1189, which tests each axis's primary frame class).
+fn frame_is_cartesian(f: &dyn Frame) -> bool {
+    let any = f.as_any();
+    if any.is::<super::BasicFrame>() {
+        return true;
+    }
+    if let Some(cf) = any.downcast_ref::<CmpFrame>() {
+        return frame_is_cartesian(cf.frame1.as_ref()) && frame_is_cartesian(cf.frame2.as_ref());
+    }
+    false
+}
+
 impl Frame for CmpFrame {
     fn naxes(&self) -> usize {
         self.frame1.naxes() + self.frame2.naxes()
@@ -192,11 +284,48 @@ impl Frame for CmpFrame {
     }
 
     fn domain(&self) -> &str {
-        self.domain.as_deref().unwrap_or("")
+        if let Some(d) = self.domain.as_deref() {
+            return d;
+        }
+        // Default: the component domains joined with a hyphen when
+        // either is non-empty, else "CMP" (cmpframe.c:3595-3634).
+        self.domain_default.get_or_init(|| {
+            let dom1 = self.frame1.domain();
+            let dom2 = self.frame2.domain();
+            if dom1.is_empty() && dom2.is_empty() {
+                "CMP".to_string()
+            } else {
+                format!("{dom1}-{dom2}")
+            }
+        })
     }
 
     fn test_domain(&self) -> bool {
         self.domain.is_some()
+    }
+
+    fn obs_lat(&self) -> Option<f64> {
+        self.obs_lat
+            .or_else(|| self.frame1.obs_lat())
+            .or_else(|| self.frame2.obs_lat())
+    }
+
+    fn obs_lon(&self) -> Option<f64> {
+        self.obs_lon
+            .or_else(|| self.frame1.obs_lon())
+            .or_else(|| self.frame2.obs_lon())
+    }
+
+    fn obs_alt(&self) -> Option<f64> {
+        self.obs_alt
+            .or_else(|| self.frame1.obs_alt())
+            .or_else(|| self.frame2.obs_alt())
+    }
+
+    fn dtai(&self) -> Option<f64> {
+        self.dtai
+            .or_else(|| self.frame1.dtai())
+            .or_else(|| self.frame2.dtai())
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -215,35 +344,56 @@ impl Frame for CmpFrame {
         if point_has_bad(a) || point_has_bad(b) {
             return Ok(BAD_VALUE);
         }
-        let sum: f64 = a
-            .iter()
-            .zip(b.iter())
-            .map(|(&ai, &bi)| (ai - bi) * (ai - bi))
-            .sum();
-        Ok(sum.sqrt())
+        // Project both points into the component frames through the
+        // perm array and combine the component distances in quadrature
+        // (cmpframe.c:2475-2560).
+        let n = self.naxes();
+        let n1 = self.frame1.naxes();
+        let mut p1 = vec![0.0; n];
+        let mut p2 = vec![0.0; n];
+        for i in 0..n {
+            p1[self.perm[i]] = a[i];
+            p2[self.perm[i]] = b[i];
+        }
+        let d1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
+        let d2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
+        if is_bad(d1) || is_bad(d2) {
+            return Ok(BAD_VALUE);
+        }
+        Ok((d1 * d1 + d2 * d2).sqrt())
     }
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
             return Ok(BAD_VALUE);
         }
+        // When every axis belongs to a plain Cartesian frame, use the
+        // Frame-class angle; otherwise project into the components and
+        // use whichever single component defines the angle
+        // (cmpframe.c:1170-1232).
+        if frame_is_cartesian(self) {
+            return Ok(super::cartesian_angle(a, b, c));
+        }
         let n = self.naxes();
-        let mut dot = 0.0;
-        let mut mag_ba = 0.0;
-        let mut mag_bc = 0.0;
+        let n1 = self.frame1.naxes();
+        let mut pa = vec![0.0; n];
+        let mut pb = vec![0.0; n];
+        let mut pc = vec![0.0; n];
         for i in 0..n {
-            let ba = a[i] - b[i];
-            let bc = c[i] - b[i];
-            dot += ba * bc;
-            mag_ba += ba * ba;
-            mag_bc += bc * bc;
+            pa[self.perm[i]] = a[i];
+            pb[self.perm[i]] = b[i];
+            pc[self.perm[i]] = c[i];
         }
-        let denom = (mag_ba * mag_bc).sqrt();
-        if denom == 0.0 {
-            return Ok(0.0);
+        let ang1 = self.frame1.angle(&pa[..n1], &pb[..n1], &pc[..n1])?;
+        let ang2 = self.frame2.angle(&pa[n1..], &pb[n1..], &pc[n1..])?;
+        // Defined only when exactly one component defines it.
+        if is_bad(ang1) {
+            Ok(ang2)
+        } else if is_bad(ang2) {
+            Ok(ang1)
+        } else {
+            Ok(BAD_VALUE)
         }
-        let cos_angle = (dot / denom).clamp(-1.0, 1.0);
-        Ok(cos_angle.acos())
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
@@ -251,16 +401,42 @@ impl Frame for CmpFrame {
         if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
             return Ok(vec![BAD_VALUE; n]);
         }
-        let total = self.distance(from, to)?;
-        if total == 0.0 || is_bad(total) {
-            return Ok(from.to_vec());
+        // Project into the components, split the offset between them
+        // in proportion to the component distances (so the path passes
+        // through the second point), apply each component's own offset,
+        // and un-permute (cmpframe.c:5997-6195).
+        let n1 = self.frame1.naxes();
+        let mut p1 = vec![0.0; n];
+        let mut p2 = vec![0.0; n];
+        for i in 0..n {
+            p1[self.perm[i]] = from[i];
+            p2[self.perm[i]] = to[i];
         }
-        let scale = dist / total;
-        let result: Vec<f64> = from
-            .iter()
-            .zip(to.iter())
-            .map(|(&f, &t)| f + scale * (t - f))
-            .collect();
+        let d1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
+        let d2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
+        if is_bad(d1) || is_bad(d2) {
+            return Ok(vec![BAD_VALUE; n]);
+        }
+        let total = (d1 * d1 + d2 * d2).sqrt();
+        let (off1, off2) = if total == 0.0 {
+            if dist != 0.0 {
+                return Ok(vec![BAD_VALUE; n]);
+            }
+            (0.0, 0.0)
+        } else {
+            (dist * d1 / total, dist * d2 / total)
+        };
+        let r1 = self.frame1.offset(&p1[..n1], &p2[..n1], off1)?;
+        let r2 = self.frame2.offset(&p1[n1..], &p2[n1..], off2)?;
+        let mut p3 = r1;
+        p3.extend(r2);
+        let mut result = vec![0.0; n];
+        for i in 0..n {
+            result[i] = p3[self.perm[i]];
+            if is_bad(result[i]) {
+                return Ok(vec![BAD_VALUE; n]);
+            }
+        }
         Ok(result)
     }
 
@@ -307,6 +483,11 @@ impl Frame for CmpFrame {
         cmp.match_end_opt = self.match_end_opt;
         cmp.preserve_axes_opt = self.preserve_axes_opt;
         cmp.permute_opt = self.permute_opt;
+        cmp.epoch = self.epoch;
+        cmp.obs_lat = self.obs_lat;
+        cmp.obs_lon = self.obs_lon;
+        cmp.obs_alt = self.obs_alt;
+        cmp.dtai = self.dtai;
         Box::new(cmp)
     }
 
@@ -317,7 +498,9 @@ impl Frame for CmpFrame {
     // matching the simpler convention sufficient for `astFindFrame`'s
     // use of these attributes from the *template* side.
     fn min_axes(&self) -> usize {
-        self.min_axes_opt.unwrap_or_else(|| self.naxes())
+        // C default: 0 (cmpframe.c:3702-3760) so a CmpFrame template
+        // matches targets of any axis count.
+        self.min_axes_opt.unwrap_or(0)
     }
     fn set_min_axes(&mut self, n: usize) {
         self.min_axes_opt = Some(n);
@@ -326,7 +509,8 @@ impl Frame for CmpFrame {
         self.min_axes_opt.is_some()
     }
     fn max_axes(&self) -> usize {
-        self.max_axes_opt.unwrap_or_else(|| self.naxes())
+        // C default: 1000000 (cmpframe.c:3638-3690).
+        self.max_axes_opt.unwrap_or(1_000_000)
     }
     fn set_max_axes(&mut self, n: usize) {
         self.max_axes_opt = Some(n);
@@ -1964,6 +2148,188 @@ mod tests {
         let mut axes = vec![3i32, 7, 1];
         renumber_axes(&mut axes);
         assert_eq!(axes, vec![1, 2, 0]);
+    }
+
+    fn sky_basic_cmp() -> CmpFrame {
+        CmpFrame::new(
+            Box::new(SkyFrame::new(SkySystem::Fk5)),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // Component-aware geometry (oracle values from the reference C library)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn distance_combines_components_in_quadrature() {
+        // Sky part: half a great circle (pi); frame part: 4.
+        let cf = sky_basic_cmp();
+        let p1 = [0.0, 0.0, 0.0];
+        let p2 = [std::f64::consts::PI, 0.0, 4.0];
+        let d = cf.distance(&p1, &p2).unwrap();
+        assert!((d - 5.086217101254).abs() < 1e-9, "got {d}");
+    }
+
+    #[test]
+    fn offset_splits_between_components() {
+        // Oracle: half the total distance lands at (pi/2, 0, 2).
+        let cf = sky_basic_cmp();
+        let p1 = [0.0, 0.0, 0.0];
+        let p2 = [std::f64::consts::PI, 0.0, 4.0];
+        let d = cf.distance(&p1, &p2).unwrap();
+        let p3 = cf.offset(&p1, &p2, d / 2.0).unwrap();
+        assert!(
+            (p3[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-9,
+            "got {p3:?}"
+        );
+        assert!(p3[1].abs() < 1e-9);
+        assert!((p3[2] - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn offset_coincident_points_nonzero_offset_is_bad() {
+        // The coincident branch needs an exactly zero cross product;
+        // at general positions FP contraction noise in palDvxv keeps
+        // it (and the C library, oracle-verified) on the rotation
+        // path, so probe at the origin where the products are exact.
+        let cf = sky_basic_cmp();
+        let p = [0.0, 0.0, 1.0];
+        let out = cf.offset(&p, &p, 1.0).unwrap();
+        assert!(
+            out.iter().all(|&v| v == crate::constants::BAD_VALUE),
+            "got {out:?}"
+        );
+    }
+
+    #[test]
+    fn angle_uses_the_single_defined_component() {
+        // Sky axes vary, basic axis constant → SkyFrame's angle (+pi/2).
+        let cf = sky_basic_cmp();
+        let a = [0.0, 0.1, 7.0];
+        let b = [0.0, 0.0, 7.0];
+        let c = [0.1, 0.0, 7.0];
+        let ang = cf.angle(&a, &b, &c).unwrap();
+        assert!(
+            (ang - std::f64::consts::FRAC_PI_2).abs() < 1e-9,
+            "got {ang}"
+        );
+
+        // Only the basic axis varies → 1-D Cartesian angle (pi).
+        let a3 = [0.0, 0.0, 9.0];
+        let c3 = [0.0, 0.0, 5.0];
+        let ang = cf.angle(&a3, &b, &c3).unwrap();
+        assert!((ang - std::f64::consts::PI).abs() < 1e-9, "got {ang}");
+
+        // Both components give a defined angle → undefined (BAD).
+        let a4 = [0.0, 0.1, 9.0];
+        let c4 = [0.1, 0.0, 5.0];
+        assert_eq!(cf.angle(&a4, &b, &c4).unwrap(), crate::constants::BAD_VALUE);
+    }
+
+    #[test]
+    fn angle_all_basic_components_is_cartesian() {
+        // All primary frames are plain Frames → parent Cartesian angle
+        // (unsigned acos for 3 axes).
+        let cf = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        let a = [1.0, 0.0, 0.0];
+        let b = [0.0, 0.0, 0.0];
+        let c = [0.0, 1.0, 1.0];
+        let ang = cf.angle(&a, &b, &c).unwrap();
+        assert!(
+            (ang - std::f64::consts::FRAC_PI_2).abs() < 1e-9,
+            "got {ang}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Attribute defaults (oracle: MinAxes=0, MaxAxes=1000000, Domain "SKY-")
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn min_max_axes_defaults_match_c() {
+        let cf = sky_basic_cmp();
+        assert_eq!(Frame::min_axes(&cf), 0);
+        assert_eq!(Frame::max_axes(&cf), 1_000_000);
+        // Explicit settings still respected.
+        let mut cf = cf;
+        Frame::set_min_axes(&mut cf, 3);
+        Frame::set_max_axes(&mut cf, 3);
+        assert_eq!(Frame::min_axes(&cf), 3);
+        assert_eq!(Frame::max_axes(&cf), 3);
+    }
+
+    #[test]
+    fn domain_default_joins_component_domains() {
+        // Oracle: SkyFrame + (empty-domain) basic Frame → "SKY-".
+        let cf = sky_basic_cmp();
+        assert_eq!(Frame::domain(&cf), "SKY-");
+
+        // Both components blank → "CMP".
+        let cf2 = CmpFrame::new(
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        assert_eq!(Frame::domain(&cf2), "CMP");
+
+        // Explicit Domain wins.
+        let mut cf3 = sky_basic_cmp();
+        cf3.set_domain("FRED");
+        assert_eq!(Frame::domain(&cf3), "FRED");
+    }
+
+    // -----------------------------------------------------------------------
+    // Epoch / observer forwarding (oracle: astSetD(cf,"Epoch") reaches
+    // the child SkyFrame)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn set_epoch_forwards_to_components() {
+        let mut cf = sky_basic_cmp();
+        let mjd = crate::pal::epj2d(1980.0);
+        cf.set_epoch_mjd(mjd);
+        assert!((cf.epoch_mjd() - mjd).abs() < 1e-9);
+        let sky = cf.frame1().as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert!((sky.epoch_mjd() - mjd).abs() < 1e-9);
+    }
+
+    #[test]
+    fn epoch_falls_back_to_component_value() {
+        // Epoch set only on the component is visible through the
+        // CmpFrame (cmpframe.c:3965-3990 Test-chain).
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        let mjd = crate::pal::epj2d(1975.0);
+        sky.set_epoch_mjd(mjd);
+        let cf = CmpFrame::new(
+            Box::new(sky),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        assert!(
+            (cf.epoch_mjd() - mjd).abs() < 1e-9,
+            "got {}",
+            cf.epoch_mjd()
+        );
+    }
+
+    #[test]
+    fn obs_lat_set_and_fallback() {
+        let mut cf = sky_basic_cmp();
+        cf.set_obs_lat(0.5);
+        assert_eq!(Frame::obs_lat(&cf), Some(0.5));
+        let sky = cf.frame1().as_any().downcast_ref::<SkyFrame>().unwrap();
+        assert_eq!(Frame::obs_lat(sky), Some(0.5));
+
+        // Fallback: set only on the component.
+        let mut sky2 = SkyFrame::new(SkySystem::Fk5);
+        sky2.set_obs_lat(0.25);
+        let cf2 = CmpFrame::new(
+            Box::new(sky2),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        assert_eq!(Frame::obs_lat(&cf2), Some(0.25));
     }
 
     #[test]

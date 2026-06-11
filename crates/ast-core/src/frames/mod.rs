@@ -438,3 +438,131 @@ pub fn validate_permutation(perm: &[usize], naxes: usize) -> AstResult<()> {
     }
     Ok(())
 }
+
+/// Cartesian angle subtended at `b` by `a` and `c` — the Frame-class
+/// algorithm (frame.c:1230-1320): AST__BAD for bad inputs or
+/// zero-length vectors; in 2 dimensions the result is the *signed*
+/// angle (positive sense from axis 2 to axis 1) folded into ±π;
+/// otherwise the unsigned `acos` form.
+pub(crate) fn cartesian_angle(a: &[f64], b: &[f64], c: &[f64]) -> f64 {
+    use crate::constants::BAD_VALUE;
+    use crate::mappings::helpers::is_bad;
+
+    let naxes = b.len();
+    let mut sla = 0.0;
+    let mut slc = 0.0;
+    let mut ab = vec![0.0; naxes];
+    let mut cb = vec![0.0; naxes];
+    for i in 0..naxes {
+        if is_bad(a[i]) || is_bad(b[i]) || is_bad(c[i]) {
+            return BAD_VALUE;
+        }
+        ab[i] = a[i] - b[i];
+        cb[i] = c[i] - b[i];
+        sla += ab[i] * ab[i];
+        slc += cb[i] * cb[i];
+    }
+    if sla == 0.0 || slc == 0.0 {
+        return BAD_VALUE;
+    }
+    if naxes == 2 {
+        let anga = ab[0].atan2(ab[1]);
+        let angc = cb[0].atan2(cb[1]);
+        crate::pal::drange(angc - anga)
+    } else {
+        let sp: f64 = (0..naxes).map(|i| ab[i] * cb[i]).sum();
+        (sp / (sla * slc).sqrt()).clamp(-1.0, 1.0).acos()
+    }
+}
+
+/// The Epoch (TDB MJD) of a frame *if explicitly set*, looked up per
+/// concrete class. Stands in for C's virtual `astTestEpoch` /
+/// `astGetEpoch` pair, which the `Frame` trait does not yet expose.
+pub(crate) fn frame_epoch_if_set(f: &dyn Frame) -> Option<f64> {
+    let any = f.as_any();
+    if let Some(sf) = any.downcast_ref::<SkyFrame>() {
+        return sf.test_epoch().then(|| sf.epoch_mjd());
+    }
+    if let Some(sf) = any.downcast_ref::<SpecFrame>() {
+        return sf.test_epoch().then(|| sf.epoch_mjd());
+    }
+    if let Some(tf) = any.downcast_ref::<TimeFrame>() {
+        return tf.test_epoch().then(|| tf.epoch_mjd());
+    }
+    if let Some(df) = any.downcast_ref::<DSBSpecFrame>() {
+        return df.spec().test_epoch().then(|| df.epoch_mjd());
+    }
+    if let Some(bf) = any.downcast_ref::<BasicFrame>() {
+        return bf.epoch();
+    }
+    if let Some(cf) = any.downcast_ref::<CmpFrame>() {
+        return cf.test_epoch().then(|| cf.epoch_mjd());
+    }
+    None
+}
+
+/// Set the Epoch (TDB MJD) on a frame, per concrete class. Classes
+/// without an epoch setter are skipped (C stores Epoch on the Frame
+/// base struct for every class; the Rust BasicFrame only has a
+/// year-based setter and FluxFrame none, so those are left alone).
+pub(crate) fn set_frame_epoch_mjd(f: &mut dyn Frame, mjd: f64) {
+    let any = f.as_any_mut();
+    if let Some(sf) = any.downcast_mut::<SkyFrame>() {
+        sf.set_epoch_mjd(mjd);
+    } else if let Some(sf) = any.downcast_mut::<SpecFrame>() {
+        sf.set_epoch_mjd(mjd);
+    } else if let Some(tf) = any.downcast_mut::<TimeFrame>() {
+        tf.set_epoch_mjd(mjd);
+    } else if let Some(df) = any.downcast_mut::<DSBSpecFrame>() {
+        df.set_epoch_mjd(mjd);
+    } else if let Some(cf) = any.downcast_mut::<CmpFrame>() {
+        cf.set_epoch_mjd(mjd);
+    }
+}
+
+/// Set an observer attribute on a frame, per concrete class. The
+/// `which` selector: 0 = ObsLat, 1 = ObsLon, 2 = ObsAlt, 3 = Dtai.
+pub(crate) fn set_frame_obs(f: &mut dyn Frame, which: usize, v: f64) {
+    macro_rules! fwd {
+        ($t:ty) => {
+            if let Some(x) = f.as_any_mut().downcast_mut::<$t>() {
+                match which {
+                    0 => x.set_obs_lat(v),
+                    1 => x.set_obs_lon(v),
+                    2 => x.set_obs_alt(v),
+                    _ => x.set_dtai(v),
+                }
+                return;
+            }
+        };
+    }
+    fwd!(SkyFrame);
+    fwd!(TimeFrame);
+    if let Some(x) = f.as_any_mut().downcast_mut::<SpecFrame>() {
+        // SpecFrame has no Dtai setter.
+        match which {
+            0 => x.set_obs_lat(v),
+            1 => x.set_obs_lon(v),
+            2 => x.set_obs_alt(v),
+            _ => {}
+        }
+        return;
+    }
+    if let Some(x) = f.as_any_mut().downcast_mut::<DSBSpecFrame>() {
+        match which {
+            0 => x.set_obs_lat(v),
+            1 => x.set_obs_lon(v),
+            2 => x.set_obs_alt(v),
+            _ => {}
+        }
+        return;
+    }
+    if let Some(x) = f.as_any_mut().downcast_mut::<CmpFrame>() {
+        match which {
+            0 => x.set_obs_lat(v),
+            1 => x.set_obs_lon(v),
+            2 => x.set_obs_alt(v),
+            _ => x.set_dtai(v),
+        }
+    }
+}

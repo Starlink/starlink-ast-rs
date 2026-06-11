@@ -114,11 +114,13 @@ fn cmpframe_snapshot() {
 
 #[test]
 fn cmpframe_angle() {
+    // All-Cartesian CmpFrame uses the Frame-class angle, which is
+    // *signed* in 2 dimensions (frame.c:1230-1320): A on +X to C on
+    // +Y is -pi/2.
     let cmp = CmpFrame::new(make_frame(1), make_frame(1));
-    // Right angle at the origin: (1,0) - (0,0) - (0,1).
     let a = &[1.0, 0.0];
     let b = &[0.0, 0.0];
     let c = &[0.0, 1.0];
     let angle = cmp.angle(a, b, c).unwrap();
-    assert!((angle - PI / 2.0).abs() < 1e-12);
+    assert!((angle + PI / 2.0).abs() < 1e-12, "got {angle}");
 }

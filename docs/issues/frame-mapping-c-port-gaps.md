@@ -16,7 +16,9 @@ Work top to bottom; each entry cites the detailed section.
    Tests: `tests/test_frameset_repair.rs`. Still open from 6b: variants stub, `convert` member-frame iteration (blocked on ConvertX), `map_split`/`RemoveRegions` overrides, AST__ALLFRAMES.
 4. **SkyFrame `angle` + SkyTol** (6d) — **FIXED 2026-06-11**: `angle` now uses vertex bearings with the signed difference, the permuted-axes π/2 correction, and AST__BAD for coincident points (oracle-matched against the built C library); SkyTol defaults to 0.001 arcsec and the TestSlaUnit gate (14-probe-point sphere grid) now replaces sub-tolerance conversion chains with a UnitMap at all three mapping-construction sites.
    Correction to the original finding: the ICRS↔FK5 frame bias (~23 mas) *exceeds* the default 1 mas tolerance, so that chain correctly survives at defaults (C-verified); the gate fires for genuinely sub-tolerance alignments or raised SkyTol.
-5. **CmpFrame geometry + defaults** (6c): component-aware distance/angle/offset, MinAxes/MaxAxes 0/1000000 defaults, `"DOM1-DOM2"` domain default, attribute forwarding to components.
+5. **CmpFrame geometry + defaults** (6c) — **FIXED 2026-06-11** (oracle-matched): distance combines component distances in quadrature, offset splits proportionally with per-component application, angle uses the Frame-class algorithm when all primary frames are Cartesian and otherwise the exactly-one-component-defined rule; MinAxes/MaxAxes default to 0/1000000; Domain defaults to `"<DOM1>-<DOM2>"` (oracle: `"SKY-"` with a blank second domain) or `"CMP"`; Epoch/ObsLat/ObsLon/ObsAlt/Dtai setters forward to both components with the C Test-chain on the getters.
+   This work also fixed the section-6 BasicFrame `angle` (signed 2-D, degenerate→BAD via a shared `cartesian_angle` helper) and `offset` (coincident+nonzero→BAD), and the 6d SkyFrame `offset` degenerate case, since the CmpFrame combination rules depend on them.
+   Platform note: the coincident/degenerate branches require an *exactly* zero cross product or distance; FP contraction in the vendored PAL keeps general-position "coincident" points off those branches in both libraries (oracle-verified), and the SkyFrame cross-product argument order now mirrors C so even the noise-regime outputs agree.
 6. **SpecFrame SpecOrigin** (6e): MakeSpecMapping steps 0/9 and system-change rescaling.
 7. **Frame base** (6): `astConvert`/ConvertX, matchsub cast-retry, 2-D signed `angle`, `offset` BAD semantics, printf Format + Digits, then the missing method family (Offset2/Ax\*/Resolve/Intersect/NormBox/MatchAxes/ActiveUnit/PrimaryFrame — unwinding the two fitschan `primary_frame` copies).
 8. **Mapping base** (6a): `rate` interval-search continue-vs-break and h0 seed; `linear_approx` all-BAD success case.
@@ -123,11 +125,11 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
   C `astMatch_` (`frame.c:15497`) retries a failed match by casting the template down to the target's class (`astCast`), re-fixing `Domain`, and re-invoking Match — this is what lets a specialised template (e.g. SkyFrame, or a Frame vs a CmpFrame) align with a plainer target sharing its Domain.
   Without it `astConvert(basicframe_FRED, cmpframe_FRED)` style alignments fail.
 
-- **[HIGH] Frame — `angle` wrong in 2-D and for degenerate vectors.**
+- **[HIGH] Frame — `angle` wrong in 2-D and for degenerate vectors.** *(FIXED 2026-06-11, shared `cartesian_angle` helper.)*
   C `Angle` (`frame.c:1230-1320`) returns a *signed* angle (`palDrange(angc - anga)`, range ±π) for 2-axis frames and AST__BAD when either vector has zero length or any input is bad.
   Rust (`basic.rs:534`) always returns the unsigned `acos` form and returns `0.0` for zero-length vectors.
 
-- **[HIGH] Frame — `offset` coincident-point behavior.**
+- **[HIGH] Frame — `offset` coincident-point behavior.** *(FIXED 2026-06-11.)*
   C `Offset` (`frame.c:8470-8490`) returns all-AST__BAD output when the two points are coincident and the requested offset is non-zero (and `point1` when offset is zero).
   Rust (`basic.rs:558`) returns `from` unchanged in both cases.
 
@@ -233,20 +235,20 @@ Compared `cmpframe.c` against `frames/cmpframe.rs`.
 The Match/SubFrame machinery (PartMatch, GenAxisSelection, GoodPerm analogues in `cmpframe_match`/`partition_selection`/`cmpframe_sub_frame`) is a genuine port with good test coverage, and `norm`/`perm_axes` handle the perm array correctly.
 The gaps are in the geometry methods, attribute defaults, and attribute forwarding.
 
-- **[HIGH] CmpFrame — `distance`/`angle`/`offset` are Cartesian-only.**
+- **[HIGH] CmpFrame — `distance`/`angle`/`offset` are Cartesian-only.** *(FIXED 2026-06-11.)*
   C projects points into the component frames through the perm array and delegates: `Distance` (`cmpframe.c:2475-2560`) combines the two component distances in quadrature, `Offset` (`cmpframe.c:6163-6164`) splits the offset per component, and `Angle` (`cmpframe.c:1170-1240`) uses the Cartesian parent implementation *only* when every axis's primary frame is a plain `Frame`, otherwise the component path.
   Rust (`cmpframe.rs:214-265`) computes raw Euclidean math over the external coordinates for all three, giving wrong results whenever a component is a SkyFrame (the standard sky+spectral cube case).
   `Resolve` (`cmpframe.c:7868`) is likewise component-aware and has no Rust counterpart at all (cross-ref section 6 missing-method family).
 
-- **[HIGH] CmpFrame — MinAxes/MaxAxes defaults are wrong.**
+- **[HIGH] CmpFrame — MinAxes/MaxAxes defaults are wrong.** *(FIXED 2026-06-11.)*
   C defaults are `0` and `1000000` when unset (`cmpframe.c:3680-3760`), so a CmpFrame template matches targets of any axis count; Rust defaults both to `naxes()` (`cmpframe.rs:319-336`, with a comment acknowledging the divergence).
   This silently disables the C behavior where `astFindFrame` with a CmpFrame template can match larger or smaller targets via PartMatch's extra-axis handling.
 
-- **[HIGH] CmpFrame — Domain default is empty.**
+- **[HIGH] CmpFrame — Domain default is empty.** *(FIXED 2026-06-11.)*
   C `GetDomain` (`cmpframe.c:3595-3634`) returns `"<DOM1>-<DOM2>"` (component domains joined with a hyphen, recursing through nested CmpFrames) or `"CMP"` when both are blank; Rust returns `""` (`cmpframe.rs:194`).
   Domain strings drive `find_frame` domainlist gating and FITS-WCS bookkeeping, so e.g. `"SKY-SPECTRUM"` lookups fail.
 
-- **[MED] CmpFrame — Epoch/ObsLat/ObsLon/ObsAlt/Dtai not forwarded to components.**
+- **[MED] CmpFrame — Epoch/ObsLat/ObsLon/ObsAlt/Dtai not forwarded to components.** *(FIXED 2026-06-11 via per-class downcast helpers — the Frame trait lacks epoch/observer setters, so BasicFrame (year-only setter) and FluxFrame components are skipped; revisit when the trait grows setters.)*
   C `SetEpoch` (`cmpframe.c:8800-8812`) sets the parent value *and* both components (same pattern for the Obs\*/Dtai setters), and `GetEpoch` (`cmpframe.c:3917`) falls back to frame1's value (then frame2) when unset on the CmpFrame itself.
   Rust CmpFrame has no epoch accessor and inherits the `None`-returning trait defaults for `obs_lat`/`obs_lon`/`obs_alt`/`dtai`, so observer/epoch context set at the compound level never reaches a SkyFrame/SpecFrame component.
 
@@ -272,7 +274,7 @@ The confirmed divergences:
   C defaults SkyTol to 0.001 arcsec (`skyframe.c:11549`) and `MakeSkyMapping` transforms NTEST probe points through the constructed SlaMap, replacing it with a UnitMap when the maximum shift is below the smaller of the two frames' SkyTol (`skyframe.c:10740-10772`).
   Rust defaulted `sky_tol` to 0.0 and no conversion path consulted it, so sub-tolerance chains never collapsed to UnitMap.
 
-- **[MED] SkyFrame — `offset` degenerate-case handling.**
+- **[MED] SkyFrame — `offset` degenerate-case handling.** *(FIXED 2026-06-11, incl. mirroring C's cross-product argument order for noise-regime bit parity.)*
   For coincident or antipodal points C (`skyframe.c:7592-7615`) returns output only when `sin(offset) == 0` (rotating v1 by the multiple of π via `cos(offset)` scaling) and AST__BAD otherwise; Rust (`skyframe.rs:851-853`) returns `from` unchanged whenever `|v1×v2| < 1e-20` regardless of the requested offset.
 
 - **[MED] SkyFrame — Epoch default ignores the FK4 rule.**

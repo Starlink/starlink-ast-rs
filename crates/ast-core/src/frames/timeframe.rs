@@ -392,6 +392,12 @@ impl TimeFrame {
         }
     }
 
+    /// Whether the Epoch attribute has been explicitly set. Mirrors
+    /// `astTestEpoch`.
+    pub fn test_epoch(&self) -> bool {
+        self.epoch.is_some()
+    }
+
     /// Set the epoch as MJD.
     pub fn set_epoch_mjd(&mut self, mjd: f64) {
         self.epoch = Some(mjd);
