@@ -555,3 +555,85 @@ fn test_bad_value_transform() {
     let v = out.point(0)[0];
     assert_eq!(v, BAD_VALUE, "BAD_VALUE should propagate");
 }
+
+// ===========================================================================
+// SpecOrigin: offset spectral frames (oracle values from the reference C
+// library; RestFreq 1.420405752 GHz, default VRAD units km/s)
+// ===========================================================================
+
+fn vrad_lsrk() -> SpecFrame {
+    let mut sf = SpecFrame::new(SpecSystem::Vradio);
+    sf.set_std_of_rest(StdOfRest::Lsrk);
+    sf.set_rest_freq(1.420405752e9);
+    sf
+}
+
+#[test]
+fn convert_applies_spec_origins() {
+    // Offset frame -> offset frame: value + origin1 - origin2.
+    let mut f1 = vrad_lsrk();
+    f1.set_spec_origin(10.0);
+    let mut f2 = vrad_lsrk();
+    f2.set_spec_origin(25.0);
+    let fs = Frame::convert(&f1, &f2, &[]).unwrap().expect("conversion");
+    let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
+    let out = Mapping::transform(&fs, &pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] + 10.0).abs() < 1e-9,
+        "got {}",
+        out.point(0)[0]
+    );
+}
+
+#[test]
+fn convert_offset_to_absolute_applies_origin() {
+    let mut f1 = vrad_lsrk();
+    f1.set_spec_origin(10.0);
+    let f2 = vrad_lsrk();
+    let fs = Frame::convert(&f1, &f2, &[]).unwrap().expect("conversion");
+    let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
+    let out = Mapping::transform(&fs, &pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 15.0).abs() < 1e-9,
+        "got {}",
+        out.point(0)[0]
+    );
+}
+
+#[test]
+fn align_spec_offset_aligns_offset_values() {
+    // With AlignSpecOffset set on both frames the offset values align
+    // directly (fitschan.c... specframe.c:2947-2965 step 9).
+    let mut f1 = vrad_lsrk();
+    f1.set_spec_origin(10.0);
+    f1.set_align_spec_offset(true);
+    let mut f2 = vrad_lsrk();
+    f2.set_spec_origin(25.0);
+    f2.set_align_spec_offset(true);
+    let fs = Frame::convert(&f1, &f2, &[]).unwrap().expect("conversion");
+    let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
+    let out = Mapping::transform(&fs, &pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 5.0).abs() < 1e-9,
+        "got {}",
+        out.point(0)[0]
+    );
+}
+
+#[test]
+fn set_system_rescales_spec_origin() {
+    // Oracle: VRAD origin 10 km/s becomes 1.42035837236405 GHz when
+    // the System changes to FREQ, and 10.0000000000761 km/s coming
+    // back (round-trip drift through the relativistic formulae).
+    let mut sf = vrad_lsrk();
+    sf.set_spec_origin(10.0);
+    sf.set_system(SpecSystem::Freq);
+    let o = sf.spec_origin().unwrap();
+    assert!(
+        (o - 1.42035837236405).abs() < 1e-9,
+        "VRAD->FREQ origin: got {o}"
+    );
+    sf.set_system(SpecSystem::Vradio);
+    let o = sf.spec_origin().unwrap();
+    assert!((o - 10.0).abs() < 1e-8, "FREQ->VRAD origin: got {o}");
+}

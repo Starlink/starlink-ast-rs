@@ -1,10 +1,11 @@
 //! The spectral coordinate frame (SpecFrame).
 
 use crate::constants::BAD_VALUE;
+use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{ast_equal, is_bad};
-use crate::mappings::{CmpMap, Composition, DynMapping, SpecCvtType, SpecMap, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, SpecCvtType, SpecMap, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
 use crate::units::unit_mapper;
 
@@ -369,8 +370,17 @@ impl SpecFrame {
 
     /// Set the spectral coordinate system.
     pub fn set_system(&mut self, sys: SpecSystem) {
+        let old = self.system;
         self.system = sys;
         self.system_set = true;
+        // A set SpecOrigin keeps referring to the same spectral
+        // position: convert it to the new system (specframe.c:643,
+        // OriginSystem).
+        if old != sys {
+            self.rescale_spec_origin(|sf| {
+                sf.system = old;
+            });
+        }
     }
 
     /// Test whether System has been explicitly set. Mirrors C
@@ -393,8 +403,17 @@ impl SpecFrame {
 
     /// Set the standard of rest.
     pub fn set_std_of_rest(&mut self, sor: StdOfRest) {
+        let old = self.std_of_rest;
+        let changed = old != sor;
         self.std_of_rest = sor;
         self.sor_set = true;
+        // Mirrors OriginStdOfRest (specframe.c:3191): a set SpecOrigin
+        // keeps referring to the same spectral position.
+        if changed {
+            self.rescale_spec_origin(|sf| {
+                sf.std_of_rest = old;
+            });
+        }
     }
 
     /// Test whether StdOfRest has been explicitly set.
@@ -1214,6 +1233,74 @@ impl SpecFrame {
         }
     }
 
+    /// The SpecOrigin value converted from its storage basis (the
+    /// default units of the current System) to the frame's current
+    /// units. Returns 0.0 when unset. Mirrors `GetSpecOriginCur`
+    /// (specframe.c:2129).
+    fn spec_origin_cur(&self) -> AstResult<f64> {
+        let Some(origin) = self.spec_origin else {
+            return Ok(0.0);
+        };
+        if origin == 0.0 || is_bad(origin) {
+            return Ok(origin);
+        }
+        let def = self.system.default_display_units();
+        let cur = self
+            .unit
+            .as_deref()
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| self.system.default_display_units());
+        if cur == def || def.is_empty() {
+            return Ok(origin);
+        }
+        let map = unit_mapper(def, cur).ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Badun,
+                format!("SpecFrame: the current units ({cur}) are not suitable for a SpecFrame"),
+            )
+        })?;
+        let pts = PointSet::from_columns(&[&[origin]])?;
+        let out = map.transform(&pts, true)?;
+        Ok(out.point(0)[0])
+    }
+
+    /// Convert a stored SpecOrigin between two attribute states of
+    /// this frame (used when System or StdOfRest changes). Mirrors
+    /// `OriginSystem` / `OriginStdOfRest` (specframe.c:3191-3380):
+    /// the conversion runs between copies with Unit, SpecOrigin and
+    /// AlignSpecOffset cleared, so it operates in the default units
+    /// of each system.
+    fn rescale_spec_origin<F>(&mut self, make_old: F)
+    where
+        F: FnOnce(&mut SpecFrame),
+    {
+        let Some(origin) = self.spec_origin else {
+            return;
+        };
+        if is_bad(origin) {
+            return;
+        }
+        let mut sf1 = self.clone();
+        sf1.unit = None;
+        sf1.spec_origin = None;
+        sf1.align_spec_offset = false;
+        sf1.align_spec_offset_set = false;
+        let mut sf2 = sf1.clone();
+        make_old(&mut sf2);
+        let Ok(map) = sf2.make_spec_mapping_full(&sf1, None, false) else {
+            return;
+        };
+        let Ok(pts) = PointSet::from_columns(&[&[origin]]) else {
+            return;
+        };
+        if let Ok(out) = map.transform(&pts, true) {
+            let v = out.point(0)[0];
+            if !is_bad(v) {
+                self.spec_origin = Some(v);
+            }
+        }
+    }
+
     /// Build the SpecMap for converting from `self` (target) to `result`
     /// using the default alignment frame (cloned from target, with target's
     /// `align_system` and `align_std_of_rest` substituted in for
@@ -1472,6 +1559,30 @@ impl SpecFrame {
                 )
             })?;
             mapping = Box::new(CmpMap::new(mapping, post, Composition::Series)?);
+        }
+
+        // Step 0: offset to absolute value in the target system —
+        // prepend a ShiftMap by the target origin (specframe.c:2937-2945).
+        let target_origin = target.spec_origin_cur()?;
+        if target_origin != 0.0 && !is_bad(target_origin) {
+            let sm = ShiftMap::new(vec![target_origin]);
+            mapping = Box::new(CmpMap::new(Box::new(sm), mapping, Composition::Series)?);
+        }
+
+        // Step 9: absolute value to offset in the result system. When
+        // both frames align in the offset system, the new zero point is
+        // the transformed target origin; otherwise the result frame's
+        // own origin (specframe.c:2947-2972).
+        let result_origin = if target.align_spec_offset() && result.align_spec_offset() {
+            let pts = PointSet::from_columns(&[&[0.0]])?;
+            let out = mapping.transform(&pts, true)?;
+            out.point(0)[0]
+        } else {
+            result.spec_origin_cur()?
+        };
+        if result_origin != 0.0 && !is_bad(result_origin) {
+            let sm = ShiftMap::new(vec![-result_origin]);
+            mapping = Box::new(CmpMap::new(mapping, Box::new(sm), Composition::Series)?);
         }
 
         Ok(mapping)
