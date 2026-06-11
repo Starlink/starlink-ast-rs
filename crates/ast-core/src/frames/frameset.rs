@@ -238,33 +238,21 @@ impl FrameSet {
             ));
         }
         let idx = self.resolve(which)?;
-        let removed_node = self.node_map[idx];
 
-        // Remove the frame and its node mapping.
+        // Drop only the frame's *association* with its node — the node
+        // itself stays in the graph so conversion paths that route
+        // through it survive; `tidy_nodes` then composes the bridged
+        // mappings and prunes dead ends. Mirrors C `RemoveFrame`
+        // (frameset.c:8740-8800) + `TidyNodes`.
         self.frames.remove(idx);
         self.node_map.remove(idx);
 
-        // Remove all edges touching the removed node.
-        self.edges
-            .retain(|e| e.from != removed_node && e.to != removed_node);
-
-        // Renumber nodes: decrement any node index > removed_node.
-        self.nnode -= 1;
-        for node in &mut self.node_map {
-            if *node > removed_node {
-                *node -= 1;
-            }
-        }
-        for edge in &mut self.edges {
-            if edge.from > removed_node {
-                edge.from -= 1;
-            }
-            if edge.to > removed_node {
-                edge.to -= 1;
-            }
-        }
-
-        // Fix base/current indices.
+        // Fix base/current indices. C clears the attribute when the
+        // removed frame *was* the base/current frame, so the defaults
+        // apply: Base defaults to the first frame and Current to the
+        // *last* frame (frameset.c:5022/5091). Set values above the
+        // removed index are decremented so they keep following the
+        // same frame.
         if self.base_idx == idx {
             self.base_idx = 0;
         } else if self.base_idx > idx {
@@ -272,11 +260,12 @@ impl FrameSet {
         }
 
         if self.current_idx == idx {
-            self.current_idx = 0;
+            self.current_idx = self.frames.len() - 1;
         } else if self.current_idx > idx {
             self.current_idx -= 1;
         }
 
+        self.tidy_nodes()?;
         Ok(())
     }
 
@@ -350,6 +339,38 @@ impl FrameSet {
             for (eidx, edge) in self.edges.iter().enumerate() {
                 edges_at_node[edge.from].push(eidx);
                 edges_at_node[edge.to].push(eidx);
+            }
+
+            // Frameless dead-end (one edge) and isolated (no edge)
+            // nodes are simply pruned — C TidyNodes' "unnecessary or
+            // dead-end" case.
+            let mut pruned = false;
+            for node in 0..self.nnode {
+                if frame_count[node] != 0 || edges_at_node[node].len() >= 2 {
+                    continue;
+                }
+                if let Some(&eidx) = edges_at_node[node].first() {
+                    self.edges.remove(eidx);
+                }
+                for n in &mut self.node_map {
+                    if *n > node {
+                        *n -= 1;
+                    }
+                }
+                for edge in &mut self.edges {
+                    if edge.from > node {
+                        edge.from -= 1;
+                    }
+                    if edge.to > node {
+                        edge.to -= 1;
+                    }
+                }
+                self.nnode -= 1;
+                pruned = true;
+                break;
+            }
+            if pruned {
+                continue;
             }
 
             // Find a redundant node.
@@ -815,6 +836,111 @@ impl Frame for FrameSet {
     fn system_string(&self) -> Option<&str> {
         self.current().system_string()
     }
+
+    // ------------------------------------------------------------------
+    // C forwards every remaining Frame virtual to the current frame
+    // (frameset.c:6260-6350); without these, trait defaults (constant
+    // values) would silently apply.
+    // ------------------------------------------------------------------
+
+    fn domain(&self) -> &str {
+        self.current().domain()
+    }
+
+    fn test_domain(&self) -> bool {
+        self.current().test_domain()
+    }
+
+    fn ident(&self) -> &str {
+        self.current().ident()
+    }
+
+    fn min_axes(&self) -> usize {
+        self.current().min_axes()
+    }
+
+    fn set_min_axes(&mut self, n: usize) {
+        self.frames[self.current_idx].set_min_axes(n);
+    }
+
+    fn test_min_axes(&self) -> bool {
+        self.current().test_min_axes()
+    }
+
+    fn max_axes(&self) -> usize {
+        self.current().max_axes()
+    }
+
+    fn set_max_axes(&mut self, n: usize) {
+        self.frames[self.current_idx].set_max_axes(n);
+    }
+
+    fn test_max_axes(&self) -> bool {
+        self.current().test_max_axes()
+    }
+
+    fn match_end(&self) -> bool {
+        self.current().match_end()
+    }
+
+    fn set_match_end(&mut self, v: bool) {
+        self.frames[self.current_idx].set_match_end(v);
+    }
+
+    fn test_match_end(&self) -> bool {
+        self.current().test_match_end()
+    }
+
+    fn preserve_axes(&self) -> bool {
+        self.current().preserve_axes()
+    }
+
+    fn set_preserve_axes(&mut self, v: bool) {
+        self.frames[self.current_idx].set_preserve_axes(v);
+    }
+
+    fn test_preserve_axes(&self) -> bool {
+        self.current().test_preserve_axes()
+    }
+
+    fn permute(&self) -> bool {
+        self.current().permute()
+    }
+
+    fn set_permute(&mut self, v: bool) {
+        self.frames[self.current_idx].set_permute(v);
+    }
+
+    fn test_permute(&self) -> bool {
+        self.current().test_permute()
+    }
+
+    fn match_template(
+        &self,
+        target: &dyn Frame,
+        match_sub: bool,
+    ) -> AstResult<Option<crate::frames::find_frame::MatchResult>> {
+        self.current().match_template(target, match_sub)
+    }
+
+    fn sub_frame(
+        &self,
+        template: Option<&dyn Frame>,
+        result_naxes: usize,
+        target_axes: &[i32],
+        template_axes: &[i32],
+    ) -> AstResult<Option<(DynMapping, DynFrame)>> {
+        self.current()
+            .sub_frame(template, result_naxes, target_axes, template_axes)
+    }
+
+    fn pick_axes_snapshot(&self, axes: &[i32]) -> AstResult<DynFrame> {
+        self.current().pick_axes_snapshot(axes)
+    }
+
+    fn overlay_template(&mut self, template: &dyn Frame, template_axes: &[i32]) -> AstResult<()> {
+        self.frames[self.current_idx].overlay_template(template, template_axes)
+    }
 }
 
 /// `FrameSet::FindFrame` override (frameset.c:3790).
@@ -933,12 +1059,35 @@ impl Mapping for FrameSet {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let composed = self.mapping(FrameRef::Base, FrameRef::Current)?;
-        composed.simplified()
+        // C FrameSet::Simplify (frameset.c:10111) returns a *copy of
+        // the FrameSet* with each internal edge mapping individually
+        // simplified — not the composed base→current mapping.
+        let mut copy = self.clone();
+        for edge in &mut copy.edges {
+            edge.mapping = edge.mapping.simplified()?;
+        }
+        Ok(Box::new(copy))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
+        // C forwards astRate to the base→current mapping
+        // (frameset.c:8341) so analytic component rates apply.
+        self.mapping(FrameRef::Base, FrameRef::Current)?
+            .rate(at, ax1, ax2)
+    }
+
+    fn has_forward(&self) -> bool {
+        // C GetTranForward forwards to the base→current mapping
+        // (frameset.c:877-906).
+        self.mapping(FrameRef::Base, FrameRef::Current)
+            .map(|m| m.has_forward())
+            .unwrap_or(false)
+    }
+
+    fn has_inverse(&self) -> bool {
+        self.mapping(FrameRef::Base, FrameRef::Current)
+            .map(|m| m.has_inverse())
+            .unwrap_or(false)
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

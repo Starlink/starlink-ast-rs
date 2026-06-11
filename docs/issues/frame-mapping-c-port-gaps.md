@@ -12,7 +12,8 @@ Work top to bottom; each entry cites the detailed section.
    Tests: `tests/test_tran_definedness.rs`.
 2. **PolyMap inverse priority + `astPolyTran`** (6h, section 1) — **FIXED 2026-06-10**, including fitschan SIP adoption: the fit is verified bit-compatible with cminpack against a built reference libast, the previously-unknown C `IterInverse` default (`ncoeff_i == 0`, polymap.c:6311) is ported, and the FitsChan `SipReplace` attribute (default true) now drives the C PolyTran call in `wcs_matrix.rs`.
    One deliberate deferral: ChebyMap keeps the iterative-inverse default disabled because the Rust Newton-Raphson machinery is power-basis-specific (C iterates through the virtual astTransform); noted in `chebymap.rs`.
-3. **FrameSet repair** (6b): `remove_frame` graph disconnection, full current-frame delegation (~113 missing forwards), `simplified()` must return a FrameSet, Current default = last frame.
+3. **FrameSet repair** (6b) — **FIXED 2026-06-11**: `remove_frame` keeps the node as an anonymous junction and tidies (dead-end pruning added to `tidy_nodes`); the Frame impl now forwards domain/ident/match-control attributes, `match_template`, `sub_frame`, `pick_axes_snapshot`, and `overlay_template` to the current frame; `simplified()` returns a FrameSet copy with per-edge simplification; Current resets to the last frame on removal; `has_forward`/`has_inverse`/`rate` delegate to the base→current mapping.
+   Tests: `tests/test_frameset_repair.rs`. Still open from 6b: variants stub, `convert` member-frame iteration (blocked on ConvertX), `map_split`/`RemoveRegions` overrides, AST__ALLFRAMES.
 4. **SkyFrame `angle` + SkyTol** (6d): wrong bearing math and the dead 0.001-arcsec tolerance that should collapse FK5↔ICRS-class chains to UnitMap.
 5. **CmpFrame geometry + defaults** (6c): component-aware distance/angle/offset, MinAxes/MaxAxes 0/1000000 defaults, `"DOM1-DOM2"` domain default, attribute forwarding to components.
 6. **SpecFrame SpecOrigin** (6e): MakeSpecMapping steps 0/9 and system-change rescaling.
@@ -192,29 +193,29 @@ Compared `mapping.c` against `mappings/mod.rs`, `rate.rs`, `map_box.rs`, `linear
 Compared `frameset.c` against `frames/frameset.rs`.
 The node-graph core (BFS path finding with per-edge inversion, `remap_frame` + `tidy_nodes`, `with_integrity`, `invert()` as base/current swap) is sound; the gaps are in removal, delegation, and the Mapping-side overrides.
 
-- **[HIGH] FrameSet — `remove_frame` disconnects the graph.**
+- **[HIGH] FrameSet — `remove_frame` disconnects the graph.** *(FIXED 2026-06-11.)*
   Rust (`frameset.rs:233-281`) deletes every edge touching the removed frame's node, so removing a middle frame in a chain leaves the remaining frames with no conversion path (`mapping()` then fails with `Frsin`).
   C `RemoveFrame` (`frameset.c:8740-8800`) only drops the frame's *association* with its node and calls `TidyNodes`, which preserves connectivity by composing mappings through now-frameless nodes.
   Fix: stop deleting edges; drop the frame/node-map entry and call the existing `tidy_nodes` (already used by `remap_frame`).
 
-- **[HIGH] FrameSet — Frame-method delegation is ~17 of ~130.**
+- **[HIGH] FrameSet — Frame-method delegation is ~17 of ~130.** *(FIXED 2026-06-11 for the Rust trait surface — every trait method with a constant default now forwards to the current frame; the C per-axis attribute forwards become relevant as those accessors land.)*
   C forwards essentially every Frame virtual to the current frame (`frameset.c:6260-6350`), including Get/Set/Test/Clear of Domain, Label, Symbol, Unit, Format, Digits, Direction, Min/MaxAxes, MatchEnd, Permute, PreserveAxes, System, AlignSystem, Top/Bottom, ActiveUnit, plus Match, SubFrame, ConvertX, Overlay, PickAxes, Norm, Gap, Intersect, etc.
   Rust `impl Frame for FrameSet` forwards only naxes/format/unformat/distance/angle/offset/norm/snapshot/map_from/equal/convert/find_frame_template/obs\*/dtai/dut1/system_string/perm_axes; everything else silently falls back to constant trait defaults.
   Concretely: `fs.domain()` returns `""` instead of the current frame's domain, `test_domain()` false, `ident()` `""`, `min_axes`/`max_axes` return `fs.naxes()` rather than the current frame's values, and `match_template`/`sub_frame`/`overlay_template`/`pick_axes_snapshot` use the generic defaults — a FrameSet whose current frame is a SkyFrame does not match like a SkyFrame.
   Fix: forward every trait method with a default to `self.current()` (or `current_mut` via integrity for setters).
 
-- **[HIGH] FrameSet — `simplified()` type-degrades to a bare mapping.**
+- **[HIGH] FrameSet — `simplified()` type-degrades to a bare mapping.** *(FIXED 2026-06-11.)*
   C `FrameSet::Simplify` (`frameset.c:10111`) returns a *copy of the FrameSet* with each internal edge mapping individually simplified (honoring the stored per-edge invert flags); Rust returns the composed base→current mapping, discarding the FrameSet.
   ast-capi `astSimplify` on a FrameSet must hand back a FrameSet (pyast/DS9 rely on it).
 
-- **[MED] FrameSet — `remove_frame` base/current reset diverges.**
+- **[MED] FrameSet — `remove_frame` base/current reset diverges.** *(FIXED 2026-06-11: Current resets to the last frame; set-state is not tracked persistently, so the default is applied at removal time rather than dynamically.)*
   C clears the attribute when the removed frame *was* base/current so the default applies (Base default = 1, Current default = **nframe, the last frame** — `frameset.c:5091-5150`), and decrements set values above the removed index.
   Rust resets both to frame 0 (the first frame), so the post-removal current frame differs from C whenever more than one frame remains.
 
 - **[MED] FrameSet — variants are a stub.**
   `add_variant` (`frameset.rs:541`) only pushes `(name, map)`; there is no Variant attribute (select/get by name with remapping), no `astMirrorVariants`, no AllVariants, and `remove_frame` does no `varfrm` bookkeeping (C decrements mirror indices and calls `RemoveMirrors`, `frameset.c:8755-8765`).
 
-- **[MED] FrameSet — Mapping-side overrides missing.**
+- **[MED] FrameSet — Mapping-side overrides missing.** *(PARTIALLY FIXED 2026-06-11: `has_forward`/`has_inverse`/`rate` now delegate to the base→current mapping; `MapSplit`/`GetIsLinear`/`RemoveRegions` remain.)*
   C overrides `GetTranForward`/`GetTranInverse` (forward to the base→current path), `GetIsLinear`, `MapSplit`, `Rate` (delegates to the composed mapping so analytic rates apply), and `RemoveRegions` (`frameset.c:877-906`).
   Rust `impl Mapping for FrameSet` relies on trait defaults: `has_forward`/`has_inverse` always return `true` (wrong when the path contains a one-way mapping), and `rate` always uses generic `numeric_rate`.
 
