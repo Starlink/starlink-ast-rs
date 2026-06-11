@@ -56,7 +56,7 @@ pub struct SkyFrame {
     /// Tracks whether `neglon` was explicitly set (mirrors C
     /// `astTestNegLon`).
     neglon_set: bool,
-    sky_tol: Option<f64>, // smallest significant distance (radians)
+    sky_tol: Option<f64>, // smallest significant distance (arcseconds)
     sky_ref: [f64; 2],    // offset origin/pole [lon, lat] (radians)
     /// Per-axis "explicitly set" flags for `sky_ref` (mirrors C
     /// `astTestSkyRef`).
@@ -510,14 +510,17 @@ impl SkyFrame {
         self.sky_ref_p_set.get(axis).copied().unwrap_or(false)
     }
 
-    /// Return the sky tolerance in radians.
+    /// Return the sky tolerance in arcseconds.
     ///
-    /// If not explicitly set, returns 0.0.
+    /// The smallest angular separation regarded as significant:
+    /// system-conversion chains whose effect everywhere on the sphere
+    /// is below this tolerance are replaced by a UnitMap.
     pub fn sky_tol(&self) -> f64 {
-        self.sky_tol.unwrap_or(0.0)
+        // C default: 0.001 arcsec (skyframe.c:11549).
+        self.sky_tol.unwrap_or(0.001)
     }
 
-    /// Set the sky tolerance in radians.
+    /// Set the sky tolerance in arcseconds.
     pub fn set_sky_tol(&mut self, tol: f64) {
         self.sky_tol = Some(tol);
     }
@@ -827,11 +830,24 @@ impl Frame for SkyFrame {
         if a.iter().chain(b.iter()).chain(c.iter()).any(|&v| is_bad(v)) {
             return Ok(BAD_VALUE);
         }
+        // The angle is undefined when either end point coincides with
+        // the vertex (skyframe.c:1182-1189).
+        if (a[0] == b[0] && a[1] == b[1]) || (c[0] == b[0] && c[1] == b[1]) {
+            return Ok(BAD_VALUE);
+        }
         let lp = self.lon_pos();
         let bp = self.lat_pos();
-        let ab = pal::dbear(a[lp], a[bp], b[lp], b[bp]);
-        let cb = pal::dbear(c[lp], c[bp], b[lp], b[bp]);
-        Ok(pal::drange(ab - cb))
+        // Bearings of A and C as seen *from the vertex B*; the result
+        // is their signed difference, corrected from "angle from
+        // north" to "angle from axis 2" when the axes are permuted
+        // (skyframe.c:1193-1209).
+        let anga = pal::dbear(b[lp], b[bp], a[lp], a[bp]);
+        let angc = pal::dbear(b[lp], b[bp], c[lp], c[bp]);
+        let mut result = angc - anga;
+        if self.perm[0] != 0 {
+            result = std::f64::consts::FRAC_PI_2 - result;
+        }
+        Ok(pal::drange(result))
     }
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
@@ -986,6 +1002,16 @@ impl Frame for SkyFrame {
                     self.compute_diurab(),
                 )?;
 
+                // Replace the system-conversion chain by a UnitMap when
+                // its effect everywhere on the sphere is below the
+                // frames' SkyTol (skyframe.c:6546 TestSlaUnit).
+                if crate::frames::sky_convert::is_effectively_unit(
+                    mapping.as_ref(),
+                    prev_sky.sky_tol().min(self.sky_tol()),
+                ) {
+                    mapping = Box::new(UnitMap::new(2));
+                }
+
                 // Prepend source offset removal (offset→standard).
                 if let Some(off_map) =
                     make_offset_mapping(prev_sky.sky_ref, prev_sky.sky_ref_p, prev_sky.sky_ref_is)?
@@ -1071,6 +1097,16 @@ impl Frame for SkyFrame {
                     to_last,
                     to_sky.compute_diurab(),
                 )?;
+
+                // Replace the system-conversion chain by a UnitMap when
+                // its effect everywhere on the sphere is below the
+                // frames' SkyTol (skyframe.c:6546 TestSlaUnit).
+                if crate::frames::sky_convert::is_effectively_unit(
+                    mapping.as_ref(),
+                    self.sky_tol().min(to_sky.sky_tol()),
+                ) {
+                    mapping = Box::new(UnitMap::new(2));
+                }
 
                 // Prepend source offset removal (offset→standard).
                 if let Some(off_map) =
@@ -1641,6 +1677,16 @@ fn skyframe_sub_frame(
             result_last,
             result.compute_diurab(),
         )?;
+
+        // Replace the system-conversion chain by a UnitMap when its
+        // effect everywhere on the sphere is below the frames' SkyTol
+        // (skyframe.c:6546 TestSlaUnit).
+        if crate::frames::sky_convert::is_effectively_unit(
+            map.as_ref(),
+            target.sky_tol().min(result.sky_tol()),
+        ) {
+            map = Box::new(UnitMap::new(2));
+        }
 
         // Prepend source offset removal (offset→standard).
         if let Some(off_map) =
@@ -2265,7 +2311,7 @@ mod tests {
         assert_close(sky.sky_ref()[1], 0.0, TOL);
         assert_close(sky.sky_ref_p()[0], 0.0, TOL);
         assert_close(sky.sky_ref_p()[1], FRAC_PI_2, TOL);
-        assert_close(sky.sky_tol(), 0.0, TOL);
+        assert_close(sky.sky_tol(), 0.001, TOL);
         assert!(sky.projection().is_none());
         assert_eq!(sky.title(), "");
     }
@@ -2445,6 +2491,115 @@ mod tests {
             .angle(&[BAD_VALUE, 0.0], &[0.0, 0.0], &[1.0, 0.0])
             .unwrap();
         assert_eq!(ang, BAD_VALUE);
+    }
+
+    #[test]
+    fn angle_is_signed_and_matches_oracle() {
+        // Oracle values from the reference C library (astAngle on a
+        // FK5 SkyFrame): the angle at b is signed, measured from the
+        // direction of north (positive towards east).
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let north = [0.0, 0.1];
+        let b = [0.0, 0.0];
+        let east = [0.1, 0.0];
+        let west = [-0.1, 0.0];
+        let half_pi = std::f64::consts::FRAC_PI_2;
+        assert!((sky.angle(&north, &b, &east).unwrap() - half_pi).abs() < 1e-9);
+        assert!((sky.angle(&north, &b, &west).unwrap() + half_pi).abs() < 1e-9);
+        assert!((sky.angle(&east, &b, &north).unwrap() + half_pi).abs() < 1e-9);
+
+        // General-position oracle value.
+        let p = [0.3, 0.4];
+        let q = [0.25, -0.2];
+        let t = [0.6, 0.1];
+        assert!(
+            (sky.angle(&p, &q, &t).unwrap() - 0.796037127730).abs() < 1e-9,
+            "got {}",
+            sky.angle(&p, &q, &t).unwrap()
+        );
+    }
+
+    #[test]
+    fn angle_coincident_points_return_bad() {
+        // C returns AST__BAD when a or c coincides with the vertex b.
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let b = [0.0, 0.0];
+        let east = [0.1, 0.0];
+        assert_eq!(sky.angle(&b, &b, &east).unwrap(), BAD_VALUE);
+        assert_eq!(sky.angle(&east, &b, &b).unwrap(), BAD_VALUE);
+    }
+
+    #[test]
+    fn angle_respects_axis_permutation() {
+        // With the axes swapped (axis 1 = latitude) C applies a
+        // pi/2 - result correction (skyframe.c:1205). Oracle values
+        // from the reference library via astPermAxes.
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        Frame::perm_axes(&mut sky, &[2, 1]).unwrap();
+        // Same geometry as the unpermuted N/b/E case, coords (lat, lon).
+        let north = [0.1, 0.0];
+        let b = [0.0, 0.0];
+        let east = [0.0, 0.1];
+        assert!(sky.angle(&north, &b, &east).unwrap().abs() < 1e-9);
+
+        let p = [0.4, 0.3];
+        let q = [-0.2, 0.25];
+        let t = [0.1, 0.6];
+        assert!(
+            (sky.angle(&p, &q, &t).unwrap() - 0.774759199065).abs() < 1e-9,
+            "got {}",
+            sky.angle(&p, &q, &t).unwrap()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // SkyTol
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sky_tol_default_is_one_milliarcsec() {
+        // C default: 0.001 arcsec (skyframe.c:11549).
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        assert!((sky.sky_tol() - 0.001).abs() < 1e-15);
+    }
+
+    #[test]
+    fn convert_collapses_chain_within_sky_tol() {
+        // Oracle: astConvert(ICRS, FK5 J2000) with SkyTol=100 on both
+        // frames simplifies to a UnitMap (the ~23 mas frame bias is
+        // within tolerance); at the default 1 mas it does not.
+        let mut icrs = SkyFrame::new(SkySystem::Icrs);
+        icrs.set_epoch_year(2000.0);
+        icrs.set_sky_tol(100.0);
+        let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+        fk5.set_epoch_year(2000.0);
+        fk5.set_sky_tol(100.0);
+
+        let fs = Frame::convert(&icrs, &fk5, &[]).unwrap().unwrap();
+        let map = fs
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .unwrap()
+            .simplified()
+            .unwrap();
+        assert!(
+            map.as_any().is::<crate::mappings::UnitMap>(),
+            "expected UnitMap within SkyTol, got {map:?}"
+        );
+
+        let mut icrs2 = SkyFrame::new(SkySystem::Icrs);
+        icrs2.set_epoch_year(2000.0);
+        let mut fk52 = SkyFrame::new(SkySystem::Fk5);
+        fk52.set_epoch_year(2000.0);
+        let fs2 = Frame::convert(&icrs2, &fk52, &[]).unwrap().unwrap();
+        let map2 = fs2
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .unwrap()
+            .simplified()
+            .unwrap();
+        assert!(
+            !map2.as_any().is::<crate::mappings::UnitMap>(),
+            "the 23 mas ICRS-FK5 bias exceeds the default 1 mas SkyTol"
+        );
     }
 
     // -----------------------------------------------------------------------

@@ -14,7 +14,8 @@ Work top to bottom; each entry cites the detailed section.
    One deliberate deferral: ChebyMap keeps the iterative-inverse default disabled because the Rust Newton-Raphson machinery is power-basis-specific (C iterates through the virtual astTransform); noted in `chebymap.rs`.
 3. **FrameSet repair** (6b) — **FIXED 2026-06-11**: `remove_frame` keeps the node as an anonymous junction and tidies (dead-end pruning added to `tidy_nodes`); the Frame impl now forwards domain/ident/match-control attributes, `match_template`, `sub_frame`, `pick_axes_snapshot`, and `overlay_template` to the current frame; `simplified()` returns a FrameSet copy with per-edge simplification; Current resets to the last frame on removal; `has_forward`/`has_inverse`/`rate` delegate to the base→current mapping.
    Tests: `tests/test_frameset_repair.rs`. Still open from 6b: variants stub, `convert` member-frame iteration (blocked on ConvertX), `map_split`/`RemoveRegions` overrides, AST__ALLFRAMES.
-4. **SkyFrame `angle` + SkyTol** (6d): wrong bearing math and the dead 0.001-arcsec tolerance that should collapse FK5↔ICRS-class chains to UnitMap.
+4. **SkyFrame `angle` + SkyTol** (6d) — **FIXED 2026-06-11**: `angle` now uses vertex bearings with the signed difference, the permuted-axes π/2 correction, and AST__BAD for coincident points (oracle-matched against the built C library); SkyTol defaults to 0.001 arcsec and the TestSlaUnit gate (14-probe-point sphere grid) now replaces sub-tolerance conversion chains with a UnitMap at all three mapping-construction sites.
+   Correction to the original finding: the ICRS↔FK5 frame bias (~23 mas) *exceeds* the default 1 mas tolerance, so that chain correctly survives at defaults (C-verified); the gate fires for genuinely sub-tolerance alignments or raised SkyTol.
 5. **CmpFrame geometry + defaults** (6c): component-aware distance/angle/offset, MinAxes/MaxAxes 0/1000000 defaults, `"DOM1-DOM2"` domain default, attribute forwarding to components.
 6. **SpecFrame SpecOrigin** (6e): MakeSpecMapping steps 0/9 and system-change rescaling.
 7. **Frame base** (6): `astConvert`/ConvertX, matchsub cast-retry, 2-D signed `angle`, `offset` BAD semantics, printf Format + Digits, then the missing method family (Offset2/Ax\*/Resolve/Intersect/NormBox/MatchAxes/ActiveUnit/PrimaryFrame — unwinding the two fitschan `primary_frame` copies).
@@ -263,13 +264,13 @@ Compared `skyframe.c`/`skyaxis.c` against `frames/skyframe.rs`, `frames/skyaxis.
 The attribute surface (System/Equinox/Epoch/NegLon/SkyRef/SkyRefIs/SkyRefP/AlignOffset/Projection/axis labels), `norm`, `distance`, `perm_axes`, the LAST computation, and the Match/SubFrame/Overlay machinery (including offset-coordinate frames, permutation-swap matching gated on Permute, and FK4 default-equinox handling) are ported with test coverage.
 The confirmed divergences:
 
-- **[HIGH] SkyFrame — `angle` math is wrong.**
+- **[HIGH] SkyFrame — `angle` math is wrong.** *(FIXED 2026-06-11, oracle-matched.)*
   C `Angle` (`skyframe.c:1190-1212`) computes `palDbear(b→a)` and `palDbear(b→c)` (bearings *from the vertex b*), returns `palDrange(angc − anga)`, applies a `π/2 − result` correction when the axes are permuted (lon on axis 2), and returns AST__BAD when a==b or c==b.
   Rust (`skyframe.rs:826-835`) calls `dbear(a→b)` and `dbear(c→b)` (bearings *of* b seen from a and c — not the same angle on a sphere), has no permutation correction, and no coincidence check.
 
-- **[HIGH] SkyFrame — SkyTol is stored but never used, and its default is wrong.**
+- **[HIGH] SkyFrame — SkyTol is stored but never used, and its default is wrong.** *(FIXED 2026-06-11; note the original example was wrong — FK5↔ICRS does NOT collapse at the default tolerance, its 23 mas bias exceeds 1 mas.)*
   C defaults SkyTol to 0.001 arcsec (`skyframe.c:11549`) and `MakeSkyMapping` transforms NTEST probe points through the constructed SlaMap, replacing it with a UnitMap when the maximum shift is below the smaller of the two frames' SkyTol (`skyframe.c:10740-10772`).
-  Rust defaults `sky_tol` to 0.0 (`skyframe.rs:517`) and no conversion path consults it, so e.g. FK5(J2000)↔ICRS chains never collapse to UnitMap — affecting FrameSet simplification, FitsChan output, and the SCUBA-2-style hot paths that rely on cheap unit mappings.
+  Rust defaulted `sky_tol` to 0.0 and no conversion path consulted it, so sub-tolerance chains never collapsed to UnitMap.
 
 - **[MED] SkyFrame — `offset` degenerate-case handling.**
   For coincident or antipodal points C (`skyframe.c:7592-7615`) returns output only when `sin(offset) == 0` (rotating v1 by the multiple of π via `cos(offset)` scaling) and AST__BAD otherwise; Rust (`skyframe.rs:851-853`) returns `from` unchanged whenever `|v1×v2| < 1e-20` regardless of the requested offset.

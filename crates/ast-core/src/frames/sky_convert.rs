@@ -719,6 +719,47 @@ fn build_pole_rotation(sky_ref: [f64; 2], sky_ref_p: [f64; 2]) -> [[f64; 3]; 3] 
 /// Returns a mapping that converts FROM offset coordinates TO standard
 /// (unrotated) celestial coordinates. Returns `None` if `sky_ref_is ==
 /// Ignored`.
+/// Test whether a system-conversion mapping is effectively a unit
+/// transformation to within `tol` arcseconds.
+///
+/// Mirrors C `TestSlaUnit` (skyframe.c:10677-10775): transform a fixed
+/// grid of 14 (lon, lat) probe points covering the sphere and compare
+/// the largest shift against the tolerance. The caller passes the
+/// smaller SkyTol of the two frames being aligned.
+pub(crate) fn is_effectively_unit(map: &dyn Mapping, tol_arcsec: f64) -> bool {
+    if map.as_any().is::<UnitMap>() {
+        return true;
+    }
+    if tol_arcsec <= 0.0 {
+        return false;
+    }
+    // These are C's exact probe-grid literals (skyframe.c:10732-10739),
+    // not approximations of pi — keep them bit-identical.
+    #[allow(clippy::approx_constant)]
+    const LON: [f64; 14] = [
+        0.0, 1.57, 3.14, 4.71, 0.8, 2.37, 3.94, 5.51, 0.8, 2.37, 3.94, 5.51, 0.0, 0.0,
+    ];
+    #[allow(clippy::approx_constant)]
+    const LAT: [f64; 14] = [
+        0.0, 0.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.8, -0.8, -0.8, -0.8, -0.8, 1.570796, -1.570796,
+    ];
+    let Ok(pts) = PointSet::from_columns(&[&LON, &LAT]) else {
+        return false;
+    };
+    let Ok(out) = map.transform(&pts, true) else {
+        return false;
+    };
+    let mut maxshift = 0.0_f64;
+    for i in 0..14 {
+        let p = out.point(i);
+        let shift = pal::dsep(LON[i], LAT[i], p[0], p[1]);
+        if shift > maxshift {
+            maxshift = shift;
+        }
+    }
+    maxshift.to_degrees() * 3600.0 < tol_arcsec
+}
+
 pub(crate) fn make_offset_mapping(
     sky_ref: [f64; 2],
     sky_ref_p: [f64; 2],
