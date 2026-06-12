@@ -1,5 +1,6 @@
 //! The Frame trait and associated types.
 
+pub(crate) mod axis_format;
 mod basic;
 mod cmpframe;
 pub(crate) mod date_time;
