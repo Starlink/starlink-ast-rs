@@ -459,6 +459,84 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         }
         Ok(cross)
     }
+
+    /// Signed axis increment from `v1` to `v2` on a 1-based `axis`.
+    /// Base (Cartesian): `v2 - v1` with BAD propagation. Mirrors C
+    /// `astAxDistance` (frame.c:1466 -> axis.c AxisDistance).
+    fn ax_distance(&self, _axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        Ok(if is_bad(v1) || is_bad(v2) {
+            BAD_VALUE
+        } else {
+            v2 - v1
+        })
+    }
+
+    /// Axis value formed by adding `dist` to `v1` on a 1-based `axis`.
+    /// Base (Cartesian): `v1 + dist` with BAD propagation. Mirrors C
+    /// `astAxOffset` (frame.c:1744 -> axis.c AxisOffset).
+    fn ax_offset(&self, _axis: usize, v1: f64, dist: f64) -> AstResult<f64> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        Ok(if is_bad(v1) || is_bad(dist) {
+            BAD_VALUE
+        } else {
+            v1 + dist
+        })
+    }
+
+    /// Angle, as seen from `a`, between the positive direction of the
+    /// 1-based `axis` and the geodesic from `a` to `b`. Offsets `a`
+    /// slightly in the +axis direction and calls `angle`. Mirrors C
+    /// `astAxAngle` (frame.c:1324).
+    fn ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> AstResult<f64> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        let naxes = self.naxes();
+        let mut aa = vec![0.0; naxes];
+        let mut mxab = 0.0;
+        for i in 0..naxes {
+            if is_bad(a[i]) || is_bad(b[i]) {
+                return Ok(BAD_VALUE);
+            }
+            aa[i] = a[i];
+            let ab = (a[i] - b[i]).abs();
+            if ab > mxab {
+                mxab = ab;
+            }
+        }
+        let k = axis - 1;
+        let eps = 10000.0 * f64::EPSILON;
+        if a[k] != 0.0 {
+            aa[k] += eps * a[k].abs();
+        } else if b[k] != 0.0 {
+            // C reads b[iaxis-1] here, where iaxis is the loop index left
+            // at naxes after the component loop completes, so this nudges
+            // by 10000*EPSILON*|b[naxes-1]| rather than |b[axis-1]|. The
+            // index is preserved to match the C library bit-for-bit.
+            aa[k] = eps * b[naxes - 1].abs();
+        } else if mxab != 0.0 {
+            aa[k] = eps * mxab;
+        } else {
+            aa[k] = 1.0;
+        }
+        self.angle(&aa, a, b)
+    }
+
+    /// Normalise an array of axis values on a 1-based `axis`. `oper`
+    /// selects the normalisation mode (0 = like `norm`, 1 = smallest
+    /// range). Base (Cartesian): values are returned unchanged. Mirrors
+    /// C `astAxNorm` (frame.c:1560).
+    fn ax_norm(&self, _axis: usize, oper: i32, _values: &mut [f64]) -> AstResult<()> {
+        if !(0..=1).contains(&oper) {
+            return Err(AstError::new(
+                ErrorCode::Oprin,
+                format!("astAxNorm: invalid operation {oper}"),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.

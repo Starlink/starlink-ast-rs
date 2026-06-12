@@ -610,3 +610,33 @@ to match these two cases would be disproportionate and is the kind of
 heuristic-free full port the project avoids when there is no domain
 impact. Documented here so the divergence is tracked rather than
 silent.
+
+---
+
+## `astAxAngle` nudge reads a stale loop index
+
+**C location:** `frame.c` `AxAngle` (~line 1370):
+
+```c
+} else if( b[ axis - 1 ] != 0.0 ) {
+   aa[ axis - 1 ] = 10000.0*DBL_EPSILON*fabs( b[ iaxis - 1 ] );
+```
+
+**Observed:** when `a[axis-1] == 0` and `b[axis-1] != 0`, the offset
+applied to the test point is scaled by `|b[iaxis-1]|`, but `iaxis` is
+the component-loop index, left at `naxes` once the loop completes
+normally. So the code reads `b[naxes-1]` instead of the intended
+`b[axis-1]`. For a 2-D Frame with `axis = 1` and `b[1] == 0` (e.g.
+`a=(0,0)`, `b=(1,0)`), the nudge becomes zero, the offset point
+coincides with `a`, and `astAngle` returns `AST__BAD` instead of a
+meaningful position angle.
+
+**Consequence:** `astAxAngle` returns a bad value for some
+near-axis-aligned configurations that a correct implementation would
+resolve. Verified against `libast` built with cmake:
+`astAxAngle(frame2, (0,0), (1,0), 1)` returns `AST__BAD`;
+`astAxAngle(frame2, (0,5), (3,2), 1)` returns `PI/4` (using `b[1]=2`).
+
+**Rust mirror:** `Frame::ax_angle` in
+`crates/ast-core/src/frames/mod.rs` reads `b[naxes - 1]` in the same
+branch, with a comment marking it as the preserved C index.
