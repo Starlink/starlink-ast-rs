@@ -15,7 +15,7 @@
 
 use crate::error::AstResult;
 use crate::frames::{CmpFrame, DynFrame, Frame, FrameRef, FrameSet};
-use crate::mappings::{DynMapping, PermMap, UnitMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap};
 
 /// Result of a successful `match_template` call.
 ///
@@ -73,6 +73,126 @@ pub(crate) fn match_with_subclass(
         }
     }
     Ok(None)
+}
+
+/// Port of C `astConvertX` (frame.c:3028): negotiate a common
+/// coordinate system between `from` and `to`, returning a 2-frame
+/// FrameSet (base = `from`, current = `to`) whose Mapping converts
+/// between them, or `None` if no conversion is possible. `domainlist`
+/// is a comma-separated priority list ("" / blank field permits any).
+#[allow(dead_code)]
+pub(crate) fn convert_frames(
+    from: &dyn Frame,
+    to: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<FrameSet>> {
+    let mut result_map: Option<DynMapping> = None;
+
+    // Loop over comma-separated domain fields until a match is found
+    // (frame.c:3124-3126).
+    let mut matched = false;
+    for raw_field in domainlist.split(',') {
+        if matched {
+            break;
+        }
+
+        // Clean the domain: uppercase, strip whitespace
+        // (CleanDomain, frame.c:3132).
+        let domain: String = raw_field
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .map(|c| c.to_ascii_uppercase())
+            .collect();
+
+        // Score the best match for the current domain (frame.c:3137).
+        let mut best_score = -1;
+        let mut perfect = false;
+
+        // Consider both "to" and "from" as the basis of a common
+        // coordinate system, quitting early on a perfect match
+        // (frame.c:3142-3143).
+        for icom in 0..=1 {
+            if perfect {
+                break;
+            }
+
+            // common0 = copy of (icom ? from : to); PreserveAxes = 0;
+            // Domain set when the field is non-blank
+            // (frame.c:3149-3155).
+            let mut common0 = if icom == 1 {
+                from.snapshot()
+            } else {
+                to.snapshot()
+            };
+            common0.set_preserve_axes(false);
+            if !domain.is_empty() {
+                common0.set_domain(&domain);
+            }
+
+            // frame1 = (icom ? to : from) (frame.c:3158).
+            let frame1: &dyn Frame = if icom == 1 { to } else { from };
+
+            // First match: common0 (template) probes frame1, producing
+            // the map frame1 -> common1 stored at map1_address
+            // (frame.c:3161-3168). map1_address = icom ? &to_map :
+            // &from_map.
+            let Some(m1) = match_with_subclass(common0.as_ref(), frame1, true)? else {
+                continue;
+            };
+            let map1 = m1.map;
+            let mut common1 = m1.result;
+            common1.set_preserve_axes(false);
+
+            // frame2 = (icom ? from : to) (frame.c:3179).
+            let frame2: &dyn Frame = if icom == 1 { from } else { to };
+
+            // Second match: common1 (template) probes frame2, producing
+            // the map frame2 -> common2 stored at map2_address
+            // (frame.c:3180-3183). map2_address = icom ? &from_map :
+            // &to_map.
+            let Some(m2) = match_with_subclass(common1.as_ref(), frame2, true)? else {
+                continue;
+            };
+            let map2 = m2.map;
+
+            // map1_address / map2_address bookkeeping (frame.c:3161,
+            // 3180): for icom==0, map1 = from_map and map2 = to_map;
+            // for icom==1, map1 = to_map and map2 = from_map.
+            let (from_map, mut to_map) = if icom == 1 {
+                (map2, map1)
+            } else {
+                (map1, map2)
+            };
+
+            // Invert the "to" Mapping and compose from_map then the
+            // inverted to_map in series, then simplify
+            // (frame.c:3195-3198).
+            to_map.invert();
+            let composed = CmpMap::new(from_map, to_map, Composition::Series)?;
+            let map = Mapping::simplified(&composed)?;
+
+            // Score: 2*forward + inverse; keep the best
+            // (frame.c:3204-3221).
+            let score =
+                (if map.has_forward() { 2 } else { 0 }) + (if map.has_inverse() { 1 } else { 0 });
+            if score > best_score {
+                matched = true;
+                best_score = score;
+                perfect = best_score >= 3;
+                result_map = Some(map);
+            }
+        }
+    }
+
+    // If a result map was found, build the result FrameSet
+    // (frame.c:3246-3250).
+    if let Some(map) = result_map {
+        let mut fs = FrameSet::new(from.snapshot());
+        fs.add_frame(FrameRef::Base, map, to.snapshot())?;
+        Ok(Some(fs))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Default `find_frame_template` body — mirrors the public C
