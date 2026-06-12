@@ -45,6 +45,36 @@ pub struct MatchResult {
 /// current = result).
 pub(crate) type FindFrameResult = FrameSet;
 
+/// `astMatch` with the matchsub cast-retry (frame.c:15473). Tries the
+/// direct per-class match first; on failure (when `match_sub` is set),
+/// casts the template down into the target's class, re-fixes its
+/// Domain, and retries via the base Match. This is what lets a
+/// specialised template (SkyFrame, CmpFrame, ...) align with a plainer
+/// target sharing its Domain.
+pub(crate) fn match_with_subclass(
+    template: &dyn Frame,
+    target: &dyn Frame,
+    match_sub: bool,
+) -> AstResult<Option<MatchResult>> {
+    if let Some(m) = template.match_template(target, match_sub)? {
+        return Ok(Some(m));
+    }
+    if match_sub {
+        if let Some(mut super_this) = template.cast(target)? {
+            // Re-fix the Domain: the parent class may default it
+            // differently (frame.c:15505-15509).
+            if target.test_domain() {
+                let dom = template.domain();
+                if !dom.is_empty() {
+                    super_this.set_domain(dom);
+                }
+            }
+            return super_this.match_template(target, match_sub);
+        }
+    }
+    Ok(None)
+}
+
 /// Default `find_frame_template` body — mirrors the public C
 /// `astFindFrame` (frame.c:3735) without the FrameSet override.
 ///
@@ -77,7 +107,7 @@ pub(crate) fn default_find_frame(
     // Per the C contract, astMatch is invoked on the template (with
     // target as second arg). Our trait dispatches this on the
     // template via `template.match_template(target, ...)`.
-    let Some(m) = template.match_template(&*target, false)? else {
+    let Some(m) = match_with_subclass(template, &*target, false)? else {
         return Ok(None);
     };
 
