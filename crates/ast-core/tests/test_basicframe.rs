@@ -210,9 +210,20 @@ fn format_bad_value() {
 #[test]
 fn format_with_precision() {
     let mut frame = BasicFrameBuilder::new(1).build().unwrap();
-    frame.set_format_str(1, "3").unwrap();
+    // A printf-style precision specifier is honoured directly.
+    frame.set_format_str(1, "%.3f").unwrap();
     let s = frame.format(1, 3.14159).unwrap();
     assert_eq!(s, "3.142");
+}
+
+#[test]
+fn format_without_percent_uses_default() {
+    let mut frame = BasicFrameBuilder::new(1).build().unwrap();
+    // A Format string with no '%' is not a printf conversion; AST falls
+    // back to the default "%1.<Digits>G" precision.
+    frame.set_format_str(1, "3").unwrap();
+    let s = frame.format(1, 3.14159).unwrap();
+    assert_eq!(s, "3.14159");
 }
 
 // ---- Unformat ----

@@ -4,10 +4,6 @@
 //! `printf` semantics for the `%G` / `%E` / `%f` / `%d` subset that
 //! AST uses. The default format is `"%1.<Digits>G"`.
 
-// `format_value` is the public entry point; the lower-level primitives
-// it composes are exercised through it.
-#![allow(dead_code)]
-
 /// Format `value` like C `printf("%1.<prec>G", value)`: `prec`
 /// significant digits, `%E` notation when the decimal exponent is
 /// `< -4` or `>= prec`, otherwise `%f` notation, with trailing zeros
@@ -87,8 +83,10 @@ pub(crate) struct ParsedFormat {
     pub conv: char,
     /// Precision (significant digits for G/g, fraction digits for e/f).
     pub spec_prec: usize,
-    /// Format the value as `10**x` using graphical escapes. Parsed but
-    /// rendered with the non-Plot delimiter (Plot escapes deferred).
+    /// Format the value as `10**x` using graphical escapes. Recognised
+    /// by the parser; its graphical-escape rendering is supplied by the
+    /// Plot layer rather than the numeric formatter.
+    #[allow(dead_code)]
     pub log: bool,
     /// Cast the value to `int` before formatting (integer conv code).
     pub integ: bool,
