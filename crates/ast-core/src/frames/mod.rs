@@ -393,6 +393,72 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// permuting Frames (CmpFrame, SkyFrame) override to descend and
     /// undo permutations.
     fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize);
+
+    /// Offset along a geodesic at a given angle in a 2-D Frame. Returns
+    /// `(point2, ret_angle)`. Errors if the Frame is not 2-D. Bad inputs
+    /// give all-BAD outputs. Mirrors C `astOffset2` (frame.c:8228).
+    fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        if self.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                "astOffset2 can only be used with 2-dimensional Frames",
+            ));
+        }
+        if is_bad(point1[0]) || is_bad(point1[1]) || is_bad(angle) || is_bad(offset) {
+            return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
+        }
+        let p2 = vec![
+            point1[0] + angle.sin() * offset,
+            point1[1] + angle.cos() * offset,
+        ];
+        Ok((p2, angle))
+    }
+
+    /// Point of intersection of two geodesics (straight lines) in a 2-D
+    /// Frame. Bad inputs, vertical/parallel degeneracies give all-BAD.
+    /// Mirrors C `astIntersect` (frame.c:6243).
+    fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        if self.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                "astIntersect can only be used with 2-dimensional Frames",
+            ));
+        }
+        let mut cross = vec![BAD_VALUE, BAD_VALUE];
+        if [a1[0], a1[1], a2[0], a2[1], b1[0], b1[1], b2[0], b2[1]]
+            .iter()
+            .any(|&v| is_bad(v))
+        {
+            return Ok(cross);
+        }
+        let dxa = a2[0] - a1[0];
+        let dxb = b2[0] - b1[0];
+        if dxa != 0.0 {
+            let ma = (a2[1] - a1[1]) / dxa;
+            let ca = a1[1] - a1[0] * ma;
+            if dxb != 0.0 {
+                let mb = (b2[1] - b1[1]) / dxb;
+                let cb = b1[1] - b1[0] * mb;
+                if ma != mb {
+                    cross[0] = (cb - ca) / (ma - mb);
+                    cross[1] = ((ma + mb) * cross[0] + ca + cb) / 2.0;
+                }
+            } else if b1[1] != b2[1] {
+                cross[0] = b1[0];
+                cross[1] = ma * b1[0] + ca;
+            }
+        } else if dxb != 0.0 && a1[1] != a2[1] {
+            let mb = (b2[1] - b1[1]) / dxb;
+            let cb = b1[1] - b1[0] * mb;
+            cross[0] = a1[0];
+            cross[1] = mb * a1[0] + cb;
+        }
+        Ok(cross)
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.
