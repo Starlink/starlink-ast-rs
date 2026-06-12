@@ -227,11 +227,14 @@ impl TimeFrame {
             dut1: None,
             dtai: None,
             system,
-            // Match the SpecFrame convention: when the constructor is
-            // called with the default system (MJD here), treat it as
-            // unset; otherwise mark it as explicitly set so it can act
-            // as a template-side discriminator.
-            system_set: !matches!(system, TimeSystem::Mjd),
+            // The caller supplied an explicit System, equivalent to C
+            // `astTimeFrame("System=...")` invoking astSetSystem — so
+            // astTestSystem is true regardless of the value. C tracks
+            // set-ness independently of the value (`this->system !=
+            // AST__BADSYSTEM`, frame.c:13822); the unset default is
+            // AST__MJD (timeframe.c:2911), reachable only via
+            // clear_system().
+            system_set: true,
             timescale,
             timescale_set: false,
             time_origin: None,
@@ -253,8 +256,11 @@ impl TimeFrame {
         self.system_set
     }
 
-    /// Clear the explicit-set state of System.
+    /// Clear System back to its class default. Mirrors C
+    /// `astClearSystem`: after clearing, `astGetSystem` returns the
+    /// TimeFrame default `AST__MJD` (timeframe.c:2911).
     pub fn clear_system(&mut self) {
+        self.system = TimeSystem::Mjd;
         self.system_set = false;
     }
 
@@ -1254,12 +1260,23 @@ impl Serializable for TimeFrame {
             Some("Label for axis 1".to_string()),
         );
 
-        // System (always active).
-        node.push_string(
-            "System",
-            self.system.as_str(),
-            Some("Coordinate system type".to_string()),
-        );
+        // System: active when explicitly set, otherwise written commented
+        // with the class default value. Mirrors `frame.c::Dump`
+        // (`set = TestSystem`; value = GetSystem which returns AST__MJD
+        // for an unset TimeFrame, timeframe.c:2911).
+        if self.system_set {
+            node.push_string(
+                "System",
+                self.system.as_str(),
+                Some("Coordinate system type".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "System",
+                NodeValue::String(TimeSystem::Mjd.as_str().to_string()),
+                Some("Coordinate system type".to_string()),
+            );
+        }
 
         // Axis units (always unset with system-appropriate default).
         let units = self.system.default_units();
@@ -1323,12 +1340,24 @@ impl Serializable for TimeFrame {
 
         // --- TimeFrame-specific attributes (after IsA Frame) ---
 
-        // TmScl (TimeScale).
-        node.push_string(
-            "TmScl",
-            self.timescale.as_str(),
-            Some("Time scale".to_string()),
-        );
+        // TmScl (TimeScale): active when explicitly set, otherwise
+        // written commented with the default value. Mirrors
+        // `timeframe.c::Dump` lines 6799-6800 (`set = TestTimeScale`;
+        // value = GetTimeScale, which is TT for BEPOCH else TAI — the
+        // value `self.timescale` already holds when unset).
+        if self.timescale_set {
+            node.push_string(
+                "TmScl",
+                self.timescale.as_str(),
+                Some("Time scale".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "TmScl",
+                NodeValue::String(self.timescale.as_str().to_string()),
+                Some("Time scale".to_string()),
+            );
+        }
 
         // ATmScl (AlignTimeScale, only if explicitly set).
         if let Some(ref ats) = self.align_timescale {
@@ -1359,11 +1388,17 @@ impl Serializable for TimeFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        // Read System.
+        // Read System. The unset default is MJD (timeframe.c:2911), so an
+        // absent `System=` line decodes to an MJD frame with system_set
+        // false.
         let sys_str = node.get_string("System", "MJD");
         let system = TimeSystem::parse(&sys_str).unwrap_or(TimeSystem::Mjd);
+        let system_present = node.get("System").is_some();
 
         let mut tf = TimeFrame::new(system);
+        // TimeFrame::new flags System as set; honour the serialised
+        // set-ness instead (a commented `System=` line means unset).
+        tf.system_set = system_present;
 
         // Title.
         let title = node.get_string("Title", "");
@@ -1453,12 +1488,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_system_default_is_mjd_unset() {
+    fn test_system_set_tracking_independent_of_value() {
+        // A frame built with an explicit System (even the default MJD)
+        // reports System set, mirroring C `astTimeFrame("System=MJD")`.
         let f = TimeFrame::new(TimeSystem::Mjd);
-        assert!(!f.test_system());
-        let mut f = TimeFrame::new(TimeSystem::Mjd);
-        f.set_system(TimeSystem::Jd);
         assert!(f.test_system());
+        assert_eq!(f.system(), TimeSystem::Mjd);
+        // Clearing reverts to the unset MJD default.
+        let mut f = TimeFrame::new(TimeSystem::Jd);
+        f.clear_system();
+        assert!(!f.test_system());
+        assert_eq!(f.system(), TimeSystem::Mjd);
     }
 
     #[test]
@@ -1509,7 +1549,8 @@ mod tests {
 
     #[test]
     fn overlay_template_skips_unset_system() {
-        let template = TimeFrame::new(TimeSystem::Mjd);
+        let mut template = TimeFrame::new(TimeSystem::Mjd);
+        template.clear_system();
         assert!(!template.test_system());
         let target = TimeFrame::new(TimeSystem::Jd);
         let mut result: DynFrame = Box::new(target);

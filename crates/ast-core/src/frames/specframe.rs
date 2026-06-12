@@ -264,10 +264,14 @@ pub struct SpecFrame {
 
     // SpecFrame-specific
     system: SpecSystem,
-    /// Whether System has been explicitly set. Mirrors C's `astTestSystem`
-    /// for `SpecFrame`. The constructor leaves this `false` when the
-    /// requested system equals the C default (`AST__FREQ`); any other
-    /// constructor argument or call to `set_system` flips it `true`.
+    /// Whether System has been explicitly set. Mirrors C's `astTestSystem`,
+    /// which tracks set-ness independently of the value
+    /// (`this->system != AST__BADSYSTEM`, frame.c:13822). When unset, C
+    /// `GetSystem` returns the class default `AST__WAVELEN`
+    /// (specframe.c:2015). A SpecFrame built via [`SpecFrame::new`] has
+    /// System explicitly set (the caller chose it, equivalent to C
+    /// `astSpecFrame("System=...")`); [`SpecFrame::clear_system`] reverts
+    /// to the unset state in which `system` holds the WAVELEN default.
     system_set: bool,
     std_of_rest: StdOfRest,
     sor_set: bool,           // whether std_of_rest was explicitly set (vs defaulting)
@@ -320,11 +324,12 @@ impl SpecFrame {
             obs_lon: None,
             obs_alt: None,
             system,
-            // C SpecFrame default System is AST__FREQ (specframe.c
-            // GetSystem). Match SkyFrame's pattern: only flag System as
-            // explicitly set when the constructor argument differs from
-            // the class default.
-            system_set: !matches!(system, SpecSystem::Freq),
+            // The caller supplied an explicit System, which is equivalent
+            // to C `astSpecFrame("System=...")` invoking astSetSystem — so
+            // astTestSystem is true regardless of the value. C's unset
+            // default (AST__WAVELEN, specframe.c:2015) is only reachable
+            // via clear_system().
+            system_set: true,
             std_of_rest: StdOfRest::Heliocentric,
             sor_set: false,
             unit: None,
@@ -389,10 +394,11 @@ impl SpecFrame {
         self.system_set
     }
 
-    /// Clear System back to its class default (`Freq`). Mirrors
-    /// C `astClearSystem` for SpecFrame.
+    /// Clear System back to its class default. Mirrors C
+    /// `astClearSystem` for SpecFrame: after clearing, `astGetSystem`
+    /// returns the SpecFrame default `AST__WAVELEN` (specframe.c:2015).
     pub fn clear_system(&mut self) {
-        self.system = SpecSystem::Freq;
+        self.system = SpecSystem::Wavelen;
         self.system_set = false;
     }
 
@@ -2294,12 +2300,23 @@ impl Serializable for SpecFrame {
             Some("Label for axis 1".to_string()),
         );
 
-        // System (always active).
-        node.push_string(
-            "System",
-            self.system.as_str(),
-            Some("Coordinate system type".to_string()),
-        );
+        // System: active when explicitly set, otherwise written commented
+        // with the class default value. Mirrors `frame.c::Dump` lines
+        // 14372-14400 (`set = TestSystem`; value = GetSystem which returns
+        // AST__WAVELEN for an unset SpecFrame, specframe.c:2015).
+        if self.system_set {
+            node.push_string(
+                "System",
+                self.system.as_str(),
+                Some("Coordinate system type".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "System",
+                NodeValue::String(SpecSystem::Wavelen.as_str().to_string()),
+                Some("Coordinate system type".to_string()),
+            );
+        }
 
         // Uni1: axis unit (always unset with current unit or system default).
         let display_unit = self
@@ -2461,16 +2478,16 @@ impl Serializable for SpecFrame {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
-        // Read System.
-        let sys_str = node.get_string("System", "FREQ");
-        let system = SpecSystem::parse(&sys_str).unwrap_or(SpecSystem::Freq);
+        // Read System. The unset default is WAVELEN (specframe.c:2015),
+        // so an absent `System=` line decodes to a WAVELEN frame with
+        // system_set false.
+        let sys_str = node.get_string("System", SpecSystem::Wavelen.as_str());
+        let system = SpecSystem::parse(&sys_str).unwrap_or(SpecSystem::Wavelen);
         let system_present = node.get("System").is_some();
 
         let mut sf = SpecFrame::new(system);
-        // SpecFrame::new only flags the system as set when the
-        // requested system differs from the C default `FREQ`. When the
-        // serialised form has an explicit `System=` line we honour
-        // that regardless.
+        // SpecFrame::new flags System as set; honour the serialised
+        // set-ness instead (a commented `System=` line means unset).
         sf.system_set = system_present;
 
         // Title.
@@ -2629,7 +2646,7 @@ mod tests {
         let template = SpecFrame::new(SpecSystem::Vradio);
         assert!(template.test_system());
         let target = SpecFrame::new(SpecSystem::Freq);
-        assert!(!target.test_system());
+        assert!(target.test_system());
         let mut result: DynFrame = Box::new(target);
         result.overlay_template(&template, &[0]).unwrap();
         let r = result.as_any().downcast_ref::<SpecFrame>().unwrap();
@@ -2638,10 +2655,11 @@ mod tests {
 
     #[test]
     fn overlay_template_skips_unset_attrs() {
-        // Template default-constructs as FREQ without any explicit
-        // System; overlaying onto a VRAD target must leave the
-        // target's system unchanged.
-        let template = SpecFrame::new(SpecSystem::Freq);
+        // A template whose System has been cleared (System unset,
+        // defaulting to WAVELEN) must not overlay System onto the
+        // result. Overlaying onto a VRAD target leaves it VRAD.
+        let mut template = SpecFrame::new(SpecSystem::Freq);
+        template.clear_system();
         assert!(!template.test_system());
         let target = SpecFrame::new(SpecSystem::Vradio);
         let mut result: DynFrame = Box::new(target);
@@ -2751,5 +2769,52 @@ mod tests {
         let snap = target.pick_axes_snapshot(&[-1]).unwrap();
         assert_eq!(snap.naxes(), 1);
         assert!(snap.as_any().downcast_ref::<SpecFrame>().is_none());
+    }
+
+    #[test]
+    fn convert_through_generic_driver_transfers_system() {
+        // Regression for the value-derived System set-tracking bug: a
+        // SpecFrame built with an explicit System (VRAD here, m/s) must
+        // report System set, so the generic ConvertX Match/Overlay path
+        // overlays its System onto the common alignment frame. Before the
+        // fix, `SpecFrame::new(Freq)` reported System unset, the result
+        // SpecFrame's Hz unit was checked against the WAVELEN default, and
+        // a hard `AST__BADUN` (Unit 'Hz' incompatible with 'm/s')
+        // resulted.
+        //
+        // Ground truth from the C oracle (libast astConvert on the same
+        // two SpecFrames, RestFreq=1.0E9 Hz, StdOfRest=Topocentric):
+        //   VRAD 1000 m/s -> FREQ 999996664.359048 Hz
+        use crate::frames::find_frame::convert_frames;
+
+        let mut vrad = SpecFrame::new(SpecSystem::Vradio);
+        vrad.set_unit("m/s");
+        vrad.set_rest_freq(1.0e9);
+        vrad.set_std_of_rest(StdOfRest::Topocentric);
+        assert!(vrad.test_system());
+
+        let mut freq = SpecFrame::new(SpecSystem::Freq);
+        freq.set_unit("Hz");
+        freq.set_rest_freq(1.0e9);
+        freq.set_std_of_rest(StdOfRest::Topocentric);
+        assert!(freq.test_system());
+
+        let fs = convert_frames(&vrad, &freq, "")
+            .expect("convert must not error with BADUN")
+            .expect("a VRAD->FREQ conversion must exist");
+
+        let map = fs
+            .mapping(
+                crate::frames::FrameRef::Base,
+                crate::frames::FrameRef::Current,
+            )
+            .unwrap();
+        let pts = PointSet::from_rows([[1000.0]]);
+        let out = map.transform(&pts, true).unwrap();
+        let f_hz = out.point(0)[0];
+        assert!(
+            (f_hz - 999_996_664.359_048).abs() < 1.0e-3,
+            "VRAD 1000 m/s -> FREQ should be 999996664.359048 Hz, got {f_hz}"
+        );
     }
 }
