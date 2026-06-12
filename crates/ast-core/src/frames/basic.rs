@@ -518,6 +518,47 @@ impl BasicFrame {
     }
 }
 
+/// Match the leading "<bad>" token of `s` using the C scanf format
+/// `" < %*1[Bb] %*1[Aa] %*1[Dd] > %n"` (axis.c:1357) and return the
+/// `%n` count: the number of bytes consumed up to and including any
+/// trailing whitespace. Whitespace is allowed (and skipped) before each
+/// of the tokens `<`, `b`, `a`, `d`, `>` and after the closing `>`;
+/// matching stops at the first non-whitespace following `>`. Returns
+/// `None` if the token does not match (scanf would leave `%n` unset).
+fn scan_bad_token(s: &str) -> Option<usize> {
+    // The byte at `pos` after skipping any leading whitespace must equal
+    // the (case-insensitively matched) expected character. `%*1[Bb]`
+    // matches a single B or b; `<` and `>` are literals (a literal in a
+    // scanf format does not skip whitespace itself, but the spaces around
+    // them do). Returns the byte position just past the matched char.
+    fn match_char(s: &str, pos: usize, expected: &[char]) -> Option<usize> {
+        let mut p = pos;
+        let bytes = s.as_bytes();
+        while p < bytes.len() && (bytes[p] as char).is_whitespace() {
+            p += 1;
+        }
+        let c = s[p..].chars().next()?;
+        if expected.contains(&c) {
+            Some(p + c.len_utf8())
+        } else {
+            None
+        }
+    }
+
+    let p = match_char(s, 0, &['<'])?;
+    let p = match_char(s, p, &['B', 'b'])?;
+    let p = match_char(s, p, &['A', 'a'])?;
+    let p = match_char(s, p, &['D', 'd'])?;
+    let mut p = match_char(s, p, &['>'])?;
+
+    // Trailing whitespace skipped by the space before `%n` is counted.
+    let bytes = s.as_bytes();
+    while p < bytes.len() && (bytes[p] as char).is_whitespace() {
+        p += 1;
+    }
+    Some(p)
+}
+
 impl Frame for BasicFrame {
     fn naxes(&self) -> usize {
         self.naxes
@@ -555,7 +596,11 @@ impl Frame for BasicFrame {
         }
         // Resolve the effective Format string: the per-axis Format if
         // set, else the default "%1.<Digits>G" with the per-axis Digits
-        // (frame.c:4260 -> GetDefaultFormat axis.c:1819).
+        // (frame.c:4260 -> GetDefaultFormat axis.c:1819). A SET but
+        // non-empty Format is passed through verbatim — including one with
+        // no '%', which C hands straight to sprintf so the value is ignored
+        // and the literal string is returned (axis.c:780, ParseAxisFormat
+        // axis.c:2127 returns the unaltered copy when no '%' is present).
         let digits = self.axis_digits(axis)?.max(1) as usize;
         let fmt = match &self.format_strs[axis - 1] {
             Some(s) if !s.is_empty() => s.clone(),
@@ -593,29 +638,15 @@ impl Frame for BasicFrame {
             return Ok((v, leading_ws + best_len + trailing_ws));
         }
 
-        // Recognise "<bad>" (case-insensitive, embedded/edge whitespace)
-        // => BAD_VALUE (axis.c:1357).
-        let compact: String = after_ws
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .to_ascii_lowercase();
-        if compact.starts_with("<bad>") {
-            // nread spans through the closing '>' (its trailing whitespace
-            // is not counted, matching the C `%n` placement).
-            let upto = after_ws
-                .char_indices()
-                .scan(0usize, |seen, (i, c)| {
-                    if !c.is_whitespace() {
-                        *seen += 1;
-                    }
-                    Some((i, c, *seen))
-                })
-                .find(|&(_, c, seen)| seen == 5 && c == '>')
-                .map(|(i, c, _)| i + c.len_utf8());
-            if let Some(end) = upto {
-                return Ok((BAD_VALUE, leading_ws + end));
-            }
+        // Recognise "<bad>" via the C scanf format
+        // `" < %*1[Bb] %*1[Aa] %*1[Dd] > %n"` (axis.c:1357). Each space in
+        // that format skips optional whitespace, so the tokens `<`, `b`,
+        // `a`, `d`, `>` may be separated by whitespace. The trailing space
+        // before `%n` skips trailing whitespace, so `%n` (nread) counts
+        // that trailing whitespace too — it stops at the first
+        // non-whitespace after `>`.
+        if let Some(end) = scan_bad_token(after_ws) {
+            return Ok((BAD_VALUE, leading_ws + end));
         }
 
         // Parse failure: nread = 0, no error (axis.c:1366).

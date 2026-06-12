@@ -156,6 +156,14 @@ pub(crate) fn parse_axis_format(fmt: &str, digits: usize) -> ParsedFormat {
 /// parsed; its graphical-escape rendering is deferred (Plot, step 10),
 /// so a log format currently falls back to formatting the raw value.
 pub(crate) fn format_value(fmt: &str, digits: usize, value: f64) -> String {
+    // A Format string with no '%' conversion has nothing for sprintf to
+    // substitute, so C passes it straight to sprintf and the literal
+    // string is returned with the value ignored (axis.c:780; verified
+    // with `sprintf(buf, "3", x)` -> "3"). ParseAxisFormat (axis.c:2127)
+    // returns the unaltered copy in this case.
+    if !fmt.contains('%') {
+        return fmt.to_string();
+    }
     let p = parse_axis_format(fmt, digits);
     if p.integ {
         return format!("{}", value as i64);

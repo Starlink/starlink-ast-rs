@@ -217,11 +217,20 @@ fn format_with_precision() {
 }
 
 #[test]
-fn format_without_percent_uses_default() {
+fn format_without_percent_returns_literal() {
     let mut frame = BasicFrameBuilder::new(1).build().unwrap();
-    // A Format string with no '%' is not a printf conversion; AST falls
-    // back to the default "%1.<Digits>G" precision.
+    // A SET Format string with no '%' has nothing for sprintf to
+    // substitute, so C returns the literal string and ignores the value
+    // (axis.c:780; verified with `sprintf(buf, "3", x)` -> "3").
     frame.set_format_str(1, "3").unwrap();
+    let s = frame.format(1, 3.14159).unwrap();
+    assert_eq!(s, "3");
+}
+
+#[test]
+fn format_unset_uses_default_g7() {
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    // An UNSET Format uses the default "%1.<Digits>G" (Digits = 7).
     let s = frame.format(1, 3.14159).unwrap();
     assert_eq!(s, "3.14159");
 }

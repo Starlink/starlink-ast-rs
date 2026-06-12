@@ -56,7 +56,17 @@ fn unformat_failure_is_nread_zero_no_error() {
 #[test]
 fn unformat_recognises_bad_token() {
     let f = BasicFrameBuilder::new(1).build().unwrap();
+
+    // C `sscanf(" <bad> ", " < %*1[Bb] %*1[Aa] %*1[Dd] > %n", &nc)` sets
+    // nc=7: the trailing space is matched and counted by the format's
+    // space-before-`%n`.
     let (v, n) = f.unformat(1, " <bad> ").unwrap();
     assert_eq!(v, ast_core::constants::BAD_VALUE);
-    assert!(n > 0);
+    assert_eq!(n, 7);
+
+    // Whitespace is allowed before each token; "  < b a d >  " gives
+    // nc=13 (verified against the same C scanf format).
+    let (v, n) = f.unformat(1, "  < b a d >  ").unwrap();
+    assert_eq!(v, ast_core::constants::BAD_VALUE);
+    assert_eq!(n, 13);
 }
