@@ -216,6 +216,35 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         false
     }
 
+    /// `Digits`: default number of significant figures used when
+    /// formatting coordinate values. Mirrors C `astGetDigits`
+    /// (frame.c:13134) — default 7.
+    fn digits(&self) -> i32 {
+        7
+    }
+
+    /// Set the `Digits` attribute. C constrains the stored value to be
+    /// at least 1 (frame.c:13138).
+    fn set_digits(&mut self, _value: i32) {}
+
+    /// Test whether `Digits` has been explicitly set.
+    fn test_digits(&self) -> bool {
+        false
+    }
+
+    /// Per-axis `Digits(axis)` (1-based). Falls back to the frame-level
+    /// `Digits` when no axis-specific value is set. Mirrors C
+    /// `astGetAxisDigits` resolution in `Format` (frame.c:4260).
+    fn axis_digits(&self, _axis: usize) -> i32 {
+        self.digits()
+    }
+
+    /// Per-axis `Direction(axis)` (1-based). Plot hint; default 1.
+    /// Mirrors C `astGetAxisDirection` (axis.c) — default 1.
+    fn direction(&self, _axis: usize) -> bool {
+        true
+    }
+
     /// Permute the axes of this frame.
     ///
     /// `perm` is a 1-based permutation array of length `naxes`. After the

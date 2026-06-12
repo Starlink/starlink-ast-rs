@@ -28,6 +28,9 @@ pub struct BasicFrame {
     format_strs: Vec<Option<String>>,
     bottoms: Vec<Option<f64>>,
     tops: Vec<Option<f64>>,
+    digits: Option<i32>,
+    axis_digits: Vec<Option<i32>>,
+    directions: Vec<Option<bool>>,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
     /// Permanent object identification string (Object-level attribute).
@@ -69,6 +72,9 @@ pub struct BasicFrameBuilder {
     format_strs: Vec<Option<String>>,
     bottoms: Vec<Option<f64>>,
     tops: Vec<Option<f64>>,
+    digits: Option<i32>,
+    axis_digits: Vec<Option<i32>>,
+    directions: Vec<Option<bool>>,
     act_unt: Option<bool>,
     ident: Option<String>,
 }
@@ -87,6 +93,9 @@ impl BasicFrameBuilder {
             format_strs: vec![None; naxes],
             bottoms: vec![None; naxes],
             tops: vec![None; naxes],
+            digits: None,
+            axis_digits: vec![None; naxes],
+            directions: vec![None; naxes],
             act_unt: None,
             ident: None,
         }
@@ -179,6 +188,9 @@ impl BasicFrameBuilder {
             format_strs: self.format_strs,
             bottoms: self.bottoms,
             tops: self.tops,
+            digits: self.digits,
+            axis_digits: self.axis_digits,
+            directions: self.directions,
             act_unt: self.act_unt,
             ident: self.ident,
             min_axes_opt: None,
@@ -457,6 +469,53 @@ impl BasicFrame {
         self.tops[axis - 1] = None;
         Ok(())
     }
+
+    /// Frame-level Digits, defaulting to 7. Mirrors `astGetDigits`.
+    pub fn digits(&self) -> i32 {
+        self.digits.unwrap_or(7)
+    }
+
+    /// Set frame-level Digits, constrained to >= 1 (frame.c:13138).
+    pub fn set_digits(&mut self, value: i32) {
+        self.digits = Some(value.max(1));
+    }
+
+    /// Test whether frame-level Digits is explicitly set.
+    pub fn test_digits(&self) -> bool {
+        self.digits.is_some()
+    }
+
+    /// Per-axis Digits (1-based), falling back to frame-level Digits.
+    pub fn axis_digits(&self, axis: usize) -> AstResult<i32> {
+        self.validate_axis(axis)?;
+        Ok(self.axis_digits[axis - 1].unwrap_or_else(|| self.digits()))
+    }
+
+    /// Set per-axis Digits (1-based), constrained to >= 1.
+    pub fn set_axis_digits(&mut self, axis: usize, value: i32) -> AstResult<()> {
+        self.validate_axis(axis)?;
+        self.axis_digits[axis - 1] = Some(value.max(1));
+        Ok(())
+    }
+
+    /// Test whether per-axis Digits is explicitly set (1-based).
+    pub fn test_axis_digits(&self, axis: usize) -> AstResult<bool> {
+        self.validate_axis(axis)?;
+        Ok(self.axis_digits[axis - 1].is_some())
+    }
+
+    /// Per-axis Direction Plot hint (1-based); default true.
+    pub fn direction(&self, axis: usize) -> AstResult<bool> {
+        self.validate_axis(axis)?;
+        Ok(self.directions[axis - 1].unwrap_or(true))
+    }
+
+    /// Set per-axis Direction (1-based).
+    pub fn set_direction(&mut self, axis: usize, value: bool) -> AstResult<()> {
+        self.validate_axis(axis)?;
+        self.directions[axis - 1] = Some(value);
+        Ok(())
+    }
 }
 
 impl Frame for BasicFrame {
@@ -466,6 +525,26 @@ impl Frame for BasicFrame {
 
     fn system_string(&self) -> Option<&str> {
         Some("Cartesian")
+    }
+
+    fn digits(&self) -> i32 {
+        BasicFrame::digits(self)
+    }
+
+    fn set_digits(&mut self, value: i32) {
+        BasicFrame::set_digits(self, value);
+    }
+
+    fn test_digits(&self) -> bool {
+        BasicFrame::test_digits(self)
+    }
+
+    fn axis_digits(&self, axis: usize) -> i32 {
+        BasicFrame::axis_digits(self, axis).unwrap_or(7)
+    }
+
+    fn direction(&self, axis: usize) -> bool {
+        BasicFrame::direction(self, axis).unwrap_or(true)
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -634,6 +713,8 @@ impl Frame for BasicFrame {
         permute_slice(&mut self.format_strs, perm);
         permute_slice(&mut self.bottoms, perm);
         permute_slice(&mut self.tops, perm);
+        permute_slice(&mut self.axis_digits, perm);
+        permute_slice(&mut self.directions, perm);
         Ok(())
     }
 
