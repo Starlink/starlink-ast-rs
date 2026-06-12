@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{DynFrame, Frame, FrameRef};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::pal;
@@ -1014,10 +1014,15 @@ impl Frame for SkyFrame {
     fn test_preserve_axes(&self) -> bool {
         self.preserve_axes_opt.is_some()
     }
-    /// SkyFrame's Permute defaults to `false` — mirrors the C behaviour
-    /// where SkyFrame's permute attribute defaults to 0.
+    /// Permute defaults to `true` (`1`). SkyFrame does not override the
+    /// Permute getter, so it inherits the parent Frame default
+    /// (`astMAKE_GET(Frame,Permute,int,0,…)` returns `1` when unset —
+    /// frame.c:13459-13460). This default is load-bearing for the
+    /// `astConvert`/Match path: it lets axis-swapped SkyFrames (e.g.
+    /// CTYPE1=DEC, CTYPE2=RA) align (skyframe.c:6826
+    /// `match = !swap || astGetPermute(template)`).
     fn permute(&self) -> bool {
-        self.permute_opt.unwrap_or(false)
+        self.permute_opt.unwrap_or(true)
     }
     fn set_permute(&mut self, v: bool) {
         self.permute_opt = Some(v);
@@ -1124,66 +1129,6 @@ impl Frame for SkyFrame {
             && ast_equal(self.sky_ref[1], other.sky_ref[1])
             && self.neglon == other.neglon
             && SkyFrame::domain(self) == SkyFrame::domain(other)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        let to_sky = to.as_any().downcast_ref::<SkyFrame>();
-        match to_sky {
-            Some(to_sky) => {
-                let self_last = self.compute_last()?;
-                let to_last = to_sky.compute_last()?;
-                let mut mapping: DynMapping = make_sky_mapping(
-                    self.system,
-                    self.equinox_mjd(),
-                    self.epoch_mjd(),
-                    to_sky.system,
-                    to_sky.equinox_mjd(),
-                    to_sky.epoch_mjd(),
-                    SkySystem::Fk5, // align through FK5
-                    self.obs_lat.unwrap_or(0.0),
-                    self_last,
-                    self.compute_diurab(),
-                    to_sky.obs_lat.unwrap_or(0.0),
-                    to_last,
-                    to_sky.compute_diurab(),
-                )?;
-
-                // Replace the system-conversion chain by a UnitMap when
-                // its effect everywhere on the sphere is below the
-                // frames' SkyTol (skyframe.c:6546 TestSlaUnit).
-                if crate::frames::sky_convert::is_effectively_unit(
-                    mapping.as_ref(),
-                    self.sky_tol().min(to_sky.sky_tol()),
-                ) {
-                    mapping = Box::new(UnitMap::new(2));
-                }
-
-                // Prepend source offset removal (offset→standard).
-                if let Some(off_map) =
-                    make_offset_mapping(self.sky_ref, self.sky_ref_p, self.sky_ref_is)?
-                {
-                    mapping = Box::new(CmpMap::new(off_map, mapping, Composition::Series)?);
-                }
-
-                // Append target offset application (standard→offset = inverse).
-                if let Some(mut off_map) =
-                    make_offset_mapping(to_sky.sky_ref, to_sky.sky_ref_p, to_sky.sky_ref_is)?
-                {
-                    off_map.invert();
-                    mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
-                }
-
-                // Wrap in PermMap swap so the mapping operates on each
-                // Frame's external axis order. See `map_from` for the
-                // C reference (skyframe.c:10082-10117).
-                let mapping = wrap_with_axis_swap(mapping, self, to_sky);
-
-                let mut fs = FrameSet::new(self.snapshot());
-                fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
-                Ok(Some(fs))
-            }
-            None => Ok(None),
-        }
     }
 
     fn obs_lat(&self) -> Option<f64> {
@@ -2788,15 +2733,27 @@ mod tests {
     }
 
     #[test]
-    fn convert_incompatible() {
+    fn convert_skyframe_to_blank_domain_frame_is_unitmap() {
+        // `astConvert(SkyFrame, Frame[Domain=""])` succeeds with a
+        // UnitMap: a blank-domain plain Frame matches any Frame, and the
+        // generic ConvertX driver casts the SkyFrame down to a plain
+        // Frame for the alignment, leaving the axes unchanged. Confirmed
+        // against the C oracle (ast_tester/testconvert.c errors 4/8 fire
+        // if no FrameSet, 3/7 if not a UnitMap).
         use crate::frames::{BasicFrameBuilder, Frame};
         let sky = SkyFrame::new(SkySystem::Fk5);
         let basic = BasicFrameBuilder::new(2).build().unwrap();
 
-        let result = sky.convert_to(&basic, &[]).unwrap();
+        let fs = sky
+            .convert_to(&basic, &[])
+            .unwrap()
+            .expect("SkyFrame -> blank-domain Frame converts");
+        let map = fs
+            .mapping(super::FrameRef::Base, super::FrameRef::Current)
+            .unwrap();
         assert!(
-            result.is_none(),
-            "SkyFrame -> BasicFrame should return None"
+            map.as_any().is::<UnitMap>(),
+            "SkyFrame -> blank-domain Frame is a UnitMap"
         );
     }
 
@@ -3035,15 +2992,31 @@ mod tests {
 
     #[test]
     fn match_template_skyframe_swap_blocked_when_permute_false() {
-        // Target has its axes swapped; template's Permute defaults to
-        // false. The swap-detection logic in skyframe.c:6826 should
-        // refuse the match.
+        // Target has its axes swapped; with Permute explicitly cleared
+        // to false the swap-detection logic (skyframe.c:6826
+        // `match = !swap || astGetPermute(template)`) refuses the match.
         let mut target = SkyFrame::new(SkySystem::Fk5);
         target.perm_axes(&[2, 1]).unwrap();
-        let template = SkyFrame::new(SkySystem::Galactic);
+        let mut template = SkyFrame::new(SkySystem::Galactic);
+        template.set_permute(false);
         assert!(!template.permute());
         let result = template.match_template(&target, false).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn match_template_skyframe_permute_defaults_true() {
+        // Permute defaults to 1 (true) — SkyFrame inherits the parent
+        // Frame default (frame.c:13459-13460); it does not override the
+        // getter. An axis-swapped target therefore matches by default.
+        let template = SkyFrame::new(SkySystem::Galactic);
+        assert!(template.permute());
+        let mut target = SkyFrame::new(SkySystem::Fk5);
+        target.perm_axes(&[2, 1]).unwrap();
+        assert!(
+            template.match_template(&target, false).unwrap().is_some(),
+            "axis-swapped SkyFrame matches with the default Permute=true"
+        );
     }
 
     #[test]

@@ -595,16 +595,23 @@ impl SpecFrame {
             return Ok(());
         };
 
-        // Otherwise, convert the supplied values from the source
-        // SkyFrame's system to FK5 J2000 (the canonical system in
-        // which RefRA/RefDec are stored). Mirrors C:3990-4036.
+        // Otherwise, find the Mapping from the supplied SkyFrame to the
+        // FK5 J2000 SkyFrame in which RefRA/RefDec are stored. C uses
+        // `astFindFrame(frm, skyframe, "")` (specframe.c:4000-4003), NOT
+        // `astConvert`: FindFrame uses the FK5/J2000 template's own
+        // settings to drive the alignment (Match/SubFrame), so an
+        // equinox/epoch-only difference within FK5 collapses to a
+        // UnitMap. `astConvert` instead aligns through AlignSystem
+        // (ICRS), which leaves a sub-SkyTol SlaMap residue that perturbs
+        // the stored RefRA at the f32 level and breaks the downstream
+        // Geocentric/Heliocentric SpecMap cancellation.
         let canonical = super::SkyFrame::new(super::SkySystem::Fk5);
         // (The C version sets equinox=J2000 explicitly; SkyFrame::new
         // uses J2000 as the default Equinox, so no explicit set is
         // needed here.)
-        let Some(fs) = crate::frames::Frame::convert_to(frm, &canonical, &[])? else {
-            // Conversion was not possible — leave RefRA/RefDec
-            // unchanged (C silently no-ops in this case).
+        let Some(fs) = crate::frames::Frame::find_frame_template(frm, &canonical, " ")? else {
+            // Alignment was not possible — leave RefRA/RefDec unchanged
+            // (C silently no-ops in this case).
             return Ok(());
         };
 

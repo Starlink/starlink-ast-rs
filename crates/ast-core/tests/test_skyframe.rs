@@ -317,11 +317,70 @@ fn all_systems_round_trip_via_fk5() {
 }
 
 #[test]
-fn convert_skyframe_to_basicframe_returns_none() {
+fn convert_skyframe_to_blank_domain_frame_is_unitmap() {
+    // `astConvert(SkyFrame, Frame[Domain=""])` succeeds with a UnitMap:
+    // a blank-domain plain Frame matches any Frame, and the generic
+    // ConvertX driver casts the SkyFrame down to a plain Frame for the
+    // alignment. Matches the C oracle (ast_tester/testconvert.c).
     let sky = SkyFrame::new(SkySystem::Fk5);
     let basic = BasicFrameBuilder::new(2).build().unwrap();
-    let result = sky.convert_to(&basic, &[]).unwrap();
-    assert!(result.is_none(), "SkyFrame->BasicFrame should return None");
+    let fs = sky
+        .convert_to(&basic, &[])
+        .unwrap()
+        .expect("SkyFrame -> blank-domain Frame converts");
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    assert!(
+        map.as_any().is::<ast_core::mappings::UnitMap>(),
+        "SkyFrame -> blank-domain Frame is a UnitMap"
+    );
+}
+
+#[test]
+fn convert_skyframe_and_sky_domain_frame_is_unitmap() {
+    // Port of ast_tester/testconvert.c errors 11-18: a plain Frame with
+    // Domain=SKY aligns with a SkyFrame in both directions, and the
+    // resulting Mapping is a UnitMap. The generic ConvertX driver routes
+    // through SkyFrame::match_template/sub_frame with the matchsub cast
+    // retry that downcasts the SkyFrame to a plain Frame. Oracle-confirmed:
+    // testconvert passes against libast.
+    let mut bf = BasicFrameBuilder::new(2).build().unwrap();
+    bf.set_domain("SKY");
+    let sky = SkyFrame::new(SkySystem::Fk5);
+
+    // Frame[SKY] -> SkyFrame.
+    let fs1 = bf
+        .convert_to(&sky, &[])
+        .unwrap()
+        .expect("Frame[SKY] -> SkyFrame converts");
+    assert!(
+        fs1.mapping(FrameRef::Base, FrameRef::Current)
+            .unwrap()
+            .as_any()
+            .is::<ast_core::mappings::UnitMap>(),
+        "Frame[SKY] -> SkyFrame is a UnitMap"
+    );
+
+    // SkyFrame -> Frame[SKY].
+    let fs2 = sky
+        .convert_to(&bf, &[])
+        .unwrap()
+        .expect("SkyFrame -> Frame[SKY] converts");
+    assert!(
+        fs2.mapping(FrameRef::Base, FrameRef::Current)
+            .unwrap()
+            .as_any()
+            .is::<ast_core::mappings::UnitMap>(),
+        "SkyFrame -> Frame[SKY] is a UnitMap"
+    );
+
+    // A non-SKY domain Frame must NOT align with a SkyFrame
+    // (testconvert.c errors 9/10).
+    let mut nf = BasicFrameBuilder::new(2).build().unwrap();
+    nf.set_domain("NOTSKY");
+    assert!(
+        sky.convert_to(&nf, &[]).unwrap().is_none(),
+        "SkyFrame -> Frame[NOTSKY] does not align"
+    );
 }
 
 #[test]
