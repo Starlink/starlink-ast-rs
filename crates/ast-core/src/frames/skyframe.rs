@@ -2014,10 +2014,14 @@ impl Serializable for SkyFrame {
             Some("Highest legal axis value".to_string()),
         );
 
-        // ActUnt: written only when explicitly set, with its value
-        // (frame.c:14614). SkyFrame's effective value is always 0
-        // (frame.c:4651), so this generally emits 0 when set at all.
-        if let Some(v) = self.act_unt {
+        // ActUnt: Frame's Dump gates the ActUnt write on astTestActiveUnit
+        // (frame.c:14616). SkyFrame overrides TestActiveUnit to always
+        // return 0 (skyframe.c:10433), so C never emits an ActUnt token
+        // for a SkyFrame. Gating on test_active_unit() (always false for
+        // SkyFrame) reproduces that "never emit" behaviour by construction,
+        // even when act_unt was populated by from_node reading a token.
+        if self.test_active_unit() {
+            let v = self.act_unt.unwrap_or(false);
             node.push_int(
                 "ActUnt",
                 if v { 1 } else { 0 },
