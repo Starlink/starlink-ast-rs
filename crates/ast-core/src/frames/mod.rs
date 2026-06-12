@@ -537,6 +537,135 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         }
         Ok(())
     }
+
+    /// Resolve the vector point1->point3 into components parallel and
+    /// perpendicular to the basis vector point1->point2. Returns
+    /// `(point4, d1, d2)` where point4 is the closest approach, d1 the
+    /// signed parallel length, d2 the (non-negative) perpendicular
+    /// length. Zero-length basis or bad inputs give BAD. Mirrors C
+    /// `astResolve` (frame.c:9429).
+    fn resolve(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        point3: &[f64],
+    ) -> AstResult<(Vec<f64>, f64, f64)> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        let naxes = self.naxes();
+        let mut point4 = vec![BAD_VALUE; naxes];
+        let mut d1 = BAD_VALUE;
+        let mut d2 = BAD_VALUE;
+        let ok = (0..naxes).all(|i| !(is_bad(point1[i]) || is_bad(point2[i]) || is_bad(point3[i])));
+        if ok {
+            let mut dp = 0.0;
+            let mut bv = 0.0;
+            for i in 0..naxes {
+                let c = point2[i] - point1[i];
+                dp += c * (point3[i] - point1[i]);
+                bv += c * c;
+            }
+            if bv > 0.0 {
+                let bv = bv.sqrt();
+                d1 = dp / bv;
+                for i in 0..naxes {
+                    point4[i] = point1[i] + (d1 / bv) * (point2[i] - point1[i]);
+                }
+                let mut s = 0.0;
+                for i in 0..naxes {
+                    let c = point3[i] - point4[i];
+                    s += c * c;
+                }
+                d2 = s.sqrt();
+            }
+        }
+        Ok((point4, d1, d2))
+    }
+
+    /// Batch form of `resolve`: resolve every vector point1->in[i] into
+    /// `(parallel, perpendicular)` components, returned as a 2-coord
+    /// PointSet. For 2-D Frames the perpendicular component is signed
+    /// (positive when basis->vector rotation matches axis1->axis2). The
+    /// 1-axis case returns `(ax_distance, 0)`. Mirrors C
+    /// `astResolvePoints` (frame.c:9588). SkyFrame overrides with
+    /// great-circle geometry.
+    fn resolve_points(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        input: &crate::coords::PointSet,
+    ) -> AstResult<crate::coords::PointSet> {
+        use crate::constants::BAD_VALUE;
+        use crate::mappings::helpers::is_bad;
+        let nax = self.naxes();
+        let npoint = input.npoint();
+        let mut d1v = vec![BAD_VALUE; npoint];
+        let mut d2v = vec![BAD_VALUE; npoint];
+
+        if nax < 2 {
+            for p in 0..npoint {
+                let ip = input.point(p)[0];
+                d1v[p] = self.ax_distance(1, point1[0], ip)?;
+                d2v[p] = 0.0;
+            }
+            return crate::coords::PointSet::from_columns(&[&d1v, &d2v]);
+        }
+
+        // Basis vector + squared length.
+        let mut basisv = vec![0.0; nax];
+        let mut bv = 0.0;
+        let mut ok = true;
+        for i in 0..nax {
+            if is_bad(point1[i]) || is_bad(point2[i]) {
+                ok = false;
+                break;
+            }
+            basisv[i] = point2[i] - point1[i];
+            bv += basisv[i] * basisv[i];
+        }
+        if ok && bv > 0.0 {
+            let bv = bv.sqrt();
+            for p in 0..npoint {
+                let row = input.point(p);
+                let mut dp = 0.0;
+                let mut good = true;
+                for (i, &bi) in basisv.iter().enumerate() {
+                    let d = row[i] - point1[i];
+                    if is_bad(d) {
+                        good = false;
+                        break;
+                    }
+                    dp += bi * d;
+                }
+                if !good {
+                    continue;
+                }
+                let d1 = dp / bv;
+                let c = d1 / bv;
+                let d2 = if nax > 2 {
+                    let mut s = 0.0;
+                    for (i, &bi) in basisv.iter().enumerate() {
+                        let d = row[i] - (point1[i] + c * bi);
+                        s += d * d;
+                    }
+                    s.sqrt()
+                } else {
+                    let x1 = c * basisv[0];
+                    let y1 = c * basisv[1];
+                    let x2 = row[0] - (point1[0] + x1);
+                    let y2 = row[1] - (point1[1] + y1);
+                    let mut m = (x2 * x2 + y2 * y2).sqrt();
+                    if x1 * y2 - x2 * y1 < 0.0 {
+                        m = -m;
+                    }
+                    m
+                };
+                d1v[p] = d1;
+                d2v[p] = d2;
+            }
+        }
+        crate::coords::PointSet::from_columns(&[&d1v, &d2v])
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.

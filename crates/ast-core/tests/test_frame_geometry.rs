@@ -3,6 +3,7 @@
 //! AxDistance:1466, AxOffset:1744, Resolve:9429, ResolvePoints:9588).
 
 use ast_core::constants::BAD_VALUE;
+use ast_core::coords::PointSet;
 use ast_core::frames::{BasicFrameBuilder, Frame};
 
 fn bf(n: usize) -> impl Frame {
@@ -83,4 +84,37 @@ fn ax_norm_is_noop_for_cartesian() {
     let mut vals = vec![1.0, 2.0, 3.0];
     f.ax_norm(1, 0, &mut vals).unwrap();
     assert_eq!(vals, vec![1.0, 2.0, 3.0]);
+}
+
+#[test]
+fn resolve_parallel_perp() {
+    let f = bf(2);
+    // basis (0,0)->(2,0); point3 = (1,3). parallel d1=1, perp d2=3.
+    let (p4, d1, d2) = f.resolve(&[0.0, 0.0], &[2.0, 0.0], &[1.0, 3.0]).unwrap();
+    assert!((d1 - 1.0).abs() < 1e-12);
+    assert!((d2 - 3.0).abs() < 1e-12);
+    assert!((p4[0] - 1.0).abs() < 1e-12);
+    assert!((p4[1] - 0.0).abs() < 1e-12);
+}
+
+#[test]
+fn resolve_zero_basis_is_bad() {
+    let f = bf(2);
+    let (_p4, d1, d2) = f.resolve(&[0.0, 0.0], &[0.0, 0.0], &[1.0, 3.0]).unwrap();
+    assert_eq!(d1, BAD_VALUE);
+    assert_eq!(d2, BAD_VALUE);
+}
+
+#[test]
+fn resolve_points_signed_2d() {
+    let f = bf(2);
+    // basis (0,0)->(1,0). Two test points above and below the basis.
+    // Matches the C library sign convention `x1*y2 - x2*y1 < 0 => negate`
+    // (frame.c:9852); confirmed against the frame.c ResolvePoints source.
+    let inset = PointSet::from_rows([[1.0_f64, 2.0], [1.0, -2.0]]);
+    let out = f.resolve_points(&[0.0, 0.0], &[1.0, 0.0], &inset).unwrap();
+    // d1 (axis 0) = 1.0 for both; d2 (axis 1) signed: +2 then -2.
+    assert!((out.point(0)[0] - 1.0).abs() < 1e-12);
+    assert!((out.point(0)[1] - 2.0).abs() < 1e-12);
+    assert!((out.point(1)[1] + 2.0).abs() < 1e-12);
 }
