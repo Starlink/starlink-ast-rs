@@ -8,7 +8,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::serial::{FrameToNode, Node, NodeValue, Serializable, frame_from_node};
 
-use super::{DynFrame, Frame, FrameRef, FrameSet};
+use super::{DynFrame, Frame};
 
 /// A compound frame that concatenates the axes of two child frames.
 ///
@@ -652,20 +652,6 @@ impl Frame for CmpFrame {
             return false;
         };
         self.frame1.equal(other.frame1.as_ref()) && self.frame2.equal(other.frame2.as_ref())
-    }
-
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        if self.naxes() == to.naxes() {
-            let mut fs = FrameSet::new(self.snapshot());
-            fs.add_frame(
-                FrameRef::Base,
-                Box::new(UnitMap::new(self.naxes())),
-                to.snapshot(),
-            )?;
-            Ok(Some(fs))
-        } else {
-            Ok(None)
-        }
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {

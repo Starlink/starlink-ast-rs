@@ -80,7 +80,6 @@ pub(crate) fn match_with_subclass(
 /// FrameSet (base = `from`, current = `to`) whose Mapping converts
 /// between them, or `None` if no conversion is possible. `domainlist`
 /// is a comma-separated priority list ("" / blank field permits any).
-#[allow(dead_code)]
 pub(crate) fn convert_frames(
     from: &dyn Frame,
     to: &dyn Frame,

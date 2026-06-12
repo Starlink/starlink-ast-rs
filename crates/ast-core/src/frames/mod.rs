@@ -83,7 +83,24 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// `None` if the frames are incompatible. Mirrors C `astConvert`
     /// (frame.c:2965), which swaps its first two arguments and defers to
     /// the generic `astConvertX` driver (frame.c:3028).
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;
+    ///
+    /// The default body joins `domains` into the comma-separated list C
+    /// expects (an empty slice becomes a single blank field that permits
+    /// any domain) and delegates to the generic driver. No Frame subclass
+    /// overrides it; all class-specific alignment lives in `match_template`
+    /// / `sub_frame`, exactly as in C.
+    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        let domainlist = if domains.is_empty() {
+            " ".to_string()
+        } else {
+            domains.join(",")
+        };
+        // Snapshot `self` to a `dyn Frame`: the trait method's `&self`
+        // cannot be coerced to `&dyn Frame` for the unsized default body
+        // (the same indirection `default_find_frame` uses).
+        let from = self.snapshot();
+        find_frame::convert_frames(from.as_ref(), to, &domainlist)
+    }
 
     /// Observer geodetic latitude in radians.
     fn obs_lat(&self) -> Option<f64> {
