@@ -146,23 +146,23 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
   C `astUnformat` (`frame.c:11819` → `axis.c:1354`, `sscanf("%lf %n")`) returns nread=0 *without raising an error* on parse failure and counts trailing whitespace in nread.
   Rust (`basic.rs:487`) raises `Unfer` on failure and stops nread at the last numeric character; the C contract matters for ast-capi parity and multi-field parsing.
 
-- **[MED] Frame — geometry/axis method family missing.**
-  Zero implementations exist for `astOffset2`, `astAxAngle`, `astAxDistance`, `astAxOffset`, `astAxNorm`, `astAxIn`, `astIntersect`, `astResolve`/`ResolvePoints`, `astNormBox`, `NormalPoints`/`NormPoints`, `astMatchAxes`/`MatchAxesX` (symbol grep over `crates/ast-core/src`).
+- **[MED] Frame — geometry/axis method family** — **FIXED 2026-06-11.**
+  The Cartesian base implementations now exist as `Frame` trait methods in `crates/ast-core/src/frames/mod.rs`: `offset2`, `intersect`, `ax_distance`, `ax_offset`, `ax_angle`, `ax_norm`, `resolve`, `resolve_points` (with the signed 2-D perpendicular component), `match_axes`/`match_axes_x`, `is_unit_frame`, and `norm_box` (base no-op). `ax_angle` mirrors the C stale-loop-index quirk bit-for-bit (logged in `docs/issues/c-library-quirks.md`); `match_axes` was oracle-confirmed against `astMatchAxes` (CmpFrame(Spec,Sky) → `[2,3]`).
+  Still deferred: `NormalPoints`/`NormPoints` (PointSet-batch Norm; no current core consumer), the SkyFrame spherical overrides (great-circle `offset2`/`resolve`/`intersect`/`norm_box` with the C `reg` Mapping argument — `norm_box` will gain the `reg` parameter when that override lands), and the capi shims for all of these.
   SkyFrame is supposed to override several of these (`skyframe.c`), so the base implementations are prerequisites for the SkyFrame audit items.
 
 - **[MED] Frame — ActiveUnit / unit adaptation absent.**
   No `active_unit` symbol exists; C `astSetActiveUnit`/`GetActiveUnit` make Match/Overlay insert `astUnitMapper` conversions when units differ, and SpecFrame/FluxFrame enable it by default.
   Without it, unit differences between matched frames are silently ignored.
 
-- **[MED] Frame — `astPrimaryFrame` missing and worked around.**
-  No Frame-level `primary_frame`; `fitschan/fset_to_store/make_int_world.rs:53` and `celestial_axes.rs:341` each carry a private re-implementation.
-  Port the Frame method (plus the CmpFrame override) and delete the two local copies.
+- **[MED] Frame — `astPrimaryFrame`** — **FIXED 2026-06-11.**
+  `primary_frame` is now a `Frame` trait method (leaf base returns `(self, axis)`; CmpFrame descends through its perm, SkyFrame applies its axis permutation). The two private fitschan copies in `make_int_world.rs` and `celestial_axes.rs` were deleted and now call the trait method directly; `specframe::primary_frame_walk` delegates to it. Behaviour verified unchanged via `test_fitschan_wcs` and the simplify regression suite.
 
 - **[LOW] Frame — `format` of AST__BAD returns `"<bad>"`.**
   C `AxisFormat` has no bad-value special case and formats the raw double; the `"<bad>"` token (`basic.rs:473`) is an invention — verify no Rust caller depends on it, then match C.
 
-- **[LOW] Frame — `IsUnitFrame` missing.**
-  C uses it (`frame.c:6417`) to let simplification drop no-op Frame conversions; relevant once Frame-as-Mapping/Region simplification paths exercise it.
+- **[LOW] Frame — `IsUnitFrame`** — **FIXED 2026-06-11** (base only).
+  `is_unit_frame` is now a `Frame` trait method returning `true` for the base Frame (`frame.c:6417`). The specialised-frame overrides that return `false` are deferred until the Frame-as-Mapping/Region simplification paths consume the result.
 
 - **[DEFERRED] Frame — Plot-support methods missing: `astGap`, `Centre`, `Abbrev`, `Fields`, `FrameGrid`, `LineDef`/`LineContains`/`LineCrossing`/`LineOffset`.**
   All have zero Rust implementations; they are exercised mainly by Plot (delivery step 10) and Polygon/Region edge logic, so schedule them with that step (note `regions/polygon.rs` currently carries its own geometry).

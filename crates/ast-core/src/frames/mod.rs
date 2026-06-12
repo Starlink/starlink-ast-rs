@@ -720,6 +720,14 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn is_unit_frame(&self) -> bool {
         true
     }
+
+    /// Extend a box to include the effect of coordinate-system
+    /// singularities. The base Frame has none, so the bounds are left
+    /// unchanged. SkyFrame overrides this (pole inclusion). Mirrors C
+    /// `astNormBox` (frame.c:7766).
+    fn norm_box(&self, _lbnd: &mut [f64], _ubnd: &mut [f64]) -> AstResult<()> {
+        Ok(())
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.
