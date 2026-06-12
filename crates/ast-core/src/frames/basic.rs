@@ -568,6 +568,17 @@ impl Frame for BasicFrame {
         (self, axis)
     }
 
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        // Casting a plain Frame to another plain Frame is a same-class
+        // copy (object.c Cast: generation_gap == 0 -> astCopy). Any other
+        // target class is below the Frame base, so the cast fails.
+        if other.as_any().downcast_ref::<BasicFrame>().is_some() {
+            Ok(Some(Box::new(BasicFrame::clone(self))))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn system_string(&self) -> Option<&str> {
         Some("Cartesian")
     }

@@ -686,6 +686,26 @@ impl Frame for DSBSpecFrame {
         self.spec.test_permute()
     }
 
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        // DSBSpecFrame -> SpecFrame (truncate to the parent), or
+        // -> BasicFrame (plain Frame).
+        if other
+            .as_any()
+            .downcast_ref::<crate::frames::SpecFrame>()
+            .is_some()
+        {
+            Ok(Some(Box::new(SpecFrame::clone(self.spec()))))
+        } else if other
+            .as_any()
+            .downcast_ref::<crate::frames::BasicFrame>()
+            .is_some()
+        {
+            Ok(Some(Box::new(crate::frames::reduce_to_basic_frame(self)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
     // -----------------------------------------------------------------
     // astFindFrame / astMatch / astSubFrame trampoline.
     // Mirrors dsbspecframe.c:976 (Match), 1470 (SubFrame), 1154 (Overlay).

@@ -642,6 +642,24 @@ impl Frame for CmpFrame {
         }
     }
 
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        // If `other` is a CmpFrame, a same-class copy is appropriate
+        // (the direct Match path normally handles this; provide the
+        // copy for completeness).
+        if other
+            .as_any()
+            .downcast_ref::<crate::frames::CmpFrame>()
+            .is_some()
+        {
+            return Ok(Some(self.snapshot()));
+        }
+        // Otherwise build a plain BasicFrame with the same axes +
+        // overlaid attributes, then cast THAT to `other`'s class
+        // (cmpframe.c:1326-1347).
+        let basic = crate::frames::reduce_to_basic_frame(self)?;
+        basic.cast(other)
+    }
+
     fn match_template(
         &self,
         target: &dyn Frame,

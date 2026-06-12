@@ -1204,6 +1204,21 @@ impl Frame for SkyFrame {
         skyframe_overlay(template, template_axes, self)
     }
 
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        // A specialised leaf frame can only be cast down to a plain
+        // Frame (BasicFrame). Same-class is handled by the direct Match
+        // (no cast needed), so only the BasicFrame target matters here.
+        if other
+            .as_any()
+            .downcast_ref::<crate::frames::BasicFrame>()
+            .is_some()
+        {
+            Ok(Some(Box::new(crate::frames::reduce_to_basic_frame(self)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn match_template(
         &self,
         target: &dyn Frame,
@@ -3025,5 +3040,21 @@ mod tests {
         let snap = target.pick_axes_snapshot(&[1]).unwrap();
         assert_eq!(snap.naxes(), 1);
         assert!(snap.as_any().downcast_ref::<SkyFrame>().is_none());
+    }
+
+    #[test]
+    fn cast_skyframe_to_basic_frame() {
+        let sf = SkyFrame::new(crate::frames::SkySystem::Fk5);
+        let bf = crate::frames::BasicFrameBuilder::new(2).build().unwrap();
+        let casted = sf.cast(&bf).unwrap();
+        assert!(casted.is_some());
+        let casted = casted.unwrap();
+        assert!(
+            casted
+                .as_any()
+                .downcast_ref::<crate::frames::BasicFrame>()
+                .is_some()
+        );
+        assert_eq!(casted.naxes(), 2);
     }
 }

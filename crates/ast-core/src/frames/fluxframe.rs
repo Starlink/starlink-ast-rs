@@ -476,6 +476,21 @@ impl Frame for FluxFrame {
         fluxframe_overlay(template, template_axes, self)
     }
 
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        // A specialised leaf frame can only be cast down to a plain
+        // Frame (BasicFrame). Same-class is handled by the direct Match
+        // (no cast needed), so only the BasicFrame target matters here.
+        if other
+            .as_any()
+            .downcast_ref::<crate::frames::BasicFrame>()
+            .is_some()
+        {
+            Ok(Some(Box::new(crate::frames::reduce_to_basic_frame(self)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn match_template(
         &self,
         target: &dyn Frame,

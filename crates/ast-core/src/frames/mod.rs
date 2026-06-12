@@ -297,6 +297,16 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         Ok(None)
     }
 
+    /// Cast `self` down into the class of `other`, returning a copy of
+    /// `self`'s ancestral component that matches `other`'s class, or
+    /// `None` if `self` is not a subclass of `other`'s class. Used by
+    /// the matchsub retry so a specialised template can probe a plainer
+    /// target. Mirrors C `astCast` (object.c / cmpframe.c:1245).
+    /// Default: not castable.
+    fn cast(&self, _other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        Ok(None)
+    }
+
     /// Select axes from `self` (the target), overlaying `template`'s
     /// explicitly-set attributes on the result.
     ///
@@ -732,6 +742,35 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     fn norm_box(&self, _lbnd: &mut [f64], _ubnd: &mut [f64]) -> AstResult<()> {
         Ok(())
     }
+}
+
+/// Build a plain `BasicFrame` carrying `frame`'s axis count and the
+/// Frame-level + per-axis attributes that survive a cast to the Frame
+/// base class. Used by the per-class `cast` impls when `other` is a
+/// plain Frame. Mirrors the "create a basic Frame with the same axes
+/// and attributes" path of C `Cast` (cmpframe.c:1326-1344, and the
+/// Object-level CastCopy reduction for leaf frames).
+pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> {
+    let n = frame.naxes();
+    let mut bf = BasicFrameBuilder::new(n).build()?;
+    if frame.test_domain() {
+        bf.set_domain(frame.domain().to_string());
+    }
+    // Per-axis Label/Unit/Symbol via the existing pick path: pick all
+    // axes in order, which copies the metadata C transfers via the Axis
+    // objects + Overlay.
+    let target_axes: Vec<i32> = (0..n as i32).collect();
+    let picked = frame.pick_axes_snapshot(&target_axes)?;
+    // pick_axes_snapshot returns a frame of the same naxes carrying the
+    // copied metadata; if it is already a BasicFrame, use it directly.
+    if let Some(b) = picked.as_any().downcast_ref::<BasicFrame>() {
+        let mut out = BasicFrame::clone(b);
+        if frame.test_domain() {
+            out.set_domain(frame.domain().to_string());
+        }
+        return Ok(out);
+    }
+    Ok(bf)
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.
