@@ -1827,6 +1827,10 @@ impl Frame for SpecFrame {
         self.domain.as_deref().unwrap_or("SPECTRUM")
     }
 
+    fn set_domain(&mut self, domain: &str) {
+        SpecFrame::set_domain(self, domain);
+    }
+
     fn test_domain(&self) -> bool {
         SpecFrame::test_domain(self)
     }

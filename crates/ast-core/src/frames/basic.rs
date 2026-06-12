@@ -825,6 +825,10 @@ impl Frame for BasicFrame {
         BasicFrame::domain(self)
     }
 
+    fn set_domain(&mut self, domain: &str) {
+        BasicFrame::set_domain(self, domain.to_string());
+    }
+
     fn test_domain(&self) -> bool {
         BasicFrame::test_domain(self)
     }
