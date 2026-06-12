@@ -122,6 +122,10 @@ impl Frame for SpecFluxFrame {
         2
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        (self, axis)
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.validate_axis(axis)?;
         let (child, local_axis) = self.route_axis(axis);

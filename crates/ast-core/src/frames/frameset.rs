@@ -745,6 +745,10 @@ impl Frame for FrameSet {
         self.current().naxes()
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        (self, axis)
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.current().format(axis, value)
     }

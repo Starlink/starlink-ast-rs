@@ -1598,6 +1598,10 @@ impl Frame for SpecFrame {
         1
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        (self, axis)
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         if axis != 1 {
             return Err(AstError::new(
@@ -1949,24 +1953,7 @@ impl Frame for SpecFrame {
 /// its components and recurses; SkyFrame applies its own perm to
 /// expose the underlying lon/lat axis order.
 pub(crate) fn primary_frame_walk(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    if let Some(cmp) = frame.as_any().downcast_ref::<crate::frames::CmpFrame>() {
-        // External axis → internal axis via perm.
-        let internal = cmp.perm()[axis];
-        let n1 = cmp.naxes1();
-        if internal < n1 {
-            primary_frame_walk(cmp.frame1(), internal)
-        } else {
-            primary_frame_walk(cmp.frame2(), internal - n1)
-        }
-    } else if let Some(sky) = frame.as_any().downcast_ref::<crate::frames::SkyFrame>() {
-        // SkyFrame stores an external→internal axis permutation in
-        // its `perm` field (after `perm_axes` calls). Apply it so
-        // the returned local axis is the underlying physical axis
-        // (0 = lon, 1 = lat).
-        (frame, sky.axis_permutation()[axis])
-    } else {
-        (frame, axis)
-    }
+    frame.primary_frame(axis)
 }
 
 fn specframe_overlay(

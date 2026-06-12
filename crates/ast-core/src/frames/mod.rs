@@ -382,6 +382,17 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         }
         Ok(())
     }
+
+    /// Identify the primary (leaf, non-compound) Frame and underlying
+    /// axis for a given axis of this Frame. `axis` is 0-based (matching
+    /// the existing `primary_frame_walk` callers and C `astPrimaryFrame`
+    /// internal convention). Returns the leaf frame and the 0-based axis
+    /// within it, undoing all axis permutations and Frame combination.
+    /// Mirrors C `astPrimaryFrame` (frame.c:8818). Leaf Frames are
+    /// already primary, so return `(self, axis)`; compound and
+    /// permuting Frames (CmpFrame, SkyFrame) override to descend and
+    /// undo permutations.
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize);
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.

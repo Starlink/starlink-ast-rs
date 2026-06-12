@@ -275,6 +275,18 @@ impl Frame for CmpFrame {
         self.frame1.naxes() + self.frame2.naxes()
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        // External axis -> internal via perm, then descend into the
+        // owning component (cmpframe.c PrimaryFrame).
+        let internal = self.perm()[axis];
+        let n1 = self.naxes1();
+        if internal < n1 {
+            self.frame1().primary_frame(internal)
+        } else {
+            self.frame2().primary_frame(internal - n1)
+        }
+    }
+
     fn ident(&self) -> &str {
         CmpFrame::ident(self)
     }

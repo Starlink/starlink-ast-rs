@@ -564,6 +564,10 @@ impl Frame for BasicFrame {
         self.naxes
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        (self, axis)
+    }
+
     fn system_string(&self) -> Option<&str> {
         Some("Cartesian")
     }

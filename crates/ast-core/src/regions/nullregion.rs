@@ -259,6 +259,10 @@ impl Frame for NullRegion {
         self.data.frameset.current().naxes()
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        self.data.frameset.current().primary_frame(axis)
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.data.frameset.current().format(axis, value)
     }

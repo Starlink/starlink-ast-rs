@@ -792,6 +792,13 @@ impl Frame for SkyFrame {
         2
     }
 
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        // Apply the SkyFrame's external->internal axis permutation so
+        // the returned axis is the underlying physical axis
+        // (0 = lon, 1 = lat).
+        (self, self.axis_permutation()[axis])
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         if !(1..=2).contains(&axis) {
             return Err(AstError::new_tracked(
