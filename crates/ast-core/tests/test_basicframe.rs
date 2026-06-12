@@ -231,9 +231,11 @@ fn format_without_percent_uses_default() {
 #[test]
 fn unformat_basic() {
     let frame = BasicFrameBuilder::new(1).build().unwrap();
+    // C `sscanf("%lf %n")` consumes the trailing whitespace after the
+    // number, so "3.14 rest" reports 5 characters read.
     let (val, consumed) = frame.unformat(1, "3.14 rest").unwrap();
     assert!((val - 3.14).abs() < 1e-12);
-    assert_eq!(consumed, 4);
+    assert_eq!(consumed, 5);
 }
 
 #[test]
@@ -247,9 +249,10 @@ fn unformat_with_leading_whitespace() {
 #[test]
 fn unformat_invalid() {
     let frame = BasicFrameBuilder::new(1).build().unwrap();
-    let result = frame.unformat(1, "abc");
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), ErrorCode::Unfer);
+    // C `astUnformat` returns a character count of zero, without error,
+    // when the string is not a recognised coordinate value (axis.c:1366).
+    let (_val, consumed) = frame.unformat(1, "abc").unwrap();
+    assert_eq!(consumed, 0);
 }
 
 // ---- Snapshot ----

@@ -35,3 +35,28 @@ fn format_explicit_format_string() {
     f.set_format_str(1, "%.2f").unwrap();
     assert_eq!(f.format(1, 3.14159).unwrap(), "3.14");
 }
+
+#[test]
+fn unformat_reads_number_and_trailing_ws() {
+    let f = BasicFrameBuilder::new(1).build().unwrap();
+    // C `sscanf("%lf %n")` counts trailing whitespace in nread.
+    let (v, n) = f.unformat(1, "12.5  ").unwrap();
+    assert_eq!(v, 12.5);
+    assert_eq!(n, 6);
+}
+
+#[test]
+fn unformat_failure_is_nread_zero_no_error() {
+    let f = BasicFrameBuilder::new(1).build().unwrap();
+    // C returns nread=0 with NO error on a non-numeric string.
+    let (_v, n) = f.unformat(1, "xyz").unwrap();
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn unformat_recognises_bad_token() {
+    let f = BasicFrameBuilder::new(1).build().unwrap();
+    let (v, n) = f.unformat(1, " <bad> ").unwrap();
+    assert_eq!(v, ast_core::constants::BAD_VALUE);
+    assert!(n > 0);
+}

@@ -40,9 +40,11 @@ fn cmpframe_format_delegates() {
 fn cmpframe_unformat_delegates() {
     // 2+1 compound: axis 3 delegates to frame2 axis 1.
     let cmp = CmpFrame::new(make_frame(2), make_frame(1));
+    // C `sscanf("%lf %n")` counts the trailing whitespace after the
+    // number, so "42.5 rest" reports 5 characters read.
     let (val, consumed) = cmp.unformat(3, "42.5 rest").unwrap();
     assert!((val - 42.5).abs() < 1e-12);
-    assert_eq!(consumed, 4);
+    assert_eq!(consumed, 5);
 }
 
 // ---- Axis validation ----

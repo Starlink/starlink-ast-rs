@@ -568,37 +568,58 @@ impl Frame for BasicFrame {
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         self.validate_axis(axis)?;
-        // Skip leading whitespace.
-        let trimmed = text.trim_start();
-        let leading_ws = text.len() - trimmed.len();
 
-        if trimmed.is_empty() {
-            return Err(AstError::new_tracked(
-                ErrorCode::Unfer,
-                "empty string cannot be parsed as a coordinate value",
-            ));
-        }
+        // Mirror C `astSscanf("%lf %n")`: skip leading whitespace, read
+        // the longest numeric prefix, then count any trailing whitespace.
+        let leading_ws = text.len() - text.trim_start().len();
+        let after_ws = &text[leading_ws..];
 
-        // Find the longest prefix that parses as an f64.
+        // Longest prefix of `after_ws` parsing as f64.
         let mut best_len = 0;
-        let mut best_val = None;
-        // Try progressively longer prefixes of trimmed.
-        for end in 1..=trimmed.len() {
-            // Only try boundaries that could end a number (not mid-exponent).
-            let candidate = &trimmed[..end];
-            if let Ok(v) = candidate.parse::<f64>() {
-                best_len = end;
-                best_val = Some(v);
+        let mut best_val: Option<f64> = None;
+        for end in 1..=after_ws.len() {
+            if after_ws.is_char_boundary(end) {
+                if let Ok(v) = after_ws[..end].parse::<f64>() {
+                    best_len = end;
+                    best_val = Some(v);
+                }
             }
         }
 
-        match best_val {
-            Some(v) => Ok((v, leading_ws + best_len)),
-            None => Err(AstError::new_tracked(
-                ErrorCode::Unfer,
-                format!("cannot parse '{}' as a coordinate value", trimmed),
-            )),
+        if let Some(v) = best_val {
+            // Count trailing whitespace consumed by `%n` after `%lf`.
+            let rest = &after_ws[best_len..];
+            let trailing_ws = rest.len() - rest.trim_start().len();
+            return Ok((v, leading_ws + best_len + trailing_ws));
         }
+
+        // Recognise "<bad>" (case-insensitive, embedded/edge whitespace)
+        // => BAD_VALUE (axis.c:1357).
+        let compact: String = after_ws
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if compact.starts_with("<bad>") {
+            // nread spans through the closing '>' (its trailing whitespace
+            // is not counted, matching the C `%n` placement).
+            let upto = after_ws
+                .char_indices()
+                .scan(0usize, |seen, (i, c)| {
+                    if !c.is_whitespace() {
+                        *seen += 1;
+                    }
+                    Some((i, c, *seen))
+                })
+                .find(|&(_, c, seen)| seen == 5 && c == '>')
+                .map(|(i, c, _)| i + c.len_utf8());
+            if let Some(end) = upto {
+                return Ok((BAD_VALUE, leading_ws + end));
+            }
+        }
+
+        // Parse failure: nread = 0, no error (axis.c:1366).
+        Ok((BAD_VALUE, 0))
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
