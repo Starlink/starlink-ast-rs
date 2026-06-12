@@ -30,3 +30,12 @@ fn active_unit_off_ignores_units() {
     let out = m.map.transform(&pts, true).unwrap();
     assert!((out.point(0)[0] - 2.0).abs() < 1e-12);
 }
+
+#[test]
+fn overlay_transfers_active_unit() {
+    let mut result = BasicFrameBuilder::new(1).build().unwrap();
+    let mut template = BasicFrameBuilder::new(1).build().unwrap();
+    template.set_active_unit(true);
+    result.overlay_template(&template, &[0]).unwrap();
+    assert!(result.get_active_unit());
+}

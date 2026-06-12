@@ -943,6 +943,8 @@ impl Frame for BasicFrame {
         if template.test_domain() {
             self.set_domain(template.domain().to_string());
         }
+        // Transfer the ActiveUnit flag (frame.c:8578).
+        self.set_active_unit(template.get_active_unit());
         Ok(())
     }
 }

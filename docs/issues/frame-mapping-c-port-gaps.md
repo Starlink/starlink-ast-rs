@@ -151,9 +151,11 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
   Still deferred: `NormalPoints`/`NormPoints` (PointSet-batch Norm; no current core consumer), the SkyFrame spherical overrides (great-circle `offset2`/`resolve`/`intersect`/`norm_box` with the C `reg` Mapping argument — `norm_box` will gain the `reg` parameter when that override lands), and the capi shims for all of these.
   SkyFrame is supposed to override several of these (`skyframe.c`), so the base implementations are prerequisites for the SkyFrame audit items.
 
-- **[MED] Frame — ActiveUnit / unit adaptation absent.**
-  No `active_unit` symbol exists; C `astSetActiveUnit`/`GetActiveUnit` make Match/Overlay insert `astUnitMapper` conversions when units differ, and SpecFrame/FluxFrame enable it by default.
-  Without it, unit differences between matched frames are silently ignored.
+- **[MED] Frame — ActiveUnit / unit adaptation** — **FIXED 2026-06-12.**
+  `get_active_unit`/`set_active_unit`/`test_active_unit` are now `Frame` trait methods reconciled with C: the base default is false (`frame.c:4651`); SkyFrame forces false (SkyAxis present); SpecFrame/FluxFrame force true (`frame.c:9882`). Serialization writes `ActUnt` only when explicitly set, with its actual value (`frame.c:14614`).
+  `default_sub_frame` now ports the SubFrame units tail (`frame.c:11077-11154`): when both template and result use active units, it overlays the template's per-axis Unit onto the result (`axis.c:1270`) and composes a parallel `astUnitMapper`-derived CmpMap so unit differences become real conversions; the units map is added in series after the permutation map when it is not a pure UnitMap.
+  `overlay_template` transfers the ActiveUnit flag (`frame.c:8578`).
+  Deferred: the `NewUnit` Label-rewrite / Format-clear (`frame.c:7564`), which fires when ActiveUnit is set and an axis Unit actually changes during Overlay. The current `overlay_template` route does not change per-axis Units outside the active-units SubFrame tail, so `NewUnit` is not reachable here yet; it lands when general per-axis Unit overlay is wired through the active-units path. The `astGet/SetActiveUnit` capi shims are also still deferred.
 
 - **[MED] Frame — `astPrimaryFrame`** — **FIXED 2026-06-11.**
   `primary_frame` is now a `Frame` trait method (leaf base returns `(self, axis)`; CmpFrame descends through its perm, SkyFrame applies its axis permutation). The two private fitschan copies in `make_int_world.rs` and `celestial_axes.rs` were deleted and now call the trait method directly; `specframe::primary_frame_walk` delegates to it. Behaviour verified unchanged via `test_fitschan_wcs` and the simplify regression suite.
