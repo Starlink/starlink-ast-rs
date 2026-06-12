@@ -799,6 +799,16 @@ impl Frame for SkyFrame {
         (self, self.axis_permutation()[axis])
     }
 
+    fn get_active_unit(&self) -> bool {
+        false // SkyFrame always reports 0 (frame.c:4651, SkyAxis present).
+    }
+
+    fn set_active_unit(&mut self, _value: bool) {}
+
+    fn test_active_unit(&self) -> bool {
+        false
+    }
+
     fn effective_label(&self, axis: usize) -> String {
         self.axis_label(axis).unwrap_or_default()
     }
@@ -2004,12 +2014,18 @@ impl Serializable for SkyFrame {
             Some("Highest legal axis value".to_string()),
         );
 
-        // ActUnt: active if explicitly set to false.
-        if let Some(false) = self.act_unt {
+        // ActUnt: written only when explicitly set, with its value
+        // (frame.c:14614). SkyFrame's effective value is always 0
+        // (frame.c:4651), so this generally emits 0 when set at all.
+        if let Some(v) = self.act_unt {
             node.push_int(
                 "ActUnt",
-                0,
-                Some("Unit strings do not affect alignment".to_string()),
+                if v { 1 } else { 0 },
+                Some(if v {
+                    "Unit strings affects alignment".to_string()
+                } else {
+                    "Unit strings do not affect alignment".to_string()
+                }),
             );
         }
 
@@ -2300,10 +2316,10 @@ impl Serializable for SkyFrame {
             sky.align_system = SkySystem::parse(&alsys_str);
         }
 
-        // ActUnt (default is 1 = true; only store when 0).
-        let act_unt_val = node.get_int("ActUnt", 1);
-        if act_unt_val == 0 {
-            sky.act_unt = Some(false);
+        // ActUnt: stored only when the token is present, with its value
+        // (frame.c:14614). Absent => unset (default false).
+        if node.get("ActUnt").is_some() {
+            sky.act_unt = Some(node.get_int("ActUnt", 0) != 0);
         }
 
         // Ident (Object-level identification string).

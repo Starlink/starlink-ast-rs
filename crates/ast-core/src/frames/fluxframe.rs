@@ -264,6 +264,16 @@ impl Frame for FluxFrame {
         (self, axis)
     }
 
+    fn get_active_unit(&self) -> bool {
+        true // FluxFrame always uses active units (frame.c:9882).
+    }
+
+    fn set_active_unit(&mut self, _value: bool) {}
+
+    fn test_active_unit(&self) -> bool {
+        false
+    }
+
     fn effective_label(&self, _axis: usize) -> String {
         self.system.label().to_string()
     }

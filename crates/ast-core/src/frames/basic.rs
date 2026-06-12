@@ -603,6 +603,19 @@ impl Frame for BasicFrame {
         BasicFrame::direction(self, axis).unwrap_or(true)
     }
 
+    fn get_active_unit(&self) -> bool {
+        // C default is false; BasicFrame has no SkyAxis (frame.c:4651).
+        self.act_unt.unwrap_or(false)
+    }
+
+    fn set_active_unit(&mut self, value: bool) {
+        self.act_unt = Some(value);
+    }
+
+    fn test_active_unit(&self) -> bool {
+        self.act_unt.is_some()
+    }
+
     fn effective_label(&self, axis: usize) -> String {
         match BasicFrame::label(self, axis) {
             Ok(s) if !s.is_empty() => s.to_string(),
@@ -1020,12 +1033,17 @@ impl Serializable for BasicFrame {
             }
         }
 
-        // ActUnt: active if explicitly set to false.
-        if let Some(false) = self.act_unt {
+        // ActUnt: written only when explicitly set, with its value
+        // (frame.c:14614).
+        if let Some(v) = self.act_unt {
             node.push_int(
                 "ActUnt",
-                0,
-                Some("Unit strings do not affect alignment".to_string()),
+                if v { 1 } else { 0 },
+                Some(if v {
+                    "Unit strings affects alignment".to_string()
+                } else {
+                    "Unit strings do not affect alignment".to_string()
+                }),
             );
         }
 
@@ -1118,10 +1136,10 @@ impl Serializable for BasicFrame {
             builder.digits = Some(node.get_int("Digits", 7) as i32);
         }
 
-        // ActUnt (default is 1 = true; only store when 0).
-        let act_unt_val = node.get_int("ActUnt", 1);
-        if act_unt_val == 0 {
-            builder.act_unt = Some(false);
+        // ActUnt: stored only when the token is present, with its value
+        // (frame.c:14614). Absent => unset (default false).
+        if node.get("ActUnt").is_some() {
+            builder.act_unt = Some(node.get_int("ActUnt", 0) != 0);
         }
 
         // Ident (Object-level identification string).

@@ -249,6 +249,24 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         true
     }
 
+    /// Whether unit differences affect alignment in `Match`/`Overlay`.
+    /// Mirrors C `astGetActiveUnit` (frame.c:4651): always false when the
+    /// Frame has a SkyAxis; otherwise the stored flag, default false.
+    fn get_active_unit(&self) -> bool {
+        false
+    }
+
+    /// Set the ActiveUnit flag. Mirrors C `astSetActiveUnit`
+    /// (frame.c:9882). SkyFrame ignores it (forced false); SpecFrame /
+    /// FluxFrame force true.
+    fn set_active_unit(&mut self, _value: bool) {}
+
+    /// Whether ActiveUnit has been explicitly set (for serialization).
+    /// Mirrors C `astTestActiveUnit` (used by `Dump`, frame.c:14614).
+    fn test_active_unit(&self) -> bool {
+        false
+    }
+
     /// Effective `Label(axis)` (1-based): the explicitly-set per-axis
     /// label if present, else the class default. Mirrors the Frame
     /// `astGetLabel` virtual (frame.c:5350) whose default is "Axis N"
