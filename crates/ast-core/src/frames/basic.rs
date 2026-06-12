@@ -858,7 +858,7 @@ impl Frame for BasicFrame {
         self.units == other.units
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         if self.naxes() == to.naxes() {
             let mut fs = FrameSet::new(self.snapshot());
             fs.add_frame(

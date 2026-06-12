@@ -169,7 +169,7 @@ fn test_fluxframe_distance() {
 fn test_fluxframe_convert_same_system() {
     let ff1 = FluxFrame::new(FluxSystem::FluxDen);
     let ff2 = FluxFrame::new(FluxSystem::FluxDen);
-    let fs = ff1.convert(&ff2, &[]).unwrap();
+    let fs = ff1.convert_to(&ff2, &[]).unwrap();
     assert!(fs.is_some());
 }
 
@@ -177,7 +177,7 @@ fn test_fluxframe_convert_same_system() {
 fn test_fluxframe_convert_different_system_returns_none() {
     let ff1 = FluxFrame::new(FluxSystem::FluxDen);
     let ff2 = FluxFrame::new(FluxSystem::FluxDenW);
-    let fs = ff1.convert(&ff2, &[]).unwrap();
+    let fs = ff1.convert_to(&ff2, &[]).unwrap();
     // Different systems — full conversion not yet implemented.
     assert!(fs.is_none());
 }
@@ -329,7 +329,7 @@ fn test_specfluxframe_convert_same() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let sff1 = SpecFluxFrame::new(sf.clone(), ff.clone());
     let sff2 = SpecFluxFrame::new(sf, ff);
-    let fs = sff1.convert(&sff2, &[]).unwrap();
+    let fs = sff1.convert_to(&sff2, &[]).unwrap();
     assert!(fs.is_some());
 }
 
@@ -340,7 +340,7 @@ fn test_specfluxframe_convert_different_returns_none() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let sff1 = SpecFluxFrame::new(sf1, ff.clone());
     let sff2 = SpecFluxFrame::new(sf2, ff);
-    let fs = sff1.convert(&sff2, &[]).unwrap();
+    let fs = sff1.convert_to(&sff2, &[]).unwrap();
     assert!(fs.is_none());
 }
 

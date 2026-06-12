@@ -12,7 +12,7 @@ use ast_core::{AnyObject, from_native_string, to_native_string};
 // ---------------------------------------------------------------------------
 
 fn convert_value(from: &TimeFrame, to: &TimeFrame, input: f64) -> f64 {
-    let fs = from.convert(to, &[]).unwrap().unwrap();
+    let fs = from.convert_to(to, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let pts = PointSet::from_rows([[input]]);
     let out = mapping.transform(&pts, true).unwrap();
@@ -20,7 +20,7 @@ fn convert_value(from: &TimeFrame, to: &TimeFrame, input: f64) -> f64 {
 }
 
 fn round_trip(from: &TimeFrame, to: &TimeFrame, input: f64) -> f64 {
-    let fs = from.convert(to, &[]).unwrap().unwrap();
+    let fs = from.convert_to(to, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let pts = PointSet::from_rows([[input]]);
     let fwd = mapping.transform(&pts, true).unwrap();

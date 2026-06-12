@@ -839,7 +839,7 @@ impl Frame for TimeFrame {
         }
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         let to_time = to.as_any().downcast_ref::<TimeFrame>();
         match to_time {
             Some(to_time) => {

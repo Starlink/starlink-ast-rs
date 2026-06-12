@@ -399,7 +399,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 
     // Convert freq → velo to get the Mapping that takes Source-Hz
     // to LSRK-vrad-m/s.
-    let Some(conv_fs) = freq_frame.convert(&velo_frame, &[])? else {
+    let Some(conv_fs) = freq_frame.convert_to(&velo_frame, &[])? else {
         return Ok(());
     };
     let mapping = conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;

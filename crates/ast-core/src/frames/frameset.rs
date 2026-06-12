@@ -810,8 +810,8 @@ impl Frame for FrameSet {
         true
     }
 
-    fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.current().convert(to, domains)
+    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        self.current().convert_to(to, domains)
     }
 
     fn find_frame_template(

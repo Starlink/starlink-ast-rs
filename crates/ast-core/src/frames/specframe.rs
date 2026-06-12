@@ -596,7 +596,7 @@ impl SpecFrame {
         // (The C version sets equinox=J2000 explicitly; SkyFrame::new
         // uses J2000 as the default Equinox, so no explicit set is
         // needed here.)
-        let Some(fs) = crate::frames::Frame::convert(frm, &canonical, &[])? else {
+        let Some(fs) = crate::frames::Frame::convert_to(frm, &canonical, &[])? else {
             // Conversion was not possible — leave RefRA/RefDec
             // unchanged (C silently no-ops in this case).
             return Ok(());
@@ -1780,7 +1780,7 @@ impl Frame for SpecFrame {
         }
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         let to_spec = to.as_any().downcast_ref::<SpecFrame>();
         match to_spec {
             Some(to_spec) => {

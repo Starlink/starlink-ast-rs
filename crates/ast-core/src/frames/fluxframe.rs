@@ -381,7 +381,7 @@ impl Frame for FluxFrame {
         Ok(Box::new(UnitMap::new(1)))
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         let to_flux = to.as_any().downcast_ref::<FluxFrame>();
         match to_flux {
             Some(to_flux) => {

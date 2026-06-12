@@ -433,7 +433,7 @@ fn simplified_returns_base_to_current_mapping() {
 fn convert_same_naxes_succeeds() {
     let f1 = BasicFrameBuilder::new(2).build().unwrap();
     let f2 = BasicFrameBuilder::new(2).build().unwrap();
-    let result = f1.convert(&f2, &[]).unwrap();
+    let result = f1.convert_to(&f2, &[]).unwrap();
     assert!(result.is_some());
     let fs = result.unwrap();
     assert_eq!(fs.nframe(), 2);
@@ -448,7 +448,7 @@ fn convert_same_naxes_succeeds() {
 fn convert_different_naxes_returns_none() {
     let f1 = BasicFrameBuilder::new(2).build().unwrap();
     let f2 = BasicFrameBuilder::new(3).build().unwrap();
-    let result = f1.convert(&f2, &[]).unwrap();
+    let result = f1.convert_to(&f2, &[]).unwrap();
     assert!(result.is_none());
 }
 
@@ -459,7 +459,7 @@ fn frameset_convert_delegates_to_current() {
     fs.add_frame(FrameRef::Base, z, make_frame(2)).unwrap();
 
     let target = BasicFrameBuilder::new(2).build().unwrap();
-    let result = fs.convert(&target, &[]).unwrap();
+    let result = fs.convert_to(&target, &[]).unwrap();
     assert!(result.is_some());
 }
 

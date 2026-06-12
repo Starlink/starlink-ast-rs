@@ -197,7 +197,7 @@ impl Frame for SpecFluxFrame {
         Ok(Box::new(UnitMap::new(2)))
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         // For now, only convert to another SpecFluxFrame with matching sub-frames.
         if let Some(to_sff) = to.as_any().downcast_ref::<SpecFluxFrame>() {
             // Check if spec systems and flux systems match.

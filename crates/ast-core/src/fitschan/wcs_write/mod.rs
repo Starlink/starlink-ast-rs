@@ -852,7 +852,7 @@ fn convert_time_mjd(mjd: f64, from: TimeScale, to: TimeScale) -> f64 {
     from_tf.set_timescale(from);
     let mut to_tf = TimeFrame::new(TimeSystem::Mjd);
     to_tf.set_timescale(to);
-    let Ok(Some(fs)) = Frame::convert(&from_tf, &to_tf, &[]) else {
+    let Ok(Some(fs)) = Frame::convert_to(&from_tf, &to_tf, &[]) else {
         return mjd;
     };
     let Ok(mapping) = fs.mapping(

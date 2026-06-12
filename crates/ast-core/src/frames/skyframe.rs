@@ -1126,7 +1126,7 @@ impl Frame for SkyFrame {
             && SkyFrame::domain(self) == SkyFrame::domain(other)
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         let to_sky = to.as_any().downcast_ref::<SkyFrame>();
         match to_sky {
             Some(to_sky) => {
@@ -1447,7 +1447,7 @@ fn compute_last(
         last_tf.set_dtai(d);
     }
 
-    let fs = match tdb.convert(&last_tf, &[])? {
+    let fs = match tdb.convert_to(&last_tf, &[])? {
         Some(fs) => fs,
         None => {
             return Err(AstError::new(
@@ -2650,7 +2650,7 @@ mod tests {
         fk5.set_epoch_year(2000.0);
         fk5.set_sky_tol(100.0);
 
-        let fs = Frame::convert(&icrs, &fk5, &[]).unwrap().unwrap();
+        let fs = Frame::convert_to(&icrs, &fk5, &[]).unwrap().unwrap();
         let map = fs
             .mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()
@@ -2665,7 +2665,7 @@ mod tests {
         icrs2.set_epoch_year(2000.0);
         let mut fk52 = SkyFrame::new(SkySystem::Fk5);
         fk52.set_epoch_year(2000.0);
-        let fs2 = Frame::convert(&icrs2, &fk52, &[]).unwrap().unwrap();
+        let fs2 = Frame::convert_to(&icrs2, &fk52, &[]).unwrap().unwrap();
         let map2 = fs2
             .mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()
@@ -2773,7 +2773,7 @@ mod tests {
         let fk5 = SkyFrame::new(SkySystem::Fk5);
         let gal = SkyFrame::new(SkySystem::Galactic);
 
-        let fs = fk5.convert(&gal, &[]).unwrap();
+        let fs = fk5.convert_to(&gal, &[]).unwrap();
         assert!(fs.is_some(), "FK5 -> Galactic conversion should succeed");
 
         let fs = fs.unwrap();
@@ -2793,7 +2793,7 @@ mod tests {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let basic = BasicFrameBuilder::new(2).build().unwrap();
 
-        let result = sky.convert(&basic, &[]).unwrap();
+        let result = sky.convert_to(&basic, &[]).unwrap();
         assert!(
             result.is_none(),
             "SkyFrame -> BasicFrame should return None"
@@ -2858,7 +2858,7 @@ mod tests {
 
         let dst = SkyFrame::new(SkySystem::Fk5);
 
-        let fs = src.convert(&dst, &[]).unwrap().unwrap();
+        let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
 
         // (0, 0) in offset should map to sky_ref in standard.
         let pts = crate::coords::PointSet::from_rows([[0.0, 0.0]]);
@@ -2882,7 +2882,7 @@ mod tests {
         dst.set_sky_ref_p(1.0, 0.5 + 0.1);
         dst.set_sky_ref_is(SkyRefIs::Origin);
 
-        let fs = src.convert(&dst, &[]).unwrap().unwrap();
+        let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
 
         // sky_ref in standard should map to (0, 0) in offset.
         let pts = crate::coords::PointSet::from_rows([[1.0, 0.5]]);
@@ -2909,7 +2909,7 @@ mod tests {
         dst.set_sky_ref_p(2.0, -0.4 + 0.1);
         dst.set_sky_ref_is(SkyRefIs::Origin);
 
-        let fs_fwd = src.convert(&dst, &[]).unwrap().unwrap();
+        let fs_fwd = src.convert_to(&dst, &[]).unwrap().unwrap();
 
         // Pick a point in source offset coords, convert to dst offset,
         // then convert back.

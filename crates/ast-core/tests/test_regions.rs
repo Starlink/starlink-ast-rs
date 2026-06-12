@@ -2581,7 +2581,7 @@ fn system_change_circle_membership() {
     // Convert the centre point from ICRS to Galactic.
     let icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -2622,7 +2622,7 @@ fn system_change_circle_simplify() {
     // Convert the centre point to Galactic.
     let icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -2723,7 +2723,7 @@ fn system_change_box_membership() {
     // Convert the centre from ICRS to Galactic.
     let icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -2765,7 +2765,7 @@ fn system_change_simplified_transform_consistent() {
     // Convert several test points from ICRS to Galactic.
     let icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
 
     // Points: centre, slightly inside, slightly outside, far away.
     let test_icrs = PointSet::from_rows([
@@ -2835,7 +2835,7 @@ fn system_change_circle_serialization_roundtrip() {
     // Convert centre to Galactic for testing.
     let icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert(&gal_frame, &[]).unwrap().unwrap();
+    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -3313,7 +3313,7 @@ fn remove_regions_from_frameset() {
     // Now build a FrameSet that has the circle as part of its mapping.
     // Use convert to get ICRS→Galactic through the circle.
     let sf2 = SkyFrame::new(SkySystem::Galactic);
-    let fs = sf1.convert(&sf2, &[]).unwrap().unwrap();
+    let fs = sf1.convert_to(&sf2, &[]).unwrap().unwrap();
 
     // The FrameSet's mapping from base to current transforms coordinates.
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();

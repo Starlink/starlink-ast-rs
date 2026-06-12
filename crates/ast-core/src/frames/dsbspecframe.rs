@@ -589,7 +589,7 @@ impl Frame for DSBSpecFrame {
         self.spec.map_from(previous)
     }
 
-    fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
         // 1. Try downcast to DSBSpecFrame.
         if let Some(to_dsb) = to.as_any().downcast_ref::<DSBSpecFrame>() {
             let mapping = if self.align_sideband() && to_dsb.align_sideband() {

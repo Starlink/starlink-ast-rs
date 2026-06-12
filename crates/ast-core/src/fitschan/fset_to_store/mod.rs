@@ -556,7 +556,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
 
     // Mapping that converts the matched SpecFrame's coordinates to
     // the Source-Hz frame.
-    let Some(spec_conv_fs) = matched_spec.convert(&source_spec, &[])? else {
+    let Some(spec_conv_fs) = matched_spec.convert_to(&source_spec, &[])? else {
         return Ok(());
     };
     let spec_mapping = spec_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
@@ -578,7 +578,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
         _ => {}
     }
 
-    let Some(sky_conv_fs) = matched_sky.convert(&target_sky, &[])? else {
+    let Some(sky_conv_fs) = matched_sky.convert_to(&target_sky, &[])? else {
         return Ok(());
     };
     let sky_mapping = sky_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;

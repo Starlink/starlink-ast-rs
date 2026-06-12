@@ -80,8 +80,10 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// `domains` is a priority-ordered list of domain names to try when
     /// searching for an alignment path. Returns a [`FrameSet`] connecting
     /// `self` (base) to `to` (current) if conversion is possible, or
-    /// `None` if the frames are incompatible.
-    fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;
+    /// `None` if the frames are incompatible. Mirrors C `astConvert`
+    /// (frame.c:2965), which swaps its first two arguments and defers to
+    /// the generic `astConvertX` driver (frame.c:3028).
+    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;
 
     /// Observer geodetic latitude in radians.
     fn obs_lat(&self) -> Option<f64> {

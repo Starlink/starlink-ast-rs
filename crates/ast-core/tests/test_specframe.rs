@@ -129,7 +129,7 @@ fn test_freq_to_wavelength_convert() {
     let mut sf_wave = SpecFrame::new(SpecSystem::Wavelen);
     sf_wave.set_unit("m");
 
-    let fs = sf_freq.convert(&sf_wave, &[]).unwrap().unwrap();
+    let fs = sf_freq.convert_to(&sf_wave, &[]).unwrap().unwrap();
 
     // Convert 5e14 Hz to wavelength: lambda = c / f
     let freq = 5.0e14; // Hz
@@ -149,7 +149,7 @@ fn test_freq_to_energy() {
     sf_freq.set_unit("Hz");
     let sf_energy = SpecFrame::new(SpecSystem::Energy);
 
-    let fs = sf_freq.convert(&sf_energy, &[]).unwrap().unwrap();
+    let fs = sf_freq.convert_to(&sf_energy, &[]).unwrap().unwrap();
 
     let freq = 1.0e15; // 1 PHz
     let h = 6.6260755e-34; // Planck constant (matches AST)
@@ -165,7 +165,7 @@ fn test_freq_to_wavenum() {
     sf_freq.set_unit("Hz");
     let sf_wn = SpecFrame::new(SpecSystem::Wavenum);
 
-    let fs = sf_freq.convert(&sf_wn, &[]).unwrap().unwrap();
+    let fs = sf_freq.convert_to(&sf_wn, &[]).unwrap().unwrap();
 
     let freq = 3.0e14;
     let expected_wn = freq / C_LIGHT; // 1/m
@@ -191,7 +191,7 @@ fn test_freq_to_vrel() {
     sf_vrel.set_unit("m/s");
     sf_vrel.set_rest_freq(rf);
 
-    let fs = sf_freq.convert(&sf_vrel, &[]).unwrap().unwrap();
+    let fs = sf_freq.convert_to(&sf_vrel, &[]).unwrap().unwrap();
 
     // At rest frequency, velocity should be 0.
     let v_at_rest = transform_fwd(&fs, rf);
@@ -219,7 +219,7 @@ fn test_vradio_to_freq() {
     sf_freq.set_unit("Hz");
     sf_freq.set_rest_freq(rf);
 
-    let fs = sf_vr.convert(&sf_freq, &[]).unwrap().unwrap();
+    let fs = sf_vr.convert_to(&sf_freq, &[]).unwrap().unwrap();
 
     let vr = 100000.0; // 100 km/s radio velocity
     let expected_freq = rf * (1.0 - vr / C_LIGHT);
@@ -245,7 +245,7 @@ fn test_sor_helio_to_lsrk() {
     sf_lsrk.set_ref_ra(0.0);
     sf_lsrk.set_ref_dec(0.0);
 
-    let fs = sf_helio.convert(&sf_lsrk, &[]).unwrap().unwrap();
+    let fs = sf_helio.convert_to(&sf_lsrk, &[]).unwrap().unwrap();
 
     // For RA=0, Dec=0, the LSRK correction shifts the frequency.
     // The shift depends on the projection of the solar motion onto the
@@ -276,7 +276,7 @@ fn test_same_system_same_sor_is_unitmap() {
     let sf1 = SpecFrame::new(SpecSystem::Freq);
     let sf2 = SpecFrame::new(SpecSystem::Freq);
 
-    let fs = sf1.convert(&sf2, &[]).unwrap().unwrap();
+    let fs = sf1.convert_to(&sf2, &[]).unwrap().unwrap();
 
     let freq = 1.234e10;
     let result = transform_fwd(&fs, freq);
@@ -471,7 +471,7 @@ fn test_wavelen_to_voptical() {
     sf_vopt.set_unit("m/s");
     sf_vopt.set_rest_freq(rf);
 
-    let fs = sf_wave.convert(&sf_vopt, &[]).unwrap().unwrap();
+    let fs = sf_wave.convert_to(&sf_vopt, &[]).unwrap().unwrap();
 
     // At rest wavelength, v_opt = 0.
     let v = transform_fwd(&fs, lambda_0);
@@ -501,7 +501,7 @@ fn test_unit_mhz_to_hz_within_freq() {
     let mut sf_hz = SpecFrame::new(SpecSystem::Freq);
     sf_hz.set_unit("Hz");
 
-    let fs = sf_mhz.convert(&sf_hz, &[]).unwrap().unwrap();
+    let fs = sf_mhz.convert_to(&sf_hz, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 1.0);
     // 1 MHz = 1e6 Hz.
     assert_close(v, 1.0e6, 1.0, "mhz_to_hz");
@@ -515,7 +515,7 @@ fn test_unit_kms_to_ms_within_vrad() {
     let mut sf_ms = SpecFrame::new(SpecSystem::Vradio);
     sf_ms.set_unit("m/s");
 
-    let fs = sf_kms.convert(&sf_ms, &[]).unwrap().unwrap();
+    let fs = sf_kms.convert_to(&sf_ms, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 1.0);
     assert_close(v, 1.0e3, 1.0e-6, "kms_to_ms");
 }
@@ -525,7 +525,7 @@ fn test_unit_unchanged_returns_unitmap() {
     // Both default (Hz). Same SOR / system → empty SpecMap → UnitMap.
     let sf_a = SpecFrame::new(SpecSystem::Freq);
     let sf_b = SpecFrame::new(SpecSystem::Freq);
-    let fs = sf_a.convert(&sf_b, &[]).unwrap().unwrap();
+    let fs = sf_a.convert_to(&sf_b, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 42.0);
     assert_close(v, 42.0, 1.0e-12, "identity");
 }
@@ -538,7 +538,7 @@ fn test_unit_round_trip_mhz_to_ghz() {
     let mut sf_ghz = SpecFrame::new(SpecSystem::Freq);
     sf_ghz.set_unit("GHz");
 
-    let fs = sf_mhz.convert(&sf_ghz, &[]).unwrap().unwrap();
+    let fs = sf_mhz.convert_to(&sf_ghz, &[]).unwrap().unwrap();
     let v = transform_fwd(&fs, 1000.0);
     assert_close(v, 1.0, 1.0e-12, "1000 MHz = 1 GHz");
 }
@@ -548,7 +548,7 @@ fn test_bad_value_transform() {
     let sf_freq = SpecFrame::new(SpecSystem::Freq);
     let sf_wave = SpecFrame::new(SpecSystem::Wavelen);
 
-    let fs = sf_freq.convert(&sf_wave, &[]).unwrap().unwrap();
+    let fs = sf_freq.convert_to(&sf_wave, &[]).unwrap().unwrap();
 
     let pts = PointSet::from_rows([[BAD_VALUE]]);
     let out = fs.transform(&pts, true).unwrap();
@@ -575,7 +575,9 @@ fn convert_applies_spec_origins() {
     f1.set_spec_origin(10.0);
     let mut f2 = vrad_lsrk();
     f2.set_spec_origin(25.0);
-    let fs = Frame::convert(&f1, &f2, &[]).unwrap().expect("conversion");
+    let fs = Frame::convert_to(&f1, &f2, &[])
+        .unwrap()
+        .expect("conversion");
     let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
     let out = Mapping::transform(&fs, &pts, true).unwrap();
     assert!(
@@ -590,7 +592,9 @@ fn convert_offset_to_absolute_applies_origin() {
     let mut f1 = vrad_lsrk();
     f1.set_spec_origin(10.0);
     let f2 = vrad_lsrk();
-    let fs = Frame::convert(&f1, &f2, &[]).unwrap().expect("conversion");
+    let fs = Frame::convert_to(&f1, &f2, &[])
+        .unwrap()
+        .expect("conversion");
     let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
     let out = Mapping::transform(&fs, &pts, true).unwrap();
     assert!(
@@ -610,7 +614,9 @@ fn align_spec_offset_aligns_offset_values() {
     let mut f2 = vrad_lsrk();
     f2.set_spec_origin(25.0);
     f2.set_align_spec_offset(true);
-    let fs = Frame::convert(&f1, &f2, &[]).unwrap().expect("conversion");
+    let fs = Frame::convert_to(&f1, &f2, &[])
+        .unwrap()
+        .expect("conversion");
     let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
     let out = Mapping::transform(&fs, &pts, true).unwrap();
     assert!(

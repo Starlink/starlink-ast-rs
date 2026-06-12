@@ -253,7 +253,7 @@ fn nonlin_spec_wcs(
     // Build the S → X mapping via Frame::convert (mirrors
     // C:23606-23612). This returns a FrameSet whose forward mapping
     // takes S values to X values.
-    let Some(fs) = specfrm.convert(&xfrm, &[])? else {
+    let Some(fs) = specfrm.convert_to(&xfrm, &[])? else {
         return Ok(None);
     };
     let s_to_x = fs.mapping(FrameRef::Base, FrameRef::Current)?;
