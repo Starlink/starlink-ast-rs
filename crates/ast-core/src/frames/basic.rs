@@ -911,6 +911,15 @@ impl Serializable for BasicFrame {
             );
         }
 
+        // Digits (frame-level, active if set).
+        if let Some(d) = self.digits {
+            node.push_int(
+                "Digits",
+                d as i64,
+                Some("Default formatting precision".to_string()),
+            );
+        }
+
         // Per-axis Label (always commented/unset).
         // Shows the explicit label if set, otherwise default "Axis N".
         for i in 0..self.naxes {
@@ -968,6 +977,28 @@ impl Serializable for BasicFrame {
                 axis_node.push_string("Format", fmt, Some("Format specifier".to_string()));
             }
 
+            // Per-axis Digits.
+            if let Some(d) = self.axis_digits[i] {
+                axis_node.push_int(
+                    "Digits",
+                    d as i64,
+                    Some("Default formatting precision".to_string()),
+                );
+            }
+
+            // Direction (Plot hint).
+            if let Some(dir) = self.directions[i] {
+                axis_node.push_int(
+                    "Dirn",
+                    if dir { 1 } else { 0 },
+                    Some(if dir {
+                        "Plot in conventional direction (hint)".to_string()
+                    } else {
+                        "Plot in reverse direction (hint)".to_string()
+                    }),
+                );
+            }
+
             let key = format!("Ax{}", i + 1);
             let comment = format!("Axis number {}", i + 1);
             node.push_object(&key, axis_node, Some(comment));
@@ -1005,6 +1036,11 @@ impl Serializable for BasicFrame {
             builder = builder.epoch(epoch);
         }
 
+        // Digits (frame-level).
+        if node.get("Digits").is_some() {
+            builder.digits = Some(node.get_int("Digits", 7) as i32);
+        }
+
         // ActUnt (default is 1 = true; only store when 0).
         let act_unt_val = node.get_int("ActUnt", 1);
         if act_unt_val == 0 {
@@ -1039,6 +1075,13 @@ impl Serializable for BasicFrame {
                 let fmt = axis_node.get_string("Format", "");
                 if !fmt.is_empty() {
                     builder = builder.format_str(i + 1, fmt);
+                }
+
+                if axis_node.get("Digits").is_some() {
+                    builder.axis_digits[i] = Some(axis_node.get_int("Digits", 7) as i32);
+                }
+                if axis_node.get("Dirn").is_some() {
+                    builder.directions[i] = Some(axis_node.get_int("Dirn", 1) != 0);
                 }
             }
         }
@@ -1103,5 +1146,19 @@ mod tests {
         target.set_domain("B");
         let m = template.match_template(&target, false).unwrap();
         assert!(m.is_none(), "Domains differ; should fail to match");
+    }
+
+    #[test]
+    fn digits_direction_round_trip() {
+        let mut f = BasicFrameBuilder::new(2).build().unwrap();
+        f.set_digits(9);
+        f.set_axis_digits(1, 4).unwrap();
+        f.set_direction(2, false).unwrap();
+
+        let node = f.to_node().unwrap();
+        let back = BasicFrame::from_node(&node).unwrap();
+        assert_eq!(back.digits(), 9);
+        assert_eq!(back.axis_digits(1).unwrap(), 4);
+        assert!(!back.direction(2).unwrap());
     }
 }
