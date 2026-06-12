@@ -46,14 +46,6 @@ use super::sip_int_world::sip_int_world;
 /// Degrees → radians. Matches C's `AST__DD2R`.
 const DD2R: f64 = std::f64::consts::PI / 180.0;
 
-/// Resolve a 0-based output axis to its primary (leaf) frame and the
-/// 0-based axis within that frame. Mirrors `astPrimaryFrame` —
-/// applies each frame's internal axis permutation so `paxis` is the
-/// underlying physical axis (0 = lon, 1 = lat for SkyFrame).
-fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    crate::frames::specframe::primary_frame_walk(frame, axis)
-}
-
 /// Extract `CRPIX` / `CD` / `PC` / `CDELT` (and `WCSAXES`) from a
 /// `pixel→IWC` mapping into `store`. Mirrors `fitschan.c::MakeIntWorld`.
 ///
@@ -90,7 +82,7 @@ pub(crate) fn make_int_world(
     let mut lonax: Option<usize> = None;
     let mut latax: Option<usize> = None;
     for i in 0..nout {
-        let (pfrm, paxis) = primary_frame(fr, i);
+        let (pfrm, paxis) = fr.primary_frame(i);
         if pfrm.as_any().is::<SkyFrame>() {
             if paxis == 0 {
                 lonax = Some(i);
@@ -215,7 +207,7 @@ pub(crate) fn make_int_world(
 
     for i in 0..nout {
         pperm[wperm[i]] = i;
-        let (pfrm, paxis) = primary_frame(fr, i);
+        let (pfrm, paxis) = fr.primary_frame(i);
         if pfrm.as_any().is::<SkyFrame>() {
             skycol[wperm[i]] = paxis + 1;
             lin[i] = false;

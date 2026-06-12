@@ -50,6 +50,9 @@ impl Frame for DummyRegion {
     fn naxes(&self) -> usize {
         2
     }
+    fn primary_frame(&self, axis: usize) -> (&dyn Frame, usize) {
+        (self, axis)
+    }
     fn format(&self, _axis: usize, _value: f64) -> AstResult<String> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

@@ -99,7 +99,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     let mut ilon: Option<usize> = None;
     let mut ilat: Option<usize> = None;
     for iax in 0..nwcs {
-        let (pframe, paxis) = primary_frame(wcsfrm, iax);
+        let (pframe, paxis) = wcsfrm.primary_frame(iax);
         if pframe.as_any().is::<SkyFrame>() {
             if paxis == 0 {
                 ilon = Some(iax);
@@ -120,7 +120,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     // captured above and then call methods on a downcast SkyFrame
     // through that immutable borrow — but the data is read-only so
     // a fresh resolve gives us the same reference.
-    let (skyframe_holder, _) = primary_frame(wcsfrm, ilon);
+    let (skyframe_holder, _) = wcsfrm.primary_frame(ilon);
     let skyfrm = match skyframe_holder.as_any().downcast_ref::<SkyFrame>() {
         Some(s) => s,
         None => return Ok(Box::new(UnitMap::new(nwcs))),
@@ -332,15 +332,6 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
 
 /// Default `FitsTol` value (matches the C library's FitsChan default).
 const FITS_TOL_DEFAULT: f64 = 0.1;
-
-/// Recursively descend `frame` to its primary leaf frame for axis
-/// `axis` (0-based). Mirrors `astPrimaryFrame` — applies each frame's
-/// internal axis permutation so the returned `paxis` is the *original
-/// underlying* axis (0 = lon, 1 = lat for SkyFrame), regardless of any
-/// `perm_axes` reorderings.
-fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    crate::frames::specframe::primary_frame_walk(frame, axis)
-}
 
 /// C `ZEROANG(aa) (fabs(aa) < 1.0E-9)` from fitschan.c:1392.
 fn zero_angle(v: f64) -> bool {
