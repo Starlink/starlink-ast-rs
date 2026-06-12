@@ -79,6 +79,98 @@ fn trim_g_zeros(s: &str) -> String {
     t.to_string()
 }
 
+/// Parsed view of an Axis `Format` string. Mirrors the flags returned
+/// by C `ParseAxisFormat` (axis.c:2015) plus the resolved precision and
+/// conversion code needed to format a value.
+pub(crate) struct ParsedFormat {
+    /// Conversion code (`G`, `g`, `E`, `e`, `f`, `F`, `d`, `i`, ...).
+    pub conv: char,
+    /// Precision (significant digits for G/g, fraction digits for e/f).
+    pub spec_prec: usize,
+    /// Format the value as `10**x` using graphical escapes. Parsed but
+    /// rendered with the non-Plot delimiter (Plot escapes deferred).
+    pub log: bool,
+    /// Cast the value to `int` before formatting (integer conv code).
+    pub integ: bool,
+}
+
+/// Parse an Axis `Format` string into a [`ParsedFormat`], substituting
+/// `digits` for a `.*` precision field. Mirrors C `ParseAxisFormat`.
+pub(crate) fn parse_axis_format(fmt: &str, digits: usize) -> ParsedFormat {
+    let mut log = false;
+    let mut integ = false;
+    let mut conv = 'G';
+    let mut spec_prec = digits;
+
+    if let Some(perc) = fmt.find('%') {
+        let rest = &fmt[perc + 1..];
+
+        // Flags (printf + AST '&'). Mirrors the flag-scan loop.
+        let mut idx_after_flags = 0;
+        for (i, c) in rest.char_indices() {
+            match c {
+                '-' | '+' | ' ' | '#' => {}
+                '&' => log = true,
+                _ => {
+                    idx_after_flags = i;
+                    break;
+                }
+            }
+            idx_after_flags = i + c.len_utf8();
+        }
+
+        let tail = &rest[idx_after_flags..];
+
+        // Precision: look for ".<digits>" or ".*". `.*` => digits.
+        if let Some(dot) = tail.find('.') {
+            let after = &tail[dot + 1..];
+            if after.starts_with('*') {
+                spec_prec = digits;
+            } else {
+                let num: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if let Ok(p) = num.parse::<usize>() {
+                    spec_prec = p;
+                }
+            }
+        }
+
+        // Conversion code: first alphabetic char in the tail.
+        if let Some(c) = tail.chars().find(|c| c.is_ascii_alphabetic()) {
+            conv = c;
+            if matches!(c, 'd' | 'i' | 'u' | 'o' | 'x' | 'X' | 'c') {
+                integ = true;
+            }
+        }
+    }
+
+    ParsedFormat {
+        conv,
+        spec_prec,
+        log,
+        integ,
+    }
+}
+
+/// Format `value` according to an Axis `Format` string and the default
+/// `digits` precision. Mirrors the numeric path of C `AxisFormat`
+/// (axis.c:626): default `%1.<digits>G`, integer-cast for integer
+/// conversion codes, `%G`/`%E`/`%f` rendering. The `&` log flag is
+/// parsed; its graphical-escape rendering is deferred (Plot, step 10),
+/// so a log format currently falls back to formatting the raw value.
+pub(crate) fn format_value(fmt: &str, digits: usize, value: f64) -> String {
+    let p = parse_axis_format(fmt, digits);
+    if p.integ {
+        return format!("{}", value as i64);
+    }
+    match p.conv {
+        'G' | 'g' => format_g(value, p.spec_prec),
+        'E' | 'e' => format_e(value, p.spec_prec, false),
+        'f' | 'F' => format!("{value:.*}", p.spec_prec),
+        // Unknown/unsupported code: fall back to %G with the precision.
+        _ => format_g(value, p.spec_prec),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +187,33 @@ mod tests {
         assert_eq!(format_g(9.999999e6, 7), "9999999");
         assert_eq!(format_g(1e-5, 7), "1E-05");
         assert_eq!(format_g(0.1, 7), "0.1");
+    }
+
+    #[test]
+    fn parse_default_and_flags() {
+        let p = parse_axis_format("%1.7G", 7);
+        assert_eq!(p.spec_prec, 7);
+        assert_eq!(p.conv, 'G');
+        assert!(!p.integ && !p.log);
+
+        // ".*" precision is replaced by Digits.
+        let p = parse_axis_format("%.*G", 5);
+        assert_eq!(p.spec_prec, 5);
+
+        // Integer conversion code.
+        let p = parse_axis_format("%d", 7);
+        assert!(p.integ);
+        assert_eq!(p.conv, 'd');
+
+        // '&' log flag.
+        let p = parse_axis_format("%&G", 7);
+        assert!(p.log);
+    }
+
+    #[test]
+    fn format_value_dispatch() {
+        assert_eq!(format_value("%1.7G", 7, 1234.5678), "1234.568");
+        assert_eq!(format_value("%d", 7, 42.9), "42");
+        assert_eq!(format_value("%.2f", 7, 3.14159), "3.14");
     }
 }
