@@ -116,10 +116,39 @@ All twelve groups are now audited; see section 0 for the prioritized fix order.
 Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/find_frame.rs`.
 `find_frame.rs` (default Match/SubFrame/FindFrame/Overlay) is a faithful port; the gaps are elsewhere.
 
-- **[HIGH] Frame — `astConvert` is a stub.**
-  `BasicFrame::convert` (`basic.rs:678`) returns a bare UnitMap whenever axis counts match and `None` otherwise, ignoring the `domains` argument entirely.
-  C `ConvertX` (`frame.c:3028-3258`) loops over the domain list in priority order, builds a "common coordinate system" by a double `astMatch` (template→frame1 giving common1, then `PreserveAxes=0` and common1→frame2), composes `from_map` then inverted `to_map`, simplifies, and keeps the candidate with the best `2*TranForward + TranInverse` score (early exit on 3).
-  Port the full algorithm; it is what makes cross-domain and attribute-overlaid alignment work for plain and compound frames.
+- **[PARTIAL] Frame — generic `astConvertX` driver.** *(2026-06-12)*
+  The generic driver is ported as `find_frame::convert_frames`
+  (`find_frame.rs`), a faithful port of C `ConvertX` (`frame.c:3028-3258`):
+  the domain-field loop, the `icom` 0/1 common-coordinate-system
+  negotiation via `match_with_subclass(..., match_sub=true)`, the
+  `from_map`/`to_map` bookkeeping, `from_map ∘ inverted to_map` series
+  composition, simplify, and the `2*TranForward + TranInverse` score with
+  early exit at 3. `Frame::convert_to` now has a default body that calls it.
+  Retired per-class overrides (route through the generic driver):
+  `BasicFrame`, `CmpFrame`.
+  **Still overriding `convert_to` (deferred):** `SkyFrame`, `SpecFrame`,
+  `TimeFrame`, `DSBSpecFrame`, `FluxFrame`, `SpecFluxFrame`. Retiring these
+  is blocked on two pre-existing, wider-scope divergences from C that the
+  generic driver exposes:
+  1. The class System/TimeScale "explicitly set" defaults diverge from C
+     (e.g. `SpecFrame::new` models FREQ as the unset default; C
+     `GetSystem` (`specframe.c:57`) defaults to AST__WAVELEN). Because the
+     generic driver routes through `Match`/`Overlay`, which faithfully
+     transfer only explicitly-set attributes, a default-constructed Freq
+     SpecFrame fails to overlay its System and produces a system/unit
+     mismatch (`AST__BADUN`). Correcting the default to WAVELEN fixes the
+     standalone conversions but regresses 9 spectral wcsconv fixtures, so
+     it must land as its own change.
+  2. The fitschan CLASS encoder (`fset_to_store/mod.rs:559,581`) calls
+     `matched_sky.convert_to(&target_sky)` / `matched_spec.convert_to(...)`
+     and currently depends on the SkyFrame FK5-aligned override for
+     byte-exact output. The generic-driver SkyFrame→SkyFrame path uses the
+     template AlignSystem (ICRS default), which shifts the LSR velocity
+     correction at ~1e-5 relative (e.g. class-ait VELO-LSR 275.8329 vs the
+     fixture's 275.83586). The C oracle confirms `astConvert(FK5,FK5-J2000)`
+     and default ICRS↔ICRS both give a UnitMap, so the generic-driver
+     SkyFrame path needs alignment/diurnal-aberration debugging to match C
+     before the override can be retired without regressing the WCS pipeline.
 
 - **[HIGH] Frame — `astMatch` matchsub cast-retry missing.**
   `default_match` (`find_frame.rs:393`) ignores its `_match_sub` parameter.
