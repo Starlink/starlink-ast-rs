@@ -268,7 +268,6 @@ pub(crate) fn fset_to_store(
 /// docs/issues/fset_to_store-port-gaps.md.
 pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> {
     use crate::fitschan::fset_to_store::celestial_axes;
-    use crate::fitschan::fset_to_store::spectral_axes::primary_frame;
     use crate::frames::{SkySystem, SpecFrame};
     use crate::mappings::WcsMap;
 
@@ -282,7 +281,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     let mut sky_lon: Option<usize> = None;
     let mut sky_lat: Option<usize> = None;
     for iax in 0..nwcs {
-        let (pframe, paxis) = primary_frame(owned.current(), iax);
+        let (pframe, paxis) = owned.current().primary_frame(iax);
         if pframe.as_any().downcast_ref::<SpecFrame>().is_some()
             || pframe
                 .as_any()

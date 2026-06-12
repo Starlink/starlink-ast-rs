@@ -33,7 +33,7 @@ fn format_honours_digits() {
 fn format_explicit_format_string() {
     let mut f = BasicFrameBuilder::new(1).build().unwrap();
     f.set_format_str(1, "%.2f").unwrap();
-    assert_eq!(f.format(1, 3.14159).unwrap(), "3.14");
+    assert_eq!(f.format(1, 9.87654).unwrap(), "9.88");
 }
 
 #[test]

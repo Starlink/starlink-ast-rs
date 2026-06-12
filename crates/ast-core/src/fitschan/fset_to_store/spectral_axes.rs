@@ -78,7 +78,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // it's a subclass of SpecFrame in the C type system).
     let mut spec_axis: Option<usize> = None;
     for iax in 0..nwcs {
-        let (pframe, _paxis) = primary_frame(wcsfrm, iax);
+        let (pframe, _paxis) = wcsfrm.primary_frame(iax);
         if is_spec_or_dsb(pframe) {
             spec_axis = Some(iax);
             break;
@@ -95,7 +95,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // (DSBCentre, IF, SideBand) are read separately later in the
     // pipeline (e.g. spectral_axes already calls
     // `astIsADSBSpecFrame(specfrm)` for IMAGFREQ).
-    let (spec_holder, _) = primary_frame(wcsfrm, spec_iax);
+    let (spec_holder, _) = wcsfrm.primary_frame(spec_iax);
     let specfrm = match spec_or_inner(spec_holder) {
         Some(s) => s,
         None => return Ok(Box::new(UnitMap::new(nwcs))),
@@ -704,10 +704,6 @@ fn spec_or_inner(frame: &dyn Frame) -> Option<&SpecFrame> {
         return Some(dsb.spec());
     }
     None
-}
-
-pub(crate) fn primary_frame(frame: &dyn Frame, axis: usize) -> (&dyn Frame, usize) {
-    crate::frames::specframe::primary_frame_walk(frame, axis)
 }
 
 /// Embed a 1-axis mapping into an `nax`-axis Mapping at position `iax`,

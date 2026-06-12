@@ -247,7 +247,7 @@ mod tests {
     fn format_value_dispatch() {
         assert_eq!(format_value("%1.7G", 7, 1234.5678), "1234.568");
         assert_eq!(format_value("%d", 7, 42.9), "42");
-        assert_eq!(format_value("%.2f", 7, 3.14159), "3.14");
+        assert_eq!(format_value("%.2f", 7, 9.87654), "9.88");
     }
 
     #[test]
