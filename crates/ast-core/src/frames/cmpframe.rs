@@ -288,25 +288,29 @@ impl Frame for CmpFrame {
     }
 
     fn effective_label(&self, axis: usize) -> String {
-        // Route to the primary (leaf) Frame owning this axis; mirrors
-        // C astGetAxis descending through the CmpFrame components.
-        let (leaf, local) = self.primary_frame(axis - 1);
-        leaf.effective_label(local + 1)
+        // Route to the owning component and its external axis, then let
+        // the component apply its own permutation exactly once. C Cast
+        // copies each axis in external order (cmpframe.c:1335-1338), so we
+        // ask the component for its external axis rather than descending
+        // through primary_frame (which would strip the component's own
+        // permutation and re-permute via the leaf getter).
+        let (child, local_axis) = self.route_axis(axis);
+        child.effective_label(local_axis)
     }
 
     fn effective_unit(&self, axis: usize) -> String {
-        let (leaf, local) = self.primary_frame(axis - 1);
-        leaf.effective_unit(local + 1)
+        let (child, local_axis) = self.route_axis(axis);
+        child.effective_unit(local_axis)
     }
 
     fn effective_symbol(&self, axis: usize) -> String {
-        let (leaf, local) = self.primary_frame(axis - 1);
-        leaf.effective_symbol(local + 1)
+        let (child, local_axis) = self.route_axis(axis);
+        child.effective_symbol(local_axis)
     }
 
     fn effective_format(&self, axis: usize) -> String {
-        let (leaf, local) = self.primary_frame(axis - 1);
-        leaf.effective_format(local + 1)
+        let (child, local_axis) = self.route_axis(axis);
+        child.effective_format(local_axis)
     }
 
     fn ident(&self) -> &str {
@@ -2102,7 +2106,7 @@ mod tests {
     use super::*;
     use crate::frames::find_frame::apply_template_overlay;
     use crate::frames::specframe::SpecSystem;
-    use crate::frames::{BasicFrameBuilder, SkyFrame, SkySystem, SpecFrame};
+    use crate::frames::{BasicFrame, BasicFrameBuilder, SkyFrame, SkySystem, SpecFrame};
 
     /// Enumerate every selection produced by repeated calls to
     /// `gen_axis_selection`, starting from the canonical seed
@@ -2382,6 +2386,80 @@ mod tests {
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         );
         assert_eq!(Frame::obs_lat(&cf2), Some(0.25));
+    }
+
+    /// Casting a CmpFrame down to a BasicFrame must copy each axis in
+    /// external order (cmpframe.c:1335-1338). When a component carries
+    /// its own axis permutation, the per-axis Label/Symbol on the cast
+    /// result must match what the component's own effective getters
+    /// return for the externally-equivalent axis — the component applies
+    /// its permutation exactly once.
+    #[test]
+    fn cast_cmpframe_preserves_permuted_component_axis_order() {
+        let mut sky = SkyFrame::new(SkySystem::Galactic);
+        // Overrides are stored against physical axes (lon=0, lat=1) via
+        // the unpermuted external indices.
+        sky.set_axis_label(1, "LON_LBL").unwrap();
+        sky.set_axis_label(2, "LAT_LBL").unwrap();
+        sky.set_axis_symbol(1, "LON_SYM").unwrap();
+        sky.set_axis_symbol(2, "LAT_SYM").unwrap();
+        // Swap the SkyFrame's external axis order: external axis 1 now
+        // exposes latitude, external axis 2 exposes longitude.
+        sky.perm_axes(&[2, 1]).unwrap();
+
+        // After the swap the component reports lat on external axis 1 and
+        // lon on external axis 2.
+        assert_eq!(sky.effective_label(1), "LAT_LBL");
+        assert_eq!(sky.effective_label(2), "LON_LBL");
+        assert_eq!(sky.effective_symbol(1), "LAT_SYM");
+        assert_eq!(sky.effective_symbol(2), "LON_SYM");
+
+        let cmp = CmpFrame::new(
+            Box::new(sky),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+
+        let template = BasicFrameBuilder::new(3).build().unwrap();
+        let casted = cmp.cast(&template).unwrap().unwrap();
+        let out = casted
+            .as_any()
+            .downcast_ref::<BasicFrame>()
+            .expect("cast result should be a BasicFrame");
+        assert_eq!(out.naxes(), 3);
+
+        // CmpFrame external axes 1/2 route to the SkyFrame's external
+        // axes 1/2, so they must land in the SkyFrame's permuted order.
+        assert_eq!(out.label(1).unwrap(), "LAT_LBL");
+        assert_eq!(out.label(2).unwrap(), "LON_LBL");
+        assert_eq!(out.symbol(1).unwrap(), "LAT_SYM");
+        assert_eq!(out.symbol(2).unwrap(), "LON_SYM");
+    }
+
+    /// Regression guard: an unpermuted SkyFrame component casts in the
+    /// natural lon/lat order.
+    #[test]
+    fn cast_cmpframe_unpermuted_component_axis_order() {
+        let mut sky = SkyFrame::new(SkySystem::Galactic);
+        sky.set_axis_label(1, "LON_LBL").unwrap();
+        sky.set_axis_label(2, "LAT_LBL").unwrap();
+        sky.set_axis_symbol(1, "LON_SYM").unwrap();
+        sky.set_axis_symbol(2, "LAT_SYM").unwrap();
+
+        let cmp = CmpFrame::new(
+            Box::new(sky),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+
+        let template = BasicFrameBuilder::new(3).build().unwrap();
+        let out = cmp.cast(&template).unwrap().unwrap();
+        let out = out
+            .as_any()
+            .downcast_ref::<BasicFrame>()
+            .expect("cast result should be a BasicFrame");
+        assert_eq!(out.label(1).unwrap(), "LON_LBL");
+        assert_eq!(out.label(2).unwrap(), "LAT_LBL");
+        assert_eq!(out.symbol(1).unwrap(), "LON_SYM");
+        assert_eq!(out.symbol(2).unwrap(), "LAT_SYM");
     }
 
     #[test]
