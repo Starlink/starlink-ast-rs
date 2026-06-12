@@ -118,3 +118,24 @@ fn resolve_points_signed_2d() {
     assert!((out.point(0)[1] - 2.0).abs() < 1e-12);
     assert!((out.point(1)[1] + 2.0).abs() < 1e-12);
 }
+
+use ast_core::frames::{CmpFrame, SkyFrame, SkySystem, SpecFrame, SpecSystem};
+
+#[test]
+fn match_axes_finds_sky_in_cmp() {
+    // frm1 = CmpFrame(SpecFrame, SkyFrame) (3 axes); frm2 = SkyFrame.
+    // The SkyFrame occupies cf axes 2 and 3 (1-based), so matching the
+    // sky frame's two axes against cf yields [2, 3]. Oracle-confirmed
+    // against the C library: astMatchAxes(cf, sky) -> [2, 3].
+    let sf = SkyFrame::new(SkySystem::Fk5);
+    let df = SpecFrame::new(SpecSystem::Freq);
+    let cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
+    let axes = cf.match_axes(&sf).unwrap();
+    assert_eq!(axes, vec![2, 3]);
+}
+
+#[test]
+fn is_unit_frame_base_true() {
+    let f = bf(2);
+    assert!(f.is_unit_frame());
+}

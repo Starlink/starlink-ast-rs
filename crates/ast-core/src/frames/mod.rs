@@ -666,6 +666,60 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         }
         crate::coords::PointSet::from_columns(&[&d1v, &d2v])
     }
+
+    /// Find, for each axis of `frm2`, the corresponding 1-based axis
+    /// index within `self` (or 0 if none). Mirrors C `astMatchAxes`
+    /// (frame.c:7349), which delegates to `MatchAxesX` with args
+    /// swapped so it can be overridden on either class.
+    fn match_axes(&self, frm2: &dyn Frame) -> AstResult<Vec<i32>>
+    where
+        Self: Sized,
+    {
+        frm2.match_axes_x(self)
+    }
+
+    /// Implementation half of `match_axes` (args swapped). `self` plays
+    /// the role of C's `frm2`; `frm1` is the Frame whose axes are
+    /// reported. For each axis of `self`, identify its primary frame and
+    /// match it against `frm1`, recording the 1-based `frm1` axis index
+    /// (or 0). Mirrors C `astMatchAxesX` (frame.c:7438).
+    fn match_axes_x(&self, frm1: &dyn Frame) -> AstResult<Vec<i32>> {
+        let nax2 = self.naxes();
+        let mut axes = vec![0i32; nax2];
+
+        // C temporarily widens frm1's Match-control attributes so it can
+        // probe any axis count and so the result Frame keeps the target
+        // (primary-frame) axis order. frm1 is `&dyn`, so snapshot it and
+        // mutate the snapshot.
+        let mut probe = frm1.snapshot();
+        probe.set_preserve_axes(true);
+        probe.set_max_axes(10000);
+        probe.set_min_axes(1);
+
+        for (ifirst, slot) in axes.iter_mut().enumerate() {
+            let (pfrm, pax) = self.primary_frame(ifirst);
+            if let Some(m) = probe.match_template(pfrm, true)? {
+                // C reads `frm1_axes[pax] + 1`, where frm1_axes is the
+                // template-axis association of the result Frame and, with
+                // PreserveAxes set, the result Frame carries the target
+                // (pfrm) axis order. So the result slot whose target axis
+                // is `pax` gives the frm1 (template) axis there.
+                if let Some(pos) = m.target_axes.iter().position(|&t| t == pax as i32) {
+                    if m.template_axes[pos] >= 0 {
+                        *slot = m.template_axes[pos] + 1;
+                    }
+                }
+            }
+        }
+        Ok(axes)
+    }
+
+    /// Whether this Frame is equivalent to a UnitMap when treated as a
+    /// Mapping. Base Frame is always unit-equivalent. Mirrors C
+    /// `astIsUnitFrame` (frame.c:6417).
+    fn is_unit_frame(&self) -> bool {
+        true
+    }
 }
 
 /// Extract a subset of axes from a frame, returning a new frame and a mapping.
