@@ -577,3 +577,36 @@ C's intent.
 `tdb_mjd_to_utc(0.000447...) = 40000.000001894462912`. Round-trip
 delta = 1.894e-6 day. The same delta appears in C if you wire up a
 direct `TDBConv(TDBConv(40000.0, AST__UTC, 0), AST__UTC, 1)` test.
+
+## `Frame::unformat` numeric token: Rust `f64::parse` vs C `strtod`
+
+This is a documented Rust-vs-C divergence (not a C bug), recorded per
+repo convention because exact matching would require reimplementing
+glibc `strtod`.
+
+C `astUnformat` for a `BasicFrame`/`Axis` parses the leading numeric
+token with `astSscanf( text, "%lf %n", &value, &nc )`, i.e. glibc
+`strtod`. The Rust port (`crates/ast-core/src/frames/basic.rs`,
+`Frame::unformat`) instead takes the longest numeric prefix and parses
+it with Rust's `f64::parse`. The two accepted grammars differ on two
+pathological inputs that never appear in AST's decimal
+coordinate-string domain:
+
+- `"1e"` — a trailing bare exponent marker. C `strtod` consumes `1e`
+  (`nread` 2) and returns value 1; Rust `f64::parse` rejects the bare
+  `e` and accepts only `"1"` (`nread` 1). **The value agrees (1); only
+  `nread` differs.**
+- `"0x10"` — a C99 hex-float literal. C `strtod` parses it as 16.0
+  (`nread` 4); Rust `f64::parse` rejects the `x` and yields value 0.0
+  (`nread` 1).
+
+`inf`/`nan` tokens **do** match between the two (both grammars accept
+them). Neither divergent input occurs in AST decimal coordinate
+strings, so this does not affect any coordinate conversion.
+
+**Decision:** the unformat parser is left unchanged. Reimplementing
+`strtod`'s full grammar (bare-exponent acceptance and C99 hex floats)
+to match these two cases would be disproportionate and is the kind of
+heuristic-free full port the project avoids when there is no domain
+impact. Documented here so the divergence is tracked rather than
+silent.

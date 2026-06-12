@@ -81,8 +81,14 @@ fn trim_g_zeros(s: &str) -> String {
 pub(crate) struct ParsedFormat {
     /// Conversion code (`G`, `g`, `E`, `e`, `f`, `F`, `d`, `i`, ...).
     pub conv: char,
-    /// Precision (significant digits for G/g, fraction digits for e/f).
-    pub spec_prec: usize,
+    /// Explicit precision from the Format string: `Some(n)` for `.N`,
+    /// and `Some(digits)` for the `.*` wildcard (which C rewrites to an
+    /// explicit `digits`). `None` when the spec carries no precision
+    /// field at all, in which case the caller applies the C `printf`
+    /// per-conversion default (6 fraction digits for the float codes).
+    /// C `ParseAxisFormat` only ever injects a precision for `.*`; a
+    /// precision-less spec is passed to `sprintf` unchanged.
+    pub spec_prec: Option<usize>,
     /// Format the value as `10**x` using graphical escapes. Recognised
     /// by the parser; its graphical-escape rendering is supplied by the
     /// Plot layer rather than the numeric formatter.
@@ -98,7 +104,7 @@ pub(crate) fn parse_axis_format(fmt: &str, digits: usize) -> ParsedFormat {
     let mut log = false;
     let mut integ = false;
     let mut conv = 'G';
-    let mut spec_prec = digits;
+    let mut spec_prec = None;
 
     if let Some(perc) = fmt.find('%') {
         let rest = &fmt[perc + 1..];
@@ -123,11 +129,11 @@ pub(crate) fn parse_axis_format(fmt: &str, digits: usize) -> ParsedFormat {
         if let Some(dot) = tail.find('.') {
             let after = &tail[dot + 1..];
             if after.starts_with('*') {
-                spec_prec = digits;
+                spec_prec = Some(digits);
             } else {
                 let num: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
                 if let Ok(p) = num.parse::<usize>() {
-                    spec_prec = p;
+                    spec_prec = Some(p);
                 }
             }
         }
@@ -166,14 +172,29 @@ pub(crate) fn format_value(fmt: &str, digits: usize, value: f64) -> String {
     }
     let p = parse_axis_format(fmt, digits);
     if p.integ {
-        return format!("{}", value as i64);
+        // C `AxisFormat` (axis.c:783) casts to a 32-bit `int`:
+        // `sprintf( buf, fmt, (int) x )`. For doubles outside the
+        // `int` range C's `(int)` cast is undefined behaviour, so no
+        // particular overflow result is guaranteed; this mirrors the
+        // 32-bit width and so differs from a 64-bit cast only for
+        // |value| >= 2^31, which does not occur in AST coordinate
+        // formatting.
+        return format!("{}", value as i32);
     }
+    // For the float conversion codes, a Format string with no explicit
+    // precision uses C `printf`'s default of 6 fraction digits — C
+    // `ParseAxisFormat` passes a precision-less spec to `sprintf`
+    // unchanged (it injects a precision only for the `.*` wildcard), so
+    // `"%E"`/`"%f"` format with 6 digits, NOT `Digits`. The default
+    // Frame format always carries an explicit `.Digits` precision and so
+    // never reaches this branch.
+    let float_prec = p.spec_prec.unwrap_or(6);
     match p.conv {
-        'G' | 'g' => format_g(value, p.spec_prec),
-        'E' | 'e' => format_e(value, p.spec_prec, false),
-        'f' | 'F' => format!("{value:.*}", p.spec_prec),
+        'G' | 'g' => format_g(value, float_prec),
+        'E' | 'e' => format_e(value, float_prec, false),
+        'f' | 'F' => format!("{value:.*}", float_prec),
         // Unknown/unsupported code: fall back to %G with the precision.
-        _ => format_g(value, p.spec_prec),
+        _ => format_g(value, float_prec),
     }
 }
 
@@ -198,13 +219,19 @@ mod tests {
     #[test]
     fn parse_default_and_flags() {
         let p = parse_axis_format("%1.7G", 7);
-        assert_eq!(p.spec_prec, 7);
+        assert_eq!(p.spec_prec, Some(7));
         assert_eq!(p.conv, 'G');
         assert!(!p.integ && !p.log);
 
         // ".*" precision is replaced by Digits.
         let p = parse_axis_format("%.*G", 5);
-        assert_eq!(p.spec_prec, 5);
+        assert_eq!(p.spec_prec, Some(5));
+
+        // A precision-less float spec carries no precision; the caller
+        // applies C printf's default of 6 (NOT Digits).
+        let p = parse_axis_format("%E", 7);
+        assert_eq!(p.spec_prec, None);
+        assert_eq!(p.conv, 'E');
 
         // Integer conversion code.
         let p = parse_axis_format("%d", 7);
@@ -221,5 +248,25 @@ mod tests {
         assert_eq!(format_value("%1.7G", 7, 1234.5678), "1234.568");
         assert_eq!(format_value("%d", 7, 42.9), "42");
         assert_eq!(format_value("%.2f", 7, 3.14159), "3.14");
+    }
+
+    #[test]
+    fn precision_less_float_defaults_to_six() {
+        // A user-set, precision-less float Format uses C printf's
+        // default of 6 fraction digits, NOT Digits. Verified against
+        // `printf("%E\n", 5.0)` -> "5.000000E+00" and
+        // `printf("%f\n", 5.0)` -> "5.000000".
+        assert_eq!(format_value("%E", 7, 5.0), "5.000000E+00");
+        assert_eq!(format_value("%f", 7, 5.0), "5.000000");
+        // The default/unset Frame path carries an explicit precision and
+        // is unaffected: `%1.7G` still gives 7 significant figures.
+        assert_eq!(format_value("%1.7G", 7, 1234.5678), "1234.568");
+    }
+
+    #[test]
+    fn integer_cast_is_32_bit() {
+        // C casts to a 32-bit int: `printf("%d", -3.9)` -> "-3".
+        assert_eq!(format_value("%d", 7, -3.9), "-3");
+        assert_eq!(format_value("%d", 7, 42.9), "42");
     }
 }
