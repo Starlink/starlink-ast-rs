@@ -264,6 +264,18 @@ impl Frame for FluxFrame {
         (self, axis)
     }
 
+    fn effective_label(&self, _axis: usize) -> String {
+        self.system.label().to_string()
+    }
+
+    fn effective_unit(&self, _axis: usize) -> String {
+        self.system.default_units().to_string()
+    }
+
+    fn effective_symbol(&self, _axis: usize) -> String {
+        self.system.symbol().to_string()
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         if axis != 1 {
             return Err(AstError::new(

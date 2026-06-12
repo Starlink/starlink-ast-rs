@@ -287,6 +287,28 @@ impl Frame for CmpFrame {
         }
     }
 
+    fn effective_label(&self, axis: usize) -> String {
+        // Route to the primary (leaf) Frame owning this axis; mirrors
+        // C astGetAxis descending through the CmpFrame components.
+        let (leaf, local) = self.primary_frame(axis - 1);
+        leaf.effective_label(local + 1)
+    }
+
+    fn effective_unit(&self, axis: usize) -> String {
+        let (leaf, local) = self.primary_frame(axis - 1);
+        leaf.effective_unit(local + 1)
+    }
+
+    fn effective_symbol(&self, axis: usize) -> String {
+        let (leaf, local) = self.primary_frame(axis - 1);
+        leaf.effective_symbol(local + 1)
+    }
+
+    fn effective_format(&self, axis: usize) -> String {
+        let (leaf, local) = self.primary_frame(axis - 1);
+        leaf.effective_format(local + 1)
+    }
+
     fn ident(&self) -> &str {
         CmpFrame::ident(self)
     }

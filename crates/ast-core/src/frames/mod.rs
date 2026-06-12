@@ -249,6 +249,41 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         true
     }
 
+    /// Effective `Label(axis)` (1-based): the explicitly-set per-axis
+    /// label if present, else the class default. Mirrors the Frame
+    /// `astGetLabel` virtual (frame.c:5350) whose default is "Axis N"
+    /// (frame.c:5395). Concrete frames override to return their own
+    /// system-derived or stored label.
+    fn effective_label(&self, axis: usize) -> String {
+        format!("Axis {axis}")
+    }
+
+    /// Effective `Unit(axis)` (1-based): the explicitly-set per-axis
+    /// unit if present, else the class default. Mirrors the Frame
+    /// `astGetUnit` virtual (frame.c:13530), whose base default is the
+    /// empty string. Concrete frames override to return their own
+    /// system-derived or stored unit.
+    fn effective_unit(&self, _axis: usize) -> String {
+        String::new()
+    }
+
+    /// Effective `Symbol(axis)` (1-based): the explicitly-set per-axis
+    /// symbol if present, else the class default. Mirrors the Frame
+    /// `astGetSymbol` virtual (frame.c:5760), whose base default falls
+    /// back to the label. Concrete frames override accordingly.
+    fn effective_symbol(&self, axis: usize) -> String {
+        self.effective_label(axis)
+    }
+
+    /// Effective `Format(axis)` (1-based): the explicitly-set per-axis
+    /// format string, or the empty string when none is set. Mirrors
+    /// `astTestFormat`/`astGetFormat` (frame.c) — only an explicitly
+    /// set Format is load-bearing for a cast; the default format is
+    /// derived from Digits and need not be copied.
+    fn effective_format(&self, _axis: usize) -> String {
+        String::new()
+    }
+
     /// Permute the axes of this frame.
     ///
     /// `perm` is a 1-based permutation array of length `naxes`. After the
@@ -753,22 +788,36 @@ pub trait Frame: AsAny + Send + fmt::Debug {
 pub(crate) fn reduce_to_basic_frame(frame: &dyn Frame) -> AstResult<BasicFrame> {
     let n = frame.naxes();
     let mut bf = BasicFrameBuilder::new(n).build()?;
+    // Frame-level Domain: copied by astOverlay (cmpframe.c:1341).
     if frame.test_domain() {
         bf.set_domain(frame.domain().to_string());
     }
-    // Per-axis Label/Unit/Symbol via the existing pick path: pick all
-    // axes in order, which copies the metadata C transfers via the Axis
-    // objects + Overlay.
-    let target_axes: Vec<i32> = (0..n as i32).collect();
-    let picked = frame.pick_axes_snapshot(&target_axes)?;
-    // pick_axes_snapshot returns a frame of the same naxes carrying the
-    // copied metadata; if it is already a BasicFrame, use it directly.
-    if let Some(b) = picked.as_any().downcast_ref::<BasicFrame>() {
-        let mut out = BasicFrame::clone(b);
-        if frame.test_domain() {
-            out.set_domain(frame.domain().to_string());
+    // Per-axis Axis metadata: C copies each source Axis into the basic
+    // Frame with astSetAxis (cmpframe.c:1335-1338), so the effective
+    // Label/Unit/Symbol/Format and Digits/Direction of every axis carry
+    // through. We read each via the Frame effective getters (the C
+    // astGetLabel/astGetUnit/astGetSymbol/astGetFormat virtuals) and
+    // store them on the BasicFrame.
+    for axis in 1..=n {
+        bf.set_label(axis, frame.effective_label(axis))?;
+        bf.set_unit(axis, frame.effective_unit(axis))?;
+        bf.set_symbol(axis, frame.effective_symbol(axis))?;
+        let fmt = frame.effective_format(axis);
+        if !fmt.is_empty() {
+            bf.set_format_str(axis, fmt)?;
         }
-        return Ok(out);
+        // Digits/Direction default on a plain Frame to 7 and 1; only a
+        // non-default value carries information worth transferring (the
+        // BasicFrame already defaults to these). Setting unconditionally
+        // would spuriously flag the attribute as explicitly set.
+        let digits = frame.axis_digits(axis);
+        if digits != 7 {
+            bf.set_axis_digits(axis, digits)?;
+        }
+        let direction = frame.direction(axis);
+        if !direction {
+            bf.set_direction(axis, direction)?;
+        }
     }
     Ok(bf)
 }

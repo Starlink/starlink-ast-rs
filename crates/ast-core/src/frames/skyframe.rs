@@ -799,6 +799,22 @@ impl Frame for SkyFrame {
         (self, self.axis_permutation()[axis])
     }
 
+    fn effective_label(&self, axis: usize) -> String {
+        self.axis_label(axis).unwrap_or_default()
+    }
+
+    fn effective_unit(&self, axis: usize) -> String {
+        // SkyFrame has no per-axis Unit override; the effective unit is
+        // the system default for the physical (lon/lat) axis.
+        let phys = self.physical_axis(axis).unwrap_or(0);
+        let (u_lon, u_lat) = self.default_units();
+        if phys == 0 { u_lon } else { u_lat }.to_string()
+    }
+
+    fn effective_symbol(&self, axis: usize) -> String {
+        self.axis_symbol(axis).unwrap_or_default()
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         if !(1..=2).contains(&axis) {
             return Err(AstError::new_tracked(
@@ -3056,5 +3072,37 @@ mod tests {
                 .is_some()
         );
         assert_eq!(casted.naxes(), 2);
+    }
+
+    #[test]
+    fn cast_skyframe_preserves_per_axis_metadata() {
+        // C astCast copies each source Axis into the basic Frame
+        // (cmpframe.c:1335-1338) so per-axis Label/Unit/Symbol carry
+        // through. Set explicit Label and Symbol overrides on a
+        // SkyFrame, cast it down to a plain Frame, and confirm both the
+        // overrides and the system-derived Unit survive on the result.
+        let mut sf = SkyFrame::new(crate::frames::SkySystem::Galactic);
+        sf.set_axis_label(1, "MyLon").unwrap();
+        sf.set_axis_label(2, "MyLat").unwrap();
+        sf.set_axis_symbol(1, "ML").unwrap();
+        sf.set_axis_symbol(2, "MB").unwrap();
+
+        let template = crate::frames::BasicFrameBuilder::new(2).build().unwrap();
+        let casted = sf.cast(&template).unwrap().unwrap();
+        let out = casted
+            .as_any()
+            .downcast_ref::<crate::frames::BasicFrame>()
+            .expect("cast result should be a BasicFrame");
+
+        assert_eq!(out.naxes(), 2);
+        // Explicit per-axis Label overrides survive.
+        assert_eq!(out.label(1).unwrap(), "MyLon");
+        assert_eq!(out.label(2).unwrap(), "MyLat");
+        // Explicit per-axis Symbol overrides survive.
+        assert_eq!(out.symbol(1).unwrap(), "ML");
+        assert_eq!(out.symbol(2).unwrap(), "MB");
+        // System-derived per-axis Unit survives (galactic -> degrees).
+        assert_eq!(out.unit(1).unwrap(), "degrees");
+        assert_eq!(out.unit(2).unwrap(), "degrees");
     }
 }

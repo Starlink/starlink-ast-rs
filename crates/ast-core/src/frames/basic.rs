@@ -603,6 +603,33 @@ impl Frame for BasicFrame {
         BasicFrame::direction(self, axis).unwrap_or(true)
     }
 
+    fn effective_label(&self, axis: usize) -> String {
+        match BasicFrame::label(self, axis) {
+            Ok(s) if !s.is_empty() => s.to_string(),
+            _ => format!("Axis {axis}"),
+        }
+    }
+
+    fn effective_unit(&self, axis: usize) -> String {
+        BasicFrame::unit(self, axis).unwrap_or("").to_string()
+    }
+
+    fn effective_symbol(&self, axis: usize) -> String {
+        // BasicFrame::symbol already falls back from Symbol to Label;
+        // when neither is set, fall back to the default label.
+        match BasicFrame::symbol(self, axis) {
+            Ok(s) if !s.is_empty() => s.to_string(),
+            _ => format!("Axis {axis}"),
+        }
+    }
+
+    fn effective_format(&self, axis: usize) -> String {
+        match BasicFrame::test_format_str(self, axis) {
+            Ok(true) => BasicFrame::format_str(self, axis).unwrap_or("").to_string(),
+            _ => String::new(),
+        }
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.validate_axis(axis)?;
         // C AxisFormat returns "<bad>" for the bad value (axis.c:704).

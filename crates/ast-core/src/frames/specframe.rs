@@ -1602,6 +1602,14 @@ impl Frame for SpecFrame {
         (self, axis)
     }
 
+    fn effective_label(&self, _axis: usize) -> String {
+        self.axis_label()
+    }
+
+    fn effective_unit(&self, _axis: usize) -> String {
+        self.unit_or_default().to_string()
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         if axis != 1 {
             return Err(AstError::new(

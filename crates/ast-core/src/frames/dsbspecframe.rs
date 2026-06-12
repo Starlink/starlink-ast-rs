@@ -540,6 +540,18 @@ impl Frame for DSBSpecFrame {
         (self, axis)
     }
 
+    fn effective_label(&self, axis: usize) -> String {
+        self.spec.effective_label(axis)
+    }
+
+    fn effective_unit(&self, axis: usize) -> String {
+        self.spec.effective_unit(axis)
+    }
+
+    fn effective_symbol(&self, axis: usize) -> String {
+        self.spec.effective_symbol(axis)
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.spec.format(axis, value)
     }
