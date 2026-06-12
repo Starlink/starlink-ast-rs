@@ -395,9 +395,12 @@ pub(crate) fn default_sub_frame(
     }
 
     // Build the result Frame: snapshot the target with only the
-    // chosen axes, then overlay template attributes if a template
-    // was supplied.
+    // chosen axes, then overlay the target's and (if supplied) the
+    // template's attributes. C overlays the target Frame onto the
+    // result before the template (frame.c:11033), which transfers the
+    // target's ActiveUnit flag.
     let mut result = target.pick_axes_snapshot(target_axes)?;
+    result.set_active_unit(target.get_active_unit());
     if let Some(t) = template {
         apply_template_overlay(t, template_axes, result.as_mut())?;
     }
@@ -410,7 +413,109 @@ pub(crate) fn default_sub_frame(
         Box::new(PermMap::new(&inperm, &outperm, &[])?)
     };
 
+    // ActiveUnit adaptation: when both the template and the result use
+    // active units, build a parallel units Mapping so unit differences
+    // between the corresponding target and result axes become real
+    // conversions (frame.c:11077-11154).
+    let mut map = map;
+    if let Some(t) = template {
+        if t.get_active_unit() && result.get_active_unit() {
+            // C's astOverlay overlays the template Axis attributes onto
+            // the result Axis before the Mapping is built, so the
+            // result carries the template's Unit on each associated
+            // axis (axis.c:1270, frame.c:11042). Reproduce that Unit
+            // transfer here so the per-axis units Mapping below sees the
+            // target -> template unit difference. Only `BasicFrame`
+            // reaches this tail with active units (SkyFrame forces the
+            // flag off; SpecFrame / FluxFrame have their own SubFrame
+            // paths), so the result is always a `BasicFrame`.
+            if let Some(rb) = result
+                .as_any_mut()
+                .downcast_mut::<crate::frames::BasicFrame>()
+            {
+                for (result_axis, &template_axis) in
+                    template_axes.iter().enumerate().take(result_naxes)
+                {
+                    if template_axis >= 0 {
+                        let tu = t.effective_unit(template_axis as usize + 1);
+                        if !tu.is_empty() {
+                            rb.set_unit(result_axis + 1, tu)?;
+                        }
+                    }
+                }
+            }
+
+            // Accumulate a parallel CmpMap of per-axis units Mappings.
+            let mut umap: Option<DynMapping> = None;
+            let mut uunit = true;
+            let mut matched = true;
+
+            for (result_axis, &outperm) in target_axes.iter().enumerate().take(result_naxes) {
+                // Corresponding target axis: result_axis when the
+                // permutation is the identity (unit), else the
+                // outperm value (frame.c:11089-11094). target_axes is
+                // the 0-based outperm with -1 for unassociated.
+                let target_axis = if unit { result_axis as i32 } else { outperm };
+
+                let aumap = if target_axis >= 0 {
+                    let tu = target.effective_unit(target_axis as usize + 1);
+                    let ru = result.effective_unit(result_axis + 1);
+                    crate::units::unit_mapper(&tu, &ru)
+                } else {
+                    None
+                };
+
+                match aumap {
+                    None => {
+                        // No units mapping: the units could not be
+                        // matched (frame.c:11113-11117).
+                        matched = false;
+                        break;
+                    }
+                    Some(am) => {
+                        if !is_unit_map(am.as_ref()) {
+                            uunit = false;
+                        }
+                        umap = Some(match umap {
+                            None => am,
+                            Some(prev) => Box::new(crate::mappings::CmpMap::new(
+                                prev,
+                                am,
+                                crate::mappings::Composition::Parallel,
+                            )?),
+                        });
+                    }
+                }
+            }
+
+            // If the units could not be matched, annul the returned
+            // Mapping (frame.c:11141: match=0 => *map annulled).
+            if !matched {
+                return Ok(None);
+            }
+
+            // If the assembled units CmpMap is not just a UnitMap, add it
+            // in series after the permutation Mapping (frame.c:11147-11153).
+            if !uunit {
+                if let Some(um) = umap {
+                    map = Box::new(crate::mappings::CmpMap::new(
+                        map,
+                        um,
+                        crate::mappings::Composition::Series,
+                    )?);
+                }
+            }
+        }
+    }
+
     Ok(Some((map, result)))
+}
+
+/// Whether `m` is a `UnitMap`.
+fn is_unit_map(m: &dyn crate::mappings::Mapping) -> bool {
+    m.as_any()
+        .downcast_ref::<crate::mappings::UnitMap>()
+        .is_some()
 }
 
 /// Default `Match` body — mirrors C `Frame::Match` (frame.c:7073).
