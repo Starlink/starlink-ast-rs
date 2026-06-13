@@ -1083,9 +1083,10 @@ fn timeframe_overlay(
             result_time.clear_title();
         }
 
-        // Frame-level attributes transferred by the parent Frame Overlay
-        // (frame.c:8567-8575): Dtai, Dut1, Epoch, Domain, Title, ObsLat,
-        // ObsLon, ObsAlt — each only when set on the template.
+        // Frame-level numeric/observer attributes transferred by the
+        // parent Frame Overlay (frame.c:8567-8575): Dtai, Dut1, Epoch,
+        // ObsLat, ObsLon, ObsAlt — each only when set on the template.
+        // Domain and Title are transferred by the dedicated blocks below.
         if let Some(v) = template_time.dtai {
             result_time.set_dtai(v);
         }
