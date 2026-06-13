@@ -210,3 +210,64 @@ fn perm_equal_ignores_unreferenced_surplus_constants() {
     let b = PermMap::new(&[1], &[1], &[2.0]).unwrap();
     assert!(a.equal(&b));
 }
+
+// ---------------------------------------------------------------------------
+// Out-of-range perm entries: C `astInitPermMap` (permmap.c:2849-2903) performs
+// NO validation of the perm-array values, and `Transform` (permmap.c:1976-1997)
+// substitutes AST__BAD for a negative entry whose constant slot is absent or a
+// positive entry past the axis count. Construction must therefore SUCCEED and
+// the value resolve to BAD at transform time. All cases oracle-verified against
+// the reference C library (see /tmp probes in the DM-54793 work log).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn perm_negative_entry_without_constant_is_bad_not_rejected() {
+    // outperm=[-1], inperm=[-1], NO constants supplied. C accepts this
+    // (NULL constants array) and transforms to AST__BAD in both directions.
+    // Oracle: construct astOK==1, forward==AST__BAD, inverse==AST__BAD.
+    let pm = PermMap::new(&[-1], &[-1], &[]).unwrap();
+    let pts = PointSet::from_rows([[99.0]]);
+    let fwd = pm.transform(&pts, true).unwrap();
+    assert_eq!(fwd.point(0)[0], BAD_VALUE);
+    let inv = pm.transform(&pts, false).unwrap();
+    assert_eq!(inv.point(0)[0], BAD_VALUE);
+}
+
+#[test]
+fn perm_negative_entry_past_constants_pool_is_bad() {
+    // outperm=[-2] references constants[1], but only constants[0] is given.
+    // C reads past the (shorter) caller array at construction but resolves
+    // missing slots to BAD; the safe Rust port substitutes BAD directly.
+    let pm = PermMap::new(&[-2], &[-2], &[5.0]).unwrap();
+    let pts = PointSet::from_rows([[99.0]]);
+    let fwd = pm.transform(&pts, true).unwrap();
+    assert_eq!(fwd.point(0)[0], BAD_VALUE);
+}
+
+#[test]
+fn perm_positive_entry_past_axis_count_is_bad() {
+    // nin=1, outperm=[2] selects input axis 2 which does not exist. C's
+    // Transform yields AST__BAD. Oracle-verified (probe case B).
+    let pm = PermMap::new(&[1], &[2], &[]).unwrap();
+    let pts = PointSet::from_rows([[7.0]]);
+    let fwd = pm.transform(&pts, true).unwrap();
+    assert_eq!(fwd.point(0)[0], BAD_VALUE);
+}
+
+#[test]
+fn perm_c_dump_with_negative_entry_no_nconst_roundtrips() {
+    // A C PermMap built with NULL constants and negative perm entries dumps
+    // as `Out1 = -1` / `In1 = -1` with NO `Nconst` line. Rust must be able
+    // to read this native form and transform it to BAD, matching C's reread
+    // behaviour (oracle probe: reread forward == AST__BAD).
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+    let pm = PermMap::new(&[-1], &[-1], &[]).unwrap();
+    let text = to_native_string(&AnyObject::PermMap(pm)).unwrap();
+    let obj = from_native_string(&text).unwrap();
+    let AnyObject::PermMap(reread) = obj else {
+        panic!("expected PermMap");
+    };
+    let pts = PointSet::from_rows([[3.0]]);
+    let fwd = reread.transform(&pts, true).unwrap();
+    assert_eq!(fwd.point(0)[0], BAD_VALUE);
+}

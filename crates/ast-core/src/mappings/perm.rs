@@ -9,7 +9,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::{AstError, AstResult, ErrorCode};
+use crate::error::AstResult;
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
@@ -57,60 +57,15 @@ impl PermMap {
     /// - `outperm`: length = nout; drives the forward transform.
     /// - `constants`: values referenced by negative perm entries.
     ///
-    /// Returns an error if any positive perm entry refers to an axis that
-    /// does not exist, or if any negative entry refers to a constant that
-    /// is not in `constants`.
+    /// No validation is performed on the perm-array values, mirroring C
+    /// `astInitPermMap` (permmap.c:2849-2903), which stores the supplied
+    /// arrays verbatim. A positive entry referring to a non-existent axis,
+    /// or a negative entry referring past the end of `constants`, is
+    /// substituted with `BAD_VALUE` at transform time (permmap.c:1976-1997),
+    /// not rejected here. This is required so that PermMaps deserialised from
+    /// a C native dump — which may legitimately carry such entries (e.g. a
+    /// negative entry with no `Nconst`) — round-trip and transform as C does.
     pub fn new(inperm: &[i64], outperm: &[i64], constants: &[f64]) -> AstResult<Self> {
-        let nin = inperm.len();
-        let nout = outperm.len();
-
-        // Validate outperm (forward: maps inputs [1..nin] to outputs [1..nout]).
-        for &p in outperm {
-            if p > 0 && p as usize > nin {
-                return Err(AstError::new(
-                    ErrorCode::Prmin,
-                    format!("outperm entry {p} refers to input axis {p} but nin = {nin}"),
-                ));
-            }
-            if p < 0 {
-                let cidx = (-p - 1) as usize;
-                if cidx >= constants.len() {
-                    return Err(AstError::new(
-                        ErrorCode::Prmin,
-                        format!(
-                            "outperm entry {p} refers to constants[{}] but only {} constants supplied",
-                            cidx,
-                            constants.len()
-                        ),
-                    ));
-                }
-            }
-        }
-
-        // Validate inperm (inverse: maps outputs [1..nout] back to inputs
-        // [1..nin]).
-        for &p in inperm {
-            if p > 0 && p as usize > nout {
-                return Err(AstError::new(
-                    ErrorCode::Prmin,
-                    format!("inperm entry {p} refers to output axis {p} but nout = {nout}"),
-                ));
-            }
-            if p < 0 {
-                let cidx = (-p - 1) as usize;
-                if cidx >= constants.len() {
-                    return Err(AstError::new(
-                        ErrorCode::Prmin,
-                        format!(
-                            "inperm entry {p} refers to constants[{}] but only {} constants supplied",
-                            cidx,
-                            constants.len()
-                        ),
-                    ));
-                }
-            }
-        }
-
         Ok(Self {
             outperm: outperm.to_vec(),
             inperm: inperm.to_vec(),
@@ -145,19 +100,26 @@ impl PermMap {
     /// `nin_for_perm` is the number of input coordinates expected by `perm`
     /// (used for BAD-value checks).
     fn apply_perm(perm: &[i64], constants: &[f64], pts: &PointSet, out: &mut PointSet) {
+        let ncoord_in = pts.ncoord();
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
             for (k, &p) in perm.iter().enumerate() {
+                // Mirrors C permmap.c:1976-1997: a positive entry copies the
+                // input axis only when in range; a negative entry reads the
+                // constants pool when in range; everything else is BAD. C's
+                // NULL-constants path uses AST__BAD for any negative entry, so
+                // an out-of-range constant index resolves to BAD here too.
                 outp[k] = if p > 0 {
                     let src = (p as usize) - 1;
-                    if is_bad(inp[src]) {
-                        BAD_VALUE
-                    } else {
+                    if src < ncoord_in && !is_bad(inp[src]) {
                         inp[src]
+                    } else {
+                        BAD_VALUE
                     }
                 } else if p < 0 {
-                    constants[(-p as usize) - 1]
+                    let cidx = (-p as usize) - 1;
+                    constants.get(cidx).copied().unwrap_or(BAD_VALUE)
                 } else {
                     BAD_VALUE
                 };
@@ -325,14 +287,17 @@ impl Mapping for PermMap {
             .iter()
             .map(|&c| if is_bad(c) { f64::NAN } else { c })
             .collect();
+        let ncoord_in = pts.ncoord();
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
             for (k, &p) in perm.iter().enumerate() {
                 outp[k] = if p > 0 {
-                    inp[(p as usize) - 1]
+                    let src = (p as usize) - 1;
+                    if src < ncoord_in { inp[src] } else { f64::NAN }
                 } else if p < 0 {
-                    constants_nan[(-p as usize) - 1]
+                    let cidx = (-p as usize) - 1;
+                    constants_nan.get(cidx).copied().unwrap_or(f64::NAN)
                 } else {
                     f64::NAN
                 };
