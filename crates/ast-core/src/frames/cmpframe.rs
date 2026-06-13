@@ -1165,8 +1165,19 @@ pub(crate) fn part_match(
     let frame1_template = prepare_child(template.frame1());
     let frame2_template = prepare_child(template.frame2());
 
-    let m1 = frame1_template.match_template(frame1.as_ref(), matchsub)?;
-    let m2 = frame2_template.match_template(frame2.as_ref(), matchsub)?;
+    // Each child Match goes through the matchsub cast-retry wrapper
+    // (C `astMatch`, frame.c:15473), so a specialised component can
+    // align with a plainer partitioned target sharing its Domain.
+    let m1 = crate::frames::find_frame::match_with_subclass(
+        frame1_template.as_ref(),
+        frame1.as_ref(),
+        matchsub,
+    )?;
+    let m2 = crate::frames::find_frame::match_with_subclass(
+        frame2_template.as_ref(),
+        frame2.as_ref(),
+        matchsub,
+    )?;
     let (Some(m1), Some(m2)) = (m1, m2) else {
         return Ok(None);
     };
@@ -1469,10 +1480,15 @@ pub(crate) fn component_match(
     ctemplate.set_preserve_axes(template.preserve_axes());
 
     // Run the inner Match on the component template against the
-    // target. The returned m.template_axes / m.target_axes refer to
-    // the component Frame; we rewire them to refer to the full
-    // template CmpFrame below.
-    let Some(m) = ctemplate.match_template(target, matchsub)? else {
+    // target via the matchsub cast-retry wrapper (C `astMatch`,
+    // frame.c:15473), so a specialised component (e.g. a SkyFrame)
+    // can align with a plainer target sharing its Domain. The
+    // returned m.template_axes / m.target_axes refer to the component
+    // Frame; we rewire them to refer to the full template CmpFrame
+    // below.
+    let Some(m) =
+        crate::frames::find_frame::match_with_subclass(ctemplate.as_ref(), target, matchsub)?
+    else {
         return Ok(None);
     };
 
