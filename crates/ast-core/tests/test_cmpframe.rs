@@ -34,6 +34,26 @@ fn cmpframe_format_delegates() {
     assert!(s2.contains("2.72"));
 }
 
+// ---- Direction routing ----
+
+#[test]
+fn cmpframe_direction_routes_to_component() {
+    // C routes Direction per external axis to the owning component
+    // (cmpframe.c MAKE_GET(Direction)). Reverse axis 1 of the first
+    // component; the CmpFrame must report Direction(1)=false and the
+    // remaining axes the default true. Oracle-verified: Dir(1)=0,
+    // Dir(2)=1, Dir(3)=1.
+    let mut f1 = BasicFrameBuilder::new(2).build().unwrap();
+    f1.set_direction(1, false).unwrap();
+    let cmp = CmpFrame::new(Box::new(f1), make_frame(1));
+    assert!(!cmp.direction(1)); // reversed axis from frame1
+    assert!(cmp.direction(2)); // default
+    assert!(cmp.direction(3)); // frame2 default
+    // Out-of-range axes fall back to the default.
+    assert!(cmp.direction(0));
+    assert!(cmp.direction(4));
+}
+
 // ---- Unformat delegation ----
 
 #[test]

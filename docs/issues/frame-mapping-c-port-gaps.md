@@ -284,13 +284,13 @@ The gaps are in the geometry methods, attribute defaults, and attribute forwardi
   C `SetEpoch` (`cmpframe.c:8800-8812`) sets the parent value *and* both components (same pattern for the Obs\*/Dtai setters), and `GetEpoch` (`cmpframe.c:3917`) falls back to frame1's value (then frame2) when unset on the CmpFrame itself.
   Rust CmpFrame has no epoch accessor and inherits the `None`-returning trait defaults for `obs_lat`/`obs_lon`/`obs_alt`/`dtai`, so observer/epoch context set at the compound level never reaches a SkyFrame/SpecFrame component.
 
-- **[MED] CmpFrame — no per-axis attribute routing.**
-  C routes Get/Set/Test/Clear of Label, Symbol, Unit, Format, Direction, Bottom, Top per external axis through the perm array to the owning component (vtab list `cmpframe.c`); Rust routes only `format`/`unformat` via `route_axis`.
-  There are no `label(axis)`/`symbol(axis)`/`unit(axis)`-style accessors on CmpFrame at all, so callers must downcast components and re-derive the permutation themselves.
-  Fix: add the standard per-axis accessors using the existing `route_axis` helper.
+- **[MED] CmpFrame — per-axis attribute routing.** *(PARTIALLY FIXED 2026-06-13.)*
+  C routes Get/Set/Test/Clear of Label, Symbol, Unit, Format, Direction per external axis through the perm array to the owning component (vtab `MAKE_GET/SET/CLEAR/TEST` for Direction/Format/Label/Symbol/Unit, cmpframe.c:10243-10340). **C does NOT override Bottom/Top** for CmpFrame — those use the parent Frame defaults (±DBL_MAX), so the original finding listing Bottom/Top here was wrong.
+  Now routed via `route_axis`: the read getters `effective_label`/`effective_symbol`/`effective_unit`/`effective_format` (pre-existing) and **`direction(axis)`** (added 2026-06-13, oracle-verified — `tests/test_cmpframe.rs::cmpframe_direction_routes_to_component`).
+  Still missing: strongly-typed *settable* per-axis accessors (`set_label(axis,…)`, `set_symbol`, `set_unit`, `set_format`, `set_direction`) plus their per-axis Test/Clear, routed through `route_axis`. These are a pure API-surface addition (no failing behaviour — conversion-based equality and internal logic use the `effective_*` getters), tracked for a follow-up.
 
-- **[LOW] CmpFrame — Title default is empty.**
-  C `GetTitle` (`cmpframe.c:4424+`) defaults to `"<N>-d compound coordinate system"`; Rust returns `""` (`cmpframe.rs:73`).
+- **[LOW] CmpFrame — Title default.** *(Already correct — finding was stale.)*
+  C `GetTitle` (`cmpframe.c:4424+`) defaults to `"<N>-d compound coordinate system"`. Rust's `title()` returns `""` when unset (matching the codebase convention shared with `BasicFrame::title`), but `Serializable::to_node` already emits the computed `"{naxes}-d compound coordinate system"` default (cmpframe.rs to_node) — oracle-verified (`3-d`/`5-d compound coordinate system`).
 
 ## 6d. Detailed findings: SkyFrame + SkyAxis (audited 2026-06-10)
 

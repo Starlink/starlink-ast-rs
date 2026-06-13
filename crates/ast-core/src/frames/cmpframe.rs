@@ -313,6 +313,17 @@ impl Frame for CmpFrame {
         child.effective_format(local_axis)
     }
 
+    fn direction(&self, axis: usize) -> bool {
+        // C routes Direction per external axis to the owning component
+        // (cmpframe.c MAKE_GET(Direction)); the component applies its own
+        // permutation. Out-of-range axes fall back to the trait default.
+        if axis == 0 || axis > self.naxes() {
+            return true;
+        }
+        let (child, local_axis) = self.route_axis(axis);
+        child.direction(local_axis)
+    }
+
     fn ident(&self) -> &str {
         CmpFrame::ident(self)
     }
