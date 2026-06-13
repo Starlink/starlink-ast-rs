@@ -3,7 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame};
-use crate::mappings::helpers::{ast_equal, is_bad};
+use crate::mappings::helpers::is_bad;
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
@@ -382,23 +382,15 @@ impl Frame for FluxFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<FluxFrame>() else {
-            return false;
-        };
-        if self.system != other.system {
-            return false;
-        }
-        let spec_eq = match (self.spec_val, other.spec_val) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !spec_eq {
-            return false;
-        }
-        // Title is descriptive only and never affects C Frame equality;
-        // compare effective Domain strings.
-        self.domain.as_deref().unwrap_or("FLUX") == other.domain.as_deref().unwrap_or("FLUX")
+        // C Frame equality is conversion-based (frame.c:3549); FluxFrame
+        // does not override it. Within one flux System the conversion is a
+        // UnitMap regardless of SpecVal, so two same-System FluxFrames are
+        // equal even if their SpecVal differs (oracle-verified). A
+        // cross-System pair needs MakeFluxMapping; while that is unported,
+        // convert_frames yields no conversion, so the frames compare
+        // unequal — which matches the oracle for genuine cross-System
+        // pairs.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn system_string(&self) -> Option<&str> {

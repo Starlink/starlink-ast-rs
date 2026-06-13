@@ -198,10 +198,11 @@ impl Frame for SpecFluxFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<SpecFluxFrame>() else {
-            return false;
-        };
-        self.spec_frame.equal(&other.spec_frame) && self.flux_frame.equal(&other.flux_frame)
+        // C Frame equality is conversion-based (frame.c:3549); SpecFluxFrame
+        // (a CmpFrame subclass) does not override it. Route through the
+        // shared helper so the component spectral/flux conversions decide
+        // equality.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn system_string(&self) -> Option<&str> {

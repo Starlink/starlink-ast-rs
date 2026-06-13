@@ -46,10 +46,24 @@ fn bad_value_comparison() {
 }
 
 #[test]
-fn bad_vs_non_bad() {
-    // BAD_VALUE vs a normal value should be unequal.
+fn bad_vs_non_bad_same_index_is_equal_c_quirk() {
+    // Both PermMaps reference the SAME constant slot (index -1), so C's
+    // Equal finds the perm entries identical and never compares the
+    // referenced constant values — BAD_VALUE vs 42.0 compare EQUAL. This
+    // is the C constant-index quirk (permmap.c:355-371); see
+    // docs/issues/c-library-quirks.md. Oracle-verified: astEqual == 1.
     let a = PermMap::new(&[-1], &[-1], &[BAD_VALUE]).unwrap();
     let b = PermMap::new(&[-1], &[-1], &[42.0]).unwrap();
+    assert!(a.equal(&b));
+}
+
+#[test]
+fn bad_vs_non_bad_different_index_is_not_equal() {
+    // When the inputs reference *different* constant slots, C does compare
+    // the referenced values: BAD_VALUE vs 42.0 are unequal. Slot 0 holds
+    // the referenced constant in each (inperm -1 vs -2).
+    let a = PermMap::new(&[-1], &[-1], &[BAD_VALUE, 0.0]).unwrap();
+    let b = PermMap::new(&[-2], &[-2], &[0.0, 42.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
@@ -616,17 +630,23 @@ fn basicframe_different_domain() {
 }
 
 #[test]
-fn basicframe_different_epoch() {
+fn basicframe_different_epoch_is_equal() {
+    // C Frame equality is conversion-based (frame.c:3549). A plain Frame
+    // has no Epoch-dependent coordinate transform, so two Frames differing
+    // only in Epoch convert via a UnitMap and compare EQUAL. Oracle-
+    // verified: astEqual(Frame Epoch=MJD50000, Frame Epoch=MJD51000) == 1.
     let a = BasicFrameBuilder::new(2).epoch(50000.0).build().unwrap();
     let b = BasicFrameBuilder::new(2).epoch(51000.0).build().unwrap();
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 #[test]
-fn basicframe_epoch_set_vs_unset() {
+fn basicframe_epoch_set_vs_unset_is_equal() {
+    // Same reasoning: Epoch does not affect a plain Frame's conversion, so
+    // a set Epoch equals an unset one. Oracle-verified.
     let a = BasicFrameBuilder::new(2).epoch(50000.0).build().unwrap();
     let b = BasicFrameBuilder::new(2).build().unwrap();
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 #[test]
@@ -697,11 +717,15 @@ fn skyframe_different_equinox() {
 }
 
 #[test]
-fn skyframe_equinox_set_vs_unset() {
+fn skyframe_equinox_set_vs_unset_default_is_equal() {
+    // 51544.5 (J2000.0) is the default FK5 Equinox, so explicitly setting
+    // it equals leaving it unset: the conversion is a UnitMap. Oracle-
+    // verified. (Contrast skyframe_different_equinox above, where the two
+    // Equinox values genuinely differ and the frames are unequal.)
     let mut a = SkyFrame::new(SkySystem::Fk5);
     a.set_equinox_mjd(51544.5);
     let b = SkyFrame::new(SkySystem::Fk5);
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 #[test]
@@ -714,27 +738,51 @@ fn skyframe_different_epoch() {
 }
 
 #[test]
-fn skyframe_different_sky_ref_is() {
+fn skyframe_sky_ref_is_origin_without_sky_ref_is_equal() {
+    // C uses an offset coordinate system only when SkyRefIs != Ignored AND
+    // SkyRef has been set (skyframe.c:7722-7724 SkyOffsetMap). Setting only
+    // SkyRefIs=Origin, with SkyRef left at its (0,0) default, produces an
+    // identity conversion, so the frame equals a plain SkyFrame. Oracle-
+    // verified.
     let mut a = SkyFrame::new(SkySystem::Fk5);
     a.set_sky_ref_is(SkyRefIs::Origin);
     let b = SkyFrame::new(SkySystem::Fk5);
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 #[test]
-fn skyframe_different_sky_ref() {
+fn skyframe_offset_origin_with_sky_ref_is_not_equal() {
+    // A genuine offset system: SkyRefIs=Origin AND a non-default SkyRef.
+    // The conversion to a plain SkyFrame is a real rotation, not a UnitMap,
+    // so the frames are unequal. Oracle-verified
+    // (astEqual == 0 for SkyRefIs=Origin + SkyRef=(1,0.5) vs plain).
     let mut a = SkyFrame::new(SkySystem::Fk5);
+    a.set_sky_ref_is(SkyRefIs::Origin);
     a.set_sky_ref(1.0, 0.5);
     let b = SkyFrame::new(SkySystem::Fk5);
     assert!(!a.equal(&b));
 }
 
 #[test]
-fn skyframe_different_neglon() {
+fn skyframe_sky_ref_without_sky_ref_is_is_equal() {
+    // SkyRef set but SkyRefIs left at its default (Ignored): C ignores the
+    // SkyRef entirely, so the conversion is a UnitMap and the frames are
+    // equal. Oracle-verified.
+    let mut a = SkyFrame::new(SkySystem::Fk5);
+    a.set_sky_ref(1.0, 0.5);
+    let b = SkyFrame::new(SkySystem::Fk5);
+    assert!(a.equal(&b));
+}
+
+#[test]
+fn skyframe_different_neglon_is_equal() {
+    // NegLon only controls how longitude is *formatted* for display; it
+    // does not change the coordinate conversion, so two SkyFrames differing
+    // only in NegLon compare equal. Oracle-verified.
     let mut a = SkyFrame::new(SkySystem::Fk5);
     a.set_neglon(true);
     let b = SkyFrame::new(SkySystem::Fk5);
-    assert!(!a.equal(&b));
+    assert!(a.equal(&b));
 }
 
 #[test]

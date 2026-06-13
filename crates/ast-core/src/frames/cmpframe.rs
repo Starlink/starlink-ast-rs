@@ -648,10 +648,13 @@ impl Frame for CmpFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<CmpFrame>() else {
-            return false;
-        };
-        self.frame1.equal(other.frame1.as_ref()) && self.frame2.equal(other.frame2.as_ref())
+        // C Frame equality is conversion-based (frame.c:3549); CmpFrame
+        // does not override it. The conversion between two CmpFrames is the
+        // parallel combination of the component conversions, so it is a
+        // UnitMap iff each component pair converts to a UnitMap — which
+        // recovers the per-component equality the old code spelled out, but
+        // also folds in cosmetic-attribute and unit tolerance correctly.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {

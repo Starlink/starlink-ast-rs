@@ -1794,35 +1794,11 @@ impl Frame for SpecFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<SpecFrame>() else {
-            return false;
-        };
-        if self.system != other.system {
-            return false;
-        }
-        if self.std_of_rest != other.std_of_rest {
-            return false;
-        }
-        let epoch_eq = match (self.epoch, other.epoch) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !epoch_eq {
-            return false;
-        }
-        let rf_eq = match (self.rest_freq, other.rest_freq) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !rf_eq {
-            return false;
-        }
-        // Title is descriptive only and never affects C Frame equality;
-        // compare effective Domain strings.
-        self.domain.as_deref().unwrap_or("SPECTRUM")
-            == other.domain.as_deref().unwrap_or("SPECTRUM")
+        // C Frame equality is conversion-based (frame.c:3549); SpecFrame
+        // does not override it. A difference in System/StdOfRest/Epoch/
+        // RestFreq yields a non-UnitMap spectral conversion and so the
+        // frames compare unequal.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn obs_lat(&self) -> Option<f64> {

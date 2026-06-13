@@ -637,6 +637,76 @@ fn is_unit_map(m: &dyn crate::mappings::Mapping) -> bool {
         .is_some()
 }
 
+/// The AST class name for a `&dyn Frame`, used by the conversion-based
+/// equality test's same-class gate.
+///
+/// Mirrors `astGetClass`: the string is the concrete AST class
+/// (`"Frame"` for `BasicFrame`, `"SkyFrame"`, …). Returns `"Frame"` for
+/// any unrecognised type so a future class still gates conservatively
+/// against the base class rather than spuriously matching.
+pub(crate) fn frame_class_name(frame: &dyn Frame) -> &'static str {
+    use crate::frames::{DSBSpecFrame, FluxFrame, SkyFrame, SpecFluxFrame, SpecFrame, TimeFrame};
+    let any = frame.as_any();
+    if any.is::<crate::frames::BasicFrame>() {
+        "Frame"
+    } else if any.is::<SkyFrame>() {
+        "SkyFrame"
+    } else if any.is::<DSBSpecFrame>() {
+        "DSBSpecFrame"
+    } else if any.is::<SpecFrame>() {
+        "SpecFrame"
+    } else if any.is::<TimeFrame>() {
+        "TimeFrame"
+    } else if any.is::<FluxFrame>() {
+        "FluxFrame"
+    } else if any.is::<SpecFluxFrame>() {
+        "SpecFluxFrame"
+    } else if any.is::<CmpFrame>() {
+        "CmpFrame"
+    } else if any.is::<FrameSet>() {
+        "FrameSet"
+    } else {
+        "Frame"
+    }
+}
+
+/// Conversion-based Frame equality — the shared body of every leaf
+/// Frame class's `equal`.
+///
+/// Mirrors C `Frame::Equal` (frame.c:3549): the two Frames are equal iff
+/// they have the same class name, `astConvert(that, this, "")` succeeds,
+/// and the resulting base→current Mapping simplifies to a UnitMap. No
+/// Frame subclass overrides `Equal` in C, so Sky/Spec/Time/Flux/
+/// SpecFlux/DSBSpec/CmpFrame all route through here; FrameSet and Region
+/// keep their structural overrides.
+///
+/// This terminates: frame conversion never emits a `NormMap` (the only
+/// mapping that re-enters `Frame::equal` during simplification), so the
+/// `simplified()` call below cannot recurse back into `frames_equal`.
+pub(crate) fn frames_equal(this: &dyn Frame, that: &dyn Frame) -> bool {
+    // Same class check (astGetClass strcmp, frame.c:3605).
+    if frame_class_name(this) != frame_class_name(that) {
+        return false;
+    }
+
+    // astConvert( that, this, "" ): map from `that` to `this`
+    // (frame.c:3612). On any error or no-conversion, the Frames are not
+    // equal.
+    let Ok(Some(fs)) = convert_frames(that, this, "") else {
+        return false;
+    };
+
+    // Get the base->current Mapping and simplify it; equal iff UnitMap
+    // (frame.c:3614-3616).
+    let Ok(map) = fs.mapping(FrameRef::Base, FrameRef::Current) else {
+        return false;
+    };
+    let Ok(simplified) = Mapping::simplified(map.as_ref()) else {
+        return false;
+    };
+    is_unit_map(simplified.as_ref())
+}
+
 /// Default `Match` body — mirrors C `Frame::Match` (frame.c:7073).
 ///
 /// Checks axis-cardinality bounds (`MinAxes` / `MaxAxes`), gates on

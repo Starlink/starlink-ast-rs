@@ -8,7 +8,6 @@
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::helpers::ast_equal;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap, WinMap};
 use crate::serial::{Node, NodeValue, Serializable};
 
@@ -613,24 +612,14 @@ impl Frame for DSBSpecFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other_dsb) = other.as_any().downcast_ref::<DSBSpecFrame>() else {
-            return false;
-        };
-        // Compare the underlying SpecFrame.
-        if !self.spec.equal(&other_dsb.spec) {
-            return false;
-        }
-        // Compare DSB-specific fields.
-        if !ast_equal(self.dsb_centre(), other_dsb.dsb_centre()) {
-            return false;
-        }
-        if !ast_equal(self.ifr(), other_dsb.ifr()) {
-            return false;
-        }
-        if self.sideband() != other_dsb.sideband() {
-            return false;
-        }
-        self.align_sideband() == other_dsb.align_sideband()
+        // C Frame equality is conversion-based (frame.c:3549); DSBSpecFrame
+        // does not override it. The base→current conversion depends only on
+        // the spectral System/StdOfRest/etc — the DSB-specific attributes
+        // (DSBCentre, IF, SideBand, AlignSideBand) do NOT enter that
+        // mapping, so the oracle reports two DSBSpecFrames differing only in
+        // those attributes as equal. We match C: route through the shared
+        // conversion-based helper rather than comparing the DSB fields.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn obs_lat(&self) -> Option<f64> {

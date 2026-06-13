@@ -729,3 +729,50 @@ zero-initialised in Rust (versus uninitialised C stack), the two
 libraries can disagree in the pathological skipped-interval case; this
 is acceptable since the branch is unreachable for well-behaved
 Mappings and a future upstream fix would change the C side anyway.
+
+---
+
+## `PermMap::Equal` skips constant-value comparison for matching indices
+
+**C location:** `permmap.c` `Equal` (~lines 355-371):
+
+```c
+if( p1 != p2 ) {
+   if( p1 >= 0 || p2 >= 0 ) {
+      result = 0;
+      break;
+   } else if( this->constant[ -p1 - 1 ] != that->constant[ -p2 - 1 ] ) {
+      result = 0;
+      break;
+   }
+}
+```
+
+**Observed:** when comparing two PermMaps, C compares the effective
+permutation entries (`p1`, `p2`) position by position. The referenced
+constant *values* are only compared inside the `if( p1 != p2 )` block —
+so when both PermMaps feed an input/output from the **same** constant
+slot (`p1 == p2 < 0`), C declares that position equal **without** looking
+at the stored constant values at all. Two PermMaps that both reference
+"constant index 0" are therefore deemed equal even when the stored
+constants differ (e.g. 5.0 vs 7.0).
+
+Conversely, when the indices differ (`p1 != p2`, both negative) C *does*
+compare the referenced values, using an exact `!=` (no tolerance), and
+unreferenced surplus constants never enter the comparison at all.
+
+**Consequence:** `astEqual` on two PermMaps can return 1 (equal) even
+though they would produce different output for an input that selects the
+shared constant slot — the PermMaps are behaviourally different but
+compare equal. This can cause an over-merge in `astSimplify`. Oracle-
+verified against `libast` built with cmake:
+`astEqual` of two `nin=1,nout=1` PermMaps both with `inperm=[-1]` but
+constants `{5.0}` vs `{7.0}` returns 1; with `inperm=[-1]` vs `[-2]`
+referencing equal values it returns 1; referencing differing values it
+returns 0; differing unreferenced surplus constants return 1.
+
+**Rust mirror:** `PermMap::equal` in
+`crates/ast-core/src/mappings/perm.rs` ports the per-entry comparison
+including the matching-index short-circuit (so it preserves the quirk)
+and the exact (non-tolerance) constant comparison. Tests in
+`crates/ast-core/tests/test_permmap.rs` lock all four cases.

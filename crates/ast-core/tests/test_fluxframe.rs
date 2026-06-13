@@ -121,12 +121,17 @@ fn test_fluxframe_equal_different_system() {
 }
 
 #[test]
-fn test_fluxframe_equal_different_specval() {
+fn test_fluxframe_equal_different_specval_is_equal() {
+    // C Frame equality is conversion-based (frame.c:3549). Within one flux
+    // System the conversion is a UnitMap regardless of SpecVal (SpecVal
+    // only matters for cross-System flux conversion via MakeFluxMapping),
+    // so two FLUXDEN FluxFrames differing only in SpecVal compare EQUAL.
+    // Oracle-verified: astEqual(FluxFrame 1e9, FluxFrame 2e9) == 1 in FLXDN.
     let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
     let mut ff2 = FluxFrame::new(FluxSystem::FluxDen);
     ff1.set_spec_val(1.0e9);
     ff2.set_spec_val(2.0e9);
-    assert!(!ff1.equal(&ff2));
+    assert!(ff1.equal(&ff2));
 }
 
 // ---------------------------------------------------------------------------

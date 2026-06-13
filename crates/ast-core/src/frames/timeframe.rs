@@ -846,34 +846,11 @@ impl Frame for TimeFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<TimeFrame>() else {
-            return false;
-        };
-        if self.system != other.system {
-            return false;
-        }
-        if self.timescale != other.timescale {
-            return false;
-        }
-        let epoch_eq = match (self.epoch, other.epoch) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !epoch_eq {
-            return false;
-        }
-        let origin_eq = match (self.time_origin, other.time_origin) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !origin_eq {
-            return false;
-        }
-        // Title is descriptive only and never affects C Frame equality;
-        // compare effective Domain strings.
-        self.domain.as_deref().unwrap_or("TIME") == other.domain.as_deref().unwrap_or("TIME")
+        // C Frame equality is conversion-based (frame.c:3549); TimeFrame
+        // does not override it. A difference in System/TimeScale/Epoch/
+        // TimeOrigin yields a non-UnitMap time conversion and so the
+        // frames compare unequal.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn obs_lat(&self) -> Option<f64> {

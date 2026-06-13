@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::helpers::{ast_equal, is_bad, point_has_bad};
+use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
 
@@ -833,29 +833,9 @@ impl Frame for BasicFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<BasicFrame>() else {
-            return false;
-        };
-        if self.naxes != other.naxes {
-            return false;
-        }
-        // C Frame equality (frame.c Equal) is "the conversion between the
-        // two frames simplifies to a UnitMap", so purely descriptive
-        // attributes (Title, Label, Symbol, Format) never affect it.
-        // Compare effective Domain strings so an explicitly-set default
-        // equals an unset one.
-        if BasicFrame::domain(self) != BasicFrame::domain(other) {
-            return false;
-        }
-        let epoch_eq = match (self.epoch, other.epoch) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !epoch_eq {
-            return false;
-        }
-        self.units == other.units
+        // C Frame equality is conversion-based (frame.c:3549): same class,
+        // astConvert succeeds, and the mapping simplifies to a UnitMap.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn domain(&self) -> &str {

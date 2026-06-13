@@ -5,7 +5,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
 use crate::frames::{DynFrame, Frame, FrameRef};
-use crate::mappings::helpers::{ast_equal, is_bad};
+use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::pal;
 use crate::serial::{Node, NodeValue, Serializable};
@@ -1068,16 +1068,22 @@ impl Frame for SkyFrame {
                 }
 
                 // Prepend source offset removal (offset→standard).
-                if let Some(off_map) =
-                    make_offset_mapping(prev_sky.sky_ref, prev_sky.sky_ref_p, prev_sky.sky_ref_is)?
-                {
+                if let Some(off_map) = make_offset_mapping(
+                    prev_sky.sky_ref,
+                    prev_sky.sky_ref_p,
+                    prev_sky.sky_ref_is,
+                    prev_sky.sky_ref_set[0] || prev_sky.sky_ref_set[1],
+                )? {
                     mapping = Box::new(CmpMap::new(off_map, mapping, Composition::Series)?);
                 }
 
                 // Append target offset application (standard→offset = inverse).
-                if let Some(mut off_map) =
-                    make_offset_mapping(self.sky_ref, self.sky_ref_p, self.sky_ref_is)?
-                {
+                if let Some(mut off_map) = make_offset_mapping(
+                    self.sky_ref,
+                    self.sky_ref_p,
+                    self.sky_ref_is,
+                    self.sky_ref_set[0] || self.sky_ref_set[1],
+                )? {
                     off_map.invert();
                     mapping = Box::new(CmpMap::new(mapping, off_map, Composition::Series)?);
                 }
@@ -1099,36 +1105,12 @@ impl Frame for SkyFrame {
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<SkyFrame>() else {
-            return false;
-        };
-        if self.system != other.system {
-            return false;
-        }
-        let epoch_eq = match (self.epoch, other.epoch) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !epoch_eq {
-            return false;
-        }
-        let equinox_eq = match (self.equinox, other.equinox) {
-            (Some(a), Some(b)) => ast_equal(a, b),
-            (None, None) => true,
-            _ => false,
-        };
-        if !equinox_eq {
-            return false;
-        }
-        // Title is descriptive only and never affects C Frame equality
-        // (frame.c Equal is conversion-based); compare effective Domain
-        // strings so an explicitly-set default equals an unset one.
-        self.sky_ref_is == other.sky_ref_is
-            && ast_equal(self.sky_ref[0], other.sky_ref[0])
-            && ast_equal(self.sky_ref[1], other.sky_ref[1])
-            && self.neglon == other.neglon
-            && SkyFrame::domain(self) == SkyFrame::domain(other)
+        // C Frame equality is conversion-based (frame.c:3549) and SkyFrame
+        // does not override it: same class, astConvert succeeds, mapping
+        // simplifies to a UnitMap. Two SkyFrames whose System/Epoch/Equinox/
+        // SkyRef/NegLon differ produce a non-UnitMap conversion and so
+        // compare unequal, exactly as the old attribute checks intended.
+        super::find_frame::frames_equal(self, other)
     }
 
     fn obs_lat(&self) -> Option<f64> {
@@ -1699,16 +1681,22 @@ fn skyframe_sub_frame(
         }
 
         // Prepend source offset removal (offset→standard).
-        if let Some(off_map) =
-            make_offset_mapping(target.sky_ref, target.sky_ref_p, target.sky_ref_is)?
-        {
+        if let Some(off_map) = make_offset_mapping(
+            target.sky_ref,
+            target.sky_ref_p,
+            target.sky_ref_is,
+            target.sky_ref_set[0] || target.sky_ref_set[1],
+        )? {
             map = Box::new(CmpMap::new(off_map, map, Composition::Series)?);
         }
 
         // Append target offset application (standard→offset = inverse).
-        if let Some(mut off_map) =
-            make_offset_mapping(result.sky_ref, result.sky_ref_p, result.sky_ref_is)?
-        {
+        if let Some(mut off_map) = make_offset_mapping(
+            result.sky_ref,
+            result.sky_ref_p,
+            result.sky_ref_is,
+            result.sky_ref_set[0] || result.sky_ref_set[1],
+        )? {
             off_map.invert();
             map = Box::new(CmpMap::new(map, off_map, Composition::Series)?);
         }

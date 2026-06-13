@@ -164,3 +164,49 @@ fn perm_simplified_checks_both_perms() {
     let s2 = pm2.simplified().unwrap();
     assert!(s2.as_any().is::<UnitMap>());
 }
+
+// ---------------------------------------------------------------------------
+// Equality: C `PermMap::Equal` compares referenced constant *values*, not
+// the constants pool positionally (permmap.c:224). All four cases below are
+// oracle-verified against the reference C library.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn perm_equal_same_constant_index_ignores_value_quirk() {
+    // Both inputs are fed by constants[0]. C compares the internal perm
+    // values first and, finding them equal, never compares the referenced
+    // constant values — so the PermMaps are deemed EQUAL even though the
+    // stored constants (5.0 vs 7.0) differ. This is a C quirk; see
+    // docs/issues/c-library-quirks.md. Oracle: astEqual == 1.
+    let a = PermMap::new(&[-1], &[1], &[5.0]).unwrap();
+    let b = PermMap::new(&[-1], &[1], &[7.0]).unwrap();
+    assert!(a.equal(&b));
+}
+
+#[test]
+fn perm_equal_different_index_same_referenced_value() {
+    // The inputs reference different constant slots (-1 vs -2), but both
+    // referenced values are 9.0, so the PermMaps are equal. Oracle: == 1.
+    let a = PermMap::new(&[-1], &[1], &[9.0, 0.0]).unwrap();
+    let b = PermMap::new(&[-2], &[1], &[0.0, 9.0]).unwrap();
+    assert!(a.equal(&b));
+}
+
+#[test]
+fn perm_equal_different_index_different_referenced_value() {
+    // Different slots whose referenced values differ (9.0 vs 4.0) -> the
+    // PermMaps are unequal. Oracle: == 0.
+    let a = PermMap::new(&[-1], &[1], &[9.0, 0.0]).unwrap();
+    let b = PermMap::new(&[-2], &[1], &[0.0, 4.0]).unwrap();
+    assert!(!a.equal(&b));
+}
+
+#[test]
+fn perm_equal_ignores_unreferenced_surplus_constants() {
+    // Neither PermMap references a constant (both axes pass through), so
+    // the differing surplus constants (1.0 vs 2.0) are ignored and the
+    // PermMaps are equal. Oracle: == 1.
+    let a = PermMap::new(&[1], &[1], &[1.0]).unwrap();
+    let b = PermMap::new(&[1], &[1], &[2.0]).unwrap();
+    assert!(a.equal(&b));
+}

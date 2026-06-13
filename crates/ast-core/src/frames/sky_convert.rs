@@ -760,11 +760,24 @@ pub(crate) fn is_effectively_unit(map: &dyn Mapping, tol_arcsec: f64) -> bool {
     maxshift.to_degrees() * 3600.0 < tol_arcsec
 }
 
+/// Build the offset→standard rotation for a SkyFrame, or `None` when the
+/// frame does not use an offset coordinate system.
+///
+/// Mirrors C `SkyOffsetMap` (skyframe.c:7649): a UnitMap (here `None`) is
+/// returned when `SkyRefIs == Ignored` **or** neither SkyRef axis has been
+/// set. `sky_ref_set` is `astTestSkyRef(0) || astTestSkyRef(1)`. The
+/// SkyRefIs-only gate is not sufficient — a frame with SkyRefIs=Origin but
+/// an unset (default 0,0) SkyRef must still produce no offset, so its
+/// conversion to a plain SkyFrame is the identity (skyframe.c:7722-7724).
 pub(crate) fn make_offset_mapping(
     sky_ref: [f64; 2],
     sky_ref_p: [f64; 2],
     sky_ref_is: SkyRefIs,
+    sky_ref_set: bool,
 ) -> AstResult<Option<DynMapping>> {
+    if !sky_ref_set {
+        return Ok(None);
+    }
     match sky_ref_is {
         SkyRefIs::Ignored => Ok(None),
         SkyRefIs::Origin => {
@@ -1464,7 +1477,8 @@ mod tests {
 
     #[test]
     fn offset_ignored_returns_none() {
-        let result = make_offset_mapping([1.0, 0.5], [0.0, FRAC_PI_2], SkyRefIs::Ignored).unwrap();
+        let result =
+            make_offset_mapping([1.0, 0.5], [0.0, FRAC_PI_2], SkyRefIs::Ignored, true).unwrap();
         assert!(result.is_none());
     }
 
@@ -1474,7 +1488,7 @@ mod tests {
         // to sky_ref in the standard system.
         let sky_ref = [1.0, 0.5]; // lon=1.0 rad, lat=0.5 rad
         let sky_ref_p = [1.0, 0.5 + 0.1]; // slightly north of sky_ref
-        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin)
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin, true)
             .unwrap()
             .unwrap();
 
@@ -1488,7 +1502,7 @@ mod tests {
     fn offset_origin_round_trip() {
         let sky_ref = [2.0, 0.3];
         let sky_ref_p = [2.0, 0.3 + 0.5]; // north of sky_ref
-        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin)
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin, true)
             .unwrap()
             .unwrap();
 
@@ -1508,7 +1522,7 @@ mod tests {
         // (lon=anything, lat=pi/2) should map to sky_ref.
         let sky_ref = [1.5, 0.8];
         let sky_ref_p = [0.0, 0.0]; // zero-meridian reference
-        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Pole)
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Pole, true)
             .unwrap()
             .unwrap();
 
@@ -1524,7 +1538,7 @@ mod tests {
     fn offset_pole_round_trip() {
         let sky_ref = [0.5, 1.0];
         let sky_ref_p = [0.5, 0.0];
-        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Pole)
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Pole, true)
             .unwrap()
             .unwrap();
 
@@ -1548,7 +1562,7 @@ mod tests {
         // sky_ref_p: north of galactic centre.
         let sky_ref_p = [ra_gc, dec_gc + 0.01];
 
-        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin)
+        let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin, true)
             .unwrap()
             .unwrap();
 
@@ -1576,7 +1590,7 @@ mod tests {
 
     #[test]
     fn offset_bad_values() {
-        let map = make_offset_mapping([1.0, 0.5], [1.0, 1.0], SkyRefIs::Origin)
+        let map = make_offset_mapping([1.0, 0.5], [1.0, 1.0], SkyRefIs::Origin, true)
             .unwrap()
             .unwrap();
 

@@ -836,43 +836,96 @@ impl Mapping for PermMap {
         let Some(other) = other.as_any().downcast_ref::<PermMap>() else {
             return false;
         };
-        // Resolve invert flags to get effective outperm/inperm.
-        let self_outperm = if self.inverted {
-            &self.inperm
+
+        // Port of C `PermMap::Equal` (permmap.c:224). Two PermMaps are
+        // equivalent when, for every input and every output, the effective
+        // permutation entries either agree, or both feed a constant whose
+        // *referenced value* agrees. Surplus (unreferenced) constants are
+        // ignored, and reordered constants pools are tolerated as long as
+        // the referenced values match.
+        //
+        // Encoding note: Rust stores C's *public* permutation encoding
+        // (1-based axis, 0 = BAD, -j = constants[j-1]); C `Equal` operates
+        // on the *internal* encoding (0-based axis, BAD -> nin/nout,
+        // negative -> constant at -p-1). We compare in the internal space
+        // via `to_internal` so the algorithm mirrors C line-for-line.
+
+        // Resolve invert flags to obtain the effective inverse-transform
+        // ("inp", length nin) and forward-transform ("outp", length nout)
+        // arrays, exactly as C does at permmap.c:318-340.
+        let (self_inp, self_outp) = if self.inverted {
+            (&self.outperm, &self.inperm)
         } else {
-            &self.outperm
+            (&self.inperm, &self.outperm)
         };
-        let self_inperm = if self.inverted {
-            &self.outperm
+        let (other_inp, other_outp) = if other.inverted {
+            (&other.outperm, &other.inperm)
         } else {
-            &self.inperm
-        };
-        let other_outperm = if other.inverted {
-            &other.inperm
-        } else {
-            &other.outperm
-        };
-        let other_inperm = if other.inverted {
-            &other.outperm
-        } else {
-            &other.inperm
+            (&other.inperm, &other.outperm)
         };
 
-        if self_outperm.len() != other_outperm.len() || self_inperm.len() != other_inperm.len() {
+        // Nin/Nout must match (permmap.c:305).
+        let nin = self_inp.len();
+        let nout = self_outp.len();
+        if other_inp.len() != nin || other_outp.len() != nout {
             return false;
         }
-        if self_outperm != other_outperm || self_inperm != other_inperm {
-            return false;
+
+        // Map a Rust public perm entry to C's internal value, given the
+        // BAD target (nout for the inverse array, nin for the forward
+        // array — permmap.c:2664-2685). Axis refs become 0-based; BAD (0)
+        // becomes the one-past-the-end sentinel; constants stay negative.
+        let to_internal = |v: i64, bad_target: usize| -> i64 {
+            if v > 0 {
+                v - 1
+            } else if v == 0 {
+                bad_target as i64
+            } else {
+                v
+            }
+        };
+
+        // Compare one input/output position. Mirrors permmap.c:355-371:
+        // differing entries are unequal unless both are constants
+        // (internal p < 0) whose referenced values are exactly equal.
+        // C uses an exact `!=` on the constants (not a tolerance), and
+        // when the internal p values are identical it does NOT compare the
+        // referenced constants at all — so two PermMaps that both reference
+        // the same constant slot are deemed equal even if the stored
+        // constant differs (a C quirk; see docs/issues/c-library-quirks.md).
+        let entry_eq = |p1: i64, p2: i64| -> bool {
+            if p1 == p2 {
+                return true;
+            }
+            if p1 >= 0 || p2 >= 0 {
+                return false;
+            }
+            // Both constants: compare the referenced values exactly.
+            let c1 = self.constants.get((-p1 - 1) as usize);
+            let c2 = other.constants.get((-p2 - 1) as usize);
+            match (c1, c2) {
+                (Some(a), Some(b)) => a == b,
+                _ => false,
+            }
+        };
+
+        // Check every input (inverse transform), then every output
+        // (forward transform), as in permmap.c:343-392.
+        for i in 0..nin {
+            let p1 = to_internal(self_inp[i], nout);
+            let p2 = to_internal(other_inp[i], nout);
+            if !entry_eq(p1, p2) {
+                return false;
+            }
         }
-        // Compare constants referenced by the effective permutations.
-        // Constants are shared between forward and inverse — compare
-        // them all with tolerance.
-        self.constants.len() == other.constants.len()
-            && self
-                .constants
-                .iter()
-                .zip(&other.constants)
-                .all(|(a, b)| ast_equal(*a, *b))
+        for i in 0..nout {
+            let p1 = to_internal(self_outp[i], nin);
+            let p2 = to_internal(other_outp[i], nin);
+            if !entry_eq(p1, p2) {
+                return false;
+            }
+        }
+        true
     }
 
     fn do_not_simplify(&self) -> bool {
