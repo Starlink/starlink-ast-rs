@@ -127,6 +127,66 @@ fn set_get_epoch() {
 }
 
 #[test]
+fn default_epoch_depends_on_system() {
+    // SkyFrame GetEpoch override (skyframe.c:3210-3225): B1950.0 for FK4 /
+    // FK4-no-E, J2000.0 otherwise. Oracle-verified against the reference C
+    // library: astGetD(Epoch) == 1950.0 (FK4/FK4NOE), 2000.0 (FK5/ICRS).
+    // J2000.0 = MJD 51544.5 exactly (palEpj2d(2000.0)); B1950.0 is the same
+    // Besselian fiducial the FK4 default equinox uses.
+    let j2000 = 51544.5;
+    let fk5 = SkyFrame::new(SkySystem::Fk5);
+    let icrs = SkyFrame::new(SkySystem::Icrs);
+    assert_close(fk5.epoch_mjd(), j2000, 1.0e-6, "FK5 default epoch = J2000");
+    assert_close(
+        icrs.epoch_mjd(),
+        j2000,
+        1.0e-6,
+        "ICRS default epoch = J2000",
+    );
+
+    let b1950 = SkySystem::Fk4.default_equinox_mjd();
+    let fk4 = SkyFrame::new(SkySystem::Fk4);
+    let fk4ne = SkyFrame::new(SkySystem::Fk4NoE);
+    assert_close(fk4.epoch_mjd(), b1950, 1.0e-6, "FK4 default epoch = B1950");
+    assert_close(
+        fk4ne.epoch_mjd(),
+        b1950,
+        1.0e-6,
+        "FK4-no-E default epoch = B1950",
+    );
+    // B1950 is far from J2000.
+    assert!((fk4.epoch_mjd() - j2000).abs() > 1000.0);
+}
+
+#[test]
+fn default_bottom_top_clamp_latitude() {
+    // SkyFrame GetBottom/GetTop overrides (skyframe.c:2907/3234): latitude
+    // axis clamped to +/-pi/2, longitude axis unbounded (+/-f64::MAX).
+    // Oracle-verified: external axis 1 (lon) = +/-DBL_MAX, axis 2 (lat) =
+    // +/-1.5708.
+    let sky = SkyFrame::new(SkySystem::Fk5);
+    // Default external order: axis 1 = longitude, axis 2 = latitude.
+    assert_eq!(sky.bottom(1).unwrap(), -f64::MAX);
+    assert_eq!(sky.top(1).unwrap(), f64::MAX);
+    assert_close(sky.bottom(2).unwrap(), -FRAC_PI_2, TOL, "lat bottom");
+    assert_close(sky.top(2).unwrap(), FRAC_PI_2, TOL, "lat top");
+}
+
+#[test]
+fn default_bottom_top_follow_axis_permutation() {
+    // After permuting so latitude is external axis 1, the clamp must follow
+    // the physical latitude axis (C resolves Bottom/Top on the permuted
+    // axis_p, not the external index).
+    let mut sky = SkyFrame::new(SkySystem::Fk5);
+    sky.perm_axes(&[2, 1]).unwrap();
+    // Now external axis 1 is latitude, axis 2 is longitude.
+    assert_close(sky.bottom(1).unwrap(), -FRAC_PI_2, TOL, "lat bottom (perm)");
+    assert_close(sky.top(1).unwrap(), FRAC_PI_2, TOL, "lat top (perm)");
+    assert_eq!(sky.bottom(2).unwrap(), -f64::MAX);
+    assert_eq!(sky.top(2).unwrap(), f64::MAX);
+}
+
+#[test]
 fn set_get_equinox() {
     let mut sky = SkyFrame::new(SkySystem::Fk5);
     sky.set_equinox_mjd(55000.0);

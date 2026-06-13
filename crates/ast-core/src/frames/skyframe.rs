@@ -384,9 +384,17 @@ impl SkyFrame {
 
     /// Return the epoch as MJD.
     ///
-    /// If not explicitly set, returns J2000.0 (MJD 51544.5).
+    /// If not explicitly set, the default depends on the System (C
+    /// `GetEpoch` SkyFrame override, skyframe.c:3210-3225): B1950.0 for
+    /// FK4 / FK4-no-E, J2000.0 for every other system.
     pub fn epoch_mjd(&self) -> f64 {
-        self.epoch.unwrap_or(51544.5)
+        match self.epoch {
+            Some(e) => e,
+            None => match self.system {
+                SkySystem::Fk4 | SkySystem::Fk4NoE => pal::epb2d(1950.0),
+                _ => pal::epj2d(2000.0),
+            },
+        }
     }
 
     /// Return the epoch as a decimal year (Besselian if MJD <
@@ -404,6 +412,35 @@ impl SkyFrame {
     /// (mirrors `astTestEpoch`).
     pub fn test_epoch(&self) -> bool {
         self.epoch.is_some()
+    }
+
+    /// Lowest valid value for the given 1-based external axis.
+    ///
+    /// Mirrors the SkyFrame `GetBottom` override (skyframe.c:2907-2989):
+    /// the latitude axis is clamped to `-π/2`; the longitude axis has no
+    /// lower limit (`-f64::MAX`). SkyFrame does not store explicit
+    /// per-axis Bottom values, so these defaults are always returned.
+    pub fn bottom(&self, axis: usize) -> AstResult<f64> {
+        // physical_axis == 1 is the latitude axis (C's `axis_p == 1`).
+        if self.physical_axis(axis)? == 1 {
+            Ok(-std::f64::consts::FRAC_PI_2)
+        } else {
+            Ok(-f64::MAX)
+        }
+    }
+
+    /// Highest valid value for the given 1-based external axis.
+    ///
+    /// Mirrors the SkyFrame `GetTop` override (skyframe.c:3234-3316):
+    /// the latitude axis is clamped to `+π/2`; the longitude axis has no
+    /// upper limit (`f64::MAX`). SkyFrame does not store explicit
+    /// per-axis Top values, so these defaults are always returned.
+    pub fn top(&self, axis: usize) -> AstResult<f64> {
+        if self.physical_axis(axis)? == 1 {
+            Ok(std::f64::consts::FRAC_PI_2)
+        } else {
+            Ok(f64::MAX)
+        }
     }
 
     /// Clear the explicit `Epoch` value so the attribute reverts to
@@ -728,18 +765,10 @@ impl SkyFrame {
 
     /// Format the SkyFrame's epoch as a Besselian-year display string, used
     /// for FK4 / FK4-no-E titles (matches C's `astFmtDecimalYr(palEpb(epoch))`).
-    /// When `Epoch` has not been explicitly set, mirrors the C
-    /// `GetEpoch` SkyFrame override: B1950.0 for FK4 / FK4-no-E, otherwise
-    /// J2000.0 (here unused — only FK4 titles call this).
+    /// The system-dependent default (B1950.0 for FK4 / FK4-no-E, J2000.0
+    /// otherwise) is supplied by [`Self::epoch_mjd`].
     fn epoch_epoch_string_besselian(&self) -> String {
-        let epoch_mjd = self.epoch.unwrap_or_else(|| {
-            if matches!(self.system, SkySystem::Fk4 | SkySystem::Fk4NoE) {
-                pal::epb2d(1950.0)
-            } else {
-                pal::epj2d(2000.0)
-            }
-        });
-        let bep = pal::epb(epoch_mjd);
+        let bep = pal::epb(self.epoch_mjd());
         if bep == bep.trunc() {
             format!("{:.1}", bep)
         } else {
