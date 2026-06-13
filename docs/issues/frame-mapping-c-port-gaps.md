@@ -21,7 +21,8 @@ Work top to bottom; each entry cites the detailed section.
    Platform note: the coincident/degenerate branches require an *exactly* zero cross product or distance; FP contraction in the vendored PAL keeps general-position "coincident" points off those branches in both libraries (oracle-verified), and the SkyFrame cross-product argument order now mirrors C so even the noise-regime outputs agree.
 6. **SpecFrame SpecOrigin** (6e) — **FIXED 2026-06-11** (oracle-matched): MakeSpecMapping now applies step 0 (prepend ShiftMap by the target origin in current units, via the ported `GetSpecOriginCur`) and step 9 (append ShiftMap by the negated result origin, or by the transformed target origin when both frames set AlignSpecOffset); System and StdOfRest changes rescale a set SpecOrigin through a cleared-attribute conversion (`OriginSystem`/`OriginStdOfRest`).
    Probe note: the C `RestFreq` *attribute* is in GHz — a units trap when comparing against `set_rest_freq` (Hz).
-7. **Frame base** (6): `astConvert`/ConvertX, matchsub cast-retry, 2-D signed `angle`, `offset` BAD semantics, printf Format + Digits, then the missing method family (Offset2/Ax\*/Resolve/Intersect/NormBox/MatchAxes/ActiveUnit/PrimaryFrame — unwinding the two fitschan `primary_frame` copies).
+7. **Frame base** (6) — **FIXED 2026-06-12**: `astConvert`/ConvertX (`find_frame::convert_frames`), the matchsub cast-retry (`match_with_subclass` + `Frame::cast`, wired through CmpFrame `part_match`/`component_match`), 2-D signed `angle`, `offset` BAD semantics, printf Format + Digits (`frames/axis_format.rs`), and the method family (Offset2/Ax\*/Resolve/Intersect/NormBox/MatchAxes/ActiveUnit/PrimaryFrame as `Frame` trait methods) are all ported; the two fitschan `primary_frame` copies were unwound to the `Frame::primary_frame` trait method. All per-class `convert_to` overrides retired except `FrameSet`/`Region` (by design). The SpecFrame/TimeFrame System/TimeScale set-ness fix and the Permute-default + SpecFrame RefRA fixes landed alongside. Acceptance gate: `tests/test_convert.rs` (ported `testconvert.c`).
+   Still deferred (see section 6 sub-items): `NormalPoints`/`NormPoints`, the SkyFrame spherical overrides (great-circle Offset2/Resolve/Intersect/NormBox with the `reg` Mapping argument), Plot log-escape rendering of the Format `&` flag, the `astGet/SetActiveUnit` and geometry/MatchAxes capi shims, the `NewUnit` Label-rewrite/Format-clear, and FluxFrame/SpecFluxFrame cross-system conversion (section 1, `MakeFluxMapping`/`MakeSFMapping`).
 8. **Mapping base** (6a): `rate` interval-search continue-vs-break and h0 seed; `linear_approx` all-BAD success case.
 9. **Frame equality** (6l) — **interim fix applied 2026-06-10**: Title/Label/Symbol/Format no longer affect frame equality and Domain is compared as effective strings (BasicFrame/SkyFrame/SpecFrame/TimeFrame/FluxFrame; compound frames delegate), so cosmetic differences no longer block NormMap-style cancellation (tests: `tests/test_frame_equality.rs`).
    Still pending: full conversion-based `Equal` once ConvertX lands, and PermMap referenced-constant equality.
@@ -116,44 +117,44 @@ All twelve groups are now audited; see section 0 for the prioritized fix order.
 Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/find_frame.rs`.
 `find_frame.rs` (default Match/SubFrame/FindFrame/Overlay) is a faithful port; the gaps are elsewhere.
 
-- **[PARTIAL] Frame — generic `astConvertX` driver.** *(2026-06-12)*
+- **[FIXED] Frame — generic `astConvertX` driver.** *(2026-06-12)*
   The generic driver is ported as `find_frame::convert_frames`
   (`find_frame.rs`), a faithful port of C `ConvertX` (`frame.c:3028-3258`):
   the domain-field loop, the `icom` 0/1 common-coordinate-system
   negotiation via `match_with_subclass(..., match_sub=true)`, the
   `from_map`/`to_map` bookkeeping, `from_map ∘ inverted to_map` series
   composition, simplify, and the `2*TranForward + TranInverse` score with
-  early exit at 3. `Frame::convert_to` now has a default body that calls it.
-  Retired per-class overrides (route through the generic driver):
-  `BasicFrame`, `CmpFrame`.
-  **Still overriding `convert_to` (deferred):** `SkyFrame`, `SpecFrame`,
-  `TimeFrame`, `DSBSpecFrame`, `FluxFrame`, `SpecFluxFrame`. Retiring these
-  is blocked on two pre-existing, wider-scope divergences from C that the
-  generic driver exposes:
-  1. The class System/TimeScale "explicitly set" defaults diverge from C
-     (e.g. `SpecFrame::new` models FREQ as the unset default; C
-     `GetSystem` (`specframe.c:57`) defaults to AST__WAVELEN). Because the
-     generic driver routes through `Match`/`Overlay`, which faithfully
-     transfer only explicitly-set attributes, a default-constructed Freq
-     SpecFrame fails to overlay its System and produces a system/unit
-     mismatch (`AST__BADUN`). Correcting the default to WAVELEN fixes the
-     standalone conversions but regresses 9 spectral wcsconv fixtures, so
-     it must land as its own change.
-  2. The fitschan CLASS encoder (`fset_to_store/mod.rs:559,581`) calls
-     `matched_sky.convert_to(&target_sky)` / `matched_spec.convert_to(...)`
-     and currently depends on the SkyFrame FK5-aligned override for
-     byte-exact output. The generic-driver SkyFrame→SkyFrame path uses the
-     template AlignSystem (ICRS default), which shifts the LSR velocity
-     correction at ~1e-5 relative (e.g. class-ait VELO-LSR 275.8329 vs the
-     fixture's 275.83586). The C oracle confirms `astConvert(FK5,FK5-J2000)`
-     and default ICRS↔ICRS both give a UnitMap, so the generic-driver
-     SkyFrame path needs alignment/diurnal-aberration debugging to match C
-     before the override can be retired without regressing the WCS pipeline.
+  early exit at 3. `Frame::convert_to` has a default body that calls it,
+  and **all per-class Frame overrides have been retired**: `BasicFrame`,
+  `CmpFrame`, `SkyFrame`, `SpecFrame`, `TimeFrame`, `DSBSpecFrame`,
+  `FluxFrame`, `SpecFluxFrame` now route through the generic driver via
+  `Match`/`SubFrame`. The two earlier blockers are resolved:
+  1. The class System/TimeScale set-ness now tracks "explicitly set"
+     independently of value (`SpecFrame`/`TimeFrame`), with the C defaults
+     (WAVELEN / MJD); the generic driver's `Match`/`Overlay` path overlays
+     System correctly without the spectral-fixture regression.
+  2. The SkyFrame `convert_to` override was retired earlier (the SkyFrame
+     AlignSystem / diurnal-aberration path now matches C), so the fitschan
+     CLASS encoder's `convert_to` calls flow through the generic driver
+     with byte-exact WCS output (the wcsconv regression suite is unchanged).
+  Acceptance gate: `crates/ast-core/tests/test_convert.rs` (ported from
+  `testconvert.c`).
+  **Only `FrameSet` and the `Region` classes still override `convert_to`,
+  by design** — they legitimately delegate to the current/encapsulated
+  frame rather than negotiating a common system.
 
-- **[HIGH] Frame — `astMatch` matchsub cast-retry missing.**
-  `default_match` (`find_frame.rs:393`) ignores its `_match_sub` parameter.
-  C `astMatch_` (`frame.c:15497`) retries a failed match by casting the template down to the target's class (`astCast`), re-fixing `Domain`, and re-invoking Match — this is what lets a specialised template (e.g. SkyFrame, or a Frame vs a CmpFrame) align with a plainer target sharing its Domain.
-  Without it `astConvert(basicframe_FRED, cmpframe_FRED)` style alignments fail.
+- **[FIXED] Frame — `astMatch` matchsub cast-retry.** *(2026-06-12)*
+  `match_with_subclass` (`find_frame.rs`) ports C `astMatch_`
+  (`frame.c:15473`): it retries a failed match by casting the template down
+  to the target's class (`Frame::cast`, modelling `astCast`), re-fixing
+  `Domain`, and re-invoking Match. `Frame::cast` is implemented on the leaf
+  specialised frames (down to `BasicFrame`), `DSBSpecFrame` (down to
+  `SpecFrame`/`BasicFrame`), and `CmpFrame`. The CmpFrame partition and
+  component matches (`part_match`/`component_match`) route each child match
+  through `match_with_subclass` too, so a specialised component (e.g. the
+  SkyFrame inside a Spec+Sky CmpFrame) aligns with a plainer target sharing
+  its Domain. This is what makes `astConvert(Frame[SKY], CmpFrame)` and the
+  `Frame[Domain=FRED]` vs `CmpFrame[Domain=FRED]` style alignments work.
 
 - **[HIGH] Frame — `angle` wrong in 2-D and for degenerate vectors.** *(FIXED 2026-06-11, shared `cartesian_angle` helper.)*
   C `Angle` (`frame.c:1230-1320`) returns a *signed* angle (`palDrange(angc - anga)`, range ±π) for 2-axis frames and AST__BAD when either vector has zero length or any input is bad.
@@ -254,9 +255,9 @@ The node-graph core (BFS path finding with per-edge inversion, `remap_frame` + `
   C overrides `GetTranForward`/`GetTranInverse` (forward to the base→current path), `GetIsLinear`, `MapSplit`, `Rate` (delegates to the composed mapping so analytic rates apply), and `RemoveRegions` (`frameset.c:877-906`).
   Rust `impl Mapping for FrameSet` relies on trait defaults: `has_forward`/`has_inverse` always return `true` (wrong when the path contains a one-way mapping), and `rate` always uses generic `numeric_rate`.
 
-- **[MED] FrameSet — `convert` ignores the other member frames.**
-  Rust forwards to `self.current().convert(...)` (`frameset.rs:788`); C `FrameSet::ConvertX` considers *every* member frame (current, base, then index order) as a candidate alignment endpoint and prefixes the intra-set mapping.
-  Blocked on the Frame-base ConvertX port (section 6, first item) — implement together.
+- **[MED] FrameSet — `convert_to` ignores the other member frames.**
+  Rust forwards to the current frame (`frameset.rs`); C `FrameSet::ConvertX` considers *every* member frame (current, base, then index order) as a candidate alignment endpoint and prefixes the intra-set mapping.
+  No longer blocked: the Frame-base `convert_frames` driver landed 2026-06-12, so the FrameSet override can now build on it. The multi-member-frame iteration itself is still unported (its own deferral); the FrameSet `convert_to` override is retained by design until then.
 
 - **[LOW] FrameSet — `astAddFrame(AST__ALLFRAMES, map, frame)` mode missing.**
   `FrameRef` has only Base/Current/Index variants (`frameset.rs:17`); the C AllFrames mode remaps every frame through the supplied PermMap-style mapping (used for axis re-ordering of whole sets).
