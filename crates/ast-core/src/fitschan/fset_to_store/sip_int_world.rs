@@ -107,7 +107,9 @@ pub(crate) fn sip_int_world(
     // structural rather than stateful.
     let mut inverted = map.clone_box();
     inverted.invert();
-    let split = inverted.map_split(&[lonax, latax]);
+    // 0-based axis indices throughout this port (matches C's protected
+    // astMapSplit), so call the zero-based method directly.
+    let split = inverted.map_split_zero_based(&[lonax, latax]);
     drop(inverted); // free clone before next step.
 
     let (inax1, mut tmap1) = match split {
@@ -286,7 +288,7 @@ pub(crate) fn sip_int_world(
         // mapping.
         let mut inverted2 = map.clone_box();
         inverted2.invert();
-        match inverted2.map_split(&outrem) {
+        match inverted2.map_split_zero_based(&outrem) {
             Some((axes, mut t2)) => {
                 t2.invert();
                 inax2 = Some(axes);

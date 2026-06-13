@@ -163,7 +163,7 @@ impl Mapping for ZoomMap {
         }
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors zoommap.c::MapSplit (~1164). ZoomMap is per-axis scaling
         // by a single shared factor, so any subset of inputs maps to the
         // same-indexed outputs via a smaller ZoomMap with the same factor.

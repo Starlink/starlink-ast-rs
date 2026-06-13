@@ -277,7 +277,7 @@ impl Mapping for NormMap {
         Box::new(self.clone())
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors normmap.c::MapSplit (~line 736). The C body first calls
         // the parent (default) impl for the full-input case, then falls
         // back to a per-class implementation for partial selections:

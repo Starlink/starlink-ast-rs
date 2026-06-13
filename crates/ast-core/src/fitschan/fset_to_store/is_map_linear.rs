@@ -60,7 +60,7 @@ pub(crate) fn is_map_linear(
     let (working_map, working_lbnd, working_ubnd, working_coord_out) = {
         let mut inv = smap.clone_box();
         inv.invert();
-        match inv.map_split(&[coord_out]) {
+        match inv.map_split_zero_based(&[coord_out]) {
             Some((kept_in_axes, mut single)) if single.nout() == 1 => {
                 // Splitted: now `single` goes (1 input from coord_out)
                 // → (kept_in_axes' worth of outputs, length 1 because

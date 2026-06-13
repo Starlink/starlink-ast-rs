@@ -537,7 +537,7 @@ impl Mapping for WcsMap {
         numeric_rate(self, at, ax1, ax2)
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors wcsmap.c::MapSplit (~3342). C first defers to the parent
         // (basic-Mapping) MapSplit, which only succeeds when every input is
         // selected (`nin == mapnin`). If that fails, the WcsMap-specific

@@ -757,7 +757,7 @@ fn nearest_pix_value(map: &dyn Mapping, val: f64, axis: usize) -> AstResult<f64>
     // Mirrors C `astMapSplit(map, 1, &axis, &tmap)` after `astInvert`.
     let mut inv_map = map.clone_box();
     inv_map.invert();
-    let split = inv_map.map_split(&[axis]);
+    let split = inv_map.map_split_zero_based(&[axis]);
 
     if let Some((out_axes, mut sub_map)) = split {
         if out_axes.len() == 1 {

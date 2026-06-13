@@ -434,7 +434,7 @@ impl Mapping for RateMap {
         Box::new(self.clone())
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors ratemap.c::MapSplit (~line 819). The C body first calls
         // the parent (default) impl, then a per-class fallback that ONLY
         // succeeds when the RateMap is not inverted (the inverse direction
@@ -462,8 +462,9 @@ impl Mapping for RateMap {
             emap_child.clone_box()
         };
 
-        // Split the encapsulated mapping by the requested inputs.
-        let (eres, remap) = emap_view.map_split(in_axes)?;
+        // Split the encapsulated mapping by the requested inputs (0-based,
+        // matching this protected method's encoding).
+        let (eres, remap) = emap_view.map_split_zero_based(in_axes)?;
 
         // C's iin/iout are 0-based; Rust ax2/ax1 are 1-based. Convert
         // to 0-based for the position lookups.

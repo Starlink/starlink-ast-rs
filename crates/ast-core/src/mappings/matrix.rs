@@ -571,7 +571,7 @@ impl Mapping for MatrixMap {
             .all(|(a, b)| ast_equal(*a, *b))
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors matrixmap.c::MapSplit (~2282). A MatrixMap split succeeds
         // only when the input/output dependency graph is block-diagonal w.r.t.
         // the chosen inputs: each output row's nonzero, non-BAD columns must

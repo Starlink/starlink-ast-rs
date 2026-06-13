@@ -313,7 +313,7 @@ impl Mapping for WinMap {
             && c1.iter().zip(&c2).all(|(a, b)| ast_equal(*a, *b))
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors winmap.c::MapSplit (~1864). WinMap is per-axis affine:
         // y_i = shifts[i] + scales[i] * x_i, so any subset of inputs maps
         // to the same-indexed outputs via a smaller WinMap built from the

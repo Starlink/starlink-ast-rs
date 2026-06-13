@@ -84,7 +84,7 @@ impl Mapping for UnitMap {
         self.ncoord == other.ncoord
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors unitmap.c::MapSplit (~629). UnitMap is identity per axis,
         // so any subset of inputs is splittable: the result is just a
         // smaller UnitMap, and the chosen output indices match the chosen

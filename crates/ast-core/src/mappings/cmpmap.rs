@@ -30,11 +30,11 @@ fn split_child(
     in_axes: &[usize],
 ) -> Option<(Vec<usize>, DynMapping)> {
     if forward {
-        child.map_split(in_axes)
+        child.map_split_zero_based(in_axes)
     } else {
         let mut tmp = child.clone_box();
         tmp.invert();
-        tmp.map_split(in_axes)
+        tmp.map_split_zero_based(in_axes)
     }
 }
 
@@ -418,12 +418,13 @@ impl CmpMap {
                     // cmpmap.c::MapSplit2 lines 2330-2336: on a CmpMap,
                     // call MapSplit0 with reentry=1 to skip the
                     // MapSplit2 fallback; on a non-CmpMap, dispatch
-                    // through the public astMapSplit (which has no
-                    // MapSplit2 path of its own).
+                    // through the protected astMapSplit (which has no
+                    // MapSplit2 path of its own). Both `out` and the
+                    // returned indices are 0-based here.
                     let recursive = if let Some(cm) = inv.as_any().downcast_ref::<CmpMap>() {
                         cm.map_split_forward(&out)
                     } else {
-                        inv.map_split(&out)
+                        inv.map_split_zero_based(&out)
                     };
 
                     if let Some((result2, mut map2)) = recursive {
@@ -742,7 +743,7 @@ impl Mapping for CmpMap {
             .all(|((m1, inv1), (m2, inv2))| inv1 == inv2 && m1.equal(m2.as_ref()))
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors cmpmap.c::MapSplit (~line 2788) -> MapSplit0 (~line 2405),
         // including the MapSplit2 brute-force inverse fallback (~line 2214)
         // when the forward decomposition fails.

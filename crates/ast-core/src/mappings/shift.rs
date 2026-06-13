@@ -150,7 +150,7 @@ impl Mapping for ShiftMap {
         }
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors shiftmap.c::MapSplit (~750). ShiftMap is per-axis additive
         // offset, so a subset of inputs maps to the same-indexed outputs
         // via a smaller ShiftMap built from the chosen axes' shift values.

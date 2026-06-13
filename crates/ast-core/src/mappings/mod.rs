@@ -216,22 +216,57 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         None
     }
 
-    /// Split this mapping to produce a sub-mapping covering a chosen set of inputs.
+    /// Split this mapping to produce a sub-mapping covering a chosen set of
+    /// inputs, using **1-based** axis indices throughout (public API).
     ///
-    /// Mirrors the C library's `astMapSplit` (mapping.c ~7798): given input
-    /// indices `in_axes`, return the output axes those inputs feed into plus
-    /// the sub-mapping that maps `in_axes` -> those outputs. Returns `None`
-    /// when no such split exists - i.e. when some retained input feeds an
-    /// output that *also* depends on a non-retained input, or when some
-    /// non-retained input feeds an output that depends only on retained
-    /// inputs.
+    /// Mirrors the C library's public `astMapSplit` (the `astMapSplitId_`
+    /// interface, mapping.c:25313): given 1-based input indices `in_axes`,
+    /// return the **1-based** original-mapping output axes those inputs feed
+    /// into, plus the sub-mapping that maps `in_axes` -> those outputs.
+    /// Returns `None` when no such split exists — i.e. when some retained
+    /// input feeds an output that *also* depends on a non-retained input, or
+    /// when some non-retained input feeds an output that depends only on
+    /// retained inputs.
     ///
-    /// `in_axes` indices are 0-based and may be in any order. The returned
-    /// `Vec<usize>` has length equal to the sub-mapping's nout. The default
-    /// implementation handles the trivial case `in_axes.len() == self.nin()`
-    /// by composing a `PermMap` with `self`; classes that can split for
-    /// partial input selections override.
+    /// `in_axes` indices are 1-based (per the design-spec axis convention,
+    /// matching [`Mapping::rate`]) and may be in any order. The returned
+    /// `Vec<usize>` holds 1-based output indices and has length equal to the
+    /// sub-mapping's nout.
+    ///
+    /// This is a thin ±1 wrapper over [`Mapping::map_split_zero_based`], which
+    /// implements the algorithm in C's protected, 0-based encoding. Concrete
+    /// classes override the zero-based method, not this one — exactly as C
+    /// keeps a 0-based protected `MapSplit` (mapping.c:7798) behind the
+    /// 1-based public shim.
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+        // Decrement to 0-based (astMapSplitId_, mapping.c:25429). A 0 entry
+        // would underflow; treat it as out-of-range, matching the validation
+        // that rejects axis indices outside 1..=nin.
+        let mut in_zero = Vec::with_capacity(in_axes.len());
+        for &ax in in_axes {
+            if ax == 0 {
+                return None;
+            }
+            in_zero.push(ax - 1);
+        }
+        let (out_zero, sub) = self.map_split_zero_based(&in_zero)?;
+        // Increment the returned output axes back to 1-based (mapping.c:25437).
+        let out_one = out_zero.into_iter().map(|o| o + 1).collect();
+        Some((out_one, sub))
+    }
+
+    /// Protected, **0-based** implementation of [`Mapping::map_split`].
+    ///
+    /// Mirrors the C library's protected `astMapSplit` (mapping.c:7798): the
+    /// algorithm operates entirely in 0-based axis indices, both for the
+    /// supplied `in_axes` and for the returned output-axis vector. This is the
+    /// method concrete classes override; the public 1-based [`Mapping::map_split`]
+    /// wraps it with ±1 conversion at the boundary.
+    ///
+    /// The default implementation handles the trivial case
+    /// `in_axes.len() == self.nin()` by composing a `PermMap` with `self`;
+    /// classes that can split for partial input selections override.
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         helpers::full_set_split(self, in_axes)
     }
 

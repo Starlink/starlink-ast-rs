@@ -440,7 +440,7 @@ impl Mapping for TranMap {
         Box::new(self.clone())
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors tranmap.c::MapSplit (~line 1017). The C body first calls
         // the parent (default) impl for the full-input case, then a
         // per-class fallback that splits both the forward and inverse
@@ -488,15 +488,16 @@ impl Mapping for TranMap {
             imap_child.clone_box()
         };
 
-        // Split the forward mapping by the requested inputs.
-        let (out, rfmap) = fmap_view.map_split(in_axes)?;
+        // Split the forward mapping by the requested inputs (0-based, to
+        // match this protected method's encoding).
+        let (out, rfmap) = fmap_view.map_split_zero_based(in_axes)?;
 
         // Invert the inverse-mapping view so its forward direction matches
         // the original-forward semantics, then split by the recovered output
         // indices. C: astInvert(imap); ires = astMapSplit(imap, nout, out).
         let mut imap_view_inv = imap_view;
         imap_view_inv.invert();
-        let (ires, rimap_inv_view) = imap_view_inv.map_split(&out)?;
+        let (ires, rimap_inv_view) = imap_view_inv.map_split_zero_based(&out)?;
 
         // Verify the recovered inputs match the requested inputs in order
         // (C lines 1151-1158). If not, the TranMap can't be split this way.

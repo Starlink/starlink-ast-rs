@@ -340,7 +340,7 @@ impl Mapping for PermMap {
         }
     }
 
-    fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
+    fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors permmap.c::MapSplit (~1438). For a PermMap, the split is
         // determined by walking the effective forward perm: each output `iout`
         // whose source is one of the kept inputs joins the sub-mapping. The

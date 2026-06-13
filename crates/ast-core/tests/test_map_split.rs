@@ -1,10 +1,14 @@
-//! Tests for the C-faithful `Mapping::map_split` (mirrors astMapSplit).
+//! Tests for the C-faithful map-split algorithm.
 //!
-//! The new signature takes `in_axes: &[usize]` (input indices to retain)
-//! and returns `Option<(Vec<usize>, DynMapping)>` where the `Vec<usize>`
-//! is the list of original-mapping output axes the kept inputs feed into,
-//! and the `DynMapping` is the sub-mapping with `nin == in_axes.len()`
-//! and `nout == returned_outs.len()`.
+//! These exercise the protected, **0-based** `Mapping::map_split_zero_based`
+//! (the direct analogue of C's protected `astMapSplit`, mapping.c:7798): it
+//! takes `in_axes: &[usize]` (0-based input indices to retain) and returns
+//! `Option<(Vec<usize>, DynMapping)>` where the `Vec<usize>` is the list of
+//! 0-based original-mapping output axes the kept inputs feed into, and the
+//! `DynMapping` is the sub-mapping with `nin == in_axes.len()` and
+//! `nout == returned_outs.len()`. The per-class overrides implement this
+//! 0-based form; the public 1-based `Mapping::map_split` is a thin ±1 wrapper
+//! tested separately at the bottom of this file.
 //!
 //! C ancestor: reference/starlink-ast/src/mapping.c::MapSplit (~7798)
 //! and the per-class overrides in unitmap.c / zoommap.c / shiftmap.c.
@@ -25,7 +29,7 @@ fn fwd_point(m: &dyn Mapping, input: &[f64]) -> Vec<f64> {
 #[test]
 fn unit_split_picks_chosen_axes() {
     let u = UnitMap::new(3);
-    let (outs, sub) = u.map_split(&[0, 2]).expect("split");
+    let (outs, sub) = u.map_split_zero_based(&[0, 2]).expect("split");
     assert_eq!(outs, vec![0, 2]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -36,7 +40,7 @@ fn unit_split_picks_chosen_axes() {
 #[test]
 fn unit_split_full_inputs() {
     let u = UnitMap::new(3);
-    let (outs, sub) = u.map_split(&[0, 1, 2]).expect("split");
+    let (outs, sub) = u.map_split_zero_based(&[0, 1, 2]).expect("split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 3);
     assert_eq!(sub.nout(), 3);
@@ -45,7 +49,7 @@ fn unit_split_full_inputs() {
 #[test]
 fn unit_split_reorders() {
     let u = UnitMap::new(3);
-    let (outs, sub) = u.map_split(&[2, 0, 1]).expect("split");
+    let (outs, sub) = u.map_split_zero_based(&[2, 0, 1]).expect("split");
     // For UnitMap the output axes are exactly in_axes.
     assert_eq!(outs, vec![2, 0, 1]);
     assert_eq!(sub.nin(), 3);
@@ -55,13 +59,13 @@ fn unit_split_reorders() {
 #[test]
 fn unit_split_rejects_duplicate_input() {
     let u = UnitMap::new(3);
-    assert!(u.map_split(&[1, 1]).is_none());
+    assert!(u.map_split_zero_based(&[1, 1]).is_none());
 }
 
 #[test]
 fn unit_split_rejects_out_of_range() {
     let u = UnitMap::new(3);
-    assert!(u.map_split(&[0, 3]).is_none());
+    assert!(u.map_split_zero_based(&[0, 3]).is_none());
 }
 
 // ========================================================================
@@ -71,7 +75,7 @@ fn unit_split_rejects_out_of_range() {
 #[test]
 fn zoom_split_carries_factor() {
     let z = ZoomMap::new(3, 5.0).unwrap();
-    let (outs, sub) = z.map_split(&[0]).expect("split");
+    let (outs, sub) = z.map_split_zero_based(&[0]).expect("split");
     assert_eq!(outs, vec![0]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -81,7 +85,7 @@ fn zoom_split_carries_factor() {
 #[test]
 fn zoom_split_subset_two_axes() {
     let z = ZoomMap::new(4, 3.0).unwrap();
-    let (outs, sub) = z.map_split(&[1, 3]).expect("split");
+    let (outs, sub) = z.map_split_zero_based(&[1, 3]).expect("split");
     assert_eq!(outs, vec![1, 3]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -92,7 +96,7 @@ fn zoom_split_subset_two_axes() {
 fn zoom_split_preserves_invert() {
     let mut z = ZoomMap::new(3, 2.0).unwrap();
     z.invert();
-    let (outs, sub) = z.map_split(&[0, 2]).expect("split");
+    let (outs, sub) = z.map_split_zero_based(&[0, 2]).expect("split");
     assert_eq!(outs, vec![0, 2]);
     // Inverted ZoomMap(2) divides by 2.
     assert_eq!(fwd_point(sub.as_ref(), &[10.0, 6.0]), vec![5.0, 3.0]);
@@ -101,8 +105,8 @@ fn zoom_split_preserves_invert() {
 #[test]
 fn zoom_split_rejects_invalid() {
     let z = ZoomMap::new(3, 5.0).unwrap();
-    assert!(z.map_split(&[3]).is_none());
-    assert!(z.map_split(&[1, 1]).is_none());
+    assert!(z.map_split_zero_based(&[3]).is_none());
+    assert!(z.map_split_zero_based(&[1, 1]).is_none());
 }
 
 // ========================================================================
@@ -112,7 +116,7 @@ fn zoom_split_rejects_invalid() {
 #[test]
 fn shift_split_picks_axis_offset() {
     let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
-    let (outs, sub) = s.map_split(&[2, 0]).expect("split");
+    let (outs, sub) = s.map_split_zero_based(&[2, 0]).expect("split");
     assert_eq!(outs, vec![2, 0]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -126,7 +130,7 @@ fn shift_split_picks_axis_offset() {
 #[test]
 fn shift_split_full_inputs_in_order() {
     let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
-    let (outs, sub) = s.map_split(&[0, 1, 2]).expect("split");
+    let (outs, sub) = s.map_split_zero_based(&[0, 1, 2]).expect("split");
     // ShiftMap has its own map_split override (shift.rs); this test
     // confirms it succeeds for full inputs in order and applies each
     // shift to the matching axis.
@@ -141,7 +145,7 @@ fn shift_split_full_inputs_in_order() {
 fn shift_split_preserves_invert() {
     let mut s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
     s.invert();
-    let (outs, sub) = s.map_split(&[0, 1]).expect("split");
+    let (outs, sub) = s.map_split_zero_based(&[0, 1]).expect("split");
     assert_eq!(outs, vec![0, 1]);
     // Inverted ShiftMap subtracts the shift.
     assert_eq!(fwd_point(sub.as_ref(), &[10.0, 20.0]), vec![9.0, 18.0]);
@@ -150,8 +154,8 @@ fn shift_split_preserves_invert() {
 #[test]
 fn shift_split_rejects_invalid() {
     let s = ShiftMap::new(vec![1.0, 2.0]);
-    assert!(s.map_split(&[2]).is_none());
-    assert!(s.map_split(&[0, 0]).is_none());
+    assert!(s.map_split_zero_based(&[2]).is_none());
+    assert!(s.map_split_zero_based(&[0, 0]).is_none());
 }
 
 // ========================================================================
@@ -168,7 +172,7 @@ fn winmap_split_full_inputs_identity_perm() {
     // Full inputs in identity order: per-class impl returns a sub-WinMap
     // identical to `self` (same shifts, same scales) and outs=[0,1,2].
     let w = winmap_3axis();
-    let (outs, sub) = w.map_split(&[0, 1, 2]).expect("split");
+    let (outs, sub) = w.map_split_zero_based(&[0, 1, 2]).expect("split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 3);
     assert_eq!(sub.nout(), 3);
@@ -188,7 +192,7 @@ fn winmap_split_full_inputs_permuted() {
     // is computed directly from the picked coefficients — there is no
     // PermMap/CmpMap fallback because WinMap now has its own MapSplit.
     let w = winmap_3axis();
-    let (outs, sub) = w.map_split(&[2, 0, 1]).expect("split");
+    let (outs, sub) = w.map_split_zero_based(&[2, 0, 1]).expect("split");
     assert_eq!(outs, vec![2, 0, 1]);
     assert_eq!(sub.nin(), 3);
     assert_eq!(sub.nout(), 3);
@@ -206,8 +210,8 @@ fn winmap_split_rejects_duplicate_or_out_of_range() {
     // Per-class validation: duplicates and out-of-range axes both yield
     // None (project convention; see UnitMap/ZoomMap/ShiftMap impls).
     let w = winmap_3axis();
-    assert!(w.map_split(&[0, 1, 1]).is_none());
-    assert!(w.map_split(&[0, 1, 3]).is_none());
+    assert!(w.map_split_zero_based(&[0, 1, 1]).is_none());
+    assert!(w.map_split_zero_based(&[0, 1, 3]).is_none());
 }
 
 #[test]
@@ -215,14 +219,14 @@ fn winmap_split_rejects_empty() {
     // WinMap requires at least one axis, so `in_axes=[]` yields None
     // through WinMap::new returning `Badwm`.
     let w = winmap_3axis();
-    assert!(w.map_split(&[]).is_none());
+    assert!(w.map_split_zero_based(&[]).is_none());
 }
 
 #[test]
 fn winmap_split_picks_per_axis_coeffs() {
     // 3-axis WinMap: y_i = shifts[i] + scales[i] * x_i
     let w = WinMap::new(&[1.0, 2.0, 3.0], &[10.0, 20.0, 30.0]).unwrap();
-    let (outs, sub) = w.map_split(&[2, 0]).expect("split");
+    let (outs, sub) = w.map_split_zero_based(&[2, 0]).expect("split");
     assert_eq!(outs, vec![2, 0]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -240,7 +244,7 @@ fn winmap_split_preserves_invert() {
     // sub-mapping must inherit the inverted flag.
     let mut w = WinMap::new(&[1.0, 2.0, 3.0], &[10.0, 20.0, 30.0]).unwrap();
     w.invert();
-    let (outs, sub) = w.map_split(&[2, 0]).expect("split");
+    let (outs, sub) = w.map_split_zero_based(&[2, 0]).expect("split");
     assert_eq!(outs, vec![2, 0]);
     // sub-input 0 -> axis 2 -> (153 - 3) / 30 = 5
     // sub-input 1 -> axis 0 -> (11  - 1) / 10 = 1
@@ -260,7 +264,7 @@ fn matrix_split_diagonal_picks_axis() {
     // Diagonal: every axis splits cleanly.
     let m = array![[2.0_f64, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]];
     let mm = MatrixMap::new(m).unwrap();
-    let (outs, sub) = mm.map_split(&[1]).expect("split");
+    let (outs, sub) = mm.map_split_zero_based(&[1]).expect("split");
     assert_eq!(outs, vec![1]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -276,7 +280,7 @@ fn matrix_split_block_diagonal() {
     // Block-diagonal: first 2 axes coupled, third independent.
     let m = array![[1.0_f64, 2.0, 0.0], [3.0, 4.0, 0.0], [0.0, 0.0, 5.0],];
     let mm = MatrixMap::new(m).unwrap();
-    let (outs, sub) = mm.map_split(&[2]).expect("split");
+    let (outs, sub) = mm.map_split_zero_based(&[2]).expect("split");
     assert_eq!(outs, vec![2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -284,7 +288,7 @@ fn matrix_split_block_diagonal() {
     let out = fwd_point(sub.as_ref(), &[7.0]);
     assert!((out[0] - 35.0).abs() < 1e-12);
     // Picking axes [0, 1] should also succeed (block 1).
-    let (outs2, sub2) = mm.map_split(&[0, 1]).expect("split block 1");
+    let (outs2, sub2) = mm.map_split_zero_based(&[0, 1]).expect("split block 1");
     assert_eq!(outs2, vec![0, 1]);
     assert_eq!(sub2.nin(), 2);
     assert_eq!(sub2.nout(), 2);
@@ -302,10 +306,10 @@ fn matrix_split_coupled_returns_none() {
     // proper subset of inputs is impossible.
     let m = array![[1.0_f64, 1.0], [1.0, 1.0]];
     let mm = MatrixMap::new(m).unwrap();
-    assert!(mm.map_split(&[0]).is_none());
-    assert!(mm.map_split(&[1]).is_none());
+    assert!(mm.map_split_zero_based(&[0]).is_none());
+    assert!(mm.map_split_zero_based(&[1]).is_none());
     // Picking all inputs is fine (default fallback handles full case).
-    let (outs, sub) = mm.map_split(&[0, 1]).expect("full split");
+    let (outs, sub) = mm.map_split_zero_based(&[0, 1]).expect("full split");
     assert_eq!(outs, vec![0, 1]);
     assert_eq!(sub.nin(), 2);
 }
@@ -321,7 +325,7 @@ fn matrix_split_inverted_uses_effective_forward() {
     let mut mm = MatrixMap::new(m).unwrap();
     mm.invert();
     // Now effective forward: y0 = 0.5 * x0, y1 = 0.25 * x1.
-    let (outs, sub) = mm.map_split(&[0]).expect("split");
+    let (outs, sub) = mm.map_split_zero_based(&[0]).expect("split");
     assert_eq!(outs, vec![0]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -339,9 +343,9 @@ fn matrix_split_empty_kept_outs_returns_none() {
     let m = array![[0.0_f64, 1.0], [0.0, 2.0], [0.0, 3.0]];
     let mm = MatrixMap::new(m).unwrap();
     // Picking input 0 alone yields no in-scope output rows.
-    assert!(mm.map_split(&[0]).is_none());
+    assert!(mm.map_split_zero_based(&[0]).is_none());
     // Picking input 1 yields all three rows.
-    let (outs, sub) = mm.map_split(&[1]).expect("split");
+    let (outs, sub) = mm.map_split_zero_based(&[1]).expect("split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 3);
@@ -363,7 +367,7 @@ fn perm_split_simple_swap() {
     // Swap axes 0 and 1: outperm = [2, 1] means output 0 takes input 1,
     // output 1 takes input 0. inperm = [2, 1] is the inverse swap.
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let (outs, sub) = pm.map_split(&[1]).expect("split kept input 1");
+    let (outs, sub) = pm.map_split_zero_based(&[1]).expect("split kept input 1");
     // Input 1 feeds output 0 (outperm[0] = 2 -> input idx 1 = kept).
     assert_eq!(outs, vec![0]);
     assert_eq!(sub.nin(), 1);
@@ -378,7 +382,7 @@ fn perm_split_simple_swap() {
 fn perm_split_identity() {
     // Identity 3-axis PermMap: every input feeds the same-indexed output.
     let pm = PermMap::new(&[1, 2, 3], &[1, 2, 3], &[]).unwrap();
-    let (outs, sub) = pm.map_split(&[0, 1, 2]).expect("identity split");
+    let (outs, sub) = pm.map_split_zero_based(&[0, 1, 2]).expect("identity split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 3);
     assert_eq!(sub.nout(), 3);
@@ -398,7 +402,9 @@ fn perm_split_constant_outperm_silently_dropped() {
     // Plan said "return None"; the C source is authoritative and the
     // actual behaviour is "drop". The implementation mirrors C.
     let pm = PermMap::new(&[1], &[1, -1], &[42.0]).unwrap();
-    let (outs, sub) = pm.map_split(&[0]).expect("constant output is dropped");
+    let (outs, sub) = pm
+        .map_split_zero_based(&[0])
+        .expect("constant output is dropped");
     assert_eq!(outs, vec![0]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -413,7 +419,9 @@ fn perm_split_constant_inperm_passed_through() {
     // outperm = [1] is forward identity. Splitting on [0] keeps output 0
     // and the inperm constant entry is preserved verbatim in the sub.
     let pm = PermMap::new(&[-1], &[1], &[42.0]).unwrap();
-    let (outs, sub) = pm.map_split(&[0]).expect("constant inperm survives");
+    let (outs, sub) = pm
+        .map_split_zero_based(&[0])
+        .expect("constant inperm survives");
     assert_eq!(outs, vec![0]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -434,7 +442,7 @@ fn perm_split_unselected_output_feeds_kept_input_returns_none() {
     // is dropped. But input 0's source (in inverse) is output 1 — which
     // is NOT in the kept output set. The split must return None.
     let pm = PermMap::new(&[2, 1], &[1, 2], &[]).unwrap();
-    assert!(pm.map_split(&[0]).is_none());
+    assert!(pm.map_split_zero_based(&[0]).is_none());
 }
 
 #[test]
@@ -454,7 +462,7 @@ fn perm_split_inverted_uses_effective_forward() {
     // succeeds with outs=[1] (the surviving original-output index).
     let mut pm = PermMap::new(&[-1, 1], &[2], &[99.0]).unwrap();
     pm.invert();
-    let (outs, sub) = pm.map_split(&[0]).expect("split inverted");
+    let (outs, sub) = pm.map_split_zero_based(&[0]).expect("split inverted");
     assert_eq!(outs, vec![1]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -472,8 +480,8 @@ fn perm_split_inverted_uses_effective_forward() {
 #[test]
 fn perm_split_rejects_duplicate_or_out_of_range() {
     let pm = PermMap::new(&[1, 2, 3], &[1, 2, 3], &[]).unwrap();
-    assert!(pm.map_split(&[0, 0]).is_none());
-    assert!(pm.map_split(&[0, 3]).is_none());
+    assert!(pm.map_split_zero_based(&[0, 0]).is_none());
+    assert!(pm.map_split_zero_based(&[0, 3]).is_none());
 }
 
 #[test]
@@ -482,7 +490,7 @@ fn perm_split_unmatched_input_yields_none() {
     // (so kept_outs is empty after the forward walk). The split must
     // return None because there are no surviving outputs.
     let pm = PermMap::new(&[1], &[-1], &[5.0]).unwrap();
-    assert!(pm.map_split(&[0]).is_none());
+    assert!(pm.map_split_zero_based(&[0]).is_none());
 }
 
 // ========================================================================
@@ -502,7 +510,9 @@ fn perm_split_unmatched_input_yields_none() {
 fn wcs_split_full_inputs_succeeds() {
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let (outs, sub) = wm.map_split(&[0, 1]).expect("full identity split");
+    let (outs, sub) = wm
+        .map_split_zero_based(&[0, 1])
+        .expect("full identity split");
     assert_eq!(outs, vec![0, 1]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -522,8 +532,8 @@ fn wcs_split_drops_celestial_axis_returns_none_2axis() {
     // branch and frees the result — Rust returns None.
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    assert!(wm.map_split(&[0]).is_none());
-    assert!(wm.map_split(&[1]).is_none());
+    assert!(wm.map_split_zero_based(&[0]).is_none());
+    assert!(wm.map_split_zero_based(&[1]).is_none());
 }
 
 #[test]
@@ -533,7 +543,9 @@ fn wcs_split_3axis_keeps_both_celestial_yields_wcsmap() {
     // result is a 2-axis WcsMap with the same projection.
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
-    let (outs, sub) = wm.map_split(&[0, 1]).expect("split keeps celestial");
+    let (outs, sub) = wm
+        .map_split_zero_based(&[0, 1])
+        .expect("split keeps celestial");
     assert_eq!(outs, vec![0, 1]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -553,7 +565,7 @@ fn wcs_split_3axis_passthrough_only_yields_unitmap() {
     // kept set -> UnitMap with nin = nout = 1.
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
-    let (outs, sub) = wm.map_split(&[2]).expect("pass-through subset");
+    let (outs, sub) = wm.map_split_zero_based(&[2]).expect("pass-through subset");
     assert_eq!(outs, vec![2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -568,7 +580,9 @@ fn wcs_split_3axis_only_lon_kept_drops_via_permmap() {
     // the kept celestial position from the output (C: nin=2, nout=1).
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
-    let (outs, sub) = wm.map_split(&[2, 0]).expect("split drops celestial");
+    let (outs, sub) = wm
+        .map_split_zero_based(&[2, 0])
+        .expect("split drops celestial");
     // The kept-input positions are [2, 0]; the longitude axis is at
     // position 1 (in_axes[1] == 0 == lonax). The C code shifts position
     // ilatlon=1 out of `result`, leaving result == [2].
@@ -595,7 +609,7 @@ fn wcs_split_preserves_invert_full_set() {
     use ast_core::mappings::{WcsMap, WcsProjection};
     let mut wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
     wm.invert();
-    let (_outs, sub) = wm.map_split(&[0, 1]).expect("full split");
+    let (_outs, sub) = wm.map_split_zero_based(&[0, 1]).expect("full split");
     assert!(sub.is_inverted());
 }
 
@@ -606,7 +620,9 @@ fn wcs_split_preserves_invert_subset() {
     use ast_core::mappings::{WcsMap, WcsProjection};
     let mut wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
     wm.invert();
-    let (outs, sub) = wm.map_split(&[0, 1]).expect("split keeps celestial");
+    let (outs, sub) = wm
+        .map_split_zero_based(&[0, 1])
+        .expect("split keeps celestial");
     assert_eq!(outs, vec![0, 1]);
     assert!(sub.is_inverted());
 }
@@ -619,8 +635,8 @@ fn wcs_split_rejects_duplicate_or_out_of_range() {
     // in C either way.
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
-    assert!(wm.map_split(&[0, 0, 1]).is_none());
-    assert!(wm.map_split(&[0, 1, 3]).is_none());
+    assert!(wm.map_split_zero_based(&[0, 0, 1]).is_none());
+    assert!(wm.map_split_zero_based(&[0, 1, 3]).is_none());
 }
 
 #[test]
@@ -630,7 +646,9 @@ fn wcs_split_full_set_permuted_simplifies_through() {
     // original mapping with the input-axis permutation applied first.
     use ast_core::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
-    let (outs, sub) = wm.map_split(&[2, 0, 1]).expect("permuted full split");
+    let (outs, sub) = wm
+        .map_split_zero_based(&[2, 0, 1])
+        .expect("permuted full split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 3);
     assert_eq!(sub.nout(), 3);
@@ -671,9 +689,11 @@ fn cmpmap_parallel_split_per_child() {
     let s1 = ShiftMap::new(vec![1.0, 2.0]);
     let s2 = ShiftMap::new(vec![10.0, 20.0]);
     let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
-    let (outs, _sub) = cm.map_split(&[2]).expect("split second-child axis");
+    let (outs, _sub) = cm
+        .map_split_zero_based(&[2])
+        .expect("split second-child axis");
     assert_eq!(outs, vec![2]);
-    let (outs2, _) = cm.map_split(&[0, 3]).expect("split mixed");
+    let (outs2, _) = cm.map_split_zero_based(&[0, 3]).expect("split mixed");
     assert_eq!(outs2, vec![0, 3]);
 }
 
@@ -684,7 +704,7 @@ fn cmpmap_series_split_threads_through() {
     let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
     let z = ZoomMap::new(3, 5.0).unwrap();
     let cm = CmpMap::new(Box::new(s), Box::new(z), Composition::Series).unwrap();
-    let (outs, sub) = cm.map_split(&[1]).expect("split");
+    let (outs, sub) = cm.map_split_zero_based(&[1]).expect("split");
     assert_eq!(outs, vec![1]);
     assert_eq!(sub.nin(), 1);
     let pts = PointSet::from_rows(vec![vec![3.0]]);
@@ -704,11 +724,11 @@ fn cmpmap_parallel_one_child_rejects_returns_none() {
     let s = ShiftMap::new(vec![10.0]);
     let cm = CmpMap::new(Box::new(coupled), Box::new(s), Composition::Parallel).unwrap();
     // axis 0 belongs to the coupled matrix; matrix rejects partial input.
-    assert!(cm.map_split(&[0]).is_none());
+    assert!(cm.map_split_zero_based(&[0]).is_none());
     // axis 1 also belongs to the matrix.
-    assert!(cm.map_split(&[1]).is_none());
+    assert!(cm.map_split_zero_based(&[1]).is_none());
     // axis 2 belongs to the ShiftMap and splits cleanly.
-    let (outs, sub) = cm.map_split(&[2]).expect("shift axis splits");
+    let (outs, sub) = cm.map_split_zero_based(&[2]).expect("shift axis splits");
     assert_eq!(outs, vec![2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -727,7 +747,7 @@ fn cmpmap_nested_series_of_parallel() {
     let cm = CmpMap::new(Box::new(parallel), Box::new(zoom), Composition::Series).unwrap();
     // Pick original input axis 2 (= inner2's axis 0). After shift +10 then
     // zoom *3, x=4.0 -> (4+10)*3 = 42.
-    let (outs, sub) = cm.map_split(&[2]).expect("split nested");
+    let (outs, sub) = cm.map_split_zero_based(&[2]).expect("split nested");
     assert_eq!(outs, vec![2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -745,7 +765,9 @@ fn cmpmap_inverted_series_split() {
     let z = ZoomMap::new(3, 5.0).unwrap();
     let mut cm = CmpMap::new(Box::new(s), Box::new(z), Composition::Series).unwrap();
     cm.invert();
-    let (outs, sub) = cm.map_split(&[1]).expect("split inverted series");
+    let (outs, sub) = cm
+        .map_split_zero_based(&[1])
+        .expect("split inverted series");
     assert_eq!(outs, vec![1]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -767,7 +789,9 @@ fn cmpmap_inverted_parallel_split() {
     let mut cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
     cm.invert();
     // Axis 3 = second child's axis 1 = inverse shift -20.
-    let (outs, sub) = cm.map_split(&[3]).expect("split inverted parallel");
+    let (outs, sub) = cm
+        .map_split_zero_based(&[3])
+        .expect("split inverted parallel");
     assert_eq!(outs, vec![3]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
@@ -786,11 +810,13 @@ fn cmpmap_series_second_child_couples_returns_none() {
     let s = ShiftMap::new(vec![1.0, 2.0]);
     let coupled = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
     let cm = CmpMap::new(Box::new(s), Box::new(coupled), Composition::Series).unwrap();
-    assert!(cm.map_split(&[0]).is_none());
-    assert!(cm.map_split(&[1]).is_none());
+    assert!(cm.map_split_zero_based(&[0]).is_none());
+    assert!(cm.map_split_zero_based(&[1]).is_none());
     // Full inputs in identity order: each child splits, so the result is
     // a series CmpMap of clones (or a simplification thereof).
-    let (outs, sub) = cm.map_split(&[0, 1]).expect("full identity splits");
+    let (outs, sub) = cm
+        .map_split_zero_based(&[0, 1])
+        .expect("full identity splits");
     assert_eq!(outs, vec![0, 1]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -808,7 +834,9 @@ fn cmpmap_parallel_input_reorder_via_permmap() {
     let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
     // Request axes in reversed order: [3, 1, 2, 0].
     let in_axes = [3usize, 1, 2, 0];
-    let (outs, sub) = cm.map_split(&in_axes).expect("split with permutation");
+    let (outs, sub) = cm
+        .map_split_zero_based(&in_axes)
+        .expect("split with permutation");
     // Outputs come back in sorted-axis order (we partition sorted axes
     // ascending; combined_outs reflects that traversal order). For a
     // ShiftMap each axis maps to its same-indexed output; with the sort
@@ -841,8 +869,8 @@ fn cmpmap_split_rejects_invalid() {
     let s1 = ShiftMap::new(vec![1.0, 2.0]);
     let s2 = ShiftMap::new(vec![10.0, 20.0]);
     let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
-    assert!(cm.map_split(&[4]).is_none());
-    assert!(cm.map_split(&[0, 0]).is_none());
+    assert!(cm.map_split_zero_based(&[4]).is_none());
+    assert!(cm.map_split_zero_based(&[0, 0]).is_none());
 }
 
 // MapSplit2 (cmpmap.c ~line 2214) brute-force inverse-side fallback.
@@ -861,13 +889,13 @@ fn cmpmap_mapsplit2_no_false_positive_when_genuinely_coupled() {
     let s = ShiftMap::new(vec![1.0, 2.0]);
     let m = MatrixMap::new(array![[1.0, 1.0], [1.0, -1.0]]).unwrap();
     let cm = CmpMap::new(Box::new(s), Box::new(m), Composition::Series).unwrap();
-    // Forward path: MatrixMap.map_split([0]) on a fully-coupled 2x2 fails.
+    // Forward path: MatrixMap.map_split_zero_based([0]) on a fully-coupled 2x2 fails.
     // MapSplit2 enumerates subsets {[0], [1]} of outputs; neither
     // depends only on input 0, so all recursive splits return None.
-    assert!(cm.map_split(&[0]).is_none());
-    assert!(cm.map_split(&[1]).is_none());
+    assert!(cm.map_split_zero_based(&[0]).is_none());
+    assert!(cm.map_split_zero_based(&[1]).is_none());
     // Full inputs work via the default full_set_split helper.
-    assert!(cm.map_split(&[0, 1]).is_some());
+    assert!(cm.map_split_zero_based(&[0, 1]).is_some());
 }
 
 #[test]
@@ -883,8 +911,8 @@ fn cmpmap_mapsplit2_terminates_on_small_nout() {
     let m2 = MatrixMap::new(array![[2.0]]).unwrap();
     let cm = CmpMap::new(Box::new(m1), Box::new(m2), Composition::Series).unwrap();
     // Forward fails (m1 is coupled); MapSplit2 hits early-exit on nout < 2.
-    assert!(cm.map_split(&[0]).is_none());
-    assert!(cm.map_split(&[1]).is_none());
+    assert!(cm.map_split_zero_based(&[0]).is_none());
+    assert!(cm.map_split_zero_based(&[1]).is_none());
 }
 
 // PolyMap inherits the default impl (no per-class override per polymap.c).
@@ -907,10 +935,10 @@ fn polymap_split_full_inputs_only() {
     ];
     let pm = PolyMap::new(2, 2, &fwd, None).unwrap();
     // Default impl handles full-input case via PermMap+self.
-    assert!(pm.map_split(&[0, 1]).is_some());
+    assert!(pm.map_split_zero_based(&[0, 1]).is_some());
     // Partial inputs return None (no per-class override).
-    assert!(pm.map_split(&[0]).is_none());
-    assert!(pm.map_split(&[1]).is_none());
+    assert!(pm.map_split_zero_based(&[0]).is_none());
+    assert!(pm.map_split_zero_based(&[1]).is_none());
 }
 
 // NormMap: mirrors normmap.c::MapSplit ~line 736.
@@ -922,7 +950,7 @@ fn normmap_split_picks_axes() {
     // 3-axis BasicFrame; pick axes [0, 2].
     let frame = BasicFrameBuilder::new(3).build().unwrap();
     let nm = NormMap::new(Box::new(frame));
-    let (outs, sub) = nm.map_split(&[0, 2]).expect("split");
+    let (outs, sub) = nm.map_split_zero_based(&[0, 2]).expect("split");
     assert_eq!(outs, vec![0, 2]);
     assert_eq!(sub.nin(), 2);
     assert_eq!(sub.nout(), 2);
@@ -935,7 +963,7 @@ fn normmap_split_full_inputs_via_default() {
     let frame = BasicFrameBuilder::new(3).build().unwrap();
     let nm = NormMap::new(Box::new(frame));
     // Full-input case goes through full_set_split.
-    let (outs, sub) = nm.map_split(&[0, 1, 2]).expect("split");
+    let (outs, sub) = nm.map_split_zero_based(&[0, 1, 2]).expect("split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 3);
 }
@@ -946,8 +974,8 @@ fn normmap_split_rejects_invalid() {
     use ast_core::mappings::{Mapping, NormMap};
     let frame = BasicFrameBuilder::new(3).build().unwrap();
     let nm = NormMap::new(Box::new(frame));
-    assert!(nm.map_split(&[3]).is_none()); // out of range
-    assert!(nm.map_split(&[0, 0]).is_none()); // duplicate
+    assert!(nm.map_split_zero_based(&[3]).is_none()); // out of range
+    assert!(nm.map_split_zero_based(&[0, 0]).is_none()); // duplicate
 }
 
 // TranMap: mirrors tranmap.c::MapSplit ~line 1017.
@@ -962,7 +990,7 @@ fn tranmap_split_picks_per_axis() {
     let mut inv = ShiftMap::new(vec![-10.0, -20.0, -30.0]);
     inv.invert();
     let tm = TranMap::new(Box::new(fwd), Box::new(inv)).unwrap();
-    let (outs, sub) = tm.map_split(&[1]).expect("split");
+    let (outs, sub) = tm.map_split_zero_based(&[1]).expect("split");
     assert_eq!(outs, vec![1]);
     assert_eq!(sub.nin(), 1);
     // Forward of the sub-mapping: 5 + 20 = 25 (uses shifts[1] = 20).
@@ -978,14 +1006,14 @@ fn ratemap_split_diff_output_dropped_returns_none() {
     use ast_core::mappings::{Mapping, RateMap, ShiftMap};
     // RateMap differentiates output 2 (1-based) wrt input 1. Splitting
     // on input 0 (= 1-based axis 1, the diff input): the encapsulated
-    // ShiftMap.map_split([0]) returns Some([0], one-axis), which lacks
+    // ShiftMap.map_split_zero_based([0]) returns Some([0], one-axis), which lacks
     // output 1 (= 1-based axis 2, the differentiated output). So the
     // RateMap split must return None.
     let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
     let rm = RateMap::new(Box::new(s), 2, 1).unwrap();
     assert_eq!(rm.nin(), 3);
     assert_eq!(rm.nout(), 1);
-    assert!(rm.map_split(&[0]).is_none());
+    assert!(rm.map_split_zero_based(&[0]).is_none());
 }
 
 #[test]
@@ -1018,15 +1046,77 @@ fn ratemap_split_rejects_when_inverted() {
     assert_eq!(rm.nin(), 3);
     assert_eq!(rm.nout(), 1);
     // Splitting on input 0 (= 1-based axis 1, the diff variable) should
-    // succeed: ShiftMap.map_split([0]) = Some([0], one-axis ShiftMap),
+    // succeed: ShiftMap.map_split_zero_based([0]) = Some([0], one-axis ShiftMap),
     // which contains output 0 (= 1-based axis 1, the differentiated
     // output). New RateMap is built.
-    let (outs, sub) = rm.map_split(&[0]).expect("split via per-class fallback");
+    let (outs, sub) = rm
+        .map_split_zero_based(&[0])
+        .expect("split via per-class fallback");
     assert_eq!(outs, vec![0]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
 
     // Splitting on input 1 alone (= 1-based axis 2, NOT the diff variable)
     // should return None — the diff input isn't in the kept set.
-    assert!(rm.map_split(&[1]).is_none());
+    assert!(rm.map_split_zero_based(&[1]).is_none());
+}
+
+// ========================================================================
+// Public 1-based wrapper: `Mapping::map_split`
+// ========================================================================
+//
+// C ancestor: the public astMapSplit interface (astMapSplitId_,
+// mapping.c:25313), which decrements the supplied input indices and
+// increments the returned output indices by one around the 0-based
+// protected MapSplit. The design spec mandates 1-based axis indices on the
+// public Rust API (matching `Mapping::rate`), so `map_split` is the 1-based
+// face of the same algorithm exercised 0-based above.
+
+#[test]
+fn public_map_split_is_one_based_in_and_out() {
+    // ZoomMap(4, 3): pick 1-based input axes [2, 4]. The 0-based call would
+    // use [1, 3]; the public 1-based call must return 1-based outputs [2, 4].
+    let z = ZoomMap::new(4, 3.0).unwrap();
+    let (outs_1b, sub_1b) = z.map_split(&[2, 4]).expect("1-based split");
+    assert_eq!(outs_1b, vec![2, 4]);
+    assert_eq!(sub_1b.nin(), 2);
+    assert_eq!(sub_1b.nout(), 2);
+    assert_eq!(fwd_point(sub_1b.as_ref(), &[2.0, 5.0]), vec![6.0, 15.0]);
+
+    // The 0-based protected call with the decremented indices is equivalent
+    // apart from the ±1 offset on the returned output vector.
+    let (outs_0b, _) = z.map_split_zero_based(&[1, 3]).expect("0-based split");
+    assert_eq!(outs_0b, vec![1, 3]);
+    assert_eq!(outs_1b, outs_0b.iter().map(|o| o + 1).collect::<Vec<_>>());
+}
+
+#[test]
+fn public_map_split_rejects_zero_axis() {
+    // A 0 entry is not a valid 1-based index; the wrapper rejects it rather
+    // than underflowing to usize::MAX.
+    let u = UnitMap::new(3);
+    assert!(u.map_split(&[0]).is_none());
+    assert!(u.map_split(&[1, 0]).is_none());
+}
+
+#[test]
+fn public_map_split_rejects_out_of_range() {
+    // 1-based: valid indices are 1..=nin. nin+1 is out of range.
+    let u = UnitMap::new(3);
+    assert!(u.map_split(&[4]).is_none());
+    let (outs, sub) = u.map_split(&[1, 2, 3]).expect("full 1-based split");
+    assert_eq!(outs, vec![1, 2, 3]);
+    assert_eq!(sub.nin(), 3);
+}
+
+#[test]
+fn public_map_split_permmap_constant_output_dropped() {
+    // Same case as perm_split_constant_outperm_silently_dropped, but through
+    // the 1-based public API. outperm=[1,-1]: 1-based output 1 takes input 1;
+    // output 2 is constant (dropped). Pick 1-based input [1] -> outs == [1].
+    let pm = PermMap::new(&[1], &[1, -1], &[42.0]).unwrap();
+    let (outs, sub) = pm.map_split(&[1]).expect("constant output dropped");
+    assert_eq!(outs, vec![1]);
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(sub.nout(), 1);
 }
