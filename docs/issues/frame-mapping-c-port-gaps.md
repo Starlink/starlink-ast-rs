@@ -347,9 +347,10 @@ Compared `timeframe.c`/`fluxframe.c`/`specfluxframe.c` against the corresponding
 TimeFrame's `make_time_mapping` covers all 11 timescales (TAI/UTC/UT1/GMST/LAST/LMST/TT/TDB/TCB/TCG/LT), applies TimeOrigin on both sides, passes LTOffset in hours, negates ObsLon per the TimeMap convention, and threads Dut1/Dtai; Match/SubFrame/Overlay have tests.
 The numerical TDB↔UTC drift questions are already tracked in `docs/issues/timeframe-and-epoch-api-port.md` (leap-second constants, Fairhead-Bretagnon precision, Epoch/Equinox timescale documentation) and are not repeated here.
 
-- **[MED] TimeFrame — no iso-date Format/Unformat.**
+- **[MED] TimeFrame — no iso-date Format/Unformat.** *(bare-number format FIXED 2026-06-13; iso-date still TODO.)*
   C overrides `Format`/`Unformat` (plus `Gap`/`Centre`/`Abbrev`/`Fields`) so that `Format=\"iso.N[T]\"` renders and parses calendar date strings (`timeframe.c` Format/Unformat).
-  Rust `format` (`timeframe.rs:724`) prints `{value:.7}` — which is also 7 *decimal places* rather than C's `%1.7G` 7 significant digits — and `unformat` parses bare numbers only.
+  The bare-number default is now correct: `format` routes through `axis_format::format_value("%1.7G", …)` — 7 *significant* digits, matching C (oracle-verified: `12345.6789 → "12345.68"`, `0.000123456789 → "0.0001234568"`). `tests/test_timeframe.rs::format_default_is_seven_significant_digits`.
+  Still TODO: the `iso.N[T]` calendar-date Format/Unformat path (`DateFormat` → `MakeMap` to AST__MJD → `palDjcl`/`palDd2tf` formatting; inverse via `palDtf2d`/`palCldj`). Blocked on porting the pal calendar helpers (`palDjcl`, `palCldj`, `palDd2tf`, `palDtf2d`), which `crates/ast-core/src/pal.rs` does not yet provide. Plus `Gap`/`Centre`/`Abbrev`/`Fields` for Plot tick labelling.
 
 - **[MED] TimeFrame — Epoch default ignores TimeOrigin.**
   When Epoch is unset but TimeOrigin is set, C `GetEpoch` (`timeframe.c:2458+`) returns the TimeOrigin converted to an absolute TDB MJD (UT1≈UTC approximation for rotation timescales); Rust always returns J2000 (`timeframe.rs:380`).

@@ -513,3 +513,16 @@ fn test_lt_offset() {
         "LT should be UTC + 5h, got diff={diff_hours}h"
     );
 }
+
+#[test]
+fn format_default_is_seven_significant_digits() {
+    // The non-date Format default is `%1.7G` — 7 *significant* digits, not
+    // 7 decimal places. Oracle-verified against the reference C library:
+    //   astFormat(12345.6789)     == "12345.68"
+    //   astFormat(0.000123456789) == "0.0001234568"
+    //   astFormat(51544.5)        == "51544.5"
+    let tf = TimeFrame::new(TimeSystem::Mjd);
+    assert_eq!(tf.format(1, 12345.6789).unwrap(), "12345.68");
+    assert_eq!(tf.format(1, 0.000123456789).unwrap(), "0.0001234568");
+    assert_eq!(tf.format(1, 51544.5).unwrap(), "51544.5");
+}

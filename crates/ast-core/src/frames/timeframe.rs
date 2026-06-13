@@ -755,7 +755,15 @@ impl Frame for TimeFrame {
         if is_bad(value) {
             return Ok("<bad>".to_string());
         }
-        Ok(format!("{value:.7}"))
+        // The parent (non-date) Format default is `%1.7G` — 7 *significant*
+        // digits, not 7 decimal places (frame.c GetDefaultFormat with the
+        // default Digits=7). The `iso.N[T]` calendar-date Format is not yet
+        // ported (it needs the pal calendar conversions); see
+        // docs/issues/frame-mapping-c-port-gaps.md (6f).
+        const DIGITS: usize = 7;
+        Ok(crate::frames::axis_format::format_value(
+            "%1.7G", DIGITS, value,
+        ))
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
