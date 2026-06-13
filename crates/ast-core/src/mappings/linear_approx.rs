@@ -172,9 +172,14 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     }
 
     if !linear {
-        // All outputs were bad at face centres: C returns a unit
-        // transformation with BAD zero points and result = 0 (false).
-        // We mirror that signal as `None` since the fit is unusable.
+        // All outputs were bad at every face centre. C fills `fit` with a
+        // unit transformation (BAD zero points) at mapping.c:6952-6966, but
+        // then the trailing `if( !astOK || !linear )` at mapping.c:6972
+        // overwrites the whole array with BAD and leaves result = 0. So the
+        // function reports failure with an all-BAD fit; we mirror that as
+        // `None`. (Oracle-verified: astLinearApprox on an all-BAD MathMap
+        // returns 0 with fit all AST__BAD, contradicting the SUN/211 note
+        // about returning the unit transform.)
         return None;
     }
 

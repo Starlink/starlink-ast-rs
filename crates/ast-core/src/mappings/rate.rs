@@ -38,12 +38,12 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         return Ok(BAD_VALUE);
     }
 
-    // Initial interval size following the C algorithm:
-    // DBL_EPSILON * 1e9 * |x0| (≈ 2.2e-7 * |x0|), or a small default for x0=0.
+    // Initial interval size following the C algorithm (mapping.c:9009):
+    // DBL_EPSILON * 1e9 * |x0| (≈ 2.2e-7 * |x0|), or 1.0 when x0 is zero.
     let mut h0 = if x0 != 0.0 {
         f64::EPSILON * 1e9 * x0.abs()
     } else {
-        f64::EPSILON * 1e9
+        1.0
     };
 
     // Find an initial working interval by increasing h0 until FindGradient
@@ -74,14 +74,16 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
     let mut iret = NN;
     let mut itop = NN;
 
-    // Search larger intervals (multiply by 4 each step).
+    // Search larger intervals (multiply by 4 each step). A BAD interval
+    // (FindGradient failure) is skipped but does NOT abandon the search:
+    // the loop continues to larger sizes (mapping.c:9044-9081).
     let mut h = h0;
     for iin in (NN + 1)..=(2 * NN) {
         h *= 4.0;
 
         let (mean, range) = find_gradient(mapping, at, ax1_idx, ax2_idx, x0, h)?;
         if is_bad(mean) {
-            break;
+            continue;
         }
 
         itop += 1;
@@ -94,8 +96,12 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         } else if range > min_range {
             // Range increasing — we've passed the minimum.
             break;
-        } else if range == 0.0 && iin > NN + 1 && ranges[iin - 1] == 0.0 {
-            // Two consecutive zero ranges — the function is linear here.
+        } else if range == 0.0 && ranges[iin - 1] == 0.0 {
+            // Zero range confirmed by the previous interval — the function
+            // is linear here. C indexes the neighbour by the loop counter
+            // `iin`, not the store index `itop`; after a skipped (BAD)
+            // interval these diverge and C reads a stale slot. See
+            // docs/issues/c-library-quirks.md.
             iret = itop;
             break;
         }
@@ -104,9 +110,6 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         if range > 100.0 * range0 {
             break;
         }
-
-        // Avoid unused variable warning — iin is used for bounds above.
-        let _ = iin;
     }
 
     // Record the minimum range found in the upward search.
@@ -114,14 +117,16 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
 
     let mut ibot = NN;
 
-    // Search smaller intervals (divide by 4 each step).
+    // Search smaller intervals (divide by 4 each step). As above, a BAD
+    // interval is skipped rather than abandoning the search
+    // (mapping.c:9093-9113).
     h = h0;
     for iin in (0..NN).rev() {
         h /= 4.0;
 
         let (mean, range) = find_gradient(mapping, at, ax1_idx, ax2_idx, x0, h)?;
         if is_bad(mean) {
-            break;
+            continue;
         }
 
         ibot -= 1;
@@ -133,7 +138,9 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
             iret = ibot;
         } else if range > min_range {
             break;
-        } else if range == 0.0 && iin < NN - 1 && ranges[iin + 1] == 0.0 {
+        } else if range == 0.0 && ranges[iin + 1] == 0.0 {
+            // Mirrors C's `y[iin + 1]` neighbour read (stale-slot quirk
+            // when intervals were skipped); see c-library-quirks.md.
             iret = ibot;
             break;
         }
@@ -141,35 +148,33 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         if range > 100.0 * range0 {
             break;
         }
-
-        let _ = iin;
     }
 
-    // Select the best result.
+    // Select the best result (mapping.c:9116-9141). `ret` starts as BAD
+    // and is only assigned when a trustworthy interval is found.
+    let mut ret = BAD_VALUE;
     if min_range == 0.0 {
-        // Zero range — only believe it if an adjacent interval also has zero range.
+        // Zero range — only believe it if an adjacent interval also has
+        // zero range. Otherwise it is probably a numerical fluke.
         if (iret > ibot && ranges[iret - 1] == 0.0) || (iret < itop && ranges[iret + 1] == 0.0) {
-            Ok(means[iret])
+            ret = means[iret];
         } else {
-            // Search for the smallest non-zero range.
-            let mut best = BAD_VALUE;
-            let mut best_range = 0.0;
+            // Search for the smallest strictly-positive range, ignoring the
+            // exact zeros. If none exists, `ret` stays BAD (as in C).
+            let mut minrange = 0.0;
             for i in ibot..=itop {
-                if ranges[i] > 0.0 && (best_range == 0.0 || ranges[i] < best_range) {
-                    best_range = ranges[i];
-                    best = means[i];
+                if ranges[i] > 0.0 && (minrange == 0.0 || ranges[i] < minrange) {
+                    minrange = ranges[i];
+                    ret = means[i];
                 }
-            }
-            if is_bad(best) {
-                // All ranges are zero — return the one we found.
-                Ok(means[iret])
-            } else {
-                Ok(best)
             }
         }
     } else {
-        Ok(means[iret])
+        // Non-zero minimum range — return the corresponding mean gradient.
+        ret = means[iret];
     }
+
+    Ok(ret)
 }
 
 /// Compute the mean gradient over an interval `h` centered on `x0`, and

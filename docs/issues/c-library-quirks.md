@@ -640,3 +640,92 @@ resolve. Verified against `libast` built with cmake:
 **Rust mirror:** `Frame::ax_angle` in
 `crates/ast-core/src/frames/mod.rs` reads `b[naxes - 1]` in the same
 branch, with a comment marking it as the preserved C index.
+
+---
+
+## `astRate` returns BAD at `x0 = 0` for domain-restricted Mappings
+
+**C location:** `mapping.c` `Rate` (~line 9009):
+
+```c
+h0 = ( x0 != 0.0 ) ? DBL_EPSILON*1.0E9*fabs( x0 ) : 1.0;
+...
+mean = AST__BAD;
+while( mean == AST__BAD && h0 < 1.0E-10*DBL_MAX ) {
+   h0 *= 10;
+   mean = FindGradient( this, at, ax1, ax2, x0, h0, &range0, status );
+}
+```
+
+**Observed:** when the evaluation position on the varied input axis is
+exactly zero, C seeds the search interval at `h0 = 1.0`. The
+working-interval loop then immediately multiplies it by ten, so the
+*first* interval actually sampled has half-width 5.0 (the sample points
+span roughly `[-5, 5]`). For a Mapping whose forward transformation is
+only defined over a smaller domain — e.g. a `ChebyMap` on `[-1, 1]` —
+every sample point lies outside the domain, so each `FindGradient` call
+returns `AST__BAD`, the loop exhausts the silly-large-interval guard,
+and `astRate` returns `AST__BAD`.
+
+The mathematically-correct derivative is perfectly well-defined at
+`x0 = 0` (it is the busiest, most representative point of a symmetric
+domain), so this is a genuine bug, not just a conservative refusal: the
+fixed `h0 = 1.0` seed is appropriate for unrestricted Mappings but
+ignores the Mapping's domain. A domain-aware seed (or simply a smaller
+initial fraction) would return the right answer.
+
+**Consequence:** `astRate` on a `ChebyMap` (or any narrow-domain
+Mapping) at an axis value of exactly zero returns `AST__BAD` instead of
+the true gradient. Verified against `libast` built with cmake:
+`astRate` on `f(x)=3x` over `[-1,1]` gives `3.0` at `x0=0.5` but
+`AST__BAD` at `x0=0.0`; likewise the `x^3` Chebyshev fit gives
+`0.75` at `x0=0.5` and `AST__BAD` at `x0=0.0`.
+
+**Rust mirror:** `numeric_rate` in
+`crates/ast-core/src/mappings/rate.rs` seeds `h0 = 1.0` for `x0 == 0.0`
+(previously it used `DBL_EPSILON*1e9`, which gave the mathematically
+correct answer but diverged from C). The ported tests in
+`crates/ast-core/tests/test_numeric_rate.rs` and `test_chebymap.rs`
+assert `BAD_VALUE` at `x0 = 0` for ChebyMaps to lock the C behaviour in.
+
+---
+
+## `astRate` zero-range confirmation reads a stale array slot
+
+**C location:** `mapping.c` `Rate` (~lines 9072 and 9107):
+
+```c
+} else if( range == 0.0 && y[ iin - 1 ] == 0 ) {   /* upward loop   */
+} else if( range == 0.0 && y[ iin + 1 ] == 0 ) {   /* downward loop */
+```
+
+**Observed:** the gradient range and mean for each interval size are
+stored at the running indices `itop`/`ibot`, which only advance when
+`FindGradient` succeeds. But the "is the previous interval also
+zero-range?" confirmation indexes the `y` (range) array by the loop
+counter `iin`, which advances on *every* iteration including the ones
+where `FindGradient` failed. When one or more intervals have been
+skipped, `iin` and `itop`/`ibot` diverge, so `y[iin - 1]`/`y[iin + 1]`
+reads a slot that was never written for the current search — a stale or
+uninitialised value. The behaviour is therefore dependent on prior
+array contents whenever a BAD interval precedes a zero-range one.
+
+In practice the smooth Mappings exercised by the test fixtures grow
+their gradient range monotonically with interval size, so the
+zero-range branch is only reached on the very first stored interval
+(where `iin` and the store index still coincide), and the divergence is
+not observed. It remains a latent correctness bug.
+
+**Consequence:** for a Mapping that produces a BAD interval immediately
+followed by a genuinely linear (zero-range) region, the linearity
+short-circuit may fire or not fire depending on uninitialised stack
+contents.
+
+**Rust mirror:** `numeric_rate` in
+`crates/ast-core/src/mappings/rate.rs` indexes `ranges[iin - 1]` /
+`ranges[iin + 1]` exactly as C does (rather than the store index), with
+a comment marking the preserved stale-slot read. Because the array is
+zero-initialised in Rust (versus uninitialised C stack), the two
+libraries can disagree in the pathological skipped-interval case; this
+is acceptable since the branch is unreachable for well-behaved
+Mappings and a future upstream fix would change the C side anyway.
