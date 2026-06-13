@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{DynMapping, TimeCvtType, TimeMap, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
@@ -845,19 +845,6 @@ impl Frame for TimeFrame {
         }
     }
 
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        let to_time = to.as_any().downcast_ref::<TimeFrame>();
-        match to_time {
-            Some(to_time) => {
-                let mapping = self.make_time_mapping(to_time)?;
-                let mut fs = FrameSet::new(self.snapshot());
-                fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
-                Ok(Some(fs))
-            }
-            None => Ok(None),
-        }
-    }
-
     fn equal(&self, other: &dyn Frame) -> bool {
         let Some(other) = other.as_any().downcast_ref::<TimeFrame>() else {
             return false;
@@ -1096,6 +1083,27 @@ fn timeframe_overlay(
             result_time.clear_title();
         }
 
+        // Frame-level attributes transferred by the parent Frame Overlay
+        // (frame.c:8567-8575): Dtai, Dut1, Epoch, Domain, Title, ObsLat,
+        // ObsLon, ObsAlt — each only when set on the template.
+        if let Some(v) = template_time.dtai {
+            result_time.set_dtai(v);
+        }
+        if let Some(v) = template_time.dut1 {
+            result_time.set_dut1(v);
+        }
+        if let Some(v) = template_time.epoch {
+            result_time.set_epoch_mjd(v);
+        }
+        if let Some(v) = template_time.obs_lat {
+            result_time.set_obs_lat(v);
+        }
+        if let Some(v) = template_time.obs_lon {
+            result_time.set_obs_lon(v);
+        }
+        if let Some(v) = template_time.obs_alt {
+            result_time.set_obs_alt(v);
+        }
         if template_time.test_domain() {
             result_time.set_domain(template_time.domain());
         }

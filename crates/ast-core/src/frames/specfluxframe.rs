@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, FluxFrame, Frame, FrameRef, FrameSet, SpecFrame};
+use crate::frames::{DynFrame, FluxFrame, Frame, SpecFrame};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable, frame_from_node};
@@ -195,24 +195,6 @@ impl Frame for SpecFluxFrame {
 
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
         Ok(Box::new(UnitMap::new(2)))
-    }
-
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        // For now, only convert to another SpecFluxFrame with matching sub-frames.
-        if let Some(to_sff) = to.as_any().downcast_ref::<SpecFluxFrame>() {
-            // Check if spec systems and flux systems match.
-            if self.spec_frame.system() == to_sff.spec_frame.system()
-                && self.flux_frame.system() == to_sff.flux_frame.system()
-            {
-                let mut fs = FrameSet::new(self.snapshot());
-                fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), to.snapshot())?;
-                Ok(Some(fs))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

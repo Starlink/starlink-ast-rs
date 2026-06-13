@@ -2,7 +2,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
@@ -379,26 +379,6 @@ impl Frame for FluxFrame {
         // FluxFrame attribute changes don't affect coordinate transformations
         // in the simple case. Return UnitMap.
         Ok(Box::new(UnitMap::new(1)))
-    }
-
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        let to_flux = to.as_any().downcast_ref::<FluxFrame>();
-        match to_flux {
-            Some(to_flux) => {
-                if self.system == to_flux.system {
-                    // Same system — conversion is identity.
-                    let mut fs = FrameSet::new(self.snapshot());
-                    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(1)), to.snapshot())?;
-                    Ok(Some(fs))
-                } else {
-                    // Different flux systems. Full conversion requires the
-                    // spectral position and is complex. For now, return None
-                    // (incompatible).
-                    Ok(None)
-                }
-            }
-            None => Ok(None),
-        }
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

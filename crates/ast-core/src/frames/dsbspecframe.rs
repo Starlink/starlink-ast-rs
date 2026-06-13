@@ -7,7 +7,7 @@
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SpecFrame, SpecSystem, StdOfRest};
+use crate::frames::{DynFrame, Frame, SpecFrame, SpecSystem, StdOfRest};
 use crate::mappings::helpers::ast_equal;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap, WinMap};
 use crate::serial::{Node, NodeValue, Serializable};
@@ -103,12 +103,14 @@ impl DSBSpecFrame {
 
     /// Create a new `DSBSpecFrame` with the given spectral coordinate system.
     ///
-    /// The domain is set to "DSBSPECTRUM". All DSB-specific attributes start
-    /// at their defaults (DSBCentre = 30 GHz, IF = 4 GHz, SideBand derived
-    /// from IF sign = LSB, AlignSideBand = false).
+    /// The Domain defaults to "DSBSPECTRUM" but is left *unset* (so
+    /// `test_domain` reports false), mirroring C `GetDomain`
+    /// (dsbspecframe.c:531) which supplies "DSBSPECTRUM" only as a
+    /// default. All DSB-specific attributes start at their defaults
+    /// (DSBCentre = 30 GHz, IF = 4 GHz, SideBand derived from IF
+    /// sign = LSB, AlignSideBand = false).
     pub fn new(system: SpecSystem) -> Self {
-        let mut spec = SpecFrame::new(system);
-        spec.set_domain("DSBSPECTRUM");
+        let spec = SpecFrame::new(system);
         Self {
             spec,
             dsb_centre: None,
@@ -540,6 +542,27 @@ impl Frame for DSBSpecFrame {
         (self, axis)
     }
 
+    /// Effective Domain. Mirrors C `GetDomain` (dsbspecframe.c:531):
+    /// the explicitly set value when present, otherwise the default
+    /// "DSBSPECTRUM".
+    fn domain(&self) -> &str {
+        if self.spec.test_domain() {
+            self.spec.domain()
+        } else {
+            "DSBSPECTRUM"
+        }
+    }
+
+    /// Whether Domain has been explicitly set. The "DSBSPECTRUM"
+    /// default leaves this false, matching C `astTestDomain`.
+    fn test_domain(&self) -> bool {
+        self.spec.test_domain()
+    }
+
+    fn set_domain(&mut self, domain: &str) {
+        self.spec.set_domain(domain);
+    }
+
     fn effective_label(&self, axis: usize) -> String {
         self.spec.effective_label(axis)
     }
@@ -587,28 +610,6 @@ impl Frame for DSBSpecFrame {
         }
         // Fallback: delegate to SpecFrame's map_from.
         self.spec.map_from(previous)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        // 1. Try downcast to DSBSpecFrame.
-        if let Some(to_dsb) = to.as_any().downcast_ref::<DSBSpecFrame>() {
-            let mapping = if self.align_sideband() && to_dsb.align_sideband() {
-                self.make_dsb_mapping_aligned(to_dsb, false)?
-            } else {
-                self.spec.make_spec_mapping(&to_dsb.spec)?
-            };
-            let mut fs = FrameSet::new(self.snapshot());
-            fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
-            return Ok(Some(fs));
-        }
-        // 2. Try downcast to SpecFrame.
-        if let Some(to_spec) = to.as_any().downcast_ref::<SpecFrame>() {
-            let mapping = self.spec.make_spec_mapping(to_spec)?;
-            let mut fs = FrameSet::new(self.snapshot());
-            fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
-            return Ok(Some(fs));
-        }
-        Ok(None)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {
@@ -898,6 +899,17 @@ impl Serializable for DSBSpecFrame {
         node.class = "DSBSpecFrame".to_string();
         node.class_comment = Some("Dual sideband spectral axis".to_string());
 
+        // The Domain default for a DSBSpecFrame is "DSBSPECTRUM"
+        // (dsbspecframe.c GetDomain), not the SpecFrame "SPECTRUM". When
+        // the Domain is unset, replace the parent's commented "SPECTRUM"
+        // default with the DSBSPECTRUM default so the dump matches C.
+        if !self.spec.test_domain() {
+            node.replace_or_push(
+                "Domain",
+                NodeValue::Unset(Box::new(NodeValue::String("DSBSPECTRUM".to_string()))),
+            );
+        }
+
         // Add IsA SpecFrame marker.
         node.push_isa(
             "SpecFrame",
@@ -1043,20 +1055,21 @@ mod find_frame_tests {
     }
 
     #[test]
-    fn dsb_match_against_specframe_target_blocked_by_domain() {
-        // A DSBSpecFrame template defaults to Domain="DSBSPECTRUM"
-        // while a plain SpecFrame defaults to Domain="SPECTRUM". The
-        // parent Frame::Match Domain check rejects this combination
-        // even with `match_sub=true`. Mirrors dsbspecframe.c:1098-1103
-        // semantics — when the user has explicitly set a DSB-only
-        // Domain, the template won't match a plain SpecFrame target.
+    fn dsb_match_against_specframe_target() {
+        // A DSBSpecFrame template has its Domain *unset* by default (the
+        // "DSBSPECTRUM" default is supplied by GetDomain, not stored), so
+        // the parent Frame::Match Domain check is skipped and a plain
+        // SpecFrame target matches. Verified against the C oracle:
+        // astFindFrame(target=spec, template=dsb) and astConvert in both
+        // directions all succeed (dsbspecframe.c GetDomain leaves
+        // astTestDomain false).
         let template = DSBSpecFrame::new(SpecSystem::Freq);
         let target = SpecFrame::new(SpecSystem::Freq);
         assert!(
             template
                 .match_template(&target, true)
                 .expect("match ok")
-                .is_none()
+                .is_some()
         );
     }
 

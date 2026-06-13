@@ -3,7 +3,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, SpecCvtType, SpecMap, UnitMap};
 use crate::serial::{Node, NodeValue, Serializable};
@@ -1793,19 +1793,6 @@ impl Frame for SpecFrame {
         }
     }
 
-    fn convert_to(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        let to_spec = to.as_any().downcast_ref::<SpecFrame>();
-        match to_spec {
-            Some(to_spec) => {
-                let mapping = self.make_spec_mapping(to_spec)?;
-                let mut fs = FrameSet::new(self.snapshot());
-                fs.add_frame(FrameRef::Base, mapping, to.snapshot())?;
-                Ok(Some(fs))
-            }
-            None => Ok(None),
-        }
-    }
-
     fn equal(&self, other: &dyn Frame) -> bool {
         let Some(other) = other.as_any().downcast_ref::<SpecFrame>() else {
             return false;
@@ -1915,7 +1902,16 @@ impl Frame for SpecFrame {
         let mut target_axis0: Option<usize> = None;
         for iaxis in 0..target_naxes {
             let (primary, _local_axis) = primary_frame_walk(target, iaxis);
-            if primary.as_any().downcast_ref::<SpecFrame>().is_some() {
+            // Mirrors C `astIsASpecFrame(frame0)` (specframe.c:3147),
+            // which is true for SpecFrame and any subclass (DSBSpecFrame).
+            // The Rust DSBSpecFrame is a distinct struct embedding a
+            // SpecFrame, so test both class identities.
+            let is_specframe = primary.as_any().downcast_ref::<SpecFrame>().is_some()
+                || primary
+                    .as_any()
+                    .downcast_ref::<crate::frames::DSBSpecFrame>()
+                    .is_some();
+            if is_specframe {
                 target_axis0 = Some(iaxis);
                 break;
             }
