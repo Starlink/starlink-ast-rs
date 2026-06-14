@@ -51,12 +51,16 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // Step 5: Build the IWC → world mapping (consumes the decoder results).
     let iwc_to_world = build_iwc_to_world(store, celestial, spectral)?;
 
-    // Step 6: Compose pixel→IWC→world.
-    let full_mapping: DynMapping = Box::new(CmpMap::new(
+    // Step 6: Compose pixel→IWC→world and simplify. C `WcsMapFrm`
+    // returns `astSimplify(map8)` (fitschan.c:37810) — the pixel→WCS
+    // Mapping is simplified before it is added to the FrameSet, so the
+    // stored edge (and any later native dump of it) is in reduced form.
+    let composed: DynMapping = Box::new(CmpMap::new(
         pixel_to_iwc,
         iwc_to_world,
         Composition::Series,
     )?);
+    let full_mapping: DynMapping = composed.simplified()?;
 
     // Step 7: Build the pixel frame. C labels each pixel axis
     // "Pixel axis <n>" (fitschan.c:11935-11938).
