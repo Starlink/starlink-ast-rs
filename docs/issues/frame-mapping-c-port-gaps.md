@@ -502,6 +502,37 @@ Focused follow-up on the three historically problematic entry points, covering w
   `rate` takes 1-based `ax1`/`ax2` (`rate.rs:32-33` subtracts 1) while `map_split` takes 0-based `in_axes` (`mod.rs:229` doc states it).
   The design spec mandates 1-based axis indices throughout the public API; this mixed convention is exactly the kind of trap that produces off-by-one workarounds downstream — standardise on 1-based.
 
+## 6m. Serialisation-default audit (2026-06-14)
+
+Prompted by the SlaMap `from_node` bug (a missing conversion argument
+defaulted to `0.0` instead of `AST__BAD`, see section 6g), every mapping and
+Frame class's `from_node` numeric defaults were compared against the C
+`astLoad*` `astReadDouble`/`astReadInt` defaults — the exact pattern that hid
+that divergence. **SlaMap was the only genuine bug**; all other classes are
+behaviourally identical to C:
+
+- **Raw-default match** (the deserialised value feeds the transform directly
+  and the default equals C's): MatrixMap (`AST__BAD`), ShiftMap (`0.0`),
+  WinMap (`0.0`/`1.0`), UnitNormMap centre (`0.0`), SpecMap/TimeMap args
+  (`AST__BAD`), DssMap (`AST__BAD`). These match C exactly.
+- **Store-BAD-present-as-default idiom** (C stores its own "unset" sentinel —
+  `AST__BAD`/`-INT_MAX`/`-1` — but every consumer maps it to a physical
+  default via `astGet*`; Rust stores the physical default directly, which is
+  transform-equivalent): PcdMap Disco/PcdCen (BAD→0.0), GrismMap NR/WaveR/M/…
+  (BAD→1.0/5000/0/…), PolyMap NiterInv/TolInv (−INT_MAX→4, BAD→1e-6 — Rust
+  also guards the raw sentinels), SphMap UnitRadius/PolarLong (−1→0, BAD→0.0).
+  For these the public constructor always sets the field, so the read-default
+  is only reachable via a hand-crafted dump, and even then the transform
+  agrees; the only theoretical difference is the `Test*`/`set`-flag on an
+  artificially-unset field. Confirmed by the byte-exact round-trip corpus
+  (431/431) and the targeted round-trip tests.
+- **Conditionally-read** (Rust stores `Some(..)` only when the key is present,
+  matching C's unset semantics): DSBSpecFrame DSBCen/IF, the Frame ActiveUnit
+  flag, Digits/Direction. Correct.
+
+Conclusion: no further serialisation-default divergences remain; the run-merge
+fixtures and this audit close the section 6g concern.
+
 ## 7. Working rules for the fix agent
 
 - Port the C logic; never paper over a gap with a heuristic the C does not have (repo convention).
