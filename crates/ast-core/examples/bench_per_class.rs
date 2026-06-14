@@ -43,10 +43,9 @@ use std::time::Instant;
 use ast_core::coords::PointSet;
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
-    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, Mapping, MathMap, MatrixMap, NormMap, PcdMap,
-    PermMap, PolyMap, PolyTerm, RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap,
-    SphMap, SplineMap, TimeCvtType, TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap,
-    ZoomMap,
+    ChebyMap, GrismMap, LutInterp, LutMap, Mapping, MathMap, MatrixMap, NormMap, PcdMap, PermMap,
+    PolyMap, PolyTerm, RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap,
+    SplineMap, TimeCvtType, TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
 };
 use ast_core::{AnyObject, to_native_string};
 use ndarray::Array2;
@@ -471,24 +470,15 @@ fn build_specmap() -> AnyObject {
 }
 
 fn build_dssmap() -> AnyObject {
-    // Synthesised plate solution — values are arbitrary but in the right
-    // domain (RA / Dec in radians, plate scale arcsec/mm, pixel sizes).
-    let ppo: [f64; 6] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-    let mut amd_x: [f64; 19] = [0.0; 19];
-    let mut amd_y: [f64; 19] = [0.0; 19];
-    amd_x[0] = 1000.0; // dominant linear x
-    amd_y[1] = 1000.0; // dominant linear y
-    let m = DssMap::from_plate_params(
-        0.0,     // plate RA (rad)
-        0.0,     // plate Dec (rad)
-        67.0,    // arcsec/mm
-        10000.0, // x pixel offset (typical DSS frame centre)
-        10000.0, // y pixel offset
-        0.025,   // x pixel size (mm/px)
-        0.025,   // y pixel size
-        ppo, amd_x, amd_y,
+    // DssMap has no public constructor (mirroring C's protected astDssMap), so
+    // load one by deserialising the committed C-generated native dump — the
+    // only way a DssMap legitimately enters the public API.
+    let path = format!(
+        "{}/tests/fixtures/dssmap/c_dssmap.ast",
+        env!("CARGO_MANIFEST_DIR")
     );
-    AnyObject::DssMap(m)
+    let text = std::fs::read_to_string(&path).expect("c_dssmap.ast fixture");
+    ast_core::from_native_string(&text).expect("parse DssMap dump")
 }
 
 fn build_splinemap() -> AnyObject {

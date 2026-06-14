@@ -20,9 +20,9 @@
 
 use ast_core::frames::BasicFrameBuilder;
 use ast_core::mappings::{
-    ChebyMap, DssMap, GrismMap, LutInterp, LutMap, MathMap, NormMap, PcdMap, PolyMap, PolyTerm,
-    RateMap, ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap, SplineMap, TimeCvtType,
-    TimeMap, TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
+    ChebyMap, GrismMap, LutInterp, LutMap, MathMap, NormMap, PcdMap, PolyMap, PolyTerm, RateMap,
+    ShiftMap, SlaCvtType, SlaMap, SpecCvtType, SpecMap, SphMap, SplineMap, TimeCvtType, TimeMap,
+    TranMap, UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
 };
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -245,20 +245,9 @@ fn round_trip_specmap() {
     assert_double_round_trip(AnyObject::SpecMap(m), "SpecMap wn->fr");
 }
 
-#[test]
-fn round_trip_dssmap() {
-    let ppo = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let mut amd_x = [0.0; 19];
-    let mut amd_y = [0.0; 19];
-    amd_x[0] = 1000.0;
-    amd_x[2] = 0.5;
-    amd_y[1] = 1000.0;
-    amd_y[3] = 0.25;
-    let m = DssMap::from_plate_params(
-        0.1, 0.2, 67.0, 10000.0, 10000.0, 0.025, 0.025, ppo, amd_x, amd_y,
-    );
-    assert_double_round_trip(AnyObject::DssMap(m), "DssMap");
-}
+// DssMap has a crate-private constructor (mirroring C's protected astDssMap),
+// so its native round-trip is covered in-crate by the `dssmap` unit tests
+// (`dssmap_serialization_roundtrip`) rather than here.
 
 #[test]
 fn round_trip_splinemap() {
