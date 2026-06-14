@@ -1,6 +1,6 @@
 //! Ordered collection of FITS header cards with position tracking.
 
-use super::card::{FitsCard, FitsValue};
+use super::card::{FitsCard, FitsValue, check_fits_name};
 use crate::error::AstResult;
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
@@ -35,6 +35,43 @@ impl CardList {
     /// Append a card at the end of the list.
     pub fn push(&mut self, card: FitsCard) {
         self.cards.push(card);
+    }
+
+    /// Append a block of `ASTWARN` comment cards holding `text`, mirroring the
+    /// card sequence C `Warn` (fitschan.c:35055) inserts: a leading blank
+    /// `ASTWARN`, one card per wrapped ~60-character line of the text, then a
+    /// trailing blank `ASTWARN`. Each card is stored as a string-valued
+    /// `ASTWARN` keyword so the header writer renders `ASTWARN = '...'`.
+    ///
+    /// The block is *not* added if an identical block already exists in the
+    /// list (C dedups on the first line, fitschan.c:35022).
+    pub(crate) fn push_astwarn(&mut self, text: &str) {
+        let lines = super::card::wrap_warning_text(text);
+
+        // Dedup: if any existing ASTWARN card already holds the first wrapped
+        // line, assume the whole block is present and skip (mirrors C).
+        if let Some(first) = lines.first() {
+            let exists = self.cards.iter().any(|c| {
+                c.keyword.eq_ignore_ascii_case("ASTWARN")
+                    && matches!(&c.value, FitsValue::String(s) if s == first)
+            });
+            if exists {
+                return;
+            }
+        }
+
+        let astwarn = |s: &str| FitsCard {
+            keyword: "ASTWARN".to_string(),
+            value: FitsValue::String(s.to_string()),
+            comment: None,
+            used: false,
+        };
+
+        self.cards.push(astwarn(" "));
+        for line in &lines {
+            self.cards.push(astwarn(line));
+        }
+        self.cards.push(astwarn(" "));
     }
 
     /// Insert or replace a card.
@@ -342,6 +379,17 @@ impl CardList {
                     // Skip END cards — they're structural markers, not data.
                     if card.keyword == "END" {
                         continue;
+                    }
+                    // Validate the keyword name (original case, columns 1-8)
+                    // and insert ASTWARN cards before the offending card if it
+                    // contains an illegal character. Mirrors C `CheckFitsName`
+                    // /`Warn`, which run inside `astPutFits`/`SplitCard`
+                    // (fitschan.c:32259) so the warning cards precede the bad
+                    // card in the FitsChan. Warnings are enabled by default
+                    // (the Warnings attribute includes "BadKeyName", Clean is
+                    // off).
+                    if let Some(text) = check_fits_name(line) {
+                        list.push_astwarn(&text);
                     }
                     list.push(card);
                 }

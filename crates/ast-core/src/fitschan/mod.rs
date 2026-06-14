@@ -145,6 +145,11 @@ impl FitsChan {
     /// it is replaced. Otherwise the card is inserted at the current position.
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
         let parsed = FitsCard::parse(card)?;
+        // Emit ASTWARN cards for an illegal keyword name, mirroring C
+        // `CheckFitsName`/`Warn` inside `astPutFits` (fitschan.c:32259).
+        if let Some(text) = crate::fitschan::card::check_fits_name(card) {
+            self.cards.push_astwarn(&text);
+        }
         self.cards.put(parsed, overwrite);
         Ok(())
     }
@@ -162,6 +167,12 @@ impl FitsChan {
                 Ok(card) => {
                     if card.keyword == "END" {
                         continue;
+                    }
+                    // Emit ASTWARN cards for an illegal keyword name before the
+                    // offending card, mirroring C `CheckFitsName`/`Warn` in
+                    // `astPutFits` (fitschan.c:32259).
+                    if let Some(text) = card::check_fits_name(line) {
+                        self.cards.push_astwarn(&text);
                     }
                     self.cards.push(card);
                 }

@@ -12,6 +12,58 @@ const FITS_CARD_LEN: usize = 80;
 /// Length of a FITS keyword name field (columns 1-8).
 const FITS_NAME_LEN: usize = 8;
 
+/// A legal FITS keyword-name character: letter, digit, `-`, or `_`.
+/// Mirrors C `isFits` (fitschan.c:1361).
+fn is_fits_name_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'-' || c == b'_'
+}
+
+/// Validate a raw FITS keyword name (columns 1-8 of the card, original case),
+/// returning the warning text C would emit if the name contains an illegal
+/// character. Mirrors C `CheckFitsName` (fitschan.c:5852) for the cases that
+/// produce a `Warn(this, "badkeyname", ...)` rather than an error.
+///
+/// Returns `None` for a legal name, a blank (all-whitespace) name (the
+/// comment-card special case), or an over-length name (C reports that as an
+/// error, not a warning — out of scope here). The returned string preserves
+/// the original case of the name, exactly as C's message does (the name field
+/// is copied verbatim by `SplitCard` before this check, never upper-cased).
+///
+/// An `=` before column 9 is an error in C, not a warning, so it is excluded.
+/// Non-printing characters use the "non-printing character (ascii value N)"
+/// wording; other illegal characters use the "illegal character ('c')" wording.
+pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
+    // The name field is the first 8 columns; trim trailing whitespace as
+    // SplitCard does (it nulls trailing spaces). A name that is entirely
+    // whitespace is the comment-card special case — legal, no warning.
+    let name = raw_name.get(..FITS_NAME_LEN).unwrap_or(raw_name);
+    let trimmed = name.trim_end();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    for &c in trimmed.as_bytes() {
+        if !is_fits_name_char(c) {
+            // An `=` is reported as an error by C, not a warning.
+            if c == b'=' {
+                return None;
+            }
+            if c < b' ' {
+                return Some(format!(
+                    "The FITS keyword name ('{trimmed}') contains an illegal \
+                     non-printing character (ascii value {c})."
+                ));
+            }
+            return Some(format!(
+                "The FITS keyword name ('{trimmed}') contains an illegal \
+                 character ('{}').",
+                c as char
+            ));
+        }
+    }
+    None
+}
+
 /// Column (0-based) where right-justified numeric values and logical T/F land.
 /// In FITS standard terms this is column 30 (1-based), i.e. index 29.
 const FITS_RL_COL: usize = 29;
@@ -41,6 +93,33 @@ pub enum FitsValue {
     Undef,
     /// CONTINUE long string value.
     Continue(String),
+}
+
+/// Break warning text into ~60-character lines on word boundaries, mirroring
+/// the wrapping in C `Warn` (fitschan.c:35000-35094). Each returned line is the
+/// value of one `ASTWARN` card. Caller frames these with leading and trailing
+/// blank `ASTWARN` cards.
+pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let b = bytes.len();
+    let mut lines = Vec::new();
+    let mut a = 0usize;
+    while a < b {
+        // Nominal last character index for this line (C: c = a + 60).
+        let mut c = a + 60;
+        if c >= b {
+            c = b - 1;
+        } else {
+            // Move back to the first space so words are not split (C loop).
+            while c > a && !bytes[c].is_ascii_whitespace() {
+                c -= 1;
+            }
+        }
+        let nc = c - a + 1;
+        lines.push(text[a..a + nc].to_string());
+        a = c + 1;
+    }
+    lines
 }
 
 /// A single FITS header card (keyword + value + comment).
@@ -1026,5 +1105,41 @@ mod tests {
     fn used_field_defaults_false() {
         let card = FitsCard::parse("SIMPLE  =                    T / Standard").unwrap();
         assert!(!card.used);
+    }
+
+    #[test]
+    fn check_fits_name_legal() {
+        assert_eq!(check_fits_name("CRVAL1  "), None);
+        assert_eq!(check_fits_name("MJD-OBS "), None);
+        assert_eq!(check_fits_name("WCSAXES "), None);
+        assert_eq!(check_fits_name("OBS_LON "), None);
+        // All-blank name is the comment-card special case — legal.
+        assert_eq!(check_fits_name("        "), None);
+        // An '=' before column 9 is a C error, not a warning.
+        assert_eq!(check_fits_name("A=B     "), None);
+    }
+
+    #[test]
+    fn check_fits_name_illegal_char_preserves_case() {
+        // Mirrors the jan.fits-class "sys." card. The name field is the
+        // first 8 columns; the warning text keeps the original case.
+        let text = check_fits_name("sys.").expect("'.' is illegal");
+        assert_eq!(
+            text,
+            "The FITS keyword name ('sys.') contains an illegal character ('.')."
+        );
+    }
+
+    #[test]
+    fn wrap_warning_text_breaks_on_word_boundary() {
+        let text = "The FITS keyword name ('sys.') contains an illegal character ('.').";
+        let lines = wrap_warning_text(text);
+        assert_eq!(
+            lines,
+            vec![
+                "The FITS keyword name ('sys.') contains an illegal character ".to_string(),
+                "('.').".to_string(),
+            ]
+        );
     }
 }
