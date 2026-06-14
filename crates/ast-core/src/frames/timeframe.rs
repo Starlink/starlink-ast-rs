@@ -428,6 +428,22 @@ impl TimeFrame {
         self.format_str = None;
     }
 
+    /// The axis label. Mirrors C `GetLabel` (timeframe.c): a date Format
+    /// overrides the system label with `"Date/Time"` (when a time field is
+    /// present) or `"Date"` (date only); otherwise the system label is used.
+    fn axis_label(&self) -> String {
+        let (is_date, ndp, _sep) = date_format(self.format_str());
+        if is_date {
+            if ndp >= 0 {
+                "Date/Time".to_string()
+            } else {
+                "Date".to_string()
+            }
+        } else {
+            self.system.label().to_string()
+        }
+    }
+
     /// Return the Local Time offset from UTC (hours).
     pub fn lt_offset(&self) -> f64 {
         self.lt_offset.unwrap_or(0.0)
@@ -438,11 +454,85 @@ impl TimeFrame {
         self.lt_offset = Some(hours);
     }
 
-    /// Return the epoch as MJD.
+    /// Return the epoch as an absolute TDB MJD.
     ///
-    /// Defaults to J2000.0 (MJD 51544.5) if not set.
+    /// Mirrors C `timeframe.c::GetEpoch` (2458):
+    /// - if the Epoch attribute is set, return it;
+    /// - otherwise, if TimeOrigin is set, return the TimeOrigin converted to
+    ///   an absolute TDB MJD (earth-rotation timescales are routed through
+    ///   UT1 assuming DUT1 == 0, then UTC → TDB, since the default Epoch is
+    ///   not critical and DUT1 may be unknown);
+    /// - otherwise, the default J2000.0 (MJD 51544.5).
     pub fn epoch_mjd(&self) -> f64 {
-        self.epoch.unwrap_or(51544.5)
+        if let Some(e) = self.epoch {
+            return e;
+        }
+        if self.time_origin.is_some() {
+            if let Ok(mjd) = self.epoch_from_time_origin() {
+                return mjd;
+            }
+        }
+        51544.5
+    }
+
+    /// Convert the set TimeOrigin to an absolute TDB MJD. Mirrors the
+    /// TimeOrigin branch of C `GetEpoch` (timeframe.c:2521-2568).
+    ///
+    /// The conversion maps are built with *zero* offsets (the TimeOrigin is
+    /// the absolute value being transformed, not an axis offset), matching
+    /// the `MakeMap(..., 0.0, 0.0, ...)` calls in C.
+    fn epoch_from_time_origin(&self) -> AstResult<f64> {
+        let origin = self.time_origin();
+        let mut sys = self.system;
+        let mut ts = self.timescale;
+        let mut u = sys.default_units();
+        let mut oldval = origin;
+
+        // Epoch is a TDB value. Earth-rotation timescales (UT1/GMST/LAST/
+        // LMST) cannot be converted to TDB without DUT1, so C first maps the
+        // stored value to UT1 and then treats UT1 == UTC (i.e. DUT1 == 0).
+        // We force DUT1 to zero on a clone for that hop.
+        let zero_dut1 = if ts.is_earth_rotation() {
+            let mut z = self.clone();
+            z.dut1 = Some(0.0);
+            Some(z)
+        } else {
+            None
+        };
+
+        if let Some(ref z) = zero_dut1 {
+            let to_ut1 = z.make_map(
+                sys,
+                TimeSystem::Mjd,
+                ts,
+                TimeScale::Ut1,
+                0.0,
+                0.0,
+                u,
+                "d",
+                None,
+            )?;
+            oldval = transform_scalar(to_ut1.as_ref(), origin, true)?;
+            // Treat the UT1 result as UTC (DUT1 == 0) for the TDB step.
+            ts = TimeScale::Utc;
+            sys = TimeSystem::Mjd;
+            u = "d";
+        }
+
+        // Convert to TDB.
+        let obs = zero_dut1.as_ref().unwrap_or(self);
+        let map = obs.make_map(
+            sys,
+            TimeSystem::Mjd,
+            ts,
+            TimeScale::Tdb,
+            0.0,
+            0.0,
+            u,
+            "d",
+            None,
+        )?;
+        transform_scalar(map.as_ref(), oldval, true)
     }
 
     /// Return the epoch as a decimal year (Besselian if MJD < J1984,
@@ -997,7 +1087,7 @@ impl Frame for TimeFrame {
     }
 
     fn effective_label(&self, _axis: usize) -> String {
-        self.system.label().to_string()
+        self.axis_label()
     }
 
     fn effective_unit(&self, _axis: usize) -> String {
@@ -1554,8 +1644,11 @@ impl Serializable for TimeFrame {
 
         // Epoch: stored internally as MJD, written as Besselian /
         // Julian decimal year per the IAU 1984 rule (mirrors
-        // `frame.c::Dump` lines 14325-14336).
-        let epoch_mjd = self.epoch.unwrap_or(51544.5);
+        // `frame.c::Dump` lines 14325-14336). When unset, the displayed
+        // default is the GetEpoch value, which for a TimeFrame with a set
+        // TimeOrigin is the TimeOrigin converted to TDB MJD (timeframe.c:2458)
+        // rather than the J2000.0 fallback.
+        let epoch_mjd = self.epoch_mjd();
         let bessyr = epoch_mjd < crate::pal::epj2d(1984.0);
         let epoch_year = if bessyr {
             crate::pal::epb(epoch_mjd)
@@ -1577,10 +1670,11 @@ impl Serializable for TimeFrame {
             );
         }
 
-        // Axis label (always unset with system-appropriate default).
+        // Axis label (always unset). The displayed default is the effective
+        // label, which a date Format overrides to "Date/Time"/"Date".
         node.push_unset(
             "Lbl1",
-            NodeValue::String(self.system.label().to_string()),
+            NodeValue::String(self.axis_label()),
             Some("Label for axis 1".to_string()),
         );
 
@@ -1602,8 +1696,10 @@ impl Serializable for TimeFrame {
             );
         }
 
-        // Axis units (always unset with system-appropriate default).
-        let units = self.system.default_units();
+        // Axis units. The displayed value is the effective unit (the set
+        // Unit string or the system default); the Uni1 line itself is always
+        // written as "un-set" because the Unit is repackaged onto the Axis.
+        let units = self.unit_or_default();
         let unit_desc = Self::unit_description(units);
         let uni_comment = format!("Units for axis 1 ({unit_desc})");
         node.push_unset(
@@ -1612,9 +1708,23 @@ impl Serializable for TimeFrame {
             Some(uni_comment),
         );
 
-        // Per-axis Axis child object (empty Axis).
+        // Per-axis Axis child object. The Unit and Format strings, when
+        // explicitly set, are stored on the Axis (mirrors the C Frame/Axis
+        // dump: an active `Unit` and `Format` inside the `Begin Axis` block).
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
+        if self.test_unit() {
+            let u = self.unit_or_default();
+            let desc = Self::unit_description(u);
+            axis_node.push_string("Unit", u, Some(format!("Axis units ({desc})")));
+        }
+        if self.test_format_str() {
+            axis_node.push_string(
+                "Format",
+                self.format_str(),
+                Some("Format specifier".to_string()),
+            );
+        }
         node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // Observer attributes (active only if explicitly set).
@@ -1801,6 +1911,18 @@ impl Serializable for TimeFrame {
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
             tf.ident = Some(ident);
+        }
+
+        // Per-axis Unit and Format strings live in the Ax1 Axis child node.
+        if let Some(axis_node) = node.get_object("Ax1") {
+            let unit = axis_node.get_string("Unit", "");
+            if !unit.is_empty() {
+                tf.set_unit(&unit);
+            }
+            let fmt = axis_node.get_string("Format", "");
+            if !fmt.is_empty() {
+                tf.set_format_str(&fmt);
+            }
         }
 
         Ok(tf)

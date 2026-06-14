@@ -382,6 +382,38 @@ fn test_serialisation_with_align_timescale() {
     assert!((tf2.lt_offset() - 5.5).abs() < 1.0e-15);
 }
 
+#[test]
+fn test_serialisation_with_unit_and_format() {
+    // Unit and Format are stored in the Ax1 Axis node and must round-trip.
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Tai);
+    tf.set_unit("s");
+    tf.set_format_str("iso.2");
+
+    let obj = AnyObject::TimeFrame(tf);
+    let text = to_native_string(&obj).unwrap();
+    // The Axis node carries the active Unit and Format lines.
+    assert!(text.contains("Unit = \"s\""), "missing Unit: {text}");
+    assert!(
+        text.contains("Format = \"iso.2\""),
+        "missing Format: {text}"
+    );
+    // A date Format relabels the axis "Date/Time".
+    assert!(
+        text.contains("Lbl1 = \"Date/Time\""),
+        "missing label: {text}"
+    );
+
+    let parsed = from_native_string(&text).unwrap();
+    let tf2 = match parsed {
+        AnyObject::TimeFrame(f) => f,
+        _ => panic!("Expected TimeFrame"),
+    };
+    assert_eq!(tf2.unit(), Some("s"));
+    assert!(tf2.test_format_str());
+    assert_eq!(tf2.format_str(), "iso.2");
+}
+
 // ---------------------------------------------------------------------------
 // Frame trait: equal
 // ---------------------------------------------------------------------------
@@ -637,6 +669,54 @@ fn test_iso_format_variants() {
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01");
     tf.set_format_str("iso.0T");
     assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01T00:00:00");
+}
+
+// ---------------------------------------------------------------------------
+// GetEpoch from TimeOrigin (timeframe.c:2458)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_epoch_default_is_j2000() {
+    // No Epoch and no TimeOrigin: default J2000.0 (MJD 51544.5, year 2000).
+    let tf = TimeFrame::new(TimeSystem::Mjd);
+    assert!((tf.epoch_mjd() - 51544.5).abs() < 1.0e-9);
+    assert!((tf.epoch_year() - 2000.0).abs() < 1.0e-9);
+}
+
+#[test]
+fn test_epoch_from_time_origin_jepoch() {
+    // Epoch unset, TimeOrigin set: Epoch is the TimeOrigin as an absolute TDB
+    // MJD. Oracle: astGetD(Epoch) == 2005.0000010198 for jepoch/origin=2005.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+    assert!(
+        (tf.epoch_year() - 2005.0000010198).abs() < 1.0e-7,
+        "got {}",
+        tf.epoch_year()
+    );
+}
+
+#[test]
+fn test_epoch_from_time_origin_ut1() {
+    // Earth-rotation timescale exercises the DUT1==0 routing branch.
+    // Oracle: astGetD(Epoch) == 2009.4606454922 for mjd/ut1/origin=55000.
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Ut1);
+    tf.set_time_origin(55000.0);
+    assert!(
+        (tf.epoch_year() - 2009.4606454922).abs() < 1.0e-6,
+        "got {}",
+        tf.epoch_year()
+    );
+}
+
+#[test]
+fn test_epoch_explicit_overrides_time_origin() {
+    // An explicitly-set Epoch takes priority over TimeOrigin.
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_time_origin(55000.0);
+    tf.set_epoch_mjd(50000.0);
+    assert!((tf.epoch_mjd() - 50000.0).abs() < 1.0e-9);
 }
 
 // ---------------------------------------------------------------------------
