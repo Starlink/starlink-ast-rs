@@ -35,7 +35,7 @@ pub struct TranMap {
     map1: DynMapping,
     map2: DynMapping,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
     /// Whether the forward transform is defined.
     tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -93,7 +93,7 @@ impl TranMap {
             map1,
             map2,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             tran_forward,
             tran_inverse,
             inv_a,
@@ -165,7 +165,7 @@ impl Clone for TranMap {
             map1: self.map1.clone(),
             map2: self.map2.clone(),
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -197,6 +197,9 @@ impl Mapping for TranMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -253,7 +256,7 @@ impl Mapping for TranMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -428,12 +431,12 @@ impl Mapping for TranMap {
         }
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -594,16 +597,17 @@ impl Serializable for TranMap {
             map1: map_a,
             map2: map_b,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             tran_forward,
             tran_inverse,
             inv_a,
             inv_b,
         };
-        tm.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             tm.invert();
         }
+
+        tm.set_has_been_simplified(base.has_been_simplified);
         Ok(tm)
     }
 }

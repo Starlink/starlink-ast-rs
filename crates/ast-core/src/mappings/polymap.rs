@@ -48,7 +48,7 @@ pub struct PolyMap {
     niter_inverse: usize,
     tol_inverse: f64,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
     /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
     /// Only populated when `iter_inverse` is true and `nin == nout`.
     jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
@@ -199,7 +199,7 @@ impl PolyMap {
             niter_inverse: 4,
             tol_inverse: 1e-6,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             jacobian_terms: None,
             forward_by_output,
             forward_max_pows,
@@ -390,7 +390,7 @@ impl PolyMap {
         // which C clears so the new fit takes priority.
         pm.niter_inverse = self.niter_inverse;
         pm.tol_inverse = self.tol_inverse;
-        pm.do_not_simplify = self.do_not_simplify;
+        pm.has_been_simplified = self.has_been_simplified;
         if self.inverted {
             pm.invert();
         }
@@ -1129,6 +1129,9 @@ impl Mapping for PolyMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -1338,7 +1341,7 @@ impl Mapping for PolyMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -1539,12 +1542,12 @@ impl Mapping for PolyMap {
         }
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn has_forward(&self) -> bool {
@@ -1916,7 +1919,7 @@ impl Serializable for PolyMap {
             niter_inverse: niter_inv,
             tol_inverse: tol_inv,
             inverted: false,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
             jacobian_terms,
             forward_by_output,
             forward_max_pows,

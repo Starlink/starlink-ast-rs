@@ -18,7 +18,7 @@ pub struct ZoomMap {
     ncoord: usize,
     factor: f64,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
 }
 
 impl ZoomMap {
@@ -36,7 +36,7 @@ impl ZoomMap {
             ncoord,
             factor,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         })
     }
 
@@ -72,6 +72,9 @@ impl Mapping for ZoomMap {
     }
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -118,7 +121,7 @@ impl Mapping for ZoomMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
         let effective_factor = if self.inverted {
@@ -133,7 +136,7 @@ impl Mapping for ZoomMap {
                 ncoord: self.ncoord,
                 factor: effective_factor,
                 inverted: false,
-                do_not_simplify: false,
+                has_been_simplified: false,
             }))
         }
     }
@@ -256,12 +259,12 @@ impl Mapping for ZoomMap {
         compose_linear(&s1, &c1, &s2, &c2)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -289,10 +292,11 @@ impl Serializable for ZoomMap {
         let base = read_mapping_base(node);
         let factor = node.get_double("Zoom", 1.0);
         let mut m = ZoomMap::new(base.nin, factor)?;
-        m.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             m.invert();
         }
+
+        m.set_has_been_simplified(base.has_been_simplified);
         Ok(m)
     }
 }

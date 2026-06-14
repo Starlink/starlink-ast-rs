@@ -645,3 +645,42 @@ fn wcsmap_absorbs_adjacent_permmap() {
     assert_close(out.point(0)[0], 1.2, 1e-10, "swap axis 0");
     assert_close(out.point(0)[1], 0.1, 1e-10, "swap axis 1");
 }
+
+// ===========================================================================
+// Unknown (AST__WCSBAD) projection — behaves as an identity / UnitMap
+// ===========================================================================
+
+/// A WcsMap with an `Unknown` projection (C `AST__WCSBAD`) has no real
+/// projection: C's Transform skips the projection entirely, leaving the
+/// lon/lat axes as a straight copy (wcsmap.c:4247), and its MapMerge replaces
+/// it with a UnitMap (wcsmap.c:3087). `NatLon`/`NatLat` are 0. The Rust port
+/// previously rebuilt a CAR projection as a placeholder; this confirms the
+/// observable behaviour is the C identity, not CAR's projection.
+#[test]
+fn unknown_projection_is_identity() {
+    let wm = WcsMap::new(2, WcsProjection::Unknown, 1, 2).unwrap();
+
+    // Transform is a pure pass-through on every axis (CAR would warp these).
+    let pts = PointSet::from_rows([[0.3, 0.7], [-1.2, 0.45]]);
+    let fwd = wm.transform(&pts, true).unwrap();
+    assert_close(fwd.point(0)[0], 0.3, 1e-12, "unknown fwd lon");
+    assert_close(fwd.point(0)[1], 0.7, 1e-12, "unknown fwd lat");
+    assert_close(fwd.point(1)[0], -1.2, 1e-12, "unknown fwd lon 2");
+    assert_close(fwd.point(1)[1], 0.45, 1e-12, "unknown fwd lat 2");
+
+    // Inverse is identity too.
+    let inv = wm.transform(&pts, false).unwrap();
+    assert_close(inv.point(0)[0], 0.3, 1e-12, "unknown inv lon");
+    assert_close(inv.point(0)[1], 0.7, 1e-12, "unknown inv lat");
+
+    // Reference point is 0/0 (C GetNatLon = 0, GetNatLat = WCSBAD theta0 = 0).
+    assert_eq!(wm.nat_lon(), 0.0);
+    assert_eq!(wm.nat_lat(), 0.0);
+
+    // Simplifies to a UnitMap (wcsmap.c:3087).
+    let simp = wm.simplified().unwrap();
+    assert!(
+        simp.as_any().is::<ast_core::mappings::UnitMap>(),
+        "Unknown WcsMap should simplify to a UnitMap"
+    );
+}

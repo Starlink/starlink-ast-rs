@@ -43,8 +43,8 @@ pub struct LutMap {
     monotonic: i8,
     /// Whether the mapping is inverted.
     inverted: bool,
-    /// Whether this mapping is protected from simplification.
-    do_not_simplify: bool,
+    /// Whether this mapping has already been simplified (C `IsSimple`).
+    has_been_simplified: bool,
     /// Whether the inverse transform is defined.
     tran_inverse: bool,
 }
@@ -77,7 +77,7 @@ impl LutMap {
             interp: LutInterp::Linear,
             monotonic,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             tran_inverse: monotonic != 0,
         })
     }
@@ -491,6 +491,9 @@ impl Mapping for LutMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -541,7 +544,7 @@ impl Mapping for LutMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -655,12 +658,12 @@ impl Mapping for LutMap {
         (true, self.tran_inverse)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -761,7 +764,7 @@ impl Serializable for LutMap {
             interp,
             monotonic,
             inverted: false,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
             tran_inverse: base.has_inverse,
         };
         if base.inverted {

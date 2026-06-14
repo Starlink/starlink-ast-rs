@@ -277,8 +277,8 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
         let mut i = 0;
 
         while i + 1 < list.len() {
-            // Skip if either mapping is protected from simplification.
-            if list[i].0.do_not_simplify() || list[i + 1].0.do_not_simplify() {
+            // Skip if either mapping has already been simplified (C IsSimple).
+            if list[i].0.has_been_simplified() || list[i + 1].0.has_been_simplified() {
                 i += 1;
                 continue;
             }

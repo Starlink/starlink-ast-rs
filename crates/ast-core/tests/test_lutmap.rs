@@ -660,11 +660,11 @@ fn lutmap_nonlinear_stays_lutmap() {
 }
 
 #[test]
-fn lutmap_do_not_simplify_respected() {
-    // Linear LUT with do_not_simplify flag should stay as LutMap
+fn lutmap_has_been_simplified_respected() {
+    // Linear LUT with has_been_simplified flag should stay as LutMap
     let lut = vec![1.0, 3.0, 5.0, 7.0, 9.0];
     let mut lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
-    lm.set_do_not_simplify(true);
+    lm.set_has_been_simplified(true);
 
     let s = lm.simplified().unwrap();
     assert!(s.as_any().is::<LutMap>());

@@ -50,7 +50,7 @@ pub struct MathMap {
     /// Inverse-forward pairs simplify?
     simp_if: Option<bool>,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
     /// Whether the forward transform is defined.
     has_forward: bool,
     /// Whether the inverse transform is defined.
@@ -88,7 +88,7 @@ impl Clone for MathMap {
             simp_fi: self.simp_fi,
             simp_if: self.simp_if,
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
             has_forward: self.has_forward,
             has_inverse: self.has_inverse,
         }
@@ -163,7 +163,7 @@ impl MathMap {
             simp_fi: None,
             simp_if: None,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             has_forward,
             has_inverse,
         })
@@ -497,12 +497,12 @@ impl Mapping for MathMap {
         Some(Box::new(UnitMap::new(nin1)))
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -682,7 +682,7 @@ impl Serializable for MathMap {
             simp_fi,
             simp_if,
             inverted: base.inverted,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
             has_forward,
             has_inverse,
         })

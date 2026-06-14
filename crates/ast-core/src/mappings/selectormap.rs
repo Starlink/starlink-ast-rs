@@ -29,7 +29,7 @@ pub struct SelectorMap {
     regions: Vec<DynRegion>,
     badval: f64,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
 }
 
 /// Builder for [`SelectorMap`].
@@ -81,7 +81,7 @@ impl SelectorMapBuilder {
             regions: self.regions,
             badval: self.badval,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         }
     }
 }
@@ -120,7 +120,7 @@ impl Clone for SelectorMap {
             regions: self.regions.clone(),
             badval: self.badval,
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
         }
     }
 }
@@ -148,6 +148,9 @@ impl Mapping for SelectorMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn has_forward(&self) -> bool {
@@ -167,12 +170,12 @@ impl Mapping for SelectorMap {
         (true, false)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -242,7 +245,7 @@ impl Mapping for SelectorMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -289,7 +292,7 @@ impl Mapping for SelectorMap {
                 regions: simplified_regions,
                 badval: self.badval,
                 inverted: self.inverted,
-                do_not_simplify: false,
+                has_been_simplified: false,
             }))
         } else {
             Ok(Box::new(self.clone()))
@@ -419,10 +422,11 @@ impl crate::serial::Serializable for SelectorMap {
             .badval(badval)
             .build();
 
-        sm.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             sm.invert();
         }
+
+        sm.set_has_been_simplified(base.has_been_simplified);
         Ok(sm)
     }
 }

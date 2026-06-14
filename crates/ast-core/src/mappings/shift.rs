@@ -17,7 +17,7 @@ use super::{DynMapping, Mapping};
 pub struct ShiftMap {
     shift: Vec<f64>,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
 }
 
 impl ShiftMap {
@@ -28,7 +28,7 @@ impl ShiftMap {
         Self {
             shift: shift.into(),
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         }
     }
 
@@ -64,6 +64,9 @@ impl Mapping for ShiftMap {
     }
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -109,7 +112,7 @@ impl Mapping for ShiftMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
         if self.shift.iter().all(|&s| s == 0.0) {
@@ -119,7 +122,7 @@ impl Mapping for ShiftMap {
             Ok(Box::new(ShiftMap {
                 shift: normalized,
                 inverted: false,
-                do_not_simplify: false,
+                has_been_simplified: false,
             }))
         } else {
             Ok(Box::new(self.clone()))
@@ -223,12 +226,12 @@ impl Mapping for ShiftMap {
         compose_linear(&s1, &c1, &s2, &c2)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -266,7 +269,7 @@ impl Serializable for ShiftMap {
         Ok(ShiftMap {
             shift: shifts,
             inverted: base.inverted,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
         })
     }
 }

@@ -61,7 +61,7 @@ pub struct CmpMap {
     second: DynMapping,
     kind: Composition,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
     /// Whether the forward transform is defined.
     pub(crate) tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -101,7 +101,7 @@ impl CmpMap {
             second,
             kind,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             tran_forward,
             tran_inverse,
             inv_a,
@@ -623,7 +623,7 @@ impl Clone for CmpMap {
             second: self.second.clone(),
             kind: self.kind,
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -673,6 +673,8 @@ impl Mapping for CmpMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -708,7 +710,7 @@ impl Mapping for CmpMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
         crate::mappings::simplify::simplify_mapping(self)
@@ -774,12 +776,12 @@ impl Mapping for CmpMap {
         self.map_split2(in_axes)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn has_forward(&self) -> bool {
@@ -883,7 +885,7 @@ impl Serializable for CmpMap {
             second: map_b,
             kind,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             tran_forward: true,
             tran_inverse: true,
             inv_a,
@@ -891,10 +893,11 @@ impl Serializable for CmpMap {
         };
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;
-        cmp.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             cmp.invert();
         }
+
+        cmp.set_has_been_simplified(base.has_been_simplified);
         Ok(cmp)
     }
 }

@@ -54,7 +54,7 @@ pub struct SwitchMap {
     isinv: bool,
     route_inv: Vec<bool>,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
     intrinsic_nin: usize,
     intrinsic_nout: usize,
 }
@@ -170,7 +170,7 @@ impl SwitchMap {
             isinv,
             route_inv,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -202,7 +202,7 @@ impl SwitchMap {
             isinv,
             route_inv,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -344,7 +344,7 @@ impl Clone for SwitchMap {
             isinv: self.isinv,
             route_inv: self.route_inv.clone(),
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
             intrinsic_nin: self.intrinsic_nin,
             intrinsic_nout: self.intrinsic_nout,
         }
@@ -374,6 +374,9 @@ impl Mapping for SwitchMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn has_forward(&self) -> bool {
@@ -390,12 +393,12 @@ impl Mapping for SwitchMap {
         (self.fsmap.is_some(), self.ismap.is_some())
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -556,7 +559,7 @@ impl Mapping for SwitchMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -777,10 +780,11 @@ impl crate::serial::Serializable for SwitchMap {
         }
 
         let mut sw = SwitchMap::from_parts(fsmap, ismap, route_maps, fsinv, isinv, route_inv)?;
-        sw.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             sw.invert();
         }
+
+        sw.set_has_been_simplified(base.has_been_simplified);
         Ok(sw)
     }
 }

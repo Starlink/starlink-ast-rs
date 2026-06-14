@@ -332,19 +332,23 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         (true, true)
     }
 
-    /// Whether this mapping should be protected from simplification.
+    /// Whether this mapping has already been simplified.
     ///
-    /// When true, `simplified()` returns self unchanged and `try_merge()`
-    /// returns `None` (enforced by the merge loop, not per-mapping).
-    fn do_not_simplify(&self) -> bool {
+    /// Mirrors C's `IsSimple` attribute (mapping.c): `Mapping::simplify`
+    /// sets it on its result so a later `simplify` of the same object is a
+    /// fast no-op (`simplified()` returns self unchanged and the merge loop
+    /// skips it). It is therefore an optimisation flag, not a permanent
+    /// "never simplify" lock — `invert()` clears it (C `astSetInvert` clears
+    /// `IsSimple`, mapping.c:23229), since the inverse may simplify further.
+    /// Serialised as the `IsSimp` token.
+    fn has_been_simplified(&self) -> bool {
         false
     }
 
-    /// Set the do-not-simplify protection flag.
+    /// Set (or clear) the "already simplified" flag (C `IsSimple`).
     ///
-    /// When set to true, the simplification engine will not merge this
-    /// mapping with adjacent mappings and will not simplify it individually.
-    fn set_do_not_simplify(&mut self, _flag: bool) {}
+    /// `Mapping::simplify` sets it `true` on its result; `invert()` clears it.
+    fn set_has_been_simplified(&mut self, _flag: bool) {}
 
     #[doc(hidden)]
     fn clone_box(&self) -> DynMapping;
@@ -355,7 +359,7 @@ impl dyn Mapping {
     ///
     /// This is the public entry point equivalent to C's `astSimplify`.
     /// It calls the type-specific `simplified()` method and then sets the
-    /// `do_not_simplify` flag on the result, which causes `IsSimp = 1`
+    /// `has_been_simplified` flag on the result, which causes `IsSimp = 1`
     /// to appear in the serialized output.
     ///
     /// Use this method for user-facing simplification. The trait method
@@ -394,7 +398,7 @@ impl dyn Mapping {
         if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
             cm.canonicalize_inverted_cmpmaps();
         }
-        result.set_do_not_simplify(true);
+        result.set_has_been_simplified(true);
         Ok(result)
     }
 

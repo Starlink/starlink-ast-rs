@@ -404,11 +404,11 @@ fn cmpmap_re_expands_merged_cmpmap() {
 }
 
 #[test]
-fn do_not_simplify_prevents_merge() {
+fn has_been_simplified_prevents_merge() {
     use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
     let mut z1 = ZoomMap::new(2, 3.0).unwrap();
-    z1.set_do_not_simplify(true);
+    z1.set_has_been_simplified(true);
     let z2 = ZoomMap::new(2, 2.0).unwrap();
 
     // try_merge should still work (it's the caller that guards), but the
@@ -420,31 +420,31 @@ fn do_not_simplify_prevents_merge() {
 }
 
 #[test]
-fn do_not_simplify_default_is_false() {
+fn has_been_simplified_default_is_false() {
     use ast_core::mappings::{Mapping, ZoomMap};
     let z = ZoomMap::new(2, 3.0).unwrap();
-    assert!(!z.do_not_simplify());
+    assert!(!z.has_been_simplified());
 }
 
 #[test]
-fn do_not_simplify_preserves_identity_zoom() {
+fn has_been_simplified_preserves_identity_zoom() {
     use ast_core::mappings::{Mapping, ZoomMap};
 
     // A ZoomMap with factor 1.0 normally simplifies to UnitMap.
     let mut z = ZoomMap::new(2, 1.0).unwrap();
-    z.set_do_not_simplify(true);
+    z.set_has_been_simplified(true);
     let s = z.simplified().unwrap();
     // With the flag set, it should stay as ZoomMap.
     assert!(s.as_any().is::<ZoomMap>());
 }
 
 #[test]
-fn do_not_simplify_second_mapping_prevents_merge() {
+fn has_been_simplified_second_mapping_prevents_merge() {
     use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
     let z1 = ZoomMap::new(2, 3.0).unwrap();
     let mut z2 = ZoomMap::new(2, 2.0).unwrap();
-    z2.set_do_not_simplify(true);
+    z2.set_has_been_simplified(true);
 
     // Flag on the second mapping should also prevent merging.
     let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
@@ -1451,4 +1451,28 @@ fn winmap_swaps_past_permmap_inverse_constants() {
             );
         }
     }
+}
+
+/// C's `IsSimple` flag (Rust `has_been_simplified`) is set by `simplify()`
+/// and cleared by `invert()` — mirroring C `astSetInvert`, which clears
+/// `IsSimple` because the inverse may simplify further (mapping.c:23229).
+/// Oracle-verified against the reference library (1 after simplify, 0 after
+/// invert).
+#[test]
+fn invert_clears_has_been_simplified() {
+    use ast_core::mappings::{CmpMap, Composition, DynMapping, ZoomMap};
+
+    let z1 = ZoomMap::new(1, 2.0).unwrap();
+    let z2 = ZoomMap::new(1, 3.0).unwrap();
+    let cm: DynMapping =
+        Box::new(CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap());
+
+    let mut s = cm.as_ref().simplify().unwrap();
+    assert!(s.has_been_simplified(), "simplify() should set the flag");
+
+    s.invert();
+    assert!(
+        !s.has_been_simplified(),
+        "invert() should clear the flag (C clears IsSimple)"
+    );
 }

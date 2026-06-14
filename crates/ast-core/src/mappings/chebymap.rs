@@ -49,8 +49,8 @@ pub struct ChebyMap {
     offset_i: Option<Vec<f64>>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
-    /// Whether this mapping is protected from simplification.
-    do_not_simplify: bool,
+    /// Whether this mapping has already been simplified (C `IsSimple`).
+    has_been_simplified: bool,
 }
 
 impl ChebyMap {
@@ -182,7 +182,7 @@ impl ChebyMap {
             scale_i: scale_i_v,
             offset_i: offset_i_v,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         })
     }
 
@@ -354,6 +354,8 @@ impl Mapping for ChebyMap {
         self.inverted = !self.inverted;
         // Keep the inner PolyMap in sync.
         self.poly.invert();
+        // Inversion invalidates the "already simplified" flag (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -451,7 +453,7 @@ impl Mapping for ChebyMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -574,12 +576,12 @@ impl Mapping for ChebyMap {
         inv_lbnd && inv_ubnd
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     // The inner PolyMap's Invert state is kept in sync by
@@ -1010,7 +1012,7 @@ impl Serializable for ChebyMap {
             scale_i,
             offset_i,
             inverted: false,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
         };
         if base.inverted {
             m.invert();

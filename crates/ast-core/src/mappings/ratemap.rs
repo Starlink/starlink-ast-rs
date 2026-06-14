@@ -52,7 +52,7 @@ pub struct RateMap {
     /// Whether this RateMap is inverted.
     inverted: bool,
     /// Whether simplification is inhibited.
-    do_not_simplify: bool,
+    has_been_simplified: bool,
     /// Snapshot of the encapsulated mapping's Invert flag at construction
     /// time. Used for serialization compatibility with the C library.
     invert_snapshot: bool,
@@ -98,7 +98,7 @@ impl RateMap {
             ax1,
             ax2,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             invert_snapshot,
         })
     }
@@ -152,7 +152,7 @@ impl Clone for RateMap {
             ax1: self.ax1,
             ax2: self.ax2,
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
             invert_snapshot: self.invert_snapshot,
         }
     }
@@ -181,6 +181,9 @@ impl Mapping for RateMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -259,7 +262,7 @@ impl Mapping for RateMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -422,12 +425,12 @@ impl Mapping for RateMap {
         (true, false)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -562,14 +565,15 @@ impl Serializable for RateMap {
             ax1,
             ax2,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             invert_snapshot: inv_snapshot,
         };
 
-        rm.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             rm.invert();
         }
+
+        rm.set_has_been_simplified(base.has_been_simplified);
         Ok(rm)
     }
 }

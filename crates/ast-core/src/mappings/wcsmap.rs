@@ -69,8 +69,8 @@ pub struct WcsMap {
     prj: RefCell<PrjParams>,
     /// Whether the mapping is inverted.
     inverted: bool,
-    /// Whether this mapping is protected from simplification.
-    do_not_simplify: bool,
+    /// Whether this mapping has already been simplified (C `IsSimple`).
+    has_been_simplified: bool,
 }
 
 impl WcsMap {
@@ -119,7 +119,11 @@ impl WcsMap {
                 // Unknown projection has no wcslib implementation.
                 // It acts as an identity mapping and simplifies to UnitMap.
                 let params = vec![Vec::new(), Vec::new()];
-                // Use a dummy PrjParams (CAR is simplest) — it will never be called.
+                // The `prj` field must hold *some* PrjParams, but it is never
+                // consulted for an Unknown WcsMap: `transform_into`/
+                // `transform_into_nan` short-circuit to an identity copy,
+                // `simplified` returns a UnitMap, and `nat_lon`/`nat_lat`
+                // return 0 directly. CAR is the cheapest inert placeholder.
                 let prj = PrjParams::new(WcsProjection::Car)?;
                 return Ok(Self {
                     proj,
@@ -129,7 +133,7 @@ impl WcsMap {
                     params,
                     prj: RefCell::new(prj),
                     inverted: false,
-                    do_not_simplify: false,
+                    has_been_simplified: false,
                 });
             }
             other => other,
@@ -148,7 +152,7 @@ impl WcsMap {
             params,
             prj: RefCell::new(prj),
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         })
     }
 
@@ -241,6 +245,13 @@ impl WcsMap {
     /// The underlying wcslib struct stores this in degrees; this method
     /// converts to radians (the AST convention).
     pub fn nat_lon(&self) -> f64 {
+        // An Unknown (AST__WCSBAD) projection has no real reference point;
+        // C `GetNatLon` is a fixed 0 for every projection type (wcsmap.c),
+        // so return 0 explicitly rather than relying on the inert CAR
+        // placeholder's reference point.
+        if self.proj == WcsProjection::Unknown {
+            return 0.0;
+        }
         let (phi0, _theta0) = self.prj.borrow().reference_point();
         phi0.to_radians()
     }
@@ -252,6 +263,14 @@ impl WcsMap {
     /// The underlying wcslib struct stores this in degrees; this method
     /// converts to radians (the AST convention).
     pub fn nat_lat(&self) -> f64 {
+        // An Unknown (AST__WCSBAD) projection has no real reference point; C
+        // `GetNatLat` reads `FindPrjData(AST__WCSBAD)->theta0`, which is 0
+        // (wcsmap.c:716). Return 0 explicitly rather than relying on the inert
+        // CAR placeholder (whose reference point is also 0, but only by
+        // coincidence).
+        if self.proj == WcsProjection::Unknown {
+            return 0.0;
+        }
         let (_phi0, theta0) = self.prj.borrow().reference_point();
         theta0.to_radians()
     }
@@ -275,7 +294,10 @@ impl WcsMap {
         let underlying = match self.proj {
             WcsProjection::Ncp => WcsProjection::Sin,
             WcsProjection::Gls => WcsProjection::Sfl,
-            // Unknown has no real projection; use CAR as dummy placeholder.
+            // Unknown (AST__WCSBAD) has no wcslib projection. The stored
+            // PrjParams is never consulted (transform is identity, simplify is
+            // a UnitMap, nat_lon/nat_lat return 0), so CAR is an inert
+            // placeholder kept only so this field is populated.
             WcsProjection::Unknown => WcsProjection::Car,
             other => other,
         };
@@ -313,7 +335,7 @@ impl WcsMap {
             params: self.params.clone(),
             prj: RefCell::new(prj),
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
         })
     }
 
@@ -358,7 +380,7 @@ impl Clone for WcsMap {
             params: self.params.clone(),
             prj: RefCell::new(prj),
             inverted: self.inverted,
-            do_not_simplify: self.do_not_simplify,
+            has_been_simplified: self.has_been_simplified,
         }
     }
 }
@@ -378,6 +400,9 @@ impl Mapping for WcsMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -521,7 +546,7 @@ impl Mapping for WcsMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -673,12 +698,12 @@ impl Mapping for WcsMap {
             && self.params_equal(other)
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -821,10 +846,11 @@ impl Serializable for WcsMap {
             }
         }
 
-        wcs.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             wcs.invert();
         }
+
+        wcs.set_has_been_simplified(base.has_been_simplified);
 
         Ok(wcs)
     }

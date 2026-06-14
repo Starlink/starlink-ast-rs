@@ -65,7 +65,7 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             Some("Number of output coordinates".to_string()),
         );
     }
-    if mapping.do_not_simplify() {
+    if mapping.has_been_simplified() {
         node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
     }
     if mapping.is_inverted() {
@@ -101,7 +101,7 @@ pub(crate) struct MappingBaseAttrs {
     pub nin: usize,
     pub nout: usize,
     pub inverted: bool,
-    pub do_not_simplify: bool,
+    pub has_been_simplified: bool,
     pub has_forward: bool,
     pub has_inverse: bool,
 }
@@ -119,7 +119,7 @@ pub(crate) fn read_mapping_base(node: &Node) -> MappingBaseAttrs {
         nin,
         nout,
         inverted: node.get_int("Invert", 0) != 0,
-        do_not_simplify: node.get_int("IsSimp", 0) != 0,
+        has_been_simplified: node.get_int("IsSimp", 0) != 0,
         has_forward: node.get_int("Fwd", 1) != 0,
         has_inverse: node.get_int("Inv", 1) != 0,
     }

@@ -42,8 +42,8 @@ pub struct PermMap {
     constants: Vec<f64>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
-    /// Whether this mapping is protected from simplification.
-    do_not_simplify: bool,
+    /// Whether this mapping has already been simplified (C `IsSimple`).
+    has_been_simplified: bool,
     /// Serialize outperm as `OutCpy=1` (identity shorthand).
     out_is_copy: bool,
     /// Serialize inperm as `InCpy=1` (identity shorthand).
@@ -75,7 +75,7 @@ impl PermMap {
             inperm: inperm.to_vec(),
             constants: constants.to_vec(),
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             out_is_copy: false,
             in_is_copy: false,
             perm_split: false,
@@ -268,6 +268,9 @@ impl Mapping for PermMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -345,7 +348,7 @@ impl Mapping for PermMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -369,7 +372,7 @@ impl Mapping for PermMap {
                 inperm: self.outperm.clone(),
                 constants: self.constants.clone(),
                 inverted: false,
-                do_not_simplify: false,
+                has_been_simplified: false,
                 out_is_copy: self.in_is_copy,
                 in_is_copy: self.out_is_copy,
                 perm_split: self.perm_split,
@@ -992,12 +995,12 @@ impl Mapping for PermMap {
         true
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -1129,10 +1132,11 @@ impl Serializable for PermMap {
         m.out_is_copy = out_cpy;
         m.in_is_copy = in_cpy;
         m.perm_split = node.get_int("pmsplt", 0) != 0;
-        m.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             m.invert();
         }
+
+        m.set_has_been_simplified(base.has_been_simplified);
         Ok(m)
     }
 }

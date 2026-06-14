@@ -12,7 +12,7 @@ use super::{DynMapping, Mapping};
 pub struct UnitMap {
     ncoord: usize,
     inverted: bool,
-    do_not_simplify: bool,
+    has_been_simplified: bool,
 }
 
 impl UnitMap {
@@ -21,7 +21,7 @@ impl UnitMap {
         Self {
             ncoord,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         }
     }
 
@@ -48,6 +48,8 @@ impl Mapping for UnitMap {
     }
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
@@ -69,7 +71,7 @@ impl Mapping for UnitMap {
         Ok(Box::new(UnitMap {
             ncoord: self.ncoord,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
         }))
     }
 
@@ -111,12 +113,12 @@ impl Mapping for UnitMap {
         }
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -141,7 +143,7 @@ impl Serializable for UnitMap {
         Ok(UnitMap {
             ncoord: base.nin,
             inverted: base.inverted,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
         })
     }
 }

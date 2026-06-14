@@ -50,8 +50,8 @@ pub struct MatrixMap {
     inverse: Option<Array2<f64>>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
-    /// Whether this mapping is protected from simplification.
-    do_not_simplify: bool,
+    /// Whether this mapping has already been simplified (C `IsSimple`).
+    has_been_simplified: bool,
     /// Cached form of the forward matrix (Full or Diagonal).
     form: MatrixForm,
     /// Cached form of the inverse matrix (Full or Diagonal).
@@ -89,7 +89,7 @@ impl MatrixMap {
             matrix,
             inverse,
             inverted: false,
-            do_not_simplify: false,
+            has_been_simplified: false,
             form,
             inv_form,
         })
@@ -404,6 +404,9 @@ impl Mapping for MatrixMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
+        // Inversion invalidates the "already simplified" flag, since the
+        // inverse may simplify further (C astSetInvert clears IsSimple).
+        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -512,7 +515,7 @@ impl Mapping for MatrixMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.do_not_simplify {
+        if self.has_been_simplified {
             return Ok(Box::new(self.clone()));
         }
 
@@ -835,12 +838,12 @@ impl Mapping for MatrixMap {
         Some((kept_outs, Box::new(sub)))
     }
 
-    fn do_not_simplify(&self) -> bool {
-        self.do_not_simplify
+    fn has_been_simplified(&self) -> bool {
+        self.has_been_simplified
     }
 
-    fn set_do_not_simplify(&mut self, flag: bool) {
-        self.do_not_simplify = flag;
+    fn set_has_been_simplified(&mut self, flag: bool) {
+        self.has_been_simplified = flag;
     }
 
     // The inverse transformation exists only when the inverse matrix
@@ -1069,7 +1072,7 @@ impl Serializable for MatrixMap {
             matrix,
             inverse,
             inverted: base.inverted,
-            do_not_simplify: base.do_not_simplify,
+            has_been_simplified: base.has_been_simplified,
             form,
             inv_form,
         })
