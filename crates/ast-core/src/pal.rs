@@ -116,6 +116,12 @@ unsafe extern "C" {
     fn astPalRvlg(r2000: f64, d2000: f64) -> f64;
     fn astPalRvlsrd(r2000: f64, d2000: f64) -> f64;
     fn astPalRvlsrk(r2000: f64, d2000: f64) -> f64;
+
+    // -- Calendar / time-of-day conversions --
+    fn astPalDjcl(djm: f64, iy: *mut i32, im: *mut i32, id: *mut i32, fd: *mut f64, j: *mut i32);
+    fn astPalCldj(iy: i32, im: i32, id: i32, djm: *mut f64, j: *mut i32);
+    fn astPalDd2tf(ndp: i32, days: f64, sign: *mut c_char, ihmsf: *mut i32);
+    fn astPalDtf2d(ihour: i32, imin: i32, sec: f64, days: *mut f64, j: *mut i32);
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +712,61 @@ pub(crate) fn rvlsrk(ra: f64, dec: f64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Group 14: Calendar / time-of-day conversions
+// ---------------------------------------------------------------------------
+
+/// Modified Julian Date to Gregorian calendar fields.
+///
+/// Wraps `palDjcl`. Returns `(year, month, day, day_fraction, status)`
+/// where `status` is 0 on success or non-zero if `djm` is out of the
+/// range supported by the underlying ERFA conversion.
+pub(crate) fn djcl(djm: f64) -> (i32, i32, i32, f64, i32) {
+    let mut iy = 0;
+    let mut im = 0;
+    let mut id = 0;
+    let mut fd = 0.0;
+    let mut j = 0;
+    unsafe { astPalDjcl(djm, &mut iy, &mut im, &mut id, &mut fd, &mut j) };
+    (iy, im, id, fd, j)
+}
+
+/// Gregorian calendar date to Modified Julian Date.
+///
+/// Wraps `palCldj`. Returns `(mjd, status)` where `status` is 0 on
+/// success, or non-zero for an invalid year/month/day.
+pub(crate) fn cldj(iy: i32, im: i32, id: i32) -> (f64, i32) {
+    let mut djm = 0.0;
+    let mut j = 0;
+    unsafe { astPalCldj(iy, im, id, &mut djm, &mut j) };
+    (djm, j)
+}
+
+/// Day fraction to hours, minutes, seconds.
+///
+/// Wraps `palDd2tf`. `ndp` is the number of decimal places of seconds.
+/// Returns `(sign, [hours, minutes, seconds, fraction])` where `sign`
+/// is `'+'` or `'-'` and the fraction is the `ndp`-digit fractional
+/// seconds field as an integer.
+pub(crate) fn dd2tf(ndp: i32, days: f64) -> (char, [i32; 4]) {
+    let mut sign: c_char = 0;
+    let mut ihmsf = [0i32; 4];
+    unsafe { astPalDd2tf(ndp, days, &mut sign, ihmsf.as_mut_ptr()) };
+    let sign = if sign == b'-' as c_char { '-' } else { '+' };
+    (sign, ihmsf)
+}
+
+/// Hours, minutes, seconds to a day fraction.
+///
+/// Wraps `palDtf2d`. Returns `(days, status)` where `status` is 0 on
+/// success, or non-zero for out-of-range hours/minutes/seconds.
+pub(crate) fn dtf2d(ihour: i32, imin: i32, sec: f64) -> (f64, i32) {
+    let mut days = 0.0;
+    let mut j = 0;
+    unsafe { astPalDtf2d(ihour, imin, sec, &mut days, &mut j) };
+    (days, j)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1127,6 +1188,51 @@ mod tests {
         // LSRK velocity should be non-zero for arbitrary direction
         let v = super::rvlsrk(1.0, 0.5);
         assert!(v.abs() > 0.1); // km/s
+    }
+
+    #[test]
+    fn djcl_known_date() {
+        // MJD 51544.0 is 2000-01-01 (J2000.0 epoch is 51544.5 = noon).
+        let (iy, im, id, fd, j) = super::djcl(51544.0);
+        assert_eq!(j, 0);
+        assert_eq!((iy, im, id), (2000, 1, 1));
+        assert!(fd.abs() < 1e-9);
+        // The 0.5-day fraction gives midday.
+        let (_, _, _, fd2, _) = super::djcl(51544.5);
+        assert!((fd2 - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cldj_round_trips_djcl() {
+        let (mjd, j) = super::cldj(2000, 1, 1);
+        assert_eq!(j, 0);
+        assert!((mjd - 51544.0).abs() < 1e-9);
+        let (iy, im, id, _, _) = super::djcl(mjd);
+        assert_eq!((iy, im, id), (2000, 1, 1));
+    }
+
+    #[test]
+    fn cldj_rejects_bad_month() {
+        let (_, j) = super::cldj(2000, 13, 1);
+        assert_ne!(j, 0);
+    }
+
+    #[test]
+    fn dd2tf_and_dtf2d_round_trip() {
+        // 0.5 days = 12:00:00.
+        let (sign, ihmsf) = super::dd2tf(3, 0.5);
+        assert_eq!(sign, '+');
+        assert_eq!([ihmsf[0], ihmsf[1], ihmsf[2]], [12, 0, 0]);
+        // Reconstruct the day fraction from h:m:s.
+        let (days, j) = super::dtf2d(ihmsf[0], ihmsf[1], ihmsf[2] as f64);
+        assert_eq!(j, 0);
+        assert!((days - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn dd2tf_negative_sign() {
+        let (sign, _) = super::dd2tf(0, -0.25);
+        assert_eq!(sign, '-');
     }
 
     // -- Helper --
