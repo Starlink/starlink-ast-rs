@@ -495,6 +495,151 @@ fn test_convert_seconds_default_units_unchanged() {
 }
 
 // ---------------------------------------------------------------------------
+// iso-date Format / Unformat (testtime.c errors 26-34)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_iso_format_unformat_jepoch() {
+    // C error 26: jepoch frame, timeorigin 2005.0, default numeric format.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+
+    assert_eq!(tf.format(1, 100.0).unwrap(), "100");
+    let (v, nc) = tf.unformat(1, "100").unwrap();
+    assert_eq!(nc, 3);
+    assert!((v - 100.0).abs() < 1.0e-12);
+
+    // error 27: format=iso -> date only.
+    tf.set_format_str("iso");
+    assert_eq!(tf.format(1, 1.0).unwrap(), "2006-01-01");
+    let (v, nc) = tf.unformat(1, "2006-01-01").unwrap();
+    assert_eq!(nc, "2006-01-01".len());
+    assert!((v - 1.0).abs() < 1.0e-9, "got {v}");
+
+    // error 28: format=iso.0 -> date + time, no fractional seconds.
+    tf.set_format_str("iso.0");
+    assert_eq!(tf.format(1, 1.0).unwrap(), "2006-01-01 00:00:00");
+    let (v, nc) = tf.unformat(1, "2006-01-01 00:00:00").unwrap();
+    assert_eq!(nc, "2006-01-01 00:00:00".len());
+    assert!((v - 1.0).abs() < 1.0e-9, "got {v}");
+}
+
+#[test]
+fn test_iso_format_unformat_seconds() {
+    // C errors 29-30: jepoch frame, timeorigin 2005.0, unit=s, format=iso.2.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+    tf.set_unit("s");
+    tf.set_format_str("iso.2");
+
+    assert_eq!(tf.format(1, 10.0).unwrap(), "2004-12-31 18:00:10.00");
+    let (v, nc) = tf.unformat(1, "2004-12-31 18:00:10.00").unwrap();
+    assert_eq!(nc, "2004-12-31 18:00:10.00".len());
+    assert!((v - 10.0).abs() < 1.0e-3, "got {v}");
+
+    assert_eq!(tf.format(1, 10.12).unwrap(), "2004-12-31 18:00:10.12");
+    let (v, nc) = tf.unformat(1, "2004-12-31 18:00:10.12").unwrap();
+    assert_eq!(nc, "2004-12-31 18:00:10.12".len());
+    assert!((v - 10.12).abs() < 1.0e-3, "got {v}");
+}
+
+#[test]
+fn test_unformat_j_prefix_epoch() {
+    // C errors 31-32: J-prefix epoch parsing on a jepoch/origin=2005 frame.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+
+    let (v, nc) = tf.unformat(1, "J2005.0").unwrap();
+    assert_eq!(nc, 7);
+    assert!((v - 0.0).abs() < 1.0e-9, "got {v}");
+
+    let (v, nc) = tf.unformat(1, "J2010.0").unwrap();
+    assert_eq!(nc, 7);
+    assert!((v - 5.0).abs() < 1.0e-9, "got {v}");
+}
+
+#[test]
+fn test_unformat_trailing_text() {
+    // C error 33: a Gregorian date/time followed by trailing text. The
+    // consumed count includes the trailing space after the time (17), and
+    // the value is in Julian epoch years from origin 2005.0.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+
+    let (v, nc) = tf.unformat(1, "2005-jun-1 12:30 lunch time").unwrap();
+    assert_eq!(nc, 17);
+    assert!((v - 0.415525896).abs() < 1.0e-7, "got {v}");
+}
+
+#[test]
+fn test_unformat_b_prefix_uses_tt() {
+    // C error 34 (corrected value): a Besselian-epoch string is interpreted
+    // in the TT timescale, then converted to the frame's UTC timescale and
+    // Julian-epoch system. jepoch/origin=2005, timescale=utc.
+    //
+    // The reference C `astUnformat` returns -3.50131054408916 here, but that
+    // value is WRONG by exactly the TAI-UTC leap-second offset (~32 s): C's
+    // astUnformat builds the conversion via a direct MakeMap call whose
+    // TAITOUTC leap-second lookup uses the wrong reference MJD, yielding a
+    // TAI-scale result instead of UTC. Both C `astConvert` and astropy agree
+    // on the correct UTC value:
+    //   astropy: Time(52091.8966962715, format="mjd", scale="tt").utc.jyear
+    //            - 2005.0  ==  -3.5013115581077727
+    // We assert the astropy-validated value; the C bug is logged in
+    // docs/issues/c-library-quirks.md.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+    tf.set_timescale(TimeScale::Utc);
+
+    let (v, nc) = tf.unformat(1, "B2001.5 lunch time").unwrap();
+    assert_eq!(nc, 8);
+    assert!((v + 3.5013115581077727).abs() < 1.0e-10, "got {v}");
+}
+
+#[test]
+#[ignore = "documents the reference C astUnformat leap-second bug; Rust is correct"]
+fn c_bug_b_prefix_unformat_leap_offset() {
+    // Records the (buggy) value the reference C library's astUnformat returns
+    // for a Besselian-epoch string: -3.50131054408916, which is wrong by the
+    // ~32 s TAI-UTC leap-second offset. The correct UTC value (asserted by
+    // test_unformat_b_prefix_uses_tt, and confirmed by astropy and C
+    // astConvert) is -3.5013115581077727. See docs/issues/c-library-quirks.md
+    // ("TimeFrame astUnformat of a Besselian-epoch string ..."). This test is
+    // ignored because Rust deliberately does NOT reproduce the C bug; it
+    // exists so the discrepancy is discoverable in the test suite.
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+    tf.set_timescale(TimeScale::Utc);
+    let (v, _nc) = tf.unformat(1, "B2001.5 lunch time").unwrap();
+    let buggy_c_value = -3.50131054408916;
+    assert!(
+        (v - buggy_c_value).abs() < 1.0e-10,
+        "Rust does not reproduce the C bug (got {v}, C bug value {buggy_c_value})"
+    );
+}
+
+#[test]
+fn test_iso_format_mjd_tai_iso6() {
+    // C errors 35-36 path: an absolute MJD/TAI time formatted with iso.6.
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Tai);
+    tf.set_format_str("iso.6");
+    // 1977-01-01 00:00:00 in MJD is 43144.0.
+    assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01 00:00:00.000000");
+}
+
+#[test]
+fn test_iso_format_variants() {
+    // Exercise the iso / iso.N / iso.NT format spellings.
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Tai);
+    tf.set_format_str("iso");
+    assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01");
+    tf.set_format_str("iso.0T");
+    assert_eq!(tf.format(1, 43144.0).unwrap(), "1977-01-01T00:00:00");
+}
+
+// ---------------------------------------------------------------------------
 // TT -> TDB conversion (should be close to identity for most epochs)
 // ---------------------------------------------------------------------------
 

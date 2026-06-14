@@ -825,3 +825,53 @@ TODO noting the override could be revisited (potentially faster and
 more accurate) if we ever choose to diverge from C, but it must then
 be benchmarked against the C author's "immensely slow" warning and
 gated so fixtures still pass.
+
+---
+
+## TimeFrame `astUnformat` of a Besselian-epoch string is off by the leap-second offset
+
+**C location:** `timeframe.c::Unformat` (6062), specifically the
+`MakeMap( this, AST__MJD, sys, ts1, ts2, 0.0, off, "d", unit, ... )`
+call at 6241 with `ts1 = AST__TT` for a `B...` input string.
+
+**Observed:** unformatting a Besselian-epoch date string (e.g.
+`"B2001.5"`) into a `system=jepoch,timescale=utc,timeorigin=2005`
+TimeFrame returns `-3.50131054408916`, which is wrong by exactly the
+TAI-UTC leap-second count (~32 s) at that epoch. The string is read by
+`astReadDateTime` as MJD(TT) `52091.8966962715`; converting that
+instant to UTC Julian years and subtracting the 2005 origin should give
+`-3.5013115581077727`.
+
+Two independent oracles confirm the correct value:
+- C's own `astConvert` of an `mjd/tt` frame to the
+  `jepoch/utc/origin=2005` frame gives `-3.5013115581077727`.
+- astropy:
+  `Time(52091.8966962715, format="mjd", scale="tt").utc.jyear - 2005.0`
+  `== -3.5013115581077727`.
+
+C's `astUnformat` builds the conversion through a *direct* `MakeMap`
+call rather than through `astConvert`/`MakeTimeMapping`. The resulting
+TimeMap contains both the `TTTOTAI` and `TAITOUTC` steps (verified by
+instrumentation), but the `TAITOUTC` step's leap-second lookup uses the
+zero MJD offset passed to `MakeMap` rather than the actual epoch, so the
+leap-second correction is effectively dropped and the result lands in
+the TAI scale. C `astFormat` of the unformatted value confirms the
+round-trip is broken: `astUnformat("B2001.5")` then `astFormat` yields
+`2001-07-01 21:30:10.37` whereas the true B2001.5 instant formats as
+`2001-07-01 21:29:38.37`.
+
+**Consequence:** the C `astUnformat` value for a Besselian-epoch string
+is wrong by the leap-second offset, and does not round-trip with
+`astFormat`. Decimal-year, Julian-epoch, MJD, JD and Gregorian inputs
+are unaffected (they do not trigger the `ts1 = TT` branch on a non-TT
+frame).
+
+**Rust behaviour:** `TimeFrame::unformat`
+(`crates/ast-core/src/frames/timeframe.rs`) builds the value↔MJD
+conversion through the same `make_map` used by the convert path, so it
+produces the astropy-correct UTC value. The acceptance test
+`test_unformat_b_prefix_uses_tt` in
+`crates/ast-core/tests/test_timeframe.rs` asserts the corrected value
+and documents the divergence. The `#[ignore]`d test
+`c_bug_b_prefix_unformat_leap_offset` in the same file records the exact
+(buggy) C value so the discrepancy is discoverable.

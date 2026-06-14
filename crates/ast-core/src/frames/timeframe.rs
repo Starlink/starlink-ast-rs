@@ -197,6 +197,9 @@ pub struct TimeFrame {
     /// Per-instance axis Unit string (e.g. "s"). `None` means the system
     /// default units are used (mirrors C `astTestUnit`/`astGetUnit`).
     unit: Option<String>,
+    /// Per-instance axis Format string (e.g. "iso.0"). `None` means the
+    /// default numeric format (mirrors C `astTestFormat`/`astGetFormat`).
+    format_str: Option<String>,
     lt_offset: Option<f64>, // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
     /// When false, unit strings do not affect alignment. Default is true.
@@ -245,6 +248,7 @@ impl TimeFrame {
             timescale_set: false,
             time_origin: None,
             unit: None,
+            format_str: None,
             lt_offset: None,
             align_timescale: None,
             act_unt: None,
@@ -402,6 +406,26 @@ impl TimeFrame {
     /// the current system's default units.
     pub fn unit_or_default(&self) -> &str {
         self.unit.as_deref().unwrap_or(self.system.default_units())
+    }
+
+    /// Return the explicitly-set axis Format string, or `""` when unset.
+    pub fn format_str(&self) -> &str {
+        self.format_str.as_deref().unwrap_or("")
+    }
+
+    /// Set the axis Format string (e.g. `"iso.0"`).
+    pub fn set_format_str(&mut self, fmt: &str) {
+        self.format_str = Some(fmt.to_string());
+    }
+
+    /// Whether the axis Format has been explicitly set.
+    pub fn test_format_str(&self) -> bool {
+        self.format_str.is_some()
+    }
+
+    /// Clear the axis Format, reverting to the default numeric format.
+    pub fn clear_format_str(&mut self) {
+        self.format_str = None;
     }
 
     /// Return the Local Time offset from UTC (hours).
@@ -809,6 +833,45 @@ impl TimeFrame {
             TimeSystem::Bepoch => timemap.add(TimeCvtType::MjdToBep, &[mjd_off1, off2]),
         }
     }
+
+    /// Convert a coordinate `value` in this frame (its System, TimeScale,
+    /// TimeOrigin and Unit) to an absolute MJD in days. Mirrors the
+    /// `MakeMap(this, sys, AST__MJD, ts, ts, off, 0.0, unit, "d", ...)` call
+    /// at the top of C `Format` (timeframe.c:1701).
+    fn value_to_mjd(&self, value: f64) -> AstResult<f64> {
+        let map = self.make_map(
+            self.system,
+            TimeSystem::Mjd,
+            self.timescale,
+            self.timescale,
+            self.time_origin(),
+            0.0,
+            self.unit_or_default(),
+            "d",
+            None,
+        )?;
+        transform_scalar(map.as_ref(), value, true)
+    }
+
+    /// Convert an absolute MJD in days (in timescale `ts1`) to a coordinate
+    /// value in this frame's System/TimeScale/TimeOrigin/Unit. Mirrors the
+    /// `MakeMap(this, AST__MJD, sys, ts1, ts2, 0.0, off, "d", unit, ...)` call
+    /// in C `Unformat` (timeframe.c:6241); `ts1` is TT for a Besselian-epoch
+    /// input string, else the frame's own TimeScale.
+    fn mjd_to_value(&self, mjd: f64, ts1: TimeScale) -> AstResult<f64> {
+        let map = self.make_map(
+            TimeSystem::Mjd,
+            self.system,
+            ts1,
+            self.timescale,
+            0.0,
+            self.time_origin(),
+            "d",
+            self.unit_or_default(),
+            None,
+        )?;
+        transform_scalar(map.as_ref(), mjd, true)
+    }
 }
 
 /// Build a units-conversion Mapping or report an incompatible-units error
@@ -827,6 +890,97 @@ fn transform_scalar(map: &dyn Mapping, value: f64, forward: bool) -> AstResult<f
     let pts = PointSet::from_rows([[value]]);
     let out = map.transform(&pts, forward)?;
     Ok(out.point(0)[0])
+}
+
+/// Read a leading floating-point number from `text`, returning the value and
+/// the number of characters consumed (including leading and trailing
+/// whitespace around the number). This is the numeric fallback used by
+/// [`TimeFrame::unformat`], matching the parent Frame's numeric unformat.
+/// Returns `(BAD_VALUE, 0)` when no number is present.
+fn numeric_unformat(text: &str) -> (f64, usize) {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let num_start = i;
+    let mut j = i;
+    if j < bytes.len() && (bytes[j] == b'+' || bytes[j] == b'-') {
+        j += 1;
+    }
+    let mut digits = 0;
+    while j < bytes.len() && bytes[j].is_ascii_digit() {
+        j += 1;
+        digits += 1;
+    }
+    if j < bytes.len() && bytes[j] == b'.' {
+        j += 1;
+        while j < bytes.len() && bytes[j].is_ascii_digit() {
+            j += 1;
+            digits += 1;
+        }
+    }
+    if digits == 0 {
+        return (BAD_VALUE, 0);
+    }
+    if j < bytes.len() && (bytes[j] == b'e' || bytes[j] == b'E') {
+        let mut k = j + 1;
+        if k < bytes.len() && (bytes[k] == b'+' || bytes[k] == b'-') {
+            k += 1;
+        }
+        let exp_start = k;
+        while k < bytes.len() && bytes[k].is_ascii_digit() {
+            k += 1;
+        }
+        if k > exp_start {
+            j = k;
+        }
+    }
+    let val = match text[num_start..j].parse::<f64>() {
+        Ok(v) => v,
+        Err(_) => return (BAD_VALUE, 0),
+    };
+    // Consume trailing whitespace, as the parent astUnformat does.
+    let mut end = j;
+    while end < bytes.len() && bytes[end].is_ascii_whitespace() {
+        end += 1;
+    }
+    (val, end)
+}
+
+/// Decide whether a Format string requests a date/time rendering, and with
+/// what precision and separator. Mirrors C `DateFormat` (timeframe.c:813).
+///
+/// Returns `(is_date, ndp, sep)`:
+/// - `is_date` is true when the (whitespace-trimmed) format string begins
+///   with `"iso"`.
+/// - `ndp` is the number of decimal places of seconds: `-1` means a date
+///   only (no time field), `>= 0` (from `"iso.N"`) means a time field with N
+///   fractional-second digits.
+/// - `sep` is the date/time separator: `'T'` when the format ends with a
+///   `T`/`t` after `iso.N`, otherwise a space.
+fn date_format(fmt: &str) -> (bool, i32, char) {
+    let trimmed = fmt.trim_start();
+    if !trimmed.starts_with("iso") {
+        return (false, -1, ' ');
+    }
+    // Try to parse "iso.N" with an optional trailing separator character.
+    if let Some(rest) = trimmed.strip_prefix("iso.") {
+        // Read the integer N from the start of `rest`.
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            if let Ok(ndp) = digits.parse::<i32>() {
+                let after = &rest[digits.len()..];
+                let sep = match after.chars().next() {
+                    Some('T') | Some('t') => 'T',
+                    _ => ' ',
+                };
+                return (true, ndp, sep);
+            }
+        }
+    }
+    // Plain "iso" (or "iso." with no integer): date only.
+    (true, -1, ' ')
 }
 
 // ---------------------------------------------------------------------------
@@ -850,6 +1004,10 @@ impl Frame for TimeFrame {
         self.unit_or_default().to_string()
     }
 
+    fn effective_format(&self, _axis: usize) -> String {
+        self.format_str().to_string()
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         if axis != 1 {
             return Err(AstError::new(
@@ -860,15 +1018,43 @@ impl Frame for TimeFrame {
         if is_bad(value) {
             return Ok("<bad>".to_string());
         }
-        // The parent (non-date) Format default is `%1.7G` — 7 *significant*
-        // digits, not 7 decimal places (frame.c GetDefaultFormat with the
-        // default Digits=7). The `iso.N[T]` calendar-date Format is not yet
-        // ported (it needs the pal calendar conversions); see
-        // docs/issues/frame-mapping-c-port-gaps.md (6f).
-        const DIGITS: usize = 7;
-        Ok(crate::frames::axis_format::format_value(
-            "%1.7G", DIGITS, value,
-        ))
+
+        // If the Format string does not request a date, use the default
+        // numeric format. The parent (non-date) Format default is `%1.7G`:
+        // 7 *significant* digits (frame.c GetDefaultFormat, default Digits=7).
+        let (is_date, ndp, sep) = date_format(&self.effective_format(1));
+        if !is_date {
+            const DIGITS: usize = 7;
+            return Ok(crate::frames::axis_format::format_value(
+                "%1.7G", DIGITS, value,
+            ));
+        }
+
+        // Date branch (timeframe.c:1694-1736). Convert the value to an
+        // absolute MJD in days, then split into calendar fields.
+        let mut mjd = self.value_to_mjd(value)?;
+
+        // If no time fields will be produced, round to the nearest day.
+        if ndp < 0 {
+            mjd = mjd.round();
+        }
+
+        let (iy, im, id, fd, _j) = crate::pal::djcl(mjd);
+        // "%4d-%2.2d-%2.2d" — the year is space-padded to width 4.
+        let mut out = format!("{iy:4}-{im:02}-{id:02}");
+
+        if ndp >= 0 {
+            let (_sign, ihmsf) = crate::pal::dd2tf(ndp, fd);
+            let (h, m, s, frac) = (ihmsf[0], ihmsf[1], ihmsf[2], ihmsf[3]);
+            if ndp > 0 {
+                let width = ndp as usize;
+                out.push_str(&format!("{sep}{h:02}:{m:02}:{s:02}.{frac:0width$}"));
+            } else {
+                out.push_str(&format!("{sep}{h:02}:{m:02}:{s:02}"));
+            }
+        }
+
+        Ok(out)
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
@@ -878,24 +1064,54 @@ impl Frame for TimeFrame {
                 format!("TimeFrame has 1 axis, got axis={axis}"),
             ));
         }
-        // Parse a floating-point number from the start of the string.
-        let trimmed = text.trim_start();
-        let offset = text.len() - trimmed.len();
-        let mut end = 0;
-        for (i, c) in trimmed.char_indices() {
-            if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' {
-                end = i + c.len_utf8();
-            } else if end > 0 {
+
+        // First attempt a plain numeric read (C calls the parent Frame
+        // unformat with any date Format temporarily cleared). We replicate
+        // the parent's float scan directly.
+        let (val1, nc1) = numeric_unformat(text);
+
+        // Now attempt to read an ISO date/time. astReadDateTime requires the
+        // whole string to parse, but astUnformat allows trailing text, so we
+        // find the longest leading substring that yields a non-bad value by
+        // truncating from the full (trailing-whitespace-trimmed) length down.
+        let l = text.trim_end().len();
+        let mut mjd = BAD_VALUE;
+        let mut lt = 0usize;
+        for cut in (1..=l).rev() {
+            // Only cut on a char boundary.
+            if !text.is_char_boundary(cut) {
+                continue;
+            }
+            if let Some(m) = crate::frames::date_time::read_date_time(&text[..cut]) {
+                mjd = m;
+                lt = cut;
                 break;
             }
         }
-        if end == 0 {
-            return Ok((BAD_VALUE, 0));
+        // If the whole non-blank start parsed, include any trailing
+        // whitespace in the consumed-character count.
+        if lt >= l {
+            lt = text.len();
         }
-        match trimmed[..end].parse::<f64>() {
-            Ok(val) => Ok((val, offset + end)),
-            Err(_) => Ok((BAD_VALUE, 0)),
+
+        // If no date/time could be read, or the numeric read was at least as
+        // long, return the numeric value (assumed already in the frame's
+        // system and units).
+        if is_bad(mjd) || nc1 >= l {
+            return Ok((val1, nc1));
         }
+
+        // A date/time was read and is the better match. Determine the input
+        // timescale: a Besselian-epoch string ("B...") is TT, otherwise the
+        // frame's own TimeScale.
+        let first = text.trim_start().chars().next();
+        let ts1 = if matches!(first, Some('B') | Some('b')) {
+            TimeScale::Tt
+        } else {
+            self.timescale
+        };
+        let value = self.mjd_to_value(mjd, ts1)?;
+        Ok((value, lt))
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
