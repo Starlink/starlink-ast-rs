@@ -105,6 +105,187 @@ impl MatrixMap {
         self.inverse.as_ref()
     }
 
+    /// Multiply this MatrixMap by another, returning the product `a × self`
+    /// (i.e. `self` applied first, then `a`).
+    ///
+    /// Mirrors C `astMtrMult` (matrixmap.c:3526): the number of columns in
+    /// `a` must equal the number of rows in `self`; the product has `a`'s
+    /// row count and `self`'s column count. Both MatrixMaps' *effective*
+    /// forward matrices (honouring their Invert flags) are used. `BAD_VALUE`
+    /// in either factor propagates to `BAD_VALUE` in the corresponding
+    /// product element.
+    ///
+    /// Errors with [`ErrorCode::Mtrml`] when either map lacks a forward
+    /// transform or the shapes are incompatible.
+    pub fn mtr_mult(&self, a: &MatrixMap) -> AstResult<MatrixMap> {
+        // C requires both to have a defined forward transform. A MatrixMap
+        // always has a forward transform in this crate (it is stored
+        // directly), so the only failure mode is a shape mismatch.
+        let this_matrix = self.effective_forward_matrix();
+        let a_matrix = a.effective_forward_matrix();
+
+        let nrow_this = this_matrix.nrows();
+        let ncol_this = this_matrix.ncols();
+        let nrow_a = a_matrix.nrows();
+        let ncol_a = a_matrix.ncols();
+
+        if ncol_a != nrow_this {
+            return Err(AstError::new(
+                ErrorCode::Mtrml,
+                format!(
+                    "astMtrMult: number of rows in the first MatrixMap ({nrow_this}) does not \
+                     equal number of columns in the second MatrixMap ({ncol_a})"
+                ),
+            ));
+        }
+
+        // Product = a_matrix (nrow_a × ncol_a) · this_matrix (nrow_this ×
+        // ncol_this), with ncol_a == nrow_this. Result is nrow_a × ncol_this.
+        // Dot products short-circuit to BAD when either operand is BAD,
+        // mirroring matrixmap.c:3726-3736.
+        let mut product = Array2::<f64>::zeros((nrow_a, ncol_this));
+        for row in 0..nrow_a {
+            for col in 0..ncol_this {
+                let mut sum = 0.0;
+                let mut bad = false;
+                for i in 0..ncol_a {
+                    let av = a_matrix[[row, i]];
+                    let tv = this_matrix[[i, col]];
+                    if is_bad(av) || is_bad(tv) {
+                        bad = true;
+                        break;
+                    }
+                    sum += av * tv;
+                }
+                product[[row, col]] = if bad { BAD_VALUE } else { sum };
+            }
+        }
+
+        MatrixMap::new(product)
+    }
+
+    /// Return a copy of this MatrixMap rotated by `theta` radians.
+    ///
+    /// Mirrors C `astMtrRot` (matrixmap.c:3766). Valid only for 2- or 3-row
+    /// MatrixMaps. The current (effective) forward matrix is post-multiplied
+    /// by the rotation matrix:
+    /// - 2-row: clockwise rotation about the origin (from the +2 axis toward
+    ///   the +1 axis); `axis` is ignored.
+    /// - 3-row: clockwise rotation about `axis` (a 3-vector through the
+    ///   origin) when looking along it.
+    ///
+    /// A rotation angle that is a multiple of 2π returns an unchanged copy.
+    /// Errors with [`ErrorCode::Mtrax`] for a null/zero-length 3-D axis and
+    /// [`ErrorCode::Mtr23`] for any row count other than 2 or 3.
+    pub fn mtr_rot(&self, theta: f64, axis: &[f64]) -> AstResult<MatrixMap> {
+        let costh = theta.cos();
+        let sinth = theta.sin();
+
+        // No change for a full-turn rotation (matrixmap.c:3845).
+        if costh == 1.0 {
+            return Ok(self.clone());
+        }
+
+        let cur = self.effective_forward_matrix();
+        let nrow = cur.nrows();
+        let ncol = cur.ncols();
+
+        if nrow == 2 {
+            // 2×2 forward rotation (clockwise). rotmat is row-major:
+            // [[costh, sinth], [-sinth, costh]] (matrixmap.c:3860-3863).
+            // Post-multiply: new = rotmat · cur (matrixmap.c SMtrMult post=1,
+            // m=2, n=ncol gives rotmat[2×2] · cur[2×ncol]).
+            let rotmat = [[costh, sinth], [-sinth, costh]];
+            let mut new_mat = Array2::<f64>::zeros((2, ncol));
+            // Post-multiply (SMtrMult post=1): new = rotmat · cur, i.e.
+            // new[i][j] = Σ_k rotmat[i][k] · cur[k][j].
+            for j in 0..ncol {
+                for i in 0..2 {
+                    let mut dot = 0.0;
+                    let mut bad = false;
+                    for k in 0..2 {
+                        let rel = rotmat[i][k];
+                        let cel = cur[[k, j]];
+                        if is_bad(rel) || is_bad(cel) {
+                            bad = true;
+                            break;
+                        }
+                        dot += rel * cel;
+                    }
+                    new_mat[[i, j]] = if bad { BAD_VALUE } else { dot };
+                }
+            }
+            return MatrixMap::new(new_mat);
+        }
+
+        if nrow == 3 {
+            let axlen2 = if axis.len() >= 3 {
+                axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]
+            } else {
+                0.0
+            };
+            if axlen2 <= 0.0 {
+                return Err(AstError::new(
+                    ErrorCode::Mtrax,
+                    "astMtrRot: null or zero-length axis vector supplied",
+                ));
+            }
+            let axlen = axlen2.sqrt();
+
+            // Common terms (matrixmap.c:3910-3917).
+            let as_ = sinth / axlen;
+            let a = (1.0 - costh) / axlen2;
+            let b = a * axis[0] * axis[1];
+            let c = as_ * axis[2];
+            let d = a * axis[0] * axis[2];
+            let e = as_ * axis[1];
+            let f = a * axis[1] * axis[2];
+            let g = as_ * axis[0];
+
+            // 3×3 forward rotation matrix (matrixmap.c:3921-3929), row-major.
+            let rotmat = [
+                [a * axis[0] * axis[0] + costh, b - c, d + e],
+                [b + c, a * axis[1] * axis[1] + costh, f - g],
+                [d - e, f + g, a * axis[2] * axis[2] + costh],
+            ];
+            let mut new_mat = Array2::<f64>::zeros((3, ncol));
+            // Post-multiply (SMtrMult post=1): new = rotmat · cur.
+            for j in 0..ncol {
+                for i in 0..3 {
+                    let mut dot = 0.0;
+                    let mut bad = false;
+                    for k in 0..3 {
+                        let rel = rotmat[i][k];
+                        let cel = cur[[k, j]];
+                        if is_bad(rel) || is_bad(cel) {
+                            bad = true;
+                            break;
+                        }
+                        dot += rel * cel;
+                    }
+                    new_mat[[i, j]] = if bad { BAD_VALUE } else { dot };
+                }
+            }
+            return MatrixMap::new(new_mat);
+        }
+
+        Err(AstError::new(
+            ErrorCode::Mtr23,
+            format!("astMtrRot: cannot rotate a {nrow}x{ncol} MatrixMap"),
+        ))
+    }
+
+    /// The effective forward matrix, honouring the current Invert flag: the
+    /// stored forward matrix when not inverted, else the inverse matrix
+    /// (falling back to the forward matrix when no inverse exists).
+    fn effective_forward_matrix(&self) -> Array2<f64> {
+        if self.inverted {
+            self.inverse.clone().unwrap_or_else(|| self.matrix.clone())
+        } else {
+            self.matrix.clone()
+        }
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }

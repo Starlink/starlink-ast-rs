@@ -437,3 +437,118 @@ fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
     // Diagonal form emits only M0..Mk-1 — no M1/M2 (off-diagonal entries).
     assert!(!s.contains("M2 ="), "diagonal form should not emit M2");
 }
+
+// ===========================================================================
+// astMtrRot / astMtrMult (matrixmap.c:3766 / :3526).
+//
+// These C entry points are protected (not in the public ast.h), so the values
+// below are verified analytically against the documented rotation/product
+// formulae rather than via an oracle binary. The forward 2-D rotation matrix
+// is [[cos, sin], [-sin, cos]] (clockwise); the 3-D rotation is the standard
+// axis-angle (Rodrigues) form C builds at matrixmap.c:3921-3929. astMtrMult
+// returns a x this.
+// ===========================================================================
+
+fn fwd(m: &MatrixMap, input: &[f64]) -> Vec<f64> {
+    let pts = PointSet::from_rows(vec![input.to_vec()]);
+    m.transform(&pts, true).unwrap().point(0).to_vec()
+}
+
+#[test]
+fn mtr_rot_2d_clockwise() {
+    // Rotate the 2x2 identity by theta = 0.3 rad. Forward matrix is
+    // [[cos, sin], [-sin, cos]]; applied to (1,0) -> (cos, -sin) and
+    // (0,1) -> (sin, cos).
+    let id = array![[1.0_f64, 0.0], [0.0, 1.0]];
+    let m = MatrixMap::new(id).unwrap();
+    let r = m.mtr_rot(0.3, &[]).unwrap();
+    let (c, s) = (0.3_f64.cos(), 0.3_f64.sin());
+    let o0 = fwd(&r, &[1.0, 0.0]);
+    let o1 = fwd(&r, &[0.0, 1.0]);
+    assert!((o0[0] - c).abs() < 1e-12 && (o0[1] - (-s)).abs() < 1e-12);
+    assert!((o1[0] - s).abs() < 1e-12 && (o1[1] - c).abs() < 1e-12);
+}
+
+#[test]
+fn mtr_rot_full_turn_is_unchanged() {
+    // cos(theta) == 1 for a multiple of 2pi -> C returns an unchanged copy.
+    let m = MatrixMap::new(array![[2.0_f64, 1.0], [0.0, 3.0]]).unwrap();
+    let r = m.mtr_rot(0.0, &[]).unwrap();
+    assert_eq!(fwd(&r, &[1.0, 0.0]), fwd(&m, &[1.0, 0.0]));
+    assert_eq!(fwd(&r, &[0.0, 1.0]), fwd(&m, &[0.0, 1.0]));
+}
+
+#[test]
+fn mtr_rot_3d_about_z_leaves_z_fixed() {
+    // Rotating the 3x3 identity about the z axis by theta leaves z fixed.
+    // C's 3-D Rodrigues form (matrixmap.c:3921-3929) for axis (0,0,1) is
+    // rotmat = [[cos,-sin,0],[sin,cos,0],[0,0,1]]; the matrix-vector multiply
+    // sends the x-basis (1,0,0) to the first *column* (cos, sin, 0). Note
+    // this is the opposite off-diagonal sign from the 2-D convention — the
+    // two are deliberately different in C and faithfully reproduced here.
+    let id = array![[1.0_f64, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let m = MatrixMap::new(id).unwrap();
+    let r = m.mtr_rot(0.5, &[0.0, 0.0, 1.0]).unwrap();
+    let (c, s) = (0.5_f64.cos(), 0.5_f64.sin());
+    let ox = fwd(&r, &[1.0, 0.0, 0.0]);
+    assert!((ox[0] - c).abs() < 1e-12);
+    assert!((ox[1] - s).abs() < 1e-12);
+    assert!(ox[2].abs() < 1e-12);
+    let oz = fwd(&r, &[0.0, 0.0, 1.0]);
+    assert!((oz[0]).abs() < 1e-12 && oz[1].abs() < 1e-12 && (oz[2] - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn mtr_rot_3d_null_axis_errors() {
+    let m = MatrixMap::new(array![
+        [1.0_f64, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0]
+    ])
+    .unwrap();
+    assert!(m.mtr_rot(0.5, &[0.0, 0.0, 0.0]).is_err());
+    assert!(m.mtr_rot(0.5, &[]).is_err());
+}
+
+#[test]
+fn mtr_rot_wrong_dimension_errors() {
+    // 1x1 and 4x4 are neither 2 nor 3 rows.
+    let m1 = MatrixMap::new(array![[2.0_f64]]).unwrap();
+    assert!(m1.mtr_rot(0.5, &[]).is_err());
+}
+
+#[test]
+fn mtr_mult_returns_a_times_this() {
+    // this = [[1,1],[0,1]], a = diag(2,3). Product a x this =
+    // [[2,2],[0,3]]: applied to (1,0) -> (2,0), (0,1) -> (2,3).
+    let this = MatrixMap::new(array![[1.0_f64, 1.0], [0.0, 1.0]]).unwrap();
+    let a = MatrixMap::new(array![[2.0_f64, 0.0], [0.0, 3.0]]).unwrap();
+    let prod = this.mtr_mult(&a).unwrap();
+    assert_eq!(fwd(&prod, &[1.0, 0.0]), vec![2.0, 0.0]);
+    assert_eq!(fwd(&prod, &[0.0, 1.0]), vec![2.0, 3.0]);
+}
+
+#[test]
+fn mtr_mult_shape_mismatch_errors() {
+    // this is 2x3 (nout=2), a is 2x2 (ncol=2) -> ncol_a(2) != nrow_this(2)?
+    // Build a genuine mismatch: this 3x2 (nout=3), a 2x2 (ncol=2);
+    // ncol_a=2 != nrow_this=3 -> error.
+    let this = MatrixMap::new(array![[1.0_f64, 0.0], [0.0, 1.0], [1.0, 1.0]]).unwrap();
+    let a = MatrixMap::new(array![[2.0_f64, 0.0], [0.0, 3.0]]).unwrap();
+    assert!(this.mtr_mult(&a).is_err());
+}
+
+#[test]
+fn mtr_mult_non_square_product() {
+    // this = 3x2 (maps 2 in -> 3 out), a = 2x3 (maps 3 in -> 2 out).
+    // Product a x this is 2x2. ncol_a = 3 == nrow_this = 3. OK.
+    let this = MatrixMap::new(array![[1.0_f64, 0.0], [0.0, 1.0], [1.0, 1.0]]).unwrap();
+    let a = MatrixMap::new(array![[1.0_f64, 0.0, 1.0], [0.0, 1.0, 0.0]]).unwrap();
+    let prod = this.mtr_mult(&a).unwrap();
+    // a x this: row0 = [1,0,1]·cols, row1 = [0,1,0]·cols.
+    // this cols: c0=(1,0,1)^T, c1=(0,1,1)^T.
+    // prod[0][0]=1*1+0*0+1*1=2; prod[0][1]=1*0+0*1+1*1=1;
+    // prod[1][0]=0; prod[1][1]=1.
+    assert_eq!(fwd(&prod, &[1.0, 0.0]), vec![2.0, 0.0]);
+    assert_eq!(fwd(&prod, &[0.0, 1.0]), vec![1.0, 1.0]);
+}
