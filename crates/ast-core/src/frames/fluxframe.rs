@@ -160,6 +160,9 @@ pub struct FluxFrame {
     system: FluxSystem,
     /// Whether `system` was set explicitly (mirrors C `astTestSystem`).
     system_set: bool,
+    /// Per-instance axis Unit string (e.g. "Jy"). `None` means the system
+    /// default units are used (mirrors C `astTestUnit`/`astGetUnit`).
+    unit: Option<String>,
     spec_val: Option<f64>, // spectral position at which flux is measured
     /// Optional encapsulated SpecFrame defining the coordinate system of
     /// `spec_val` (mirrors C `this->specframe`, fluxframe.c). When `None`,
@@ -195,6 +198,7 @@ impl FluxFrame {
             // as unset; otherwise mark it as explicitly set so it can
             // act as a template-side discriminator.
             system_set: !matches!(system, FluxSystem::FluxDen),
+            unit: None,
             spec_val: None,
             specframe: None,
             act_unt: None,
@@ -247,7 +251,33 @@ impl FluxFrame {
     }
 
     /// Return the flux coordinate system.
+    ///
+    /// Mirrors C `GetSystem` (fluxframe.c:1514): when System has not been set
+    /// explicitly but a Unit *has*, the default System is the first flux
+    /// system whose default units are convertible from the set Unit (scanned
+    /// in declaration order). Otherwise the stored System (default FluxDen)
+    /// is returned.
     pub fn system(&self) -> FluxSystem {
+        if !self.system_set {
+            if let Some(ref u) = self.unit {
+                for sys in [
+                    FluxSystem::FluxDen,
+                    FluxSystem::FluxDenW,
+                    FluxSystem::SBright,
+                    FluxSystem::SBrightW,
+                ] {
+                    if crate::units::unit_mapper(u, sys.default_units()).is_some() {
+                        return sys;
+                    }
+                }
+            }
+        }
+        self.system
+    }
+
+    /// The stored System value, ignoring any unit-derived default. Used by
+    /// serialisation and the `test_system` set-ness check.
+    pub(crate) fn stored_system(&self) -> FluxSystem {
         self.system
     }
 
@@ -255,6 +285,37 @@ impl FluxFrame {
     pub fn set_system(&mut self, sys: FluxSystem) {
         self.system = sys;
         self.system_set = true;
+    }
+
+    /// Return the explicitly-set axis Unit string, or `None` for the system
+    /// default. Mirrors `astTestUnit`/`astGetUnit`.
+    pub fn unit(&self) -> Option<&str> {
+        self.unit.as_deref()
+    }
+
+    /// Set the axis Unit string (e.g. `"Jy"`).
+    pub fn set_unit(&mut self, unit: &str) {
+        self.unit = Some(unit.to_string());
+    }
+
+    /// Whether the axis Unit has been explicitly set.
+    pub fn test_unit(&self) -> bool {
+        self.unit.is_some()
+    }
+
+    /// Clear the axis Unit, reverting to the system default.
+    pub fn clear_unit(&mut self) {
+        self.unit = None;
+    }
+
+    /// The effective axis Unit string: the explicitly-set value, or the
+    /// (unit-derived or stored) system's default units. Mirrors C `GetUnit`
+    /// (fluxframe.c:1650).
+    pub fn unit_or_default(&self) -> &str {
+        match self.unit.as_deref() {
+            Some(u) => u,
+            None => self.system().default_units(),
+        }
     }
 
     /// Return the spectral position at which flux values are measured.
@@ -316,15 +377,15 @@ impl FluxFrame {
     /// (exactly one is a surface-brightness system, or the SpecVal positions
     /// differ / are absent for a cross-density conversion).
     ///
-    /// Rust simplification vs C: FluxFrame in this crate has no per-instance
-    /// unit string, so the C `map1`/`map3` user-unit ↔ default-unit
-    /// conversions are always identities and are omitted; the result is the
-    /// bare density-system zoom factor.
+    /// The full chain mirrors C: a units Mapping from the target's user units
+    /// to the target system's default units (`map1`), the density-system zoom
+    /// (`map2`), and a units Mapping from the result system's default units to
+    /// the result's user units (`map3`), composed in series and simplified.
     pub fn make_flux_mapping(&self, result: &FluxFrame) -> AstResult<Option<DynMapping>> {
-        use crate::mappings::ZoomMap;
+        use crate::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
-        let rsys_in = self.system;
-        let rsys_out = result.system;
+        let rsys_in = self.system();
+        let rsys_out = result.system();
 
         // Collapse surface-brightness systems onto their flux-density
         // counterparts and record the surface-brightness flags
@@ -409,9 +470,31 @@ impl FluxFrame {
             }
         };
 
-        // The flux scale factor is |zoom| (fluxframe.c:2239: fabs(zoom)).
-        let map: DynMapping = Box::new(ZoomMap::new(1, zoom.abs())?);
-        Ok(Some(map))
+        // map2: the flux scale factor is |zoom| (fluxframe.c:2239: fabs(zoom)).
+        let map2: DynMapping = Box::new(ZoomMap::new(1, zoom.abs())?);
+
+        // map1: target user units → target system default units; map3: result
+        // system default units → result user units (fluxframe.c:2078/2247).
+        // Any incompatible-units failure means no conversion (C requires all
+        // three maps non-NULL).
+        let in_default = rsys_in.default_units();
+        let out_default = rsys_out.default_units();
+        let target_unit = self.unit_or_default();
+        let result_unit = result.unit_or_default();
+
+        let map1 = match unit_or_unit_map(target_unit, in_default)? {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+        let map3 = match unit_or_unit_map(out_default, result_unit)? {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+
+        // Compose map1 ∘ map2 ∘ map3 in series and simplify.
+        let chain = CmpMap::new(map1, map2, Composition::Series)?;
+        let chain = CmpMap::new(Box::new(chain), map3, Composition::Series)?;
+        Ok(Some(chain.simplified()?))
     }
 
     /// Convert from `self`'s flux system to `result`'s, applying the
@@ -442,6 +525,18 @@ impl FluxFrame {
     pub fn clear_domain(&mut self) {
         self.domain = None;
     }
+}
+
+/// Build a units-conversion Mapping from `from` to `to`, mirroring C
+/// `astUnitMapper`: identical strings yield a `UnitMap`, dimensionally
+/// compatible strings yield the conversion Mapping, and incompatible strings
+/// yield `None` (so the caller can decline the conversion, as C does when
+/// `map1`/`map3` come back NULL).
+fn unit_or_unit_map(from: &str, to: &str) -> AstResult<Option<DynMapping>> {
+    if from == to {
+        return Ok(Some(Box::new(crate::mappings::UnitMap::new(1))));
+    }
+    Ok(crate::units::unit_mapper(from, to))
 }
 
 /// Transform a single scalar through a 1-D Mapping in the given direction,
@@ -481,7 +576,7 @@ impl Frame for FluxFrame {
     }
 
     fn effective_unit(&self, _axis: usize) -> String {
-        self.system.default_units().to_string()
+        self.unit_or_default().to_string()
     }
 
     fn effective_symbol(&self, _axis: usize) -> String {
@@ -802,6 +897,14 @@ fn fluxframe_overlay(
         if template_flux.test_system() {
             result_flux.set_system(template_flux.system);
         }
+        // Axis Unit is overlaid by the parent Frame/Axis Overlay when set on
+        // the template (this is what lets astConvert apply a units scaling
+        // between e.g. a "Jy" FluxFrame and a default-unit one).
+        if template_flux.test_unit() {
+            if let Some(u) = template_flux.unit() {
+                result_flux.set_unit(u);
+            }
+        }
         // SpecVal: copied when the template has it set
         // (fluxframe.c:2636 OVERLAY(SpecVal)).
         if let Some(v) = template_flux.spec_val {
@@ -900,12 +1003,22 @@ impl Serializable for FluxFrame {
             }
         }
 
-        // System.
+        // System (the stored value, independent of any unit-derived default).
         node.push_string(
             "System",
-            self.system.as_str(),
+            self.stored_system().as_str(),
             Some("Coordinate system type".to_string()),
         );
+
+        // Per-axis Unit string, when explicitly set, lives in the Ax1 Axis
+        // child node (mirrors the C Frame/Axis dump's active `Unit` line).
+        if self.test_unit() {
+            let u = self.unit_or_default();
+            let mut axis_node = Node::new("Axis");
+            axis_node.class_comment = Some("Coordinate axis".to_string());
+            axis_node.push_string("Unit", u, Some("Axis units".to_string()));
+            node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
+        }
 
         // ActUnt (if explicitly set to false).
         if let Some(false) = self.act_unt {
@@ -982,6 +1095,14 @@ impl Serializable for FluxFrame {
         let ident = node.get_string("Ident", "");
         if !ident.is_empty() {
             ff.ident = Some(ident);
+        }
+
+        // Per-axis Unit string from the Ax1 Axis child node.
+        if let Some(axis_node) = node.get_object("Ax1") {
+            let unit = axis_node.get_string("Unit", "");
+            if !unit.is_empty() {
+                ff.set_unit(&unit);
+            }
         }
 
         Ok(ff)

@@ -248,6 +248,126 @@ fn test_fluxframe_make_flux_mapping_surface_brightness_mismatch_none() {
 }
 
 // ---------------------------------------------------------------------------
+// Per-instance Unit support (C MakeFluxMapping map1/map3 unit bracketing)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_fluxframe_unit_accessors() {
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen);
+    assert!(!ff.test_unit());
+    assert_eq!(ff.unit_or_default(), "W/m^2/Hz");
+    ff.set_unit("Jy");
+    assert!(ff.test_unit());
+    assert_eq!(ff.unit(), Some("Jy"));
+    assert_eq!(ff.unit_or_default(), "Jy");
+    ff.clear_unit();
+    assert!(!ff.test_unit());
+    assert_eq!(ff.unit_or_default(), "W/m^2/Hz");
+}
+
+#[test]
+fn test_fluxframe_system_derived_from_unit() {
+    // C GetSystem (fluxframe.c:1514): when System is unset but Unit is set,
+    // the default System is the first flux system whose default units are
+    // unit-compatible. Oracle: unit=Jy -> FLXDN; W/m^2/Angstrom -> FLXDNW.
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen); // unset System
+    assert!(!ff.test_system());
+    ff.set_unit("Jy");
+    assert_eq!(ff.system(), FluxSystem::FluxDen);
+    // System remains "unset" (the default is unit-derived, not explicit).
+    assert!(!ff.test_system());
+
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen);
+    ff.set_unit("W/m^2/Angstrom");
+    assert_eq!(ff.system(), FluxSystem::FluxDenW);
+}
+
+#[test]
+fn test_fluxframe_jy_to_default_units() {
+    // Jy = 1e-26 W/m^2/Hz. A FLXDN frame in Jy converting to a default-unit
+    // FLXDN frame scales 1.0 Jy -> 1e-26 (oracle-verified astConvert).
+    let mut jy = FluxFrame::new(FluxSystem::FluxDen);
+    jy.set_unit("Jy");
+    let def = FluxFrame::new(FluxSystem::FluxDen);
+
+    let map = jy
+        .make_flux_mapping(&def)
+        .unwrap()
+        .expect("Jy->default map");
+    let pts = PointSet::from_rows([[1.0]]);
+    let out = map.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 1.0e-26).abs() < 1.0e-32,
+        "1 Jy should be 1e-26 W/m^2/Hz, got {}",
+        out.point(0)[0]
+    );
+
+    // Reverse: 1e-26 -> 1.0 Jy.
+    let map = def
+        .make_flux_mapping(&jy)
+        .unwrap()
+        .expect("default->Jy map");
+    let out = map
+        .transform(&PointSet::from_rows([[1.0e-26]]), true)
+        .unwrap();
+    assert!(
+        (out.point(0)[0] - 1.0).abs() < 1.0e-9,
+        "got {}",
+        out.point(0)[0]
+    );
+}
+
+#[test]
+fn test_fluxframe_cross_system_with_units() {
+    // Jy FLXDN -> W/m^2/Angstrom FLXDNW at 1.4 GHz. This combines the density
+    // zoom (0.653785630413752) with the 1e-26 Jy factor (map1). Oracle
+    // (astConvert): 1.0 -> 6.5378563041e-27.
+    let mut sf1 = SpecFrame::new(SpecSystem::Freq);
+    sf1.set_unit("Hz");
+    let mut jy = FluxFrame::new(FluxSystem::FluxDen);
+    jy.set_unit("Jy");
+    jy.set_spec_frame(sf1);
+    jy.set_spec_val(1.4e9);
+
+    let mut sf2 = SpecFrame::new(SpecSystem::Freq);
+    sf2.set_unit("Hz");
+    let mut w = FluxFrame::new(FluxSystem::FluxDenW); // default W/m^2/Angstrom
+    w.set_spec_frame(sf2);
+    w.set_spec_val(1.4e9);
+
+    let map = jy.make_flux_mapping(&w).unwrap().expect("cross-system map");
+    let out = map.transform(&PointSet::from_rows([[1.0]]), true).unwrap();
+    assert!(
+        (out.point(0)[0] - 6.5378563041e-27).abs() < 1.0e-37,
+        "expected 6.5378563041e-27, got {}",
+        out.point(0)[0]
+    );
+}
+
+#[test]
+fn test_fluxframe_incompatible_unit_no_conversion() {
+    // A dimensionally-incompatible target unit cannot bracket the zoom, so no
+    // conversion is formed (C: map1 NULL -> no match).
+    let mut bad = FluxFrame::new(FluxSystem::FluxDen);
+    bad.set_unit("m"); // length, not a flux density
+    let def = FluxFrame::new(FluxSystem::FluxDen);
+    assert!(bad.make_flux_mapping(&def).unwrap().is_none());
+}
+
+#[test]
+fn test_fluxframe_unit_serialisation_round_trip() {
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen);
+    ff.set_unit("Jy");
+    let text = to_native_string(&AnyObject::FluxFrame(ff)).unwrap();
+    assert!(text.contains("Unit = \"Jy\""), "missing Unit: {text}");
+
+    let parsed = from_native_string(&text).unwrap();
+    let ff2 = parsed.as_frame().unwrap();
+    let ff2 = ff2.as_any().downcast_ref::<FluxFrame>().expect("FluxFrame");
+    assert_eq!(ff2.unit(), Some("Jy"));
+}
+
+// ---------------------------------------------------------------------------
 // Serialisation round-trip
 // ---------------------------------------------------------------------------
 
