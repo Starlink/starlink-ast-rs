@@ -4,6 +4,7 @@
 //! `reference/starlink-ast/src/specfluxframe.c`.
 //! Uses the public Rust API only.
 
+use ast_core::coords::PointSet;
 use ast_core::frames::{FluxFrame, FluxSystem, Frame, SpecFluxFrame, SpecFrame, SpecSystem};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -179,12 +180,71 @@ fn test_fluxframe_convert_same_system() {
 }
 
 #[test]
-fn test_fluxframe_convert_different_system_returns_none() {
+fn test_fluxframe_make_flux_mapping_same_system_is_unit() {
+    // Same flux system → zoom factor 1 (fluxframe.c:2134).
     let ff1 = FluxFrame::new(FluxSystem::FluxDen);
-    let ff2 = FluxFrame::new(FluxSystem::FluxDenW);
-    let fs = ff1.convert_to(&ff2, &[]).unwrap();
-    // Different systems — full conversion not yet implemented.
-    assert!(fs.is_none());
+    let ff2 = FluxFrame::new(FluxSystem::FluxDen);
+    let map = ff1
+        .make_flux_mapping(&ff2)
+        .unwrap()
+        .expect("same-system map");
+    let pts = PointSet::from_rows([[3.0]]);
+    let out = map.transform(&pts, true).unwrap();
+    assert!((out.point(0)[0] - 3.0).abs() < 1e-12);
+}
+
+#[test]
+fn test_fluxframe_make_flux_mapping_without_specframe_returns_none() {
+    // FLXDN (per Hz) → FLXDNW (per Angstrom) needs a consistent spectral
+    // position. Without an encapsulated SpecFrame, SpecVal in FLXDN is Hz and
+    // in FLXDNW is Angstrom, so the standardised positions don't match and no
+    // mapping is formed. Oracle: astConvert returns NULL in this case.
+    let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
+    ff1.set_spec_val(1.4e9);
+    let mut ff2 = FluxFrame::new(FluxSystem::FluxDenW);
+    ff2.set_spec_val(1.4e9);
+    assert!(ff1.make_flux_mapping(&ff2).unwrap().is_none());
+}
+
+#[test]
+fn test_fluxframe_make_flux_mapping_cross_system_with_specframe() {
+    // With a FREQ/Hz SpecFrame attached, SpecVal=1.4e9 Hz is a well-defined
+    // spectral position interpretable in both density systems. Oracle (the
+    // reference C library, astConvert FLXDN->FLXDNW at 1.4e9 Hz): the flux
+    // scale factor is 0.653785630413752.
+    let mut sf1 = SpecFrame::new(SpecSystem::Freq);
+    sf1.set_unit("Hz");
+    let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
+    ff1.set_spec_frame(sf1);
+    ff1.set_spec_val(1.4e9);
+
+    let mut sf2 = SpecFrame::new(SpecSystem::Freq);
+    sf2.set_unit("Hz");
+    let mut ff2 = FluxFrame::new(FluxSystem::FluxDenW);
+    ff2.set_spec_frame(sf2);
+    ff2.set_spec_val(1.4e9);
+
+    let map = ff1
+        .make_flux_mapping(&ff2)
+        .unwrap()
+        .expect("cross-system map");
+    let pts = PointSet::from_rows([[1.0]]);
+    let out = map.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 0.653785630413752).abs() < 1e-9,
+        "expected oracle scale 0.653785630413752, got {}",
+        out.point(0)[0]
+    );
+}
+
+#[test]
+fn test_fluxframe_make_flux_mapping_surface_brightness_mismatch_none() {
+    // Exactly one system is surface brightness → no mapping (fluxframe.c:2129).
+    let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
+    ff1.set_spec_val(1.4e9);
+    let mut ff2 = FluxFrame::new(FluxSystem::SBright);
+    ff2.set_spec_val(1.4e9);
+    assert!(ff1.make_flux_mapping(&ff2).unwrap().is_none());
 }
 
 // ---------------------------------------------------------------------------

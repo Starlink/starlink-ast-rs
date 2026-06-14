@@ -84,6 +84,48 @@ impl FluxSystem {
     pub fn is_per_frequency(&self) -> bool {
         matches!(self, Self::FluxDen | Self::SBright)
     }
+
+    /// Whether this system is a surface-brightness system (`SBright` /
+    /// `SBrightW`) rather than a flux-density system (`FluxDen` /
+    /// `FluxDenW`). Mirrors the `sb_in`/`sb_out` flags in
+    /// `fluxframe.c::MakeFluxMapping`.
+    pub fn is_surface_brightness(&self) -> bool {
+        matches!(self, Self::SBright | Self::SBrightW)
+    }
+
+    /// The corresponding flux-density system, collapsing a surface-brightness
+    /// system onto its flux-density counterpart (`SBright` → `FluxDen`,
+    /// `SBrightW` → `FluxDenW`). Mirrors the `sys_in`/`sys_out` mapping in
+    /// `fluxframe.c::MakeFluxMapping` (lines 2086-2112).
+    pub fn density_flux_system(&self) -> Self {
+        match self {
+            Self::SBright => Self::FluxDen,
+            Self::SBrightW => Self::FluxDenW,
+            other => *other,
+        }
+    }
+
+    /// The spectral [`SpecSystem`] describing this flux system's density
+    /// axis: frequency for "per Hz" systems, wavelength for "per Angstrom"
+    /// systems. Mirrors C `DensitySystem` (fluxframe.c:537).
+    pub fn density_spec_system(&self) -> super::specframe::SpecSystem {
+        if self.is_per_frequency() {
+            super::specframe::SpecSystem::Freq
+        } else {
+            super::specframe::SpecSystem::Wavelen
+        }
+    }
+
+    /// The default unit for this flux system's density axis: "Hz" for "per
+    /// frequency" systems, "Angstrom" for "per wavelength" systems. Mirrors
+    /// C `DensityUnit` (fluxframe.c:602).
+    pub fn density_unit(&self) -> &'static str {
+        if self.is_per_frequency() {
+            "Hz"
+        } else {
+            "Angstrom"
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +161,12 @@ pub struct FluxFrame {
     /// Whether `system` was set explicitly (mirrors C `astTestSystem`).
     system_set: bool,
     spec_val: Option<f64>, // spectral position at which flux is measured
+    /// Optional encapsulated SpecFrame defining the coordinate system of
+    /// `spec_val` (mirrors C `this->specframe`, fluxframe.c). When `None`,
+    /// SpecVal is interpreted directly in the FluxFrame's density system
+    /// (the default `GetSpecFrame` path). Required for a meaningful
+    /// cross-density-system flux conversion.
+    specframe: Option<Box<super::specframe::SpecFrame>>,
 
     // Object-level attributes
     act_unt: Option<bool>,
@@ -148,6 +196,7 @@ impl FluxFrame {
             // act as a template-side discriminator.
             system_set: !matches!(system, FluxSystem::FluxDen),
             spec_val: None,
+            specframe: None,
             act_unt: None,
             ident: None,
             min_axes_opt: None,
@@ -229,6 +278,150 @@ impl FluxFrame {
         self.spec_val = None;
     }
 
+    /// The encapsulated SpecFrame defining the coordinate system of SpecVal,
+    /// if one has been attached.
+    pub fn spec_frame(&self) -> Option<&super::specframe::SpecFrame> {
+        self.specframe.as_deref()
+    }
+
+    /// Attach a SpecFrame defining the coordinate system of SpecVal. Mirrors
+    /// setting `this->specframe` in C. Required for a meaningful
+    /// cross-density-system flux conversion (otherwise SpecVal is interpreted
+    /// in the density system and cross-system pairs do not align).
+    pub fn set_spec_frame(&mut self, sf: super::specframe::SpecFrame) {
+        self.specframe = Some(Box::new(sf));
+    }
+
+    /// The SpecFrame defining this FluxFrame's spectral (SpecVal) coordinate
+    /// system. Mirrors C `GetSpecFrame` (fluxframe.c:1211): returns a clone of
+    /// the encapsulated SpecFrame when present, otherwise a default SpecFrame
+    /// whose System/Unit are the FluxFrame's density system (FREQ in Hz or
+    /// WAVELEN in Angstrom).
+    fn get_spec_frame(&self) -> super::specframe::SpecFrame {
+        if let Some(sf) = self.specframe.as_deref() {
+            return sf.clone();
+        }
+        let mut sf = super::specframe::SpecFrame::new(self.system.density_spec_system());
+        sf.set_unit(self.system.density_unit());
+        sf
+    }
+
+    /// Generate the Mapping that converts flux values from `self` (target) to
+    /// `result`, taking account of the differing flux systems and the
+    /// spectral position (SpecVal). Mirrors C `MakeFluxMapping`
+    /// (fluxframe.c:1971).
+    ///
+    /// Returns `Ok(Some(map))` on success (forward = target → result),
+    /// `Ok(None)` when the two FluxFrames are too unrelated to convert
+    /// (exactly one is a surface-brightness system, or the SpecVal positions
+    /// differ / are absent for a cross-density conversion).
+    ///
+    /// Rust simplification vs C: FluxFrame in this crate has no per-instance
+    /// unit string, so the C `map1`/`map3` user-unit ↔ default-unit
+    /// conversions are always identities and are omitted; the result is the
+    /// bare density-system zoom factor.
+    pub fn make_flux_mapping(&self, result: &FluxFrame) -> AstResult<Option<DynMapping>> {
+        use crate::mappings::ZoomMap;
+
+        let rsys_in = self.system;
+        let rsys_out = result.system;
+
+        // Collapse surface-brightness systems onto their flux-density
+        // counterparts and record the surface-brightness flags
+        // (fluxframe.c:2086-2112).
+        let sys_in = rsys_in.density_flux_system();
+        let sys_out = rsys_out.density_flux_system();
+        let sb_in = rsys_in.is_surface_brightness();
+        let sb_out = rsys_out.is_surface_brightness();
+
+        // If exactly one of the systems is surface brightness, no Mapping can
+        // be formed (fluxframe.c:2129).
+        if sb_in != sb_out {
+            return Ok(None);
+        }
+
+        // Determine the density-system zoom factor.
+        let zoom = if sys_in == sys_out {
+            // Same flux-density system → identity (fluxframe.c:2134).
+            1.0
+        } else {
+            // Build the SpecFrames encapsulated in (or defaulted for) each
+            // FluxFrame (`sfin1`/`sfout1`), plus standardised copies in the
+            // density systems (`sfin2`/`sfout2`). Mirrors fluxframe.c:2148-2157.
+            let sfin1 = self.get_spec_frame();
+            let mut sfin2 = sfin1.clone();
+            sfin2.set_system(sys_in.density_spec_system());
+            sfin2.set_unit(sys_in.density_unit());
+
+            let sfout1 = result.get_spec_frame();
+            let mut sfout2 = sfout1.clone();
+            sfout2.set_system(sys_out.density_spec_system());
+            sfout2.set_unit(sys_out.density_unit());
+
+            // smap: standardised result system → standardised target system
+            // (fluxframe.c:2163, astConvert(sfout2, sfin2)).
+            let smap = sfout2.make_spec_mapping(&sfin2)?;
+            let smap = smap.simplified()?;
+
+            // Standardise both SpecVals into the result density system and
+            // require them equal (fluxframe.c:2172-2206).
+            let specval_in_raw = self.spec_val();
+            let specval_out_raw = result.spec_val();
+            if is_bad(specval_in_raw) || is_bad(specval_out_raw) {
+                return Ok(None);
+            }
+
+            // smap_in: target's SpecFrame → standardised target system; then
+            // smap (inverse) maps the standardised target value back into the
+            // standardised result system.
+            let smap_in = sfin1.make_spec_mapping(&sfin2)?;
+            let specval2 = transform1(smap_in.as_ref(), specval_in_raw, true)?;
+            let specval_in = transform1(smap.as_ref(), specval2, false)?;
+
+            // smap_out: result's SpecFrame → standardised result system.
+            let smap_out = sfout1.make_spec_mapping(&sfout2)?;
+            let specval_out = transform1(smap_out.as_ref(), specval_out_raw, true)?;
+
+            if is_bad(specval_in) || is_bad(specval_out) {
+                return Ok(None);
+            }
+            // C checks astEQUALS(specval_in, specval_out, 1.0E8) — a relative
+            // tolerance of 1e8 * DBL_EPSILON ≈ 2.2e-8.
+            let tol = 1.0e8 * f64::EPSILON * specval_in.abs().max(specval_out.abs()).max(1.0);
+            if (specval_in - specval_out).abs() > tol {
+                return Ok(None);
+            }
+
+            // Read the zoom from the simplified Mapping: UnitMap → 1, ZoomMap
+            // → its factor, else differentiate at the mean SpecVal
+            // (fluxframe.c:2208-2222).
+            if smap.as_any().is::<UnitMap>() {
+                1.0
+            } else if let Some(zm) = smap.as_any().downcast_ref::<ZoomMap>() {
+                zm.factor()
+            } else {
+                let mid = 0.5 * (specval_in + specval_out);
+                let r = smap.rate(&[mid], 1, 1)?;
+                if is_bad(r) {
+                    return Ok(None);
+                }
+                r
+            }
+        };
+
+        // The flux scale factor is |zoom| (fluxframe.c:2239: fabs(zoom)).
+        let map: DynMapping = Box::new(ZoomMap::new(1, zoom.abs())?);
+        Ok(Some(map))
+    }
+
+    /// Convert from `self`'s flux system to `result`'s, applying the
+    /// [`make_flux_mapping`](Self::make_flux_mapping) Mapping. Returns `None`
+    /// when no conversion exists. This is the FluxFrame analogue of
+    /// `astConvert`'s mapping for the 1-D flux axis.
+    pub fn convert_flux_to(&self, result: &FluxFrame) -> AstResult<Option<DynMapping>> {
+        self.make_flux_mapping(result)
+    }
+
     /// Set the title.
     pub fn set_title(&mut self, title: &str) {
         self.title = Some(title.to_string());
@@ -249,6 +442,15 @@ impl FluxFrame {
     pub fn clear_domain(&mut self) {
         self.domain = None;
     }
+}
+
+/// Transform a single scalar through a 1-D Mapping in the given direction,
+/// returning `BAD_VALUE` if the mapping produces a bad output. Used by
+/// [`FluxFrame::make_flux_mapping`] to mirror C's `astTran1` calls.
+fn transform1(map: &dyn crate::mappings::Mapping, value: f64, forward: bool) -> AstResult<f64> {
+    let pts = crate::coords::PointSet::from_rows([[value]]);
+    let out = map.transform(&pts, forward)?;
+    Ok(out.point(0)[0])
 }
 
 // ---------------------------------------------------------------------------
@@ -730,6 +932,13 @@ impl Serializable for FluxFrame {
             }
         }
 
+        // The encapsulated SpecFrame (SpcFr), only when one is attached
+        // (fluxframe.c:3828).
+        if let Some(sf) = self.specframe.as_deref() {
+            let sf_node = Serializable::to_node(sf)?;
+            node.push_object("SpcFr", sf_node, Some("SpcVl coord system".to_string()));
+        }
+
         Ok(node)
     }
 
@@ -757,6 +966,14 @@ impl Serializable for FluxFrame {
             let sv = node.get_double("SpcVl", BAD_VALUE);
             if !is_bad(sv) {
                 ff.spec_val = Some(sv);
+            }
+        }
+
+        // The encapsulated SpecFrame (SpcFr).
+        if let Some(sf_node) = node.get_object("SpcFr") {
+            let frame = crate::serial::frame_from_node(sf_node)?;
+            if let Some(sf) = frame.as_any().downcast_ref::<super::specframe::SpecFrame>() {
+                ff.specframe = Some(Box::new(sf.clone()));
             }
         }
 
