@@ -1,7 +1,7 @@
 //! The flux coordinate frame (FluxFrame).
 
 use crate::constants::BAD_VALUE;
-use crate::error::{AstError, AstResult, ErrorCode};
+use crate::error::AstResult;
 use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{DynMapping, UnitMap};
@@ -581,19 +581,6 @@ impl Frame for FluxFrame {
 
     fn effective_symbol(&self, _axis: usize) -> String {
         self.system.symbol().to_string()
-    }
-
-    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
-        if axis != 1 {
-            return Err(AstError::new(
-                ErrorCode::Axiin,
-                format!("FluxFrame has 1 axis, got axis={axis}"),
-            ));
-        }
-        if is_bad(value) {
-            return Ok("<bad>".to_string());
-        }
-        Ok(format!("{value:.7}"))
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {

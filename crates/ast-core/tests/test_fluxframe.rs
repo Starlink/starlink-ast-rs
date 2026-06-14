@@ -142,15 +142,16 @@ fn test_fluxframe_equal_different_specval_is_equal() {
 
 #[test]
 fn test_fluxframe_format() {
+    // FluxFrame does not override Format in C (fluxframe.c has no
+    // `static int Format`); it inherits the base Frame/Axis `%1.7G` contract
+    // (axis.c), with no units appended. Oracle-verified against the built
+    // reference libast.
     let ff = FluxFrame::new(FluxSystem::FluxDen);
-    let s = ff.format(1, 1.5).unwrap();
-    assert!(s.contains("1.5"));
-
-    // Very small values still produce a valid string.
-    let s2 = ff.format(1, 1.23e-3).unwrap();
-    assert!(!s2.is_empty());
-    let val: f64 = s2.trim().parse().unwrap();
-    assert!((val - 1.23e-3).abs() < 1.0e-9);
+    assert_eq!(ff.format(1, 1.5).unwrap(), "1.5");
+    assert_eq!(ff.format(1, 1.23e-3).unwrap(), "0.00123");
+    assert_eq!(ff.format(1, 1.0e-26).unwrap(), "1E-26");
+    assert_eq!(ff.format(1, 1.4e9).unwrap(), "1.4E+09");
+    assert_eq!(ff.format(1, BAD_VALUE).unwrap(), "<bad>");
 }
 
 #[test]
@@ -496,11 +497,11 @@ fn test_specfluxframe_format_axes() {
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let sff = SpecFluxFrame::new(sf, ff);
 
-    // Axis 1 (SpecFrame) and axis 2 (FluxFrame) should both format.
-    let s1 = sff.format(1, 1.4e9).unwrap();
-    assert!(!s1.is_empty());
-    let s2 = sff.format(2, 1.0e-26).unwrap();
-    assert!(!s2.is_empty());
+    // SpecFluxFrame inherits CmpFrame's per-axis Format routing in C
+    // (cmpframe.c); each external axis is formatted by its owning component,
+    // which inherits the base `%1.7G` contract. Oracle-verified.
+    assert_eq!(sff.format(1, 1.4e9).unwrap(), "1.4E+09");
+    assert_eq!(sff.format(2, 1.0e-26).unwrap(), "1E-26");
 
     // Axis 3 should error.
     assert!(sff.format(3, 1.0).is_err());

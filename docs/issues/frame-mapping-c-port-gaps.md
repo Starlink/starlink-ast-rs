@@ -172,10 +172,8 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
   C `Offset` (`frame.c:8470-8490`) returns all-AST__BAD output when the two points are coincident and the requested offset is non-zero (and `point1` when offset is zero).
   Rust (`basic.rs:558`) returns `from` unchanged in both cases.
 
-- **[HIGH] Frame — Format attribute is not printf-style and Digits is absent.**
-  C formats through the Axis Format attribute, a full printf specifier with default `"%1.<Digits>G"` (`axis.c GetDefaultFormat`, Digits default 7) including integer-cast handling for `%d`.
-  Rust (`basic.rs:471`) accepts only a bare precision integer in `format_strs` and otherwise uses Rust's default `Display` (shortest-repr), so most formatted output differs from C.
-  Port printf-format interpretation (or a faithful subset) plus the Digits-derived default.
+- **[HIGH] Frame — Format attribute is not printf-style and Digits is absent.** — **FIXED.**
+  C formats through the Axis Format attribute, a full printf specifier with default `"%1.<Digits>G"` (`axis.c GetDefaultFormat`, Digits default 7) including integer-cast handling for `%d`. The printf-format interpreter is ported as `frames/axis_format.rs::format_value` (the `%G`/`%E`/`%f`/`%d` subset) with the Digits-derived default, and `BasicFrame` carries per-axis Format/Digits state (section 0 item 7). The leaf spectral/flux divergence was closed 2026-06-14: `SpecFrame`/`FluxFrame` had hand-rolled `format` overrides (fixed-decimal precision, and SpecFrame *appended units* — neither matches C, which uses `%1.7G` with no units) even though **C does not override Format for SpecFrame, FluxFrame or DSBSpecFrame** (no `static int Format` — they inherit the base). Fixed by mirroring C's inheritance: the `Frame` trait now carries a default `format` (validate axis → `<bad>` token → `effective_format`/`axis_digits` → `format_value`), `BasicFrame::format` and the `SpecFrame`/`FluxFrame`/`DSBSpecFrame` overrides were deleted so all inherit it (`SpecFluxFrame` keeps CmpFrame-inherited per-axis routing; `CmpFrame`/`TimeFrame`/`SkyFrame` keep their genuine overrides). Oracle-verified for all five classes (`1.5e9`→`1.5E+09`, `1/3`→`0.3333333`, `1e-26`→`1E-26`, BAD→`<bad>`). The pre-existing `test_format_freq` had asserted unit-appended output (a Rust mistake, not a C-bug workaround) and was corrected to the C result. Tests: `tests/test_specframe.rs`, `tests/test_fluxframe.rs`.
 
 - **[MED] Frame — Digits and Direction attributes do not exist.**
   No `digits` or `direction` symbol anywhere under `frames/` (verified by grep); C has frame-level `Digits`, per-axis `Digits(axis)`, and per-axis `Direction(axis)` (`axis.c:1421-1765`) with Format interplay and Plot consumers.
@@ -197,8 +195,8 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
 - **[MED] Frame — `astPrimaryFrame`** — **FIXED 2026-06-11.**
   `primary_frame` is now a `Frame` trait method (leaf base returns `(self, axis)`; CmpFrame descends through its perm, SkyFrame applies its axis permutation). The two private fitschan copies in `make_int_world.rs` and `celestial_axes.rs` were deleted and now call the trait method directly; `specframe::primary_frame_walk` delegates to it. Behaviour verified unchanged via `test_fitschan_wcs` and the simplify regression suite.
 
-- **[LOW] Frame — `format` of AST__BAD returns `"<bad>"`.**
-  C `AxisFormat` has no bad-value special case and formats the raw double; the `"<bad>"` token (`basic.rs:473`) is an invention — verify no Rust caller depends on it, then match C.
+- **[LOW] Frame — `format` of AST__BAD returns `"<bad>"`.** — **FALSE POSITIVE (closed 2026-06-14).**
+  The finding claimed C `AxisFormat` has no bad-value special case; in fact `axis.c:706` returns `"<bad>"` for `value == AST__BAD` before any Format processing. The Rust `"<bad>"` token matches C exactly (oracle-verified). The trait-default `format` (see the Format item above) preserves it.
 
 - **[LOW] Frame — `IsUnitFrame`** — **FIXED 2026-06-11** (base only).
   `is_unit_frame` is now a `Frame` trait method returning `true` for the base Frame (`frame.c:6417`). The specialised-frame overrides that return `false` are deferred until the Frame-as-Mapping/Region simplification paths consume the result.

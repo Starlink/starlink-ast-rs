@@ -303,9 +303,12 @@ fn test_distance_bad() {
 
 #[test]
 fn test_format_freq() {
+    // SpecFrame does not override Format in C (specframe.c has no
+    // `static int Format`); it inherits the base Frame/Axis `%1.7G`
+    // contract (axis.c) and does NOT append units. Oracle-verified against
+    // the built reference libast: 1.42e9 → "1.42E+09".
     let sf = SpecFrame::new(SpecSystem::Freq);
-    let s = sf.format(1, 1.42e9).unwrap();
-    assert!(s.contains("Hz"), "Expected Hz units in: {s}");
+    assert_eq!(sf.format(1, 1.42e9).unwrap(), "1.42E+09");
 }
 
 #[test]
@@ -314,6 +317,20 @@ fn test_format_redshift() {
     let s = sf.format(1, 0.5).unwrap();
     // Redshift is dimensionless.
     assert!(!s.contains("Hz"), "Redshift should not have Hz: {s}");
+}
+
+/// The base `%1.7G` contract, oracle-verified against the built reference
+/// libast (Frame/SpecFrame/FluxFrame all identical, Digits=7).
+#[test]
+fn test_format_base_contract() {
+    use ast_core::constants::BAD_VALUE;
+    let sf = SpecFrame::new(SpecSystem::Freq);
+    assert_eq!(sf.format(1, 12.5).unwrap(), "12.5");
+    assert_eq!(sf.format(1, 1.5e9).unwrap(), "1.5E+09");
+    assert_eq!(sf.format(1, 0.000123456789).unwrap(), "0.0001234568");
+    assert_eq!(sf.format(1, 123456789.0).unwrap(), "1.234568E+08");
+    assert_eq!(sf.format(1, 1.0 / 3.0).unwrap(), "0.3333333");
+    assert_eq!(sf.format(1, BAD_VALUE).unwrap(), "<bad>");
 }
 
 #[test]

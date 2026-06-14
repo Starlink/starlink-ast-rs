@@ -1633,25 +1633,6 @@ impl Frame for SpecFrame {
         self.unit_or_default().to_string()
     }
 
-    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
-        if axis != 1 {
-            return Err(AstError::new(
-                ErrorCode::Axiin,
-                format!("SpecFrame has 1 axis, got axis={axis}"),
-            ));
-        }
-        if is_bad(value) {
-            return Ok("<bad>".to_string());
-        }
-        // Simple numeric formatting with units.
-        let units = self.system.specmap_units();
-        if units.is_empty() {
-            Ok(format!("{value:.6}"))
-        } else {
-            Ok(format!("{value:.6} {units}"))
-        }
-    }
-
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         let va = a[0];
         let vb = b[0];

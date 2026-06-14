@@ -44,7 +44,36 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Format a coordinate value for display.
     ///
     /// `axis` is 1-based.
-    fn format(&self, axis: usize, value: f64) -> AstResult<String>;
+    ///
+    /// The default mirrors C base `astFormat` → `AxisFormat` (axis.c): the
+    /// `<bad>` token for the bad value, otherwise the effective per-axis
+    /// Format string (set value, else the default `"%1.<Digits>G"` with the
+    /// per-axis Digits) rendered by [`axis_format::format_value`]. Leaf Frame
+    /// classes that do not override Format in C (SpecFrame, FluxFrame,
+    /// DSBSpecFrame) inherit this; CmpFrame, TimeFrame and SkyFrame override.
+    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
+        if axis < 1 || axis > self.naxes() {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!("axis index {axis} is out of range 1..={}", self.naxes()),
+            ));
+        }
+        // C `AxisFormat` returns "<bad>" for the bad value (axis.c:704).
+        if crate::mappings::helpers::is_bad(value) {
+            return Ok("<bad>".to_string());
+        }
+        // Resolve the effective Format string: the per-axis Format if set,
+        // else the default "%1.<Digits>G" with the per-axis Digits
+        // (frame.c:4260 → GetDefaultFormat axis.c:1819).
+        let digits = self.axis_digits(axis).max(1) as usize;
+        let fmt = match self.effective_format(axis) {
+            s if !s.is_empty() => s,
+            _ => format!("%1.{digits}G"),
+        };
+        Ok(crate::frames::axis_format::format_value(
+            &fmt, digits, value,
+        ))
+    }
 
     /// Parse a formatted coordinate string back to a numeric value.
     ///

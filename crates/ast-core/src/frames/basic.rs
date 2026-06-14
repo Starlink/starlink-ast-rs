@@ -693,29 +693,6 @@ impl Frame for BasicFrame {
         }
     }
 
-    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
-        self.validate_axis(axis)?;
-        // C AxisFormat returns "<bad>" for the bad value (axis.c:704).
-        if is_bad(value) {
-            return Ok("<bad>".to_string());
-        }
-        // Resolve the effective Format string: the per-axis Format if
-        // set, else the default "%1.<Digits>G" with the per-axis Digits
-        // (frame.c:4260 -> GetDefaultFormat axis.c:1819). A SET but
-        // non-empty Format is passed through verbatim — including one with
-        // no '%', which C hands straight to sprintf so the value is ignored
-        // and the literal string is returned (axis.c:780, ParseAxisFormat
-        // axis.c:2127 returns the unaltered copy when no '%' is present).
-        let digits = self.axis_digits(axis)?.max(1) as usize;
-        let fmt = match &self.format_strs[axis - 1] {
-            Some(s) if !s.is_empty() => s.clone(),
-            _ => format!("%1.{digits}G"),
-        };
-        Ok(crate::frames::axis_format::format_value(
-            &fmt, digits, value,
-        ))
-    }
-
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         self.validate_axis(axis)?;
         Ok(axis_unformat(text))

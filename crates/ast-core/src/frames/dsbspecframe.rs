@@ -631,10 +631,6 @@ impl Frame for DSBSpecFrame {
         self.spec.effective_symbol(axis)
     }
 
-    fn format(&self, axis: usize, value: f64) -> AstResult<String> {
-        self.spec.format(axis, value)
-    }
-
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         self.spec.distance(a, b)
     }
