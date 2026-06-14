@@ -125,6 +125,13 @@ fn parse_scalar_value(s: &str) -> NodeValue {
         return NodeValue::String(unescaped);
     }
 
+    // AST__BAD is written externally as the unquoted token `<bad>`
+    // (channel.c:146); read it back as the bad double so `get_double`
+    // returns it directly.
+    if s == "<bad>" {
+        return NodeValue::Double(crate::constants::BAD_VALUE);
+    }
+
     // Integer.
     if let Ok(v) = s.parse::<i64>() {
         return NodeValue::Int(v);

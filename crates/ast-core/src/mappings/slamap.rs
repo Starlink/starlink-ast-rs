@@ -1356,6 +1356,9 @@ impl Serializable for SlaMap {
                     Some(cvt.cvt_type.description().to_string()),
                 );
                 let arg_descs = cvt.cvt_type.arg_descriptions();
+                // C SlaMap Dump writes every argument unconditionally
+                // (slamap.c:4448); the native writer renders an AST__BAD value
+                // as the unquoted `<bad>` token, matching `astWriteDouble`.
                 for (j, &arg) in cvt.args.iter().enumerate() {
                     let letter = arg_letter(j);
                     let comment = arg_descs.get(j).map(|s| s.to_string());
@@ -1388,7 +1391,10 @@ impl Serializable for SlaMap {
             let mut args = Vec::with_capacity(nargs);
             for j in 0..nargs {
                 let letter = arg_letter(j);
-                let val = node.get_double(&format!("Sla{idx}{letter}"), 0.0);
+                // A missing argument defaults to AST__BAD, matching C
+                // `astLoadSlaMap` (slamap.c:4986, `astReadDouble(..., AST__BAD)`)
+                // — not 0.0. SpecMap/TimeMap already use this default.
+                let val = node.get_double(&format!("Sla{idx}{letter}"), BAD_VALUE);
                 args.push(val);
             }
 

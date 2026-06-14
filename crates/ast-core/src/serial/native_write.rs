@@ -276,7 +276,13 @@ fn write_scalar_value(buf: &mut String, value: &NodeValue) {
             buf.push_str(&v.to_string());
         }
         NodeValue::Double(v) => {
-            buf.push_str(&format_double_g(*v, DBL_DIG));
+            // C `astWriteDouble` represents AST__BAD externally as the
+            // unquoted token `<bad>` (channel.c:146), not a numeric literal.
+            if *v == crate::constants::BAD_VALUE {
+                buf.push_str("<bad>");
+            } else {
+                buf.push_str(&format_double_g(*v, DBL_DIG));
+            }
         }
         NodeValue::String(s) => {
             // Strings are quoted; embedded `"` are doubled.
