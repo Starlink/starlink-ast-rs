@@ -145,12 +145,17 @@ dimension-changing PermMaps.
    were removed — plain `astSimplify`-style simplification now preserves the
    inverse.
 
-2. **Identity not collapsed — open.** For two equal SpecFluxFrames the
-   conversion graph is an identity, but the simplify engine cannot reduce
-   the `MakeMap2 ∘ MakeMap3 ∘ inv(MakeMap2)` form (with its RateMap-of-
-   identity and divide-by-1) to a `UnitMap`, which the conversion-based
-   `astEqual` relies on. Worked around in `make_sf_mapping` with an explicit
-   identity short-circuit (component-wise equality → `UnitMap`), which
-   matches the UnitMap C's simplifier produces. The proper fix would teach
-   the engine to reduce a forward∘inverse TranMap pair (and a
-   RateMap of an identity Mapping) to identity.
+2. **Identity not collapsed — not a simplify gap; a C quirk we diverge
+   from.** For two equal SpecFluxFrames the conversion graph is an identity,
+   but neither our simplify engine *nor C's* can reduce the
+   `MakeMap2 ∘ MakeMap3 ∘ inv(MakeMap2)` form (with its RateMap flux scaling)
+   to a `UnitMap`. In C this means `astEqual` reports two identical
+   SpecFluxFrames as unequal — a surprising result that looks like a C bug.
+   Rather than reproduce that quirk, `make_sf_mapping` short-circuits an
+   all-components-equal conversion to a `UnitMap` (so identical frames
+   compare equal in Rust). This is a deliberate divergence, documented in
+   `c-library-quirks.md` ("SpecFluxFrame astEqual reports identical frames as
+   unequal"). Teaching the simplify engine to reduce a forward∘inverse
+   TranMap pair (and a RateMap of an identity) to identity remains a possible
+   future enhancement, but it is not required for correctness given the
+   short-circuit.

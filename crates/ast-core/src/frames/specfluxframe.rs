@@ -531,12 +531,19 @@ fn make_sf_mapping(
     result: &SpecFluxFrame,
 ) -> AstResult<Option<DynMapping>> {
     // Identity short-circuit: when the spectral and flux components are each
-    // equal (same system/unit/attributes), the full MakeSFMapping graph is an
-    // identity. C reaches the same result via astSimplify reducing the graph
-    // to a UnitMap; our simplify engine cannot fully collapse the
-    // TranMap-carrying graph, so we emit the UnitMap directly. Component
-    // `equal` is itself conversion-based (and does simplify correctly for
-    // SpecFrame/FluxFrame), so this matches C's observable behaviour.
+    // equal (same system/unit/attributes), the conversion is an identity, so
+    // emit a UnitMap directly.
+    //
+    // This is a DELIBERATE divergence from the reference C library. C's
+    // SpecFluxFrame conversion always carries the flux-scaling RateMap, which
+    // `astSimplify` cannot reduce even when target == result, so the
+    // conversion never collapses to a UnitMap — and the conversion-based
+    // `astEqual` therefore reports two separately-constructed *identical*
+    // SpecFluxFrames as NOT equal (astEqual(a,b) == 0, while the component
+    // FluxFrame/SpecFrame each correctly report equal). That looks like a C
+    // bug (a frame should equal its own copy); we treat genuinely-identical
+    // SpecFluxFrames as equal here. Logged in docs/issues/c-library-quirks.md;
+    // revisit if upstream confirms the C behaviour is intentional.
     if Frame::equal(&target.spec_frame, &result.spec_frame)
         && Frame::equal(&target.flux_frame, &result.flux_frame)
     {

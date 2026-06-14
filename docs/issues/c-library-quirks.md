@@ -875,3 +875,47 @@ produces the astropy-correct UTC value. The acceptance test
 and documents the divergence. The `#[ignore]`d test
 `c_bug_b_prefix_unformat_leap_offset` in the same file records the exact
 (buggy) C value so the discrepancy is discoverable.
+
+---
+
+## SpecFluxFrame `astEqual` reports identical frames as unequal
+
+**C location:** `frame.c::Equal` (3549, inherited by SpecFluxFrame via
+CmpFrame) combined with `specfluxframe.c::MakeSFMapping` (1060).
+
+**Observed:** two *separately-constructed but identical* SpecFluxFrames
+compare **unequal**. For example, with `SpecFrame(system=freq)` +
+`FluxFrame(system=flxdn)`:
+
+```c
+AstSpecFluxFrame *a = astSpecFluxFrame(sf, ff, " ");
+AstSpecFluxFrame *b = astSpecFluxFrame(sf, ff, " ");
+astEqual(a, b);   /* == 0  (expected 1) */
+astEqual(a, a);   /* == 1  (same pointer) */
+```
+
+`Frame::Equal` is conversion-based: two Frames are equal iff they have the
+same class name and `astConvert` between them simplifies to a UnitMap. The
+SpecFluxFrame conversion built by `MakeSFMapping` always contains the
+flux-scaling `RateMap` (the rate of change of the output spectral system
+w.r.t. the input, used to rescale the flux density). `astSimplify` cannot
+reduce that `RateMap`-carrying graph to a UnitMap even when target and
+result are identical, so the conversion stays a CmpMap and `Equal` returns
+0. The component `FluxFrame` and `SpecFrame` each correctly report
+`astEqual == 1` for identical copies; only the compound SpecFluxFrame is
+affected. (`astEqual(a, a)` returns 1 only as an artifact of converting a
+frame to its own object.)
+
+**Consequence:** a SpecFluxFrame is not equal to an identical copy of
+itself, which is surprising — a frame should equal its own copy. This looks
+like a C bug rather than intended behaviour.
+
+**Rust behaviour (deliberate divergence):**
+`specfluxframe.rs::make_sf_mapping` short-circuits to a `UnitMap` when the
+spectral and flux components are each equal (component `equal` is itself
+conversion-based and reduces correctly for SpecFrame/FluxFrame). Genuinely-
+identical SpecFluxFrames therefore convert via a UnitMap and compare equal in
+Rust. This is the one place the port intentionally does not match C; revisit
+if the upstream AST developers confirm the C behaviour is intentional. Tests
+`test_specfluxframe_equal` / `test_specfluxframe_serialisation_roundtrip` in
+`crates/ast-core/tests/test_fluxframe.rs` assert the Rust (equal) behaviour.

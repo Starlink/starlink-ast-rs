@@ -487,6 +487,12 @@ fn test_specfluxframe_distance() {
 
 #[test]
 fn test_specfluxframe_equal() {
+    // NOTE: this asserts a DELIBERATE divergence from C. The reference
+    // library's astEqual returns 0 for two identical SpecFluxFrames (the
+    // conversion's flux-scaling RateMap never simplifies to a UnitMap), which
+    // looks like a C bug. Rust treats genuinely-identical SpecFluxFrames as
+    // equal via the make_sf_mapping identity short-circuit. See
+    // docs/issues/c-library-quirks.md ("SpecFluxFrame astEqual ...").
     let sf1 = SpecFrame::new(SpecSystem::Freq);
     let ff1 = FluxFrame::new(FluxSystem::FluxDen);
     let sff1 = SpecFluxFrame::new(sf1.clone(), ff1.clone());
