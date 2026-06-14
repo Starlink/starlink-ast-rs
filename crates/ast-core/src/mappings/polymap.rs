@@ -1364,8 +1364,10 @@ impl Mapping for PolyMap {
                 consolidated.push(term.clone());
             }
         }
-        // Remove zero-coefficient terms.
-        consolidated.retain(|t| t.coeff.abs() > 1e-30);
+        // Remove zero-coefficient terms. C uses an exact `!= 0.0` test when
+        // shuffling merged coefficients (polymap.c:3681), so mirror it rather
+        // than a threshold — a legitimately tiny coefficient survives in C.
+        consolidated.retain(|t| t.coeff != 0.0);
 
         // Check if all remaining terms are affine (constant or linear).
         // A term is constant if sum of powers == 0, linear if sum == 1 with

@@ -345,9 +345,8 @@ Confirmed divergences:
   The raw `dsb_centre()` / `ifr()` getters now document that their unit is **topocentric Hz**. Tests: `tests/test_dsbspecframe.rs` (round-trip on a topocentric frame; non-topocentric frame shows the expected velocity shift, matching the C oracle's `30 GHz → 29.997 GHz`).
   **Still TODO:** the ast-capi string-attribute dispatch for DSBSpecFrame does not exist yet (no DSBSpecFrame surface in `ast-capi`); when it lands, `astGetC("DSBCentre")` / `astGetC("IF")` / `astGetC("ImagFreq")` should call these typed methods for byte-exact parity.
 
-- **[LOW] DSBSpecFrame — Domain is explicitly set instead of defaulted.**
-  `DSBSpecFrame::new` calls `set_domain(\"DSBSPECTRUM\")` (`dsbspecframe.rs:111`), so `test_domain()` is true; C provides DSBSPECTRUM via a `GetDomain` override with TestDomain false.
-  An explicitly-set Domain is copied by Overlay and gates Match differently from a defaulted one.
+- **[LOW] DSBSpecFrame — Domain is explicitly set instead of defaulted.** — **ALREADY CORRECT (verified 2026-06-14).**
+  The finding was stale: `DSBSpecFrame::new` does *not* set Domain; `domain()` returns "DSBSPECTRUM" only as a default (mirroring C `GetDomain`, dsbspecframe.c:531) and `test_domain()` stays false until Domain is explicitly set. Oracle-verified against the built reference libast (default Domain="DSBSPECTRUM", TestDomain=0; after set, TestDomain=1). Regression test added: `tests/test_dsbspecframe.rs::domain_default_is_unset`.
 
 ## 6f. Detailed findings: TimeFrame + FluxFrame + SpecFluxFrame (audited 2026-06-10)
 
@@ -419,13 +418,11 @@ Findings:
 - **[LOW] PolyMap — `astMergeShift` not ported.**
   C's protected `MergeShift`/`MergeShifts` (`polymap.c:261,290`) absorb a neighbouring ShiftMap into the polynomial coefficients during merging; no Rust counterpart.
 
-- **[LOW] PolyMap — zero-coefficient test uses a 1e-30 threshold.**
-  C drops only exactly-zero coefficients during consolidation; Rust `consolidated.retain(|t| t.coeff.abs() > 1e-30)` (`polymap.rs:1217`) could drop legitimate tiny coefficients.
-  Mirror C's exact comparison.
+- **[LOW] PolyMap — zero-coefficient test uses a 1e-30 threshold.** — **FIXED 2026-06-14.**
+  C drops only exactly-zero coefficients when shuffling merged terms (`polymap.c:3681`, `outcof[ic] != 0.0`); Rust's `simplified()` consolidation now mirrors that with `consolidated.retain(|t| t.coeff != 0.0)` instead of `> 1e-30`, so a legitimately tiny coefficient survives as it does in C.
 
-- **[LOW] ChebyMap — bounding-box test differs from C.**
-  C marks a point bad when the *scaled* coordinate satisfies `fabs(x*scale + offset) > 1.0` (`chebymap.c:1165-1170`); Rust compares the raw input against lbnd/ubnd directly and its comment mentions \"a small tolerance\" not present in C (`chebymap.rs:300`).
-  The two disagree by FP rounding exactly at the box boundary; mirror the C scaled test.
+- **[LOW] ChebyMap — bounding-box test differs from C.** — **FIXED 2026-06-14.**
+  C marks a point bad when the *scaled* coordinate satisfies `fabs(x*scale + offset) > 1.0` (`chebymap.c:1170-1174`); Rust compared the raw input against lbnd/ubnd directly (with a misleading "small tolerance" comment). `eval_cheby` now applies the scaling first and tests `x_norm.abs() > 1.0` (equivalent to C's `!(fabs(x) <= 1.0)` since non-finite inputs are already rejected upstream), so the two agree to the last bit at the box boundary. `lbnd`/`ubnd` are retained in the signature but no longer consulted for the bounds test.
 
 - **[Cross-ref] `astPolyTran` (and ChebyMap's override of it) is the section 1 headline gap**; the fitschan workaround at `wcs_matrix.rs:205` is the first consumer to unwind after porting.
 

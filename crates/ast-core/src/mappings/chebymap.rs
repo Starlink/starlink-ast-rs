@@ -304,18 +304,20 @@ fn eval_cheby(
         return vec![BAD_VALUE; n_out];
     }
 
-    // Check domain bounds. Use a small tolerance to handle floating-point
-    // rounding at the boundaries.
-    for i in 0..n_in {
-        if input[i] < lbnd[i] || input[i] > ubnd[i] {
-            return vec![BAD_VALUE; n_out];
-        }
-    }
-
-    // Normalize inputs to [-1, 1].
+    // Normalize inputs to [-1, 1] and reject points outside the bounding box.
+    // C applies the scaling first, then tests `fabs(x*scale + offset) <= 1.0`
+    // (chebymap.c:1170-1174) — the bounds test is on the *scaled* coordinate,
+    // not the raw input against lbnd/ubnd, so the two agree to the last bit at
+    // the box boundary. (`lbnd`/`ubnd` are unused here, kept for the signature.)
+    let _ = (lbnd, ubnd);
+    // `point_has_bad` above already rejected non-finite inputs, so every
+    // `x_norm[i]` here is finite and `> 1.0` is exactly C's `!(fabs(x) <= 1.0)`.
     let mut x_norm = vec![0.0; n_in];
     for i in 0..n_in {
         x_norm[i] = input[i] * scale[i] + offset[i];
+        if x_norm[i].abs() > 1.0 {
+            return vec![BAD_VALUE; n_out];
+        }
     }
 
     // Evaluate terms.

@@ -204,6 +204,20 @@ fn frame_trait_basics() {
     assert_eq!(dsb.naxes(), 1);
 }
 
+/// C `GetDomain` (dsbspecframe.c:531) supplies "DSBSPECTRUM" only as a
+/// *default* — TestDomain stays false until Domain is explicitly set.
+/// Oracle-verified against the built reference libast.
+#[test]
+fn domain_default_is_unset() {
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    assert_eq!(dsb.domain(), "DSBSPECTRUM");
+    assert!(!dsb.test_domain());
+
+    dsb.set_domain("FOO");
+    assert_eq!(dsb.domain(), "FOO");
+    assert!(dsb.test_domain());
+}
+
 /// DSBSpecFrame does not override Unformat in C (dsbspecframe.c has no
 /// `static int Unformat`); it inherits the base SpecFrame/Frame/Axis contract
 /// (`astAxisUnformat`, axis.c:1284). Oracle-verified against the built
