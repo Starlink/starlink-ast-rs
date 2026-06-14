@@ -121,18 +121,75 @@ impl DSBSpecFrame {
 
     // --- DSB-specific attribute getters ---
 
-    /// Return the DSB centre frequency in Hz.
+    /// Return the DSB centre frequency as a **topocentric frequency in Hz**
+    /// (the internal storage unit).
     ///
-    /// Defaults to 3.0e10 Hz (30 GHz) if not explicitly set.
+    /// Defaults to 3.0e10 Hz (30 GHz) if not explicitly set. To obtain the
+    /// value expressed in the frame's current spectral System (what C's
+    /// `astGetC("DSBCentre")` returns), use [`Self::dsb_centre_cur`].
     pub fn dsb_centre(&self) -> f64 {
         self.dsb_centre.unwrap_or(Self::DEFAULT_DSB_CENTRE)
     }
 
-    /// Return the intermediate frequency in Hz.
+    /// Return the DSB centre expressed in the frame's **current spectral
+    /// System and units**.
     ///
-    /// Defaults to 4.0e9 Hz (4 GHz) if not explicitly set.
+    /// Mirrors C `astGetAttrib(this, "DSBCentre")` (dsbspecframe.c:459-483):
+    /// the internal topocentric-frequency value is transformed through the
+    /// inverse of [`Self::to_topo_mapping`] (i.e. topocentric Hz → current
+    /// system). This is the value the C string-attribute layer formats; the
+    /// ast-capi shim should call this for `astGetC` parity.
+    pub fn dsb_centre_cur(&self) -> AstResult<f64> {
+        // TopoMap forward is current-system → topocentric Hz; the get-path
+        // needs the inverse (topocentric Hz → current system).
+        let topo_map = self.to_topo_mapping()?;
+        let pts = crate::coords::PointSet::from_rows([[self.dsb_centre()]]);
+        let out = topo_map.transform(&pts, false)?;
+        Ok(out.point(0)[0])
+    }
+
+    /// Set the DSB centre from a value expressed in the frame's **current
+    /// spectral System and units**, converting to internal topocentric Hz.
+    ///
+    /// Mirrors C `astSetAttrib(this, "DSBCentre=...")` (dsbspecframe.c:1355-1370):
+    /// the supplied value is transformed through [`Self::to_topo_mapping`]
+    /// (current system → topocentric Hz) before storage. The ast-capi shim
+    /// should call this for `astSetC` parity.
+    pub fn set_dsb_centre_cur(&mut self, value: f64) -> AstResult<()> {
+        let topo_map = self.to_topo_mapping()?;
+        let pts = crate::coords::PointSet::from_rows([[value]]);
+        let out = topo_map.transform(&pts, true)?;
+        self.dsb_centre = Some(out.point(0)[0]);
+        Ok(())
+    }
+
+    /// Return the intermediate frequency as a **topocentric frequency in Hz**
+    /// (the internal storage unit).
+    ///
+    /// Defaults to 4.0e9 Hz (4 GHz) if not explicitly set. C's
+    /// `astGetC("IF")` reports this value in GHz (×1e-9); use
+    /// [`Self::if_ghz`] for that external representation.
     pub fn ifr(&self) -> f64 {
         self.ifr.unwrap_or(Self::DEFAULT_IFR)
+    }
+
+    /// Return the intermediate frequency in **GHz**, matching C's external
+    /// `astGetC("IF")` representation (dsbspecframe.c:487-492, `× 1e-9`).
+    pub fn if_ghz(&self) -> f64 {
+        self.ifr() * 1.0e-9
+    }
+
+    /// Set the intermediate frequency from a value in **GHz**, converting to
+    /// internal topocentric Hz (`× 1e9`). Mirrors C's `astSetC("IF=...")`
+    /// (dsbspecframe.c, the IF set-path).
+    pub fn set_if_ghz(&mut self, ghz: f64) {
+        self.ifr = Some(ghz * 1.0e9);
+    }
+
+    /// Return the image-sideband frequency in **GHz**, matching C's external
+    /// `astGetC("ImagFreq")` representation (dsbspecframe.c:496-501, `× 1e-9`).
+    pub fn imag_freq_ghz(&self) -> AstResult<f64> {
+        Ok(self.imag_freq()? * 1.0e-9)
     }
 
     /// Return the sideband that the stored spectral values represent.

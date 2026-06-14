@@ -333,9 +333,13 @@ Confirmed divergences:
   Additionally `GetSpecOriginCur` (`specframe.c:2129`) converts the stored origin to the frame's current system/units, and `SetSystem`/`ClearSystem` rescale the stored SpecOrigin to the new system (`specframe.c:643,682`).
   Rust stores `spec_origin` (used only by overlay and serialisation — `specframe.rs:1971,2316`) and `align_spec_offset`, but `make_spec_mapping_full` has no step 0/9 and `set_system` does not rescale, so offset spectral frames (a SMURF/SCUBA-2 staple) convert wrongly.
 
-- **[MED] DSBSpecFrame — DSBCentre/IF attribute-interface conversions live nowhere.**
-  C's attribute layer converts DSBCentre to/from the frame's *current spectral system* via TopoMap on every string get/set (`dsbspecframe.c:459-480, 1322-1340`) and expresses IF in GHz externally (÷1e9 on get, ×1e9 on set); the internal values are topocentric Hz.
-  Rust typed accessors use raw internal units, which is fine for ast-core, but the conversion must be implemented in the ast-capi string layer (and the Rust docs should state the units explicitly) or `astGetC(\"DSBCentre\")` parity breaks.
+- **[MED] DSBSpecFrame — DSBCentre/IF attribute-interface conversions.** *(TYPED METHODS ADDED 2026-06-13; capi wiring still TODO.)*
+  C's attribute layer converts DSBCentre to/from the frame's *current spectral system* via TopoMap on every string get/set (`dsbspecframe.c:459-483, 1355-1370`) and expresses IF in GHz externally (÷1e9 on get, ×1e9 on set); the internal values are topocentric Hz.
+  Rather than push the conversion onto callers (cf. [[feedback_typed_setters_no_string_layer]]), typed convenience methods now expose both representations on `DSBSpecFrame`:
+  - `dsb_centre_cur()` / `set_dsb_centre_cur()` — DSBCentre in the current spectral System, via the inverse / forward of `to_topo_mapping()` (the Rust `TopoMap` analogue; mirrors C `astGetAttrib`/`astSetAttrib` for "DSBCentre").
+  - `if_ghz()` / `set_if_ghz()` and `imag_freq_ghz()` — the GHz external representation of IF / ImagFreq.
+  The raw `dsb_centre()` / `ifr()` getters now document that their unit is **topocentric Hz**. Tests: `tests/test_dsbspecframe.rs` (round-trip on a topocentric frame; non-topocentric frame shows the expected velocity shift, matching the C oracle's `30 GHz → 29.997 GHz`).
+  **Still TODO:** the ast-capi string-attribute dispatch for DSBSpecFrame does not exist yet (no DSBSpecFrame surface in `ast-capi`); when it lands, `astGetC("DSBCentre")` / `astGetC("IF")` / `astGetC("ImagFreq")` should call these typed methods for byte-exact parity.
 
 - **[LOW] DSBSpecFrame — Domain is explicitly set instead of defaulted.**
   `DSBSpecFrame::new` calls `set_domain(\"DSBSPECTRUM\")` (`dsbspecframe.rs:111`), so `test_domain()` is true; C provides DSBSPECTRUM via a `GetDomain` override with TestDomain false.

@@ -493,3 +493,70 @@ fn alignment_dsb_to_dsb_different_lo() {
         output.point(0)[0]
     );
 }
+
+// ===========================================================================
+// Current-system / GHz unit conversions for the DSBCentre and IF attributes.
+// These mirror the C string-attribute layer (dsbspecframe.c:459-501,
+// 1355-1370), which the ast-capi shim will call for astGetC/astSetC parity.
+// Internal storage is topocentric Hz throughout.
+// ===========================================================================
+
+#[test]
+fn if_ghz_conversions() {
+    // C: astGetC("IF") reports the internal Hz value x 1e-9; astSetC("IF=g")
+    // stores g x 1e9. Internal ifr() stays in Hz.
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_ifr(4.0e9);
+    assert_eq!(dsb.if_ghz(), 4.0);
+    dsb.set_if_ghz(6.0);
+    assert_eq!(dsb.ifr(), 6.0e9);
+    assert_eq!(dsb.if_ghz(), 6.0);
+}
+
+#[test]
+fn dsb_centre_cur_roundtrips_topocentric() {
+    // For a topocentric FREQ frame the current-system value equals the
+    // internal topocentric-Hz value (the TopoMap is an identity on a
+    // topocentric FREQ frame), so dsb_centre_cur round-trips set_dsb_centre.
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_std_of_rest(StdOfRest::Topocentric);
+    dsb.set_dsb_centre(3.0e10);
+    let cur = dsb.dsb_centre_cur().unwrap();
+    assert!(
+        (cur - 3.0e10).abs() < 1.0,
+        "topocentric current-system DSBCentre should equal internal Hz, got {cur}"
+    );
+
+    // set_dsb_centre_cur is the inverse of dsb_centre_cur: setting the
+    // current-system value then reading it back is a round-trip.
+    let mut dsb2 = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb2.set_std_of_rest(StdOfRest::Topocentric);
+    dsb2.set_dsb_centre_cur(2.5e10).unwrap();
+    assert!((dsb2.dsb_centre_cur().unwrap() - 2.5e10).abs() < 1.0);
+    // Internal storage is topocentric Hz; for a topocentric frame it equals
+    // the supplied current-system value.
+    assert!((dsb2.dsb_centre() - 2.5e10).abs() < 1.0);
+}
+
+#[test]
+fn dsb_centre_cur_differs_from_internal_for_nontopo_rest() {
+    // For a non-topocentric rest frame the current-system value differs from
+    // the internal topocentric-Hz storage (the velocity correction the C
+    // oracle shows, e.g. 30 GHz set -> ~29.997 GHz read back). We only assert
+    // the conversion is applied (values differ), since the exact shift
+    // depends on the observer geometry.
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    dsb.set_std_of_rest(StdOfRest::Lsrk);
+    dsb.set_obs_lat(0.3);
+    dsb.set_obs_lon(-1.0);
+    dsb.set_epoch_year(2000.0);
+    dsb.spec_mut().set_ref_ra(1.2);
+    dsb.spec_mut().set_ref_dec(0.5);
+    dsb.set_dsb_centre(3.0e10);
+    let cur = dsb.dsb_centre_cur().unwrap();
+    assert!(cur.is_finite());
+    assert!(
+        (cur - 3.0e10).abs() > 1.0,
+        "non-topocentric current-system DSBCentre should differ from internal Hz"
+    );
+}
