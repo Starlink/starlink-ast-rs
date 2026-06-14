@@ -21,6 +21,12 @@ pub enum FrameRef {
     Current,
     /// A 1-based frame index.
     Index(usize),
+    /// All frames at once — only valid as the `anchor` of
+    /// [`FrameSet::add_frame`], where it appends the supplied frame's axes to
+    /// every frame in the set (mirrors C's `AST__ALLFRAMES`, frameset.h:465).
+    /// It does not identify a single frame and cannot be passed to
+    /// [`FrameSet::frame`], `set_base`, etc.
+    AllFrames,
 }
 
 /// A directed edge in the FrameSet node graph.
@@ -221,12 +227,22 @@ impl FrameSet {
     ///
     /// The new frame is connected to `anchor` via `map`. After this call
     /// the newly added frame becomes the current frame.
+    ///
+    /// As a special case, when `anchor` is [`FrameRef::AllFrames`] the `map`
+    /// argument is **ignored** and the supplied frame's axes are appended to
+    /// *every* frame in the set (see [`FrameSet::append_axes`]); this mirrors
+    /// C `astAddFrame` with `iframe == AST__ALLFRAMES` (frameset.c:1336).
     pub fn add_frame(
         &mut self,
         anchor: FrameRef,
         map: DynMapping,
         new_frame: DynFrame,
     ) -> AstResult<()> {
+        if anchor == FrameRef::AllFrames {
+            // The Mapping is ignored in this mode, matching C.
+            let _ = map;
+            return self.append_axes(new_frame);
+        }
         let anchor_idx = self.resolve(anchor)?;
         let anchor_node = self.node_map[anchor_idx];
         let new_node = self.nnode;
@@ -241,6 +257,51 @@ impl FrameSet {
             mapping: map,
         });
         self.current_idx = self.frames.len() - 1;
+        Ok(())
+    }
+
+    /// Append the axes of `frame` to every Frame in the set.
+    ///
+    /// Mirrors C `AppendAxes` (frameset.c:1943), invoked by
+    /// `astAddFrame(this, AST__ALLFRAMES, ..)`: each Frame is replaced by a
+    /// `CmpFrame(original, frame)` and each internal Mapping by a parallel
+    /// `CmpMap(original, UnitMap(naxes))` (the UnitMap's Nin/Nout = the number
+    /// of axes in `frame`), each CmpMap simplified before storage. The base
+    /// and current frame selections are unchanged, and so widening a 2-axis
+    /// sky FrameSet with a 1-axis spectral Frame yields a 3-axis sky+spectral
+    /// FrameSet in one call.
+    ///
+    /// (The Rust edge model bakes inversion into each stored Mapping, so the
+    /// `Invert`-flag juggling C performs around each `astCmpMap` is not needed
+    /// here.)
+    fn append_axes(&mut self, frame: DynFrame) -> AstResult<()> {
+        let nextra = frame.naxes();
+
+        // Replace every Frame with CmpFrame(original, frame).
+        let old_frames = std::mem::take(&mut self.frames);
+        self.frames = old_frames
+            .into_iter()
+            .map(|orig| -> DynFrame { Box::new(super::CmpFrame::new(orig, frame.snapshot())) })
+            .collect();
+
+        // Replace every edge Mapping with a parallel CmpMap(original,
+        // UnitMap(nextra)), simplified.
+        let old_edges = std::mem::take(&mut self.edges);
+        let mut new_edges = Vec::with_capacity(old_edges.len());
+        for edge in old_edges {
+            let cmp = CmpMap::new(
+                edge.mapping,
+                Box::new(UnitMap::new(nextra)),
+                Composition::Parallel,
+            )?;
+            let mapping = Mapping::simplified(&cmp)?;
+            new_edges.push(Edge {
+                from: edge.from,
+                to: edge.to,
+                mapping,
+            });
+        }
+        self.edges = new_edges;
         Ok(())
     }
 
@@ -901,6 +962,10 @@ impl FrameSet {
                     Ok(i - 1)
                 }
             }
+            FrameRef::AllFrames => Err(AstError::new_tracked(
+                ErrorCode::Frmin,
+                "AST__ALLFRAMES does not identify a single frame",
+            )),
         }
     }
 

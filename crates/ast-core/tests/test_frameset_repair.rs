@@ -270,3 +270,54 @@ fn convert_via_current_frame_still_works() {
     let m = out.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     assert!(Mapping::has_forward(m.as_ref()) && Mapping::has_inverse(m.as_ref()));
 }
+
+// ---------------------------------------------------------------------------
+// add_frame(AST__ALLFRAMES) — append axes to every frame (frameset.c:1336)
+// ---------------------------------------------------------------------------
+
+/// `add_frame(FrameRef::AllFrames, _, frame)` appends the supplied frame's
+/// axes to every frame in the set: each Frame becomes a CmpFrame(orig, frame)
+/// and each Mapping a parallel CmpMap(orig, UnitMap). The Mapping argument is
+/// ignored. Oracle-verified against the reference C library: a 2-axis
+/// GRID→FPLANE WinMap FrameSet widened by a 1-axis SPEC frame becomes a 3-axis
+/// set mapping (5,5,42) → (40,40,42) (axes 1-2 through the WinMap, axis 3
+/// passthrough).
+#[test]
+fn add_frame_allframes_appends_axes() {
+    use ast_core::mappings::WinMap;
+
+    let wm = WinMap::from_corners(&[1.0, 1.0], &[10.0, 10.0], &[0.0, 0.0], &[90.0, 90.0]).unwrap();
+    let mut fs = FrameSet::new(frame_with_domain(2, "GRID"));
+    fs.add_frame(
+        FrameRef::Current,
+        Box::new(wm),
+        frame_with_domain(2, "FPLANE"),
+    )
+    .unwrap();
+
+    // The Mapping argument is ignored in AllFrames mode.
+    fs.add_frame(
+        FrameRef::AllFrames,
+        Box::new(UnitMap::new(1)),
+        frame_with_domain(1, "SPEC"),
+    )
+    .unwrap();
+
+    assert_eq!(fs.nframe(), 2);
+    assert_eq!(Mapping::nin(&fs), 3);
+    assert_eq!(Mapping::nout(&fs), 3);
+    assert_eq!(fs.frame(FrameRef::Base).unwrap().naxes(), 3);
+    assert_eq!(fs.frame(FrameRef::Current).unwrap().naxes(), 3);
+
+    let out = Mapping::transform(&fs, &PointSet::from_rows([[5.0, 5.0, 42.0]]), true).unwrap();
+    assert!((out.point(0)[0] - 40.0).abs() < 1e-9);
+    assert!((out.point(0)[1] - 40.0).abs() < 1e-9);
+    assert!((out.point(0)[2] - 42.0).abs() < 1e-9);
+}
+
+/// `FrameRef::AllFrames` is rejected where a single frame is required.
+#[test]
+fn allframes_rejected_as_single_frame() {
+    let fs = three_frame_chain();
+    assert!(fs.frame(FrameRef::AllFrames).is_err());
+}
