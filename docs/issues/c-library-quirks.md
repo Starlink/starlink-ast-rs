@@ -776,3 +776,52 @@ returns 0; differing unreferenced surplus constants return 1.
 including the matching-index short-circuit (so it preserves the quirk)
 and the exact (non-tolerance) constant comparison. Tests in
 `crates/ast-core/tests/test_permmap.rs` lock all four cases.
+
+---
+
+## CmpMap `Rate` chain-rule override is defined but never installed
+
+**C location:** `cmpmap.c:2997` defines `static double Rate(...)` (the
+CmpMap-specific chain-rule rate-of-change override), but
+`astInitCmpMapVtab` (`cmpmap.c:887-893`) deliberately leaves it
+*unregistered*:
+
+```c
+/* For some reason the CmpMap implementation of astRate can be immensely
+   slow for complex Mapping, so it's currently disable until such time as
+   I have time to sort it out.
+
+   mapping->Rate = Rate;
+*/
+```
+
+**Observed:** because `mapping->Rate = Rate` is commented out, the
+CmpMap vtable keeps the inherited base `Mapping::Rate`. Every
+`astRate` on a CmpMap therefore runs the generic numerical
+differentiation over the *whole* composition — the analytic
+chain-rule `Rate` body (sum of component-rate products for series,
+owning-component dispatch returning exact 0.0 across components for
+parallel) is dead code. Confirmed by instrumenting `astRate_`'s
+vtable dispatch and the `Rate` function entry against `libast` built
+with cmake: the dispatch reaches `astRate_(class=CmpMap)` but the
+CmpMap `Rate` body is never entered.
+
+**Consequence:** the documented "CmpMap chain-rules its components"
+behaviour is not what the library actually does. Anyone porting or
+reasoning about `astRate` on a CmpMap must use the whole-map numeric
+path, not the override. A faithful port of the override would
+*diverge* from the oracle — measured to shift the FELO/VOPT-F2W
+spectral CDELT3 produced by `FitsFromStore` by ~1e-7 (the override's
+per-component numeric rates multiply to a slightly different residue
+than differentiating the composition once), which is enough to flip a
+FITS `CDELT3` comment from "Pixel size" back to the stale input
+"Channel width (m/s)".
+
+**Rust mirror:** `CmpMap::rate` in
+`crates/ast-core/src/mappings/cmpmap.rs` calls `numeric_rate` on the
+whole composition (matching the installed base behaviour) and does
+**not** implement the chain-rule override. The method carries a
+TODO noting the override could be revisited (potentially faster and
+more accurate) if we ever choose to diverge from C, but it must then
+be benchmarked against the C author's "immensely slow" warning and
+gated so fixtures still pass.

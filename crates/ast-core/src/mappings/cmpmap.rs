@@ -715,6 +715,26 @@ impl Mapping for CmpMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        // C `cmpmap.c` defines a chain-rule `Rate` override (sum of
+        // component-rate products for series, owning-component dispatch with
+        // exact 0.0 across-component for parallel) but leaves it *unregistered*
+        // in the vtable: `astInitCmpMapVtab` comments out `mapping->Rate = Rate`
+        // (cmpmap.c:892) with the note that the implementation "can be immensely
+        // slow for complex Mappings ... until such time as I have time to sort
+        // it out". So every `astRate` on a CmpMap in C falls through to the base
+        // `Mapping::Rate`, which numerically differentiates the whole
+        // composition. We mirror that exactly by using the generic numeric
+        // estimator here; a faithful port of the override would *diverge* from
+        // the C oracle (it was measured to shift the FELO/VOPT-F2W spectral
+        // CDELT3 by ~1e-7, enough to flip a FITS comment), so the override is
+        // deliberately not installed.
+        //
+        // TODO(revisit): the analytic chain rule could be both faster and more
+        // accurate than whole-map numeric differentiation. If we ever decide to
+        // diverge from C here, the override implementation is straightforward
+        // (chain-rule series, dispatch parallel) — but it must be gated so the
+        // oracle/fixture comparisons still pass, and benchmarked to confirm it
+        // is not the "immensely slow" path the C author warned about.
         super::rate::numeric_rate(self, at, ax1, ax2)
     }
 
