@@ -111,6 +111,28 @@ impl SpecFluxFrame {
         }
         Ok(())
     }
+
+    /// A standardised copy of the embedded FluxFrame: System set explicitly
+    /// (to the possibly-unit-derived `system()`) and Unit cleared so it
+    /// represents the default units for that System. Mirrors C `GetFluxFrame`
+    /// with `std=1` (specfluxframe.c:240).
+    fn std_flux_frame(&self) -> FluxFrame {
+        let mut ff = self.flux_frame.clone();
+        ff.set_system(self.flux_frame.system());
+        ff.clear_unit();
+        ff
+    }
+
+    /// A standardised copy of the embedded SpecFrame: System and Unit set to
+    /// the spectral system and unit used by the FluxFrame's flux density
+    /// system (wavelength/Angstrom or frequency/Hz). Mirrors C `GetSpecFrame`
+    /// with `std=1` (specfluxframe.c:307).
+    fn std_spec_frame(&self) -> SpecFrame {
+        let mut sf = self.spec_frame.clone();
+        sf.set_system(self.flux_frame.system().density_spec_system());
+        sf.set_unit(self.flux_frame.system().density_unit());
+        sf
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +405,225 @@ impl Frame for SpecFluxFrame {
 }
 
 // ---------------------------------------------------------------------------
+// MakeSFMapping and its component-mapping helpers (specfluxframe.c)
+//
+// All PermMap index arrays are translated from C's 0-based axis numbering to
+// the 1-based convention of the Rust `PermMap`.
+// ---------------------------------------------------------------------------
+
+use crate::mappings::{CmpMap, Composition, Mapping, MathMap, PermMap, RateMap, TranMap};
+
+/// The forward half of the flux-scaling TranMap (specfluxframe.c::MakeMapF,
+/// 754). A 2-in/2-out Mapping whose forward transform takes standardised
+/// `(v1, x1)` to standardised `(v2, x2)`, dividing the flux value by the
+/// absolute rate of change of `x2` with respect to `x1`.
+fn make_map_f(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
+    // m: x1 -> x2 spectral mapping.
+    let m = x1.make_spec_mapping(x2)?;
+    // rate: d(x2)/d(x1) as a 1-in/1-out mapping (C astRateMap(m,0,0)).
+    let rate = RateMap::new(m.clone_box(), 1, 1)?;
+    // div: 2-in/1-out, out = in0 / abs(in1) (inverse undefined, matching C).
+    let div = MathMap::new(2, 1, &["out=in0/abs(in1)"], &["in0", "in1"])?;
+    let unit = UnitMap::new(1);
+    // perm: 2-in/3-out; C inperm=[0,2], outperm=[0,1,1] -> 1-based [1,3]/[1,2,2].
+    let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[])?;
+
+    // cmap1 = unit ∥ rate  : (v1,x1) -> (v1, dx2/dx1)
+    let cmap1 = CmpMap::new(Box::new(unit), Box::new(rate), Composition::Parallel)?;
+    // cmap2 = cmap1 ∘ div  : (v1,x1) -> v2
+    let cmap2 = CmpMap::new(Box::new(cmap1), Box::new(div), Composition::Series)?;
+    // cmap3 = cmap2 ∥ m    : (v1,x1,x1) -> (v2,x2)
+    let cmap3 = CmpMap::new(Box::new(cmap2), m, Composition::Parallel)?;
+    // ret = perm ∘ cmap3   : (v1,x1) -> (v2,x2)
+    let ret = CmpMap::new(Box::new(perm), Box::new(cmap3), Composition::Series)?;
+    Ok(Box::new(ret))
+}
+
+/// The inverse half of the flux-scaling TranMap (specfluxframe.c::MakeMapI,
+/// 895). Built as a forward `(v2,x2) -> (v1,x1)` Mapping which is then
+/// inverted, so that its *inverse* transform runs `(v2,x2) -> (v1,x1)` — i.e.
+/// its forward direction matches `make_map_f`.
+fn make_map_i(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
+    // m: x1 -> x2 spectral mapping; RateMap captures the original invert flag.
+    let m = x1.make_spec_mapping(x2)?;
+    let rate = RateMap::new(m.clone_box(), 1, 1)?;
+    // Invert m so its forward goes x2 -> x1.
+    let mut m_inv = m;
+    m_inv.invert();
+    // mult: 2-in/1-out, out = in0 * abs(in1) (inverse undefined, matching C).
+    let mult = MathMap::new(2, 1, &["out=in0*abs(in1)"], &["in0", "in1"])?;
+    let unit = UnitMap::new(1);
+    let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[])?;
+
+    // cmap1 = unit ∥ rate  : (v2,x1) -> (v2, dx2/dx1)
+    let cmap1 = CmpMap::new(
+        Box::new(unit.clone()),
+        Box::new(rate),
+        Composition::Parallel,
+    )?;
+    // cmap2 = cmap1 ∘ mult : (v2,x1) -> v1
+    let cmap2 = CmpMap::new(Box::new(cmap1), Box::new(mult), Composition::Series)?;
+    // cmap3 = cmap2 ∥ unit : (v2,x1,x1) -> (v1,x1)
+    let cmap3 = CmpMap::new(
+        Box::new(cmap2),
+        Box::new(unit.clone()),
+        Composition::Parallel,
+    )?;
+    // cmap4 = perm ∘ cmap3 : (v2,x1) -> (v1,x1)
+    let cmap4 = CmpMap::new(Box::new(perm), Box::new(cmap3), Composition::Series)?;
+    // cmap5 = unit ∥ m_inv : (v2,x2) -> (v2,x1)
+    let cmap5 = CmpMap::new(Box::new(unit), m_inv, Composition::Parallel)?;
+    // ret = cmap5 ∘ cmap4  : (v2,x2) -> (v1,x1), then invert.
+    let mut ret = CmpMap::new(Box::new(cmap5), Box::new(cmap4), Composition::Series)?;
+    ret.invert();
+    Ok(Box::new(ret))
+}
+
+/// The second Mapping of MakeSFMapping (specfluxframe.c::MakeMap2, 516): a
+/// 3-in/3-out parallel CmpMap converting `(v1, x1)` from the SpecFluxFrame's
+/// user units into the default units of the flux system's density frame, and
+/// passing the third axis (a copy of `v1`) unchanged.
+fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
+    // ax1_map: supplied FluxFrame -> default-units FluxFrame.
+    let f1 = sff.flux_frame.clone();
+    let f2 = sff.std_flux_frame();
+    let Some(ax1_map) = f1.make_flux_mapping(&f2)? else {
+        return Ok(None);
+    };
+    // ax2_map: supplied SpecFrame -> density-system SpecFrame.
+    let s1 = sff.spec_frame.clone();
+    let s2 = sff.std_spec_frame();
+    let ax2_map = s1.make_spec_mapping(&s2)?;
+    // ax3_map: UnitMap on the copied flux axis.
+    let ax3_map = UnitMap::new(1);
+
+    let tmap = CmpMap::new(ax1_map, ax2_map, Composition::Parallel)?;
+    let ret = CmpMap::new(Box::new(tmap), Box::new(ax3_map), Composition::Parallel)?;
+    Ok(Some(Box::new(ret)))
+}
+
+/// The third Mapping of MakeSFMapping (specfluxframe.c::MakeMap3, 631): a
+/// 3-in/3-out parallel CmpMap. The first two axes are a `TranMap` between
+/// standardised `(v1,x1)` and `(v2,x2)` (the flux scaling); the third axis is
+/// the unmodified `x1 -> x2` spectral mapping.
+fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
+    // Standardised SpecFrames for the flux-scaling TranMap.
+    let sf1 = target.std_spec_frame();
+    let sf2 = result.std_spec_frame();
+    let fmap = make_map_f(&sf1, &sf2)?;
+    let imap = make_map_i(&sf1, &sf2)?;
+    let mapa = TranMap::new(fmap, imap)?;
+
+    // Third axis: the unmodified supplied x1 -> x2 spectral mapping.
+    let mapb = target.spec_frame.make_spec_mapping(&result.spec_frame)?;
+
+    let ret = CmpMap::new(Box::new(mapa), mapb, Composition::Parallel)?;
+    Ok(Some(Box::new(ret)))
+}
+
+/// Build the 2-in/2-out conversion Mapping between two SpecFluxFrames,
+/// mirroring C `MakeSFMapping` (specfluxframe.c:1060). The Mapping's inputs
+/// and outputs are `(x, v)` — the spectral position on axis 0 and the flux
+/// value on axis 1, in each frame's own systems and units. Returns `None`
+/// when no conversion can be formed.
+fn make_sf_mapping(
+    target: &SpecFluxFrame,
+    result: &SpecFluxFrame,
+) -> AstResult<Option<DynMapping>> {
+    // Identity short-circuit: when the spectral and flux components are each
+    // equal (same system/unit/attributes), the full MakeSFMapping graph is an
+    // identity. C reaches the same result via astSimplify reducing the graph
+    // to a UnitMap; our simplify engine cannot fully collapse the
+    // TranMap-carrying graph, so we emit the UnitMap directly. Component
+    // `equal` is itself conversion-based (and does simplify correctly for
+    // SpecFrame/FluxFrame), so this matches C's observable behaviour.
+    if Frame::equal(&target.spec_frame, &result.spec_frame)
+        && Frame::equal(&target.flux_frame, &result.flux_frame)
+    {
+        return Ok(Some(Box::new(UnitMap::new(2))));
+    }
+
+    // map1: PermMap copying v1 to output 0 and x1 to outputs 1 and 2.
+    // C inperm=[2,0], outperm=[1,0,0]; 1-based -> inperm=[3,1], outperm=[2,1,1].
+    let map1 = PermMap::new(&[3, 1], &[2, 1, 1], &[])?;
+
+    let Some(map2) = make_map2(target)? else {
+        return Ok(None);
+    };
+    let Some(map3) = make_map3(target, result)? else {
+        return Ok(None);
+    };
+    let Some(mut map4) = make_map2(result)? else {
+        return Ok(None);
+    };
+    map4.invert();
+    // map5 = inverse of map1.
+    let mut map5 = PermMap::new(&[3, 1], &[2, 1, 1], &[])?;
+    map5.invert();
+
+    let tmap1 = CmpMap::new(Box::new(map1), map2, Composition::Series)?;
+    let tmap2 = CmpMap::new(Box::new(tmap1), map3, Composition::Series)?;
+    let tmap3 = CmpMap::new(Box::new(tmap2), map4, Composition::Series)?;
+    let tmap4 = CmpMap::new(Box::new(tmap3), Box::new(map5), Composition::Series)?;
+
+    // C simplifies the result here (astSimplify). Our simplify engine has a
+    // gap with this graph: flattening the TranMap that carries the flux
+    // scaling drops its independently-defined inverse, so the simplified
+    // mapping would lose `has_inverse`. Only adopt the simplified form when it
+    // preserves the transform-definedness of the original; otherwise keep the
+    // (equivalent, fully-invertible) unsimplified Mapping. Tracked as a
+    // simplify-engine gap in docs/issues/simplify-serialization-gaps.md.
+    let want_fwd = tmap4.has_forward();
+    let want_inv = tmap4.has_inverse();
+    let simp = tmap4.simplified()?;
+    if simp.has_forward() == want_fwd && simp.has_inverse() == want_inv {
+        Ok(Some(simp))
+    } else {
+        Ok(Some(Box::new(tmap4)))
+    }
+}
+
+/// Build the SpecFluxFrame conversion in *external* axis order, bracketing
+/// the internal `(spec, flux)` [`make_sf_mapping`] with axis-swap PermMaps for
+/// any frame whose external axes are `(flux, spec)`.
+fn build_sf_conversion(
+    target: &SpecFluxFrame,
+    result: &SpecFluxFrame,
+) -> AstResult<Option<DynMapping>> {
+    let Some(core) = make_sf_mapping(target, result)? else {
+        return Ok(None);
+    };
+
+    // Fast path: no axis swap on either side — the core mapping is already in
+    // external axis order.
+    if !target.swap && !result.swap {
+        return Ok(Some(core));
+    }
+
+    // A 2-axis swap PermMap (its own inverse).
+    let swap = || PermMap::new(&[2, 1], &[2, 1], &[]);
+
+    let mut map = core;
+    if target.swap {
+        // External target is (flux, spec); swap to (spec, flux) before core.
+        map = Box::new(CmpMap::new(Box::new(swap()?), map, Composition::Series)?);
+    }
+    if result.swap {
+        // Core yields (spec, flux); swap to external (flux, spec).
+        map = Box::new(CmpMap::new(map, Box::new(swap()?), Composition::Series)?);
+    }
+    // Preserve transform-definedness across simplification (see make_sf_mapping).
+    let want_fwd = map.has_forward();
+    let want_inv = map.has_inverse();
+    let simp = map.simplified()?;
+    if simp.has_forward() == want_fwd && simp.has_inverse() == want_inv {
+        Ok(Some(simp))
+    } else {
+        Ok(Some(map))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SubFrame helper
 // ---------------------------------------------------------------------------
 
@@ -421,21 +662,13 @@ fn specfluxframe_sub_frame(
                 .expect("overlay preserves type")
                 .clone();
 
-            // Build the conversion Mapping. The full MakeSFMapping
-            // (specfluxframe.c) requires a flux-frequency Mapping
-            // which depends on both component conversions plus the
-            // SpecFrame defining the spectral position. Without that
-            // infrastructure ported, we fall back to identity for
-            // matching systems and None for cross-system, mirroring
-            // the existing FluxFrame::sub_frame and SpecFluxFrame's
-            // own convert behaviour.
-            if target.spec_frame.system() == result.spec_frame.system()
-                && target.flux_frame.system() == result.flux_frame.system()
-            {
-                let map: DynMapping = Box::new(UnitMap::new(2));
-                return Ok(Some((map, Box::new(result))));
+            // Build the full SpecFluxFrame conversion (MakeSFMapping),
+            // bracketed by axis-swap PermMaps so the returned Mapping is in
+            // each frame's external axis order.
+            match build_sf_conversion(target, &result)? {
+                Some(map) => return Ok(Some((map, Box::new(result)))),
+                None => return Ok(None),
             }
-            return Ok(None);
         }
 
         // No template — identity Mapping over the (possibly

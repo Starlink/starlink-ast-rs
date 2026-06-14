@@ -702,11 +702,33 @@ fn clean_expr(s: &str) -> String {
 }
 
 /// Extract variable names from the LHS of a set of expressions.
+///
+/// For an assignment (`name = expr`) the LHS up to `=` is the variable name.
+/// For a bare expression that is a single valid identifier (`in0`), the whole
+/// expression names the variable with no defined transformation — this
+/// mirrors C `ExtractVariables` (mathmap.c), which accepts a function string
+/// such as `"in0"` purely to declare the variable's name.
 fn extract_lhs_names(exprs: &[String]) -> Vec<String> {
     exprs
         .iter()
-        .filter_map(|expr| expr.find('=').map(|eq_pos| expr[..eq_pos].to_string()))
+        .filter_map(|expr| match find_assignment(expr) {
+            Some(eq_pos) => Some(expr[..eq_pos].to_string()),
+            None if is_identifier(expr) => Some(expr.clone()),
+            None => None,
+        })
         .collect()
+}
+
+/// Whether `s` is a single bare identifier: a letter or `_` followed by
+/// letters, digits or `_` (the expressions are already lower-cased and
+/// whitespace-stripped by `clean_expr`).
+fn is_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Compile a set of mapping expressions.

@@ -168,7 +168,20 @@ pub(crate) fn convert_frames(
             // (frame.c:3195-3198).
             to_map.invert();
             let composed = CmpMap::new(from_map, to_map, Composition::Series)?;
-            let map = Mapping::simplified(&composed)?;
+            // astSimplify must return a Mapping equivalent to `composed`. Our
+            // simplify engine has a gap with some graphs (notably the
+            // TranMap-carrying SpecFluxFrame conversion): it can mis-combine
+            // them into a Mapping that drops a transform direction, or claims
+            // a direction it cannot actually evaluate (a singular MatrixMap).
+            // Verify the simplified Mapping preserves transform-definedness
+            // *and* can actually transform in each available direction; if
+            // not, keep the unsimplified (equivalent) composition.
+            let simp = Mapping::simplified(&composed)?;
+            let map: DynMapping = if simplified_is_equivalent(&composed, simp.as_ref()) {
+                simp
+            } else {
+                Box::new(composed)
+            };
 
             // Score: 2*forward + inverse; keep the best
             // (frame.c:3204-3221).
@@ -192,6 +205,32 @@ pub(crate) fn convert_frames(
     } else {
         Ok(None)
     }
+}
+
+/// Whether `simp` (the simplified form of `orig`) is a safe replacement:
+/// it must offer the same transform directions as `orig` and actually be
+/// able to evaluate each one. This catches the simplify-engine gap where a
+/// complex graph collapses into a Mapping that claims a direction (e.g. a
+/// square but singular MatrixMap) it cannot transform. The probe is a single
+/// point, so the cost is negligible.
+fn simplified_is_equivalent(orig: &dyn Mapping, simp: &dyn Mapping) -> bool {
+    use crate::coords::PointSet;
+    if simp.has_forward() != orig.has_forward() || simp.has_inverse() != orig.has_inverse() {
+        return false;
+    }
+    if simp.has_forward() {
+        let probe = PointSet::from_rows([vec![1.0; simp.nin()]]);
+        if simp.transform(&probe, true).is_err() {
+            return false;
+        }
+    }
+    if simp.has_inverse() {
+        let probe = PointSet::from_rows([vec![1.0; simp.nout()]]);
+        if simp.transform(&probe, false).is_err() {
+            return false;
+        }
+    }
+    true
 }
 
 /// Default `find_frame_template` body — mirrors the public C

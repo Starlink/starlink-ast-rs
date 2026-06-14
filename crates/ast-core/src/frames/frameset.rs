@@ -715,12 +715,17 @@ impl FrameSet {
     fn edge_mapping(&self, from: usize, to: usize) -> AstResult<DynMapping> {
         for edge in &self.edges {
             if edge.from == from && edge.to == to {
-                // Forward direction — return a copy via simplified().
-                return edge.mapping.simplified();
+                // Forward direction — return a clone of the stored mapping.
+                // Clone rather than re-simplify: the edge mapping is already
+                // in its intended form, and re-running simplify on every
+                // access is wasteful and can corrupt mappings the simplify
+                // engine handles imperfectly (e.g. the TranMap-carrying
+                // SpecFluxFrame conversion, whose inverse it can drop).
+                return Ok(edge.mapping.clone_box());
             }
             if edge.from == to && edge.to == from {
-                // Reverse direction — get a copy and invert it.
-                let mut m = edge.mapping.simplified()?;
+                // Reverse direction — clone and invert.
+                let mut m = edge.mapping.clone_box();
                 m.invert();
                 return Ok(m);
             }

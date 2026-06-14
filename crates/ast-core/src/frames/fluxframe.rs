@@ -875,13 +875,20 @@ fn fluxframe_overlay(
     };
 
     if let Some(result_flux) = result.as_any_mut().downcast_mut::<FluxFrame>() {
-        let old_system = result_flux.system;
-        let new_system = template_flux.system;
+        // Use the *effective* systems (which may be unit-derived) for the
+        // change test, mirroring C's astGetSystem (fluxframe.c:92-95).
+        let old_system = result_flux.system();
+        let new_system = template_flux.system();
 
         // fluxframe.c:2570-2590 — if the System will change AND the
-        // template explicitly sets it, clear Title.
+        // template explicitly sets it, clear Title; and, if the default
+        // units differ between the old and new systems, clear the result's
+        // Unit so it reverts to the new system's default (fluxframe.c:109-112).
         if new_system != old_system && template_flux.test_system() {
             result_flux.clear_title();
+            if new_system.default_units() != old_system.default_units() {
+                result_flux.clear_unit();
+            }
         }
 
         // Parent Frame::Overlay copies (Domain / Title / SpecVal /

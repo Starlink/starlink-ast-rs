@@ -519,14 +519,17 @@ fn test_specfluxframe_convert_same() {
 }
 
 #[test]
-fn test_specfluxframe_convert_different_returns_none() {
+fn test_specfluxframe_convert_different_spec_system_converts() {
+    // Two SpecFluxFrames differing only in spectral system (Freq vs Wavelen)
+    // ARE convertible — the spectral conversion is well-defined and the flux
+    // (FLXDN, per Hz) is unchanged. Oracle (astConvert) returns a FrameSet.
     let sf1 = SpecFrame::new(SpecSystem::Freq);
     let sf2 = SpecFrame::new(SpecSystem::Wavelen);
     let ff = FluxFrame::new(FluxSystem::FluxDen);
     let sff1 = SpecFluxFrame::new(sf1, ff.clone());
     let sff2 = SpecFluxFrame::new(sf2, ff);
     let fs = sff1.convert_to(&sff2, &[]).unwrap();
-    assert!(fs.is_none());
+    assert!(fs.is_some());
 }
 
 // ---------------------------------------------------------------------------
@@ -562,4 +565,125 @@ fn test_specfluxframe_serialisation_with_attributes() {
     let obj2 = from_native_string(&text).unwrap();
     let sff2 = obj2.as_frame().unwrap();
     assert!(sff.equal(sff2));
+}
+
+// ===========================================================================
+// SpecFluxFrame cross-system conversion (MakeSFMapping)
+// Ported from reference/starlink-ast/ast_tester/testspecflux.c.
+// ===========================================================================
+
+use ast_core::frames::FrameRef;
+
+/// Transform a 2-point (x, v) through the target→result SpecFluxFrame
+/// conversion. Returns `(x_out, v_out)`. Panics if no conversion exists.
+fn sff_convert(target: &SpecFluxFrame, result: &SpecFluxFrame, x: f64, v: f64) -> (f64, f64) {
+    let fs = target
+        .convert_to(result, &[])
+        .unwrap()
+        .expect("SpecFluxFrame conversion");
+    let m = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let out = m.transform(&PointSet::from_rows([[x, v]]), true).unwrap();
+    (out.point(0)[0], out.point(0)[1])
+}
+
+/// The canonical testspecflux.c pair: SpecFrame freq/GHz, target FluxFrame
+/// Jy (FLXDN), result FluxFrame default FLXDNW. `spec_frame` axis 1, flux
+/// axis 2.
+fn jy_sff_pair() -> (SpecFluxFrame, SpecFluxFrame) {
+    let mut sf = SpecFrame::new(SpecSystem::Freq);
+    sf.set_unit("GHz");
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen);
+    ff.set_unit("Jy");
+    ff.set_spec_frame(sf.clone());
+    ff.set_spec_val(123.0);
+    let sff = SpecFluxFrame::new(sf.clone(), ff);
+
+    let mut ff2 = FluxFrame::new(FluxSystem::FluxDenW);
+    ff2.set_spec_frame(sf.clone());
+    ff2.set_spec_val(123.1);
+    let sff2 = SpecFluxFrame::new(sf, ff2);
+    (sff, sff2)
+}
+
+#[test]
+fn test_specflux_jy_to_fluxdenw() {
+    // testspecflux.c error 8-10: (x=2 GHz, v=1 Jy) -> (x=2, v=1.33425638e-26).
+    let (sff, sff2) = jy_sff_pair();
+    let (x, v) = sff_convert(&sff, &sff2, 2.0, 1.0);
+    assert!((x - 2.0).abs() < 1.0e-9, "spectral axis changed: {x}");
+    assert!(
+        (v - 1.33425638e-26).abs() < 1.0e-32,
+        "expected 1.33425638e-26, got {v:e}"
+    );
+}
+
+#[test]
+fn test_specflux_inverse() {
+    // The inverse maps (x=2, v=1.33425638e-26) back to (2, 1).
+    let (sff, sff2) = jy_sff_pair();
+    let fs = sff.convert_to(&sff2, &[]).unwrap().unwrap();
+    let m = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    let fwd = m
+        .transform(&PointSet::from_rows([[2.0, 1.0]]), true)
+        .unwrap();
+    let back = m.transform(&fwd, false).unwrap();
+    assert!((back.point(0)[0] - 2.0).abs() < 1.0e-9);
+    // The flux scaling on the inverse is recovered through a RateMap (finite
+    // differencing of the spectral conversion), so the round-trip carries
+    // that method's precision (~1e-8 here), not bit-exactness.
+    assert!(
+        (back.point(0)[1] - 1.0).abs() < 1.0e-6,
+        "round-trip flux {} != 1.0",
+        back.point(0)[1]
+    );
+}
+
+#[test]
+fn test_specflux_log_units() {
+    // testspecflux.c error 18-20: result FluxFrame Unit=log(W/m2/nm) (FLXDNW).
+    // (x=2, v=1) -> (2, -24.8747607).
+    let mut sf = SpecFrame::new(SpecSystem::Freq);
+    sf.set_unit("GHz");
+    let mut ff = FluxFrame::new(FluxSystem::FluxDen);
+    ff.set_unit("Jy");
+    ff.set_spec_frame(sf.clone());
+    ff.set_spec_val(123.0);
+    let sff = SpecFluxFrame::new(sf.clone(), ff);
+
+    let mut ff2 = FluxFrame::new(FluxSystem::FluxDenW);
+    ff2.set_unit("log(W/m2/nm)");
+    ff2.set_spec_frame(sf.clone());
+    let sff2 = SpecFluxFrame::new(sf, ff2);
+
+    let (x, v) = sff_convert(&sff, &sff2, 2.0, 1.0);
+    assert!((x - 2.0).abs() < 1.0e-9);
+    assert!(
+        (v + 24.8747607).abs() < 1.0e-6,
+        "expected -24.8747607, got {v}"
+    );
+}
+
+#[test]
+fn test_specflux_surface_brightness() {
+    // testspecflux.c error 24-27: SFCBR (Jy/deg**2) -> SFCBRW (log(W/m2/nm/sr)).
+    // (x=2, v=1) -> (2, -21.3585154).
+    let mut sf = SpecFrame::new(SpecSystem::Freq);
+    sf.set_unit("GHz");
+    let mut ff = FluxFrame::new(FluxSystem::SBright);
+    ff.set_unit("Jy/deg**2");
+    ff.set_spec_frame(sf.clone());
+    ff.set_spec_val(123.0);
+    let sff = SpecFluxFrame::new(sf.clone(), ff);
+
+    let mut ff2 = FluxFrame::new(FluxSystem::SBrightW);
+    ff2.set_unit("log(W/m2/nm/sr)");
+    ff2.set_spec_frame(sf.clone());
+    let sff2 = SpecFluxFrame::new(sf, ff2);
+
+    let (x, v) = sff_convert(&sff, &sff2, 2.0, 1.0);
+    assert!((x - 2.0).abs() < 1.0e-9);
+    assert!(
+        (v + 21.3585154).abs() < 1.0e-6,
+        "expected -21.3585154, got {v}"
+    );
 }
