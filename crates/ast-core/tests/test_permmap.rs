@@ -311,3 +311,94 @@ fn perm_dimension_changing_merge_preserves_invertibility() {
     assert!((back.point(0)[0] - 5.0).abs() < 1.0e-12);
     assert!((back.point(0)[1] - 7.0).abs() < 1.0e-12);
 }
+
+// --- PermSplit attribute: the alternative astMapSplit strategy. ---
+//
+// Oracle ground truth from the built reference libast (testspecflux-style
+// probe, protected `astSetPermSplit`/`astMapSplit`), for the PermMap with
+// C-internal inperm = [out1, out0, const0] (Rust 1-based inperm = [2, 1, -1])
+// and outperm = [in1, in0] (Rust [2, 1]), constants = [99.0]:
+//
+//   PermSplit=1, pick {0,1}      -> UnitMap(2), outs (0-based) [1, 0]
+//   PermSplit=1, pick {2}=const  -> NONE
+//   PermSplit=1, pick {0}        -> UnitMap(1), outs [1]
+//   PermSplit=1, pick {1}        -> UnitMap(1), outs [0]
+//   dup map (both inputs <- out0), pick {0,1} -> NONE; pick {0} -> UnitMap(1) [0]
+//
+// The Rust public `map_split` is 1-based on both `in_axes` and the returned
+// output indices, so the oracle's 0-based outs become +1 here.
+
+fn is_unit_map(m: &dyn Mapping) -> bool {
+    m.as_any().downcast_ref::<UnitMap>().is_some()
+}
+
+#[test]
+fn perm_split_default_is_normal_method() {
+    let pm = PermMap::new(&[2, 1, -1], &[2, 1], &[99.0]).unwrap();
+    assert!(!pm.perm_split());
+    assert!(!pm.test_perm_split());
+}
+
+#[test]
+fn perm_split_alternative_uses_inperm() {
+    let mut pm = PermMap::new(&[2, 1, -1], &[2, 1], &[99.0]).unwrap();
+    pm.set_perm_split(true);
+    assert!(pm.perm_split());
+
+    // Pick inputs {1,2} (1-based) -> UnitMap(2), outs [2,1] (1-based).
+    let (outs, sub) = pm.map_split(&[1, 2]).expect("split {1,2}");
+    assert_eq!(sub.nin(), 2);
+    assert_eq!(sub.nout(), 2);
+    assert!(is_unit_map(sub.as_ref()));
+    assert_eq!(outs, vec![2, 1]);
+
+    // Single inputs.
+    let (outs, sub) = pm.map_split(&[1]).expect("split {1}");
+    assert!(is_unit_map(sub.as_ref()));
+    assert_eq!(sub.nin(), 1);
+    assert_eq!(outs, vec![2]);
+
+    let (outs, sub) = pm.map_split(&[2]).expect("split {2}");
+    assert!(is_unit_map(sub.as_ref()));
+    assert_eq!(outs, vec![1]);
+}
+
+#[test]
+fn perm_split_alternative_rejects_constant_fed_input() {
+    let mut pm = PermMap::new(&[2, 1, -1], &[2, 1], &[99.0]).unwrap();
+    pm.set_perm_split(true);
+    // Input 3 (1-based) is fed by a constant -> cannot split.
+    assert!(pm.map_split(&[3]).is_none());
+}
+
+#[test]
+fn perm_split_alternative_rejects_duplicate_output() {
+    // Both inputs fed by output 1 (1-based inperm = [1, 1]).
+    let mut pm = PermMap::new(&[1, 1], &[1], &[]).unwrap();
+    pm.set_perm_split(true);
+    // Selecting both inputs: two inputs fed by the same output -> NONE.
+    assert!(pm.map_split(&[1, 2]).is_none());
+    // Selecting a single input still works.
+    let (outs, sub) = pm.map_split(&[1]).expect("split {1}");
+    assert!(is_unit_map(sub.as_ref()));
+    assert_eq!(outs, vec![1]);
+}
+
+#[test]
+fn perm_split_roundtrips_through_native_dump() {
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+    let mut pm = PermMap::new(&[2, 1, -1], &[2, 1], &[99.0]).unwrap();
+    pm.set_perm_split(true);
+
+    let text = to_native_string(&AnyObject::PermMap(pm)).unwrap();
+    assert!(text.contains("pmsplt"), "dump must carry pmsplt: {text}");
+
+    let AnyObject::PermMap(reread) = from_native_string(&text).unwrap() else {
+        panic!("expected PermMap");
+    };
+    assert!(reread.perm_split());
+    // And it still drives the alternative split after a round-trip.
+    let (outs, sub) = reread.map_split(&[1, 2]).expect("split after reload");
+    assert!(is_unit_map(sub.as_ref()));
+    assert_eq!(outs, vec![2, 1]);
+}

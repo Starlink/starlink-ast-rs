@@ -48,6 +48,10 @@ pub struct PermMap {
     out_is_copy: bool,
     /// Serialize inperm as `InCpy=1` (identity shorthand).
     in_is_copy: bool,
+    /// `PermSplit`: select the alternative `map_split` strategy. When set,
+    /// `map_split` ignores `outperm` and treats `inperm` as the exact inverse
+    /// of the forward transform (permmap.c PermSplit attribute, ~2010).
+    perm_split: bool,
 }
 
 impl PermMap {
@@ -74,6 +78,7 @@ impl PermMap {
             do_not_simplify: false,
             out_is_copy: false,
             in_is_copy: false,
+            perm_split: false,
         })
     }
 
@@ -87,6 +92,39 @@ impl PermMap {
 
     pub(crate) fn constants(&self) -> &[f64] {
         &self.constants
+    }
+
+    /// Return the `PermSplit` attribute (default `false`).
+    ///
+    /// When `false`, [`Mapping::map_split`] follows the public documentation,
+    /// splitting on the forward (`outperm`) transform. When `true`, the
+    /// forward transform is ignored and `inperm` is assumed to be its exact
+    /// inverse, yielding a `UnitMap`-based split (permmap.c `PermSplit`).
+    pub fn perm_split(&self) -> bool {
+        self.perm_split
+    }
+
+    /// Set the `PermSplit` attribute.
+    ///
+    /// Unlike most Mapping attributes this may be changed at any time, because
+    /// it changes neither the forward nor the inverse transform — only how
+    /// `astMapSplit` decomposes the Mapping (permmap.c `SetPermSplit`).
+    pub fn set_perm_split(&mut self, value: bool) {
+        self.perm_split = value;
+    }
+
+    /// Test whether `PermSplit` has been explicitly set.
+    ///
+    /// The Rust port stores `PermSplit` as a plain `bool` rather than C's
+    /// "unset" sentinel, so this reports whether the value differs from the
+    /// `false` default — sufficient for the native-dump `set` flag.
+    pub fn test_perm_split(&self) -> bool {
+        self.perm_split
+    }
+
+    /// Clear the `PermSplit` attribute, restoring the `false` default.
+    pub fn clear_perm_split(&mut self) {
+        self.perm_split = false;
     }
 
     fn effective_forward(&self, forward: bool) -> bool {
@@ -334,6 +372,7 @@ impl Mapping for PermMap {
                 do_not_simplify: false,
                 out_is_copy: self.in_is_copy,
                 in_is_copy: self.out_is_copy,
+                perm_split: self.perm_split,
             }))
         } else {
             Ok(Box::new(self.clone()))
@@ -361,10 +400,6 @@ impl Mapping for PermMap {
         //
         // Project convention: reject duplicate or out-of-range axes (Task 1.1
         // set the precedent; C only checks the in-range half).
-        //
-        // The C `astGetPermSplit(this) != 0` "alternative" mode is not
-        // ported — `PermSplit` is not yet a settable attribute in this
-        // crate, so the default (0 = "normal" method) is the only path.
         let npin = self.nin();
         let npout = self.nout();
         crate::mappings::helpers::validate_in_axes(in_axes, npin)?;
@@ -376,6 +411,58 @@ impl Mapping for PermMap {
         } else {
             (self.outperm.as_slice(), self.inperm.as_slice())
         };
+
+        // The "alternative" method, used when the PermSplit attribute is set
+        // (permmap.c:1633). The forward (`outperm`) transform is ignored and
+        // `inperm` is assumed to be its exact inverse: only the inverse
+        // transform is consulted. The returned Mapping is a UnitMap with one
+        // output per selected input, and the returned output indices are the
+        // `inperm` values of the selected inputs. The split fails if a
+        // selected input is fed by a constant (negative entry) or if two
+        // selected inputs are fed by the same output.
+        if self.perm_split {
+            // C `PERMVAL(inp, iin, npout)` reduced to a zero-based output
+            // index (mirroring the macro at permmap.c:146). When the parent's
+            // inverse array is the NULL identity (`in_is_copy`), C uses
+            // `iin < npout ? iin : -1`; otherwise it reads the stored value
+            // verbatim. The Rust inperm is 1-based (positive) / 0 (bad) /
+            // negative (constant), so translate to C's 0-based encoding where
+            // a "bad" entry is a non-negative index >= npout.
+            let in_is_copy = self.in_is_copy;
+            let mut result: Vec<i64> = Vec::with_capacity(in_axes.len());
+            for &iin in in_axes {
+                let permval: i64 = if in_is_copy {
+                    if iin < npout { iin as i64 } else { -1 }
+                } else {
+                    let p = inp[iin];
+                    if p > 0 {
+                        p - 1
+                    } else if p < 0 {
+                        p
+                    } else {
+                        // Rust-encoded bad: C stores this as an index >= npout
+                        // that is recorded verbatim (non-negative, so it is not
+                        // treated as a constant). Use a value that is both
+                        // >= npout and distinct from every real output index.
+                        (npout + iin) as i64
+                    }
+                };
+
+                // C: a constant-fed input cannot be split (permmap.c:1643).
+                if permval < 0 {
+                    return None;
+                }
+                // C: fail if this output already feeds an earlier picked input
+                // (permmap.c:1649).
+                if result.contains(&permval) {
+                    return None;
+                }
+                result.push(permval);
+            }
+            let out_idx: Vec<usize> = result.iter().map(|&v| v as usize).collect();
+            let unit: DynMapping = Box::new(UnitMap::new(in_axes.len()));
+            return Some((out_idx, unit));
+        }
 
         // Walk the forward perm: pick outputs whose source input is kept.
         // `kept_outs[k]` is the original-mapping output index of the k-th
@@ -928,6 +1015,16 @@ impl Serializable for PermMap {
         node.class_comment = Some("Coordinate permutation".to_string());
         write_mapping_base(&mut node, self);
 
+        // PermSplit (permmap.c Dump, "pmsplt"). Written only when set; the
+        // value is informational when unset (matching C's `set` flag).
+        if self.perm_split {
+            node.push_int(
+                "pmsplt",
+                1,
+                Some("Use alternative astMapSplit implementation".to_string()),
+            );
+        }
+
         // Outperm (forward permutation).
         if self.out_is_copy {
             node.push_int(
@@ -1031,6 +1128,7 @@ impl Serializable for PermMap {
         let mut m = PermMap::new(&inperm, &outperm, &constants)?;
         m.out_is_copy = out_cpy;
         m.in_is_copy = in_cpy;
+        m.perm_split = node.get_int("pmsplt", 0) != 0;
         m.set_do_not_simplify(base.do_not_simplify);
         if base.inverted {
             m.invert();

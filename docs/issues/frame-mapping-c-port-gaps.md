@@ -60,8 +60,8 @@ Ordered roughly by impact.
   `crates/ast-core/src/frames/date_time.rs:4` ports only the decimal-year branch of C `frame.c:8892`; the Besselian/Julian-epoch prefix (`B1950.0`, `J2000.0`), MJD/JD, and Gregorian date/time string forms are missing.
   Any Epoch string-setting path through ast-capi will mis-handle those forms.
 
-- **[MED] PermMap — `PermSplit` attribute not ported.**
-  C `permmap.c` `astGetPermSplit` selects an alternative `MapSplit` strategy; `crates/ast-core/src/mappings/perm.rs:401` notes it is not a settable attribute in the crate.
+- **[MED→FIXED 2026-06-14] PermMap — `PermSplit` attribute.**
+  `PermMap` now carries a settable `perm_split` attribute (`perm_split`/`set_perm_split`/`test_perm_split`/`clear_perm_split`), and `map_split_zero_based` ports the alternative `MapSplit` branch (permmap.c:1633): when set, the forward `outperm` is ignored, `inperm` is treated as the exact inverse, and the split returns a `UnitMap(nin)` with output indices read from the selected inputs' `inperm` values — failing when a selected input is fed by a constant or when two selected inputs share an output. The `pmsplt` token round-trips through the native dump. Oracle-verified against the built reference libast (protected `astSetPermSplit`/`astMapSplit` probe): pick {0,1}→UnitMap outs [1,0]; constant-fed→NONE; duplicate-output→NONE. Tests: `tests/test_permmap.rs`.
 
 - **[MED] Mapping — `astRebin`/`astRebinSeq`/`astResample`/`astTranGrid`/`astQuadApprox` absent.**
   No `fn rebin|resample|tran_grid|quad_approx` anywhere in `crates/ast-core/src`.
@@ -499,7 +499,7 @@ Focused follow-up on the three historically problematic entry points, covering w
 
 - **MapSplit algorithm bodies verified — no new math findings.**
   The trait default (`helpers::full_set_split`) matches C's full-selection path including the permuted-selection PermMap composition (`mapping.c:7798+`).
-  `PermMap::map_split` (`perm.rs:378-470`) is a faithful port of `permmap.c:1438` with documented encoding translation (1-based/0-as-BAD vs C 0-based/negative), the constants pool reused, and deliberate stricter duplicate-axis validation; the missing `PermSplit` alternative mode remains a section 1 item.
+  `PermMap::map_split` (`perm.rs:378-470`) is a faithful port of `permmap.c:1438` with documented encoding translation (1-based/0-as-BAD vs C 0-based/negative), the constants pool reused, and deliberate stricter duplicate-axis validation. The `PermSplit` alternative mode is now ported too (section 1, FIXED 2026-06-14).
   `CmpMap::map_split` (incl. the MapSplit2 fallback) was verified in 6g; the MatrixMap zero-init divergence is the documented quirk; FrameSet's missing override is in 6b.
   `TranMap::map_split` exists but its body was not deep-compared (low risk: it splits both components and recombines).
 
