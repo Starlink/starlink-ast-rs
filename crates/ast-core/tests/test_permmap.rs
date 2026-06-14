@@ -271,3 +271,43 @@ fn perm_c_dump_with_negative_entry_no_nconst_roundtrips() {
     let fwd = reread.transform(&pts, true).unwrap();
     assert_eq!(fwd.point(0)[0], BAD_VALUE);
 }
+
+#[test]
+fn perm_dimension_changing_merge_preserves_invertibility() {
+    // A dimension-changing PermMap (2->3, copying input 2 to two outputs) is
+    // invertible (it copies/drops axes). When such a PermMap is series-
+    // composed with a diagonal scaling MatrixMap-equivalent (here a parallel
+    // ZoomMap pair), the simplify engine must NOT fold the PermMap into a
+    // rectangular (3x2) MatrixMap — that would be non-invertible and silently
+    // drop the inverse direction. The simplified mapping must still round-trip.
+    use ast_core::mappings::{CmpMap, Composition, ZoomMap};
+
+    // 2->3 PermMap: out0=in0, out1=in1, out2=in1 (C outperm=[0,1,1] 1-based [1,2,2]).
+    let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[]).unwrap();
+    // 3->3 diagonal scaling that drops nothing: scale each axis.
+    let scale = {
+        let z01 = CmpMap::new(
+            Box::new(ZoomMap::new(1, 1.0e-26).unwrap()),
+            Box::new(ZoomMap::new(1, 2.0).unwrap()),
+            Composition::Parallel,
+        )
+        .unwrap();
+        CmpMap::new(
+            Box::new(z01),
+            Box::new(ZoomMap::new(1, 3.0).unwrap()),
+            Composition::Parallel,
+        )
+        .unwrap()
+    };
+    let chain = CmpMap::new(Box::new(perm), Box::new(scale), Composition::Series).unwrap();
+    let simp = chain.simplified().unwrap();
+
+    // Forward then inverse must round-trip (the inverse must exist).
+    let pts = PointSet::from_rows([[5.0, 7.0]]);
+    let fwd = simp.transform(&pts, true).unwrap();
+    let back = simp
+        .transform(&fwd, false)
+        .expect("simplified mapping must retain an inverse");
+    assert!((back.point(0)[0] - 5.0).abs() < 1.0e-12);
+    assert!((back.point(0)[1] - 7.0).abs() < 1.0e-12);
+}

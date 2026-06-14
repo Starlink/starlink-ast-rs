@@ -566,21 +566,8 @@ fn make_sf_mapping(
     let tmap3 = CmpMap::new(Box::new(tmap2), map4, Composition::Series)?;
     let tmap4 = CmpMap::new(Box::new(tmap3), Box::new(map5), Composition::Series)?;
 
-    // C simplifies the result here (astSimplify). Our simplify engine has a
-    // gap with this graph: flattening the TranMap that carries the flux
-    // scaling drops its independently-defined inverse, so the simplified
-    // mapping would lose `has_inverse`. Only adopt the simplified form when it
-    // preserves the transform-definedness of the original; otherwise keep the
-    // (equivalent, fully-invertible) unsimplified Mapping. Tracked as a
-    // simplify-engine gap in docs/issues/simplify-serialization-gaps.md.
-    let want_fwd = tmap4.has_forward();
-    let want_inv = tmap4.has_inverse();
-    let simp = tmap4.simplified()?;
-    if simp.has_forward() == want_fwd && simp.has_inverse() == want_inv {
-        Ok(Some(simp))
-    } else {
-        Ok(Some(Box::new(tmap4)))
-    }
+    // Simplify the result, mirroring C astSimplify.
+    Ok(Some(tmap4.simplified()?))
 }
 
 /// Build the SpecFluxFrame conversion in *external* axis order, bracketing
@@ -612,15 +599,7 @@ fn build_sf_conversion(
         // Core yields (spec, flux); swap to external (flux, spec).
         map = Box::new(CmpMap::new(map, Box::new(swap()?), Composition::Series)?);
     }
-    // Preserve transform-definedness across simplification (see make_sf_mapping).
-    let want_fwd = map.has_forward();
-    let want_inv = map.has_inverse();
-    let simp = map.simplified()?;
-    if simp.has_forward() == want_fwd && simp.has_inverse() == want_inv {
-        Ok(Some(simp))
-    } else {
-        Ok(Some(map))
-    }
+    Ok(Some(map.simplified()?))
 }
 
 // ---------------------------------------------------------------------------

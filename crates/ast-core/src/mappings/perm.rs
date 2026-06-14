@@ -608,6 +608,18 @@ impl Mapping for PermMap {
             if super::matrix::is_identity_matrix_pub(&product) {
                 return Some(Box::new(UnitMap::new(product.nrows())));
             }
+            // A dimension-changing PermMap (perm_nin != perm_nout) produces a
+            // rectangular product matrix. A rectangular MatrixMap has no
+            // inverse, whereas the PermMap it replaces does (a PermMap is
+            // always invertible — it permutes/copies/drops axes). Folding the
+            // PermMap into a rectangular MatrixMap would therefore silently
+            // drop a transform direction, breaking later inverse use (e.g. the
+            // SpecFluxFrame conversion). Only merge when the result is square
+            // (and thus potentially invertible); leave the PermMap intact
+            // otherwise.
+            if product.nrows() != product.ncols() {
+                return None;
+            }
             return super::matrix::MatrixMap::new(product)
                 .ok()
                 .map(|m| Box::new(m) as DynMapping);

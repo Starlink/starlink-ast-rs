@@ -123,28 +123,34 @@ Likely involves multiple missing optimizations interacting.
 5. **CmpMap flattening** (3 cases) — structural completeness
 6. **ZoomMap absorption** (1 case) — straightforward
 
-## TranMap-carrying graphs lose their inverse / don't collapse to UnitMap
+## TranMap-carrying graphs: inverse-corruption FIXED; identity-collapse open
 
 The SpecFluxFrame conversion (specfluxframe.rs `make_sf_mapping`) builds a
 2-axis graph containing a `TranMap` (the flux scaling, whose forward and
-inverse are supplied by two separate forward-only sub-mappings). The
-simplify engine mishandles this graph in two ways:
+inverse are supplied by two separate one-way sub-mappings) wrapped by
+dimension-changing PermMaps.
 
-1. **Inverse dropped / corrupted.** Simplifying the series/parallel
-   composition that wraps the `TranMap` can yield a Mapping that claims
-   `has_inverse` but produces a singular `MatrixMap` on the inverse
-   transform (the unsimplified graph inverts correctly). Worked around in
-   `find_frame::convert_frames` (keep the unsimplified composition when the
-   simplified form can't actually transform both ways) and by having
-   `FrameSet::edge_mapping` clone stored edges rather than re-simplifying
-   them on every access.
+1. **Inverse dropped / corrupted — FIXED 2026-06-14.** Root cause:
+   `PermMap::try_merge` folded an invertible dimension-changing PermMap
+   (e.g. 2→3, copying one input to two outputs) together with an adjacent
+   diagonal scaling into a *rectangular* `MatrixMap` (e.g. 3×2). A
+   rectangular MatrixMap has no inverse, whereas the PermMap it replaced
+   does, so the simplified mapping silently lost its inverse direction (the
+   downstream inverse transform then hit "MatrixMap inverse is not
+   defined"). Fixed in `mappings/perm.rs`: the PermMap↔MatrixMap merge now
+   bails when the product matrix would be non-square, leaving the
+   (invertible) PermMap intact. Regression test
+   `test_permmap::perm_dimension_changing_merge_preserves_invertibility`.
+   With this fix the temporary guards in `convert_frames`/`make_sf_mapping`
+   were removed — plain `astSimplify`-style simplification now preserves the
+   inverse.
 
-2. **Identity not collapsed.** For two equal SpecFluxFrames the graph is an
-   identity but does not simplify to a `UnitMap`, which would break the
-   conversion-based `astEqual`. Worked around in `make_sf_mapping` with an
-   explicit identity short-circuit (component-wise equality → `UnitMap`).
-
-The proper fix is in the simplify engine's `TranMap` handling (it should
-preserve the TranMap's independently-defined inverse through flattening, and
-reduce a forward∘inverse TranMap pair to identity). Until then the
-workarounds above keep behaviour correct.
+2. **Identity not collapsed — open.** For two equal SpecFluxFrames the
+   conversion graph is an identity, but the simplify engine cannot reduce
+   the `MakeMap2 ∘ MakeMap3 ∘ inv(MakeMap2)` form (with its RateMap-of-
+   identity and divide-by-1) to a `UnitMap`, which the conversion-based
+   `astEqual` relies on. Worked around in `make_sf_mapping` with an explicit
+   identity short-circuit (component-wise equality → `UnitMap`), which
+   matches the UnitMap C's simplifier produces. The proper fix would teach
+   the engine to reduce a forward∘inverse TranMap pair (and a
+   RateMap of an identity Mapping) to identity.
