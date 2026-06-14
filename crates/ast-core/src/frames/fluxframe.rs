@@ -843,19 +843,15 @@ fn fluxframe_sub_frame(
             fluxframe_overlay(t, template_axes, &mut result)?;
         }
 
-        // Build the conversion Mapping. The full FluxFrame ↔
-        // FluxFrame conversion (MakeFluxMapping) requires the
-        // SpecFrame defining the spectral position, which we don't
-        // wire up in this port. For same-system targets the result
-        // is identity; for different systems we return None to
-        // signal "not yet supported" — same behaviour as the
-        // existing FluxFrame::convert. This deliberately does not
-        // paper over the gap with a fake mapping.
-        if target.system == result.system {
-            let map: DynMapping = Box::new(UnitMap::new(1));
-            return Ok(Some((map, Box::new(result))));
+        // Build the conversion Mapping via MakeFluxMapping
+        // (fluxframe.c SubFrame calls MakeFluxMapping with align_sys).
+        // Returns None when the two systems are too unrelated to convert
+        // (surface-brightness mismatch, or a cross-density pair whose
+        // SpecVal positions are absent / don't align).
+        match target.make_flux_mapping(&result)? {
+            Some(map) => return Ok(Some((map, Box::new(result)))),
+            None => return Ok(None),
         }
-        return Ok(None);
     }
 
     // parent_subframe branch (fluxframe.c:3072+). Delegate to the
