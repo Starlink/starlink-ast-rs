@@ -471,14 +471,26 @@ fn write_store_to_cards(
         }
     }
 
-    // CTYPEi{S}
-    for i in 0..naxis {
+    // CTYPEi{S}. If the projection is the AST-specific "TPN" code,
+    // convert it to the standard FITS-WCS "TAN" and remember to emit
+    // its projection parameters with the "QV" prefix instead of "PV".
+    // AST does the inverse conversion on read; non-AST software ignores
+    // the QV terms and reads a plain TAN projection. Mirrors
+    // `WcsFromStore` (fitschan.c:37066-37077).
+    let mut axis_par_qv = vec![false; naxis];
+    for (i, qv) in axis_par_qv.iter_mut().enumerate() {
         if let Some(ref val) = store.ctype[i] {
+            let mut out = val.clone();
+            if val.len() >= 4 && val[val.len() - 4..].eq_ignore_ascii_case("-TPN") {
+                let base = &val[..val.len() - 4];
+                out = format!("{base}-TAN");
+                *qv = true;
+            }
             let key = fmt_axis_key("CTYPE", i + 1, s);
             let comment = store.ctype_com[i]
                 .clone()
                 .unwrap_or_else(|| format!("Type of co-ordinate on axis {}", i + 1));
-            cards.set_string(&key, val, &comment);
+            cards.set_string(&key, &out, &comment);
         }
     }
 
@@ -540,13 +552,17 @@ fn write_store_to_cards(
     // (fitschan.c:37257-37284) — emitted between TIMESYS/PV (if any)
     // and RADESYS/EQUINOX. The store's `pv` is keyed by 0-based axis
     // index, m index; FITS uses 1-based axis numbering.
-    for i in 0..naxis {
+    for (i, &qv) in axis_par_qv.iter().enumerate() {
+        // TPN axes (rewritten to "TAN" above) emit their parameters with
+        // the "QV" prefix; all other axes use "PV" (fitschan.c:37074,
+        // 37278 `parprefix`).
+        let prefix = if qv { "QV" } else { "PV" };
         for (m, val) in store.pv[i].iter().enumerate() {
             if let Some(v) = val {
                 let key = if s == ' ' {
-                    format!("PV{}_{m}", i + 1)
+                    format!("{prefix}{}_{m}", i + 1)
                 } else {
-                    format!("PV{}_{m}{s}", i + 1)
+                    format!("{prefix}{}_{m}{s}", i + 1)
                 };
                 cards.set_float(&key, *v, "Projection parameter");
             }
