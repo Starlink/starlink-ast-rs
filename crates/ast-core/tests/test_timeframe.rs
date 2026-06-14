@@ -447,6 +447,54 @@ fn test_same_system_different_origin() {
 }
 
 // ---------------------------------------------------------------------------
+// Per-instance Unit support (C MakeMap unit bracketing)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_unit_accessors() {
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    assert!(!tf.test_unit());
+    assert_eq!(tf.unit_or_default(), "d");
+    tf.set_unit("s");
+    assert!(tf.test_unit());
+    assert_eq!(tf.unit(), Some("s"));
+    assert_eq!(tf.unit_or_default(), "s");
+    tf.clear_unit();
+    assert!(!tf.test_unit());
+    assert_eq!(tf.unit_or_default(), "d");
+}
+
+#[test]
+fn test_convert_seconds_to_days() {
+    // A value in seconds converts to the same instant in days: the unit
+    // bracketing in MakeMap scales by 86400 (same System/TimeScale/origin).
+    let mut tf_s = TimeFrame::new(TimeSystem::Mjd);
+    tf_s.set_unit("s");
+    let tf_d = TimeFrame::new(TimeSystem::Mjd);
+
+    // Both have origin 0, so 86400 s == 1 d (offset from the MJD origin).
+    let out = convert_value(&tf_s, &tf_d, 86400.0);
+    assert!(
+        (out - 1.0).abs() < 1.0e-9,
+        "86400 s should convert to 1 d, got {out}"
+    );
+
+    // Round-trip back to seconds.
+    let back = round_trip(&tf_s, &tf_d, 86400.0);
+    assert!((back - 86400.0).abs() < 1.0e-6, "round-trip failed: {back}");
+}
+
+#[test]
+fn test_convert_seconds_default_units_unchanged() {
+    // Regression guard: with default units (d) the convert path is the
+    // identity for matching frames.
+    let tf1 = TimeFrame::new(TimeSystem::Mjd);
+    let tf2 = TimeFrame::new(TimeSystem::Mjd);
+    let out = convert_value(&tf1, &tf2, 12345.0);
+    assert!((out - 12345.0).abs() < 1.0e-12);
+}
+
+// ---------------------------------------------------------------------------
 // TT -> TDB conversion (should be close to identity for most epochs)
 // ---------------------------------------------------------------------------
 

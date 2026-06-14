@@ -1,10 +1,13 @@
 //! The time coordinate frame (TimeFrame).
 
 use crate::constants::BAD_VALUE;
+use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::{ast_equal, is_bad};
-use crate::mappings::{DynMapping, TimeCvtType, TimeMap, UnitMap};
+use crate::mappings::{
+    CmpMap, Composition, DynMapping, Mapping, ShiftMap, TimeCvtType, TimeMap, UnitMap,
+};
 use crate::serial::{Node, NodeValue, Serializable};
 
 // ---------------------------------------------------------------------------
@@ -191,7 +194,10 @@ pub struct TimeFrame {
     /// Whether `timescale` was set explicitly. Mirrors `astTestTimeScale`.
     timescale_set: bool,
     time_origin: Option<f64>, // in default units for current system
-    lt_offset: Option<f64>,   // Local Time offset from UTC (hours)
+    /// Per-instance axis Unit string (e.g. "s"). `None` means the system
+    /// default units are used (mirrors C `astTestUnit`/`astGetUnit`).
+    unit: Option<String>,
+    lt_offset: Option<f64>, // Local Time offset from UTC (hours)
     align_timescale: Option<TimeScale>,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
@@ -238,6 +244,7 @@ impl TimeFrame {
             timescale,
             timescale_set: false,
             time_origin: None,
+            unit: None,
             lt_offset: None,
             align_timescale: None,
             act_unt: None,
@@ -368,6 +375,33 @@ impl TimeFrame {
     /// Clear the time origin.
     pub fn clear_time_origin(&mut self) {
         self.time_origin = None;
+    }
+
+    /// Return the explicitly-set axis Unit string, or `None` for the system
+    /// default. Mirrors `astTestUnit`/`astGetUnit`.
+    pub fn unit(&self) -> Option<&str> {
+        self.unit.as_deref()
+    }
+
+    /// Set the axis Unit string.
+    pub fn set_unit(&mut self, unit: &str) {
+        self.unit = Some(unit.to_string());
+    }
+
+    /// Whether the axis Unit has been explicitly set.
+    pub fn test_unit(&self) -> bool {
+        self.unit.is_some()
+    }
+
+    /// Clear the axis Unit, reverting to the system default.
+    pub fn clear_unit(&mut self) {
+        self.unit = None;
+    }
+
+    /// Return the effective axis Unit string: the explicitly-set value, or
+    /// the current system's default units.
+    pub fn unit_or_default(&self) -> &str {
+        self.unit.as_deref().unwrap_or(self.system.default_units())
     }
 
     /// Return the Local Time offset from UTC (hours).
@@ -514,85 +548,157 @@ impl TimeFrame {
         }
     }
 
-    /// Build the TimeMap chain for converting from `self` (source) to `result` (target).
+    /// Build the conversion mapping from `self` (source) to `result` (target),
+    /// in each frame's own System/TimeScale/TimeOrigin/Unit.
     ///
-    /// Follows the C `MakeMap` algorithm:
-    /// 1. Convert source system → MJD (if not already MJD)
-    /// 2. Convert source timescale → TAI (the common intermediate)
-    /// 3. Convert TAI → target timescale
-    /// 4. Convert MJD → target system (if not already MJD)
+    /// Thin wrapper over [`Self::make_map`] passing each frame's effective
+    /// units, so a TimeFrame carrying a non-default Unit converts correctly.
+    /// Source-side timescale conversions use `self`'s observer, target-side
+    /// use `result`'s (the convert path may bridge two differently-sited
+    /// frames).
     fn make_time_mapping(&self, result: &TimeFrame) -> AstResult<DynMapping> {
-        let sys1 = self.system;
-        let sys2 = result.system;
-        let ts1 = self.timescale;
-        let ts2 = result.timescale;
-        let off1 = self.time_origin();
-        let off2 = result.time_origin();
+        self.make_map(
+            self.system,
+            result.system,
+            self.timescale,
+            result.timescale,
+            self.time_origin(),
+            result.time_origin(),
+            self.unit_or_default(),
+            result.unit_or_default(),
+            Some(result),
+        )
+    }
 
-        // Simple case: same system, timescale, and origin.
-        if ts1 == ts2 && sys1 == sys2 && ast_equal(off1, off2) {
-            return Ok(Box::new(UnitMap::new(1)));
-        }
+    /// Make a Mapping between the stated systems, timescales, origins and
+    /// units. Mirrors C `timeframe.c::MakeMap` (3505).
+    ///
+    /// `off1`/`off2` are axis offsets in the default units of `sys1`/`sys2`.
+    /// `unit1`/`unit2` are the input/output unit strings. The returned
+    /// Mapping transforms a value in (`sys1`, `ts1`, `off1`, `unit1`) to one
+    /// in (`sys2`, `ts2`, `off2`, `unit2`).
+    ///
+    /// Timescale conversions need observer geometry: `self` supplies the
+    /// source-side observer and `tgt_obs` (when `Some`) the target side. For
+    /// the value↔MJD conversions used by Format/Unformat, source and target
+    /// are the same frame, so `tgt_obs` is `None` and `self` is used for both.
+    #[allow(clippy::too_many_arguments)]
+    fn make_map(
+        &self,
+        sys1: TimeSystem,
+        sys2: TimeSystem,
+        ts1: TimeScale,
+        ts2: TimeScale,
+        off1: f64,
+        off2: f64,
+        unit1: &str,
+        unit2: &str,
+        tgt_obs: Option<&TimeFrame>,
+    ) -> AstResult<DynMapping> {
+        let du1 = sys1.default_units();
+        let du2 = sys2.default_units();
 
-        // Simple case: same system and timescale, only offset differs.
+        // Simple case: same system and timescale.
         if ts1 == ts2 && sys1 == sys2 {
-            let shift = off1 - off2;
-            let mut tm = TimeMap::new();
-            tm.add(TimeCvtType::MjdToMjd, &[off1, off2]);
-            // But that only works for MJD. For other systems we need to
-            // go through the full path. Actually MjdToMjd just adds the
-            // shift in-place, regardless of system since the unit is the same.
-            // The C code handles this via a ShiftMap. We can use MjdToMjd
-            // which adds args[0]-args[1] to the value.
-            if shift == 0.0 {
-                return Ok(Box::new(UnitMap::new(1)));
+            // Same offset too: identity in the default units; only a unit
+            // conversion (if any) remains.
+            if ast_equal(off1, off2) {
+                if unit1 == unit2 {
+                    return Ok(Box::new(UnitMap::new(1)));
+                }
+                return unit_mapper_or_err(unit1, unit2);
             }
-            return Ok(Box::new(tm));
+
+            // Offsets differ. Transform the offset difference from the
+            // system default units into the output units, then apply it as
+            // a ShiftMap, bracketed by an input→output unit conversion.
+            let mut shift = off1 - off2;
+            if du1 != unit2 {
+                let umap = unit_mapper_or_err(du1, unit2)?;
+                shift = transform_scalar(umap.as_ref(), shift, true)?;
+            }
+            let shift_map: DynMapping = Box::new(ShiftMap::new(vec![shift]));
+            if unit1 != unit2 {
+                let umap = unit_mapper_or_err(unit1, unit2)?;
+                return Ok(Box::new(CmpMap::new(umap, shift_map, Composition::Series)?));
+            }
+            return Ok(shift_map);
         }
 
-        // Full conversion path.
+        // Full path: input units → default-in units, TimeMap, default-out
+        // units → output units.
+        let umap1 = unit_mapper_or_err(unit1, du1)?;
+        let umap2 = unit_mapper_or_err(du2, unit2)?;
+
         let mut timemap = TimeMap::new();
-
-        // The MJD offset corresponding to the source origin.
         let mjd_off1 = Self::to_mjd(sys1, off1);
+        self.build_timemap(
+            &mut timemap,
+            sys1,
+            sys2,
+            ts1,
+            ts2,
+            off1,
+            off2,
+            mjd_off1,
+            tgt_obs,
+        );
 
+        let timemap: DynMapping = if timemap.is_empty() {
+            Box::new(UnitMap::new(1))
+        } else {
+            Box::new(timemap)
+        };
+
+        let chain = CmpMap::new(umap1, timemap, Composition::Series)?;
+        let chain = CmpMap::new(Box::new(chain), umap2, Composition::Series)?;
+        chain.simplified()
+    }
+
+    /// Append the System/TimeScale conversion steps to `timemap` for the
+    /// full conversion path. Factored out of [`Self::make_map`] so both the
+    /// same-frame (Format/Unformat) and cross-frame (convert) callers share
+    /// the step logic. `tgt_obs` (when `Some`) supplies the target-side
+    /// observer; otherwise `self` is used for both sides.
+    #[allow(clippy::too_many_arguments)]
+    fn build_timemap(
+        &self,
+        timemap: &mut TimeMap,
+        sys1: TimeSystem,
+        sys2: TimeSystem,
+        ts1: TimeScale,
+        ts2: TimeScale,
+        _off1: f64,
+        off2: f64,
+        mjd_off1: f64,
+        tgt_obs: Option<&TimeFrame>,
+    ) {
+        let off1 = _off1;
         // Step 1: Convert source system → MJD (if needed).
-        // args = [source_offset, mjd_offset]
         match sys1 {
-            TimeSystem::Mjd => {} // already MJD
-            TimeSystem::Jd => {
-                timemap.add(TimeCvtType::JdToMjd, &[off1, mjd_off1]);
-            }
-            TimeSystem::Jepoch => {
-                timemap.add(TimeCvtType::JepToMjd, &[off1, mjd_off1]);
-            }
-            TimeSystem::Bepoch => {
-                timemap.add(TimeCvtType::BepToMjd, &[off1, mjd_off1]);
-            }
+            TimeSystem::Mjd => {}
+            TimeSystem::Jd => timemap.add(TimeCvtType::JdToMjd, &[off1, mjd_off1]),
+            TimeSystem::Jepoch => timemap.add(TimeCvtType::JepToMjd, &[off1, mjd_off1]),
+            TimeSystem::Bepoch => timemap.add(TimeCvtType::BepToMjd, &[off1, mjd_off1]),
         }
 
-        // Step 2 & 3: Convert between timescales (via TAI as intermediate).
+        // Step 2 & 3: timescale conversion via TAI.
         if ts1 != ts2 {
-            // Args for most conversions: [mjd_offset, -obs_lon, obs_lat, obs_alt, dtai]
-            // Note: Frame stores longitude as +ve eastwards, but TimeMap needs +ve westwards.
+            // Source-side observer (negate longitude: Frame stores +ve east,
+            // TimeMap needs +ve west).
             let obs_lon = -(self.obs_lon.unwrap_or(0.0));
             let obs_lat = self.obs_lat.unwrap_or(0.0);
             let obs_alt = self.obs_alt.unwrap_or(0.0);
             let dtai = self.get_dtai();
             let args = [mjd_off1, obs_lon, obs_lat, obs_alt, dtai];
             let args_ut = [self.get_dut1()];
-            let args_lt = [self.lt_offset()]; // LTOffset in hours (TimeMap divides by 24)
+            let args_lt = [self.lt_offset()];
             let args_tai = [mjd_off1, dtai];
 
-            // Convert source timescale → TAI.
             match ts1 {
-                TimeScale::Tai => {} // already TAI
-                TimeScale::Utc => {
-                    timemap.add(TimeCvtType::UtcToTai, &args_tai);
-                }
-                TimeScale::Tt => {
-                    timemap.add(TimeCvtType::TtToTai, &args[..1]);
-                }
+                TimeScale::Tai => {}
+                TimeScale::Utc => timemap.add(TimeCvtType::UtcToTai, &args_tai),
+                TimeScale::Tt => timemap.add(TimeCvtType::TtToTai, &args[..1]),
                 TimeScale::Tdb => {
                     timemap.add(TimeCvtType::TdbToTt, &args);
                     timemap.add(TimeCvtType::TtToTai, &args[..1]);
@@ -634,25 +740,21 @@ impl TimeFrame {
                 }
             }
 
-            // Convert TAI → target timescale.
-            // Use result's observer properties for target-side conversions.
-            let obs_lon2 = -(result.obs_lon.unwrap_or(0.0));
-            let obs_lat2 = result.obs_lat.unwrap_or(0.0);
-            let obs_alt2 = result.obs_alt.unwrap_or(0.0);
-            let dtai2 = result.get_dtai();
+            // Target-side observer (own frame if cross-frame convert, else self).
+            let tgt = tgt_obs.unwrap_or(self);
+            let obs_lon2 = -(tgt.obs_lon.unwrap_or(0.0));
+            let obs_lat2 = tgt.obs_lat.unwrap_or(0.0);
+            let obs_alt2 = tgt.obs_alt.unwrap_or(0.0);
+            let dtai2 = tgt.get_dtai();
             let args2 = [mjd_off1, obs_lon2, obs_lat2, obs_alt2, dtai2];
-            let args_ut2 = [result.get_dut1()];
-            let args_lt2 = [result.lt_offset()]; // LTOffset in hours (TimeMap divides by 24)
+            let args_ut2 = [tgt.get_dut1()];
+            let args_lt2 = [tgt.lt_offset()];
             let args_tai2 = [mjd_off1, dtai2];
 
             match ts2 {
-                TimeScale::Tai => {} // already TAI
-                TimeScale::Utc => {
-                    timemap.add(TimeCvtType::TaiToUtc, &args_tai2);
-                }
-                TimeScale::Tt => {
-                    timemap.add(TimeCvtType::TaiToTt, &args2[..1]);
-                }
+                TimeScale::Tai => {}
+                TimeScale::Utc => timemap.add(TimeCvtType::TaiToUtc, &args_tai2),
+                TimeScale::Tt => timemap.add(TimeCvtType::TaiToTt, &args2[..1]),
                 TimeScale::Tdb => {
                     timemap.add(TimeCvtType::TaiToTt, &args2[..1]);
                     timemap.add(TimeCvtType::TtToTdb, &args2);
@@ -696,32 +798,35 @@ impl TimeFrame {
         }
 
         // Step 4: Convert MJD → target system (if needed).
-        // args = [mjd_offset, target_offset]
         match sys2 {
             TimeSystem::Mjd => {
-                // If the offsets differ, add MjdToMjd to shift.
                 if !ast_equal(mjd_off1, off2) {
                     timemap.add(TimeCvtType::MjdToMjd, &[mjd_off1, off2]);
                 }
             }
-            TimeSystem::Jd => {
-                timemap.add(TimeCvtType::MjdToJd, &[mjd_off1, off2]);
-            }
-            TimeSystem::Jepoch => {
-                timemap.add(TimeCvtType::MjdToJep, &[mjd_off1, off2]);
-            }
-            TimeSystem::Bepoch => {
-                timemap.add(TimeCvtType::MjdToBep, &[mjd_off1, off2]);
-            }
+            TimeSystem::Jd => timemap.add(TimeCvtType::MjdToJd, &[mjd_off1, off2]),
+            TimeSystem::Jepoch => timemap.add(TimeCvtType::MjdToJep, &[mjd_off1, off2]),
+            TimeSystem::Bepoch => timemap.add(TimeCvtType::MjdToBep, &[mjd_off1, off2]),
         }
-
-        // If the timemap is empty, return a UnitMap.
-        if timemap.is_empty() {
-            return Ok(Box::new(UnitMap::new(1)));
-        }
-
-        Ok(Box::new(timemap))
     }
+}
+
+/// Build a units-conversion Mapping or report an incompatible-units error
+/// (mirrors C `astUnitMapper` returning NULL → AST__INTGES error path).
+fn unit_mapper_or_err(unit1: &str, unit2: &str) -> AstResult<DynMapping> {
+    crate::units::unit_mapper(unit1, unit2).ok_or_else(|| {
+        AstError::new(
+            ErrorCode::Badun,
+            format!("TimeFrame: cannot convert between units \"{unit1}\" and \"{unit2}\""),
+        )
+    })
+}
+
+/// Transform a single scalar through `map` in the given direction.
+fn transform_scalar(map: &dyn Mapping, value: f64, forward: bool) -> AstResult<f64> {
+    let pts = PointSet::from_rows([[value]]);
+    let out = map.transform(&pts, forward)?;
+    Ok(out.point(0)[0])
 }
 
 // ---------------------------------------------------------------------------
@@ -742,7 +847,7 @@ impl Frame for TimeFrame {
     }
 
     fn effective_unit(&self, _axis: usize) -> String {
-        self.system.default_units().to_string()
+        self.unit_or_default().to_string()
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -1117,6 +1222,15 @@ fn timeframe_overlay(
         if template_time.test_lt_offset() {
             if let Some(v) = template_time.lt_offset {
                 result_time.set_lt_offset(v);
+            }
+        }
+        // Axis Unit is overlaid by the parent Frame/Axis Overlay when the
+        // template has it set (frame.c overlays the Axis, which carries the
+        // Unit string). This is what makes astConvert apply a units scaling
+        // between e.g. a "s" frame and a "d" frame.
+        if template_time.test_unit() {
+            if let Some(u) = template_time.unit() {
+                result_time.set_unit(u);
             }
         }
         return Ok(());
