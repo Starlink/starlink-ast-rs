@@ -67,7 +67,23 @@ pub struct FrameSet {
     edges: Vec<Edge>,
     base_idx: usize,
     current_idx: usize,
-    variants: Vec<(String, DynMapping)>,
+    /// Per-frame Variants FrameSet (indexed 0-based by frame). `Some(fs)` means
+    /// the frame owns a set of named variant Mappings: `fs`'s member frames are
+    /// the variants, each variant frame's Domain is its name, and `fs`'s
+    /// current frame is the selected variant. `None` means no variants.
+    ///
+    /// C stores this on the Frame itself (`frame.h:636`); the Rust port holds
+    /// it FrameSet-side keyed by frame index because the concrete Frame structs
+    /// share no base struct and the variant API only ever acts on a FrameSet's
+    /// current frame. A bare `Frame` carrying variants outside a FrameSet is
+    /// therefore unsupported (a documented divergence — not in the C public
+    /// test surface). Serialisation still matches C exactly (the `Vrnts` object
+    /// is written into / read from each member Frame's node; see `to_node`).
+    frame_variants: Vec<Option<FrameSet>>,
+    /// Per-frame variant-mirror index (0-based frame → 1-based mirror target,
+    /// 0 = owns its variants). Mirrors C's `varfrm[]` (frameset.c). `varfrm[i]
+    /// = j > 0` means frame `i` mirrors frame `j`'s variants.
+    varfrm: Vec<usize>,
     /// Total number of nodes in the graph (>= nframe).
     nnode: usize,
     /// Maps each frame (0-based) to its node (0-based).
@@ -90,11 +106,8 @@ impl Clone for FrameSet {
                 .collect(),
             base_idx: self.base_idx,
             current_idx: self.current_idx,
-            variants: self
-                .variants
-                .iter()
-                .map(|(s, m)| (s.clone(), m.clone()))
-                .collect(),
+            frame_variants: self.frame_variants.clone(),
+            varfrm: self.varfrm.clone(),
             nnode: self.nnode,
             node_map: self.node_map.clone(),
         }
@@ -108,7 +121,10 @@ impl fmt::Debug for FrameSet {
             .field("nedge", &self.edges.len())
             .field("base_idx", &self.base_idx)
             .field("current_idx", &self.current_idx)
-            .field("nvariants", &self.variants.len())
+            .field(
+                "nvariants",
+                &self.frame_variants.iter().filter(|v| v.is_some()).count(),
+            )
             .finish()
     }
 }
@@ -127,7 +143,8 @@ impl FrameSet {
             edges: Vec::new(),
             base_idx: 0,
             current_idx: 0,
-            variants: Vec::new(),
+            frame_variants: vec![None],
+            varfrm: vec![0],
             nnode: 1,
             node_map: vec![0],
         }
@@ -216,6 +233,8 @@ impl FrameSet {
         self.nnode += 1;
         self.frames.push(new_frame);
         self.node_map.push(new_node);
+        self.frame_variants.push(None);
+        self.varfrm.push(0);
         self.edges.push(Edge {
             from: anchor_node,
             to: new_node,
@@ -246,6 +265,21 @@ impl FrameSet {
         // (frameset.c:8740-8800) + `TidyNodes`.
         self.frames.remove(idx);
         self.node_map.remove(idx);
+
+        // Variants bookkeeping (frameset.c RemoveFrame/RemoveMirrors,
+        // 8755-8777): drop any frame that mirrors the removed frame's variants
+        // (`varfrm[ifr] == idx+1` → 0), then decrement higher mirror targets,
+        // and finally compact the per-frame variant arrays at `idx`.
+        let removed_1based = idx + 1;
+        for vf in self.varfrm.iter_mut() {
+            if *vf == removed_1based {
+                *vf = 0;
+            } else if *vf > removed_1based {
+                *vf -= 1;
+            }
+        }
+        self.frame_variants.remove(idx);
+        self.varfrm.remove(idx);
 
         // Fix base/current indices. C clears the attribute when the
         // removed frame *was* the base/current frame, so the defaults
@@ -555,12 +589,240 @@ impl FrameSet {
     // Variants                                                            //
     // ------------------------------------------------------------------ //
 
-    /// Register a variant mapping under a given name.
+    /// Resolve the variant-owning frame for a 1-based frame index, following
+    /// the `varfrm` mirror chain. Mirrors C `GetVarFrm` (frameset.c:5975).
+    fn get_var_frm(&self, iframe: usize) -> usize {
+        let mut result = iframe;
+        while self.varfrm[result - 1] > 0 {
+            let next = self.varfrm[result - 1];
+            if next == result {
+                break; // corrupt; avoid infinite loop (C reports AST__INTER)
+            }
+            result = next;
+        }
+        result
+    }
+
+    /// Store a new variant Mapping for the current Frame, or rename the
+    /// currently-selected variant. Mirrors C `astAddVariant` (frameset.c:1645).
     ///
-    /// Variants provide alternative base-to-current mappings that can
-    /// be selected at runtime (e.g., for different calibration epochs).
-    pub fn add_variant(&mut self, map: DynMapping, name: &str) -> AstResult<()> {
-        self.variants.push((name.to_string(), map));
+    /// `map` converts coordinates from the current Frame to the new variant of
+    /// the current Frame. If `None`, the currently-selected variant is simply
+    /// renamed to `name`. The new variant becomes current on exit.
+    ///
+    /// Errors if the current Frame is a mirror (`Mirro`) or a variant with the
+    /// given name already exists (`Bdvnm`).
+    pub fn add_variant(&mut self, map: Option<DynMapping>, name: &str) -> AstResult<()> {
+        let icur = self.current_idx; // 0-based
+
+        // Reject if the current frame is a mirror.
+        if self.varfrm[icur] > 0 {
+            return Err(AstError::new(
+                ErrorCode::Mirro,
+                "addVariant: illegal attempt to add a variant Mapping to a mirror Frame",
+            ));
+        }
+
+        // Clean the supplied name: strip leading blanks, uppercase, trim.
+        let myname = name.trim().to_uppercase();
+
+        // Get (or create) the Variants FrameSet for the current frame. When
+        // absent, seed it with a copy of the current frame whose Domain is the
+        // frame's current variant name (its own Domain).
+        let is_new = self.frame_variants[icur].is_none();
+        let mut vfs = match self.frame_variants[icur].take() {
+            Some(v) => v,
+            None => FrameSet::new(self.frames[icur].snapshot()),
+        };
+
+        // Reject a duplicate variant name.
+        for i in 1..=vfs.nframe() {
+            if vfs
+                .frame(FrameRef::Index(i))?
+                .domain()
+                .eq_ignore_ascii_case(&myname)
+            {
+                self.frame_variants[icur] = Some(vfs);
+                return Err(AstError::new(
+                    ErrorCode::Bdvnm,
+                    format!("addVariant: a variant named '{myname}' already exists"),
+                ));
+            }
+        }
+
+        match map {
+            // No Mapping: just rename the currently-selected variant.
+            None => {
+                vfs.frame_mut(FrameRef::Current)?.set_domain(&myname);
+            }
+            // A Mapping: append a new variant frame.
+            Some(map) => {
+                // Mapping from the variants-FS current frame to "this"'s
+                // current frame. C temporarily matches Domains so astConvert
+                // succeeds; here both are copies of the same frame class, so
+                // align them via the conversion driver with matching domains.
+                let vcur = vfs.current().snapshot();
+                let frm = self.frames[icur].snapshot();
+                let map1 = convert_current_to(vcur.as_ref(), frm.as_ref())?;
+
+                // current(vfs) → new variant frame mapping.
+                let map3 = Box::new(CmpMap::new(map1, map, Composition::Series)?);
+                let map3 = Mapping::simplified(map3.as_ref())?;
+
+                // The new variant frame is a copy of the parent frame with its
+                // own variants cleared and Domain set to the variant name.
+                let mut vfrm = self.frames[icur].snapshot();
+                vfrm.set_domain(&myname);
+
+                let saved_cur = vfs.current_idx;
+                vfs.add_frame(FrameRef::Current, map3, vfrm)?;
+                vfs.current_idx = saved_cur;
+            }
+        }
+
+        self.frame_variants[icur] = Some(vfs);
+
+        // Select the variant. C calls `astSetVariant` only when a Mapping was
+        // supplied; for a pure rename the renamed variant is already current,
+        // so re-selecting it by its new name is an equivalent no-op.
+        self.set_variant(&myname)?;
+
+        let _ = is_new;
+        Ok(())
+    }
+
+    /// Select a named variant of the current Frame, re-mapping the FrameSet so
+    /// its transform reflects the chosen variant. Mirrors C `SetVariant`
+    /// (frameset.c:9894). Errors (`Attin`) if the current Frame has no variant
+    /// with the given name.
+    pub fn set_variant(&mut self, name: &str) -> AstResult<()> {
+        let icur = self.current_idx;
+        let owner = self.get_var_frm(icur + 1) - 1; // 0-based variant owner
+
+        let myvar = name.trim().to_uppercase();
+
+        // No Variants FrameSet → only the frame's own (default) variant exists;
+        // C raises AST__ATTIN for any other name (testframeset Error 24).
+        let Some(vfs) = &self.frame_variants[owner] else {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                format!("setVariant: unknown Frame variant '{myvar}' requested"),
+            ));
+        };
+
+        // Find the variant frame whose Domain matches the requested name.
+        let mut target_1based = 0usize;
+        for i in 1..=vfs.nframe() {
+            if vfs
+                .frame(FrameRef::Index(i))?
+                .domain()
+                .eq_ignore_ascii_case(&myvar)
+            {
+                target_1based = i;
+                break;
+            }
+        }
+        if target_1based == 0 {
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                format!(
+                    "setVariant: unknown Frame variant '{myvar}' requested - available variants are '{}'",
+                    self.all_variants()
+                ),
+            ));
+        }
+
+        // Already selected: nothing to do.
+        if target_1based == vfs.current_idx + 1 {
+            return Ok(());
+        }
+
+        // Build the correction Mapping from the old variant to the new variant,
+        // expressed in current-Frame coordinates (frameset.c:9998-10032):
+        //   map1 = current(this) -> current(vfs)   [old variant]
+        //   map2 = current(vfs)  -> target(vfs)    [old variant -> new variant]
+        //   map3 = target(vfs)   -> current(this)  [new variant]
+        // The composite maps current-Frame coords through the variant change
+        // and back, so `remap_frame(Current, ..)` updates the node Mapping
+        // exactly as C recomposes it.
+        let frm = self.frames[icur].snapshot();
+        let vcur = vfs.current().snapshot();
+        let map1 = convert_current_to(frm.as_ref(), vcur.as_ref())?;
+        let map2 = vfs.mapping(FrameRef::Current, FrameRef::Index(target_1based))?;
+        let vnew = vfs.frame(FrameRef::Index(target_1based))?.snapshot();
+        let map3 = convert_current_to(vnew.as_ref(), frm.as_ref())?;
+
+        let map45 = CmpMap::new(
+            Box::new(CmpMap::new(map1, map2, Composition::Series)?),
+            map3,
+            Composition::Series,
+        )?;
+        let correction = Mapping::simplified(&map45)?;
+
+        // Apply the correction to the current frame's node and mark the new
+        // variant current within the Variants FrameSet.
+        self.remap_frame(FrameRef::Current, correction)?;
+        if let Some(vfs) = &mut self.frame_variants[owner] {
+            vfs.current_idx = target_1based - 1;
+        }
+        Ok(())
+    }
+
+    /// Name of the currently-selected variant of the current Frame. Mirrors C
+    /// `GetVariant` (frameset.c:6041): the Domain of the (mirror-resolved)
+    /// Variants FrameSet's current frame, or the current Frame's own Domain
+    /// when it has no variants.
+    pub fn variant(&self) -> String {
+        let owner = self.get_var_frm(self.current_idx + 1) - 1;
+        match &self.frame_variants[owner] {
+            Some(vfs) => vfs.current().domain().to_string(),
+            None => self.frames[self.current_idx].domain().to_string(),
+        }
+    }
+
+    /// Whether the current Frame has an explicitly-set variant (i.e. owns a
+    /// Variants FrameSet). Mirrors C `TestVariant` (frameset.c:11010).
+    pub fn test_variant(&self) -> bool {
+        let owner = self.get_var_frm(self.current_idx + 1) - 1;
+        self.frame_variants[owner].is_some()
+    }
+
+    /// Clear all variants from the current Frame, reverting to its single
+    /// default calibration. Mirrors C `ClearVariant` (frameset.c:2905), which
+    /// sets the Frame's Variants FrameSet pointer to NULL.
+    pub fn clear_variant(&mut self) {
+        let owner = self.get_var_frm(self.current_idx + 1) - 1;
+        self.frame_variants[owner] = None;
+    }
+
+    /// Space-separated list of all variant names available for the current
+    /// Frame. Mirrors C `GetAllVariants` (frameset.c:6864): the Domains of the
+    /// (mirror-resolved) Variants FrameSet's member frames, or just the current
+    /// Frame's Domain when it has no variants.
+    pub fn all_variants(&self) -> String {
+        let owner = self.get_var_frm(self.current_idx + 1) - 1;
+        match &self.frame_variants[owner] {
+            Some(vfs) => {
+                let mut names = Vec::with_capacity(vfs.nframe());
+                for i in 1..=vfs.nframe() {
+                    if let Ok(f) = vfs.frame(FrameRef::Index(i)) {
+                        names.push(f.domain().to_string());
+                    }
+                }
+                names.join(" ")
+            }
+            None => self.frames[self.current_idx].domain().to_string(),
+        }
+    }
+
+    /// Make the current Frame mirror the variants of another Frame. Mirrors C
+    /// `astMirrorVariants` (frameset.c:7468): the current Frame's variant
+    /// access then forwards to `which`'s. Passing the current frame itself (or
+    /// the same index) disables mirroring.
+    pub fn mirror_variants(&mut self, which: FrameRef) -> AstResult<()> {
+        let icur = self.current_idx;
+        let target = self.resolve(which)?; // 0-based
+        self.varfrm[icur] = if target == icur { 0 } else { target + 1 };
         Ok(())
     }
 
@@ -1031,6 +1293,30 @@ fn frameset_find_frame(
     Ok(None)
 }
 
+/// Mapping from frame `from` to frame `to`, where the two are calibration
+/// variants of the same Frame (used by the variants API). Mirrors C's
+/// "temporarily match Domains, then astConvert" idiom (frameset.c:9998-10010):
+/// the variant frames are copies of the parent frame and may differ only in
+/// Domain (the variant name), so the Domains are forced equal before
+/// conversion and the resulting base→current Mapping is returned.
+fn convert_current_to(from: &dyn Frame, to: &dyn Frame) -> AstResult<DynMapping> {
+    let mut a = from.snapshot();
+    let mut b = to.snapshot();
+    // Force matching Domains so domain gating does not block the conversion.
+    let dom = b.domain().to_string();
+    a.set_domain(&dom);
+    let cvt = crate::frames::find_frame::convert_frames(a.as_ref(), b.as_ref(), &dom)?.ok_or_else(
+        || {
+            AstError::new(
+                ErrorCode::Inter,
+                "addVariant/setVariant: cannot convert between variant frames",
+            )
+        },
+    )?;
+    let _ = &mut b;
+    cvt.mapping(FrameRef::Base, FrameRef::Current)
+}
+
 /// `FrameSet::ConvertX` override (frameset.c:3201).
 ///
 /// Find a conversion route between `from` (a FrameSet) and `to` (a Frame or
@@ -1440,12 +1726,33 @@ impl Serializable for FrameSet {
             node.push_int(&key, (edge.from + 1) as i64, Some(comment));
         }
 
-        // Frm{i+1} — each frame as a nested object.
+        // Frm{i+1} — each frame as a nested object. C writes a frame's Variants
+        // FrameSet inside its own block as object `Vrnts` (frame.c:14679);
+        // since Rust holds variants FrameSet-side, inject it here.
         for (i, frame) in self.frames.iter().enumerate() {
             let key = format!("Frm{}", i + 1);
-            let frame_node = FrameToNode::to_node(frame.as_ref())?;
+            let mut frame_node = FrameToNode::to_node(frame.as_ref())?;
+            if let Some(vfs) = &self.frame_variants[i] {
+                let vnode = Serializable::to_node(vfs)?;
+                frame_node.push_object("Vrnts", vnode, Some("Variant Frames".to_string()));
+            }
             let comment = format!("Frame number {}", i + 1);
             node.push_object(&key, frame_node, Some(comment));
+        }
+
+        // VarFrm{i+1} — per-frame variant-mirror indices (1-based; 0 = owns).
+        for (i, &vf) in self.varfrm.iter().enumerate() {
+            if vf != 0 {
+                let key = format!("VarFrm{}", i + 1);
+                node.push_int(
+                    &key,
+                    vf as i64,
+                    Some(format!(
+                        "Variants for Frame {} are stored in Frame {vf}",
+                        i + 1
+                    )),
+                );
+            }
         }
 
         // Map{node+1} — each edge mapping as a nested object.
@@ -1484,14 +1791,29 @@ impl Serializable for FrameSet {
             node_map.push(nod - 1); // convert to 0-based
         }
 
-        // Read frames.
+        // Read frames, extracting each frame's optional Variants FrameSet
+        // (written by C inside the member Frame's block as object `Vrnts`,
+        // frame.c:14679).
         let mut frames: Vec<DynFrame> = Vec::with_capacity(nframe);
+        let mut frame_variants: Vec<Option<FrameSet>> = Vec::with_capacity(nframe);
         for i in 0..nframe {
             let key = format!("Frm{}", i + 1);
             let frame_node = node.get_object(&key).ok_or_else(|| {
                 AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {key}"))
             })?;
             frames.push(frame_from_node(frame_node)?);
+            let vrnts = match frame_node.get_object("Vrnts") {
+                Some(vn) => Some(FrameSet::from_node(vn)?),
+                None => None,
+            };
+            frame_variants.push(vrnts);
+        }
+
+        // Read the per-frame variant-mirror indices (VarFrm{i}, default 0).
+        let mut varfrm: Vec<usize> = Vec::with_capacity(nframe);
+        for i in 0..nframe {
+            let key = format!("VarFrm{}", i + 1);
+            varfrm.push(node.get_int(&key, 0) as usize);
         }
 
         // Read edges: for nodes 2..nnode (1-based), each has Lnk, Map.
@@ -1524,7 +1846,8 @@ impl Serializable for FrameSet {
             edges,
             base_idx: base - 1,
             current_idx: current - 1,
-            variants: Vec::new(),
+            frame_variants,
+            varfrm,
             nnode,
             node_map,
         })

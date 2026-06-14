@@ -469,7 +469,9 @@ fn frameset_convert_delegates_to_current() {
 fn add_variant_succeeds() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
-    fs.add_variant(z, "ZOOMED").unwrap();
+    fs.add_variant(Some(z), "ZOOMED").unwrap();
+    assert!(fs.test_variant());
+    assert_eq!(fs.variant(), "ZOOMED");
 }
 
 // ---- find_frame (stub) ----

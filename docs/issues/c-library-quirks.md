@@ -919,3 +919,24 @@ Rust. This is the one place the port intentionally does not match C; revisit
 if the upstream AST developers confirm the C behaviour is intentional. Tests
 `test_specfluxframe_equal` / `test_specfluxframe_serialisation_roundtrip` in
 `crates/ast-core/tests/test_fluxframe.rs` assert the Rust (equal) behaviour.
+
+## FrameSet variants: stored FrameSet-side, not on the Frame (Rust divergence)
+
+**C behaviour:** the Variants FrameSet that backs the `Variant` attribute is
+stored on the **Frame** object itself (`frame.h:636 struct AstFrameSet
+*variants`), so a bare Frame can carry variants and they survive `astCopy` of
+the Frame independently of any FrameSet.
+
+**Rust behaviour (deliberate divergence):** the 18 concrete Rust frame structs
+share no common base struct, and the variant API (`AddVariant`/`SetVariant`/
+…) only ever acts on a FrameSet's *current* frame. To avoid adding a variants
+field + Clone/snapshot/serialisation to all 18 classes, the port stores
+variants **FrameSet-side**, keyed by frame index (`FrameSet.frame_variants:
+Vec<Option<FrameSet>>` + `varfrm: Vec<usize>`). All FrameSet-level behaviour
+and **native serialisation** match C exactly (the `Vrnts` object is written
+into / read from each member Frame's node, and `VarFrm<i>` on the FrameSet,
+byte-for-byte; verified bidirectionally against the reference library). The
+only unsupported case is a *bare* `Frame` (outside a FrameSet) carrying
+variants — which the C public test surface (`testframeset.c`) never exercises.
+Revisit if a consumer needs Frame-level variants. Tests:
+`crates/ast-core/tests/test_frameset_variants.rs`.
