@@ -155,6 +155,9 @@ impl Frame for SpecFluxFrame {
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
+        // SpecFluxFrame inherits from CmpFrame in C and does not override
+        // Unformat, so it uses CmpFrame's per-axis routing (cmpframe.c:10041):
+        // each external axis is unformatted by its owning component frame.
         self.validate_axis(axis)?;
         let (child, local_axis) = self.route_axis(axis);
         child.unformat(local_axis, text)

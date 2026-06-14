@@ -596,33 +596,6 @@ impl Frame for FluxFrame {
         Ok(format!("{value:.7}"))
     }
 
-    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
-        if axis != 1 {
-            return Err(AstError::new(
-                ErrorCode::Axiin,
-                format!("FluxFrame has 1 axis, got axis={axis}"),
-            ));
-        }
-        // Parse a floating-point number from the start of the string.
-        let trimmed = text.trim_start();
-        let offset = text.len() - trimmed.len();
-        let mut end = 0;
-        for (i, c) in trimmed.char_indices() {
-            if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' {
-                end = i + c.len_utf8();
-            } else if end > 0 {
-                break;
-            }
-        }
-        if end == 0 {
-            return Ok((BAD_VALUE, 0));
-        }
-        match trimmed[..end].parse::<f64>() {
-            Ok(val) => Ok((val, offset + end)),
-            Err(_) => Ok((BAD_VALUE, 0)),
-        }
-    }
-
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         let va = a[0];
         let vb = b[0];

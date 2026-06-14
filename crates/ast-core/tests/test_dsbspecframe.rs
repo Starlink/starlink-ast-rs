@@ -204,6 +204,21 @@ fn frame_trait_basics() {
     assert_eq!(dsb.naxes(), 1);
 }
 
+/// DSBSpecFrame does not override Unformat in C (dsbspecframe.c has no
+/// `static int Unformat`); it inherits the base SpecFrame/Frame/Axis contract
+/// (`astAxisUnformat`, axis.c:1284). Oracle-verified against the built
+/// reference libast.
+#[test]
+fn unformat_base_contract() {
+    use ast_core::constants::BAD_VALUE;
+    let dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    assert_eq!(dsb.unformat(1, "  12.5  ").unwrap(), (12.5, 8));
+    assert_eq!(dsb.unformat(1, "<bad>").unwrap(), (BAD_VALUE, 5));
+    assert_eq!(dsb.unformat(1, " < b a d > ").unwrap(), (BAD_VALUE, 11));
+    assert_eq!(dsb.unformat(1, "12.5xyz").unwrap(), (12.5, 4));
+    assert_eq!(dsb.unformat(1, "xyz").unwrap(), (BAD_VALUE, 0));
+}
+
 #[test]
 fn convert_dsb_to_dsb_same_sideband() {
     let mut from = DSBSpecFrame::new(SpecSystem::Freq);

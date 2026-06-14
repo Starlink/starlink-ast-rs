@@ -324,6 +324,28 @@ fn test_unformat() {
     assert!(nc > 0, "unformat should consume characters");
 }
 
+/// SpecFrame does not override Unformat in C (specframe.c has no
+/// `static int Unformat`); it inherits the base Frame/Axis contract
+/// (`astAxisUnformat`, axis.c:1284). Oracle-verified against the built
+/// reference libast: each case below matches `astUnformat` on a C SpecFrame.
+#[test]
+fn test_unformat_base_contract() {
+    let sf = SpecFrame::new(SpecSystem::Freq);
+    // Plain number.
+    assert_eq!(sf.unformat(1, "12.5").unwrap(), (12.5, 4));
+    // Leading and trailing whitespace are both counted in nread.
+    assert_eq!(sf.unformat(1, "  12.5  ").unwrap(), (12.5, 8));
+    // Trailing non-numeric text stops the scan but is not counted.
+    assert_eq!(sf.unformat(1, "12.5xyz").unwrap(), (12.5, 4));
+    // The "<bad>" token yields BAD_VALUE, including a spaced/mixed-case form.
+    assert_eq!(sf.unformat(1, "<bad>").unwrap(), (BAD_VALUE, 5));
+    assert_eq!(sf.unformat(1, " < b a d > ").unwrap(), (BAD_VALUE, 11));
+    // Unparseable input: nread = 0, no error.
+    assert_eq!(sf.unformat(1, "xyz").unwrap(), (BAD_VALUE, 0));
+    assert_eq!(sf.unformat(1, "").unwrap(), (BAD_VALUE, 0));
+    assert_eq!(sf.unformat(1, "  ").unwrap(), (BAD_VALUE, 0));
+}
+
 // ===========================================================================
 // Equality
 // ===========================================================================

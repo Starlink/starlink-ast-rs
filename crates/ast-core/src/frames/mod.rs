@@ -49,7 +49,22 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Parse a formatted coordinate string back to a numeric value.
     ///
     /// `axis` is 1-based. Returns `(value, characters_consumed)`.
-    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)>;
+    ///
+    /// The default mirrors C base `astUnformat` (frame.c:11819): validate the
+    /// axis, then apply the `astAxisUnformat` contract (axis.c:1284) — the
+    /// longest `"%lf %n"` numeric prefix (counting trailing whitespace), the
+    /// `<bad>` token, else `(BAD_VALUE, 0)` with no error. Leaf Frame classes
+    /// that do not override Unformat in C (SpecFrame, FluxFrame, DSBSpecFrame,
+    /// SpecFluxFrame) inherit this; CmpFrame, TimeFrame and SkyFrame override.
+    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
+        if axis < 1 || axis > self.naxes() {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!("axis index {axis} is out of range 1..={}", self.naxes()),
+            ));
+        }
+        Ok(crate::frames::basic::axis_unformat(text))
+    }
 
     /// Geodesic distance between two points in this frame.
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64>;

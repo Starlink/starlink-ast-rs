@@ -635,10 +635,6 @@ impl Frame for DSBSpecFrame {
         self.spec.format(axis, value)
     }
 
-    fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
-        self.spec.unformat(axis, text)
-    }
-
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         self.spec.distance(a, b)
     }

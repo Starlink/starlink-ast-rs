@@ -559,6 +559,56 @@ fn scan_bad_token(s: &str) -> Option<usize> {
     Some(p)
 }
 
+/// Read a formatted coordinate value, mirroring C `astAxisUnformat`
+/// (axis.c:1284). This is the base Frame/Axis contract inherited by every
+/// leaf Frame that does not override Unformat in C (i.e. all but CmpFrame,
+/// TimeFrame and SkyFrame).
+///
+/// Returns `(value, nread)` where `nread` is the number of characters
+/// consumed. The string is matched against `"%lf %n"`: leading whitespace is
+/// skipped, the longest numeric prefix is read, and any trailing whitespace
+/// is included in `nread`. Failing that, the `"<bad>"` token (case-insensitive,
+/// embedded whitespace allowed) yields `BAD_VALUE`. If neither matches, the
+/// result is `(BAD_VALUE, 0)` — no error is raised (axis.c:1366).
+pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
+    // Mirror C `astSscanf("%lf %n")`: skip leading whitespace, read the
+    // longest numeric prefix, then count any trailing whitespace.
+    let leading_ws = text.len() - text.trim_start().len();
+    let after_ws = &text[leading_ws..];
+
+    // Longest prefix of `after_ws` parsing as f64.
+    let mut best_len = 0;
+    let mut best_val: Option<f64> = None;
+    for end in 1..=after_ws.len() {
+        if after_ws.is_char_boundary(end) {
+            if let Ok(v) = after_ws[..end].parse::<f64>() {
+                best_len = end;
+                best_val = Some(v);
+            }
+        }
+    }
+
+    if let Some(v) = best_val {
+        // Count trailing whitespace consumed by `%n` after `%lf`.
+        let rest = &after_ws[best_len..];
+        let trailing_ws = rest.len() - rest.trim_start().len();
+        return (v, leading_ws + best_len + trailing_ws);
+    }
+
+    // Recognise "<bad>" via the C scanf format
+    // `" < %*1[Bb] %*1[Aa] %*1[Dd] > %n"` (axis.c:1357). Each space in that
+    // format skips optional whitespace, so the tokens `<`, `b`, `a`, `d`, `>`
+    // may be separated by whitespace. The trailing space before `%n` skips
+    // trailing whitespace, so `%n` (nread) counts that trailing whitespace
+    // too — it stops at the first non-whitespace after `>`.
+    if let Some(end) = scan_bad_token(after_ws) {
+        return (BAD_VALUE, leading_ws + end);
+    }
+
+    // Parse failure: nread = 0, no error (axis.c:1366).
+    (BAD_VALUE, 0)
+}
+
 impl Frame for BasicFrame {
     fn naxes(&self) -> usize {
         self.naxes
@@ -668,44 +718,7 @@ impl Frame for BasicFrame {
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         self.validate_axis(axis)?;
-
-        // Mirror C `astSscanf("%lf %n")`: skip leading whitespace, read
-        // the longest numeric prefix, then count any trailing whitespace.
-        let leading_ws = text.len() - text.trim_start().len();
-        let after_ws = &text[leading_ws..];
-
-        // Longest prefix of `after_ws` parsing as f64.
-        let mut best_len = 0;
-        let mut best_val: Option<f64> = None;
-        for end in 1..=after_ws.len() {
-            if after_ws.is_char_boundary(end) {
-                if let Ok(v) = after_ws[..end].parse::<f64>() {
-                    best_len = end;
-                    best_val = Some(v);
-                }
-            }
-        }
-
-        if let Some(v) = best_val {
-            // Count trailing whitespace consumed by `%n` after `%lf`.
-            let rest = &after_ws[best_len..];
-            let trailing_ws = rest.len() - rest.trim_start().len();
-            return Ok((v, leading_ws + best_len + trailing_ws));
-        }
-
-        // Recognise "<bad>" via the C scanf format
-        // `" < %*1[Bb] %*1[Aa] %*1[Dd] > %n"` (axis.c:1357). Each space in
-        // that format skips optional whitespace, so the tokens `<`, `b`,
-        // `a`, `d`, `>` may be separated by whitespace. The trailing space
-        // before `%n` skips trailing whitespace, so `%n` (nread) counts
-        // that trailing whitespace too — it stops at the first
-        // non-whitespace after `>`.
-        if let Some(end) = scan_bad_token(after_ws) {
-            return Ok((BAD_VALUE, leading_ws + end));
-        }
-
-        // Parse failure: nread = 0, no error (axis.c:1366).
-        Ok((BAD_VALUE, 0))
+        Ok(axis_unformat(text))
     }
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
