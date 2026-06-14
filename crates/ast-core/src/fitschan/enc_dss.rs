@@ -1,209 +1,416 @@
 //! DSS (Digitized Sky Survey) plate solution encoding reader/writer.
 //!
-//! DSS encoding uses plate solution keywords from digitized photographic
-//! plate scans. It is always:
-//! - 2D only (RA + DEC)
-//! - FK5 J2000 equinox
-//! - TAN projection
-//! - No rotation allowed (diagonal pixel scale only)
+//! DSS encoding stores plate-solution keywords from digitized photographic
+//! plate scans. Mirroring C `fitschan.c` `DSSToStore` / `DSSFromStore`, the
+//! conversion is **lossless**: the plate-solution polynomial (AMDX1-20 /
+//! AMDY1-20) is mapped to/from a "TAN with polynomial corrections" (TPN)
+//! projection via the FitsStore PV parameters, NOT collapsed into a plain
+//! TAN. DSS is always:
+//! - 2D only (RA + DEC),
+//! - FK5, equinox J2000, LONPOLE = 180,
+//! - a `RA---TPN` / `DEC--TPN` projection (a plain TAN is the special case
+//!   where the only non-zero PV term is `PVi_1 = 1`),
+//! - free of rotation (diagonal PC matrix only).
 //!
-//! Key DSS keywords:
-//! - Plate centre: PLTRAH/PLTRAM/PLTRAS (RA), PLTDECD/PLTDECM/PLTDECS/PLTDECSN (DEC)
-//! - Pixel size: XPIXELSZ, YPIXELSZ (microns)
-//! - Plate offset: PPO3, PPO6 (microns — position of plate centre)
-//! - Corner pixel: CNPIX1, CNPIX2 (default 0.0)
-//! - Plate scale: AMDX1, AMDY1 (arcsec/mm), PLTSCALE (informational)
+//! The plate co-ordinate convention uses "lambda = 1" (plate co-ordinates in
+//! mm, not degrees), so the AMD coefficients are scaled by 1/3600 into the
+//! degree-based PV parameters.
 //!
-//! This module provides:
-//! - [`read_from_cards`]: extract DSS plate keywords from a CardList into a FitsStore
-//! - [`write_to_cards`]: write a FitsStore as DSS plate keywords into a CardList
+//! Note: C's FitsChan DSS path does not use the `DssMap` class — DSS is a
+//! pure FitsStore↔keyword conversion. This module mirrors that.
 
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::error::{AstError, AstResult, ErrorCode};
 
-/// Default DSS plate scale in arcsec/mm.
-const DEFAULT_PLATE_SCALE: f64 = 67.2;
-
-/// Read DSS plate solution keywords from a [`CardList`] into a [`FitsStore`].
+/// Read DSS plate-solution keywords from a [`CardList`] into a [`FitsStore`].
 ///
-/// The DSS encoding is always 2D with RA---TAN and DEC--TAN axes,
-/// FK5 equinox J2000, and LONPOLE = 180.
+/// Ports C `DSSToStore` (fitschan.c:9364). The result is a 2-D `RA---TPN` /
+/// `DEC--TPN` store with the AMDX/AMDY polynomial encoded as PV parameters,
+/// FK5 / equinox 2000 / LONPOLE 180.
 ///
-/// Required keywords: PLTRAH, PLTRAM, PLTRAS (RA); PLTDECD, PLTDECM,
-/// PLTDECS (DEC); XPIXELSZ, YPIXELSZ; PPO3, PPO6; and at least one of
-/// AMDX1, AMDY1, or PLTSCALE for the plate scale.
+/// Required keywords: PPO3, PPO6, XPIXELSZ, YPIXELSZ, PLTRAH/M/S,
+/// PLTDECD/M/S, PLTDECSN. Optional (default 0.0): CNPIX1, CNPIX2. The AMDX/
+/// AMDY polynomial coefficients are optional and default to "absent".
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
-    // --- Plate centre RA (hours → degrees) ---
-    let pltrah = cards
-        .get_float("PLTRAH")
-        .ok_or_else(|| AstError::new(ErrorCode::Bdfts, "DSS encoding: PLTRAH keyword not found"))?;
-    let pltram = cards
-        .get_float("PLTRAM")
-        .ok_or_else(|| AstError::new(ErrorCode::Bdfts, "DSS encoding: PLTRAM keyword not found"))?;
-    let pltras = cards
-        .get_float("PLTRAS")
-        .ok_or_else(|| AstError::new(ErrorCode::Bdfts, "DSS encoding: PLTRAS keyword not found"))?;
-
-    let ra_deg = 15.0 * (pltrah + pltram / 60.0 + pltras / 3600.0);
-
-    // --- Plate centre DEC (degrees) ---
-    let pltdecd = cards.get_float("PLTDECD").ok_or_else(|| {
-        AstError::new(ErrorCode::Bdfts, "DSS encoding: PLTDECD keyword not found")
-    })?;
-    let pltdecm = cards.get_float("PLTDECM").ok_or_else(|| {
-        AstError::new(ErrorCode::Bdfts, "DSS encoding: PLTDECM keyword not found")
-    })?;
-    let pltdecs = cards.get_float("PLTDECS").ok_or_else(|| {
-        AstError::new(ErrorCode::Bdfts, "DSS encoding: PLTDECS keyword not found")
-    })?;
-
-    // Sign from PLTDECSN: '+' (default) or '-'
-    let sign = match cards.get_string("PLTDECSN") {
-        Some(s) if s.starts_with('-') => -1.0,
-        _ => 1.0,
-    };
-
-    let dec_deg = sign * (pltdecd + pltdecm / 60.0 + pltdecs / 3600.0);
-
-    // --- Pixel size (microns) ---
-    let xpixelsz = cards.get_float("XPIXELSZ").ok_or_else(|| {
-        AstError::new(ErrorCode::Bdfts, "DSS encoding: XPIXELSZ keyword not found")
-    })?;
-    let ypixelsz = cards.get_float("YPIXELSZ").ok_or_else(|| {
-        AstError::new(ErrorCode::Bdfts, "DSS encoding: YPIXELSZ keyword not found")
-    })?;
-
-    // --- Plate offset (microns) ---
-    let ppo3 = cards
-        .get_float("PPO3")
-        .ok_or_else(|| AstError::new(ErrorCode::Bdfts, "DSS encoding: PPO3 keyword not found"))?;
-    let ppo6 = cards
-        .get_float("PPO6")
-        .ok_or_else(|| AstError::new(ErrorCode::Bdfts, "DSS encoding: PPO6 keyword not found"))?;
-
-    // --- Corner pixel (optional, default 0.0) ---
+    // Optional corner-pixel keywords, default 0.0.
     let cnpix1 = cards.get_float("CNPIX1").unwrap_or(0.0);
     let cnpix2 = cards.get_float("CNPIX2").unwrap_or(0.0);
 
-    // --- Plate scale (arcsec/mm) ---
-    // Try AMDX1, then AMDY1, then PLTSCALE
-    let plate_scale = cards
-        .get_float("AMDX1")
-        .or_else(|| cards.get_float("AMDY1"))
-        .or_else(|| cards.get_float("PLTSCALE"))
-        .ok_or_else(|| {
-            AstError::new(
+    // Required keywords.
+    let ppo3 = req(cards, "PPO3")?;
+    let ppo6 = req(cards, "PPO6")?;
+    let xpixelsz = req(cards, "XPIXELSZ")?;
+    let ypixelsz = req(cards, "YPIXELSZ")?;
+    let pltrah = req(cards, "PLTRAH")?;
+    let pltram = req(cards, "PLTRAM")?;
+    let pltras = req(cards, "PLTRAS")?;
+    let pltdecd = req(cards, "PLTDECD")?;
+    let pltdecm = req(cards, "PLTDECM")?;
+    let pltdecs = req(cards, "PLTDECS")?;
+
+    // Sign of the declination from the first non-blank char of PLTDECSN.
+    let sign = match cards.get_string("PLTDECSN") {
+        Some(s) => {
+            let t = s.trim_start();
+            if t.starts_with('-') { -1.0 } else { 1.0 }
+        }
+        None => {
+            return Err(AstError::new(
                 ErrorCode::Bdfts,
-                "DSS encoding: no plate scale found (need AMDX1, AMDY1, or PLTSCALE)",
-            )
-        })?;
+                "DSS encoding: PLTDECSN keyword not found",
+            ));
+        }
+    };
 
-    // --- Compute CRPIX ---
-    // PPO3/PPO6 are in microns, XPIXELSZ/YPIXELSZ are in microns.
-    // Division gives pixels directly.
-    let crpix1 = (ppo3 / xpixelsz) - cnpix1 + 0.5;
-    let crpix2 = (ppo6 / ypixelsz) - cnpix2 + 0.5;
+    // The polynomial co-efficients. Absent ones default to None (C: AST__BAD),
+    // which means the corresponding PV term is left unset.
+    let mut amdx = [None; 20];
+    let mut amdy = [None; 20];
+    for i in 0..20 {
+        amdx[i] = cards.get_float(&format!("AMDX{}", i + 1));
+        amdy[i] = cards.get_float(&format!("AMDY{}", i + 1));
+    }
 
-    // --- Compute CDELT ---
-    // plate_scale is arcsec/mm, pixel size is microns (= 0.001 mm)
-    // CDELT in degrees: 0.001 * pixelsz * plate_scale / 3600
-    let cdelt1 = -0.001 * xpixelsz * plate_scale / 3600.0;
-    let cdelt2 = 0.001 * ypixelsz * plate_scale / 3600.0;
-
-    // --- Build FitsStore ---
     let mut store = FitsStore::new(2);
 
-    store.crpix[0] = Some(crpix1);
-    store.crpix[1] = Some(crpix2);
-    store.crval[0] = Some(ra_deg);
-    store.crval[1] = Some(dec_deg);
-    store.cdelt[0] = Some(cdelt1);
-    store.cdelt[1] = Some(cdelt2);
-    store.ctype[0] = Some("RA---TAN".to_string());
-    store.ctype[1] = Some("DEC--TAN".to_string());
-    store.radesys = Some("FK5".to_string());
-    store.equinox = Some(2000.0);
+    // Map the AMD coefficients to PV parameters (pv = amd / 3600). Each axis
+    // uses the same index pattern (fitschan.c:9497-9588).
+    set_pv_from_amd(&mut store, 0, &amdx);
+    set_pv_from_amd(&mut store, 1, &amdy);
+
+    // CRPIX from the plate offset and pixel sizes.
+    if xpixelsz == 0.0 {
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            "FITS keyword XPIXELSZ has illegal value 0.0",
+        ));
+    }
+    if ypixelsz == 0.0 {
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            "FITS keyword YPIXELSZ has illegal value 0.0",
+        ));
+    }
+    store.crpix[0] = Some((ppo3 / xpixelsz) - cnpix1 + 0.5);
+    store.crpix[1] = Some((ppo6 / ypixelsz) - cnpix2 + 0.5);
+
+    // CRVAL from the plate-centre RA/DEC.
+    store.crval[0] = Some(15.0 * (pltrah + pltram / 60.0 + pltras / 3600.0));
+    store.crval[1] = Some(sign * (pltdecd + pltdecm / 60.0 + pltdecs / 3600.0));
+
+    // PC matrix carries the pixel sizes (in mm, lambda=1); CDELT is unity.
+    store.pc[0][0] = Some(-0.001 * xpixelsz);
+    store.pc[1][1] = Some(0.001 * ypixelsz);
+    store.cdelt[0] = Some(1.0);
+    store.cdelt[1] = Some(1.0);
+
+    // Constant celestial framing.
     store.lonpole = Some(180.0);
+    store.equinox = Some(2000.0);
+    store.radesys = Some("FK5".to_string());
+    store.ctype[0] = Some("RA---TPN".to_string());
+    store.ctype[1] = Some("DEC--TPN".to_string());
 
     Ok(store)
 }
 
-/// Write a [`FitsStore`] as DSS plate solution keywords into a [`CardList`].
-///
-/// The store must have exactly 2 axes (RA + DEC). The writer decomposes
-/// the reference coordinates and pixel scale back into DSS plate
-/// solution keywords.
-pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
-    // DSS is always 2D.
-    if store.naxis != 2 {
-        return Err(AstError::new(
+/// Fetch a required float keyword, or a `Bdfts` "not found" error.
+fn req(cards: &CardList, key: &str) -> AstResult<f64> {
+    cards.get_float(key).ok_or_else(|| {
+        AstError::new(
             ErrorCode::Bdfts,
-            format!("DSS encoding requires exactly 2 axes, got {}", store.naxis),
-        ));
+            format!("DSS encoding: {key} keyword not found"),
+        )
+    })
+}
+
+/// Map one axis's AMD coefficients into the store's PV parameters.
+///
+/// Mirrors the per-axis block in C `DSSToStore` (fitschan.c:9497-9542 for X,
+/// 9543-9588 for Y — identical index pattern). `pv = amd / 3600`, each term
+/// set only when its source coefficient(s) are present.
+fn set_pv_from_amd(store: &mut FitsStore, axis: usize, amd: &[Option<f64>; 20]) {
+    let mut set = |idx: usize, v: f64| store.pv[axis][idx] = Some(v / 3600.0);
+
+    if let Some(v) = amd[2] {
+        set(0, v);
+    }
+    if let Some(v) = amd[0] {
+        set(1, v);
+    }
+    if let Some(v) = amd[1] {
+        set(2, v);
+    }
+    if let (Some(a), Some(b)) = (amd[3], amd[6]) {
+        set(4, a + b);
+    }
+    if let Some(v) = amd[4] {
+        set(5, v);
+    }
+    if let (Some(a), Some(b)) = (amd[5], amd[6]) {
+        set(6, a + b);
+    }
+    if let (Some(a), Some(b)) = (amd[7], amd[11]) {
+        set(7, a + b);
+    }
+    if let Some(v) = amd[8] {
+        set(8, v);
+    }
+    if let (Some(a), Some(b)) = (amd[9], amd[11]) {
+        set(9, a + b);
+    }
+    if let Some(v) = amd[10] {
+        set(10, v);
+    }
+    if let Some(v) = amd[12] {
+        set(17, v);
+        set(19, 2.0 * v);
+        set(21, v);
+    }
+}
+
+/// Write a [`FitsStore`] as DSS plate-solution keywords into a [`CardList`].
+///
+/// Ports C `DSSFromStore` (fitschan.c:9066). The store must describe a 2-D
+/// FK5 `RA---TAN`/`DEC--TAN` or `RA---TPN`/`DEC--TPN` frame with no rotation;
+/// otherwise an error is returned (C returns 0 = "this encoding does not
+/// apply"). The PV parameters are converted back to the AMDX/AMDY polynomial.
+pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
+    let not_dss =
+        |msg: &str| -> AstError { AstError::new(ErrorCode::Bdfts, format!("DSS encoding: {msg}")) };
+
+    // DSS is always 2-D.
+    if store.naxis != 2 {
+        return Err(not_dss(&format!(
+            "requires exactly 2 axes, got {}",
+            store.naxis
+        )));
     }
 
-    let crval0 = store.crval[0].unwrap_or(0.0);
-    let crval1 = store.crval[1].unwrap_or(0.0);
-    let crpix0 = store.crpix[0].unwrap_or(1.0);
-    let crpix1 = store.crpix[1].unwrap_or(1.0);
-    let cdelt0 = store.cdelt[0].unwrap_or(-1.0);
-    let cdelt1 = store.cdelt[1].unwrap_or(1.0);
+    // CTYPE: both TAN or both TPN.
+    let ct0 = store.ctype[0].as_deref().unwrap_or("");
+    let ct1 = store.ctype[1].as_deref().unwrap_or("");
+    let gottpn = ct0 == "RA---TPN";
+    if ct0 != "RA---TAN" && !gottpn {
+        return Err(not_dss("first axis is not RA---TAN or RA---TPN"));
+    }
+    if gottpn {
+        if ct1 != "DEC--TPN" {
+            return Err(not_dss("second axis is not DEC--TPN"));
+        }
+    } else if ct1 != "DEC--TAN" {
+        return Err(not_dss("second axis is not DEC--TAN"));
+    }
 
-    // --- Decompose RA (degrees → hours/min/sec) ---
-    let ra_hours = crval0 / 15.0;
-    let pltrah = ra_hours.floor();
-    let ra_remainder = (ra_hours - pltrah) * 60.0;
-    let pltram = ra_remainder.floor();
-    let pltras = (ra_remainder - pltram) * 60.0;
+    // LONPOLE undefined or 180.
+    if let Some(v) = store.lonpole {
+        if v != 180.0 {
+            return Err(not_dss("LONPOLE is not 180"));
+        }
+    }
+    // RADESYS must be FK5.
+    if store.radesys.as_deref() != Some("FK5") {
+        return Err(not_dss("RADESYS is not FK5"));
+    }
+    // EQUINOX undefined or 2000.
+    if let Some(v) = store.equinox {
+        if v != 2000.0 {
+            return Err(not_dss("EQUINOX is not 2000"));
+        }
+    }
 
-    // --- Decompose DEC (degrees → deg/arcmin/arcsec + sign) ---
-    let dec_sign = if crval1 < 0.0 { "-" } else { "+" };
-    let dec_abs = crval1.abs();
-    let pltdecd = dec_abs.floor();
-    let dec_remainder = (dec_abs - pltdecd) * 60.0;
-    let pltdecm = dec_remainder.floor();
-    let pltdecs = (dec_remainder - pltdecm) * 60.0;
+    // Pixel sizes from CDELT * PC. Both CDELTs must be defined and non-zero.
+    let cdelt0 = store.cdelt[0].ok_or_else(|| not_dss("CDELT1 undefined"))?;
+    let pc00 = store.pc[0][0].unwrap_or(1.0);
+    let cdelt1 = store.cdelt[1].ok_or_else(|| not_dss("CDELT2 undefined"))?;
+    let pc11 = store.pc[1][1].unwrap_or(1.0);
+    let mut xpixelsz = cdelt0 * pc00;
+    let mut ypixelsz = cdelt1 * pc11;
+    if xpixelsz == 0.0 || ypixelsz == 0.0 {
+        return Err(not_dss("pixel size is zero"));
+    }
+    xpixelsz *= -1000.0;
+    ypixelsz *= 1000.0;
 
-    // --- Plate scale ---
-    // Derive from CDELT, or use a default.
-    let plate_scale = DEFAULT_PLATE_SCALE;
+    // No rotation: off-diagonal PC must be unset or zero.
+    if let Some(v) = store.pc[0][1] {
+        if v != 0.0 {
+            return Err(not_dss("PC has off-diagonal (rotation) terms"));
+        }
+    }
+    if let Some(v) = store.pc[1][0] {
+        if v != 0.0 {
+            return Err(not_dss("PC has off-diagonal (rotation) terms"));
+        }
+    }
 
-    // --- Pixel sizes (microns) ---
-    // |CDELT| = 0.001 * pixelsz * plate_scale / 3600
-    // pixelsz = |CDELT| * 3600 / plate_scale / 0.001
-    let xpixelsz = cdelt0.abs() * 3600.0 / plate_scale * 1000.0;
-    let ypixelsz = cdelt1.abs() * 3600.0 / plate_scale * 1000.0;
+    // Read PV[axis][0..22]. For a plain TAN, force the identity (pv[1]=1).
+    let read_pv = |axis: usize| -> [f64; 22] {
+        let mut pv = [0.0; 22];
+        for (m, slot) in pv.iter_mut().enumerate() {
+            let raw = store.pv[axis].get(m).copied().flatten();
+            *slot = match raw {
+                Some(v) if gottpn => v,
+                _ => {
+                    if m == 1 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+            };
+        }
+        pv
+    };
+    let pvx = read_pv(0);
+    let pvy = read_pv(1);
 
-    // --- Corner pixels (arbitrary, use 1.0) ---
+    // No PV term beyond index 21 may be set.
+    if max_pv_index(store) > 21 {
+        return Err(not_dss("projection has unsupported PV parameters"));
+    }
+
+    // Specific parameters must take their required zero values.
+    if pvx[3] != 0.0 || pvy[3] != 0.0 {
+        return Err(not_dss("PV*_3 must be zero"));
+    }
+    for m in 11..17 {
+        if pvx[m] != 0.0 || pvy[m] != 0.0 {
+            return Err(not_dss("PV*_11..16 must be zero"));
+        }
+    }
+    if pvx[18] != 0.0 || pvy[18] != 0.0 {
+        return Err(not_dss("PV*_18 must be zero"));
+    }
+    if pvx[20] != 0.0 || pvy[20] != 0.0 {
+        return Err(not_dss("PV*_20 must be zero"));
+    }
+    // Related-parameter constraints.
+    if !ast_equal(2.0 * pvx[17], pvx[19]) || !ast_equal(pvx[17], pvx[21]) {
+        return Err(not_dss("PVX_17/19/21 are not consistent"));
+    }
+    if !ast_equal(2.0 * pvy[17], pvy[19]) || !ast_equal(pvy[17], pvy[21]) {
+        return Err(not_dss("PVY_17/19/21 are not consistent"));
+    }
+
+    // Convert PV back to AMD coefficients (amd = 3600 * pv). AMDX/Y7 and
+    // AMDX/Y12 are deliberately left zero (redundant).
+    let mut amdx = [0.0_f64; 20];
+    let mut amdy = [0.0_f64; 20];
+    amd_from_pv(&mut amdx, &pvx);
+    amd_from_pv(&mut amdy, &pvy);
+
+    // The plate scale is the mean of the leading X and Y coefficients.
+    let pltscl = 0.5 * (amdx[0] + amdy[0]);
+
+    // Arbitrary corner pixel of 1; derive the matching plate-centre offset.
     let cnpix1 = 1.0;
     let cnpix2 = 1.0;
-
-    // --- Plate offset (microns) ---
-    // CRPIX = (PPO / pixelsz) - CNPIX + 0.5
-    // PPO = pixelsz * (CRPIX + CNPIX - 0.5)
+    let crpix0 = store.crpix[0].ok_or_else(|| not_dss("CRPIX1 undefined"))?;
+    let crpix1 = store.crpix[1].ok_or_else(|| not_dss("CRPIX2 undefined"))?;
     let ppo3 = xpixelsz * (crpix0 + cnpix1 - 0.5);
     let ppo6 = ypixelsz * (crpix1 + cnpix2 - 0.5);
 
-    // --- Write keywords ---
-    cards.set_float("PLTRAH", pltrah, "Plate centre RA hours");
-    cards.set_float("PLTRAM", pltram, "Plate centre RA minutes");
-    cards.set_float("PLTRAS", pltras, "Plate centre RA seconds");
-    cards.set_float("PLTDECD", pltdecd, "Plate centre DEC degrees");
-    cards.set_float("PLTDECM", pltdecm, "Plate centre DEC arcminutes");
-    cards.set_float("PLTDECS", pltdecs, "Plate centre DEC arcseconds");
-    cards.set_string("PLTDECSN", dec_sign, "Plate centre DEC sign");
-    cards.set_float("XPIXELSZ", xpixelsz, "Pixel size X (microns)");
-    cards.set_float("YPIXELSZ", ypixelsz, "Pixel size Y (microns)");
-    cards.set_float("PPO3", ppo3, "Plate offset X (microns)");
-    cards.set_float("PPO6", ppo6, "Plate offset Y (microns)");
-    cards.set_float("CNPIX1", cnpix1, "Corner pixel X");
-    cards.set_float("CNPIX2", cnpix2, "Corner pixel Y");
-    cards.set_float("AMDX1", plate_scale, "Plate scale X (arcsec/mm)");
-    cards.set_float("AMDY1", plate_scale, "Plate scale Y (arcsec/mm)");
-    cards.set_float("PLTSCALE", plate_scale, "Plate scale (arcsec/mm)");
+    // Decompose CRVAL1 (RA degrees) into hours/min/sec, wrapped to 0..24.
+    let mut ra_hours = store.crval[0].ok_or_else(|| not_dss("CRVAL1 undefined"))? / 15.0;
+    while ra_hours < 0.0 {
+        ra_hours += 24.0;
+    }
+    while ra_hours >= 24.0 {
+        ra_hours -= 24.0;
+    }
+    let pltrah = ra_hours.trunc();
+    let ra_rem = 60.0 * (ra_hours - pltrah);
+    let pltram = ra_rem.trunc();
+    let pltras = 60.0 * (ra_rem - pltram);
+
+    // Decompose CRVAL2 (DEC degrees) into deg/min/sec + sign, wrapped to
+    // -180..180.
+    let mut dec = store.crval[1].ok_or_else(|| not_dss("CRVAL2 undefined"))?;
+    while dec < -180.0 {
+        dec += 360.0;
+    }
+    while dec >= 180.0 {
+        dec -= 360.0;
+    }
+    let pltdecsn = if dec > 0.0 { "+" } else { "-" };
+    if dec <= 0.0 {
+        dec = -dec;
+    }
+    let pltdecd = dec.trunc();
+    let dec_rem = 60.0 * (dec - pltdecd);
+    let pltdecm = dec_rem.trunc();
+    let pltdecs = 60.0 * (dec_rem - pltdecm);
+
+    // Emit the keywords in C's order, commenting only the first of each group.
+    cards.set_float("CNPIX1", cnpix1, "X corner (pixels)");
+    cards.set_float("CNPIX2", cnpix2, "Y corner (pixels)");
+    cards.set_float("PPO1", 0.0, "Orientation co-efficients");
+    cards.set_float("PPO2", 0.0, "");
+    cards.set_float("PPO3", ppo3, "");
+    cards.set_float("PPO4", 0.0, "");
+    cards.set_float("PPO5", 0.0, "");
+    cards.set_float("PPO6", ppo6, "");
+    cards.set_float("XPIXELSZ", xpixelsz, "X pixel size (microns)");
+    cards.set_float("YPIXELSZ", ypixelsz, "Y pixel size (microns)");
+    cards.set_float("PLTRAH", pltrah, "RA at plate centre");
+    cards.set_float("PLTRAM", pltram, "");
+    cards.set_float("PLTRAS", pltras, "");
+    cards.set_float("PLTDECD", pltdecd, "DEC at plate centre");
+    cards.set_float("PLTDECM", pltdecm, "");
+    cards.set_float("PLTDECS", pltdecs, "");
+    cards.set_string("PLTDECSN", pltdecsn, "");
+    cards.set_float("PLTSCALE", pltscl, "Plate scale (arcsec/mm)");
+    let mut comm = "Plate solution x co-efficients";
+    for (i, &c) in amdx.iter().enumerate() {
+        cards.set_float(&format!("AMDX{}", i + 1), c, comm);
+        comm = "";
+    }
+    comm = "Plate solution y co-efficients";
+    for (i, &c) in amdy.iter().enumerate() {
+        cards.set_float(&format!("AMDY{}", i + 1), c, comm);
+        comm = "";
+    }
 
     Ok(())
+}
+
+/// Inverse of [`set_pv_from_amd`]: fill the AMD coefficients from one axis's
+/// PV parameters (`amd = 3600 * pv`). Mirrors C `DSSFromStore`
+/// (fitschan.c:9242-9263). Indices 6 (AMD7) and 11 (AMD12) stay zero.
+fn amd_from_pv(amd: &mut [f64; 20], pv: &[f64; 22]) {
+    amd[0] = 3600.0 * pv[1];
+    amd[1] = 3600.0 * pv[2];
+    amd[2] = 3600.0 * pv[0];
+    amd[3] = 3600.0 * pv[4];
+    amd[4] = 3600.0 * pv[5];
+    amd[5] = 3600.0 * pv[6];
+    amd[7] = 3600.0 * pv[7];
+    amd[8] = 3600.0 * pv[8];
+    amd[9] = 3600.0 * pv[9];
+    amd[10] = 3600.0 * pv[10];
+    amd[12] = 3600.0 * pv[17];
+}
+
+/// Highest PV parameter index that is set, across both axes (C `GetMaxJM`).
+/// Returns 0 when no PV term is set.
+fn max_pv_index(store: &FitsStore) -> usize {
+    let mut max = 0;
+    for axis in 0..store.pv.len() {
+        for (m, slot) in store.pv[axis].iter().enumerate() {
+            if slot.is_some() {
+                max = max.max(m);
+            }
+        }
+    }
+    max
+}
+
+/// AST's standard floating-point equality with tolerance, used by C's
+/// `astEQUAL` in the related-parameter checks.
+fn ast_equal(a: f64, b: f64) -> bool {
+    crate::mappings::helpers::ast_equal(a, b)
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +421,8 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
 mod tests {
     use super::*;
 
-    /// Build a CardList from a standard DSS test header.
+    /// Build a CardList from a standard DSS test header (subset of the
+    /// wcsconv `dss.fits-dss` fixture).
     fn dss_test_cards() -> CardList {
         let header = "\
 PLTRAH  =                   10 / Plate centre RA hours
@@ -230,9 +438,10 @@ PPO3    =            -18825.9  / Plate offset X (microns)
 PPO6    =            -22216.5  / Plate offset Y (microns)
 CNPIX1  =                  1.0 / Corner pixel X
 CNPIX2  =                  1.0 / Corner pixel Y
-AMDX1   =                67.23 / Plate scale X (arcsec/mm)
-AMDY1   =                67.23 / Plate scale Y (arcsec/mm)
-PLTSCALE=                67.23 / Plate scale (arcsec/mm)
+AMDX1   =                67.23 / Plate solution x co-efficients
+AMDX3   =                  1.36
+AMDY1   =                67.23 / Plate solution y co-efficients
+AMDY3   =                 0.74
 END";
         CardList::from_header(header).unwrap()
     }
@@ -242,7 +451,6 @@ END";
         let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
-        // RA = 15 * (10 + 47/60 + 57.3/3600)
         let expected_ra = 15.0 * (10.0 + 47.0 / 60.0 + 57.3 / 3600.0);
         let ra = store.crval[0].unwrap();
         assert!(
@@ -256,38 +464,7 @@ END";
         let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
-        // DEC = -(60 + 15/60 + 51.85/3600)
         let expected_dec = -(60.0 + 15.0 / 60.0 + 51.85 / 3600.0);
-        let dec = store.crval[1].unwrap();
-        assert!(
-            (dec - expected_dec).abs() < 1e-8,
-            "DEC: expected {expected_dec}, got {dec}"
-        );
-    }
-
-    #[test]
-    fn read_dss_positive_dec() {
-        // Same header but with PLTDECSN = '+'
-        let header = "\
-PLTRAH  =                   10 / Plate centre RA hours
-PLTRAM  =                   47 / Plate centre RA minutes
-PLTRAS  =                 57.3 / Plate centre RA seconds
-PLTDECD =                   60 / Plate centre DEC degrees
-PLTDECM =                   15 / Plate centre DEC arcminutes
-PLTDECS =                51.85 / Plate centre DEC arcseconds
-PLTDECSN= '+'                  / Plate centre DEC sign
-XPIXELSZ=                25.28 / Pixel size X (microns)
-YPIXELSZ=                25.28 / Pixel size Y (microns)
-PPO3    =            -18825.9  / Plate offset X (microns)
-PPO6    =            -22216.5  / Plate offset Y (microns)
-CNPIX1  =                  1.0 / Corner pixel X
-CNPIX2  =                  1.0 / Corner pixel Y
-AMDX1   =                67.23 / Plate scale X (arcsec/mm)
-END";
-        let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
-
-        let expected_dec = 60.0 + 15.0 / 60.0 + 51.85 / 3600.0;
         let dec = store.crval[1].unwrap();
         assert!(
             (dec - expected_dec).abs() < 1e-8,
@@ -300,8 +477,6 @@ END";
         let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
-        // CRPIX1 = (PPO3 / XPIXELSZ) - CNPIX1 + 0.5
-        //        = (-18825.9 / 25.28) - 1.0 + 0.5
         let expected_crpix1 = (-18825.9 / 25.28) - 1.0 + 0.5;
         let crpix1 = store.crpix[0].unwrap();
         assert!(
@@ -309,7 +484,6 @@ END";
             "CRPIX1: expected {expected_crpix1}, got {crpix1}"
         );
 
-        // CRPIX2 = (PPO6 / YPIXELSZ) - CNPIX2 + 0.5
         let expected_crpix2 = (-22216.5 / 25.28) - 1.0 + 0.5;
         let crpix2 = store.crpix[1].unwrap();
         assert!(
@@ -319,77 +493,38 @@ END";
     }
 
     #[test]
-    fn read_dss_cdelt() {
-        let cards = dss_test_cards();
-        let store = read_from_cards(&cards).unwrap();
-
-        // CDELT1 = -0.001 * XPIXELSZ * plate_scale / 3600
-        //        = -0.001 * 25.28 * 67.23 / 3600
-        let expected_cdelt1 = -0.001 * 25.28 * 67.23 / 3600.0;
-        let cdelt1 = store.cdelt[0].unwrap();
-        assert!(
-            (cdelt1 - expected_cdelt1).abs() < 1e-12,
-            "CDELT1: expected {expected_cdelt1}, got {cdelt1}"
-        );
-
-        // CDELT2 = 0.001 * YPIXELSZ * plate_scale / 3600
-        let expected_cdelt2 = 0.001 * 25.28 * 67.23 / 3600.0;
-        let cdelt2 = store.cdelt[1].unwrap();
-        assert!(
-            (cdelt2 - expected_cdelt2).abs() < 1e-12,
-            "CDELT2: expected {expected_cdelt2}, got {cdelt2}"
-        );
-
-        // CDELT1 should be negative
-        assert!(cdelt1 < 0.0, "CDELT1 should be negative");
-        // CDELT2 should be positive
-        assert!(cdelt2 > 0.0, "CDELT2 should be positive");
-    }
-
-    #[test]
-    fn read_dss_always_fk5() {
+    fn read_dss_is_tpn_with_unit_cdelt() {
+        // C `DSSToStore` always emits TPN with CDELT=1 and the pixel sizes
+        // carried by the PC matrix (not a plain TAN with a scaled CDELT).
         let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
         assert_eq!(store.naxis, 2);
-        assert_eq!(store.ctype[0], Some("RA---TAN".to_string()));
-        assert_eq!(store.ctype[1], Some("DEC--TAN".to_string()));
-        assert_eq!(store.radesys, Some("FK5".to_string()));
+        assert_eq!(store.ctype[0].as_deref(), Some("RA---TPN"));
+        assert_eq!(store.ctype[1].as_deref(), Some("DEC--TPN"));
+        assert_eq!(store.radesys.as_deref(), Some("FK5"));
         assert_eq!(store.equinox, Some(2000.0));
         assert_eq!(store.lonpole, Some(180.0));
+        assert_eq!(store.cdelt[0], Some(1.0));
+        assert_eq!(store.cdelt[1], Some(1.0));
+        assert_eq!(store.pc[0][0], Some(-0.001 * 25.28));
+        assert_eq!(store.pc[1][1], Some(0.001 * 25.28));
     }
 
     #[test]
-    fn read_dss_fallback_plate_scale() {
-        // Header with only PLTSCALE (no AMDX1 or AMDY1)
-        let header = "\
-PLTRAH  =                   12 / Plate centre RA hours
-PLTRAM  =                    0 / Plate centre RA minutes
-PLTRAS  =                  0.0 / Plate centre RA seconds
-PLTDECD =                   45 / Plate centre DEC degrees
-PLTDECM =                    0 / Plate centre DEC arcminutes
-PLTDECS =                  0.0 / Plate centre DEC arcseconds
-XPIXELSZ=                25.0  / Pixel size X (microns)
-YPIXELSZ=                25.0  / Pixel size Y (microns)
-PPO3    =              1000.0  / Plate offset X (microns)
-PPO6    =              1000.0  / Plate offset Y (microns)
-PLTSCALE=                67.0  / Plate scale (arcsec/mm)
-END";
-        let cards = CardList::from_header(header).unwrap();
+    fn read_dss_pv_from_amd() {
+        // AMDX1 -> PVX_1, AMDX3 -> PVX_0, all /3600 (fitschan.c:9501/9497).
+        let cards = dss_test_cards();
         let store = read_from_cards(&cards).unwrap();
 
-        // Should use PLTSCALE as the plate scale
-        let expected_cdelt2 = 0.001 * 25.0 * 67.0 / 3600.0;
-        let cdelt2 = store.cdelt[1].unwrap();
-        assert!(
-            (cdelt2 - expected_cdelt2).abs() < 1e-12,
-            "CDELT2: expected {expected_cdelt2}, got {cdelt2}"
-        );
+        assert_eq!(store.pv[0][1], Some(67.23 / 3600.0)); // amdx[0] -> pv[0][1]
+        assert_eq!(store.pv[0][0], Some(1.36 / 3600.0)); // amdx[2] -> pv[0][0]
+        assert_eq!(store.pv[1][1], Some(67.23 / 3600.0)); // amdy[0] -> pv[1][1]
+        assert_eq!(store.pv[1][0], Some(0.74 / 3600.0)); // amdy[2] -> pv[1][0]
     }
 
     #[test]
     fn read_dss_default_cnpix() {
-        // Header without CNPIX1/CNPIX2 — should default to 0.0
         let header = "\
 PLTRAH  =                   12 / Plate centre RA hours
 PLTRAM  =                    0 / Plate centre RA minutes
@@ -397,6 +532,7 @@ PLTRAS  =                  0.0 / Plate centre RA seconds
 PLTDECD =                   45 / Plate centre DEC degrees
 PLTDECM =                    0 / Plate centre DEC arcminutes
 PLTDECS =                  0.0 / Plate centre DEC arcseconds
+PLTDECSN= '+'
 XPIXELSZ=                25.0  / Pixel size X (microns)
 YPIXELSZ=                25.0  / Pixel size Y (microns)
 PPO3    =              1000.0  / Plate offset X (microns)
@@ -407,18 +543,9 @@ END";
         let store = read_from_cards(&cards).unwrap();
 
         // CRPIX1 = (1000/25) - 0 + 0.5 = 40.5
-        let crpix1 = store.crpix[0].unwrap();
-        assert!(
-            (crpix1 - 40.5).abs() < 1e-10,
-            "CRPIX1 with default CNPIX: expected 40.5, got {crpix1}"
-        );
-
+        assert!((store.crpix[0].unwrap() - 40.5).abs() < 1e-10);
         // CRPIX2 = (2000/25) - 0 + 0.5 = 80.5
-        let crpix2 = store.crpix[1].unwrap();
-        assert!(
-            (crpix2 - 80.5).abs() < 1e-10,
-            "CRPIX2 with default CNPIX: expected 80.5, got {crpix2}"
-        );
+        assert!((store.crpix[1].unwrap() - 80.5).abs() < 1e-10);
     }
 
     #[test]
@@ -429,130 +556,96 @@ END";
         store.crval[1] = Some(45.0);
         store.crpix[0] = Some(512.0);
         store.crpix[1] = Some(512.0);
-        store.cdelt[0] = Some(-0.000472);
-        store.cdelt[1] = Some(0.000472);
+        store.cdelt[0] = Some(1.0);
+        store.cdelt[1] = Some(1.0);
+        store.pc[0][0] = Some(-0.001 * 25.0);
+        store.pc[1][1] = Some(0.001 * 25.0);
+        store.ctype[0] = Some("RA---TPN".to_string());
+        store.ctype[1] = Some("DEC--TPN".to_string());
+        store.radesys = Some("FK5".to_string());
+        store.pv[0][1] = Some(67.0 / 3600.0);
+        store.pv[1][1] = Some(67.0 / 3600.0);
 
         let mut cards = CardList::new();
         write_to_cards(&store, &mut cards).unwrap();
 
-        // RA decomposition: 161.98875 / 15 = 10.79925 hours
-        // PLTRAH = 10
-        let pltrah = cards.get_float("PLTRAH").unwrap();
-        assert!(
-            (pltrah - 10.0).abs() < 1e-10,
-            "PLTRAH: expected 10, got {pltrah}"
-        );
-
-        // PLTRAM = floor((10.79925 - 10) * 60) = floor(47.955) = 47
-        let pltram = cards.get_float("PLTRAM").unwrap();
-        assert!(
-            (pltram - 47.0).abs() < 1e-10,
-            "PLTRAM: expected 47, got {pltram}"
-        );
-
-        // PLTRAS = (47.955 - 47) * 60 = 57.3
-        let pltras = cards.get_float("PLTRAS").unwrap();
-        assert!(
-            (pltras - 57.3).abs() < 0.01,
-            "PLTRAS: expected ~57.3, got {pltras}"
-        );
+        assert!((cards.get_float("PLTRAH").unwrap() - 10.0).abs() < 1e-10);
+        assert!((cards.get_float("PLTRAM").unwrap() - 47.0).abs() < 1e-10);
+        assert!((cards.get_float("PLTRAS").unwrap() - 57.3).abs() < 0.01);
     }
 
     #[test]
-    fn write_dss_negative_dec() {
-        let mut store = FitsStore::new(2);
-        store.crval[0] = Some(180.0);
+    fn write_dss_negative_dec_sign() {
+        let mut store = tpn_store();
         store.crval[1] = Some(-60.264);
-        store.crpix[0] = Some(512.0);
-        store.crpix[1] = Some(512.0);
-        store.cdelt[0] = Some(-0.0005);
-        store.cdelt[1] = Some(0.0005);
-
         let mut cards = CardList::new();
         write_to_cards(&store, &mut cards).unwrap();
 
-        let decsn = cards.get_string("PLTDECSN").unwrap();
-        assert_eq!(decsn, "-", "PLTDECSN should be '-' for negative DEC");
-
-        let pltdecd = cards.get_float("PLTDECD").unwrap();
-        assert!(
-            (pltdecd - 60.0).abs() < 1e-10,
-            "PLTDECD: expected 60, got {pltdecd}"
-        );
+        assert_eq!(cards.get_string("PLTDECSN").unwrap(), "-");
+        assert!((cards.get_float("PLTDECD").unwrap() - 60.0).abs() < 1e-10);
     }
 
     #[test]
-    fn write_dss_positive_dec() {
-        let mut store = FitsStore::new(2);
-        store.crval[0] = Some(180.0);
+    fn write_dss_positive_dec_sign() {
+        let mut store = tpn_store();
         store.crval[1] = Some(45.5);
-        store.crpix[0] = Some(256.0);
-        store.crpix[1] = Some(256.0);
-        store.cdelt[0] = Some(-0.0005);
-        store.cdelt[1] = Some(0.0005);
-
         let mut cards = CardList::new();
         write_to_cards(&store, &mut cards).unwrap();
+        assert_eq!(cards.get_string("PLTDECSN").unwrap(), "+");
+    }
 
-        let decsn = cards.get_string("PLTDECSN").unwrap();
-        assert_eq!(decsn, "+", "PLTDECSN should be '+' for positive DEC");
+    #[test]
+    fn write_dss_emits_full_amd_arrays() {
+        // All 20 AMDX and 20 AMDY keywords must be written.
+        let store = tpn_store();
+        let mut cards = CardList::new();
+        write_to_cards(&store, &mut cards).unwrap();
+        for i in 1..=20 {
+            assert!(
+                cards.get_float(&format!("AMDX{i}")).is_some(),
+                "AMDX{i} missing"
+            );
+            assert!(
+                cards.get_float(&format!("AMDY{i}")).is_some(),
+                "AMDY{i} missing"
+            );
+        }
+        // PPO1-6 present.
+        for i in 1..=6 {
+            assert!(
+                cards.get_float(&format!("PPO{i}")).is_some(),
+                "PPO{i} missing"
+            );
+        }
+    }
+
+    #[test]
+    fn write_dss_rejects_rotation() {
+        let mut store = tpn_store();
+        store.pc[0][1] = Some(0.1);
+        let mut cards = CardList::new();
+        assert!(write_to_cards(&store, &mut cards).is_err());
     }
 
     #[test]
     fn write_dss_requires_2d() {
         let store = FitsStore::new(3);
         let mut cards = CardList::new();
-        let result = write_to_cards(&store, &mut cards);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.message().contains("2 axes"),
-            "Error should mention 2 axes: {}",
-            err.message()
-        );
+        let err = write_to_cards(&store, &mut cards).unwrap_err();
+        assert!(err.message().contains("2 axes"));
     }
 
     #[test]
-    fn write_dss_requires_2d_1axis() {
-        let store = FitsStore::new(1);
+    fn write_dss_requires_fk5_tan_or_tpn() {
+        // A non-celestial / non-FK5 store cannot be DSS-encoded.
+        let mut store = tpn_store();
+        store.radesys = Some("GALACTIC".to_string());
         let mut cards = CardList::new();
-        let result = write_to_cards(&store, &mut cards);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn write_dss_pixel_sizes() {
-        // Verify pixel size computation from CDELT
-        let mut store = FitsStore::new(2);
-        store.crval[0] = Some(180.0);
-        store.crval[1] = Some(45.0);
-        store.crpix[0] = Some(100.0);
-        store.crpix[1] = Some(100.0);
-        // |CDELT| * 3600 / plate_scale * 1000 = pixel_size
-        // 0.0005 * 3600 / 67.2 * 1000 = 26.7857...
-        store.cdelt[0] = Some(-0.0005);
-        store.cdelt[1] = Some(0.0005);
-
-        let mut cards = CardList::new();
-        write_to_cards(&store, &mut cards).unwrap();
-
-        let xpix = cards.get_float("XPIXELSZ").unwrap();
-        let expected_xpix = 0.0005 * 3600.0 / DEFAULT_PLATE_SCALE * 1000.0;
-        assert!(
-            (xpix - expected_xpix).abs() < 1e-6,
-            "XPIXELSZ: expected {expected_xpix}, got {xpix}"
-        );
-
-        let ypix = cards.get_float("YPIXELSZ").unwrap();
-        assert!(
-            (ypix - expected_xpix).abs() < 1e-6,
-            "YPIXELSZ: expected {expected_xpix}, got {ypix}"
-        );
+        assert!(write_to_cards(&store, &mut cards).is_err());
     }
 
     #[test]
     fn read_dss_missing_keyword_error() {
-        // Header missing XPIXELSZ
         let header = "\
 PLTRAH  =                   10 / Plate centre RA hours
 PLTRAM  =                   47 / Plate centre RA minutes
@@ -560,54 +653,48 @@ PLTRAS  =                 57.3 / Plate centre RA seconds
 PLTDECD =                   60 / Plate centre DEC degrees
 PLTDECM =                   15 / Plate centre DEC arcminutes
 PLTDECS =                51.85 / Plate centre DEC arcseconds
+PLTDECSN= '-'
 YPIXELSZ=                25.28 / Pixel size Y (microns)
 PPO3    =            -18825.9  / Plate offset X (microns)
 PPO6    =            -22216.5  / Plate offset Y (microns)
 AMDX1   =                67.23 / Plate scale (arcsec/mm)
 END";
         let cards = CardList::from_header(header).unwrap();
-        let result = read_from_cards(&cards);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.message().contains("XPIXELSZ"),
-            "Error should mention XPIXELSZ: {}",
-            err.message()
-        );
+        let err = read_from_cards(&cards).unwrap_err();
+        assert!(err.message().contains("XPIXELSZ"));
     }
 
     #[test]
     fn round_trip_preserves_coordinates() {
-        // Write a store, then read it back and verify coordinates are preserved.
-        let mut original = FitsStore::new(2);
-        original.crval[0] = Some(161.98875); // RA
-        original.crval[1] = Some(-60.264); // DEC
-        original.crpix[0] = Some(512.0);
-        original.crpix[1] = Some(512.0);
-        original.cdelt[0] = Some(-0.000472);
-        original.cdelt[1] = Some(0.000472);
+        // Write a TPN store, read it back, verify the plate-centre coordinates.
+        let mut original = tpn_store();
+        original.crval[0] = Some(161.98875);
+        original.crval[1] = Some(-60.264);
 
-        // Write
         let mut cards = CardList::new();
         write_to_cards(&original, &mut cards).unwrap();
-
-        // Read back
         let recovered = read_from_cards(&cards).unwrap();
 
-        // RA should be preserved to ~arcsecond accuracy
-        let ra_orig = original.crval[0].unwrap();
-        let ra_recov = recovered.crval[0].unwrap();
-        assert!(
-            (ra_orig - ra_recov).abs() < 1.0 / 3600.0, // < 1 arcsecond
-            "RA round-trip: original {ra_orig}, recovered {ra_recov}"
-        );
+        assert!((original.crval[0].unwrap() - recovered.crval[0].unwrap()).abs() < 1.0 / 3600.0);
+        assert!((original.crval[1].unwrap() - recovered.crval[1].unwrap()).abs() < 1.0 / 3600.0);
+    }
 
-        // DEC should be preserved to ~arcsecond accuracy
-        let dec_orig = original.crval[1].unwrap();
-        let dec_recov = recovered.crval[1].unwrap();
-        assert!(
-            (dec_orig - dec_recov).abs() < 1.0 / 3600.0,
-            "DEC round-trip: original {dec_orig}, recovered {dec_recov}"
-        );
+    /// A minimal valid TPN DSS store (plate scale only).
+    fn tpn_store() -> FitsStore {
+        let mut store = FitsStore::new(2);
+        store.crval[0] = Some(180.0);
+        store.crval[1] = Some(45.0);
+        store.crpix[0] = Some(512.0);
+        store.crpix[1] = Some(512.0);
+        store.cdelt[0] = Some(1.0);
+        store.cdelt[1] = Some(1.0);
+        store.pc[0][0] = Some(-0.001 * 25.0);
+        store.pc[1][1] = Some(0.001 * 25.0);
+        store.ctype[0] = Some("RA---TPN".to_string());
+        store.ctype[1] = Some("DEC--TPN".to_string());
+        store.radesys = Some("FK5".to_string());
+        store.pv[0][1] = Some(67.0 / 3600.0);
+        store.pv[1][1] = Some(67.0 / 3600.0);
+        store
     }
 }

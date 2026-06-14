@@ -193,6 +193,14 @@ pub(crate) fn build_celestial_with_def_b1950(
         let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
     }
 
+    // Store the projection description (mirrors C `WcsSkyFrame`,
+    // fitschan.c:39300: `astSetProjection( ret, astWcsPrjDesc( prj ) )` for
+    // any non-WCSBAD projection). This feeds the SkyFrame Title suffix
+    // "; <desc> projection" and the serialised `Proj` token.
+    if !matches!(proj, WcsProjection::Unknown) {
+        sky_frame.set_projection(proj.description());
+    }
+
     // Step 6: Set equinox — only for equatorial / ecliptic systems.
     // Mirrors fitschan.c:39305-39307:
     //   if( ( !strcmp(sys, "EQU") || !strcmp(sys, "ECL") )

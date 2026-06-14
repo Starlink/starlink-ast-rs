@@ -130,6 +130,46 @@ impl WcsProjection {
         }
     }
 
+    /// Return the textual projection description used for a SkyFrame's
+    /// `Projection` attribute. Mirrors C `astWcsPrjDesc` (wcsmap.c:4419) and
+    /// the `desc` column of the `PrjInfo` table (wcsmap.c:685-716).
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Azp => "zenithal perspective",
+            Self::Szp => "slant zenithal perspective",
+            Self::Tan => "gnomonic",
+            Self::Stg => "stereographic",
+            Self::Sin => "orthographic",
+            Self::Arc => "zenithal equidistant",
+            Self::Zpn => "zenithal polynomial",
+            Self::Zea => "zenithal equal area",
+            Self::Air => "Airy",
+            Self::Cyp => "cylindrical perspective",
+            Self::Cea => "cylindrical equal area",
+            Self::Car => "Cartesian",
+            Self::Mer => "Mercator",
+            Self::Sfl => "Sanson-Flamsteed",
+            Self::Par => "parabolic",
+            Self::Mol => "Mollweide",
+            Self::Ait => "Hammer-Aitoff",
+            Self::Cop => "conical perspective",
+            Self::Coe => "conical equal area",
+            Self::Cod => "conical equidistant",
+            Self::Coo => "conical orthomorphic",
+            Self::Bon => "Bonne's equal area",
+            Self::Pco => "polyconic",
+            Self::Tsc => "tangential spherical cube",
+            Self::Csc => "cobe quadrilateralized spherical cube",
+            Self::Qsc => "quadrilateralized spherical cube",
+            Self::Ncp => "AIPS north celestial pole",
+            Self::Gls => "sinusoidal",
+            Self::Hpx => "HEALPix",
+            Self::Xph => "polar HEALPix",
+            Self::Tpn => "gnomonic polynomial",
+            Self::Unknown => "<null>",
+        }
+    }
+
     /// Parse a 3-letter FITS projection code (case-insensitive).
     ///
     /// Returns `None` if the code is not recognised.
