@@ -119,6 +119,21 @@ impl DSBSpecFrame {
         }
     }
 
+    /// Create a `DSBSpecFrame` wrapping an existing [`SpecFrame`].
+    ///
+    /// All DSB-specific attributes (DSBCentre, IF, SideBand, AlignSideBand)
+    /// start at their defaults; the supplied `SpecFrame` provides the
+    /// spectral System / StdOfRest / RestFreq / observer / Epoch attributes.
+    pub fn from_spec_frame(spec: SpecFrame) -> Self {
+        Self {
+            spec,
+            dsb_centre: None,
+            ifr: None,
+            sideband: None,
+            align_sideband: None,
+        }
+    }
+
     // --- DSB-specific attribute getters ---
 
     /// Return the DSB centre frequency as a **topocentric frequency in Hz**
@@ -322,6 +337,114 @@ impl DSBSpecFrame {
         &mut self.spec
     }
 
+    /// Set the reference position (RefRA/RefDec) from a celestial frame.
+    ///
+    /// Delegates to the underlying [`SpecFrame::set_ref_pos`].
+    pub fn set_ref_pos(
+        &mut self,
+        frm: Option<&super::SkyFrame>,
+        lon: f64,
+        lat: f64,
+    ) -> AstResult<()> {
+        self.spec.set_ref_pos(frm, lon, lat)
+    }
+
+    /// Return the reference RA (FK5 J2000, radians).
+    pub fn ref_ra(&self) -> Option<f64> {
+        self.spec.ref_ra()
+    }
+
+    /// Return the reference Dec (FK5 J2000, radians).
+    pub fn ref_dec(&self) -> Option<f64> {
+        self.spec.ref_dec()
+    }
+
+    // --- DSBSetUp (FITS-WCS / FITS-CLASS read path) ---
+
+    /// Configure this DSBSpecFrame's IF / DSBCentre / SideBand from a FITS
+    /// header's image frequency and spectral CRVAL.
+    ///
+    /// Mirrors C `DSBSetUp` (fitschan.c:8930-9064). `imagfreq` is the
+    /// `IMAGFREQ` keyword value (Hz, measured in the source rest frame);
+    /// `crval` is the spectral CRVAL value expressed in this frame's current
+    /// spectral System and Unit (the CTYPE system).
+    ///
+    /// The algorithm:
+    /// 1. Build a mapping from frequency in the source's rest frame to
+    ///    topocentric frequency, by converting between a copy of this frame
+    ///    set to (StdOfRest=Source, System=FREQ, Unit=Hz) and the same copy
+    ///    set to StdOfRest=Topocentric.
+    /// 2. Transform `[RestFreq, imagfreq]` through that mapping to obtain the
+    ///    topocentric rest and image frequencies.
+    /// 3. If both are finite, store `crval` as the DSBCentre, read it back as
+    ///    a topocentric frequency, take the local-oscillator frequency to be
+    ///    half-way between the topocentric rest and image frequencies, set
+    ///    `IF = lo - dsbcentre`, and set the SideBand to the observed sideband.
+    pub fn dsb_set_up(&mut self, imagfreq: f64, crval: f64) -> AstResult<()> {
+        use crate::frames::Frame;
+
+        let bad = crate::constants::BAD_VALUE;
+
+        // Step 1 (C:9000-9015). Build dsb_src = copy of the underlying
+        // SpecFrame set to source-rest frequency in Hz, and dsb_topo = the
+        // same set to topocentric. astConvert(dsb_src, dsb_topo, "") gives a
+        // mapping source-rest-FREQ-Hz -> topocentric-FREQ-Hz.
+        let mut dsb_src = self.spec.clone();
+        dsb_src.set_std_of_rest(StdOfRest::Source);
+        dsb_src.set_system(SpecSystem::Freq);
+        dsb_src.set_unit("Hz");
+
+        let mut dsb_topo = dsb_src.clone();
+        dsb_topo.set_std_of_rest(StdOfRest::Topocentric);
+
+        let Some(fs) = dsb_src.convert_to(&dsb_topo, &[])? else {
+            // No conversion found (C:9018 — leaves the frame unchanged).
+            return Ok(());
+        };
+        let map = fs.mapping(
+            crate::frames::FrameRef::Base,
+            crate::frames::FrameRef::Current,
+        )?;
+
+        // Step 2 (C:9020-9025). Transform [RestFreq, imagfreq].
+        let rest_freq = self.spec.rest_freq().unwrap_or(bad);
+        // A 1-input/1-output mapping applied to two points (rest, image),
+        // mirroring C `astTran1(fs, 2, in, 1, out)`. The single coordinate
+        // axis holds both input values.
+        let input = PointSet::from_columns(&[&[rest_freq, imagfreq]])?;
+        let result = map.transform(&input, true)?;
+        let out0 = result.point(0)[0];
+        let out1 = result.point(1)[0];
+
+        // Step 3 (C:9030-9059). Only proceed when both outputs are good.
+        if out0 != bad && out1 != bad && out0.is_finite() && out1.is_finite() {
+            // Store CRVAL as the DSBCentre, interpreting it in the current
+            // spectral system (C:9036 astSetD(dsb,"DSBCentre",crval)).
+            self.set_dsb_centre_cur(crval)?;
+
+            // Topocentric-frequency equivalent of the DSBCentre: copy the
+            // frame, set it to topocentric FREQ in Hz, read DSBCentre back
+            // (C:9041-9046).
+            let mut topo = self.clone();
+            topo.spec.set_std_of_rest(StdOfRest::Topocentric);
+            topo.spec.set_system(SpecSystem::Freq);
+            topo.spec.set_unit("Hz");
+            let dsbcentre = topo.dsb_centre_cur()?;
+
+            // Local-oscillator frequency: half-way between topocentric rest
+            // and image frequencies (C:9051).
+            let lo = 0.5 * (out1 + out0);
+
+            // IF = lo - dsbcentre (C:9055). Internal IF is stored in Hz.
+            self.set_ifr(lo - dsbcentre);
+
+            // SideBand=observed (C:9058): IF>0 -> LSB, else USB.
+            self.set_sideband(self.observed_sideband());
+        }
+
+        Ok(())
+    }
+
     // --- Helpers ---
 
     /// Compute the observed frequency based on the current sideband, DSB centre, and IF.
@@ -397,7 +520,10 @@ impl DSBSpecFrame {
         let mut rf_frame = self.clone();
         rf_frame.spec.set_std_of_rest(StdOfRest::Source);
         rf_frame.spec.set_system(SpecSystem::Freq);
-        rf_frame.spec.clear_unit();
+        // C sets Unit explicitly to "Hz" (dsbspecframe.c:653); the
+        // sideband flip and topocentric mappings all work in Hz, so the
+        // current unit must be Hz (not the FREQ display default of GHz).
+        rf_frame.spec.set_unit("Hz");
         rf_frame.set_sideband(self.observed_sideband());
 
         // Mapping from observed sideband to the opposite sideband.
@@ -422,6 +548,11 @@ impl DSBSpecFrame {
     fn to_topo_mapping(&self) -> AstResult<DynMapping> {
         let mut topo_frame = SpecFrame::new(SpecSystem::Freq);
         topo_frame.set_std_of_rest(StdOfRest::Topocentric);
+        // Target topocentric frequency in Hz. Mirrors C `TopoMap`
+        // (dsbspecframe.c:2124, `astSetUnit(tf2, 0, "Hz")`): the internal
+        // DSBCentre / IF attributes are topocentric Hz, so the conversion
+        // must land in Hz rather than the FREQ display default (GHz).
+        topo_frame.set_unit("Hz");
 
         // Copy observer attributes from self.spec to the topo frame.
         if let Some(lat) = self.spec.obs_lat() {

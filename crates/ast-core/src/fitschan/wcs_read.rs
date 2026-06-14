@@ -87,7 +87,70 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // SpecFrame already lives inside the FrameSet.
     set_spec_ref_from_celestial(&mut frameset, store)?;
 
+    // Step 10: DSBSpecFrame setup. Mirrors C `WcsSpectral`
+    // (fitschan.c:39585-39588), which calls `DSBSetUp` immediately after
+    // `astSetRefPos` when the spectral frame is a DSBSpecFrame. The IF /
+    // DSBCentre / SideBand attributes depend on the topocentric frequency
+    // conversion, which in turn depends on the reference position set above.
+    dsb_set_up_in_frameset(&mut frameset, store)?;
+
     Ok(AnyObject::FrameSet(frameset))
+}
+
+/// Run [`crate::frames::DSBSpecFrame::dsb_set_up`] on the DSBSpecFrame (if
+/// any) inside the FrameSet's current world frame.
+///
+/// Mirrors C `WcsSpectral`'s `if( astIsADSBSpecFrame(specfrm) ) DSBSetUp(...)`
+/// (fitschan.c:39585-39588). The `obscentre` argument C passes as `crval` is
+/// `store->axref[i]` falling back to `store->crval[i]` (fitschan.c:39575-39581).
+fn dsb_set_up_in_frameset(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
+    let Some(imagfreq) = store.imagfreq else {
+        return Ok(());
+    };
+
+    // obscentre: the spectral CRVAL value (no AXREF support yet — AXREF is
+    // only written for -TAB axes with no inverse, which this reader does
+    // not produce).
+    let Some(spec_axis) = store.spectral_axis() else {
+        return Ok(());
+    };
+    let crval = store.crval[spec_axis].unwrap_or(0.0);
+
+    let cur = fs.frame_mut(FrameRef::Current)?;
+    dsb_set_up_in_frame(cur, imagfreq, crval)
+}
+
+/// Locate the `DSBSpecFrame` within `frame` (recursing through any
+/// `CmpFrame`) and run its `dsb_set_up`.
+fn dsb_set_up_in_frame(
+    frame: &mut dyn crate::frames::Frame,
+    imagfreq: f64,
+    crval: f64,
+) -> AstResult<()> {
+    use crate::frames::{CmpFrame, DSBSpecFrame};
+    if let Some(dsb) = frame.as_any_mut().downcast_mut::<DSBSpecFrame>() {
+        return dsb.dsb_set_up(imagfreq, crval);
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        let in_first = cmp.frame1().as_any().is::<DSBSpecFrame>() || contains_dsb(cmp.frame1());
+        if in_first {
+            return dsb_set_up_in_frame(cmp.frame1_mut(), imagfreq, crval);
+        }
+        return dsb_set_up_in_frame(cmp.frame2_mut(), imagfreq, crval);
+    }
+    Ok(())
+}
+
+/// Whether `frame` contains a `DSBSpecFrame` (directly or nested).
+fn contains_dsb(frame: &dyn crate::frames::Frame) -> bool {
+    use crate::frames::{CmpFrame, DSBSpecFrame};
+    if frame.as_any().is::<DSBSpecFrame>() {
+        return true;
+    }
+    if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
+        return contains_dsb(c.frame1()) || contains_dsb(c.frame2());
+    }
+    false
 }
 
 /// Propagate the celestial reference position to a SpecFrame's
@@ -151,10 +214,35 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResul
     // converts (reflon, reflat) from sky_clone's system to FK5/J2000
     // and stores the result in RefRA/RefDec.
     let cur = fs.frame_mut(FrameRef::Current)?;
-    if let Some(spec) = spec_mut(cur) {
-        spec.set_ref_pos(Some(&sky_clone), reflon, reflat)?;
-    }
+    set_spec_ref_pos(cur, &sky_clone, reflon, reflat)?;
 
+    Ok(())
+}
+
+/// Apply `set_ref_pos` to the spectral frame (plain `SpecFrame` or
+/// `DSBSpecFrame`) found within `frame`, recursing through any `CmpFrame`.
+fn set_spec_ref_pos(
+    frame: &mut dyn crate::frames::Frame,
+    sky: &crate::frames::SkyFrame,
+    reflon: f64,
+    reflat: f64,
+) -> AstResult<()> {
+    use crate::frames::{CmpFrame, DSBSpecFrame, SpecFrame};
+    if let Some(spec) = frame.as_any_mut().downcast_mut::<SpecFrame>() {
+        spec.set_ref_pos(Some(sky), reflon, reflat)?;
+        return Ok(());
+    }
+    if let Some(dsb) = frame.as_any_mut().downcast_mut::<DSBSpecFrame>() {
+        dsb.set_ref_pos(Some(sky), reflon, reflat)?;
+        return Ok(());
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        let in_first = peek_spec(cmp.frame1()).is_some();
+        if in_first {
+            return set_spec_ref_pos(cmp.frame1_mut(), sky, reflon, reflat);
+        }
+        return set_spec_ref_pos(cmp.frame2_mut(), sky, reflon, reflat);
+    }
     Ok(())
 }
 
@@ -183,7 +271,8 @@ fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
         offset: usize,
         out: &mut (Option<usize>, Option<(usize, usize)>),
     ) {
-        if let Some(_spec) = frame.as_any().downcast_ref::<SpecFrame>() {
+        use crate::frames::DSBSpecFrame;
+        if frame.as_any().is::<SpecFrame>() || frame.as_any().is::<DSBSpecFrame>() {
             if out.0.is_none() {
                 out.0 = Some(offset);
             }
@@ -211,9 +300,12 @@ fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
 }
 
 fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {
-    use crate::frames::{CmpFrame, SpecFrame};
+    use crate::frames::{CmpFrame, DSBSpecFrame, SpecFrame};
     if let Some(s) = frame.as_any().downcast_ref::<SpecFrame>() {
         return Some(s);
+    }
+    if let Some(d) = frame.as_any().downcast_ref::<DSBSpecFrame>() {
+        return Some(d.spec());
     }
     if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
         return peek_spec(c.frame1()).or_else(|| peek_spec(c.frame2()));
@@ -228,22 +320,6 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
     }
     if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
         return peek_sky(c.frame1()).or_else(|| peek_sky(c.frame2()));
-    }
-    None
-}
-
-fn spec_mut(frame: &mut dyn crate::frames::Frame) -> Option<&mut crate::frames::SpecFrame> {
-    use crate::frames::{CmpFrame, SpecFrame};
-    if frame.as_any().downcast_ref::<SpecFrame>().is_some() {
-        return frame.as_any_mut().downcast_mut::<SpecFrame>();
-    }
-    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
-        // Pick child up-front to avoid borrowing `cmp` twice.
-        let pick_first = peek_spec(cmp.frame1()).is_some();
-        if pick_first {
-            return spec_mut(cmp.frame1_mut());
-        }
-        return spec_mut(cmp.frame2_mut());
     }
     None
 }
@@ -625,7 +701,7 @@ fn build_world_frame(
 
     if spectral.is_some() && celestial.is_none() && n_unclaimed == 0 {
         let spec = spectral.as_ref().unwrap();
-        return Ok(Box::new(spec.frame.clone()));
+        return Ok(spec.world_frame());
     }
 
     // Mixed case: walk axes in FITS index order and push each frame at
@@ -694,7 +770,7 @@ fn build_world_frame(
             if i == spec.axis {
                 flush_linear(&mut linear_run, &mut frames)?;
                 if !spec_pushed {
-                    frames.push(Box::new(spec.frame.clone()));
+                    frames.push(spec.world_frame());
                     spec_pushed = true;
                 }
                 continue;

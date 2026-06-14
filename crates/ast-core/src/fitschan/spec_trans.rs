@@ -1188,21 +1188,24 @@ fn translate_class(cards: &mut CardList) {
         return;
     };
 
-    // Grab CRVAL on the spectral axis up-front so we can compute
-    // v0 below, even after we mutate the card.
+    // Grab CRVAL on the spectral axis up-front.
     let crval_spec_orig = cards.get_float(&format!("CRVAL{axspec}")).unwrap_or(0.0);
 
-    // Spectral CTYPE check + CRVAL shift.
+    // Spectral CTYPE check + CRVAL shift. Track the *absolute* spectral
+    // CRVAL (offset + RESTFREQ) — C increments `crval` in place at
+    // fitschan.c:7052 and reuses that incremented value when computing the
+    // reference-channel radio velocity `v0` at fitschan.c:7118.
+    let mut crval_spec_abs = crval_spec_orig;
     if let Some(ctype_spec) = cards.get_string(&format!("CTYPE{axspec}")) {
         let trimmed = ctype_spec.trim();
         if trimmed.eq_ignore_ascii_case("FREQ") {
             // CRVAL_spec += RESTFREQ.
-            let new_crval = crval_spec_orig + restfreq;
+            crval_spec_abs = crval_spec_orig + restfreq;
             let comment = cards
                 .find(&format!("CRVAL{axspec}"))
                 .and_then(|c| c.comment.clone())
                 .unwrap_or_default();
-            cards.set_float(&format!("CRVAL{axspec}"), new_crval, &comment);
+            cards.set_float(&format!("CRVAL{axspec}"), crval_spec_abs, &comment);
         }
         // C errors out for non-FREQ axes; we silently skip.
     }
@@ -1253,11 +1256,12 @@ fn translate_class(cards: &mut CardList) {
     };
 
     // Compute radio velocity at the reference channel:
-    //   v0 = c * (restfreq - crval_spec_orig) / restfreq
-    // (C uses the *original* spectral CRVAL, not the post-shift
-    // value — see fitschan.c:7117).
+    //   v0 = c * (restfreq - crval) / restfreq
+    // where `crval` is the *absolute* (post-shift) spectral CRVAL — C
+    // increments `crval` by RESTFREQ at fitschan.c:7052 and uses that same
+    // value at fitschan.c:7118.
     const C_LIGHT_M_S: f64 = 299_792_458.0;
-    let v0 = C_LIGHT_M_S * (restfreq - crval_spec_orig) / restfreq;
+    let v0 = C_LIGHT_M_S * (restfreq - crval_spec_abs) / restfreq;
     let vsource = vref - v0;
 
     cards.set_string("SSYSSRC", ssyssrc, "Source standard of rest");

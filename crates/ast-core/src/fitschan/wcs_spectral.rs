@@ -86,6 +86,28 @@ pub(crate) struct SpectralResult {
     pub frame: SpecFrame,
     /// 0-based axis index in the full IWC space.
     pub axis: usize,
+    /// Whether the world frame for this axis should be a `DSBSpecFrame`
+    /// rather than a plain `SpecFrame`. Mirrors C `WcsSpectral`
+    /// (fitschan.c:39498-39503), which builds a DSBSpecFrame when the
+    /// FitsStore carries an `IMAGFREQ` value. The DSB-specific attributes
+    /// (IF / DSBCentre / SideBand) are filled in by `dsb_set_up` after the
+    /// reference position has been propagated from the celestial axes.
+    pub is_dsb: bool,
+}
+
+impl SpectralResult {
+    /// Build the world Frame for this spectral axis: a `DSBSpecFrame`
+    /// wrapping [`Self::frame`] when [`Self::is_dsb`] is set, otherwise a
+    /// plain clone of [`Self::frame`].
+    pub fn world_frame(&self) -> crate::frames::DynFrame {
+        if self.is_dsb {
+            Box::new(crate::frames::DSBSpecFrame::from_spec_frame(
+                self.frame.clone(),
+            ))
+        } else {
+            Box::new(self.frame.clone())
+        }
+    }
 }
 
 /// If a spectral axis is present in the FitsStore, build the IWC-to-spectral
@@ -149,6 +171,27 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame.set_obs_alt(h);
     }
 
+    // Source velocity rest frame (SSYSSRC → SourceVRF) and source
+    // velocity (ZSOURCE redshift → SourceVel). Mirrors C `WcsSpectral`
+    // (fitschan.c:39547-39559). The source velocity defines the
+    // Source standard of rest, which DSBSetUp's source-rest →
+    // topocentric conversion depends on; without it the topocentric
+    // image/rest frequencies (and hence the derived IF) are wrong.
+    if let Some(ref ssyssrc) = store.ssyssrc
+        && let Some(sor) = StdOfRest::parse(ssyssrc)
+    {
+        frame.set_source_vrf(sor);
+    }
+    if let Some(zsource) = store.zsource {
+        // Convert redshift to velocity (relativistic Doppler), mirroring
+        // C: v = c·((1+z)² − 1)/((1+z)² + 1).
+        const SPEED_OF_LIGHT: f64 = 299_792_458.0; // m/s (AST__C)
+        let mut v = zsource + 1.0;
+        v *= v;
+        let vsource = SPEED_OF_LIGHT * (v - 1.0) / (v + 1.0);
+        frame.set_source_vel(vsource);
+    }
+
     // CUNIT → SpecFrame unit. Recorded as the user-facing presentation
     // unit; the SpecMap that connects two SpecFrames handles the SI
     // conversion when systems differ. Mirrors specframe.c::SetUnit.
@@ -201,10 +244,17 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         Err(_) => return None,
     };
 
+    // C `WcsSpectral` (fitschan.c:39498-39503) builds a DSBSpecFrame
+    // instead of a plain SpecFrame when the FitsStore carries an IMAGFREQ
+    // value. The DSB-specific attributes are computed by `dsb_set_up`
+    // after the celestial reference position has been propagated.
+    let is_dsb = store.imagfreq.is_some();
+
     Some(SpectralResult {
         mapping,
         frame,
         axis,
+        is_dsb,
     })
 }
 

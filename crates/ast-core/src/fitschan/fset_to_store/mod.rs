@@ -521,17 +521,22 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     // (mirrors C:2440-2448 — `astPrimaryFrame` + `astCopy(pfrm)`).
     let cfrm_naxes = fs.current().naxes();
     let mut matched_spec: Option<SpecFrame> = None;
+    // When the matched spectral frame is a DSBSpecFrame, keep the full
+    // DSBSpecFrame so the encoding Frame stays dual-sideband — C copies
+    // the primary frame (`astCopy(pfrm)`, fitschan.c:2443), and since
+    // `astIsASpecFrame` is true for a DSBSpecFrame the copy preserves the
+    // sideband attributes. The downstream IMAGFREQ extraction
+    // (spectral_axes) relies on this.
+    let mut matched_dsb: Option<DSBSpecFrame> = None;
     let mut matched_sky: Option<SkyFrame> = None;
     for iax in 0..cfrm_naxes {
         let (pframe, _) = crate::frames::specframe::primary_frame_walk(fs.current(), iax);
         if matched_spec.is_none() {
-            if let Some(spec) = pframe.as_any().downcast_ref::<SpecFrame>() {
-                matched_spec = Some(spec.clone());
-            } else if let Some(dsb) = pframe.as_any().downcast_ref::<DSBSpecFrame>() {
-                // DSBSpecFrame inherits from SpecFrame; downgrade to its
-                // SpecFrame component for the encoding target. The
-                // sideband-specific attributes are not used by CLASS.
+            if let Some(dsb) = pframe.as_any().downcast_ref::<DSBSpecFrame>() {
                 matched_spec = Some(dsb.spec().clone());
+                matched_dsb = Some(dsb.clone());
+            } else if let Some(spec) = pframe.as_any().downcast_ref::<SpecFrame>() {
+                matched_spec = Some(spec.clone());
             }
         }
         if matched_sky.is_none()
@@ -555,11 +560,26 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     source_spec.set_unit("Hz");
 
     // Mapping that converts the matched SpecFrame's coordinates to
-    // the Source-Hz frame.
+    // the Source-Hz frame. The sideband-specific attributes do not
+    // affect this base→current spectral conversion, so the plain
+    // SpecFrame conversion is used regardless of DSB-ness.
     let Some(spec_conv_fs) = matched_spec.convert_to(&source_spec, &[])? else {
         return Ok(());
     };
     let spec_mapping = spec_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    // The Frame that goes into the encoding CmpFrame: a DSBSpecFrame
+    // (preserving IF / DSBCentre / SideBand) when the matched frame was
+    // dual-sideband, else the plain SpecFrame. Mirrors C copying the
+    // primary frame and forcing its System/StdOfRest/Unit while keeping
+    // the original class (fitschan.c:2443-2463).
+    let source_spec_frame: crate::frames::DynFrame = if let Some(dsb) = &matched_dsb {
+        let mut d = dsb.clone();
+        *d.spec_mut() = source_spec.clone();
+        Box::new(d)
+    } else {
+        Box::new(source_spec.clone())
+    };
 
     // Build a CLASS-acceptable target SkyFrame (C:2466-2477):
     // System ∈ {FK4, FK5, Galactic}; FK5 ⇒ J2000.0; FK4 ⇒ B1950.0.
@@ -622,7 +642,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     let (new_cmp, parallel_map): (crate::frames::DynFrame, crate::mappings::DynMapping) =
         if frame1_is_spec {
             (
-                Box::new(CmpFrame::new(Box::new(source_spec), Box::new(target_sky))),
+                Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky))),
                 Box::new(CmpMap::new(
                     spec_mapping,
                     sky_mapping,
@@ -631,7 +651,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
             )
         } else {
             (
-                Box::new(CmpFrame::new(Box::new(target_sky), Box::new(source_spec))),
+                Box::new(CmpFrame::new(Box::new(target_sky), source_spec_frame)),
                 Box::new(CmpMap::new(
                     sky_mapping,
                     spec_mapping,

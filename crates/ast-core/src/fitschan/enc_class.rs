@@ -94,6 +94,22 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     store.ssyssrc = cards.get_string("SSYSSRC");
     store.zsource = cards.get_float("ZSOURCE");
 
+    // IMAGFREQ — the image-sideband frequency (Hz). When present, the
+    // spectral axis is read as a DSBSpecFrame rather than a plain
+    // SpecFrame (C `WcsSpectral`, fitschan.c:39498-39503). The CLASS
+    // translator (`spec_trans::translate_class`) leaves IMAGFREQ in the
+    // card list as a standard keyword, so it is read directly here.
+    store.imagfreq = cards.get_float("IMAGFREQ");
+
+    // OBSGEO-X/Y/Z — observatory geocentric position (metres). These feed
+    // the SpecFrame's ObsLon/ObsLat/ObsAlt, which the topocentric Doppler
+    // correction (and hence DSBSetUp's IF) depends on. Mirrors C
+    // `WcsSpectral` (fitschan.c:39532-39545), which reads OBSGEO from the
+    // FitsStore regardless of encoding.
+    store.obsgeox = cards.get_float("OBSGEO-X");
+    store.obsgeoy = cards.get_float("OBSGEO-Y");
+    store.obsgeoz = cards.get_float("OBSGEO-Z");
+
     // RADESYS / RADECSYS
     store.radesys = cards
         .get_string("RADESYS")
