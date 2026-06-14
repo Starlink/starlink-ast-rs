@@ -463,8 +463,19 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
 
     fn apply_skyrefis(frame: &mut dyn crate::frames::Frame, skyrefis: SkyRefIs) {
         if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
+            // C `TidyOffsets` (fitschan.c:34464-34468) sets only the
+            // SkyRefIs attribute here; it does NOT alter the Domain. The
+            // SKY_POLE / SKY_ORIGIN marker Domain is retained on the
+            // Frame and is only cleared later, in the `hasabs && hasoff`
+            // removal pass (`astClearDomain`, fitschan.c:34493) — which
+            // does not run when the offset Frame is the only sky
+            // description present. Keeping SKY_ORIGIN / SKY_POLE here is
+            // load-bearing: the writer's `IsASkyFrame` macro
+            // (fitschan.c:1365) requires `Domain == "SKY"`, so an
+            // offset Frame with a non-"SKY" Domain is deliberately
+            // routed through `OtherAxes` (emitting plain OFLN / OFLT
+            // CTYPEs from the axis Symbols) rather than `CelestialAxes`.
             sky.set_sky_ref_is(skyrefis);
-            sky.set_domain("SKY");
             return;
         }
         if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
@@ -481,6 +492,17 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
             classify(f)
         };
         if let Some(skyrefis) = marker {
+            // C `TidyOffsets` (fitschan.c:34464-34468) sets SkyRefIs
+            // *through the FrameSet* so the FrameSet integrity machinery
+            // re-maps the SkyFrame to offset coordinates. Here the
+            // SkyFrame read from an OFLN/OFLT header already carries the
+            // offset (linear) pixel→sky Mapping, so the attribute only
+            // needs recording on the Frame itself — applying it through
+            // FrameSet integrity would re-fuse the Mapping into a form
+            // that loses the offset description. Set it directly,
+            // leaving the Domain marker (SKY_ORIGIN / SKY_POLE) intact
+            // so the writer's `IsASkyFrame` test routes the Frame
+            // through `OtherAxes`.
             let f = fs.frame_mut(FrameRef::Index(ifrm))?;
             apply_skyrefis(f, skyrefis);
         }

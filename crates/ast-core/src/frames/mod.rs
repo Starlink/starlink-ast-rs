@@ -348,6 +348,18 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         String::new()
     }
 
+    /// Internal `Unit(axis)` (1-based): the units in which this Frame's
+    /// Mapping actually computes, before any external-unit conversion.
+    /// Mirrors C `astGetInternalUnit` (frame.c). The base default
+    /// equals the external [`effective_unit`](Self::effective_unit), so
+    /// frames whose internal and external units agree trigger no
+    /// remapping in `MakeFitsFrameSet`. `SkyFrame` overrides this to
+    /// `"rad"` (its axes are angles stored in radians but presented in
+    /// degrees).
+    fn internal_unit(&self, axis: usize) -> String {
+        self.effective_unit(axis)
+    }
+
     /// Effective `Symbol(axis)` (1-based): the explicitly-set per-axis
     /// symbol if present, else the class default. Mirrors the Frame
     /// `astGetSymbol` virtual (frame.c:5760), whose base default falls
@@ -363,6 +375,20 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// derived from Digits and need not be copied.
     fn effective_format(&self, _axis: usize) -> String {
         String::new()
+    }
+
+    /// Test whether `Label(axis)` (1-based) has been explicitly set.
+    /// Mirrors C `astTestLabel` (frame.c). Default `false`; concrete
+    /// frames that track per-axis label state override this.
+    fn test_axis_label(&self, _axis: usize) -> bool {
+        false
+    }
+
+    /// Test whether `Unit(axis)` (1-based) has been explicitly set.
+    /// Mirrors C `astTestUnit` (frame.c). Default `false`; concrete
+    /// frames that track per-axis unit state override this.
+    fn test_axis_unit(&self, _axis: usize) -> bool {
+        false
     }
 
     /// Permute the axes of this frame.

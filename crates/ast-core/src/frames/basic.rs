@@ -711,6 +711,14 @@ impl Frame for BasicFrame {
         }
     }
 
+    fn test_axis_label(&self, axis: usize) -> bool {
+        BasicFrame::test_label(self, axis).unwrap_or(false)
+    }
+
+    fn test_axis_unit(&self, axis: usize) -> bool {
+        BasicFrame::test_unit(self, axis).unwrap_or(false)
+    }
+
     fn effective_format(&self, axis: usize) -> String {
         match BasicFrame::test_format_str(self, axis) {
             Ok(true) => BasicFrame::format_str(self, axis).unwrap_or("").to_string(),

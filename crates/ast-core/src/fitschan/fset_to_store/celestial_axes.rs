@@ -52,6 +52,20 @@ use super::sky_pole::sky_pole;
 use super::sky_sys::sky_sys;
 use super::world_axes::world_axes;
 
+/// The writer's celestial-axis predicate, mirroring the C macro
+/// `#define IsASkyFrame(frame) (astIsASkyFrame(frame) &&
+/// !strcmp("SKY",astGetDomain(frame)))` (fitschan.c:1365).
+///
+/// A SkyFrame is only treated as a *celestial* axis by `CelestialAxes`
+/// when its Domain is exactly `"SKY"`. An offset SkyFrame carries a
+/// `SKY_ORIGIN` / `SKY_POLE` Domain (stamped on read by `WcsSkyFrame`
+/// and preserved by `TidyOffsets`), so it deliberately fails this test
+/// and falls through to `OtherAxes`, which emits the linear OFLN / OFLT
+/// axis description.
+fn is_a_sky_frame(frame: &dyn Frame) -> bool {
+    frame.as_any().is::<SkyFrame>() && frame.domain() == "SKY"
+}
+
 /// `MXPAR` from wcslib's PV-parameter table — mirrors the C
 /// `WCSLIB_MXPAR` constant used in the PV-loop bound at
 /// fitschan.c:5150. Our Rust `WcsMap::get_pv` exposes the same range.
@@ -100,7 +114,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     let mut ilat: Option<usize> = None;
     for iax in 0..nwcs {
         let (pframe, paxis) = wcsfrm.primary_frame(iax);
-        if pframe.as_any().is::<SkyFrame>() {
+        if is_a_sky_frame(pframe) {
             if paxis == 0 {
                 ilon = Some(iax);
             } else {

@@ -161,9 +161,6 @@ pub(crate) fn build_celestial_with_def_b1950(
         }
     }
 
-    // Step 4: Determine the coordinate system from RADESYS.
-    let system = determine_sky_system(store);
-
     // Detect whether the CTYPE prefix indicates an offset sky frame
     // (CTYPE = OFLN/OFLT). C `WcsSkyFrame` (fitschan.c:39277) tags
     // the resulting SkyFrame with Domain = SKY_OFFSETS so TidyOffsets
@@ -172,6 +169,22 @@ pub(crate) fn build_celestial_with_def_b1950(
         .as_deref()
         .map(|c| classify_ctype_prefix(c) == Some(CelKind::OffsetSky))
         .unwrap_or(false);
+
+    // Step 4: Determine the coordinate system from RADESYS.
+    //
+    // C `WcsSkyFrame` (fitschan.c:39259-39277) treats the `OF` (offset
+    // sky) CTYPE code as an *unknown* spherical system: it builds the
+    // SkyFrame with `System=UNKNOWN`, sets the axis Symbols to
+    // OFLN / OFLT, and tags the Frame with Domain=SKY_OFFSETS. It does
+    // NOT consult RADESYS, and (per the EQU/ECL gate at 39305-39312)
+    // does NOT store EQUINOX. The underlying absolute system is recovered
+    // later via the SkyRef / SkyRefP reference position and the
+    // FrameSet-integrity re-mapping driven by SkyRefIs.
+    let system = if ctype_is_offset {
+        SkySystem::Unknown
+    } else {
+        determine_sky_system(store)
+    };
 
     // Step 5: Create SkyFrame. When the FITS header places latitude
     // ahead of longitude in the parent CmpFrame layout (lat_axis <
@@ -191,6 +204,17 @@ pub(crate) fn build_celestial_with_def_b1950(
         // 1 maps from the original axis 2 (lat) and external axis
         // 2 maps from axis 1 (lon).
         let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
+    }
+
+    // For an offset (`OF`) sky frame, set the axis Symbols to
+    // OFLN / OFLT. Mirrors C `WcsSkyFrame` (fitschan.c:39268-39275)
+    // which builds the two-letter `sym` from the system code plus
+    // "LN" / "LT". These Symbols become the CTYPE values when the
+    // writer's `OtherAxes` re-emits the (non-celestial, because
+    // Domain != "SKY") offset axes.
+    if ctype_is_offset {
+        let _ = sky_frame.set_axis_symbol(1, "OFLN");
+        let _ = sky_frame.set_axis_symbol(2, "OFLT");
     }
 
     // Store the projection description (mirrors C `WcsSkyFrame`,

@@ -274,12 +274,38 @@ fn populate_axis_keywords(
     let basic = match frame.as_any().downcast_ref::<BasicFrame>() {
         Some(b) => b,
         None => {
-            // Frames without explicit symbol/label support fall back to
-            // the generic AXISn naming. Real FITS-WCS-relevant frames
-            // (Sky/Spec/Time) are claimed by the celestial/spectral
-            // builders before reaching here; the fallback covers
-            // user-defined frame subclasses.
-            store.ctype[fits_i] = Some(format!("AXIS{axis}"));
+            // Non-BasicFrame axes that reach OtherAxes (e.g. an offset
+            // SkyFrame, whose Domain != "SKY" makes the writer's
+            // `IsASkyFrame` test false so it is not claimed by
+            // `CelestialAxes`). Mirror C `OtherAxes` (fitschan.c:24359-
+            // 24388) using the generic Frame accessors `astGetSymbol` /
+            // `astGetLabel` / `astTestLabel` / `astGetUnit` /
+            // `astTestUnit`.
+            let symbol = frame.effective_symbol(axis);
+            let ctype = if !symbol.is_empty() {
+                symbol.clone()
+            } else {
+                format!("AXIS{axis}")
+            };
+            store.ctype[fits_i] = Some(ctype);
+
+            let label = frame.effective_label(axis);
+            if frame.test_axis_label(axis) && !label.is_empty() && label != symbol {
+                store.ctype_com[fits_i] = Some(label.clone());
+                if store.cname[fits_i].is_none() {
+                    store.cname[fits_i] = Some(label);
+                }
+            } else {
+                store.ctype_com[fits_i] =
+                    Some(format!("Type of co-ordinate on axis {wcs_axis_1based}"));
+            }
+
+            if frame.test_axis_unit(axis) {
+                let u = frame.effective_unit(axis);
+                if !u.is_empty() && store.cunit[fits_i].is_none() {
+                    store.cunit[fits_i] = Some(u);
+                }
+            }
             return;
         }
     };

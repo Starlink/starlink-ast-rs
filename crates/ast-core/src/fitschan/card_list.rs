@@ -562,6 +562,41 @@ fn is_wcs_keyword(keyword: &str) -> bool {
         }
     }
 
+    // AST-extension SkyFrame offset keywords: SREFIS[s], SREF{n}[s],
+    // SREFP{n}[s]. These are read into the FitsStore by the write-time
+    // store reader (mirroring C `WcsFcRead` (fitschan.c:36650-36695)
+    // which reads them with `mark=1`, i.e. for removal) and re-emitted
+    // by the writer from `store.skyref` / `store.skyrefis` only when the
+    // current Frame is described via `SkySys`. When the offset Frame is
+    // routed through `OtherAxes` (Domain != "SKY"), nothing re-emits
+    // them, so an input SREFIS / SREF / SREFP card must be swept.
+    //
+    // Match `SREFIS` and `SREFP`/`SREF` followed by a digit (axis
+    // index), each with an optional trailing version letter. This
+    // deliberately does NOT match the non-AST `SREFRA` / `SREFDEC`
+    // input keywords (their character after `SREF` is a letter, not a
+    // digit), which the writer passes through unchanged.
+    if let Some(rest) = kw.strip_prefix("SREFIS") {
+        if rest.is_empty() || (rest.len() == 1 && rest.as_bytes()[0].is_ascii_uppercase()) {
+            return true;
+        }
+    }
+    if let Some(rest) = kw.strip_prefix("SREFP").or_else(|| kw.strip_prefix("SREF")) {
+        let mut it = rest.chars();
+        if let Some(c0) = it.next()
+            && c0.is_ascii_digit()
+        {
+            // Remaining axis digits then an optional version letter.
+            let tail = &rest[c0.len_utf8()..];
+            let ok = tail.chars().enumerate().all(|(i, c)| {
+                c.is_ascii_digit() || (i + 1 == tail.chars().count() && c.is_ascii_uppercase())
+            });
+            if ok {
+                return true;
+            }
+        }
+    }
+
     false
 }
 

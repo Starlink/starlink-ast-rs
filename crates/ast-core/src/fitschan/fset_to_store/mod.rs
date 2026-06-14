@@ -35,7 +35,7 @@ mod orth;
 mod other_axes;
 mod sip_int_world;
 pub(crate) mod sky_pole;
-mod sky_sys;
+pub(crate) mod sky_sys;
 mod spectral_axes;
 mod world_axes;
 
@@ -79,6 +79,57 @@ pub(crate) fn fset_to_store(
     s: char,
     input_crvals: &[Option<f64>],
 ) -> AstResult<FitsStore> {
+    fset_to_store_impl(fs, dim, encoding, s, input_crvals, false)
+}
+
+/// Variant of [`fset_to_store`] that describes the *absolute*
+/// coordinate system of an offset SkyFrame.
+///
+/// Mirrors the negative-`isoff` path of C `AddVersion`
+/// (fitschan.c:2787-2820): the current Frame's `SkyRefIs` attribute is
+/// temporarily cleared *through the FrameSet* (so the SkyFrame is
+/// re-mapped within the FrameSet to produce absolute coordinates),
+/// then the FitsStore is built from the re-mapped FrameSet. This is
+/// used to emit the extra alternate axis description (e.g. version
+/// `'A'`) that `FsetToStore` adds whenever the primary (or an alt)
+/// Frame is an offset SkyFrame (fitschan.c:12230-12257).
+pub(crate) fn fset_to_store_absolute(
+    fs: &FrameSet,
+    dim: &[Option<f64>],
+    encoding: Encoding,
+    s: char,
+    input_crvals: &[Option<f64>],
+) -> AstResult<FitsStore> {
+    fset_to_store_impl(fs, dim, encoding, s, input_crvals, true)
+}
+
+fn fset_to_store_impl(
+    fs: &FrameSet,
+    dim: &[Option<f64>],
+    encoding: Encoding,
+    s: char,
+    input_crvals: &[Option<f64>],
+    absolute_offset: bool,
+) -> AstResult<FitsStore> {
+    // Negative-isoff path of C `AddVersion` (fitschan.c:2787-2820):
+    // when the description should be for absolute coordinates but the
+    // current Frame is an offset SkyFrame, clear `SkyRefIs` through the
+    // FrameSet so the SkyFrame is re-mapped to absolute coordinates
+    // before the store is built. The clear goes through FrameSet
+    // integrity, which re-fuses the pixel→WCS Mapping.
+    let cleared_fs;
+    let fs = if absolute_offset {
+        let mut owned = fs.clone();
+        owned.with_integrity(|cur| {
+            clear_offset_sky_ref_is(cur);
+            Ok(())
+        })?;
+        cleared_fs = owned;
+        &cleared_fs
+    } else {
+        fs
+    };
+
     // Step 0: build the FITS-WCS-conforming FrameSet. Mirrors C
     // `MakeFitsFrameSet` (fitschan.c:21083). The relevant action for
     // bit-exactness is the SpecFrame/SkyFrame fiducial propagation:
@@ -271,7 +322,16 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     use crate::frames::{SkySystem, SpecFrame};
     use crate::mappings::WcsMap;
 
-    let mut owned = fs.clone();
+    // C `MakeFitsFrameSet` (fitschan.c:21234-21305) first walks every
+    // WCS axis and, for any axis that is neither a SpecFrame nor an
+    // `IsASkyFrame` (Domain == "SKY") axis, remaps it from its internal
+    // units into its external units. The only axes that reach this in
+    // our fixtures are offset SkyFrame axes (Domain == SKY_ORIGIN /
+    // SKY_POLE), whose internal "rad" must be converted to external
+    // "deg" so the extracted CD matrix is in degrees. Apply that remap
+    // first, rebuilding `owned` as a fresh pixel→(remapped WCS)
+    // FrameSet, exactly as C does.
+    let mut owned = apply_unit_remap(fs)?;
 
     // Locate spec/sky in the world frame. Walk the axes via
     // primary_frame, in case the world frame is a CmpFrame whose
@@ -493,6 +553,98 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     Ok(owned)
 }
 
+/// Mirrors the unit-remap pass of C `MakeFitsFrameSet`
+/// (fitschan.c:21234-21320): for every WCS axis that is neither a
+/// SpecFrame axis nor an `IsASkyFrame` (Domain == "SKY") axis, convert
+/// the axis from its internal units to its external units. The per-axis
+/// conversions are composed into a parallel `remap`; if the simplified
+/// `remap` is non-trivial it is appended (in series) to the pixel→WCS
+/// Mapping, and a fresh two-Frame FrameSet (pixel base, remapped WCS
+/// current) is returned. Otherwise the supplied FrameSet is cloned
+/// unchanged.
+///
+/// In our fixtures the only axes that trigger a conversion are offset
+/// SkyFrame axes (Domain == SKY_ORIGIN / SKY_POLE): their internal
+/// "rad" maps to external "deg" via a ZoomMap(DR2D), which is what
+/// turns the radian-valued pixel→offset-sky Mapping into the
+/// degree-valued one whose CD matrix the writer extracts.
+fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
+    use crate::frames::{DSBSpecFrame, SpecFrame};
+    use crate::mappings::{Composition, UnitMap, ZoomMap};
+
+    const DR2D: f64 = 180.0 / std::f64::consts::PI;
+
+    let wcsfrm = fs.current();
+    let nwcs = wcsfrm.naxes();
+
+    // Build a parallel CmpMap of per-axis unit conversions. Mirrors
+    // C's `remap` accumulator (fitschan.c:21306-21318).
+    let mut remap: Option<DynMapping> = None;
+    let mut any_remap = false;
+    for iax in 0..nwcs {
+        let (pframe, paxis_0) = wcsfrm.primary_frame(iax);
+        let paxis_1 = paxis_0 + 1;
+
+        // Skip SpecFrame and IsASkyFrame (Domain == "SKY") axes — they
+        // are handled elsewhere. Mirrors C's `astIsASpecFrame` /
+        // `IsASkyFrame` branches (fitschan.c:21242-21263).
+        let is_spec = pframe.as_any().is::<SpecFrame>() || pframe.as_any().is::<DSBSpecFrame>();
+        let is_sky_domain = pframe.as_any().is::<crate::frames::SkyFrame>()
+            && crate::frames::Frame::domain(pframe) == "SKY";
+
+        let axmap: DynMapping = if is_spec || is_sky_domain {
+            Box::new(UnitMap::new(1))
+        } else {
+            let extunit = pframe.effective_unit(paxis_1);
+            let intunit = pframe.internal_unit(paxis_1);
+            if intunit == extunit {
+                Box::new(UnitMap::new(1))
+            } else if let Some(umap) = crate::units::unit_mapper(&intunit, &extunit) {
+                any_remap = true;
+                umap
+            } else if intunit == "rad" {
+                // C fallback (fitschan.c:21289-21299): when the unit
+                // mapper fails and the internal unit is "rad", convert
+                // radians to external degrees via a ZoomMap(DR2D).
+                any_remap = true;
+                Box::new(ZoomMap::new(1, DR2D)?)
+            } else {
+                Box::new(UnitMap::new(1))
+            }
+        };
+
+        remap = Some(match remap.take() {
+            None => axmap,
+            Some(prev) => Box::new(CmpMap::new(prev, axmap, Composition::Parallel)?),
+        });
+    }
+
+    // If no axis needed remapping, the FrameSet is used as-is.
+    if !any_remap {
+        return Ok(fs.clone());
+    }
+
+    let remap = match remap {
+        Some(m) => m.simplified()?,
+        None => return Ok(fs.clone()),
+    };
+    if remap.as_any().is::<UnitMap>() {
+        return Ok(fs.clone());
+    }
+
+    // Build the pixel→(remapped WCS) Mapping and a fresh two-Frame
+    // FrameSet, mirroring C's `astFrameSet(pixfrm, …)` +
+    // `astAddFrame(ret, AST__BASE, map, wcsfrm)` (fitschan.c:21525-21560
+    // for the no-SpecFrame return path).
+    let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let new_map: DynMapping = Box::new(CmpMap::new(map, remap, Composition::Series)?);
+    let pixfrm = fs.base().snapshot();
+    let wcsfrm_owned = fs.current().snapshot();
+    let mut ret = FrameSet::new(pixfrm);
+    ret.add_frame(FrameRef::Base, new_map, wcsfrm_owned)?;
+    Ok(ret)
+}
+
 /// Mirrors C `AddEncodingFrame` (fitschan.c:2359) for the FITS-CLASS
 /// branch (lines 2433-2513).
 ///
@@ -665,6 +817,24 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     fs.add_frame(FrameRef::Current, parallel_map, new_cmp)?;
 
     Ok(())
+}
+
+/// Clear the `SkyRefIs` attribute (reset to its default `Ignored`) on
+/// the first offset SkyFrame found within `frame`, recursing through
+/// any enclosing CmpFrame. Mirrors C `astClear(fs, "SkyRefIs")` in the
+/// negative-`isoff` branch of `AddVersion` (fitschan.c:2800). Run
+/// through FrameSet integrity so the SkyFrame is re-mapped to absolute
+/// coordinates.
+fn clear_offset_sky_ref_is(frame: &mut dyn crate::frames::Frame) {
+    use crate::frames::{CmpFrame, SkyFrame, SkyRefIs};
+    if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
+        sky.set_sky_ref_is(SkyRefIs::Ignored);
+        return;
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        clear_offset_sky_ref_is(cmp.frame1_mut());
+        clear_offset_sky_ref_is(cmp.frame2_mut());
+    }
 }
 
 fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {

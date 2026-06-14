@@ -850,8 +850,25 @@ impl Frame for SkyFrame {
         if phys == 0 { u_lon } else { u_lat }.to_string()
     }
 
+    fn internal_unit(&self, _axis: usize) -> String {
+        // SkyFrame axes are angles stored internally in radians. Mirrors
+        // C `astGetInternalUnit` for a SkyAxis returning "rad".
+        "rad".to_string()
+    }
+
     fn effective_symbol(&self, axis: usize) -> String {
         self.axis_symbol(axis).unwrap_or_default()
+    }
+
+    fn test_axis_label(&self, axis: usize) -> bool {
+        // Defer to the inherent per-axis label-override test.
+        SkyFrame::test_axis_label(self, axis).unwrap_or(false)
+    }
+
+    fn test_axis_unit(&self, _axis: usize) -> bool {
+        // SkyFrame has no per-axis Unit override; the unit is always
+        // the system default, so `astTestUnit` is effectively false.
+        false
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
