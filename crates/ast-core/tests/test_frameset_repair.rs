@@ -207,3 +207,66 @@ fn frameset_definedness_follows_path() {
     assert!(Mapping::has_forward(&fs));
     assert!(!Mapping::has_inverse(&fs));
 }
+
+// ---------------------------------------------------------------------------
+// Multi-member-frame convert (FrameSet::ConvertX, frameset.c:3201)
+// ---------------------------------------------------------------------------
+
+/// `astConvert` from a FrameSet must try every member frame, not just the
+/// current one. Here the current frame (PIXEL) cannot align with a Galactic
+/// SkyFrame, but the non-current base member (FK5 SkyFrame) can. The old
+/// "forward to current frame" behaviour returned None; the ConvertX port
+/// aligns via the base member.
+///
+/// Oracle-verified against the reference C library: `astConvert` of the same
+/// FrameSet (base=FK5 SkyFrame, current=PIXEL, linked by UnitMap) to a
+/// Galactic SkyFrame yields a both-directions Mapping that maps (0.1, 0.2)
+/// rad to (1.951902536797, -0.886577028810) rad — identical to Rust.
+#[test]
+fn convert_via_noncurrent_member_frame() {
+    let fk5 = SkyFrame::new(SkySystem::Fk5);
+    let mut fs = FrameSet::new(Box::new(fk5));
+    let pixel = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(pixel))
+        .unwrap();
+    // current == PIXEL, base == FK5 SkyFrame.
+
+    let gal = SkyFrame::new(SkySystem::Galactic);
+    let out = fs
+        .convert_to(&gal, &[])
+        .unwrap()
+        .expect("FrameSet should convert to Galactic via its FK5 base member");
+
+    let m = out.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    assert!(Mapping::has_forward(m.as_ref()));
+    assert!(Mapping::has_inverse(m.as_ref()));
+
+    let pts = PointSet::from_rows([[0.1, 0.2]]);
+    let res = m.transform(&pts, true).unwrap();
+    assert!((res.point(0)[0] - 1.951_902_536_797).abs() < 1e-9);
+    assert!((res.point(0)[1] - (-0.886_577_028_810)).abs() < 1e-9);
+}
+
+/// When the current frame *can* align directly, ConvertX still returns a
+/// correct result (the current→current route scores a perfect 3 and wins).
+#[test]
+fn convert_via_current_frame_still_works() {
+    // FrameSet whose current frame is an FK5 SkyFrame.
+    let pixel = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
+    let mut fs = FrameSet::new(Box::new(pixel));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2)),
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+    )
+    .unwrap();
+    // current == FK5 SkyFrame.
+
+    let gal = SkyFrame::new(SkySystem::Galactic);
+    let out = fs
+        .convert_to(&gal, &[])
+        .unwrap()
+        .expect("current FK5 frame converts to Galactic");
+    let m = out.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+    assert!(Mapping::has_forward(m.as_ref()) && Mapping::has_inverse(m.as_ref()));
+}

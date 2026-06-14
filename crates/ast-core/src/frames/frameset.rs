@@ -816,7 +816,12 @@ impl Frame for FrameSet {
     }
 
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.current().convert_to(to, domains)
+        let domainlist = if domains.is_empty() {
+            " ".to_string()
+        } else {
+            domains.join(",")
+        };
+        frameset_convert_to(self, to, &domainlist)
     }
 
     fn find_frame_template(
@@ -1024,6 +1029,141 @@ fn frameset_find_frame(
     }
 
     Ok(None)
+}
+
+/// `FrameSet::ConvertX` override (frameset.c:3201).
+///
+/// Find a conversion route between `from` (a FrameSet) and `to` (a Frame or
+/// FrameSet) by trying *every* member frame of each as a candidate alignment
+/// endpoint, not just the current frames. For each `(from_member, to_member)`
+/// pair the per-pair alignment is found via [`convert_frames`], the
+/// `from`-current→member Mapping is prefixed, the `to`-member→current Mapping
+/// is appended, the result is simplified, and a score favouring both-direction
+/// Mappings (forward+inverse=3, forward=2, inverse=1) selects the best route.
+/// The returned 2-frame FrameSet maps `from`'s current Frame to `to`'s current
+/// Frame.
+///
+/// The search order for each set is base first, then the remaining frames in
+/// index order, then the current frame last (frameset.c:3308-3348). FrameSet
+/// inversion is already materialised as a base/current index swap, so no
+/// separate reversed-order branch is needed.
+///
+/// Divergence from C: `ConvertX` also sets the *input* FrameSets' Base
+/// attribute to record the route used (frameset.c:3502-3503). The Frame trait
+/// takes `&self`/`&dyn Frame` and cannot mutate the inputs; that side-effect is
+/// an optimisation hint, not part of the conversion result, so it is omitted.
+fn frameset_convert_to(
+    from: &FrameSet,
+    to: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<FrameSet>> {
+    // Treat `to` as a FrameSet when it is one; otherwise as a single frame.
+    let to_fs = to.as_any().downcast_ref::<FrameSet>();
+
+    // Build the base-first / others / current-last search order (1-based).
+    fn search_order(nframe: usize, base: usize, current: usize) -> Vec<usize> {
+        let mut order = Vec::with_capacity(nframe);
+        order.push(base);
+        for i in 1..=nframe {
+            if i != base && i != current {
+                order.push(i);
+            }
+        }
+        if current != base {
+            order.push(current);
+        }
+        order
+    }
+
+    let from_current = from.current_idx() + 1;
+    let from_order = search_order(from.nframe(), from.base_idx() + 1, from_current);
+
+    let (to_nframe, to_current) = match to_fs {
+        Some(fs) => (fs.nframe(), fs.current_idx() + 1),
+        None => (1, 1),
+    };
+    let to_order = match to_fs {
+        Some(fs) => search_order(fs.nframe(), fs.base_idx() + 1, to_current),
+        None => vec![1],
+    };
+    let _ = to_nframe;
+
+    // Comma-separated domain fields; an empty list yields one blank field
+    // that matches any domain.
+    let fields: Vec<String> = if domainlist.is_empty() {
+        vec![String::new()]
+    } else {
+        domainlist.split(',').map(|s| s.to_string()).collect()
+    };
+
+    let mut best_score = -1i32;
+    let mut result_map: Option<DynMapping> = None;
+
+    'search: for field in &fields {
+        let domain = field.trim();
+        for &to_idx in &to_order {
+            // The selected `to` member frame (or `to` itself when not a set).
+            let to_member: DynFrame = match to_fs {
+                Some(fs) => fs.frame(FrameRef::Index(to_idx))?.snapshot(),
+                None => to.snapshot(),
+            };
+
+            for &from_idx in &from_order {
+                let from_member = from.frame(FrameRef::Index(from_idx))?.snapshot();
+
+                // Per-pair alignment between the two selected member frames.
+                let Some(cvt) = crate::frames::find_frame::convert_frames(
+                    from_member.as_ref(),
+                    to_member.as_ref(),
+                    domain,
+                )?
+                else {
+                    continue;
+                };
+                let mut map: DynMapping = cvt.mapping(FrameRef::Base, FrameRef::Current)?;
+
+                // Prefix from-current → from-member.
+                if from_idx != from_current {
+                    let pre = from.mapping(FrameRef::Current, FrameRef::Index(from_idx))?;
+                    map = Box::new(CmpMap::new(pre, map, Composition::Series)?);
+                }
+
+                // Append to-member → to-current.
+                if let Some(fs) = to_fs
+                    && to_idx != to_current
+                {
+                    let post = fs.mapping(FrameRef::Index(to_idx), FrameRef::Current)?;
+                    map = Box::new(CmpMap::new(map, post, Composition::Series)?);
+                }
+
+                let map = Mapping::simplified(map.as_ref())?;
+
+                let score: i32 =
+                    if map.has_forward() { 2 } else { 0 } + if map.has_inverse() { 1 } else { 0 };
+
+                if score > best_score {
+                    best_score = score;
+                    result_map = Some(map);
+                    if best_score >= 3 {
+                        break 'search;
+                    }
+                }
+            }
+        }
+    }
+
+    let Some(result_map) = result_map else {
+        return Ok(None);
+    };
+
+    // Result: from-current Frame → to-current Frame, linked by the best route.
+    let to_cur_frame: DynFrame = match to_fs {
+        Some(fs) => fs.current().snapshot(),
+        None => to.snapshot(),
+    };
+    let mut result_fs = FrameSet::new(from.current().snapshot());
+    result_fs.add_frame(FrameRef::Base, result_map, to_cur_frame)?;
+    Ok(Some(result_fs))
 }
 
 // ====================================================================== //
