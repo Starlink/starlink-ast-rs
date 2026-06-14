@@ -126,6 +126,14 @@ fn main() {
             }
         }
     }
+    if enc == Encoding::Native {
+        // Native target: serialise via an AST text dump, mirroring
+        // wcsconverter.c's use of an astChannel rather than the FitsChan.
+        let dump = ast_core::to_native_string(&obj).unwrap();
+        println!("=== {} → {} ===", fixture, target_enc);
+        println!("{dump}");
+        return;
+    }
     fc_out.write(&obj).unwrap();
     println!("=== {} → {} ===", fixture, target_enc);
     println!("{}", fc_out.to_header());

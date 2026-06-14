@@ -58,17 +58,25 @@ pub(crate) fn decode_wcs_with_def_b1950(
         Composition::Series,
     )?);
 
-    // Step 7: Build the pixel frame.
-    let pixel_frame: DynFrame = Box::new(
-        BasicFrameBuilder::new(naxis)
-            .domain("GRID")
-            .title("Pixel Coordinates")
-            .build()?,
-    );
+    // Step 7: Build the pixel frame. C labels each pixel axis
+    // "Pixel axis <n>" (fitschan.c:11935-11938).
+    let mut pixel_builder = BasicFrameBuilder::new(naxis)
+        .domain("GRID")
+        .title("Pixel Coordinates");
+    for i in 0..naxis {
+        pixel_builder = pixel_builder.label(i + 1, format!("Pixel axis {}", i + 1));
+    }
+    let pixel_frame: DynFrame = Box::new(pixel_builder.build()?);
 
     // Step 8: Build the FrameSet.
     let mut frameset = FrameSet::new(pixel_frame);
     frameset.add_frame(FrameRef::Base, full_mapping, world_frame)?;
+
+    // Explicitly fix the GRID (pixel) Frame as the base, mirroring C
+    // `astSetBase(ret, pixel)` (fitschan.c:11990). This marks the Base
+    // attribute as set, so a subsequent native dump writes `Base` as an
+    // active value rather than a commented-out default.
+    frameset.set_base(FrameRef::Index(1))?;
 
     // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
     // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at

@@ -1334,6 +1334,11 @@ impl Frame for SkyFrame {
         // (line 10128), but only the metadata-carrying portion: the
         // Mapping is built by the caller (default_sub_frame).
         let mut bf = super::basic::BasicFrameBuilder::new(target_axes.len()).build()?;
+        // The picked axes remain SkyAxis objects in C, which forces the
+        // result's ActiveUnit flag to 0 (frame.c:4626). Record that so
+        // axis-matching against this snapshot skips the Unit-compatibility
+        // step exactly as C does.
+        bf.set_has_sky_axis(true);
         if self.test_domain() {
             bf.set_domain(self.domain().to_string());
         }

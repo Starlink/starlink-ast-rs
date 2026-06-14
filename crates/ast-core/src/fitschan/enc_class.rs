@@ -487,20 +487,59 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 ///
 /// Composing fsconv1.inverse with fsconv2 gives radec → azel.
 ///
-/// Note: SkyFrame::map_from currently hard-codes LAST = 0 when
-/// generating the AzEl Mapping (skyframe.rs near line 895), so the
-/// emitted AZIMUTH value is offset from the C reference by the
-/// LAST-derived rotation. The infrastructure here is in place; the
-/// full LAST plumbing (computed from MJD-OBS, ObsLon, dut1) is a
-/// separate piece of work tracked by the
-/// "full LAST plumbing for SkyFrame AzEl conversion" project memory.
+/// The (lon, lat) values fed into the chain are the CRVAL of the
+/// longitude / latitude FITS axes (located via [`find_lon_lat_axes`]),
+/// matching C's `crval[axlon]` / `crval[axlat]` (fitschan.c:6922).
+/// Find the 1-based longitude / latitude FITS axis indices by scanning the
+/// CTYPE cards. Mirrors the celestial-axis identification in C
+/// `FindLonLatSpecAxes` (fitschan.c:3217): the longitude axis CTYPE begins
+/// with `RA--` or `xLON` (the `x` being the system code, e.g. `G` for
+/// galactic, `E` for ecliptic), and the latitude axis CTYPE begins with
+/// `DEC-` or `xLAT`. Returns `(None, None)` when either is absent.
+fn find_lon_lat_axes(cards: &CardList) -> (Option<usize>, Option<usize>) {
+    let is_lon =
+        |ct: &str| -> bool { ct.starts_with("RA--") || (ct.len() >= 4 && &ct[1..4] == "LON") };
+    let is_lat =
+        |ct: &str| -> bool { ct.starts_with("DEC-") || (ct.len() >= 4 && &ct[1..4] == "LAT") };
+
+    let mut axlon = None;
+    let mut axlat = None;
+    for i in 1..=99 {
+        let key = format!("CTYPE{i}");
+        let Some(ct) = cards.get_string(&key) else {
+            if i > 1 {
+                break;
+            }
+            continue;
+        };
+        if axlon.is_none() && is_lon(&ct) {
+            axlon = Some(i);
+        }
+        if axlat.is_none() && is_lat(&ct) {
+            axlat = Some(i);
+        }
+    }
+    (axlon, axlat)
+}
+
 pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> AstResult<()> {
     use crate::coords::PointSet;
     use crate::mappings::{CmpMap, Composition};
 
-    // CRVAL2 / CRVAL3: spatial reference point in degrees.
-    let (Some(crval_lon), Some(crval_lat)) = (cards.get_float("CRVAL2"), cards.get_float("CRVAL3"))
-    else {
+    // Spatial reference point in degrees: C uses `crval[axlon]` /
+    // `crval[axlat]` (fitschan.c:6922-6923), where `axlon` / `axlat` are
+    // the longitude / latitude FITS axis indices found by
+    // `FindLonLatSpecAxes` (fitschan.c:3217). Locate the same axes by
+    // scanning the CTYPE cards for the standard celestial-axis prefixes
+    // (RA--/DEC-, and the generic `xLON`/`xLAT` forms for galactic,
+    // ecliptic, etc). The spatial axes are not necessarily axes 2 and 3.
+    let (Some(axlon_1), Some(axlat_1)) = find_lon_lat_axes(cards) else {
+        return Ok(());
+    };
+    let (Some(crval_lon), Some(crval_lat)) = (
+        cards.get_float(&format!("CRVAL{axlon_1}")),
+        cards.get_float(&format!("CRVAL{axlat_1}")),
+    ) else {
         return Ok(());
     };
 

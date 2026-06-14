@@ -73,6 +73,14 @@ pub struct FrameSet {
     edges: Vec<Edge>,
     base_idx: usize,
     current_idx: usize,
+    /// Whether the Base attribute has been explicitly set (mirrors C's
+    /// `base != -INT_MAX`, frameset.c:12554). Controls whether `Base` is
+    /// serialised as an active value or a commented-out default: a FrameSet
+    /// assembled from a FITS header has Base explicitly set (C `astSetBase`,
+    /// fitschan.c:11990), whereas one built by `astAddFrame` leaves it
+    /// defaulted. When `false`, `base_idx` still holds the effective base
+    /// (frame 0), it is simply written as the implicit default.
+    base_set: bool,
     /// Per-frame Variants FrameSet (indexed 0-based by frame). `Some(fs)` means
     /// the frame owns a set of named variant Mappings: `fs`'s member frames are
     /// the variants, each variant frame's Domain is its name, and `fs`'s
@@ -112,6 +120,7 @@ impl Clone for FrameSet {
                 .collect(),
             base_idx: self.base_idx,
             current_idx: self.current_idx,
+            base_set: self.base_set,
             frame_variants: self.frame_variants.clone(),
             varfrm: self.varfrm.clone(),
             nnode: self.nnode,
@@ -149,6 +158,7 @@ impl FrameSet {
             edges: Vec::new(),
             base_idx: 0,
             current_idx: 0,
+            base_set: false,
             frame_variants: vec![None],
             varfrm: vec![0],
             nnode: 1,
@@ -209,6 +219,7 @@ impl FrameSet {
     pub fn set_base(&mut self, which: FrameRef) -> AstResult<()> {
         let idx = self.resolve(which)?;
         self.base_idx = idx;
+        self.base_set = true;
         Ok(())
     }
 
@@ -342,16 +353,19 @@ impl FrameSet {
         self.frame_variants.remove(idx);
         self.varfrm.remove(idx);
 
-        // Fix base/current indices. C clears the attribute when the
-        // removed frame *was* the base/current frame, so the defaults
-        // apply: Base defaults to the first frame and Current to the
-        // *last* frame (frameset.c:5022/5091). Set values above the
-        // removed index are decremented so they keep following the
-        // same frame.
-        if self.base_idx == idx {
-            self.base_idx = 0;
-        } else if self.base_idx > idx {
-            self.base_idx -= 1;
+        // Fix base/current indices. C only adjusts the Base attribute when
+        // it is explicitly set (frameset.c:8759 `astTestBase`): if the removed
+        // frame *was* the base, clear the attribute so the default (first
+        // frame) applies; if it was below the base, decrement. When Base is
+        // not set, the default already tracks the first frame, so nothing is
+        // done. Current defaults to the *last* frame instead.
+        if self.base_set {
+            if self.base_idx == idx {
+                self.base_set = false;
+                self.base_idx = 0;
+            } else if self.base_idx > idx {
+                self.base_idx -= 1;
+            }
         }
 
         if self.current_idx == idx {
@@ -1739,17 +1753,20 @@ impl Serializable for FrameSet {
             Some("Number of Frames in FrameSet".to_string()),
         );
 
-        // Base — 1-based base frame index (commented if default == 1).
-        if self.base_idx == 0 {
-            node.push_unset(
-                "Base",
-                NodeValue::Int(1),
-                Some("Index of base Frame".to_string()),
-            );
-        } else {
+        // Base — 1-based base frame index. C writes it as an active value
+        // only when the Base attribute is explicitly set (frameset.c:12554,
+        // `set = (this->base != -INT_MAX)`); otherwise it emits the default
+        // (frame 1) as a commented-out line.
+        if self.base_set {
             node.push_int(
                 "Base",
                 (self.base_idx + 1) as i64,
+                Some("Index of base Frame".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "Base",
+                NodeValue::Int(self.base_idx as i64 + 1),
                 Some("Index of base Frame".to_string()),
             );
         }
@@ -1844,7 +1861,12 @@ impl Serializable for FrameSet {
             ));
         }
 
-        let base = node.get_int("Base", 1) as usize;
+        // C reads `astReadInt("base", -INT_MAX)` and treats any value < 1 as
+        // unset (frameset.c:13209). `node.get_int` skips commented-out
+        // (Unset) defaults, so an absent or commented Base reads as unset.
+        let base_active = node.get_int("Base", 0);
+        let base_set = base_active >= 1;
+        let base = if base_set { base_active as usize } else { 1 };
         let current = node.get_int("Currnt", 1) as usize;
         let nnode = node.get_int("Nnode", nframe as i64) as usize;
 
@@ -1911,6 +1933,7 @@ impl Serializable for FrameSet {
             edges,
             base_idx: base - 1,
             current_idx: current - 1,
+            base_set,
             frame_variants,
             varfrm,
             nnode,

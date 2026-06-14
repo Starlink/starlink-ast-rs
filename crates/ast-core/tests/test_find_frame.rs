@@ -76,7 +76,7 @@ fn find_frame_basic_domain_list_miss() {
 // docs/superpower/plans/2026-06-05-find-frame-resume.md).
 // ---------------------------------------------------------------------
 
-use ast_core::frames::{CmpFrame, SkyFrame, SkySystem, SpecFrame, SpecSystem};
+use ast_core::frames::{CmpFrame, SkyFrame, SkySystem, SpecFrame, SpecSystem, StdOfRest};
 
 /// `cmpframe_overlay_template_copies_domain` (resume doc).
 ///
@@ -315,4 +315,66 @@ fn cmpframe_match_against_skyframe_template_with_max_axes() {
         .expect("SkyFrame template should walk into CmpFrame's SkyFrame component");
     // Result is a 2-axis SkyFrame in FK5.
     assert_eq!(m.result.naxes(), 2);
+}
+
+/// SpecFrame template (1 axis, MinAxes=1, MaxAxes=3) matched against a
+/// CmpFrame whose first component is a 2-axis SkyFrame and whose second
+/// is a 1-axis SpecFrame.
+///
+/// The match must succeed and return the embedded SpecFrame. This
+/// exercises the C rule (`Frame::GetActiveUnit`, frame.c:4626) that a
+/// Frame containing a SkyAxis always reports ActiveUnit=0: the parent
+/// `Frame::Match` step in `SpecFrame::Match` probes the CmpFrame with a
+/// 1-axis pick that lands on a SkyFrame axis; without the SkyAxis rule
+/// that probe would attempt to unit-match "hh:mm:ss.s" against "m/s" and
+/// fail, aborting the whole match. Oracle-confirmed: C `astFindFrame`
+/// returns a SpecFrame for this template/target pair.
+#[test]
+fn find_frame_specframe_template_into_cmpframe_sky_spec() {
+    let mut template = SpecFrame::new(SpecSystem::Vradio);
+    template.set_std_of_rest(StdOfRest::Lsrk);
+    template.set_unit("m/s");
+    template.set_min_axes(1);
+    template.set_max_axes(3);
+
+    // CmpFrame(SkyFrame(FK5) [2 axes], SpecFrame(Freq) [1 axis]) — 3 axes.
+    let target = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+        Box::new(SpecFrame::new(SpecSystem::Freq)),
+    );
+
+    let result = target
+        .find_frame_template(&template, "")
+        .unwrap()
+        .expect("SpecFrame template must match the SpecFrame axis inside the CmpFrame");
+    // The matched Frame is the 1-axis spectral component.
+    assert_eq!(result.current().naxes(), 1);
+    assert!(
+        result
+            .current()
+            .as_any()
+            .downcast_ref::<SpecFrame>()
+            .is_some(),
+        "matched current frame should be a SpecFrame"
+    );
+}
+
+/// Order-independent companion: the SpecFrame component appears *first*
+/// in the CmpFrame, the SkyFrame second. The match must still succeed.
+#[test]
+fn find_frame_specframe_template_into_cmpframe_spec_sky() {
+    let mut template = SpecFrame::new(SpecSystem::Vradio);
+    template.set_min_axes(1);
+    template.set_max_axes(3);
+
+    let target = CmpFrame::new(
+        Box::new(SpecFrame::new(SpecSystem::Freq)),
+        Box::new(SkyFrame::new(SkySystem::Fk5)),
+    );
+
+    let result = target
+        .find_frame_template(&template, "")
+        .unwrap()
+        .expect("SpecFrame template must match regardless of component order");
+    assert_eq!(result.current().naxes(), 1);
 }

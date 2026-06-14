@@ -33,6 +33,14 @@ pub struct BasicFrame {
     directions: Vec<Option<bool>>,
     /// When false, unit strings do not affect alignment. Default is true.
     act_unt: Option<bool>,
+    /// True when this Frame was produced by picking axes out of a SkyFrame
+    /// (so its axes are, in C terms, SkyAxis objects). C's
+    /// `Frame::GetActiveUnit` (frame.c:4626) always returns 0 for a Frame
+    /// containing a SkyAxis; this flag reproduces that rule so axis-matching
+    /// against such a Frame skips the Unit-compatibility step exactly as C
+    /// does. Transient: never serialised (the byte-exact native form writes
+    /// per-axis Axis objects, which this porting layer does not model).
+    has_sky_axis: bool,
     /// Permanent object identification string (Object-level attribute).
     ident: Option<String>,
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
@@ -192,6 +200,7 @@ impl BasicFrameBuilder {
             axis_digits: self.axis_digits,
             directions: self.directions,
             act_unt: self.act_unt,
+            has_sky_axis: false,
             ident: self.ident,
             min_axes_opt: None,
             max_axes_opt: None,
@@ -203,6 +212,17 @@ impl BasicFrameBuilder {
 }
 
 impl BasicFrame {
+    /// Mark this Frame as containing SkyAxis axes.
+    ///
+    /// Used when a `SkyFrame` axis is picked into a plain `BasicFrame`
+    /// snapshot: in C the picked axis remains a `SkyAxis`, which forces
+    /// `astGetActiveUnit` to 0 (frame.c:4626). This porting layer does not
+    /// model per-axis `SkyAxis` objects on a `BasicFrame`, so the flag
+    /// records the same fact for the `get_active_unit` query.
+    pub(crate) fn set_has_sky_axis(&mut self, value: bool) {
+        self.has_sky_axis = value;
+    }
+
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
     fn validate_axis(&self, axis: usize) -> AstResult<()> {
         if axis < 1 || axis > self.naxes {
@@ -654,7 +674,12 @@ impl Frame for BasicFrame {
     }
 
     fn get_active_unit(&self) -> bool {
-        // C default is false; BasicFrame has no SkyAxis (frame.c:4651).
+        // C `Frame::GetActiveUnit` (frame.c:4626): a Frame containing a
+        // SkyAxis always reports 0, regardless of the stored flag.
+        // Otherwise the stored value, defaulting to false when unset.
+        if self.has_sky_axis {
+            return false;
+        }
         self.act_unt.unwrap_or(false)
     }
 
@@ -1213,5 +1238,23 @@ mod tests {
         assert_eq!(back.digits(), 9);
         assert_eq!(back.axis_digits(1).unwrap(), 4);
         assert!(!back.direction(2).unwrap());
+    }
+
+    #[test]
+    fn sky_axis_flag_forces_active_unit_off() {
+        // C `Frame::GetActiveUnit` (frame.c:4626): a Frame containing a
+        // SkyAxis always reports 0, even after the flag is explicitly set.
+        let mut f = BasicFrameBuilder::new(1).build().unwrap();
+        f.set_active_unit(true);
+        assert!(f.get_active_unit(), "plain frame honours the set flag");
+
+        f.set_has_sky_axis(true);
+        assert!(
+            !f.get_active_unit(),
+            "a frame carrying a SkyAxis must report ActiveUnit=0 regardless of the stored flag"
+        );
+
+        f.set_has_sky_axis(false);
+        assert!(f.get_active_unit(), "clearing the flag restores the value");
     }
 }
