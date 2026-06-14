@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn besselian_epoch() {
-        approx(read_date_time("B1950.0").unwrap(), 33281.923459049998);
+        approx(read_date_time("B1950.0").unwrap(), 33_281.923_459_05);
     }
 
     #[test]
@@ -588,17 +588,14 @@ mod tests {
 
     #[test]
     fn gregorian_decimal_day() {
-        approx(
-            read_date_time("1996-Oct-2.5001").unwrap(),
-            50358.500099999997,
-        );
+        approx(read_date_time("1996-Oct-2.5001").unwrap(), 50_358.500_1);
     }
 
     #[test]
     fn gregorian_with_time() {
         approx(
             read_date_time("1996-Oct-2 12:14:30.52").unwrap(),
-            50358.510075462960,
+            50_358.510_075_462_96,
         );
         approx(
             read_date_time("2005-jun-1 12:30").unwrap(),
@@ -607,7 +604,7 @@ mod tests {
         approx(read_date_time("1977-01-01 00:00:00").unwrap(), 43144.0);
         approx(
             read_date_time("2004-12-31 18:00:10.12").unwrap(),
-            53370.750117129632,
+            53_370.750_117_129_63,
         );
     }
 
@@ -615,7 +612,7 @@ mod tests {
     fn iso8601_t_delimiter() {
         approx(
             read_date_time("1996-10-2T12:14:30.52").unwrap(),
-            50358.510075462960,
+            50_358.510_075_462_96,
         );
     }
 

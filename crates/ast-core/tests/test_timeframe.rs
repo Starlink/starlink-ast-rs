@@ -419,7 +419,7 @@ fn test_serialisation_with_unit_and_format() {
 // ---------------------------------------------------------------------------
 
 /// Extract the default (commented, un-set) Title from a TimeFrame's native
-/// dump. The line looks like: `#   Title = "..." 	# Title of ...`.
+/// dump. The line looks like: `#   Title = "..." \t# Title of ...`.
 fn default_title(tf: TimeFrame) -> String {
     let text = to_native_string(&AnyObject::TimeFrame(tf)).unwrap();
     for line in text.lines() {
