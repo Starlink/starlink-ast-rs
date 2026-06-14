@@ -623,7 +623,76 @@ impl TimeFrame {
 
     /// Return the default title: "SystemLabel [TimeScale]".
     fn default_title(&self) -> String {
-        format!("{} [{}]", self.system.label(), self.timescale.as_str())
+        // Mirrors C `GetTitle` (timeframe.c:3107). Start with the system
+        // label (already capitalised), append the timescale in brackets when
+        // it is *set* (and the system is not BEPOCH, which is TT-only), and
+        // append the origin as an absolute iso.0 date/time when a non-zero
+        // TimeOrigin is set and the Format is not itself a date string.
+        let mut title = self.system.label().to_string();
+
+        if self.system != TimeSystem::Bepoch && self.timescale_set {
+            title.push_str(" [");
+            title.push_str(self.timescale.as_str());
+            // For Local Time, include the offset from UTC.
+            if self.timescale == TimeScale::Lt {
+                let ltoff = self.lt_offset();
+                if ltoff >= 0.0 {
+                    title.push_str(&format!(" (UTC+{})", fmt_g(ltoff)));
+                } else {
+                    title.push_str(&format!(" (UTC-{})", fmt_g(-ltoff)));
+                }
+            }
+            title.push(']');
+        }
+
+        // Append "offset from <date>" when a non-zero origin is set and the
+        // Format does not already render an (absolute) date string.
+        let orig = self.get_time_origin_cur();
+        if orig != 0.0 && !date_format(self.format_str()).0 {
+            // Format the origin (axis value 0.0) as an absolute iso.0 time.
+            if let Ok(date) = self.format_iso0_zero() {
+                title.push_str(" offset from ");
+                title.push_str(&date);
+            }
+        }
+
+        title
+    }
+
+    /// The TimeOrigin expressed in the current axis units. Mirrors C
+    /// `GetTimeOriginCur` (timeframe.c): the stored origin (in the system's
+    /// default units) converted to the per-instance Unit.
+    fn get_time_origin_cur(&self) -> f64 {
+        let result = self.time_origin();
+        if result == 0.0 {
+            return result;
+        }
+        let def = self.system.default_units();
+        let cur = self.unit_or_default();
+        if cur == def {
+            return result;
+        }
+        match crate::units::unit_mapper(def, cur) {
+            Some(map) => transform_scalar(map.as_ref(), result, true).unwrap_or(result),
+            None => result,
+        }
+    }
+
+    /// Format the axis value 0.0 (i.e. the TimeOrigin) as an absolute
+    /// `iso.0` date/time string, regardless of the frame's own Format.
+    /// Mirrors C `GetTitle`'s temporary `astSetFormat(this, 0, "iso.0")`.
+    ///
+    /// `iso.0` has `ndp == 0`, so a time field is shown and the MJD is *not*
+    /// rounded to the nearest day (rounding only happens for date-only
+    /// formats with `ndp < 0`).
+    fn format_iso0_zero(&self) -> AstResult<String> {
+        let mjd = self.value_to_mjd(0.0)?;
+        let (iy, im, id, fd, _j) = crate::pal::djcl(mjd);
+        let (_sign, ihmsf) = crate::pal::dd2tf(0, fd);
+        Ok(format!(
+            "{iy:4}-{im:02}-{id:02} {:02}:{:02}:{:02}",
+            ihmsf[0], ihmsf[1], ihmsf[2]
+        ))
     }
 
     /// Return a human-readable description for a unit abbreviation.
@@ -973,6 +1042,13 @@ fn unit_mapper_or_err(unit1: &str, unit2: &str) -> AstResult<DynMapping> {
             format!("TimeFrame: cannot convert between units \"{unit1}\" and \"{unit2}\""),
         )
     })
+}
+
+/// Format a value like C's `%g`: the shorter of `%e`/`%f` with up to 6
+/// significant digits and no trailing zeros. Used for the LT offset in the
+/// default Title.
+fn fmt_g(v: f64) -> String {
+    crate::frames::axis_format::format_value("%g", 6, v)
 }
 
 /// Transform a single scalar through `map` in the given direction.

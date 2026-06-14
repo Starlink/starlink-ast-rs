@@ -415,6 +415,89 @@ fn test_serialisation_with_unit_and_format() {
 }
 
 // ---------------------------------------------------------------------------
+// Default Title (timeframe.c GetTitle)
+// ---------------------------------------------------------------------------
+
+/// Extract the default (commented, un-set) Title from a TimeFrame's native
+/// dump. The line looks like: `#   Title = "..." 	# Title of ...`.
+fn default_title(tf: TimeFrame) -> String {
+    let text = to_native_string(&AnyObject::TimeFrame(tf)).unwrap();
+    for line in text.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("#   Title = \"") {
+            if let Some(end) = rest.find('"') {
+                return rest[..end].to_string();
+            }
+        }
+    }
+    panic!("no default Title line in dump:\n{text}");
+}
+
+#[test]
+fn test_default_title_system_only() {
+    // No timescale set: just the system label (matches C astGetC(Title)).
+    assert_eq!(
+        default_title(TimeFrame::new(TimeSystem::Mjd)),
+        "Modified Julian Date"
+    );
+    // Bepoch never shows a timescale (TT-only).
+    assert_eq!(
+        default_title(TimeFrame::new(TimeSystem::Bepoch)),
+        "Besselian Epoch"
+    );
+}
+
+#[test]
+fn test_default_title_with_timescale() {
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Tai);
+    assert_eq!(default_title(tf), "Modified Julian Date [TAI]");
+}
+
+#[test]
+fn test_default_title_offset_from_date() {
+    // jepoch origin 2005.0 -> "offset from 2004-12-31 18:00:00" (J2005.0).
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+    assert_eq!(
+        default_title(tf),
+        "Julian Epoch offset from 2004-12-31 18:00:00"
+    );
+
+    // mjd/utc origin 55000 -> "[UTC] offset from 2009-06-18 00:00:00".
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Utc);
+    tf.set_time_origin(55000.0);
+    assert_eq!(
+        default_title(tf),
+        "Modified Julian Date [UTC] offset from 2009-06-18 00:00:00"
+    );
+}
+
+#[test]
+fn test_default_title_local_time_offset() {
+    // Local Time shows the UTC offset in the timescale brackets.
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Lt);
+    tf.set_lt_offset(5.5);
+    tf.set_time_origin(55000.0);
+    assert_eq!(
+        default_title(tf),
+        "Modified Julian Date [LT (UTC+5.5)] offset from 2009-06-18 00:00:00"
+    );
+}
+
+#[test]
+fn test_default_title_date_format_suppresses_offset() {
+    // When the Format is itself a date string, the "offset from" suffix is
+    // omitted (the date Format is absolute).
+    let mut tf = TimeFrame::new(TimeSystem::Mjd);
+    tf.set_timescale(TimeScale::Tai);
+    tf.set_time_origin(55000.0);
+    tf.set_format_str("iso.0");
+    assert_eq!(default_title(tf), "Modified Julian Date [TAI]");
+}
+
+// ---------------------------------------------------------------------------
 // Frame trait: equal
 // ---------------------------------------------------------------------------
 
