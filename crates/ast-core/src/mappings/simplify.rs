@@ -2323,81 +2323,114 @@ fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
 
 /// Try to distribute a WinMap (or ShiftMap/ZoomMap) into a parallel CmpMap's branches.
 ///
-/// When `WinMap ; CmpMap(A || B)` appears in a series list, splits the WinMap
-/// by dimension boundaries (determined by each parallel component's input count)
-/// and pushes sub-WinMaps into each branch:
+/// Handles both orderings in a series list.
 ///
-///   `WinMap(4) ; CmpMap(A(2) || B(2))`
-///   → `CmpMap((WinMap(2);A) || (WinMap(2);B))`
+/// When the WinMap is the *lower* neighbour and the CmpMap is *higher*
+/// (C's `cmlow == 0`), the WinMap operates on the CmpMap's inputs, so it is
+/// split by each component's input count and each branch becomes
+/// `sub_wm ; component`:
 ///
-/// On the next simplification pass, each sub-WinMap can merge with the first
-/// mapping in its branch. Critical for FITS-WCS where pixel scaling precedes
-/// parallel (lon,lat) WcsMaps.
+/// ```text
+/// WinMap(4) ; CmpMap(A(2) || B(2))  →  CmpMap((WinMap(2);A) || (WinMap(2);B))
+/// ```
 ///
-/// Matches C winmap.c:1268-1416.
+/// When the WinMap is the *higher* neighbour and the CmpMap is *lower*
+/// (C's `cmlow == 1`), the WinMap operates on the CmpMap's outputs, so it is
+/// split by each component's output count and each branch becomes
+/// `component ; sub_wm`:
+///
+/// ```text
+/// CmpMap(A(2->2) || B(1->1)) ; ShiftMap(3)  →  CmpMap((A;WinMap(2)) || (B;WinMap(1)))
+/// ```
+///
+/// On the next simplification pass, each sub-WinMap can merge with its
+/// neighbouring mapping inside the branch. Critical for FITS-WCS where a
+/// scaling/shift is composed either side of a parallel (lon,lat,...) block.
+///
+/// Matches C winmap.c:1262-1416 (the WinMap↔parallel-CmpMap MapMerge branch),
+/// including the `cmlow` flag that selects the split dimension (nin vs nout)
+/// and the composition order of each new series sub-CmpMap.
 fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
-        // Position i must be a WinMap (or linear mapping convertible to WinMap).
-        let is_linear = list[i].0.as_any().is::<WinMap>()
-            || list[i].0.as_any().is::<ShiftMap>()
-            || list[i].0.as_any().is::<ZoomMap>();
-        // Position i+1 must be a parallel CmpMap.
-        let is_par = list[i + 1]
+        let lo_is_linear = is_linear_mapping(list[i].0.as_ref());
+        let hi_is_linear = is_linear_mapping(list[i + 1].0.as_ref());
+        let lo_is_par = list[i]
+            .0
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .is_some_and(|c| c.composition() == Composition::Parallel);
+        let hi_is_par = list[i + 1]
             .0
             .as_any()
             .downcast_ref::<CmpMap>()
             .is_some_and(|c| c.composition() == Composition::Parallel);
 
-        if !is_linear || !is_par {
+        // `cmlow` mirrors the C flag: false when the WinMap precedes the
+        // parallel CmpMap, true when it follows it.
+        let cmlow = if lo_is_linear && hi_is_par {
+            false
+        } else if lo_is_par && hi_is_linear {
+            true
+        } else {
             i += 1;
             continue;
-        }
+        };
 
-        // Get the WinMap's effective params.
+        let (win_idx, par_idx) = if cmlow { (i + 1, i) } else { (i, i + 1) };
+
+        // Get the WinMap's effective forward params (a = shifts, b = scales).
         let Some((shifts, scales)) =
-            super::winmap::extract_linear_params(list[i].0.as_ref(), list[i].1)
+            super::winmap::extract_linear_params(list[win_idx].0.as_ref(), list[win_idx].1)
         else {
             i += 1;
             continue;
         };
 
         // Flatten the parallel CmpMap to get components.
-        let par_inv = list[i + 1].1;
-        let Ok(par_list) = flatten(list[i + 1].0.as_ref(), par_inv, false) else {
+        let par_inv = list[par_idx].1;
+        let Ok(par_list) = flatten(list[par_idx].0.as_ref(), par_inv, false) else {
             i += 1;
             continue;
         };
 
-        // Compute input dimensions of each parallel component.
+        // Compute the dimension boundaries along which the WinMap splits.
+        // When the WinMap precedes the CmpMap it acts on the CmpMap's inputs
+        // (split by each component's nin); when it follows the CmpMap it acts
+        // on the CmpMap's outputs (split by each component's nout).
         let mut dim_boundaries: Vec<(usize, usize)> = Vec::new();
         let mut offset = 0;
         for (comp, comp_inv) in &par_list {
-            let nin = effective_nin(comp.as_ref(), *comp_inv);
-            dim_boundaries.push((offset, nin));
-            offset += nin;
+            let dim = if cmlow {
+                effective_nout(comp.as_ref(), *comp_inv)
+            } else {
+                effective_nin(comp.as_ref(), *comp_inv)
+            };
+            dim_boundaries.push((offset, dim));
+            offset += dim;
         }
 
-        // Total must match WinMap's axes.
+        // Total must match the WinMap's axis count.
         if offset != shifts.len() {
             i += 1;
             continue;
         }
 
-        // Split the WinMap and build new parallel branches. Each branch
-        // is `sub_wm ; component`. Speculatively simplify each branch and
-        // only commit the distribution if at least one branch ends up
-        // structurally different from the unsimplified composition —
+        // Split the WinMap and build new parallel branches. Each branch is
+        // either `sub_wm ; component` (cmlow == false) or
+        // `component ; sub_wm` (cmlow == true). Speculatively simplify each
+        // branch and only commit the distribution if at least one branch
+        // ends up structurally different from the unsimplified composition —
         // i.e. the WinMap actually got absorbed somewhere. If no branch
-        // simplifies, the distribution is pure churn (and risks an
-        // infinite oscillation against `try_merge_parallel_in_series`),
-        // so it is rejected. Matches C winmap.c:1358-1375.
+        // simplifies, the distribution is pure churn (and risks an infinite
+        // oscillation against `try_merge_parallel_in_series`), so it is
+        // rejected. Matches C winmap.c:1358-1375.
         let mut new_branches: Vec<(DynMapping, bool)> = Vec::new();
         let mut any_branch_simplified = false;
         let mut failed = false;
-        for ((comp, comp_inv), &(start, nin)) in par_list.iter().zip(dim_boundaries.iter()) {
-            let sub_shifts = &shifts[start..start + nin];
-            let sub_scales = &scales[start..start + nin];
+        for ((comp, comp_inv), &(start, dim)) in par_list.iter().zip(dim_boundaries.iter()) {
+            let sub_shifts = &shifts[start..start + dim];
+            let sub_scales = &scales[start..start + dim];
 
             let sub_wm = match WinMap::new(sub_shifts, sub_scales) {
                 Ok(w) => w,
@@ -2412,7 +2445,12 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
                 comp_clone.invert();
             }
 
-            let series = match CmpMap::new(Box::new(sub_wm), comp_clone, Composition::Series) {
+            let series = if cmlow {
+                CmpMap::new(comp_clone, Box::new(sub_wm), Composition::Series)
+            } else {
+                CmpMap::new(Box::new(sub_wm), comp_clone, Composition::Series)
+            };
+            let series = match series {
                 Ok(s) => s,
                 Err(_) => {
                     failed = true;
@@ -2425,8 +2463,14 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
             // (or the chain restructured); no change means the branch
             // is just `sub_wm ; component` with the WinMap still hanging
             // around — the same as before distributing.
+            //
+            // Use the public `simplify()` entry point (not the internal
+            // `simplified()`) so the branch result carries the `IsSimple`
+            // flag, matching C winmap.c:1361-1362 which produces each
+            // branch via `astSimplify(nc[i])`.
             let fp_before = mapping_fingerprint(&series);
-            let simplified_branch = match series.simplified() {
+            let series_dyn: &dyn Mapping = &series;
+            let simplified_branch = match series_dyn.simplify() {
                 Ok(s) => s,
                 Err(_) => {
                     failed = true;
@@ -2451,7 +2495,7 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
             continue;
         };
 
-        // Replace the pair [winmap, parallel] with [new_parallel].
+        // Replace the two-element window with the single new parallel CmpMap.
         list.remove(i + 1);
         list[i] = (new_par, false);
         return true;
@@ -4116,5 +4160,66 @@ mod tests {
         let result = simplify_mapping(&outer).unwrap();
         assert_eq!(result.nin(), 4);
         assert_eq!(result.nout(), 4);
+    }
+
+    #[test]
+    fn series_parallel_absorb_trailing_shift_into_branch() {
+        // series( parallel{ WcsMap(2-axis TAN), UnitMap(1) }, ShiftMap(3, Sft3=7.5) )
+        // The trailing 3-axis ShiftMap only shifts axis 3, which falls in the
+        // UnitMap branch. It must be absorbed: the axis-1,2 part is identity
+        // (vanishes against WcsMap), and the axis-3 part becomes ShiftMap(1).
+        // Result: parallel{ WcsMap(2-axis TAN), ShiftMap(1, Sft1=7.5) }.
+        use crate::coords::PointSet;
+        use crate::mappings::{UnitMap, WcsMap, WcsProjection};
+
+        let wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+        let par = CmpMap::new(
+            Box::new(wcs),
+            Box::new(UnitMap::new(1)),
+            Composition::Parallel,
+        )
+        .unwrap();
+        let shift = ShiftMap::new(vec![0.0, 0.0, 7.5]);
+        let series = CmpMap::new(Box::new(par), Box::new(shift), Composition::Series).unwrap();
+
+        let result = simplify_mapping(&series).unwrap();
+
+        // Top level must be a parallel CmpMap.
+        let cmp = result
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .expect("result should be a CmpMap");
+        assert_eq!(cmp.composition(), Composition::Parallel);
+        assert_eq!(result.nin(), 3);
+        assert_eq!(result.nout(), 3);
+
+        // First branch is the WcsMap, second branch is a 1-axis ShiftMap.
+        assert!(
+            cmp.first().as_any().is::<WcsMap>(),
+            "first branch should be WcsMap"
+        );
+        let second = cmp.second();
+        assert!(
+            second.as_any().is::<ShiftMap>(),
+            "second branch should be ShiftMap"
+        );
+        assert_eq!(second.nin(), 1);
+        let sm = second.as_any().downcast_ref::<ShiftMap>().unwrap();
+        assert!((sm.shifts()[0] - 7.5).abs() < 1e-12);
+
+        // Transform equivalence: the third (UnitMap) axis is shifted by 7.5
+        // both before and after, independent of the WcsMap on axes 1,2.
+        let pts = PointSet::from_rows([[0.1, 0.2, 4.0]]);
+        let before = series.transform(&pts, true).unwrap();
+        let after = result.transform(&pts, true).unwrap();
+        for k in 0..3 {
+            assert!(
+                (before.point(0)[k] - after.point(0)[k]).abs() < 1e-12,
+                "axis {k} mismatch: {} vs {}",
+                before.point(0)[k],
+                after.point(0)[k]
+            );
+        }
+        assert!((after.point(0)[2] - 11.5).abs() < 1e-12);
     }
 }
