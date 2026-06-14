@@ -122,3 +122,29 @@ Likely involves multiple missing optimizations interacting.
 4. **SphMap sandwiches** (3 cases) — important for celestial WCS
 5. **CmpMap flattening** (3 cases) — structural completeness
 6. **ZoomMap absorption** (1 case) — straightforward
+
+## TranMap-carrying graphs lose their inverse / don't collapse to UnitMap
+
+The SpecFluxFrame conversion (specfluxframe.rs `make_sf_mapping`) builds a
+2-axis graph containing a `TranMap` (the flux scaling, whose forward and
+inverse are supplied by two separate forward-only sub-mappings). The
+simplify engine mishandles this graph in two ways:
+
+1. **Inverse dropped / corrupted.** Simplifying the series/parallel
+   composition that wraps the `TranMap` can yield a Mapping that claims
+   `has_inverse` but produces a singular `MatrixMap` on the inverse
+   transform (the unsimplified graph inverts correctly). Worked around in
+   `find_frame::convert_frames` (keep the unsimplified composition when the
+   simplified form can't actually transform both ways) and by having
+   `FrameSet::edge_mapping` clone stored edges rather than re-simplifying
+   them on every access.
+
+2. **Identity not collapsed.** For two equal SpecFluxFrames the graph is an
+   identity but does not simplify to a `UnitMap`, which would break the
+   conversion-based `astEqual`. Worked around in `make_sf_mapping` with an
+   explicit identity short-circuit (component-wise equality → `UnitMap`).
+
+The proper fix is in the simplify engine's `TranMap` handling (it should
+preserve the TranMap's independently-defined inverse through flattening, and
+reduce a forward∘inverse TranMap pair to identity). Until then the
+workarounds above keep behaviour correct.
