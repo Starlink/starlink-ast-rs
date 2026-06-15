@@ -1311,10 +1311,12 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
     ("pixel-rotated-head", "BasicFrame Ident/IsA Object"),
     ("pixel-shear-head", "BasicFrame Ident/IsA Object"),
     ("unknown-spec-head", "BasicFrame Ident/IsA Object"),
-    // Bug 6 — Unit (fullname) comment guard (lab != symbol).
-    ("a20070718_00010_02_cube-ast", "Unit comment guard"),
-    ("degen1-ast", "Unit comment guard"),
-    ("timj-ast", "Unit comment guard"),
+    // SpecFrame velocity-axis Unit / UFreq emission (separate from the unit
+    // comment guard); needs its own investigation.
+    (
+        "a20070718_00010_02_cube-ast",
+        "SpecFrame velocity Unit/UFreq emission",
+    ),
     // Bug 7 — BasicFrame axis Bottom/Top + aggregate Bot/Top.
     ("polco-head", "BasicFrame Bottom/Top axis range"),
     ("polco2-head", "BasicFrame Bottom/Top axis range"),
