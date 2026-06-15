@@ -559,12 +559,13 @@ mod tests {
         sky.set_sky_ref(0.5, -0.25);
         let mut s = store(2);
         sky_sys(&sky, 1, WcsProjection::Tan, &mut s, 0, 1, ' ', 1).unwrap();
-        // Default Fk5 symbols are "RA" / "DEC". No leading marker
-        // character ⇒ symbols pass through unchanged.
+        // Default Fk5 symbols are "RA" / "Dec" (C astGetSymbol,
+        // skyframe.c:4231). No leading marker character ⇒ symbols pass
+        // through unchanged.
         let lon_com = s.ctype_com[0].as_deref().unwrap();
         let lat_com = s.ctype_com[1].as_deref().unwrap();
         assert!(lon_com.starts_with("RA offset from "), "got {lon_com}");
-        assert!(lat_com.starts_with("DEC offset from "), "got {lat_com}");
+        assert!(lat_com.starts_with("Dec offset from "), "got {lat_com}");
     }
 
     #[test]

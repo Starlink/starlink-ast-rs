@@ -46,7 +46,14 @@ pub(crate) fn decode_wcs_with_def_b1950(
     let spectral = wcs_spectral::build_spectral(store);
 
     // Step 4: Build the world frame (before consuming the decoders).
-    let world_frame = build_world_frame(store, &celestial, &spectral)?;
+    let mut world_frame = build_world_frame(store, &celestial, &spectral)?;
+
+    // Stamp the alternate-version character onto the world Frame's Ident, as
+    // C `WcsMapFrm` does (`id[0] = s; astSetIdent(*frm, id)`,
+    // fitschan.c:37756). For the primary axis description `s` is a space, so
+    // the Frame carries `Ident = " "` — an explicitly-set blank identifier
+    // that the native dump renders (with the inherited `IsA Object` block).
+    set_frame_ident(world_frame.as_mut(), " ");
 
     // Step 5: Build the IWC → world mapping (consumes the decoder results).
     let iwc_to_world = build_iwc_to_world(store, celestial, spectral)?;
@@ -81,6 +88,16 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // attribute as set, so a subsequent native dump writes `Base` as an
     // active value rather than a commented-out default.
     frameset.set_base(FrameRef::Index(1))?;
+
+    // Step 8b: stamp the celestial reference position onto the SkyFrame as
+    // SkyRef + SkyRefIs=Ignored. Mirrors C `WcsCelestial`
+    // (fitschan.c:36030-36040), which, when the SkyFrame's SkyRef has not
+    // already been set, stores (reflon, reflat) and sets SkyRefIs=Ignored so
+    // the SkyFrame still represents absolute celestial coordinates. Because
+    // SkyRefIs=Ignored leaves the coordinate semantics unchanged, this adds
+    // no remapping — we set it via `frame_mut` to bypass FrameSet integrity,
+    // matching C which sets it on the Frame before the FrameSet wraps it.
+    set_sky_ref_from_celestial(&mut frameset, store)?;
 
     // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
     // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
@@ -221,6 +238,111 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResul
     set_spec_ref_pos(cur, &sky_clone, reflon, reflat)?;
 
     Ok(())
+}
+
+/// Stamp the celestial reference position onto the SkyFrame in the current
+/// world frame as `SkyRef` + `SkyRefIs=Ignored`, mirroring C `WcsCelestial`
+/// (fitschan.c:36030-36040).
+///
+/// The reference position is the celestial fiducial in the SkyFrame's own
+/// coordinate system — computed, like the SpecFrame RefRA/RefDec, by feeding
+/// CRPIX through the pixel→world Mapping. C only sets it when the SkyFrame's
+/// SkyRef has not already been set (`astTestSkyRef`); we honour the same
+/// gate. Setting `SkyRefIs=Ignored` leaves absolute-coordinate semantics
+/// unchanged, so this is applied via `frame_mut` without triggering a
+/// FrameSet-integrity remap.
+fn set_sky_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
+    // Locate the SkyFrame and its world lon/lat axis offsets.
+    let Some((world_lon_axis, world_lat_axis)) = locate_sky_axes(fs.current()) else {
+        return Ok(());
+    };
+
+    // Skip if the SkyFrame's SkyRef is already set (C `astTestSkyRef`), or
+    // if this is an offset SkyFrame whose SkyRef defines the offset origin /
+    // pole (Domain SKY_OFFSETS / SKY_POLE / SKY_ORIGIN, set by WcsSkyFrame
+    // before tidy_offsets runs). For those, the SkyRef is the offset
+    // definition, not an "ignored" celestial reference, so stamping the
+    // celestial fiducial would corrupt the offset representation.
+    {
+        let cur = fs.current();
+        if let Some(sky) = peek_sky(cur) {
+            if sky.test_sky_ref(0) {
+                return Ok(());
+            }
+            if matches!(sky.domain(), "SKY_OFFSETS" | "SKY_POLE" | "SKY_ORIGIN") {
+                return Ok(());
+            }
+        }
+    }
+
+    // Compute the celestial fiducial by transforming CRPIX through the
+    // pixel→world Mapping (same construction as the SpecFrame path).
+    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+    let naxis = store.naxis;
+    let crpix: Vec<f64> = (0..naxis).map(|i| store.crpix[i].unwrap_or(1.0)).collect();
+
+    use crate::coords::PointSet;
+    let pts_in = PointSet::from_rows([crpix.as_slice()]);
+    let pts_out = mapping.transform(&pts_in, true)?;
+    let world_pt = pts_out.point(0).to_vec();
+    let reflon = world_pt[world_lon_axis];
+    let reflat = world_pt[world_lat_axis];
+
+    if reflon == crate::constants::BAD_VALUE || reflat == crate::constants::BAD_VALUE {
+        return Ok(());
+    }
+
+    // Set SkyRef (lon, lat) and SkyRefIs=Ignored on the SkyFrame, bypassing
+    // FrameSet integrity (SkyRefIs=Ignored does not change the transform).
+    let cur = fs.frame_mut(FrameRef::Current)?;
+    set_sky_ref_on_frame(cur, reflon, reflat);
+
+    Ok(())
+}
+
+/// Set `SkyRef` + `SkyRefIs=Ignored` on the `SkyFrame` within `frame`,
+/// recursing through any `CmpFrame`. The longitude/latitude values are passed
+/// in the SkyFrame's own axis order (lon first); `set_sky_ref` stores them on
+/// the lon/lat axes.
+fn set_sky_ref_on_frame(frame: &mut dyn crate::frames::Frame, reflon: f64, reflat: f64) {
+    use crate::frames::sky_convert::SkyRefIs;
+    use crate::frames::{CmpFrame, SkyFrame};
+    if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
+        sky.set_sky_ref(reflon, reflat);
+        sky.set_sky_ref_is(SkyRefIs::Ignored);
+        return;
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        if peek_sky(cmp.frame1()).is_some() {
+            set_sky_ref_on_frame(cmp.frame1_mut(), reflon, reflat);
+        } else {
+            set_sky_ref_on_frame(cmp.frame2_mut(), reflon, reflat);
+        }
+    }
+}
+
+/// Locate the SkyFrame in `frame` and return its world (external) longitude
+/// and latitude axis offsets, honouring axis permutation. Returns `None` if
+/// no SkyFrame is present.
+fn locate_sky_axes(frame: &dyn crate::frames::Frame) -> Option<(usize, usize)> {
+    use crate::frames::{CmpFrame, SkyFrame};
+    fn find(frame: &dyn crate::frames::Frame, offset: usize) -> Option<(usize, usize)> {
+        use crate::frames::CmpFrame as Cmp;
+        if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
+            return Some((offset + sky.lon_axis(), offset + sky.lat_axis()));
+        }
+        if let Some(c) = frame.as_any().downcast_ref::<Cmp>() {
+            return find(c.frame1(), offset)
+                .or_else(|| find(c.frame2(), offset + c.frame1().naxes()));
+        }
+        None
+    }
+    // A bare SkyFrame world frame is the common (aitoff) case.
+    if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
+        return Some((sky.lon_axis(), sky.lat_axis()));
+    }
+    frame.as_any().downcast_ref::<CmpFrame>()?;
+    find(frame, 0)
 }
 
 /// Apply `set_ref_pos` to the spectral frame (plain `SpecFrame` or

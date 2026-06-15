@@ -230,6 +230,24 @@ impl SkyFrame {
         Ok(self.perm[axis - 1])
     }
 
+    /// Effective `AsTime` for the physical axis `phys` (0 = longitude,
+    /// 1 = latitude), mirroring C `astGetAsTime` (skyframe.c:2547-2566).
+    ///
+    /// If the axis has an explicit `AsTime` override it is honoured.
+    /// Otherwise the longitude axis is formatted as a time only when the
+    /// system is equatorial (involves the Earth's equator); the latitude
+    /// axis and all non-equatorial longitudes default to angle (degrees).
+    fn effective_as_time(&self, phys: usize) -> bool {
+        if let Some(set) = self.axes[phys].as_time {
+            return set;
+        }
+        if self.axes[phys].is_latitude {
+            false
+        } else {
+            is_equatorial(self.system)
+        }
+    }
+
     /// Return the explicit Label override for `axis` (1-based) if
     /// set, falling back to the system-derived default. Mirrors
     /// `astGetLabel(skyfrm, axis)`.
@@ -272,15 +290,15 @@ impl SkyFrame {
     /// (e.g. `("RA", "DEC")` for FK5, `("GLON", "GLAT")` for
     /// galactic). Used as the fallback when no override is set.
     fn default_symbols(&self) -> (&'static str, &'static str) {
+        // Matches C `astGetSymbol` (skyframe.c:4230-4256).
         match self.system {
-            SkySystem::Galactic => ("GLON", "GLAT"),
-            SkySystem::Ecliptic => ("ELON", "ELAT"),
-            SkySystem::Helioecliptic => ("HLON", "HLAT"),
-            SkySystem::Supergalactic => ("SLON", "SLAT"),
-            SkySystem::Azel => ("AZ", "EL"),
-            SkySystem::Unknown => ("", ""),
-            // FK4/FK5/ICRS/J2000/GAPPT/FK4NoE all use RA/DEC.
-            _ => ("RA", "DEC"),
+            SkySystem::Galactic => ("l", "b"),
+            SkySystem::Ecliptic | SkySystem::Helioecliptic => ("Lambda", "Beta"),
+            SkySystem::Supergalactic => ("SGL", "SGB"),
+            SkySystem::Azel => ("Az", "El"),
+            SkySystem::Unknown => ("Lon", "Lat"),
+            // FK4/FK5/ICRS/J2000/GAPPT/FK4NoE all use RA/Dec.
+            _ => ("RA", "Dec"),
         }
     }
 
@@ -879,7 +897,26 @@ impl Frame for SkyFrame {
             ));
         }
         let phys = self.perm[axis - 1];
-        let as_time = self.axes[phys].effective_as_time();
+        let as_time = self.effective_as_time(phys);
+
+        // For equatorial systems the axes behave as standard RA/Dec and are
+        // formatted sexagesimally. For non-equatorial systems (galactic,
+        // ecliptic, supergalactic, unknown) C `GetFormat` (skyframe.c:3536)
+        // builds a decimal format `d.<digits-3>` (or `h.<digits-2>` when
+        // AsTime is set), i.e. decimal degrees/hours. Digits defaults to 7.
+        if !is_equatorial(self.system) {
+            let digits = 7i32;
+            return Ok(if as_time {
+                let ndp = (digits - 2).max(0) as usize;
+                let hours = (value * 12.0 / std::f64::consts::PI).rem_euclid(24.0);
+                format!("{hours:.ndp$}")
+            } else {
+                let ndp = (digits - 3).max(0) as usize;
+                let deg = value * 180.0 / std::f64::consts::PI;
+                format!("{deg:.ndp$}")
+            });
+        }
+
         let precision = if as_time { 1 } else { 0 };
         Ok(format_sky(value, as_time, precision))
     }
@@ -892,7 +929,7 @@ impl Frame for SkyFrame {
             ));
         }
         let phys = self.perm[axis - 1];
-        let as_time = self.axes[phys].effective_as_time();
+        let as_time = self.effective_as_time(phys);
         unformat_sky(text, as_time)
     }
 
@@ -2138,32 +2175,35 @@ impl Serializable for SkyFrame {
             node.push_string("SRefIs", srefis_str, Some(comment.to_string()));
         }
 
-        // SRef1, SRef2 (sky_ref longitude/latitude) — write if non-zero.
-        if self.sky_ref[0] != 0.0 || self.sky_ref[1] != 0.0 || self.sky_ref_is != SkyRefIs::Ignored
+        // SRef1, SRef2 (sky_ref longitude/latitude).
+        //
+        // Mirrors C SkyFrame Dump (skyframe.c:12040-12051): each axis is
+        // written when its SkyRef value has been explicitly set
+        // (`TestSkyRef`), regardless of magnitude — so a reference position
+        // of exactly (0, 0) still emits. The comment is
+        // `Ref. pos. <Symbol> <Format>`, taking the value in the SkyFrame's
+        // external axis order (`SRef<axis_p+1>`) with the symbol/format from
+        // the corresponding axis.
+        if self.test_sky_ref(0)
+            || self.test_sky_ref(1)
+            || self.sky_ref[0] != 0.0
+            || self.sky_ref[1] != 0.0
+            || self.sky_ref_is != SkyRefIs::Ignored
         {
-            let (lon_sym, lat_sym) = match self.system {
-                SkySystem::Fk5
-                | SkySystem::Fk4
-                | SkySystem::Fk4NoE
-                | SkySystem::Icrs
-                | SkySystem::J2000 => ("RA", "Dec"),
-                SkySystem::Galactic => ("Gal. long.", "Gal. lat."),
-                SkySystem::Supergalactic => ("Supergal. long.", "Supergal. lat."),
-                SkySystem::Ecliptic => ("Ecl. long.", "Ecl. lat."),
-                _ => ("Longitude", "Latitude"),
-            };
-            let lon_fmt = self.format(1, self.sky_ref[0]).unwrap_or_default();
-            let lat_fmt = self.format(2, self.sky_ref[1]).unwrap_or_default();
-            node.push_double(
-                "SRef1",
-                self.sky_ref[0],
-                Some(format!("Ref. pos. {lon_sym} {lon_fmt}")),
-            );
-            node.push_double(
-                "SRef2",
-                self.sky_ref[1],
-                Some(format!("Ref. pos. {lat_sym} {lat_fmt}")),
-            );
+            for axis_p in 0..2usize {
+                // `axis_symbol`/`format` take a 1-based external axis index
+                // and re-apply the permutation internally, so the external
+                // index is the right argument for the symbol and value here.
+                let ext_axis = axis_p + 1;
+                let dval = self.sky_ref[axis_p];
+                let symbol = self.axis_symbol(ext_axis).unwrap_or_default();
+                let fmt = self.format(ext_axis, dval).unwrap_or_default();
+                node.push_double(
+                    &format!("SRef{ext_axis}"),
+                    dval,
+                    Some(format!("Ref. pos. {symbol} {fmt}")),
+                );
+            }
         }
 
         // SRefP1, SRefP2 (sky_ref_p longitude/latitude).

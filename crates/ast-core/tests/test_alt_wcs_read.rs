@@ -45,10 +45,14 @@ fn fits_wcs_multi_reads_into_three_frame_frameset() {
     // Frame 1 is base (GRID).
     let base = fs.frame(FrameRef::Index(1)).unwrap();
     assert_eq!(base.domain(), "GRID");
-    // Frame 2 is primary (Galactic SKY); Ident is empty.
+    // Frame 2 is primary (Galactic SKY). C `WcsMapFrm` stamps the
+    // alternate-version character onto the Frame's Ident; for the primary
+    // axis description that character is a space, so Ident == " "
+    // (fitschan.c:37756, and the `IDENT_A = '" "'` card in the reference
+    // native dumps).
     let primary = fs.frame(FrameRef::Index(2)).unwrap();
     assert_eq!(primary.domain(), "SKY");
-    assert_eq!(primary.ident(), "");
+    assert_eq!(primary.ident(), " ");
     // Frame 3 is alt-A (FK5 SKY); Ident="A".
     let alt = fs.frame(FrameRef::Index(3)).unwrap();
     assert_eq!(alt.domain(), "SKY");
