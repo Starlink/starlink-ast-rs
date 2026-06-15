@@ -104,18 +104,20 @@ impl SpecSystem {
     }
 
     /// Human-readable label for this system.
+    /// System label with a capitalised first letter, matching C's
+    /// `SystemLabel` (specframe.c) as used by both GetLabel and GetTitle.
     pub fn label(&self) -> &'static str {
         match self {
             Self::Freq => "Frequency",
             Self::Energy => "Energy",
             Self::Wavenum => "Wave-number",
             Self::Wavelen => "Wavelength",
-            Self::Airwave => "Wavelength",
+            Self::Airwave => "Wavelength in air",
             Self::Vradio => "Radio velocity",
             Self::Voptical => "Optical velocity",
             Self::Redshift => "Redshift",
             Self::Beta => "Beta factor",
-            Self::Vrel => "Velocity",
+            Self::Vrel => "Apparent radial velocity",
         }
     }
 
@@ -792,9 +794,21 @@ impl SpecFrame {
     ///
     /// Format: "{label} ({sor})" — e.g. "Frequency (Heliocentric)".
     fn default_title(&self) -> String {
-        let label = self.system.label();
-        let sor = self.std_of_rest.as_str();
-        format!("{label} ({sor})")
+        // Mirrors C `SpecFrame::GetTitle` (specframe.c:2022): the capitalised
+        // system label, the standard of rest in parentheses only when
+        // explicitly set, and (for non-absolute systems) the rest frequency
+        // in GHz when set or when defaults are usable (UseDefs defaults true).
+        let mut title = self.system.label().to_string();
+        if self.sor_set {
+            title.push_str(&format!(" ({})", self.std_of_rest.as_str()));
+        }
+        if !self.system.is_absolute() {
+            // C uses astGetRestFreq, whose default is 1.0E14 Hz.
+            let rf_ghz = self.rest_freq.unwrap_or(1.0e14) * 1.0e-9;
+            let rf_str = crate::serial::native_write::format_double_g(rf_ghz, 6);
+            title.push_str(&format!(", rest frequency = {rf_str} GHz"));
+        }
+        title
     }
 
     /// Set the domain.

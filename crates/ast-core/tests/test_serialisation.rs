@@ -1242,34 +1242,6 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
         "SpecFrame default Title rest-frequency clause",
     ),
     (
-        "restfreq-ghz-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "restfreq-mhz-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "velo-aips-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "velo-vel-head",
-        "SpecFrame default Title/Label (VELO system)",
-    ),
-    (
-        "vopt-wav-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "vrad-v2f-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "vrad-wav-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
         "wave-1d-head",
         "SpecFrame default Title rest-frequency clause",
     ),
@@ -1278,10 +1250,6 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
         "SpecFrame default Title rest-frequency clause",
     ),
     // SpecFrame AWAV ("Wavelength in air") default Title/Label.
-    (
-        "awav-a2f-head",
-        "SpecFrame default Title/Label (AWAV system)",
-    ),
     // Bug 5 — BasicFrame Ident / IsA Object.
     // SpecFrame velocity-axis Unit / UFreq emission (separate from the unit
     // comment guard); needs its own investigation.
