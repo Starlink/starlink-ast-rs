@@ -1943,25 +1943,33 @@ impl Serializable for SkyFrame {
             );
         }
 
-        // Axis labels (always unset with system-appropriate defaults).
-        // `default_labels` returns (lon_label, lat_label) by physical
-        // axis. Per C `Frame::Dump` (frame.c:14345-14358), per-axis
-        // attributes are written in INTERNAL (unpermuted) axis order —
-        // the axis permutation is recorded separately as `Prm{n}` cards
-        // (emitted below) and replayed on read. SkyFrame internal axis 0
-        // is always longitude and axis 1 always latitude, so Lbl1 =
-        // lon_label and Lbl2 = lat_label regardless of the perm.
+        // Axis labels. Per C `Frame::Dump` (frame.c:14345-14358) the
+        // aggregate `Lbl{n}` is always written unset (commented) with
+        // `helpful = 1`, but its *value* comes from `astGetLabel`, which
+        // returns the explicit per-axis Label override when one is set.
+        // The card stays commented; the override round-trips through the
+        // Axis sub-object's own active `Label` card (emitted below).
+        //
+        // Per-axis attributes are written in INTERNAL (unpermuted) axis
+        // order — the permutation is recorded separately as `Prm{n}` and
+        // replayed on read. SkyFrame internal axis 0 is always longitude
+        // and axis 1 always latitude, so we read the overrides by physical
+        // axis directly.
         let (lon_label, lat_label) = self.default_labels();
-        let lbl1 = lon_label;
-        let lbl2 = lat_label;
+        let lbl1 = self.label_overrides[0]
+            .clone()
+            .unwrap_or_else(|| lon_label.to_string());
+        let lbl2 = self.label_overrides[1]
+            .clone()
+            .unwrap_or_else(|| lat_label.to_string());
         node.push_unset(
             "Lbl1",
-            NodeValue::String(lbl1.to_string()),
+            NodeValue::String(lbl1),
             Some("Label for axis 1".to_string()),
         );
         node.push_unset(
             "Lbl2",
-            NodeValue::String(lbl2.to_string()),
+            NodeValue::String(lbl2),
             Some("Label for axis 2".to_string()),
         );
 
@@ -2103,9 +2111,30 @@ impl Serializable for SkyFrame {
             }
         }
 
-        // Per-axis SkyAxis children.
+        // Per-axis SkyAxis children. An explicit per-axis Label / Symbol
+        // override is stored on the Frame but, like C, round-trips as an
+        // active `Label` / `Symbol` card *inside* the Axis sub-object
+        // (the Frame-level `Lbl{n}` aggregate stays commented). C writes
+        // these via the Axis class Dump (axis.c); when any active card is
+        // present the Axis emits the `IsA Axis` marker. Axes are in
+        // internal order (0 = lon, 1 = lat).
         for (i, axis) in self.axes.iter().enumerate() {
-            let axis_node = Serializable::to_node(axis)?;
+            let mut axis_node = Serializable::to_node(axis)?;
+            if let Some(label) = &self.label_overrides[i] {
+                axis_node.push_string("Label", label, Some("Axis Label".to_string()));
+            }
+            if let Some(symbol) = &self.symbol_overrides[i] {
+                axis_node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
+            }
+            // Emit the `IsA Axis` marker when the SkyAxis carries active
+            // (non-comment) cards, matching C's Axis Dump.
+            if axis_node
+                .items
+                .iter()
+                .any(|it| !matches!(it.value, NodeValue::Unset(_)) && it.key != "IsA")
+            {
+                axis_node.push_isa("Axis", Some("Coordinate axis".to_string()));
+            }
             let key = format!("Ax{}", i + 1);
             let comment = format!("Axis number {}", i + 1);
             node.push_object(&key, axis_node, Some(comment));
@@ -2382,7 +2411,10 @@ impl Serializable for SkyFrame {
             sky.ident = Some(ident);
         }
 
-        // Read SkyAxis children.
+        // Read SkyAxis children. Axes are stored in internal (physical)
+        // order (0 = lon, 1 = lat). An explicit per-axis Label / Symbol is
+        // carried as an active card inside the Axis sub-object (mirroring
+        // C's Axis Dump); restore it into the Frame-level override arrays.
         for i in 0..2 {
             let key = format!("Ax{}", i + 1);
             if let Some(axis_node) = node.get_object(&key) {
@@ -2393,6 +2425,14 @@ impl Serializable for SkyFrame {
                         axis.is_latitude = i == 1;
                     }
                     sky.axes[i] = axis;
+                    let label = axis_node.get_string("Label", "");
+                    if !label.is_empty() {
+                        sky.label_overrides[i] = Some(label);
+                    }
+                    let symbol = axis_node.get_string("Symbol", "");
+                    if !symbol.is_empty() {
+                        sky.symbol_overrides[i] = Some(symbol);
+                    }
                 }
             }
         }

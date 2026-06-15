@@ -1226,12 +1226,6 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // Explicit SkyAxis Label "Right Ascension" (capitalised) not preserved
-    // on round-trip — Rust falls back to the default "Right ascension".
-    (
-        "multi-wcs-spec",
-        "explicit SkyAxis Label not preserved on round-trip",
-    ),
     // Doubly-nested CmpFrame (CmpFrame(CmpFrame, Spec)): the outer
     // CmpFrame's Axp{n} permutation is not reconstructed on read, so its
     // Axp cards are dropped on the second dump.

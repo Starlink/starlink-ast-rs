@@ -2345,9 +2345,16 @@ impl Serializable for SpecFrame {
             node.push_int("ActUnt", act as i64, Some(comment.to_string()));
         }
 
-        // Ax1: axis child object with unit (if unit is set or non-empty default).
+        // Ax1: axis child object. C's Axis Dump writes the fields in the
+        // order Label, Symbol, Unit (axis.c:2909-2934). An explicit Label
+        // override round-trips as an active card here (the Frame-level Lbl1
+        // aggregate stays commented). SpecFrame has no per-axis Symbol
+        // storage, so only Label and Unit are emitted.
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
+        if self.test_axis_label() {
+            axis_node.push_string("Label", &self.axis_label(), Some("Axis Label".to_string()));
+        }
         if let Some(ref unit) = self.unit {
             let comment = match crate::units::unit_label(unit) {
                 Some(lab) => format!("Axis units ({lab})"),
@@ -2544,6 +2551,15 @@ impl Serializable for SpecFrame {
                 if !axis_unit.is_empty() {
                     sf.unit = Some(axis_unit);
                 }
+            }
+        }
+
+        // Explicit per-axis Label, carried as an active card inside the
+        // Axis sub-object (mirrors C's Axis Dump).
+        if let Some(axis_node) = node.get_object("Ax1") {
+            let axis_label = axis_node.get_string("Label", "");
+            if !axis_label.is_empty() {
+                sf.set_axis_label(axis_label);
             }
         }
 
