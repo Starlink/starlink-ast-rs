@@ -29,6 +29,93 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wcsconv")
 }
 
+/// `native`-encoding wcsconv cases whose keyword-card output is not yet
+/// byte-exact with the C oracle. These differ in the **FITS read path** (the
+/// parsed FrameSet), not the serializer — the `.ast` serialization corpus is
+/// byte-exact (see `native_byte_exact_round_trip_frameset_fixtures`). Listed
+/// explicitly with a one-line reason so the comparison is *visible*: every
+/// other native case is byte-compared. The goal is to empty this list by
+/// fixing the FITS reader. Categories (first differing keyword):
+/// SREF/SREFIS = SkyRef fiducial/offset handling; SFT = ShiftMap (IWC/CRVAL
+/// shift); BEGAST/ENDAST = object-shape divergence; EPOCH/DTAI/DUT1 = time
+/// attribute set-ness; CONTINUE = long-string card split; etc.
+const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
+    ("ait-highlatpole_native", "BEGAST: object shape"),
+    ("alt-spectral_native", "SYSTEM: spectral system"),
+    ("awav-a2f_native", "ASTWARN: warning card"),
+    ("axes-swap_native", "DOMAIN: nested CmpFrame domain"),
+    ("axref_native", "SREF1: SkyRef fiducial"),
+    ("azel_native", "EPOCH: AzEl epoch"),
+    ("car1_native", "SREF1: CAR fiducial longitude"),
+    ("car2_native", "SREF1: CAR fiducial longitude"),
+    ("car3_native", "SREF1: CAR fiducial longitude"),
+    ("car4_native", "BEGAST: object shape"),
+    ("car5_native", "CROTA: rotation"),
+    ("car6_native", "FITS: card-level"),
+    ("cd-cross_native", "BEGAST: object shape"),
+    ("class-arc_native", "SFT1: ShiftMap"),
+    ("class-hel_native", "IDENT: ident"),
+    ("class-noproj_native", "BEGAST: object shape"),
+    ("class-sin_native", "SFT1: ShiftMap"),
+    ("class-spec_native", "IDENT: ident"),
+    ("cname_native", "LABEL: axis label"),
+    ("crota-3d_native", "INV: matrix inverse"),
+    ("cube-reorder_native", "SFT1: ShiftMap"),
+    ("date-frac_native", "date handling"),
+    ("date-short_native", "date handling"),
+    ("degen-wcsaxes_native", "SREF2: SkyRef fiducial"),
+    ("equinox-bj_native", "equinox/epoch"),
+    ("fits-pc-alt_native", "SREFIS: SkyRefIs"),
+    ("fits-pc-altgal_native", "SREFIS: SkyRefIs"),
+    ("fits-pc-full_native", "SREFIS: SkyRefIs"),
+    ("fits-pc-gal_native", "SREFIS: SkyRefIs"),
+    ("fits-pc-unit_native", "SREFIS: SkyRefIs"),
+    ("freq-f2w_native", "ASTWARN: warning card"),
+    ("freq-log_native", "BEGAST: object shape"),
+    ("freq-wav_native", "SFT1: ShiftMap"),
+    ("gappt_native", "SREFIS: SkyRefIs"),
+    ("gls_native", "BEGAST: object shape"),
+    ("grism_native", "BEGAST: object shape"),
+    ("iraf-longpole_native", "SREF1: SkyRef fiducial"),
+    ("multi-wcs-dup_native", "SREFIS: SkyRefIs"),
+    ("multi-wcs_native", "EPOCH: alt-plane epoch"),
+    ("multi-wcs-spec_native", "DTAI: time attribute"),
+    ("ncp_native", "SREF/shape"),
+    ("offset-sky_native", "EPOCH: offset epoch"),
+    ("offset-sky-pole_native", "EPOCH: offset epoch"),
+    ("origin_native", "SYSTEM: system"),
+    ("polco2_native", "CONTINUE: long-string split"),
+    ("polco_native", "CONTINUE: long-string split"),
+    ("projp_native", "ENDAST: object shape"),
+    ("projp-nopv0_native", "ENDAST: object shape"),
+    ("projp-pv0only_native", "ENDAST: object shape"),
+    ("projp-pv_native", "PV / shape"),
+    ("rfval_native", "SREF1: SkyRef fiducial"),
+    ("scp_native", "SREF2: SkyRef fiducial"),
+    ("serpens_native", "DUT1: time attribute"),
+    ("sip-alt_native", "SREF1: SkyRef fiducial"),
+    ("skyref-alt_native", "SREF1: SkyRef fiducial"),
+    ("skyref_native", "M0: matrix / offset"),
+    ("specflux_native", "flux frame"),
+    ("ssysobs_native", "SFT1: ShiftMap"),
+    ("tan-polytan_native", "PROJ: projection desc"),
+    ("tan-zeropv_native", "ENDAST: object shape"),
+    ("tidy-offsets_native", "NFRAME: frameset shape"),
+    ("tidy-pole_native", "NAXES: frame shape"),
+    ("timeplot_native", "time frame"),
+    ("timj_native", "IM5: matrix inverse"),
+    ("tnx-cheb_native", "BEGAST: object shape"),
+    ("tnx_native", "BEGAST: object shape"),
+    ("unknown-cel2_native", "BEGAST: object shape"),
+    ("unknown-cel_native", "BEGAST: object shape"),
+    ("unknown-spec_native", "DOMAIN: domain"),
+    ("vopt-f2w_native", "REFDEC: spectral ref"),
+    ("wave-f2w_native", "SREF2: SkyRef fiducial"),
+    ("wave-w2f_native", "ASTWARN: warning card"),
+    ("zero-cdelt_native", "SFT1: ShiftMap"),
+    ("zpx_native", "SREF1: SkyRef fiducial"),
+];
+
 fn parse_manifest() -> Vec<TestCase> {
     let path = fixtures_dir().join("wcsconv_tests.txt");
     let text = std::fs::read_to_string(&path).expect("manifest readable");
@@ -228,7 +315,21 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     // nothing for FITS and would only risk loosening the fixed-column card
     // check.
     let is_native = target_enc == Encoding::Native;
-    if !case.skip_string_compare {
+    // Native cases are byte-compared by default; only those still failing the
+    // FITS-read round-trip are excluded (explicitly, with a reason, in
+    // NATIVE_READ_EXCLUDED). This keeps the comparison visible instead of
+    // hidden behind a manifest skip flag. Set WCSCONV_NO_EXCLUDE=1 to compare
+    // every native case (to measure progress against the exclusion list).
+    // Non-native cases honour the manifest `skip` column.
+    let native_excluded = !std::env::var("WCSCONV_NO_EXCLUDE").is_ok_and(|v| !v.is_empty())
+        && is_native
+        && NATIVE_READ_EXCLUDED.iter().any(|(n, _)| *n == case.name);
+    let compare = if is_native {
+        !native_excluded
+    } else {
+        !case.skip_string_compare
+    };
+    if compare {
         let expected_path = fixtures_dir().join("expected").join(&case.expected_file);
         let expected_text =
             std::fs::read_to_string(&expected_path).map_err(|e| format!("read expected: {e}"))?;
