@@ -13,7 +13,7 @@ RPATH := -Wl,-rpath,$(abspath $(REF)/build)
 CFLAGS := -O0 -g -Wall
 
 PROGS := linear_approx analyse_poly scale_poly_inputs find_basis_vectors \
-         fit_line make_int_world sip_int_world head2ast
+         fit_line make_int_world sip_int_world head2ast ast2ast
 
 all: $(PROGS)
 
