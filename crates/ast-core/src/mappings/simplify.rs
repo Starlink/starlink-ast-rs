@@ -2528,7 +2528,7 @@ pub(crate) fn reconstruct(list: Vec<(DynMapping, bool)>, series: bool) -> AstRes
     };
 
     let mut iter = list.into_iter();
-    let (mut acc, acc_inv) = iter.next().expect("reconstruct called with empty list");
+    let (acc, acc_inv) = iter.next().expect("reconstruct called with empty list");
 
     // Helper: apply the stored inversion flag. For a CmpMap child of a
     // parallel reconstruct, push the inversion into its recorded
@@ -2548,15 +2548,29 @@ pub(crate) fn reconstruct(list: Vec<(DynMapping, bool)>, series: bool) -> AstRes
         m.invert();
     };
 
+    // C `Simplify` (cmpmap.c:290-319) rebuilds the merged sequence by
+    // looping the Mapping list *in reverse* and composing each map with
+    // the CmpMap formed so far: `result = astCmpMap(map[i], result)`.
+    // This produces a right-associated tree —
+    // `map[0] ∘ (map[1] ∘ (… ∘ map[n-1]))` — which is what the native
+    // serialiser then emits. Building left-associated instead
+    // (`((map[0] ∘ map[1]) ∘ …)`) is mathematically equivalent but
+    // serialises to a different nesting, so mirror C's reverse fold.
+    //
+    // Re-collect into a Vec so we can walk it back-to-front; the first
+    // element processed (the last map in the list) seeds the accumulator.
+    let mut rest: Vec<(DynMapping, bool)> = vec![(acc, acc_inv)];
+    rest.extend(iter);
+
+    let (mut acc, acc_inv) = rest.pop().expect("reconstruct list non-empty");
     if acc_inv {
         apply_inversion(&mut acc);
     }
-
-    for (mut m, m_inv) in iter {
+    while let Some((mut m, m_inv)) = rest.pop() {
         if m_inv {
             apply_inversion(&mut m);
         }
-        acc = Box::new(CmpMap::new(acc, m, kind)?);
+        acc = Box::new(CmpMap::new(m, acc, kind)?);
     }
 
     Ok(acc)

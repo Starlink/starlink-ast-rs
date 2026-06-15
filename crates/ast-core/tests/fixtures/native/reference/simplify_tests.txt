@@ -36,6 +36,7 @@ cmpmap_nested_inverse_cancel | simplify_fixtures/cmpmap_nested_inverse_cancel.ma
 cmpmap_nested_parallel_flatten | simplify_fixtures/cmpmap_nested_parallel_flatten.map | simplify_fixtures/cmpmap_nested_parallel_flatten.simp |
 cmpmap_perm_parallel_swap | simplify_fixtures/cmpmap_perm_parallel_swap.map | simplify_fixtures/cmpmap_perm_parallel_swap.simp |
 series_parallel_absorb | simplify_fixtures/series_parallel_absorb.map | simplify_fixtures/series_parallel_absorb.simp |
+reconstruct_right_assoc | simplify_fixtures/reconstruct_right_assoc.map | simplify_fixtures/reconstruct_right_assoc.simp |
 sph_inverse_cancel      | simplify_fixtures/sph_inverse_cancel.map      | simplify_fixtures/sph_inverse_cancel.simp      |
 sph_matrix_sandwich     | simplify_fixtures/sph_matrix_sandwich.map     | simplify_fixtures/sph_matrix_sandwich.simp     |
 wcs_inverse_cancel      | simplify_fixtures/wcs_inverse_cancel.map      | simplify_fixtures/wcs_inverse_cancel.simp      |
