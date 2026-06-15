@@ -18,8 +18,6 @@ pub struct CardList {
     /// `take_consumed_names`. Interior mutability lets the `&self` readers
     /// record consumption without taking `&mut self`. Mirrors the C
     /// `MarkCard` side effect of `GetValue(..., mark=1, ...)`.
-    // Read once the consumption-marking read path is wired in (a later phase).
-    #[allow(dead_code)]
     consumed_names: RefCell<Vec<String>>,
 }
 
@@ -162,6 +160,21 @@ impl CardList {
         None
     }
 
+    /// Like [`find_next`], but skips cards consumed by a read (mirrors C
+    /// `CARDUSED` / `ignore_used` in the public card-search path). Used by the
+    /// public `find_fits`; internal callers use [`find_next`] so they still
+    /// see consumed cards (e.g. for write-position bookkeeping).
+    pub fn find_next_visible(&mut self, keyword: &str) -> Option<&FitsCard> {
+        let start = self.position;
+        for i in start..self.cards.len() {
+            if !self.cards[i].is_consumed() && self.cards[i].keyword.eq_ignore_ascii_case(keyword) {
+                self.position = i + 1;
+                return Some(&self.cards[i]);
+            }
+        }
+        None
+    }
+
     /// Get the integer value of the first card matching keyword.
     pub fn get_int(&self, keyword: &str) -> Option<i64> {
         self.find(keyword).and_then(|c| match &c.value {
@@ -207,13 +220,11 @@ impl CardList {
     // -----------------------------------------------------------------------
 
     /// Record a keyword as consumed by the current read pass.
-    #[allow(dead_code)]
     pub(crate) fn record_consumed(&self, keyword: &str) {
         self.consumed_names.borrow_mut().push(keyword.to_string());
     }
 
     /// `get_int`, recording the keyword as consumed when a card is found.
-    #[allow(dead_code)]
     pub(crate) fn get_int_marked(&self, keyword: &str) -> Option<i64> {
         let v = self.get_int(keyword);
         if v.is_some() {
@@ -223,7 +234,6 @@ impl CardList {
     }
 
     /// `get_float`, recording the keyword as consumed when a card is found.
-    #[allow(dead_code)]
     pub(crate) fn get_float_marked(&self, keyword: &str) -> Option<f64> {
         let v = self.get_float(keyword);
         if v.is_some() {
@@ -233,7 +243,6 @@ impl CardList {
     }
 
     /// `get_string`, recording the keyword as consumed when a card is found.
-    #[allow(dead_code)]
     pub(crate) fn get_string_marked(&self, keyword: &str) -> Option<String> {
         let v = self.get_string(keyword);
         if v.is_some() {
@@ -253,7 +262,6 @@ impl CardList {
     }
 
     /// Drain and return the keyword names recorded as consumed this pass.
-    #[allow(dead_code)]
     pub(crate) fn take_consumed_names(&self) -> Vec<String> {
         std::mem::take(&mut self.consumed_names.borrow_mut())
     }
@@ -263,7 +271,6 @@ impl CardList {
     /// no matching card exists — so SpecTrans-synthesised keywords (which have
     /// no card in this list) are silently ignored, while genuine originals are
     /// marked.
-    #[allow(dead_code)]
     pub(crate) fn mark_card(&mut self, keyword: &str) {
         if let Some(card) = self.cards.iter_mut().find(|c| {
             c.keyword.eq_ignore_ascii_case(keyword)
@@ -278,7 +285,6 @@ impl CardList {
     /// `FixUsed` (fitschan.c:16392). On success (`promote`) provisional cards
     /// become `Used`; otherwise they revert to `Free`. When `remove` is set
     /// (NATIVE-encoding read), consumed cards are physically deleted instead.
-    #[allow(dead_code)]
     pub(crate) fn fix_used(&mut self, promote: bool, remove: bool) {
         if remove {
             self.cards
@@ -322,7 +328,6 @@ impl CardList {
     /// list and recorded so it is later marked consumed on the source FitsChan
     /// (and thus excluded from output), mirroring C `SpecTrans`'s `MarkCard`
     /// on each translated original.
-    #[allow(dead_code)]
     pub(crate) fn delete_consumed(&mut self, keyword: &str) -> bool {
         self.record_consumed(keyword);
         self.delete(keyword)

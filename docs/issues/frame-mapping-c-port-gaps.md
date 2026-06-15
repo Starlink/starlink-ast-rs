@@ -554,6 +554,29 @@ behaviourally identical to C:
 Conclusion: no further serialisation-default divergences remain; the run-merge
 fixtures and this audit close the section 6g concern.
 
+## 6n. Consumed-card tracking (C "USED card" mechanism, ported 2026-06-14)
+
+C `astRead` flags the FITS cards it consumes (the WCS-description keywords —
+`MarkCard`/`FixUsed`/`CARDUSED`, fitschan.c) so they are excluded from later
+output (a re-write, or a NATIVE dump). The Rust port mirrors this:
+`FitsCard.flags` carries a `Consumption` tri-state (`Free`/`Provisional`/`Used`)
+plus a `protected` bool; the reader records consumed keyword names via the
+`*_marked` `CardList` getters (mark=1) — observation-detail keywords (the MJD/DATE
+epoch chain, `TIMESYS`, `DUT1`, `DTAI`, `OBSGEO-*`) use the plain getters (mark=0)
+and survive; SpecTrans records each translated original via `delete_consumed`.
+On read success the provisional flags are promoted (`fix_used`) and `to_header`/
+`ncard`/`find_fits` skip `Used` cards. A subsequent write re-emits any card it
+rewrites (the full-card replace in `put`/`put_or_append` resets the flag). The
+`protected` flag is the foundation for a future `astRetainFits` (ABI shim TBD).
+
+**Documented divergence:** the Rust NATIVE *read* arm does not consume cards (it
+parses COMMENT/keyword-card text, with no `GetValue`-style mark sites), so a
+repeated NATIVE read of the same chan still re-returns the object — whereas C
+removes the consumed COMMENT block on the first NATIVE read. This is faithful for
+the read-FitsWcs/write-NATIVE wcsconverter flow (the consumption happens at the
+FitsWcs read); it differs from C only for back-to-back NATIVE reads of one chan,
+which the public test surface does not exercise.
+
 ## 7. Working rules for the fix agent
 
 - Port the C logic; never paper over a gap with a heuristic the C does not have (repo convention).

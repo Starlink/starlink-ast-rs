@@ -62,7 +62,7 @@ cube-reorder_native | cube-reorder.head              | cube-reorder.native| nati
 ncp_native          | ncp.head                       | ncp.native         | native    |                                  | yes
 velo-vel_native     | velo-vel.head                  | velo-vel.native    | native    |                                  | yes
 vopt-wav_native     | vopt-wav.head                  | vopt-wav.native    | native    |                                  | yes
-zopt-frq_native     | zopt-frq.head                  | zopt-frq.native    | native    |                                  | yes
+zopt-frq_native     | zopt-frq.head                  | zopt-frq.native    | native    |                                  |
 cname_native        | cname.head                     | cname.native       | native    |                                  | yes
 cname_fits-wcs      | cname.head                     | cname.fits-wcs     | fits-wcs  | cdmatrix=1,FitsDigits=8          |
 skyref_native       | skyref.head                    | skyref.native      | native    |                                  | yes
@@ -74,15 +74,15 @@ multi-wcs-dup_native| multi-wcs-dup.head              | multi-wcs-dup.native | n
 multi-wcs-dup_fits-wcs| multi-wcs-dup.head            | multi-wcs-dup.fits-wcs | fits-wcs | cdmatrix=1,FitsDigits=8        |
 freq-wav_native     | freq-wav.head                  | freq-wav.native    | native    |                                  | yes
 wavn-frq_native     | wavn-frq.head                  | wavn-frq.native    | native    |                                  | yes
-mercator_native     | mercator.head                  | mercator.native    | native    |                                  | yes
+mercator_native     | mercator.head                  | mercator.native    | native    |                                  |
 gappt_native        | gappt.head                     | gappt.native       | native    |                                  | yes
 gappt_fits-wcs      | gappt.head                     | gappt.fits-wcs     | fits-wcs  | cdmatrix=1,FitsDigits=8          |
-atf_native          | atf.head                       | atf.native         | native    |                                  | yes
+atf_native          | atf.head                       | atf.native         | native    |                                  |
 equinox-bj_native   | equinox-bj.head                | equinox-bj.native  | native    |                                  | yes
 timesys-tdb_native  | timesys-tdb.head               | timesys-tdb.native | native    |                                  | yes
 zero-cdelt_native   | zero-cdelt.head                | zero-cdelt.native  | native    |                                  | yes
 alt-spectral_native | alt-spectral.head              | alt-spectral.native| native    |                                  | yes
-helioecl_native     | helioecl.head                  | helioecl.native    | native    |                                  | yes
+helioecl_native     | helioecl.head                  | helioecl.native    | native    |                                  |
 fits-pc-full_native | fits-pc-full.head              | fits-pc-full.native| native    |                                  | yes
 fits-pc-gal_native  | fits-pc-gal.head               | fits-pc-gal.native | native    |                                  | yes
 fits-pc-gal_fits-pc | fits-pc-gal.head               | fits-pc-gal.fits-pc | fits-pc  | FitsDigits=8                     |
@@ -105,7 +105,7 @@ date-frac_native    | date-frac.head                 | date-frac.native   | nati
 equinox-zero_native | equinox-zero.head              | equinox-zero.native| native    |                                  | yes
 ssysobs_native      | ssysobs.head                   | ssysobs.native     | native    |                                  | yes
 ener-vel_native     | ener-vel.head                  | ener-vel.native    | native    |                                  | yes
-beta-frq_native     | beta-frq.head                  | beta-frq.native    | native    |                                  | yes
+beta-frq_native     | beta-frq.head                  | beta-frq.native    | native    |                                  |
 sip-alt_native      | sip-alt.head                   | sip-alt.native     | native    | sipreplace=0                     | yes
 ukirt-dtai_native   | ukirt-dtai.head                | ukirt-dtai.native  | native    |                                  | yes
 ukirt-dtai_fits-wcs | ukirt-dtai.head                | ukirt-dtai.fits-wcs | fits-wcs | cdmatrix=1,FitsDigits=8          |

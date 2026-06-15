@@ -198,8 +198,8 @@ impl FitsChan {
     /// The search always starts from the current position and wraps to the
     /// beginning if not found from the current position forward.
     pub fn find_fits(&mut self, name: &str, inc: bool) -> Option<String> {
-        // Search forward from current position.
-        if self.cards.find_next(name).is_some() {
+        // Search forward from current position, skipping consumed cards.
+        if self.cards.find_next_visible(name).is_some() {
             let found_pos = self.cards.position(); // one past the found card
             let card_idx = found_pos - 1;
             let formatted = self.cards.iter().nth(card_idx).unwrap().format();
@@ -211,7 +211,7 @@ impl FitsChan {
         // If not found from current position, try from beginning.
         let saved_pos = self.cards.position();
         self.cards.rewind();
-        if self.cards.find_next(name).is_some() {
+        if self.cards.find_next_visible(name).is_some() {
             let found_pos = self.cards.position(); // one past the found card
             // Only accept if we found it before the original position.
             if found_pos <= saved_pos {

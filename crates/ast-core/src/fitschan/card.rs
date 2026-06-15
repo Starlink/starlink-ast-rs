@@ -130,9 +130,6 @@ pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
 /// and not written out — but is retained in the list to position newly written
 /// cards. Consumption is provisional during a read attempt and promoted to
 /// definite on success (or cleared on failure).
-// Variants other than `Free` are constructed once the read path wires in
-// consumption marking (a later phase); allow them to be unused for now.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum Consumption {
     /// Not consumed.
@@ -174,8 +171,6 @@ pub struct FitsCard {
     #[allow(dead_code)]
     pub(crate) used: bool,
     /// Read-consumption / protection flags (see [`CardFlags`]).
-    // Read once the consumption-marking read path lands (a later phase).
-    #[allow(dead_code)]
     pub(crate) flags: CardFlags,
 }
 
