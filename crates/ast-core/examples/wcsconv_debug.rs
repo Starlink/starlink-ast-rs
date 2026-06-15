@@ -18,6 +18,15 @@ fn main() {
         ast_core::from_native_string(&text).expect("native parse")
     } else {
         let mut fc = FitsChan::from_header(&text).unwrap();
+        // Apply sipreplace before read, mirroring wcsconverter.c.
+        for kv in attrs.split(',') {
+            if let Some((k, v)) = kv.trim().split_once('=') {
+                if k.trim().eq_ignore_ascii_case("sipreplace") {
+                    let v = v.trim();
+                    fc.set_sip_replace(v == "1" || v.eq_ignore_ascii_case("true"));
+                }
+            }
+        }
         // Mirror C wcsconverter.c: leave the FitsChan with no explicit
         // encoding; the `read()` path will lazily auto-detect.
         let o = fc.read().unwrap().expect("input parses");

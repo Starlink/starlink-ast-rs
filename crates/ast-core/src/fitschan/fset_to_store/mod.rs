@@ -711,16 +711,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     source_spec.set_std_of_rest(StdOfRest::Source);
     source_spec.set_unit("Hz");
 
-    // Mapping that converts the matched SpecFrame's coordinates to
-    // the Source-Hz frame. The sideband-specific attributes do not
-    // affect this base→current spectral conversion, so the plain
-    // SpecFrame conversion is used regardless of DSB-ness.
-    let Some(spec_conv_fs) = matched_spec.convert_to(&source_spec, &[])? else {
-        return Ok(());
-    };
-    let spec_mapping = spec_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
-
-    // The Frame that goes into the encoding CmpFrame: a DSBSpecFrame
+    // The spectral component of the canonical template: a DSBSpecFrame
     // (preserving IF / DSBCentre / SideBand) when the matched frame was
     // dual-sideband, else the plain SpecFrame. Mirrors C copying the
     // primary frame and forcing its System/StdOfRest/Unit while keeping
@@ -750,71 +741,31 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
         _ => {}
     }
 
-    let Some(sky_conv_fs) = matched_sky.convert_to(&target_sky, &[])? else {
+    // Combine the spectral and celestial Frames into a single
+    // canonical CmpFrame with the spectral axis first. Mirrors C
+    // `astCmpFrame( specfrm, skyfrm, "" )` (fitschan.c:2481).
+    let cmpfrm: crate::frames::DynFrame =
+        Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky)));
+
+    // Convert the current Frame to the canonical template via the
+    // generic frame-conversion machinery. Mirrors C `astConvert( cfrm,
+    // cmpfrm, "" )` (fitschan.c:2485). The conversion FrameSet's
+    // base→current Mapping carries any axis permutation needed to take
+    // the current Frame's external (FITS) axis order into the template's
+    // (spec, sky) component order, so the new current Frame and Mapping
+    // honour the original CmpFrame permutation — unlike a hand-built
+    // per-component parallel CmpMap, which would assume the components
+    // are already in physical order and silently drop the permutation.
+    let Some(fsconv) = fs.current().convert_to(cmpfrm.as_ref(), &[])? else {
         return Ok(());
     };
-    let sky_mapping = sky_conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
-
-    // Build the new CmpFrame(source_spec, target_sky) and the
-    // parallel CmpMap composing the two per-component conversions.
-    // The original CmpFrame's axis order is (spec, sky) when the
-    // SpecFrame is the first component. For now, only handle that
-    // common case by checking the original current Frame's component
-    // order.
-    let cur = fs.current();
-    let cur_cmp = cur.as_any().downcast_ref::<CmpFrame>();
-    let Some(cur_cmp) = cur_cmp else {
-        // Non-CmpFrame current — skip; AddEncodingFrame is only
-        // meaningful for the cube case.
-        return Ok(());
-    };
-    let frame1_is_spec = cur_cmp
-        .frame1()
-        .as_any()
-        .downcast_ref::<SpecFrame>()
-        .is_some()
-        || cur_cmp
-            .frame1()
-            .as_any()
-            .downcast_ref::<DSBSpecFrame>()
-            .is_some();
-    let frame1_is_sky = cur_cmp
-        .frame1()
-        .as_any()
-        .downcast_ref::<SkyFrame>()
-        .is_some();
-
-    if !(frame1_is_spec || frame1_is_sky) {
-        // Components are not in (spec, sky) or (sky, spec) layout —
-        // bail out.
-        return Ok(());
-    }
-
-    use crate::mappings::{CmpMap, Composition};
-    let (new_cmp, parallel_map): (crate::frames::DynFrame, crate::mappings::DynMapping) =
-        if frame1_is_spec {
-            (
-                Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky))),
-                Box::new(CmpMap::new(
-                    spec_mapping,
-                    sky_mapping,
-                    Composition::Parallel,
-                )?),
-            )
-        } else {
-            (
-                Box::new(CmpFrame::new(Box::new(target_sky), source_spec_frame)),
-                Box::new(CmpMap::new(
-                    sky_mapping,
-                    spec_mapping,
-                    Composition::Parallel,
-                )?),
-            )
-        };
+    let map = fsconv.mapping(FrameRef::Base, FrameRef::Current)?;
+    let newfrm = fsconv.frame(FrameRef::Current)?.snapshot();
 
     // Add the new Frame as the new current. Subsequent extraction
-    // (CelestialAxes/SpectralAxes) operates on this new Frame.
-    fs.add_frame(FrameRef::Current, parallel_map, new_cmp)?;
+    // (CelestialAxes/SpectralAxes) operates on this new Frame. Mirrors
+    // C `astAddFrame( fs, AST__CURRENT, map, newfrm )` (fitschan.c:2498).
+    fs.add_frame(FrameRef::Current, map, newfrm)?;
 
     Ok(())
 }

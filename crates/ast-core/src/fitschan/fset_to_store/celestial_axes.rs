@@ -780,6 +780,68 @@ fn build_wcs_to_iwc(
         Composition::Series,
     )?);
 
+    // The pixel→WCS Mapping may include a PermMap that places the
+    // celestial pair at WCS-Frame axes (ilon, ilat) which differ from
+    // the WcsMap's own longitude/latitude axes (axlon, axlat) — this
+    // happens whenever the world Frame's component/axis order has been
+    // permuted relative to the WcsMap (e.g. FITS-CLASS spectral-cube
+    // output, where AddEncodingFrame reorders the Frame to spec-first).
+    // `cel_nd` above operates on the WcsMap's native (axlon, axlat),
+    // but the surrounding `shift`/`scale` operate on (ilon, ilat).
+    // When they differ, sandwich `cel_nd` between a PermMap (mapping
+    // ilon→axlon, ilat→axlat) and its inverse so its celestial input /
+    // output axes line up with (ilon, ilat). Mirrors fitschan.c:5246-5296
+    // (`if( nwcsmap != nwcs || ilon != axlon || ilat != axlat )`).
+    let cel_nd: DynMapping = if ilon != axlon || ilat != axlat {
+        // inperm[i] = WcsMap-side axis fed from WCS-Frame axis i
+        // (C inperm, fitschan.c:5257-5269; 0-based, PermMap entries
+        // are 1-based so we add 1 below).
+        let mut inperm = vec![-1_i64; nwcs];
+        inperm[ilon] = axlon as i64;
+        inperm[ilat] = axlat as i64;
+        let mut iax = 0_usize;
+        for slot in inperm.iter_mut() {
+            if *slot == -1 {
+                while iax == axlon || iax == axlat {
+                    iax += 1;
+                }
+                *slot = iax as i64;
+                iax += 1;
+            }
+        }
+        // outperm[j] = WCS-Frame axis fed from WcsMap-side output j
+        // (C outperm, fitschan.c:5272-5279).
+        let mut outperm = vec![-1_i64; nwcs];
+        outperm[axlon] = ilon as i64;
+        outperm[axlat] = ilat as i64;
+        let mut jax = 0_usize;
+        for slot in outperm.iter_mut() {
+            if *slot == -1 {
+                while jax == ilon || jax == ilat {
+                    jax += 1;
+                }
+                *slot = jax as i64;
+                jax += 1;
+            }
+        }
+        let inperm_1b: Vec<i64> = inperm.iter().map(|&v| v + 1).collect();
+        let outperm_1b: Vec<i64> = outperm.iter().map(|&v| v + 1).collect();
+
+        // tmap2 = PermMap(ilon→axlon, …). Sandwich:
+        //   tmap2 ∘ cel_nd ∘ tmap2⁻¹  (series). Mirrors C:5283-5291.
+        let perm_fwd = PermMap::new(&inperm_1b, &outperm_1b, &[])?;
+        let mut perm_inv = PermMap::new(&inperm_1b, &outperm_1b, &[])?;
+        perm_inv.invert();
+        let pre = CmpMap::new(Box::new(perm_fwd), cel_nd, Composition::Series)?;
+        Box::new(CmpMap::new(
+            Box::new(pre),
+            Box::new(perm_inv),
+            Composition::Series,
+        )?)
+    } else {
+        cel_nd
+    };
+
     // Forward chain so far: IWC → PPC (shift) → degree-scaled (matrix)
     // → cel_nd (PPC → WCS). Compose in series to get IWC → WCS.
     let iwc_to_wcs = compose_series(vec![Box::new(shift_iwc_to_ppc), Box::new(scale), cel_nd])?;

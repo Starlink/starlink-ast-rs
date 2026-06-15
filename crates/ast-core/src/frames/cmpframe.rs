@@ -703,6 +703,23 @@ impl Frame for CmpFrame {
     ) -> AstResult<Option<(DynMapping, DynFrame)>> {
         cmpframe_sub_frame(self, template, result_naxes, target_axes, template_axes)
     }
+
+    fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
+        // Unlike the default (which produces a plain BasicFrame and loses the
+        // component identity), a CmpFrame must preserve its sub-frames when a
+        // subset of axes is picked — e.g. picking the celestial pair from a
+        // CmpFrame{Sky,Spec} must yield a SkyFrame. Delegate to the
+        // component-preserving `cmpframe_sub_frame` (mirrors C `astPickAxes`
+        // → `astSubFrame`), keeping the result Frame and discarding the
+        // selection Mapping.
+        match cmpframe_sub_frame(self, None, target_axes.len(), target_axes, &[])? {
+            Some((_mapping, frame)) => Ok(frame),
+            None => Err(AstError::new(
+                ErrorCode::Naxin,
+                "CmpFrame::pick_axes_snapshot: sub_frame returned no result",
+            )),
+        }
+    }
 }
 
 impl Serializable for CmpFrame {

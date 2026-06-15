@@ -732,90 +732,94 @@ fn embed_axis(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> 
 
 /// Find an output-axis value `val` that corresponds to an integer
 /// input-pixel value on `axis`. Mirrors `fitschan.c::NearestPix`
-/// (line 23151-23276): inverse-transform `val` (with BAD on the
-/// other output axes) to pixel space, round each input axis to the
-/// nearest integer, then forward-transform back. If the round-trip
-/// yields a finite value, return it; otherwise return `val`
-/// unchanged.
+/// (line 23151-23276).
 ///
-/// For a multi-axis mapping where the celestial inverse can't run
-/// with BAD celestial inputs, C uses `astMapSplit` to extract a
-/// 1-input-1-output sub-mapping for `axis`. We do the same via
-/// `Mapping::map_split`.
+/// C's structure (23210-23227): if the supplied map already has an
+/// inverse, clone it and use it directly. ONLY when it lacks an inverse
+/// does C invert + `astMapSplit` on `axis` to extract a 1-in/1-out
+/// sub-mapping that may have one. After choosing `tmap`, the SAME
+/// multi-axis round-trip runs (23245-23266): set BAD on every output
+/// axis except `axis`, inverse-transform to pixel space, round every
+/// finite input axis to the nearest integer, then forward-transform
+/// back and read `axis`.
+///
+/// Using the full map (not a per-axis split) when an inverse exists is
+/// load-bearing: the split sub-mapping's numerics differ from the full
+/// inverse by a fraction of a ULP, which under FitsDigits stringifies
+/// to a different last digit on large-magnitude axes (e.g. a spectral
+/// frequency CRVAL).
 fn nearest_pix_value(map: &dyn Mapping, val: f64, axis: usize) -> AstResult<f64> {
-    if !val.is_finite() {
+    if !val.is_finite() || is_bad(val) {
         return Ok(val);
     }
-    let nin = map.nin();
     let nout = map.nout();
     if axis >= nout {
         return Ok(val);
     }
 
-    // Try a 1-axis split: invert the map, split on the output axis
-    // (which becomes the input after inversion), then invert back.
-    // Mirrors C `astMapSplit(map, 1, &axis, &tmap)` after `astInvert`.
-    let mut inv_map = map.clone_box();
-    inv_map.invert();
-    let split = inv_map.map_split_zero_based(&[axis]);
-
-    if let Some((out_axes, mut sub_map)) = split {
-        if out_axes.len() == 1 {
-            // sub_map is 1-in (the WCS-axis value) → 1-out (the
-            // pixel-axis value). Inverting it gives 1-in (pixel) →
-            // 1-out (WCS). Use it directly.
-            let pix_in = vec![val];
-            let pts_in = PointSet::from_rows([pix_in]);
-            // sub_map: WCS → pixel.
-            let pset_pix = sub_map.transform(&pts_in, true)?;
-            let p = pset_pix.point(0)[0];
-            if !p.is_finite() || is_bad(p) {
-                return Ok(val);
+    // Choose `tmap` and the axis index within it, mirroring C:23210-23227.
+    let (tmap, tmap_axis): (DynMapping, usize) = if !map.has_inverse() {
+        let mut inv_map = map.clone_box();
+        inv_map.invert();
+        match inv_map.map_split_zero_based(&[axis]) {
+            Some((_ins, mut sub)) if sub.nout() == 1 => {
+                sub.invert();
+                (sub, 0)
             }
-            let p_round = p.round();
-            // Now go back: pixel → WCS via inverted sub_map.
-            sub_map.invert();
-            let pts_back = PointSet::from_rows([[p_round]]);
-            let pset_back = sub_map.transform(&pts_back, true)?;
-            let result = pset_back.point(0)[0];
-            if result.is_finite() && !is_bad(result) {
-                return Ok(result);
-            }
-            return Ok(val);
+            _ => (map.clone_box(), axis),
         }
+    } else {
+        (map.clone_box(), axis)
+    };
+
+    // If the chosen mapping still has no inverse, return `val` unchanged
+    // (C:23229-23231).
+    if !tmap.has_inverse() {
+        return Ok(val);
     }
 
-    // Fallback: full multi-axis NearestPix (mirrors C's else branch
-    // when no split is available — same maths but with BAD on the
-    // other axes).
-    let mut row = vec![BAD_VALUE; nout];
-    row[axis] = val;
-    let pts_out = PointSet::from_rows([row]);
+    let nin = tmap.nin();
+    let nout = tmap.nout();
 
-    // Inverse: WCS → pixel.
-    let pset_pix = match map.transform(&pts_out, false) {
+    // BAD on every output axis except `tmap_axis`, then inverse-transform
+    // to pixel space (C:23245-23251).
+    let mut row = vec![BAD_VALUE; nout];
+    row[tmap_axis] = val;
+    let pts_out = PointSet::from_rows([row]);
+    let pset_pix = match tmap.transform(&pts_out, false) {
         Ok(p) => p,
         Err(_) => return Ok(val),
     };
 
-    // Round each finite pixel coordinate to nearest integer.
+    // Round each finite pixel coordinate to the nearest integer
+    // (C:23253-23259).
     let mut pix_row = vec![0.0_f64; nin];
     for i in 0..nin {
         let v = pset_pix.point(0)[i];
-        if v.is_finite() && !is_bad(v) {
-            pix_row[i] = v.round();
+        pix_row[i] = if v.is_finite() && !is_bad(v) {
+            v.round()
         } else {
-            return Ok(val);
+            v
+        };
+    }
+    if std::env::var("DBG_NP").is_ok() {
+        let raw: Vec<f64> = (0..nin).map(|i| pset_pix.point(0)[i]).collect();
+        eprintln!("DBG_NP axis={tmap_axis} val={val:.12e} pix_raw={raw:?}");
+        // Forward at integer pixel 50 on the spec axis (others 128).
+        let mut fwd = vec![128.0_f64; nin];
+        fwd[tmap_axis] = 50.0;
+        if let Ok(o) = tmap.transform(&PointSet::from_rows([fwd]), true) {
+            eprintln!("DBG_NP fwd(pix spec=50) -> {:.12e}", o.point(0)[tmap_axis]);
         }
     }
     let pts_pix = PointSet::from_rows([pix_row]);
 
-    // Forward: pixel → WCS.
-    let pset_back = match map.transform(&pts_pix, true) {
+    // Forward-transform back and read `tmap_axis` (C:23262-23270).
+    let pset_back = match tmap.transform(&pts_pix, true) {
         Ok(p) => p,
         Err(_) => return Ok(val),
     };
-    let result = pset_back.point(0)[axis];
+    let result = pset_back.point(0)[tmap_axis];
     if result.is_finite() && !is_bad(result) {
         Ok(result)
     } else {

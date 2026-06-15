@@ -328,24 +328,28 @@ fn set_sky_ref_on_frame(frame: &mut dyn crate::frames::Frame, reflon: f64, refla
 /// and latitude axis offsets, honouring axis permutation. Returns `None` if
 /// no SkyFrame is present.
 fn locate_sky_axes(frame: &dyn crate::frames::Frame) -> Option<(usize, usize)> {
-    use crate::frames::{CmpFrame, SkyFrame};
-    fn find(frame: &dyn crate::frames::Frame, offset: usize) -> Option<(usize, usize)> {
-        use crate::frames::CmpFrame as Cmp;
-        if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
-            return Some((offset + sky.lon_axis(), offset + sky.lat_axis()));
+    use crate::frames::SkyFrame;
+    // Walk *external* axes via `primary_frame`, which resolves any
+    // CmpFrame axis permutation. The returned `paxis` is the SkyFrame's
+    // *internal physical* axis index (0 = longitude, 1 = latitude), so
+    // we test it against those constants — not against the SkyFrame's
+    // `lon_axis()`/`lat_axis()` which report *external* positions. This
+    // keeps the returned indices aligned with the pixel→world Mapping's
+    // external (FITS) output order even when the world CmpFrame and/or
+    // the SkyFrame itself have been `perm_axes`'d.
+    let mut lon: Option<usize> = None;
+    let mut lat: Option<usize> = None;
+    for iax in 0..frame.naxes() {
+        let (pf, paxis) = frame.primary_frame(iax);
+        if pf.as_any().is::<SkyFrame>() {
+            if paxis == 0 {
+                lon.get_or_insert(iax);
+            } else if paxis == 1 {
+                lat.get_or_insert(iax);
+            }
         }
-        if let Some(c) = frame.as_any().downcast_ref::<Cmp>() {
-            return find(c.frame1(), offset)
-                .or_else(|| find(c.frame2(), offset + c.frame1().naxes()));
-        }
-        None
     }
-    // A bare SkyFrame world frame is the common (aitoff) case.
-    if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
-        return Some((sky.lon_axis(), sky.lat_axis()));
-    }
-    frame.as_any().downcast_ref::<CmpFrame>()?;
-    find(frame, 0)
+    Some((lon?, lat?))
 }
 
 /// Apply `set_ref_pos` to the spectral frame (plain `SpecFrame` or
@@ -384,44 +388,35 @@ struct SpecSkyInfo {
 }
 
 fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
-    use crate::frames::{CmpFrame, SkyFrame, SpecFrame};
-    let cmp = frame.as_any().downcast_ref::<CmpFrame>()?;
-    // Search children for SkyFrame and SpecFrame at top level (the
-    // typical layout produced by build_world_frame). For nested
-    // CmpFrames recurse; this matches what we build, even if the
-    // pure-C primary-frame walk is more general.
-    //
-    // For a SkyFrame, honour its `axis_permutation`: when the frame
-    // has been `perm_axes`'d to lat-first (e.g. CTYPE1=DEC,
-    // CTYPE2=RA), the world-frame's external axis 0 is lat and
-    // axis 1 is lon. Mirrors C `astGetLonAxis` / `astGetLatAxis`.
-    fn find(
-        frame: &dyn crate::frames::Frame,
-        offset: usize,
-        out: &mut (Option<usize>, Option<(usize, usize)>),
-    ) {
-        use crate::frames::DSBSpecFrame;
-        if frame.as_any().is::<SpecFrame>() || frame.as_any().is::<DSBSpecFrame>() {
-            if out.0.is_none() {
-                out.0 = Some(offset);
+    use crate::frames::{CmpFrame, DSBSpecFrame, SkyFrame, SpecFrame};
+    // Require a CmpFrame (a single spec/sky frame has no companion).
+    frame.as_any().downcast_ref::<CmpFrame>()?;
+
+    // Walk *external* axes via `primary_frame`, which resolves any
+    // CmpFrame axis permutation, so the returned indices align with the
+    // pixel→world Mapping's external (FITS) output order. `paxis` is the
+    // SkyFrame's *internal physical* axis index (0 = longitude, 1 =
+    // latitude), so we test it against those constants — not against the
+    // SkyFrame's external `lon_axis()`/`lat_axis()`. Mirrors C's
+    // primary-frame walk in WcsSpectral (fitschan.c:39620+).
+    let mut spec_axis: Option<usize> = None;
+    let mut lon: Option<usize> = None;
+    let mut lat: Option<usize> = None;
+    for iax in 0..frame.naxes() {
+        let (pf, paxis) = frame.primary_frame(iax);
+        if pf.as_any().is::<SpecFrame>() || pf.as_any().is::<DSBSpecFrame>() {
+            spec_axis.get_or_insert(iax);
+        } else if pf.as_any().is::<SkyFrame>() {
+            if paxis == 0 {
+                lon.get_or_insert(iax);
+            } else if paxis == 1 {
+                lat.get_or_insert(iax);
             }
-        } else if let Some(sky) = frame.as_any().downcast_ref::<SkyFrame>() {
-            if out.1.is_none() {
-                let lon_local = sky.lon_axis();
-                let lat_local = sky.lat_axis();
-                out.1 = Some((offset + lon_local, offset + lat_local));
-            }
-        } else if let Some(c) = frame.as_any().downcast_ref::<CmpFrame>() {
-            find(c.frame1(), offset, out);
-            find(c.frame2(), offset + c.frame1().naxes(), out);
         }
     }
-    let mut out = (None, None);
-    find(cmp.frame1(), 0, &mut out);
-    find(cmp.frame2(), cmp.frame1().naxes(), &mut out);
 
-    let _spec_axis = out.0?;
-    let (lon, lat) = out.1?;
+    let _spec_axis = spec_axis?;
+    let (lon, lat) = (lon?, lat?);
     Some(SpecSkyInfo {
         world_lon_axis: lon,
         world_lat_axis: lat,
@@ -844,111 +839,140 @@ fn build_world_frame(
 
     let n_unclaimed = claimed.iter().filter(|&&c| !c).count();
 
-    // Simple cases:
+    // Simple cases: a single class spanning all axes returns its bare frame.
     if celestial.is_some() && spectral.is_none() && n_unclaimed == 0 {
         let cel = celestial.as_ref().unwrap();
         return Ok(Box::new(cel.frame.clone()));
     }
-
     if spectral.is_some() && celestial.is_none() && n_unclaimed == 0 {
         let spec = spectral.as_ref().unwrap();
         return Ok(spec.world_frame());
     }
-
-    // Mixed case: walk axes in FITS index order and push each frame at
-    // its first encounter. This mirrors `build_general_iwc_to_world`'s
-    // walk so the world-frame axis order matches the mapping output
-    // order — without it, an input header where the spectral axis
-    // comes before the celestial pair (e.g. CTYPE1=FREQ, CTYPE2=RA,
-    // CTYPE3=DEC for class-* fixtures) would build the world CmpFrame
-    // as (Sky, Spec) while the IWC→world mapping outputs (FREQ, RA,
-    // DEC), producing an axis-ordering mismatch in the FrameSet.
-    //
-    // Consecutive linear (unclaimed) axes are grouped into a single
-    // BasicFrame, mirroring the original two-frame layout that the
-    // writer's `identify_axes` expects (the writer's CmpFrame
-    // dispatch only handles two non-nested children, so splitting
-    // each linear axis into its own frame would break headers like
-    // `freq-pixel3d` whose linear-axes group sits after the
-    // spectral axis).
-    let mut frames: Vec<DynFrame> = Vec::new();
-    let mut cel_pushed = false;
-    let mut spec_pushed = false;
-    let mut linear_run: Vec<usize> = Vec::new();
-
-    let flush_linear = |run: &mut Vec<usize>, frames: &mut Vec<DynFrame>| -> AstResult<()> {
-        if run.is_empty() {
-            return Ok(());
-        }
-        let mut builder = BasicFrameBuilder::new(run.len());
-        for (k, &axis) in run.iter().enumerate() {
-            let lidx_1based = k + 1;
-            // CTYPE → axis Symbol (mirrors fitschan.c:38837 —
-            // `astSetSymbol(*frm, i, buf2)` where buf2 is the
-            // CTYPE value with any algorithm code stripped).
-            // Without this, the round-trip writer can't recover the
-            // CTYPE because it falls back to GetDefaultSymbol's
-            // `<Domain><axis>` format.
-            if let Some(ctype) = &store.ctype[axis] {
-                builder = builder.symbol(lidx_1based, ctype.clone());
-            }
-            if let Some(label) = &store.cname[axis] {
-                builder = builder.label(lidx_1based, label.clone());
-            } else if let Some(ctype) = &store.ctype[axis] {
-                builder = builder.label(lidx_1based, ctype.clone());
-            }
-            if let Some(unit) = &store.cunit[axis] {
-                builder = builder.unit(lidx_1based, unit.clone());
-            }
-        }
-        frames.push(Box::new(builder.build()?));
-        run.clear();
-        Ok(())
-    };
-
-    for (i, &is_claimed) in claimed.iter().enumerate() {
-        if let Some(cel) = celestial.as_ref() {
-            if i == cel.lon_axis || i == cel.lat_axis {
-                flush_linear(&mut linear_run, &mut frames)?;
-                if !cel_pushed {
-                    frames.push(Box::new(cel.frame.clone()));
-                    cel_pushed = true;
-                }
-                continue;
-            }
-        }
-        if let Some(spec) = spectral.as_ref() {
-            if i == spec.axis {
-                flush_linear(&mut linear_run, &mut frames)?;
-                if !spec_pushed {
-                    frames.push(spec.world_frame());
-                    spec_pushed = true;
-                }
-                continue;
-            }
-        }
-        if !is_claimed {
-            linear_run.push(i);
-        }
-    }
-    flush_linear(&mut linear_run, &mut frames)?;
-
-    // Compose frames.
-    if frames.is_empty() {
-        return Ok(Box::new(BasicFrameBuilder::new(naxis).build()?));
+    if celestial.is_none() && spectral.is_none() {
+        // All-linear: a single BasicFrame carrying the per-axis CTYPE info.
+        return seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>());
     }
 
-    if frames.len() == 1 {
-        return Ok(frames.remove(0));
+    // Mixed case: replicate C `WcsMapFrm`'s in-place frame morph
+    // (fitschan.c). A base N-axis Frame is restructured by each class
+    // stage: pick the *other* axes into a sub-frame, wrap it in a
+    // CmpFrame with the new (Sky/Spec) frame appended, then PermAxes to
+    // restore the original FITS axis order externally. The IWC→world
+    // *mapping* stays in FITS order (see `build_general_iwc_to_world`);
+    // only the frame is reordered + permuted, so the AXP cards record the
+    // FITS→internal mapping and the external axis order still matches the
+    // mapping output. This produces the canonical component order
+    // (others, Sky, Spec) and the `AXP{n}` permutation that C emits.
+
+    // Base frame: a BasicFrame over all axes, each carrying its CTYPE
+    // symbol / label / unit (the WcsOthers step, fitschan.c:38622 — it
+    // only affects the linear axes, since the celestial/spectral axes are
+    // replaced by their own frames below).
+    let mut frame: DynFrame = seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>())?;
+
+    // --- Celestial stage (WcsCelestial, fitschan.c:36043-36086) ---
+    if let Some(cel) = celestial.as_ref() {
+        // `cel.frame` already carries an internal axis permutation that
+        // makes its *external* axis order agree with ascending FITS axis
+        // order (see `build_celestial`: a `DEC,RA` header perm_axes's the
+        // SkyFrame to lat-first). `morph_in_sub_frame` expects `new_axes`
+        // to list the FITS positions in the order of the new frame's
+        // external axes, so we hand it the sky FITS axes in ascending
+        // order — matching the SkyFrame's already-permuted external layout.
+        let mut sky_axes = [cel.lon_axis, cel.lat_axis];
+        sky_axes.sort_unstable();
+        frame = morph_in_sub_frame(frame, Box::new(cel.frame.clone()), &sky_axes, naxis)?;
     }
 
-    // CmpFrame composition: combine all frames pairwise.
-    let mut result = frames.remove(0);
-    for frame in frames {
-        result = Box::new(CmpFrame::new(result, frame));
+    // --- Spectral stage (WcsSpectral, fitschan.c:39620-39658) ---
+    if let Some(spec) = spectral.as_ref() {
+        frame = morph_in_sub_frame(frame, spec.world_frame(), &[spec.axis], naxis)?;
     }
 
-    Ok(result)
+    Ok(frame)
+}
+
+/// Build a BasicFrame over the given FITS axes (0-based), carrying each
+/// axis's CTYPE symbol, label (CNAME or CTYPE), and unit. Mirrors the
+/// per-axis attribute setup C performs (WcsOthers `astSetSymbol`/`astSetLabel`,
+/// fitschan.c:38622+).
+fn seed_linear_frame(store: &FitsStore, axes: &[usize]) -> AstResult<DynFrame> {
+    let mut builder = BasicFrameBuilder::new(axes.len());
+    for (k, &axis) in axes.iter().enumerate() {
+        let idx_1based = k + 1;
+        if let Some(ctype) = &store.ctype[axis] {
+            builder = builder.symbol(idx_1based, ctype.clone());
+        }
+        if let Some(label) = &store.cname[axis] {
+            builder = builder.label(idx_1based, label.clone());
+        } else if let Some(ctype) = &store.ctype[axis] {
+            builder = builder.label(idx_1based, ctype.clone());
+        }
+        if let Some(unit) = &store.cunit[axis] {
+            builder = builder.unit(idx_1based, unit.clone());
+        }
+    }
+    Ok(Box::new(builder.build()?))
+}
+
+/// Morph `frame` by replacing the axes in `new_axes` (0-based FITS indices,
+/// in their natural sub-frame order) with `new_frame`, mirroring one stage of
+/// C `WcsMapFrm`:
+///
+/// 1. Pick the axes NOT in `new_axes` (in FITS order) into a sub-frame
+///    (`astPickAxes`).
+/// 2. Build `CmpFrame(others, new_frame)` — the new frame's axes are appended
+///    at the end (positions `naxis - new_axes.len() ..`).
+/// 3. `perm_axes` to send each external (FITS) axis to its built position: the
+///    `new_axes` go to the trailing slots (in the order given), the others
+///    fill `0,1,2,…` in FITS order. Mirrors C's `axes[]` + `astPermAxes`.
+fn morph_in_sub_frame(
+    frame: DynFrame,
+    new_frame: DynFrame,
+    new_axes: &[usize],
+    naxis: usize,
+) -> AstResult<DynFrame> {
+    use crate::frames::Frame;
+
+    // Other axes (FITS order), 0-based, as i32 for pick_axes_snapshot.
+    let others: Vec<i32> = (0..naxis)
+        .filter(|i| !new_axes.contains(i))
+        .map(|i| i as i32)
+        .collect();
+
+    // If there are no other axes, the new frame spans everything (handled by
+    // the simple-case short-circuits in the caller for the single-class case,
+    // but this stage can still be reached when a prior stage consumed the
+    // rest); just return the new frame.
+    if others.is_empty() {
+        return Ok(new_frame);
+    }
+
+    let ofrm = frame.pick_axes_snapshot(&others)?;
+    let mut cmp = CmpFrame::new(ofrm, new_frame);
+
+    // Build the external→internal permutation (1-based for `perm_axes`).
+    // Built (internal) order is: others at 0..n_others, then new_axes at the
+    // trailing slots in the order listed. C's `axes[fits_k]` gives the
+    // 0-based internal slot; our `perm_axes` takes 1-based, so we add 1.
+    let n_new = new_axes.len();
+    let n_others = others.len();
+    let mut perm = vec![0usize; naxis];
+    let mut j = 0usize; // running index for "other" axes
+    for (fits_k, slot) in perm.iter_mut().enumerate() {
+        if let Some(pos_in_new) = new_axes.iter().position(|&a| a == fits_k) {
+            // Trailing slot for this new-frame axis (0-based internal).
+            *slot = n_others + pos_in_new + 1; // +1 → 1-based
+        } else {
+            *slot = j + 1; // +1 → 1-based
+            j += 1;
+        }
+    }
+    debug_assert_eq!(j, n_others);
+    debug_assert_eq!(n_others + n_new, naxis);
+
+    cmp.perm_axes(&perm)?;
+    Ok(Box::new(cmp))
 }
 
 // ---------------------------------------------------------------------------
