@@ -258,11 +258,9 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResul
 /// unchanged, so this is applied via `frame_mut` without triggering a
 /// FrameSet-integrity remap.
 fn set_sky_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -> AstResult<()> {
-    // The celestial fiducial position is computed by the celestial decoder
-    // the C `GetFiducialWCS` way — the native fiducial spherical point
-    // transformed through the native→celestial rotation alone (not the
-    // deprojection, which is singular at the pole). Nothing to stamp if it
-    // could not be determined.
+    // The celestial reference position is the raw CRVAL pair (converted to
+    // radians) computed by the celestial decoder, mirroring C `WcsCelestial`
+    // (fitschan.c:35945-35948). Nothing to stamp if it could not be determined.
     let Some((reflon, reflat)) = ref_pos else {
         return Ok(());
     };

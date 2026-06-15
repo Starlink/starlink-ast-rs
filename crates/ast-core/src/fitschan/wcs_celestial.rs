@@ -86,10 +86,10 @@ pub(crate) struct CelestialResult {
     pub lon_axis: usize,
     /// 0-based latitude axis index in the full IWC space.
     pub lat_axis: usize,
-    /// Celestial (lon, lat) of the fiducial point, in radians, computed the
-    /// C `GetFiducialWCS` way (native fiducial through the native→celestial
-    /// rotation). Used to stamp the SkyFrame's SkyRef on read. `None` when
-    /// the fiducial coordinates could not be determined.
+    /// Celestial reference position (lon, lat) in radians: the raw CRVAL pair
+    /// converted to radians, mirroring C `WcsCelestial` (fitschan.c:35945-
+    /// 35948). Used to stamp the SkyFrame's SkyRef on read. `None` when either
+    /// CRVAL is absent.
     pub ref_pos: Option<(f64, f64)>,
 }
 
@@ -670,27 +670,19 @@ fn build_iwc_to_sky_mapping(
         latpole_rad,
     )?;
 
-    // Celestial coordinates of the fiducial point, mirroring C
-    // `GetFiducialWCS` (fitschan.c:12823): take the native spherical
-    // coordinates of the fiducial point (GetFiducialNSC) and transform them
-    // through the native→celestial rotation (`map2`) alone — NOT through the
-    // deprojection, which is singular at the pole (e.g. a ZPN frame whose
-    // CRVAL is at the south pole). Returned in radians.
-    let ref_pos = {
-        use crate::fitschan::fset_to_store::fiducial::get_fiducial_nsc;
-        let (phi0, theta0) = get_fiducial_nsc(&wcsmap_fwd);
-        rotation
-            .transform(&crate::coords::PointSet::from_rows([[phi0, theta0]]), true)
-            .ok()
-            // Take the rotation's longitude verbatim — C `GetFiducialWCS`
-            // stores `*reflon` raw (fitschan.c:36032), with no range
-            // reduction, so a galactic frame keeps e.g. 185° rather than
-            // wrapping to −175°. The signed-zero canonicalisation in
-            // pal::dcc2s already aligns the ±π branch with C.
-            .map(|p| (p.point(0)[0], p.point(0)[1]))
-            .filter(|&(lon, lat)| {
-                lon != crate::constants::BAD_VALUE && lat != crate::constants::BAD_VALUE
-            })
+    // Celestial reference position (SkyRef) for the SkyFrame. C `WcsCelestial`
+    // sets this to the raw CRVAL values converted to radians (fitschan.c:35945-
+    // 35948, and the CAR branch at 35867/35878), NOT to the fiducial point
+    // transformed through the rotation. The two are mathematically equivalent
+    // except that the rotation's atan2 wraps longitude into (−π,π] (so a CAR
+    // frame with CRVAL=185° would become −175°) and loses precision in the
+    // last ULPs; the raw CRVAL avoids both. Only set when both CRVAL values
+    // are present (C guards on `*reflon/*reflat != AST__BAD`). The RFVAL /
+    // AXREF override keywords (fitschan.c:36024/36147) are AST-specific and not
+    // yet plumbed through FitsStore.
+    let ref_pos = match (store.crval[lon_axis], store.crval[lat_axis]) {
+        (Some(_), Some(_)) => Some((crval_lon, crval_lat)),
+        _ => None,
     };
 
     let rotation_naxis = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis)?;
