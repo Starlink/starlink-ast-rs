@@ -277,6 +277,416 @@ fn format_value_with_continues(
     ))
 }
 
+// ===========================================================================
+// Keyword-card NATIVE encoder (Node tree -> BEGAST/ENDAST/ISA/<NAME>_xx cards)
+// ===========================================================================
+//
+// This is the inverse of the decoder above: it walks a serialised [`Node`]
+// tree and emits the keyword-card NATIVE representation used by the C library
+// as the default storage form (BEGAST_xx, <NAME>_xx, ISA_xx, ENDAST_xx).
+//
+// Mirrors C `fitschan.c`'s Channel-method overrides:
+//   Write       (40206) — top-level banners + recursion
+//   WriteBegin  (40432) — BEGAST keyword
+//   WriteInt    (40837) / WriteDouble (40518) — scalar value cards
+//   WriteString (41253) — string value cards, with CONTINUE splitting
+//   WriteObject (41104) — object marker keyword + recursion
+//   WriteIsA    (40945) — ISA keyword (gated on items_written / Full)
+//   WriteEnd    (40642) — ENDAST keyword
+//   CreateKeyword (8209) — unique <BASE><xx> sequence suffixing
+//
+// The values themselves are stored as typed [`FitsValue`]s; the existing card
+// formatter (`FitsCard::format_with_digits_and_rounding`) reproduces C's
+// `EncodeFloat`/`EncodeValue` column layout when the header is rendered.
+
+use crate::serial::node::{Node, NodeValue};
+
+/// Maximum characters in a FITS keyword (C `FITSNAMLEN`).
+const FITS_NAM_LEN: usize = 8;
+
+/// Width available for the value/quoting area of a NATIVE string card,
+/// matching `AST__FITSCHAN_FITSCARDLEN - FITSNAMLEN - 6` in C `WriteString`.
+const STRING_VALUE_WIDTH: usize = 80 - FITS_NAM_LEN - 6;
+
+/// Assigns unique sequence-suffixed FITS keywords, mirroring C `CreateKeyword`
+/// (fitschan.c:8209). Each distinct uppercased base name keeps its own
+/// monotonic sequence counter; the counter is encoded into two `SEQ_CHARS`
+/// characters appended to the (truncated) base.
+#[derive(Default)]
+struct KeywordSequencer {
+    /// Per-base sequence counter (keyed by the uppercased, truncated base).
+    seq: std::collections::HashMap<String, usize>,
+}
+
+impl KeywordSequencer {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create the next unique keyword based on `name`, mirroring
+    /// `CreateKeyword`. The base is uppercased and truncated to
+    /// `FITSNAMLEN - 2` characters to leave room for the 2-char suffix; the
+    /// sequence counter for that base is incremented and encoded.
+    fn create(&mut self, name: &str) -> String {
+        let seq_chars: Vec<char> = SEQ_CHARS.chars().collect();
+        let nseq = seq_chars.len();
+
+        // Uppercase and truncate the base to FITSNAMLEN-2 characters.
+        let base: String = name
+            .chars()
+            .take(FITS_NAM_LEN - 2)
+            .map(|c| c.to_ascii_uppercase())
+            .collect();
+
+        // Look up the last sequence number used for this base; C starts a new
+        // base at 0 and pre-increments, so the first emitted suffix is seq=1.
+        let entry = self.seq.entry(base.clone()).or_insert(0);
+        let limit = nseq * nseq - 1;
+        if *entry < limit {
+            *entry += 1;
+        }
+        let seq = *entry;
+
+        // Encode the sequence number into two SEQ_CHARS characters.
+        let hi = seq_chars[seq / nseq];
+        let lo = seq_chars[seq % nseq];
+
+        let mut keyword = base;
+        keyword.push(hi);
+        keyword.push(lo);
+        keyword
+    }
+}
+
+/// Build a centred banner comment string, mirroring C `MakeBanner`
+/// (fitschan.c:20776). The text is the concatenation of `prefix`, `middle`,
+/// and `suffix`, centred in the 72-column comment field (`FITSCARDLEN -
+/// FITSNAMLEN`) and flanked by the `AST` token at each end.
+pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
+    const TOKEN: &str = "AST";
+    let mxlen = 80 - FITS_NAM_LEN; // 72
+    let ltok = TOKEN.len();
+    let text_len = prefix.chars().count() + middle.chars().count() + suffix.chars().count();
+
+    // Column (1-based) where the text starts, centring it with the token plus
+    // padding on each side. Mirrors C's arithmetic exactly.
+    let start_calc = ltok as isize
+        + 2
+        + (mxlen as isize - ltok as isize - 1 - text_len as isize - 1 - ltok as isize) / 2;
+    let min_start = ltok as isize + 2;
+    let start = start_calc.max(min_start) as usize;
+
+    let mut out: Vec<char> = Vec::with_capacity(mxlen);
+
+    // Leading token.
+    for c in TOKEN.chars() {
+        if out.len() >= mxlen {
+            break;
+        }
+        out.push(c);
+    }
+    // Pad to the start column (start - 1 characters total before text).
+    while out.len() < start - 1 {
+        out.push(' ');
+    }
+    // Prefix, middle, suffix, each truncated so it never reaches the trailing
+    // token area (mxlen - ltok - 1).
+    let text_limit = mxlen - ltok - 1;
+    for s in [prefix, middle, suffix] {
+        for c in s.chars() {
+            if out.len() >= text_limit {
+                break;
+            }
+            out.push(c);
+        }
+    }
+    // Pad the end of the text up to (mxlen - ltok).
+    while out.len() < mxlen - ltok {
+        out.push(' ');
+    }
+    // Trailing token.
+    for c in TOKEN.chars() {
+        if out.len() >= mxlen {
+            break;
+        }
+        out.push(c);
+    }
+
+    out.into_iter().collect()
+}
+
+/// Render a [`Node`] tree as keyword-card NATIVE cards, appending them to
+/// `cards`. The cards reproduce the C library's default NATIVE storage form;
+/// the leading/trailing comment banners are added by the caller.
+///
+/// `with_comments` controls whether per-card comment text is emitted (C
+/// `Comment` attribute, default true). Unset (`# default`) items are dropped,
+/// matching C `Use()` at the default `Full = 0`.
+pub(crate) fn write_keyword_native(cards: &mut Vec<FitsCard>, node: &Node, with_comments: bool) {
+    let mut seq = KeywordSequencer::new();
+    write_object(cards, node, &mut seq, with_comments);
+}
+
+/// Emit one object as a BEGAST … ENDAST block (recursing for nested objects).
+/// Returns nothing; cards are pushed onto `cards`.
+fn write_object(
+    cards: &mut Vec<FitsCard>,
+    node: &Node,
+    seq: &mut KeywordSequencer,
+    with_comments: bool,
+) {
+    // BEGAST keyword, value = class name, comment = the class comment.
+    let begast = seq.create("BEGAST");
+    push_string_card(
+        cards,
+        &begast,
+        &node.class,
+        node.class_comment.as_deref(),
+        with_comments,
+    );
+
+    // `items_written` gates ISA emission, mirroring C WriteIsA: an ISA marker
+    // is written only if at least one item has been written since the last
+    // Begin/IsA (at the default Full = 0).
+    let mut items_written = 0usize;
+
+    for item in &node.items {
+        // IsA marker.
+        if item.key == "IsA" {
+            if items_written == 0 {
+                // C suppresses the ISA item when nothing has been written
+                // since the previous Begin/IsA.
+                continue;
+            }
+            if let NodeValue::String(ref class) = item.value {
+                let isa = seq.create("ISA");
+                push_string_card(cards, &isa, class, item.comment.as_deref(), with_comments);
+            }
+            items_written = 0;
+            continue;
+        }
+
+        match &item.value {
+            // Unset (commented default): dropped at the default Full = 0,
+            // matching C Use() (helpful && full > -1 is false for full = 0
+            // unless the value is helpful; the wcsconv fixtures show none).
+            NodeValue::Unset(_) => continue,
+
+            // Nested object: emit a blank-string marker keyword, then recurse.
+            NodeValue::Object(child) => {
+                let key = seq.create(&item.key);
+                push_string_card(cards, &key, "", item.comment.as_deref(), with_comments);
+                write_object(cards, child, seq, with_comments);
+                items_written += 1;
+            }
+
+            // Integer scalar.
+            NodeValue::Int(v) => {
+                let key = seq.create(&item.key);
+                push_card(
+                    cards,
+                    key,
+                    FitsValue::Int(*v),
+                    item.comment.as_deref(),
+                    with_comments,
+                );
+                items_written += 1;
+            }
+
+            // Double scalar.
+            NodeValue::Double(v) => {
+                let key = seq.create(&item.key);
+                push_card(
+                    cards,
+                    key,
+                    FitsValue::Float(*v),
+                    item.comment.as_deref(),
+                    with_comments,
+                );
+                items_written += 1;
+            }
+
+            // String scalar, with CONTINUE splitting for long values.
+            NodeValue::String(s) => {
+                let key = seq.create(&item.key);
+                write_string_value(cards, &key, s, item.comment.as_deref(), with_comments);
+                items_written += 1;
+            }
+        }
+    }
+
+    // ENDAST keyword.
+    let endast = seq.create("ENDAST");
+    push_string_card(
+        cards,
+        &endast,
+        &node.class,
+        if with_comments {
+            Some("End of object definition")
+        } else {
+            None
+        },
+        with_comments,
+    );
+}
+
+/// Write a string attribute, splitting into CONTINUE cards when the value is
+/// too long to fit one card. Mirrors C `WriteString` (fitschan.c:41253).
+fn write_string_value(
+    cards: &mut Vec<FitsCard>,
+    keyword: &str,
+    value: &str,
+    comment: Option<&str>,
+    with_comments: bool,
+) {
+    // Fast path: short strings need no splitting.
+    let chars: Vec<char> = value.chars().collect();
+    let mut start = 0usize;
+    let mut first = true;
+
+    while start < chars.len() || first {
+        // Available columns for this sub-string. The first card reserves room
+        // for the comment (length + " / "); single quotes cost two columns.
+        let mut nc: isize = STRING_VALUE_WIDTH as isize;
+        if first && with_comments {
+            if let Some(c) = comment {
+                if !c.is_empty() {
+                    nc -= chr_len(c) as isize + 3;
+                }
+            }
+        }
+
+        // Copy characters until the card is full.
+        let mut buf = String::new();
+        while start < chars.len() && nc > 0 {
+            let cc = chars[start];
+            start += 1;
+            buf.push(cc);
+            nc -= if cc == '\'' { 2 } else { 1 };
+        }
+
+        // If a trailing single quote overflowed, push it to the next card.
+        if nc < 0 {
+            start -= 1;
+            buf.pop();
+        }
+
+        // If the value is not exhausted, append an ampersand (making room by
+        // pushing the last character into the next sub-string).
+        if start < chars.len() {
+            start -= 1;
+            buf.pop();
+            buf.push('&');
+        }
+
+        let quoted = pre_quote(&buf);
+
+        if first {
+            push_string_card_raw(cards, keyword.to_string(), quoted, comment, with_comments);
+        } else {
+            // CONTINUE card: stored as a Continue value (no '=' sign).
+            cards.push(FitsCard {
+                keyword: "CONTINUE".to_string(),
+                value: FitsValue::Continue(quoted),
+                comment: None,
+                used: false,
+            });
+        }
+        first = false;
+
+        if start >= chars.len() {
+            break;
+        }
+    }
+}
+
+/// Length of a string ignoring trailing white space (C `ChrLen`).
+fn chr_len(s: &str) -> usize {
+    s.trim_end().chars().count()
+}
+
+/// Pre-quote a sub-string with surrounding double quotes when it has leading
+/// double quotes or trailing white space that FITS would otherwise discard.
+/// Mirrors C `PreQuote` (fitschan.c:24925). Returns the (possibly
+/// double-quoted) string; embedded single quotes are NOT doubled here — the
+/// card formatter doubles them when rendering the FITS card.
+fn pre_quote(value: &str) -> String {
+    let bytes: Vec<char> = value.chars().collect();
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let starts_dquote = bytes[0] == '"';
+    let needs = bytes
+        .iter()
+        .any(|&c| c.is_whitespace() || (starts_dquote && c == '"'));
+    // C only adds double quotes when the *final accommodated* character needed
+    // them; in practice this is trailing white space or a leading/trailing
+    // double quote. Trailing white space is the common case for fixed-width
+    // class names handled elsewhere, so guard on the actual need.
+    let trailing_ws = bytes.last().is_some_and(|c| c.is_whitespace());
+    if needs && (trailing_ws || starts_dquote) {
+        format!("\"{value}\"")
+    } else {
+        value.to_string()
+    }
+}
+
+/// Push a string-valued card whose value is pre-quoted/escaped by the card
+/// formatter. `value` is the raw (un-doubled) string.
+fn push_string_card(
+    cards: &mut Vec<FitsCard>,
+    keyword: &str,
+    value: &str,
+    comment: Option<&str>,
+    with_comments: bool,
+) {
+    push_string_card_raw(
+        cards,
+        keyword.to_string(),
+        value.to_string(),
+        comment,
+        with_comments,
+    );
+}
+
+fn push_string_card_raw(
+    cards: &mut Vec<FitsCard>,
+    keyword: String,
+    value: String,
+    comment: Option<&str>,
+    with_comments: bool,
+) {
+    cards.push(FitsCard {
+        keyword,
+        value: FitsValue::String(value),
+        comment: if with_comments {
+            comment.map(str::to_string)
+        } else {
+            None
+        },
+        used: false,
+    });
+}
+
+fn push_card(
+    cards: &mut Vec<FitsCard>,
+    keyword: String,
+    value: FitsValue,
+    comment: Option<&str>,
+    with_comments: bool,
+) {
+    cards.push(FitsCard {
+        keyword,
+        value,
+        comment: if with_comments {
+            comment.map(str::to_string)
+        } else {
+            None
+        },
+        used: false,
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,5 +937,116 @@ END
         // FrameSet body still emitted.
         assert!(text.contains("Begin FrameSet"));
         assert!(text.contains("Nframe = 2"));
+    }
+
+    // -----------------------------------------------------------------
+    // Keyword-card writer (write_keyword_native / CreateKeyword / banner)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn create_keyword_sequences_per_base() {
+        let mut seq = KeywordSequencer::new();
+        // First use of each base starts at suffix `_A` (seq = 1).
+        assert_eq!(seq.create("BEGAST"), "BEGAST_A");
+        assert_eq!(seq.create("BEGAST"), "BEGAST_B");
+        assert_eq!(seq.create("BEGAST"), "BEGAST_C");
+        // A different base keeps its own counter.
+        assert_eq!(seq.create("ISA"), "ISA_A");
+        assert_eq!(seq.create("BEGAST"), "BEGAST_D");
+        // Long names are truncated to FITSNAMLEN - 2 = 6 characters.
+        assert_eq!(seq.create("MatrixMap"), "MATRIX_A");
+    }
+
+    #[test]
+    fn create_keyword_wraps_after_first_block() {
+        let mut seq = KeywordSequencer::new();
+        // 26 second-characters after '_': seq 1..=26 map to _A.._Z, then the
+        // high character advances (seq 27 -> "A_").
+        let mut last = String::new();
+        for _ in 0..27 {
+            last = seq.create("X");
+        }
+        assert_eq!(last, "XA_");
+    }
+
+    #[test]
+    fn make_banner_centres_text_with_ast_tokens() {
+        let b = make_banner("Beginning of AST data for ", "FrameSet", " object");
+        // 72 columns total, AST token at each end.
+        assert_eq!(b.chars().count(), 72);
+        assert!(b.starts_with("AST"));
+        assert!(b.ends_with("AST"));
+        assert!(b.contains("Beginning of AST data for FrameSet object"));
+    }
+
+    /// Write a small object tree to keyword cards and read it straight back
+    /// through the decoder, confirming the structure round-trips.
+    #[test]
+    fn write_keyword_native_round_trips() {
+        use crate::serial::node::Node;
+
+        let mut inner = Node::new("UnitMap");
+        inner.class_comment = Some("Unit (null) Mapping".to_string());
+        inner.push_int("Nin", 2, Some("Number of input coordinates".to_string()));
+        inner.push_isa(
+            "Mapping",
+            Some("Mapping between coordinate systems".to_string()),
+        );
+
+        let mut outer = Node::new("CmpMap");
+        outer.class_comment = Some("Compound Mapping".to_string());
+        outer.push_int("Nin", 2, Some("Number of input coordinates".to_string()));
+        outer.push_double("Zoom", 5.5, Some("Zoom factor".to_string()));
+        outer.push_isa(
+            "Mapping",
+            Some("Mapping between coordinate systems".to_string()),
+        );
+        outer.push_object("MapA", inner, Some("First component Mapping".to_string()));
+
+        let mut block: Vec<FitsCard> = Vec::new();
+        write_keyword_native(&mut block, &outer, true);
+
+        // The first card opens the outer object; the last closes it.
+        assert_eq!(block.first().unwrap().keyword, "BEGAST_A");
+        match &block.first().unwrap().value {
+            FitsValue::String(s) => assert_eq!(s, "CmpMap"),
+            other => panic!("expected string value, got {other:?}"),
+        }
+        assert!(block.last().unwrap().keyword.starts_with("ENDAST"));
+
+        // Round-trip through the decoder: load the cards back into native text.
+        let mut cards = CardList::new();
+        for c in block {
+            cards.push(c);
+        }
+        let text = cards_to_native_text(&cards).expect("decode");
+        assert!(text.contains("Begin CmpMap"));
+        assert!(text.contains("Nin = 2"));
+        assert!(text.contains("Zoom = 5.5"));
+        // The decoder capitalises-first the FITS-uppercase key (MAPA -> Mapa).
+        assert!(text.contains("Mapa ="));
+        assert!(text.contains("Begin UnitMap"));
+        assert!(text.contains("IsA Mapping"));
+        assert!(text.contains("End UnitMap"));
+        assert!(text.contains("End CmpMap"));
+    }
+
+    /// A long string value is split across CONTINUE cards with a trailing
+    /// ampersand on each non-final segment, mirroring C `WriteString`.
+    #[test]
+    fn write_string_value_splits_long_strings() {
+        let mut block: Vec<FitsCard> = Vec::new();
+        let long = "Pixel coordinates; first pixel at (-128.5,-127.5) plus padding";
+        write_string_value(&mut block, "TITLE_A", long, Some("Title"), true);
+
+        assert!(block.len() >= 2, "long value should split: {block:?}");
+        // First card carries the keyword and ends with an ampersand.
+        assert_eq!(block[0].keyword, "TITLE_A");
+        match &block[0].value {
+            FitsValue::String(s) => assert!(s.ends_with('&'), "first segment: {s}"),
+            other => panic!("expected string, got {other:?}"),
+        }
+        // Subsequent cards are CONTINUE.
+        assert_eq!(block[1].keyword, "CONTINUE");
     }
 }

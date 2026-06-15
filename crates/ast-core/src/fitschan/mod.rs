@@ -30,6 +30,7 @@ use card_list::CardList;
 
 use crate::channel::{Channel, ChannelConfig};
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::serial::node::Node;
 use crate::serial::{self, AnyObject};
 
 /// The encoding format used by a [`FitsChan`] to store AST objects.
@@ -54,7 +55,13 @@ pub enum Encoding {
 }
 
 /// Default number of significant figures for FITS floating-point output.
-const DEFAULT_FITS_DIGITS: usize = 8;
+///
+/// Matches C `AST__DBL_DIG` (the default of the `FitsDigits` attribute,
+/// fitschan.c:42946), which is 17 when AST is built in C11 mode — enough to
+/// round-trip an IEEE double exactly. Callers that want the FITS-standard
+/// 20-column limit honoured set a smaller value explicitly (the wcsconv
+/// fixtures use `FitsDigits=8` for the FITS encodings).
+const DEFAULT_FITS_DIGITS: usize = 17;
 
 /// A channel that reads and writes AST objects via FITS header cards.
 ///
@@ -475,12 +482,6 @@ impl FitsChan {
     // Native encoding helpers
     // -----------------------------------------------------------------------
 
-    /// Marker line for beginning of AST native data in COMMENT cards.
-    const AST_BEGIN_MARKER: &'static str = " AST +++++++++++++++++++++++++++++++++ AST";
-
-    /// Marker line for end of AST native data in COMMENT cards.
-    const AST_END_MARKER: &'static str = " AST --------------------------------- AST";
-
     /// Extract AST native text from COMMENT cards.
     ///
     /// Scans from the current position looking for the begin/end markers,
@@ -537,37 +538,74 @@ impl FitsChan {
         }
     }
 
-    /// Store AST native text as COMMENT cards with markers.
-    fn store_native_text(&mut self, text: &str) {
-        // Begin marker.
-        let begin_card = FitsCard {
+    /// Store an object in the keyword-card NATIVE form: a leading banner of
+    /// COMMENT cards, the BEGAST/ENDAST/ISA/`<NAME>_xx` data cards, and a
+    /// trailing banner. This is the C library's default NATIVE storage
+    /// (fitschan.c::Write, line 40206).
+    ///
+    /// The block is prepended to the existing cards, mirroring C `astWrite`
+    /// which rewinds the card pointer before writing so the AST description
+    /// precedes the retained original header cards.
+    fn store_keyword_native(&mut self, obj: &AnyObject, node: &Node) {
+        let comm = self.config.comment;
+        let class = node.class.as_str();
+        let is_frameset = matches!(obj, AnyObject::FrameSet(_));
+
+        let banner = |prefix: &str, middle: &str, suffix: &str| FitsCard {
             keyword: "COMMENT".to_string(),
-            value: FitsValue::Comment(Self::AST_BEGIN_MARKER.to_string()),
+            value: FitsValue::Comment(enc_native::make_banner(prefix, middle, suffix)),
             comment: None,
             used: false,
         };
-        self.cards.push(begin_card);
 
-        // Each line of native text becomes a COMMENT card.
-        for line in text.lines() {
-            let padded = format_ast_comment_line(line);
-            let card = FitsCard {
-                keyword: "COMMENT".to_string(),
-                value: FitsValue::Comment(padded),
+        let mut block: Vec<FitsCard> = Vec::new();
+
+        // Leading banner: blank card, divider, (FrameSet: two info lines),
+        // "Beginning of AST data for <class> object", dotted divider.
+        if comm {
+            block.push(FitsCard {
+                keyword: "        ".to_string(),
+                value: FitsValue::Comment(String::new()),
                 comment: None,
                 used: false,
-            };
-            self.cards.push(card);
+            });
+            block.push(banner(
+                "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",
+                "",
+                "",
+            ));
+            if is_frameset {
+                block.push(banner("WCS information in AST format", "", ""));
+                block.push(banner("See http://www.starlink.ac.uk/ast/", "", ""));
+            }
+            block.push(banner("Beginning of AST data for ", class, " object"));
+            block.push(banner(
+                "................................................................",
+                "",
+                "",
+            ));
         }
 
-        // End marker.
-        let end_card = FitsCard {
-            keyword: "COMMENT".to_string(),
-            value: FitsValue::Comment(Self::AST_END_MARKER.to_string()),
-            comment: None,
-            used: false,
-        };
-        self.cards.push(end_card);
+        // Data cards.
+        enc_native::write_keyword_native(&mut block, node, comm);
+
+        // Trailing banner: dotted divider, "End of AST data for <class>
+        // object", dashed divider.
+        if comm {
+            block.push(banner(
+                "................................................................",
+                "",
+                "",
+            ));
+            block.push(banner("End of AST data for ", class, " object"));
+            block.push(banner(
+                "----------------------------------------------------------------",
+                "",
+                "",
+            ));
+        }
+
+        self.cards.insert_front(block);
     }
 }
 
@@ -677,13 +715,7 @@ impl Channel for FitsChan {
         match enc {
             Encoding::Native => {
                 let node = serial::any_object_to_node(obj)?;
-                let options = serial::native_write::RenderOptions {
-                    comment: self.config.comment,
-                    full: self.config.full,
-                    indent: self.config.indent,
-                };
-                let text = serial::native_write::render_native_with_options(&node, &options)?;
-                self.store_native_text(&text);
+                self.store_keyword_native(obj, &node);
                 Ok(())
             }
             _ => {
@@ -836,25 +868,6 @@ fn extract_ast_line(comment_text: &str) -> String {
         .unwrap_or(without_suffix);
 
     without_prefix.to_string()
-}
-
-/// Format a native text line as a COMMENT card value.
-///
-/// Produces: " AST <line padded to fill 70 chars> AST"
-fn format_ast_comment_line(line: &str) -> String {
-    // COMMENT card text area is 72 chars (80 - 8 for "COMMENT ").
-    // Format: " AST" + content (up to 64 chars) + " AST"
-    // Total: 4 + content + 4 = 72 max.
-    let max_content = 64;
-    let content = if line.len() > max_content {
-        &line[..max_content]
-    } else {
-        line
-    };
-
-    // Pad content to max_content.
-    let padded = format!("{content:<max_content$}");
-    format!(" AST{padded} AST")
 }
 
 // ---------------------------------------------------------------------------
@@ -1019,15 +1032,6 @@ mod tests {
         let input = " AST   Begin ZoomMap                                             AST";
         let line = extract_ast_line(input);
         assert!(line.contains("Begin ZoomMap"));
-    }
-
-    #[test]
-    fn format_ast_comment_line_works() {
-        let line = "   Begin ZoomMap";
-        let formatted = format_ast_comment_line(line);
-        assert!(formatted.starts_with(" AST"));
-        assert!(formatted.ends_with(" AST"));
-        assert!(formatted.contains("Begin ZoomMap"));
     }
 
     #[test]

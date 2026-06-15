@@ -397,8 +397,8 @@ fn encoding_from_header_auto_detects() {
 #[test]
 fn fits_digits_default_and_set() {
     let mut fc = FitsChan::new();
-    // Default is 8.
-    assert_eq!(fc.fits_digits(), 8);
+    // Default is AST__DBL_DIG (17), matching C fitschan.c:42946.
+    assert_eq!(fc.fits_digits(), 17);
 
     fc.set_fits_digits(15);
     assert_eq!(fc.fits_digits(), 15);

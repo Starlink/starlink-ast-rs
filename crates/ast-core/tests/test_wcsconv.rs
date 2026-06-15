@@ -187,47 +187,53 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
         }
     }
 
-    // For Native target, mirror C `wcsconverter.c`'s use of an
-    // astChannel rather than the FitsChan: serialise the object to a
-    // native AST text dump.
-    let native_output = if target_enc == Encoding::Native {
+    // The manifest distinguishes two NATIVE-family targets, mirroring C
+    // `wcsconverter.c` (which branches on `strcasecmp(encoding, "AST")`):
+    //   - `ast`    → an astChannel text dump (`.ast`, plain "Begin FrameSet")
+    //   - `native` → a FitsChan write under NATIVE encoding (`.native`, the
+    //                COMMENT-banner + BEGAST/ENDAST/`<NAME>_xx` keyword-card
+    //                form). Both decode to `Encoding::Native`, so the manifest
+    //                encoding string is the discriminator.
+    let is_ast_text = case.encoding.eq_ignore_ascii_case("ast");
+    let text_output = if is_ast_text {
         Some(ast_core::to_native_string(&obj).map_err(|e| format!("to_native_string: {e}"))?)
     } else {
         None
     };
 
-    // Write into the FitsChan for FITS encodings.
-    if native_output.is_none() {
+    // Write into the FitsChan for every FITS encoding and for `native`.
+    if text_output.is_none() {
         fc_out.write(&obj).map_err(|e| format!("write: {e}"))?;
     }
 
     // Verify output is non-empty.
-    if fc_out.ncard() == 0 && target_enc != Encoding::Native {
+    if fc_out.ncard() == 0 && !is_ast_text {
         return Err("write produced 0 cards".to_string());
     }
 
     // String comparison.
     //
-    // Native (`.ast`) dumps are compared with a ≤4-ULP tolerance on each
-    // numeric token, absorbing the last-bit libm drift that differs
-    // between platforms (and between the Rust port and the C oracle).
-    // This is the same comparator the simplify regression harness uses
-    // (factored into `tests/common`).
+    // NATIVE-family outputs (the `ast` text dump and the `native` keyword-card
+    // form) carry full-precision (`AST__DBL_DIG`) numeric tokens, so a 1-ULP
+    // libm difference between the Rust port and the C oracle shows up as a
+    // last-digit string difference. These are compared with a ≤4-ULP
+    // tolerance on each numeric token — the same comparator the simplify
+    // regression harness uses (factored into `tests/common`).
     //
-    // FITS encodings stay byte-exact: their numeric tokens are already
-    // rounded to FitsDigits during stringification, so a sub-ULP input
-    // difference rounds to the identical printed string (exact match),
-    // while any genuine difference shows up in the last printed digit
-    // (~1e-8, far beyond 4 ULP) which the tolerant comparator would
-    // reject anyway. Tolerance buys nothing for FITS and would only risk
-    // loosening the fixed-column card check.
-    let is_native = native_output.is_some();
+    // FITS encodings stay byte-exact: their numeric tokens are already rounded
+    // to FitsDigits during stringification, so a sub-ULP input difference
+    // rounds to the identical printed string (exact match), while any genuine
+    // difference shows up in the last printed digit (~1e-8, far beyond 4 ULP)
+    // which the tolerant comparator would reject anyway. Tolerance buys
+    // nothing for FITS and would only risk loosening the fixed-column card
+    // check.
+    let is_native = target_enc == Encoding::Native;
     if !case.skip_string_compare {
         let expected_path = fixtures_dir().join("expected").join(&case.expected_file);
         let expected_text =
             std::fs::read_to_string(&expected_path).map_err(|e| format!("read expected: {e}"))?;
 
-        let output = match &native_output {
+        let output = match &text_output {
             Some(s) => s.clone(),
             None => fc_out.to_header(),
         };

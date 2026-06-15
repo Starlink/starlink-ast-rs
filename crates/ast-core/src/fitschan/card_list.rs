@@ -37,6 +37,17 @@ impl CardList {
         self.cards.push(card);
     }
 
+    /// Insert a block of cards at the front of the list, preserving their
+    /// order. Used by the NATIVE writer, which (like C `astWrite` after a
+    /// card rewind) prepends the AST object block ahead of the retained
+    /// original header cards.
+    pub(crate) fn insert_front(&mut self, block: Vec<FitsCard>) {
+        let n = block.len();
+        self.cards.splice(0..0, block);
+        // Keep the current position pointing at the same logical card.
+        self.position += n;
+    }
+
     /// Append a block of `ASTWARN` comment cards holding `text`, mirroring the
     /// card sequence C `Warn` (fitschan.c:35055) inserts: a leading blank
     /// `ASTWARN`, one card per wrapped ~60-character line of the text, then a
