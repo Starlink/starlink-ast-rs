@@ -1230,23 +1230,12 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// than silently dropped; the goal is to empty this list.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
     // Bug 2 — SkyFrame default Title/Label for AzEl/Unknown/equinox/GAPPT.
-    ("tnx-head", "SkyFrame default Title equinox formatting"),
-    ("tnx-cheb-head", "SkyFrame default Title equinox formatting"),
-    ("azel-head", "SkyFrame default Title/Label table"),
-    ("ecliptic-tan-head", "SkyFrame default Title/Label table"),
-    ("equinox-bj-head", "SkyFrame default Title/Label table"),
-    ("fk4-aips-head", "SkyFrame default Title/Label table"),
-    ("gappt-head", "SkyFrame default Title/Label table"),
-    ("helioecl-head", "SkyFrame default Title/Label table"),
-    ("multi-wcs-head", "SkyFrame default Title/Label table"),
     ("offset-sky-head", "SkyFrame default Title/Label table"),
     ("offset-sky-pole-head", "SkyFrame default Title/Label table"),
     ("skyref-head", "SkyFrame default Title/Label table"),
     ("skyref-alt-head", "SkyFrame default Title/Label table"),
     ("tidy-offsets-head", "SkyFrame default Title/Label table"),
     ("tidy-pole-head", "SkyFrame default Title/Label table"),
-    ("unknown-cel-head", "SkyFrame default Title/Label table"),
-    ("unknown-cel2-head", "SkyFrame default Title/Label table"),
     // Bug 3 — SpecFrame default Title rest-frequency / SoR clause.
     (
         "beta-frq-head",

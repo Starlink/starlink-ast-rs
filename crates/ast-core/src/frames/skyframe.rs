@@ -749,87 +749,119 @@ impl SkyFrame {
     // --- Private helpers for serialisation defaults ---
 
     /// Default title for the current system and equinox.
+    /// Is an offset coordinate system in use? Mirrors C `GetTitle`/`GetLabel`
+    /// (skyframe.c): SkyRef set on either axis and SkyRefIs != IGNORED.
+    fn is_offset(&self) -> bool {
+        (self.test_sky_ref(1) || self.test_sky_ref(2)) && self.sky_ref_is != SkyRefIs::Ignored
+    }
+
     fn default_title(&self) -> String {
-        let base = match self.system {
+        // Mirrors C `SkyFrame::GetTitle` (skyframe.c:4404). "coordinates" vs
+        // "offsets" depending on whether an offset system is in use.
+        let offset = self.is_offset();
+        let word = if offset { "offsets" } else { "coordinates" };
+        let mut base = match self.system {
             SkySystem::Fk5 => {
-                let eq = self.equinox_epoch_string();
-                format!("FK5 equatorial coordinates; mean equinox J{eq}")
+                let eq = fmt_decimal_yr(pal::epj(self.equinox_mjd()));
+                format!("FK5 equatorial {word}; mean equinox J{eq}")
             }
             SkySystem::Fk4 | SkySystem::Fk4NoE => {
-                let eq = self.equinox_epoch_string();
-                // C library (`skyframe.c` GetTitle) appends the Epoch as a
-                // Besselian year alongside the equinox for FK4 / FK4-no-E.
-                let ep = self.epoch_epoch_string_besselian();
+                let eq = fmt_decimal_yr(pal::epb(self.equinox_mjd()));
+                let ep = fmt_decimal_yr(pal::epb(self.epoch_mjd()));
                 let stem = if matches!(self.system, SkySystem::Fk4NoE) {
-                    "FK4 equatorial coordinates; no E-terms"
+                    format!("FK4 equatorial {word}; no E-terms")
                 } else {
-                    "FK4 equatorial coordinates"
+                    format!("FK4 equatorial {word}")
                 };
                 format!("{stem}; mean equinox B{eq}; epoch B{ep}")
             }
-            SkySystem::Galactic => "IAU (1958) galactic coordinates".to_string(),
-            SkySystem::Supergalactic => "Supergalactic coordinates".to_string(),
-            SkySystem::Ecliptic => "Ecliptic coordinates".to_string(),
-            SkySystem::Icrs => "ICRS coordinates".to_string(),
-            SkySystem::J2000 => "J2000 equatorial coordinates".to_string(),
-            _ => "Sky coordinates".to_string(),
+            SkySystem::J2000 => format!("J2000 equatorial {word}"),
+            SkySystem::Icrs => format!("ICRS {word}"),
+            SkySystem::Azel => format!("Horizon (Azimuth/Elevation) {word}"),
+            SkySystem::Gappt => {
+                // The doubled "; ; epoch" is a verbatim quirk of C's GetTitle
+                // (skyframe.c:4568, the format string contains "; ; epoch").
+                let ep = fmt_decimal_yr(pal::epj(self.epoch_mjd()));
+                format!("Geocentric apparent equatorial {word}; ; epoch J{ep}")
+            }
+            SkySystem::Ecliptic => {
+                let eq = fmt_decimal_yr(pal::epj(self.equinox_mjd()));
+                format!("Ecliptic {word}; mean equinox J{eq}")
+            }
+            SkySystem::Helioecliptic => {
+                let ep = fmt_decimal_yr(pal::epj(self.epoch_mjd()));
+                format!("Helio-ecliptic {word}; mean equinox J2000; epoch J{ep}")
+            }
+            SkySystem::Galactic => format!("IAU (1958) galactic {word}"),
+            SkySystem::Supergalactic => format!("De Vaucouleurs supergalactic {word}"),
+            SkySystem::Unknown => format!("Spherical {word}"),
         };
-        if let Some(ref proj) = self.projection {
-            format!("{base}; {proj} projection")
-        } else {
-            base
+
+        // Append either the offset origin/pole description or the projection,
+        // mirroring C (skyframe.c:4629): only one is included.
+        if offset {
+            let word = if self.sky_ref_is == SkyRefIs::Pole {
+                "pole"
+            } else {
+                "origin"
+            };
+            // C formats external axes 0 and 1 in order via astFormat with
+            // their astGetSkyRef values. sky_ref is stored in internal order,
+            // so external axis e (0-based) reads sky_ref at the internal slot
+            // it maps to (invperm), and is formatted with that external axis —
+            // identical to how the SRef cards' comments are produced below.
+            let invperm = [self.lon_axis(), self.lat_axis()];
+            let internal_of_ext =
+                |ext0: usize| invperm.iter().position(|&e| e == ext0).unwrap_or(ext0);
+            let v0 = self
+                .format(1, self.sky_ref[internal_of_ext(0)])
+                .unwrap_or_default();
+            let v1 = self
+                .format(2, self.sky_ref[internal_of_ext(1)])
+                .unwrap_or_default();
+            base.push_str(&format!("; {word} at {v0} {v1}"));
+        } else if let Some(ref proj) = self.projection {
+            let proj = proj.trim_end();
+            if !proj.is_empty() {
+                base.push_str(&format!("; {proj} projection"));
+            }
         }
+        base
     }
 
-    /// Format the SkyFrame's epoch as a Besselian-year display string, used
-    /// for FK4 / FK4-no-E titles (matches C's `astFmtDecimalYr(palEpb(epoch))`).
-    /// The system-dependent default (B1950.0 for FK4 / FK4-no-E, J2000.0
-    /// otherwise) is supplied by [`Self::epoch_mjd`].
-    fn epoch_epoch_string_besselian(&self) -> String {
-        let bep = pal::epb(self.epoch_mjd());
-        if bep == bep.trunc() {
-            format!("{:.1}", bep)
-        } else {
-            format!("{}", bep)
-        }
-    }
-
-    /// Format the equinox as a display string (e.g. "2000.0" or "1950.0").
-    fn equinox_epoch_string(&self) -> String {
-        let eqnox_mjd = self
-            .equinox
-            .unwrap_or_else(|| self.system.default_equinox_mjd());
-        let jep = pal::epj(eqnox_mjd);
-        let epoch_val = if jep < 1984.0 {
-            pal::epb(eqnox_mjd)
-        } else {
-            jep
-        };
-        // Format: if integer, show as "NNNN.0"; otherwise full precision.
-        if epoch_val == epoch_val.trunc() {
-            format!("{:.1}", epoch_val)
-        } else {
-            format!("{}", epoch_val)
-        }
-    }
-
-    /// Default axis labels for the current system.
-    fn default_labels(&self) -> (&'static str, &'static str) {
-        match self.system {
+    /// Default axis labels for the current system. Mirrors C
+    /// `SkyFrame::GetLabel` (skyframe.c:3564): the per-system longitude /
+    /// latitude names, with " offset" appended on each when an offset
+    /// coordinate system is in use.
+    fn default_labels(&self) -> (String, String) {
+        let (lon, lat) = match self.system {
             SkySystem::Galactic => ("Galactic longitude", "Galactic latitude"),
             SkySystem::Ecliptic => ("Ecliptic longitude", "Ecliptic latitude"),
+            SkySystem::Helioecliptic => ("Helio-ecliptic longitude", "Helio-ecliptic latitude"),
             SkySystem::Supergalactic => ("Supergalactic longitude", "Supergalactic latitude"),
+            SkySystem::Azel => ("Azimuth", "Elevation"),
+            SkySystem::Unknown => ("Longitude", "Latitude"),
+            // Equatorial systems (FK4/FK4-no-E/FK5/J2000/ICRS/GAPPT).
             _ => ("Right ascension", "Declination"),
+        };
+        if self.is_offset() {
+            (format!("{lon} offset"), format!("{lat} offset"))
+        } else {
+            (lon.to_string(), lat.to_string())
         }
     }
 
-    /// Default axis units for the current system.
+    /// Default axis units for the current system. The longitude axis is shown
+    /// as a time (hh:mm:ss) only for equatorial systems — those involving the
+    /// Earth's equator (FK4, FK4-no-E, ICRS, FK5, J2000, GAPPT), per C's
+    /// `GetAsTime` + `IsEquatorial` (skyframe.c:2495,2565). All other systems
+    /// (Galactic, Ecliptic, Supergalactic, Helio-ecliptic, AzEl, Unknown)
+    /// default to degrees on both axes.
     fn default_units(&self) -> (&'static str, &'static str) {
-        match self.system {
-            SkySystem::Galactic | SkySystem::Ecliptic | SkySystem::Supergalactic => {
-                ("degrees", "degrees")
-            }
-            _ => ("hh:mm:ss.s", "ddd:mm:ss"),
+        if self.system.is_equatorial() {
+            ("hh:mm:ss.s", "ddd:mm:ss")
+        } else {
+            ("degrees", "degrees")
         }
     }
 }
@@ -1431,6 +1463,21 @@ impl Frame for SkyFrame {
 ///
 /// Mirrors `skyframe.c::CalcLAST`: builds a TDB-MJD TimeFrame and a
 /// LAST-MJD TimeFrame, applies the observer parameters to both,
+/// Format an epoch expressed in decimal years, mirroring C's
+/// `astFmtDecimalYr(year, 9)` (frame.c:4189): `sprintf("%#.9g")` followed by
+/// trailing-zero removal, but keeping one zero after the decimal point so the
+/// result always reads like a year (e.g. "2000.0", "1999.80005"). The `#`
+/// flag forces a decimal point; `format_double_g` already strips trailing
+/// zeros and the point, so we re-append ".0" when no point remains.
+fn fmt_decimal_yr(year: f64) -> String {
+    let s = crate::serial::native_write::format_double_g(year, 9);
+    if s.contains('.') || s.contains('e') {
+        s
+    } else {
+        format!("{s}.0")
+    }
+}
+
 /// transforms the (split) epoch through TDB→LAST and converts the
 /// fractional day to radians.
 ///
@@ -1956,12 +2003,8 @@ impl Serializable for SkyFrame {
         // and axis 1 always latitude, so we read the overrides by physical
         // axis directly.
         let (lon_label, lat_label) = self.default_labels();
-        let lbl1 = self.label_overrides[0]
-            .clone()
-            .unwrap_or_else(|| lon_label.to_string());
-        let lbl2 = self.label_overrides[1]
-            .clone()
-            .unwrap_or_else(|| lat_label.to_string());
+        let lbl1 = self.label_overrides[0].clone().unwrap_or(lon_label);
+        let lbl2 = self.label_overrides[1].clone().unwrap_or(lat_label);
         node.push_unset(
             "Lbl1",
             NodeValue::String(lbl1),
@@ -1983,13 +2026,13 @@ impl Serializable for SkyFrame {
         if self.system_set {
             node.push_string(
                 "System",
-                self.system.as_str(),
+                self.system.dump_str(),
                 Some("Coordinate system type".to_string()),
             );
         } else {
             node.push_unset(
                 "System",
-                NodeValue::String(self.system.as_str().to_string()),
+                NodeValue::String(self.system.dump_str().to_string()),
                 Some("Coordinate system type".to_string()),
             );
         }
@@ -2218,8 +2261,8 @@ impl Serializable for SkyFrame {
             };
             let comment = match self.sky_ref_is {
                 SkyRefIs::Ignored => "Not rotated (ref. pos. is ignored)",
-                SkyRefIs::Origin => "Rotated to put ref. pos. at origin",
-                SkyRefIs::Pole => "Rotated to put ref. pos. at pole",
+                SkyRefIs::Origin => "Rotated to put origin at ref. pos.",
+                SkyRefIs::Pole => "Rotated to put pole at ref. pos.",
             };
             node.push_string("SRefIs", srefis_str, Some(comment.to_string()));
         }

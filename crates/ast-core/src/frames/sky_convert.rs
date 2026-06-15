@@ -66,6 +66,28 @@ impl SkySystem {
         }
     }
 
+    /// String written to the native `System` card. Identical to
+    /// [`Self::as_str`] except for `Unknown`, which C's `SystemString`
+    /// emits in mixed case as "Unknown" (skyframe.c:10323). Read-back is
+    /// case-insensitive, so the round-trip is preserved.
+    pub fn dump_str(&self) -> &'static str {
+        match self {
+            Self::Unknown => "Unknown",
+            other => other.as_str(),
+        }
+    }
+
+    /// Whether this is an equatorial system — one involving the Earth's
+    /// equator, whose longitude axis is displayed as a time by default.
+    /// Mirrors C `IsEquatorial` (skyframe.c): FK4, FK4-no-E, ICRS, FK5,
+    /// J2000, GAPPT (ICRS by convention, not definition).
+    pub fn is_equatorial(&self) -> bool {
+        matches!(
+            self,
+            Self::Fk4 | Self::Fk4NoE | Self::Icrs | Self::Fk5 | Self::J2000 | Self::Gappt
+        )
+    }
+
     /// Parse a coordinate system name (case-insensitive).
     ///
     /// Accepts the canonical forms plus the underscore variant
