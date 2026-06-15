@@ -62,12 +62,15 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // returns `astSimplify(map8)` (fitschan.c:37810) — the pixel→WCS
     // Mapping is simplified before it is added to the FrameSet, so the
     // stored edge (and any later native dump of it) is in reduced form.
+    // Use `simplify()` (not `simplified()`) so the returned Mapping carries
+    // `has_been_simplified` (→ `IsSimp = 1` in the native dump), mirroring
+    // C `astSimplify` which sets the IsSimple flag on its result.
     let composed: DynMapping = Box::new(CmpMap::new(
         pixel_to_iwc,
         iwc_to_world,
         Composition::Series,
     )?);
-    let full_mapping: DynMapping = composed.simplified()?;
+    let full_mapping: DynMapping = composed.simplify()?;
 
     // Step 7: Build the pixel frame. C labels each pixel axis
     // "Pixel axis <n>" (fitschan.c:11935-11938).

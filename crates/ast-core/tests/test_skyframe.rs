@@ -619,9 +619,10 @@ fn format_latitude_45_degrees() {
     let sky = SkyFrame::new(SkySystem::Fk5);
     // pi/4 rad = 45 degrees
     let s = sky.format(2, FRAC_PI_4).unwrap();
+    // C `astFormat` emits no leading '+' for positive sexagesimal values.
     assert!(
-        s.contains("+45:00:00"),
-        "pi/4 should contain +45:00:00, got: {s}"
+        s.contains("45:00:00") && !s.contains('+'),
+        "pi/4 should contain 45:00:00 with no leading +, got: {s}"
     );
 }
 

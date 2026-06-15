@@ -207,12 +207,17 @@ fn format_hms(value: f64, precision: usize) -> String {
     }
 }
 
-/// Format radians as degrees:minutes:seconds with sign prefix.
+/// Format radians as degrees:minutes:seconds.
+///
+/// A leading `-` is emitted for negative values; positive values carry no
+/// sign, matching C `astFormat` for a `d`/`dms` axis (sla DR2AF returns a
+/// sign character of `+` or `-`, but the AST sexagesimal formatter only
+/// prints it when negative).
 fn format_dms(value: f64, precision: usize) -> String {
     // Convert radians to degrees.
     let deg = value * 180.0 / PI;
 
-    let sign = if deg < 0.0 { "-" } else { "+" };
+    let sign = if deg < 0.0 { "-" } else { "" };
     let abs_deg = deg.abs();
 
     // Determine the rounding limit for seconds based on precision.
@@ -511,7 +516,7 @@ mod tests {
     #[test]
     fn format_dms_45deg() {
         // PI/4 = 45 degrees
-        assert_eq!(format_sky(PI / 4.0, false, 0), "+45:00:00");
+        assert_eq!(format_sky(PI / 4.0, false, 0), "45:00:00");
     }
 
     #[test]
@@ -521,18 +526,18 @@ mod tests {
 
     #[test]
     fn format_dms_90deg() {
-        assert_eq!(format_sky(PI / 2.0, false, 0), "+90:00:00");
+        assert_eq!(format_sky(PI / 2.0, false, 0), "90:00:00");
     }
 
     #[test]
     fn format_dms_zero() {
-        assert_eq!(format_sky(0.0, false, 0), "+0:00:00");
+        assert_eq!(format_sky(0.0, false, 0), "0:00:00");
     }
 
     #[test]
     fn format_dms_1arcsec() {
         // 1 arcsecond = PI/648000 radians
-        assert_eq!(format_sky(ARCSEC, false, 0), "+0:00:01");
+        assert_eq!(format_sky(ARCSEC, false, 0), "0:00:01");
     }
 
     #[test]
@@ -542,19 +547,19 @@ mod tests {
 
     #[test]
     fn format_dms_precision_3() {
-        assert_eq!(format_sky(PI / 4.0, false, 3), "+45:00:00.000");
+        assert_eq!(format_sky(PI / 4.0, false, 3), "45:00:00.000");
     }
 
     #[test]
     fn format_dms_180deg() {
-        assert_eq!(format_sky(PI, false, 0), "+180:00:00");
+        assert_eq!(format_sky(PI, false, 0), "180:00:00");
     }
 
     #[test]
     fn format_dms_fractional() {
         // 45.5 degrees = PI * 45.5 / 180
         let val = 45.5 * PI / 180.0;
-        assert_eq!(format_sky(val, false, 0), "+45:30:00");
+        assert_eq!(format_sky(val, false, 0), "45:30:00");
     }
 
     // ----------------------------------------------------------------
@@ -748,11 +753,11 @@ mod tests {
 
     #[test]
     fn format_dms_rounding_overflow() {
-        // 44:59:59.999... degrees should round to +45:00:00 at precision 0.
+        // 44:59:59.999... degrees should round to 45:00:00 at precision 0.
         let deg = 44.0 + 59.0 / 60.0 + 59.8 / 3600.0;
         let rad = deg * PI / 180.0;
         let result = format_sky(rad, false, 0);
-        assert_eq!(result, "+45:00:00");
+        assert_eq!(result, "45:00:00");
     }
 
     #[test]

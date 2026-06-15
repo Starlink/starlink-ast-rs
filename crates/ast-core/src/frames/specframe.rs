@@ -2153,6 +2153,19 @@ impl Serializable for SpecFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Description of spectral coordinate system".to_string());
 
+        // --- Object-level attributes (before the frame attributes) ---
+        // Ident is written if explicitly set, followed by an `IsA Object`
+        // marker. Mirrors the Object Dump that precedes the Frame Dump (the
+        // `IDENT`/`IsA Object` block in the reference native dumps).
+        if let Some(ref ident) = self.ident {
+            node.push_string(
+                "Ident",
+                ident,
+                Some("Permanent Object identification string".to_string()),
+            );
+            node.push_isa("Object", Some("AST Object".to_string()));
+        }
+
         // --- Frame-level attributes (before IsA Frame) ---
         // Order: Title, Naxes, Domain, Epoch, Lbl1, System, Uni1, Ax1,
         //        [observer], IsA Frame
