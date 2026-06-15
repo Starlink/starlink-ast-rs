@@ -325,6 +325,16 @@ impl DSBSpecFrame {
         self.spec.set_obs_alt(alt);
     }
 
+    /// Set TAI-UTC (seconds).
+    pub fn set_dtai(&mut self, dtai: f64) {
+        self.spec.set_dtai(dtai);
+    }
+
+    /// Set UT1-UTC (seconds).
+    pub fn set_dut1(&mut self, dut1: f64) {
+        self.spec.set_dut1(dut1);
+    }
+
     // --- Internal accessors ---
 
     /// Return a reference to the underlying `SpecFrame`.

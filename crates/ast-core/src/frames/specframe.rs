@@ -261,6 +261,8 @@ pub struct SpecFrame {
     obs_lat: Option<f64>, // geodetic latitude (radians)
     obs_lon: Option<f64>, // geodetic longitude (radians)
     obs_alt: Option<f64>, // altitude (metres)
+    dtai: Option<f64>,    // TAI-UTC (seconds)
+    dut1: Option<f64>,    // UT1-UTC (seconds)
 
     // SpecFrame-specific
     system: SpecSystem,
@@ -323,6 +325,8 @@ impl SpecFrame {
             obs_lat: None,
             obs_lon: None,
             obs_alt: None,
+            dtai: None,
+            dut1: None,
             system,
             // The caller supplied an explicit System, which is equivalent
             // to C `astSpecFrame("System=...")` invoking astSetSystem — so
@@ -823,6 +827,16 @@ impl SpecFrame {
     /// Set the observer altitude (metres).
     pub fn set_obs_alt(&mut self, alt: f64) {
         self.obs_alt = Some(alt);
+    }
+
+    /// Set TAI-UTC (seconds).
+    pub fn set_dtai(&mut self, dtai: f64) {
+        self.dtai = Some(dtai);
+    }
+
+    /// Set UT1-UTC (seconds).
+    pub fn set_dut1(&mut self, dut1: f64) {
+        self.dut1 = Some(dut1);
     }
 
     /// Whether to align in offset coordinate system.
@@ -1766,6 +1780,14 @@ impl Frame for SpecFrame {
         self.obs_alt
     }
 
+    fn dtai(&self) -> Option<f64> {
+        self.dtai
+    }
+
+    fn dut1(&self) -> Option<f64> {
+        self.dut1
+    }
+
     fn system_string(&self) -> Option<&str> {
         Some(self.system.as_str())
     }
@@ -2304,6 +2326,12 @@ impl Serializable for SpecFrame {
                 Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
+        if let Some(dtai) = self.dtai {
+            node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
+        }
+        if let Some(dut1) = self.dut1 {
+            node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
+        }
 
         // ActUnt: written whenever the ActiveUnit flag has been explicitly
         // set (TestActiveUnit, frame.c:14615), carrying its value (0 or 1);
@@ -2480,6 +2508,12 @@ impl Serializable for SpecFrame {
         }
         if node.get("ObsAlt").is_some() {
             sf.obs_alt = Some(node.get_double("ObsAlt", 0.0));
+        }
+        if node.get("Dtai").is_some() {
+            sf.dtai = Some(node.get_double("Dtai", 0.0));
+        }
+        if node.get("Dut1").is_some() {
+            sf.dut1 = Some(node.get_double("Dut1", 0.0));
         }
 
         // SoR (StdOfRest).

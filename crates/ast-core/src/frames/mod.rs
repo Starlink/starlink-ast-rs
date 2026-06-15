@@ -1115,12 +1115,12 @@ pub(crate) fn set_frame_obs(f: &mut dyn Frame, which: usize, v: f64) {
     fwd!(SkyFrame);
     fwd!(TimeFrame);
     if let Some(x) = f.as_any_mut().downcast_mut::<SpecFrame>() {
-        // SpecFrame has no Dtai setter.
         match which {
             0 => x.set_obs_lat(v),
             1 => x.set_obs_lon(v),
             2 => x.set_obs_alt(v),
-            _ => {}
+            3 => x.set_dtai(v),
+            _ => x.set_dut1(v),
         }
         return;
     }
@@ -1129,7 +1129,8 @@ pub(crate) fn set_frame_obs(f: &mut dyn Frame, which: usize, v: f64) {
             0 => x.set_obs_lat(v),
             1 => x.set_obs_lon(v),
             2 => x.set_obs_alt(v),
-            _ => {}
+            3 => x.set_dtai(v),
+            _ => x.set_dut1(v),
         }
         return;
     }
