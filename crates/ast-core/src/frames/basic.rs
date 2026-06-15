@@ -947,6 +947,24 @@ impl Serializable for BasicFrame {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Coordinate system description".to_string());
 
+        // --- Object-level attributes (before IsA Object) ---
+        // Ident: written active when set and non-empty (object.c:1681-1689,
+        // helpful = non-empty). A single-space Ident counts as set+non-empty.
+        if let Some(ref ident) = self.ident {
+            if !ident.is_empty() {
+                node.push_string(
+                    "Ident",
+                    ident,
+                    Some("Permanent Object identification string".to_string()),
+                );
+            }
+        }
+        // IsA Object marker, emitted only when an Object-level attribute was
+        // written (mirrors C astWriteIsA's items-written rule).
+        if self.ident.as_deref().is_some_and(|s| !s.is_empty()) {
+            node.push_isa("Object", Some("AST Object".to_string()));
+        }
+
         // Title (active if set, commented default otherwise).
         if let Some(ref title) = self.title {
             if !title.is_empty() {
@@ -1030,6 +1048,30 @@ impl Serializable for BasicFrame {
             }
         }
 
+        // Per-axis Bottom / Top aggregates (commented; helpful when the
+        // bound is finite). C `Frame::Dump` (frame.c:14524-14543) writes all
+        // Bot{n} then all Top{n}, each shown only when the bound is not the
+        // ±DBL_MAX default. The aggregates round-trip via the active
+        // Bottom/Top cards on the Axis sub-objects below.
+        for i in 0..self.naxes {
+            if let Some(bottom) = self.bottoms[i] {
+                node.push_unset(
+                    &format!("Bot{}", i + 1),
+                    NodeValue::Double(bottom),
+                    Some("Lowest legal axis value".to_string()),
+                );
+            }
+        }
+        for i in 0..self.naxes {
+            if let Some(top) = self.tops[i] {
+                node.push_unset(
+                    &format!("Top{}", i + 1),
+                    NodeValue::Double(top),
+                    Some("Highest legal axis value".to_string()),
+                );
+            }
+        }
+
         // ActUnt: written only when explicitly set, with its value
         // (frame.c:14614).
         if let Some(v) = self.act_unt {
@@ -1094,6 +1136,19 @@ impl Serializable for BasicFrame {
                     } else {
                         "Plot in reverse direction (hint)".to_string()
                     }),
+                );
+            }
+
+            // Top / Bottom axis range (active when set; Top before Bottom,
+            // axis.c:2960-2966).
+            if let Some(top) = self.tops[i] {
+                axis_node.push_double("Top", top, Some("Maximum legal axis value".to_string()));
+            }
+            if let Some(bottom) = self.bottoms[i] {
+                axis_node.push_double(
+                    "Bottom",
+                    bottom,
+                    Some("Minimum legal axis value".to_string()),
                 );
             }
 
@@ -1180,6 +1235,12 @@ impl Serializable for BasicFrame {
                 }
                 if axis_node.get("Dirn").is_some() {
                     builder.directions[i] = Some(axis_node.get_int("Dirn", 1) != 0);
+                }
+                if axis_node.get("Top").is_some() {
+                    builder = builder.top(i + 1, axis_node.get_double("Top", 0.0));
+                }
+                if axis_node.get("Bottom").is_some() {
+                    builder = builder.bottom(i + 1, axis_node.get_double("Bottom", 0.0));
                 }
             }
         }

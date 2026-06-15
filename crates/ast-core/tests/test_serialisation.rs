@@ -1306,11 +1306,6 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
         "DSBSpecFrame aggregate Lbl sideband suffix",
     ),
     // Bug 5 — BasicFrame Ident / IsA Object.
-    ("pixel-1d-head", "BasicFrame Ident/IsA Object"),
-    ("pixel-2d-head", "BasicFrame Ident/IsA Object"),
-    ("pixel-rotated-head", "BasicFrame Ident/IsA Object"),
-    ("pixel-shear-head", "BasicFrame Ident/IsA Object"),
-    ("unknown-spec-head", "BasicFrame Ident/IsA Object"),
     // SpecFrame velocity-axis Unit / UFreq emission (separate from the unit
     // comment guard); needs its own investigation.
     (
@@ -1318,8 +1313,6 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
         "SpecFrame velocity Unit/UFreq emission",
     ),
     // Bug 7 — BasicFrame axis Bottom/Top + aggregate Bot/Top.
-    ("polco-head", "BasicFrame Bottom/Top axis range"),
-    ("polco2-head", "BasicFrame Bottom/Top axis range"),
 ];
 
 /// Round-trip C-oracle FrameSet native-text dumps (`*.ast`) through
