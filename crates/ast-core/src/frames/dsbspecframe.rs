@@ -1086,6 +1086,17 @@ impl Serializable for DSBSpecFrame {
         node.class = "DSBSpecFrame".to_string();
         node.class_comment = Some("Dual sideband spectral axis".to_string());
 
+        // The aggregate Lbl1 carries the sideband suffix for a default label
+        // (DSBSpecFrame::GetLabel, dsbspecframe.c:688): the SpecFrame node
+        // emitted the bare system label ("Frequency"), so replace it with
+        // this frame's effective label ("Frequency (LSB)"). Stays commented.
+        if !self.spec.test_axis_label() {
+            node.replace_or_push(
+                "Lbl1",
+                NodeValue::Unset(Box::new(NodeValue::String(self.effective_label(1)))),
+            );
+        }
+
         // The Domain default for a DSBSpecFrame is "DSBSPECTRUM"
         // (dsbspecframe.c GetDomain), not the SpecFrame "SPECTRUM". When
         // the Domain is unset, replace the parent's commented "SPECTRUM"
@@ -1129,19 +1140,37 @@ impl Serializable for DSBSpecFrame {
             );
         }
 
-        // SideBn (only if explicitly set)
-        if let Some(sb) = self.sideband {
-            let comment = match sb {
-                SideBand::USB => "Represents upper sideband",
-                SideBand::LSB => "Represents lower sideband",
-                SideBand::LO => "Represents offset from LO",
-            };
+        // SideBn — active when explicitly set, else commented with the
+        // IF-sign-derived default (C dumps with helpful=1, dsbspecframe.c).
+        let sb = self.sideband();
+        let comment = match sb {
+            SideBand::USB => "Represents upper sideband",
+            SideBand::LSB => "Represents lower sideband",
+            SideBand::LO => "Represents offset from LO",
+        };
+        if self.sideband.is_some() {
             node.push_string("SideBn", sb.as_str(), Some(comment.to_string()));
+        } else {
+            node.push_unset(
+                "SideBn",
+                NodeValue::String(sb.as_str().to_string()),
+                Some(comment.to_string()),
+            );
         }
 
-        // AlSdBn (only if explicitly set to true)
-        if let Some(true) = self.align_sideband {
-            node.push_int("AlSdBn", 1, Some("Align sidebands?".to_string()));
+        // AlSdBn — active when explicitly set, else commented with the
+        // default (0). C dumps with helpful=1.
+        match self.align_sideband {
+            Some(v) => node.push_int(
+                "AlSdBn",
+                if v { 1 } else { 0 },
+                Some("Align sidebands?".to_string()),
+            ),
+            None => node.push_unset(
+                "AlSdBn",
+                NodeValue::Int(0),
+                Some("Align sidebands?".to_string()),
+            ),
         }
 
         Ok(node)

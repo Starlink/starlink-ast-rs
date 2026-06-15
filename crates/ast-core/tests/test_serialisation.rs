@@ -1270,7 +1270,7 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
     ),
     (
         "velo-vel-head",
-        "SpecFrame default Title + DSB sideband label",
+        "SpecFrame default Title/Label (VELO system)",
     ),
     (
         "vopt-wav-head",
@@ -1292,18 +1292,10 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
         "zopt-frq-head",
         "SpecFrame default Title rest-frequency clause",
     ),
-    // Bug 4 — DSBSpecFrame sideband suffix on aggregate Lbl.
+    // SpecFrame AWAV ("Wavelength in air") default Title/Label.
     (
         "awav-a2f-head",
-        "DSBSpecFrame aggregate Lbl sideband suffix",
-    ),
-    (
-        "class-spec-head",
-        "DSBSpecFrame aggregate Lbl sideband suffix",
-    ),
-    (
-        "class-spec-hel-head",
-        "DSBSpecFrame aggregate Lbl sideband suffix",
+        "SpecFrame default Title/Label (AWAV system)",
     ),
     // Bug 5 — BasicFrame Ident / IsA Object.
     // SpecFrame velocity-axis Unit / UFreq emission (separate from the unit
