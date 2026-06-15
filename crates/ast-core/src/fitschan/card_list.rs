@@ -1,6 +1,8 @@
 //! Ordered collection of FITS header cards with position tracking.
 
-use super::card::{FitsCard, FitsValue, check_fits_name};
+use std::cell::RefCell;
+
+use super::card::{Consumption, FitsCard, FitsValue, check_fits_name};
 use crate::error::AstResult;
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
@@ -11,6 +13,14 @@ use crate::error::AstResult;
 pub struct CardList {
     cards: Vec<FitsCard>,
     position: usize,
+    /// Keyword names read with `mark=1` during the current read pass. Filled
+    /// by the `*_marked` getters and `record_consumed`, drained by
+    /// `take_consumed_names`. Interior mutability lets the `&self` readers
+    /// record consumption without taking `&mut self`. Mirrors the C
+    /// `MarkCard` side effect of `GetValue(..., mark=1, ...)`.
+    // Read once the consumption-marking read path is wired in (a later phase).
+    #[allow(dead_code)]
+    consumed_names: RefCell<Vec<String>>,
 }
 
 impl CardList {
@@ -19,6 +29,7 @@ impl CardList {
         Self {
             cards: Vec::new(),
             position: 0,
+            consumed_names: RefCell::new(Vec::new()),
         }
     }
 
@@ -76,6 +87,7 @@ impl CardList {
             value: FitsValue::String(s.to_string()),
             comment: None,
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
 
         self.cards.push(astwarn(" "));
@@ -184,6 +196,125 @@ impl CardList {
         })
     }
 
+    // -----------------------------------------------------------------------
+    // Read-consumption tracking (C "USED card" mechanism)
+    //
+    // The `*_marked` getters mirror C `GetValue(..., mark=1, ...)`: a value
+    // read this way records its keyword so the originating card can later be
+    // flagged consumed (excluded from output). The plain getters above are
+    // the `mark=0` analogues — used for observation-detail keywords that must
+    // survive into the output even though they were read.
+    // -----------------------------------------------------------------------
+
+    /// Record a keyword as consumed by the current read pass.
+    #[allow(dead_code)]
+    pub(crate) fn record_consumed(&self, keyword: &str) {
+        self.consumed_names.borrow_mut().push(keyword.to_string());
+    }
+
+    /// `get_int`, recording the keyword as consumed when a card is found.
+    #[allow(dead_code)]
+    pub(crate) fn get_int_marked(&self, keyword: &str) -> Option<i64> {
+        let v = self.get_int(keyword);
+        if v.is_some() {
+            self.record_consumed(keyword);
+        }
+        v
+    }
+
+    /// `get_float`, recording the keyword as consumed when a card is found.
+    #[allow(dead_code)]
+    pub(crate) fn get_float_marked(&self, keyword: &str) -> Option<f64> {
+        let v = self.get_float(keyword);
+        if v.is_some() {
+            self.record_consumed(keyword);
+        }
+        v
+    }
+
+    /// `get_string`, recording the keyword as consumed when a card is found.
+    #[allow(dead_code)]
+    pub(crate) fn get_string_marked(&self, keyword: &str) -> Option<String> {
+        let v = self.get_string(keyword);
+        if v.is_some() {
+            self.record_consumed(keyword);
+        }
+        v
+    }
+
+    /// `find`, recording the keyword as consumed when a card is found.
+    #[allow(dead_code)]
+    pub(crate) fn find_marked(&self, keyword: &str) -> Option<&FitsCard> {
+        let found = self.find(keyword);
+        if found.is_some() {
+            self.record_consumed(keyword);
+        }
+        found
+    }
+
+    /// Drain and return the keyword names recorded as consumed this pass.
+    #[allow(dead_code)]
+    pub(crate) fn take_consumed_names(&self) -> Vec<String> {
+        std::mem::take(&mut self.consumed_names.borrow_mut())
+    }
+
+    /// Mark the first non-`Used`, non-protected card matching `keyword` as
+    /// `Provisional`, mirroring C `MarkCard` (fitschan.c:22987). A no-op when
+    /// no matching card exists — so SpecTrans-synthesised keywords (which have
+    /// no card in this list) are silently ignored, while genuine originals are
+    /// marked.
+    #[allow(dead_code)]
+    pub(crate) fn mark_card(&mut self, keyword: &str) {
+        if let Some(card) = self.cards.iter_mut().find(|c| {
+            c.keyword.eq_ignore_ascii_case(keyword)
+                && c.flags.consumption != Consumption::Used
+                && !c.flags.protected
+        }) {
+            card.flags.consumption = Consumption::Provisional;
+        }
+    }
+
+    /// Resolve provisional consumption after a read completes, mirroring C
+    /// `FixUsed` (fitschan.c:16392). On success (`promote`) provisional cards
+    /// become `Used`; otherwise they revert to `Free`. When `remove` is set
+    /// (NATIVE-encoding read), consumed cards are physically deleted instead.
+    #[allow(dead_code)]
+    pub(crate) fn fix_used(&mut self, promote: bool, remove: bool) {
+        if remove {
+            self.cards
+                .retain(|c| c.flags.consumption != Consumption::Provisional);
+        } else {
+            let target = if promote {
+                Consumption::Used
+            } else {
+                Consumption::Free
+            };
+            for c in &mut self.cards {
+                if c.flags.consumption == Consumption::Provisional {
+                    c.flags.consumption = target;
+                }
+            }
+        }
+        self.position = self.position.min(self.cards.len());
+    }
+
+    /// Mark the first card matching `keyword` as protected, exempting it from
+    /// consumption marking. Foundation for the public `astRetainFits`.
+    /// Returns `true` when a card was found.
+    #[allow(dead_code)]
+    pub(crate) fn set_protected(&mut self, keyword: &str) -> bool {
+        if let Some(card) = self
+            .cards
+            .iter_mut()
+            .find(|c| c.keyword.eq_ignore_ascii_case(keyword))
+        {
+            card.flags.protected = true;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Delete the first card matching keyword. Returns true if a card was deleted.
     pub fn delete(&mut self, keyword: &str) -> bool {
         if let Some(idx) = self
@@ -242,6 +373,7 @@ impl CardList {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
     }
@@ -257,6 +389,7 @@ impl CardList {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
     }
@@ -272,6 +405,7 @@ impl CardList {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
     }
@@ -844,6 +978,7 @@ mod tests {
             value: FitsValue::Int(3),
             comment: Some("Changed".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         list.put(new_card, true);
         let card = list.find("NAXIS").unwrap();
@@ -861,6 +996,7 @@ mod tests {
             value: FitsValue::Int(99),
             comment: None,
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         list.put(new_card, false);
         assert_eq!(list.len(), original_len + 1);

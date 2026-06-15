@@ -305,6 +305,7 @@ impl FitsChan {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
     }
@@ -323,6 +324,7 @@ impl FitsChan {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
     }
@@ -338,6 +340,7 @@ impl FitsChan {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
     }
@@ -353,6 +356,7 @@ impl FitsChan {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
     }
@@ -368,6 +372,7 @@ impl FitsChan {
                 Some(comment.to_string())
             },
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
     }
@@ -379,6 +384,7 @@ impl FitsChan {
             value: FitsValue::Comment(format!(" {comment}")),
             comment: None,
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
     }
@@ -556,6 +562,7 @@ impl FitsChan {
             value: FitsValue::Comment(enc_native::make_banner(prefix, middle, suffix)),
             comment: None,
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
 
         let mut block: Vec<FitsCard> = Vec::new();
@@ -568,6 +575,7 @@ impl FitsChan {
                 value: FitsValue::Comment(String::new()),
                 comment: None,
                 used: false,
+                flags: crate::fitschan::card::CardFlags::default(),
             });
             block.push(banner(
                 "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++",

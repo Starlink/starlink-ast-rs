@@ -590,6 +590,7 @@ fn write_string_value(
                 value: FitsValue::Continue(quoted),
                 comment: None,
                 used: false,
+                flags: crate::fitschan::card::CardFlags::default(),
             });
         }
         first = false;
@@ -665,6 +666,7 @@ fn push_string_card_raw(
             None
         },
         used: false,
+        flags: crate::fitschan::card::CardFlags::default(),
     });
 }
 
@@ -684,6 +686,7 @@ fn push_card(
             None
         },
         used: false,
+        flags: crate::fitschan::card::CardFlags::default(),
     });
 }
 

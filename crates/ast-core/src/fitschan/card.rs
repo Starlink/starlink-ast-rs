@@ -122,6 +122,43 @@ pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
     lines
 }
 
+/// Consumption state of a card during a read, mirroring the C library's
+/// `USED` / `PROVISIONALLY_USED` card flags (fitschan.c:1485-1496).
+///
+/// A card consumed in building the object returned by `astRead` is treated as
+/// if it no longer exists — it is not re-read, not found by public searches,
+/// and not written out — but is retained in the list to position newly written
+/// cards. Consumption is provisional during a read attempt and promoted to
+/// definite on success (or cleared on failure).
+// Variants other than `Free` are constructed once the read path wires in
+// consumption marking (a later phase); allow them to be unused for now.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum Consumption {
+    /// Not consumed.
+    #[default]
+    Free,
+    /// Candidate for consumption by the in-progress read.
+    Provisional,
+    /// Consumed by a completed read; excluded from output.
+    Used,
+}
+
+/// Per-card read-tracking flags, mirroring the C library's card flag bitmask
+/// (fitschan.c:1485-1511). The values are internal only — never serialised and
+/// never crossing the CFFI boundary — so they need not match C's integers.
+///
+/// `consumption` and `protected` are orthogonal: a `Used` card may also be
+/// `protected`. A protected card is exempt from being marked consumed (the
+/// foundation for the public `astRetainFits` operation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct CardFlags {
+    /// Consumption state for the current/last read.
+    pub consumption: Consumption,
+    /// Set via `astRetainFits`; exempts the card from consumption marking.
+    pub protected: bool,
+}
+
 /// A single FITS header card (keyword + value + comment).
 #[derive(Debug, Clone)]
 pub struct FitsCard {
@@ -131,9 +168,15 @@ pub struct FitsCard {
     pub value: FitsValue,
     /// Comment string (text after / separator).
     pub comment: Option<String>,
-    /// Whether this card has been consumed by a read operation.
+    /// Write-path marker: set when the encoder touches this card during a
+    /// write pass (reset by `mark_all_unused`, swept by `sweep_unused_wcs`).
+    /// Distinct from [`CardFlags`] read-consumption tracking.
     #[allow(dead_code)]
     pub(crate) used: bool,
+    /// Read-consumption / protection flags (see [`CardFlags`]).
+    // Read once the consumption-marking read path lands (a later phase).
+    #[allow(dead_code)]
+    pub(crate) flags: CardFlags,
 }
 
 impl FitsCard {
@@ -178,6 +221,7 @@ impl FitsCard {
                 value: FitsValue::Comment(text.to_string()),
                 comment: None,
                 used: false,
+                flags: crate::fitschan::card::CardFlags::default(),
             });
         }
 
@@ -218,6 +262,7 @@ impl FitsCard {
                 value: FitsValue::Undef,
                 comment,
                 used: false,
+                flags: crate::fitschan::card::CardFlags::default(),
             });
         }
 
@@ -230,6 +275,7 @@ impl FitsCard {
                 value: FitsValue::Logical(val_trimmed == "T"),
                 comment,
                 used: false,
+                flags: crate::fitschan::card::CardFlags::default(),
             });
         }
 
@@ -242,6 +288,7 @@ impl FitsCard {
                     value: parsed,
                     comment,
                     used: false,
+                    flags: crate::fitschan::card::CardFlags::default(),
                 });
             }
         }
@@ -261,6 +308,7 @@ impl FitsCard {
                     value: cval,
                     comment,
                     used: false,
+                    flags: crate::fitschan::card::CardFlags::default(),
                 });
             }
             // Try single integer (64-bit).
@@ -271,6 +319,7 @@ impl FitsCard {
                     value: FitsValue::Int(ival),
                     comment,
                     used: false,
+                    flags: crate::fitschan::card::CardFlags::default(),
                 });
             }
         } else {
@@ -282,6 +331,7 @@ impl FitsCard {
                     value: cval,
                     comment,
                     used: false,
+                    flags: crate::fitschan::card::CardFlags::default(),
                 });
             }
             // Try single float.
@@ -292,6 +342,7 @@ impl FitsCard {
                     value: FitsValue::Float(fval),
                     comment,
                     used: false,
+                    flags: crate::fitschan::card::CardFlags::default(),
                 });
             }
         }
@@ -530,6 +581,7 @@ fn parse_string_value(
         value,
         comment,
         used: false,
+        flags: crate::fitschan::card::CardFlags::default(),
     })
 }
 
@@ -913,6 +965,7 @@ mod tests {
             value: FitsValue::Int(2),
             comment: Some("Number of axes".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -928,6 +981,7 @@ mod tests {
             value: FitsValue::String("RA---TAN".into()),
             comment: Some("Axis type".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -942,6 +996,7 @@ mod tests {
             value: FitsValue::Logical(true),
             comment: Some("Fits standard".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -956,6 +1011,7 @@ mod tests {
             value: FitsValue::Float(266.416666666667),
             comment: Some("Reference value".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -969,6 +1025,7 @@ mod tests {
             value: FitsValue::Undef,
             comment: Some("No value".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -983,6 +1040,7 @@ mod tests {
             value: FitsValue::Comment(" This is a test".to_string()),
             comment: None,
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -1013,6 +1071,7 @@ mod tests {
             value: FitsValue::String("It's OK".into()),
             comment: Some("Quoted".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -1027,6 +1086,7 @@ mod tests {
             value: FitsValue::Logical(true),
             comment: Some("Standard".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         let reparsed = FitsCard::parse(&formatted).unwrap();
@@ -1040,6 +1100,7 @@ mod tests {
             value: FitsValue::ComplexFloat(1.5, -2.5),
             comment: None,
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
@@ -1055,6 +1116,7 @@ mod tests {
             value: FitsValue::Continue("long string value".into()),
             comment: Some("continuation".to_string()),
             used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
         };
         let formatted = card.format();
         assert_eq!(formatted.len(), 80);
