@@ -279,6 +279,27 @@ fn frame_is_cartesian(f: &dyn Frame) -> bool {
     false
 }
 
+/// Number of axes described by a serialized frame node.
+///
+/// A `CmpFrame` strips its own (commented) `Naxes` card before embedding a
+/// child, so a nested compound frame's count must be derived by summing its
+/// `FrameA`/`FrameB` components. Non-compound frames carry a readable
+/// `Naxes` (active or commented, hence `get_int_any`); as a last resort the
+/// count falls back to the number of `Ax{n}` axis sub-objects present.
+fn node_naxes(node: &Node) -> usize {
+    if node.class == "CmpFrame" {
+        let a = node.get_object("FrameA").map(node_naxes).unwrap_or(0);
+        let b = node.get_object("FrameB").map(node_naxes).unwrap_or(0);
+        return a + b;
+    }
+    if let Some(n) = node.get_int_any("Naxes") {
+        return n as usize;
+    }
+    (1..)
+        .take_while(|i| node.get_object(&format!("Ax{i}")).is_some())
+        .count()
+}
+
 impl Frame for CmpFrame {
     fn naxes(&self) -> usize {
         self.frame1.naxes() + self.frame2.naxes()
@@ -996,8 +1017,14 @@ impl Serializable for CmpFrame {
         // primary Frame containing that axis (cmpframe.c:8396+);
         // we materialise the same effect by injecting per-axis
         // overrides into the child node before parsing.
-        let n1 = node_a.get_int("Naxes", 0) as usize;
-        let n2 = node_b.get_int("Naxes", 0) as usize;
+        // Axis count of a child node. A nested CmpFrame strips its own
+        // (commented) `Naxes` card before being embedded as FrameA/FrameB,
+        // so its count must be derived structurally by summing its
+        // components; otherwise it would read as 0 and the outer
+        // permutation would be mis-sized and dropped. Non-compound frames
+        // carry a readable `Naxes` (active or commented).
+        let n1 = node_naxes(node_a);
+        let n2 = node_naxes(node_b);
         let naxes = n1 + n2;
         let mut node_a = node_a.clone();
         let mut node_b = node_b.clone();

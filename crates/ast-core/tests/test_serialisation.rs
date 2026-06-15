@@ -1225,15 +1225,10 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// `tools/oracle_fixtures/gen_frameset_fixtures.sh` (so they stay
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
-const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // Doubly-nested CmpFrame (CmpFrame(CmpFrame, Spec)): the outer
-    // CmpFrame's Axp{n} permutation is not reconstructed on read, so its
-    // Axp cards are dropped on the second dump.
-    (
-        "axes-swap",
-        "nested CmpFrame Axp{n} permutation not round-tripped",
-    ),
-];
+/// All generated frameset fixtures are byte-exact on round-trip. Any case
+/// that regresses should be listed here with a one-line reason rather than
+/// silently dropped (the generator still produces it).
+const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Round-trip C-oracle FrameSet native-text dumps (`*.ast`) through
 /// `from_native_string` → `to_native_string` and assert byte-exact

@@ -191,10 +191,19 @@ fn write_object_with_options(
     }
     buf.push('\n');
 
-    // Items.
+    // Items. C's `astWriteIsA` (channel.c:4955) writes an `IsA` marker
+    // only when at least one item has been written since the previous
+    // `Begin`/`IsA` (or when Full > 0). Track that here so a marker whose
+    // preceding class-attribute block is entirely commented-out/skipped is
+    // suppressed — this matters for Frames nested inside a CmpFrame, where
+    // the per-axis attributes are all unset at full = -1.
+    let mut items_written = false;
     for item in &node.items {
         // IsA marker.
         if item.key == "IsA" {
+            if !items_written && options.full <= 0 {
+                continue;
+            }
             if let NodeValue::String(ref class) = item.value {
                 buf.push_str(&begin_indent);
                 buf.push_str("IsA ");
@@ -207,6 +216,8 @@ fn write_object_with_options(
                 }
                 buf.push('\n');
             }
+            // Reset the per-class counter, matching C's WriteIsA.
+            items_written = false;
             continue;
         }
 
@@ -228,6 +239,11 @@ fn write_object_with_options(
                     }
                 }
                 buf.push('\n');
+                // A commented value that is actually emitted (full >= 0)
+                // still goes through C's OutputTextItem and increments
+                // items_written, so it counts toward the IsA rule. At
+                // full = -1 it is skipped above and does not count.
+                items_written = true;
             }
 
             // Nested object.
@@ -243,6 +259,7 @@ fn write_object_with_options(
                 }
                 buf.push('\n');
                 write_object_with_options(buf, child, base_indent + 2 * indent, options);
+                items_written = true;
             }
 
             // Scalar attribute.
@@ -258,6 +275,7 @@ fn write_object_with_options(
                     }
                 }
                 buf.push('\n');
+                items_written = true;
             }
         }
     }
