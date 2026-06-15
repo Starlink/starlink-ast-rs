@@ -662,11 +662,12 @@ fn build_iwc_to_sky_mapping(
         rotation
             .transform(&crate::coords::PointSet::from_rows([[phi0, theta0]]), true)
             .ok()
-            // Normalise the longitude into (−π, π], matching C's stored
-            // SkyRef convention: the rotation can return −π for a 180°
-            // reference (→ +π) or a value above π for galactic frames
-            // (→ negative). drange = eraAnpm.
-            .map(|p| (crate::pal::drange(p.point(0)[0]), p.point(0)[1]))
+            // Take the rotation's longitude verbatim — C `GetFiducialWCS`
+            // stores `*reflon` raw (fitschan.c:36032), with no range
+            // reduction, so a galactic frame keeps e.g. 185° rather than
+            // wrapping to −175°. The signed-zero canonicalisation in
+            // pal::dcc2s already aligns the ±π branch with C.
+            .map(|p| (p.point(0)[0], p.point(0)[1]))
             .filter(|&(lon, lat)| {
                 lon != crate::constants::BAD_VALUE && lat != crate::constants::BAD_VALUE
             })
