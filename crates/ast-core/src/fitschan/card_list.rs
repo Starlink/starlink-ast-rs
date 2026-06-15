@@ -315,6 +315,19 @@ impl CardList {
         }
     }
 
+    /// Record `keyword` as consumed, then delete the first card matching it.
+    ///
+    /// Used by SpecTrans when it translates a non-standard original keyword
+    /// into a canonical form: the original is removed from the working `trans`
+    /// list and recorded so it is later marked consumed on the source FitsChan
+    /// (and thus excluded from output), mirroring C `SpecTrans`'s `MarkCard`
+    /// on each translated original.
+    #[allow(dead_code)]
+    pub(crate) fn delete_consumed(&mut self, keyword: &str) -> bool {
+        self.record_consumed(keyword);
+        self.delete(keyword)
+    }
+
     /// Delete the first card matching keyword. Returns true if a card was deleted.
     pub fn delete(&mut self, keyword: &str) -> bool {
         if let Some(idx) = self

@@ -186,7 +186,7 @@ fn translate_cdjjjiii(cards: &mut CardList) {
             let Some(value) = cards.get_float(&from) else {
                 continue;
             };
-            cards.delete(&from);
+            cards.delete_consumed(&from);
             cards.set_float(&format!("PC{j}_{i}"), value, "PC matrix element");
             emitted_any = true;
         }
@@ -449,7 +449,7 @@ fn translate_sao_co(cards: &mut CardList) {
     // Mark all CO cards consumed.
     for i in 0..2 {
         for m in 1..=NC {
-            cards.delete(&format!("CO{}_{}", i + 1, m));
+            cards.delete_consumed(&format!("CO{}_{}", i + 1, m));
         }
     }
 
@@ -460,7 +460,7 @@ fn translate_sao_co(cards: &mut CardList) {
         "CD1_1", "CD1_2", "CD2_1", "CD2_2", "PC1_1", "PC1_2", "PC2_1", "PC2_2", "CDELT1", "CDELT2",
         "CROTA1", "CROTA2",
     ] {
-        cards.delete(key);
+        cards.delete_consumed(key);
     }
     cards.set_float("PC1_1", 1.0, "PC matrix element");
     cards.set_float("PC2_2", 1.0, "PC matrix element");
@@ -541,7 +541,7 @@ fn translate_qv_to_pv(cards: &mut CardList) {
         for (from, to) in pairs {
             // Don't overwrite an existing PV card.
             if cards.find(&to).is_some() {
-                cards.delete(&from);
+                cards.delete_consumed(&from);
                 continue;
             }
             if let Some(value) = cards.get_float(&from) {
@@ -549,7 +549,7 @@ fn translate_qv_to_pv(cards: &mut CardList) {
                     .find(&from)
                     .and_then(|c| c.comment.clone())
                     .unwrap_or_default();
-                cards.delete(&from);
+                cards.delete_consumed(&from);
                 cards.set_float(&to, value, &comment);
             }
         }
@@ -1017,7 +1017,7 @@ fn translate_restfreq(cards: &mut CardList) {
         } else {
             (value, comment)
         };
-        cards.delete(&from);
+        cards.delete_consumed(&from);
         if cards.find(&to).is_none() {
             cards.set_float(&to, scaled, &new_comment);
         }
@@ -1298,7 +1298,7 @@ fn translate_iraf_mini_wcs_strip(cards: &mut CardList) {
         }
     }
     for kw in to_remove {
-        cards.delete(&kw);
+        cards.delete_consumed(&kw);
     }
 }
 
@@ -1441,7 +1441,7 @@ fn translate_epoch_equinox(cards: &mut CardList) {
             .find("EPOCH")
             .and_then(|c| c.comment.clone())
             .unwrap_or_else(|| "Reference equinox".to_string());
-        cards.delete("EPOCH");
+        cards.delete_consumed("EPOCH");
         let value = if epoch == 0.0 { 1950.0 } else { epoch };
         if cards.find("EQUINOX").is_none() {
             cards.set_float("EQUINOX", value, &comment);
@@ -1465,6 +1465,9 @@ fn translate_epoch_equinox(cards: &mut CardList) {
                     .find("EQUINOX")
                     .and_then(|c| c.comment.clone())
                     .unwrap_or_else(|| "Reference equinox".to_string());
+                // In-place value normalisation of the canonical EQUINOX
+                // keyword — not a translation away, so it is NOT consumed
+                // (the EQUINOX card survives into the output).
                 cards.delete("EQUINOX");
                 cards.set_float("EQUINOX", julian, &comment);
             }
@@ -1477,6 +1480,7 @@ fn translate_epoch_equinox(cards: &mut CardList) {
             .find("EQUINOX")
             .and_then(|c| c.comment.clone())
             .unwrap_or_else(|| "Reference equinox".to_string());
+        // In-place value normalisation; EQUINOX is not consumed.
         cards.delete("EQUINOX");
         cards.set_float("EQUINOX", 1950.0, &comment);
     }
@@ -1531,7 +1535,7 @@ fn translate_cnxxx(cards: &mut CardList) {
         for j in 1..=naxis_m {
             let cdelt_key = format!("C{m}ELT{j}");
             let mut cdeltj = cards.get_float(&cdelt_key).unwrap_or(0.0);
-            cards.delete(&cdelt_key);
+            cards.delete_consumed(&cdelt_key);
             if cdeltj == 0.0 {
                 // Fill in from CRVAL{j}{S} (already translated above).
                 let crval_alt = cards.get_float(&format!("CRVAL{j}{alt}")).unwrap_or(0.0);
@@ -1565,7 +1569,7 @@ fn translate_cnxxx(cards: &mut CardList) {
     // alt-axis CDELT branch). C marks them used; we delete.
     for j in 1..=9 {
         for i in 1..=9 {
-            cards.delete(&format!("PC{j:03}{i:03}"));
+            cards.delete_consumed(&format!("PC{j:03}{i:03}"));
         }
     }
 }
@@ -1613,7 +1617,7 @@ fn translate_projp(cards: &mut CardList) {
     if !use_projp {
         // Drop the PROJP cards anyway (they've been "used").
         for i in projp_indices {
-            cards.delete(&format!("PROJP{i}"));
+            cards.delete_consumed(&format!("PROJP{i}"));
         }
         return;
     }
@@ -1626,7 +1630,7 @@ fn translate_projp(cards: &mut CardList) {
             .find(&from)
             .and_then(|c| c.comment.clone())
             .unwrap_or_default();
-        cards.delete(&from);
+        cards.delete_consumed(&from);
         cards.set_float(&format!("PV{axlat}_{i}"), value, &comment);
     }
 }
@@ -1680,7 +1684,7 @@ fn translate_crota(cards: &mut CardList) {
     }
     // Drop all CROTA cards so they don't reach the downstream reader.
     for j in 1..=9 {
-        cards.delete(&format!("CROTA{j}"));
+        cards.delete_consumed(&format!("CROTA{j}"));
     }
 }
 
@@ -1699,7 +1703,7 @@ fn translate_crota(cards: &mut CardList) {
 fn rename_keyword(cards: &mut CardList, from: &str, to: &str) -> bool {
     if cards.find(to).is_some() {
         // Destination present — discard the source.
-        cards.delete(from);
+        cards.delete_consumed(from);
         return false;
     }
     let comment = cards
@@ -1707,12 +1711,12 @@ fn rename_keyword(cards: &mut CardList, from: &str, to: &str) -> bool {
         .and_then(|c| c.comment.clone())
         .unwrap_or_default();
     if let Some(value) = cards.get_float(from) {
-        cards.delete(from);
+        cards.delete_consumed(from);
         cards.set_float(to, value, &comment);
         return true;
     }
     if let Some(value) = cards.get_string(from) {
-        cards.delete(from);
+        cards.delete_consumed(from);
         cards.set_string(to, &value, &comment);
         return true;
     }
