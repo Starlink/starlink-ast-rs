@@ -717,19 +717,27 @@ impl Channel for FitsChan {
                 let trans = spec_trans::spec_trans(&self.cards, enc);
                 let store = enc_aips::read_from_cards(&trans)?;
                 let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
+                self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass);
                 let store = enc_class::read_from_cards(&trans)?;
                 let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
+                self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::Dss => {
                 // Dss is a separate format; SpecTrans's translations
-                // are mostly inapplicable. Keep the existing reader.
+                // are mostly inapplicable. Keep the existing reader. The
+                // reader records consumed names directly on `self.cards`
+                // (no SpecTrans copy), so promote them in place.
                 let store = enc_dss::read_from_cards(&self.cards)?;
                 let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
+                for name in self.cards.take_consumed_names() {
+                    self.cards.mark_card(&name);
+                }
+                self.cards.fix_used(true, false);
                 Ok(Some(obj))
             }
         }

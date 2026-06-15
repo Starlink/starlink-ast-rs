@@ -33,9 +33,11 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// PLTDECD/M/S, PLTDECSN. Optional (default 0.0): CNPIX1, CNPIX2. The AMDX/
 /// AMDY polynomial coefficients are optional and default to "absent".
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
-    // Optional corner-pixel keywords, default 0.0.
-    let cnpix1 = cards.get_float("CNPIX1").unwrap_or(0.0);
-    let cnpix2 = cards.get_float("CNPIX2").unwrap_or(0.0);
+    // Optional corner-pixel keywords, default 0.0. All DSS plate-solution
+    // keywords are consumed by the read (mark=1) — they are excluded from any
+    // subsequent output, mirroring C WcsFcRead.
+    let cnpix1 = cards.get_float_marked("CNPIX1").unwrap_or(0.0);
+    let cnpix2 = cards.get_float_marked("CNPIX2").unwrap_or(0.0);
 
     // Required keywords.
     let ppo3 = req(cards, "PPO3")?;
@@ -50,7 +52,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     let pltdecs = req(cards, "PLTDECS")?;
 
     // Sign of the declination from the first non-blank char of PLTDECSN.
-    let sign = match cards.get_string("PLTDECSN") {
+    let sign = match cards.get_string_marked("PLTDECSN") {
         Some(s) => {
             let t = s.trim_start();
             if t.starts_with('-') { -1.0 } else { 1.0 }
@@ -68,8 +70,8 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     let mut amdx = [None; 20];
     let mut amdy = [None; 20];
     for i in 0..20 {
-        amdx[i] = cards.get_float(&format!("AMDX{}", i + 1));
-        amdy[i] = cards.get_float(&format!("AMDY{}", i + 1));
+        amdx[i] = cards.get_float_marked(&format!("AMDX{}", i + 1));
+        amdy[i] = cards.get_float_marked(&format!("AMDY{}", i + 1));
     }
 
     let mut store = FitsStore::new(2);
@@ -117,7 +119,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
 /// Fetch a required float keyword, or a `Bdfts` "not found" error.
 fn req(cards: &CardList, key: &str) -> AstResult<f64> {
-    cards.get_float(key).ok_or_else(|| {
+    cards.get_float_marked(key).ok_or_else(|| {
         AstError::new(
             ErrorCode::Bdfts,
             format!("DSS encoding: {key} keyword not found"),

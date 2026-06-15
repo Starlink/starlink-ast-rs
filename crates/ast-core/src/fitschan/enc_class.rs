@@ -58,31 +58,31 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
         // CRPIX
         let key = format!("CRPIX{axis_num}");
-        store.crpix[i] = cards.get_float(&key);
+        store.crpix[i] = cards.get_float_marked(&key);
 
         // CRVAL
         let key = format!("CRVAL{axis_num}");
-        store.crval[i] = cards.get_float(&key);
+        store.crval[i] = cards.get_float_marked(&key);
 
         // CDELT
         let key = format!("CDELT{axis_num}");
-        store.cdelt[i] = cards.get_float(&key);
+        store.cdelt[i] = cards.get_float_marked(&key);
 
         // CTYPE — translate CLASS-specific projection codes
         let key = format!("CTYPE{axis_num}");
-        if let Some(ctype_raw) = cards.get_string(&key) {
+        if let Some(ctype_raw) = cards.get_string_marked(&key) {
             store.ctype[i] = Some(translate_class_projection_read(&ctype_raw));
         }
 
         // CUNIT
         let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = cards.get_string(&key);
+        store.cunit[i] = cards.get_string_marked(&key);
     }
 
     // Read RESTFREQ (or RESTFRQ) — required for offset correction.
     let restfreq = cards
-        .get_float("RESTFREQ")
-        .or_else(|| cards.get_float("RESTFRQ"));
+        .get_float_marked("RESTFREQ")
+        .or_else(|| cards.get_float_marked("RESTFRQ"));
     store.restfrq = restfreq;
 
     // CRVAL adjustment, SPECSYS, SSYSSRC, and ZSOURCE are all
@@ -90,16 +90,16 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // before this reader runs. We just pass through the cards as
     // standard FITS-WCS at this point. SPECSYS/SSYSSRC/etc. are
     // picked up by the generic FITS-WCS keyword reader downstream.
-    store.specsys = cards.get_string("SPECSYS");
-    store.ssyssrc = cards.get_string("SSYSSRC");
-    store.zsource = cards.get_float("ZSOURCE");
+    store.specsys = cards.get_string_marked("SPECSYS");
+    store.ssyssrc = cards.get_string_marked("SSYSSRC");
+    store.zsource = cards.get_float_marked("ZSOURCE");
 
     // IMAGFREQ — the image-sideband frequency (Hz). When present, the
     // spectral axis is read as a DSBSpecFrame rather than a plain
     // SpecFrame (C `WcsSpectral`, fitschan.c:39498-39503). The CLASS
     // translator (`spec_trans::translate_class`) leaves IMAGFREQ in the
     // card list as a standard keyword, so it is read directly here.
-    store.imagfreq = cards.get_float("IMAGFREQ");
+    store.imagfreq = cards.get_float_marked("IMAGFREQ");
 
     // OBSGEO-X/Y/Z — observatory geocentric position (metres). These feed
     // the SpecFrame's ObsLon/ObsLat/ObsAlt, which the topocentric Doppler
@@ -112,19 +112,19 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
     // RADESYS / RADECSYS
     store.radesys = cards
-        .get_string("RADESYS")
-        .or_else(|| cards.get_string("RADECSYS"));
+        .get_string_marked("RADESYS")
+        .or_else(|| cards.get_string_marked("RADECSYS"));
 
     // EQUINOX
-    store.equinox = cards.get_float("EQUINOX");
+    store.equinox = cards.get_float_marked("EQUINOX");
 
     // Epoch of observation: TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
     // DATE-AVG priority chain.
     super::wcs_keywords::read_epoch_into_store(cards, &mut store);
 
     // LONPOLE, LATPOLE
-    store.lonpole = cards.get_float("LONPOLE");
-    store.latpole = cards.get_float("LATPOLE");
+    store.lonpole = cards.get_float_marked("LONPOLE");
+    store.latpole = cards.get_float_marked("LATPOLE");
 
     Ok(store)
 }

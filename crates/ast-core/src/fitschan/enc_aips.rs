@@ -64,25 +64,27 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     let mut store = FitsStore::new(naxis);
     store.wcsaxes = wcsaxes;
 
-    // Extract per-axis keywords.
+    // Extract per-axis keywords. These WCS-description keywords are consumed
+    // by the read (mark=1, via the `*_marked` getters) so they are excluded
+    // from any subsequent output, mirroring C WcsFcRead.
     for i in 0..naxis {
         let axis_num = i + 1; // FITS is 1-based
 
         // CRPIX
         let key = format!("CRPIX{axis_num}");
-        store.crpix[i] = cards.get_float(&key);
+        store.crpix[i] = cards.get_float_marked(&key);
 
         // CRVAL
         let key = format!("CRVAL{axis_num}");
-        store.crval[i] = cards.get_float(&key);
+        store.crval[i] = cards.get_float_marked(&key);
 
         // CDELT
         let key = format!("CDELT{axis_num}");
-        store.cdelt[i] = cards.get_float(&key);
+        store.cdelt[i] = cards.get_float_marked(&key);
 
         // CTYPE — translate AIPS spectral types and extract SPECSYS
         let key = format!("CTYPE{axis_num}");
-        if let Some(ctype_raw) = cards.get_string(&key) {
+        if let Some(ctype_raw) = cards.get_string_marked(&key) {
             if is_aips_spectral(&ctype_raw) {
                 let (standard_ctype, specsys) = translate_aips_spectral_read(&ctype_raw);
                 store.ctype[i] = Some(standard_ctype);
@@ -97,21 +99,21 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
         // CUNIT
         let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = cards.get_string(&key);
+        store.cunit[i] = cards.get_string_marked(&key);
 
         // CDi_j matrix (for AIPS++ headers)
         for j in 0..naxis {
             let col_num = j + 1;
             let key = format!("CD{axis_num}_{col_num}");
-            store.cd[i][j] = cards.get_float(&key);
+            store.cd[i][j] = cards.get_float_marked(&key);
         }
     }
 
     // CROTA → PC rotation matrix.
     // Prefer CROTA2, fall back to CROTA1.
     let crota = cards
-        .get_float("CROTA2")
-        .or_else(|| cards.get_float("CROTA1"));
+        .get_float_marked("CROTA2")
+        .or_else(|| cards.get_float_marked("CROTA1"));
     if let Some(angle_deg) = crota {
         let angle_rad = angle_deg.to_radians();
         let cos_a = angle_rad.cos();
@@ -126,8 +128,8 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     }
 
     // EPOCH → equinox + RADESYS via IAU 1984 rule
-    let epoch = cards.get_float("EPOCH");
-    let equinox_direct = cards.get_float("EQUINOX");
+    let epoch = cards.get_float_marked("EPOCH");
+    let equinox_direct = cards.get_float_marked("EQUINOX");
 
     // Prefer EQUINOX if present (AIPS++ style), otherwise use EPOCH
     if let Some(eq) = equinox_direct {
@@ -140,8 +142,8 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
     // RADESYS/RADECSYS if present (overrides IAU rule)
     store.radesys = cards
-        .get_string("RADESYS")
-        .or_else(|| cards.get_string("RADECSYS"));
+        .get_string_marked("RADESYS")
+        .or_else(|| cards.get_string_marked("RADECSYS"));
 
     // If RADESYS not explicitly set, apply IAU 1984 rule based on equinox
     if store.radesys.is_none() {
@@ -155,20 +157,20 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     }
 
     // LONPOLE, LATPOLE (AIPS++ may have these)
-    store.lonpole = cards.get_float("LONPOLE");
-    store.latpole = cards.get_float("LATPOLE");
+    store.lonpole = cards.get_float_marked("LONPOLE");
+    store.latpole = cards.get_float_marked("LATPOLE");
 
     // Spectral keywords (explicit SPECSYS overrides the one derived from CTYPE)
-    if let Some(specsys) = cards.get_string("SPECSYS") {
+    if let Some(specsys) = cards.get_string_marked("SPECSYS") {
         store.specsys = Some(specsys);
     }
     store.restfrq = cards
-        .get_float("RESTFRQ")
-        .or_else(|| cards.get_float("RESTFREQ"));
-    store.restwav = cards.get_float("RESTWAV");
+        .get_float_marked("RESTFRQ")
+        .or_else(|| cards.get_float_marked("RESTFREQ"));
+    store.restwav = cards.get_float_marked("RESTWAV");
 
-    // Epoch of observation: TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
-    // DATE-AVG priority chain.
+    // Epoch of observation (mark=0): TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
+    // DATE-AVG priority chain. Not consumed — survives into output.
     super::wcs_keywords::read_epoch_into_store(cards, &mut store);
 
     // PV parameters (AIPS++: PVi_m, also legacy PROJP{m} on the latitude
@@ -177,7 +179,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         let axis_num = i + 1;
         for m in 0..store.pv[i].len() {
             let key = format!("PV{axis_num}_{m}");
-            store.pv[i][m] = cards.get_float(&key);
+            store.pv[i][m] = cards.get_float_marked(&key);
         }
     }
 
