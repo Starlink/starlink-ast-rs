@@ -1046,13 +1046,14 @@ impl Serializable for CmpFrame {
         for prefix in ["Lbl", "Uni", "Sym", "Fmt", "Dir"] {
             for i in 1..=naxes {
                 let cmp_key = format!("{prefix}{i}");
-                // Forward both set and commented (default) values: the
-                // CmpFrame's `to_node` emits these as `push_unset`, but
-                // when the underlying child has no representation of
-                // this attribute (e.g. a SpecFrame inside a DSBSpecFrame
-                // that lacks a Unit field), the only place we can find
-                // its value on read is on the CmpFrame itself.
-                let Some(value) = node.get_any(&cmp_key).cloned() else {
+                // Forward both set and commented (default) values, but
+                // preserve the `Unset` wrapper (via get_raw, not get_any) so
+                // a commented aggregate does not become an active value on the
+                // child — otherwise the child would treat a display default
+                // (e.g. a SpecFrame's Uni for an unset system unit) as an
+                // explicitly set attribute. The child's own default applies
+                // when the forwarded value stays unset.
+                let Some(value) = node.get_raw(&cmp_key).cloned() else {
                     continue;
                 };
                 let (child, local_ax) = if i <= n1 {

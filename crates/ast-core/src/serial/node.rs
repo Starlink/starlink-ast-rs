@@ -166,6 +166,19 @@ impl Node {
         None
     }
 
+    /// Look up the first item's raw value with the given key, preserving the
+    /// `Unset(inner)` wrapper (unlike [`Node::get_any`], which unwraps it).
+    /// Use when forwarding a value to another node so its set/unset status is
+    /// not silently promoted to "set".
+    pub fn get_raw(&self, key: &str) -> Option<&NodeValue> {
+        for item in &self.items {
+            if item.key.eq_ignore_ascii_case(key) {
+                return Some(&item.value);
+            }
+        }
+        None
+    }
+
     /// Look up a string attribute, returning it whether set or unset.
     pub fn get_string_any(&self, key: &str) -> Option<&str> {
         match self.get_any(key) {

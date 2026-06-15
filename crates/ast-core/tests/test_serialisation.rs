@@ -1227,20 +1227,8 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// remaining serialization gap is visible and tracked.
 /// Frameset fixtures not yet byte-exact on round-trip, each with a one-line
 /// reason (the generator still produces them). Tracked explicitly rather
-/// than silently dropped; the goal is to empty this list.
-const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // Bug 2 — SkyFrame default Title/Label for AzEl/Unknown/equinox/GAPPT.
-    // Bug 3 — SpecFrame default Title rest-frequency / SoR clause.
-    // SpecFrame AWAV ("Wavelength in air") default Title/Label.
-    // Bug 5 — BasicFrame Ident / IsA Object.
-    // SpecFrame velocity-axis Unit / UFreq emission (separate from the unit
-    // comment guard); needs its own investigation.
-    (
-        "a20070718_00010_02_cube-ast",
-        "SpecFrame velocity Unit/UFreq emission",
-    ),
-    // Bug 7 — BasicFrame axis Bottom/Top + aggregate Bot/Top.
-];
+/// than silently dropped. Empty: every wcsconv object round-trips byte-exact.
+const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Round-trip C-oracle FrameSet native-text dumps (`*.ast`) through
 /// `from_native_string` → `to_native_string` and assert byte-exact

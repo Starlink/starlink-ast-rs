@@ -121,6 +121,28 @@ impl SpecSystem {
         }
     }
 
+    /// All systems in C's `AstSystemType` index order (specframe.h:78-87).
+    /// Used to dump the `UsedUnits` block (`U<system>`) in the same order C
+    /// iterates its `usedunits[]` array.
+    pub(crate) const ALL: [Self; 10] = [
+        Self::Freq,
+        Self::Energy,
+        Self::Wavenum,
+        Self::Wavelen,
+        Self::Airwave,
+        Self::Vradio,
+        Self::Voptical,
+        Self::Redshift,
+        Self::Beta,
+        Self::Vrel,
+    ];
+
+    /// Position of this system in [`Self::ALL`] — the index into a
+    /// `used_units` array.
+    pub(crate) fn used_units_index(&self) -> usize {
+        Self::ALL.iter().position(|s| s == self).unwrap()
+    }
+
     /// Native serialisation attribute key for the unit preference (e.g. "UFreq").
     pub(crate) fn unit_attr_key(&self) -> &'static str {
         match self {
@@ -278,15 +300,20 @@ pub struct SpecFrame {
     /// to the unset state in which `system` holds the WAVELEN default.
     system_set: bool,
     std_of_rest: StdOfRest,
-    sor_set: bool,           // whether std_of_rest was explicitly set (vs defaulting)
-    unit: Option<String>,    // user-facing unit for the current system (e.g. "GHz")
-    rest_freq: Option<f64>,  // Hz
-    ref_ra: Option<f64>,     // FK5 J2000 radians
-    ref_dec: Option<f64>,    // FK5 J2000 radians
-    source_vel: Option<f64>, // m/s (or redshift/beta depending on source_sys)
-    source_vrf: Option<StdOfRest>, // rest frame of source velocity
+    sor_set: bool,        // whether std_of_rest was explicitly set (vs defaulting)
+    unit: Option<String>, // user-facing unit for the current system (e.g. "GHz")
+    /// Preferred unit recorded per spectral system, mirroring C's
+    /// `usedunits[]` (specframe.c SetUnit). Indexed by `SpecSystem::ALL`
+    /// position. A unit set while in a given system is remembered here and
+    /// re-instated if the SpecFrame later returns to that system.
+    used_units: [Option<String>; 10],
+    rest_freq: Option<f64>,         // Hz
+    ref_ra: Option<f64>,            // FK5 J2000 radians
+    ref_dec: Option<f64>,           // FK5 J2000 radians
+    source_vel: Option<f64>,        // m/s (or redshift/beta depending on source_sys)
+    source_vrf: Option<StdOfRest>,  // rest frame of source velocity
     source_sys: Option<SpecSystem>, // spectral system of source velocity
-    spec_origin: Option<f64>, // spectral origin (in default units for current system)
+    spec_origin: Option<f64>,       // spectral origin (in default units for current system)
     align_std_of_rest: Option<StdOfRest>,
     /// Alignment system. Mirrors C `GetAlignSystem` which returns
     /// `AST__WAVELEN` by default for SpecFrames (specframe.c:1899-1957).
@@ -339,6 +366,7 @@ impl SpecFrame {
             std_of_rest: StdOfRest::Heliocentric,
             sor_set: false,
             unit: None,
+            used_units: Default::default(),
             rest_freq: None,
             ref_ra: None,
             ref_dec: None,
@@ -384,10 +412,16 @@ impl SpecFrame {
         let old = self.system;
         self.system = sys;
         self.system_set = true;
-        // A set SpecOrigin keeps referring to the same spectral
-        // position: convert it to the new system (specframe.c:643,
-        // OriginSystem).
         if old != sys {
+            // Changing System changes the default Units. If a unit was
+            // previously used with the new system, re-instate it; otherwise
+            // clear the current unit so the new system's default applies.
+            // Mirrors C ClearSystem/SetSystem (specframe.c:628-636). Set the
+            // field directly so we don't re-record into used_units.
+            self.unit = self.used_units[sys.used_units_index()].clone();
+            // A set SpecOrigin keeps referring to the same spectral
+            // position: convert it to the new system (specframe.c:643,
+            // OriginSystem).
             self.rescale_spec_origin(|sf| {
                 sf.system = old;
             });
@@ -440,9 +474,12 @@ impl SpecFrame {
         self.unit.as_deref()
     }
 
-    /// Set the user-facing unit for the current system.
+    /// Set the user-facing unit for the current system. Also records it as
+    /// the used unit for the current system, mirroring C `SetUnit`
+    /// (specframe.c:4216-4234) which stores the value in `usedunits[system]`.
     pub fn set_unit(&mut self, unit: &str) {
         self.unit = Some(unit.to_string());
+        self.used_units[self.system.used_units_index()] = Some(unit.to_string());
     }
 
     /// Test whether Unit has been explicitly set on this SpecFrame's
@@ -2473,15 +2510,24 @@ impl Serializable for SpecFrame {
             node.push_int("AlSpOf", 1, Some("Align in offset coords".to_string()));
         }
 
-        // Unit preference (UFreq, UWave, etc.) — only if explicitly set.
-        // C `SpecFrame::Dump` (specframe.c:6677-6692) writes the UsedUnits
-        // block (`U<system>`) after AlSpOf and before SpOrg.
-        if let Some(ref unit) = self.unit {
-            node.push_string(
-                self.system.unit_attr_key(),
-                unit,
-                Some(self.system.unit_attr_comment().to_string()),
-            );
+        // UsedUnits block: one `U<system>` card per system that has a
+        // recorded used unit, in C's AstSystemType index order
+        // (specframe.c:6681-6692, after AlSpOf and before SpOrg). C's
+        // SetUnit keeps `usedunits[current]` in step with the current Unit,
+        // so the current system's entry reflects `self.unit`.
+        for sys in SpecSystem::ALL {
+            let stored = if sys == self.system {
+                self.unit.clone()
+            } else {
+                self.used_units[sys.used_units_index()].clone()
+            };
+            if let Some(unit) = stored {
+                node.push_string(
+                    sys.unit_attr_key(),
+                    &unit,
+                    Some(sys.unit_attr_comment().to_string()),
+                );
+            }
         }
 
         // SpOrg (SpecOrigin, if set).
@@ -2554,19 +2600,28 @@ impl Serializable for SpecFrame {
             }
         }
 
-        // Unit preference (UFreq, UWave, etc.) / Axis Unit. C records the
-        // used unit for the current system (`usedunits[system]`) whenever a
-        // Unit has been set, *including the empty string* for dimensionless
-        // systems (BETA, redshift) — so the distinction is card presence,
-        // not emptiness. Prefer the `U<system>` card, then the per-axis
-        // `Uni1` (CmpFrame override forwarding), then the Axis child Unit.
-        let unit_key = system.unit_attr_key();
+        // UsedUnits block: restore every `U<system>` card into the per-system
+        // map (C astLoad populates `usedunits[]`). Card presence — not
+        // emptiness — marks a set unit, so a dimensionless "" round-trips.
+        for sys in SpecSystem::ALL {
+            if node.get(sys.unit_attr_key()).is_some() {
+                sf.used_units[sys.used_units_index()] =
+                    Some(node.get_string(sys.unit_attr_key(), ""));
+            }
+        }
+
+        // The current Unit comes from the current system's used unit if one
+        // was recorded, else the per-axis `Uni1` (CmpFrame override
+        // forwarding) or the Axis child Unit card. C's SetSystem re-instates
+        // `usedunits[system]` as the current Unit; a system with no recorded
+        // used unit (e.g. a20070718's VRAD, which only carries UFreq) keeps
+        // the system default.
         let axis_unit_card = node.get_object("Ax1").and_then(|ax| {
             ax.get("Unit")
                 .map(|_| ax.get_string("Unit", "").to_string())
         });
-        if node.get(unit_key).is_some() {
-            sf.unit = Some(node.get_string(unit_key, ""));
+        if let Some(u) = &sf.used_units[system.used_units_index()] {
+            sf.unit = Some(u.clone());
         } else if node.get("Uni1").is_some() {
             sf.unit = Some(node.get_string("Uni1", ""));
         } else if let Some(u) = axis_unit_card {
