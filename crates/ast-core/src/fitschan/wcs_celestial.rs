@@ -796,12 +796,24 @@ fn build_rotation_from_pole(
     use crate::mappings::{MatrixMap, SphMap};
     use ndarray::Array2;
 
-    // Three rotations matching C's astMtrRot sequence at fitschan.c
-    // 38253-38281.
-    let r1 = rot_z(-phip);
-    let r2 = rot_y(deltap - PI / 2.0);
-    let r3 = rot_z(PI + alphap);
-    let rot_matrix = mat3_mul(&r3, &mat3_mul(&r2, &r1));
+    // Build the rotation exactly as C does (fitschan.c:38248-38281): start
+    // from the 3×3 identity and apply three axis-angle rotations in turn —
+    // about Z by -phip, about Y by (deltap - pi/2), then about Z by
+    // (pi + alphap) — via `astMtrRot`. After each rotation C runs
+    // `CompressMatrix`, which snaps a near-diagonal matrix to exact diagonal
+    // form (off-diagonals below sqrt(DBL_EPSILON)·max(row,col) → 0). That
+    // compression is what yields C's exact zeros: the first Z-rotation by
+    // -pi leaves ~1.2e-16 off-diagonals (sin(-pi)), which compress to 0, so
+    // the following rotations build on a clean diag(-1,-1,1) and the result
+    // matrix has structural zeros rather than ~1e-16 residue. A naive
+    // `Rz·Ry·Rz` product (without per-step compression) leaves that residue.
+    let mut rot_matrix = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    mtr_rot(&mut rot_matrix, -phip, [0.0, 0.0, 1.0]);
+    compress_matrix(&mut rot_matrix);
+    mtr_rot(&mut rot_matrix, deltap - PI / 2.0, [0.0, 1.0, 0.0]);
+    compress_matrix(&mut rot_matrix);
+    mtr_rot(&mut rot_matrix, PI + alphap, [0.0, 0.0, 1.0]);
+    compress_matrix(&mut rot_matrix);
 
     // sph_to_cart: spherical (lon, lat) → cartesian (x, y, z).
     // C creates this with `astSphMap("UnitRadius=1", ...)` at
@@ -820,14 +832,29 @@ fn build_rotation_from_pole(
     sph_to_cart.set_unit_radius(true);
     sph_to_cart.set_polar_long(phi0);
 
-    // 3×3 rotation matrix.
+    // The inverse of an orthogonal rotation is its transpose. C accumulates
+    // the inverse via its own `astMtrRot` inverse-rotation sequence (each step
+    // CompressMatrix-cleaned, matrixmap.c:3941-3957); for an orthogonal
+    // rotation that equals the transpose of the compressed forward, which we
+    // then compress so its off-diagonal residue is zeroed too (matching C's
+    // exact-zero inverse elements, e.g. IM5).
+    let mut inv_matrix = [
+        [rot_matrix[0][0], rot_matrix[1][0], rot_matrix[2][0]],
+        [rot_matrix[0][1], rot_matrix[1][1], rot_matrix[2][1]],
+        [rot_matrix[0][2], rot_matrix[1][2], rot_matrix[2][2]],
+    ];
+    compress_matrix(&mut inv_matrix);
+
+    // 3×3 rotation matrix and its (transpose) inverse.
     let mut mat = Array2::zeros((3, 3));
+    let mut inv = Array2::zeros((3, 3));
     for i in 0..3 {
         for j in 0..3 {
             mat[[i, j]] = rot_matrix[i][j];
+            inv[[i, j]] = inv_matrix[i][j];
         }
     }
-    let rot_map = MatrixMap::new(mat).ok()?;
+    let rot_map = MatrixMap::new_with_inverse(mat, inv).ok()?;
 
     // cart_to_sph: cartesian (x, y, z) → spherical (lon, lat).
     // C creates this with `astSphMap("UnitRadius=1", ...)` at
@@ -847,32 +874,93 @@ fn build_rotation_from_pole(
     Some(Box::new(full))
 }
 
-/// 3×3 rotation matrix about the Z axis (CCW convention, standard
-/// mathematics). Composed via `mat3_mul` to mirror the C library's
-/// astMtrRot post-multiplication behaviour.
-fn rot_z(angle: f64) -> [[f64; 3]; 3] {
-    let c = angle.cos();
-    let s = angle.sin();
-    [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]]
+/// Rotate the 3×3 matrix `mat` by `theta` radians about the given unit axis,
+/// pre-multiplying in place (`mat := rotmat · mat`). Faithful port of C
+/// `MtrRot` (matrixmap.c:3766) for the 3×3 forward case:
+///
+/// - `cos(theta) == 1.0` is a no-op (identity rotation),
+/// - the rotation matrix uses the axis-angle (Rodrigues) term grouping
+///   exactly as C's `a/b/c/d/e/f/g` locals,
+/// - the product is accumulated column-by-column like C's `SMtrMult(post=1)`.
+fn mtr_rot(mat: &mut [[f64; 3]; 3], theta: f64, axis: [f64; 3]) {
+    let costh = theta.cos();
+    let sinth = theta.sin();
+
+    // C: `if ( costh == 1.0 ) return new;` — identity rotation, no change.
+    if costh == 1.0 {
+        return;
+    }
+
+    let axlen2 = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
+    let axlen = axlen2.sqrt();
+
+    let as_ = sinth / axlen;
+    let a = (1.0 - costh) / axlen2;
+    let b = a * axis[0] * axis[1];
+    let c = as_ * axis[2];
+    let d = a * axis[0] * axis[2];
+    let e = as_ * axis[1];
+    let f = a * axis[1] * axis[2];
+    let g = as_ * axis[0];
+
+    let rotmat = [
+        [a * axis[0] * axis[0] + costh, b - c, d + e],
+        [b + c, a * axis[1] * axis[1] + costh, f - g],
+        [d - e, f + g, a * axis[2] * axis[2] + costh],
+    ];
+
+    // mat := rotmat · mat, per output column (mirrors SMtrMult post=1).
+    // `j` indexes a matrix column across rows, so a range loop is clearest.
+    #[allow(clippy::needless_range_loop)]
+    for j in 0..3 {
+        let mut work = [0.0_f64; 3];
+        for (i, w) in work.iter_mut().enumerate() {
+            let mut dot = 0.0;
+            for k in 0..3 {
+                dot += rotmat[i][k] * mat[k][j];
+            }
+            *w = dot;
+        }
+        for (i, &w) in work.iter().enumerate() {
+            mat[i][j] = w;
+        }
+    }
 }
 
-/// 3×3 rotation matrix about the Y axis (CCW convention).
-fn rot_y(angle: f64) -> [[f64; 3]; 3] {
-    let c = angle.cos();
-    let s = angle.sin();
-    [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]]
-}
+/// Snap a near-diagonal 3×3 matrix to exact diagonal form, mirroring C
+/// `CompressMatrix` (matrixmap.c:580). An off-diagonal element is treated as
+/// zero (and physically set to `0.0`) when its magnitude is `<=
+/// sqrt(DBL_EPSILON)·max` of the largest magnitude in both its row and its
+/// column. This removes the ~1e-16 trig residue (e.g. `sin(pi)`) that would
+/// otherwise propagate through subsequent rotations and surface as non-zero
+/// matrix elements in the serialised dump.
+fn compress_matrix(mat: &mut [[f64; 3]; 3]) {
+    let tol = f64::EPSILON.sqrt();
 
-fn mat3_mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let mut out = [[0.0_f64; 3]; 3];
+    let mut rowmax = [0.0_f64; 3];
+    let mut colmax = [0.0_f64; 3];
     for i in 0..3 {
         for j in 0..3 {
-            for k in 0..3 {
-                out[i][j] += a[i][k] * b[k][j];
+            let v = mat[i][j].abs();
+            if v > rowmax[i] {
+                rowmax[i] = v;
+            }
+            if v > colmax[j] {
+                colmax[j] = v;
             }
         }
     }
-    out
+
+    for i in 0..3 {
+        for j in 0..3 {
+            if i != j {
+                let v = mat[i][j].abs();
+                if v <= rowmax[i] * tol && v <= colmax[j] * tol {
+                    mat[i][j] = 0.0;
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,5 +1177,32 @@ mod tests {
             !result.frame.test_epoch(),
             "epoch should not be explicitly set for Galactic primary"
         );
+    }
+
+    #[test]
+    fn compress_matrix_zeros_near_zero_off_diagonals() {
+        // A rotation by -pi about Z leaves ~1.2e-16 off-diagonals (sin(-pi)).
+        // CompressMatrix must snap those to exact zero (mirroring C, so the
+        // residue does not propagate through later rotations).
+        let mut m = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        mtr_rot(&mut m, -PI, [0.0, 0.0, 1.0]);
+        // Before compression the off-diagonals are non-zero residue.
+        assert!(m[0][1].abs() > 0.0 && m[0][1].abs() < 1e-15);
+        compress_matrix(&mut m);
+        // After compression they are exactly zero, leaving diag(-1,-1,1).
+        assert_eq!(m[0][1], 0.0);
+        assert_eq!(m[1][0], 0.0);
+        assert_eq!(m[0][0], -1.0);
+        assert_eq!(m[1][1], -1.0);
+        assert_eq!(m[2][2], 1.0);
+    }
+
+    #[test]
+    fn mtr_rot_identity_is_noop() {
+        // cos(theta)==1 (theta=0) must leave the matrix unchanged.
+        let mut m = [[0.5, -0.5, 0.1], [0.5, 0.5, 0.2], [0.0, 0.0, 1.0]];
+        let before = m;
+        mtr_rot(&mut m, 0.0, [0.0, 0.0, 1.0]);
+        assert_eq!(m, before);
     }
 }

@@ -95,6 +95,35 @@ impl MatrixMap {
         })
     }
 
+    /// Construct a MatrixMap from an explicit forward matrix and inverse.
+    ///
+    /// Used when the caller has already computed a numerically clean inverse
+    /// (e.g. the native→celestial rotation, whose inverse C accumulates via
+    /// its own `astMtrRot` inverse sequence rather than by re-inverting the
+    /// forward — see `wcs_celestial::build_rotation_from_pole`). Both matrices
+    /// must be square and the same shape.
+    pub(crate) fn new_with_inverse(matrix: Array2<f64>, inverse: Array2<f64>) -> AstResult<Self> {
+        if matrix.nrows() == 0 || matrix.ncols() == 0 {
+            return Err(AstError::new(ErrorCode::Mtrmt, "matrix must not be empty"));
+        }
+        if matrix.dim() != inverse.dim() {
+            return Err(AstError::new(
+                ErrorCode::Mtrmt,
+                "matrix and inverse must have the same shape",
+            ));
+        }
+        let form = compute_form(&matrix);
+        let inv_form = compute_form(&inverse);
+        Ok(Self {
+            matrix,
+            inverse: Some(inverse),
+            inverted: false,
+            has_been_simplified: false,
+            form,
+            inv_form,
+        })
+    }
+
     /// Returns a reference to the forward transformation matrix.
     pub(crate) fn forward_matrix(&self) -> &Array2<f64> {
         &self.matrix
