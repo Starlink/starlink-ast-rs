@@ -180,6 +180,12 @@ pub struct FitsCard {
 }
 
 impl FitsCard {
+    /// Whether this card has been consumed by a completed read and so must be
+    /// excluded from output (mirrors the C `USED` flag / `CARDUSED` macro).
+    pub(crate) fn is_consumed(&self) -> bool {
+        self.flags.consumption == Consumption::Used
+    }
+
     /// Parse an 80-character FITS header card.
     ///
     /// If the input is shorter than 80 characters it is right-padded with spaces.

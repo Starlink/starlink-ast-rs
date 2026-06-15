@@ -245,9 +245,10 @@ impl FitsChan {
         self.cards = CardList::new();
     }
 
-    /// Return the number of cards currently stored.
+    /// Return the number of cards currently stored, excluding cards consumed
+    /// by a read (mirroring C `astGetNcard` honouring `ignore_used`).
     pub fn ncard(&self) -> usize {
-        self.cards.len()
+        self.cards.iter().filter(|c| !c.is_consumed()).count()
     }
 
     /// Format all stored cards as a FITS header string.
@@ -260,6 +261,7 @@ impl FitsChan {
         let mut lines: Vec<String> = self
             .cards
             .iter()
+            .filter(|card| !card.is_consumed())
             .map(|card| card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding))
             .collect();
         lines.push(format!("{:<80}", "END"));
@@ -615,6 +617,20 @@ impl FitsChan {
 
         self.cards.insert_front(block);
     }
+
+    /// Propagate consumption from a SpecTrans-derived `trans` CardList back
+    /// onto `self.cards` after a successful read, then promote provisional
+    /// flags to `Used`. Mirrors C's read-completion `FixUsed(promote)` — the
+    /// keywords the reader consumed (via the `*_marked` getters / SpecTrans
+    /// `record_consumed`) are flagged so they are excluded from later output.
+    /// Names with no matching `self.cards` card (SpecTrans-synthesised
+    /// keywords) are silently ignored by `mark_card`.
+    fn finish_read_consumption(&mut self, trans: &CardList) {
+        for name in trans.take_consumed_names() {
+            self.cards.mark_card(&name);
+        }
+        self.cards.fix_used(true, false);
+    }
 }
 
 impl Default for FitsChan {
@@ -666,6 +682,7 @@ impl Channel for FitsChan {
                     st.sip_replace = self.sip_replace;
                 }
                 let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
+                self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::FitsPc => {
@@ -682,6 +699,7 @@ impl Channel for FitsChan {
                     st.sip_replace = self.sip_replace;
                 }
                 let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
+                self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
@@ -692,6 +710,7 @@ impl Channel for FitsChan {
                     st.sip_replace = self.sip_replace;
                 }
                 let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
+                self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
@@ -1085,5 +1104,87 @@ mod tests {
         // Should be able to find from beginning again.
         let found = fc.find_fits("NAXIS", true);
         assert!(found.is_some());
+    }
+
+    // -----------------------------------------------------------------------
+    // Read-consumption tracking (C "USED card" mechanism)
+    // -----------------------------------------------------------------------
+
+    /// A minimal FITS-WCS header with a celestial plane plus structural and
+    /// observation-detail cards. The WCS-description cards (CTYPE/CRVAL/CRPIX/
+    /// CDELT) are consumed by the read; SIMPLE/BITPIX/NAXIS* (structural) and
+    /// MJD-OBS (observation detail, read mark=0) survive into the output.
+    fn wcs_header_with_mjdobs() -> &'static str {
+        "SIMPLE  =                    T / Fits standard\n\
+         BITPIX  =                  -32 / Bits per pixel\n\
+         NAXIS   =                    2 / Number of axes\n\
+         NAXIS1  =                  100 / Axis 1 length\n\
+         NAXIS2  =                  100 / Axis 2 length\n\
+         MJD-OBS =          51544.50000 / MJD of observation\n\
+         CTYPE1  = 'RA---TAN'           / X type\n\
+         CTYPE2  = 'DEC--TAN'           / Y type\n\
+         CRVAL1  =                 10.0 / Reference value\n\
+         CRVAL2  =                 20.0 / Reference value\n\
+         CRPIX1  =                 50.5 / Reference pixel\n\
+         CRPIX2  =                 50.5 / Reference pixel\n\
+         CDELT1  =                 -0.1 / Degrees/pixel\n\
+         CDELT2  =                  0.1 / Degrees/pixel\n\
+         END"
+    }
+
+    #[test]
+    fn read_consumes_wcs_cards_but_keeps_obs_and_structural() {
+        let mut fc = FitsChan::from_header(wcs_header_with_mjdobs()).unwrap();
+        fc.read().unwrap().expect("reads a FrameSet");
+        let out = fc.to_header();
+        // WCS-description cards are consumed → excluded from output.
+        for kw in [
+            "CTYPE1", "CTYPE2", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CDELT1", "CDELT2",
+        ] {
+            assert!(
+                !out.contains(kw),
+                "consumed WCS card {kw} should not appear in output:\n{out}"
+            );
+        }
+        // Structural + observation-detail cards survive.
+        for kw in ["SIMPLE", "BITPIX", "NAXIS", "NAXIS1", "NAXIS2", "MJD-OBS"] {
+            assert!(out.contains(kw), "{kw} should survive the read:\n{out}");
+        }
+    }
+
+    #[test]
+    fn rewrite_after_read_re_emits_wcs_cards() {
+        // Read FITS-WCS (consumes WCS cards), then write FITS-WCS back: the
+        // re-written cards must reappear in the output (the rewrite clears the
+        // consumed flag).
+        let mut fc = FitsChan::from_header(wcs_header_with_mjdobs()).unwrap();
+        let obj = fc.read().unwrap().expect("reads a FrameSet");
+        fc.set_encoding(Encoding::FitsWcs);
+        fc.write(&obj).unwrap();
+        let out = fc.to_header();
+        assert!(
+            out.contains("CRVAL1"),
+            "re-written CRVAL1 should appear in output:\n{out}"
+        );
+        assert!(
+            out.contains("CTYPE1"),
+            "re-written CTYPE1 should appear:\n{out}"
+        );
+    }
+
+    #[test]
+    fn protected_card_survives_read() {
+        let mut fc = FitsChan::from_header(wcs_header_with_mjdobs()).unwrap();
+        // Protect CRVAL1 before reading; it must survive even though the read
+        // would otherwise consume it (foundation for astRetainFits).
+        assert!(fc.cards.set_protected("CRVAL1"));
+        fc.read().unwrap().expect("reads a FrameSet");
+        let out = fc.to_header();
+        assert!(
+            out.contains("CRVAL1"),
+            "protected CRVAL1 should survive the read:\n{out}"
+        );
+        // A sibling unprotected WCS card is still consumed.
+        assert!(!out.contains("CRVAL2"), "CRVAL2 should be consumed:\n{out}");
     }
 }

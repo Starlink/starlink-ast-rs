@@ -181,76 +181,93 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
 
     let mut store = FitsStore::new(naxis);
     store.wcsaxes = wcsaxes;
+    // WCSAXES is consumed by the read (C WcsFcRead marks it mark=1).
+    if wcsaxes.is_some() {
+        cards.record_consumed(&key_for("WCSAXES", None, s));
+    }
+
+    // The WCS-description keywords below are all read with `mark=1` (the
+    // `*_marked` getters): they are consumed by the read and excluded from
+    // any subsequent output, mirroring C `WcsFcRead`'s default. The
+    // observation-detail keywords (epoch chain, DUT1, DTAI, OBSGEO-*) are read
+    // with the plain `get_*` getters (`mark=0`) so they survive into output.
 
     // Extract per-axis keywords with primary fallback when s != ' '.
     for i in 0..naxis {
         let axis_num = i + 1; // FITS 1-based
 
-        store.crpix[i] =
-            lookup_with_fallback(cards, "CRPIX", Some(axis_num), s, |c, k| c.get_float(k));
-        store.crval[i] =
-            lookup_with_fallback(cards, "CRVAL", Some(axis_num), s, |c, k| c.get_float(k));
-        store.cdelt[i] =
-            lookup_with_fallback(cards, "CDELT", Some(axis_num), s, |c, k| c.get_float(k));
-        // NAXISn is never alternate-suffixed; used for the astPolyTran
-        // sampling bounds when reading SIP headers.
+        store.crpix[i] = lookup_with_fallback(cards, "CRPIX", Some(axis_num), s, |c, k| {
+            c.get_float_marked(k)
+        });
+        store.crval[i] = lookup_with_fallback(cards, "CRVAL", Some(axis_num), s, |c, k| {
+            c.get_float_marked(k)
+        });
+        store.cdelt[i] = lookup_with_fallback(cards, "CDELT", Some(axis_num), s, |c, k| {
+            c.get_float_marked(k)
+        });
+        // NAXISn is structural (not a WCS keyword); never consumed.
         store.dims[i] = cards.get_float(&format!("NAXIS{axis_num}"));
-        store.ctype[i] =
-            lookup_with_fallback(cards, "CTYPE", Some(axis_num), s, |c, k| c.get_string(k));
-        store.cunit[i] =
-            lookup_with_fallback(cards, "CUNIT", Some(axis_num), s, |c, k| c.get_string(k));
-        store.cname[i] =
-            lookup_with_fallback(cards, "CNAME", Some(axis_num), s, |c, k| c.get_string(k));
+        store.ctype[i] = lookup_with_fallback(cards, "CTYPE", Some(axis_num), s, |c, k| {
+            c.get_string_marked(k)
+        });
+        store.cunit[i] = lookup_with_fallback(cards, "CUNIT", Some(axis_num), s, |c, k| {
+            c.get_string_marked(k)
+        });
+        store.cname[i] = lookup_with_fallback(cards, "CNAME", Some(axis_num), s, |c, k| {
+            c.get_string_marked(k)
+        });
 
         // CD / PC / PV: per-version, no primary fallback (mirrors C
         // GetItem semantics — see lookup_with_fallback's doc).
         for j in 0..naxis {
-            store.cd[i][j] = cards.get_float(&key_for_2("CD", axis_num, j + 1, s));
+            store.cd[i][j] = cards.get_float_marked(&key_for_2("CD", axis_num, j + 1, s));
         }
         for j in 0..naxis {
-            store.pc[i][j] = cards.get_float(&key_for_2("PC", axis_num, j + 1, s));
+            store.pc[i][j] = cards.get_float_marked(&key_for_2("PC", axis_num, j + 1, s));
         }
         for m in 0..store.pv[i].len() {
-            store.pv[i][m] = cards.get_float(&key_for_2("PV", axis_num, m, s));
+            store.pv[i][m] = cards.get_float_marked(&key_for_2("PV", axis_num, m, s));
         }
     }
 
-    // Scalar keywords.
-    store.radesys = lookup_with_fallback(cards, "RADESYS", None, s, |c, k| c.get_string(k));
-    store.equinox = lookup_with_fallback(cards, "EQUINOX", None, s, |c, k| c.get_float(k));
-    store.lonpole = lookup_with_fallback(cards, "LONPOLE", None, s, |c, k| c.get_float(k));
-    store.latpole = lookup_with_fallback(cards, "LATPOLE", None, s, |c, k| c.get_float(k));
+    // Scalar WCS keywords (mark=1).
+    store.radesys = lookup_with_fallback(cards, "RADESYS", None, s, |c, k| c.get_string_marked(k));
+    store.equinox = lookup_with_fallback(cards, "EQUINOX", None, s, |c, k| c.get_float_marked(k));
+    store.lonpole = lookup_with_fallback(cards, "LONPOLE", None, s, |c, k| c.get_float_marked(k));
+    store.latpole = lookup_with_fallback(cards, "LATPOLE", None, s, |c, k| c.get_float_marked(k));
     // Epoch of observation (TIMESYS + MJD-AVG / MJD-OBS / DATE-OBS /
-    // DATE-AVG priority chain). See read_epoch_into_store for the
-    // priority order and the reference to C ChooseEpoch. These are
-    // observation-global keywords and don't take a coordinate-version
-    // suffix in C either; primary lookup only.
+    // DATE-AVG priority chain). These are observation-global keywords read
+    // with mark=0 (C WcsFcRead: MJD-OBS line 36519, MJD-AVG 36715, TIMESYS
+    // 36751) so they are NOT consumed — they survive into the output header.
     read_epoch_into_store(cards, &mut store);
-    store.specsys = lookup_with_fallback(cards, "SPECSYS", None, s, |c, k| c.get_string(k));
-    store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float(k));
-    store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float(k));
-    // Observation-global TAI/UT1 offsets. Wired into the SkyFrame in
-    // wcs_celestial::build_celestial.
-    store.dtai = lookup_with_fallback(cards, "DTAI", None, s, |c, k| c.get_float(k));
-    store.dut1 = lookup_with_fallback(cards, "DUT1", None, s, |c, k| c.get_float(k));
+    store.specsys = lookup_with_fallback(cards, "SPECSYS", None, s, |c, k| c.get_string_marked(k));
+    store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float_marked(k));
+    store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float_marked(k));
+    // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1 line
+    // 36497, DTAI 36506). Never consumed. DTAI in C is only handled at all for
+    // JCMT/UKIRT; reading it unmarked here leaves it in the output regardless,
+    // which matches C (it is never marked mark=1).
+    store.dtai = cards.get_float(&key_for("DTAI", None, s));
+    store.dut1 = cards.get_float(&key_for("DUT1", None, s));
 
     // AST-extension keywords. Mirrors WcsFromStore writes at
     // fitschan.c:37005-37372. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,
     // ZSOURCE, IMAGFREQ, SREFIS / SREF{i} / SREFP{i}.
-    store.wcsname = lookup_with_fallback(cards, "WCSNAME", None, s, |c, k| c.get_string(k));
-    // OBSGEO-{X,Y,Z} and SSYSSRC etc. are observation-global; primary
-    // lookup only (matches C SkySys's `s = ' '` writes for these).
+    store.wcsname = lookup_with_fallback(cards, "WCSNAME", None, s, |c, k| c.get_string_marked(k));
+    // OBSGEO-{X,Y,Z} are observation-global, mark=0 (C WcsFcRead lines
+    // 36724/33/42) — never consumed.
     store.obsgeox = cards.get_float("OBSGEO-X");
     store.obsgeoy = cards.get_float("OBSGEO-Y");
     store.obsgeoz = cards.get_float("OBSGEO-Z");
-    store.ssyssrc = cards.get_string("SSYSSRC");
-    store.zsource = cards.get_float("ZSOURCE");
-    store.imagfreq = cards.get_float("IMAGFREQ");
-    store.skyrefis = cards.get_string("SREFIS");
+    // SSYSSRC / ZSOURCE / IMAGFREQ / SREF* are WCS-description (mark=1).
+    store.ssyssrc = cards.get_string_marked("SSYSSRC");
+    store.zsource = cards.get_float_marked("ZSOURCE");
+    store.imagfreq = cards.get_float_marked("IMAGFREQ");
+    store.skyrefis = cards.get_string_marked("SREFIS");
     for i in 0..naxis {
         let axis_num = i + 1;
-        store.skyref[i] = cards.get_float(&format!("SREF{axis_num}"));
-        store.skyrefp[i] = cards.get_float(&format!("SREFP{axis_num}"));
+        store.skyref[i] = cards.get_float_marked(&format!("SREF{axis_num}"));
+        store.skyrefp[i] = cards.get_float_marked(&format!("SREFP{axis_num}"));
     }
 
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
@@ -383,7 +400,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
     }
 
     // Forward A coefficients.
-    if let Some(order) = cards.get_int("A_ORDER") {
+    if let Some(order) = cards.get_int_marked("A_ORDER") {
         let order = order as usize;
         store.sip_a_order = Some(order);
         let size = order + 1;
@@ -392,7 +409,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
             for j in 0..size {
                 if i + j <= order {
                     let key = format!("A_{i}_{j}");
-                    if let Some(val) = cards.get_float(&key) {
+                    if let Some(val) = cards.get_float_marked(&key) {
                         store.sip_a[i][j] = val;
                     }
                 }
@@ -401,7 +418,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
     }
 
     // Forward B coefficients.
-    if let Some(order) = cards.get_int("B_ORDER") {
+    if let Some(order) = cards.get_int_marked("B_ORDER") {
         let order = order as usize;
         store.sip_b_order = Some(order);
         let size = order + 1;
@@ -410,7 +427,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
             for j in 0..size {
                 if i + j <= order {
                     let key = format!("B_{i}_{j}");
-                    if let Some(val) = cards.get_float(&key) {
+                    if let Some(val) = cards.get_float_marked(&key) {
                         store.sip_b[i][j] = val;
                     }
                 }
@@ -419,7 +436,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
     }
 
     // Inverse AP coefficients.
-    if let Some(order) = cards.get_int("AP_ORDER") {
+    if let Some(order) = cards.get_int_marked("AP_ORDER") {
         let order = order as usize;
         store.sip_ap_order = Some(order);
         let size = order + 1;
@@ -428,7 +445,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
             for j in 0..size {
                 if i + j <= order {
                     let key = format!("AP_{i}_{j}");
-                    if let Some(val) = cards.get_float(&key) {
+                    if let Some(val) = cards.get_float_marked(&key) {
                         store.sip_ap[i][j] = val;
                     }
                 }
@@ -437,7 +454,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
     }
 
     // Inverse BP coefficients.
-    if let Some(order) = cards.get_int("BP_ORDER") {
+    if let Some(order) = cards.get_int_marked("BP_ORDER") {
         let order = order as usize;
         store.sip_bp_order = Some(order);
         let size = order + 1;
@@ -446,7 +463,7 @@ fn extract_sip(cards: &CardList, store: &mut FitsStore) {
             for j in 0..size {
                 if i + j <= order {
                     let key = format!("BP_{i}_{j}");
-                    if let Some(val) = cards.get_float(&key) {
+                    if let Some(val) = cards.get_float_marked(&key) {
                         store.sip_bp[i][j] = val;
                     }
                 }
