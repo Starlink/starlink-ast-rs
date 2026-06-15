@@ -1226,11 +1226,6 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // DSBSpecFrame default axis label lacks the " (USB)"/sideband suffix.
-    (
-        "class-noproj",
-        "DSBSpecFrame sideband label suffix (USB) missing",
-    ),
     // MatrixMap with diagonal/unit form emits IM{n} where C writes Form.
     ("crota-3d", "MatrixMap Form/inverse-matrix emission order"),
     // TimeFrame ActUnt (ActiveUnit) attribute not emitted before IsA Frame.

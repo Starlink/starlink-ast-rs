@@ -751,7 +751,15 @@ impl Frame for DSBSpecFrame {
     }
 
     fn effective_label(&self, axis: usize) -> String {
-        self.spec.effective_label(axis)
+        // Mirror DSBSpecFrame::GetLabel (dsbspecframe.c:688): take the parent
+        // SpecFrame label, and if it is a default (not explicitly set), append
+        // the sideband indication " (USB)" / " (LSB)" / " (LO)".
+        let label = self.spec.effective_label(axis);
+        if self.spec.test_axis_label() {
+            label
+        } else {
+            format!("{label} ({})", self.sideband().as_str())
+        }
     }
 
     fn effective_unit(&self, axis: usize) -> String {
