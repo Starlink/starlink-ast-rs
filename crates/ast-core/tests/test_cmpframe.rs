@@ -132,6 +132,49 @@ fn cmpframe_snapshot() {
     assert_eq!(snap.naxes(), 5);
 }
 
+// ---- Axis-permutation native round-trip ----
+
+#[test]
+fn cmpframe_axis_permutation_round_trips() {
+    // A permuted CmpFrame must serialise its `Axp{n}` tokens and read
+    // them back, preserving the external axis order. Mirrors C
+    // `CmpFrame::Dump`/`astLoad` (cmpframe.c:10453/11020). Distinct
+    // per-axis labels let us confirm each external axis still maps to
+    // the right child axis after round-trip.
+    use ast_core::frames::Frame;
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    let f1 = BasicFrameBuilder::new(2)
+        .label(1, "lon")
+        .label(2, "lat")
+        .build()
+        .unwrap();
+    let f2 = BasicFrameBuilder::new(1).label(1, "wave").build().unwrap();
+    let mut cmp = CmpFrame::new(Box::new(f1), Box::new(f2));
+
+    // Permute so external axes are (wave, lon, lat): external axis 1 ->
+    // internal axis 3, 2 -> 1, 3 -> 2.
+    cmp.perm_axes(&[3, 1, 2]).unwrap();
+    let labels_before: Vec<String> = (1..=3).map(|a| cmp.effective_label(a)).collect();
+    assert_eq!(labels_before, ["wave", "lon", "lat"]);
+
+    let text = to_native_string(&AnyObject::CmpFrame(cmp)).unwrap();
+    assert!(
+        text.contains("Axp1"),
+        "permuted CmpFrame must emit Axp tokens:\n{text}"
+    );
+
+    let back = match from_native_string(&text).unwrap() {
+        AnyObject::CmpFrame(c) => c,
+        other => panic!("expected CmpFrame, got {other:?}"),
+    };
+    let labels_after: Vec<String> = (1..=3).map(|a| back.effective_label(a)).collect();
+    assert_eq!(
+        labels_after, labels_before,
+        "axis permutation must survive native round-trip"
+    );
+}
+
 // ---- Angle ----
 
 #[test]

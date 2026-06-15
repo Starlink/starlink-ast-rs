@@ -235,11 +235,17 @@ fn add_unit_maps(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMappin
 /// dispatches through CmpFrame's class methods.
 fn resolve_subframe(frame: &dyn Frame, iax: usize) -> (&dyn Frame, usize) {
     if let Some(cmp) = frame.as_any().downcast_ref::<CmpFrame>() {
+        // Route the external axis through the CmpFrame's axis
+        // permutation to its internal axis before splitting on the
+        // first child's axis count. Mirrors C `astGetSymbol(cmpfrm, ext)`,
+        // whose MAKE_GET macro permutes external→internal via
+        // `this->perm[ext]` (cmpframe.c:8290+).
+        let internal = cmp.perm()[iax];
         let n1 = cmp.naxes1();
-        if iax < n1 {
-            resolve_subframe(cmp.frame1(), iax)
+        if internal < n1 {
+            resolve_subframe(cmp.frame1(), internal)
         } else {
-            resolve_subframe(cmp.frame2(), iax - n1)
+            resolve_subframe(cmp.frame2(), internal - n1)
         }
     } else {
         (frame, iax + 1)

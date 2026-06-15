@@ -305,7 +305,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
         axlon_0,
         axlat_0,
         projection,
-        wcsmap,
+        &wcsmap_full,
         &ppcfid,
         [crval_lon_deg, crval_lat_deg],
         args.store.lonpole,
@@ -730,89 +730,55 @@ fn build_wcs_to_iwc(
             )
         })?;
 
-    // 2D celestial chain (PPC → WCS):
-    //   WcsMap_inverted (PPC → native spherical) → wcs_native_rot
+    // Celestial chain (PPC → WCS):
+    //   map2b (full N-axis WcsMap, inverted: PPC → native spherical)
+    //   ∘ WcsNative (native spherical → WCS).
     //
-    // Project src_wcsmap (which is N-axis at the top of the
-    // pixel→WCS chain) onto a 2-axis WcsMap suitable for this
-    // chain, then invert it so the forward direction runs PPC →
-    // native. Mirrors C `fitschan.c:5189-5226`. PVs are copied
-    // from the source's `lonax()`/`latax()` slots onto the new
-    // map's axes 1/2 — they are essential for non-zenithal
-    // projections (NCP encoded as SIN with PV2_2 = cot δ, offset
-    // SkyFrames, TPN). Without exact PVs the simplifier cannot
-    // collapse the PPC→native→celestial→native→PPC round-trip,
-    // leaving FP residue that propagates into FitLine's per-axis
-    // fits. The 2-axis chain is embedded into nwcs by the
-    // PermMap-around-Parallel sandwich below.
-    let proj_src = src_wcsmap.projection();
-    let mut wcsmap_2d = WcsMap::new(2, proj_src, 1, 2)?;
-    let src_lon_1b = src_wcsmap.lonax();
-    let src_lat_1b = src_wcsmap.latax();
-    for m in 0..WCSLIB_MXPAR {
-        if let Some(v) = src_wcsmap.get_pv(src_lon_1b, m)
-            && v.is_finite()
-        {
-            // set_pv cannot fail: axis is 1 (lon), m < MXPAR.
-            let _ = wcsmap_2d.set_pv(1, m, v);
-        }
-        if let Some(v) = src_wcsmap.get_pv(src_lat_1b, m)
-            && v.is_finite()
-        {
-            // set_pv cannot fail: axis is 2 (lat), m < MXPAR.
-            let _ = wcsmap_2d.set_pv(2, m, v);
-        }
-    }
-    wcsmap_2d.invert();
-    let cel_2d: DynMapping = Box::new(CmpMap::new(
-        Box::new(wcsmap_2d),
-        wcs_native_rot,
+    // Mirrors C `CelestialAxes` (fitschan.c:5199-5226). C uses the
+    // *full* N-axis lifted WcsMap (`map2b`, a copy of `map2` with PV3/4
+    // cleared for non-TPN) here, NOT a freshly-built 2-axis WcsMap.
+    // This is load-bearing: the resulting WCS→IWC chain contains the
+    // identical N-axis WcsMap that appears (inverted) in the pixel→WCS
+    // Mapping, so when the two are composed the simplifier collapses
+    // the WcsMap deproject/reproject round-trip to a UnitMap. A 2-axis
+    // WcsMap, having a different `ncoord`, cannot merge with the N-axis
+    // one and leaves a residual projection round-trip whose ~1e-15 FP
+    // noise breaks the degenerate-axis FitLine linearity test in
+    // MakeIntWorld (see degen1 wcsconv fixture).
+    // `map2b` is a clone of the full N-axis WcsMap, inverted so its
+    // forward direction is PPC → native spherical. C also clears the
+    // longitude axis's PVi_3 / PVi_4 (LONPOLE / LATPOLE encoded as
+    // projection parameters) for non-TPN projections so that WcsNative
+    // reads those pole angles from the FitsStore instead
+    // (fitschan.c:5199-5203). We do not clear them here: the
+    // native→celestial rotation built above already receives the
+    // store's LONPOLE / LATPOLE as explicit arguments, so the pole is
+    // already correct; and keeping `map2b`'s PVs byte-identical to the
+    // pixel→WCS WcsMap is exactly what lets the simplifier cancel the
+    // deproject/reproject round-trip (clearing them would make the two
+    // WcsMaps unequal and block the merge).
+    //
+    // `map2b` is used in the same orientation as C's `astCopy(map2)`
+    // (fitschan.c:5199-5230): C composes `astCmpMap(map2b, WcsNative)`
+    // without inverting map2b. The whole IWC→WCS chain is inverted at
+    // the end to yield WCS→IWC, which flips map2b into the opposite
+    // direction from the (inverted) pixel→WCS WcsMap, so the two cancel.
+    let map2b = src_wcsmap.clone();
+
+    // Embed the 2-axis native→celestial rotation into the N-axis frame.
+    // Mirrors C `WcsNative` (fitschan.c:38334-38377): add a UnitMap in
+    // parallel for the (naxis-2) non-celestial axes, then sandwich
+    // between a PermMap and its inverse so the celestial pair sits at
+    // (axlon, axlat). The rotation built above always has lon/lat at
+    // its leading axes 0/1.
+    let wcs_native: DynMapping = embed_native_rotation(wcs_native_rot, nwcs, axlon, axlat)?;
+
+    // tmap3 = map2b ∘ WcsNative (PPC → WCS). Mirrors fitschan.c:5230.
+    let cel_nd: DynMapping = Box::new(CmpMap::new(
+        Box::new(map2b),
+        wcs_native,
         Composition::Series,
     )?);
-
-    // Embed cel_2d into nwcs with a UnitMap on non-celestial axes,
-    // then bracket with PermMaps so the celestial pair sits at the
-    // expected (axlon, axlat) positions of the rotation, regardless
-    // of where (ilon, ilat) sit in the nwcs frame.
-    let cel_nd: DynMapping = if nwcs == 2 && ilon == axlon && ilat == axlat {
-        cel_2d
-    } else {
-        // Build PermMap that maps original frame layout → leading
-        // (lon, lat, others...).
-        let mut outperm: Vec<i64> = Vec::with_capacity(nwcs);
-        outperm.push((ilon + 1) as i64);
-        outperm.push((ilat + 1) as i64);
-        for ax in 0..nwcs {
-            if ax != ilon && ax != ilat {
-                outperm.push((ax + 1) as i64);
-            }
-        }
-        let mut inperm: Vec<i64> = vec![0; nwcs];
-        for (out_i, &in_i) in outperm.iter().enumerate() {
-            inperm[(in_i as usize) - 1] = (out_i + 1) as i64;
-        }
-        let perm_in = PermMap::new(&inperm, &outperm, &[])?;
-        let mut perm_out = PermMap::new(&inperm, &outperm, &[])?;
-        perm_out.invert();
-
-        let extra = nwcs - 2;
-        let parallel: DynMapping = if extra == 0 {
-            cel_2d
-        } else {
-            Box::new(CmpMap::new(
-                cel_2d,
-                Box::new(UnitMap::new(extra)),
-                Composition::Parallel,
-            )?)
-        };
-
-        let chain1 = CmpMap::new(Box::new(perm_in), parallel, Composition::Series)?;
-        Box::new(CmpMap::new(
-            Box::new(chain1),
-            Box::new(perm_out),
-            Composition::Series,
-        )?)
-    };
 
     // Forward chain so far: IWC → PPC (shift) → degree-scaled (matrix)
     // → cel_nd (PPC → WCS). Compose in series to get IWC → WCS.
@@ -822,6 +788,66 @@ fn build_wcs_to_iwc(
     let mut wcs_to_iwc = iwc_to_wcs;
     wcs_to_iwc.invert();
     Ok(wcs_to_iwc)
+}
+
+/// Embed a 2-axis native→celestial rotation (lon at axis 0, lat at
+/// axis 1) into an `naxis`-wide Mapping whose celestial pair sits at
+/// `(axlon, axlat)` (0-based) and which passes the remaining axes
+/// through unchanged. Mirrors the axis-embedding tail of C `WcsNative`
+/// (fitschan.c:38334-38377): a UnitMap in parallel for the `naxis-2`
+/// non-celestial axes (stage 5), then a PermMap / inverse-PermMap
+/// sandwich (stages 1 and 3) so the rotation's leading lon/lat axes
+/// land at `(axlon, axlat)`.
+fn embed_native_rotation(
+    rot_2d: DynMapping,
+    naxis: usize,
+    axlon: usize,
+    axlat: usize,
+) -> AstResult<DynMapping> {
+    // Stage 5: add a UnitMap in parallel for the non-celestial axes.
+    let nax_rem = naxis - 2;
+    let embedded: DynMapping = if nax_rem > 0 {
+        Box::new(CmpMap::new(
+            rot_2d,
+            Box::new(UnitMap::new(nax_rem)),
+            Composition::Parallel,
+        )?)
+    } else {
+        rot_2d
+    };
+
+    // If lon/lat already lead, no permutation is needed.
+    if axlon == 0 && axlat == 1 {
+        return Ok(embedded);
+    }
+
+    // Stages 1/3: build the PermMap that moves axis 0 → axlon, axis 1 →
+    // axlat. Mirrors C's outperm/inperm construction (0-based there;
+    // Rust PermMap uses 1-based entries so each value is incremented).
+    //
+    // `outperm[i]` = the input axis index feeding output axis i.
+    let mut outperm: Vec<usize> = (0..naxis).collect();
+    outperm.swap(axlon, 0);
+    let new_axlat = if axlat == 0 { axlon } else { axlat };
+    outperm.swap(new_axlat, 1);
+    let mut inperm = vec![0_usize; naxis];
+    for i in 0..naxis {
+        inperm[outperm[i]] = i;
+    }
+
+    let outperm_1b: Vec<i64> = outperm.iter().map(|&v| (v + 1) as i64).collect();
+    let inperm_1b: Vec<i64> = inperm.iter().map(|&v| (v + 1) as i64).collect();
+
+    let perm = PermMap::new(&inperm_1b, &outperm_1b, &[])?;
+    let mut perm_inv = PermMap::new(&inperm_1b, &outperm_1b, &[])?;
+    perm_inv.invert();
+
+    let chain = CmpMap::new(Box::new(perm), embedded, Composition::Series)?;
+    Ok(Box::new(CmpMap::new(
+        Box::new(chain),
+        Box::new(perm_inv),
+        Composition::Series,
+    )?))
 }
 
 #[cfg(test)]

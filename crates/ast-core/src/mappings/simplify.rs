@@ -465,28 +465,38 @@ fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
     let mut swapped = false;
     let mut i = 0;
     while i + 1 < list.len() {
-        let is_win_wcs = list[i].0.as_any().is::<WinMap>() && list[i + 1].0.as_any().is::<WcsMap>();
-        let is_wcs_win = list[i].0.as_any().is::<WcsMap>() && list[i + 1].0.as_any().is::<WinMap>();
+        let i_is_lin = list[i].0.as_any().is::<WinMap>() || list[i].0.as_any().is::<ShiftMap>();
+        let i1_is_lin =
+            list[i + 1].0.as_any().is::<WinMap>() || list[i + 1].0.as_any().is::<ShiftMap>();
+        let is_win_wcs = i_is_lin && list[i + 1].0.as_any().is::<WcsMap>();
+        let is_wcs_win = list[i].0.as_any().is::<WcsMap>() && i1_is_lin;
 
         if is_win_wcs || is_wcs_win {
             let (win_idx, wcs_idx) = if is_win_wcs { (i, i + 1) } else { (i + 1, i) };
-            let win = list[win_idx].0.as_any().downcast_ref::<WinMap>().unwrap();
             let wcs = list[wcs_idx].0.as_any().downcast_ref::<WcsMap>().unwrap();
 
-            // Check WinMap is identity on WcsMap's celestial axes.
-            // lonax()/latax() return 1-based; convert to 0-based for indexing.
+            // Check the linear map (WinMap or ShiftMap) is identity on the
+            // WcsMap's celestial axes (shift = 0 and scale = 1 on both lon
+            // and lat). A ShiftMap always has unit scales, so for it only
+            // the shifts need checking. lonax()/latax() are 1-based; convert
+            // to 0-based for indexing. `extract_linear_params` returns the
+            // (shifts, scales) accounting for the map's own invert flag.
             let lonax = wcs.lonax() - 1;
             let latax = wcs.latax() - 1;
-            let shifts = win.shifts();
-            let scales = win.scales();
+            let win_inv = list[win_idx].1;
+            let identity_on_cel =
+                super::winmap::extract_linear_params(list[win_idx].0.as_ref(), win_inv)
+                    .map(|(shifts, scales)| {
+                        lonax < shifts.len()
+                            && latax < shifts.len()
+                            && ast_equal(shifts[lonax], 0.0)
+                            && ast_equal(shifts[latax], 0.0)
+                            && ast_equal(scales[lonax], 1.0)
+                            && ast_equal(scales[latax], 1.0)
+                    })
+                    .unwrap_or(false);
 
-            if lonax < shifts.len()
-                && latax < shifts.len()
-                && ast_equal(shifts[lonax], 0.0)
-                && ast_equal(shifts[latax], 0.0)
-                && ast_equal(scales[lonax], 1.0)
-                && ast_equal(scales[latax], 1.0)
-            {
+            if identity_on_cel {
                 list.swap(i, i + 1);
                 // Also swap their invert flags.
                 let tmp = list[i].1;

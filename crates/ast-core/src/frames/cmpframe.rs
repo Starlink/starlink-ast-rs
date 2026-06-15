@@ -786,13 +786,24 @@ impl Serializable for CmpFrame {
             );
         }
 
+        // Helper: route external axis `ax` (1-based) through the axis
+        // permutation to its owning child node and local 1-based axis.
+        // Mirrors C `astGetLabel(this, ext)` etc., which read the
+        // attribute from the internal axis `perm[ext]`. For the
+        // identity permutation this reduces to the plain `ax <= n1`
+        // split.
+        let route = |ax: usize| -> (&Node, usize) {
+            let internal = self.perm[ax - 1] + 1;
+            if internal <= n1 {
+                (&node_a, internal)
+            } else {
+                (&node_b, internal - n1)
+            }
+        };
+
         // Lbl{n} and Uni{n} from child frames
         for ax in 1..=naxes {
-            let (child_node, local_ax) = if ax <= n1 {
-                (&node_a, ax)
-            } else {
-                (&node_b, ax - n1)
-            };
+            let (child_node, local_ax) = route(ax);
             let lbl_key = format!("Lbl{local_ax}");
             if let Some(lbl) = child_node.get_string_any(&lbl_key) {
                 // Renumber generic "Axis N" labels to compound axis position.
@@ -809,11 +820,7 @@ impl Serializable for CmpFrame {
             }
         }
         for ax in 1..=naxes {
-            let (child_node, local_ax) = if ax <= n1 {
-                (&node_a, ax)
-            } else {
-                (&node_b, ax - n1)
-            };
+            let (child_node, local_ax) = route(ax);
             let uni_key = format!("Uni{local_ax}");
             if let Some(uni) = child_node.get_string_any(&uni_key) {
                 node.push_unset(
@@ -826,11 +833,7 @@ impl Serializable for CmpFrame {
 
         // Dir{n} — only write if value is 0 (reverse direction)
         for ax in 1..=naxes {
-            let (child_node, local_ax) = if ax <= n1 {
-                (&node_a, ax)
-            } else {
-                (&node_b, ax - n1)
-            };
+            let (child_node, local_ax) = route(ax);
             let dir_key = format!("Dir{local_ax}");
             if let Some(0) = child_node.get_int_any(&dir_key) {
                 node.push_unset(
@@ -852,6 +855,26 @@ impl Serializable for CmpFrame {
 
         // IsA Frame marker
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
+
+        // Axis permutation array. Mirrors C `CmpFrame::Dump`
+        // (cmpframe.c:10453-10475): write `Axp{ext}` (1-based internal
+        // axis index) for each external axis, but only when the axis is
+        // actually permuted (`set` is true). For the identity case C
+        // passes `helpful = 0` to `astWriteInt`, which suppresses the
+        // commented card at the default `Full` level used throughout
+        // this codebase, so we emit nothing.
+        for ax in 1..=naxes {
+            let internal_1based = self.perm[ax - 1] + 1;
+            if internal_1based != ax {
+                node.push_int(
+                    &format!("Axp{ax}"),
+                    internal_1based as i64,
+                    Some(format!(
+                        "Axis {ax} permuted to use internal axis {internal_1based}"
+                    )),
+                );
+            }
+        }
 
         // Component frames as nested objects (strip unset attributes for minimal output).
         let mut node_a = node_a;
@@ -880,10 +903,25 @@ impl Serializable for CmpFrame {
         // overrides into the child node before parsing.
         let n1 = node_a.get_int("Naxes", 0) as usize;
         let n2 = node_b.get_int("Naxes", 0) as usize;
+        let naxes = n1 + n2;
         let mut node_a = node_a.clone();
         let mut node_b = node_b.clone();
+
+        // Axis permutation array. C `CmpFrame::astLoad`
+        // (cmpframe.c:11020-11031) reads `Axp{ext}` (1-based internal
+        // axis index) for each external axis, defaulting to the
+        // identity. The stored `Lbl{ext}` / `Uni{ext}` / etc. on the
+        // CmpFrame node are addressed in *external* axis order, so the
+        // forwarding to the child Frames below must route external axis
+        // `ext` to its internal axis `axp[ext]-1` before splitting on
+        // `n1`. `axp` is gathered here in the 1-based form expected by
+        // `perm_axes`.
+        let axp: Vec<usize> = (1..=naxes)
+            .map(|ext| node.get_int(&format!("Axp{ext}"), ext as i64) as usize)
+            .collect();
+
         for prefix in ["Lbl", "Uni", "Sym", "Fmt", "Dir"] {
-            for ax in 1..=(n1 + n2) {
+            for ax in 1..=naxes {
                 let cmp_key = format!("{prefix}{ax}");
                 // Forward both set and commented (default) values: the
                 // CmpFrame's `to_node` emits these as `push_unset`, but
@@ -894,10 +932,13 @@ impl Serializable for CmpFrame {
                 let Some(value) = node.get_any(&cmp_key).cloned() else {
                     continue;
                 };
-                let (child, local_ax) = if ax <= n1 {
-                    (&mut node_a, ax)
+                // Route the external axis through the permutation to the
+                // internal axis, then split on `n1` to find the child.
+                let internal = axp[ax - 1];
+                let (child, local_ax) = if internal <= n1 {
+                    (&mut node_a, internal)
                 } else {
-                    (&mut node_b, ax - n1)
+                    (&mut node_b, internal - n1)
                 };
                 let child_key = format!("{prefix}{local_ax}");
                 child.replace_or_push(&child_key, value);
@@ -908,6 +949,14 @@ impl Serializable for CmpFrame {
         let frame2 = frame_from_node(&node_b)?;
 
         let mut cmp = CmpFrame::new(frame1, frame2);
+
+        // Apply the axis permutation (no-op when `axp` is the identity).
+        // `perm_axes` takes a 1-based external→internal mapping, which
+        // is exactly the `Axp{ext}` values read above. Mirrors
+        // cmpframe.c:11027 (`new->perm[axis] = astReadInt(...) - 1`).
+        if axp.iter().enumerate().any(|(i, &v)| v != i + 1) {
+            cmp.perm_axes(&axp)?;
+        }
 
         // ActUnt (default is 1 = true; only store when 0).
         let act_unt_val = node.get_int("ActUnt", 1);
