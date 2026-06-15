@@ -160,10 +160,20 @@ pub(crate) fn dcs2c(a: f64, b: f64) -> [f64; 3] {
 }
 
 /// Direction-cosine 3-vector to spherical coordinates (longitude, latitude).
+///
+/// The components are canonicalised so a negative zero becomes a positive
+/// zero before `eraC2s`'s `atan2(y, x)`. A point on the −x meridian arrives
+/// from the rotation pipeline with `y == ∓0.0` depending only on the
+/// summation order of the matrix product; C's compressed-matrix arithmetic
+/// yields `+0.0` there, so `atan2(+0, −1) = +π`. Without this, a `−0.0` from
+/// our product order would give `−π` — the same physical point but the
+/// opposite representation from C (e.g. a Mercator fiducial at RA = 180°).
+/// `x + 0.0` is the identity for every value except `−0.0 → +0.0`.
 pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
+    let canon = [v[0] + 0.0, v[1] + 0.0, v[2] + 0.0];
     let mut a = 0.0;
     let mut b = 0.0;
-    unsafe { astPalDcc2s(v.as_ptr(), &mut a, &mut b) };
+    unsafe { astPalDcc2s(canon.as_ptr(), &mut a, &mut b) };
     (a, b)
 }
 

@@ -41,6 +41,9 @@ pub(crate) fn decode_wcs_with_def_b1950(
 
     // Step 2: Try to decode celestial axes.
     let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950);
+    // Capture the celestial fiducial position (radians) before the decoder
+    // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
+    let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
 
     // Step 3: Try to decode spectral axis.
     let spectral = wcs_spectral::build_spectral(store);
@@ -100,7 +103,7 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // SkyRefIs=Ignored leaves the coordinate semantics unchanged, this adds
     // no remapping — we set it via `frame_mut` to bypass FrameSet integrity,
     // matching C which sets it on the Frame before the FrameSet wraps it.
-    set_sky_ref_from_celestial(&mut frameset, store)?;
+    set_sky_ref_from_celestial(&mut frameset, celestial_ref_pos)?;
 
     // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
     // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
@@ -254,11 +257,20 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResul
 /// gate. Setting `SkyRefIs=Ignored` leaves absolute-coordinate semantics
 /// unchanged, so this is applied via `frame_mut` without triggering a
 /// FrameSet-integrity remap.
-fn set_sky_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
-    // Locate the SkyFrame and its world lon/lat axis offsets.
-    let Some((world_lon_axis, world_lat_axis)) = locate_sky_axes(fs.current()) else {
+fn set_sky_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -> AstResult<()> {
+    // The celestial fiducial position is computed by the celestial decoder
+    // the C `GetFiducialWCS` way — the native fiducial spherical point
+    // transformed through the native→celestial rotation alone (not the
+    // deprojection, which is singular at the pole). Nothing to stamp if it
+    // could not be determined.
+    let Some((reflon, reflat)) = ref_pos else {
         return Ok(());
     };
+
+    // Only proceed when the current frame actually contains a SkyFrame.
+    if locate_sky_axes(fs.current()).is_none() {
+        return Ok(());
+    }
 
     // Skip if the SkyFrame's SkyRef is already set (C `astTestSkyRef`), or
     // if this is an offset SkyFrame whose SkyRef defines the offset origin /
@@ -277,19 +289,6 @@ fn set_sky_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResult
             }
         }
     }
-
-    // Compute the celestial fiducial by transforming CRPIX through the
-    // pixel→world Mapping (same construction as the SpecFrame path).
-    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
-    let naxis = store.naxis;
-    let crpix: Vec<f64> = (0..naxis).map(|i| store.crpix[i].unwrap_or(1.0)).collect();
-
-    use crate::coords::PointSet;
-    let pts_in = PointSet::from_rows([crpix.as_slice()]);
-    let pts_out = mapping.transform(&pts_in, true)?;
-    let world_pt = pts_out.point(0).to_vec();
-    let reflon = world_pt[world_lon_axis];
-    let reflat = world_pt[world_lat_axis];
 
     if reflon == crate::constants::BAD_VALUE || reflat == crate::constants::BAD_VALUE {
         return Ok(());

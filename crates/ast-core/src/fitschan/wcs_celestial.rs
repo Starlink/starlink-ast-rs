@@ -86,6 +86,11 @@ pub(crate) struct CelestialResult {
     pub lon_axis: usize,
     /// 0-based latitude axis index in the full IWC space.
     pub lat_axis: usize,
+    /// Celestial (lon, lat) of the fiducial point, in radians, computed the
+    /// C `GetFiducialWCS` way (native fiducial through the native→celestial
+    /// rotation). Used to stamp the SkyFrame's SkyRef on read. `None` when
+    /// the fiducial coordinates could not be determined.
+    pub ref_pos: Option<(f64, f64)>,
 }
 
 /// If celestial axes are present in the FitsStore, build the IWC-to-sky
@@ -353,7 +358,8 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
-    let inner = build_iwc_to_sky_mapping(store, wcsmap, store.naxis, lon_axis, lat_axis)?;
+    let (inner, ref_pos) =
+        build_iwc_to_sky_mapping(store, wcsmap, store.naxis, lon_axis, lat_axis)?;
 
     // For `naxis == 2` with `lat_axis < lon_axis` the rotation
     // embedding short-circuits to the bare 2-axis rotation, which
@@ -389,6 +395,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         frame: sky_frame,
         lon_axis,
         lat_axis,
+        ref_pos,
     })
 }
 
@@ -518,13 +525,14 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
 /// This is equivalent to shifting the native longitude by CRVAL_lon and
 /// adjusting the latitude pole, which we implement using a ShiftMap on
 /// the native coordinates for the simple case.
+#[allow(clippy::type_complexity)]
 fn build_iwc_to_sky_mapping(
     store: &FitsStore,
     wcsmap: WcsMap,
     naxis: usize,
     lon_axis: usize,
     lat_axis: usize,
-) -> Option<DynMapping> {
+) -> Option<(DynMapping, Option<(f64, f64)>)> {
     let deg2rad = PI / 180.0;
 
     // CRVAL for the celestial axes (in degrees, convert to radians for the rotation).
@@ -642,12 +650,34 @@ fn build_iwc_to_sky_mapping(
         latpole_rad,
     )?;
 
+    // Celestial coordinates of the fiducial point, mirroring C
+    // `GetFiducialWCS` (fitschan.c:12823): take the native spherical
+    // coordinates of the fiducial point (GetFiducialNSC) and transform them
+    // through the native→celestial rotation (`map2`) alone — NOT through the
+    // deprojection, which is singular at the pole (e.g. a ZPN frame whose
+    // CRVAL is at the south pole). Returned in radians.
+    let ref_pos = {
+        use crate::fitschan::fset_to_store::fiducial::get_fiducial_nsc;
+        let (phi0, theta0) = get_fiducial_nsc(&wcsmap_fwd);
+        rotation
+            .transform(&crate::coords::PointSet::from_rows([[phi0, theta0]]), true)
+            .ok()
+            // Normalise the longitude into (−π, π], matching C's stored
+            // SkyRef convention: the rotation can return −π for a 180°
+            // reference (→ +π) or a value above π for galactic frames
+            // (→ negative). drange = eraAnpm.
+            .map(|p| (crate::pal::drange(p.point(0)[0]), p.point(0)[1]))
+            .filter(|&(lon, lat)| {
+                lon != crate::constants::BAD_VALUE && lat != crate::constants::BAD_VALUE
+            })
+    };
+
     let rotation_naxis = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis)?;
 
     // Pipeline: zoom (N→N diagonal) → wcsmap_inv (N→N) → rotation_naxis (N→N)
     let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
     let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series).ok()?;
-    Some(Box::new(full))
+    Some((Box::new(full), ref_pos))
 }
 
 /// Embed a 2-axis mapping that operates on (lon, lat) into an
