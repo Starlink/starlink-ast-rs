@@ -1822,7 +1822,7 @@ impl Serializable for TimeFrame {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
-                Some("Observers geodetic altitude (m)".to_string()),
+                Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
 

@@ -2320,7 +2320,7 @@ impl Serializable for SpecFrame {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
-                Some("Observers geodetic altitude (m)".to_string()),
+                Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
 
@@ -2335,15 +2335,6 @@ impl Serializable for SpecFrame {
                 "SoR",
                 self.std_of_rest.as_str(),
                 Some("Standard of rest".to_string()),
-            );
-        }
-
-        // Unit preference (UFreq, UWave, etc.) — only if explicitly set.
-        if let Some(ref unit) = self.unit {
-            node.push_string(
-                self.system.unit_attr_key(),
-                unit,
-                Some(self.system.unit_attr_comment().to_string()),
             );
         }
 
@@ -2418,6 +2409,17 @@ impl Serializable for SpecFrame {
         // AlSpOf (AlignSpecOffset, if true).
         if self.align_spec_offset {
             node.push_int("AlSpOf", 1, Some("Align in offset coords".to_string()));
+        }
+
+        // Unit preference (UFreq, UWave, etc.) — only if explicitly set.
+        // C `SpecFrame::Dump` (specframe.c:6677-6692) writes the UsedUnits
+        // block (`U<system>`) after AlSpOf and before SpOrg.
+        if let Some(ref unit) = self.unit {
+            node.push_string(
+                self.system.unit_attr_key(),
+                unit,
+                Some(self.system.unit_attr_comment().to_string()),
+            );
         }
 
         // SpOrg (SpecOrigin, if set).

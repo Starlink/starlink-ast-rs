@@ -1961,18 +1961,23 @@ impl Serializable for SkyFrame {
             Some("Label for axis 2".to_string()),
         );
 
-        // System. C library defaults SkyFrame's System to ICRS; for ICRS we
-        // emit commented (default), for any other system uncommented (explicit).
-        if matches!(self.system, SkySystem::Icrs) {
-            node.push_unset(
-                "System",
-                NodeValue::String(self.system.as_str().to_string()),
-                Some("Coordinate system type".to_string()),
-            );
-        } else {
+        // System. Mirrors C `Frame::Dump` (frame.c:14372-14400), which
+        // writes the System line via `astWriteString(..., set, ...)` where
+        // `set = astTestSystem(this)` — i.e. an *explicitly set* System is
+        // always written as an active card (regardless of its value),
+        // while an unset System is emitted as a commented default (and
+        // suppressed entirely when this Frame is a CmpFrame component).
+        // Gate on `system_set`, not on the value being ICRS.
+        if self.system_set {
             node.push_string(
                 "System",
                 self.system.as_str(),
+                Some("Coordinate system type".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "System",
+                NodeValue::String(self.system.as_str().to_string()),
                 Some("Coordinate system type".to_string()),
             );
         }
@@ -2073,7 +2078,7 @@ impl Serializable for SkyFrame {
             node.push_double(
                 "ObsAlt",
                 obs_alt,
-                Some("Observers geodetic altitude (m)".to_string()),
+                Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
         if let Some(dtai) = self.dtai {
