@@ -779,17 +779,22 @@ impl Serializable for WcsMap {
         }
         node.push_string("Type", self.proj.code(), Some(comment));
 
-        // PV parameters.
-        // params[0] = latitude axis (wcslib p), params[1] = longitude axis (wcslib p2).
-        // In the Native format, axis indices are 1-based and refer to the
-        // WcsMap's lonax/latax.
-        for (prj_axis, pv) in self.params.iter().enumerate() {
-            // Map prj_axis back to the 1-based WcsMap axis.
-            let axis_1based = if prj_axis == 0 {
-                self.latax + 1
+        // PV parameters. C `WcsMap::Dump` (wcsmap.c:5355) loops over the
+        // internal axis index `i` in 0..nin and emits `PV{i+1}_{m}` for each,
+        // so the cards come out in *axis* order (PV1_* before PV2_*). The
+        // params are stored here by projection role — `params[0]` =
+        // latitude axis, `params[1]` = longitude axis — so iterate axes in
+        // index order and select the matching role's params for each.
+        for axis in 0..self.ncoord {
+            let pv = if axis == self.latax {
+                Some(&self.params[0])
+            } else if axis == self.lonax {
+                Some(&self.params[1])
             } else {
-                self.lonax + 1
+                None
             };
+            let Some(pv) = pv else { continue };
+            let axis_1based = axis + 1;
             for (m, val) in pv.iter().enumerate() {
                 if let Some(v) = val {
                     node.push_double(

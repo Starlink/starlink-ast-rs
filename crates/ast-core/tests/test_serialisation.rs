@@ -1229,18 +1229,9 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// reason (the generator still produces them). Tracked explicitly rather
 /// than silently dropped; the goal is to empty this list.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // Bug 1 — WcsMap PV{i}_{m} card ordering (per-axis order vs storage order).
-    ("dss-ast", "WcsMap PV card ordering"),
-    ("dss-fits-dss", "WcsMap PV card ordering"),
-    ("projp-head", "WcsMap PV card ordering"),
-    ("projp-nopv0-head", "WcsMap PV card ordering"),
-    ("projp-pv0only-head", "WcsMap PV card ordering"),
-    ("sao-tan-head", "WcsMap PV card ordering"),
-    ("tan-polytan-head", "WcsMap PV card ordering"),
-    ("tnx-head", "WcsMap PV card ordering"),
-    ("tnx-cheb-head", "WcsMap PV card ordering"),
-    ("zpn-head", "WcsMap PV card ordering"),
     // Bug 2 — SkyFrame default Title/Label for AzEl/Unknown/equinox/GAPPT.
+    ("tnx-head", "SkyFrame default Title equinox formatting"),
+    ("tnx-cheb-head", "SkyFrame default Title equinox formatting"),
     ("azel-head", "SkyFrame default Title/Label table"),
     ("ecliptic-tan-head", "SkyFrame default Title/Label table"),
     ("equinox-bj-head", "SkyFrame default Title/Label table"),
