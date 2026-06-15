@@ -846,6 +846,16 @@ impl Frame for SkyFrame {
         (self, self.axis_permutation()[axis])
     }
 
+    fn direction(&self, axis: usize) -> bool {
+        // C `SkyFrame::GetDirection` (skyframe.c:2828-2905): all sky
+        // systems are left-handed, so the longitude axis is reversed
+        // (direction 0) and the latitude axis is not (direction 1). The
+        // axis index is permuted to its internal physical axis first
+        // (0 = longitude, 1 = latitude).
+        let phys = self.perm[axis - 1];
+        phys != 0
+    }
+
     fn get_active_unit(&self) -> bool {
         false // SkyFrame always reports 0 (frame.c:4651, SkyAxis present).
     }
@@ -1935,21 +1945,15 @@ impl Serializable for SkyFrame {
 
         // Axis labels (always unset with system-appropriate defaults).
         // `default_labels` returns (lon_label, lat_label) by physical
-        // axis. External axes 1/2 follow the SkyFrame's perm — for a
-        // lat-first frame (perm = [1, 0]) external axis 1 is lat, so
-        // emit Lbl1 = lat_label. Mirrors C `GetLabel` (skyframe.c
-        // :3621) which permutes via `astValidateAxis`.
+        // axis. Per C `Frame::Dump` (frame.c:14345-14358), per-axis
+        // attributes are written in INTERNAL (unpermuted) axis order —
+        // the axis permutation is recorded separately as `Prm{n}` cards
+        // (emitted below) and replayed on read. SkyFrame internal axis 0
+        // is always longitude and axis 1 always latitude, so Lbl1 =
+        // lon_label and Lbl2 = lat_label regardless of the perm.
         let (lon_label, lat_label) = self.default_labels();
-        let lbl1 = if self.perm[0] == 0 {
-            lon_label
-        } else {
-            lat_label
-        };
-        let lbl2 = if self.perm[1] == 0 {
-            lon_label
-        } else {
-            lat_label
-        };
+        let lbl1 = lon_label;
+        let lbl2 = lat_label;
         node.push_unset(
             "Lbl1",
             NodeValue::String(lbl1.to_string()),
@@ -1992,30 +1996,21 @@ impl Serializable for SkyFrame {
         }
 
         // Axis units (always unset with system-appropriate defaults).
-        // Same perm-aware pattern as Lbl1/Lbl2 above.
+        // Internal-order, like Lbl above: Uni1 = lon_unit, Uni2 = lat_unit.
         let (lon_unit, lat_unit) = self.default_units();
-        let uni1 = if self.perm[0] == 0 {
-            lon_unit
-        } else {
-            lat_unit
-        };
-        let uni2 = if self.perm[1] == 0 {
-            lon_unit
-        } else {
-            lat_unit
-        };
         node.push_unset(
             "Uni1",
-            NodeValue::String(uni1.to_string()),
+            NodeValue::String(lon_unit.to_string()),
             Some("Units for axis 1".to_string()),
         );
         node.push_unset(
             "Uni2",
-            NodeValue::String(uni2.to_string()),
+            NodeValue::String(lat_unit.to_string()),
             Some("Units for axis 2".to_string()),
         );
 
-        // Dir1: longitude axis plots in reverse direction (always unset).
+        // Dir1: longitude axis plots in reverse direction. Internal axis
+        // 0 is longitude, so this is always Dir1 (unset default).
         node.push_unset(
             "Dir1",
             NodeValue::Int(0),
@@ -2024,18 +2019,15 @@ impl Serializable for SkyFrame {
 
         // Bot{N}/Top{N}: per-axis legal range. The latitude axis has
         // [-π/2, π/2]; the longitude axis has [-DBL_MAX, DBL_MAX].
-        // Mirrors C `GetBottom` / `GetTop` (skyframe.c:2963/3234)
-        // which validate/permute via `astValidateAxis`. For a
-        // lat-first SkyFrame these emit at Bot1/Top1; for the
-        // standard layout at Bot2/Top2.
-        let lat_external_axis = self.lat_axis() + 1; // 1-based
+        // Emitted in INTERNAL axis order (like Lbl/Uni): internal axis 1
+        // is always latitude, so these are always Bot2/Top2.
         node.push_unset(
-            &format!("Bot{lat_external_axis}"),
+            "Bot2",
             NodeValue::Double(-std::f64::consts::FRAC_PI_2),
             Some("Lowest legal axis value".to_string()),
         );
         node.push_unset(
-            &format!("Top{lat_external_axis}"),
+            "Top2",
             NodeValue::Double(std::f64::consts::FRAC_PI_2),
             Some("Highest legal axis value".to_string()),
         );
@@ -2086,6 +2078,29 @@ impl Serializable for SkyFrame {
         }
         if let Some(dut1) = self.dut1 {
             node.push_double("Dut1", dut1, Some("UT1-UTC (s)".to_string()));
+        }
+
+        // Axis permutation array `Prm{n}`: written just before the Axis
+        // Objects, mirroring C `Frame::Dump` (frame.c:14623-14641). For
+        // each external axis `n` the value is the 1-based internal axis
+        // it maps to (`perm[n-1] + 1`). C writes it via
+        // `astWriteInt(..., set, helpful=0, ...)` where `set =
+        // (perm[axis] != axis)`; an unset, non-helpful attribute is
+        // suppressed entirely at the default Full=0 verbosity. So we
+        // emit `Prm{n}` only when the axis is actually permuted.
+        for (ext, &internal) in self.perm.iter().enumerate() {
+            if internal != ext {
+                let ival = (internal + 1) as i64;
+                node.push_int(
+                    &format!("Prm{}", ext + 1),
+                    ival,
+                    Some(format!(
+                        "Axis {} permuted to use internal axis {}",
+                        ext + 1,
+                        ival
+                    )),
+                );
+            }
         }
 
         // Per-axis SkyAxis children.
@@ -2195,16 +2210,22 @@ impl Serializable for SkyFrame {
             || self.sky_ref[1] != 0.0
             || self.sky_ref_is != SkyRefIs::Ignored
         {
-            for axis_p in 0..2usize {
-                // `axis_symbol`/`format` take a 1-based external axis index
-                // and re-apply the permutation internally, so the external
-                // index is the right argument for the symbol and value here.
-                let ext_axis = axis_p + 1;
+            // Mirrors C `SkyFrame::Dump` (skyframe.c:12040-12051): the
+            // SRef keyword is written in INTERNAL axis order, looping
+            // `axis_p` over internal axes and resolving the external axis
+            // via the inverse permutation — `SRef{axis_p+1}` carries the
+            // value, symbol and format of external axis `invperm[axis_p]`.
+            // `sky_ref` is stored in internal order, so `sky_ref[axis_p]`
+            // is already the right value; only the symbol/format must use
+            // the resolved external axis.
+            let invperm = [self.lon_axis(), self.lat_axis()]; // invperm[internal] = external (0-based)
+            for (axis_p, &ext0) in invperm.iter().enumerate() {
+                let ext_axis = ext0 + 1; // 1-based external axis
                 let dval = self.sky_ref[axis_p];
                 let symbol = self.axis_symbol(ext_axis).unwrap_or_default();
                 let fmt = self.format(ext_axis, dval).unwrap_or_default();
                 node.push_double(
-                    &format!("SRef{ext_axis}"),
+                    &format!("SRef{}", axis_p + 1),
                     dval,
                     Some(format!("Ref. pos. {symbol} {fmt}")),
                 );
@@ -2374,6 +2395,18 @@ impl Serializable for SkyFrame {
                     sky.axes[i] = axis;
                 }
             }
+        }
+
+        // Axis permutation `Prm{n}` (1-based internal axis for each
+        // external axis). Mirrors C `Frame::Dump`/load. Apply last so it
+        // is not clobbered by earlier per-axis state, and only when it
+        // differs from the identity. `perm_axes` takes a 1-based
+        // external→internal mapping, which is exactly the `Prm{n}` values.
+        let prm: Vec<usize> = (1..=2)
+            .map(|n| node.get_int(&format!("Prm{n}"), n as i64) as usize)
+            .collect();
+        if prm != [1, 2] {
+            Frame::perm_axes(&mut sky, &prm)?;
         }
 
         Ok(sky)

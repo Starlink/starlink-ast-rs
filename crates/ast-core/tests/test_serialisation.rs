@@ -1226,16 +1226,6 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // SkyFrame/Frame `Prm{n}` axis-permutation cards are not yet
-    // serialized: a standalone permuted (lat-first) SkyFrame loses its
-    // permutation on round-trip, so its component labels come back in the
-    // wrong order. C `Frame::Dump` emits Prm{n}; Rust bakes the perm into
-    // Lbl/Uni external ordering instead and never round-trips it.
-    ("cd-cross", "SkyFrame Prm{n} perm cards not serialized"),
-    (
-        "axes-swap",
-        "SkyFrame Prm{n} perm cards not serialized (multi-level perm)",
-    ),
     // SpecFrame Dump is missing the observer attributes (ObsLat/ObsLon/
     // Dtai/Dut1) — Rust emits the Axis block where C emits ObsLat first.
     (
@@ -1260,6 +1250,13 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
     (
         "multi-wcs-spec",
         "explicit SkyAxis Label not preserved on round-trip",
+    ),
+    // Doubly-nested CmpFrame (CmpFrame(CmpFrame, Spec)): the outer
+    // CmpFrame's Axp{n} permutation is not reconstructed on read, so its
+    // Axp cards are dropped on the second dump.
+    (
+        "axes-swap",
+        "nested CmpFrame Axp{n} permutation not round-tripped",
     ),
 ];
 

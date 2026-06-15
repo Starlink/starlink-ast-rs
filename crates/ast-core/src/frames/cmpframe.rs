@@ -805,81 +805,78 @@ impl Serializable for CmpFrame {
 
         // Per-axis attributes (Lbl/Uni/Dir) are emitted in INTERNAL
         // (unpermuted) axis order, mirroring C `Frame::Dump`
-        // (frame.c:14345-14358 Lbl, 14435-14453 Uni, 14508-14518 Dir).
-        // C loops over internal axis `i` and writes
-        // `Lbl{i+1} = astGetLabel(this, invperm[i])` — i.e. the value of
-        // whichever external axis maps to internal slot `i`. Since the
-        // child nodes already store their attributes in their own
-        // internal local order, internal CmpFrame slot `i` (1-based)
-        // is simply child A's local `i` when `i <= n1`, else child B's
-        // local `i - n1`. The axis permutation is NOT applied on the
-        // write path; it is recorded separately as `Axp{n}` and replayed
-        // by `from_node` via `perm_axes`.
+        // (frame.c:14345-14358 Lbl, 14435-14453 Uni, 14508-14518 Dir):
+        // it loops over internal axis `i` and writes the value of
+        // `astGetLabel(this, invperm[i])`. For a CmpFrame, `astGetLabel`
+        // routes the external axis to its owning child and that child's
+        // external axis, where the *child's own* permutation is applied.
+        // We therefore read the value through the child Frame's
+        // perm-aware `effective_*` accessors, NOT from the child's
+        // serialized node (which now stores its attributes in the child's
+        // own internal order). The CmpFrame's own permutation is recorded
+        // separately as `Axp{n}` and replayed by `from_node`.
         //
-        // Helper: map internal CmpFrame axis `i` (1-based) to its owning
-        // child node and that child's local 1-based axis.
-        let internal_child = |i: usize| -> (&Node, usize) {
+        // Internal CmpFrame slot `i` (1-based) maps to child A's local
+        // axis `i` (when `i <= n1`) or child B's local axis `i - n1`;
+        // that local axis is the child's *external* axis, so the child
+        // accessor applies the child's permutation for us.
+        let internal_child = |i: usize| -> (&dyn Frame, usize) {
             if i <= n1 {
-                (&node_a, i)
+                (self.frame1.as_ref(), i)
             } else {
-                (&node_b, i - n1)
+                (self.frame2.as_ref(), i - n1)
             }
         };
 
-        // `invperm[internal] = external` (both 1-based). C uses the
-        // external axis number for the default "Axis N" label of an
-        // axis with no explicit label.
+        // `invperm[internal-1] = external` (1-based): the external CmpFrame
+        // axis occupying internal slot `i`. C `astGetLabel`'s default
+        // ("Axis N") uses the external axis number, so a child's generic
+        // default label must be renumbered to the CmpFrame external position.
         let mut invperm = vec![0usize; naxes];
         for ext in 1..=naxes {
             invperm[self.perm[ext - 1]] = ext;
         }
 
-        // Lbl{n}: internal order.
+        // Lbl{n}: internal order, value via the child's perm-aware label.
         for i in 1..=naxes {
-            let (child_node, local_ax) = internal_child(i);
-            let lbl_key = format!("Lbl{local_ax}");
-            if let Some(lbl) = child_node.get_string_any(&lbl_key) {
-                // Renumber a generic "Axis N" default label to this
-                // axis's *external* position (C `astGetLabel` builds the
-                // default from the external axis number).
-                let ext = invperm[i - 1];
-                let lbl_str = if lbl == format!("Axis {local_ax}") && local_ax != ext {
-                    format!("Axis {ext}")
-                } else {
-                    lbl.to_string()
-                };
-                node.push_unset(
-                    &format!("Lbl{i}"),
-                    NodeValue::String(lbl_str),
-                    Some(format!("Label for axis {i}")),
-                );
-            }
+            let (child, local_ax) = internal_child(i);
+            let lbl = child.effective_label(local_ax);
+            // Renumber a generic "Axis {local}" default to the CmpFrame's
+            // external axis number for this slot (C builds the default from
+            // the whole-Frame external axis index).
+            let ext = invperm[i - 1];
+            let lbl = if lbl == format!("Axis {local_ax}") && local_ax != ext {
+                format!("Axis {ext}")
+            } else {
+                lbl
+            };
+            node.push_unset(
+                &format!("Lbl{i}"),
+                NodeValue::String(lbl),
+                Some(format!("Label for axis {i}")),
+            );
         }
 
-        // Uni{n}: internal order, with the C `(fullname)` comment suffix
-        // when the unit has a known label (frame.c:14438-14447 —
-        // `astUnitLabel` appended when it differs from the symbol).
+        // Uni{n}: internal order; emit only when the child reports a
+        // non-empty unit. The C `(fullname)` comment suffix is appended
+        // when the unit has a known label (frame.c:14438-14447).
         for i in 1..=naxes {
-            let (child_node, local_ax) = internal_child(i);
-            let uni_key = format!("Uni{local_ax}");
-            if let Some(uni) = child_node.get_string_any(&uni_key) {
-                let comment = match crate::units::unit_label(uni) {
+            let (child, local_ax) = internal_child(i);
+            let uni = child.effective_unit(local_ax);
+            if !uni.is_empty() {
+                let comment = match crate::units::unit_label(&uni) {
                     Some(lab) if lab != uni => format!("Units for axis {i} ({lab})"),
                     _ => format!("Units for axis {i}"),
                 };
-                node.push_unset(
-                    &format!("Uni{i}"),
-                    NodeValue::String(uni.to_string()),
-                    Some(comment),
-                );
+                node.push_unset(&format!("Uni{i}"), NodeValue::String(uni), Some(comment));
             }
         }
 
-        // Dir{n}: internal order — only write if value is 0 (reverse).
+        // Dir{n}: internal order — only write if the child's direction is
+        // 0 (reverse). `direction()` is perm-aware.
         for i in 1..=naxes {
-            let (child_node, local_ax) = internal_child(i);
-            let dir_key = format!("Dir{local_ax}");
-            if let Some(0) = child_node.get_int_any(&dir_key) {
+            let (child, local_ax) = internal_child(i);
+            if !child.direction(local_ax) {
                 node.push_unset(
                     &format!("Dir{i}"),
                     NodeValue::Int(0),
