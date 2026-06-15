@@ -489,20 +489,32 @@ pub(crate) fn decode_wcs_with_alts_def_b1950(
     for (letter, alt_store) in alts {
         let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(alt_store)?;
         let celestial = wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950);
+        // Capture the alt plane's celestial fiducial before the decoder is
+        // consumed, so the alt SkyFrame gets the same SkyRef/SkyRefIs=Ignored
+        // stamp as the primary (C applies WcsCelestial's SkyRef-from-fiducial
+        // to every plane, not just the primary).
+        let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
         let spectral = wcs_spectral::build_spectral(alt_store);
         let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
         let iwc_to_world = build_iwc_to_world(alt_store, celestial, spectral)?;
-        let full_mapping: DynMapping = Box::new(CmpMap::new(
+        // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
+        // plane (and the primary path above) — `simplify()` sets the
+        // has_been_simplified flag so the native dump writes `IsSimp = 1`.
+        let composed: DynMapping = Box::new(CmpMap::new(
             pixel_to_iwc,
             iwc_to_world,
             Composition::Series,
         )?);
+        let full_mapping: DynMapping = composed.simplify()?;
 
         // Stamp the version letter onto the alt frame so the writer
         // can recover it.
         set_frame_ident(world_frame.as_mut(), &letter.to_string());
 
+        // add_frame moves `current` to the newly-added alt frame, so the
+        // SkyRef stamp below targets it.
         fs.add_frame(FrameRef::Base, full_mapping, world_frame)?;
+        set_sky_ref_from_celestial(&mut fs, alt_ref_pos)?;
     }
 
     // Restore current to the primary frame (add_frame moved it).
