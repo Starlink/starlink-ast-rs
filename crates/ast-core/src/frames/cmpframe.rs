@@ -53,6 +53,7 @@ pub struct CmpFrame {
     obs_lon: Option<f64>,
     obs_alt: Option<f64>,
     dtai: Option<f64>,
+    dut1: Option<f64>,
     /// Cache for the computed default Domain ("<dom1>-<dom2>" / "CMP"),
     /// invalidated whenever a component becomes reachable mutably.
     domain_default: std::cell::OnceCell<String>,
@@ -82,6 +83,7 @@ impl CmpFrame {
             obs_lon: None,
             obs_alt: None,
             dtai: None,
+            dut1: None,
             domain_default: std::cell::OnceCell::new(),
         }
     }
@@ -178,6 +180,13 @@ impl CmpFrame {
         self.dtai = Some(v);
         super::set_frame_obs(self.frame1.as_mut(), 3, v);
         super::set_frame_obs(self.frame2.as_mut(), 3, v);
+    }
+
+    /// Set UT1-UTC (seconds), forwarding to both components.
+    pub fn set_dut1(&mut self, v: f64) {
+        self.dut1 = Some(v);
+        super::set_frame_obs(self.frame1.as_mut(), 4, v);
+        super::set_frame_obs(self.frame2.as_mut(), 4, v);
     }
 
     /// Number of axes contributed by the first child frame.
@@ -377,6 +386,12 @@ impl Frame for CmpFrame {
             .or_else(|| self.frame2.dtai())
     }
 
+    fn dut1(&self) -> Option<f64> {
+        self.dut1
+            .or_else(|| self.frame1.dut1())
+            .or_else(|| self.frame2.dut1())
+    }
+
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
         self.validate_axis(axis)?;
         let (child, local_axis) = self.route_axis(axis);
@@ -537,6 +552,7 @@ impl Frame for CmpFrame {
         cmp.obs_lon = self.obs_lon;
         cmp.obs_alt = self.obs_alt;
         cmp.dtai = self.dtai;
+        cmp.dut1 = self.dut1;
         Box::new(cmp)
     }
 
@@ -885,6 +901,40 @@ impl Serializable for CmpFrame {
             }
         }
 
+        // Frame-level observer attributes and Dtai/Dut1. C gates these on
+        // the CmpFrame's *own* set-ness — CmpFrame does not override the
+        // Test{ObsLat,Dtai,...} methods, so the parent Frame::Dump writes
+        // them only when set directly on the compound frame (frame.c:
+        // 14584-14611), even though GetDtai etc. fall back to the children
+        // for the value. Order matches C: ObsLat, ObsLon, ObsAlt, Dtai, Dut1.
+        if let Some(obs_lat) = self.obs_lat {
+            node.push_double(
+                "ObsLat",
+                obs_lat,
+                Some("Observers geodetic latitude (rads)".to_string()),
+            );
+        }
+        if let Some(obs_lon) = self.obs_lon {
+            node.push_double(
+                "ObsLon",
+                obs_lon,
+                Some("Observers geodetic longitude (rads)".to_string()),
+            );
+        }
+        if let Some(obs_alt) = self.obs_alt {
+            node.push_double(
+                "ObsAlt",
+                obs_alt,
+                Some("Observers geodetic altitude (metres)".to_string()),
+            );
+        }
+        if let Some(dtai) = self.dtai {
+            node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
+        }
+        if let Some(dut1) = self.dut1 {
+            node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
+        }
+
         // ActUnt: written whenever the ActiveUnit flag has been explicitly
         // set (TestActiveUnit, frame.c:14615), carrying its value. The
         // default is component-derived, so a set value of either 0 or 1 is
@@ -1005,6 +1055,26 @@ impl Serializable for CmpFrame {
         // (0 or 1) so it round-trips. Absent → component-derived default.
         if node.get("ActUnt").is_some() {
             cmp.act_unt = Some(node.get_int("ActUnt", 1) != 0);
+        }
+
+        // Frame-level observer attributes and Dtai/Dut1: restored (and
+        // forwarded to the components) when present as active cards. The
+        // setters mirror C's SetObsLat/SetDtai etc. which propagate to both
+        // child Frames.
+        if node.get("ObsLat").is_some() {
+            cmp.set_obs_lat(node.get_double("ObsLat", 0.0));
+        }
+        if node.get("ObsLon").is_some() {
+            cmp.set_obs_lon(node.get_double("ObsLon", 0.0));
+        }
+        if node.get("ObsAlt").is_some() {
+            cmp.set_obs_alt(node.get_double("ObsAlt", 0.0));
+        }
+        if node.get("Dtai").is_some() {
+            cmp.set_dtai(node.get_double("Dtai", 0.0));
+        }
+        if node.get("Dut1").is_some() {
+            cmp.set_dut1(node.get_double("Dut1", 0.0));
         }
 
         // Ident (Object-level identification string).

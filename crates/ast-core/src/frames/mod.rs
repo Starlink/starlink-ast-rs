@@ -1105,7 +1105,8 @@ pub(crate) fn set_frame_obs(f: &mut dyn Frame, which: usize, v: f64) {
                     0 => x.set_obs_lat(v),
                     1 => x.set_obs_lon(v),
                     2 => x.set_obs_alt(v),
-                    _ => x.set_dtai(v),
+                    3 => x.set_dtai(v),
+                    _ => x.set_dut1(v),
                 }
                 return;
             }
@@ -1137,7 +1138,8 @@ pub(crate) fn set_frame_obs(f: &mut dyn Frame, which: usize, v: f64) {
             0 => x.set_obs_lat(v),
             1 => x.set_obs_lon(v),
             2 => x.set_obs_alt(v),
-            _ => x.set_dtai(v),
+            3 => x.set_dtai(v),
+            _ => x.set_dut1(v),
         }
     }
 }

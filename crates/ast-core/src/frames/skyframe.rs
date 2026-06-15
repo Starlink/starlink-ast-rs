@@ -2074,10 +2074,10 @@ impl Serializable for SkyFrame {
             );
         }
         if let Some(dtai) = self.dtai {
-            node.push_double("Dtai", dtai, Some("TAI-UTC (s)".to_string()));
+            node.push_double("Dtai", dtai, Some("TAI-UTC in seconds".to_string()));
         }
         if let Some(dut1) = self.dut1 {
-            node.push_double("Dut1", dut1, Some("UT1-UTC (s)".to_string()));
+            node.push_double("Dut1", dut1, Some("UT1-UTC in seconds".to_string()));
         }
 
         // Axis permutation array `Prm{n}`: written just before the Axis

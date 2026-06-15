@@ -1681,6 +1681,18 @@ impl Serializable for FrameSet {
             if item.key == "Ident" || item.key == "AlSys" {
                 continue;
             }
+            // The proxy header shows only the unset values that C's
+            // `Frame::Dump` writes with `helpful = 1`; attributes written
+            // with `helpful = 0` are suppressed by `Use()` at Full=0
+            // (channel.c:4146). ObsLat/ObsLon/ObsAlt/Dtai/Dut1 fall in that
+            // group (frame.c:14587-14611), so an unset value for any of them
+            // must not appear in the commented FrameSet header.
+            if matches!(
+                item.key.as_str(),
+                "ObsLat" | "ObsLon" | "ObsAlt" | "Dtai" | "Dut1"
+            ) {
+                continue;
+            }
             let inner = match &item.value {
                 NodeValue::Unset(inner) => inner.as_ref(),
                 other => other,
