@@ -58,6 +58,14 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
         rename_keyword(cards, "LONGPOLE", "LONPOLE");
     }
 
+    // Zero CDELT (fitschan.c:31158-31193): replace any zero CDELT with a
+    // non-zero value so the pixel→IWC matrix stays invertible (a zero on the
+    // diagonal makes the Mapping non-simplifiable and unusable by a Plot).
+    // Zero CDELTs typically mark "redundant" degenerate axes (e.g. a single
+    // wavelength plane of a 3D cube). Runs once per version character; no
+    // encoding gate. C sits this inside the per-version loop at 31038.
+    translate_zero_cdelt(cards);
+
     // Translation 3 (fitschan.c:31206-31238): CDjjjiii → PCj_i +
     // CDELT=1.0. FITS-IRAF only — other encodings silently ignore
     // the legacy 6-digit form. Mirrors C's strict
@@ -170,6 +178,52 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
     // keyword strip (WAT*, MWCS*, WSV*, LTM*, LTV*). Outside the
     // per-version loop in C; runs once. No encoding gate.
     translate_iraf_mini_wcs_strip(cards);
+}
+
+/// Zero-CDELT helper: replace any zero `CDELT{i}{S}` with a non-zero value.
+/// Mirrors fitschan.c:31158-31193, run once per coordinate version.
+///
+/// A zero on the CDELT diagonal would make the pixel→IWC matrix singular, so
+/// the resulting Mapping could not be simplified or used by a Plot. Zero
+/// CDELTs conventionally mark "redundant" degenerate axes (a single-pixel
+/// plane), so the exact replacement value does not matter.
+///
+/// The C source re-reads the (zero) CDELT into `dval` when computing
+/// `1.0E-6*dval` — the prologue comment says "1.0E-6 of CRVAL" but the code
+/// uses CDELT, so the product is always zero and the `1.0` fallback always
+/// wins. This faithfully reproduces that quirk rather than the comment.
+fn translate_zero_cdelt(cards: &mut CardList) {
+    // Primary (' ') plus alternate versions 'A'..='Z' (C: s = 'A'-1 .. 'Z',
+    // with 'A'-1 mapped to ' ').
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        let suffix = if s == ' ' {
+            String::new()
+        } else {
+            s.to_string()
+        };
+        // C uses astKeyFields to find the highest CDELT index for this
+        // version; pass on if there are none.
+        let mut naxis = 0;
+        for j in 1..=9 {
+            if cards.find(&format!("CDELT{j}{suffix}")).is_some() {
+                naxis = j;
+            }
+        }
+        if naxis == 0 {
+            continue;
+        }
+        for j in 1..=naxis {
+            let key = format!("CDELT{j}{suffix}");
+            let Some(cdeltj) = cards.get_float(&key) else {
+                continue;
+            };
+            if cdeltj == 0.0 {
+                // C: cdeltj = 1.0E-6*dval (dval = the zero CDELT) → 0.0;
+                // then `if( cdeltj == 0.0 ) cdeltj = 1.0`.
+                cards.set_float(&key, 1.0, "");
+            }
+        }
+    }
 }
 
 /// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
@@ -1744,6 +1798,39 @@ mod tests {
         let after = cards.iter().count();
         assert_eq!(before, after);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
+    }
+
+    #[test]
+    fn zero_cdelt_is_replaced_with_one() {
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'WAVE    '\n\
+             CTYPE2  = 'RA---TAN'\n\
+             CTYPE3  = 'DEC--TAN'\n\
+             CDELT1  =            1.000E-10\n\
+             CDELT2  =                  0.0\n\
+             CDELT3  =                  0.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans_inplace(&mut cards, Encoding::FitsWcs);
+        // Non-zero CDELT untouched; zero CDELTs become 1.0 (the C fallback,
+        // since 1.0E-6 * the zero CDELT is still zero).
+        assert_eq!(cards.get_float("CDELT1"), Some(1.0e-10));
+        assert_eq!(cards.get_float("CDELT2"), Some(1.0));
+        assert_eq!(cards.get_float("CDELT3"), Some(1.0));
+    }
+
+    #[test]
+    fn zero_cdelt_handles_alternate_versions() {
+        let mut cards = CardList::from_header(
+            "CDELT1A =                  0.0\n\
+             CDELT2A =                  2.5\n\
+             END",
+        )
+        .unwrap();
+        spec_trans_inplace(&mut cards, Encoding::FitsWcs);
+        assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
+        assert_eq!(cards.get_float("CDELT2A"), Some(2.5));
     }
 
     #[test]
