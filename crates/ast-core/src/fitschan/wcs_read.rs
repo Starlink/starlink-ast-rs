@@ -112,7 +112,7 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // fires. We achieve the same semantics by using `frame_mut` to
     // bypass our `with_integrity` machinery, since by this point the
     // SpecFrame already lives inside the FrameSet.
-    set_spec_ref_from_celestial(&mut frameset, store)?;
+    set_spec_ref_from_celestial(&mut frameset, celestial_ref_pos)?;
 
     // Step 10: DSBSpecFrame setup. Mirrors C `WcsSpectral`
     // (fitschan.c:39585-39588), which calls `DSBSetUp` immediately after
@@ -184,10 +184,10 @@ fn contains_dsb(frame: &dyn crate::frames::Frame) -> bool {
 /// `RefRA`/`RefDec` attributes (FK5 J2000 radians). No-op if the
 /// world frame doesn't contain a SpecFrame and a SkyFrame, or if the
 /// SpecFrame already has both attributes set.
-fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResult<()> {
+fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -> AstResult<()> {
     // Locate spec/sky child indices and frame-axis indices within the
     // current world frame. If either is absent, nothing to do.
-    let Some(info) = locate_spec_sky(fs.current()) else {
+    if locate_spec_sky(fs.current()).is_none() {
         return Ok(());
     };
 
@@ -203,26 +203,15 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, store: &FitsStore) -> AstResul
         }
     }
 
-    // Step 1: compute the celestial fiducial in the SkyFrame's native
-    // system. Mirrors C `WcsCelestial` (fitschan.c:35487+) which
-    // returns reflon/reflat as CRVAL1/CRVAL2 in radians, in the
-    // SkyFrame's coordinate system (RADESYS-determined). Here we feed
-    // CRPIX (1-based in FITS, so the same value here) through the
-    // pixel→world mapping: at CRPIX, the pixel→IWC step yields IWC=0
-    // on the celestial axes, the WcsMap inverse yields the native
-    // fiducial, and the post-WcsMap rotation maps that to the
-    // celestial fiducial in the SkyFrame's native system (i.e.
-    // FK4/Galactic/etc, not yet converted to FK5 J2000).
-    let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;
-    let naxis = store.naxis;
-    let crpix: Vec<f64> = (0..naxis).map(|i| store.crpix[i].unwrap_or(1.0)).collect();
-
-    use crate::coords::PointSet;
-    let pts_in = PointSet::from_rows([crpix.as_slice()]);
-    let pts_out = mapping.transform(&pts_in, true)?;
-    let world_pt = pts_out.point(0).to_vec();
-    let reflon = world_pt[info.world_lon_axis];
-    let reflat = world_pt[info.world_lat_axis];
+    // The reference position is the raw CRVAL pair (radians) in the SkyFrame's
+    // native system, as returned by `WcsCelestial` and passed straight into
+    // `astSetRefPos(specfrm, reffrm, reflon, reflat)` (fitschan.c:37780/39507).
+    // C uses the same reflon/reflat for the SkyFrame's SkyRef and the
+    // SpecFrame's RefRA/RefDec — so use the celestial decoder's value rather
+    // than re-deriving it through the pixel→world Mapping (which loses ULPs).
+    let Some((reflon, reflat)) = ref_pos else {
+        return Ok(());
+    };
 
     // Step 2: clone the SkyFrame so we can hand it to `set_ref_pos`
     // as the reference frame. Mirrors C's
@@ -376,26 +365,19 @@ fn set_spec_ref_pos(
     Ok(())
 }
 
-#[derive(Debug)]
-struct SpecSkyInfo {
-    /// 0-based axis index of celestial longitude in the world frame.
-    world_lon_axis: usize,
-    /// 0-based axis index of celestial latitude in the world frame.
-    world_lat_axis: usize,
-}
-
-fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
+/// Confirm the world frame is a `CmpFrame` containing both a spectral frame
+/// (`SpecFrame`/`DSBSpecFrame`) and a `SkyFrame` (longitude + latitude axes).
+/// Returns `Some(())` when present — the reference position itself comes from
+/// the celestial decoder's raw CRVAL, so no axis indices are needed here.
+fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<()> {
     use crate::frames::{CmpFrame, DSBSpecFrame, SkyFrame, SpecFrame};
     // Require a CmpFrame (a single spec/sky frame has no companion).
     frame.as_any().downcast_ref::<CmpFrame>()?;
 
-    // Walk *external* axes via `primary_frame`, which resolves any
-    // CmpFrame axis permutation, so the returned indices align with the
-    // pixel→world Mapping's external (FITS) output order. `paxis` is the
-    // SkyFrame's *internal physical* axis index (0 = longitude, 1 =
-    // latitude), so we test it against those constants — not against the
-    // SkyFrame's external `lon_axis()`/`lat_axis()`. Mirrors C's
-    // primary-frame walk in WcsSpectral (fitschan.c:39620+).
+    // Walk *external* axes via `primary_frame`, which resolves any CmpFrame
+    // axis permutation. `paxis` is the SkyFrame's *internal physical* axis
+    // index (0 = longitude, 1 = latitude). Mirrors C's primary-frame walk in
+    // WcsSpectral (fitschan.c:39620+).
     let mut spec_axis: Option<usize> = None;
     let mut lon: Option<usize> = None;
     let mut lat: Option<usize> = None;
@@ -412,12 +394,10 @@ fn locate_spec_sky(frame: &dyn crate::frames::Frame) -> Option<SpecSkyInfo> {
         }
     }
 
-    let _spec_axis = spec_axis?;
-    let (lon, lat) = (lon?, lat?);
-    Some(SpecSkyInfo {
-        world_lon_axis: lon,
-        world_lat_axis: lat,
-    })
+    spec_axis?;
+    lon?;
+    lat?;
+    Some(())
 }
 
 fn peek_spec(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SpecFrame> {

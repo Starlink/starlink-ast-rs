@@ -147,12 +147,18 @@ pub(crate) fn normalise_ra(angle: f64) -> f64 {
 /// `SpecFrame::set_ref_pos` for `RefDec` so the stored value matches C
 /// after a coordinate-system conversion.
 pub(crate) fn normalise_dec(angle: f64) -> f64 {
+    // Mirror `eraAnpm` exactly: `w = fmod(a, 2π); if |w| >= π { w -= sign(2π, a) }`.
+    // `fmod` is symmetric (truncates toward zero), so for an angle already in
+    // (-π, π) it returns the input bit-for-bit — unlike `rem_euclid`, whose
+    // always-non-negative result forces a small negative angle through
+    // `2π − |a|` and then back, losing low-order bits (~26 ULP on a ~0.01 rad
+    // declination). The bit-exact pass-through matters for RefDec round-trips.
     let two_pi = 2.0 * std::f64::consts::PI;
-    let r = angle.rem_euclid(two_pi);
-    if r > std::f64::consts::PI {
-        r - two_pi
+    let w = angle % two_pi;
+    if w.abs() >= std::f64::consts::PI {
+        w - two_pi.copysign(angle)
     } else {
-        r
+        w
     }
 }
 
@@ -427,6 +433,24 @@ mod tests {
     // ----------------------------------------------------------------
     // SkyAxis defaults
     // ----------------------------------------------------------------
+
+    #[test]
+    fn normalise_dec_passes_small_angles_through_unchanged() {
+        // eraAnpm returns a small in-range angle bit-for-bit (fmod is
+        // symmetric); rem_euclid would round-trip through ~2π and lose ULPs.
+        for &a in &[-0.012636183784438945_f64, 0.5, -0.5, 1.0, -1.0] {
+            assert_eq!(normalise_dec(a), a, "angle {a} should pass through");
+        }
+    }
+
+    #[test]
+    fn normalise_dec_wraps_into_plus_minus_pi() {
+        // Matches eraAnpm: range is -pi <= a < pi.
+        let two_pi = 2.0 * PI;
+        assert!((normalise_dec(1.5 * PI) - (-0.5 * PI)).abs() < TOL);
+        assert!((normalise_dec(-1.5 * PI) - (0.5 * PI)).abs() < TOL);
+        assert!((normalise_dec(two_pi + 0.3) - 0.3).abs() < TOL);
+    }
 
     #[test]
     fn longitude_defaults() {
