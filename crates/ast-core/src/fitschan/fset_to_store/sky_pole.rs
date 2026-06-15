@@ -109,10 +109,12 @@ pub(crate) fn sky_pole(
     if is_zenithal(proj) {
         // Zenithal projections (other than TPN): read the explicit
         // PV-3 / PV-4 overrides if the user set them. Mirrors
-        // C:29505-29511.
+        // C:29505-29511. WcsMap PV parameters are stored in FITS-WCS
+        // degrees, so convert to radians for this function's internal
+        // (radian) contract before the final `* DR2D` store.
         if proj != WcsProjection::Tpn {
-            lonpole_rad = wcsmap.get_pv(axlon_1based, 3);
-            latpole_rad = wcsmap.get_pv(axlon_1based, 4);
+            lonpole_rad = wcsmap.get_pv(axlon_1based, 3).map(|v| v * DD2R);
+            latpole_rad = wcsmap.get_pv(axlon_1based, 4).map(|v| v * DD2R);
         }
         // For TPN both stay None — TPN uses PV(lonax, 3/4) as
         // polynomial slots.
@@ -399,10 +401,11 @@ mod tests {
     #[test]
     fn tan_with_pv_overrides_emits_lonpole_latpole() {
         let mut wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-        // PV-3 = lonpole, PV-4 = latpole. Internal storage uses
-        // radians; FITS output uses degrees.
-        wm.set_pv(1, 3, 90.0_f64.to_radians()).unwrap();
-        wm.set_pv(1, 4, 45.0_f64.to_radians()).unwrap();
+        // PV-3 = lonpole, PV-4 = latpole. WcsMap PV parameters are stored
+        // in FITS-WCS degrees (matching C and the read path); FITS output
+        // is also degrees.
+        wm.set_pv(1, 3, 90.0).unwrap();
+        wm.set_pv(1, 4, 45.0).unwrap();
         let map3 = unit_map3(2);
         let mut store = FitsStore::new(2);
         sky_pole(&wm, map3.as_ref(), 0, 1, 0, 1, 0, 1, ' ', &mut store).unwrap();

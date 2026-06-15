@@ -145,19 +145,21 @@ pub(crate) fn build_celestial_with_def_b1950(
     // axis, mirroring fitschan.c:38199-38217. C: when LONPOLE/LATPOLE
     // are stored as the dedicated keywords (not as PV3/PV4), copy
     // them across so the FrameSet→Store round trip recovers them.
+    // WcsMap PV parameters are stored in FITS-WCS units (degrees) — C's
+    // GetNatLon/GetNatLat read them back and apply AST__DD2R on use
+    // (wcsmap.c:1948) — so store the degree value directly, not radians.
     // Skip for TPN — PV3/PV4 there are polynomial coefficients.
     let is_tpn = matches!(proj, WcsProjection::Tpn);
     if !is_tpn {
-        let deg2rad_local = PI / 180.0;
         if wcsmap.get_pv(lon_axis + 1, 3).is_none()
             && let Some(lon_deg) = store.lonpole
         {
-            let _ = wcsmap.set_pv(lon_axis + 1, 3, lon_deg * deg2rad_local);
+            let _ = wcsmap.set_pv(lon_axis + 1, 3, lon_deg);
         }
         if wcsmap.get_pv(lon_axis + 1, 4).is_none()
             && let Some(lat_deg) = store.latpole
         {
-            let _ = wcsmap.set_pv(lon_axis + 1, 4, lat_deg * deg2rad_local);
+            let _ = wcsmap.set_pv(lon_axis + 1, 4, lat_deg);
         }
     }
 
