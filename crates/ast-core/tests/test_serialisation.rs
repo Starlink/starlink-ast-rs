@@ -1226,8 +1226,6 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // MatrixMap with diagonal/unit form emits IM{n} where C writes Form.
-    ("crota-3d", "MatrixMap Form/inverse-matrix emission order"),
     // TimeFrame ActUnt (ActiveUnit) attribute not emitted before IsA Frame.
     ("timeplot", "TimeFrame ActUnt attribute not emitted"),
     // Explicit SkyAxis Label "Right Ascension" (capitalised) not preserved

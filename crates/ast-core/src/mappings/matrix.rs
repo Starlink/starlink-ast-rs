@@ -75,14 +75,20 @@ impl MatrixMap {
             return Err(AstError::new(ErrorCode::Mtrmt, "matrix must not be empty"));
         }
 
-        let inverse = if nrows == ncols {
-            // A singular square matrix — no inverse, but we allow creation.
-            gauss_jordan_inverse(&matrix).ok()
-        } else {
-            None
-        };
-
         let form = compute_form(&matrix);
+
+        // Mirror C's form-based inversion (matrixmap.c InvertMatrix +
+        // CompressMatrix): a DIAGONAL matrix is inverted element-wise
+        // (reciprocals, no determinant threshold), while a FULL matrix goes
+        // through palDmat's SFA singularity gate. A non-square matrix has no
+        // inverse.
+        let inverse = if nrows != ncols {
+            None
+        } else if form == MatrixForm::Diagonal {
+            Some(diagonal_inverse(&matrix))
+        } else {
+            gauss_jordan_inverse(&matrix).ok()
+        };
         let inv_form = inverse.as_ref().map_or(MatrixForm::Full, compute_form);
 
         Ok(Self {
@@ -1156,13 +1162,48 @@ fn is_identity_matrix(m: &Array2<f64>) -> bool {
     true
 }
 
+/// Invert a diagonal matrix element-wise, mirroring C's
+/// `InvertMatrix(DIAGONAL, …)` (matrixmap.c:1525): each diagonal element is
+/// replaced by its reciprocal, with zero or `BAD_VALUE` diagonals mapping to
+/// `BAD_VALUE`. Unlike the FULL path this has no determinant threshold, so a
+/// near-singular-but-nonzero diagonal still yields a stored inverse.
+fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
+    let n = m.nrows();
+    let mut inv = Array2::zeros((n, n));
+    for i in 0..n {
+        let d = m[[i, i]];
+        inv[[i, i]] = if d != 0.0 && !is_bad(d) {
+            1.0 / d
+        } else {
+            BAD_VALUE
+        };
+    }
+    inv
+}
+
+/// Singularity threshold from `palDmat` (pal/palDmat.c). The matrix is
+/// declared singular when either a column's largest pivot magnitude or the
+/// running determinant magnitude falls below this value. C's full-matrix
+/// inverse (`InvertMatrix` → `palDmat`, matrixmap.c:1582) uses this exact
+/// criterion, so a near-singular matrix whose determinant is below `SFA`
+/// gets *no* inverse stored (and hence no `IM` cards on dump).
+const PAL_DMAT_SFA: f64 = 1e-20;
+
 /// Compute the inverse of a square matrix using Gauss-Jordan elimination
 /// with partial pivoting.
 ///
-/// Returns an error if the matrix is singular.
+/// Returns an error if the matrix is singular by `palDmat`'s `SFA`
+/// criterion (see [`PAL_DMAT_SFA`]).
 fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
     let n = m.nrows();
     debug_assert_eq!(n, m.ncols(), "matrix must be square");
+
+    let singular = || {
+        AstError::new(
+            ErrorCode::Nodef,
+            "matrix is singular and cannot be inverted",
+        )
+    };
 
     // Build augmented matrix [M | I].
     let mut aug: Vec<f64> = Vec::with_capacity(n * 2 * n);
@@ -1178,41 +1219,44 @@ fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
     // Helper closures to index into the flat augmented matrix.
     let idx = |r: usize, c: usize| r * (2 * n) + c;
 
-    for col in 0..n {
-        // Find pivot row (partial pivoting).
-        let pivot_row = (col..n).max_by(|&a, &b| {
-            aug[idx(a, col)]
-                .abs()
-                .partial_cmp(&aug[idx(b, col)].abs())
-                .unwrap()
-        });
-        let pivot_row = match pivot_row {
-            Some(r) => r,
-            None => {
-                return Err(AstError::new(
-                    ErrorCode::Nodef,
-                    "matrix is singular and cannot be inverted",
-                ));
-            }
-        };
+    // Running determinant; mirrors palDmat's `*d` (sign flips on each row
+    // swap, multiplied by the pivot per column).
+    let mut det = 1.0_f64;
 
-        // Check that the pivot is non-zero.
-        if aug[idx(pivot_row, col)].abs() < 1e-300 {
-            return Err(AstError::new(
-                ErrorCode::Nodef,
-                "matrix is singular and cannot be inverted",
-            ));
+    for col in 0..n {
+        // Find pivot row (partial pivoting): the row with the largest
+        // magnitude in this column (palDmat's `amx`/`imx`).
+        let mut pivot_row = col;
+        let mut amx = aug[idx(col, col)].abs();
+        for r in (col + 1)..n {
+            let t = aug[idx(r, col)].abs();
+            if t > amx {
+                amx = t;
+                pivot_row = r;
+            }
         }
 
-        // Swap rows if needed.
+        // palDmat: if the largest available pivot is below SFA, singular.
+        if amx < PAL_DMAT_SFA {
+            return Err(singular());
+        }
+
+        // Swap rows if needed (flips the determinant sign).
         if pivot_row != col {
             for c in 0..(2 * n) {
                 aug.swap(idx(col, c), idx(pivot_row, c));
             }
+            det = -det;
+        }
+
+        // Accumulate the determinant and apply palDmat's second SFA gate.
+        let pivot = aug[idx(col, col)];
+        det *= pivot;
+        if det.abs() < PAL_DMAT_SFA {
+            return Err(singular());
         }
 
         // Scale pivot row so that the pivot element becomes 1.
-        let pivot = aug[idx(col, col)];
         for c in 0..(2 * n) {
             aug[idx(col, c)] /= pivot;
         }
