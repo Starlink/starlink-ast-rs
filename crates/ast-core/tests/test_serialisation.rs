@@ -1241,10 +1241,6 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
     ("multi-wcs-head", "SkyFrame default Title/Label table"),
     ("offset-sky-head", "SkyFrame default Title/Label table"),
     ("offset-sky-pole-head", "SkyFrame default Title/Label table"),
-    (
-        "serpens-head",
-        "SkyFrame default Title + FrameSet Prm proxy",
-    ),
     ("skyref-head", "SkyFrame default Title/Label table"),
     ("skyref-alt-head", "SkyFrame default Title/Label table"),
     ("tidy-offsets-head", "SkyFrame default Title/Label table"),

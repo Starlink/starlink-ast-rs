@@ -1684,13 +1684,15 @@ impl Serializable for FrameSet {
             // The proxy header shows only the unset values that C's
             // `Frame::Dump` writes with `helpful = 1`; attributes written
             // with `helpful = 0` are suppressed by `Use()` at Full=0
-            // (channel.c:4146). ObsLat/ObsLon/ObsAlt/Dtai/Dut1 fall in that
-            // group (frame.c:14587-14611), so an unset value for any of them
-            // must not appear in the commented FrameSet header.
+            // (channel.c:4146). ObsLat/ObsLon/ObsAlt/Dtai/Dut1 and the axis
+            // permutation cards `Prm{n}` (frame.c:14640) fall in that group,
+            // so an unset value for any of them must not appear in the
+            // commented FrameSet header.
             if matches!(
                 item.key.as_str(),
                 "ObsLat" | "ObsLon" | "ObsAlt" | "Dtai" | "Dut1"
-            ) {
+            ) || item.key.starts_with("Prm")
+            {
                 continue;
             }
             let inner = match &item.value {
