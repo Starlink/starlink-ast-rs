@@ -2305,13 +2305,16 @@ impl Serializable for SpecFrame {
             );
         }
 
-        // ActUnt: active if explicitly set to false.
-        if let Some(false) = self.act_unt {
-            node.push_int(
-                "ActUnt",
-                0,
-                Some("Unit strings do not affect alignment".to_string()),
-            );
+        // ActUnt: written whenever the ActiveUnit flag has been explicitly
+        // set (TestActiveUnit, frame.c:14615), carrying its value (0 or 1);
+        // an unset flag is suppressed.
+        if let Some(act) = self.act_unt {
+            let comment = if act {
+                "Unit strings affects alignment"
+            } else {
+                "Unit strings do not affect alignment"
+            };
+            node.push_int("ActUnt", act as i64, Some(comment.to_string()));
         }
 
         // Ax1: axis child object with unit (if unit is set or non-empty default).
@@ -2565,10 +2568,10 @@ impl Serializable for SpecFrame {
             sf.spec_origin = Some(node.get_double("SpOrg", 0.0));
         }
 
-        // ActUnt (default is 1 = true; only store when 0).
-        let act_unt_val = node.get_int("ActUnt", 1);
-        if act_unt_val == 0 {
-            sf.act_unt = Some(false);
+        // ActUnt: the flag is set iff the card is present; record its value
+        // (0 or 1) so it round-trips. Absent → class default.
+        if node.get("ActUnt").is_some() {
+            sf.act_unt = Some(node.get_int("ActUnt", 1) != 0);
         }
 
         // Ident (Object-level identification string).
