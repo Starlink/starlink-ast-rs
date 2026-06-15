@@ -2383,11 +2383,19 @@ impl Serializable for SpecFrame {
 
         // --- SpecFrame-specific attributes (after IsA Frame) ---
 
-        // SoR (StdOfRest) — only write if explicitly set.
+        // SoR (StdOfRest): C writes it with helpful=1 (specframe.c Dump),
+        // so a set value is active and an unset one is a commented default
+        // (the default StdOfRest is Heliocentric).
         if self.sor_set {
             node.push_string(
                 "SoR",
                 self.std_of_rest.as_str(),
+                Some("Standard of rest".to_string()),
+            );
+        } else {
+            node.push_unset(
+                "SoR",
+                NodeValue::String(self.std_of_rest.as_str().to_string()),
                 Some("Standard of rest".to_string()),
             );
         }
@@ -2546,26 +2554,23 @@ impl Serializable for SpecFrame {
             }
         }
 
-        // Unit preference (UFreq, UWave, etc.).
+        // Unit preference (UFreq, UWave, etc.) / Axis Unit. C records the
+        // used unit for the current system (`usedunits[system]`) whenever a
+        // Unit has been set, *including the empty string* for dimensionless
+        // systems (BETA, redshift) — so the distinction is card presence,
+        // not emptiness. Prefer the `U<system>` card, then the per-axis
+        // `Uni1` (CmpFrame override forwarding), then the Axis child Unit.
         let unit_key = system.unit_attr_key();
-        let unit_str = node.get_string(unit_key, "");
-        if !unit_str.is_empty() {
-            sf.unit = Some(unit_str);
-        } else {
-            // Fall back to Uni1 (the per-axis attribute used by CmpFrame
-            // overrides), then to the Axis child Unit attribute. C reaches
-            // the same effect because CmpFrame's SetAttrib forwards
-            // "Unit(N)" into the inner SpecFrame which stores it on both
-            // the Axis and `usedunits[system]`.
-            let uni1 = node.get_string("Uni1", "");
-            if !uni1.is_empty() {
-                sf.unit = Some(uni1);
-            } else if let Some(axis_node) = node.get_object("Ax1") {
-                let axis_unit = axis_node.get_string("Unit", "");
-                if !axis_unit.is_empty() {
-                    sf.unit = Some(axis_unit);
-                }
-            }
+        let axis_unit_card = node.get_object("Ax1").and_then(|ax| {
+            ax.get("Unit")
+                .map(|_| ax.get_string("Unit", "").to_string())
+        });
+        if node.get(unit_key).is_some() {
+            sf.unit = Some(node.get_string(unit_key, ""));
+        } else if node.get("Uni1").is_some() {
+            sf.unit = Some(node.get_string("Uni1", ""));
+        } else if let Some(u) = axis_unit_card {
+            sf.unit = Some(u);
         }
 
         // Explicit per-axis Label, carried as an active card inside the

@@ -1231,18 +1231,6 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
     // Bug 2 — SkyFrame default Title/Label for AzEl/Unknown/equinox/GAPPT.
     // Bug 3 — SpecFrame default Title rest-frequency / SoR clause.
-    (
-        "beta-frq-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "wave-1d-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
-    (
-        "zopt-frq-head",
-        "SpecFrame default Title rest-frequency clause",
-    ),
     // SpecFrame AWAV ("Wavelength in air") default Title/Label.
     // Bug 5 — BasicFrame Ident / IsA Object.
     // SpecFrame velocity-axis Unit / UFreq emission (separate from the unit
