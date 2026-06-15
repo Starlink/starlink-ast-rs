@@ -1226,16 +1226,6 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
 const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
-    // SpecFrame Dump is missing the observer attributes (ObsLat/ObsLon/
-    // Dtai/Dut1) — Rust emits the Axis block where C emits ObsLat first.
-    (
-        "ssysobs",
-        "SpecFrame observer attrs (ObsLat/ObsLon/...) not emitted",
-    ),
-    (
-        "skyspec3d-class",
-        "SpecFrame observer attrs (ObsLat/ObsLon/...) not emitted",
-    ),
     // DSBSpecFrame default axis label lacks the " (USB)"/sideband suffix.
     (
         "class-noproj",

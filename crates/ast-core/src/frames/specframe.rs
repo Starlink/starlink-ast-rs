@@ -2280,28 +2280,9 @@ impl Serializable for SpecFrame {
             );
         }
 
-        // ActUnt: active if explicitly set to false.
-        if let Some(false) = self.act_unt {
-            node.push_int(
-                "ActUnt",
-                0,
-                Some("Unit strings do not affect alignment".to_string()),
-            );
-        }
-
-        // Ax1: axis child object with unit (if unit is set or non-empty default).
-        let mut axis_node = Node::new("Axis");
-        axis_node.class_comment = Some("Coordinate axis".to_string());
-        if let Some(ref unit) = self.unit {
-            let comment = match crate::units::unit_label(unit) {
-                Some(lab) => format!("Axis units ({lab})"),
-                None => "Axis units".to_string(),
-            };
-            axis_node.push_string("Unit", unit, Some(comment));
-        }
-        node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
-
-        // Observer attributes (active only if explicitly set).
+        // Observer attributes (active only if explicitly set). C
+        // `Frame::Dump` writes these (and Dtai/Dut1) before the Axis
+        // sub-objects (frame.c:14584-14609).
         if let Some(obs_lat) = self.obs_lat {
             node.push_double(
                 "ObsLat",
@@ -2323,6 +2304,27 @@ impl Serializable for SpecFrame {
                 Some("Observers geodetic altitude (metres)".to_string()),
             );
         }
+
+        // ActUnt: active if explicitly set to false.
+        if let Some(false) = self.act_unt {
+            node.push_int(
+                "ActUnt",
+                0,
+                Some("Unit strings do not affect alignment".to_string()),
+            );
+        }
+
+        // Ax1: axis child object with unit (if unit is set or non-empty default).
+        let mut axis_node = Node::new("Axis");
+        axis_node.class_comment = Some("Coordinate axis".to_string());
+        if let Some(ref unit) = self.unit {
+            let comment = match crate::units::unit_label(unit) {
+                Some(lab) => format!("Axis units ({lab})"),
+                None => "Axis units".to_string(),
+            };
+            axis_node.push_string("Unit", unit, Some(comment));
+        }
+        node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 
         // IsA Frame marker.
         node.push_isa("Frame", Some("Coordinate system description".to_string()));
