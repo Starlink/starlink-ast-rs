@@ -17,6 +17,8 @@ use ast_core::coords::PointSet;
 use ast_core::mappings::Mapping;
 use ast_core::{from_native_string, to_native_string};
 
+mod common;
+
 /// Generate deterministic test points for a mapping with `nin` inputs.
 /// Points are in the range [0.1, 1.1] to avoid singularities at zero.
 fn make_test_points(nin: usize, npoint: usize) -> PointSet {
@@ -29,63 +31,6 @@ fn make_test_points(nin: usize, npoint: usize) -> PointSet {
         rows.push(row);
     }
     PointSet::from_rows(rows)
-}
-
-/// Compare two native serialisations for equivalence: byte-equal after
-/// trimming, OR equal modulo ≤4-ULP differences in any numeric token.
-/// This absorbs the same ~1 ULP libm platform drift that the byte-exact
-/// round-trip test handles.
-fn native_strings_equivalent(got: &str, want: &str) -> bool {
-    if got.trim() == want.trim() {
-        return true;
-    }
-    let mut g = got.lines();
-    let mut w = want.lines();
-    loop {
-        match (g.next(), w.next()) {
-            (None, None) => return true,
-            (Some(gl), Some(wl)) if gl == wl => continue,
-            (Some(gl), Some(wl)) => {
-                if !line_tokens_equivalent(gl, wl) {
-                    return false;
-                }
-            }
-            _ => return false,
-        }
-    }
-}
-
-fn line_tokens_equivalent(got: &str, want: &str) -> bool {
-    let mut gt = got.split_whitespace();
-    let mut wt = want.split_whitespace();
-    loop {
-        match (gt.next(), wt.next()) {
-            (None, None) => return true,
-            (Some(g), Some(w)) if g == w => continue,
-            (Some(g), Some(w)) => {
-                let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
-                    return false;
-                };
-                if !ulp_close(gv, wv, 4) {
-                    return false;
-                }
-            }
-            _ => return false,
-        }
-    }
-}
-
-fn ulp_close(a: f64, b: f64, max_ulps: u64) -> bool {
-    if a == b {
-        return true;
-    }
-    if a.is_nan() || b.is_nan() || a.is_sign_negative() != b.is_sign_negative() {
-        return false;
-    }
-    let ai = a.to_bits();
-    let bi = b.to_bits();
-    let diff = ai.abs_diff(bi);
-    diff <= max_ulps
 }
 
 /// Check whether two output point sets are equivalent within tolerance.
@@ -299,7 +244,7 @@ fn simplify_regression() {
         // === Check 3: Serialization comparison (optional) ===
         if !skip_string_compare {
             if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
-                if !native_strings_equivalent(&simp_str, &ref_text) {
+                if !common::native_strings_equivalent(&simp_str, &ref_text, 4) {
                     serial_failures.push(name.to_string());
                 }
             }

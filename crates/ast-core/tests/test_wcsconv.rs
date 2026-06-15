@@ -13,6 +13,8 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::{Encoding, FitsChan};
 
+mod common;
+
 #[derive(Debug)]
 struct TestCase {
     name: String,
@@ -204,7 +206,22 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
         return Err("write produced 0 cards".to_string());
     }
 
-    // String comparison (if not skipped).
+    // String comparison.
+    //
+    // Native (`.ast`) dumps are compared with a ≤4-ULP tolerance on each
+    // numeric token, absorbing the last-bit libm drift that differs
+    // between platforms (and between the Rust port and the C oracle).
+    // This is the same comparator the simplify regression harness uses
+    // (factored into `tests/common`).
+    //
+    // FITS encodings stay byte-exact: their numeric tokens are already
+    // rounded to FitsDigits during stringification, so a sub-ULP input
+    // difference rounds to the identical printed string (exact match),
+    // while any genuine difference shows up in the last printed digit
+    // (~1e-8, far beyond 4 ULP) which the tolerant comparator would
+    // reject anyway. Tolerance buys nothing for FITS and would only risk
+    // loosening the fixed-column card check.
+    let is_native = native_output.is_some();
     if !case.skip_string_compare {
         let expected_path = fixtures_dir().join("expected").join(&case.expected_file);
         let expected_text =
@@ -232,9 +249,15 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
         let exp_lines = normalize(&expected_text);
         let out_lines = normalize(&output);
 
-        // Find first difference.
+        // Find first difference. Native dumps allow ≤4-ULP numeric drift
+        // per token; FITS dumps require an exact match.
         for (i, (o, e)) in out_lines.iter().zip(exp_lines.iter()).enumerate() {
-            if o != e {
+            let equivalent = if is_native {
+                common::line_tokens_equivalent(o, e, 4)
+            } else {
+                o == e
+            };
+            if !equivalent {
                 return Err(format!(
                     "line {} differs:\n  got: '{}'\n  exp: '{}'",
                     i + 1,
