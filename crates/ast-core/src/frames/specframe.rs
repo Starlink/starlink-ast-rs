@@ -2269,10 +2269,14 @@ impl Serializable for SpecFrame {
             .as_deref()
             .unwrap_or(self.system.default_display_units());
         if !display_unit.is_empty() {
+            let comment = match crate::units::unit_label(display_unit) {
+                Some(lab) => format!("Units for axis 1 ({lab})"),
+                None => "Units for axis 1".to_string(),
+            };
             node.push_unset(
                 "Uni1",
                 NodeValue::String(display_unit.to_string()),
-                Some("Units for axis 1".to_string()),
+                Some(comment),
             );
         }
 
@@ -2289,7 +2293,11 @@ impl Serializable for SpecFrame {
         let mut axis_node = Node::new("Axis");
         axis_node.class_comment = Some("Coordinate axis".to_string());
         if let Some(ref unit) = self.unit {
-            axis_node.push_string("Unit", unit, Some("Axis units".to_string()));
+            let comment = match crate::units::unit_label(unit) {
+                Some(lab) => format!("Axis units ({lab})"),
+                None => "Axis units".to_string(),
+            };
+            axis_node.push_string("Unit", unit, Some(comment));
         }
         node.push_object("Ax1", axis_node, Some("Axis number 1".to_string()));
 

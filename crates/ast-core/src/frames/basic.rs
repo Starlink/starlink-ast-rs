@@ -1018,7 +1018,10 @@ impl Serializable for BasicFrame {
             if let Some(ref unit) = self.units[i] {
                 if !unit.is_empty() {
                     let key = format!("Uni{}", i + 1);
-                    let comment = format!("Units for axis {}", i + 1);
+                    let comment = match crate::units::unit_label(unit) {
+                        Some(lab) => format!("Units for axis {} ({lab})", i + 1),
+                        None => format!("Units for axis {}", i + 1),
+                    };
                     node.push_unset(&key, NodeValue::String(unit.clone()), Some(comment));
                 }
             }
@@ -1053,9 +1056,14 @@ impl Serializable for BasicFrame {
                 axis_node.push_string("Symbol", symbol, Some("Axis symbol".to_string()));
             }
 
-            // Unit.
+            // Unit. C `Axis::Dump` appends the unit's full name in
+            // parentheses when known (axis.c:2928).
             if let Some(ref unit) = self.units[i] {
-                axis_node.push_string("Unit", unit, Some("Axis units".to_string()));
+                let comment = match crate::units::unit_label(unit) {
+                    Some(lab) => format!("Axis units ({lab})"),
+                    None => "Axis units".to_string(),
+                };
+                axis_node.push_string("Unit", unit, Some(comment));
             }
 
             // Format.

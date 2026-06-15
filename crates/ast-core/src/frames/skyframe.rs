@@ -2528,9 +2528,10 @@ mod tests {
     #[test]
     fn format_latitude_dms() {
         let sky = SkyFrame::new(SkySystem::Fk5);
-        // PI/4 = 45 degrees
+        // PI/4 = 45 degrees. C `astFormat` emits no leading '+' for
+        // positive sexagesimal values.
         let s = sky.format(2, PI / 4.0).unwrap();
-        assert_eq!(s, "+45:00:00");
+        assert_eq!(s, "45:00:00");
     }
 
     #[test]
