@@ -232,31 +232,51 @@ pub(crate) fn build_celestial_with_def_b1950(
         sky_frame.set_projection(proj.description());
     }
 
-    // Step 6: Set equinox — only for equatorial / ecliptic systems.
-    // Mirrors fitschan.c:39305-39307:
-    //   if( ( !strcmp(sys, "EQU") || !strcmp(sys, "ECL") )
-    //       && equinox != AST__BAD ) astSetEquinox( ret, eqmjd );
-    // Galactic / Supergalactic / AzEl ignore EQUINOX entirely.
-    if let Some(eq) = store.equinox
-        && matches!(
-            system,
-            SkySystem::Fk4
-                | SkySystem::Fk4NoE
-                | SkySystem::Fk5
-                | SkySystem::Icrs
-                | SkySystem::Gappt
-                | SkySystem::Ecliptic
-        )
-    {
+    // Whether this system is "EQU" or "ECL" in C's classification — the
+    // ones that carry an Equinox (fitschan.c uses sys=="EQU"||"ECL").
+    let is_equ_or_ecl = matches!(
+        system,
+        SkySystem::Fk4
+            | SkySystem::Fk4NoE
+            | SkySystem::Fk5
+            | SkySystem::Icrs
+            | SkySystem::Gappt
+            | SkySystem::Ecliptic
+    );
+
+    // Effective equinox year, mirroring C's defaulting (fitschan.c:39128-
+    // 39189): a supplied EQUINOX is used as-is; otherwise, when an explicit
+    // RADESYS is present, FK4/FK4-no-E default to B1950 and FK5 to J2000.
+    // The no-RADESYS / no-EQUINOX case is NOT defaulted here — C leaves
+    // equinox = AST__BAD and the system becomes ICRS (with no stored
+    // equinox/epoch); the NORADEC / DefB1950 path for the FITS encodings is
+    // handled separately by `apply_b1950_fallback_if_needed`. Ecliptic with
+    // no RADESYS but a CTYPE-derived system still defaults to J2000.
+    let eq_year: Option<f64> = if let Some(eq) = store.equinox {
+        Some(eq)
+    } else if store.radesys.is_some() && is_equ_or_ecl {
+        match system {
+            SkySystem::Fk4 | SkySystem::Fk4NoE => Some(1950.0),
+            _ => Some(2000.0),
+        }
+    } else {
+        // No EQUINOX and no RADESYS: C leaves equinox = AST__BAD (the
+        // NORADEC branch only defaults when DefB1950, handled elsewhere),
+        // so neither Equinox nor the epoch fallback is applied here — this
+        // includes a CTYPE-selected Ecliptic plane with no RADESYS.
+        None
+    };
+
+    // Step 6: set Equinox for EQU/ECL systems (fitschan.c:39306-39308).
+    if is_equ_or_ecl && let Some(eq) = eq_year {
         sky_frame.set_equinox_year(eq);
     }
 
-    // Step 7: Set epoch from MJD-OBS if present. Mirrors
-    // fitschan.c::ChooseEpoch (line 6143-6146): mjd = TDBConv(mjd,
-    // TimeSysToAst(this, timesys, ...), 0, ...). When MJD-OBS is
-    // absent, C falls back to eqmjd (39214-39222) — but only when an
-    // equinox value was actually defined; for Galactic etc. the
-    // SkyFrame's Epoch stays at the Frame default (J2000).
+    // Step 7: set Epoch. C uses ChooseEpoch (MJD-OBS / DATE-OBS), then
+    // falls back to the equinox MJD when no observation date is present
+    // (fitschan.c:39214-39222), and stores it on every system whose
+    // mjdobs ends up defined (line 39303). For EQU/ECL the eqmjd fallback
+    // makes Epoch defined even without MJD-OBS.
     if let Some(raw_mjd) = store.mjdobs {
         let tdb_mjd = match store.timesys.as_deref() {
             Some(s) if s.eq_ignore_ascii_case("TDB") => raw_mjd,
@@ -275,21 +295,8 @@ pub(crate) fn build_celestial_with_def_b1950(
             _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
         };
         sky_frame.set_epoch_mjd(tdb_mjd);
-    } else if let Some(eq) = store.equinox
-        && matches!(
-            system,
-            SkySystem::Fk4
-                | SkySystem::Fk4NoE
-                | SkySystem::Fk5
-                | SkySystem::Icrs
-                | SkySystem::Gappt
-                | SkySystem::Ecliptic
-        )
-    {
-        // Mirrors fitschan.c:39214-39222: when no MJD-OBS / DATE-OBS
-        // is present in the input but EQUINOX is, fall back to the
-        // equinox MJD as the SkyFrame's epoch — but only for systems
-        // that actually use EQUINOX (equatorial + ecliptic).
+    } else if is_equ_or_ecl && let Some(eq) = eq_year {
+        // mjdobs ← eqmjd fallback (fitschan.c:39215-39216).
         sky_frame.set_epoch_year(eq);
     }
 
