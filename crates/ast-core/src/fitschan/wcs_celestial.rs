@@ -407,6 +407,7 @@ fn determine_sky_system(store: &FitsStore) -> SkySystem {
     match prefix_kind {
         Some(CelKind::Galactic) => return SkySystem::Galactic,
         Some(CelKind::Ecliptic) => return SkySystem::Ecliptic,
+        Some(CelKind::Helioecliptic) => return SkySystem::Helioecliptic,
         Some(CelKind::Supergalactic) => return SkySystem::Supergalactic,
         Some(CelKind::AzEl) => return SkySystem::Azel,
         // Offset sky and equatorial both fall through to the RADESYS
@@ -445,6 +446,7 @@ enum CelKind {
     Equatorial,
     Galactic,
     Ecliptic,
+    Helioecliptic,
     Supergalactic,
     AzEl,
     /// Offset sky-frame indicator (CTYPE prefix `OF`, suffix `LN`/`LT`).
@@ -482,7 +484,7 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
                 'G' => return Some(CelKind::Galactic),
                 'E' => return Some(CelKind::Ecliptic),
                 'S' => return Some(CelKind::Supergalactic),
-                'H' => return Some(CelKind::Ecliptic),
+                'H' => return Some(CelKind::Helioecliptic),
                 _ => {}
             }
         }

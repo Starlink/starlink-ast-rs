@@ -718,38 +718,40 @@ impl Mapping for WcsMap {
 /// Return the human-readable description for a projection type (for Native
 /// format comments).
 fn projection_description(proj: WcsProjection) -> &'static str {
+    // Verbatim from the C projection table (wcsmap.c:685-716); the native
+    // dump comment is "<desc> projection".
     match proj {
-        WcsProjection::Azp => "Zenithal/azimuthal perspective",
-        WcsProjection::Szp => "Slant zenithal perspective",
-        WcsProjection::Tan => "Gnomonic",
-        WcsProjection::Stg => "Stereographic",
-        WcsProjection::Sin => "Orthographic",
-        WcsProjection::Arc => "Zenithal/azimuthal equidistant",
-        WcsProjection::Zpn => "Zenithal/azimuthal polynomial",
-        WcsProjection::Zea => "Zenithal/azimuthal equal-area",
+        WcsProjection::Azp => "zenithal perspective",
+        WcsProjection::Szp => "slant zenithal perspective",
+        WcsProjection::Tan => "gnomonic",
+        WcsProjection::Stg => "stereographic",
+        WcsProjection::Sin => "orthographic",
+        WcsProjection::Arc => "zenithal equidistant",
+        WcsProjection::Zpn => "zenithal polynomial",
+        WcsProjection::Zea => "zenithal equal area",
         WcsProjection::Air => "Airy",
-        WcsProjection::Cyp => "Cylindrical perspective",
-        WcsProjection::Cea => "Cylindrical equal-area",
-        WcsProjection::Car => "Plate carree",
+        WcsProjection::Cyp => "cylindrical perspective",
+        WcsProjection::Cea => "cylindrical equal area",
+        WcsProjection::Car => "Cartesian",
         WcsProjection::Mer => "Mercator",
         WcsProjection::Sfl => "Sanson-Flamsteed",
-        WcsProjection::Par => "Parabolic",
+        WcsProjection::Par => "parabolic",
         WcsProjection::Mol => "Mollweide",
         WcsProjection::Ait => "Hammer-Aitoff",
-        WcsProjection::Cop => "Conic perspective",
-        WcsProjection::Coe => "Conic equal-area",
-        WcsProjection::Cod => "Conic equidistant",
-        WcsProjection::Coo => "Conic orthomorphic",
-        WcsProjection::Bon => "Bonne",
-        WcsProjection::Pco => "Polyconic",
-        WcsProjection::Tsc => "Tangential spherical cube",
-        WcsProjection::Csc => "COBE spherical cube",
-        WcsProjection::Qsc => "Quadrilateralised spherical cube",
-        WcsProjection::Ncp => "North celestial pole",
-        WcsProjection::Gls => "Global sinusoidal",
-        WcsProjection::Tpn => "TAN with polynomial corrections",
+        WcsProjection::Cop => "conical perspective",
+        WcsProjection::Coe => "conical equal area",
+        WcsProjection::Cod => "conical equidistant",
+        WcsProjection::Coo => "conical orthomorphic",
+        WcsProjection::Bon => "Bonne's equal area",
+        WcsProjection::Pco => "polyconic",
+        WcsProjection::Tsc => "tangential spherical cube",
+        WcsProjection::Csc => "cobe quadrilateralized spherical cube",
+        WcsProjection::Qsc => "quadrilateralized spherical cube",
+        WcsProjection::Ncp => "AIPS north celestial pole",
+        WcsProjection::Gls => "sinusoidal",
+        WcsProjection::Tpn => "gnomonic polynomial",
         WcsProjection::Hpx => "HEALPix",
-        WcsProjection::Xph => "HEALPix polar",
+        WcsProjection::Xph => "polar HEALPix",
         WcsProjection::Unknown => "<null>",
     }
 }
@@ -766,13 +768,16 @@ impl Serializable for WcsMap {
         // Mapping base attributes.
         write_mapping_base(&mut node, self);
 
-        // Type — 3-letter FITS projection code, always written.
+        // Type — 3-letter FITS projection code, always written. The comment
+        // is "<desc> projection" with the first character upper-cased,
+        // mirroring C `WcsMap::Dump` (wcsmap.c:5325-5326): the projection
+        // descriptions themselves are lower-case in the C table.
         let descr = projection_description(self.proj);
-        node.push_string(
-            "Type",
-            self.proj.code(),
-            Some(format!("{descr} projection")),
-        );
+        let mut comment = format!("{descr} projection");
+        if let Some(first) = comment.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
+        node.push_string("Type", self.proj.code(), Some(comment));
 
         // PV parameters.
         // params[0] = latitude axis (wcslib p), params[1] = longitude axis (wcslib p2).
