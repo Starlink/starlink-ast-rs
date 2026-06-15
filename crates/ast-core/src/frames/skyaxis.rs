@@ -170,17 +170,20 @@ pub(crate) fn format_sky(value: f64, as_time: bool, precision: usize) -> String 
 
 /// Format radians as hours:minutes:seconds.
 fn format_hms(value: f64, precision: usize) -> String {
-    // Convert radians to hours.
-    let mut hours = value * 12.0 / PI;
-
-    // Normalize to [0, 24).
-    hours = hours.rem_euclid(24.0);
+    // Convert radians to hours. C's astFormat decomposes via palDr2tf →
+    // eraA2tf/eraD2tf, which does NOT range-reduce the angle (ERFA a2tf
+    // note 3: "the absolute value of angle may exceed 2pi"). A value > 24h
+    // therefore formats verbatim (e.g. an offset SkyRef of 458:21:58.4),
+    // and a negative value carries a leading "-".
+    let hours = value * 12.0 / PI;
+    let sign = if hours < 0.0 { "-" } else { "" };
+    let abs_hours = hours.abs();
 
     // Determine the rounding limit for seconds based on precision.
     let sec_limit = round_limit(precision);
 
-    let h = hours.floor() as u32;
-    let rem = (hours - h as f64) * 60.0;
+    let h = abs_hours.floor() as u32;
+    let rem = (abs_hours - h as f64) * 60.0;
     let mut m = rem.floor() as u32;
     let mut s = (rem - m as f64) * 60.0;
 
@@ -194,16 +197,13 @@ fn format_hms(value: f64, precision: usize) -> String {
         m = 0;
         h_out += 1;
     }
-    if h_out >= 24 {
-        h_out = 0;
-    }
 
     if precision == 0 {
-        format!("{h_out}:{m:02}:{s:02.0}")
+        format!("{sign}{h_out}:{m:02}:{s:02.0}")
     } else {
         // Total width = 2 (min digits) + 1 (decimal point) + precision.
         let width = 3 + precision;
-        format!("{h_out}:{m:02}:{s:0width$.precision$}")
+        format!("{sign}{h_out}:{m:02}:{s:0width$.precision$}")
     }
 }
 
@@ -487,12 +487,6 @@ mod tests {
     }
 
     #[test]
-    fn format_hms_negative_wraps() {
-        // Negative value wraps into [0, 24h). -PI/2 = -6h -> 18h.
-        assert_eq!(format_sky(-PI / 2.0, true, 1), "18:00:00.0");
-    }
-
-    #[test]
     fn format_hms_precision_0() {
         assert_eq!(format_sky(0.0, true, 0), "0:00:00");
     }
@@ -761,11 +755,27 @@ mod tests {
     }
 
     #[test]
-    fn format_hms_23h_wrap() {
-        // 23h 59m 59.96s at precision 1 should round to 0:00:00.0 (24h wraps).
+    fn format_hms_24h_no_wrap() {
+        // 23h 59m 59.96s at precision 1 rounds the seconds up and carries to
+        // 24:00:00.0 — C's eraA2tf does NOT range-reduce, so it is not wrapped
+        // back to 0 (ERFA a2tf note 3).
         let hours = 23.0 + 59.0 / 60.0 + 59.96 / 3600.0;
         let rad = hours * PI / 12.0;
         let result = format_sky(rad, true, 1);
-        assert_eq!(result, "0:00:00.0");
+        assert_eq!(result, "24:00:00.0");
+    }
+
+    #[test]
+    fn format_hms_over_24h_verbatim() {
+        // A value exceeding 24h formats verbatim (e.g. an offset SkyRef).
+        let hours = 458.0 + 21.0 / 60.0 + 58.4 / 3600.0;
+        let rad = hours * PI / 12.0;
+        assert_eq!(format_sky(rad, true, 1), "458:21:58.4");
+    }
+
+    #[test]
+    fn format_hms_negative_signed() {
+        // Negative value carries a leading "-" (eraA2tf sign), not a wrap.
+        assert_eq!(format_sky(-PI / 2.0, true, 1), "-6:00:00.0");
     }
 }

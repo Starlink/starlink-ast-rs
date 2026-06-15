@@ -311,10 +311,13 @@ impl SkyFrame {
             return Ok(s.clone());
         }
         let (lon, lat) = self.default_symbols();
-        Ok(if phys == 0 {
-            lon.to_string()
+        let base = if phys == 0 { lon } else { lat };
+        // In an offset coordinate system C prepends "D" (delta) to the
+        // default symbol — DRA, DDec, etc. (skyframe.c GetSymbol:108).
+        Ok(if self.is_offset() {
+            format!("D{base}")
         } else {
-            lat.to_string()
+            base.to_string()
         })
     }
 
@@ -2304,20 +2307,23 @@ impl Serializable for SkyFrame {
             }
         }
 
-        // SRefP1, SRefP2 (sky_ref_p longitude/latitude).
-        // Only write if SRefIs != Ignored (SRefP is only meaningful when offset coords are active).
-        if self.sky_ref_is != SkyRefIs::Ignored {
-            if self.sky_ref_p[0] != 0.0 {
-                node.push_double(
-                    "SRefP1",
-                    self.sky_ref_p[0],
-                    Some("Sky reference meridian longitude".to_string()),
-                );
+        // SRefP1, SRefP2 (sky_ref_p longitude/latitude). Mirrors C
+        // (skyframe.c:12059-12068): looped over internal axes with `helpful=0`
+        // (so only an explicitly-set value is written), with the comment
+        // `Ref. north <symbol> <fmt>` resolved on the external axis.
+        let invperm = [self.lon_axis(), self.lat_axis()];
+        for (axis_p, &ext0) in invperm.iter().enumerate() {
+            if !self.sky_ref_p_set[axis_p] {
+                continue;
             }
+            let ext_axis = ext0 + 1;
+            let dval = self.sky_ref_p[axis_p];
+            let symbol = self.axis_symbol(ext_axis).unwrap_or_default();
+            let fmt = self.format(ext_axis, dval).unwrap_or_default();
             node.push_double(
-                "SRefP2",
-                self.sky_ref_p[1],
-                Some("Sky reference meridian latitude".to_string()),
+                &format!("SRefP{}", axis_p + 1),
+                dval,
+                Some(format!("Ref. north {symbol} {fmt}")),
             );
         }
 

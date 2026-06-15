@@ -351,21 +351,13 @@ pub(crate) fn sky_sys(
             let sym_lon = skyfrm.axis_symbol(lon_ax_1b).unwrap_or_default();
             let sym_lat = skyfrm.axis_symbol(lat_ax_1b).unwrap_or_default();
             let skyref_text = format!("{:.6},{:.6}", sky_ref[lonax_in_sky], sky_ref[latax_in_sky]);
-            // C drops the leading character of the symbol (typical
-            // SkyFrame symbols are like "$RA" / "$DEC" with a
-            // marker prefix; ours don't have that prefix, so we
-            // pass the symbol through unchanged when no marker is
-            // present).
-            let trim_lead = |s: &str| {
-                // If first char is non-alphanumeric (a marker),
-                // drop it; otherwise keep the symbol as-is.
-                if let Some(c) = s.chars().next()
-                    && !c.is_alphanumeric()
-                {
-                    s[c.len_utf8()..].to_string()
-                } else {
-                    s.to_string()
-                }
+            // In an offset system the SkyFrame symbol carries a leading "D"
+            // (delta) prefix — DRA, DDec, etc. C builds the CTYPE comment from
+            // `text + 1` (fitschan.c:29900), i.e. it drops that first
+            // character. Mirror that directly.
+            let trim_lead = |s: &str| match s.chars().next() {
+                Some(c) => s[c.len_utf8()..].to_string(),
+                None => String::new(),
             };
             if !sym_lon.is_empty() {
                 let com = format!("{} offset from {}", trim_lead(&sym_lon), skyref_text);
