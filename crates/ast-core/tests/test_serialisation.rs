@@ -1225,17 +1225,117 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
 /// `tools/oracle_fixtures/gen_frameset_fixtures.sh` (so they stay
 /// reproducible); they are filtered out here rather than omitted, so the
 /// remaining serialization gap is visible and tracked.
-/// All generated frameset fixtures are byte-exact on round-trip. Any case
-/// that regresses should be listed here with a one-line reason rather than
-/// silently dropped (the generator still produces it).
-const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[];
+/// Frameset fixtures not yet byte-exact on round-trip, each with a one-line
+/// reason (the generator still produces them). Tracked explicitly rather
+/// than silently dropped; the goal is to empty this list.
+const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[
+    // Bug 1 — WcsMap PV{i}_{m} card ordering (per-axis order vs storage order).
+    ("dss-ast", "WcsMap PV card ordering"),
+    ("dss-fits-dss", "WcsMap PV card ordering"),
+    ("projp-head", "WcsMap PV card ordering"),
+    ("projp-nopv0-head", "WcsMap PV card ordering"),
+    ("projp-pv0only-head", "WcsMap PV card ordering"),
+    ("sao-tan-head", "WcsMap PV card ordering"),
+    ("tan-polytan-head", "WcsMap PV card ordering"),
+    ("tnx-head", "WcsMap PV card ordering"),
+    ("tnx-cheb-head", "WcsMap PV card ordering"),
+    ("zpn-head", "WcsMap PV card ordering"),
+    // Bug 2 — SkyFrame default Title/Label for AzEl/Unknown/equinox/GAPPT.
+    ("azel-head", "SkyFrame default Title/Label table"),
+    ("ecliptic-tan-head", "SkyFrame default Title/Label table"),
+    ("equinox-bj-head", "SkyFrame default Title/Label table"),
+    ("fk4-aips-head", "SkyFrame default Title/Label table"),
+    ("gappt-head", "SkyFrame default Title/Label table"),
+    ("helioecl-head", "SkyFrame default Title/Label table"),
+    ("multi-wcs-head", "SkyFrame default Title/Label table"),
+    ("offset-sky-head", "SkyFrame default Title/Label table"),
+    ("offset-sky-pole-head", "SkyFrame default Title/Label table"),
+    (
+        "serpens-head",
+        "SkyFrame default Title + FrameSet Prm proxy",
+    ),
+    ("skyref-head", "SkyFrame default Title/Label table"),
+    ("skyref-alt-head", "SkyFrame default Title/Label table"),
+    ("tidy-offsets-head", "SkyFrame default Title/Label table"),
+    ("tidy-pole-head", "SkyFrame default Title/Label table"),
+    ("unknown-cel-head", "SkyFrame default Title/Label table"),
+    ("unknown-cel2-head", "SkyFrame default Title/Label table"),
+    // Bug 3 — SpecFrame default Title rest-frequency / SoR clause.
+    (
+        "beta-frq-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "restfreq-ghz-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "restfreq-mhz-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "velo-aips-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "velo-vel-head",
+        "SpecFrame default Title + DSB sideband label",
+    ),
+    (
+        "vopt-wav-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "vrad-v2f-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "vrad-wav-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "wave-1d-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    (
+        "zopt-frq-head",
+        "SpecFrame default Title rest-frequency clause",
+    ),
+    // Bug 4 — DSBSpecFrame sideband suffix on aggregate Lbl.
+    (
+        "awav-a2f-head",
+        "DSBSpecFrame aggregate Lbl sideband suffix",
+    ),
+    (
+        "class-spec-head",
+        "DSBSpecFrame aggregate Lbl sideband suffix",
+    ),
+    (
+        "class-spec-hel-head",
+        "DSBSpecFrame aggregate Lbl sideband suffix",
+    ),
+    // Bug 5 — BasicFrame Ident / IsA Object.
+    ("pixel-1d-head", "BasicFrame Ident/IsA Object"),
+    ("pixel-2d-head", "BasicFrame Ident/IsA Object"),
+    ("pixel-rotated-head", "BasicFrame Ident/IsA Object"),
+    ("pixel-shear-head", "BasicFrame Ident/IsA Object"),
+    ("unknown-spec-head", "BasicFrame Ident/IsA Object"),
+    // Bug 6 — Unit (fullname) comment guard (lab != symbol).
+    ("a20070718_00010_02_cube-ast", "Unit comment guard"),
+    ("degen1-ast", "Unit comment guard"),
+    ("timj-ast", "Unit comment guard"),
+    // Bug 7 — BasicFrame axis Bottom/Top + aggregate Bot/Top.
+    ("polco-head", "BasicFrame Bottom/Top axis range"),
+    ("polco2-head", "BasicFrame Bottom/Top axis range"),
+];
 
 /// Round-trip C-oracle FrameSet native-text dumps (`*.ast`) through
 /// `from_native_string` → `to_native_string` and assert byte-exact
-/// (≤4-ULP per numeric token). These dumps are generated from the wcsconv
-/// FITS headers by `tools/oracle_fixtures/gen_frameset_fixtures.sh` and
-/// cover the world frames that contain a CmpFrame with SkyFrame/SpecFrame
-/// components (including permuted axis orders / `Axp` cards).
+/// (≤4-ULP per numeric token). These dumps are generated by
+/// `tools/oracle_fixtures/gen_frameset_fixtures.sh` from **every** wcsconv
+/// input object — each FITS header read through a FitsChan, plus the
+/// pre-existing native `.ast` inputs read through a Channel — giving a
+/// comprehensive serialization regression suite, not just the CmpFrame cases.
 ///
 /// This isolates the native serializer from the FitsChan read/encode path:
 /// the same `to_node`/`from_node` core also drives the FitsChan NATIVE
