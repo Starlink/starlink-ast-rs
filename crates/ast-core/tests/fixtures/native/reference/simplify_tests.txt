@@ -13,6 +13,7 @@
 # leading WinMap shift = +907405752, while Rust bakes the inversion into the
 # components and flips the WinMap shift sign. Re-enable once the CmpMap merge
 # preserves component Invert flags (cmpmap.rs) instead of baking them in.
+# Full investigation: docs/issues/simplifier-winmap-inverted-merge-bug.md
 # spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec_cel_invert.simp |
 
 # Scenario fixtures (integration regressions, stay in ast_tester/).
