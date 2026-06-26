@@ -216,6 +216,33 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         None
     }
 
+    /// Attempt to simplify a sequence of mappings by merging this
+    /// (nominated) mapping with its neighbours.
+    ///
+    /// Port of C's protected `astMapMerge` (mapping.c:7660). When the
+    /// simplification engine nominates this mapping at index `where_` in
+    /// `ctx.list`, this method may remove, replace, insert, or reorder any
+    /// entries in the list — updating the parallel invert flags — to
+    /// shorten or speed up the sequence. `series` is true for a series
+    /// composition, false for parallel. The invert flags carried in
+    /// `ctx.list` (and not the mappings' own intrinsic Invert state) give
+    /// the effective direction of each component, exactly as in C.
+    ///
+    /// Returns `Some(index)` of the first modified element on any change,
+    /// or `None` for "no change" (C's `-1`). The default implementation is
+    /// the inherited null method: it makes no change and returns `None`
+    /// (mapping.c:7793). Classes that carry series/parallel rewrite logic
+    /// override it.
+    #[doc(hidden)]
+    fn map_merge(
+        &self,
+        _ctx: &mut simplify::MergeCtx,
+        _where_: usize,
+        _series: bool,
+    ) -> Option<usize> {
+        None
+    }
+
     /// Split this mapping to produce a sub-mapping covering a chosen set of
     /// inputs, using **1-based** axis indices throughout (public API).
     ///

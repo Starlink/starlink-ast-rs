@@ -266,6 +266,133 @@ fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> b
     false
 }
 
+/// Working state for the per-class `map_merge` nominate loop.
+///
+/// Mirrors the C `Simplify` engine's mutable arguments to `astMapMerge`
+/// (`cmpmap.c:3572`): the `map_list` of components, the parallel
+/// `invert_list` of effective-direction flags, and the per-mapping
+/// `Frozen` flag (`astSetFrozen`/`astFrozen`, `cmpmap.c:3530-3624`). In C
+/// the frozen flag lives on the mapping object; here it is a per-entry
+/// bool held alongside the list, kept index-parallel with `list` so that
+/// inserting, removing, or reordering components keeps the flag attached
+/// to the right entry.
+///
+/// Each entry of `list` is `(mapping, effective_inv, orig_inv)` exactly as
+/// produced by [`flatten`]: `effective_inv` is the direction the component
+/// is applied in (C's `invert_list[i]`), and `orig_inv` is the component's
+/// own intrinsic Invert state preserved for [`reconstruct`].
+///
+/// `pub` + `#[doc(hidden)]` because it appears in the signature of the
+/// `Mapping::map_merge` trait method, which is itself an internal
+/// (C-`protected`) simplification hook hidden from the public API.
+//
+// Wired into the nominate loop in Phase 1; the `allow` is removed then.
+#[doc(hidden)]
+#[allow(dead_code)]
+pub struct MergeCtx {
+    /// The component working list (C `map_list` + `invert_list`).
+    pub(crate) list: Vec<(DynMapping, bool, bool)>,
+    /// Per-entry frozen flag, index-parallel with `list` (C `astFrozen`).
+    frozen: Vec<bool>,
+}
+
+// Wired into the nominate loop in Phase 1; the `allow` is removed then.
+#[allow(dead_code)]
+impl MergeCtx {
+    /// Wrap a flattened component list, all entries initially unfrozen
+    /// (C clears `Frozen` on every component before the loop,
+    /// `cmpmap.c:3530-3533`).
+    pub(crate) fn new(list: Vec<(DynMapping, bool, bool)>) -> Self {
+        let frozen = vec![false; list.len()];
+        Self { list, frozen }
+    }
+
+    /// Number of components in the working list (C `*nmap`).
+    pub(crate) fn len(&self) -> usize {
+        self.list.len()
+    }
+
+    /// Whether the component at `index` is frozen (C `astFrozen`).
+    pub(crate) fn is_frozen(&self, index: usize) -> bool {
+        self.frozen.get(index).copied().unwrap_or(false)
+    }
+
+    /// Freeze the component at `index` (C `astSetFrozen`), preventing it
+    /// from being nominated again. Used by the oscillation break.
+    pub(crate) fn freeze(&mut self, index: usize) {
+        if let Some(f) = self.frozen.get_mut(index) {
+            *f = true;
+        }
+    }
+}
+
+/// Append `val` to `list` and report the wavelength of any repeating
+/// pattern, or 0 if none.
+///
+/// Faithful port of C `cmpmap.c::PatternCheck` (2851). The loop appends
+/// `(modified, nmap)` history values and detects merge/split cycles: 3
+/// complete repeats are required as evidence of looping, except a
+/// wavelength of 1 needs 30 repeats (short sequences legitimately repeat a
+/// single value). The check only runs once the list has grown past 29
+/// entries, and considers wavelengths up to `iat/3` capped at 50.
+///
+/// `check` enables the pattern search (C passes the first call's returned
+/// wavelength as the second call's `check` argument, gating the `nmap`
+/// search on the `modified` search having found a pattern).
+// Wired into the nominate loop in Phase 1; the `allow` is removed then.
+#[allow(dead_code)]
+fn pattern_check(val: i64, check: i64, list: &mut Vec<i64>) -> i64 {
+    let mut result: i64 = 0;
+
+    let iat = list.len();
+    list.push(val);
+
+    // Only search once we have enough history (C: list_len > 29).
+    if check != 0 && list.len() > 29 {
+        let mut mxwave = iat / 3;
+        if mxwave > 50 {
+            mxwave = 50;
+        }
+        let jlo = iat as isize - 3 * mxwave as isize;
+
+        // Search backwards for the most recent earlier occurrence of `val`.
+        let mut jat = iat as isize - 1;
+        'outer: while jat >= jlo {
+            if list[jat as usize] == val {
+                let wavelen = iat - jat as usize;
+
+                // wavelength 1 needs 30 repeats; longer needs 3.
+                let nwave = if wavelen == 1 { 30.min(iat) } else { 3 };
+
+                if nwave * wavelen <= list.len() {
+                    result = wavelen as i64;
+                    // wave[k] points to the start of the k-th most recent
+                    // window of length `wavelen`. Compare each window's
+                    // elements against the most recent window.
+                    let len = list.len();
+                    'check: for k in 0..wavelen {
+                        let base0 = len - wavelen + k;
+                        for iwave in 1..nwave {
+                            let idx = base0 - iwave * wavelen;
+                            if list[idx] != list[base0] {
+                                result = 0;
+                                break 'check;
+                            }
+                        }
+                    }
+                }
+
+                if result != 0 {
+                    break 'outer;
+                }
+            }
+            jat -= 1;
+        }
+    }
+
+    result
+}
+
 /// Walk adjacent pairs and attempt pairwise merges until no progress.
 ///
 /// For each adjacent pair `(list[i], list[i+1])`, tries:
@@ -2814,6 +2941,84 @@ mod tests {
     // Helper: box a mapping as DynMapping.
     fn dyn_map(m: impl Mapping + 'static) -> DynMapping {
         Box::new(m)
+    }
+
+    // ------------------------------------------------------------ //
+    // pattern_check (oscillation detection)                         //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn pattern_check_short_history_never_fires() {
+        // C only searches once list_len > 29; below that, always 0.
+        let mut list = Vec::new();
+        for i in 0..20 {
+            assert_eq!(pattern_check((i % 2) as i64, 1, &mut list), 0);
+        }
+    }
+
+    #[test]
+    fn pattern_check_check_disabled_never_fires() {
+        // With check == 0 the search is skipped regardless of length.
+        let mut list = Vec::new();
+        for _ in 0..60 {
+            assert_eq!(pattern_check(7, 0, &mut list), 0);
+        }
+    }
+
+    #[test]
+    fn pattern_check_detects_wavelength_two() {
+        // Alternating 0,1,0,1,... is a wavelength-2 pattern. Three full
+        // repeats are required, and the list must exceed 29 entries before
+        // the search runs. Feed a long alternating sequence.
+        let mut list = Vec::new();
+        let mut detected = 0;
+        for i in 0..40 {
+            let w = pattern_check((i % 2) as i64, 1, &mut list);
+            if w != 0 {
+                detected = w;
+                break;
+            }
+        }
+        assert_eq!(detected, 2);
+    }
+
+    #[test]
+    fn pattern_check_wavelength_one_needs_thirty_repeats() {
+        // A constant sequence has wavelength 1, which requires 30 repeats
+        // (not 3) before it is reported, since short runs of a repeated
+        // value occur legitimately.
+        let mut list = Vec::new();
+        let mut first_hit = None;
+        for i in 0..60 {
+            if pattern_check(5, 1, &mut list) != 0 {
+                first_hit = Some(i);
+                break;
+            }
+        }
+        // Must not fire before 30 occurrences have accumulated.
+        assert!(first_hit.is_some());
+        assert!(first_hit.unwrap() >= 29, "fired too early: {first_hit:?}");
+    }
+
+    // ------------------------------------------------------------ //
+    // MergeCtx (frozen flags)                                       //
+    // ------------------------------------------------------------ //
+
+    #[test]
+    fn merge_ctx_tracks_frozen_per_entry() {
+        let list = vec![
+            (dyn_map(ZoomMap::new(1, 2.0).unwrap()), false, false),
+            (dyn_map(ZoomMap::new(1, 3.0).unwrap()), false, false),
+        ];
+        let mut ctx = MergeCtx::new(list);
+        assert_eq!(ctx.len(), 2);
+        assert!(!ctx.is_frozen(0));
+        assert!(!ctx.is_frozen(1));
+        ctx.freeze(1);
+        assert!(!ctx.is_frozen(0));
+        assert!(ctx.is_frozen(1));
+        // Out-of-range index is treated as not frozen, never panics.
+        assert!(!ctx.is_frozen(99));
     }
 
     // ------------------------------------------------------------ //
