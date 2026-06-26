@@ -2,8 +2,30 @@
 
 ## Status
 
-Planning document — not yet started.
-Records the design so the work can be picked up later as a dedicated effort.
+In progress.
+
+- **Phase 0 — done** (commit "simplify: add MapMerge scaffolding"). Added
+  the `Mapping::map_merge` trait method (default = inherited null, C's
+  `-1`), the `MergeCtx` working-list wrapper with a per-entry `frozen`
+  flag, and a faithful port of C's `PatternCheck` oscillation detector
+  (`pattern_check`). **Deviation:** the plan called for porting `CanSwap`
+  "once as a free function", but C has no shared `CanSwap` — there are four
+  distinct per-class versions (`matrixmap.c`, `pcdmap.c`, `winmap.c`,
+  `wcsmap.c`) with different logic and signatures. Each is deferred to its
+  owning class's phase (2-4) rather than unified, to keep the port
+  faithful.
+- **Phase 1 — done** (commit "simplify: rewrite merge_loop as C's nominate
+  loop"). `merge_loop` now drives C's nominate loop (`run_nominate_loop`)
+  over `MergeCtx`, with `default_map_merge` providing the shared direct
+  pairwise merge (C MapMerge step 2) as the inherited `map_merge` body.
+  The legacy global swap helpers remain as a temporary stall-handler
+  fallback (retired into per-class `map_merge` in Phases 2-5), guarded by a
+  `MAX_STALL_ROUNDS` bound that is removed in Phase 5. Behaviour-neutral by
+  construction and verified byte-for-byte: the full ast-core suite stays
+  green and instrumentation confirms neither the `pattern_check` freeze nor
+  the stall cap ever fires on the corpus.
+- **Phases 2-5 — not started.** Resume from Phase 2 (WinMap `map_merge`,
+  the one that unblocks `rigby`).
 
 ## Why this exists
 
