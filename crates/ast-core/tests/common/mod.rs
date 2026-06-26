@@ -56,6 +56,50 @@ pub fn line_tokens_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
     }
 }
 
+/// Compare two whitespace-tokenised lines using AST's `astEQUAL` tolerance on
+/// numeric tokens (non-numeric tokens must be byte-equal). This is the
+/// floating-point-equivalence comparison the C oracle applies via `astEqual`:
+/// looser than [`line_tokens_equivalent`]'s fixed ULP budget, so it absorbs
+/// platform-libm differences that are amplified by cancellation (e.g. an
+/// observatory altitude derived from geocentric coordinates), while still
+/// rejecting genuine (≳1e-8 relative) discrepancies.
+pub fn line_tokens_astequal(got: &str, want: &str) -> bool {
+    if got == want {
+        return true;
+    }
+    let mut gt = got.split_whitespace();
+    let mut wt = want.split_whitespace();
+    loop {
+        match (gt.next(), wt.next()) {
+            (None, None) => return true,
+            (Some(g), Some(w)) if g == w => continue,
+            (Some(g), Some(w)) => {
+                let (Ok(gv), Ok(wv)) = (g.parse::<f64>(), w.parse::<f64>()) else {
+                    return false;
+                };
+                if !ast_equal_close(gv, wv) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// Port of C `astEQUAL` (object.h): `|a-b| <= max(1e5*(|a|+|b|)*DBL_EPSILON,
+/// 1e-12)`. The near-zero floor (`1e-12`) matches AST's handling of ulp-scale
+/// residuals that drift between macOS and Linux math libraries.
+pub fn ast_equal_close(a: f64, b: f64) -> bool {
+    if a == b {
+        return true;
+    }
+    if a.is_nan() || b.is_nan() {
+        return false;
+    }
+    let tol = (1.0e5 * (a.abs() + b.abs()) * f64::EPSILON).max(1.0e-12);
+    (a - b).abs() <= tol
+}
+
 /// True when `a` and `b` are within `max_ulps` units in the last place.
 /// Differing signs (including ±0 with opposite sign bits) are never close.
 pub fn ulp_close(a: f64, b: f64, max_ulps: u64) -> bool {

@@ -15,6 +15,36 @@ use ast_core::fitschan::{Encoding, FitsChan};
 
 mod common;
 
+/// How the produced output is compared against the reference fixture.
+///
+/// The manifest's 6th column selects the mode per case. The default is
+/// tight (FITS encodings byte-exact; NATIVE-family ≤4-ULP per token); cases
+/// are relaxed only when they genuinely need it, keeping the comparison
+/// strict everywhere else.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CompareMode {
+    /// Tight: FITS exact-string, NATIVE-family ≤4-ULP per numeric token.
+    Strict,
+    /// Floating-point equivalence on numeric tokens, using AST's `astEQUAL`
+    /// tolerance — the Rust-side equivalent of the C oracle's `astEqual`
+    /// check. For outputs carrying values whose last bits are platform-libm
+    /// dependent (e.g. cancellation-amplified geodetic altitude). `astequal`.
+    AstEqual,
+    /// No string comparison (legacy `yes`: the C oracle ran astEqual only).
+    /// Retained for the FITS cases that historically skipped the diff.
+    Skip,
+}
+
+impl CompareMode {
+    fn parse(field: &str) -> Self {
+        match field.trim().to_ascii_lowercase().as_str() {
+            "astequal" => CompareMode::AstEqual,
+            "yes" | "skip" => CompareMode::Skip,
+            _ => CompareMode::Strict,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct TestCase {
     name: String,
@@ -22,7 +52,7 @@ struct TestCase {
     expected_file: String,
     encoding: String,
     attrs: Vec<(String, String)>,
-    skip_string_compare: bool,
+    compare_mode: CompareMode,
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -137,7 +167,11 @@ fn parse_manifest() -> Vec<TestCase> {
             } else {
                 Vec::new()
             };
-            let skip = fields.len() > 5 && fields[5].trim().eq_ignore_ascii_case("yes");
+            let compare_mode = if fields.len() > 5 {
+                CompareMode::parse(fields[5])
+            } else {
+                CompareMode::Strict
+            };
 
             Some(TestCase {
                 name: fields[0].trim().to_string(),
@@ -145,7 +179,7 @@ fn parse_manifest() -> Vec<TestCase> {
                 expected_file: fields[2].trim().to_string(),
                 encoding: fields[3].trim().to_string(),
                 attrs,
-                skip_string_compare: skip,
+                compare_mode,
             })
         })
         .collect()
@@ -314,14 +348,23 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     // NATIVE_READ_EXCLUDED). This keeps the comparison visible instead of
     // hidden behind a manifest skip flag. Set WCSCONV_NO_EXCLUDE=1 to compare
     // every native case (to measure progress against the exclusion list).
-    // Non-native cases honour the manifest `skip` column.
     let native_excluded = !std::env::var("WCSCONV_NO_EXCLUDE").is_ok_and(|v| !v.is_empty())
         && is_native
         && NATIVE_READ_EXCLUDED.iter().any(|(n, _)| *n == case.name);
-    let compare = if is_native {
-        !native_excluded
-    } else {
-        !case.skip_string_compare
+    // Compare decision by mode:
+    //   AstEqual — always compare, with the relaxed astEQUAL comparator. This
+    //              is the per-case relaxation; it is not gated by the native
+    //              exclusion list (which tracks FITS-read bugs, not tolerance).
+    //   native (Strict/Skip) — byte-compared unless excluded. Native ignores
+    //              the legacy `yes`/`skip` flag (the comparison is kept visible
+    //              via NATIVE_READ_EXCLUDED, not the manifest column).
+    //   non-native Skip — never string-compare (legacy `yes`).
+    //   non-native Strict — exact string compare.
+    let compare = match case.compare_mode {
+        CompareMode::AstEqual => true,
+        _ if is_native => !native_excluded,
+        CompareMode::Skip => false,
+        CompareMode::Strict => true,
     };
     if compare {
         let expected_path = fixtures_dir().join("expected").join(&case.expected_file);
@@ -350,10 +393,14 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
         let exp_lines = normalize(&expected_text);
         let out_lines = normalize(&output);
 
-        // Find first difference. Native dumps allow ≤4-ULP numeric drift
-        // per token; FITS dumps require an exact match.
+        // Find first difference. Comparator by mode/encoding:
+        //   AstEqual → astEQUAL float-equivalence on numeric tokens;
+        //   native Strict → ≤4-ULP numeric drift per token;
+        //   FITS Strict → exact match (tokens already rounded to FitsDigits).
         for (i, (o, e)) in out_lines.iter().zip(exp_lines.iter()).enumerate() {
-            let equivalent = if is_native {
+            let equivalent = if case.compare_mode == CompareMode::AstEqual {
+                common::line_tokens_astequal(o, e)
+            } else if is_native {
                 common::line_tokens_equivalent(o, e, 4)
             } else {
                 o == e

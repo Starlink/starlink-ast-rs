@@ -1,7 +1,16 @@
 # WCS converter regression tests -- pipe-delimited
-# Fields: name | input | reference | encoding | attrs | skip_string_compare
-# skip_string_compare: blank = run both string-diff and astequal tests
-#                      yes  = run astequal test only (ulp-level variation)
+# Fields: name | input | reference | encoding | attrs | compare_mode
+# compare_mode (6th column) selects how output is compared to the reference:
+#   blank    = strict: FITS encodings byte-exact; NATIVE-family <=4-ULP per
+#              numeric token. The default -- keep comparisons tight.
+#   astequal = relax numeric tokens to AST's astEQUAL tolerance (the Rust
+#              equivalent of the C oracle's astEqual). Use only for cases whose
+#              last bits are platform-libm dependent, e.g. cancellation-
+#              amplified geodetic altitude (OBSALT from OBSGEO-X/Y/Z).
+#   yes      = legacy marker (C oracle ran astEqual only). For native cases the
+#              Rust harness still byte-compares unless the case is listed in
+#              NATIVE_READ_EXCLUDED; for FITS cases it skips the diff.
+#   skip     = never string-compare.
 timj_fits-wcs       | timj.ast                       | timj.fits-wcs      | fits-wcs  | cdmatrix=1,FitsDigits=8          |
 timj_fits-iraf      | timj.ast                       | timj.fits-iraf     | fits-iraf | FitsDigits=8                     |
 timj_fits-aips      | timj.ast                       | timj.fits-aips     | fits-aips | FitsDigits=8                     |
@@ -174,7 +183,7 @@ skyspec3d_fits-iraf | skyspec3d.head                 | skyspec3d.fits-iraf | fit
 sin-plain_fits-iraf | sin-plain.head                 | sin-plain.fits-iraf | fits-iraf | FitsDigits=8  |
 wave-1d_fits-iraf   | wave-1d.head                   | wave-1d.fits-iraf  | fits-iraf | FitsDigits=8   |
 skyspec3d_fits-pc   | skyspec3d.head                 | skyspec3d.fits-pc  | fits-pc   | FitsDigits=8                     |
-skyspec3d-class_native| skyspec3d-class.head          | skyspec3d-class.native | native |                                  | yes
+skyspec3d-class_native| skyspec3d-class.head          | skyspec3d-class.native | native |                                  | astequal
 skyspec3d-class_fits-class| skyspec3d-class.head      | skyspec3d-class.fits-class | fits-class | FitsDigits=8           |
 offset-sky_native   | offset-sky.head                | offset-sky.native  | native    |                                  | yes
 offset-sky_fits-wcs | offset-sky.head                | offset-sky.fits-wcs | fits-wcs | cdmatrix=1,FitsDigits=8           |
