@@ -365,6 +365,31 @@ impl Mapping for WinMap {
                 .map(|m| Box::new(m) as DynMapping);
         }
 
+        // Check for equal and opposite WinMaps (C winmap.c WinWin). When one
+        // map is applied inverted and the other forward, and their stored
+        // shift/scale terms are equal, the composition is the identity. This
+        // is done explicitly on the *raw* (uninverted) terms to avoid the
+        // rounding errors introduced by inverting one map's terms — the same
+        // reason C compares `wm1->a/b` against `wm2->a/b` directly.
+        if self_inv != other_inv {
+            if let Some(ow) = other.as_any().downcast_ref::<WinMap>() {
+                if self.shifts.len() == ow.shifts.len()
+                    && self
+                        .shifts
+                        .iter()
+                        .zip(&ow.shifts)
+                        .all(|(a, b)| ast_equal(*a, *b))
+                    && self
+                        .scales
+                        .iter()
+                        .zip(&ow.scales)
+                        .all(|(a, b)| ast_equal(*a, *b))
+                {
+                    return Some(Box::new(UnitMap::new(self.shifts.len())));
+                }
+            }
+        }
+
         // WinMap (unit scale) + UnitNormMap(forward) → UnitNormMap(forward).
         if let Some(unm) = other
             .as_any()
@@ -504,6 +529,17 @@ pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> 
     for i in 0..n {
         new_scales[i] = c2[i] * c1[i];
         new_shifts[i] = c2[i] * s1[i] + s2[i];
+
+        // Rounding checks for values close to a unit mapping, matching C
+        // winmap.c WinWin: snap a near-zero shift (relative to the geometric
+        // mean of the two input shifts) to 0, and a near-unity scale to 1.
+        let amean = (s1[i] * s2[i]).abs().sqrt();
+        if new_shifts[i].abs() < amean * 1e-15 {
+            new_shifts[i] = 0.0;
+        }
+        if (new_scales[i] - 1.0).abs() < 1e-15 {
+            new_scales[i] = 1.0;
+        }
     }
 
     // Check if the result is the identity.

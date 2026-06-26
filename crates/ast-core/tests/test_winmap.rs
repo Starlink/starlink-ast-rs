@@ -341,3 +341,28 @@ fn winmap_non_uniform_stays_winmap() {
     let s = wm.simplified().unwrap();
     assert!(s.as_any().is::<WinMap>());
 }
+
+#[test]
+fn winmap_cancels_with_own_inverse_exactly() {
+    // C winmap.c WinWin: a WinMap composed in series with its own inverse
+    // simplifies to the *exact* identity. The equal-and-opposite check
+    // compares the raw (uninverted) shift/scale terms, so it never carries the
+    // last-bit drift that `scale * (1/scale)` would introduce. Scales chosen to
+    // be deliberately not exactly representable.
+    use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping, UnitMap, WinMap};
+
+    let w = WinMap::new(&[3.5, -2.0], &[0.999_999_999_977_888, 1.000_000_3]).unwrap();
+    let mut winv = w.clone();
+    winv.invert();
+
+    let cmp: DynMapping =
+        Box::new(CmpMap::new(Box::new(w), Box::new(winv), Composition::Series).unwrap());
+    let simp = cmp.simplify().unwrap();
+
+    // The exact identity collapses to a UnitMap (the merge yields scale 1.0 /
+    // shift 0.0 exactly, which the series loop then strips).
+    assert!(
+        simp.as_any().is::<UnitMap>(),
+        "W ∘ W^-1 should simplify to the exact identity (UnitMap)"
+    );
+}
