@@ -688,23 +688,21 @@ fn test_unformat_trailing_text() {
 
 #[test]
 fn test_unformat_b_prefix_uses_tt() {
-    // C error 34 (corrected value): a Besselian-epoch string is interpreted
-    // in the TT timescale, then converted to the frame's UTC timescale and
-    // Julian-epoch system. jepoch/origin=2005, timescale=utc.
+    // A Besselian-epoch string is interpreted in the TT timescale, then
+    // converted to the frame's UTC timescale and Julian-epoch system. The
+    // intended frame here is origin=2005 expressed in UTC, so the timescale
+    // must be set *before* the origin: TimeOrigin records an absolute instant,
+    // and changing the timescale afterwards would re-express it (see
+    // test_unformat_b_prefix_origin_then_timescale).
     //
-    // The reference C `astUnformat` returns -3.50131054408916 here, but that
-    // value is WRONG by exactly the TAI-UTC leap-second offset (~32 s): C's
-    // astUnformat builds the conversion via a direct MakeMap call whose
-    // TAITOUTC leap-second lookup uses the wrong reference MJD, yielding a
-    // TAI-scale result instead of UTC. Both C `astConvert` and astropy agree
-    // on the correct UTC value:
+    // Oracle (reference C library, single-string construction
+    // "system=jepoch, timescale=utc, timeorigin=2005") and astropy both give
+    // the same value:
     //   astropy: Time(52091.8966962715, format="mjd", scale="tt").utc.jyear
     //            - 2005.0  ==  -3.5013115581077727
-    // We assert the astropy-validated value; the C bug is logged in
-    // docs/issues/c-library-quirks.md.
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
-    tf.set_time_origin(2005.0);
     tf.set_timescale(TimeScale::Utc);
+    tf.set_time_origin(2005.0);
 
     let (v, nc) = tf.unformat(1, "B2001.5 lunch time").unwrap();
     assert_eq!(nc, 8);
@@ -712,24 +710,22 @@ fn test_unformat_b_prefix_uses_tt() {
 }
 
 #[test]
-#[ignore = "documents the reference C astUnformat leap-second bug; Rust is correct"]
-fn c_bug_b_prefix_unformat_leap_offset() {
-    // Records the (buggy) value the reference C library's astUnformat returns
-    // for a Besselian-epoch string: -3.50131054408916, which is wrong by the
-    // ~32 s TAI-UTC leap-second offset. The correct UTC value (asserted by
-    // test_unformat_b_prefix_uses_tt, and confirmed by astropy and C
-    // astConvert) is -3.5013115581077727. See docs/issues/c-library-quirks.md
-    // ("TimeFrame astUnformat of a Besselian-epoch string ..."). This test is
-    // ignored because Rust deliberately does NOT reproduce the C bug; it
-    // exists so the discrepancy is discoverable in the test suite.
+fn test_unformat_b_prefix_origin_then_timescale() {
+    // The same frame attributes as test_unformat_b_prefix_uses_tt but built in
+    // the opposite order: origin first (in the JEPOCH default TAI timescale),
+    // then timescale=utc. Setting the timescale re-expresses the stored origin
+    // from TAI into UTC (C OriginScale), shifting it to 2004.99999899, so the
+    // unformatted value differs from the origin=2005 case by the leap-second
+    // offset. Rust matches the reference C library exactly:
+    //   reference C: origin -> 2004.9999989859814, unformat -> -3.501310544089165
     let mut tf = TimeFrame::new(TimeSystem::Jepoch);
     tf.set_time_origin(2005.0);
     tf.set_timescale(TimeScale::Utc);
+
     let (v, _nc) = tf.unformat(1, "B2001.5 lunch time").unwrap();
-    let buggy_c_value = -3.50131054408916;
     assert!(
-        (v - buggy_c_value).abs() < 1.0e-10,
-        "Rust does not reproduce the C bug (got {v}, C bug value {buggy_c_value})"
+        (v + 3.501310544089165).abs() < 1.0e-10,
+        "origin-then-timescale construction should match C, got {v}"
     );
 }
 
@@ -881,4 +877,62 @@ fn format_default_is_seven_significant_digits() {
     assert_eq!(tf.format(1, 12345.6789).unwrap(), "12345.68");
     assert_eq!(tf.format(1, 0.000123456789).unwrap(), "0.0001234568");
     assert_eq!(tf.format(1, 51544.5).unwrap(), "51544.5");
+}
+
+// ---------------------------------------------------------------------------
+// TimeOrigin re-expression when System / TimeScale change
+// (C OriginScale / OriginSystem; see docs/issues/timeframe-unformat-findings.md)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_set_timescale_reexpresses_time_origin() {
+    // TimeOrigin records an absolute instant. A JEPOCH frame defaults to the
+    // TAI timescale, so setting TimeOrigin=2005 stores the instant J2005.0(TAI).
+    // Changing the timescale to UTC must re-express that same instant in UTC,
+    // shifting the numeric origin down by the leap-second offset (~32 s).
+    //
+    // Oracle (reference C library, this machine):
+    //   astTimeFrame("system=jepoch"); TimeOrigin=2005; set timescale=utc
+    //   -> TimeOrigin == 2004.9999989859814
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_time_origin(2005.0);
+    assert_eq!(tf.timescale(), TimeScale::Tai);
+
+    tf.set_timescale(TimeScale::Utc);
+    let origin = tf.time_origin();
+    assert!(
+        (origin - 2004.9999989859814).abs() < 1.0e-9,
+        "TimeOrigin should be re-expressed in UTC, got {origin}"
+    );
+
+    // Clearing the timescale re-expresses back to the default (TAI). The
+    // round-trip through the leap-second conversion leaves a sub-ULP residual,
+    // matching the C oracle value 2004.9999999999998 (not exactly 2005.0).
+    tf.clear_timescale();
+    assert_eq!(tf.timescale(), TimeScale::Tai);
+    let back = tf.time_origin();
+    assert!(
+        (back - 2004.9999999999998).abs() < 1.0e-9,
+        "TimeOrigin should be re-expressed back to TAI, got {back}"
+    );
+}
+
+#[test]
+fn test_set_system_reexpresses_time_origin() {
+    // Changing System re-expresses the stored TimeOrigin into the new system
+    // (C OriginSystem). J2005.0(TAI) is MJD 53370.75(TAI).
+    //
+    // Oracle (reference C library):
+    //   astTimeFrame("system=jepoch, timescale=tai"); TimeOrigin=2005;
+    //   set system=mjd -> TimeOrigin == 53370.75
+    let mut tf = TimeFrame::new(TimeSystem::Jepoch);
+    tf.set_timescale(TimeScale::Tai);
+    tf.set_time_origin(2005.0);
+
+    tf.set_system(TimeSystem::Mjd);
+    let origin = tf.time_origin();
+    assert!(
+        (origin - 53370.75).abs() < 1.0e-6,
+        "TimeOrigin should be re-expressed in MJD, got {origin}"
+    );
 }

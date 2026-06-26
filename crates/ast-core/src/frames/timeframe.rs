@@ -270,9 +270,24 @@ impl TimeFrame {
     /// Clear System back to its class default. Mirrors C
     /// `astClearSystem`: after clearing, `astGetSystem` returns the
     /// TimeFrame default `AST__MJD` (timeframe.c:2911).
+    ///
+    /// As with [`Self::set_system`], the stored `TimeOrigin` is re-expressed
+    /// into the new (default) system (C `OriginSystem`). If the old system was
+    /// Besselian epoch, Unit and TimeScale are also cleared, since those are
+    /// constrained while System is Besselian epoch.
     pub fn clear_system(&mut self) {
+        let oldsys = self.system;
         self.system = TimeSystem::Mjd;
         self.system_set = false;
+
+        if self.system != oldsys {
+            self.origin_system(oldsys);
+            self.clear_title();
+            if oldsys == TimeSystem::Bepoch {
+                self.clear_unit();
+                self.clear_timescale();
+            }
+        }
     }
 
     /// Whether `TimeScale` has been explicitly set.
@@ -329,9 +344,32 @@ impl TimeFrame {
     }
 
     /// Set the time coordinate system.
+    ///
+    /// `TimeOrigin` records an absolute instant, so changing the system
+    /// re-expresses the stored origin into the new system (C `SetSystem`
+    /// → `OriginSystem`). Besselian epoch additionally forces Unit="yr" and
+    /// TimeScale=TT, applied (like C) before the system change so the origin is
+    /// first brought onto the TT timescale in the old system.
     pub fn set_system(&mut self, sys: TimeSystem) {
+        // Besselian epoch is defined in terms of TT and is always expressed in
+        // years; force those before changing the system (C SetSystem).
+        if sys == TimeSystem::Bepoch {
+            self.set_unit("yr");
+            self.set_timescale(TimeScale::Tt);
+        }
+
+        let oldsys = self.system;
         self.system = sys;
         self.system_set = true;
+
+        if oldsys != sys {
+            // Re-express the stored origin from the old system to the new one.
+            self.origin_system(oldsys);
+            // Title has a system-specific default; drop any explicit value so
+            // the new system's default is used. (Label/Symbol are derived
+            // dynamically here, so they need no explicit clearing.)
+            self.clear_title();
+        }
     }
 
     /// Return the time scale.
@@ -341,10 +379,34 @@ impl TimeFrame {
 
     /// Set the time scale.
     ///
+    /// `TimeOrigin` records an absolute instant, so changing the timescale
+    /// re-expresses the stored origin into the new timescale (C `SetTimeScale`
+    /// → `OriginScale`). The re-expression happens before the new timescale is
+    /// stored, so it converts from the current timescale to `ts`.
+    ///
     /// Note: Besselian epoch system only supports TT timescale.
     pub fn set_timescale(&mut self, ts: TimeScale) {
+        self.origin_scale(ts);
         self.timescale = ts;
         self.timescale_set = true;
+    }
+
+    /// Clear the time scale, reverting to the system default (TT for Besselian
+    /// epoch, otherwise TAI).
+    ///
+    /// Mirrors C `astClearTimeScale`: unless the System is Besselian epoch
+    /// (whose timescale is always TT), the stored `TimeOrigin` is re-expressed
+    /// into the default TAI timescale before the timescale is cleared.
+    pub fn clear_timescale(&mut self) {
+        if self.system != TimeSystem::Bepoch {
+            self.origin_scale(TimeScale::Tai);
+        }
+        self.timescale = if self.system == TimeSystem::Bepoch {
+            TimeScale::Tt
+        } else {
+            TimeScale::Tai
+        };
+        self.timescale_set = false;
     }
 
     /// Return the alignment time scale.
@@ -727,6 +789,52 @@ impl TimeFrame {
             TimeSystem::Bepoch => {
                 // Besselian epoch to MJD via PAL
                 crate::pal::epb2d(val)
+            }
+        }
+    }
+
+    /// Re-express the stored `TimeOrigin` from the current timescale into
+    /// `newts`. Mirrors C `OriginScale` (timeframe.c:4258).
+    ///
+    /// Called *before* the new timescale is stored, so the current
+    /// `self.timescale` is the timescale the origin currently refers to. A
+    /// no-op when no origin is set or the timescale is unchanged.
+    fn origin_scale(&mut self, newts: TimeScale) {
+        let Some(oldval) = self.time_origin else {
+            return;
+        };
+        let oldts = self.timescale;
+        if newts == oldts {
+            return;
+        }
+        let sys = self.system;
+        let u = sys.default_units();
+        if let Ok(map) = self.make_map(sys, sys, oldts, newts, 0.0, 0.0, u, u, None) {
+            if let Ok(newval) = transform_scalar(map.as_ref(), oldval, true) {
+                self.time_origin = Some(newval);
+            }
+        }
+    }
+
+    /// Re-express the stored `TimeOrigin` from `oldsys` into the current
+    /// system. Mirrors C `OriginSystem` (timeframe.c:4347).
+    ///
+    /// Called *after* `self.system` has been updated to the new system. A
+    /// no-op when no origin is set or the system is unchanged.
+    fn origin_system(&mut self, oldsys: TimeSystem) {
+        let Some(oldval) = self.time_origin else {
+            return;
+        };
+        let newsys = self.system;
+        if oldsys == newsys {
+            return;
+        }
+        let ts = self.timescale;
+        let oldu = oldsys.default_units();
+        let newu = newsys.default_units();
+        if let Ok(map) = self.make_map(oldsys, newsys, ts, ts, 0.0, 0.0, oldu, newu, None) {
+            if let Ok(newval) = transform_scalar(map.as_ref(), oldval, true) {
+                self.time_origin = Some(newval);
             }
         }
     }

@@ -828,53 +828,46 @@ gated so fixtures still pass.
 
 ---
 
-## TimeFrame `astUnformat` of a Besselian-epoch string is off by the leap-second offset
+## ~~TimeFrame `astUnformat` of a Besselian-epoch string is off by the leap-second offset~~ — RESOLVED: not a C bug
 
-**C location:** `timeframe.c::Unformat` (6062), specifically the
-`MakeMap( this, AST__MJD, sys, ts1, ts2, 0.0, off, "d", unit, ... )`
-call at 6241 with `ts1 = AST__TT` for a `B...` input string.
+**Status:** Withdrawn. This was originally logged as a C `astUnformat`
+leap-second bug; on investigation the C library is correct and the
+discrepancy was a **missing feature in the Rust port**. See
+`docs/issues/timeframe-unformat-findings.md` for the full write-up.
 
-**Observed:** unformatting a Besselian-epoch date string (e.g.
-`"B2001.5"`) into a `system=jepoch,timescale=utc,timeorigin=2005`
-TimeFrame returns `-3.50131054408916`, which is wrong by exactly the
-TAI-UTC leap-second count (~32 s) at that epoch. The string is read by
-`astReadDateTime` as MJD(TT) `52091.8966962715`; converting that
-instant to UTC Julian years and subtracting the 2005 origin should give
-`-3.5013115581077727`.
+**What was misdiagnosed:** unformatting `"B2001.5"` into a
+`system=jepoch, timescale=utc, timeorigin=2005` TimeFrame appeared to
+return `-3.50131054408916` from C versus an "expected"
+`-3.5013115581077727`, a difference of exactly the ~32 s TAI-UTC
+leap-second offset. The expected value was taken to be canonical, so C
+was blamed.
 
-Two independent oracles confirm the correct value:
-- C's own `astConvert` of an `mjd/tt` frame to the
-  `jepoch/utc/origin=2005` frame gives `-3.5013115581077727`.
-- astropy:
-  `Time(52091.8966962715, format="mjd", scale="tt").utc.jyear - 2005.0`
-  `== -3.5013115581077727`.
+**Actual cause:** `TimeOrigin` records an *absolute instant* whose
+numeric value is expressed in the frame's current timescale/system.
+Changing the timescale therefore re-expresses the stored origin (C
+`OriginScale` in `timeframe.c`). The two values correspond to two
+*different* origins, both self-consistent:
 
-C's `astUnformat` builds the conversion through a *direct* `MakeMap`
-call rather than through `astConvert`/`MakeTimeMapping`. The resulting
-TimeMap contains both the `TTTOTAI` and `TAITOUTC` steps (verified by
-instrumentation), but the `TAITOUTC` step's leap-second lookup uses the
-zero MJD offset passed to `MakeMap` rather than the actual epoch, so the
-leap-second correction is effectively dropped and the result lands in
-the TAI scale. C `astFormat` of the unformatted value confirms the
-round-trip is broken: `astUnformat("B2001.5")` then `astFormat` yields
-`2001-07-01 21:30:10.37` whereas the true B2001.5 instant formats as
-`2001-07-01 21:29:38.37`.
+| Construction order                          | `TimeOrigin` | `astUnformat("B2001.5")` |
+| ------------------------------------------- | ------------ | ------------------------ |
+| timescale set *before* origin (origin=2005) | 2005.0       | -3.5013115581077727      |
+| origin set *before* timescale (re-expressed)| 2004.99999899| -3.501310544089165       |
 
-**Consequence:** the C `astUnformat` value for a Besselian-epoch string
-is wrong by the leap-second offset, and does not round-trip with
-`astFormat`. Decimal-year, Julian-epoch, MJD, JD and Gregorian inputs
-are unaffected (they do not trigger the `ts1 = TT` branch on a non-TT
-frame).
+The reference C library produces *both* values for the respective
+construction orders, and so does the Rust port. astropy's
+`-3.5013115581077727` matches the origin=2005 frame.
 
-**Rust behaviour:** `TimeFrame::unformat`
-(`crates/ast-core/src/frames/timeframe.rs`) builds the value↔MJD
-conversion through the same `make_map` used by the convert path, so it
-produces the astropy-correct UTC value. The acceptance test
-`test_unformat_b_prefix_uses_tt` in
-`crates/ast-core/tests/test_timeframe.rs` asserts the corrected value
-and documents the divergence. The `#[ignore]`d test
-`c_bug_b_prefix_unformat_leap_offset` in the same file records the exact
-(buggy) C value so the discrepancy is discoverable.
+**The Rust port's earlier behaviour was the actual defect:** its
+`set_timescale`/`set_system`/`clear_*` were bare field setters that did
+*not* re-express `TimeOrigin`, so the origin-then-timescale frame kept
+origin=2005 and accidentally produced the astropy value — masking the
+missing `OriginScale`/`OriginSystem` step. Fixed in
+`crates/ast-core/src/frames/timeframe.rs` (`origin_scale`/
+`origin_system`); covered by `test_set_timescale_reexpresses_time_origin`,
+`test_set_system_reexpresses_time_origin`,
+`test_unformat_b_prefix_uses_tt` and
+`test_unformat_b_prefix_origin_then_timescale` in
+`crates/ast-core/tests/test_timeframe.rs`.
 
 ---
 

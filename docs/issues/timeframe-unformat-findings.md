@@ -120,3 +120,29 @@ a pristine object.
   `TimeOrigin` re-expression behaviour (via `OriginScale`) more discoverable,
   since it is easy to mistake for a conversion error. The numerics themselves
   are correct.
+
+## Rust-port follow-up (FIXED 2026-06-25)
+
+The investigation revealed the real defect was in the **Rust port**, not the C
+library: `TimeFrame::set_system`, `set_timescale` and `clear_*` were bare field
+setters that never re-expressed `TimeOrigin`. As a result the
+origin-then-timescale frame kept `TimeOrigin = 2005.0` and accidentally
+produced the astropy value, masking the missing `OriginScale`/`OriginSystem`
+step and making the C library look wrong by comparison.
+
+The port now mirrors C:
+
+- `origin_scale` (C `OriginScale`) re-expresses the stored origin into the new
+  timescale, called before the new timescale is stored.
+- `origin_system` (C `OriginSystem`) re-expresses the stored origin into the
+  new system, called after the system is updated.
+- `set_system` additionally forces Unit="yr"/TimeScale=TT for Besselian epoch
+  (before the change) and clears the system-specific Title default;
+  `clear_system` clears Unit/TimeScale when leaving Besselian epoch.
+
+Verified bit-for-bit against the reference C library on both construction
+orders. Tests in `crates/ast-core/tests/test_timeframe.rs`:
+`test_set_timescale_reexpresses_time_origin`,
+`test_set_system_reexpresses_time_origin`, `test_unformat_b_prefix_uses_tt`
+(origin=2005 in UTC), and `test_unformat_b_prefix_origin_then_timescale`
+(re-expressed origin).
