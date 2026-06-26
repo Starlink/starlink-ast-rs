@@ -3,18 +3,14 @@
 # skip_string_compare: blank = run both string-diff and astequal tests
 #                      yes  = run astequal test only (ulp-level variation)
 
-# KNOWN-FAILING simplifier bug (disabled — would hard-fail on transform).
 # spec_cel_invert.{map,simp} capture a FITS cube's pixel→world Mapping (FREQ
 # spectral axis + celestial axes) just before/after C `astSimplify`
-# (fitschan.c:37810). Rust `simplify()` produces a NUMERICALLY WRONG result on
-# the spectral axis: orig & C-ref give axis-0 = 907505752, Rust gives
-# -1933305752 (= 2*crval - correct). The input map8 ends with an inverted
-# WcsMap; C keeps it inverted via the CmpMap `InvB=1` flag and leaves the
-# leading WinMap shift = +907405752, while Rust bakes the inversion into the
-# components and flips the WinMap shift sign. Re-enable once the CmpMap merge
-# preserves component Invert flags (cmpmap.rs) instead of baking them in.
-# Full investigation: docs/issues/simplifier-winmap-inverted-merge-bug.md
-# spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec_cel_invert.simp |
+# (fitschan.c:37810). The input map8 ends with an inverted WcsMap; the spectral
+# shift swaps past it via try_swap_winmap_wcsmap. Regression guard for the
+# WinMap↔WcsMap swap dropping each map's invert flag (was double-swapping the
+# flags so an inverted neighbour negated the linear map's shift, producing a
+# spectral axis off by 2*CRVAL).
+spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec_cel_invert.simp |
 
 # Scenario fixtures (integration regressions, stay in ast_tester/).
 brad  | brad.map  | brad.simp  |

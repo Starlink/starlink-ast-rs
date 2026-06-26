@@ -1,9 +1,27 @@
 # Simplifier corruption: WinMap merged past an inverted WcsMap/SpecMap
 
-**Status (2026-06-15):** open. Reproducing fixture committed
-(`simplify_fixtures/spec_cel_invert.{map,simp}`, commit `5595fbc`), manifest
-line commented out so the suite stays green. This is a **simplifier
+**Status (2026-06-25):** FIXED. The reproducing fixture
+(`simplify_fixtures/spec_cel_invert.{map,simp}`, commit `5595fbc`) is now an
+active regression test (manifest line re-enabled). This was a **simplifier
 correctness bug**, not a serialization/representation difference.
+
+## Root cause and fix
+
+The bug was in `try_swap_winmap_wcsmap` (`mappings/simplify.rs`). The series
+list holds `(mapping, invert_flag)` tuples; `Vec::swap(i, i+1)` moves the whole
+tuple, so a positional reorder already carries each map's invert flag to its new
+position. The code then *also* swapped the two `.1` (invert) fields back, under
+the mistaken comment "Also swap their invert flags" — net effect: each mapping
+ended up wearing the *other* map's invert flag. When the WcsMap neighbour was
+inverted (`InvB=1`), this flipped the passing-through linear map (the spectral
+`ShiftMap`/`WinMap`) to inverted, so its `+CRVAL` shift was applied as `-CRVAL`
+— the `2*CRVAL` (= forward − inverse) signature. Earlier fixtures masked it
+because their WcsMap neighbour was not inverted, making the double-swap a no-op.
+
+Fix: drop the manual flag swap; `Vec::swap` alone is correct. Each map keeps its
+own direction across a positional reorder. With the fix, Rust's simplified
+output matches C's `CmpMap{ WinMap(Sft1=907405752), WcsMap } + InvB=1` and the
+spectral-axis transform reproduces 907505752.
 
 ## One-paragraph summary
 

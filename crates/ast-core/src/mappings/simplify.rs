@@ -497,11 +497,10 @@ fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
                     .unwrap_or(false);
 
             if identity_on_cel {
+                // `Vec::swap` moves the whole `(mapping, invert)` tuple, so
+                // each mapping keeps its own invert flag at its new position.
+                // A positional reorder does not change either map's direction.
                 list.swap(i, i + 1);
-                // Also swap their invert flags.
-                let tmp = list[i].1;
-                list[i].1 = list[i + 1].1;
-                list[i + 1].1 = tmp;
                 swapped = true;
             }
         }
