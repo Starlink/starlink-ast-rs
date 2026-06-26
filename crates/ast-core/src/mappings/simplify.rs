@@ -6,7 +6,7 @@
 //!
 //! The pipeline is:
 //! 1. **Flatten**: recursively decompose a `CmpMap` tree into a flat
-//!    list of `(DynMapping, bool)` pairs, where the bool indicates
+//!    list of `(DynMapping, bool, bool)` pairs, where the bool indicates
 //!    whether the mapping is effectively inverted in the composition.
 //! 2. **Merge loop**: walk adjacent pairs, attempting `try_merge` in
 //!    both directions until no further improvements are found.
@@ -182,7 +182,7 @@ pub(crate) fn flatten(
     mapping: &dyn Mapping,
     inv: bool,
     series: bool,
-) -> AstResult<Vec<(DynMapping, bool)>> {
+) -> AstResult<Vec<(DynMapping, bool, bool)>> {
     let target_kind = if series {
         Composition::Series
     } else {
@@ -223,12 +223,18 @@ pub(crate) fn flatten(
 
     // Leaf: clone via simplified(), then normalise the invert flag.
     let mut cloned = mapping.simplified()?;
-    let effective_inv = inv != cloned.is_inverted();
+    // The leaf's own (intrinsic) Invert state, independent of any inversion
+    // imposed by a parent CmpMap. This is preserved as the element's
+    // `orig_inv` so `reconstruct` can serialise the child in the same
+    // orientation C does (C keeps each component's original Invert and
+    // records the effective direction separately in InvA/InvB).
+    let orig_inv = cloned.is_inverted();
+    let effective_inv = inv != orig_inv;
     // Reset the clone to forward state; the bool carries inversion.
     if cloned.is_inverted() {
         cloned.invert();
     }
-    Ok(vec![(cloned, effective_inv)])
+    Ok(vec![(cloned, effective_inv, orig_inv)])
 }
 
 /// Mirror of the `simpler` flag returned by C `cmpmap.c` `MapList`
@@ -272,7 +278,7 @@ fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> b
 ///
 /// After the merge loop stabilises, `UnitMap` entries are removed
 /// from series lists (they are identity and do not contribute).
-pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bool {
+pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool) -> bool {
     const MAX_MERGE_PASSES: usize = 50;
     let mut pass = 0;
     let mut prev_len = list.len();
@@ -288,11 +294,11 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
     let original_nin: usize = if list.is_empty() {
         1
     } else if series {
-        let (m, inv) = &list[0];
+        let (m, inv, _) = &list[0];
         if *inv { m.nout() } else { m.nin() }
     } else {
         list.iter()
-            .map(|(m, inv)| if *inv { m.nout() } else { m.nin() })
+            .map(|(m, inv, _)| if *inv { m.nout() } else { m.nin() })
             .sum()
     };
 
@@ -313,8 +319,8 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
             }
 
             let merged = {
-                let (ref m1, inv1) = list[i];
-                let (ref m2, inv2) = list[i + 1];
+                let (ref m1, inv1, _) = list[i];
+                let (ref m2, inv2, _) = list[i + 1];
 
                 // The effective input dimension of m1 in its applied
                 // direction — this is what the merged result must accept.
@@ -377,7 +383,7 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
                         }
                     }
                 }
-                list[i] = (m, false);
+                list[i] = (m, false, false);
                 list.remove(i + 1);
                 improved = true;
                 // Don't advance i — the new element might merge with
@@ -442,9 +448,9 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
             // SphMap/UnitMap into a MatrixMap).
             if series && list.len() > 1 {
                 let orig_len = list.len();
-                list.retain(|(m, _)| !m.as_any().is::<UnitMap>());
+                list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
                 if list.is_empty() {
-                    list.push((Box::new(UnitMap::new(original_nin)), false));
+                    list.push((Box::new(UnitMap::new(original_nin)), false, false));
                 }
                 if list.len() != orig_len {
                     continue;
@@ -470,12 +476,12 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
     // Post-loop: strip UnitMaps from series lists.
     if series && list.len() > 1 {
         let orig_len = list.len();
-        list.retain(|(m, _)| !m.as_any().is::<UnitMap>());
+        list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
         if list.len() != orig_len {
             changed = true;
         }
         if list.is_empty() {
-            list.push((Box::new(UnitMap::new(original_nin)), false));
+            list.push((Box::new(UnitMap::new(original_nin)), false, false));
         }
     }
     changed
@@ -490,7 +496,7 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool)>, series: bool) -> bo
 /// potentially enabling further merges with other linear mappings.
 ///
 /// Returns true if any swap was performed.
-fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut swapped = false;
     let mut i = 0;
     while i + 1 < list.len() {
@@ -555,7 +561,7 @@ fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
 /// with), to avoid infinite swap loops.
 ///
 /// Matches C winmap.c:2793 (WinMat).
-fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         // Check for WinMap/ShiftMap at position i and MatrixMap at position i+1.
@@ -648,12 +654,12 @@ fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
             // Remove the WinMap at position i.
             list.remove(i);
             // Replace the MatrixMap (now at position i after removal) with new one.
-            list[i] = (Box::new(new_mm), false);
+            list[i] = (Box::new(new_mm), false, false);
 
             if !all_shifts_zero {
                 // Insert ShiftMap after the new MatrixMap.
                 let new_sm = ShiftMap::new(shifted);
-                list.insert(i + 1, (Box::new(new_sm), false));
+                list.insert(i + 1, (Box::new(new_sm), false, false));
             }
 
             return true;
@@ -672,7 +678,7 @@ fn try_swap_winmap_past_matrixmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
 ///
 /// Matches C winmap.c:2973 (WinPerm) and the CanSwap bidirectionality
 /// + nstep-walk gate (winmap.c:266 + winmap.c:1442-1474).
-fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         // Identify the [Linear, PermMap] or [PermMap, Linear] pattern.
@@ -775,8 +781,8 @@ fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
         // Replace the two-element window with the swapped pair (PermMap'
         // takes the Linear's slot and vice-versa). Both replacements are
         // returned in their natural (forward) form.
-        list[lin_idx] = (Box::new(new_pm), false);
-        list[perm_idx] = (new_lin, false);
+        list[lin_idx] = (Box::new(new_pm), false, false);
+        list[perm_idx] = (new_lin, false, false);
         return true;
     }
     false
@@ -818,7 +824,11 @@ fn permmap_is_bidirectional(outperm: &[i64], inperm: &[i64]) -> bool {
 /// MatrixMap) or non-swappable mapping.
 ///
 /// Matches the gate logic in C winmap.c:1442-1474 + 1490-1513.
-fn has_swap_target_for_winperm(list: &[(DynMapping, bool)], i: usize, walk_forward: bool) -> bool {
+fn has_swap_target_for_winperm(
+    list: &[(DynMapping, bool, bool)],
+    i: usize,
+    walk_forward: bool,
+) -> bool {
     // Position of the Linear in the pair (i for forward, i+1 for backward).
     // The walk starts just past the PermMap.
     let walk_iter: Box<dyn Iterator<Item = usize>> = if walk_forward {
@@ -965,7 +975,7 @@ fn build_winperm_swap(
 /// the other side that could cancel with the swapped WcsMap.
 ///
 /// Matches C wcsmap.c CanSwap+WcsPerm (lines 922-1145, 4463-4698).
-fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         let is_wcs_perm =
@@ -1095,8 +1105,8 @@ fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
                 if let Some(result) =
                     swap_wcsmap_perm_unassigned(wcs, perm, wcs_inv, perm_inv, true)
                 {
-                    list[i] = (result.0, result.1);
-                    list[i + 1] = (result.2, result.3);
+                    list[i] = (result.0, result.1, false);
+                    list[i + 1] = (result.2, result.3, false);
                     return true;
                 }
             } else if lon_dest > 0
@@ -1117,7 +1127,7 @@ fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
                 let perm_entry = list.remove(i + 1);
                 list.remove(i);
                 list.insert(i, perm_entry);
-                list.insert(i + 1, (Box::new(new_wcs), wcs_inv));
+                list.insert(i + 1, (Box::new(new_wcs), wcs_inv, false));
                 return true;
             }
             // else: one assigned, one not — cannot swap.
@@ -1140,8 +1150,8 @@ fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
                 if let Some(result) =
                     swap_wcsmap_perm_unassigned(wcs, perm, wcs_inv, perm_inv, false)
                 {
-                    list[i] = (result.0, result.1);
-                    list[i + 1] = (result.2, result.3);
+                    list[i] = (result.0, result.1, false);
+                    list[i + 1] = (result.2, result.3, false);
                     return true;
                 }
             } else if lon_src > 0
@@ -1161,7 +1171,7 @@ fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool)>) -> bool {
                 // Swap: [PermMap, WcsMap] → [new_WcsMap, PermMap]
                 let perm_entry = list.remove(i);
                 list.remove(i); // was at i+1, now at i after removal
-                list.insert(i, (Box::new(new_wcs), wcs_inv));
+                list.insert(i, (Box::new(new_wcs), wcs_inv, false));
                 list.insert(i + 1, perm_entry);
                 return true;
             }
@@ -1315,7 +1325,7 @@ fn effective_nin(m: &dyn Mapping, inv: bool) -> usize {
 /// of components from the second CmpMap. Matched pairs are combined in
 /// series and simplified. If any pair simplifies, the result replaces
 /// the original pair as a single parallel CmpMap.
-fn try_merge_parallel_in_series(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_merge_parallel_in_series(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         let success = try_merge_parallel_pair_in_series(list, i);
@@ -1328,7 +1338,7 @@ fn try_merge_parallel_in_series(list: &mut Vec<(DynMapping, bool)>) -> bool {
 }
 
 /// Attempt to merge a specific adjacent pair at index `i` and `i+1`.
-fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usize) -> bool {
+fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
     // Both must be parallel CmpMaps.
     let is_par1 = list[i]
         .0
@@ -1344,8 +1354,8 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
         return false;
     }
 
-    let (ref m1, inv1) = list[i];
-    let (ref m2, inv2) = list[i + 1];
+    let (ref m1, inv1, _) = list[i];
+    let (ref m2, inv2, _) = list[i + 1];
 
     // Flatten both for parallel composition.
     let Ok(par_list1) = flatten(m1.as_ref(), inv1, false) else {
@@ -1361,7 +1371,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
     };
 
     // For each matched pair, combine in series and simplify.
-    let mut simplified_pairs: Vec<(DynMapping, bool)> = Vec::new();
+    let mut simplified_pairs: Vec<(DynMapping, bool, bool)> = Vec::new();
     let mut any_improvement = false;
 
     for (sub1, sub2) in matched {
@@ -1370,7 +1380,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
         // of the two sublists before composition.
         let pre_len: usize = sub1
             .iter()
-            .map(|(m, _)| {
+            .map(|(m, _, _)| {
                 flatten(m.as_ref(), false, true)
                     .map(|f| f.len())
                     .unwrap_or(1)
@@ -1378,7 +1388,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
             .sum::<usize>()
             + sub2
                 .iter()
-                .map(|(m, _)| {
+                .map(|(m, _, _)| {
                     flatten(m.as_ref(), false, true)
                         .map(|f| f.len())
                         .unwrap_or(1)
@@ -1425,7 +1435,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
             }
         }
 
-        simplified_pairs.push((simplified, false));
+        simplified_pairs.push((simplified, false, false));
     }
 
     if !any_improvement {
@@ -1442,7 +1452,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
     // reconstruct() is purely structural; without a follow-up simplify
     // the merge_loop would not see the parallel children adjacent.
     let result = simplify_mapping(result.as_ref()).unwrap_or(result);
-    list[i] = (result, false);
+    list[i] = (result, false, false);
     list.remove(i + 1);
     true
 }
@@ -1454,9 +1464,9 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool)>, i: usiz
 /// Returns `None` if the lists cannot be fully matched.
 #[allow(clippy::type_complexity)]
 fn dimension_match_parallel_lists(
-    par_list1: &[(DynMapping, bool)],
-    par_list2: &[(DynMapping, bool)],
-) -> Option<Vec<(Vec<(DynMapping, bool)>, Vec<(DynMapping, bool)>)>> {
+    par_list1: &[(DynMapping, bool, bool)],
+    par_list2: &[(DynMapping, bool, bool)],
+) -> Option<Vec<(Vec<(DynMapping, bool, bool)>, Vec<(DynMapping, bool, bool)>)>> {
     let mut pairs = Vec::new();
     let mut i1 = 0usize;
     let mut i2 = 0usize;
@@ -1473,11 +1483,11 @@ fn dimension_match_parallel_lists(
     loop {
         // Add from list1 if we need more outputs.
         if out_accum <= in_accum && i1 < par_list1.len() {
-            let (ref m, inv) = par_list1[i1];
+            let (ref m, inv, _) = par_list1[i1];
             out_accum += effective_nout(m.as_ref(), inv);
             i1 += 1;
         } else if i2 < par_list2.len() {
-            let (ref m, inv) = par_list2[i2];
+            let (ref m, inv, _) = par_list2[i2];
             in_accum += effective_nin(m.as_ref(), inv);
             i2 += 1;
         } else {
@@ -1487,21 +1497,23 @@ fn dimension_match_parallel_lists(
 
         if out_accum == in_accum && out_accum > 0 {
             // Match boundary found. Clone the sublists.
-            let sub1: Vec<(DynMapping, bool)> = par_list1[sub1_start..i1]
+            let sub1: Vec<(DynMapping, bool, bool)> = par_list1[sub1_start..i1]
                 .iter()
-                .map(|(m, inv)| {
+                .map(|(m, inv, orig)| {
                     (
                         m.simplified().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
                         *inv,
+                        *orig,
                     )
                 })
                 .collect();
-            let sub2: Vec<(DynMapping, bool)> = par_list2[sub2_start..i2]
+            let sub2: Vec<(DynMapping, bool, bool)> = par_list2[sub2_start..i2]
                 .iter()
-                .map(|(m, inv)| {
+                .map(|(m, inv, orig)| {
                     (
                         m.simplified().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
                         *inv,
+                        *orig,
                     )
                 })
                 .collect();
@@ -1530,7 +1542,7 @@ fn dimension_match_parallel_lists(
 ///
 /// Rearranges `(A;B) || (C;D)` into `(A||C) ; (B||D)` and simplifies
 /// each new parallel CmpMap. Only accepts if at least one simplified.
-fn try_merge_series_in_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_merge_series_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         if try_merge_series_pair_in_parallel(list, i) {
@@ -1541,7 +1553,7 @@ fn try_merge_series_in_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
     false
 }
 
-fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usize) -> bool {
+fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
     // Both must be series CmpMaps.
     let is_ser1 = list[i]
         .0
@@ -1557,8 +1569,8 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
         return false;
     }
 
-    let (ref m1, inv1) = list[i];
-    let (ref m2, inv2) = list[i + 1];
+    let (ref m1, inv1, _) = list[i];
+    let (ref m2, inv2, _) = list[i + 1];
 
     // Flatten both for series composition.
     let Ok(ser_list1) = flatten(m1.as_ref(), inv1, true) else {
@@ -1578,14 +1590,14 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
             ser_list1.last().unwrap().0.as_ref(),
             ser_list1.last().unwrap().1,
         );
-        ser_list1.push((Box::new(UnitMap::new(nout)), false));
+        ser_list1.push((Box::new(UnitMap::new(nout)), false, false));
     }
     while ser_list2.len() < ser_list1.len() {
         let nout = effective_nout(
             ser_list2.last().unwrap().0.as_ref(),
             ser_list2.last().unwrap().1,
         );
-        ser_list2.push((Box::new(UnitMap::new(nout)), false));
+        ser_list2.push((Box::new(UnitMap::new(nout)), false, false));
     }
 
     let n = ser_list1.len();
@@ -1595,7 +1607,7 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
 
     // Build parallel pairs: position k from each series list goes in parallel.
     // Then the parallel pairs are combined in series.
-    let mut parallel_maps: Vec<(DynMapping, bool)> = Vec::new();
+    let mut parallel_maps: Vec<(DynMapping, bool, bool)> = Vec::new();
     let mut any_improvement = false;
 
     for k in 0..n {
@@ -1640,7 +1652,7 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
             }
         }
 
-        parallel_maps.push((simplified, false));
+        parallel_maps.push((simplified, false, false));
     }
 
     if !any_improvement {
@@ -1651,7 +1663,7 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
     let Ok(result) = reconstruct(parallel_maps, true) else {
         return false;
     };
-    list[i] = (result, false);
+    list[i] = (result, false, false);
     list.remove(i + 1);
     true
 }
@@ -1664,7 +1676,7 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool)>, i: usiz
 /// replaced with a new one (or removed if it becomes identity) and
 /// the CmpMap's components are reordered. This can enable further
 /// pairwise merges.
-fn try_swap_permmap_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_swap_permmap_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         // Check for PermMap followed by parallel CmpMap.
@@ -1686,9 +1698,9 @@ fn try_swap_permmap_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
 /// Attempt the PermMap↔parallel-CmpMap swap at position `i` (PermMap)
 /// and `i+1` (parallel CmpMap).
 #[allow(clippy::needless_range_loop)]
-fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) -> bool {
-    let (ref perm_map, perm_inv) = list[i];
-    let (ref par_map, par_inv) = list[i + 1];
+fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
+    let (ref perm_map, perm_inv, _) = list[i];
+    let (ref par_map, par_inv, _) = list[i + 1];
 
     let perm = perm_map.as_any().downcast_ref::<PermMap>().unwrap();
     // Get effective permutation arrays based on inversion.
@@ -1966,15 +1978,15 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
 
     if is_identity {
         // Just replace with the swapped CmpMap (PermMap is removed).
-        list[i] = (Box::new(new_cm), false);
+        list[i] = (Box::new(new_cm), false, false);
         list.remove(i + 1);
     } else {
         let Ok(new_pm) = PermMap::new(&inperm_new, &outperm_new, &constants_new) else {
             return false;
         };
         // CmpMap goes first (was second), PermMap goes second (was first).
-        list[i] = (Box::new(new_cm), false);
-        list[i + 1] = (Box::new(new_pm), false);
+        list[i] = (Box::new(new_cm), false, false);
+        list[i + 1] = (Box::new(new_pm), false, false);
     }
     true
 }
@@ -2005,7 +2017,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool)>, i: usize) ->
 /// These are handled here rather than in `GrismMap::try_merge` because
 /// the `try_merge` API cannot distinguish forward from reverse calls,
 /// and the merges are only valid in specific orderings.
-fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     for i in 0..list.len().saturating_sub(1) {
         // Pattern 1: GrismMap(fwd) + ZoomMap
         let is_fwd_grism = list[i].0.as_any().is::<GrismMap>() && !list[i].1;
@@ -2029,7 +2041,7 @@ fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool)>) -> bool {
             }
 
             if let Some(merged) = grism.merge_with_zoom(z, false) {
-                list[i] = (merged, false);
+                list[i] = (merged, false, false);
                 list.remove(i + 1);
                 return true;
             }
@@ -2061,7 +2073,7 @@ fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool)>) -> bool {
             }
 
             if let Some(merged) = grism.merge_with_zoom(z, true) {
-                list[i] = (merged, false);
+                list[i] = (merged, false, false);
                 list.remove(i + 1);
                 return true;
             }
@@ -2070,7 +2082,7 @@ fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool)>) -> bool {
     false
 }
 
-fn try_swap_pcdmap_past_neighbor(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_swap_pcdmap_past_neighbor(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     // Look for a PcdMap that can be swapped towards a merge target.
     let mut i = 0;
     while i < list.len() {
@@ -2132,7 +2144,11 @@ fn can_swap_pcd_with(m: &DynMapping) -> bool {
 /// Search forward or backward from `start` for a PcdMap or UnitMap merge
 /// target, skipping over ZoomMaps and axis-swapping PermMaps.
 /// Returns the number of intermediate steps if found, -1 otherwise.
-fn find_pcd_merge_target_steps(list: &[(DynMapping, bool)], start: usize, forward: bool) -> i32 {
+fn find_pcd_merge_target_steps(
+    list: &[(DynMapping, bool, bool)],
+    start: usize,
+    forward: bool,
+) -> i32 {
     if start >= list.len() {
         return -1;
     }
@@ -2163,7 +2179,7 @@ fn find_pcd_merge_target_steps(list: &[(DynMapping, bool)], start: usize, forwar
 /// Perform PcdMap swap when PcdMap is first (at `i`) and neighbor is at `i+1`.
 /// After swap: neighbor at i, new PcdMap at i+1.
 /// C equivalent: ipc=0 in PcdZoom/PcdPerm.
-fn do_pcd_swap_first(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) {
+fn do_pcd_swap_first(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: bool) {
     let pcd = list[i].0.as_any().downcast_ref::<PcdMap>().unwrap();
     let pcd_disc = pcd.disc();
     let pcd_cen = pcd.pcdcen();
@@ -2187,8 +2203,8 @@ fn do_pcd_swap_first(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) {
         }
 
         let new_zoom = ZoomMap::new(2, zoom).unwrap();
-        list[i] = (Box::new(new_zoom), false);
-        list[i + 1] = (Box::new(new_pcd), false);
+        list[i] = (Box::new(new_zoom), false, false);
+        list[i + 1] = (Box::new(new_pcd), false, false);
     } else if list[i + 1].0.as_any().is::<PermMap>() {
         let other_inv = list[i + 1].1;
 
@@ -2201,15 +2217,16 @@ fn do_pcd_swap_first(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) {
         }
 
         let pm_clone = list[i + 1].0.clone_box();
-        list[i] = (pm_clone, other_inv);
-        list[i + 1] = (Box::new(new_pcd), false);
+        let pm_orig = list[i + 1].2;
+        list[i] = (pm_clone, other_inv, pm_orig);
+        list[i + 1] = (Box::new(new_pcd), false, false);
     }
 }
 
 /// Perform PcdMap swap when PcdMap is second (at `i+1`) and neighbor is at `i`.
 /// After swap: new PcdMap at i, neighbor at i+1.
 /// C equivalent: ipc=1 in PcdZoom/PcdPerm.
-fn do_pcd_swap_second(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) {
+fn do_pcd_swap_second(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: bool) {
     let pcd = list[i + 1].0.as_any().downcast_ref::<PcdMap>().unwrap();
     let pcd_disc = pcd.disc();
     let pcd_cen = pcd.pcdcen();
@@ -2233,8 +2250,8 @@ fn do_pcd_swap_second(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) 
         }
 
         let new_zoom = ZoomMap::new(2, zoom).unwrap();
-        list[i] = (Box::new(new_pcd), false);
-        list[i + 1] = (Box::new(new_zoom), false);
+        list[i] = (Box::new(new_pcd), false, false);
+        list[i + 1] = (Box::new(new_zoom), false, false);
     } else if list[i].0.as_any().is::<PermMap>() {
         let other_inv = list[i].1;
 
@@ -2247,8 +2264,9 @@ fn do_pcd_swap_second(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) 
         }
 
         let pm_clone = list[i].0.clone_box();
-        list[i] = (Box::new(new_pcd), false);
-        list[i + 1] = (pm_clone, other_inv);
+        let pm_orig = list[i].2;
+        list[i] = (Box::new(new_pcd), false, false);
+        list[i + 1] = (pm_clone, other_inv, pm_orig);
     }
 }
 
@@ -2263,13 +2281,13 @@ fn do_pcd_swap_second(list: &mut [(DynMapping, bool)], i: usize, pcd_inv: bool) 
 /// diagonal, and the two adjacent SphMaps cancel on the next merge pass.
 ///
 /// Matches C sphmap.c:798-950.
-fn try_sphmap_diagonal_pattern(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_sphmap_diagonal_pattern(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 2 < list.len() {
         // Pattern: SphMap(inverted) ; diagonal(3→3) ; SphMap(forward)
-        let (ref m1, inv1) = list[i];
-        let (ref m2, inv2) = list[i + 1];
-        let (ref m3, inv3) = list[i + 2];
+        let (ref m1, inv1, _) = list[i];
+        let (ref m2, inv2, _) = list[i + 1];
+        let (ref m3, inv3, _) = list[i + 2];
 
         let sph1 = m1.as_any().downcast_ref::<SphMap>();
         let sph3 = m3.as_any().downcast_ref::<SphMap>();
@@ -2324,9 +2342,9 @@ fn try_sphmap_diagonal_pattern(list: &mut Vec<(DynMapping, bool)>) -> bool {
                         // Remove the diagonal (position i+1) and replace
                         // position i with WinMap, insert the modified SphMap.
                         list.remove(i + 1); // remove diagonal
-                        list[i] = (Box::new(winmap), false);
+                        list[i] = (Box::new(winmap), false, false);
                         // Insert the modified inv-SphMap after the WinMap.
-                        list.insert(i + 1, (Box::new(new_sph), true));
+                        list.insert(i + 1, (Box::new(new_sph), true, false));
                         return true;
                     }
                 }
@@ -2388,7 +2406,7 @@ fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
 /// Matches C winmap.c:1262-1416 (the WinMap↔parallel-CmpMap MapMerge branch),
 /// including the `cmlow` flag that selects the split dimension (nin vs nout)
 /// and the composition order of each new series sub-CmpMap.
-fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bool {
+fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 1 < list.len() {
         let lo_is_linear = is_linear_mapping(list[i].0.as_ref());
@@ -2438,7 +2456,7 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
         // on the CmpMap's outputs (split by each component's nout).
         let mut dim_boundaries: Vec<(usize, usize)> = Vec::new();
         let mut offset = 0;
-        for (comp, comp_inv) in &par_list {
+        for (comp, comp_inv, _) in &par_list {
             let dim = if cmlow {
                 effective_nout(comp.as_ref(), *comp_inv)
             } else {
@@ -2463,10 +2481,10 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
         // simplifies, the distribution is pure churn (and risks an infinite
         // oscillation against `try_merge_parallel_in_series`), so it is
         // rejected. Matches C winmap.c:1358-1375.
-        let mut new_branches: Vec<(DynMapping, bool)> = Vec::new();
+        let mut new_branches: Vec<(DynMapping, bool, bool)> = Vec::new();
         let mut any_branch_simplified = false;
         let mut failed = false;
-        for ((comp, comp_inv), &(start, dim)) in par_list.iter().zip(dim_boundaries.iter()) {
+        for ((comp, comp_inv, _), &(start, dim)) in par_list.iter().zip(dim_boundaries.iter()) {
             let sub_shifts = &shifts[start..start + dim];
             let sub_scales = &scales[start..start + dim];
 
@@ -2519,7 +2537,7 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
             if fp_before != fp_after {
                 any_branch_simplified = true;
             }
-            new_branches.push((simplified_branch, false));
+            new_branches.push((simplified_branch, false, false));
         }
 
         if failed || !any_branch_simplified {
@@ -2535,7 +2553,7 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
 
         // Replace the two-element window with the single new parallel CmpMap.
         list.remove(i + 1);
-        list[i] = (new_par, false);
+        list[i] = (new_par, false, false);
         return true;
     }
     false
@@ -2543,30 +2561,41 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool)>) -> bo
 
 /// Reconstruct a `CmpMap` tree (or single mapping) from a flat list.
 ///
-/// Each mapping's `is_inverted` flag is set from the stored
-/// `effective_inv` before composition.
+/// Each element is `(map, effective_inv, orig_inv)` where `map` is in its
+/// forward orientation, `effective_inv` is the direction the component is
+/// applied in, and `orig_inv` is the orientation the component was stored in
+/// within the original tree (see [`flatten`]).
 ///
-/// For a single-element list the mapping is returned directly (no
-/// wrapping `CmpMap`).
-pub(crate) fn reconstruct(list: Vec<(DynMapping, bool)>, series: bool) -> AstResult<DynMapping> {
+/// This mirrors C `cmpmap.c` Simplify, which for each component records the
+/// *effective* direction in the parent CmpMap's `InvA`/`InvB` while leaving
+/// the component serialised in its *original* orientation. So a CmpMap child
+/// gets `inv_a/inv_b = effective_inv` and a stored Invert of `orig_inv`;
+/// these are independent and, by construction, the child's stored Invert
+/// cancels out of the transform (see [`CmpMap::set_first_orientation`]).
+///
+/// For a single-element list the mapping is returned directly (no wrapping
+/// `CmpMap`), in its effective orientation — matching C's `nmap == 1` branch
+/// which sets the lone Mapping's Invert to the effective value.
+///
+/// `orig_inv` is honoured only for series reconstruction. The parallel path
+/// keeps the existing `invert_into_structure` behaviour, which already emits
+/// the canonical form C uses for parallel CmpMaps.
+pub(crate) fn reconstruct(
+    list: Vec<(DynMapping, bool, bool)>,
+    series: bool,
+) -> AstResult<DynMapping> {
     let kind = if series {
         Composition::Series
     } else {
         Composition::Parallel
     };
 
-    let mut iter = list.into_iter();
-    let (acc, acc_inv) = iter.next().expect("reconstruct called with empty list");
-
-    // Helper: apply the stored inversion flag. For a CmpMap child of a
-    // parallel reconstruct, push the inversion into its recorded
-    // structure (flip inv_a/inv_b, swap children for series) so the
-    // serialised form matches the C reference: outer parallel emits no
-    // InvA/InvB, the child CmpMap absorbs the inversion via its own
-    // flags. Mathematically equivalent to plain `invert()`. Mirrors C
-    // cmpmap.c MapMerge, which emits the inversion on the inner child
-    // rather than the outer parallel parent.
-    let apply_inversion = |m: &mut DynMapping| {
+    // Apply the effective inversion to a component about to be composed. For a
+    // CmpMap child of a *parallel* reconstruct, push the inversion into its
+    // recorded structure (flip inv_a/inv_b, swap children for series) so the
+    // outer parallel emits no InvA/InvB and the child CmpMap absorbs the
+    // inversion — matching C. Otherwise simply set the Invert flag.
+    let apply_effective = |m: &mut DynMapping| {
         if !series {
             if let Some(cm) = m.as_any_mut().downcast_mut::<CmpMap>() {
                 cm.invert_into_structure();
@@ -2576,29 +2605,45 @@ pub(crate) fn reconstruct(list: Vec<(DynMapping, bool)>, series: bool) -> AstRes
         m.invert();
     };
 
-    // C `Simplify` (cmpmap.c:290-319) rebuilds the merged sequence by
-    // looping the Mapping list *in reverse* and composing each map with
-    // the CmpMap formed so far: `result = astCmpMap(map[i], result)`.
-    // This produces a right-associated tree —
-    // `map[0] ∘ (map[1] ∘ (… ∘ map[n-1]))` — which is what the native
-    // serialiser then emits. Building left-associated instead
-    // (`((map[0] ∘ map[1]) ∘ …)`) is mathematically equivalent but
-    // serialises to a different nesting, so mirror C's reverse fold.
-    //
-    // Re-collect into a Vec so we can walk it back-to-front; the first
-    // element processed (the last map in the list) seeds the accumulator.
-    let mut rest: Vec<(DynMapping, bool)> = vec![(acc, acc_inv)];
-    rest.extend(iter);
+    // C `Simplify` (cmpmap.c:290-319) rebuilds the merged sequence by looping
+    // the Mapping list *in reverse* and composing each map with the CmpMap
+    // formed so far: `result = astCmpMap(map[i], result)`. This produces a
+    // right-associated tree — `map[0] ∘ (map[1] ∘ (… ∘ map[n-1]))` — which is
+    // what the native serialiser then emits.
+    let mut rest = list;
 
-    let (mut acc, acc_inv) = rest.pop().expect("reconstruct list non-empty");
-    if acc_inv {
-        apply_inversion(&mut acc);
+    let (mut acc, acc_eff, acc_orig) = rest.pop().expect("reconstruct called with empty list");
+    // Seed: if it stays standalone (single-element list) it carries the
+    // effective orientation. If it becomes a child below, `CmpMap::new` will
+    // record that effective orientation in `inv_b` and its stored Invert is
+    // re-set to `acc_orig` there.
+    if acc_eff {
+        apply_effective(&mut acc);
     }
-    while let Some((mut m, m_inv)) = rest.pop() {
-        if m_inv {
-            apply_inversion(&mut m);
+    // Only the seed is a leaf whose original orientation must be restored on
+    // first wrapping; later `acc` values are freshly built CmpMaps (forward).
+    let mut seed_orig = Some(acc_orig);
+
+    while let Some((mut m, m_eff, m_orig)) = rest.pop() {
+        // MapA (m): set to its effective orientation so `CmpMap::new` records
+        // inv_a = m_eff.
+        if m_eff {
+            apply_effective(&mut m);
         }
-        acc = Box::new(CmpMap::new(m, acc, kind)?);
+        let mut cmp = CmpMap::new(m, acc, kind)?;
+
+        // Restore each child to the orientation it should serialise in (its
+        // original tree orientation), leaving inv_a/inv_b carrying the
+        // effective direction. Series only: the parallel path already produced
+        // the canonical form via `apply_effective`.
+        if series {
+            cmp.set_first_orientation(m_orig);
+            if let Some(o) = seed_orig.take() {
+                cmp.set_second_orientation(o);
+            }
+        }
+
+        acc = Box::new(cmp);
     }
 
     Ok(acc)
@@ -2719,7 +2764,7 @@ mod tests {
         let s = full.simplified().unwrap();
         let flat = flatten(s.as_ref(), false, true).unwrap();
         eprintln!("simplified.len = {}", flat.len());
-        for (i, (m, inv)) in flat.iter().enumerate() {
+        for (i, (m, inv, _)) in flat.iter().enumerate() {
             let dbg = format!("{:?}", m);
             let preview: String = dbg.chars().take(80).collect();
             eprintln!(
@@ -2755,7 +2800,7 @@ mod tests {
         // the chain structure for diagnostic purposes.
         let any_sla = flat
             .iter()
-            .any(|(m, _)| m.as_any().is::<crate::mappings::SlaMap>());
+            .any(|(m, _, _)| m.as_any().is::<crate::mappings::SlaMap>());
         if any_sla {
             // Failure marker; convert to a hard assert once the
             // simplifier learns to swap parallel-disjoint pairs.
@@ -2894,7 +2939,7 @@ mod tests {
         // Types that have no cross-type merge rule should not merge.
         let a = dyn_map(SphMap::new());
         let b = dyn_map(ShiftMap::new([10.0, 20.0]));
-        let mut list: Vec<(DynMapping, bool)> = vec![(a, false), (b, false)];
+        let mut list: Vec<(DynMapping, bool, bool)> = vec![(a, false, false), (b, false, false)];
         merge_loop(&mut list, true);
         assert_eq!(list.len(), 2);
     }
@@ -2904,7 +2949,8 @@ mod tests {
         let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let u = dyn_map(UnitMap::new(1));
         let b = dyn_map(ShiftMap::new([5.0]));
-        let mut list: Vec<(DynMapping, bool)> = vec![(a, false), (u, false), (b, false)];
+        let mut list: Vec<(DynMapping, bool, bool)> =
+            vec![(a, false, false), (u, false, false), (b, false, false)];
         merge_loop(&mut list, true);
         // ZoomMap merges UnitMap (identity), then result merges ShiftMap.
         assert_eq!(list.len(), 1);
@@ -2915,7 +2961,7 @@ mod tests {
     fn merge_loop_merges_linear_parallel() {
         let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let u = dyn_map(UnitMap::new(1));
-        let mut list: Vec<(DynMapping, bool)> = vec![(a, false), (u, false)];
+        let mut list: Vec<(DynMapping, bool, bool)> = vec![(a, false, false), (u, false, false)];
         merge_loop(&mut list, false);
         // Parallel: linear mappings are merged into a wider WinMap.
         assert_eq!(list.len(), 1);
@@ -2926,7 +2972,7 @@ mod tests {
     fn merge_loop_all_unitmaps_preserves_one() {
         let u1 = dyn_map(UnitMap::new(2));
         let u2 = dyn_map(UnitMap::new(2));
-        let mut list: Vec<(DynMapping, bool)> = vec![(u1, false), (u2, false)];
+        let mut list: Vec<(DynMapping, bool, bool)> = vec![(u1, false, false), (u2, false, false)];
         merge_loop(&mut list, true);
         // All UnitMaps stripped → fallback pushes one back.
         assert_eq!(list.len(), 1);
@@ -2939,7 +2985,7 @@ mod tests {
     #[test]
     fn reconstruct_single_element() {
         let z = dyn_map(ZoomMap::new(1, 4.0).unwrap());
-        let result = reconstruct(vec![(z, false)], true).unwrap();
+        let result = reconstruct(vec![(z, false, false)], true).unwrap();
         assert_eq!(result.nin(), 1);
         assert!(!result.is_inverted());
     }
@@ -2947,7 +2993,7 @@ mod tests {
     #[test]
     fn reconstruct_single_element_inverted() {
         let z = dyn_map(ZoomMap::new(1, 4.0).unwrap());
-        let result = reconstruct(vec![(z, true)], true).unwrap();
+        let result = reconstruct(vec![(z, true, false)], true).unwrap();
         assert!(result.is_inverted());
     }
 
@@ -2957,7 +3003,7 @@ mod tests {
 
         let z = dyn_map(ZoomMap::new(1, 2.0).unwrap());
         let s = dyn_map(ShiftMap::new([10.0]));
-        let result = reconstruct(vec![(z, false), (s, false)], true).unwrap();
+        let result = reconstruct(vec![(z, false, false), (s, false, false)], true).unwrap();
         // zoom(2) then shift(10): 5 → 10 → 20
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
@@ -2971,7 +3017,11 @@ mod tests {
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
         let b = dyn_map(ShiftMap::new([10.0]));
         let c = dyn_map(ZoomMap::new(1, 3.0).unwrap());
-        let result = reconstruct(vec![(a, false), (b, false), (c, false)], true).unwrap();
+        let result = reconstruct(
+            vec![(a, false, false), (b, false, false), (c, false, false)],
+            true,
+        )
+        .unwrap();
         // 5 → 10 → 20 → 60
         let pts = PointSet::from_rows([[5.0]]);
         let out = result.transform(&pts, true).unwrap();
@@ -2984,7 +3034,7 @@ mod tests {
 
         let z = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let s = dyn_map(ShiftMap::new([100.0]));
-        let result = reconstruct(vec![(z, false), (s, false)], false).unwrap();
+        let result = reconstruct(vec![(z, false, false), (s, false, false)], false).unwrap();
         assert_eq!(result.nin(), 2);
         let pts = PointSet::from_rows([[2.0, 5.0]]);
         let out = result.transform(&pts, true).unwrap();

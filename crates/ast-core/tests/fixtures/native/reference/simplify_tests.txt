@@ -280,10 +280,11 @@ selectormap_region_simplify | simplify_fixtures/selectormap_region_simplify.map 
 # FitsChan write path simplifies for the gappt_fits-wcs test. Both Rust and
 # C library astSimplify preserve the same ~1e-16 residue inherited from
 # build_pixel_to_iwc — the residue is mathematically real, not a simplifier
-# gap. Verifies our simplify produces transform-equivalent output to C.
-# skip_string_compare=yes because Rust and C lay out the resulting CmpMap
-# differently (both equivalent under astequal()).
-wcsconv_gappt_iwc_residue | simplify_fixtures/wcsconv_gappt_iwc_residue.map | simplify_fixtures/wcsconv_gappt_iwc_residue.simp | yes
+# gap. Byte-exact with the C reference once the simplifier reconstructs the
+# inverted-CmpMap decomposition (the MapList "simpler" flag) and records each
+# component's effective direction in InvA/InvB while serialising it in its
+# original orientation (C OriginScale-style child-Invert handling).
+wcsconv_gappt_iwc_residue | simplify_fixtures/wcsconv_gappt_iwc_residue.map | simplify_fixtures/wcsconv_gappt_iwc_residue.simp |
 
 # DssMap MapMerge fixtures (dssmap-03/07/08 from simplify_pathways.md). In the
 # C library these are marked "infeasible: protected constructor" — the public

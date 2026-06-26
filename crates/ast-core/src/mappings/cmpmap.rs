@@ -224,6 +224,29 @@ impl CmpMap {
         }
     }
 
+    /// Set the *stored* Invert orientation of the first child to `orig`,
+    /// leaving `inv_a` untouched. The CmpMap's transform is unchanged: the
+    /// child's effective direction is `inv_a != first.is_inverted()`, and the
+    /// child's own Invert otherwise cancels (its `nin`/`nout` swap with the
+    /// flag, offsetting the change). This only affects serialisation — the
+    /// child then dumps in the `orig` orientation while `InvA` carries the
+    /// effective direction, exactly as C `cmpmap.c` Simplify does (it captures
+    /// `invert1` from the component, then restores the component's own Invert
+    /// to its original value before dumping).
+    pub(crate) fn set_first_orientation(&mut self, orig: bool) {
+        if self.first.is_inverted() != orig {
+            self.first.invert();
+        }
+    }
+
+    /// Set the stored Invert orientation of the second child to `orig`,
+    /// leaving `inv_b` untouched. See [`Self::set_first_orientation`].
+    pub(crate) fn set_second_orientation(&mut self, orig: bool) {
+        if self.second.is_inverted() != orig {
+            self.second.invert();
+        }
+    }
+
     /// Whether the first child's current Invert differs from the recorded
     /// snapshot — if so, the effective transform direction must flip.
     fn first_invert_changed(&self) -> bool {
@@ -762,7 +785,7 @@ impl Mapping for CmpMap {
         list_self
             .iter()
             .zip(list_other.iter())
-            .all(|((m1, inv1), (m2, inv2))| inv1 == inv2 && m1.equal(m2.as_ref()))
+            .all(|((m1, inv1, _), (m2, inv2, _))| inv1 == inv2 && m1.equal(m2.as_ref()))
     }
 
     fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {

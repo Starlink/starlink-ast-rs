@@ -133,7 +133,7 @@ pub(crate) fn sip_int_world(
     // Step 3: locate the first 2-in/2-out PolyMap in the chain.
     let mut polymap: Option<PolyMap> = None;
     let mut imap_pm: usize = 0;
-    for (i, (m, inv)) in chain.iter().enumerate() {
+    for (i, (m, inv, _)) in chain.iter().enumerate() {
         if let Some(pm) = m.as_any().downcast_ref::<PolyMap>() {
             if pm.nin() == 2 && pm.nout() == 2 {
                 let mut clone = pm.clone();
@@ -155,7 +155,7 @@ pub(crate) fn sip_int_world(
     // and post-PolyMap chain into map_upper (UnitMap if empty). Each
     // sub-chain may itself need its inv flag honoured.
     let mut map_lower: Option<DynMapping> = None;
-    for (m, inv) in chain.iter().take(imap_pm) {
+    for (m, inv, _) in chain.iter().take(imap_pm) {
         let mut piece = m.clone_box();
         if *inv {
             piece.invert();
@@ -166,7 +166,7 @@ pub(crate) fn sip_int_world(
         });
     }
     let mut map_upper: Option<DynMapping> = None;
-    for (m, inv) in chain.iter().skip(imap_pm + 1) {
+    for (m, inv, _) in chain.iter().skip(imap_pm + 1) {
         let mut piece = m.clone_box();
         if *inv {
             piece.invert();
