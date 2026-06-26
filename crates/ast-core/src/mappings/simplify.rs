@@ -231,6 +231,35 @@ pub(crate) fn flatten(
     Ok(vec![(cloned, effective_inv)])
 }
 
+/// Mirror of the `simpler` flag returned by C `cmpmap.c` `MapList`
+/// (`result = invert || r1 || r2`, MapList:1191): true when decomposing
+/// `mapping` (in direction `inv`, for the given `series`/parallel kind)
+/// encounters any same-kind CmpMap in an inverted state. Such an inversion
+/// is normalised away by the flatten/reconstruct round-trip, so C treats it
+/// as a simplification even when no component pair merges. Opposite-kind
+/// CmpMaps and non-CmpMap leaves contribute nothing (they are simplified
+/// independently via their own `simplified()`).
+fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> bool {
+    let target_kind = if series {
+        Composition::Series
+    } else {
+        Composition::Parallel
+    };
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == target_kind {
+            // Effective inversion of this node and of each child, computed
+            // exactly as in `flatten`.
+            let cmp_inv = inv != cmp.is_inverted();
+            let child_inv_a = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+            let child_inv_b = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+            return cmp_inv
+                || decomposition_is_simpler(cmp.first(), child_inv_a, series)
+                || decomposition_is_simpler(cmp.second(), child_inv_b, series);
+        }
+    }
+    false
+}
+
 /// Walk adjacent pairs and attempt pairwise merges until no progress.
 ///
 /// For each adjacent pair `(list[i], list[i+1])`, tries:
@@ -2604,7 +2633,19 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
 
     // If no simplification occurred, preserve the original tree structure
     // rather than reconstructing (which changes associativity).
-    if !changed && list.len() > 1 {
+    //
+    // "No simplification" means both: `merge_loop` made no pairwise change,
+    // *and* the decomposition itself was not made simpler by normalising an
+    // inverted CmpMap. The latter mirrors C `cmpmap.c` Simplify, where
+    // `astMapList` returns a `simpler` flag (`result = invert || r1 || r2`,
+    // MapList:1191) that is true whenever any inverted CmpMap is encountered
+    // during the decomposition; C then rebuilds the (right-associated)
+    // sequence even when no component merge occurred. Without this, a tree
+    // whose only redundancy is an inverted CmpMap (e.g. a buried linear
+    // residue that decomposition floats to the front) is left in its
+    // original nesting instead of the canonical form C produces.
+    let simpler = decomposition_is_simpler(mapping, false, series);
+    if !changed && !simpler && list.len() > 1 {
         let mut cloned = mapping.clone_box();
         if let Some(cmp_mut) = cloned.as_any_mut().downcast_mut::<CmpMap>() {
             cmp_mut.normalize_unitmap_children();
