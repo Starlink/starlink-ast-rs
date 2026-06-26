@@ -411,6 +411,15 @@ impl Mapping for WinMap {
         compose_linear(&s1, &c1, &s2, &c2)
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::winmap_merge::win_map_merge(self, ctx, where_, series)
+    }
+
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         // For a diagonal linear mapping, the rate is known analytically.
         if ax1 == ax2 {

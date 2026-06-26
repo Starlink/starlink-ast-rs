@@ -331,6 +331,66 @@ impl MergeCtx {
     fn resync_frozen(&mut self) {
         self.frozen.resize(self.list.len(), false);
     }
+
+    /// Borrow a `(mapping, effective_inv, orig_inv)` entry.
+    pub(crate) fn entry(&self, index: usize) -> &(DynMapping, bool, bool) {
+        &self.list[index]
+    }
+
+    /// Replace a single entry in place (no length change). Used by the
+    /// WinMap replace-with-simpler steps (→ MatrixMap / ShiftMap).
+    pub(crate) fn set_pair_single(&mut self, index: usize, entry: (DynMapping, bool, bool)) {
+        self.list[index] = entry;
+    }
+
+    /// Replace the two adjacent entries at `i1`/`i1+1` with a single merged
+    /// entry, closing the gap. Used by per-class `map_merge` after a direct
+    /// merge produces one mapping from a neighbouring pair (C annuls the two
+    /// pointers, stores the merged one at `i1`, and shuffles the tail down).
+    pub(crate) fn replace_pair_with(&mut self, i1: usize, merged: DynMapping, eff_inv: bool) {
+        self.list[i1] = (merged, eff_inv, false);
+        self.list.remove(i1 + 1);
+        self.frozen.remove(i1 + 1);
+    }
+
+    /// Replace the two adjacent entries at `i1`/`i1+1` with the supplied
+    /// swapped pair (same count, reversed roles). Used by the WinMap swap
+    /// helpers (`WinMat`/`WinPerm`/`WinWcs`), which leave the list length
+    /// unchanged.
+    pub(crate) fn set_pair(
+        &mut self,
+        i1: usize,
+        first: (DynMapping, bool, bool),
+        second: (DynMapping, bool, bool),
+    ) {
+        self.list[i1] = first;
+        self.list[i1 + 1] = second;
+    }
+
+    /// Run a single `map_merge` over the sub-range `start..` of the working
+    /// list, then splice the (possibly shortened) sub-range back in.
+    ///
+    /// Faithful analogue of C's inline follow-on `astMapMerge` after a
+    /// WinMap swap (winmap.c:1537-1559), which passes a *sub-slice* of the
+    /// list (`map_list + start`) so the nominated mapping can only merge
+    /// within that suffix — it cannot reach back past `start`. We replicate
+    /// that scoping by lifting the suffix into its own `MergeCtx`, nominating
+    /// `sub_index` there once, and writing the result back. Returns the
+    /// sub-range index of the first modified element, if any.
+    pub(crate) fn merge_subrange(
+        &mut self,
+        start: usize,
+        sub_index: usize,
+        series: bool,
+    ) -> Option<usize> {
+        let suffix: Vec<_> = self.list.split_off(start);
+        let mut sub = MergeCtx::new(suffix);
+        let nominee = sub.list[sub_index].0.clone_box();
+        let modified = nominee.map_merge(&mut sub, sub_index, series);
+        self.list.extend(sub.list);
+        self.resync_frozen();
+        modified
+    }
 }
 
 /// Default `map_merge` implementation: a single direct pairwise merge of
@@ -640,6 +700,17 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
 
         // Stall handler: legacy global swap helpers, tried in the original
         // order. First success restarts the nominate loop.
+        //
+        // The WinMap-specific helpers below overlap with the now-ported
+        // `WinMap::map_merge` (run in `run_nominate_loop` above). They are
+        // retained as scaffolding because `map_merge`'s series-only coverage
+        // does not yet reproduce every case these whole-list helpers handle
+        // (notably the WcsMap/PermMap-adjacent and parallel-distribution
+        // structures that feed the FITS-WCS writer's CRPIX extraction in the
+        // `degen1`/`class_ait` wcsconv cases). They are retired class-by-class
+        // in later phases once `map_merge` subsumes them; until then keeping
+        // both active is byte-neutral (the nominate loop reaches a fixpoint
+        // regardless of which path performs a given swap).
         if series && try_swap_winmap_wcsmap(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
@@ -737,11 +808,6 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
     changed
 }
 
-/// Try to swap adjacent WinMap↔WcsMap pairs in a flattened series list.
-///
-/// A WinMap can be swapped past a WcsMap if the WinMap acts as identity
-/// on the WcsMap's celestial axes (shift=0 and scale=1 on both the
-/// longitude and latitude axes). The swap doesn't change the WinMap's
 /// parameters — it just moves it to the other side of the WcsMap,
 /// potentially enabling further merges with other linear mappings.
 ///
@@ -1124,7 +1190,7 @@ fn has_swap_target_for_winperm(
 /// (mirror direction).
 ///
 /// Matches winmap.c:3075-3209 (WinPerm).
-fn build_winperm_swap(
+pub(crate) fn build_winperm_swap(
     linear_iwm: usize,
     shifts: &[f64],
     scales: &[f64],

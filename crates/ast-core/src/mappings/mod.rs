@@ -16,6 +16,7 @@ pub use perm::PermMap;
 mod winmap;
 pub use winmap::WinMap;
 mod lutmap;
+mod winmap_merge;
 pub use lutmap::{LutInterp, LutMap};
 pub(crate) mod polymap;
 pub use polymap::{PolyMap, PolyTerm};
