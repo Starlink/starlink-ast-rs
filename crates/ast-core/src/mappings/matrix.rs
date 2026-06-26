@@ -1117,7 +1117,15 @@ impl Serializable for MatrixMap {
 /// Determine the storage form of a matrix (Diagonal or Full).
 fn compute_form(m: &Array2<f64>) -> MatrixForm {
     if is_diagonal(m) {
-        MatrixForm::Diagonal
+        // C `CompressMatrix` (matrixmap.c:661-676) compresses a diagonal
+        // matrix whose diagonal is all 1.0 to Unit form (serialises as
+        // `Form="Unit"` with no element values).
+        let n = m.nrows();
+        if (0..n).all(|i| ast_equal(m[[i, i]], 1.0)) {
+            MatrixForm::Unit
+        } else {
+            MatrixForm::Diagonal
+        }
     } else {
         MatrixForm::Full
     }

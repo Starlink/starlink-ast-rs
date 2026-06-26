@@ -15,13 +15,14 @@
 use super::fits_store::FitsStore;
 use crate::error::AstResult;
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, ShiftMap, UnitMap, ZoomMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
 
 /// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
 /// the other axes. Identity-fast for `naxis == 1`. Mirrors C
-/// `fitschan.c:38304-38347` — PermMap + parallel CmpMap + inverse
-/// PermMap sandwich, but specialised to a single non-passthrough
-/// axis.
+/// `WcsSpectral` (fitschan.c:39661-39676), which composes one 1D map
+/// per axis in parallel in FITS order (`ret = astCmpMap(ret, map1, 0,
+/// …)`) — the non-spectral axes carry a `UnitMap(1)` each and only the
+/// *Frame* is permuted, so no PermMap sandwich is needed here.
 fn embed_1axis_in_naxis(
     inner: DynMapping,
     naxis: usize,
@@ -35,47 +36,20 @@ fn embed_1axis_in_naxis(
         return Ok(inner);
     }
 
-    // perm_to_first: route axis `axis_0based` to slot 0; route the
-    // remaining axes into slots 1..naxis (in original FITS order).
-    let others: Vec<usize> = (0..naxis).filter(|&i| i != axis_0based).collect();
-
-    let mut outperm_to_first: Vec<i64> = Vec::with_capacity(naxis);
-    outperm_to_first.push((axis_0based as i64) + 1);
-    for &k in &others {
-        outperm_to_first.push((k as i64) + 1);
+    let mut inner = Some(inner);
+    let mut result: Option<DynMapping> = None;
+    for k in 0..naxis {
+        let part: DynMapping = if k == axis_0based {
+            inner.take().unwrap()
+        } else {
+            Box::new(UnitMap::new(1))
+        };
+        result = Some(match result {
+            None => part,
+            Some(acc) => Box::new(CmpMap::new(acc, part, Composition::Parallel)?),
+        });
     }
-    let mut inperm_to_first: Vec<i64> = vec![0; naxis];
-    inperm_to_first[axis_0based] = 1;
-    for (k, &orig) in others.iter().enumerate() {
-        inperm_to_first[orig] = (k as i64) + 2;
-    }
-    let perm_to_first = PermMap::new(&inperm_to_first, &outperm_to_first, &[])?;
-
-    // Inverse permutation.
-    let mut outperm_back: Vec<i64> = vec![0; naxis];
-    outperm_back[axis_0based] = 1;
-    for (k, &orig) in others.iter().enumerate() {
-        outperm_back[orig] = (k as i64) + 2;
-    }
-    let mut inperm_back: Vec<i64> = Vec::with_capacity(naxis);
-    inperm_back.push((axis_0based as i64) + 1);
-    for &k in &others {
-        inperm_back.push((k as i64) + 1);
-    }
-    let perm_back = PermMap::new(&inperm_back, &outperm_back, &[])?;
-
-    // Parallel: inner (1-axis) || UnitMap(naxis - 1)
-    let unit_rest = UnitMap::new(naxis - 1);
-    let parallel = CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel)?;
-
-    // Sandwich.
-    let s1 = CmpMap::new(
-        Box::new(perm_to_first),
-        Box::new(parallel),
-        Composition::Series,
-    )?;
-    let s2 = CmpMap::new(Box::new(s1), Box::new(perm_back), Composition::Series)?;
-    Ok(Box::new(s2))
+    Ok(result.unwrap())
 }
 
 /// Result of building the spectral axis from a FitsStore.

@@ -200,18 +200,18 @@ adds the comment formatting. Steps:
   (907505752, not −1933305752), and ideally serialises to the same
   `CmpMap{ WinMap(Sft1=907405752), WcsMap }` + `InvB=1` shape as C's `.simp`.
 
-## Blocked work: the map8-construction rewrite
+## Blocked work: the map8-construction rewrite (RE-APPLIED 2026-06-25)
 
-This bug also blocks an otherwise-correct rewrite of the FITS read path that
+This bug also blocked an otherwise-correct rewrite of the FITS read path that
 makes Rust's *pre-simplification* mapping byte-match C's `map8`. That rewrite
-was implemented, verified to match C structurally, cleared
-`degen-wcsaxes`/`cube-reorder`/`ssysobs`, but **regressed**
-`class-ait`/`class-ait_fits-class`/`class-sfl_fits-class` precisely because it
-feeds the simplifier the map shape that triggers the bug above. It was
-reverted (net +3/−3 is not acceptable). Re-apply it together with the
-simplifier fix.
+matches C structurally and clears `degen-wcsaxes`/`cube-reorder`/`ssysobs`; it
+previously **regressed** `class-ait`/`class-ait_fits-class`/`class-sfl_fits-class`
+only because it fed the simplifier the map shape that triggered the bug above.
+With the simplifier fix in place it has been re-applied and all of those cases
+pass (the only remaining `test_wcsconv` failure is the unrelated, pre-existing
+`skyspec3d-class_native` OBSALT_A ULP difference).
 
-The rewrite had three parts:
+The rewrite had three parts (all now applied):
 
 ### 1. `wcs_read.rs` — compose pixel→world in C's exact left-associated order
 

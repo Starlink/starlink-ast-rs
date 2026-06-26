@@ -58,21 +58,15 @@ pub(crate) fn decode_wcs_with_def_b1950(
     // that the native dump renders (with the inherited `IsA Object` block).
     set_frame_ident(world_frame.as_mut(), " ");
 
-    // Step 5: Build the IWC → world mapping (consumes the decoder results).
-    let iwc_to_world = build_iwc_to_world(store, celestial, spectral)?;
-
-    // Step 6: Compose pixel→IWC→world and simplify. C `WcsMapFrm`
-    // returns `astSimplify(map8)` (fitschan.c:37810) — the pixel→WCS
-    // Mapping is simplified before it is added to the FrameSet, so the
-    // stored edge (and any later native dump of it) is in reduced form.
-    // Use `simplify()` (not `simplified()`) so the returned Mapping carries
-    // `has_been_simplified` (→ `IsSimp = 1` in the native dump), mirroring
-    // C `astSimplify` which sets the IsSimple flag on its result.
-    let composed: DynMapping = Box::new(CmpMap::new(
-        pixel_to_iwc,
-        iwc_to_world,
-        Composition::Series,
-    )?);
+    // Step 5: Build the full pixel → world mapping (consumes the decoder
+    // results). C `WcsMapFrm` (fitschan.c:37768-37810) returns
+    // `astSimplify(map8)` — the pixel→WCS Mapping is simplified before it is
+    // added to the FrameSet, so the stored edge (and any later native dump
+    // of it) is in reduced form. Use `simplify()` (not `simplified()`) so the
+    // returned Mapping carries `has_been_simplified` (→ `IsSimp = 1` in the
+    // native dump), mirroring C `astSimplify` which sets the IsSimple flag on
+    // its result.
+    let composed: DynMapping = build_pixel_to_world(store, pixel_to_iwc, celestial, spectral)?;
     let full_mapping: DynMapping = composed.simplify()?;
 
     // Step 7: Build the pixel frame. C labels each pixel axis
@@ -474,15 +468,11 @@ pub(crate) fn decode_wcs_with_alts_def_b1950(
         let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
         let spectral = wcs_spectral::build_spectral(alt_store);
         let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
-        let iwc_to_world = build_iwc_to_world(alt_store, celestial, spectral)?;
         // Simplify the pixel→world Mapping, mirroring C `astSimplify` on each
         // plane (and the primary path above) — `simplify()` sets the
         // has_been_simplified flag so the native dump writes `IsSimp = 1`.
-        let composed: DynMapping = Box::new(CmpMap::new(
-            pixel_to_iwc,
-            iwc_to_world,
-            Composition::Series,
-        )?);
+        let composed: DynMapping =
+            build_pixel_to_world(alt_store, pixel_to_iwc, celestial, spectral)?;
         let full_mapping: DynMapping = composed.simplify()?;
 
         // Stamp the version letter onto the alt frame so the writer
@@ -688,12 +678,16 @@ fn set_frame_ident(frame: &mut dyn crate::frames::Frame, ident: &str) {
     }
 }
 
-/// Build the IWC → world mapping (consumes the decoder results).
+/// Build the full pixel → world mapping (consumes the decoder results).
 ///
-/// This mapping takes an naxis-dimensional IWC vector and produces the
-/// corresponding world coordinates.
-fn build_iwc_to_world(
+/// Mirrors C `WcsMapFrm` (fitschan.c:37768-37810), which builds
+/// `map8 = (((map1_pixel→IWC ; map2_celestial) ; map3_spectral) ; map4_others)`
+/// — a left-associated series chain in class order, with `map4` (WcsOthers)
+/// always composed (a bare `UnitMap(naxis)` when every axis is claimed).
+/// `astSimplify` then flattens and merges the chain.
+fn build_pixel_to_world(
     store: &FitsStore,
+    pixel_to_iwc: DynMapping,
     celestial: Option<CelestialResult>,
     spectral: Option<SpectralResult>,
 ) -> AstResult<DynMapping> {
@@ -709,102 +703,35 @@ fn build_iwc_to_world(
         claimed[spec.axis] = true;
     }
 
-    // Simple cases first:
-    if naxis == 2 && spectral.is_none() && !claimed.contains(&false) {
-        if let Some(cel) = celestial {
-            // Pure 2D celestial case.
-            return Ok(cel.mapping);
-        }
+    // Compose factors in C's class order: pixel→IWC, celestial, spectral,
+    // others. Each per-class mapping is full N-axis with identity on the
+    // axes it doesn't own, so series composition is correct.
+    let mut parts: Vec<DynMapping> = vec![pixel_to_iwc];
+    if let Some(cel) = celestial {
+        parts.push(cel.mapping);
     }
-
-    if naxis == 1 && celestial.is_none() {
-        if let Some(spec) = spectral {
-            // Pure 1D spectral case.
-            return Ok(spec.mapping);
-        }
+    if let Some(spec) = spectral {
+        parts.push(spec.mapping);
     }
-
-    // General case: compose the per-class N-axis contributions in
-    // series. See `build_general_iwc_to_world`.
-    build_general_iwc_to_world(store, celestial, spectral, &claimed)
-}
-
-/// Build the general IWC → world mapping for mixed axis cases.
-///
-/// Each per-class mapping (celestial, spectral, linear shift) is built as
-/// a full N-axis mapping with identity on the axes it doesn't own; the
-/// contributions are composed in series. Mirrors C `WcsMapFrm`
-/// (fitschan.c:37632), which composes N-axis WcsCelestial /
-/// WcsSpectral / WcsOthers contributions in series and lets
-/// `astSimplify` flatten the resulting chain.
-fn build_general_iwc_to_world(
-    store: &FitsStore,
-    celestial: Option<CelestialResult>,
-    spectral: Option<SpectralResult>,
-    claimed: &[bool],
-) -> AstResult<DynMapping> {
-    let naxis = store.naxis;
-
-    let mut parts: Vec<DynMapping> = Vec::new();
-
-    let mut celestial = celestial;
-    let mut spectral = spectral;
-
-    for (i, &is_claimed) in claimed.iter().enumerate() {
-        // Celestial axis: emit the celestial mapping when we hit the
-        // FIRST of the celestial pair (in FITS order); skip the second
-        // encounter. The celestial mapping is full N-axis with
-        // identity on the non-celestial axes.
-        if let Some(cel) = celestial.as_ref() {
-            let cel_first = cel.lon_axis.min(cel.lat_axis);
-            let cel_second = cel.lon_axis.max(cel.lat_axis);
-            if i == cel_first {
-                let cel = celestial.take().unwrap();
-                parts.push(cel.mapping);
-                continue;
-            }
-            if i == cel_second {
-                continue;
+    if claimed.contains(&false) {
+        // WcsOthers: one shift covering every unclaimed axis (zeros on the
+        // claimed axes, CRVAL on the rest).
+        let mut shifts = vec![0.0; naxis];
+        for (i, &c) in claimed.iter().enumerate() {
+            if !c {
+                shifts[i] = store.crval[i].unwrap_or(0.0);
             }
         }
-
-        // Spectral axis: emit the spectral mapping when we hit it.
-        // Like celestial, it's full N-axis with identity on the
-        // non-spectral axes.
-        if let Some(spec) = spectral.as_ref() {
-            if i == spec.axis {
-                let spec = spectral.take().unwrap();
-                parts.push(spec.mapping);
-                continue;
-            }
-        }
-
-        // Linear/unclaimed axis: emit a CRVAL shift, lifted to N-axis
-        // form. A length-`naxis` shift vector with zeros on the other
-        // axes and CRVAL on `i` makes the contribution N-axis identity-
-        // on-others, so series composition is correct.
-        if !is_claimed {
-            let mut shifts = vec![0.0; naxis];
-            shifts[i] = store.crval[i].unwrap_or(0.0);
-            let shift = ShiftMap::new(shifts);
-            parts.push(Box::new(shift));
-        }
+        parts.push(Box::new(ShiftMap::new(shifts)));
+    } else {
+        // C still composes map4 even when every axis is claimed.
+        parts.push(Box::new(UnitMap::new(naxis)));
     }
 
-    if parts.is_empty() {
-        return Ok(Box::new(UnitMap::new(naxis)));
-    }
-
-    // Compose all parts in SERIES. Each part is full N-axis with
-    // identity on the axes it doesn't own, so series composition is
-    // correct and produces a flat top-level chain that astSimplify can
-    // flatten and merge across. Mirrors C `WcsMapFrm`
-    // (fitschan.c:37632).
     let mut result: DynMapping = parts.remove(0);
     for part in parts {
         result = Box::new(CmpMap::new(result, part, Composition::Series)?);
     }
-
     Ok(result)
 }
 
@@ -847,7 +774,7 @@ fn build_world_frame(
     // stage: pick the *other* axes into a sub-frame, wrap it in a
     // CmpFrame with the new (Sky/Spec) frame appended, then PermAxes to
     // restore the original FITS axis order externally. The IWC→world
-    // *mapping* stays in FITS order (see `build_general_iwc_to_world`);
+    // *mapping* stays in FITS order (see `build_pixel_to_world`);
     // only the frame is reordered + permuted, so the AXP cards record the
     // FITS→internal mapping and the external axis order still matches the
     // mapping output. This produces the canonical component order
