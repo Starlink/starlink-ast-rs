@@ -116,7 +116,6 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
         for coord_out in 0..ndim_out {
             let mut bad_output = false;
             let mut z = 0.0_f64;
-            let mut ii = ndim_in * coord_out;
             for coord_in in 0..ndim_in {
                 let face1 = 2 * coord_in;
                 let face2 = face1 + 1;
@@ -131,12 +130,11 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
                 }
 
                 let indiff = in2 - in1;
-                grad_slice[ii] = if indiff != 0.0 {
+                grad_slice[ndim_in * coord_out + coord_in] = if indiff != 0.0 {
                     (out2 - out1) / indiff
                 } else {
                     0.0
                 };
-                ii += 1;
                 z += out1 + out2;
             }
 

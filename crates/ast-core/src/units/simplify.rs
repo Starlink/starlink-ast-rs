@@ -336,33 +336,27 @@ pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
         }
 
         // ---- Common log → ln/ln(10) (when std) ---------------------
-        Oper::Log => {
-            if std {
-                let mut ln = UnitNode::new(Oper::Ln);
-                ln.arg[0] = node.arg[0].clone();
-                let div = UnitNode::binary(Oper::Div, Box::new(ln), UnitNode::ldcon(10.0_f64.ln()));
-                newnode = Some(div);
-            }
+        Oper::Log if std => {
+            let mut ln = UnitNode::new(Oper::Ln);
+            ln.arg[0] = node.arg[0].clone();
+            let div = UnitNode::binary(Oper::Div, Box::new(ln), UnitNode::ldcon(10.0_f64.ln()));
+            newnode = Some(div);
         }
 
         // ---- Exponential -------------------------------------------
-        Oper::Exp => {
-            if node.arg[0].opcode == Oper::Ln {
-                // exp(ln(x)) → x
-                newnode = Some(Box::new((*node.arg[0].arg[0]).clone()));
-            }
+        Oper::Exp if node.arg[0].opcode == Oper::Ln => {
+            // exp(ln(x)) → x
+            newnode = Some(Box::new((*node.arg[0].arg[0]).clone()));
         }
 
         // ---- Square root → x**0.5 (when std) -----------------------
-        Oper::Sqrt => {
-            if std {
-                let pow = UnitNode::binary(
-                    Oper::Pow,
-                    Box::new((*node.arg[0]).clone()),
-                    UnitNode::ldcon(0.5),
-                );
-                newnode = Some(pow);
-            }
+        Oper::Sqrt if std => {
+            let pow = UnitNode::binary(
+                Oper::Pow,
+                Box::new((*node.arg[0]).clone()),
+                UnitNode::ldcon(0.5),
+            );
+            newnode = Some(pow);
         }
 
         // ---- Exponentiation ----------------------------------------
