@@ -285,10 +285,7 @@ fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> b
 /// `pub` + `#[doc(hidden)]` because it appears in the signature of the
 /// `Mapping::map_merge` trait method, which is itself an internal
 /// (C-`protected`) simplification hook hidden from the public API.
-//
-// Wired into the nominate loop in Phase 1; the `allow` is removed then.
 #[doc(hidden)]
-#[allow(dead_code)]
 pub struct MergeCtx {
     /// The component working list (C `map_list` + `invert_list`).
     pub(crate) list: Vec<(DynMapping, bool, bool)>,
@@ -296,8 +293,6 @@ pub struct MergeCtx {
     frozen: Vec<bool>,
 }
 
-// Wired into the nominate loop in Phase 1; the `allow` is removed then.
-#[allow(dead_code)]
 impl MergeCtx {
     /// Wrap a flattened component list, all entries initially unfrozen
     /// (C clears `Frozen` on every component before the loop,
@@ -324,6 +319,121 @@ impl MergeCtx {
             *f = true;
         }
     }
+
+    /// Re-establish `frozen.len() == list.len()` after a mutation that
+    /// changed the working list outside the precise per-entry bookkeeping
+    /// (e.g. a global swap helper that operates directly on `list`). New
+    /// entries are unfrozen; surplus flags are dropped. This is a
+    /// length-only resync: the frozen *contents* only ever differ from
+    /// all-false once the oscillation break has fired (`pattern_check`),
+    /// which the global helpers being retired in later phases never
+    /// trigger on the fixture corpus.
+    fn resync_frozen(&mut self) {
+        self.frozen.resize(self.list.len(), false);
+    }
+}
+
+/// Default `map_merge` implementation: a single direct pairwise merge of
+/// the nominated component with its immediate right neighbour.
+///
+/// This is the Rust analogue of "step 2" (direct merge) shared by C's
+/// per-class `MapMerge` methods, and is the body inherited by every class
+/// that has not yet had its own `map_merge` ported. It reproduces exactly
+/// the per-pair logic the previous `merge_loop` ran inline for the pair
+/// `(where_, where_ + 1)`:
+///
+/// 1. `list[where_].try_merge(list[where_+1], …)` (left into right), then
+/// 2. the reverse merge (right into left), with the series/parallel
+///    dimension guards the old loop applied.
+///
+/// On success the pair is replaced by the single merged mapping (in its
+/// forward state, `effective_inv = false`); if that mapping is itself a
+/// same-kind `CmpMap` it is re-expanded in place. Returns `Some(where_)`
+/// — the index of the first modified element, always the nominated index
+/// for a direct pairwise merge — or `None` when the pair cannot merge
+/// (C's `-1`).
+pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
+    let i = where_;
+    let list = &mut ctx.list;
+    if i + 1 >= list.len() {
+        return None;
+    }
+
+    // Skip if either mapping has already been simplified (C IsSimple).
+    if list[i].0.has_been_simplified() || list[i + 1].0.has_been_simplified() {
+        return None;
+    }
+
+    let merged = {
+        let (ref m1, inv1, _) = list[i];
+        let (ref m2, inv2, _) = list[i + 1];
+
+        // The effective input dimension of m1 in its applied direction —
+        // this is what the merged result must accept.
+        let m1_nin = if inv1 { m1.nout() } else { m1.nin() };
+
+        // Try left merging into right.
+        m1.try_merge(m2.as_ref(), series, inv1, inv2)
+            // Try right merging into left (swap roles). Validate that the
+            // result's input dimension matches m1's effective input, since
+            // the result replaces m1's position in the pipeline.
+            .or_else(|| {
+                if series {
+                    // Skip reverse merge when m1 is UnitMap — let post-loop
+                    // strip handle it (matches C behaviour where UnitMap
+                    // removes itself before neighbours get a chance to merge).
+                    if m1.as_any().is::<UnitMap>() {
+                        return None;
+                    }
+                    m2.try_merge(m1.as_ref(), series, inv2, inv1)
+                        .filter(|m| m.nin() == m1_nin)
+                } else {
+                    // For parallel: the reverse merge puts m2's axes first,
+                    // which is wrong. Instead, try extracting linear params
+                    // from both and merging with m1 first.
+                    let (s1, c1) = super::winmap::extract_linear_params(m1.as_ref(), inv1)?;
+                    let (s2, c2) = super::winmap::extract_linear_params(m2.as_ref(), inv2)?;
+                    let mut new_shifts = s1;
+                    new_shifts.extend(s2);
+                    let mut new_scales = c1;
+                    new_scales.extend(c2);
+                    super::winmap::compose_linear(
+                        &vec![0.0; new_shifts.len()],
+                        &vec![1.0; new_shifts.len()],
+                        &new_shifts,
+                        &new_scales,
+                    )
+                }
+            })
+    };
+
+    let m = merged?;
+
+    // If the merged result is a same-kind CmpMap, re-expand it in place so
+    // the surrounding sequence can keep merging across its components.
+    let target_kind = if series {
+        Composition::Series
+    } else {
+        Composition::Parallel
+    };
+    if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == target_kind {
+            if let Ok(expanded) = flatten(m.as_ref(), false, series) {
+                list.remove(i + 1);
+                list.remove(i);
+                for (idx, item) in expanded.into_iter().enumerate() {
+                    list.insert(i + idx, item);
+                }
+                ctx.resync_frozen();
+                return Some(i);
+            }
+        }
+    }
+
+    list[i] = (m, false, false);
+    list.remove(i + 1);
+    ctx.resync_frozen();
+    Some(i)
 }
 
 /// Append `val` to `list` and report the wavelength of any repeating
@@ -339,8 +449,6 @@ impl MergeCtx {
 /// `check` enables the pattern search (C passes the first call's returned
 /// wavelength as the second call's `check` argument, gating the `nmap`
 /// search on the `modified` search having found a pattern).
-// Wired into the nominate loop in Phase 1; the `allow` is removed then.
-#[allow(dead_code)]
 fn pattern_check(val: i64, check: i64, list: &mut Vec<i64>) -> i64 {
     let mut result: i64 = 0;
 
@@ -393,24 +501,98 @@ fn pattern_check(val: i64, check: i64, list: &mut Vec<i64>) -> i64 {
     result
 }
 
-/// Walk adjacent pairs and attempt pairwise merges until no progress.
+/// Run C's nominate loop over the working list to direct-merge exhaustion.
 ///
-/// For each adjacent pair `(list[i], list[i+1])`, tries:
-/// 1. `list[i].try_merge(&list[i+1], series, inv_i, inv_{i+1})`
-/// 2. `list[i+1].try_merge(&list[i], series, inv_{i+1}, inv_i)`
+/// Faithful port of the inner `while ( improved )` / nominate loop in C
+/// `cmpmap.c::Simplify` (3537-3624): repeatedly nominate each unfrozen
+/// component in turn, call its `map_merge`, and on any change restart from
+/// the first modified index. The `mlist`/`nlist` histories drive
+/// `pattern_check`; when a repeating `(modified, nmap)` pattern is found,
+/// the modified component is frozen (`astSetFrozen`) so it can no longer
+/// argue, breaking the cycle. The loop ends once a complete pass makes no
+/// change.
 ///
-/// On success the pair is replaced by the merged result (with
-/// `effective_inv = false`, since the merged mapping is freshly
-/// constructed in its forward state).
-///
-/// After the merge loop stabilises, `UnitMap` entries are removed
-/// from series lists (they are identity and do not contribute).
-pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool) -> bool {
-    const MAX_MERGE_PASSES: usize = 50;
-    let mut pass = 0;
-    let mut prev_len = list.len();
-    let mut prev_prev_len: usize = 0;
+/// Returns `true` if any merge occurred.
+fn run_nominate_loop(
+    ctx: &mut MergeCtx,
+    series: bool,
+    mlist: &mut Vec<i64>,
+    nlist: &mut Vec<i64>,
+) -> bool {
+    let mut any = false;
+    let mut improved = true;
+    while improved {
+        improved = false;
+        let mut nominated = 0;
+        while nominated < ctx.len() {
+            // Frozen components do not get to suggest changes (C astFrozen).
+            if ctx.is_frozen(nominated) {
+                nominated += 1;
+                continue;
+            }
 
+            // Clone the nominated mapping and attempt to merge it with its
+            // neighbours (C clones map_list[nominated] before astMapMerge).
+            let nominee = ctx.list[nominated].0.clone_box();
+            let modified = nominee.map_merge(ctx, nominated, series);
+
+            // Move on to nominate the next mapping (C `nominated++`).
+            nominated += 1;
+
+            let Some(modified) = modified else {
+                continue;
+            };
+
+            // Append to the history and check for a repeating pattern. A
+            // pattern in `modified` is only honoured if `nmap` also repeats
+            // with a wavelength related by an integer factor (cmpmap.c:3589).
+            let wlen1 = pattern_check(modified as i64, 1, mlist);
+            let wlen2 = pattern_check(ctx.len() as i64, wlen1, nlist);
+            let mut w1 = wlen1;
+            let mut w2 = wlen2;
+            if w1 != 0 && w2 != 0 {
+                if w1 > w2 {
+                    std::mem::swap(&mut w1, &mut w2);
+                }
+                if w2 % w1 != 0 {
+                    w1 = 0;
+                }
+            }
+
+            if w1 > 0 {
+                // Repeating pattern: freeze the modified mapping so it stops
+                // contributing to the argument (C astSetFrozen).
+                ctx.freeze(modified);
+            } else {
+                improved = true;
+                any = true;
+                // If an earlier mapping than the next nominee was modified,
+                // go back and consider it first (C: nominated = modified).
+                if modified < nominated {
+                    nominated = modified;
+                }
+            }
+        }
+    }
+    any
+}
+
+/// Simplify a flattened series/parallel component list in place.
+///
+/// This is the Rust port of C `cmpmap.c::Simplify`'s simplification engine
+/// (the nominate loop driving per-class `astMapMerge`). It runs
+/// [`run_nominate_loop`] to exhaust all direct/per-class merges, then — as
+/// temporary scaffolding for phases of the rebuild still to come — falls
+/// back to the legacy global swap helpers when the per-class methods stall.
+/// Each helper is the cross-class swap/restructure logic that C keeps
+/// inside a specific class's `MapMerge`; they are tried in the original
+/// order and retired into their owning class's `map_merge` in later phases.
+///
+/// After stabilising, `UnitMap` entries are stripped from series lists
+/// (they are identity and do not contribute).
+///
+/// Returns `true` if the list was modified.
+pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool) -> bool {
     // Capture the original axis count so the empty-list fallback below
     // produces a UnitMap of the right size. For a series list, every
     // map has the same external nin/nout (after the upstream merging
@@ -429,188 +611,129 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
             .sum()
     };
 
+    let mut ctx = MergeCtx::new(std::mem::take(list));
+    let mut changed = false;
+
+    // `modified`/`nmap` history for `pattern_check`, persisting across the
+    // whole simplification (C allocates these once before the loop).
+    let mut mlist: Vec<i64> = Vec::new();
+    let mut nlist: Vec<i64> = Vec::new();
+
+    // Safety bound on the global-helper retry loop. The legacy helpers are
+    // not part of C's engine; the bound guards against a helper grab-bag
+    // failing to converge on inputs outside the fixture corpus. It is
+    // retired in Phase 5 once the helpers move into per-class `map_merge`
+    // and the loop relies solely on `pattern_check` (as C does).
+    const MAX_STALL_ROUNDS: usize = 50;
+    let mut rounds = 0;
+
     loop {
-        pass += 1;
-        if pass > MAX_MERGE_PASSES {
+        rounds += 1;
+        if rounds > MAX_STALL_ROUNDS {
             break;
         }
 
-        let mut improved = false;
-        let mut i = 0;
-
-        while i + 1 < list.len() {
-            // Skip if either mapping has already been simplified (C IsSimple).
-            if list[i].0.has_been_simplified() || list[i + 1].0.has_been_simplified() {
-                i += 1;
-                continue;
-            }
-
-            let merged = {
-                let (ref m1, inv1, _) = list[i];
-                let (ref m2, inv2, _) = list[i + 1];
-
-                // The effective input dimension of m1 in its applied
-                // direction — this is what the merged result must accept.
-                let m1_nin = if inv1 { m1.nout() } else { m1.nin() };
-
-                // Try left merging into right.
-                m1.try_merge(m2.as_ref(), series, inv1, inv2)
-                    // Try right merging into left (swap roles).
-                    // Validate that the result's input dimension matches
-                    // m1's effective input, since the result replaces
-                    // m1's position in the pipeline.
-                    .or_else(|| {
-                        if series {
-                            // Skip reverse merge when m1 is UnitMap — let
-                            // post-loop strip handle it (matches C behavior
-                            // where UnitMap removes itself before neighbors
-                            // get a chance to merge).
-                            if m1.as_any().is::<UnitMap>() {
-                                return None;
-                            }
-                            m2.try_merge(m1.as_ref(), series, inv2, inv1)
-                                .filter(|m| m.nin() == m1_nin)
-                        } else {
-                            // For parallel: the reverse merge puts m2's axes
-                            // first, which is wrong. Instead, try extracting
-                            // linear params from both and merging with m1 first.
-                            let (s1, c1) = super::winmap::extract_linear_params(m1.as_ref(), inv1)?;
-                            let (s2, c2) = super::winmap::extract_linear_params(m2.as_ref(), inv2)?;
-                            let mut new_shifts = s1;
-                            new_shifts.extend(s2);
-                            let mut new_scales = c1;
-                            new_scales.extend(c2);
-                            super::winmap::compose_linear(
-                                &vec![0.0; new_shifts.len()],
-                                &vec![1.0; new_shifts.len()],
-                                &new_shifts,
-                                &new_scales,
-                            )
-                        }
-                    })
-            };
-
-            if let Some(m) = merged {
-                // Check if merged result is a CmpMap that should be re-expanded.
-                let target_kind = if series {
-                    Composition::Series
-                } else {
-                    Composition::Parallel
-                };
-                if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>() {
-                    if cmp.composition() == target_kind {
-                        if let Ok(expanded) = flatten(m.as_ref(), false, series) {
-                            list.remove(i + 1);
-                            list.remove(i);
-                            for (idx, item) in expanded.into_iter().enumerate() {
-                                list.insert(i + idx, item);
-                            }
-                            improved = true;
-                            continue;
-                        }
-                    }
-                }
-                list[i] = (m, false, false);
-                list.remove(i + 1);
-                improved = true;
-                // Don't advance i — the new element might merge with
-                // the next neighbour.
-            } else {
-                i += 1;
-            }
-        }
-
-        if !improved {
-            // Try swapping WinMap↔WcsMap pairs to enable further merges.
-            if series && try_swap_winmap_wcsmap(list) {
-                continue;
-            }
-            // Try swapping WinMap past a non-diagonal MatrixMap.
-            if series && try_swap_winmap_past_matrixmap(list) {
-                continue;
-            }
-            // Try swapping WinMap past a PermMap.
-            if series && try_swap_winmap_past_permmap(list) {
-                continue;
-            }
-            // Try swapping WcsMap past a PermMap (or vice versa).
-            if series && try_swap_wcsmap_past_permmap(list) {
-                continue;
-            }
-            // Try swapping a PcdMap past a ZoomMap or PermMap.
-            if series && try_swap_pcdmap_past_neighbor(list) {
-                continue;
-            }
-            // Try merging ZoomMap + GrismMap(inv) pattern.
-            if series && try_merge_zoom_before_inv_grism(list) {
-                continue;
-            }
-            // Try the (inv-SphMap, diagonal, fwd-SphMap) pattern.
-            if series && try_sphmap_diagonal_pattern(list) {
-                continue;
-            }
-            // Try cross-composition restructuring.
-            if series && try_merge_parallel_in_series(list) {
-                continue;
-            }
-            if !series && try_merge_series_in_parallel(list) {
-                continue;
-            }
-            // Try swapping a PermMap past a parallel CmpMap.
-            if series && try_swap_permmap_parallel(list) {
-                continue;
-            }
-            // Try distributing a WinMap into a parallel CmpMap's branches.
-            if series && try_distribute_winmap_into_parallel(list) {
-                continue;
-            }
-            // Last-resort in-loop UnitMap stripping. The C oracle's
-            // simplify loop nominates each map in turn; UnitMap's
-            // MapMerge removes itself from the list, after which the
-            // outer loop retries the surrounding pairs. We mimic that
-            // by stripping UnitMaps only when no other heuristic
-            // applied — earlier passes give other classes a chance to
-            // react to UnitMap neighbours before they vanish (which
-            // can change e.g. PermMap into its OutCpy form, or fold
-            // SphMap/UnitMap into a MatrixMap).
-            if series && list.len() > 1 {
-                let orig_len = list.len();
-                list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
-                if list.is_empty() {
-                    list.push((Box::new(UnitMap::new(original_nin)), false, false));
-                }
-                if list.len() != orig_len {
-                    continue;
-                }
-            }
-            break;
-        }
-
-        // Oscillation detection: if list length alternates between two values,
-        // we are in an infinite merge/split cycle. Break to prevent wasted passes.
-        // Matches C cmpmap.c:3589-3620 in intent.
-        let current_len = list.len();
-        if pass > 2 && current_len == prev_prev_len && current_len != prev_len {
-            break;
-        }
-        prev_prev_len = prev_len;
-        prev_len = current_len;
-    }
-
-    // Track whether any passes ran (pass > 1 means something changed).
-    let mut changed = pass > 1;
-
-    // Post-loop: strip UnitMaps from series lists.
-    if series && list.len() > 1 {
-        let orig_len = list.len();
-        list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
-        if list.len() != orig_len {
+        // Exhaust per-class / direct merges.
+        if run_nominate_loop(&mut ctx, series, &mut mlist, &mut nlist) {
             changed = true;
         }
-        if list.is_empty() {
-            list.push((Box::new(UnitMap::new(original_nin)), false, false));
+
+        // Stall handler: legacy global swap helpers, tried in the original
+        // order. First success restarts the nominate loop.
+        if series && try_swap_winmap_wcsmap(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_swap_winmap_past_matrixmap(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_swap_winmap_past_permmap(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_swap_wcsmap_past_permmap(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_swap_pcdmap_past_neighbor(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_merge_zoom_before_inv_grism(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_sphmap_diagonal_pattern(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_merge_parallel_in_series(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if !series && try_merge_series_in_parallel(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_swap_permmap_parallel(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+        if series && try_distribute_winmap_into_parallel(&mut ctx.list) {
+            ctx.resync_frozen();
+            changed = true;
+            continue;
+        }
+
+        // Last-resort in-loop UnitMap stripping. The C oracle's simplify
+        // loop nominates each map in turn; UnitMap's MapMerge removes itself
+        // from the list, after which the outer loop retries the surrounding
+        // pairs. We mimic that by stripping UnitMaps only when no other
+        // heuristic applied — earlier rounds give other classes a chance to
+        // react to UnitMap neighbours before they vanish (which can change
+        // e.g. PermMap into its OutCpy form, or fold SphMap/UnitMap into a
+        // MatrixMap).
+        if series && ctx.list.len() > 1 {
+            let orig_len = ctx.list.len();
+            ctx.list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
+            if ctx.list.is_empty() {
+                ctx.list
+                    .push((Box::new(UnitMap::new(original_nin)), false, false));
+            }
+            ctx.resync_frozen();
+            if ctx.list.len() != orig_len {
+                changed = true;
+                continue;
+            }
+        }
+        break;
+    }
+
+    // Post-loop: strip UnitMaps from series lists.
+    if series && ctx.list.len() > 1 {
+        let orig_len = ctx.list.len();
+        ctx.list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
+        if ctx.list.len() != orig_len {
+            changed = true;
+        }
+        if ctx.list.is_empty() {
+            ctx.list
+                .push((Box::new(UnitMap::new(original_nin)), false, false));
         }
     }
+
+    *list = ctx.list;
     changed
 }
 

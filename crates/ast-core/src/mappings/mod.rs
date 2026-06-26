@@ -229,18 +229,22 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// the effective direction of each component, exactly as in C.
     ///
     /// Returns `Some(index)` of the first modified element on any change,
-    /// or `None` for "no change" (C's `-1`). The default implementation is
-    /// the inherited null method: it makes no change and returns `None`
-    /// (mapping.c:7793). Classes that carry series/parallel rewrite logic
-    /// override it.
+    /// or `None` for "no change" (C's `-1`).
+    ///
+    /// The default implementation performs a single direct pairwise merge
+    /// of the nominated component with its right neighbour
+    /// ([`simplify::default_map_merge`]) — the "direct merge" step (C's
+    /// `MapMerge` step 2) shared by every class. Classes that additionally
+    /// swap past, seek toward, or rewrite distant neighbours override this
+    /// to add that logic (still calling the direct merge first).
     #[doc(hidden)]
     fn map_merge(
         &self,
-        _ctx: &mut simplify::MergeCtx,
-        _where_: usize,
-        _series: bool,
+        ctx: &mut simplify::MergeCtx,
+        where_: usize,
+        series: bool,
     ) -> Option<usize> {
-        None
+        simplify::default_map_merge(ctx, where_, series)
     }
 
     /// Split this mapping to produce a sub-mapping covering a chosen set of
