@@ -94,6 +94,29 @@ impl PermMap {
         &self.constants
     }
 
+    /// Rewrite a permutation entry that references a missing or BAD
+    /// constant to the canonical BAD marker `0`.
+    ///
+    /// Mirrors C `permmap.c::MapMerge` (1065-1094): when the simplified
+    /// PermMap is rebuilt, a negative entry whose referenced constant is
+    /// absent (no constants array) or equal to `AST__BAD` is stored as a
+    /// plain bad output (0), not a dangling constant reference.
+    fn normalize_bad_consts(&self, perm: &[i64]) -> Vec<i64> {
+        perm.iter()
+            .map(|&p| {
+                if p < 0 {
+                    let cidx = (-p - 1) as usize;
+                    match self.constants.get(cidx) {
+                        Some(&c) if c != BAD_VALUE => p,
+                        _ => 0,
+                    }
+                } else {
+                    p
+                }
+            })
+            .collect()
+    }
+
     /// Return the `PermSplit` attribute (default `false`).
     ///
     /// When `false`, [`Mapping::map_split`] follows the public documentation,
@@ -368,8 +391,8 @@ impl Mapping for PermMap {
             Ok(Box::new(UnitMap::new(n)))
         } else if self.inverted {
             Ok(Box::new(PermMap {
-                outperm: self.inperm.clone(),
-                inperm: self.outperm.clone(),
+                outperm: self.normalize_bad_consts(&self.inperm),
+                inperm: self.normalize_bad_consts(&self.outperm),
                 constants: self.constants.clone(),
                 inverted: false,
                 has_been_simplified: false,
@@ -378,7 +401,24 @@ impl Mapping for PermMap {
                 perm_split: self.perm_split,
             }))
         } else {
-            Ok(Box::new(self.clone()))
+            // Normalise dangling constant references to bad (0), mirroring
+            // C MapMerge's rebuild (permmap.c:1065-1094).
+            let out_norm = self.normalize_bad_consts(&self.outperm);
+            let in_norm = self.normalize_bad_consts(&self.inperm);
+            if out_norm == self.outperm && in_norm == self.inperm {
+                Ok(Box::new(self.clone()))
+            } else {
+                Ok(Box::new(PermMap {
+                    outperm: out_norm,
+                    inperm: in_norm,
+                    constants: self.constants.clone(),
+                    inverted: false,
+                    has_been_simplified: false,
+                    out_is_copy: self.out_is_copy,
+                    in_is_copy: self.in_is_copy,
+                    perm_split: self.perm_split,
+                }))
+            }
         }
     }
 
