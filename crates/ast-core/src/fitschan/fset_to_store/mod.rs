@@ -42,7 +42,7 @@ mod world_axes;
 use crate::error::AstResult;
 use crate::fitschan::Encoding;
 use crate::fitschan::fits_store::FitsStore;
-use crate::frames::{Frame, FrameRef, FrameSet};
+use crate::frames::{FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping};
 
 use celestial_axes::{CelestialAxesArgs, celestial_axes};
@@ -486,48 +486,19 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     // ensures any future SpecFrame integrity logic kicks in. Mirrors
     // C:21483-21484.
     //
-    // C uses `astSetC(tfs, "RefRA", astFormat(tfs, ilon, reflon))` —
-    // i.e. it formats the radian value through the SkyFrame's
-    // sexagesimal HMS/DMS formatter at the SkyFrame's default
-    // digit precision and then re-parses the result, lossily
-    // quantising the value to ~0.1 s of time / ~1 arcsec. We mirror
-    // this quirk so the resulting VELOSYS computation matches C's
-    // bit-exact output (see `docs/issues/c-library-quirks.md` —
-    // "VELOSYS drift via lossy `RefRA`/`RefDec` round-trip").
+    // C uses `astSetC(tfs, "RefRA", astFormat(tfs, ilon, reflon))`, but
+    // upstream (fitschan.c, commit ad04291c) temporarily raises the
+    // SkyFrame's Digits to 20 before the format/unformat round-trip so no
+    // precision is lost. The net effect is that the SpecFrame receives the
+    // full-precision fiducial position, so we set the values directly
+    // rather than replaying a lossy default-precision round-trip.
     //
-    // After the format/reparse, also normalise to AST's canonical
-    // ranges: RA in `[0, 2π)` (via `eraAnp`), Dec in `(-π, π]` (via
-    // `eraAnpm`). Without this, the SlaMap output's `(-π, π]` RA
-    // representation gives a different f64 from C's `[0, 2π)` one,
-    // which after the f32-cast inside SpecMap's LSRK fcorr produces
-    // a velocity drift of ~30 mm/s for sources near RA≈0/2π.
+    // Normalise to AST's canonical ranges: RA in `[0, 2π)` (via `eraAnp`),
+    // Dec in `(-π, π]` (via `eraAnpm`). Without this, the SlaMap output's
+    // `(-π, π]` RA representation gives a different f64 from C's `[0, 2π)`
+    // one, perturbing the downstream VELOSYS for sources near RA≈0/2π.
     use crate::frames::skyaxis::{normalise_dec, normalise_ra};
-    let (reflon_quant, reflat_quant) = {
-        let cur = owned.current();
-        let sky = peek_sky(cur).expect("SkyFrame still present after switch to FK5/J2000");
-        // Format/unformat by the SkyFrame's lon/lat axis indices, not
-        // by the literal 1/2 FITS positions. For a perm_axes'd
-        // lat-first SkyFrame (e.g. CTYPE1=DEC, CTYPE2=RA), external
-        // axis 0 is lat and external axis 1 is lon. Format() picks
-        // the as_time flag from the *physical* axis behind whichever
-        // external slot is asked for, so without honouring the perm
-        // a lon value gets DMS-formatted (or a lat value HMS), which
-        // quantises to ~5e-6 rad of error — propagating downstream to
-        // a wrong VELOSYS via SpecMap's RefRA/RefDec dependence.
-        let lon_axis_1b = sky.lon_axis() + 1;
-        let lat_axis_1b = sky.lat_axis() + 1;
-        let lon_str = sky.format(lon_axis_1b, reflon).unwrap_or_default();
-        let lat_str = sky.format(lat_axis_1b, reflat).unwrap_or_default();
-        let lon_round = sky
-            .unformat(lon_axis_1b, &lon_str)
-            .map(|(v, _)| v)
-            .unwrap_or(reflon);
-        let lat_round = sky
-            .unformat(lat_axis_1b, &lat_str)
-            .map(|(v, _)| v)
-            .unwrap_or(reflat);
-        (normalise_ra(lon_round), normalise_dec(lat_round))
-    };
+    let (reflon_quant, reflat_quant) = (normalise_ra(reflon), normalise_dec(reflat));
 
     owned.with_integrity(|cur| {
         if let Some(spec) = spec_mut(cur) {
