@@ -180,7 +180,7 @@ fn effective_perm(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>) {
 ///
 /// `y = M (s + diag(c) x)` (WinMap first, iwm==0) becomes
 /// `M diag(c)` then a WinMap with scale 1 and shift `M s`.
-fn win_mat(
+pub(crate) fn win_mat(
     pair: [(DynMapping, bool, bool); 2],
     iwm: usize,
 ) -> Option<[(DynMapping, bool, bool); 2]> {

@@ -140,6 +140,24 @@ impl MatrixMap {
         self.inverse.as_ref()
     }
 
+    /// Whether the matrix is stored in UNIT form (identity, no elements
+    /// serialised). Mirrors C `mm->form == UNIT`.
+    pub(crate) fn is_unit_form(&self) -> bool {
+        matches!(self.form, MatrixForm::Unit)
+    }
+
+    /// Whether the matrix is stored in DIAGONAL form. Mirrors C
+    /// `mm->form == DIAGONAL`.
+    pub(crate) fn is_diagonal_form(&self) -> bool {
+        matches!(self.form, MatrixForm::Diagonal)
+    }
+
+    /// Whether the matrix is stored in FULL form. Mirrors C
+    /// `mm->form == FULL`.
+    pub(crate) fn is_full_form(&self) -> bool {
+        matches!(self.form, MatrixForm::Full)
+    }
+
     /// Multiply this MatrixMap by another, returning the product `a × self`
     /// (i.e. `self` applied first, then `a`).
     ///
@@ -739,6 +757,15 @@ impl Mapping for MatrixMap {
         }
 
         None
+    }
+
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::matrix_merge::matrix_map_merge(self, ctx, where_, series)
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

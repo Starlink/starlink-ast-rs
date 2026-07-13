@@ -10,6 +10,7 @@ pub use zoom::ZoomMap;
 mod shift;
 pub use shift::ShiftMap;
 mod matrix;
+mod matrix_merge;
 pub use matrix::MatrixMap;
 mod perm;
 pub use perm::PermMap;
