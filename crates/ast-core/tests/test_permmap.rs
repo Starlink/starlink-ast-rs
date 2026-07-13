@@ -172,14 +172,21 @@ fn perm_simplified_checks_both_perms() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn perm_equal_same_constant_index_ignores_value_quirk() {
-    // Both inputs are fed by constants[0]. C compares the internal perm
-    // values first and, finding them equal, never compares the referenced
-    // constant values — so the PermMaps are deemed EQUAL even though the
-    // stored constants (5.0 vs 7.0) differ. This is a C quirk; see
-    // docs/issues/c-library-quirks.md. Oracle: astEqual == 1.
+fn perm_equal_same_constant_index_differing_values() {
+    // Both inputs are fed by constants[0]. Upstream 0fbd9cc3 compares the
+    // referenced constant *values* whenever both entries are negative, so
+    // PermMaps storing different values (5.0 vs 7.0) compare UNEQUAL even
+    // though the constant index matches. Oracle: astEqual == 0.
     let a = PermMap::new(&[-1], &[1], &[5.0]).unwrap();
     let b = PermMap::new(&[-1], &[1], &[7.0]).unwrap();
+    assert!(!a.equal(&b));
+}
+
+#[test]
+fn perm_equal_same_constant_index_same_value() {
+    // Same index (-1), identical stored value -> equal. Oracle: == 1.
+    let a = PermMap::new(&[-1], &[1], &[5.0]).unwrap();
+    let b = PermMap::new(&[-1], &[1], &[5.0]).unwrap();
     assert!(a.equal(&b));
 }
 

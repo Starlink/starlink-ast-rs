@@ -949,28 +949,31 @@ impl Mapping for PermMap {
             }
         };
 
-        // Compare one input/output position. Mirrors permmap.c:355-371:
-        // differing entries are unequal unless both are constants
-        // (internal p < 0) whose referenced values are exactly equal.
-        // C uses an exact `!=` on the constants (not a tolerance), and
-        // when the internal p values are identical it does NOT compare the
-        // referenced constants at all — so two PermMaps that both reference
-        // the same constant slot are deemed equal even if the stored
-        // constant differs (a C quirk; see docs/issues/c-library-quirks.md).
+        // Compare one input/output position. Mirrors fixed C
+        // permmap.c:361-386 (commit 0fbd9cc3): if either entry is an axis
+        // reference (>= 0) the entries must be identical; otherwise both
+        // feed a constant and the *referenced values* must be exactly
+        // equal — even when both reference the same constant index. C uses
+        // an exact `!=` on the constants (not a tolerance); a missing
+        // constant slot is treated as BAD (matching the forward
+        // transformation's NULL-constants behaviour).
         let entry_eq = |p1: i64, p2: i64| -> bool {
-            if p1 == p2 {
-                return true;
-            }
             if p1 >= 0 || p2 >= 0 {
-                return false;
+                return p1 == p2;
             }
-            // Both constants: compare the referenced values exactly.
-            let c1 = self.constants.get((-p1 - 1) as usize);
-            let c2 = other.constants.get((-p2 - 1) as usize);
-            match (c1, c2) {
-                (Some(a), Some(b)) => a == b,
-                _ => false,
-            }
+            // Both constants: compare the referenced values exactly. An
+            // out-of-range slot reads as BAD_VALUE.
+            let c1 = self
+                .constants
+                .get((-p1 - 1) as usize)
+                .copied()
+                .unwrap_or(BAD_VALUE);
+            let c2 = other
+                .constants
+                .get((-p2 - 1) as usize)
+                .copied()
+                .unwrap_or(BAD_VALUE);
+            c1 == c2
         };
 
         // Check every input (inverse transform), then every output

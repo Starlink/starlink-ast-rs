@@ -46,15 +46,14 @@ fn bad_value_comparison() {
 }
 
 #[test]
-fn bad_vs_non_bad_same_index_is_equal_c_quirk() {
-    // Both PermMaps reference the SAME constant slot (index -1), so C's
-    // Equal finds the perm entries identical and never compares the
-    // referenced constant values — BAD_VALUE vs 42.0 compare EQUAL. This
-    // is the C constant-index quirk (permmap.c:355-371); see
-    // docs/issues/c-library-quirks.md. Oracle-verified: astEqual == 1.
+fn bad_vs_non_bad_same_index_is_not_equal() {
+    // Both PermMaps reference the SAME constant slot (index -1). Upstream
+    // 0fbd9cc3 compares the referenced constant values whenever both
+    // entries are negative, so BAD_VALUE vs 42.0 compare UNEQUAL even with
+    // a matching index. Oracle-verified: astEqual == 0.
     let a = PermMap::new(&[-1], &[-1], &[BAD_VALUE]).unwrap();
     let b = PermMap::new(&[-1], &[-1], &[42.0]).unwrap();
-    assert!(a.equal(&b));
+    assert!(!a.equal(&b));
 }
 
 #[test]
