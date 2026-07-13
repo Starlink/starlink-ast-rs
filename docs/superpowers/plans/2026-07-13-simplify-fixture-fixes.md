@@ -26,10 +26,30 @@
   ```
 - Never push; never post to remote.
 
-## Failure inventory (64 fixtures)
+## Two test consumers (both must pass)
 
-- **Parse-skipped (17):** region + selectormap fixtures whose `.map` or `.simp` fails `from_native_string`.
-- **equal() failures (38), transform failures (6), serialization failures (38)** — overlapping sets.
+The `simplify_fixtures/` corpus feeds **two** independent tests — the fix
+tasks are "done" only when both are green:
+
+1. `test_simplify_regression.rs::simplify_regression` — manifest-driven;
+   checks equal()/transform/serialization of the *simplified* result.
+2. `test_serialisation.rs::native_byte_exact_round_trip_simplify_fixtures`
+   (and `test_native_roundtrip_all.rs`) — **auto-discovers** every
+   `.map`/`.simp` and does a pure read→write byte-exact round-trip (no
+   simplify). Importing the corpus exposed ~48 read→write failures here
+   that the original investigation (test #1 only) missed. Same root
+   causes (SpecMap arg comments, region dumps, CmpMap structure).
+
+Unported-class fixtures (IntraMap/XphMap/StcResourceProfile) are staged in
+`simplify_fixtures_unsupported/<class>/`, excluded from both tests. After
+every fix task, run BOTH tests and record the delta for each.
+
+## Failure inventory (post P1+S1)
+
+- **Parse-skips:** 0 (P1 cleared them; unported classes staged out).
+- **test #1:** 39 equal / 9 transform / 36 serialization (overlapping).
+- **test #2:** ~48 byte-exact round-trip failures across ~34 fixtures.
+- Historical (pre-P1): 17 parse-skips, 38 equal, 6 transform, 38 serial.
 
 ## Root-cause map (from investigation)
 
