@@ -82,7 +82,7 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
     // (FindGradient failure) is skipped but does NOT abandon the search:
     // the loop continues to larger sizes (mapping.c:9044-9081).
     let mut h = h0;
-    for iin in (NN + 1)..=(2 * NN) {
+    for _ in (NN + 1)..=(2 * NN) {
         h *= 4.0;
 
         let (mean, range) = find_gradient(mapping, at, ax1_idx, ax2_idx, x0, h)?;
@@ -100,12 +100,11 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         } else if range > min_range {
             // Range increasing — we've passed the minimum.
             break;
-        } else if range == 0.0 && ranges[iin - 1] == 0.0 {
+        } else if range == 0.0 && ranges[itop - 1] == 0.0 {
             // Zero range confirmed by the previous interval — the function
-            // is linear here. C indexes the neighbour by the loop counter
-            // `iin`, not the store index `itop`; after a skipped (BAD)
-            // interval these diverge and C reads a stale slot. See
-            // docs/issues/c-library-quirks.md.
+            // is linear here. Upstream c1a88658 indexes the range array by
+            // the store index `itop`, not the loop counter `iin`; the two
+            // diverge when an interval was skipped (FindGradient failed).
             iret = itop;
             break;
         }
@@ -125,7 +124,7 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
     // interval is skipped rather than abandoning the search
     // (mapping.c:9093-9113).
     h = h0;
-    for iin in (0..NN).rev() {
+    for _ in (0..NN).rev() {
         h /= 4.0;
 
         let (mean, range) = find_gradient(mapping, at, ax1_idx, ax2_idx, x0, h)?;
@@ -142,9 +141,9 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
             iret = ibot;
         } else if range > min_range {
             break;
-        } else if range == 0.0 && ranges[iin + 1] == 0.0 {
-            // Mirrors C's `y[iin + 1]` neighbour read (stale-slot quirk
-            // when intervals were skipped); see c-library-quirks.md.
+        } else if range == 0.0 && ranges[ibot + 1] == 0.0 {
+            // Upstream c1a88658: index by the store index `ibot`, not the
+            // loop counter `iin` (see the upward-search branch above).
             iret = ibot;
             break;
         }
