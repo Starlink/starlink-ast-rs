@@ -125,7 +125,8 @@ fn simplify_regression() {
 
     let contents = std::fs::read_to_string(&manifest).unwrap();
     let mut passed = 0usize;
-    let mut skipped = 0usize;
+    let mut skipped_missing = 0usize;
+    let mut parse_skipped: Vec<String> = Vec::new();
     let mut equal_failures: Vec<String> = Vec::new();
     let mut transform_failures: Vec<String> = Vec::new();
     let mut serial_failures: Vec<String> = Vec::new();
@@ -147,24 +148,26 @@ fn simplify_regression() {
         let reference_path = fixture_dir.join(fields[2]);
         let skip_string_compare = fields.get(3).map(|s| s.trim()) == Some("yes");
 
-        // Skip if files don't exist
+        // Skip if files don't exist (expected for any not-yet-imported entry)
         if !input_path.exists() || !reference_path.exists() {
-            skipped += 1;
+            skipped_missing += 1;
             continue;
         }
 
-        // Parse input .map
+        // Parse input .map. A present-but-unparseable fixture is a parse
+        // skip: an unported class (IntraMap/XphMap — but those are BLOCKED
+        // in the manifest, so should not reach here) or a genuine parser gap.
         let input_text = match std::fs::read_to_string(&input_path) {
             Ok(t) => t,
             Err(_) => {
-                skipped += 1;
+                parse_skipped.push(name.to_string());
                 continue;
             }
         };
         let input_obj = match from_native_string(&input_text) {
             Ok(obj) => obj,
             Err(_) => {
-                skipped += 1;
+                parse_skipped.push(name.to_string());
                 continue;
             }
         };
@@ -177,14 +180,14 @@ fn simplify_regression() {
             AnyObject::FrameSet(ref fs) => match fs.mapping(FrameRef::Base, FrameRef::Current) {
                 Ok(m) => m,
                 Err(_) => {
-                    skipped += 1;
+                    parse_skipped.push(name.to_string());
                     continue;
                 }
             },
             other => match other.into_mapping() {
                 Some(m) => m,
                 None => {
-                    skipped += 1;
+                    parse_skipped.push(name.to_string());
                     continue;
                 }
             },
@@ -194,21 +197,21 @@ fn simplify_regression() {
         let ref_text = match std::fs::read_to_string(&reference_path) {
             Ok(t) => t,
             Err(_) => {
-                skipped += 1;
+                parse_skipped.push(name.to_string());
                 continue;
             }
         };
         let ref_obj = match from_native_string(&ref_text) {
             Ok(obj) => obj,
             Err(_) => {
-                skipped += 1;
+                parse_skipped.push(name.to_string());
                 continue;
             }
         };
         let ref_mapping = match ref_obj.into_mapping() {
             Some(m) => m,
             None => {
-                skipped += 1;
+                parse_skipped.push(name.to_string());
                 continue;
             }
         };
@@ -269,13 +272,25 @@ fn simplify_regression() {
 
     // Report results
     println!(
-        "\nSimplify regression: {passed} passed, {skipped} skipped, \
-         {} equal() failures, {} transform failures, {} serialization failures, {} other failures",
+        "\nSimplify regression: {passed} passed, {skipped_missing} skipped (file absent), \
+         {} skipped (parse — unported class or gap), {} equal() failures, \
+         {} transform failures, {} serialization failures, {} other failures",
+        parse_skipped.len(),
         equal_failures.len(),
         transform_failures.len(),
         serial_failures.len(),
         other_failures.len(),
     );
+    if !parse_skipped.is_empty() {
+        eprintln!(
+            "  parse-skipped (fixture present but not parseable — a parser \
+             or class-support gap; IntraMap/XphMap are BLOCKED in the \
+             manifest and should not appear here):"
+        );
+        for n in &parse_skipped {
+            eprintln!("    {n}");
+        }
+    }
     if !equal_failures.is_empty() {
         eprintln!("  equal() failures (simplified != C reference structurally):");
         for n in &equal_failures {
