@@ -693,3 +693,41 @@ fn timemap_simplified_chain() {
         "TaiToUtc + UtcToTai should simplify to UnitMap"
     );
 }
+
+#[test]
+fn utc_tai_roundtrip_pre1972_eras() {
+    use ast_core::constants::BAD_VALUE;
+    // Ported from testtime.c (commit 8be504ac): one UTC MJD inside each of
+    // the 14 pre-1972 "rubber second" eras. A UTC->TAI->UTC round trip must
+    // return to the start to ~1e-9 d, and TAI-UTC at the test point must
+    // match the published value for that era to ~1e-5 s. A units error in
+    // the inverse divisor previously leaked ~1.9e-6 d; a wrong 1966
+    // intercept leaked ~0.1 s at MJD 39500.
+    let era_utc = [
+        40000.0, 39500.0, 39060.0, 38970.0, 38880.0, 38790.0, 38700.0, 38560.0, 38440.0, 38360.0,
+        38000.0, 37590.0, 37400.0, 37200.0,
+    ];
+    let era_dt = [
+        6.478578, 5.282578, 4.227634, 4.010994, 3.794354, 3.577714, 3.361074, 3.079634, 2.824114,
+        2.726482, 2.222130, 1.748658, 1.552418, 1.288218,
+    ];
+
+    let mut fwd = TimeMap::new();
+    fwd.add(TimeCvtType::UtcToTai, &[0.0, BAD_VALUE]);
+    let mut inv = TimeMap::new();
+    inv.add(TimeCvtType::TaiToUtc, &[0.0, BAD_VALUE]);
+
+    for (utc, dt) in era_utc.iter().zip(era_dt.iter()) {
+        let tai = transform_one(&fwd, *utc, true); // UTC -> TAI (MJD)
+        let tai_minus_utc = (tai - *utc) * 86400.0; // seconds
+        assert!(
+            (tai_minus_utc - dt).abs() < 1e-5,
+            "TAI-UTC at MJD {utc}: got {tai_minus_utc}, expected {dt}"
+        );
+        let utc_back = transform_one(&inv, tai, true); // TAI -> UTC (MJD)
+        assert!(
+            (utc_back - *utc).abs() < 1e-9,
+            "UTC->TAI->UTC round trip at MJD {utc}: got {utc_back}"
+        );
+    }
+}
