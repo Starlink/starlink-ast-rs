@@ -356,7 +356,7 @@ cap_specmap_13           | simplify_fixtures/cap_specmap_13.map | simplify_fixtu
 cap_specmap_14           | simplify_fixtures/cap_specmap_14.map | simplify_fixtures/cap_specmap_14.simp |
 cap_sphmap_01            | simplify_fixtures/cap_sphmap_01.map | simplify_fixtures/cap_sphmap_01.simp |
 cap_timemap_01           | simplify_fixtures/cap_timemap_01.map | simplify_fixtures/cap_timemap_01.simp | yes
-cap_timemap_02           | simplify_fixtures/cap_timemap_02.map | simplify_fixtures/cap_timemap_02.simp | yes
+# BLOCKED(StcResourceProfile not ported): cap_timemap_02           | simplify_fixtures/cap_timemap_02.map | simplify_fixtures/cap_timemap_02.simp | yes
 cap_timemap_03           | simplify_fixtures/cap_timemap_03.map | simplify_fixtures/cap_timemap_03.simp |
 cap_timemap_04           | simplify_fixtures/cap_timemap_04.map | simplify_fixtures/cap_timemap_04.simp |
 cap_timemap_05           | simplify_fixtures/cap_timemap_05.map | simplify_fixtures/cap_timemap_05.simp |

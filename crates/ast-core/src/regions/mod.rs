@@ -150,6 +150,19 @@ pub trait Region: Frame + Mapping {
     /// Set the adaptive meshing flag.
     fn set_adaptive(&mut self, adaptive: bool);
 
+    /// Whether this region currently carries a *dummy* FrameSet, i.e. it
+    /// was deserialised without its own `Frm`/`FrmSet` and inherits the
+    /// frame of its container. Mirrors C `astRegDummyFS`
+    /// (`region.c:8874`). The parent compound loader must re-associate the
+    /// real frame via [`Region::set_region_fs`] before use.
+    fn has_dummy_fs(&self) -> bool;
+
+    /// Replace this region's (dummy) FrameSet with a real one built from
+    /// `frame`, clearing the dummy-FS flag. Mirrors C `astSetRegFS`
+    /// (`region.c:10674`). Also re-associates a dummy-FS uncertainty
+    /// region with the same frame.
+    fn set_region_fs(&mut self, frame: &dyn Frame);
+
     // ------------------------------------------------------------------
     // Geometry queries
     // ------------------------------------------------------------------

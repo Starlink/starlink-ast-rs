@@ -415,6 +415,16 @@ impl crate::serial::Serializable for SelectorMap {
             ));
         }
 
+        // All but the first Region may carry a dummy FrameSet (dumped
+        // frame-less to save space); re-associate them with the first
+        // Region's frame. Mirrors C `selectormap.c` Load (1788-1795).
+        let first_frame = regions[0].get_region_frame();
+        for reg in regions.iter_mut().skip(1) {
+            if reg.has_dummy_fs() {
+                reg.set_region_fs(first_frame.as_ref());
+            }
+        }
+
         let badval = node.get_double("BadVal", BAD_VALUE);
 
         let mut sm = SelectorMapBuilder::new(regions)

@@ -403,6 +403,36 @@ impl Region for Prism {
         self.data.adaptive = adaptive;
     }
 
+    fn has_dummy_fs(&self) -> bool {
+        self.data.dummy_fs
+    }
+
+    fn set_region_fs(&mut self, frame: &dyn Frame) {
+        // Store the FrameSet on the parent Region structure (and fix a
+        // dummy-FS uncertainty). Mirrors C `prism.c` SetRegFS invoking the
+        // parent method first (3170).
+        self.data.set_region_fs(frame);
+
+        // Recurse into component Regions that still carry a dummy FrameSet,
+        // giving each the corresponding axes picked from `frame`:
+        // region1 gets [0, nax1), region2 gets [nax1, nax1+nax2). Mirrors
+        // C `prism.c` SetRegFS (3172-3200).
+        let nax1 = self.region1.naxes();
+        if self.region1.has_dummy_fs() {
+            let axes: Vec<i32> = (0..nax1 as i32).collect();
+            if let Ok(cfrm) = frame.pick_axes_snapshot(&axes) {
+                self.region1.set_region_fs(cfrm.as_ref());
+            }
+        }
+        if self.region2.has_dummy_fs() {
+            let nax2 = self.region2.naxes();
+            let axes: Vec<i32> = (0..nax2 as i32).map(|i| nax1 as i32 + i).collect();
+            if let Ok(cfrm) = frame.pick_axes_snapshot(&axes) {
+                self.region2.set_region_fs(cfrm.as_ref());
+            }
+        }
+    }
+
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }

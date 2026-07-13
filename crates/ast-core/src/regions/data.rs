@@ -60,6 +60,15 @@ pub(crate) struct RegionData {
     /// The uncertainty region, if set.
     pub(crate) uncertainty: Option<DynRegion>,
 
+    /// Whether `frameset` is a *dummy* FrameSet synthesised at load time
+    /// because the serialised region carried neither `Frm` nor `FrmSet`
+    /// (a nested region that inherits its container's frame). Mirrors C's
+    /// `RegionFS == 0` / `DUMMY_FS` marker (`region.c:13593-13601`). A
+    /// dummy FrameSet must be replaced by the real frame via
+    /// [`RegionData::set_region_fs`] before the region is used; the parent
+    /// compound loader performs that re-association.
+    pub(crate) dummy_fs: bool,
+
     /// Cached base-frame boundary mesh (lazily computed).
     pub(crate) cached_base_mesh: RefCell<Option<Vec<Vec<f64>>>>,
 }
@@ -76,6 +85,7 @@ impl Clone for RegionData {
             fill_factor: self.fill_factor,
             adaptive: self.adaptive,
             uncertainty: self.uncertainty.clone(),
+            dummy_fs: self.dummy_fs,
             cached_base_mesh: RefCell::new(self.cached_base_mesh.borrow().clone()),
         }
     }
@@ -108,7 +118,34 @@ impl RegionData {
             fill_factor: 1.0,
             adaptive: true,
             uncertainty: None,
+            dummy_fs: false,
             cached_base_mesh: RefCell::new(None),
+        }
+    }
+
+    /// Replace this region's (dummy) FrameSet with a real one built from
+    /// `frame`, mirroring C `astSetRegFS` (`region.c:10674`).
+    ///
+    /// The new FrameSet holds two independent copies of `frame` connected
+    /// by a `UnitMap` (base = current = the supplied frame), and the
+    /// `dummy_fs` flag is cleared. If this region carries an uncertainty
+    /// region that is itself dummy-FS, it is recursively re-associated
+    /// with the same frame (C `region.c:10745-10751`).
+    pub(crate) fn set_region_fs(&mut self, frame: &dyn Frame) {
+        let naxes = frame.naxes();
+        let mut fs = FrameSet::new(frame.snapshot());
+        let current_snap = frame.snapshot();
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
+            .expect("adding current frame to region FrameSet");
+        self.frameset = fs;
+        self.dummy_fs = false;
+        self.invalidate_cache();
+
+        // Recursively fix a dummy-FS uncertainty region with the same frame.
+        if let Some(unc) = self.uncertainty.as_mut()
+            && unc.has_dummy_fs()
+        {
+            unc.set_region_fs(frame);
         }
     }
 

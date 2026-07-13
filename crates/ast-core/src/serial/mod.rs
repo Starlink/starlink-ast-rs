@@ -10,8 +10,8 @@ use std::cell::RefCell;
 
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{
-    BasicFrame, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameRef, FrameSet, SkyFrame,
-    SpecFluxFrame, SpecFrame, TimeFrame,
+    BasicFrame, BasicFrameBuilder, CmpFrame, DSBSpecFrame, DynFrame, FluxFrame, Frame, FrameRef,
+    FrameSet, SkyFrame, SpecFluxFrame, SpecFrame, TimeFrame,
 };
 use crate::mappings::{
     ChebyMap, CmpMap, DssMap, DynMapping, GrismMap, LutMap, Mapping, MathMap, MatrixMap, NormMap,
@@ -728,12 +728,33 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
     let adaptive = node.get_int("Adapt", 1) != 0;
 
+    // Read defining points first: their coordinate count sizes a dummy
+    // FrameSet when neither `Frm` nor `FrmSet` is present (C uses `naxpt`,
+    // `region.c:13543,13597`).
+    let points = if let Some(pts_node) = node.get_object("Points") {
+        read_pointset_node(pts_node)?
+    } else {
+        Vec::new()
+    };
+    // Axis count per point: from the PointSet if present, else from the
+    // `RegAxes` attribute (C `region.c:13543,13554` — a Region with no
+    // points, e.g. a Prism/NullRegion, records its axis span there).
+    let naxpt = match points.first() {
+        Some(p) => p.len(),
+        None => node.get_int("RegAxes", 0) as usize,
+    };
+
     // Read the FrameSet or Frame. Detect which one was emitted by key
     // presence — the C library only writes `RegFS` when RegionFS was
     // explicitly set (rare), so most dumps have either `Frm` or `FrmSet`
-    // and no `RegFS` line.
-    let frameset = if let Some(fs_node) = node.get_object("FrmSet") {
-        FrameSet::from_node(fs_node)?
+    // and no `RegFS` line. A nested region (an uncertainty sub-region, or
+    // a component of a Prism/CmpRegion/SelectorMap) is dumped with neither
+    // — it inherits its container's frame. In that case C synthesises a
+    // dummy FrameSet with RegionFS=0 (`region.c:13593-13601`) that the
+    // parent later replaces via `astSetRegFS`; we mirror that with the
+    // `dummy_fs` flag.
+    let (frameset, dummy_fs) = if let Some(fs_node) = node.get_object("FrmSet") {
+        (FrameSet::from_node(fs_node)?, false)
     } else if let Some(frm_node) = node.get_object("Frm") {
         // Only a single Frame stored — create a 2-frame FrameSet with
         // UnitMap connecting base to current (matches the C library and
@@ -744,19 +765,21 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
             .expect("adding current frame to region FrameSet");
-        fs
+        (fs, false)
     } else {
-        return Err(AstError::new(
-            ErrorCode::Lderr,
-            "Region: missing Frm and FrmSet",
-        ));
-    };
-
-    // Read defining points.
-    let points = if let Some(pts_node) = node.get_object("Points") {
-        read_pointset_node(pts_node)?
-    } else {
-        Vec::new()
+        // Dummy FrameSet: a default BasicFrame of `naxpt` axes (>= 1),
+        // marked dummy so the parent re-associates the real frame.
+        let nax = if naxpt > 0 { naxpt } else { 1 };
+        let frame: DynFrame = Box::new(
+            BasicFrameBuilder::new(nax)
+                .build()
+                .expect("building dummy region frame"),
+        );
+        let current_snap = frame.snapshot();
+        let mut fs = FrameSet::new(frame);
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)), current_snap)
+            .expect("adding current frame to dummy region FrameSet");
+        (fs, true)
     };
 
     // Read uncertainty.
@@ -766,7 +789,7 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         None
     };
 
-    Ok(RegionData {
+    let mut data = RegionData {
         frameset,
         points,
         negated,
@@ -776,8 +799,23 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         fill_factor,
         adaptive,
         uncertainty,
+        dummy_fs,
         cached_base_mesh: RefCell::new(None),
-    })
+    };
+
+    // If this region has a real frame but its uncertainty region was
+    // dumped frame-less (dummy FS), re-associate the uncertainty with a
+    // copy of this region's base frame — mirroring C `astSetRegFS`'s
+    // recursive uncertainty fix-up (`region.c:10745-10751`).
+    if !data.dummy_fs
+        && let Some(unc) = data.uncertainty.as_mut()
+        && unc.has_dummy_fs()
+    {
+        let base_frame = data.frameset.base().snapshot();
+        unc.set_region_fs(base_frame.as_ref());
+    }
+
+    Ok(data)
 }
 
 // ---------------------------------------------------------------------------
@@ -1053,8 +1091,21 @@ impl Serializable for CmpRegion {
             .get_object("RegionB")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionB"))?;
 
-        let region1 = region_from_node(node_a)?;
-        let region2 = region_from_node(node_b)?;
+        let mut region1 = region_from_node(node_a)?;
+        let mut region2 = region_from_node(node_b)?;
+
+        // Re-associate any dummy-FS component with the CmpRegion's base
+        // frame (both components span the same axes). Mirrors C
+        // `cmpregion.c` Load (5087-5093) and `SetRegFS` (3510-3513).
+        if !data.dummy_fs {
+            let base_frame = data.frameset.base().snapshot();
+            if region1.has_dummy_fs() {
+                region1.set_region_fs(base_frame.as_ref());
+            }
+            if region2.has_dummy_fs() {
+                region2.set_region_fs(base_frame.as_ref());
+            }
+        }
 
         Ok(CmpRegion {
             data,
@@ -1104,8 +1155,30 @@ impl Serializable for Prism {
             .get_object("RegionB")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionB"))?;
 
-        let region1 = region_from_node(node_a)?;
-        let region2 = region_from_node(node_b)?;
+        let mut region1 = region_from_node(node_a)?;
+        let mut region2 = region_from_node(node_b)?;
+
+        // Either component may carry a dummy FrameSet (dumped frame-less).
+        // If this Prism itself has a real frame, re-associate each dummy-FS
+        // component with the corresponding axes picked from the Prism's
+        // base frame — region1 gets axes [0, nax1), region2 gets
+        // [nax1, nax1+nax2). Mirrors C `prism.c` Load (4415-4440) and its
+        // `SetRegFS` axis-picking (3123-3200).
+        if !data.dummy_fs {
+            let base_frame = data.frameset.base().snapshot();
+            let nax1 = region1.naxes();
+            if region1.has_dummy_fs() {
+                let axes: Vec<i32> = (0..nax1 as i32).collect();
+                let cfrm = base_frame.pick_axes_snapshot(&axes)?;
+                region1.set_region_fs(cfrm.as_ref());
+            }
+            if region2.has_dummy_fs() {
+                let nax2 = region2.naxes();
+                let axes: Vec<i32> = (0..nax2 as i32).map(|i| nax1 as i32 + i).collect();
+                let cfrm = base_frame.pick_axes_snapshot(&axes)?;
+                region2.set_region_fs(cfrm.as_ref());
+            }
+        }
 
         Ok(Prism {
             data,

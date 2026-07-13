@@ -122,6 +122,10 @@ impl Region for DummyRegion {
         true
     }
     fn set_adaptive(&mut self, _adaptive: bool) {}
+    fn has_dummy_fs(&self) -> bool {
+        false
+    }
+    fn set_region_fs(&mut self, _frame: &dyn Frame) {}
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

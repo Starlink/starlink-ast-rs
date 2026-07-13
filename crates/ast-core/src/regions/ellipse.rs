@@ -371,6 +371,14 @@ impl Region for Ellipse {
         self.data.adaptive = adaptive;
     }
 
+    fn has_dummy_fs(&self) -> bool {
+        self.data.dummy_fs
+    }
+
+    fn set_region_fs(&mut self, frame: &dyn Frame) {
+        self.data.set_region_fs(frame);
+    }
+
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }

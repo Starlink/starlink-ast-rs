@@ -506,6 +506,24 @@ impl Region for CmpRegion {
         self.data.adaptive = adaptive;
     }
 
+    fn has_dummy_fs(&self) -> bool {
+        self.data.dummy_fs
+    }
+
+    fn set_region_fs(&mut self, frame: &dyn Frame) {
+        // Store the FrameSet on the parent Region structure, then recurse
+        // into any dummy-FS component with the same frame (both components
+        // span the same axes). Mirrors C `cmpregion.c` SetRegFS
+        // (3463-3513).
+        self.data.set_region_fs(frame);
+        if self.region1.has_dummy_fs() {
+            self.region1.set_region_fs(frame);
+        }
+        if self.region2.has_dummy_fs() {
+            self.region2.set_region_fs(frame);
+        }
+    }
+
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }
