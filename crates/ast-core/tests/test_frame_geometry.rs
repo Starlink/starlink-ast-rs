@@ -62,18 +62,19 @@ fn ax_distance_and_offset() {
 #[test]
 fn ax_angle_cartesian() {
     let f = bf(2);
-    // Oracle-confirmed against the C library (astAxAngle, libast built
-    // with cmake). For a=(0,0), b=(1,0), axis=1 the C nudge ladder hits
-    // the `a[axis-1]==0 && b[axis-1]!=0` branch, which the C code offsets
-    // by |b[naxes-1]| (a stale loop index); since b[1]==0 here the
-    // nudged point coincides with `a`, giving a zero-length vector and a
-    // bad angle. We mirror that bit-for-bit.
-    assert_eq!(f.ax_angle(&[0.0, 0.0], &[1.0, 0.0], 1).unwrap(), BAD_VALUE);
+    // Oracle-confirmed against fixed C (astAxAngle, libast at 50c2b21b,
+    // commit da9ddb39). For a=(0,0), b=(1,0), axis=1 the nudge is scaled by
+    // |b[axis-1]| = |b[0]| = 1, so the offset point is well separated from
+    // `a` and the angle is defined: 0 rad (the offset lies along +axis1
+    // from a, and the direction a->b is also +axis1). Oracle: 0.
+    let ang1 = f.ax_angle(&[0.0, 0.0], &[1.0, 0.0], 1).unwrap();
+    assert!(ang1 != BAD_VALUE, "fixed C returns a valid angle, not BAD");
+    assert!(ang1.abs() < 1e-6, "expected 0 rad, got {ang1}");
     // axis=2 takes the mxab fallback: PI/2.
     let ang2 = f.ax_angle(&[0.0, 0.0], &[1.0, 0.0], 2).unwrap();
     assert!((ang2 - std::f64::consts::FRAC_PI_2).abs() < 1e-6);
-    // a=(0,5), b=(3,2), axis=1 hits the b[naxes-1] branch with b[1]=2,
-    // giving PI/4 (oracle: 0.78539816339744828).
+    // a=(0,5), b=(3,2), axis=1: nudge by |b[0]|=3, angle is PI/4
+    // (oracle: 0.78539816339744828).
     let ang3 = f.ax_angle(&[0.0, 5.0], &[3.0, 2.0], 1).unwrap();
     assert!((ang3 - std::f64::consts::FRAC_PI_4).abs() < 1e-6);
 }

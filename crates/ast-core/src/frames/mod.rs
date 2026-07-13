@@ -667,11 +667,9 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         if a[k] != 0.0 {
             aa[k] += eps * a[k].abs();
         } else if b[k] != 0.0 {
-            // C reads b[iaxis-1] here, where iaxis is the loop index left
-            // at naxes after the component loop completes, so this nudges
-            // by 10000*EPSILON*|b[naxes-1]| rather than |b[axis-1]|. The
-            // index is preserved to match the C library bit-for-bit.
-            aa[k] = eps * b[naxes - 1].abs();
+            // Upstream da9ddb39 fixed the stale-index bug: the nudge is
+            // scaled by |b[axis-1]|, not |b[naxes-1]|.
+            aa[k] = eps * b[k].abs();
         } else if mxab != 0.0 {
             aa[k] = eps * mxab;
         } else {
