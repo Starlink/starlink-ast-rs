@@ -543,19 +543,14 @@ pub(crate) fn zoom_map_merge(
             zm.factor()
         })
     };
-    // A mapping already flagged `has_been_simplified` (C `IsSimple`) is a hard
-    // run boundary: the nominate loop must not fuse it with a neighbour. If the
-    // nominated ZoomMap itself is flagged there is nothing to do. Otherwise the
-    // run-extension below stops before any flagged neighbour.
-    if ctx.entry(where_).0.has_been_simplified() {
-        return default_map_merge(ctx, where_, series);
-    }
-    let is_zoom = |entry: &(DynMapping, bool, bool)| {
-        entry.0.as_any().is::<ZoomMap>() && !entry.0.has_been_simplified()
-    };
-    let is_unit = |entry: &(DynMapping, bool, bool)| {
-        entry.0.as_any().is::<UnitMap>() && !entry.0.has_been_simplified()
-    };
+    // The `has_been_simplified` flag (C `IsSimple`) does NOT block merging:
+    // C `MapMerge` never consults it. The only per-component merge barrier
+    // is `Frozen` (oscillation break), enforced by the outer merge loop via
+    // `MergeCtx::is_frozen`. Mirrors C `cmpmap.c` (IsSimple gates only the
+    // top-level `astSimplify`, mapping.c:24740; the merge loop clears/uses
+    // `Frozen`, cmpmap.c:3538,3608).
+    let is_zoom = |entry: &(DynMapping, bool, bool)| entry.0.as_any().is::<ZoomMap>();
+    let is_unit = |entry: &(DynMapping, bool, bool)| entry.0.as_any().is::<UnitMap>();
 
     let n = ctx.len();
     let where_inv = ctx.entry(where_).1;
@@ -691,10 +686,9 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
         return None;
     }
 
-    // Skip if either mapping has already been simplified (C IsSimple).
-    if list[i].0.has_been_simplified() || list[i + 1].0.has_been_simplified() {
-        return None;
-    }
+    // The `has_been_simplified` flag (C `IsSimple`) does NOT block merging:
+    // C `MapMerge` never consults it. The oscillation barrier is `Frozen`,
+    // enforced by the outer merge loop (`MergeCtx::is_frozen`), not here.
 
     let merged = {
         let (ref m1, inv1, _) = list[i];

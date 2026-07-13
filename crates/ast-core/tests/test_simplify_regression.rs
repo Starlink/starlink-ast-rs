@@ -378,19 +378,31 @@ fn cmpmap_re_expands_merged_cmpmap() {
 }
 
 #[test]
-fn has_been_simplified_prevents_merge() {
+fn has_been_simplified_does_not_prevent_merge() {
     use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
     let mut z1 = ZoomMap::new(2, 3.0).unwrap();
     z1.set_has_been_simplified(true);
     let z2 = ZoomMap::new(2, 2.0).unwrap();
 
-    // try_merge should still work (it's the caller that guards), but the
-    // merge_loop should skip the pair.  Verify via CmpMap simplification.
+    // The IsSimple flag (has_been_simplified) does NOT block merging in the
+    // nominate loop — C `MapMerge` never consults it (only the oscillation
+    // `Frozen` barrier stops merges). Oracle-verified: this simplifies to a
+    // single ZoomMap of factor 6.
     let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
     let s = cmp.simplified().unwrap();
-    // Should NOT simplify to a single ZoomMap (factor 6) — the flag prevents it.
-    assert!(s.as_any().is::<CmpMap>());
+    assert!(
+        s.as_any().is::<ZoomMap>(),
+        "IsSimple must not block the ZoomMap merge (oracle: single ZoomMap)"
+    );
+    // Effective zoom factor is 6 (3 * 2): check via transform on the public API.
+    let pts = PointSet::from_rows([[1.0, 1.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - 6.0).abs() < 1e-12,
+        "expected zoom 6, got {}",
+        out.point(0)[0]
+    );
 }
 
 #[test]
@@ -413,17 +425,18 @@ fn has_been_simplified_preserves_identity_zoom() {
 }
 
 #[test]
-fn has_been_simplified_second_mapping_prevents_merge() {
+fn has_been_simplified_second_mapping_does_not_prevent_merge() {
     use ast_core::mappings::{CmpMap, Composition, Mapping, ZoomMap};
 
     let z1 = ZoomMap::new(2, 3.0).unwrap();
     let mut z2 = ZoomMap::new(2, 2.0).unwrap();
     z2.set_has_been_simplified(true);
 
-    // Flag on the second mapping should also prevent merging.
+    // An IsSimple flag on the second mapping also does not block merging.
+    // Oracle-verified: single ZoomMap.
     let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
     let s = cmp.simplified().unwrap();
-    assert!(s.as_any().is::<CmpMap>());
+    assert!(s.as_any().is::<ZoomMap>());
 }
 
 /// Verify the recursion guard terminates for deeply nested CmpMaps.
