@@ -12,7 +12,14 @@ the quirk so reviewers can find both sides.
 
 ---
 
-## VELOSYS drift via lossy `RefRA`/`RefDec` round-trip
+## RESOLVED (upstream ad04291c): VELOSYS drift via lossy `RefRA`/`RefDec` round-trip
+
+**Status:** Fixed upstream at commit ad04291c (SkyFrame Digits temporarily
+raised to 20 around the RefRA/RefDec format round-trip, so no precision is
+lost) and matched in the Rust port — the lossy round-trip mirror was
+removed from `fset_to_store/mod.rs`; the RefRA/RefDec are now set at full
+precision. Goldens regenerated (longslit, sip-3d, sip-3d-swap, wave-f2w).
+The historical discussion below is retained for context.
 
 **C location:** `fitschan.c:21483-21484` — inside `WcsValues`'
 spectral-axis setup:
@@ -75,7 +82,12 @@ C-generated fixtures by ~33 mm/s on sip-3d / sip-3d-swap.
 
 ---
 
-## MatrixMap MapSplit: uninitialised pmat advance on BAD entries
+## RESOLVED (upstream c9ce955a): MatrixMap MapSplit: uninitialised pmat advance on BAD entries
+
+**Status:** Fixed upstream at commit c9ce955a. The Rust port already
+diverged to the correct (deterministic) behaviour, so no code change was
+needed. The historical discussion below is retained for context.
+
 
 **C location:** `matrixmap.c:2478-2485` — inside `MapSplit`, building
 the sub-matrix for the kept inputs and outputs:
@@ -145,7 +157,12 @@ the UB on the Rust side.
 
 ---
 
-## ScalePolyInputs: stale pointer in inverse-coefficient branch
+## RESOLVED (upstream f4c019d4): ScalePolyInputs: stale pointer in inverse-coefficient branch
+
+**Status:** Fixed upstream at commit f4c019d4. The Rust port already wrote
+the intended `scales[iin]` math, so no code change was needed. The
+historical discussion below is retained for context.
+
 
 **C location:** `fitschan.c:26984-27028` — inside `ScalePolyInputs`,
 after the forward-coefficient scaling loop:
@@ -248,7 +265,14 @@ the reader side per Spec §"Read side: only FITS-WCS uses the
 
 ---
 
-## DATE-OBS fractional-seconds parser drops leading zeros
+## RESOLVED (upstream 254d4c99): DATE-OBS fractional-seconds parser drops leading zeros
+
+**Status:** Fixed upstream at commit 254d4c99 (fractional seconds parsed
+preserving field width). The Rust port already parsed the full `"SS.fff"`
+substring correctly, so no code change was needed; the azel fixtures
+already carried the correct value. The historical discussion below is
+retained for context.
+
 
 **C location:** `fitschan.c:8395-8470` — `DateObs()`'s `astSscanf`
 patterns for the modern ISO-8601 form, e.g. line 8453:
@@ -349,7 +373,12 @@ C's buggy round-trip output `08:38:39.870`.
 
 ---
 
-## `SIPIntWorld` reads `nout` from `astGetNin` (typo bug)
+## RESOLVED (upstream 232643bc): `SIPIntWorld` reads `nout` from `astGetNin` (typo bug)
+
+**Status:** Fixed upstream at commit 232643bc (`astGetNin` → `astGetNout`).
+The Rust port already read `map.nout()` correctly, so no code change was
+needed. The historical discussion below is retained for context.
+
 
 **C location:** `fitschan.c:28673-28674` — inside `SIPIntWorld`,
 just after declaring `nin` and `nout`:
@@ -401,7 +430,12 @@ maintainer-side fix can be coordinated.
 
 ---
 
-## SpecMap velocity routines cast `RefRA`/`RefDec` to `float`
+## RESOLVED (upstream 409f1311): SpecMap velocity routines cast `RefRA`/`RefDec` to `float`
+
+**Status:** Fixed upstream at commit 409f1311 (the `(float)` casts were
+removed) and matched in the Rust port — `lsrk_vel`/`lsrd_vel`/`lg_vel`/
+`gal_vel` now pass f64 straight through; the FITS-CLASS/native goldens
+were regenerated. The historical discussion below is retained for context.
 
 **C location:** `specmap.c:1764`, `specmap.c:1768`, `specmap.c:1980`,
 `specmap.c:2030`, `specmap.c:2080` — inside the per-rest-frame
@@ -448,7 +482,12 @@ those passing the f64 values straight through.
 
 ---
 
-## CLASSFromStore: spectral CDELT multiplied by `specfactor` twice
+## RESOLVED (upstream 17416d33): CLASSFromStore: spectral CDELT multiplied by `specfactor` twice
+
+**Status:** Fixed upstream at commit 17416d33 (the second `*specfactor`
+was dropped). The Rust port never mirrored the double-multiply, so no code
+change was needed. The historical discussion below is retained for context.
+
 
 **C location:** `fitschan.c:6787` and `fitschan.c:6882` — inside
 `CLASSFromStore`'s spectral CDELT handling and VELO-LSR computation:
@@ -519,7 +558,13 @@ is fixed, our code remains correct.
 
 ---
 
-## astDat inverse-direction divisor wrong in pre-1972 rubber-second era
+## RESOLVED (upstream 8be504ac): astDat inverse-direction divisor wrong in pre-1972 rubber-second era
+
+**Status:** Fixed upstream at commit 8be504ac (the inverse divisor is now
+`1 + b/SPD`, and the 1966 branch intercept is 4.3131700) and matched in
+the Rust port (`ast_dat` in `mappings/timemap.rs`); a round-trip test
+across all 14 eras was added. The historical discussion below is retained
+for context.
 
 **File:** `src/timemap.c:1653-1727` (`astDat_` inverse branch).
 
@@ -613,7 +658,12 @@ silent.
 
 ---
 
-## `astAxAngle` nudge reads a stale loop index
+## RESOLVED (upstream da9ddb39): `astAxAngle` nudge reads a stale loop index
+
+**Status:** Fixed upstream at commit da9ddb39 (`b[iaxis-1]` → `b[axis-1]`)
+and matched in the Rust port (`Frame::ax_angle` in `frames/mod.rs`); the
+ported test now asserts the valid angle rather than BAD. The historical
+discussion below is retained for context.
 
 **C location:** `frame.c` `AxAngle` (~line 1370):
 
@@ -643,7 +693,14 @@ branch, with a comment marking it as the preserved C index.
 
 ---
 
-## `astRate` returns BAD at `x0 = 0` for domain-restricted Mappings
+## RESOLVED (upstream e782c220): `astRate` returns BAD at `x0 = 0` for domain-restricted Mappings
+
+**Status:** Fixed upstream at commit e782c220 (the x0=0 seed is now a small
+absolute step `DBL_EPSILON*1e9`, not 1.0) and matched in the Rust port
+(`numeric_rate` in `mappings/rate.rs`); the ChebyMap/tan rate tests now
+assert the true gradient at x0=0. This also resolved the vrad-v2f wcsconv
+golden (its NonLinSpecWcs WinMap is built from astRate at crv_x=0). The
+historical discussion below is retained for context.
 
 **C location:** `mapping.c` `Rate` (~line 9009):
 
@@ -690,7 +747,12 @@ assert `BAD_VALUE` at `x0 = 0` for ChebyMaps to lock the C behaviour in.
 
 ---
 
-## `astRate` zero-range confirmation reads a stale array slot
+## RESOLVED (upstream c1a88658): `astRate` zero-range confirmation reads a stale array slot
+
+**Status:** Fixed upstream at commit c1a88658 (the range array is indexed
+by the store index `itop`/`ibot`, not the loop counter `iin`) and matched
+in the Rust port (`numeric_rate` in `mappings/rate.rs`). The historical
+discussion below is retained for context.
 
 **C location:** `mapping.c` `Rate` (~lines 9072 and 9107):
 
@@ -732,7 +794,14 @@ Mappings and a future upstream fix would change the C side anyway.
 
 ---
 
-## `PermMap::Equal` skips constant-value comparison for matching indices
+## RESOLVED (upstream 0fbd9cc3): `PermMap::Equal` skips constant-value comparison for matching indices
+
+**Status:** Fixed upstream at commit 0fbd9cc3 (the referenced constant
+values are compared whenever both entries are negative, even for a
+matching index) and matched in the Rust port (`PermMap::equal` in
+`mappings/perm.rs`); a missing constant slot reads as BAD. The
+permmap/equal tests were updated to the fixed-C expectations. The
+historical discussion below is retained for context.
 
 **C location:** `permmap.c` `Equal` (~lines 355-371):
 
@@ -871,7 +940,13 @@ missing `OriginScale`/`OriginSystem` step. Fixed in
 
 ---
 
-## SpecFluxFrame `astEqual` reports identical frames as unequal
+## RESOLVED (upstream a3b9468c): SpecFluxFrame `astEqual` reports identical frames as unequal
+
+**Status:** Fixed upstream at commit a3b9468c (identical SpecFluxFrames now
+compare equal). The Rust port already short-circuits `make_sf_mapping` to a
+UnitMap for identical components, so C and Rust now agree; the earlier
+"deliberate divergence" is no longer a divergence. The historical
+discussion below is retained for context.
 
 **C location:** `frame.c::Equal` (3549, inherited by SpecFluxFrame via
 CmpFrame) combined with `specfluxframe.c::MakeSFMapping` (1060).
