@@ -597,48 +597,40 @@ fn refrac(wavelen: f64) -> f64 {
 // ---------------------------------------------------------------------------
 
 // The four `*_vel` helpers below mirror `specmap.c`'s `LsrkVel`,
-// `LsrdVel`, `LgVel`, `GalVel`. C casts the f64 RA/Dec arguments
-// down to `float` before passing them to `palRv*`, losing ~1e-7 rad
-// of precision — the cast is a SLALIB-Fortran inheritance, not a
-// deliberate design. We reproduce the cast here so VELO-LSR /
-// VLSR / DELTAV match the C reference bit-for-bit (≈1 mm/s drift
-// otherwise, breaks FITS-CLASS fixture round-trips).
-//
-// See `docs/issues/c-library-quirks.md` ("SpecMap velocity routines
-// cast RefRA/RefDec to float") for the full discussion. If the C
-// library is ever fixed upstream, drop the `as f32 as f64`
-// round-trips in `lsrk_vel`, `lsrd_vel`, `lg_vel`, `gal_vel` and
-// re-run the wcsconverter oracle.
+// `LsrdVel`, `LgVel`, `GalVel`. They pass the f64 RA/Dec straight to
+// the double-precision `palRv*` routines. Upstream C AST (specmap.c,
+// commit 409f1311) removed the historical `(float)` casts that
+// truncated ~20 mas of precision (a SLALIB-Fortran inheritance); the
+// Rust port matches that. The sibling bary/topo/geo/user helpers never
+// cast, so they were already correct.
 
 /// Velocity of the kinematic LSR away from the source (m/s, heliocentric).
 ///
-/// Mirrors `specmap.c:2080` (`LsrkVel`).
+/// Mirrors `specmap.c` `LsrkVel`.
 pub(crate) fn lsrk_vel(ra: f64, dec: f64) -> f64 {
-    -1000.0 * pal::rvlsrk(ra as f32 as f64, dec as f32 as f64)
+    -1000.0 * pal::rvlsrk(ra, dec)
 }
 
 /// Velocity of the dynamical LSR away from the source (m/s, heliocentric).
 ///
-/// Mirrors `specmap.c:2030` (`LsrdVel`).
+/// Mirrors `specmap.c` `LsrdVel`.
 pub(crate) fn lsrd_vel(ra: f64, dec: f64) -> f64 {
-    -1000.0 * pal::rvlsrd(ra as f32 as f64, dec as f32 as f64)
+    -1000.0 * pal::rvlsrd(ra, dec)
 }
 
 /// Velocity of the Local Group away from the source (m/s, heliocentric).
 ///
-/// Mirrors `specmap.c:1980` (`LgVel`).
+/// Mirrors `specmap.c` `LgVel`.
 pub(crate) fn lg_vel(ra: f64, dec: f64) -> f64 {
-    -1000.0 * pal::rvlg(ra as f32 as f64, dec as f32 as f64)
+    -1000.0 * pal::rvlg(ra, dec)
 }
 
 /// Velocity of the galactic centre away from the source (m/s, heliocentric).
 ///
-/// Mirrors `specmap.c:1764-1768` (`GalVel`).
+/// Mirrors `specmap.c` `GalVel`.
 pub(crate) fn gal_vel(ra: f64, dec: f64) -> f64 {
-    let ra32 = ra as f32 as f64;
-    let dec32 = dec as f32 as f64;
-    let s1 = pal::rvlsrd(ra32, dec32);
-    let s2 = pal::rvgalc(ra32, dec32);
+    let s1 = pal::rvlsrd(ra, dec);
+    let s2 = pal::rvgalc(ra, dec);
     -1000.0 * (s1 + s2)
 }
 
