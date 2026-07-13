@@ -167,6 +167,74 @@ impl Mapping for ShiftMap {
         Some((in_axes.to_vec(), Box::new(sub)))
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // A ShiftMap is equivalent to a WinMap with unit scaling. Mirror C
+        // `shiftmap.c::MapMerge` (671-745): convert to an equivalent forward
+        // WinMap, delegate to WinMap's MapMerge (which has the full
+        // swap/merge logic), then revert to a ShiftMap if the WinMap merge
+        // did nothing or merely turned the WinMap back into this ShiftMap.
+        // First try the direct pairwise merge (ShiftMap+ShiftMap, and the
+        // UnitNormMap absorption via `try_merge`). These already match C and
+        // must not be bypassed by the WinMap conversion below.
+        if let Some(r) = super::simplify::default_map_merge(ctx, where_, series) {
+            return Some(r);
+        }
+
+        let n = self.shift.len();
+        let eff_inv = ctx.entry(where_).1;
+
+        // Effective-forward shift terms (fold the applied inversion in), so
+        // the WinMap is stored forward with invert flag cleared (C sets
+        // invert_list[where] = 0).
+        let fwd_shifts: Vec<f64> = if eff_inv {
+            self.shift.iter().map(|&s| -s).collect()
+        } else {
+            self.shift.clone()
+        };
+        let scales = vec![1.0; n];
+        let win = match super::winmap::WinMap::new(&fwd_shifts, &scales) {
+            Ok(w) => w,
+            Err(_) => return super::simplify::default_map_merge(ctx, where_, series),
+        };
+
+        let old_len = ctx.len();
+        ctx.set_pair_single(where_, (Box::new(win.clone()), false, false));
+
+        let result = super::winmap_merge::win_map_merge(&win, ctx, where_, series);
+
+        // Revert if: the WinMap merge made no change (None), or it produced
+        // an equivalent lone ShiftMap at `where_` with the list length
+        // unchanged (C's revert guard, shiftmap.c:716-745).
+        let reverted_to_equiv = result == Some(where_)
+            && ctx.len() == old_len
+            && ctx
+                .entry(where_)
+                .0
+                .as_any()
+                .downcast_ref::<ShiftMap>()
+                .is_some_and(|sm| sm.equal(self));
+
+        if result.is_none() || reverted_to_equiv {
+            // Restore a forward ShiftMap. If the original was applied
+            // inverted, the returned forward ShiftMap holds the negated
+            // shifts and we report a change (index); otherwise no change.
+            let restored = ShiftMap {
+                shift: fwd_shifts,
+                inverted: false,
+                has_been_simplified: false,
+            };
+            ctx.set_pair_single(where_, (Box::new(restored), false, false));
+            return if eff_inv { Some(where_) } else { None };
+        }
+
+        result
+    }
+
     fn try_merge(
         &self,
         other: &dyn Mapping,
