@@ -222,8 +222,13 @@ impl SpecCvtType {
             | Self::VlToBt => &[],
             // 1-arg: rest frequency
             Self::FrToVl | Self::VlToFr => &["Rest frequency (Hz)"],
-            // User-defined frame
-            Self::UsF2Hl | Self::HlF2Us => &["Velocity offset (m/s)"],
+            // User-defined frame (specmap.c:1167-1190): velocity + RA/DEC.
+            Self::UsF2Hl | Self::HlF2Us => &[
+                "Velocity offset (m/s)",
+                "RA of source (FK5 J2000, radians)",
+                "DEC of source (FK5 J2000, radians)",
+                "Frequency correction factor",
+            ],
             // Topocentric frame
             Self::TpF2Hl | Self::HlF2Tp => &[
                 "Longitude (positive eastwards, radians)",
@@ -234,17 +239,16 @@ impl SpecCvtType {
                 "DEC of source (FK5 J2000, radians)",
                 "Frequency correction factor",
             ],
-            // Geocentric frame
-            Self::GeF2Hl | Self::HlF2Ge => &[
+            // Geocentric and Barycentric frames (specmap.c:1234-1275): both
+            // lead with the UT1 epoch, not RA.
+            Self::GeF2Hl | Self::HlF2Ge | Self::ByF2Hl | Self::HlF2By => &[
                 "UT1 epoch of observaton (Modified Julian Date)",
                 "RA of source (FK5 J2000, radians)",
                 "DEC of source (FK5 J2000, radians)",
                 "Frequency correction factor",
             ],
-            // Barycentric, LSRK, LSRD, Local group, Galactic frames
-            Self::ByF2Hl
-            | Self::HlF2By
-            | Self::LkF2Hl
+            // LSRK, LSRD, Local group, Galactic frames: RA/DEC only.
+            Self::LkF2Hl
             | Self::HlF2Lk
             | Self::LdF2Hl
             | Self::HlF2Ld
