@@ -38,12 +38,16 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         return Ok(BAD_VALUE);
     }
 
-    // Initial interval size following the C algorithm (mapping.c:9009):
-    // DBL_EPSILON * 1e9 * |x0| (≈ 2.2e-7 * |x0|), or 1.0 when x0 is zero.
+    // Initial interval size (mapping.c Rate, commit e782c220): a small
+    // fraction of |x0|, or the same small absolute step when x0 is zero.
+    // Seeding with 1.0 for x0==0 pushed the first sampled interval outside
+    // the domain of narrow-domain Mappings (e.g. a ChebyMap on [-1,1]),
+    // making astRate return BAD at x0=0. The loop below grows the interval
+    // as needed for both restricted and unrestricted Mappings.
     let mut h0 = if x0 != 0.0 {
         f64::EPSILON * 1e9 * x0.abs()
     } else {
-        1.0
+        f64::EPSILON * 1e9
     };
 
     // Find an initial working interval by increasing h0 until FindGradient

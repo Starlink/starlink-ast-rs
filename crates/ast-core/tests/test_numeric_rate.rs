@@ -48,19 +48,16 @@ fn numeric_rate_at_zero() {
 }
 
 #[test]
-fn numeric_rate_tan_at_zero_matches_c_artifact() {
-    // d/dx tan(x) at x=0 is mathematically 1.0, but C's astRate seeds the
-    // interval at h0=1.0 for x0=0. The wide first interval makes the mean
-    // gradient of tan over [-h/2, h/2] dominated by the cubic term, so C
-    // returns a small *negative* value (-1.9950849488779807e-4), not 1.0.
-    // This is a C bug (see docs/issues/c-library-quirks.md); we match it
-    // bit-for-bit rather than returning the correct derivative.
-    // Oracle: astRate(MathMap "y=tan(x)", at=0) = -1.9950849488779807e-4.
+fn numeric_rate_tan_at_zero() {
+    // d/dx tan(x) at x=0 is 1.0. Upstream e782c220 fixed the x0=0 seed so
+    // the numeric rate converges to the true derivative (previously the
+    // h0=1.0 seed produced a spurious small negative value). Oracle:
+    // astRate(MathMap "y=tan(x)", at=0) = 1.0.
     let m = MathMap::new(1, 1, &["y = tan(x)"], &["x = atan(y)"]).unwrap();
     let rate = m.rate(&[0.0], 1, 1).unwrap();
     assert!(
-        (rate - (-1.9950849488779807e-4)).abs() < 1e-15,
-        "expected C artifact -1.9950849488779807e-4, got {rate}"
+        (rate - 1.0).abs() < 1e-6,
+        "expected ~1.0 at x=0, got {rate}"
     );
 
     // Away from zero the same Mapping converges to the true derivative
@@ -172,16 +169,11 @@ fn numeric_rate_chebymap_quadratic() {
     let rate = m.rate(&[0.5], 1, 1).unwrap();
     assert_close(rate, 3.0, 1e-4, "chebymap linear rate at x=0.5");
 
-    // At x=0, C's astRate seeds the interval at h0=1.0 and immediately
-    // scales it up by 10, producing a sampling interval ([-5,5]) that
-    // overflows the ChebyMap domain [-1,1]. Every FindGradient call then
-    // fails and astRate returns AST__BAD. Oracle-verified; we match C
-    // rather than the mathematically-correct gradient of 3.
+    // At x=0 the derivative of f(x)=3x is 3. Upstream e782c220 seeds the
+    // interval small enough to stay inside the ChebyMap domain [-1,1], so
+    // astRate returns the true gradient rather than BAD. Oracle-verified.
     let rate_at_zero = m.rate(&[0.0], 1, 1).unwrap();
-    assert_eq!(
-        rate_at_zero, BAD_VALUE,
-        "chebymap linear rate at x=0 (C: BAD)"
-    );
+    assert_close(rate_at_zero, 3.0, 1e-4, "chebymap linear rate at x=0");
 }
 
 #[test]
@@ -209,9 +201,12 @@ fn numeric_rate_chebymap_cubic() {
     let rate = m.rate(&[0.5], 1, 1).unwrap();
     assert_close(rate, 0.75, 1e-3, "chebymap cubic rate at x=0.5");
 
-    // At x=0, C returns AST__BAD for the same domain-overflow reason as the
-    // linear case above (h0=1.0 → first interval [-5,5] leaves the [-1,1]
-    // domain, every FindGradient fails). Oracle-verified.
+    // At x=0 the derivative of f(x)=x^3 is 3x^2 = 0. Upstream e782c220
+    // seeds the interval small enough to stay inside the [-1,1] domain, so
+    // astRate returns the true gradient (0) rather than BAD. Oracle-verified.
     let rate_zero = m.rate(&[0.0], 1, 1).unwrap();
-    assert_eq!(rate_zero, BAD_VALUE, "chebymap cubic rate at x=0 (C: BAD)");
+    assert!(
+        rate_zero.abs() < 1e-4,
+        "chebymap cubic rate at x=0 (expected ~0), got {rate_zero}"
+    );
 }

@@ -777,15 +777,14 @@ fn chebymap_rate() {
     }];
     let m = ChebyMap::new(1, 1, &terms, None, &[-1.0], &[1.0], None, None).unwrap();
 
-    // At x=0, C's astRate seeds h0=1.0 and immediately scales it to 10,
-    // sampling over [-5,5] which leaves the ChebyMap domain [-1,1]; every
-    // FindGradient fails and astRate returns AST__BAD. We match the C
-    // oracle rather than the mathematically-correct gradient of 1.0.
-    // See docs/issues/c-library-quirks.md.
+    // At x=0 the derivative of f(x)=x is 1.0. Upstream e782c220 seeds the
+    // search interval with a small step (not 1.0) so the sample points
+    // stay inside the ChebyMap domain [-1,1]; astRate now returns the true
+    // gradient at x0=0 instead of BAD.
     let rate = m.rate(&[0.0], 1, 1).unwrap();
-    assert_eq!(
-        rate, BAD_VALUE,
-        "C oracle returns BAD at x=0 (domain overflow)"
+    assert!(
+        (rate - 1.0).abs() < 1e-6,
+        "expected rate ~1.0 at x=0, got {rate}"
     );
 
     // Inside the domain, away from zero, the numeric rate is accurate.
