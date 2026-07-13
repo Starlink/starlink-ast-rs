@@ -14,8 +14,9 @@ use std::path::PathBuf;
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameRef;
 use ast_core::mappings::Mapping;
-use ast_core::{from_native_string, to_native_string};
+use ast_core::{AnyObject, from_native_string, to_native_string};
 
 mod common;
 
@@ -168,12 +169,26 @@ fn simplify_regression() {
                 continue;
             }
         };
-        let mapping = match input_obj.into_mapping() {
-            Some(m) => m,
-            None => {
-                skipped += 1;
-                continue;
-            }
+        // For a FrameSet input, the reference `.simp` is the simplified
+        // base→current Mapping (that is how the C fixtures were generated:
+        // `astSimplify(astGetMapping(fs, AST__BASE, AST__CURRENT))`), not a
+        // simplified FrameSet. Extract that composed mapping so all three
+        // checks compare like against like.
+        let mapping = match input_obj {
+            AnyObject::FrameSet(ref fs) => match fs.mapping(FrameRef::Base, FrameRef::Current) {
+                Ok(m) => m,
+                Err(_) => {
+                    skipped += 1;
+                    continue;
+                }
+            },
+            other => match other.into_mapping() {
+                Some(m) => m,
+                None => {
+                    skipped += 1;
+                    continue;
+                }
+            },
         };
 
         // Parse reference .simp

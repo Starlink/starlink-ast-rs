@@ -141,6 +141,15 @@ impl Mapping for ZoomMap {
         }
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::simplify::zoom_map_merge(self, ctx, where_, series)
+    }
+
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         if ax1 != ax2 {
             return Ok(0.0);

@@ -398,6 +398,21 @@ impl MergeCtx {
         self.list[i1 + 1] = second;
     }
 
+    /// Replace the contiguous range `imap1..=imap2` with a single `merged`
+    /// entry, closing the gap. Faithful analogue of the C `MapMerge` tail
+    /// that annuls the run of merged mappings, stores the replacement at
+    /// `imap1`, and shuffles the remaining elements down (e.g. zoommap.c
+    /// MapMerge condensing a run of adjacent ZoomMaps/UnitMaps). The stored
+    /// entry is forward (`effective_inv = false`), matching C setting the new
+    /// invert flag to 0.
+    pub(crate) fn replace_range_with(&mut self, imap1: usize, imap2: usize, merged: DynMapping) {
+        self.list[imap1] = (merged, false, false);
+        for idx in (imap1 + 1..=imap2).rev() {
+            self.list.remove(idx);
+            self.frozen.remove(idx);
+        }
+    }
+
     /// Run a single `map_merge` over the sub-range `start..` of the working
     /// list, then splice the (possibly shortened) sub-range back in.
     ///
@@ -493,6 +508,180 @@ pub(crate) fn cmp_map_merge(
     }
 
     default_map_merge(ctx, where_, series)
+}
+
+/// `map_merge` for a nominated `ZoomMap`, a faithful port of C
+/// `zoommap.c::MapMerge` (zoommap.c:564).
+///
+/// Series: accumulate the effective zoom factors of the run of adjacent
+/// `ZoomMap`/`UnitMap` mappings (dividing for inverted ZoomMaps, ignoring
+/// UnitMaps) and replace the run with a single forward `ZoomMap` — or a
+/// `UnitMap` when the product is unity. Parallel: gather each mapping's
+/// per-axis effective zoom into a vector and replace the run with a
+/// `UnitMap` (all unity), a single `ZoomMap` (all equal), or a diagonal
+/// `MatrixMap` (mixed factors).
+///
+/// The key C rule (`simpler = ngone || unit || invert_list[where]`) means a
+/// *lone* ZoomMap whose effective direction is inverted is still replaced —
+/// by a forward ZoomMap holding the reciprocal factor — so the invert flag
+/// is folded into the stored factor rather than surfacing as an `InvA`/`InvB`
+/// on a parent CmpMap. This matches the C native dump (e.g. a degrees↔radians
+/// ZoomMap serialises as a forward `Zoom` value, never as an inverted one).
+pub(crate) fn zoom_map_merge(
+    zoom: &ZoomMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    // Effective forward zoom of an element (`mapping` is stored forward, the
+    // bool carries the applied inversion).
+    let eff_zoom = |entry: &(DynMapping, bool, bool)| -> Option<f64> {
+        let zm = entry.0.as_any().downcast_ref::<ZoomMap>()?;
+        Some(if entry.1 {
+            1.0 / zm.factor()
+        } else {
+            zm.factor()
+        })
+    };
+    // A mapping already flagged `has_been_simplified` (C `IsSimple`) is a hard
+    // run boundary: the nominate loop must not fuse it with a neighbour. If the
+    // nominated ZoomMap itself is flagged there is nothing to do. Otherwise the
+    // run-extension below stops before any flagged neighbour.
+    if ctx.entry(where_).0.has_been_simplified() {
+        return default_map_merge(ctx, where_, series);
+    }
+    let is_zoom = |entry: &(DynMapping, bool, bool)| {
+        entry.0.as_any().is::<ZoomMap>() && !entry.0.has_been_simplified()
+    };
+    let is_unit = |entry: &(DynMapping, bool, bool)| {
+        entry.0.as_any().is::<UnitMap>() && !entry.0.has_been_simplified()
+    };
+
+    let n = ctx.len();
+    let where_inv = ctx.entry(where_).1;
+
+    if series {
+        // Effective zoom of the nominated ZoomMap.
+        let mut zoom_acc = if where_inv {
+            1.0 / zoom.factor()
+        } else {
+            zoom.factor()
+        };
+
+        // Extend downward over adjacent ZoomMaps (accumulate) and UnitMaps.
+        let mut imap1 = where_;
+        while imap1 >= 1 {
+            let prev = ctx.entry(imap1 - 1);
+            if is_zoom(prev) {
+                let z = eff_zoom(prev)?;
+                zoom_acc *= z;
+            } else if !is_unit(prev) {
+                break;
+            }
+            imap1 -= 1;
+        }
+
+        // Extend upward similarly.
+        let mut imap2 = where_;
+        while imap2 + 1 < n {
+            let next = ctx.entry(imap2 + 1);
+            if is_zoom(next) {
+                let z = eff_zoom(next)?;
+                zoom_acc *= z;
+            } else if !is_unit(next) {
+                break;
+            }
+            imap2 += 1;
+        }
+
+        let ngone = imap2 - imap1;
+        let unit = (zoom_acc - 1.0).abs() <= 8.0 * f64::EPSILON;
+        let simpler = ngone > 0 || unit || where_inv;
+        if !simpler {
+            // No ZoomMap-run reduction: defer to the shared pairwise merge so
+            // the ZoomMap can still absorb into an adjacent MatrixMap/ShiftMap
+            // (handled by `try_merge`, exactly as the pre-override path did).
+            return default_map_merge(ctx, where_, series);
+        }
+
+        // Input dimension of the (uniform) run — every element shares it.
+        let nin = {
+            let (ref m, inv, _) = *ctx.entry(where_);
+            if inv { m.nout() } else { m.nin() }
+        };
+        let new: DynMapping = if unit {
+            Box::new(UnitMap::new(nin))
+        } else {
+            Box::new(ZoomMap::new(nin, zoom_acc).ok()?)
+        };
+        ctx.replace_range_with(imap1, imap2, new);
+        return Some(imap1);
+    }
+
+    // Parallel: gather per-axis effective zoom factors across the run.
+    let mut imap1 = where_;
+    while imap1 >= 1 {
+        let prev = ctx.entry(imap1 - 1);
+        if !is_zoom(prev) && !is_unit(prev) {
+            break;
+        }
+        imap1 -= 1;
+    }
+    let mut imap2 = where_;
+    while imap2 + 1 < n {
+        let next = ctx.entry(imap2 + 1);
+        if !is_zoom(next) && !is_unit(next) {
+            break;
+        }
+        imap2 += 1;
+    }
+
+    let mut zooms: Vec<f64> = Vec::new();
+    let mut minzoom = f64::MAX;
+    let mut maxzoom = -f64::MAX;
+    for idx in imap1..=imap2 {
+        let entry = ctx.entry(idx);
+        let z = if is_zoom(entry) {
+            eff_zoom(entry)?
+        } else {
+            1.0
+        };
+        // Number of parallel axes this element contributes (its effective nin).
+        let (ref m, inv, _) = *entry;
+        let ncoord = if inv { m.nout() } else { m.nin() };
+        for _ in 0..ncoord {
+            zooms.push(z);
+        }
+        if z < minzoom {
+            minzoom = z;
+        }
+        if z > maxzoom {
+            maxzoom = z;
+        }
+    }
+
+    let ngone = imap2 - imap1;
+    let single = minzoom == maxzoom;
+    let unit = single && minzoom == 1.0;
+    let simpler = ngone > 0 || unit || where_inv;
+    if !simpler {
+        return default_map_merge(ctx, where_, series);
+    }
+
+    let nin = zooms.len();
+    let new: DynMapping = if unit {
+        Box::new(UnitMap::new(nin))
+    } else if single {
+        Box::new(ZoomMap::new(nin, minzoom).ok()?)
+    } else {
+        let mut diag = ndarray::Array2::<f64>::zeros((nin, nin));
+        for (i, &z) in zooms.iter().enumerate() {
+            diag[[i, i]] = z;
+        }
+        Box::new(MatrixMap::new(diag).ok()?)
+    };
+    ctx.replace_range_with(imap1, imap2, new);
+    Some(imap1)
 }
 
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
