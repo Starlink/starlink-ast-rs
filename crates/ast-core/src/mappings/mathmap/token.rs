@@ -520,7 +520,7 @@ fn parse_number(expr: &str, pos: usize) -> AstResult<(f64, usize)> {
     let val: f64 = num_str.parse().map_err(|_| {
         AstError::new(
             ErrorCode::Conin,
-            format!("invalid constant in expression: \"{}\"", &num_str),
+            format!("invalid constant in expression: \"{}\"", num_str),
         )
     })?;
 

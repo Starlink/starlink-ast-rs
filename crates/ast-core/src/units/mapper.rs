@@ -151,10 +151,10 @@ pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> Option<DynMapping> {
     // and invert. Mirrors `unit.c`:5533-5688.
     let (testtree, swapped) = match build_test_tree(&in_tree, &out_tree) {
         Some(t) => (t, false),
-        None => match build_test_tree(&out_tree, &in_tree) {
-            Some(t) => (t, true),
-            None => return None,
-        },
+        None => {
+            let t = build_test_tree(&out_tree, &in_tree)?;
+            (t, true)
+        }
     };
 
     // If we swapped, invert the test tree before constructing the Mapping.

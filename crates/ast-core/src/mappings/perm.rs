@@ -500,10 +500,8 @@ impl Mapping for PermMap {
                 let iout = (p as usize) - 1;
                 if iout < npout {
                     // Source is an output index: must be in kept_outs.
-                    match kept_outs.iter().position(|&v| v == iout) {
-                        Some(pos) => inpm.push((pos as i64) + 1),
-                        None => return None,
-                    }
+                    let pos = kept_outs.iter().position(|&v| v == iout)?;
+                    inpm.push((pos as i64) + 1);
                 } else {
                     // Out-of-range positive: C transform treats this as BAD;
                     // canonicalise to 0 so the new constructor accepts it.
@@ -552,13 +550,12 @@ impl Mapping for PermMap {
             let other_perm: std::borrow::Cow<'_, PermMap>;
             if let Some(pm) = other.as_any().downcast_ref::<PermMap>() {
                 other_perm = std::borrow::Cow::Borrowed(pm);
-            } else if let Some(um) = other.as_any().downcast_ref::<UnitMap>() {
+            } else {
+                let um = other.as_any().downcast_ref::<UnitMap>()?;
                 let n = um.nin();
                 let identity: Vec<i64> = (1..=n as i64).collect();
                 let pm = PermMap::new(&identity, &identity, &[]).ok()?;
                 other_perm = std::borrow::Cow::Owned(pm);
-            } else {
-                return None;
             }
             let other_perm = other_perm.as_ref();
 
