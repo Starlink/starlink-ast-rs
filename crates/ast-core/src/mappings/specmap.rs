@@ -1131,6 +1131,75 @@ fn simplify_steps(steps: &mut Vec<SpecConversion>) -> bool {
     any_removed
 }
 
+/// `map_merge` for a nominated `SpecMap`, mirroring C `specmap.c::MapMerge`
+/// (2089). Series only.
+///
+/// Gathers the run of adjacent `SpecMap`s at `where_`, concatenates their
+/// invert-resolved step lists, cancels adjacent inverse pairs, and — per
+/// C's condition (d) `simpler = ngone || (nstep < nstep0) || unit ||
+/// invert_list[where]` (specmap.c:2570) — replaces the run with a single
+/// **forward** `SpecMap` (invert flag cleared) whenever a lone SpecMap was
+/// applied inverted, even if no cancellation occurred. This is why a lone
+/// inverted SpecMap never surfaces as an `InvA`/`InvB` on a parent CmpMap.
+pub(crate) fn spec_map_merge(
+    ctx: &mut super::simplify::MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if !series {
+        return super::simplify::default_map_merge(ctx, where_, series);
+    }
+
+    let is_spec = |entry: &(DynMapping, bool, bool)| entry.0.as_any().is::<SpecMap>();
+
+    // Gather the contiguous run of SpecMaps around `where_`.
+    let n = ctx.len();
+    let mut imap1 = where_;
+    while imap1 >= 1 && is_spec(ctx.entry(imap1 - 1)) {
+        imap1 -= 1;
+    }
+    let mut imap2 = where_;
+    while imap2 + 1 < n && is_spec(ctx.entry(imap2 + 1)) {
+        imap2 += 1;
+    }
+
+    // Concatenate the invert-resolved steps of every SpecMap in the run,
+    // and count the original steps (nstep0) for the `simpler` test.
+    let mut steps: Vec<SpecConversion> = Vec::new();
+    let mut nstep0 = 0usize;
+    let where_inv = ctx.entry(where_).1;
+    for idx in imap1..=imap2 {
+        let entry = ctx.entry(idx);
+        let sm = entry.0.as_any().downcast_ref::<SpecMap>()?;
+        // Effective inversion = stored invert XOR applied-direction bool.
+        let eff_inv = entry.1 != sm.inverted;
+        let s = normalized_steps(sm, eff_inv);
+        nstep0 += s.len();
+        steps.extend(s);
+    }
+
+    let ngone = imap2 - imap1;
+    simplify_steps(&mut steps);
+    let unit = steps.is_empty();
+    // C condition (d): a lone inverted SpecMap is still normalised forward.
+    let simpler = ngone > 0 || steps.len() < nstep0 || unit || where_inv;
+    if !simpler {
+        return super::simplify::default_map_merge(ctx, where_, series);
+    }
+
+    let new: DynMapping = if unit {
+        Box::new(UnitMap::new(1))
+    } else {
+        Box::new(SpecMap {
+            conversions: steps,
+            inverted: false,
+            has_been_simplified: false,
+        })
+    };
+    ctx.replace_range_with(imap1, imap2, new);
+    Some(imap1)
+}
+
 // ---------------------------------------------------------------------------
 // Mapping trait
 // ---------------------------------------------------------------------------
@@ -1265,6 +1334,15 @@ impl Mapping for SpecMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        spec_map_merge(ctx, where_, series)
     }
 
     fn try_merge(

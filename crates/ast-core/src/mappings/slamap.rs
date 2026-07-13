@@ -565,6 +565,68 @@ fn sla_simplify_steps(steps: &mut Vec<SlaConversion>) -> bool {
     any_changed
 }
 
+/// `map_merge` for a nominated `SlaMap`, mirroring C `slamap.c::MapMerge`.
+/// Series only.
+///
+/// Gathers the run of adjacent `SlaMap`s at `where_`, concatenates their
+/// invert-resolved step lists, cancels adjacent inverse pairs (and combines
+/// precessions), and — per C's `simpler` condition — replaces the run with a
+/// single **forward** `SlaMap` (invert cleared) whenever a lone SlaMap was
+/// applied inverted, even if no cancellation occurred.
+pub(crate) fn sla_map_merge(
+    ctx: &mut super::simplify::MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if !series {
+        return super::simplify::default_map_merge(ctx, where_, series);
+    }
+
+    let is_sla = |entry: &(DynMapping, bool, bool)| entry.0.as_any().is::<SlaMap>();
+
+    let n = ctx.len();
+    let mut imap1 = where_;
+    while imap1 >= 1 && is_sla(ctx.entry(imap1 - 1)) {
+        imap1 -= 1;
+    }
+    let mut imap2 = where_;
+    while imap2 + 1 < n && is_sla(ctx.entry(imap2 + 1)) {
+        imap2 += 1;
+    }
+
+    let mut steps: Vec<SlaConversion> = Vec::new();
+    let mut nstep0 = 0usize;
+    let where_inv = ctx.entry(where_).1;
+    for idx in imap1..=imap2 {
+        let entry = ctx.entry(idx);
+        let sm = entry.0.as_any().downcast_ref::<SlaMap>()?;
+        let eff_inv = entry.1 != sm.inverted;
+        let s = sla_normalized_steps(sm, eff_inv);
+        nstep0 += s.len();
+        steps.extend(s);
+    }
+
+    let ngone = imap2 - imap1;
+    sla_simplify_steps(&mut steps);
+    let unit = steps.is_empty();
+    let simpler = ngone > 0 || steps.len() < nstep0 || unit || where_inv;
+    if !simpler {
+        return super::simplify::default_map_merge(ctx, where_, series);
+    }
+
+    let new: DynMapping = if unit {
+        Box::new(UnitMap::new(2))
+    } else {
+        let mut result = SlaMap::new();
+        for cvt in steps {
+            result.add(cvt.cvt_type, &cvt.args);
+        }
+        Box::new(result)
+    };
+    ctx.replace_range_with(imap1, imap2, new);
+    Some(imap1)
+}
+
 // ---------------------------------------------------------------------------
 // Core transform logic
 // ---------------------------------------------------------------------------
@@ -1247,6 +1309,15 @@ impl Mapping for SlaMap {
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
+    }
+
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        sla_map_merge(ctx, where_, series)
     }
 
     fn try_merge(
