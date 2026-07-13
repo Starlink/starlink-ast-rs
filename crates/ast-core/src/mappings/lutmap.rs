@@ -570,6 +570,14 @@ impl Mapping for LutMap {
             return Ok(Box::new(self.clone()));
         }
 
+        // C `lutmap.c:1149` only converts to a WinMap when the first and
+        // last LUT values differ (`b1 != b2`). A constant LUT (every value
+        // equal, so `b == 0`) is left as a LutMap — converting it would
+        // produce a degenerate WinMap with a zero scale factor.
+        if self.lut[0] == self.lut[n - 1] {
+            return Ok(Box::new(self.clone()));
+        }
+
         // Linear LUT detected. The forward mapping is:
         //   y = lut[idx] where idx = (x - start) / inc
         //   y = a + b * idx = a + b * (x - start) / inc

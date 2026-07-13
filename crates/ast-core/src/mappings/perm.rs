@@ -1037,9 +1037,12 @@ impl Serializable for PermMap {
             );
         } else {
             for (i, &p) in self.outperm.iter().enumerate() {
+                // C `permmap.c` Dump (2304-2313): a negative entry names a
+                // constant only when the PermMap actually has a constants
+                // array; with no constants it is "bad".
                 let comment = if p > 0 {
                     format!("Output coordinate {} = input coordinate {}", i + 1, p)
-                } else if p == 0 {
+                } else if p == 0 || self.constants.is_empty() {
                     format!("Output coordinate {} is \"bad\"", i + 1)
                 } else {
                     format!("Output coordinate {} = constant no. {}", i + 1, -p)
@@ -1057,9 +1060,10 @@ impl Serializable for PermMap {
             );
         } else {
             for (i, &p) in self.inperm.iter().enumerate() {
+                // See the outperm branch above (C permmap.c:2304-2313).
                 let comment = if p > 0 {
                     format!("Input coordinate {} = output coordinate {}", i + 1, p)
-                } else if p == 0 {
+                } else if p == 0 || self.constants.is_empty() {
                     format!("Input coordinate {} is \"bad\"", i + 1)
                 } else {
                     format!("Input coordinate {} = constant no. {}", i + 1, -p)
