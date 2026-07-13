@@ -103,10 +103,9 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
         AnyObject::TranMap(x.clone())
     } else if let Some(x) = m.as_any().downcast_ref::<RateMap>() {
         AnyObject::RateMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<NormMap>() {
-        AnyObject::NormMap(x.clone())
     } else {
-        return None;
+        let x = m.as_any().downcast_ref::<NormMap>()?;
+        AnyObject::NormMap(x.clone())
     };
     to_native_string(&obj).ok()
 }
