@@ -73,8 +73,15 @@ pub(crate) fn matrix_map_merge(
         return Some(result);
     }
 
-    // ---- Steps 3 & 4 (swap-and-seek) are added in a later increment; until
-    // then fall through to the shared pairwise merge / global swap helpers.
+    // ---- Steps 3 & 4 (series): swap toward the nearest mergeable target,
+    // then a speculative swap if no target exists.
+    if let Some(result) = try_swap_strategy(mm, ctx, where_, series) {
+        return Some(result);
+    }
+
+    // Anything the swap-and-seek declined (e.g. a PermMap-adjacent swap not
+    // yet ported) falls through to the shared pairwise merge / legacy global
+    // swap helpers, preserving current behaviour.
     default_map_merge(ctx, where_, series)
 }
 
@@ -322,6 +329,367 @@ fn perm_ok(pm: &PermMap) -> bool {
         }
     }
     true
+}
+
+/// Classes a MatrixMap can *swap* past while seeking a merge target:
+/// WinMap or PermMap (matrixmap.c:2102-2104, 2136-2138).
+fn is_swappable_class(m: &dyn Mapping) -> bool {
+    m.as_any().is::<WinMap>() || m.as_any().is::<PermMap>()
+}
+
+/// C `matrixmap.c::CanSwap` (331): can the MatrixMap and its neighbour swap,
+/// and would the swap make either intrinsically simpler (`simpler`)? One of
+/// the pair is the MatrixMap. Returns `(can_swap, simpler)`.
+///
+/// WinMap → always swappable, never flagged simpler. PermMap → swappable iff
+/// it is bi-directional (PermOK) with a square, invertible MatrixMap, and any
+/// constants it feeds into/out of the MatrixMap map through "scaling" rows and
+/// columns (a diagonal-only interaction). `simpler` iff the swap moves the
+/// MatrixMap to the side where the PermMap changes dimension favourably.
+fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (bool, bool) {
+    // Identify the MatrixMap and the non-MatrixMap partner.
+    let (mat, mat_inv, nomat, nomat_inv, nomat_is_map1) = if map1.as_any().is::<MatrixMap>() {
+        (map1, inv1, map2, inv2, false)
+    } else {
+        (map2, inv2, map1, inv1, true)
+    };
+    let Some(mm) = mat.as_any().downcast_ref::<MatrixMap>() else {
+        return (false, false);
+    };
+
+    // WinMap: always swappable.
+    if nomat.as_any().is::<WinMap>() {
+        return (true, false);
+    }
+
+    // PermMap: bi-directional, square + invertible matrix, and scaling
+    // row/col for constants fed to the matrix.
+    if let Some(pm) = nomat.as_any().downcast_ref::<PermMap>() {
+        let nax = if mat_inv { mm.nin() } else { mm.nout() };
+        // MatrixMap must be square and invertible (or UNIT).
+        let square = mm.nin() == mm.nout();
+        let invertible = mm.is_unit_form() || mm.inverse_matrix().is_some();
+        if !square || !invertible {
+            return (false, false);
+        }
+        if !perm_ok(pm) {
+            return (false, false);
+        }
+        // Effective 0-based perm arrays (constants stay negative refs).
+        let (outperm, inperm, _consts) = perm_get(pm, nomat_inv);
+        let nin = inperm.len() as i64;
+        let nout = outperm.len() as i64;
+
+        // Bi-directionality of the links (matrixmap.c:472-492). PermOK already
+        // guaranteed consistency, but C re-checks here.
+        for (i, &p) in outperm.iter().enumerate() {
+            if p >= 0 && p < nin && inperm[p as usize] != i as i64 {
+                return (false, false);
+            }
+        }
+        for (i, &p) in inperm.iter().enumerate() {
+            if p >= 0 && p < nout && outperm[p as usize] != i as i64 {
+                return (false, false);
+            }
+        }
+
+        // Effective forward matrix, for the constant scaling-row/col check.
+        let Some(eff) = eff_matrix(mm, mat_inv) else {
+            return (false, false);
+        };
+
+        // If the PermMap is applied first (nomat == map1), its output axes
+        // feed the matrix forward: each constant output must sit on a scaling
+        // row/col. If applied second, its input axes feed the matrix inverse.
+        if nomat_is_map1 {
+            if nout != nax as i64 {
+                return (false, false);
+            }
+            for (i, &p) in outperm.iter().enumerate() {
+                if (p < 0 || p >= nin) && !scaling_row_col(&eff, i) {
+                    return (false, false);
+                }
+            }
+        } else {
+            if nin != nax as i64 {
+                return (false, false);
+            }
+            for (i, &p) in inperm.iter().enumerate() {
+                if (p < 0 || p >= nout) && !scaling_row_col(&eff, i) {
+                    return (false, false);
+                }
+            }
+        }
+
+        // simpler flag (matrixmap.c:555-561).
+        let simpler = if nomat_is_map1 {
+            nout > nin
+        } else {
+            nin > nout
+        };
+        return (true, simpler);
+    }
+
+    (false, false)
+}
+
+/// C `matrixmap.c::ScalingRowCol` (5275): whether row and column `axis` of a
+/// square matrix are all (effectively) zero except for a non-zero diagonal
+/// term. Uses the `DBL_EPSILON` magnitude test C uses on a FULL matrix; a
+/// non-FULL (diagonal/unit) matrix trivially qualifies.
+fn scaling_row_col(m: &Array2<f64>, axis: usize) -> bool {
+    // A diagonal matrix is a simple scaling on every axis.
+    if is_diagonal(m) {
+        return true;
+    }
+    let n = m.nrows();
+    if axis >= n {
+        return false;
+    }
+    for i in 0..n {
+        let el = m[[axis, i]].abs();
+        if i == axis {
+            if el <= f64::EPSILON {
+                return false;
+            }
+        } else if el > f64::EPSILON {
+            return false;
+        }
+    }
+    for i in 0..n {
+        let el = m[[i, axis]].abs();
+        if i == axis {
+            if el <= f64::EPSILON {
+                return false;
+            }
+        } else if el > f64::EPSILON {
+            return false;
+        }
+    }
+    true
+}
+
+/// C `matrixmap.c::PermGet` (4055): return the PermMap's `(outperm, inperm,
+/// consts)` as 0-based arrays for the given effective direction. Connected
+/// links are 0-based indices; constant axes are encoded as `-(k+1)` referring
+/// to `consts[k]`, exactly as C's `PermGet` (which derives them by probing the
+/// PermMap's transforms rather than reading the stored 1-based arrays).
+fn perm_get(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
+    // Stored arrays are 1-based for connected axes with negative constant
+    // refs. Convert connected links to 0-based, keep constant refs as-is.
+    let to_zero_based = |arr: &[i64]| -> Vec<i64> {
+        arr.iter()
+            .map(|&p| if p >= 1 { p - 1 } else { p })
+            .collect()
+    };
+    let (out_raw, in_raw) = if inv {
+        (pm.inperm().to_vec(), pm.outperm().to_vec())
+    } else {
+        (pm.outperm().to_vec(), pm.inperm().to_vec())
+    };
+    (
+        to_zero_based(&out_raw),
+        to_zero_based(&in_raw),
+        pm.constants().to_vec(),
+    )
+}
+
+/// Steps 3 & 4 (series): seek the nearest mergeable target on each side, swap
+/// the MatrixMap toward it, and merge; failing that, do a speculative swap
+/// kept iff a swapped map then simplifies. Faithful port of
+/// matrixmap.c:2055-2273.
+fn try_swap_strategy(
+    mm: &MatrixMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    let n = ctx.len();
+    let _ = mm;
+
+    // swaphi/do2 (upper neighbour), swaplo/do1 (lower neighbour).
+    let (swaphi, do2) = if where_ + 1 < n {
+        can_swap(
+            ctx.entry(where_).0.as_ref(),
+            ctx.entry(where_).1,
+            ctx.entry(where_ + 1).0.as_ref(),
+            ctx.entry(where_ + 1).1,
+        )
+    } else {
+        (false, false)
+    };
+    let (swaplo, do1) = if where_ > 0 {
+        can_swap(
+            ctx.entry(where_ - 1).0.as_ref(),
+            ctx.entry(where_ - 1).1,
+            ctx.entry(where_).0.as_ref(),
+            ctx.entry(where_).1,
+        )
+    } else {
+        (false, false)
+    };
+
+    // nstep2: distance forward to nearest mergeable target.
+    let mut nstep2: i64 = -1;
+    if swaphi {
+        for i2 in (where_ + 1)..n {
+            let (m, inv, _) = ctx.entry(i2);
+            // C's forward seek merge classes: MatrixMap / ZoomMap / PermMap
+            // (if PermOK) / UnitMap (matrixmap.c:2091-2094). Note: WinMap is
+            // NOT a merge target on the forward walk (only swapped over).
+            if is_seek_target(m.as_ref(), *inv) {
+                nstep2 = (i2 - where_ - 1) as i64;
+                break;
+            }
+            if !is_swappable_class(m.as_ref()) {
+                break;
+            }
+        }
+    }
+
+    // nstep1: distance backward to nearest mergeable target.
+    let mut nstep1: i64 = -1;
+    if swaplo {
+        for i1 in (0..where_).rev() {
+            let (m, inv, _) = ctx.entry(i1);
+            if is_seek_target(m.as_ref(), *inv) {
+                nstep1 = (where_ - 1 - i1) as i64;
+                break;
+            }
+            if !is_swappable_class(m.as_ref()) {
+                break;
+            }
+        }
+    }
+
+    // Choose the swap direction (matrixmap.c:2147-2158).
+    let (i1, swap_lower) = if do1 || (nstep1 != -1 && (nstep2 == -1 || nstep2 > nstep1)) {
+        (where_.wrapping_sub(1), true)
+    } else if do2 || nstep2 != -1 {
+        (where_, false)
+    } else {
+        return try_speculative_swap(ctx, where_, swaphi, swaplo);
+    };
+
+    // The neighbour class for the chosen direction.
+    let neigh_idx = if swap_lower { where_ - 1 } else { where_ + 1 };
+    let nclass = swap_class_of(ctx.entry(neigh_idx).0.as_ref())?;
+
+    // iwm = position of the MatrixMap within the (i1, i1+1) pair.
+    let imm = where_ - i1;
+    let pair = clone_pair(ctx, i1);
+    let swapped = swap_pair(nclass, pair, imm)?;
+    ctx.set_pair(i1, swapped[0].clone(), swapped[1].clone());
+
+    // Merge at the new adjacency (matrixmap.c:2173-2193).
+    if i1 == where_ && where_ + 1 < ctx.len() {
+        let _ = ctx.merge_subrange(where_ + 1, 0, series);
+    } else if where_ >= 2 {
+        let _ = ctx.merge_subrange(where_ - 2, 0, series);
+    }
+
+    Some(i1)
+}
+
+/// Whether a neighbour is a *merge target* for the nstep seek: MatrixMap,
+/// ZoomMap, UnitMap, or an invertible PermMap (matrixmap.c:2091-2094 /
+/// 2128-2131). WinMap is only swapped over, never a target.
+fn is_seek_target(m: &dyn Mapping, _inv: bool) -> bool {
+    if m.as_any().is::<MatrixMap>() || m.as_any().is::<ZoomMap>() || m.as_any().is::<UnitMap>() {
+        return true;
+    }
+    if let Some(pm) = m.as_any().downcast_ref::<PermMap>() {
+        return perm_ok(pm);
+    }
+    false
+}
+
+/// Classes the MatrixMap can be swapped against.
+#[derive(Clone, Copy, PartialEq)]
+enum SwapClass {
+    Win,
+    Perm,
+}
+
+fn swap_class_of(m: &dyn Mapping) -> Option<SwapClass> {
+    if m.as_any().is::<WinMap>() {
+        Some(SwapClass::Win)
+    } else if m.as_any().is::<PermMap>() {
+        Some(SwapClass::Perm)
+    } else {
+        None
+    }
+}
+
+/// Swap the MatrixMap (at index `imm` within the pair) against its neighbour.
+/// Returns the swapped pair, or `None` if the swap is not yet supported.
+fn swap_pair(
+    nclass: SwapClass,
+    pair: [(DynMapping, bool, bool); 2],
+    imm: usize,
+) -> Option<[(DynMapping, bool, bool); 2]> {
+    match nclass {
+        // MatWin (matrixmap.c:3050) is the same swap as winmap's WinMat: it
+        // absorbs the WinMap scale into the matrix, leaving a unit-scale
+        // WinMap. `win_mat` takes the WinMap index, which is `1 - imm`.
+        SwapClass::Win => super::winmap_merge::win_mat(pair, 1 - imm),
+        // MatPermSwap is ported in the next increment; decline for now so the
+        // caller falls back to the shared helpers.
+        SwapClass::Perm => None,
+    }
+}
+
+/// Step 4: speculative swap with a neighbour, kept iff a swapped map then
+/// simplifies to a different class (matrixmap.c:2201-2272).
+fn try_speculative_swap(
+    ctx: &mut MergeCtx,
+    where_: usize,
+    swaphi: bool,
+    swaplo: bool,
+) -> Option<usize> {
+    for attempt in 0..2 {
+        let (i1, swap_lower) = if attempt == 0 && swaplo {
+            (where_ - 1, true)
+        } else if attempt == 1 && swaphi {
+            (where_, false)
+        } else {
+            continue;
+        };
+
+        let neigh_idx = if swap_lower { where_ - 1 } else { where_ + 1 };
+        let Some(nclass) = swap_class_of(ctx.entry(neigh_idx).0.as_ref()) else {
+            continue;
+        };
+
+        let imm = where_ - i1;
+        let pair = clone_pair(ctx, i1);
+        let Some(swapped) = swap_pair(nclass, pair, imm) else {
+            continue;
+        };
+
+        // Keep the swap iff either swapped map simplifies to a different class
+        // (C: astGetClass(smc) != astGetClass(mc)).
+        let worthwhile = swapped.iter().any(|entry| {
+            entry
+                .0
+                .simplified()
+                .ok()
+                .is_some_and(|s| s.as_any().type_id() != entry.0.as_any().type_id())
+        });
+
+        if worthwhile {
+            ctx.set_pair(i1, swapped[0].clone(), swapped[1].clone());
+            return Some(i1);
+        }
+    }
+    None
+}
+
+/// Clone the `(i1, i1+1)` pair without mutating the list.
+fn clone_pair(ctx: &MergeCtx, i1: usize) -> [(DynMapping, bool, bool); 2] {
+    let a = ctx.entry(i1);
+    let b = ctx.entry(i1 + 1);
+    [(a.0.clone_box(), a.1, a.2), (b.0.clone_box(), b.1, b.2)]
 }
 
 /// Step 1: C matrixmap.c:1846-1906 — try to replace the MatrixMap with a
