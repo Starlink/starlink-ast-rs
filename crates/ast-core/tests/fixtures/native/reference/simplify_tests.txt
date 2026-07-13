@@ -356,7 +356,6 @@ cap_specmap_13           | simplify_fixtures/cap_specmap_13.map | simplify_fixtu
 cap_specmap_14           | simplify_fixtures/cap_specmap_14.map | simplify_fixtures/cap_specmap_14.simp |
 cap_sphmap_01            | simplify_fixtures/cap_sphmap_01.map | simplify_fixtures/cap_sphmap_01.simp |
 cap_timemap_01           | simplify_fixtures/cap_timemap_01.map | simplify_fixtures/cap_timemap_01.simp | yes
-# BLOCKED(StcResourceProfile not ported): cap_timemap_02           | simplify_fixtures/cap_timemap_02.map | simplify_fixtures/cap_timemap_02.simp | yes
 cap_timemap_03           | simplify_fixtures/cap_timemap_03.map | simplify_fixtures/cap_timemap_03.simp |
 cap_timemap_04           | simplify_fixtures/cap_timemap_04.map | simplify_fixtures/cap_timemap_04.simp |
 cap_timemap_05           | simplify_fixtures/cap_timemap_05.map | simplify_fixtures/cap_timemap_05.simp |
@@ -466,21 +465,9 @@ tranmap_merge_tail             | simplify_fixtures/tranmap_merge_tail.map | simp
 interval_remapped_simplify     | simplify_fixtures/interval_remapped_simplify.map | simplify_fixtures/interval_remapped_simplify.map | yes
 interval_halfinf_simplify      | simplify_fixtures/interval_halfinf_simplify.map | simplify_fixtures/interval_halfinf_simplify.map | yes
 
-# --- Blocked: IntraMap / XphMap not yet ported (see PLAN.md).
-# --- Re-enable these when those Mapping classes land. ---
-# BLOCKED(IntraMap/XphMap): intramap_inverse_cancel | simplify_fixtures/intramap_inverse_cancel.map | simplify_fixtures/intramap_inverse_cancel.simp |
-# BLOCKED(IntraMap/XphMap): cap_xphmap_01            | simplify_fixtures/cap_xphmap_01.map | simplify_fixtures/cap_xphmap_01.simp |
-# BLOCKED(IntraMap/XphMap): cap_xphmap_02            | simplify_fixtures/cap_xphmap_02.map | simplify_fixtures/cap_xphmap_02.simp |
-# BLOCKED(IntraMap/XphMap): intra_invfwd_cancel      | simplify_fixtures/intra_invfwd_cancel.map | simplify_fixtures/intra_invfwd_cancel.simp | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_parallel             | simplify_fixtures/neg_intra_parallel.map | simplify_fixtures/neg_intra_parallel.map | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_nonintra_neighbour   | simplify_fixtures/neg_intra_nonintra_neighbour.map | simplify_fixtures/neg_intra_nonintra_neighbour.map | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_diff_flag            | simplify_fixtures/neg_intra_diff_flag.map | simplify_fixtures/neg_intra_diff_flag.map | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_same_direction       | simplify_fixtures/neg_intra_same_direction.map | simplify_fixtures/neg_intra_same_direction.map | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_diff_func          | simplify_fixtures/neg_intra_diff_func.map | simplify_fixtures/neg_intra_diff_func.map | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_no_simpfi          | simplify_fixtures/neg_intra_no_simpfi.map | simplify_fixtures/neg_intra_no_simpfi.map | yes
-# BLOCKED(IntraMap/XphMap): neg_intra_no_simpif          | simplify_fixtures/neg_intra_no_simpif.map | simplify_fixtures/neg_intra_no_simpif.map | yes
-# BLOCKED(IntraMap/XphMap): xph_inverse_cancel       | simplify_fixtures/xph_inverse_cancel.map | simplify_fixtures/xph_inverse_cancel.simp | yes
-# BLOCKED(IntraMap/XphMap): neg_xph_parallel             | simplify_fixtures/neg_xph_parallel.map | simplify_fixtures/neg_xph_parallel.map | yes
-# BLOCKED(IntraMap/XphMap): neg_xph_nonxph_neighbour     | simplify_fixtures/neg_xph_nonxph_neighbour.map | simplify_fixtures/neg_xph_nonxph_neighbour.map | yes
-# BLOCKED(IntraMap/XphMap): neg_xph_not_opposite         | simplify_fixtures/neg_xph_not_opposite.map | simplify_fixtures/neg_xph_not_opposite.map | yes
-# BLOCKED(IntraMap/XphMap): intra_invfwd_cancel_tail       | simplify_fixtures/intra_invfwd_cancel_tail.map | simplify_fixtures/intra_invfwd_cancel_tail.simp |
+# --- Unsupported classes: fixtures exercising Mapping/Region classes not
+# --- yet ported (IntraMap, XphMap, StcResourceProfile) have been moved to
+# --- ../simplify_fixtures_unsupported/<class>/ so they are excluded from
+# --- both the simplify regression and the byte-exact round-trip corpus.
+# --- Move them back into simplify_fixtures/ and add manifest entries here
+# --- when those classes land. See simplify_fixtures_unsupported/README.md.
