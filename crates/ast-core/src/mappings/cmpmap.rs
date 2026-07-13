@@ -247,6 +247,49 @@ impl CmpMap {
         }
     }
 
+    /// Propagate the `IsSimple` flag that C's "Series CmpMaps in parallel"
+    /// merge (cmpmap.c:1577-1620) stamps on the trailing components of two
+    /// parallel series CmpMaps.
+    ///
+    /// When C re-fuses `parallel(A1;B1, A2;B2)` it forms
+    /// `new2 = CombineMaps(B1, B2, parallel)` and calls `astSimplify(new2)`,
+    /// which (via `astSimplify_`, mapping.c:24732) tags each nominated
+    /// component — here `B1` and `B2` — with `IsSimple`, *even when the
+    /// re-fusion itself makes no reduction and is discarded*. Because C
+    /// `astClone`s reference the same underlying objects, that tag survives on
+    /// the `B1`/`B2` still held by the original `parallel(A1;B1, A2;B2)`.
+    /// Rust's deep-clone simplification loses the tag, so this method re-applies
+    /// it: for a parallel CmpMap whose two children are binary series CmpMaps,
+    /// it flags each child's trailing (`map2`) component — but only when that
+    /// trailing component is *itself* a CmpMap — and recurses into it. C's
+    /// recursive `astSimplify` tags the compound components it nominates, not
+    /// bare leaf classes (a trailing `ZoomMap`, for example, keeps whatever
+    /// flag state it already carried), so restricting the tag to compound
+    /// trailing components matches the structure C emits.
+    pub(crate) fn flag_parallel_series_trailing(&mut self) {
+        if self.kind != Composition::Parallel {
+            return;
+        }
+        fn flag_child(child: &mut DynMapping) {
+            if let Some(cm) = child.as_any_mut().downcast_mut::<CmpMap>() {
+                if cm.kind == Composition::Series {
+                    // Only the trailing component that is itself a CmpMap is
+                    // tagged: C's recursive `astSimplify` on `parallel(B1, B2)`
+                    // nominates each *compound* branch component, not a bare
+                    // leaf (e.g. a trailing ZoomMap keeps its own flag state).
+                    if let Some(inner) = cm.second.as_any_mut().downcast_mut::<CmpMap>() {
+                        if !inner.has_been_simplified() {
+                            inner.set_has_been_simplified(true);
+                        }
+                        inner.flag_parallel_series_trailing();
+                    }
+                }
+            }
+        }
+        flag_child(&mut self.first);
+        flag_child(&mut self.second);
+    }
+
     /// Whether the first child's current Invert differs from the recorded
     /// snapshot — if so, the effective transform direction must flip.
     fn first_invert_changed(&self) -> bool {
@@ -737,6 +780,15 @@ impl Mapping for CmpMap {
             return Ok(Box::new(self.clone()));
         }
         crate::mappings::simplify::simplify_mapping(self)
+    }
+
+    fn map_merge(
+        &self,
+        ctx: &mut crate::mappings::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        crate::mappings::simplify::cmp_map_merge(self, ctx, where_, series)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

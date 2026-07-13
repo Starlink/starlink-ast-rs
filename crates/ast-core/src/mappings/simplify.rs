@@ -222,7 +222,38 @@ pub(crate) fn flatten(
     }
 
     // Leaf: clone via simplified(), then normalise the invert flag.
-    let mut cloned = mapping.simplified()?;
+    //
+    // C `cmpmap.c::MapList` does *not* simplify atomic component Mappings as
+    // it decomposes the tree — leaves enter the nominate loop in their stored
+    // form, and each class's own `astMapMerge` performs any reduction in
+    // context (where it can see its neighbours). `WinMap` in particular only
+    // narrows to a `ShiftMap` as the *final* step of its `MapMerge`, after the
+    // swap-and-seek that may absorb its scales into an adjacent MatrixMap
+    // (`WinMat`, winmap.c:2793).
+    //
+    // `WinMap::simplified()` narrows an all-unit-scale WinMap to a `ShiftMap`
+    // using the `astEQUAL` tolerance, so a WinMap whose scales are *within
+    // tolerance* of 1.0 but not exactly 1.0 (e.g. `0.99999999997788802` from a
+    // celestial fiducial round-trip) is collapsed to a `ShiftMap` here, before
+    // the nominate loop ever sees it adjacent to a MatrixMap. That destroys the
+    // residual scale that `WinMat` is supposed to fold into the matrix. In that
+    // specific window we defer to the nominate loop (matching C, which keeps the
+    // WinMap atomic through `astMapList` and only narrows it via `win_map_merge`
+    // after the swap-and-seek). Exactly-unit and genuinely non-unit WinMaps keep
+    // the normal leaf reduction, which the rest of the engine relies on (e.g.
+    // an identity WinMap must still collapse so it vanishes against a neighbour).
+    let defer_winmap = mapping
+        .as_any()
+        .downcast_ref::<WinMap>()
+        .and_then(|w| super::winmap::extract_linear_params(w, false))
+        .is_some_and(|(_, scales)| {
+            scales.iter().any(|&s| s != 1.0) && scales.iter().all(|&s| ast_equal(s, 1.0))
+        });
+    let mut cloned = if defer_winmap {
+        mapping.clone_box()
+    } else {
+        mapping.simplified()?
+    };
     // The leaf's own (intrinsic) Invert state, independent of any inversion
     // imposed by a parent CmpMap. This is preserved as the element's
     // `orig_inv` so `reconstruct` can serialise the child in the same
@@ -412,6 +443,58 @@ impl MergeCtx {
 /// — the index of the first modified element, always the nominated index
 /// for a direct pairwise merge — or `None` when the pair cannot merge
 /// (C's `-1`).
+/// `map_merge` for a nominated `CmpMap`, mirroring the "Simplify the CmpMap on
+/// its own" step at the head of C `cmpmap.c::MapMerge` (1436-1475).
+///
+/// Before considering its neighbours, C recursively `astSimplify`s the
+/// nominated CmpMap; if that produced a different Mapping it replaces the
+/// component in the list (with the new Invert flag) and returns the modified
+/// index. `astSimplify_` (mapping.c:24732) tags every result it returns with
+/// `IsSimple`, so this self-simplify is also how a CmpMap left atomic by the
+/// nominate loop comes to carry `IsSimp = 1` in the native dump.
+///
+/// The default `map_merge` skips this recursion; performing it here matches C
+/// and is structure-preserving: a CmpMap already in normal form simplifies to
+/// an equal CmpMap (only the flag is set). The `has_been_simplified`
+/// short-circuit in `CmpMap::simplified` plus the `SimplifyGuard` cycle check
+/// prevent re-entry, and on no structural change we fall through to
+/// `default_map_merge` so the neighbour-merge behaviour is unchanged.
+pub(crate) fn cmp_map_merge(
+    cmp: &CmpMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if !cmp.has_been_simplified() {
+        let eff_inv = ctx.entry(where_).1;
+
+        // Simplify the component in its effective applied direction, exactly as
+        // C sets `astSetInvert(map, invert_list[where])` before `astSimplify`.
+        let mut oriented = cmp.clone_box();
+        if eff_inv {
+            oriented.invert();
+        }
+        let fp_before = mapping_fingerprint(oriented.as_ref());
+
+        if let Ok(simplified) = oriented.simplify() {
+            // C compares pointers (`new != map`); we compare structural
+            // fingerprints. A change replaces the component (the new Invert
+            // flag is split back out into the effective-direction bool).
+            if mapping_fingerprint(simplified.as_ref()) != fp_before {
+                let new_inv = simplified.is_inverted();
+                let mut fwd = simplified;
+                if new_inv {
+                    fwd.invert();
+                }
+                ctx.set_pair_single(where_, (fwd, new_inv, false));
+                return Some(where_);
+            }
+        }
+    }
+
+    default_map_merge(ctx, where_, series)
+}
+
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
     let i = where_;
     let list = &mut ctx.list;
@@ -2861,6 +2944,35 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool, bool)>)
             continue;
         }
 
+        // C commits the distribution as a parallel-of-series CmpMap
+        // (`astCmpMap( simp1, simp2, 0 )`, winmap.c:1378). The *next* time the
+        // outer simplify loop nominates that CmpMap, CmpMap `MapMerge`
+        // re-simplifies it (`astSimplify(map)`, cmpmap.c:1438); within that
+        // recursive simplify the two series branches sit adjacent in a parallel
+        // list and the "Series CmpMaps in parallel" merge (cmpmap.c:1577-1620)
+        // re-combines them: it pairs the *leading* component of each branch in
+        // parallel and the *trailing* component of each branch in parallel,
+        // then composes the two results in series. When the leading components
+        // are per-axis linear maps (here the celestial branch's unit-scale
+        // ShiftMap and the spectral branch's WinMap), the leading parallel pair
+        // fuses into a single n-axis WinMap pulled in front of the parallel
+        // block — so the net visible form C settles on is the *series* form,
+        // not the distributed parallel one.
+        //
+        // Rust runs the distribution as a stall handler outside the per-class
+        // nominate loop, so the parallel CmpMap is never handed back through
+        // CmpMap `MapMerge`'s self-simplify. We therefore perform that exact
+        // "Series CmpMaps in parallel" re-combination here, on the two
+        // simplified branches, and commit the resulting series form when it is
+        // simpler. If the branches are not both binary series CmpMaps, or the
+        // re-combination yields no reduction, we fall back to committing the
+        // parallel form (as C would leave it in those cases).
+        if let Some(recombined) = recombine_distributed_branches(&new_branches) {
+            list.remove(i + 1);
+            list[i] = (recombined, false, false);
+            return true;
+        }
+
         // Rebuild as parallel CmpMap.
         let Ok(new_par) = reconstruct(new_branches, false) else {
             i += 1;
@@ -2873,6 +2985,81 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool, bool)>)
         return true;
     }
     false
+}
+
+/// C `cmpmap.c` "Series CmpMaps in parallel" re-combination (1577-1620),
+/// scoped to the two simplified branches produced by the WinMap parallel
+/// distribution.
+///
+/// Given two branches `b1`, `b2` that are each binary series CmpMaps
+/// `b1 = (A1 ; B1)`, `b2 = (A2 ; B2)`, form
+/// `(A1 ‖ A2) ; (B1 ‖ B2)`, simplify each parallel half, and — if at least
+/// one half simplified (C's `simpler` test) — return the series composition
+/// of the two simplified halves. Returns `None` when the branches are not
+/// both binary series CmpMaps or when neither half simplifies (so the caller
+/// keeps the parallel form, exactly as C does).
+fn recombine_distributed_branches(branches: &[(DynMapping, bool, bool)]) -> Option<DynMapping> {
+    if branches.len() != 2 {
+        return None;
+    }
+
+    // Each branch must be a forward, binary series CmpMap. The branches are
+    // produced in forward orientation (effective_inv == false) by the
+    // distribution loop, so the leaf-level effective inverts are exactly the
+    // children's recorded inv_a/inv_b XOR their own stored Invert (matching
+    // `flatten`'s `child_inv_*` computation with `cmp_inv == false`).
+    let split = |entry: &(DynMapping, bool, bool)| -> Option<(DynMapping, bool, DynMapping, bool)> {
+        let cmp = entry.0.as_any().downcast_ref::<CmpMap>()?;
+        if cmp.composition() != Composition::Series {
+            return None;
+        }
+        let a_inv = cmp.inv_a() != cmp.first().is_inverted();
+        let b_inv = cmp.inv_b() != cmp.second().is_inverted();
+        let mut a = cmp.first().clone_box();
+        if a.is_inverted() {
+            a.invert();
+        }
+        let mut b = cmp.second().clone_box();
+        if b.is_inverted() {
+            b.invert();
+        }
+        Some((a, a_inv, b, b_inv))
+    };
+
+    let (a1, a1_inv, b1, b1_inv) = split(&branches[0])?;
+    let (a2, a2_inv, b2, b2_inv) = split(&branches[1])?;
+
+    // new1 = A1 ‖ A2, new2 = B1 ‖ B2 (C CombineMaps with series == 0).
+    let new1 = reconstruct(vec![(a1, a1_inv, false), (a2, a2_inv, false)], false).ok()?;
+    let new2 = reconstruct(vec![(b1, b1_inv, false), (b2, b2_inv, false)], false).ok()?;
+
+    // Simplify each half and detect whether either changed (C's `simpler`).
+    let fp1_before = mapping_fingerprint(new1.as_ref());
+    let fp2_before = mapping_fingerprint(new2.as_ref());
+    let simp1 = new1.simplify().ok()?;
+    let mut simp2 = new2.simplify().ok()?;
+    let simpler = mapping_fingerprint(simp1.as_ref()) != fp1_before
+        || mapping_fingerprint(simp2.as_ref()) != fp2_before;
+    if !simpler {
+        return None;
+    }
+
+    // When `simp2` settles as a parallel CmpMap of two series branches (the
+    // common case: the celestial and spectral chains stay side-by-side), C's
+    // recursive simplify has run the "Series CmpMaps in parallel" merge on it.
+    // That merge `astSimplify`s the trailing component of each branch and tags
+    // it `IsSimple` as a side effect, even though the re-fusion is discarded
+    // here. Rust's deep-clone simplify dropped that side-effect tag; re-apply
+    // it so the nested branch CmpMaps carry `IsSimp = 1` exactly as the C dump
+    // does (e.g. the celestial `WcsMap`-wrapper sub-chain).
+    if let Some(cm) = simp2.as_any_mut().downcast_mut::<CmpMap>() {
+        cm.flag_parallel_series_trailing();
+    }
+
+    // Compose the two simplified halves in series (C astCmpMap(simp1, simp2, 1)).
+    CmpMap::new(simp1, simp2, Composition::Series)
+        .ok()
+        .map(|c| Box::new(c) as DynMapping)
 }
 
 /// Reconstruct a `CmpMap` tree (or single mapping) from a flat list.

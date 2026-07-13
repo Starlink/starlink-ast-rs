@@ -37,6 +37,7 @@ unsafe extern "C" {
     fn astPalDvxv(va: *const f64, vb: *const f64, vc: *mut f64);
     fn astPalDvdv(va: *const f64, vb: *const f64) -> f64;
     fn astPalDvn(v: *const f64, uv: *mut f64, vm: *mut f64);
+    fn astPalDmat(n: i32, a: *mut f64, y: *mut f64, d: *mut f64, jf: *mut i32, iw: *mut i32);
 
     // -- Coordinate conversions --
     fn astPalGaleq(dl: f64, db: f64, dr: *mut f64, dd: *mut f64);
@@ -220,6 +221,35 @@ pub(crate) fn dvn(v: &[f64; 3]) -> ([f64; 3], f64) {
     let mut vm = 0.0;
     unsafe { astPalDvn(v.as_ptr(), uv.as_mut_ptr(), &mut vm) };
     (uv, vm)
+}
+
+/// Matrix inversion and linear-system solve, wrapping `palDmat`.
+///
+/// `a` is an `n×n` matrix in row-major order and `y` is the right-hand
+/// side vector of length `n`. On success (returns `true`), `a` is replaced
+/// in place by its inverse and `y` by the solution of `a·x = y` (for the
+/// original `a`). Returns `false` when the matrix is singular
+/// (`palDmat`'s `jf != 0`, i.e. a pivot magnitude below its internal
+/// `SFA = 1e-20`); in that case the contents of `a` and `y` are
+/// unspecified. `a.len()` must equal `n*n` and `y.len()` must equal `n`.
+pub(crate) fn dmat(n: usize, a: &mut [f64], y: &mut [f64]) -> bool {
+    debug_assert_eq!(a.len(), n * n, "matrix must be n*n");
+    debug_assert_eq!(y.len(), n, "rhs must have length n");
+    let mut d = 0.0_f64;
+    let mut jf = 0_i32;
+    // Pivot bookkeeping scratch used internally by palDmat.
+    let mut iw = vec![0_i32; n];
+    unsafe {
+        astPalDmat(
+            n as i32,
+            a.as_mut_ptr(),
+            y.as_mut_ptr(),
+            &mut d,
+            &mut jf,
+            iw.as_mut_ptr(),
+        );
+    }
+    jf == 0
 }
 
 // ---------------------------------------------------------------------------

@@ -1189,110 +1189,42 @@ fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
     inv
 }
 
-/// Singularity threshold from `palDmat` (pal/palDmat.c). The matrix is
-/// declared singular when either a column's largest pivot magnitude or the
-/// running determinant magnitude falls below this value. C's full-matrix
-/// inverse (`InvertMatrix` → `palDmat`, matrixmap.c:1582) uses this exact
-/// criterion, so a near-singular matrix whose determinant is below `SFA`
-/// gets *no* inverse stored (and hence no `IM` cards on dump).
-const PAL_DMAT_SFA: f64 = 1e-20;
-
-/// Compute the inverse of a square matrix using Gauss-Jordan elimination
-/// with partial pivoting.
+/// Compute the inverse of a square matrix by delegating to the vendored
+/// PAL routine `palDmat` (via [`crate::pal::dmat`]).
 ///
-/// Returns an error if the matrix is singular by `palDmat`'s `SFA`
-/// criterion (see [`PAL_DMAT_SFA`]).
+/// C `matrixmap.c::InvertMatrix` (matrixmap.c:1436) inverts a full matrix
+/// with `palDmat`, and AST stores that result verbatim in a MatrixMap's
+/// `IMn` dump fields. Byte-exact serialisation therefore requires the
+/// *same* arithmetic, so we call the same C routine rather than a
+/// Rust-side re-derivation (an independent Gauss-Jordan gives an inverse
+/// equal to ~1e-16 but rounds near-zero elements differently, which is
+/// visible in the native dump — e.g. `IM5` of a galactic rotation matrix).
+///
+/// Returns an error when `palDmat` reports the matrix singular (a pivot
+/// magnitude below its internal `SFA = 1e-20`). `palDmat` also solves
+/// `A·Y = X`; for a pure inverse the right-hand side is the zero vector,
+/// so the solution is carried but unused.
 fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
     let n = m.nrows();
     debug_assert_eq!(n, m.ncols(), "matrix must be square");
 
-    let singular = || {
-        AstError::new(
+    // Flatten to the row-major `n*n` block palDmat mutates in place.
+    let mut a: Vec<f64> = Vec::with_capacity(n * n);
+    for row in 0..n {
+        for col in 0..n {
+            a.push(m[[row, col]]);
+        }
+    }
+    let mut y: Vec<f64> = vec![0.0; n];
+
+    if !crate::pal::dmat(n, &mut a, &mut y) {
+        return Err(AstError::new(
             ErrorCode::Nodef,
             "matrix is singular and cannot be inverted",
-        )
-    };
-
-    // Build augmented matrix [M | I].
-    let mut aug: Vec<f64> = Vec::with_capacity(n * 2 * n);
-    for row in 0..n {
-        for col in 0..n {
-            aug.push(m[[row, col]]);
-        }
-        for col in 0..n {
-            aug.push(if row == col { 1.0 } else { 0.0 });
-        }
+        ));
     }
 
-    // Helper closures to index into the flat augmented matrix.
-    let idx = |r: usize, c: usize| r * (2 * n) + c;
-
-    // Running determinant; mirrors palDmat's `*d` (sign flips on each row
-    // swap, multiplied by the pivot per column).
-    let mut det = 1.0_f64;
-
-    for col in 0..n {
-        // Find pivot row (partial pivoting): the row with the largest
-        // magnitude in this column (palDmat's `amx`/`imx`).
-        let mut pivot_row = col;
-        let mut amx = aug[idx(col, col)].abs();
-        for r in (col + 1)..n {
-            let t = aug[idx(r, col)].abs();
-            if t > amx {
-                amx = t;
-                pivot_row = r;
-            }
-        }
-
-        // palDmat: if the largest available pivot is below SFA, singular.
-        if amx < PAL_DMAT_SFA {
-            return Err(singular());
-        }
-
-        // Swap rows if needed (flips the determinant sign).
-        if pivot_row != col {
-            for c in 0..(2 * n) {
-                aug.swap(idx(col, c), idx(pivot_row, c));
-            }
-            det = -det;
-        }
-
-        // Accumulate the determinant and apply palDmat's second SFA gate.
-        let pivot = aug[idx(col, col)];
-        det *= pivot;
-        if det.abs() < PAL_DMAT_SFA {
-            return Err(singular());
-        }
-
-        // Scale pivot row so that the pivot element becomes 1.
-        for c in 0..(2 * n) {
-            aug[idx(col, c)] /= pivot;
-        }
-
-        // Eliminate column `col` from all other rows.
-        for row in 0..n {
-            if row != col {
-                let factor = aug[idx(row, col)];
-                if factor == 0.0 {
-                    continue;
-                }
-                for c in 0..(2 * n) {
-                    let sub = factor * aug[idx(col, c)];
-                    aug[idx(row, c)] -= sub;
-                }
-            }
-        }
-    }
-
-    // Extract the right half of the augmented matrix.
-    let mut inv_flat = Vec::with_capacity(n * n);
-    for row in 0..n {
-        for col in n..(2 * n) {
-            inv_flat.push(aug[idx(row, col)]);
-        }
-    }
-
-    Ok(Array2::from_shape_vec((n, n), inv_flat).unwrap())
+    Ok(Array2::from_shape_vec((n, n), a).unwrap())
 }
 
 #[cfg(test)]
