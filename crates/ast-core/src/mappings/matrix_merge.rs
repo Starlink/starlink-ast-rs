@@ -21,8 +21,9 @@
 
 use ndarray::Array2;
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::mappings::helpers::ast_equal;
+use crate::mappings::helpers::{ast_equal, is_bad};
 
 use super::matrix::{MatrixMap, is_diagonal};
 use super::perm::PermMap;
@@ -633,10 +634,145 @@ fn swap_pair(
         // absorbs the WinMap scale into the matrix, leaving a unit-scale
         // WinMap. `win_mat` takes the WinMap index, which is `1 - imm`.
         SwapClass::Win => super::winmap_merge::win_mat(pair, 1 - imm),
-        // MatPermSwap is ported in the next increment; decline for now so the
-        // caller falls back to the shared helpers.
-        SwapClass::Perm => None,
+        SwapClass::Perm => mat_perm_swap(pair, imm),
     }
+}
+
+/// C `matrixmap.c::MatPermSwap` (2755): swap a MatrixMap and a PermMap,
+/// producing an equivalent (PermMap, MatrixMap) pair in the opposite order.
+/// `imm` is the index (0 or 1) of the MatrixMap within the pair.
+///
+/// The new MatrixMap is built by permuting the rows/columns of the supplied
+/// matrix through the PermMap's connected links (constant axes become unit
+/// rows), and the PermMap's constants are rescaled by the matrix's diagonal
+/// scaling terms (which `CanSwap`/`ScalingRowCol` guaranteed exist). Both
+/// results are returned simplified and forward, matching C.
+fn mat_perm_swap(
+    pair: [(DynMapping, bool, bool); 2],
+    imm: usize,
+) -> Option<[(DynMapping, bool, bool); 2]> {
+    let mat_entry = &pair[imm];
+    let perm_entry = &pair[1 - imm];
+    let mm = mat_entry.0.as_any().downcast_ref::<MatrixMap>()?;
+    let mat_inv = mat_entry.1;
+    let pm = perm_entry.0.as_any().downcast_ref::<PermMap>()?;
+    let perm_inv = perm_entry.1;
+
+    // Effective forward matrix of the MatrixMap (full form), row-major.
+    let matrix = eff_matrix(mm, mat_inv)?;
+    let nin_p = if perm_inv { pm.nout() } else { pm.nin() };
+    let nout_p = if perm_inv { pm.nin() } else { pm.nout() };
+
+    // 0-based perm arrays + constants (C PermGet).
+    let (outperm, inperm, mut consts) = perm_get(pm, perm_inv);
+    let nin = inperm.len(); // == nin_p
+    let nout = outperm.len(); // == nout_p
+    debug_assert_eq!(nin, nin_p);
+    debug_assert_eq!(nout, nout_p);
+
+    let out_mat: Array2<f64> = if imm == 0 {
+        // MatrixMap applied first. New matrix is nout×nout.
+        let mut om = Array2::<f64>::zeros((nout, nout));
+        for i in 0..nout {
+            let row = outperm[i];
+            if row >= 0 && (row as usize) < nin {
+                let row = row as usize;
+                for k in 0..nout {
+                    let col = outperm[k];
+                    om[[i, k]] = if col >= 0 && (col as usize) < nin {
+                        matrix[[row, col as usize]]
+                    } else {
+                        0.0
+                    };
+                }
+            } else {
+                // Constant output → unit row.
+                om[[i, i]] = 1.0;
+            }
+        }
+        // Rescale PermMap input constants by the matrix diagonal term
+        // (divide, since the inverse matrix no longer scales them).
+        for i in 0..nin {
+            if inperm[i] < 0 {
+                let ci = (-inperm[i] - 1) as usize;
+                let c = consts[ci];
+                if !is_bad(c) {
+                    let matel = matrix[[i, i]];
+                    consts[ci] = if matel != 0.0 && !is_bad(matel) {
+                        c / matel
+                    } else {
+                        BAD_VALUE
+                    };
+                }
+            }
+        }
+        om
+    } else {
+        // PermMap applied first. New matrix is nin×nin.
+        let mut om = Array2::<f64>::zeros((nin, nin));
+        for i in 0..nin {
+            let row = inperm[i];
+            if row >= 0 && (row as usize) < nout {
+                let row = row as usize;
+                for k in 0..nin {
+                    let col = inperm[k];
+                    om[[i, k]] = if col >= 0 && (col as usize) < nout {
+                        matrix[[row, col as usize]]
+                    } else {
+                        0.0
+                    };
+                }
+            } else {
+                om[[i, i]] = 1.0;
+            }
+        }
+        // Rescale PermMap output constants by the matrix diagonal term
+        // (multiply, since the forward matrix no longer scales them).
+        for i in 0..nout {
+            if outperm[i] < 0 {
+                let ci = (-outperm[i] - 1) as usize;
+                let c = consts[ci];
+                if !is_bad(c) {
+                    let matel = matrix[[i, i]];
+                    consts[ci] = if !is_bad(matel) { c * matel } else { BAD_VALUE };
+                }
+            }
+        }
+        om
+    };
+
+    let mmnew = MatrixMap::new(out_mat).ok()?;
+
+    // Rebuild the PermMap. Rust `PermMap::new` uses 1-based connected links
+    // with negative constant refs; `perm_get` returned 0-based links, so add
+    // 1 back to the non-negative entries.
+    let to_one_based = |arr: &[i64]| -> Vec<i64> {
+        arr.iter()
+            .map(|&p| if p >= 0 { p + 1 } else { p })
+            .collect()
+    };
+    let pmnew = PermMap::new(&to_one_based(&inperm), &to_one_based(&outperm), &consts).ok()?;
+
+    // Simplify both, recording their resulting Invert flags (C stores each in
+    // its forward direction with the simplified Invert). The PermMap takes the
+    // MatrixMap's slot (imm) and the MatrixMap takes the PermMap's slot.
+    let sp = pmnew.simplified().ok()?;
+    let sp_inv = sp.is_inverted();
+    let mut sp_fwd = sp;
+    if sp_inv {
+        sp_fwd.invert();
+    }
+    let sm = mmnew.simplified().ok()?;
+    let sm_inv = sm.is_inverted();
+    let mut sm_fwd = sm;
+    if sm_inv {
+        sm_fwd.invert();
+    }
+
+    let mut out: [Option<(DynMapping, bool, bool)>; 2] = [None, None];
+    out[imm] = Some((sp_fwd, sp_inv, false));
+    out[1 - imm] = Some((sm_fwd, sm_inv, false));
+    Some([out[0].take().unwrap(), out[1].take().unwrap()])
 }
 
 /// Step 4: speculative swap with a neighbour, kept iff a swapped map then
