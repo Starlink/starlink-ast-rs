@@ -267,7 +267,31 @@ pub(crate) fn flatten(
     // `orig_inv` so `reconstruct` can serialise the child in the same
     // orientation C does (C keeps each component's original Invert and
     // records the effective direction separately in InvA/InvB).
-    let orig_inv = cloned.is_inverted();
+    //
+    // C `astMapList` appends a leaf at the orientation it is *stored* in the
+    // tree — it does not simplify leaves (per-leaf reduction happens later in
+    // the nominate loop). Some classes' `simplified()` normalise the Invert
+    // flag away (e.g. `PermMap::simplified` returns the swapped forward form
+    // of an inverted PermMap). When that happens for a leaf whose transform
+    // is otherwise unchanged by simplification, honour the *original*
+    // orientation so the reconstructed child serialises with the same Invert
+    // flag C emits. We detect "orientation-only normalisation" by comparing
+    // the simplified clone (re-inverted to the original orientation) against
+    // the original mapping.
+    let mut orig_inv = cloned.is_inverted();
+    let original_inverted = mapping.is_inverted();
+    if orig_inv != original_inverted {
+        // The clone's Invert differs from the original. If flipping the clone
+        // back to the original orientation yields a mapping equal to the
+        // original, the only change was orientation normalisation — keep the
+        // original orientation (matching C's stored-orientation leaf).
+        let mut probe = cloned.clone_box();
+        probe.invert();
+        if probe.equal(mapping) {
+            cloned = probe;
+            orig_inv = original_inverted;
+        }
+    }
     let effective_inv = inv != orig_inv;
     // Reset the clone to forward state; the bool carries inversion.
     if cloned.is_inverted() {
