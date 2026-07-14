@@ -226,8 +226,16 @@ impl CmpMap {
     pub(crate) fn invert_into_structure(&mut self) {
         match self.kind {
             Composition::Parallel => {
-                self.inv_a = !self.inv_a;
-                self.inv_b = !self.inv_b;
+                // `(A ‖ B)^-1 = A^-1 ‖ B^-1`: the inversion distributes to the
+                // two children. The C reference pushes it all the way down to
+                // the deepest parallel CmpMap that directly wraps leaf
+                // Mappings — intermediate parallel CmpMaps stay forward and
+                // the innermost one carries the `InvA`/`InvB` flags. Mirror
+                // that by recursing into a parallel-CmpMap child (so the
+                // inversion keeps descending) and only recording the flag flip
+                // at the level whose child is not itself a parallel CmpMap.
+                Self::invert_parallel_child(&mut self.first, &mut self.inv_a);
+                Self::invert_parallel_child(&mut self.second, &mut self.inv_b);
             }
             Composition::Series => {
                 std::mem::swap(&mut self.first, &mut self.second);
@@ -236,6 +244,20 @@ impl CmpMap {
                 self.inv_b = new_inv_b;
             }
         }
+    }
+
+    /// Apply the inversion of one parallel child. If the child is itself a
+    /// parallel CmpMap, recurse (pushing the inversion further down its
+    /// structure) and leave this level's recorded flag unchanged. Otherwise
+    /// record the inversion in this level's flag (`inv` is toggled).
+    fn invert_parallel_child(child: &mut DynMapping, inv: &mut bool) {
+        if let Some(cm) = child.as_any_mut().downcast_mut::<CmpMap>() {
+            if cm.kind == Composition::Parallel {
+                cm.invert_into_structure();
+                return;
+            }
+        }
+        *inv = !*inv;
     }
 
     /// Set the *stored* Invert orientation of the first child to `orig`,
