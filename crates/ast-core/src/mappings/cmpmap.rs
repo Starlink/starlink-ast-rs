@@ -73,6 +73,12 @@ pub struct CmpMap {
     /// `RestrictedSimplify` flag (C `ReSimp`): when set, `simplify`
     /// nominates only component Mappings whose `AllowSimplify` flag is set.
     restricted_simplify: bool,
+    /// Serialisation-only `IsSimple` tag (C `IsSimp`), independent of the
+    /// merge-guard `has_been_simplified`. Raised when this CmpMap is the
+    /// (changed) result of an `astSimplify` on a component the outer merge
+    /// keeps opaque; cleared by any inversion (`invert` /
+    /// `invert_into_structure`), mirroring C `astSetInvert` → `astClearIsSimple`.
+    is_simple_serial: bool,
 }
 
 impl CmpMap {
@@ -110,6 +116,7 @@ impl CmpMap {
             inv_a,
             inv_b,
             restricted_simplify: false,
+            is_simple_serial: false,
         })
     }
 
@@ -121,6 +128,11 @@ impl CmpMap {
     /// Set (or clear) the `RestrictedSimplify` flag (C `ReSimp`).
     pub(crate) fn set_restricted_simplify(&mut self, flag: bool) {
         self.restricted_simplify = flag;
+    }
+
+    /// Raise only the serialisation `IsSimp` tag (leaves the merge guard).
+    pub(crate) fn set_is_simple_serial(&mut self, flag: bool) {
+        self.is_simple_serial = flag;
     }
 
     /// The first component mapping.
@@ -254,6 +266,10 @@ impl CmpMap {
         // the wrong `Fwd`/`Inv` after being absorbed inverted during
         // reconstruct.
         std::mem::swap(&mut self.tran_forward, &mut self.tran_inverse);
+        // Inversion clears the `IsSimple` dump tag (C `astSetInvert` →
+        // `astClearIsSimple`); `invert_into_structure` applies an inversion by
+        // rewriting the structure, so it must clear the tag too.
+        self.is_simple_serial = false;
     }
 
     /// Apply the inversion of one parallel child. If the child is itself a
@@ -741,6 +757,7 @@ impl Clone for CmpMap {
             inv_a: self.inv_a,
             inv_b: self.inv_b,
             restricted_simplify: self.restricted_simplify,
+            is_simple_serial: self.is_simple_serial,
         }
     }
 }
@@ -786,8 +803,10 @@ impl Mapping for CmpMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag (C astSetInvert clears IsSimple).
+        // Inversion clears both the merge-guard and the dump tag (C astSetInvert
+        // clears IsSimple).
         self.has_been_simplified = false;
+        self.is_simple_serial = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -904,6 +923,16 @@ impl Mapping for CmpMap {
 
     fn set_has_been_simplified(&mut self, flag: bool) {
         self.has_been_simplified = flag;
+        // The merge guard also raises the dump tag (C `astSetIsSimple` is one
+        // flag). Clearing the guard leaves the dump tag alone; `invert` clears
+        // both explicitly.
+        if flag {
+            self.is_simple_serial = true;
+        }
+    }
+
+    fn dump_is_simple(&self) -> bool {
+        self.has_been_simplified || self.is_simple_serial
     }
 
     fn has_forward(&self) -> bool {
@@ -1013,6 +1042,7 @@ impl Serializable for CmpMap {
             inv_a,
             inv_b,
             restricted_simplify: false,
+            is_simple_serial: false,
         };
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;

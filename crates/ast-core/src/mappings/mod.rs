@@ -383,6 +383,20 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// `Mapping::simplify` sets it `true` on its result; `invert()` clears it.
     fn set_has_been_simplified(&mut self, _flag: bool) {}
 
+    /// Serialisation-only view of the `IsSimp` token.
+    ///
+    /// C's `IsSimple` both blocks a redundant `astSimplify` recursion and is
+    /// dumped as `IsSimp`. In this port the first role is
+    /// [`Mapping::has_been_simplified`], which also gates the merge/decompose
+    /// machinery. The two roles diverge for a compound component C tags via
+    /// `astSimplify` (mapping.c:24759) but that our engine must still be free to
+    /// decompose during a parent's `flatten`. By default this mirrors
+    /// `has_been_simplified`; [`CmpMap`] overrides it to add an independent
+    /// dump-only tag.
+    fn dump_is_simple(&self) -> bool {
+        self.has_been_simplified()
+    }
+
     /// Whether this mapping carries the `AllowSimplify` flag (C `AlSimp`,
     /// mapping.h `AST__ALLOW_SIMPLIFY_FLAG`). Only consulted when the
     /// enclosing CmpMap has `RestrictedSimplify` set: under a restricted

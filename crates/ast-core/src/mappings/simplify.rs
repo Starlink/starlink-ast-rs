@@ -254,6 +254,11 @@ pub(crate) fn flatten(
     } else {
         mapping.simplified()?
     };
+    // Whether this leaf's own `astSimplify` actually reduced it (C's
+    // `smap != map` pointer test). Only a *changed* compound component is left
+    // tagged with `IsSimple` in C's dump; an unchanged one is a
+    // CombineMaps-reconstruction wrapper C never re-tags.
+    let leaf_changed = !defer_winmap && !cloned.equal(mapping);
     // Preserve the AllowSimplify flag (C `AlSimp`) across the leaf's own
     // simplification: `astMapList` keeps each component's flags, and a
     // restricted parent CmpMap relies on it to decide which leaves may be
@@ -313,6 +318,14 @@ pub(crate) fn flatten(
         cloned = cloned.simplified()?;
         effective_inv = false;
         orig_inv = cloned.is_inverted();
+    }
+
+    // C's `astSimplify_` (mapping.c:24759) tags every result with `IsSimple`.
+    // A changed opaque (opposite-kind) CmpMap component carries that tag into
+    // the dump; raise the serialisation-only tag (not the merge guard, which
+    // would stop a parent `flatten` from decomposing it).
+    if leaf_changed && let Some(cm) = cloned.as_any_mut().downcast_mut::<CmpMap>() {
+        cm.set_is_simple_serial(true);
     }
 
     Ok(vec![(cloned, effective_inv, orig_inv)])
@@ -589,6 +602,13 @@ pub(crate) fn cmp_map_merge(
                 let mut fwd = simplified;
                 if new_inv {
                     fwd.invert();
+                }
+                // C `astSimplify_` (mapping.c:24759) tagged this nominated
+                // component's reduced result with `IsSimple`; carry the
+                // serialisation-only tag on a CmpMap result (the `fwd.invert()`
+                // above already cleared any prior tag, so set it after).
+                if let Some(cm) = fwd.as_any_mut().downcast_mut::<CmpMap>() {
+                    cm.set_is_simple_serial(true);
                 }
                 ctx.set_pair_single(where_, (fwd, new_inv, false));
                 return Some(where_);

@@ -65,7 +65,7 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
             Some("Number of output coordinates".to_string()),
         );
     }
-    if mapping.has_been_simplified() {
+    if mapping.dump_is_simple() {
         node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
     }
     // RestrictedSimplify (C `ReSimp`) is a base-Mapping attribute but only
