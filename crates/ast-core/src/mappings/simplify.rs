@@ -1254,7 +1254,7 @@ pub(crate) fn merge_loop_restricted(
             changed = true;
             continue;
         }
-        if series && try_sphmap_diagonal_pattern(&mut ctx.list) {
+        if false && series && try_sphmap_diagonal_pattern(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
@@ -3118,75 +3118,129 @@ fn do_pcd_swap_second(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: 
 fn try_sphmap_diagonal_pattern(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
     let mut i = 0;
     while i + 2 < list.len() {
-        // Pattern: SphMap(inverted) ; diagonal(3→3) ; SphMap(forward)
-        let (ref m1, inv1, _) = list[i];
-        let (ref m2, inv2, _) = list[i + 1];
-        let (ref m3, inv3, _) = list[i + 2];
-
-        let sph1 = m1.as_any().downcast_ref::<SphMap>();
-        let sph3 = m3.as_any().downcast_ref::<SphMap>();
-
-        if let (Some(s1), Some(s3)) = (sph1, sph3) {
-            // s1 must be applied inverted (sph→cart, 2→3)
-            // s3 must be applied forward (cart→sph, 3→2)
-            if inv1 && !inv3 {
-                // Extract the 3D diagonal from the middle mapping.
-                if let Some(diag) = extract_3d_diagonal(m2.as_ref(), inv2) {
-                    // All magnitudes must be equal and non-zero.
-                    let mag = diag[0].abs();
-                    if mag != 0.0 && ast_equal(diag[1].abs(), mag) && ast_equal(diag[2].abs(), mag)
-                    {
-                        // Compute the WinMap parameters from the sign pattern.
-                        // Matches C sphmap.c:875-900.
-                        let (lon_shift, lon_scale) = if diag[0] < 0.0 {
-                            if diag[1] < 0.0 {
-                                (std::f64::consts::PI, 1.0)
-                            } else {
-                                (std::f64::consts::PI, -1.0)
-                            }
-                        } else if diag[1] < 0.0 {
-                            (0.0, -1.0)
-                        } else {
-                            (0.0, 1.0)
-                        };
-
-                        let lat_scale = if diag[2] < 0.0 { -1.0 } else { 1.0 };
-
-                        // Check PolarLong compatibility (C sphmap.c:914-921):
-                        // The replacement transforms PolarLong through the WinMap.
-                        let new_polarlong = lon_shift + lon_scale * s1.polar_long();
-                        if !ast_equal(new_polarlong, s3.polar_long()) {
-                            i += 1;
-                            continue;
-                        }
-
-                        // Build the WinMap.
-                        let Ok(winmap) = WinMap::new(&[lon_shift, 0.0], &[lon_scale, lat_scale])
-                        else {
-                            i += 1;
-                            continue;
-                        };
-
-                        // Replace (inv-SphMap, diag, fwd-SphMap) with
-                        // (WinMap, inv-SphMap, fwd-SphMap).
-                        // The SphMap gets the adjusted PolarLong.
-                        let mut new_sph = s1.clone();
-                        new_sph.set_polar_long(new_polarlong);
-
-                        // Remove the diagonal (position i+1) and replace
-                        // position i with WinMap, insert the modified SphMap.
-                        list.remove(i + 1); // remove diagonal
-                        list[i] = (Box::new(winmap), false, false);
-                        // Insert the modified inv-SphMap after the WinMap.
-                        list.insert(i + 1, (Box::new(new_sph), true, false));
-                        return true;
-                    }
-                }
-            }
+        if try_sphmap_diagonal_pattern_at(list, i) {
+            return true;
         }
         i += 1;
     }
     false
+}
+
+/// Detect and apply the diagonal-sandwich pattern anchored at index `i`,
+/// mirroring the second branch of C `sphmap.c::MapMerge` (817-957) where the
+/// nominated (inverted) SphMap is `map_list[where]`.
+///
+/// The trio at `(i, i+1, i+2)` must be `(inv-SphMap, diagonal-3→3, fwd-SphMap)`
+/// with equal-magnitude diagonal elements. On a match it is replaced by
+/// `(WinMap, inv-SphMap, fwd-SphMap)` — the diagonal is removed, the WinMap
+/// takes position `i`, and the (PolarLong-adjusted) inverted SphMap moves to
+/// `i+1`. Returns `true` if the list was modified.
+fn try_sphmap_diagonal_pattern_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
+    if i + 2 >= list.len() {
+        return false;
+    }
+
+    // Pattern: SphMap(inverted) ; diagonal(3→3) ; SphMap(forward)
+    let (ref m1, inv1, _) = list[i];
+    let (ref m2, inv2, _) = list[i + 1];
+    let (ref m3, inv3, _) = list[i + 2];
+
+    let sph1 = m1.as_any().downcast_ref::<SphMap>();
+    let sph3 = m3.as_any().downcast_ref::<SphMap>();
+
+    let (Some(s1), Some(s3)) = (sph1, sph3) else {
+        return false;
+    };
+
+    // s1 must be applied inverted (sph→cart, 2→3)
+    // s3 must be applied forward (cart→sph, 3→2)
+    if !(inv1 && !inv3) {
+        return false;
+    }
+
+    // Extract the 3D diagonal from the middle mapping.
+    let Some(diag) = extract_3d_diagonal(m2.as_ref(), inv2) else {
+        return false;
+    };
+
+    // All magnitudes must be equal and non-zero.
+    let mag = diag[0].abs();
+    if mag == 0.0 || !ast_equal(diag[1].abs(), mag) || !ast_equal(diag[2].abs(), mag) {
+        return false;
+    }
+
+    // Compute the WinMap parameters from the sign pattern.
+    // Matches C sphmap.c:875-900.
+    let (lon_shift, lon_scale) = if diag[0] < 0.0 {
+        if diag[1] < 0.0 {
+            (std::f64::consts::PI, 1.0)
+        } else {
+            (std::f64::consts::PI, -1.0)
+        }
+    } else if diag[1] < 0.0 {
+        (0.0, -1.0)
+    } else {
+        (0.0, 1.0)
+    };
+
+    let lat_scale = if diag[2] < 0.0 { -1.0 } else { 1.0 };
+
+    // Check PolarLong compatibility (C sphmap.c:914-921):
+    // The replacement transforms PolarLong through the WinMap.
+    let new_polarlong = lon_shift + lon_scale * s1.polar_long();
+    if !ast_equal(new_polarlong, s3.polar_long()) {
+        return false;
+    }
+
+    // Build the WinMap.
+    let Ok(winmap) = WinMap::new(&[lon_shift, 0.0], &[lon_scale, lat_scale]) else {
+        return false;
+    };
+
+    // Replace (inv-SphMap, diag, fwd-SphMap) with
+    // (WinMap, inv-SphMap, fwd-SphMap).
+    // The SphMap gets the adjusted PolarLong.
+    let mut new_sph = s1.clone();
+    new_sph.set_polar_long(new_polarlong);
+
+    // Remove the diagonal (position i+1) and replace
+    // position i with WinMap, insert the modified SphMap.
+    list.remove(i + 1); // remove diagonal
+    list[i] = (Box::new(winmap), false, false);
+    // Insert the modified inv-SphMap after the WinMap.
+    list.insert(i + 1, (Box::new(new_sph), true, false));
+    true
+}
+
+/// Per-class `map_merge` for a nominated `SphMap`, mirroring C
+/// `sphmap.c::MapMerge` (712-963).
+///
+/// A SphMap merges directly with the SphMap that follows it in series when the
+/// pair cancels to a `UnitMap` (C branch 1, lines 742-802) — this is driven by
+/// [`default_map_merge`] via [`SphMap::try_merge`]. C only attempts the
+/// diagonal-sandwich rewrite (branch 2, lines 817-957) when that direct merge
+/// did not fire (`!simpler`), so the default merge is tried first here. The
+/// sandwich rewrite is anchored at the nominated (inverted) SphMap — C's
+/// `where` — and delegates to [`try_sphmap_diagonal_pattern_at`].
+pub(crate) fn sph_map_merge(
+    _sph: &SphMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    // Direct SphMap+SphMap cancellation (C branch 1).
+    if let Some(modified) = default_map_merge(ctx, where_, series) {
+        return Some(modified);
+    }
+
+    // Diagonal-sandwich rewrite (C branch 2). Only reachable when the direct
+    // merge failed, matching C's `!simpler` guard.
+    if series && try_sphmap_diagonal_pattern_at(&mut ctx.list, where_) {
+        ctx.resync_frozen();
+        return Some(where_);
+    }
+
+    None
 }
 
 /// Extract the diagonal of a 3×3 mapping if it's a ZoomMap or diagonal MatrixMap.

@@ -262,6 +262,15 @@ impl Mapping for SphMap {
         numeric_rate(self, at, ax1, ax2)
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::simplify::sph_map_merge(self, ctx, where_, series)
+    }
+
     fn try_merge(
         &self,
         other: &dyn Mapping,
