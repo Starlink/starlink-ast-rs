@@ -1244,7 +1244,7 @@ pub(crate) fn merge_loop_restricted(
             changed = true;
             continue;
         }
-        if series && try_swap_pcdmap_past_neighbor(&mut ctx.list) {
+        if false && series && try_swap_pcdmap_past_neighbor(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
@@ -2832,49 +2832,87 @@ fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool, bool)>) -> 
     false
 }
 
+/// Per-class `map_merge` for a nominated `PcdMap`, mirroring the swap logic
+/// of C `pcdmap.c::MapMerge` (1503-1714). A PcdMap merges directly only with
+/// its own inverse or a UnitMap (handled by [`default_map_merge`] via
+/// `try_merge`); when no direct merge is available, it tries to swap past an
+/// adjacent ZoomMap or axis-swapping PermMap to move towards a distant merge
+/// partner (another PcdMap or UnitMap), so the PcdMap can merge directly on a
+/// later nomination. The swap is attempted around the nominated index (C's
+/// `where`); on success the index of the first modified element is returned.
+pub(crate) fn pcd_map_merge(
+    _pcd: &PcdMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if series {
+        if let Some(modified) = pcd_swap_at(&mut ctx.list, where_) {
+            ctx.resync_frozen();
+            return Some(modified);
+        }
+    }
+
+    default_map_merge(ctx, where_, series)
+}
+
+/// Consider swapping the PcdMap at index `i` with the neighbour that brings it
+/// nearest to a merge target, mirroring C `pcdmap.c::MapMerge` (1512-1637).
+///
+/// Steps to a merge target are counted in both directions (over the run of
+/// swappable ZoomMaps / axis-swapping PermMaps), and the swap is made towards
+/// the nearer target. Returns the index of the first modified element, or
+/// `None` when no swap is worthwhile (or `i` is not a PcdMap).
+fn pcd_swap_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> Option<usize> {
+    if !list[i].0.as_any().is::<PcdMap>() {
+        return None;
+    }
+
+    let pcd_inv = list[i].1;
+
+    // Try swapping with the higher neighbor (i+1) towards a target further right.
+    // Count how many steps to a merge target in the forward direction.
+    let nstep_hi = if i + 1 < list.len() && can_swap_pcd_with(&list[i + 1].0) {
+        find_pcd_merge_target_steps(list, i + 2, true)
+    } else {
+        -1
+    };
+
+    // Try swapping with the lower neighbor (i-1) towards a target further left.
+    let nstep_lo = if i >= 1 && can_swap_pcd_with(&list[i - 1].0) {
+        if i >= 2 {
+            find_pcd_merge_target_steps(list, i - 2, false)
+        } else {
+            -1
+        }
+    } else {
+        -1
+    };
+
+    // Choose the direction that gets us to a merge target in fewer steps.
+    if nstep_lo >= 0 && (nstep_hi < 0 || nstep_hi > nstep_lo) {
+        // Swap with lower neighbor: neighbor at i-1, PcdMap at i.
+        // PcdMap is second (ipc=1 in C terms).
+        do_pcd_swap_second(list, i - 1, pcd_inv);
+        Some(i - 1)
+    } else if nstep_hi >= 0 {
+        // Swap with higher neighbor: PcdMap at i, neighbor at i+1.
+        // PcdMap is first (ipc=0 in C terms).
+        do_pcd_swap_first(list, i, pcd_inv);
+        Some(i)
+    } else {
+        None
+    }
+}
+
 fn try_swap_pcdmap_past_neighbor(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    // Look for a PcdMap that can be swapped towards a merge target.
+    // Look for a PcdMap that can be swapped towards a merge target. Delegates
+    // to the per-index core `pcd_swap_at` (also used by `PcdMap::map_merge`).
     let mut i = 0;
     while i < list.len() {
-        if !list[i].0.as_any().is::<PcdMap>() {
-            i += 1;
-            continue;
-        }
-
-        let pcd_inv = list[i].1;
-
-        // Try swapping with the higher neighbor (i+1) towards a target further right.
-        // Count how many steps to a merge target in the forward direction.
-        let nstep_hi = if i + 1 < list.len() && can_swap_pcd_with(&list[i + 1].0) {
-            find_pcd_merge_target_steps(list, i + 2, true)
-        } else {
-            -1
-        };
-
-        // Try swapping with the lower neighbor (i-1) towards a target further left.
-        let nstep_lo = if i >= 1 && can_swap_pcd_with(&list[i - 1].0) {
-            if i >= 2 {
-                find_pcd_merge_target_steps(list, i - 2, false)
-            } else {
-                -1
-            }
-        } else {
-            -1
-        };
-
-        // Choose the direction that gets us to a merge target in fewer steps.
-        if nstep_lo >= 0 && (nstep_hi < 0 || nstep_hi > nstep_lo) {
-            // Swap with lower neighbor: neighbor at i-1, PcdMap at i.
-            // PcdMap is second (ipc=1 in C terms).
-            do_pcd_swap_second(list, i - 1, pcd_inv);
-            return true;
-        } else if nstep_hi >= 0 {
-            // Swap with higher neighbor: PcdMap at i, neighbor at i+1.
-            // PcdMap is first (ipc=0 in C terms).
-            do_pcd_swap_first(list, i, pcd_inv);
+        if pcd_swap_at(list, i).is_some() {
             return true;
         }
-
         i += 1;
     }
     false

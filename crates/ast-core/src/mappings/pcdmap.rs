@@ -254,6 +254,15 @@ impl Mapping for PcdMap {
             && ast_equal(self.pcdcen[1], other.pcdcen[1])
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::simplify::pcd_map_merge(self, ctx, where_, series)
+    }
+
     fn try_merge(
         &self,
         other: &dyn Mapping,
