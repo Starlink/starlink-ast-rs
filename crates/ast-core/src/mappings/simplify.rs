@@ -292,11 +292,29 @@ pub(crate) fn flatten(
             orig_inv = original_inverted;
         }
     }
-    let effective_inv = inv != orig_inv;
+    let mut effective_inv = inv != orig_inv;
     // Reset the clone to forward state; the bool carries inversion.
     if cloned.is_inverted() {
         cloned.invert();
     }
+
+    // A lone PermMap applied in its inverted direction is always
+    // materialised forward by C's nominate loop: `PermMap` `MapMerge`
+    // (permmap.c:1362, clause c) treats a single PermMap with its
+    // `invert_list` flag set as a simplification and rebuilds it as a plain
+    // forward PermMap with swapped `inperm`/`outperm` arrays and the Invert
+    // flag cleared (permmap.c:1420 `invert_list[imap1] = 0`). Because every
+    // leaf here becomes an independently-nominated component, mirror that
+    // materialisation now: physically invert the PermMap (swapping its
+    // permutation arrays via `PermMap::simplified`) and carry it forward, so
+    // the reconstructed parent records no `InvA`/`InvB` for it.
+    if effective_inv && cloned.as_any().is::<super::PermMap>() {
+        cloned.invert();
+        cloned = cloned.simplified()?;
+        effective_inv = false;
+        orig_inv = cloned.is_inverted();
+    }
+
     Ok(vec![(cloned, effective_inv, orig_inv)])
 }
 
