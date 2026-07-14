@@ -61,7 +61,7 @@ thread_local! {
 /// CmpMaps the composition kind and recursive fingerprints of children.
 /// Collisions are possible but harmless (they only cause an early bail
 /// which is a conservative no-op, not a correctness issue).
-fn mapping_fingerprint(mapping: &dyn Mapping) -> u64 {
+pub(crate) fn mapping_fingerprint(mapping: &dyn Mapping) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     mapping.nin().hash(&mut hasher);
     mapping.nout().hash(&mut hasher);
@@ -1128,12 +1128,12 @@ pub(crate) fn merge_loop_restricted(
         // in later phases once `map_merge` subsumes them; until then keeping
         // both active is byte-neutral (the nominate loop reaches a fixpoint
         // regardless of which path performs a given swap).
-        if series && try_swap_winmap_wcsmap(&mut ctx.list) {
+        if false && series && try_swap_winmap_wcsmap(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
         }
-        if series && try_swap_winmap_past_permmap(&mut ctx.list) {
+        if false && series && try_swap_winmap_past_permmap(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
@@ -1173,7 +1173,7 @@ pub(crate) fn merge_loop_restricted(
             changed = true;
             continue;
         }
-        if series && try_distribute_winmap_into_parallel(&mut ctx.list) {
+        if false && series && try_distribute_winmap_into_parallel(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
@@ -3202,7 +3202,9 @@ fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool, bool)>)
 /// of the two simplified halves. Returns `None` when the branches are not
 /// both binary series CmpMaps or when neither half simplifies (so the caller
 /// keeps the parallel form, exactly as C does).
-fn recombine_distributed_branches(branches: &[(DynMapping, bool, bool)]) -> Option<DynMapping> {
+pub(crate) fn recombine_distributed_branches(
+    branches: &[(DynMapping, bool, bool)],
+) -> Option<DynMapping> {
     if branches.len() != 2 {
         return None;
     }

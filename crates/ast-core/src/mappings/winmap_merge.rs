@@ -157,12 +157,16 @@ fn perm_eff_inv(nowin_is_map1: bool, inv1: bool, inv2: bool) -> bool {
 /// are stored 1-based for connected axes with negative constant refs, so we
 /// translate.
 fn effective_perm(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>) {
-    // Stored arrays use 1-based links and negative constant refs. Convert to
-    // 0-based links (>=0) keeping constants negative, matching CanSwap's C
-    // expectations (which use raw PermGet 0-based links).
+    // Stored arrays use 1-based links, `0` for a BAD/unconnected axis, and
+    // negative constant refs. C `PermGet` returns 0-based connected links and
+    // encodes both constants *and* BAD axes as negative values, so CanSwap's
+    // `outperm[i] >= 0 && outperm[i] < nin` test only ever fires on a genuine
+    // connected link. Mirror that: connected `p >= 1` → 0-based `p - 1`; the
+    // BAD marker `0` and existing negative constant refs both map to a
+    // negative value that the `>= 0` test skips.
     let to_zero_based = |arr: &[i64]| -> Vec<i64> {
         arr.iter()
-            .map(|&p| if p >= 1 { p - 1 } else { p })
+            .map(|&p| if p >= 1 { p - 1 } else { -1 })
             .collect()
     };
     let (out_raw, in_raw) = if inv {
@@ -381,8 +385,13 @@ pub(crate) fn win_map_merge(
         return Some(result);
     }
 
-    // ---- Step 2b (series): parallel-CmpMap distribution is handled by the
-    // existing global helper for now (ported in a later step). Fall through.
+    // ---- Step 2b (series): distribute the WinMap into a neighbouring
+    // parallel CmpMap (C winmap.c:1264-1416).
+    if series {
+        if let Some(result) = try_distribute_into_parallel(ctx, where_, win_inv) {
+            return Some(result);
+        }
+    }
 
     // ---- Steps 3 & 4 apply to series only.
     if series {
@@ -444,6 +453,136 @@ fn try_direct_merge(
     let (m2, inv2, _) = ctx.entry(i2);
     let merged = merge_linear_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, series, win_inv)?;
     ctx.replace_pair_with(i1, merged, false);
+    Some(i1)
+}
+
+/// Step 2b (series): distribute the nominated WinMap into a neighbouring
+/// parallel CmpMap. Faithful port of C `winmap.c::MapMerge` (1264-1416).
+///
+/// When the WinMap precedes the parallel CmpMap (`cmlow == false`) it acts on
+/// the CmpMap's inputs, so it is split by each component's *input* count and
+/// each branch becomes `sub_win ; component`. When the WinMap follows the
+/// CmpMap (`cmlow == true`) it acts on the outputs, so it is split by each
+/// component's *output* count and each branch becomes `component ; sub_win`.
+///
+/// The two per-branch series CmpMaps are each simplified; only if at least one
+/// simplifies (C's `simpler` test, avoiding an infinite parallel↔series loop)
+/// are they combined into a replacement parallel CmpMap that takes the slot of
+/// the two merged mappings. The recombination back to the visible series form
+/// happens when that parallel CmpMap is next nominated (C: CmpMap MapMerge's
+/// self-simplify runs the "Series CmpMaps in parallel" merge, cmpmap.c).
+fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool) -> Option<usize> {
+    use super::cmpmap::{CmpMap, Composition};
+    use super::simplify::{mapping_fingerprint, recombine_distributed_branches, reconstruct};
+
+    let n = ctx.len();
+
+    // Identify a parallel-CmpMap neighbour. C prefers the lower neighbour
+    // (class1, cmlow == 1) then the upper (class2, cmlow == 0).
+    let is_parallel = |m: &dyn Mapping| -> bool {
+        m.as_any()
+            .downcast_ref::<CmpMap>()
+            .is_some_and(|c| c.composition() == Composition::Parallel)
+    };
+    let lower_par = where_ > 0 && is_parallel(ctx.entry(where_ - 1).0.as_ref());
+    let upper_par = where_ + 1 < n && is_parallel(ctx.entry(where_ + 1).0.as_ref());
+
+    let (i1, i2, cmlow) = if lower_par {
+        (where_ - 1, where_, true)
+    } else if upper_par {
+        (where_, where_ + 1, false)
+    } else {
+        return None;
+    };
+
+    // Effective forward (shift a, scale b) terms of the nominated WinMap.
+    let (a, b) = extract_linear_params(ctx.entry(where_).0.as_ref(), win_inv)?;
+
+    // C `astDecompose` yields the parallel CmpMap's two direct components
+    // (mc[0], mc[1]); the WinMap is split by each component's dimension.
+    let par_idx = if cmlow { i1 } else { i2 };
+    let par_inv = ctx.entry(par_idx).1;
+    let cm = ctx.entry(par_idx).0.as_any().downcast_ref::<CmpMap>()?;
+    // Direct children in effective-forward orientation.
+    let cmp_inv = par_inv != cm.is_inverted();
+    let child_a_inv = cmp_inv != (cm.inv_a() != cm.first().is_inverted());
+    let child_b_inv = cmp_inv != (cm.inv_b() != cm.second().is_inverted());
+    let mut child_a = cm.first().clone_box();
+    if child_a.is_inverted() {
+        child_a.invert();
+    }
+    let mut child_b = cm.second().clone_box();
+    if child_b.is_inverted() {
+        child_b.invert();
+    }
+    let components: [(DynMapping, bool); 2] = [(child_a, child_a_inv), (child_b, child_b_inv)];
+
+    // Split-dimension for each component: outputs when the CmpMap is the lower
+    // neighbour (WinMap acts on outputs), inputs otherwise.
+    let split_dim = |m: &dyn Mapping, inv: bool| -> usize {
+        // Effective outputs (cmlow) or inputs, honouring the component's
+        // applied inversion.
+        if cmlow {
+            if inv { m.nin() } else { m.nout() }
+        } else if inv {
+            m.nout()
+        } else {
+            m.nin()
+        }
+    };
+    let dim0 = split_dim(components[0].0.as_ref(), components[0].1);
+    let dim1 = split_dim(components[1].0.as_ref(), components[1].1);
+    if dim0 + dim1 != a.len() {
+        return None;
+    }
+
+    // Build the two per-branch series CmpMaps and simplify each.
+    let mut branches: Vec<(DynMapping, bool, bool)> = Vec::with_capacity(2);
+    let mut simpler = false;
+    for (idx, (comp, comp_inv)) in components.iter().enumerate() {
+        let (start, dim) = if idx == 0 { (0, dim0) } else { (dim0, dim1) };
+        let sub_win = WinMap::new(&a[start..start + dim], &b[start..start + dim]).ok()?;
+
+        let mut comp_clone = comp.clone_box();
+        if *comp_inv {
+            comp_clone.invert();
+        }
+
+        let series_branch = if cmlow {
+            CmpMap::new(comp_clone, Box::new(sub_win), Composition::Series)
+        } else {
+            CmpMap::new(Box::new(sub_win), comp_clone, Composition::Series)
+        }
+        .ok()?;
+
+        let fp_before = mapping_fingerprint(&series_branch);
+        let branch_dyn: &dyn Mapping = &series_branch;
+        let simplified = branch_dyn.simplify().ok()?;
+        if mapping_fingerprint(simplified.as_ref()) != fp_before {
+            simpler = true;
+        }
+        branches.push((simplified, false, false));
+    }
+
+    // Only commit the distribution if at least one branch simplified (C's
+    // `simpler` guard against an infinite parallel↔series oscillation).
+    if !simpler {
+        return None;
+    }
+
+    // C commits `astCmpMap(simp1, simp2, 0)` — the parallel-of-series form —
+    // and relies on the CmpMap MapMerge self-simplify to run the "Series
+    // CmpMaps in parallel" re-combination when that new CmpMap is next
+    // nominated. Perform that re-combination here on the two simplified
+    // branches and commit the resulting series form when it is simpler; else
+    // fall back to the parallel form (as C would leave it in those cases).
+    if let Some(recombined) = recombine_distributed_branches(&branches) {
+        ctx.replace_range_with(i1, i2, recombined);
+        return Some(i1);
+    }
+
+    let new_par = reconstruct(branches, false).ok()?;
+    ctx.replace_range_with(i1, i2, new_par);
     Some(i1)
 }
 
