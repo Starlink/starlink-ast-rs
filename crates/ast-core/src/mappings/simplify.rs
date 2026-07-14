@@ -837,6 +837,47 @@ pub(crate) fn zoom_map_merge(
     Some(imap1)
 }
 
+/// `map_merge` for a nominated `PermMap`, mirroring the PermMap-past-parallel
+/// -CmpMap swap branch of C `permmap.c::MapMerge` (741).
+///
+/// When a nominated PermMap immediately precedes a parallel CmpMap in a series
+/// sequence and has a "block-swap" structure that aligns with the CmpMap's
+/// component-dimension boundaries, the two are reordered: the CmpMap moves in
+/// front and the PermMap is rebuilt (or removed if it becomes identity) to
+/// undo the block swap against the reversed component ordering. Any PermMap
+/// output that is a constant has its value transformed through the swapped
+/// component (const-transform math borrowed from `cmpmap.c:1929-2041`, per the
+/// swap helper). This can enable further pairwise merges on later nominations.
+///
+/// The swap logic lives in [`try_swap_permmap_parallel_at`]; the per-class
+/// entry point only checks the `(where_, where_+1)` adjacency C examines when
+/// the PermMap is nominated, then falls back to [`default_map_merge`] for the
+/// ordinary direct-pairwise merge (C's `-1` for the swap becomes a plain
+/// neighbour merge attempt).
+pub(crate) fn perm_map_merge(
+    _perm: &PermMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if series
+        && where_ + 1 < ctx.len()
+        && ctx.entry(where_).0.as_any().is::<PermMap>()
+        && ctx
+            .entry(where_ + 1)
+            .0
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .is_some_and(|c| c.composition() == Composition::Parallel)
+        && try_swap_permmap_parallel_at(&mut ctx.list, where_)
+    {
+        ctx.resync_frozen();
+        return Some(where_);
+    }
+
+    default_map_merge(ctx, where_, series)
+}
+
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
     let i = where_;
     let list = &mut ctx.list;
@@ -1197,7 +1238,7 @@ pub(crate) fn merge_loop_restricted(
             changed = true;
             continue;
         }
-        if series && try_swap_permmap_parallel(&mut ctx.list) {
+        if false && series && try_swap_permmap_parallel(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
