@@ -1249,7 +1249,7 @@ pub(crate) fn merge_loop_restricted(
             changed = true;
             continue;
         }
-        if series && try_merge_zoom_before_inv_grism(&mut ctx.list) {
+        if false && series && try_merge_zoom_before_inv_grism(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
@@ -2768,68 +2768,114 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
 /// the `try_merge` API cannot distinguish forward from reverse calls,
 /// and the merges are only valid in specific orderings.
 fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
+    // Scan the whole list, delegating each adjacent pair to the per-index core
+    // `grism_zoom_merge_at` (also used by `GrismMap::map_merge`).
     for i in 0..list.len().saturating_sub(1) {
-        // Pattern 1: GrismMap(fwd) + ZoomMap
-        let is_fwd_grism = list[i].0.as_any().is::<GrismMap>() && !list[i].1;
-        let is_zoom_after = list[i + 1].0.as_any().is::<ZoomMap>();
-
-        if is_fwd_grism && is_zoom_after {
-            let grism = list[i].0.as_any().downcast_ref::<GrismMap>().unwrap();
-            let zoom = list[i + 1].0.as_any().downcast_ref::<ZoomMap>().unwrap();
-            let zoom_inv = list[i + 1].1;
-
-            // Get the effective forward zoom factor.
-            // zoom.is_inverted() is always false (normalized in flatten).
-            // If zoom_inv is true, the zoom is applied inversely → z = 1/factor.
-            let mut z = zoom.factor();
-            if zoom_inv && z != 0.0 {
-                z = 1.0 / z;
-            }
-
-            if z == 0.0 {
-                continue;
-            }
-
-            if let Some(merged) = grism.merge_with_zoom(z, false) {
-                list[i] = (merged, false, false);
-                list.remove(i + 1);
-                return true;
-            }
-        }
-
-        // Pattern 2: ZoomMap + GrismMap(inv)
-        let is_zoom_before = list[i].0.as_any().is::<ZoomMap>();
-        let is_inv_grism = list[i + 1].0.as_any().is::<GrismMap>() && list[i + 1].1;
-
-        if is_zoom_before && is_inv_grism {
-            let zoom = list[i].0.as_any().downcast_ref::<ZoomMap>().unwrap();
-            let zoom_inv = list[i].1;
-            let grism = list[i + 1].0.as_any().downcast_ref::<GrismMap>().unwrap();
-
-            // The C code conceptually inverts the pair to get:
-            //   forward GrismMap + inverted ZoomMap
-            // The zoom factor for the "inverted" ZoomMap is the reciprocal
-            // of its effective forward factor.
-            // zoom.is_inverted() is always false (normalized in flatten).
-            // C code: "if astGetInvert(map1) == inv1 && z != 0.0, z = 1/z"
-            // With is_inverted()=false: if false == zoom_inv → if !zoom_inv → invert z.
-            let mut z = zoom.factor();
-            if !zoom_inv && z != 0.0 {
-                z = 1.0 / z;
-            }
-
-            if z == 0.0 {
-                continue;
-            }
-
-            if let Some(merged) = grism.merge_with_zoom(z, true) {
-                list[i] = (merged, false, false);
-                list.remove(i + 1);
-                return true;
-            }
+        if grism_zoom_merge_at(list, i) {
+            return true;
         }
     }
     false
+}
+
+/// Try to merge the GrismMap/ZoomMap pair at indices `(i, i+1)`, mirroring the
+/// two ZoomMap cases of C `grismmap.c::CanMerge` (508-557): a forward GrismMap
+/// followed by a ZoomMap, or a ZoomMap followed by an inverted GrismMap. On
+/// success the merged GrismMap replaces the pair (closing the gap) and `true`
+/// is returned. The Grism+Grism inverse-cancellation case of `CanMerge` is not
+/// handled here — it flows through `default_map_merge` via `GrismMap::try_merge`.
+fn grism_zoom_merge_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
+    if i + 1 >= list.len() {
+        return false;
+    }
+
+    // Pattern 1: GrismMap(fwd) + ZoomMap
+    let is_fwd_grism = list[i].0.as_any().is::<GrismMap>() && !list[i].1;
+    let is_zoom_after = list[i + 1].0.as_any().is::<ZoomMap>();
+
+    if is_fwd_grism && is_zoom_after {
+        let grism = list[i].0.as_any().downcast_ref::<GrismMap>().unwrap();
+        let zoom = list[i + 1].0.as_any().downcast_ref::<ZoomMap>().unwrap();
+        let zoom_inv = list[i + 1].1;
+
+        // Get the effective forward zoom factor.
+        // zoom.is_inverted() is always false (normalized in flatten).
+        // If zoom_inv is true, the zoom is applied inversely → z = 1/factor.
+        let mut z = zoom.factor();
+        if zoom_inv && z != 0.0 {
+            z = 1.0 / z;
+        }
+
+        if z != 0.0
+            && let Some(merged) = grism.merge_with_zoom(z, false)
+        {
+            list[i] = (merged, false, false);
+            list.remove(i + 1);
+            return true;
+        }
+    }
+
+    // Pattern 2: ZoomMap + GrismMap(inv)
+    let is_zoom_before = list[i].0.as_any().is::<ZoomMap>();
+    let is_inv_grism = list[i + 1].0.as_any().is::<GrismMap>() && list[i + 1].1;
+
+    if is_zoom_before && is_inv_grism {
+        let zoom = list[i].0.as_any().downcast_ref::<ZoomMap>().unwrap();
+        let zoom_inv = list[i].1;
+        let grism = list[i + 1].0.as_any().downcast_ref::<GrismMap>().unwrap();
+
+        // The C code conceptually inverts the pair to get:
+        //   forward GrismMap + inverted ZoomMap
+        // The zoom factor for the "inverted" ZoomMap is the reciprocal
+        // of its effective forward factor.
+        // zoom.is_inverted() is always false (normalized in flatten).
+        // C code: "if astGetInvert(map1) == inv1 && z != 0.0, z = 1/z"
+        // With is_inverted()=false: if false == zoom_inv → if !zoom_inv → invert z.
+        let mut z = zoom.factor();
+        if !zoom_inv && z != 0.0 {
+            z = 1.0 / z;
+        }
+
+        if z != 0.0
+            && let Some(merged) = grism.merge_with_zoom(z, true)
+        {
+            list[i] = (merged, false, false);
+            list.remove(i + 1);
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Per-class `map_merge` for a nominated `GrismMap`, mirroring the neighbour
+/// checks of C `grismmap.c::MapMerge` (1205-1259). A GrismMap merges only in
+/// series. C examines the lower pair `(where-1, where)` first, then the upper
+/// pair `(where, where+1)`, via `CanMerge`. The two ZoomMap-absorption cases of
+/// `CanMerge` are handled here by [`grism_zoom_merge_at`]; the Grism+Grism
+/// inverse-cancellation case (→ `UnitMap`) is left to [`default_map_merge`] via
+/// `GrismMap::try_merge`. On a ZoomMap merge the index of the first modified
+/// element is returned.
+pub(crate) fn grism_map_merge(
+    _grism: &GrismMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if series {
+        // Lower neighbour first (C MapMerge 1212-1217): pair (where-1, where).
+        if where_ > 0 && grism_zoom_merge_at(&mut ctx.list, where_ - 1) {
+            ctx.resync_frozen();
+            return Some(where_ - 1);
+        }
+        // Upper neighbour (C MapMerge 1221-1226): pair (where, where+1).
+        if where_ + 1 < ctx.len() && grism_zoom_merge_at(&mut ctx.list, where_) {
+            ctx.resync_frozen();
+            return Some(where_);
+        }
+    }
+
+    default_map_merge(ctx, where_, series)
 }
 
 /// Per-class `map_merge` for a nominated `PcdMap`, mirroring the swap logic

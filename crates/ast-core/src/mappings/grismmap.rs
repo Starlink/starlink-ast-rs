@@ -409,6 +409,15 @@ impl Mapping for GrismMap {
             && ast_equal(self.k3, other.k3)
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::simplify::grism_map_merge(self, ctx, where_, series)
+    }
+
     fn try_merge(
         &self,
         other: &dyn Mapping,
