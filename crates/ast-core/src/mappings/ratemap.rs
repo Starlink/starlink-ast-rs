@@ -548,17 +548,18 @@ impl Serializable for RateMap {
         // RateMap-specific one. It appears after the last IsA item.
         let inv_snapshot = get_int_after_isa(node, "Inv", 0) != 0;
 
-        // Read the encapsulated mapping.
+        // Read the encapsulated mapping. Keep it in the orientation it was
+        // serialised in — its own `Invert` flag is independent of the
+        // RateMap's `Inv` direction record (C `ratemap.c` stores `this->map`
+        // as loaded and `this->invert` separately; the two are only
+        // reconciled transiently inside Transform/Rate via astSetInvert, not
+        // at load). Flipping the child here to match `inv_snapshot` would
+        // discard the child's stored orientation — losing, e.g., an inner
+        // `CmpMap`'s `Invert=1` on round-trip.
         let map_node = node
             .get_object("Map")
             .ok_or_else(|| AstError::new(ErrorCode::Lderr, "RateMap: missing Map"))?;
-        let mut map = mapping_from_node(map_node)?;
-
-        // If the invert snapshot differs from the child mapping's current
-        // invert state, flip the child to match the snapshot.
-        if inv_snapshot != map.is_inverted() {
-            map.invert();
-        }
+        let map = mapping_from_node(map_node)?;
 
         let mut rm = Self {
             map,
