@@ -616,6 +616,35 @@ pub(crate) fn cmp_map_merge(
         }
     }
 
+    // Merge adjacent CmpMaps (C `cmpmap.c::MapMerge` 1528-1813).
+    // ========================================================
+    // The self-simplify head above did not fire (C `!simpler`); look for a
+    // neighbouring CmpMap with which the nominated one can merge. C uses the
+    // pair (imap1, imap2) where imap2 is the nominated CmpMap — except when
+    // the nominee is the first in the list, in which case the pair is (0, 1)
+    // (`cmpmap.c:1540-1546`). It only restructures when both members are
+    // CmpMaps of the composition opposite to the current combination context,
+    // and when at least one sub-pair genuinely simplifies (the compute cores
+    // enforce both conditions, returning `None` otherwise). Applying it via
+    // `replace_pair_with` annuls the pair and stores the forward replacement
+    // at `imap1`, matching C setting the new invert flag to 0.
+    if ctx.len() > 1 {
+        let imap1 = if where_ == 0 { 0 } else { where_ - 1 };
+        if imap1 + 1 < ctx.len() {
+            let merged = if series {
+                // Parallel CmpMaps in series (C 1629-1781).
+                compute_merge_parallel_pair_in_series(&ctx.list, imap1)
+            } else {
+                // Series CmpMaps in parallel (C 1582-1622).
+                compute_merge_series_pair_in_parallel(&ctx.list, imap1)
+            };
+            if let Some(new) = merged {
+                ctx.replace_pair_with(imap1, new, false);
+                return Some(imap1);
+            }
+        }
+    }
+
     default_map_merge(ctx, where_, series)
 }
 
@@ -1158,12 +1187,12 @@ pub(crate) fn merge_loop_restricted(
             changed = true;
             continue;
         }
-        if series && try_merge_parallel_in_series(&mut ctx.list) {
+        if false && series && try_merge_parallel_in_series(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
         }
-        if !series && try_merge_series_in_parallel(&mut ctx.list) {
+        if false && !series && try_merge_series_in_parallel(&mut ctx.list) {
             ctx.resync_frozen();
             changed = true;
             continue;
@@ -1942,6 +1971,26 @@ fn try_merge_parallel_in_series(list: &mut Vec<(DynMapping, bool, bool)>) -> boo
 
 /// Attempt to merge a specific adjacent pair at index `i` and `i+1`.
 fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
+    if let Some(result) = compute_merge_parallel_pair_in_series(list, i) {
+        list[i] = (result, false, false);
+        list.remove(i + 1);
+        true
+    } else {
+        false
+    }
+}
+
+/// Compute the merged replacement for the adjacent parallel-CmpMap pair at
+/// `i` / `i+1` in a series list, without mutating the list. Returns the
+/// forward replacement Mapping when at least one sub-pair genuinely
+/// simplifies (C `cmpmap.c::MapMerge` "Parallel CmpMaps in series",
+/// ~1629-1781), or `None` when no restructuring is warranted. This is the
+/// shared core driven both by the legacy whole-list helper above and by
+/// `cmp_map_merge`'s per-nomination neighbour restructure.
+fn compute_merge_parallel_pair_in_series(
+    list: &[(DynMapping, bool, bool)],
+    i: usize,
+) -> Option<DynMapping> {
     // Both must be parallel CmpMaps.
     let is_par1 = list[i]
         .0
@@ -1954,7 +2003,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i
         .downcast_ref::<CmpMap>()
         .is_some_and(|c| c.composition() == Composition::Parallel);
     if !is_par1 || !is_par2 {
-        return false;
+        return None;
     }
 
     let (ref m1, inv1, _) = list[i];
@@ -1962,16 +2011,14 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i
 
     // Flatten both for parallel composition.
     let Ok(par_list1) = flatten(m1.as_ref(), inv1, false) else {
-        return false;
+        return None;
     };
     let Ok(par_list2) = flatten(m2.as_ref(), inv2, false) else {
-        return false;
+        return None;
     };
 
     // Dimension-match the two parallel lists.
-    let Some(matched) = dimension_match_parallel_lists(&par_list1, &par_list2) else {
-        return false;
-    };
+    let matched = dimension_match_parallel_lists(&par_list1, &par_list2)?;
 
     // For each matched pair, combine in series and simplify.
     let mut simplified_pairs: Vec<(DynMapping, bool, bool)> = Vec::new();
@@ -2000,21 +2047,21 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i
 
         // Build parallel submaps from each sublist.
         let Ok(par1) = reconstruct(sub1, false) else {
-            return false;
+            return None;
         };
         let Ok(par2) = reconstruct(sub2, false) else {
-            return false;
+            return None;
         };
 
         // Combine in series.
         let Ok(series_map) = CmpMap::new(par1, par2, Composition::Series) else {
-            return false;
+            return None;
         };
         let series_box: DynMapping = Box::new(series_map);
 
         // Simplify the series combination.
         let Ok(simplified) = simplify_mapping(series_box.as_ref()) else {
-            return false;
+            return None;
         };
 
         // Check if simplification produced something different.
@@ -2042,12 +2089,12 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i
     }
 
     if !any_improvement {
-        return false;
+        return None;
     }
 
     // Rebuild as parallel CmpMap and replace the pair in the list.
     let Ok(result) = reconstruct(simplified_pairs, false) else {
-        return false;
+        return None;
     };
     // Recursively simplify the reconstructed parallel CmpMap so that
     // e.g. parallel(UnitMap, UnitMap) collapses to a single UnitMap of
@@ -2055,9 +2102,7 @@ fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i
     // reconstruct() is purely structural; without a follow-up simplify
     // the merge_loop would not see the parallel children adjacent.
     let result = simplify_mapping(result.as_ref()).unwrap_or(result);
-    list[i] = (result, false, false);
-    list.remove(i + 1);
-    true
+    Some(result)
 }
 
 /// Dimension-match two parallel component lists for series combination.
@@ -2157,6 +2202,25 @@ fn try_merge_series_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> boo
 }
 
 fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
+    if let Some(result) = compute_merge_series_pair_in_parallel(list, i) {
+        list[i] = (result, false, false);
+        list.remove(i + 1);
+        true
+    } else {
+        false
+    }
+}
+
+/// Compute the merged replacement for the adjacent series-CmpMap pair at
+/// `i` / `i+1` in a parallel list, without mutating the list. Returns the
+/// forward replacement Mapping when at least one parallel sub-pair genuinely
+/// simplifies (C `cmpmap.c::MapMerge` "Series CmpMaps in parallel",
+/// ~1577-1622), or `None` otherwise. Shared core driven both by the legacy
+/// whole-list helper above and by `cmp_map_merge`.
+fn compute_merge_series_pair_in_parallel(
+    list: &[(DynMapping, bool, bool)],
+    i: usize,
+) -> Option<DynMapping> {
     // Both must be series CmpMaps.
     let is_ser1 = list[i]
         .0
@@ -2169,7 +2233,7 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i
         .downcast_ref::<CmpMap>()
         .is_some_and(|c| c.composition() == Composition::Series);
     if !is_ser1 || !is_ser2 {
-        return false;
+        return None;
     }
 
     let (ref m1, inv1, _) = list[i];
@@ -2177,10 +2241,10 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i
 
     // Flatten both for series composition.
     let Ok(ser_list1) = flatten(m1.as_ref(), inv1, true) else {
-        return false;
+        return None;
     };
     let Ok(ser_list2) = flatten(m2.as_ref(), inv2, true) else {
-        return false;
+        return None;
     };
 
     // Pad the shorter series list with UnitMaps to match lengths.
@@ -2205,7 +2269,7 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i
 
     let n = ser_list1.len();
     if n < 2 {
-        return false;
+        return None;
     }
 
     // Build parallel pairs: position k from each series list goes in parallel.
@@ -2216,10 +2280,10 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i
     for k in 0..n {
         // Clone the mappings from each position.
         let Ok(a) = ser_list1[k].0.simplified() else {
-            return false;
+            return None;
         };
         let Ok(c) = ser_list2[k].0.simplified() else {
-            return false;
+            return None;
         };
         let a_inv = ser_list1[k].1;
         let c_inv = ser_list2[k].1;
@@ -2236,13 +2300,13 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i
 
         // Build parallel CmpMap.
         let Ok(par) = CmpMap::new(a_map, c_map, Composition::Parallel) else {
-            return false;
+            return None;
         };
 
         // Simplify the parallel CmpMap.
         let par_box: DynMapping = Box::new(par);
         let Ok(simplified) = simplify_mapping(par_box.as_ref()) else {
-            return false;
+            return None;
         };
 
         // Check if it actually simplified (pointer comparison isn't
@@ -2259,16 +2323,14 @@ fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i
     }
 
     if !any_improvement {
-        return false;
+        return None;
     }
 
     // Rebuild as series composition.
     let Ok(result) = reconstruct(parallel_maps, true) else {
-        return false;
+        return None;
     };
-    list[i] = (result, false, false);
-    list.remove(i + 1);
-    true
+    Some(result)
 }
 
 /// Try to swap a PermMap past a parallel CmpMap in a series list.
