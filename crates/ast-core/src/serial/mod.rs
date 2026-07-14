@@ -438,17 +438,26 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
         Some("Number of coordinates per point".to_string()),
     );
 
+    // The C PointSet Dump (pointset.c:2727) omits any axis value equal to
+    // AST__BAD, and only attaches the "Coordinate values..." comment to the
+    // first *good* value written. Mirror that: skip BAD entries entirely and
+    // track whether the comment has been emitted yet.
     let mut idx = 1;
+    let mut comment_pending = true;
     #[allow(clippy::needless_range_loop)]
     for pt in 0..npoint {
         for coord in 0..ncoord {
-            let key = format!("X{idx}");
-            let comment = if idx == 1 {
-                Some("Coordinate values...".to_string())
-            } else {
-                None
-            };
-            node.push_double(&key, points[pt][coord], comment);
+            let value = points[pt][coord];
+            if value != crate::constants::BAD_VALUE {
+                let key = format!("X{idx}");
+                let comment = if comment_pending {
+                    comment_pending = false;
+                    Some("Coordinate values...".to_string())
+                } else {
+                    None
+                };
+                node.push_double(&key, value, comment);
+            }
             idx += 1;
         }
     }
@@ -469,13 +478,17 @@ fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
         return Ok(Vec::new());
     }
 
-    let mut points = vec![vec![0.0f64; ncoord]; npoint];
+    // A missing `X<n>` keyword means AST__BAD (BAD_VALUE), not zero: the C
+    // PointSet Dump omits BAD axis values, and the reader defaults them to
+    // AST__BAD (pointset.c:3228). Regions such as an unbounded Interval rely
+    // on this — an omitted upper/lower bound is "no constraint", not 0.
+    let mut points = vec![vec![crate::constants::BAD_VALUE; ncoord]; npoint];
 
     let mut idx = 1;
     #[allow(clippy::needless_range_loop)]
     for pt in 0..npoint {
         for coord in 0..ncoord {
-            points[pt][coord] = node.get_double(&format!("X{idx}"), 0.0);
+            points[pt][coord] = node.get_double(&format!("X{idx}"), crate::constants::BAD_VALUE);
             idx += 1;
         }
     }

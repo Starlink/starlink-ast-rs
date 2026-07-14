@@ -15,6 +15,7 @@ mod circle;
 mod cmpregion;
 mod ellipse;
 mod interval;
+mod merge_util;
 mod nullregion;
 mod pointlist;
 mod polygon;
@@ -250,6 +251,34 @@ pub trait Region: Frame + Mapping {
 impl Clone for Box<dyn Region> {
     fn clone(&self) -> Self {
         self.clone_region()
+    }
+}
+
+/// Borrow a `dyn Mapping` as a `dyn Region` if it is a concrete Region
+/// type, else return `None`. The C reference uses `astIsARegion` for the
+/// same purpose in the region merge code.
+pub(crate) fn as_region(mapping: &dyn Mapping) -> Option<&dyn Region> {
+    let a = mapping.as_any();
+    if let Some(r) = a.downcast_ref::<Circle>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<BoxRegion>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<Ellipse>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<Polygon>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<Interval>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<NullRegion>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<CmpRegion>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<PointList>() {
+        Some(r)
+    } else if let Some(r) = a.downcast_ref::<Prism>() {
+        Some(r)
+    } else {
+        None
     }
 }
 

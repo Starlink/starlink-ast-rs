@@ -18,6 +18,7 @@ use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap};
 
 use super::data::{RegionData, RegionGeometry};
+use super::merge_util::{MergedRegion, finish_region_merge};
 use super::{DynRegion, Overlap, Region};
 
 /// An axis-aligned interval region within a coordinate frame.
@@ -702,36 +703,114 @@ impl Mapping for Interval {
         self_inv: bool,
         other_inv: bool,
     ) -> Option<DynMapping> {
+        // Parallel merge only (series of two Regions is not a Region).
+        // Mirrors C `interval.c::MergeInterval` (1224): the Interval axes
+        // always go first (`intfirst = 1`) because the merge loop only
+        // ever calls `list[i].try_merge(list[i+1])`, so `self` is the
+        // lower-index (left) component.
         if series || self_inv || other_inv {
             return None;
         }
-        let other = other.as_any().downcast_ref::<Interval>()?;
 
-        // Build a CmpFrame from the two component frames.
+        // Guard shared by every branch (interval.c:1320): the two Regions
+        // must have the same Closed attribute, and either both or neither
+        // must have a defined uncertainty.
+        let other_reg: &dyn Region = super::as_region(other)?;
+        if self.is_closed() != other_reg.is_closed()
+            || self.data.uncertainty.is_some() != other_reg.get_uncertainty().is_some()
+        {
+            return None;
+        }
+
+        let neg_this = self.data.negated;
+
+        // Build the merged Region's defining points in the base Frame,
+        // dispatching on the concrete type of `other`. Each branch mirrors
+        // the corresponding block of `MergeInterval`.
+        let built: Option<MergedRegion> =
+            if let Some(other) = other.as_any().downcast_ref::<Interval>() {
+                // Interval + Interval → Interval (interval.c:1354). Both
+                // un-negated.
+                if neg_this || other.data.negated {
+                    None
+                } else {
+                    let mut lbnd = self.data.points[0].clone();
+                    lbnd.extend(other.data.points[0].iter().copied());
+                    let mut ubnd = self.data.points[1].clone();
+                    ubnd.extend(other.data.points[1].iter().copied());
+                    Some(MergedRegion::Interval(lbnd, ubnd))
+                }
+            } else if let Some(other) = other.as_any().downcast_ref::<super::BoxRegion>() {
+                // Interval + Box → Interval (interval.c:1380). Both un-negated.
+                if neg_this || other.is_negated() {
+                    None
+                } else {
+                    let mut lbnd = self.data.points[0].clone();
+                    let mut ubnd = self.data.points[1].clone();
+                    let (blb, bub) = other.reg_base_box().ok()?;
+                    lbnd.extend(blb);
+                    ubnd.extend(bub);
+                    Some(MergedRegion::Interval(lbnd, ubnd))
+                }
+            } else if let Some(other) = other.as_any().downcast_ref::<super::NullRegion>() {
+                // Interval + NullRegion → Interval (interval.c:1426). The
+                // NullRegion must be negated and the Interval must not.
+                if neg_this || !other.is_negated() {
+                    None
+                } else {
+                    let nax_other = other.naxes();
+                    let mut lbnd = self.data.points[0].clone();
+                    let mut ubnd = self.data.points[1].clone();
+                    lbnd.extend(std::iter::repeat_n(BAD_VALUE, nax_other));
+                    ubnd.extend(std::iter::repeat_n(BAD_VALUE, nax_other));
+                    Some(MergedRegion::Interval(lbnd, ubnd))
+                }
+            } else if other.as_any().is::<super::PointList>() {
+                // Interval + PointList → PointList (interval.c:1458) is
+                // unreachable in practice and is deliberately not ported here.
+                // A point-Interval only reaches a neighbour merge after failing
+                // to self-simplify, but a zero-width *closed* Interval always
+                // reclassifies to a Box first (see `Interval::simplified` and C
+                // `interval.c::Cache`), so the Box+PointList path in
+                // `box.c::MergeBox` handles it instead. A non-closed point
+                // Interval fails the shared Closed guard above, since a
+                // PointList reports `Closed = !Negated`. The C branch itself is
+                // also dead for the same reason and contains upstream defects
+                // (a `lbnd[i] - lbnd[i]` self-subtraction, `astGetRegionBounds`
+                // overwriting the Interval bounds, and reads of uninitialised
+                // `lbnd_unc`/`ubnd_unc`); reproducing it faithfully is neither
+                // possible nor useful.
+                None
+            } else {
+                None
+            };
+
+        let built = built?;
+
+        // Combine the two current Frames into a CmpFrame (Interval axes
+        // first). Both Regions here have a UnitMap base->current mapping
+        // (the fixtures use the `Frm` short-form), so base == current and
+        // we can construct the merged Region directly in this Frame.
         let f1 = self.data.frameset.current().snapshot();
-        let f2 = other.data.frameset.current().snapshot();
+        let f2 = other_reg.get_region_frame();
         let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
         let frameset = FrameSet::new(Box::new(cmp_frame) as crate::frames::DynFrame);
 
-        // Concatenate per-axis bounds. Both inputs store data.points =
-        // [lbnd, ubnd] (point 0 = lower bounds, point 1 = upper
-        // bounds). The merged Interval has the same layout with each
-        // point's axis values appended.
-        let mut lbnd = self.data.points[0].clone();
-        lbnd.extend(other.data.points[0].iter().copied());
-        let mut ubnd = self.data.points[1].clone();
-        ubnd.extend(other.data.points[1].iter().copied());
-        let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
-        data.adaptive = self.data.adaptive && other.data.adaptive;
-        data.closed = self.data.closed && other.data.closed;
-        data.closed_set = self.data.closed_set || other.data.closed_set;
-        data.negated = self.data.negated || other.data.negated;
+        // Combine uncertainties (Interval first) when both are present.
+        let unc = super::merge_util::combine_uncertainties(
+            self.data.uncertainty.clone(),
+            other_reg.get_uncertainty(),
+            true,
+        );
 
-        // Reclassify if all bounds are finite (mirrors B1's
-        // Interval::simplified): a 2-D Interval with finite bounds is
-        // a BoxRegion.
-        let merged = Interval { data };
-        merged.simplified().ok()
+        finish_region_merge(
+            built,
+            frameset,
+            self.data.closed,
+            self.data.closed_set,
+            self.data.adaptive,
+            unc,
+        )
     }
 
     fn clone_box(&self) -> DynMapping {
