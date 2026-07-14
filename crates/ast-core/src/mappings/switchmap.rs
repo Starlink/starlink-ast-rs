@@ -9,6 +9,14 @@ use crate::mappings::helpers::is_bad;
 
 use super::{DynMapping, Mapping, UnitMap};
 
+/// Set a Mapping's Invert flag to `want` (invert it iff its current state
+/// differs). Mirrors C `astSetInvert`.
+fn set_invert(m: &mut dyn Mapping, want: bool) {
+    if m.is_inverted() != want {
+        m.invert();
+    }
+}
+
 /// Simplify an optional selector child Mapping and re-derive its recorded
 /// invert flag so the effective application direction is preserved.
 ///
@@ -276,50 +284,39 @@ impl SwitchMap {
         &self.route_inv
     }
 
-    /// Get the effective selector mapping for the given direction,
-    /// accounting for SwitchMap inversion.
-    fn get_selector(&self, forward: bool) -> Option<&DynMapping> {
-        let use_forward = forward != self.inverted;
-        if use_forward {
-            self.fsmap.as_ref()
+    /// Return the selector Mapping to use for the given transform direction,
+    /// as a clone whose Invert flag is already set so that calling
+    /// `.transform(pts, forward)` (with the *plain* `forward` flag) applies
+    /// the correct selector. Faithful port of C `switchmap.c::GetSelector`
+    /// (521): pick ismap/fsmap by `(swinv XOR fwd)`, restore its recorded
+    /// invert flag, then invert again if the SwitchMap itself is inverted.
+    fn resolve_selector(&self, forward: bool) -> Option<DynMapping> {
+        let swinv = self.inverted;
+        let (base, recorded_inv) = if (!swinv && !forward) || (swinv && forward) {
+            (self.ismap.as_ref()?, self.isinv)
         } else {
-            self.ismap.as_ref()
+            (self.fsmap.as_ref()?, self.fsinv)
+        };
+        let mut m = base.clone();
+        set_invert(m.as_mut(), recorded_inv);
+        if swinv {
+            m.invert();
         }
+        Some(m)
     }
 
-    /// Get the recorded invert flag for the effective selector.
-    fn get_selector_inv(&self, forward: bool) -> bool {
-        let use_forward = forward != self.inverted;
-        if use_forward { self.fsinv } else { self.isinv }
-    }
-
-    /// Determine whether the route mapping should be applied in its forward
-    /// direction, accounting for recorded invert flags and SwitchMap inversion.
-    fn route_effective_forward(&self, route_idx: usize, forward: bool) -> bool {
-        let effective_fwd = forward != self.inverted;
-        let inv_changed = self.route_inv[route_idx] != self.route_maps[route_idx].is_inverted();
+    /// Return the route Mapping for `route_idx` as a clone whose Invert flag
+    /// is set so that `.transform(pts, forward)` applies the correct
+    /// direction. Faithful port of C `switchmap.c::GetRoute` (429): restore
+    /// the recorded invert flag, then invert again if the SwitchMap is
+    /// inverted.
+    fn resolve_route(&self, route_idx: usize) -> DynMapping {
+        let mut m = self.route_maps[route_idx].clone();
+        set_invert(m.as_mut(), self.route_inv[route_idx]);
         if self.inverted {
-            inv_changed == effective_fwd
-        } else {
-            effective_fwd != inv_changed
+            m.invert();
         }
-    }
-
-    /// Determine the effective forward flag for the selector mapping.
-    fn selector_effective_forward(&self, forward: bool) -> bool {
-        let sel = self.get_selector(forward);
-        let sel_inv = self.get_selector_inv(forward);
-        if let Some(s) = sel {
-            let inv_changed = sel_inv != s.is_inverted();
-            let effective_fwd = forward != self.inverted;
-            if self.inverted {
-                inv_changed == effective_fwd
-            } else {
-                effective_fwd != inv_changed
-            }
-        } else {
-            true
-        }
+        m
     }
 }
 
@@ -417,7 +414,10 @@ impl Mapping for SwitchMap {
         let npoint = pts.npoint();
         let nroute = self.route_maps.len();
 
-        let sel = self.get_selector(forward).ok_or_else(|| {
+        // Resolve the selector into a clone whose Invert flag is already set
+        // so it is applied with the plain `forward` flag (C GetSelector +
+        // astTransform(selmap, in, forward, ...)).
+        let sel = self.resolve_selector(forward).ok_or_else(|| {
             AstError::new(
                 ErrorCode::Intrd,
                 format!(
@@ -427,8 +427,7 @@ impl Mapping for SwitchMap {
             )
         })?;
 
-        let sel_fwd = self.selector_effective_forward(forward);
-        let sel_out = sel.transform(pts, sel_fwd)?;
+        let sel_out = sel.transform(pts, forward)?;
         let sel_vals: Vec<f64> = (0..npoint).map(|i| sel_out.point(i)[0]).collect();
 
         let mut pop: Vec<usize> = vec![0; nroute];
@@ -458,7 +457,7 @@ impl Mapping for SwitchMap {
                 continue;
             }
 
-            let route_fwd = self.route_effective_forward(iroute, forward);
+            let route = self.resolve_route(iroute);
 
             let mut batch_in = PointSet::zeros(count, ncin);
             let mut point_indices: Vec<usize> = Vec::with_capacity(count);
@@ -476,7 +475,7 @@ impl Mapping for SwitchMap {
                 }
             }
 
-            let batch_out = self.route_maps[iroute].transform(&batch_in, route_fwd)?;
+            let batch_out = route.transform(&batch_in, forward)?;
 
             for (k, &ipoint) in point_indices.iter().enumerate() {
                 for j in 0..ncout {
@@ -495,14 +494,13 @@ impl Mapping for SwitchMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        let sel = match self.get_selector(true) {
+        let sel = match self.resolve_selector(true) {
             Some(s) => s,
             None => return crate::mappings::rate::numeric_rate(self, at, ax1, ax2),
         };
 
-        let sel_fwd = self.selector_effective_forward(true);
         let pts = PointSet::from_rows([at]);
-        let sel_out = sel.transform(&pts, sel_fwd)?;
+        let sel_out = sel.transform(&pts, true)?;
         let sv = sel_out.point(0)[0];
 
         if is_bad(sv) {
@@ -514,9 +512,12 @@ impl Mapping for SwitchMap {
             return Ok(BAD_VALUE);
         }
 
-        let route_fwd = self.route_effective_forward(idx as usize, true);
-        if route_fwd {
-            self.route_maps[idx as usize].rate(at, ax1, ax2)
+        // The resolved route is already oriented for a forward application;
+        // its rate is the SwitchMap's forward rate. If the route ends up
+        // applied in its inverse direction, fall back to a numeric estimate.
+        let route = self.resolve_route(idx as usize);
+        if !route.is_inverted() {
+            route.rate(at, ax1, ax2)
         } else {
             crate::mappings::rate::numeric_rate(self, at, ax1, ax2)
         }
@@ -526,31 +527,35 @@ impl Mapping for SwitchMap {
         let Some(other_sw) = other.as_any().downcast_ref::<SwitchMap>() else {
             return false;
         };
-        if self.inverted != other_sw.inverted {
-            return false;
-        }
         if self.route_maps.len() != other_sw.route_maps.len() {
             return false;
         }
-        match (&self.fsmap, &other_sw.fsmap) {
-            (Some(a), Some(b)) => {
-                if !a.equal(b.as_ref()) {
-                    return false;
-                }
-            }
-            (None, None) => {}
-            _ => return false,
+
+        // Compare the two SwitchMaps *semantically*, resolving each one's own
+        // Invert flag into its selectors and routes (C `switchmap.c::Equal`
+        // via GetSelector/GetRoute, 229). This makes an inverted SwitchMap
+        // compare equal to the equivalent non-inverted normal form.
+        let sel_eq = |a: Option<DynMapping>, b: Option<DynMapping>| match (a, b) {
+            (Some(a), Some(b)) => a.equal(b.as_ref()),
+            (None, None) => true,
+            _ => false,
+        };
+
+        // Forward selector.
+        if !sel_eq(self.resolve_selector(true), other_sw.resolve_selector(true)) {
+            return false;
         }
-        match (&self.ismap, &other_sw.ismap) {
-            (Some(a), Some(b)) => {
-                if !a.equal(b.as_ref()) {
-                    return false;
-                }
-            }
-            (None, None) => {}
-            _ => return false,
+        // Inverse selector.
+        if !sel_eq(
+            self.resolve_selector(false),
+            other_sw.resolve_selector(false),
+        ) {
+            return false;
         }
-        for (a, b) in self.route_maps.iter().zip(other_sw.route_maps.iter()) {
+        // Route Mappings (resolved for a forward application).
+        for i in 0..self.route_maps.len() {
+            let a = self.resolve_route(i);
+            let b = other_sw.resolve_route(i);
             if !a.equal(b.as_ref()) {
                 return false;
             }
