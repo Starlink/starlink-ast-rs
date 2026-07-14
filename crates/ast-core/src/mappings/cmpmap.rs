@@ -244,6 +244,16 @@ impl CmpMap {
                 self.inv_b = new_inv_b;
             }
         }
+        // Inverting swaps the forward and inverse transform directions, so the
+        // cached definedness flags must swap too. Unlike `invert()` (which sets
+        // the `inverted` bit and lets `has_forward`/`has_inverse` consult it),
+        // this method rewrites the structure to the canonical forward form, so
+        // the definedness has to be baked into the fields directly. Without
+        // this a component whose forward and inverse definedness differ (e.g.
+        // a parallel wrapping a forward-only RateMap or MathMap) would report
+        // the wrong `Fwd`/`Inv` after being absorbed inverted during
+        // reconstruct.
+        std::mem::swap(&mut self.tran_forward, &mut self.tran_inverse);
     }
 
     /// Apply the inversion of one parallel child. If the child is itself a
