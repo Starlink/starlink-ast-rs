@@ -17,22 +17,33 @@ pub fn point_has_bad(point: &[f64]) -> bool {
     point.iter().any(|&v| is_bad(v))
 }
 
-/// Compare two f64 values with AST's standard tolerance.
+/// Compare two f64 values with a scalable tolerance.
 ///
-/// Matches the C library's `astEQUAL` macro:
-/// `|a - b| <= max(1e5 * (|a| + |b|) * f64::EPSILON, 1e-12)`
+/// Matches the C library's `astEQUALS(a, b, tol)` macro:
+/// `|a - b| <= max(tol * (|a| + |b|) * f64::EPSILON, 1e-12)`
 ///
 /// Both BAD values are considered equal. One BAD + one non-BAD are not.
 #[inline]
-pub fn ast_equal(a: f64, b: f64) -> bool {
+pub fn ast_equals(a: f64, b: f64, tol: f64) -> bool {
     if a == BAD_VALUE {
         return b == BAD_VALUE;
     }
     if b == BAD_VALUE {
         return false;
     }
-    let tol = (1.0e5 * (a.abs() + b.abs()) * f64::EPSILON).max(1.0e-12);
-    (a - b).abs() <= tol
+    let eps = (tol * (a.abs() + b.abs()) * f64::EPSILON).max(1.0e-12);
+    (a - b).abs() <= eps
+}
+
+/// Compare two f64 values with AST's standard tolerance.
+///
+/// Matches the C library's `astEQUAL` macro (`astEQUALS(a, b, 1e5)`):
+/// `|a - b| <= max(1e5 * (|a| + |b|) * f64::EPSILON, 1e-12)`
+///
+/// Both BAD values are considered equal. One BAD + one non-BAD are not.
+#[inline]
+pub fn ast_equal(a: f64, b: f64) -> bool {
+    ast_equals(a, b, 1.0e5)
 }
 
 /// Validate that `in_axes` is a permutation of a subset of `0..nin` —

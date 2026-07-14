@@ -687,7 +687,8 @@ impl Mapping for BoxRegion {
         if simple_map.as_any().is::<UnitMap>() {
             return Ok(self.clone_box());
         }
-        // Transform defining points to current frame.
+        // Transform defining points to current frame to form a candidate
+        // remapped Box.
         let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
         let transformed = simple_map.transform(&pts, true)?;
         let current_frame = self.data.frameset.current().snapshot();
@@ -703,7 +704,20 @@ impl Mapping for BoxRegion {
         data.mesh_size = self.data.mesh_size;
         data.fill_factor = self.data.fill_factor;
         data.adaptive = self.data.adaptive;
-        Ok(Box::new(BoxRegion { data }))
+        let candidate = BoxRegion { data };
+
+        // A direct point transform only yields a valid axis-aligned Box when
+        // the base->current Mapping preserves axis-alignment (diagonal
+        // scale, shift, permutation). For a shear or rotation the candidate
+        // box is strictly larger than the true region; verify via the
+        // boundary round-trip (box.c::Simplify, 3905). If the candidate is
+        // not exact, no simplification is possible — return the original Box
+        // unchanged (keeping its FrameSet).
+        let candidate_mesh = candidate.reg_base_mesh()?;
+        if !self.verify_remap_exact(simple_map.as_ref(), &candidate_mesh)? {
+            return Ok(self.clone_box());
+        }
+        Ok(Box::new(candidate))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

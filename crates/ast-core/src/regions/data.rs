@@ -295,6 +295,37 @@ pub(crate) trait RegionGeometry {
 
         Ok(result)
     }
+
+    /// Verify that a candidate remapped Region (defined in this Region's
+    /// *current* Frame by the boundary points `candidate_mesh`) is an exact
+    /// representation of `self` after the base→current `map`.
+    ///
+    /// Mirrors the inverse-direction check in `box.c::Simplify`
+    /// (3905-3907): map the candidate's boundary mesh back into this
+    /// Region's base Frame with the inverse of `map`, then verify every
+    /// point lies on `self`'s boundary (its `reg_pins` is true for a closed
+    /// Region). When the base->current Mapping does not preserve
+    /// axis-alignment (e.g. a shear MatrixMap), a candidate axis-aligned Box
+    /// or Interval is strictly larger than the true region, so some
+    /// back-mapped boundary points fall outside `self` and the check fails —
+    /// signalling that no simplification is possible and the original Region
+    /// (with its FrameSet) must be returned unchanged.
+    fn verify_remap_exact(
+        &self,
+        map: &dyn Mapping,
+        candidate_mesh: &[Vec<f64>],
+    ) -> AstResult<bool> {
+        if candidate_mesh.is_empty() {
+            // No boundary to test (e.g. an unbounded candidate) — cannot
+            // confirm exactness, so treat as not simplifiable.
+            return Ok(false);
+        }
+        let mesh = PointSet::from_rows(candidate_mesh.iter().map(|p| p.as_slice()));
+        // Inverse-transform the candidate boundary into the base Frame.
+        let base_mesh = map.transform(&mesh, false)?;
+        let pins = self.reg_pins(&base_mesh)?;
+        Ok(pins.iter().all(|&inside| inside))
+    }
 }
 
 /// Apply a frame-attribute mutation to a Region with integrity enforcement.

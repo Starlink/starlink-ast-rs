@@ -129,6 +129,265 @@ impl Interval {
 
         (lbnd, ubnd)
     }
+
+    /// Re-express this Interval in its current Frame across a non-UnitMap
+    /// base->current mapping. Faithful port of the unbounded branch of
+    /// `interval.c::Simplify` (3216-3517).
+    ///
+    /// The strategy: build a fully-bounded Box in the base Frame (giving
+    /// unbounded axes arbitrary finite limits), map it into the current
+    /// Frame and simplify it. The Box only simplifies when the mapping has a
+    /// 1-to-1 axis correspondence (e.g. scale/shift/permutation) — for a
+    /// shear or rotation it does not, in which case no simplification is
+    /// possible and a clone of the original Interval (with its FrameSet) is
+    /// returned. When the Box does simplify, the current-Frame axis limits
+    /// are recovered from the simplified Box, transferring any missing/equal
+    /// /reversed limits from the correct base Frame axis.
+    fn simplify_remapped(&self, map: &dyn Mapping) -> AstResult<DynMapping> {
+        use crate::constants::BAD_VALUE;
+
+        let nc = self.data.points[0].len();
+        let raw_l = &self.data.points[0];
+        let raw_u = &self.data.points[1];
+
+        // 1. Copy the bounds, replacing missing limits with arbitrary
+        //    non-BAD values (interval.c:3232-3264).
+        let mut lbnd = vec![0.0f64; nc];
+        let mut ubnd = vec![0.0f64; nc];
+        for ic in 0..nc {
+            lbnd[ic] = raw_l[ic];
+            ubnd[ic] = raw_u[ic];
+
+            if is_bad(ubnd[ic]) {
+                ubnd[ic] = if is_bad(lbnd[ic]) {
+                    1.0
+                } else if lbnd[ic] > 0.0 {
+                    lbnd[ic] * 1.01
+                } else if lbnd[ic] < 0.0 {
+                    lbnd[ic] * 0.99
+                } else {
+                    1.0
+                };
+            }
+            if is_bad(lbnd[ic]) {
+                lbnd[ic] = if ubnd[ic] > 0.0 {
+                    ubnd[ic] * 0.99
+                } else if ubnd[ic] < 0.0 {
+                    ubnd[ic] * 1.01
+                } else {
+                    1.0
+                };
+            }
+        }
+
+        // 2. Round-trip the two corners through the mapping (forward then
+        //    inverse) and expand the box to enclose the returned base-Frame
+        //    positions (interval.c:3267-3294).
+        // Layout: point 0 = lower corner, point 1 = upper corner.
+        let mut corners = PointSet::zeros(2, nc);
+        corners.point_mut(0).copy_from_slice(&lbnd);
+        corners.point_mut(1).copy_from_slice(&ubnd);
+        let fwd = map.transform(&corners, true)?;
+        let back = map.transform(&fwd, false)?;
+        for ic in 0..nc {
+            let lb = back.point(0)[ic];
+            if !is_bad(lb) {
+                if lb < lbnd[ic] {
+                    lbnd[ic] = lb;
+                }
+                if lb > ubnd[ic] {
+                    ubnd[ic] = lb;
+                }
+            }
+            let ub = back.point(1)[ic];
+            if !is_bad(ub) {
+                if ub < lbnd[ic] {
+                    lbnd[ic] = ub;
+                }
+                if ub > ubnd[ic] {
+                    ubnd[ic] = ub;
+                }
+            }
+        }
+
+        // 3. Clamp the box so it does not exceed the Interval's own limits
+        //    (interval.c:3298-3333). Uses the effective (±MAX) bounds and
+        //    respects excluded (lb > ub) axes.
+        let (elb, eub) = self.effective_bounds();
+        for ic in 0..nc {
+            let lb = elb[ic];
+            let ub = eub[ic];
+            if lb <= ub {
+                if lbnd[ic] < lb {
+                    lbnd[ic] = lb;
+                } else if lbnd[ic] > ub {
+                    lbnd[ic] = ub;
+                }
+                if ubnd[ic] < lb {
+                    ubnd[ic] = lb;
+                } else if ubnd[ic] > ub {
+                    ubnd[ic] = ub;
+                }
+            } else {
+                let lwid = lb - lbnd[ic];
+                let uwid = ubnd[ic] - ub;
+                if lwid > uwid {
+                    if lbnd[ic] > lb {
+                        lbnd[ic] = lb;
+                    }
+                    if ubnd[ic] > lb {
+                        ubnd[ic] = lb;
+                    }
+                } else {
+                    if lbnd[ic] < ub {
+                        lbnd[ic] = ub;
+                    }
+                    if ubnd[ic] < ub {
+                        ubnd[ic] = ub;
+                    }
+                }
+            }
+
+            // Ensure the bounds are not equal (interval.c:3326-3332).
+            if lbnd[ic] == 0.0 && ubnd[ic] == 0.0 {
+                ubnd[ic] = 1.0;
+            } else if crate::mappings::helpers::ast_equals(lbnd[ic], ubnd[ic], 1.0e9) {
+                ubnd[ic] = lbnd[ic].max(ubnd[ic]) * (1.0e6 * f64::EPSILON);
+            }
+        }
+
+        // 4. Build the base-Frame Box, map it into the current Frame, and
+        //    simplify it (interval.c:3335-3346). Box stores its defining
+        //    points as [centre, corner].
+        let base_frame = self.data.frameset.base().snapshot();
+        let centre: Vec<f64> = (0..nc).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect();
+        let corner: Vec<f64> = ubnd.clone();
+        let box_reg = {
+            let frameset = FrameSet::new(base_frame);
+            let mut data = RegionData::new(frameset, vec![centre, corner]);
+            data.closed = true;
+            data.closed_set = true;
+            super::BoxRegion { data }
+        };
+        let current_frame = self.data.frameset.current().snapshot();
+        let box2 = box_reg.map_region(map, current_frame.as_ref())?;
+        let sreg = (box2.as_ref() as &dyn Mapping).simplified()?;
+
+        // The Box only simplifies (changes concrete geometry) when the
+        // mapping preserves a 1-to-1 axis correspondence. Detect this: our
+        // BoxRegion::simplified returns an unchanged clone (still a Box whose
+        // base->current mapping is *not* a UnitMap) when it cannot simplify.
+        let sreg_is_box = sreg.as_any().downcast_ref::<super::BoxRegion>();
+        let sreg_is_interval = sreg.as_any().downcast_ref::<Interval>();
+
+        // Recover the simplified Box/Interval's base bounding box; bail to a
+        // clone if it did not reduce to a simple axis-aligned Region.
+        let (mut slbnd, mut subnd, snc) = if let Some(b) = sreg_is_box {
+            // A simplified Box has a UnitMap base->current mapping.
+            let m = b.data.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
+            if !m.as_any().is::<UnitMap>() {
+                return Ok(self.clone_box());
+            }
+            let (lb, ub) = b.reg_base_box()?;
+            let snc = lb.len();
+            (lb, ub, snc)
+        } else if let Some(iv) = sreg_is_interval {
+            let m = iv
+                .data
+                .frameset
+                .mapping(FrameRef::Base, FrameRef::Current)?;
+            if !m.as_any().is::<UnitMap>() {
+                return Ok(self.clone_box());
+            }
+            let snc = iv.data.points[0].len();
+            (iv.data.points[0].clone(), iv.data.points[1].clone(), snc)
+        } else {
+            // NullRegion or non-Region result: not handled here — keep the
+            // original (matches the conservative outcome for these fixtures).
+            return Ok(self.clone_box());
+        };
+
+        // 5. Determine the base<->current axis correspondence and transfer
+        //    missing/equal/reversed limits (interval.c:3377-3484).
+        //
+        // Build a PointSet with the simplified Box lower bounds plus one
+        // extra displaced point per axis, transform it into the base Frame,
+        // and see which base axis each current axis is parallel to.
+        let mut probe = PointSet::zeros(snc + 1, snc);
+        for ic in 0..snc {
+            for jc in 0..(snc + 1) {
+                probe.point_mut(jc)[ic] = slbnd[ic];
+            }
+            probe.point_mut(ic + 1)[ic] = subnd[ic];
+        }
+        let probe_base = map.transform(&probe, false)?;
+
+        let bfrm = self.data.frameset.base();
+        for ic in 0..snc {
+            // Find the base Frame axis with the largest displacement.
+            let mut maxd = -f64::MAX;
+            let mut bax: isize = -1;
+            for jc in 0..nc {
+                let d = bfrm
+                    .ax_distance(
+                        jc + 1,
+                        probe_base.point(0)[jc],
+                        probe_base.point(ic + 1)[jc],
+                    )
+                    .map(|v| v.abs())
+                    .unwrap_or(BAD_VALUE);
+                if !is_bad(d) && d > maxd {
+                    maxd = d;
+                    bax = jc as isize;
+                }
+            }
+
+            if maxd <= 0.0 {
+                // No corresponding base axis (an axis introduced by a
+                // PermMap) — collapse to a single value.
+                if is_bad(slbnd[ic]) || is_bad(subnd[ic]) {
+                    slbnd[ic] = BAD_VALUE;
+                } else {
+                    slbnd[ic] = 0.5 * (slbnd[ic] + subnd[ic]);
+                }
+                subnd[ic] = slbnd[ic];
+            } else {
+                let bax = bax as usize;
+                // Transfer missing limits from the base Frame axis.
+                if is_bad(raw_l[bax]) {
+                    slbnd[ic] = BAD_VALUE;
+                }
+                if is_bad(raw_u[bax]) {
+                    subnd[ic] = BAD_VALUE;
+                }
+                if raw_u[bax] == raw_l[bax] {
+                    subnd[ic] = slbnd[ic];
+                } else if raw_u[bax] > raw_l[bax] {
+                    // Inclusion: ensure new limits are the same way round.
+                    if subnd[ic] < slbnd[ic] {
+                        std::mem::swap(&mut subnd[ic], &mut slbnd[ic]);
+                    }
+                } else if subnd[ic] > slbnd[ic] {
+                    // Exclusion: ensure new limits are reversed.
+                    std::mem::swap(&mut subnd[ic], &mut slbnd[ic]);
+                }
+            }
+        }
+
+        // 6. Build the simplified Interval from the current-Frame limits.
+        let frameset = FrameSet::new(current_frame);
+        let mut data = RegionData::new(frameset, vec![slbnd, subnd]);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed;
+        data.closed_set = self.data.closed_set;
+        data.mesh_size = self.data.mesh_size;
+        data.fill_factor = self.data.fill_factor;
+        data.adaptive = self.data.adaptive;
+        if let Some(unc) = self.data.uncertainty.as_ref() {
+            data.uncertainty = Some(unc.clone());
+        }
+        Ok(Box::new(Interval { data }))
+    }
 }
 
 // ============================================================================
@@ -663,23 +922,10 @@ impl Mapping for Interval {
         if simple_map.as_any().is::<UnitMap>() {
             return Ok(self.clone_box());
         }
-        // Transform defining points (bounds) to current frame.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = simple_map.transform(&pts, true)?;
-        let current_frame = self.data.frameset.current().snapshot();
-        let naxes = current_frame.naxes();
-        let new_points: Vec<Vec<f64>> = (0..self.data.points.len())
-            .map(|i| transformed.point(i)[..naxes].to_vec())
-            .collect();
-        let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, new_points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-        Ok(Box::new(Interval { data }))
+
+        // Non-UnitMap base->current: attempt to re-express the Interval in
+        // its current Frame. Port of interval.c::Simplify (3216-3517).
+        self.simplify_remapped(simple_map.as_ref())
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
