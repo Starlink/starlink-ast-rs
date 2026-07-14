@@ -1190,104 +1190,26 @@ pub(crate) fn merge_loop_restricted(
     let mut mlist: Vec<i64> = Vec::new();
     let mut nlist: Vec<i64> = Vec::new();
 
-    // Safety bound on the global-helper retry loop. The legacy helpers are
-    // not part of C's engine; the bound guards against a helper grab-bag
-    // failing to converge on inputs outside the fixture corpus. It is
-    // retired in Phase 5 once the helpers move into per-class `map_merge`
-    // and the loop relies solely on `pattern_check` (as C does).
-    const MAX_STALL_ROUNDS: usize = 50;
-    let mut rounds = 0;
-
+    // The engine is now purely C's nominate loop: nominate each unfrozen
+    // component in turn and call its per-class `map_merge`, to fixpoint. Every
+    // cross-class swap/restructure that the old global helpers performed now
+    // lives in the owning class's `map_merge` (WinMap/CmpMap/PermMap/WcsMap/
+    // PcdMap/GrismMap/SphMap), driven by the nominate loop exactly as C's
+    // `cmpmap.c::Simplify` drives `astMapMerge`.
+    //
+    // The one piece not owned by a nominated class is the in-loop UnitMap
+    // strip: C's `UnitMap::MapMerge` (unitmap.c) removes a UnitMap from a
+    // series sequence when the UnitMap itself is nominated. We fold that into
+    // the same fixpoint: run the nominate loop, strip series UnitMaps, and
+    // repeat until neither changes. Stripping only after the nominate loop
+    // stabilises lets other classes react to a UnitMap neighbour first (e.g.
+    // PermMap's OutCpy form, or folding SphMap/UnitMap into a MatrixMap)
+    // before it vanishes.
     loop {
-        rounds += 1;
-        if rounds > MAX_STALL_ROUNDS {
-            break;
-        }
-
-        // Exhaust per-class / direct merges.
         if run_nominate_loop(&mut ctx, series, &mut mlist, &mut nlist) {
             changed = true;
         }
 
-        // A restricted simplify runs only C's nominate loop (with the
-        // AllowSimplify gate); the legacy global swap helpers below are not
-        // part of that engine, so stop once the nominate loop stabilises.
-        if restricted {
-            break;
-        }
-
-        // Stall handler: legacy global swap helpers, tried in the original
-        // order. First success restarts the nominate loop.
-        //
-        // The WinMap-specific helpers below overlap with the now-ported
-        // `WinMap::map_merge` (run in `run_nominate_loop` above). They are
-        // retained as scaffolding because `map_merge`'s series-only coverage
-        // does not yet reproduce every case these whole-list helpers handle
-        // (notably the WcsMap/PermMap-adjacent and parallel-distribution
-        // structures that feed the FITS-WCS writer's CRPIX extraction in the
-        // `degen1`/`class_ait` wcsconv cases). They are retired class-by-class
-        // in later phases once `map_merge` subsumes them; until then keeping
-        // both active is byte-neutral (the nominate loop reaches a fixpoint
-        // regardless of which path performs a given swap).
-        if false && series && try_swap_winmap_wcsmap(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_swap_winmap_past_permmap(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_swap_wcsmap_past_permmap(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_swap_pcdmap_past_neighbor(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_merge_zoom_before_inv_grism(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_sphmap_diagonal_pattern(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_merge_parallel_in_series(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && !series && try_merge_series_in_parallel(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_swap_permmap_parallel(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-        if false && series && try_distribute_winmap_into_parallel(&mut ctx.list) {
-            ctx.resync_frozen();
-            changed = true;
-            continue;
-        }
-
-        // Last-resort in-loop UnitMap stripping. The C oracle's simplify
-        // loop nominates each map in turn; UnitMap's MapMerge removes itself
-        // from the list, after which the outer loop retries the surrounding
-        // pairs. We mimic that by stripping UnitMaps only when no other
-        // heuristic applied — earlier rounds give other classes a chance to
-        // react to UnitMap neighbours before they vanish (which can change
-        // e.g. PermMap into its OutCpy form, or fold SphMap/UnitMap into a
-        // MatrixMap).
         if series && ctx.list.len() > 1 {
             let orig_len = ctx.list.len();
             ctx.list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
@@ -1319,257 +1241,6 @@ pub(crate) fn merge_loop_restricted(
 
     *list = ctx.list;
     changed
-}
-
-/// parameters — it just moves it to the other side of the WcsMap,
-/// potentially enabling further merges with other linear mappings.
-///
-/// Returns true if any swap was performed.
-fn try_swap_winmap_wcsmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut swapped = false;
-    let mut i = 0;
-    while i + 1 < list.len() {
-        let i_is_lin = list[i].0.as_any().is::<WinMap>() || list[i].0.as_any().is::<ShiftMap>();
-        let i1_is_lin =
-            list[i + 1].0.as_any().is::<WinMap>() || list[i + 1].0.as_any().is::<ShiftMap>();
-        let is_win_wcs = i_is_lin && list[i + 1].0.as_any().is::<WcsMap>();
-        let is_wcs_win = list[i].0.as_any().is::<WcsMap>() && i1_is_lin;
-
-        if is_win_wcs || is_wcs_win {
-            let (win_idx, wcs_idx) = if is_win_wcs { (i, i + 1) } else { (i + 1, i) };
-            let wcs = list[wcs_idx].0.as_any().downcast_ref::<WcsMap>().unwrap();
-
-            // Check the linear map (WinMap or ShiftMap) is identity on the
-            // WcsMap's celestial axes (shift = 0 and scale = 1 on both lon
-            // and lat). A ShiftMap always has unit scales, so for it only
-            // the shifts need checking. lonax()/latax() are 1-based; convert
-            // to 0-based for indexing. `extract_linear_params` returns the
-            // (shifts, scales) accounting for the map's own invert flag.
-            let lonax = wcs.lonax() - 1;
-            let latax = wcs.latax() - 1;
-            let win_inv = list[win_idx].1;
-            let identity_on_cel =
-                super::winmap::extract_linear_params(list[win_idx].0.as_ref(), win_inv)
-                    .map(|(shifts, scales)| {
-                        lonax < shifts.len()
-                            && latax < shifts.len()
-                            && ast_equal(shifts[lonax], 0.0)
-                            && ast_equal(shifts[latax], 0.0)
-                            && ast_equal(scales[lonax], 1.0)
-                            && ast_equal(scales[latax], 1.0)
-                    })
-                    .unwrap_or(false);
-
-            if identity_on_cel {
-                // `Vec::swap` moves the whole `(mapping, invert)` tuple, so
-                // each mapping keeps its own invert flag at its new position.
-                // A positional reorder does not change either map's direction.
-                list.swap(i, i + 1);
-                swapped = true;
-            }
-        }
-        i += 1;
-    }
-    swapped
-}
-
-/// Try to swap a WinMap (or ShiftMap/ZoomMap) past a PermMap in either order.
-///
-/// Handles both `[Linear, PermMap]` (forward swap) and `[PermMap, Linear]`
-/// (mirror swap). The PermMap may have constants and may change dimensions.
-/// Constants on the *opposite* permutation array are adjusted to absorb
-/// the WinMap that no longer exists on that side.
-///
-/// Matches C winmap.c:2973 (WinPerm) and the CanSwap bidirectionality
-/// + nstep-walk gate (winmap.c:266 + winmap.c:1442-1474).
-fn try_swap_winmap_past_permmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 1 < list.len() {
-        // Identify the [Linear, PermMap] or [PermMap, Linear] pattern.
-        let a_is_linear = is_linear_mapping(list[i].0.as_ref());
-        let b_is_linear = is_linear_mapping(list[i + 1].0.as_ref());
-        let a_is_perm = list[i].0.as_any().is::<PermMap>();
-        let b_is_perm = list[i + 1].0.as_any().is::<PermMap>();
-
-        // linear_iwm: position of the Linear within the pair (0 or 1).
-        let linear_iwm = if a_is_linear && b_is_perm {
-            0
-        } else if a_is_perm && b_is_linear {
-            1
-        } else {
-            i += 1;
-            continue;
-        };
-        let lin_idx = i + linear_iwm;
-        let perm_idx = i + 1 - linear_iwm;
-
-        // Bidirectionality: every connected axis in the PermMap must have
-        // matching forward/inverse links. (C CanSwap, winmap.c:399-417.)
-        let perm = list[perm_idx].0.as_any().downcast_ref::<PermMap>().unwrap();
-        let perm_inv = list[perm_idx].1;
-        let (outperm_eff, inperm_eff) = if perm_inv {
-            (perm.inperm().to_vec(), perm.outperm().to_vec())
-        } else {
-            (perm.outperm().to_vec(), perm.inperm().to_vec())
-        };
-        let consts = perm.constants().to_vec();
-        if !permmap_is_bidirectional(&outperm_eff, &inperm_eff) {
-            i += 1;
-            continue;
-        }
-
-        // Extract WinMap shifts/scales for the supplied direction. The
-        // resulting (shifts, scales) describe the linear mapping's
-        // effective forward transform with `win_inv` already absorbed.
-        let win_inv = list[lin_idx].1;
-        let Some((shifts, scales)) =
-            super::winmap::extract_linear_params(list[lin_idx].0.as_ref(), win_inv)
-        else {
-            i += 1;
-            continue;
-        };
-
-        // The swap is worthwhile in any of these cases:
-        //   (a) A linear merge target is reachable on the Linear's far side
-        //       (matches C nstep walk, winmap.c:1442-1474).
-        //   (b) The mapping on the Linear's far side is itself a PermMap
-        //       (the swap places the two PermMaps adjacent so they can
-        //       merge/cancel — handles `[Perm, Linear, Perm]` patterns
-        //       like the win_swap_outer_merge fixture).
-        //   (c) The swap would intrinsically simplify the Linear
-        //       (matches C CanSwap "simpler" flag, winmap.c:419-427):
-        //       Linear before PermMap → simpler iff `npin > npout`;
-        //       Linear after PermMap → simpler iff `npout > npin`.
-        let walk_forward = linear_iwm == 0;
-        let has_walk_target = has_swap_target_for_winperm(list, i, walk_forward);
-        let has_perm_on_far_side = if linear_iwm == 0 {
-            // Far side of Linear at i is i-1.
-            i > 0 && list[i - 1].0.as_any().is::<PermMap>()
-        } else {
-            // Far side of Linear at i+1 is i+2.
-            i + 2 < list.len() && list[i + 2].0.as_any().is::<PermMap>()
-        };
-        let npin = if perm_inv {
-            perm.outperm().len()
-        } else {
-            perm.inperm().len()
-        };
-        let npout = if perm_inv {
-            perm.inperm().len()
-        } else {
-            perm.outperm().len()
-        };
-        let simpler = if linear_iwm == 0 {
-            npin > npout
-        } else {
-            npout > npin
-        };
-        if !has_walk_target && !has_perm_on_far_side && !simpler {
-            i += 1;
-            continue;
-        }
-
-        // Build the new (Linear', PermMap') pair.
-        let Some((new_lin, new_pm)) = build_winperm_swap(
-            linear_iwm,
-            &shifts,
-            &scales,
-            &outperm_eff,
-            &inperm_eff,
-            &consts,
-        ) else {
-            i += 1;
-            continue;
-        };
-
-        // Replace the two-element window with the swapped pair (PermMap'
-        // takes the Linear's slot and vice-versa). Both replacements are
-        // returned in their natural (forward) form.
-        list[lin_idx] = (Box::new(new_pm), false, false);
-        list[perm_idx] = (new_lin, false, false);
-        return true;
-    }
-    false
-}
-
-/// Returns `true` iff the mapping is a simple linear class
-/// (`WinMap`/`ShiftMap`/`ZoomMap`).
-fn is_linear_mapping(m: &dyn Mapping) -> bool {
-    m.as_any().is::<WinMap>() || m.as_any().is::<ShiftMap>() || m.as_any().is::<ZoomMap>()
-}
-
-/// Bi-directionality check on the (effective) PermMap permutation arrays.
-///
-/// For every connected output axis k (outperm[k] >= 1 and within range),
-/// the corresponding input axis must point back: inperm[outperm[k]-1] == k+1.
-/// And vice-versa for connected input axes.
-fn permmap_is_bidirectional(outperm: &[i64], inperm: &[i64]) -> bool {
-    let nin = inperm.len() as i64;
-    let nout = outperm.len() as i64;
-    for (k, &p) in outperm.iter().enumerate() {
-        if p >= 1 && p <= nin && inperm[(p - 1) as usize] != (k as i64) + 1 {
-            return false;
-        }
-    }
-    for (i, &p) in inperm.iter().enumerate() {
-        if p >= 1 && p <= nout && outperm[(p - 1) as usize] != (i as i64) + 1 {
-            return false;
-        }
-    }
-    true
-}
-
-/// Walk the flattened list looking for a merge target reachable from a
-/// proposed Linear↔PermMap swap. The Linear+PermMap pair occupies positions
-/// `i` and `i+1`. When `walk_forward` is true, the Linear is at `i` and
-/// scans positions `i+2..` (rightward); otherwise it scans `i-1..0`
-/// (leftward). The walk passes through MatrixMap/WcsMap/PermMap and
-/// stops on the first Linear (WinMap/ShiftMap/ZoomMap/UnitMap or diagonal
-/// MatrixMap) or non-swappable mapping.
-///
-/// Matches the gate logic in C winmap.c:1442-1474 + 1490-1513.
-fn has_swap_target_for_winperm(
-    list: &[(DynMapping, bool, bool)],
-    i: usize,
-    walk_forward: bool,
-) -> bool {
-    // Position of the Linear in the pair (i for forward, i+1 for backward).
-    // The walk starts just past the PermMap.
-    let walk_iter: Box<dyn Iterator<Item = usize>> = if walk_forward {
-        Box::new((i + 2)..list.len())
-    } else if i > 0 {
-        Box::new((0..i).rev())
-    } else {
-        return false;
-    };
-    for j in walk_iter {
-        let m = list[j].0.as_ref();
-        if is_linear_mapping(m) || m.as_any().is::<UnitMap>() {
-            return true;
-        }
-        if let Some(mm) = m.as_any().downcast_ref::<MatrixMap>() {
-            let inv = list[j].1;
-            let mat = if inv {
-                match mm.inverse_matrix() {
-                    Some(x) => x,
-                    None => return false,
-                }
-            } else {
-                mm.forward_matrix()
-            };
-            if is_diagonal(mat) {
-                return true;
-            }
-            // Non-diagonal MatrixMap: keep walking through it.
-            continue;
-        }
-        if m.as_any().is::<WcsMap>() || m.as_any().is::<PermMap>() {
-            continue;
-        }
-        // Non-swappable: stop.
-        return false;
-    }
-    false
 }
 
 /// Construct the (Linear', PermMap') pair that results from swapping a
@@ -1664,30 +1335,6 @@ pub(crate) fn build_winperm_swap(
     let new_lin: DynMapping = Box::new(WinMap::new(&new_shifts, &new_scales).ok()?);
     let new_pm = PermMap::new(inperm, outperm, &new_consts).ok()?;
     Some((new_lin, new_pm))
-}
-
-/// Try to swap a WcsMap past a PermMap (or vice versa) in a flattened series list.
-///
-/// When a WcsMap is adjacent to a PermMap, they can be swapped in order
-/// (producing a modified WcsMap with permuted axis assignments) if:
-/// 1. All links between input/output axes in the PermMap are bi-directional.
-/// 2. The WcsMap's longitude and latitude axes are both passed through by
-///    the PermMap (both have bi-directional links) OR both are unassigned
-///    (receive constants from the PermMap).
-///
-/// Only fires when there is a potential merge partner (another WcsMap) on
-/// the other side that could cancel with the swapped WcsMap.
-///
-/// Matches C wcsmap.c CanSwap+WcsPerm (lines 922-1145, 4463-4698).
-fn try_swap_wcsmap_past_permmap(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 1 < list.len() {
-        if try_swap_wcsmap_past_permmap_at(list, i) {
-            return true;
-        }
-        i += 1;
-    }
-    false
 }
 
 /// Attempt the WcsMap↔PermMap swap for the single adjacent pair at
@@ -2035,36 +1682,6 @@ fn effective_nin(m: &dyn Mapping, inv: bool) -> usize {
     if inv { m.nout() } else { m.nin() }
 }
 
-/// Try to merge two adjacent parallel CmpMaps that appear in a series list.
-///
-/// This restructures by dimension-matching the parallel components:
-/// the outputs of components from the first CmpMap are paired with inputs
-/// of components from the second CmpMap. Matched pairs are combined in
-/// series and simplified. If any pair simplifies, the result replaces
-/// the original pair as a single parallel CmpMap.
-fn try_merge_parallel_in_series(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 1 < list.len() {
-        let success = try_merge_parallel_pair_in_series(list, i);
-        if success {
-            return true;
-        }
-        i += 1;
-    }
-    false
-}
-
-/// Attempt to merge a specific adjacent pair at index `i` and `i+1`.
-fn try_merge_parallel_pair_in_series(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
-    if let Some(result) = compute_merge_parallel_pair_in_series(list, i) {
-        list[i] = (result, false, false);
-        list.remove(i + 1);
-        true
-    } else {
-        false
-    }
-}
-
 /// Compute the merged replacement for the adjacent parallel-CmpMap pair at
 /// `i` / `i+1` in a series list, without mutating the list. Returns the
 /// forward replacement Mapping when at least one sub-pair genuinely
@@ -2271,31 +1888,6 @@ fn dimension_match_parallel_lists(
     Some(pairs)
 }
 
-/// Try to merge two adjacent series CmpMaps in a parallel list.
-///
-/// Rearranges `(A;B) || (C;D)` into `(A||C) ; (B||D)` and simplifies
-/// each new parallel CmpMap. Only accepts if at least one simplified.
-fn try_merge_series_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 1 < list.len() {
-        if try_merge_series_pair_in_parallel(list, i) {
-            return true;
-        }
-        i += 1;
-    }
-    false
-}
-
-fn try_merge_series_pair_in_parallel(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bool {
-    if let Some(result) = compute_merge_series_pair_in_parallel(list, i) {
-        list[i] = (result, false, false);
-        list.remove(i + 1);
-        true
-    } else {
-        false
-    }
-}
-
 /// Compute the merged replacement for the adjacent series-CmpMap pair at
 /// `i` / `i+1` in a parallel list, without mutating the list. Returns the
 /// forward replacement Mapping when at least one parallel sub-pair genuinely
@@ -2416,33 +2008,6 @@ fn compute_merge_series_pair_in_parallel(
         return None;
     };
     Some(result)
-}
-
-/// Try to swap a PermMap past a parallel CmpMap in a series list.
-///
-/// When a PermMap immediately precedes a parallel CmpMap and has a
-/// "block-swap" structure that aligns with the CmpMap's component
-/// dimension boundaries, the two can be reordered. The PermMap is
-/// replaced with a new one (or removed if it becomes identity) and
-/// the CmpMap's components are reordered. This can enable further
-/// pairwise merges.
-fn try_swap_permmap_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 1 < list.len() {
-        // Check for PermMap followed by parallel CmpMap.
-        let is_perm = list[i].0.as_any().is::<PermMap>();
-        let is_par_cmp = list[i + 1]
-            .0
-            .as_any()
-            .downcast_ref::<CmpMap>()
-            .is_some_and(|c| c.composition() == Composition::Parallel);
-
-        if is_perm && is_par_cmp && try_swap_permmap_parallel_at(list, i) {
-            return true;
-        }
-        i += 1;
-    }
-    false
 }
 
 /// Attempt the PermMap↔parallel-CmpMap swap at position `i` (PermMap)
@@ -2741,43 +2306,6 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
     true
 }
 
-/// Swap a PcdMap past an adjacent ZoomMap or axis-swapping PermMap to bring
-/// the PcdMap closer to a merge partner (another PcdMap or UnitMap).
-///
-/// This matches the C pcdmap.c MapMerge logic: the PcdMap can swap with
-/// ZoomMaps and axis-swapping PermMaps. The swap is only performed if
-/// there is a potential merge target (PcdMap or UnitMap) visible on the
-/// other side, to avoid infinite swap loops.
-///
-/// Matches C pcdmap.c:1503-1714 (CanSwap + PcdZoom + PcdPerm).
-/// Try to merge GrismMap with an adjacent ZoomMap in a series list.
-///
-/// Two patterns from the C library's `CanMerge`:
-///
-/// 1. Forward GrismMap followed by ZoomMap:
-///    `list[i]=GrismMap(fwd), list[i+1]=ZoomMap`
-///    The forward GrismMap produces wavelength; the zoom scales it.
-///    Absorbs the zoom factor into the GrismMap's physical parameters.
-///
-/// 2. ZoomMap followed by inverted GrismMap:
-///    `list[i]=ZoomMap, list[i+1]=GrismMap(inv)`
-///    Conceptually inverts the pair to get case 1, absorbs the zoom,
-///    then inverts the result.
-///
-/// These are handled here rather than in `GrismMap::try_merge` because
-/// the `try_merge` API cannot distinguish forward from reverse calls,
-/// and the merges are only valid in specific orderings.
-fn try_merge_zoom_before_inv_grism(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    // Scan the whole list, delegating each adjacent pair to the per-index core
-    // `grism_zoom_merge_at` (also used by `GrismMap::map_merge`).
-    for i in 0..list.len().saturating_sub(1) {
-        if grism_zoom_merge_at(list, i) {
-            return true;
-        }
-    }
-    false
-}
-
 /// Try to merge the GrismMap/ZoomMap pair at indices `(i, i+1)`, mirroring the
 /// two ZoomMap cases of C `grismmap.c::CanMerge` (508-557): a forward GrismMap
 /// followed by a ZoomMap, or a ZoomMap followed by an inverted GrismMap. On
@@ -2951,19 +2479,6 @@ fn pcd_swap_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> Option<usi
     }
 }
 
-fn try_swap_pcdmap_past_neighbor(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    // Look for a PcdMap that can be swapped towards a merge target. Delegates
-    // to the per-index core `pcd_swap_at` (also used by `PcdMap::map_merge`).
-    let mut i = 0;
-    while i < list.len() {
-        if pcd_swap_at(list, i).is_some() {
-            return true;
-        }
-        i += 1;
-    }
-    false
-}
-
 /// Check if a mapping can be swapped with an adjacent PcdMap.
 fn can_swap_pcd_with(m: &DynMapping) -> bool {
     if m.as_any().is::<ZoomMap>() {
@@ -3104,28 +2619,6 @@ fn do_pcd_swap_second(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: 
     }
 }
 
-/// Detect the (inv-SphMap, diagonal-scale, fwd-SphMap) pattern and replace
-/// with an equivalent combination that simplifies on the next pass.
-///
-/// When an inverted SphMap (sph→cart, 2→3) is followed by a diagonal
-/// MatrixMap or ZoomMap (3→3) with equal-magnitude diagonal elements,
-/// followed by a non-inverted SphMap (cart→sph, 3→2), the trio can be
-/// replaced by (WinMap, inv-SphMap, fwd-SphMap). The WinMap encodes the
-/// longitude/latitude reflections caused by the sign pattern of the
-/// diagonal, and the two adjacent SphMaps cancel on the next merge pass.
-///
-/// Matches C sphmap.c:798-950.
-fn try_sphmap_diagonal_pattern(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 2 < list.len() {
-        if try_sphmap_diagonal_pattern_at(list, i) {
-            return true;
-        }
-        i += 1;
-    }
-    false
-}
-
 /// Detect and apply the diagonal-sandwich pattern anchored at index `i`,
 /// mirroring the second branch of C `sphmap.c::MapMerge` (817-957) where the
 /// nominated (inverted) SphMap is `map_list[where]`.
@@ -3263,217 +2756,6 @@ fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
         }
     }
     None
-}
-
-/// Try to distribute a WinMap (or ShiftMap/ZoomMap) into a parallel CmpMap's branches.
-///
-/// Handles both orderings in a series list.
-///
-/// When the WinMap is the *lower* neighbour and the CmpMap is *higher*
-/// (C's `cmlow == 0`), the WinMap operates on the CmpMap's inputs, so it is
-/// split by each component's input count and each branch becomes
-/// `sub_wm ; component`:
-///
-/// ```text
-/// WinMap(4) ; CmpMap(A(2) || B(2))  →  CmpMap((WinMap(2);A) || (WinMap(2);B))
-/// ```
-///
-/// When the WinMap is the *higher* neighbour and the CmpMap is *lower*
-/// (C's `cmlow == 1`), the WinMap operates on the CmpMap's outputs, so it is
-/// split by each component's output count and each branch becomes
-/// `component ; sub_wm`:
-///
-/// ```text
-/// CmpMap(A(2->2) || B(1->1)) ; ShiftMap(3)  →  CmpMap((A;WinMap(2)) || (B;WinMap(1)))
-/// ```
-///
-/// On the next simplification pass, each sub-WinMap can merge with its
-/// neighbouring mapping inside the branch. Critical for FITS-WCS where a
-/// scaling/shift is composed either side of a parallel (lon,lat,...) block.
-///
-/// Matches C winmap.c:1262-1416 (the WinMap↔parallel-CmpMap MapMerge branch),
-/// including the `cmlow` flag that selects the split dimension (nin vs nout)
-/// and the composition order of each new series sub-CmpMap.
-fn try_distribute_winmap_into_parallel(list: &mut Vec<(DynMapping, bool, bool)>) -> bool {
-    let mut i = 0;
-    while i + 1 < list.len() {
-        let lo_is_linear = is_linear_mapping(list[i].0.as_ref());
-        let hi_is_linear = is_linear_mapping(list[i + 1].0.as_ref());
-        let lo_is_par = list[i]
-            .0
-            .as_any()
-            .downcast_ref::<CmpMap>()
-            .is_some_and(|c| c.composition() == Composition::Parallel);
-        let hi_is_par = list[i + 1]
-            .0
-            .as_any()
-            .downcast_ref::<CmpMap>()
-            .is_some_and(|c| c.composition() == Composition::Parallel);
-
-        // `cmlow` mirrors the C flag: false when the WinMap precedes the
-        // parallel CmpMap, true when it follows it.
-        let cmlow = if lo_is_linear && hi_is_par {
-            false
-        } else if lo_is_par && hi_is_linear {
-            true
-        } else {
-            i += 1;
-            continue;
-        };
-
-        let (win_idx, par_idx) = if cmlow { (i + 1, i) } else { (i, i + 1) };
-
-        // Get the WinMap's effective forward params (a = shifts, b = scales).
-        let Some((shifts, scales)) =
-            super::winmap::extract_linear_params(list[win_idx].0.as_ref(), list[win_idx].1)
-        else {
-            i += 1;
-            continue;
-        };
-
-        // Flatten the parallel CmpMap to get components.
-        let par_inv = list[par_idx].1;
-        let Ok(par_list) = flatten(list[par_idx].0.as_ref(), par_inv, false) else {
-            i += 1;
-            continue;
-        };
-
-        // Compute the dimension boundaries along which the WinMap splits.
-        // When the WinMap precedes the CmpMap it acts on the CmpMap's inputs
-        // (split by each component's nin); when it follows the CmpMap it acts
-        // on the CmpMap's outputs (split by each component's nout).
-        let mut dim_boundaries: Vec<(usize, usize)> = Vec::new();
-        let mut offset = 0;
-        for (comp, comp_inv, _) in &par_list {
-            let dim = if cmlow {
-                effective_nout(comp.as_ref(), *comp_inv)
-            } else {
-                effective_nin(comp.as_ref(), *comp_inv)
-            };
-            dim_boundaries.push((offset, dim));
-            offset += dim;
-        }
-
-        // Total must match the WinMap's axis count.
-        if offset != shifts.len() {
-            i += 1;
-            continue;
-        }
-
-        // Split the WinMap and build new parallel branches. Each branch is
-        // either `sub_wm ; component` (cmlow == false) or
-        // `component ; sub_wm` (cmlow == true). Speculatively simplify each
-        // branch and only commit the distribution if at least one branch
-        // ends up structurally different from the unsimplified composition —
-        // i.e. the WinMap actually got absorbed somewhere. If no branch
-        // simplifies, the distribution is pure churn (and risks an infinite
-        // oscillation against `try_merge_parallel_in_series`), so it is
-        // rejected. Matches C winmap.c:1358-1375.
-        let mut new_branches: Vec<(DynMapping, bool, bool)> = Vec::new();
-        let mut any_branch_simplified = false;
-        let mut failed = false;
-        for ((comp, comp_inv, _), &(start, dim)) in par_list.iter().zip(dim_boundaries.iter()) {
-            let sub_shifts = &shifts[start..start + dim];
-            let sub_scales = &scales[start..start + dim];
-
-            let sub_wm = match WinMap::new(sub_shifts, sub_scales) {
-                Ok(w) => w,
-                Err(_) => {
-                    failed = true;
-                    break;
-                }
-            };
-
-            let mut comp_clone = comp.clone();
-            if *comp_inv {
-                comp_clone.invert();
-            }
-
-            let series = if cmlow {
-                CmpMap::new(comp_clone, Box::new(sub_wm), Composition::Series)
-            } else {
-                CmpMap::new(Box::new(sub_wm), comp_clone, Composition::Series)
-            };
-            let series = match series {
-                Ok(s) => s,
-                Err(_) => {
-                    failed = true;
-                    break;
-                }
-            };
-
-            // Compare structural fingerprints before/after simplification.
-            // A change indicates the WinMap absorbed into the component
-            // (or the chain restructured); no change means the branch
-            // is just `sub_wm ; component` with the WinMap still hanging
-            // around — the same as before distributing.
-            //
-            // Use the public `simplify()` entry point (not the internal
-            // `simplified()`) so the branch result carries the `IsSimple`
-            // flag, matching C winmap.c:1361-1362 which produces each
-            // branch via `astSimplify(nc[i])`.
-            let fp_before = mapping_fingerprint(&series);
-            let series_dyn: &dyn Mapping = &series;
-            let simplified_branch = match series_dyn.simplify() {
-                Ok(s) => s,
-                Err(_) => {
-                    failed = true;
-                    break;
-                }
-            };
-            let fp_after = mapping_fingerprint(simplified_branch.as_ref());
-            if fp_before != fp_after {
-                any_branch_simplified = true;
-            }
-            new_branches.push((simplified_branch, false, false));
-        }
-
-        if failed || !any_branch_simplified {
-            i += 1;
-            continue;
-        }
-
-        // C commits the distribution as a parallel-of-series CmpMap
-        // (`astCmpMap( simp1, simp2, 0 )`, winmap.c:1378). The *next* time the
-        // outer simplify loop nominates that CmpMap, CmpMap `MapMerge`
-        // re-simplifies it (`astSimplify(map)`, cmpmap.c:1438); within that
-        // recursive simplify the two series branches sit adjacent in a parallel
-        // list and the "Series CmpMaps in parallel" merge (cmpmap.c:1577-1620)
-        // re-combines them: it pairs the *leading* component of each branch in
-        // parallel and the *trailing* component of each branch in parallel,
-        // then composes the two results in series. When the leading components
-        // are per-axis linear maps (here the celestial branch's unit-scale
-        // ShiftMap and the spectral branch's WinMap), the leading parallel pair
-        // fuses into a single n-axis WinMap pulled in front of the parallel
-        // block — so the net visible form C settles on is the *series* form,
-        // not the distributed parallel one.
-        //
-        // Rust runs the distribution as a stall handler outside the per-class
-        // nominate loop, so the parallel CmpMap is never handed back through
-        // CmpMap `MapMerge`'s self-simplify. We therefore perform that exact
-        // "Series CmpMaps in parallel" re-combination here, on the two
-        // simplified branches, and commit the resulting series form when it is
-        // simpler. If the branches are not both binary series CmpMaps, or the
-        // re-combination yields no reduction, we fall back to committing the
-        // parallel form (as C would leave it in those cases).
-        if let Some(recombined) = recombine_distributed_branches(&new_branches) {
-            list.remove(i + 1);
-            list[i] = (recombined, false, false);
-            return true;
-        }
-
-        // Rebuild as parallel CmpMap.
-        let Ok(new_par) = reconstruct(new_branches, false) else {
-            i += 1;
-            continue;
-        };
-
-        // Replace the two-element window with the single new parallel CmpMap.
-        list.remove(i + 1);
-        list[i] = (new_par, false, false);
-        return true;
-    }
-    false
 }
 
 /// C `cmpmap.c` "Series CmpMaps in parallel" re-combination (1577-1620),
