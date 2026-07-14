@@ -3329,12 +3329,35 @@ pub(crate) fn reconstruct(
 
         // Restore each child to the orientation it should serialise in (its
         // original tree orientation), leaving inv_a/inv_b carrying the
-        // effective direction. Series only: the parallel path already produced
-        // the canonical form via `apply_effective`.
+        // effective direction. C preserves each component's own stored Invert
+        // (`astGetInvert(map1)`) and records the effective direction separately
+        // in `invert1`/`invert2` — a component originally stored forward stays
+        // forward with the inversion moved into `InvA`/`InvB`, and one stored
+        // inverted stays inverted. Our transform derives a child's math
+        // direction as `fwd XOR inv_a` (the child's own Invert cancels), so
+        // re-setting the stored orientation after `CmpMap::new` captured the
+        // effective flag is transform-neutral and only fixes the serialised
+        // form.
+        //
+        // For a series reconstruct, or a leaf (non-CmpMap) child of a parallel
+        // reconstruct, restore the original orientation. A *CmpMap* child of a
+        // parallel reconstruct is excluded: `apply_effective` already rewrote it
+        // to canonical forward form via `invert_into_structure` (which moves the
+        // inversion into that child's own recorded structure), so re-inverting
+        // it would undo that canonicalisation.
         if series {
             cmp.set_first_orientation(m_orig);
             if let Some(o) = seed_orig.take() {
                 cmp.set_second_orientation(o);
+            }
+        } else {
+            if !cmp.first().as_any().is::<CmpMap>() {
+                cmp.set_first_orientation(m_orig);
+            }
+            if let Some(o) = seed_orig.take() {
+                if !cmp.second().as_any().is::<CmpMap>() {
+                    cmp.set_second_orientation(o);
+                }
             }
         }
 
