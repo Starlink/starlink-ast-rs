@@ -655,6 +655,47 @@ impl Mapping for PointList {
             && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        // Parallel merge of two single-point PointLists into one PointList
+        // over the CmpFrame of the two current frames, whose single point is
+        // the concatenation of the two points' axes. Mirrors C
+        // `pointlist.c::MergePointList` (guard at ~1064: same Negated, each
+        // list exactly one point).
+        if series || self_inv || other_inv {
+            return None;
+        }
+        let other = other.as_any().downcast_ref::<PointList>()?;
+        if self.data.negated != other.data.negated
+            || self.data.points.len() != 1
+            || other.data.points.len() != 1
+        {
+            return None;
+        }
+
+        let f1 = self.data.frameset.current().snapshot();
+        let f2 = other.data.frameset.current().snapshot();
+        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
+        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        // Concatenate the two single points' axis values.
+        let mut point = self.data.points[0].clone();
+        point.extend(other.data.points[0].iter().copied());
+
+        let mut data = RegionData::new(frameset, vec![point]);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed && other.data.closed;
+        data.closed_set = self.data.closed_set || other.data.closed_set;
+        data.adaptive = self.data.adaptive && other.data.adaptive;
+
+        Some(Box::new(PointList { data }))
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }

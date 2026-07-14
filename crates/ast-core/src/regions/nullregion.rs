@@ -392,6 +392,52 @@ impl Mapping for NullRegion {
             && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
     }
 
+    fn try_merge(
+        &self,
+        other: &dyn Mapping,
+        series: bool,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> Option<DynMapping> {
+        // Parallel merge of two same-class NullRegions into a single
+        // NullRegion over the CmpFrame of the two current frames. Mirrors C
+        // `nullregion.c::MergeNullRegion` (571): both must share the same
+        // Negated flag; the merged region carries the combined negation and
+        // (when both have one) a Prism uncertainty.
+        if series || self_inv || other_inv {
+            return None;
+        }
+        let other = other.as_any().downcast_ref::<NullRegion>()?;
+        if self.data.negated != other.data.negated {
+            return None;
+        }
+
+        let f1 = self.data.frameset.current().snapshot();
+        let f2 = other.data.frameset.current().snapshot();
+        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
+        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        // NullRegion has no defining points.
+        let mut data = RegionData::new(frameset, Vec::new());
+        data.negated = self.data.negated;
+        data.closed = self.data.closed && other.data.closed;
+        data.closed_set = self.data.closed_set || other.data.closed_set;
+        data.adaptive = self.data.adaptive && other.data.adaptive;
+
+        // Combine uncertainties into a Prism when both are present, mirroring
+        // C `nullregion.c:686` (order: this then reg). C additionally
+        // simplifies the Prism; storing it unsimplified is transform-
+        // equivalent (a later simplify pass reduces it).
+        if let (Some(u1), Some(u2)) = (&self.data.uncertainty, &other.data.uncertainty)
+            && let Ok(prism) =
+                super::PrismBuilder::from_dyn(u1.clone(), u2.clone()).and_then(|b| b.build())
+        {
+            data.uncertainty = Some(Box::new(prism) as DynRegion);
+        }
+
+        Some(Box::new(NullRegion { data }))
+    }
+
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
     }
