@@ -90,6 +90,91 @@ impl PermMap {
         &self.inperm
     }
 
+    /// Canonicalise a lone PermMap to the form C `MapMerge` produces
+    /// (permmap.c:741) and report whether that counts as a simplification.
+    ///
+    /// C rebuilds a nominated PermMap by re-deriving its forward/inverse
+    /// permutation arrays, storing `NULL` (→ `OutCpy`/`InCpy`) for any array
+    /// that is the "null permutation", and clearing the Invert flag. It
+    /// reports `simpler` (permmap.c:1362-1373) when the PermMap collapses to
+    /// a UnitMap, its Invert flag was set, or an array that was previously
+    /// stored is now recognised as null (so it need no longer be stored).
+    ///
+    /// Returns `Some(canonical)` when such a simplification is available, or
+    /// `None` when the PermMap is already in its canonical stored form.
+    pub(crate) fn canonical_null_form(&self) -> Option<DynMapping> {
+        // Resolve the current Invert flag to the effective forward
+        // (`outperm`) and inverse (`inperm`) arrays; C MapMerge always rebuilds
+        // in the forward orientation with the Invert flag cleared
+        // (permmap.c:1420 `invert_list[imap1] = 0`).
+        let (eff_out, eff_in) = if self.inverted {
+            (&self.inperm, &self.outperm)
+        } else {
+            (&self.outperm, &self.inperm)
+        };
+
+        // Normalise dangling constant references to "bad" (0), mirroring C's
+        // accumulation (permmap.c:1065-1094).
+        let out_norm = self.normalize_bad_consts(eff_out);
+        let in_norm = self.normalize_bad_consts(eff_in);
+        let nout = out_norm.len();
+        let nin = in_norm.len();
+
+        // `store_x` (permmap.c:1300-1339): an array need not be stored when it
+        // is the dimension-aware "null permutation" (copy the same-index
+        // coordinate where it exists, "bad" otherwise). A dropped array is
+        // serialised as `OutCpy`/`InCpy`.
+        let out_is_copy = is_null_perm(&out_norm, nin);
+        let in_is_copy = is_null_perm(&in_norm, nout);
+
+        // Collapse to a UnitMap when both transforms are null and the
+        // dimensions match (permmap.c:1350).
+        if out_is_copy && in_is_copy && nin == nout {
+            return Some(Box::new(UnitMap::new(nin)));
+        }
+
+        // C `simpler` (permmap.c:1362-1373) for a lone PermMap: the Invert flag
+        // was set (always cleared in the rebuild), or an array that was
+        // genuinely stored no longer needs storing — the accumulated array is
+        // null (`!store_x`) *and* the original stored array was not already a
+        // strict-identity null per `NullPerm` (permmap.c:1695). `NullPerm`
+        // inspects the raw stored array with a dimension-agnostic `perm[i]==i`
+        // test, so an explicitly-stored identity array (e.g. `Out1=1, Out2=2`)
+        // is already null to it and dropping it is not a new simplification,
+        // whereas an array carrying dangling constant/bad references that only
+        // *accumulates* to null is. Both tests pair with the same (forward)
+        // transform, so resolve NullPerm through the original Invert flag too.
+        let (nullperm_out, nullperm_in) = if self.inverted {
+            (
+                strict_null_perm(&self.inperm),
+                strict_null_perm(&self.outperm),
+            )
+        } else {
+            (
+                strict_null_perm(&self.outperm),
+                strict_null_perm(&self.inperm),
+            )
+        };
+
+        let simpler =
+            self.inverted || (out_is_copy && !nullperm_out) || (in_is_copy && !nullperm_in);
+
+        if !simpler {
+            return None;
+        }
+
+        Some(Box::new(PermMap {
+            outperm: out_norm,
+            inperm: in_norm,
+            constants: self.constants.clone(),
+            inverted: false,
+            has_been_simplified: false,
+            out_is_copy,
+            in_is_copy,
+            perm_split: self.perm_split,
+        }))
+    }
+
     pub(crate) fn constants(&self) -> &[f64] {
         &self.constants
     }
@@ -197,6 +282,48 @@ impl PermMap {
     pub fn alongside(self, other: DynMapping) -> AstResult<CmpMap> {
         CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
+}
+
+/// Materialise C's "null permutation" for a perm array of length `len`
+/// whose values index a coordinate space of size `max` (1-based, 0 = bad).
+///
+/// Mirrors C `permmap.c::PERMVAL` (155): a NULL permutation array supplies
+/// `PERMVAL(NULL, i, max) = (i < max ? i : -1)` — the coordinate with the
+/// same index where it exists, and "bad" otherwise. In the Rust public
+/// encoding this is `i+1` for `i < max`, and `0` (bad) for the surplus
+/// entries. For a square PermMap (`len == max`) this is just the identity.
+fn null_perm(len: usize, max: usize) -> Vec<i64> {
+    (0..len)
+        .map(|i| if i < max { i as i64 + 1 } else { 0 })
+        .collect()
+}
+
+/// Report whether `perm` (in the Rust public encoding) is C's "null
+/// permutation" for a coordinate space of size `max` — i.e. whether it need
+/// not be stored by the replacement PermMap (permmap.c:1300-1339 store_in /
+/// store_out test).
+///
+/// The null pattern is: entry `i` copies the same-index coordinate where it
+/// exists (`i < max` ⇒ value `i+1`, 1-based) and is "bad" (`0`) for the
+/// surplus entries (`i >= max`). Constant references (negative entries) are
+/// never null.
+fn is_null_perm(perm: &[i64], max: usize) -> bool {
+    perm.iter()
+        .enumerate()
+        .all(|(i, &p)| if i < max { p == i as i64 + 1 } else { p == 0 })
+}
+
+/// Report whether a *stored* permutation array is a "null axis permutation"
+/// in the sense of C `permmap.c::NullPerm` (1695): every element `i` refers
+/// to the same-index coordinate (`perm[i] == i` in C's internal 0-based
+/// encoding). In the Rust public encoding that is `perm[i] == i + 1`.
+///
+/// Unlike [`is_null_perm`], this is not dimension-aware: it makes no
+/// allowance for surplus entries becoming "bad". It matches C's strict
+/// identity test on the raw stored array, which is used only to decide
+/// whether dropping an array counts as a *new* simplification.
+fn strict_null_perm(perm: &[i64]) -> bool {
+    perm.iter().enumerate().all(|(i, &p)| p == i as i64 + 1)
 }
 
 /// Add a constant value to the pool, deduplicating via `ast_equal`.
@@ -1145,11 +1272,16 @@ impl Serializable for PermMap {
     fn from_node(node: &Node) -> AstResult<Self> {
         let base = read_mapping_base(node);
 
-        // Check for OutCpy shorthand (identity forward permutation).
+        // Check for OutCpy shorthand (null forward permutation).
+        //
+        // A NULL `outperm` is C's "null permutation" (permmap.c `PERMVAL`,
+        // 155): output `i` copies input `i` where that input exists, and is
+        // "bad" otherwise. This equals the 1-based identity only when
+        // nin == nout; for a dimension-changing PermMap the surplus outputs
+        // are bad (0), not a dangling positive axis reference.
         let out_cpy = node.get_int("OutCpy", 0) != 0;
         let outperm = if out_cpy {
-            // Identity: output i = input i (1-based).
-            (1..=base.nout as i64).collect()
+            null_perm(base.nout, base.nin)
         } else {
             let mut v = Vec::with_capacity(base.nout);
             for i in 0..base.nout {
@@ -1158,11 +1290,12 @@ impl Serializable for PermMap {
             v
         };
 
-        // Check for InCpy shorthand (identity inverse permutation).
+        // Check for InCpy shorthand (null inverse permutation). As above, a
+        // NULL `inperm` copies output `i` where it exists and is bad past
+        // the number of outputs.
         let in_cpy = node.get_int("InCpy", 0) != 0;
         let inperm = if in_cpy {
-            // Identity: input i = output i (1-based).
-            (1..=base.nin as i64).collect()
+            null_perm(base.nin, base.nout)
         } else {
             let mut v = Vec::with_capacity(base.nin);
             for i in 0..base.nin {

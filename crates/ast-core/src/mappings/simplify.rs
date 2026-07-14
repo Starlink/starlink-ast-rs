@@ -249,7 +249,35 @@ pub(crate) fn flatten(
         .is_some_and(|(_, scales)| {
             scales.iter().any(|&s| s != 1.0) && scales.iter().all(|&s| ast_equal(s, 1.0))
         });
-    let mut cloned = if defer_winmap {
+    // A PermMap whose canonical stored form drops a now-redundant permutation
+    // array (→ `OutCpy`/`InCpy`) must be canonicalised inside the nominate
+    // loop, not here: C keeps each leaf atomic through `astMapList` and only
+    // rebuilds a PermMap via its `astMapMerge` (which reports the rebuild as a
+    // simplification, permmap.c:1362-1373). Reducing it here instead would let
+    // the "no pairwise change" fast path in `simplify_mapping` discard the
+    // rebuilt leaf and return the original tree. We defer only when the
+    // canonical form actually differs from the stored one; a PermMap already
+    // in canonical form takes the normal leaf reduction.
+    let defer_perm = mapping
+        .as_any()
+        .downcast_ref::<super::PermMap>()
+        .is_some_and(|p| p.canonical_null_form().is_some());
+    // A stored-inverted SpecMap is kept atomic in its stored orientation, so
+    // the reconstructed tree serialises it with `Invert=1` and its original
+    // step order — matching C's `astMapList`, which appends each leaf at the
+    // orientation it is stored in (objInvert) and records the *effective*
+    // direction separately in the parent's `InvA`/`InvB` (invert_list). C's
+    // `SpecMap::MapMerge` only rewrites a lone SpecMap forward when it is
+    // *applied* inverted (invert_list set); a stored-inverted SpecMap applied
+    // forward is left untouched. `SpecMap::simplified()` instead materialises
+    // the inverse step list, which would lose the stored orientation and
+    // change the emitted form. `spec_map_merge` still normalises the leaf when
+    // it is effectively applied inverted.
+    let defer_spec = mapping
+        .as_any()
+        .downcast_ref::<super::SpecMap>()
+        .is_some_and(|s| s.is_inverted());
+    let mut cloned = if defer_winmap || defer_perm || defer_spec {
         mapping.clone_box()
     } else {
         mapping.simplified()?
@@ -258,7 +286,7 @@ pub(crate) fn flatten(
     // `smap != map` pointer test). Only a *changed* compound component is left
     // tagged with `IsSimple` in C's dump; an unchanged one is a
     // CombineMaps-reconstruction wrapper C never re-tags.
-    let leaf_changed = !defer_winmap && !cloned.equal(mapping);
+    let leaf_changed = !defer_winmap && !defer_perm && !defer_spec && !cloned.equal(mapping);
     // Preserve the AllowSimplify flag (C `AlSimp`) across the leaf's own
     // simplification: `astMapList` keeps each component's flags, and a
     // restricted parent CmpMap relies on it to decide which leaves may be
@@ -875,7 +903,25 @@ pub(crate) fn perm_map_merge(
         return Some(where_);
     }
 
-    default_map_merge(ctx, where_, series)
+    if let Some(modified) = default_map_merge(ctx, where_, series) {
+        return Some(modified);
+    }
+
+    // C `permmap.c::MapMerge` rebuilds a nominated PermMap into its canonical
+    // stored form — dropping a now-redundant stored permutation array (→
+    // `OutCpy`/`InCpy`), clearing a set Invert flag, or collapsing to a
+    // UnitMap — and reports this as a simplification even when no neighbour
+    // merged (permmap.c:1362-1373). Mirror that here so the surrounding tree
+    // is reconstructed with the canonical leaf rather than the stored form.
+    let (m, eff_inv, _) = ctx.entry(where_);
+    let canon = m
+        .as_any()
+        .downcast_ref::<PermMap>()?
+        .canonical_null_form()?;
+    let eff_inv = *eff_inv;
+    ctx.set_pair_single(where_, (canon, eff_inv, false));
+    ctx.resync_frozen();
+    Some(where_)
 }
 
 /// Per-class `map_merge` for a nominated `WcsMap`, mirroring the swap logic

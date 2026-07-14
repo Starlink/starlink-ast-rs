@@ -1108,6 +1108,25 @@ fn normalized_steps(spec: &SpecMap, inv: bool) -> Vec<SpecConversion> {
         .collect()
 }
 
+/// Reset every cached (pre-calculated) argument slot to `BAD_VALUE`.
+///
+/// Mirrors C `specmap.c::AddSpecCvt` (line 708): when a conversion step is
+/// (re-)added to a SpecMap, every array element beyond the user-supplied
+/// arguments (`nargs..szargs`) is set to `AST__BAD`. Those slots hold values
+/// computed lazily at transform time (e.g. a frame-change frequency
+/// correction factor), so a freshly rebuilt SpecMap must not carry a cached
+/// value inherited from the component it was merged from — otherwise the
+/// stale factor is emitted in the native dump (`Spec<n>g` etc.), where C emits
+/// nothing. The value is recomputed on demand.
+fn reset_cached_args(steps: &mut [SpecConversion]) {
+    for step in steps.iter_mut() {
+        let nargs = step.cvt_type.nargs();
+        for slot in step.args.iter_mut().skip(nargs) {
+            *slot = BAD_VALUE;
+        }
+    }
+}
+
 /// Scan adjacent step pairs and remove cancelling pairs.
 ///
 /// Loops until no further cancellations are found.
@@ -1194,6 +1213,9 @@ pub(crate) fn spec_map_merge(
     let new: DynMapping = if unit {
         Box::new(UnitMap::new(1))
     } else {
+        // C rebuilds the merged SpecMap via `AddSpecCvt` for each surviving
+        // step, which blanks the cached (pre-calculated) argument slots.
+        reset_cached_args(&mut steps);
         Box::new(SpecMap {
             conversions: steps,
             inverted: false,
@@ -1328,6 +1350,9 @@ impl Mapping for SpecMap {
         if steps.is_empty() {
             Ok(Box::new(UnitMap::new(1)))
         } else {
+            // C's lone-SpecMap simplify runs through MapMerge → AddSpecCvt,
+            // which blanks the cached argument slots on the rebuilt steps.
+            reset_cached_args(&mut steps);
             Ok(Box::new(SpecMap {
                 conversions: steps,
                 inverted: false,
@@ -1377,6 +1402,8 @@ impl Mapping for SpecMap {
         if steps.is_empty() {
             Some(Box::new(UnitMap::new(1)))
         } else {
+            // C rebuilds via `AddSpecCvt`, blanking cached argument slots.
+            reset_cached_args(&mut steps);
             Some(Box::new(SpecMap {
                 conversions: steps,
                 inverted: false,
