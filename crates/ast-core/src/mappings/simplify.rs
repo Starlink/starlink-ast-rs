@@ -254,6 +254,14 @@ pub(crate) fn flatten(
     } else {
         mapping.simplified()?
     };
+    // Preserve the AllowSimplify flag (C `AlSimp`) across the leaf's own
+    // simplification: `astMapList` keeps each component's flags, and a
+    // restricted parent CmpMap relies on it to decide which leaves may be
+    // nominated. A class's `simplified()` returns a fresh object without the
+    // flag, so carry it over explicitly.
+    if mapping.allow_simplify() {
+        cloned.set_allow_simplify(true);
+    }
     // The leaf's own (intrinsic) Invert state, independent of any inversion
     // imposed by a parent CmpMap. This is preserved as the element's
     // `orig_inv` so `reconstruct` can serialise the child in the same
@@ -322,6 +330,10 @@ pub struct MergeCtx {
     pub(crate) list: Vec<(DynMapping, bool, bool)>,
     /// Per-entry frozen flag, index-parallel with `list` (C `astFrozen`).
     frozen: Vec<bool>,
+    /// Whether the enclosing CmpMap has `RestrictedSimplify` set. When
+    /// true, only components whose `AllowSimplify` flag is set may be
+    /// nominated (C `cmpmap.c:3518-3564`).
+    restricted: bool,
 }
 
 impl MergeCtx {
@@ -330,7 +342,32 @@ impl MergeCtx {
     /// `cmpmap.c:3530-3533`).
     pub(crate) fn new(list: Vec<(DynMapping, bool, bool)>) -> Self {
         let frozen = vec![false; list.len()];
-        Self { list, frozen }
+        Self {
+            list,
+            frozen,
+            restricted: false,
+        }
+    }
+
+    /// Set the restricted-simplify mode (C `restricted`), captured from the
+    /// enclosing CmpMap's `RestrictedSimplify` flag.
+    pub(crate) fn set_restricted(&mut self, restricted: bool) {
+        self.restricted = restricted;
+    }
+
+    /// Whether the component at `index` may be nominated for simplification.
+    /// Under a restricted simplify, only `AllowSimplify`-flagged components
+    /// qualify (C `restricted && !astAllowSimplify(...)`). The flag is read
+    /// live from the component (a merged result is a new mapping without the
+    /// flag, so it drops out of the allowed set — matching C, which clears
+    /// AllowSimplify after simplification).
+    fn may_nominate(&self, index: usize) -> bool {
+        !self.restricted
+            || self
+                .list
+                .get(index)
+                .map(|(m, _, _)| m.allow_simplify())
+                .unwrap_or(false)
     }
 
     /// Number of components in the working list (C `*nmap`).
@@ -527,6 +564,13 @@ pub(crate) fn cmp_map_merge(
 /// is folded into the stored factor rather than surfacing as an `InvA`/`InvB`
 /// on a parent CmpMap. This matches the C native dump (e.g. a degrees↔radians
 /// ZoomMap serialises as a forward `Zoom` value, never as an inverted one).
+/// Whether a ZoomMap can be absorbed into `m` as a neighbour (C
+/// zoommap.c::MapMerge handles MatrixMap, WinMap and ShiftMap neighbours).
+fn zoom_absorbable(m: &dyn Mapping) -> bool {
+    let a = m.as_any();
+    a.is::<super::MatrixMap>() || a.is::<super::WinMap>() || a.is::<ShiftMap>()
+}
+
 pub(crate) fn zoom_map_merge(
     zoom: &ZoomMap,
     ctx: &mut MergeCtx,
@@ -593,9 +637,22 @@ pub(crate) fn zoom_map_merge(
         let unit = (zoom_acc - 1.0).abs() <= 8.0 * f64::EPSILON;
         let simpler = ngone > 0 || unit || where_inv;
         if !simpler {
-            // No ZoomMap-run reduction: defer to the shared pairwise merge so
-            // the ZoomMap can still absorb into an adjacent MatrixMap/ShiftMap
-            // (handled by `try_merge`, exactly as the pre-override path did).
+            // No ZoomMap-run reduction: absorb the ZoomMap into a
+            // neighbouring MatrixMap/WinMap/ShiftMap. Mirroring C
+            // zoommap.c::MapMerge (994-1122), the *previous* neighbour is
+            // tried before the *next* one — this ordering is observable when
+            // only one side is eligible (e.g. a restricted simplify where the
+            // trailing Mapping is not AllowSimplify-flagged). The pairwise
+            // fusion itself is done by ZoomMap::try_merge via
+            // `default_map_merge`.
+            if where_ > 0
+                && let Some(prev) = ctx.list.get(where_ - 1)
+                && zoom_absorbable(prev.0.as_ref())
+            {
+                if let Some(modified) = default_map_merge(ctx, where_ - 1, series) {
+                    return Some(modified);
+                }
+            }
             return default_map_merge(ctx, where_, series);
         }
 
@@ -852,7 +909,9 @@ fn run_nominate_loop(
         let mut nominated = 0;
         while nominated < ctx.len() {
             // Frozen components do not get to suggest changes (C astFrozen).
-            if ctx.is_frozen(nominated) {
+            // Under a restricted simplify, components without AllowSimplify
+            // are also skipped (C cmpmap.c:3563).
+            if ctx.is_frozen(nominated) || !ctx.may_nominate(nominated) {
                 nominated += 1;
                 continue;
             }
@@ -918,7 +977,19 @@ fn run_nominate_loop(
 /// (they are identity and do not contribute).
 ///
 /// Returns `true` if the list was modified.
+#[cfg(test)]
 pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool) -> bool {
+    merge_loop_restricted(list, series, false)
+}
+
+/// Simplify a flattened component list in place. When `restricted` is true,
+/// only components carrying `AllowSimplify` may be nominated, and the legacy
+/// global swap helpers (not part of C's restricted engine) are skipped.
+pub(crate) fn merge_loop_restricted(
+    list: &mut Vec<(DynMapping, bool, bool)>,
+    series: bool,
+    restricted: bool,
+) -> bool {
     // Capture the original axis count so the empty-list fallback below
     // produces a UnitMap of the right size. For a series list, every
     // map has the same external nin/nout (after the upstream merging
@@ -938,6 +1009,7 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
     };
 
     let mut ctx = MergeCtx::new(std::mem::take(list));
+    ctx.set_restricted(restricted);
     let mut changed = false;
 
     // `modified`/`nmap` history for `pattern_check`, persisting across the
@@ -962,6 +1034,13 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
         // Exhaust per-class / direct merges.
         if run_nominate_loop(&mut ctx, series, &mut mlist, &mut nlist) {
             changed = true;
+        }
+
+        // A restricted simplify runs only C's nominate loop (with the
+        // AllowSimplify gate); the legacy global swap helpers below are not
+        // part of that engine, so stop once the nominate loop stabilises.
+        if restricted {
+            break;
         }
 
         // Stall handler: legacy global swap helpers, tried in the original
@@ -3228,9 +3307,10 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     };
 
     let series = cmp.composition() == Composition::Series;
+    let restricted = cmp.restricted_simplify();
 
     let mut list = flatten(mapping, false, series)?;
-    let changed = merge_loop(&mut list, series);
+    let changed = merge_loop_restricted(&mut list, series, restricted);
 
     // If no simplification occurred, preserve the original tree structure
     // rather than reconstructing (which changes associativity).

@@ -68,6 +68,25 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     if mapping.has_been_simplified() {
         node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
     }
+    // RestrictedSimplify (C `ReSimp`) is a base-Mapping attribute but only
+    // CmpMap ever carries a non-default value. Emitted between IsSimp and
+    // AlSimp to match the C base Dump order (mapping.c:23764).
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>()
+        && cmp.restricted_simplify()
+    {
+        node.push_int(
+            "ReSimp",
+            1,
+            Some("Simplify restricted to allowed Mappings".to_string()),
+        );
+    }
+    if mapping.allow_simplify() {
+        node.push_int(
+            "AlSimp",
+            1,
+            Some("Will be used by restricted Simplify".to_string()),
+        );
+    }
     if mapping.is_inverted() {
         node.push_int("Invert", 1, Some("Mapping inverted".to_string()));
     }
@@ -104,6 +123,7 @@ pub(crate) struct MappingBaseAttrs {
     pub has_been_simplified: bool,
     pub has_forward: bool,
     pub has_inverse: bool,
+    pub restricted_simplify: bool,
 }
 
 /// Read common Mapping attributes from a node.
@@ -122,6 +142,7 @@ pub(crate) fn read_mapping_base(node: &Node) -> MappingBaseAttrs {
         has_been_simplified: node.get_int("IsSimp", 0) != 0,
         has_forward: node.get_int("Fwd", 1) != 0,
         has_inverse: node.get_int("Inv", 1) != 0,
+        restricted_simplify: node.get_int("ReSimp", 0) != 0,
     }
 }
 
@@ -131,6 +152,17 @@ pub(crate) fn read_mapping_base(node: &Node) -> MappingBaseAttrs {
 
 /// Reconstruct a concrete Mapping from a Node tree, dispatching by class name.
 pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
+    let mut result = mapping_from_node_inner(node)?;
+    // AllowSimplify (C `AlSimp`) is a base-Mapping attribute that can appear
+    // on any component; apply it generically after class dispatch so each
+    // class's `from_node` need not read it individually.
+    if node.get_int("AlSimp", 0) != 0 {
+        result.set_allow_simplify(true);
+    }
+    Ok(result)
+}
+
+fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
     match node.class.as_str() {
         "UnitMap" => Ok(Box::new(UnitMap::from_node(node)?)),
         "ZoomMap" => Ok(Box::new(ZoomMap::from_node(node)?)),

@@ -70,6 +70,9 @@ pub struct CmpMap {
     inv_a: bool,
     /// Recorded Invert flag for second child (snapshot at construction/load).
     inv_b: bool,
+    /// `RestrictedSimplify` flag (C `ReSimp`): when set, `simplify`
+    /// nominates only component Mappings whose `AllowSimplify` flag is set.
+    restricted_simplify: bool,
 }
 
 impl CmpMap {
@@ -106,7 +109,18 @@ impl CmpMap {
             tran_inverse,
             inv_a,
             inv_b,
+            restricted_simplify: false,
         })
+    }
+
+    /// Whether this CmpMap has the `RestrictedSimplify` flag set (C `ReSimp`).
+    pub(crate) fn restricted_simplify(&self) -> bool {
+        self.restricted_simplify
+    }
+
+    /// Set (or clear) the `RestrictedSimplify` flag (C `ReSimp`).
+    pub(crate) fn set_restricted_simplify(&mut self, flag: bool) {
+        self.restricted_simplify = flag;
     }
 
     /// The first component mapping.
@@ -694,6 +708,7 @@ impl Clone for CmpMap {
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
             inv_b: self.inv_b,
+            restricted_simplify: self.restricted_simplify,
         }
     }
 }
@@ -965,6 +980,7 @@ impl Serializable for CmpMap {
             tran_inverse: true,
             inv_a,
             inv_b,
+            restricted_simplify: false,
         };
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;
@@ -973,6 +989,7 @@ impl Serializable for CmpMap {
         }
 
         cmp.set_has_been_simplified(base.has_been_simplified);
+        cmp.set_restricted_simplify(base.restricted_simplify);
         Ok(cmp)
     }
 }

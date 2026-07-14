@@ -19,6 +19,7 @@ pub struct ZoomMap {
     factor: f64,
     inverted: bool,
     has_been_simplified: bool,
+    allow_simplify: bool,
 }
 
 impl ZoomMap {
@@ -37,6 +38,7 @@ impl ZoomMap {
             factor,
             inverted: false,
             has_been_simplified: false,
+            allow_simplify: false,
         })
     }
 
@@ -137,6 +139,7 @@ impl Mapping for ZoomMap {
                 factor: effective_factor,
                 inverted: false,
                 has_been_simplified: false,
+                allow_simplify: false,
             }))
         }
     }
@@ -274,6 +277,14 @@ impl Mapping for ZoomMap {
 
     fn set_has_been_simplified(&mut self, flag: bool) {
         self.has_been_simplified = flag;
+    }
+
+    fn allow_simplify(&self) -> bool {
+        self.allow_simplify
+    }
+
+    fn set_allow_simplify(&mut self, flag: bool) {
+        self.allow_simplify = flag;
     }
 
     fn clone_box(&self) -> DynMapping {

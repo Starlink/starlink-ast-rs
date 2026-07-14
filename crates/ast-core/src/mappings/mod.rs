@@ -383,6 +383,19 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// `Mapping::simplify` sets it `true` on its result; `invert()` clears it.
     fn set_has_been_simplified(&mut self, _flag: bool) {}
 
+    /// Whether this mapping carries the `AllowSimplify` flag (C `AlSimp`,
+    /// mapping.h `AST__ALLOW_SIMPLIFY_FLAG`). Only consulted when the
+    /// enclosing CmpMap has `RestrictedSimplify` set: under a restricted
+    /// simplify, only components with this flag may be nominated for
+    /// merging. Cleared once simplification completes (cmpmap.c:3683).
+    /// Serialised as the `AlSimp` token.
+    fn allow_simplify(&self) -> bool {
+        false
+    }
+
+    /// Set (or clear) the `AllowSimplify` flag (C `AlSimp`).
+    fn set_allow_simplify(&mut self, _flag: bool) {}
+
     #[doc(hidden)]
     fn clone_box(&self) -> DynMapping;
 }
@@ -399,6 +412,15 @@ impl dyn Mapping {
     /// `simplified()` is the internal virtual dispatch used during the
     /// merge loop and does NOT set the flag.
     pub fn simplify(&self) -> AstResult<DynMapping> {
+        // A restricted simplify (C `RestrictedSimplify`) does NOT mark its
+        // result as simplified — more simplification may still be possible —
+        // and the restricted flag itself is cleared on the result
+        // (mapping.c:24755-24760).
+        let restricted = self
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .is_some_and(|c| c.restricted_simplify());
+
         let mut result = self.simplified()?;
         // Top-level cleanup: an inverted SwitchMap is canonicalised by
         // folding its inversion into the children (swapping fwd/inv
@@ -431,7 +453,14 @@ impl dyn Mapping {
         if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
             cm.canonicalize_inverted_cmpmaps();
         }
-        result.set_has_been_simplified(true);
+        if restricted {
+            // Clear the restricted flag on the result; do not set IsSimple.
+            if let Some(cm) = result.as_any_mut().downcast_mut::<CmpMap>() {
+                cm.set_restricted_simplify(false);
+            }
+        } else {
+            result.set_has_been_simplified(true);
+        }
         Ok(result)
     }
 
