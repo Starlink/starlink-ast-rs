@@ -186,22 +186,34 @@ fn merge_matrix_pair(
         return mat_or_unit(product);
     }
 
-    // MatZoom (matrixmap.c:3416): zoom commutes (z·I), so the result is the
-    // effective matrix scaled by the effective zoom factor, regardless of
-    // order.
+    // MatZoom (matrixmap.c:3988, astMtrZoom): zoom commutes (z·I), so the
+    // result is the MatrixMap scaled by the effective zoom factor. C's
+    // astMtrZoom copies the MatrixMap *preserving its Invert flag* and scales
+    // the current forward matrix by zoom / the current inverse by 1/zoom, so
+    // an inverted MatrixMap stays inverted (with its stored values scaled)
+    // rather than collapsing to a fresh forward matrix. This matches C's
+    // serialised orientation and avoids recomputing an inverse (which would
+    // perturb the last ULP).
     if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
-        let m = eff_matrix(mm, mm_inv)?;
         let zfac = if other_inv {
             1.0 / zm.factor()
         } else {
             zm.factor()
         };
         // Zoom axis count must match the shared dimension.
-        if zm.nin() != m.nrows() && zm.nin() != m.ncols() {
+        let n = if mm_inv { mm.nin() } else { mm.nout() };
+        if zm.nin() != n {
             return None;
         }
-        let scaled = &m * zfac;
-        return mat_or_unit(scaled);
+        let scaled = mm.mtr_zoom(zfac, mm_inv);
+        // Collapse to a UnitMap only when the whole mapping is the identity
+        // (effective-forward identity and not inverted, i.e. inverse also
+        // identity). An inverted result must be preserved so its orientation
+        // survives to serialisation.
+        if !scaled.is_inverted() && super::matrix::is_identity_matrix_pub(scaled.forward_matrix()) {
+            return Some(Box::new(UnitMap::new(scaled.forward_matrix().nrows())));
+        }
+        return Some(Box::new(scaled) as DynMapping);
     }
 
     // MatPerm (matrixmap.c:2608): merge with an invertible PermMap.

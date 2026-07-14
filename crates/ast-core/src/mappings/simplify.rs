@@ -439,8 +439,18 @@ impl MergeCtx {
     /// entry, closing the gap. Used by per-class `map_merge` after a direct
     /// merge produces one mapping from a neighbouring pair (C annuls the two
     /// pointers, stores the merged one at `i1`, and shuffles the tail down).
-    pub(crate) fn replace_pair_with(&mut self, i1: usize, merged: DynMapping, eff_inv: bool) {
-        self.list[i1] = (merged, eff_inv, false);
+    pub(crate) fn replace_pair_with(&mut self, i1: usize, mut merged: DynMapping, eff_inv: bool) {
+        // Normalise the entry to `(forward_map, effective_inv, orig_inv)`.
+        // A merge may return a mapping in its inverted orientation (e.g.
+        // `MatrixMap::mtr_zoom` preserves an inverted MatrixMap so it
+        // serialises `Invert=1` like C). Record that intrinsic orientation as
+        // `orig_inv` and fold it into the effective direction, then store the
+        // mapping forward — matching how `flatten` produces leaf entries.
+        let orig_inv = merged.is_inverted();
+        if orig_inv {
+            merged.invert();
+        }
+        self.list[i1] = (merged, eff_inv != orig_inv, orig_inv);
         self.list.remove(i1 + 1);
         self.frozen.remove(i1 + 1);
     }

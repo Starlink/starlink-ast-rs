@@ -217,6 +217,47 @@ impl MatrixMap {
         MatrixMap::new(product)
     }
 
+    /// Return a copy of this MatrixMap scaled by `zoom`, applied in the
+    /// effective direction `inv` (the direction the MatrixMap is used in
+    /// within a merge). Faithful port of C `matrixmap.c::MtrZoom` (3988):
+    /// copy the MatrixMap *preserving its orientation*, scale the current
+    /// forward matrix by `zoom` and the current inverse by `1/zoom`. Keeping
+    /// the orientation (rather than collapsing to a fresh forward matrix)
+    /// matches C's serialised form and avoids recomputing an inverse.
+    ///
+    /// `zoom` is the effective forward zoom factor of the neighbouring
+    /// ZoomMap in the composition.
+    pub(crate) fn mtr_zoom(&self, zoom: f64, inv: bool) -> MatrixMap {
+        // Current forward / inverse matrices for the effective orientation.
+        let (cur_fwd, cur_inv) = if inv {
+            (self.inverse.clone(), Some(self.matrix.clone()))
+        } else {
+            (Some(self.matrix.clone()), self.inverse.clone())
+        };
+        // Scale forward by zoom, inverse by 1/zoom.
+        let new_fwd = cur_fwd.map(|m| &m * zoom);
+        let new_inv = cur_inv.map(|m| &m * (1.0 / zoom));
+
+        // Re-assemble into stored (f_matrix, i_matrix) honouring orientation:
+        // when `inv`, the effective forward is the stored inverse.
+        let (stored_fwd, stored_inv) = if inv {
+            (new_inv, new_fwd)
+        } else {
+            (new_fwd, new_inv)
+        };
+
+        let mut out = match (stored_fwd, stored_inv) {
+            (Some(f), Some(i)) => MatrixMap::new_with_inverse(f, i)
+                .unwrap_or_else(|_| MatrixMap::new(self.matrix.clone()).unwrap()),
+            (Some(f), None) => MatrixMap::new(f).unwrap(),
+            _ => self.clone(),
+        };
+        if inv {
+            out.inverted = true;
+        }
+        out
+    }
+
     /// Return a copy of this MatrixMap rotated by `theta` radians.
     ///
     /// Mirrors C `astMtrRot` (matrixmap.c:3766). Valid only for 2- or 3-row
