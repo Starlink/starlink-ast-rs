@@ -1833,6 +1833,16 @@ fn compute_merge_parallel_pair_in_series(
             }
         }
 
+        // C `astSimplify_` (mapping.c:24759) tags every result. Each matched
+        // pair was combined in series and `astSimplify`'d, so its reduced
+        // result carries `IsSimple`; the pair stays forward in the parallel
+        // reconstruct (never reoriented), so the tag survives into the dump.
+        let mut simplified = simplified;
+        if let Some(cm) = simplified.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.set_is_simple_serial(true);
+        } else {
+            simplified.set_has_been_simplified(true);
+        }
         simplified_pairs.push((simplified, false, false));
     }
 
