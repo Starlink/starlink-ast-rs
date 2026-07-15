@@ -13,7 +13,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping, UnitMap};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
@@ -794,7 +794,7 @@ impl Mapping for Polygon {
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
         let simple_map = map.simplified()?;
-        if simple_map.as_any().is::<UnitMap>() {
+        if simple_map.as_ref().as_any().is::<UnitMap>() {
             return Ok(self.clone_box());
         }
         // Transform defining points (vertices) to current frame.

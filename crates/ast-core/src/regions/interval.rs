@@ -919,7 +919,7 @@ impl Mapping for Interval {
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
         let simple_map = map.simplified()?;
-        if simple_map.as_any().is::<UnitMap>() {
+        if simple_map.as_ref().as_any().is::<UnitMap>() {
             return Ok(self.clone_box());
         }
 
