@@ -767,6 +767,16 @@ impl Mapping for MatrixMap {
             if is_identity_matrix(&product) {
                 return Some(Box::new(UnitMap::new(product.nrows())));
             }
+            // C merges a MatrixMap and a PermMap only via `MatPerm`, which is
+            // gated by `PermOK` (matrixmap.c:1967, 4607): the PermMap must have
+            // equal input and output counts. A dimension-changing PermMap
+            // yields a rectangular product matrix; folding it into a matrix
+            // would drop the always-defined PermMap inverse. Leave the pair as
+            // a CmpMap in that case (mirrors the sibling guard in
+            // `PermMap::try_merge`).
+            if product.nrows() != product.ncols() {
+                return None;
+            }
             return MatrixMap::new(product)
                 .ok()
                 .map(|m| Box::new(m) as DynMapping);
