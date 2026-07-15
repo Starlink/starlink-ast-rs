@@ -466,6 +466,11 @@ impl dyn Mapping {
         let rm: &mut dyn Mapping = result.as_mut();
         if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
             cm.canonicalize_inverted_cmpmaps();
+            // Drop redundant InvA/InvB flags on a parallel CmpMap whose
+            // corresponding child is a UnitMap: since UnitMap is its own
+            // inverse the external flag is observationally irrelevant, and
+            // the C reference emits it cleared.
+            cm.normalize_unitmap_children();
         }
         if restricted {
             // Clear the restricted flag on the result; do not set IsSimple.

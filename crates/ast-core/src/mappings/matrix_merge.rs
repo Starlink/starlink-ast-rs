@@ -290,11 +290,14 @@ fn mat_perm(
     // Effective forward direction of pm is `!pm_inv`; the inverse is `pm_inv`.
     let transformed = pm.transform(&unit, pm_inv).ok()?;
 
-    // matrix[j][i] = transformed[i][j]  (matrixmap.c:2720-2722).
+    // C `matrixmap.c:2735-2738`: `matrix[j][i] = ptr2[i][j]`, where `ptr2` is
+    // AST's `[coord][point]` layout, so element `[i][j]` is coordinate `i` of
+    // transformed point `j`. In the crate's `[point][coord]` PointSet that is
+    // `transformed.point(j)[i]`.
     let mut p = Array2::<f64>::zeros((nax, nax));
     for i in 0..nax {
         for j in 0..nax {
-            p[[j, i]] = transformed.point(i)[j];
+            p[[j, i]] = transformed.point(j)[i];
         }
     }
 
@@ -383,9 +386,6 @@ fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (
         let square = mm.nin() == mm.nout();
         let invertible = mm.is_unit_form() || mm.inverse_matrix().is_some();
         if !square || !invertible {
-            return (false, false);
-        }
-        if !perm_ok(pm) {
             return (false, false);
         }
         // Effective 0-based perm arrays (constants stay negative refs).
@@ -485,26 +485,77 @@ fn scaling_row_col(m: &Array2<f64>, axis: usize) -> bool {
 /// C `matrixmap.c::PermGet` (4055): return the PermMap's `(outperm, inperm,
 /// consts)` as 0-based arrays for the given effective direction. Connected
 /// links are 0-based indices; constant axes are encoded as `-(k+1)` referring
-/// to `consts[k]`, exactly as C's `PermGet` (which derives them by probing the
-/// PermMap's transforms rather than reading the stored 1-based arrays).
+/// to `consts[k]`.
+///
+/// Ported faithfully from C: rather than reading the stored permutation
+/// arrays, the arrays are *derived* by transforming probe positions through
+/// the PermMap. This is self-consistent regardless of how the PermMap leaf is
+/// stored (including a deferred-inverted leaf) and correctly distinguishes a
+/// constant axis (both probe points map to the same value) from a copied axis.
+///
+/// `inv` is the effective Invert flag to apply to the PermMap (C's
+/// `astSetInvert(map, inv)` before probing). The "forward" probe uses the
+/// PermMap in that effective direction; the "inverse" probe uses the opposite.
 fn perm_get(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
-    // Stored arrays are 1-based for connected axes with negative constant
-    // refs. Convert connected links to 0-based, keep constant refs as-is.
-    let to_zero_based = |arr: &[i64]| -> Vec<i64> {
-        arr.iter()
-            .map(|&p| if p >= 1 { p - 1 } else { p })
-            .collect()
-    };
-    let (out_raw, in_raw) = if inv {
-        (pm.inperm().to_vec(), pm.outperm().to_vec())
-    } else {
-        (pm.outperm().to_vec(), pm.inperm().to_vec())
-    };
-    (
-        to_zero_based(&out_raw),
-        to_zero_based(&in_raw),
-        pm.constants().to_vec(),
-    )
+    // Clone and force the PermMap into the requested absolute Invert state,
+    // matching C's `astSetInvert( map, inv )`. Probes then use the API-level
+    // forward (direction 1) and inverse (direction 0) transforms.
+    let mut probe = pm.clone();
+    if probe.is_inverted() != inv {
+        probe.invert();
+    }
+    let nin = probe.nin();
+    let nout = probe.nout();
+
+    let mut outprm = vec![0i64; nout];
+    let mut inprm = vec![0i64; nin];
+    let mut cnst: Vec<f64> = Vec::with_capacity(nout + nin);
+    let mut nc = 0usize;
+
+    // Input probes: point0 = [0,1,2,...], point1 = [-1,-1,...]. The first
+    // enumerates the axes, the second detects constant output values.
+    // Forward transform to determine the output axis permutation array.
+    if nin > 0 {
+        let p0: Vec<f64> = (0..nin).map(|i| i as f64).collect();
+        let p1: Vec<f64> = vec![-1.0; nin];
+        let pset1 = PointSet::from_rows([p0.as_slice(), p1.as_slice()]);
+        if let Ok(pset2) = probe.transform(&pset1, true) {
+            for (i, slot) in outprm.iter_mut().enumerate() {
+                let op = pset2.point(0)[i];
+                let cn = pset2.point(1)[i];
+                if op == cn {
+                    cnst.push(cn);
+                    *slot = -((nc + 1) as i64);
+                    nc += 1;
+                } else {
+                    *slot = (op + 0.5).floor() as i64;
+                }
+            }
+        }
+    }
+
+    // Output probes: point0 = [0,1,2,...], point1 = [-1,-1,...] over nout
+    // coords. Inverse transform to determine the input axis permutation array.
+    if nout > 0 {
+        let q0: Vec<f64> = (0..nout).map(|i| i as f64).collect();
+        let q1: Vec<f64> = vec![-1.0; nout];
+        let pset2 = PointSet::from_rows([q0.as_slice(), q1.as_slice()]);
+        if let Ok(pset1b) = probe.transform(&pset2, false) {
+            for (i, slot) in inprm.iter_mut().enumerate() {
+                let ip = pset1b.point(0)[i];
+                let cn = pset1b.point(1)[i];
+                if ip == cn {
+                    cnst.push(cn);
+                    *slot = -((nc + 1) as i64);
+                    nc += 1;
+                } else {
+                    *slot = (ip + 0.5).floor() as i64;
+                }
+            }
+        }
+    }
+
+    (outprm, inprm, cnst)
 }
 
 /// Steps 3 & 4 (series): seek the nearest mergeable target on each side, swap
