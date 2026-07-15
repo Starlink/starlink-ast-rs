@@ -426,6 +426,10 @@ impl dyn Mapping {
     /// `simplified()` is the internal virtual dispatch used during the
     /// merge loop and does NOT set the flag.
     pub fn simplify(&self) -> AstResult<DynMapping> {
+        // Track re-entrancy so the WinMap→ShiftMap narrowing below runs only
+        // at the outermost public call (internal simplify steps recurse
+        // through this entry point).
+        let public_guard = simplify::PublicSimplifyGuard::enter();
         // A restricted simplify (C `RestrictedSimplify`) does NOT mark its
         // result as simplified — more simplification may still be possible —
         // and the restricted flag itself is cleared on the result
@@ -471,6 +475,23 @@ impl dyn Mapping {
             // inverse the external flag is observationally irrelevant, and
             // the C reference emits it cleared.
             cm.normalize_unitmap_children();
+            // C `winmap.c::MapMerge` converts an all-unit-scale WinMap to a
+            // `ShiftMap` as its final "replace with simpler" step (winmap.c:1819),
+            // performed only when no other simplification of that WinMap was
+            // possible. In the merge loop a WinMap that cannot merge with any
+            // neighbour (e.g. one isolated in a parallel branch beside a PermMap
+            // or UnitNormMap) survives to the reconstructed tree unchanged, since
+            // this engine narrows leaves eagerly in `flatten` and the
+            // preserve-structure fast path re-emits the original leaf. Apply the
+            // narrowing here, on the fully simplified top-level result, so it
+            // fires exactly once per user `simplify()` (never during the nested
+            // merge recursion, where an intermediate WinMap↔ShiftMap class change
+            // would perturb a downstream merge). The rewrite copies each WinMap's
+            // shift terms and stored `Invert` flag, so it is transform-neutral and
+            // preserves every parent's `InvA`/`InvB` snapshot.
+            if public_guard.is_outermost() {
+                cm.narrow_unit_scale_winmap_children();
+            }
         }
         if restricted {
             // Clear the restricted flag on the result; do not set IsSimple.

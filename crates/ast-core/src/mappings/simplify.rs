@@ -112,6 +112,42 @@ struct SimplifyGuard {
 
 thread_local! {
     static SIMPLIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Re-entrancy depth of the public `Mapping::simplify` entry point.
+    /// Some internal simplification steps (e.g. the WinMap parallel-CmpMap
+    /// distribution probe in `winmap_merge.rs`) call the public `simplify`
+    /// recursively; this counter lets the final top-level cleanup passes run
+    /// only at the outermost call.
+    static PUBLIC_SIMPLIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// RAII guard that tracks re-entrancy of the public `Mapping::simplify`
+/// entry point. `is_outermost()` is true only for the first (outermost)
+/// active call on this thread.
+pub(crate) struct PublicSimplifyGuard {
+    outermost: bool,
+}
+
+impl PublicSimplifyGuard {
+    /// Enter the public simplify entry, incrementing the depth counter.
+    pub(crate) fn enter() -> Self {
+        let outermost = PUBLIC_SIMPLIFY_DEPTH.with(|d| {
+            let cur = d.get();
+            d.set(cur + 1);
+            cur == 0
+        });
+        Self { outermost }
+    }
+
+    /// Whether this is the outermost active public simplify call.
+    pub(crate) fn is_outermost(&self) -> bool {
+        self.outermost
+    }
+}
+
+impl Drop for PublicSimplifyGuard {
+    fn drop(&mut self) {
+        PUBLIC_SIMPLIFY_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
 }
 
 impl SimplifyGuard {

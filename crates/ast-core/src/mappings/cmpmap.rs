@@ -189,6 +189,44 @@ impl CmpMap {
         }
     }
 
+    /// Recursively replace every all-unit-scale `WinMap` leaf with the
+    /// equivalent `ShiftMap`. Mirrors the final "replace with simpler"
+    /// step of C `winmap.c::MapMerge` (winmap.c:1819), which converts a
+    /// WinMap whose scale terms are all `1.0` into a `ShiftMap` once no
+    /// other simplification of that WinMap has been possible.
+    ///
+    /// The rewrite copies the WinMap's stored shift terms and preserves its
+    /// stored `Invert` flag, so the ShiftMap is numerically identical to the
+    /// WinMap in the same orientation. That keeps every parent CmpMap's
+    /// recorded `InvA` / `InvB` snapshot (which tracks each child's effective
+    /// direction as `inv XOR child.is_inverted()`) valid without adjustment.
+    pub(crate) fn narrow_unit_scale_winmap_children(&mut self) {
+        Self::narrow_child(&mut self.first);
+        Self::narrow_child(&mut self.second);
+    }
+
+    fn narrow_child(child: &mut DynMapping) {
+        if let Some(cm) = child.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.narrow_unit_scale_winmap_children();
+            return;
+        }
+        let Some(win) = child.as_any().downcast_ref::<super::winmap::WinMap>() else {
+            return;
+        };
+        if !win
+            .scales()
+            .iter()
+            .all(|&s| super::helpers::ast_equal(s, 1.0))
+        {
+            return;
+        }
+        let mut shift = super::shift::ShiftMap::new(win.shifts().to_vec());
+        if win.is_inverted() {
+            shift.invert();
+        }
+        *child = Box::new(shift);
+    }
+
     /// Recursively canonicalise CmpMaps so no nested CmpMap carries
     /// `inverted=true`. For each CmpMap with `inverted=true`, push the
     /// inversion into its recorded structure (`invert_into_structure`)
