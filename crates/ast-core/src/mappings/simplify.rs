@@ -2716,7 +2716,7 @@ fn try_sphmap_diagonal_pattern_at(list: &mut Vec<(DynMapping, bool, bool)>, i: u
 
     // s1 must be applied inverted (sph→cart, 2→3)
     // s3 must be applied forward (cart→sph, 3→2)
-    if !(inv1 && !inv3) {
+    if !inv1 || inv3 {
         return false;
     }
 
