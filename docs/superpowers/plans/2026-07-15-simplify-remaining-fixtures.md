@@ -52,17 +52,23 @@ deleted (commit `0b31272`). Key files: `crates/ast-core/src/mappings/simplify.rs
 For region fixtures (parse as objects, compare via equal()): build a ref via
 `from_native_string(.simp).into_mapping()` and print `s.equal(refm.as_ref())`.
 
-**C oracle** — authoritative trace of the exact C merge/arith sequence:
-```
-cd reference/starlink-ast && BA=$(pwd)/build-ast
-LD_PRELOAD=$BA/libast.so.9.3.1 /tmp/repro_dbg ../../crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/<name>.map
-```
-Add env-gated `fprintf` (guard `if(getenv("AST_DBG"))`, `#include <stdlib.h>`) to
-`reference/starlink-ast/src/*.c`, rebuild `cmake --build build-ast --target ast`,
-run with `AST_DBG=1`. **MUST** `cd reference/starlink-ast && git checkout src/ &&
-cmake --build build-ast --target ast` (revert + rebuild clean) before committing.
-`/tmp/repro_dbg` already exists and links build-ast/libast via LD_PRELOAD (its
-RPATH points at conda, so LD_PRELOAD is required).
+**C oracle** — authoritative trace of the exact C merge/arith sequence.
+The reference build lives at `reference/starlink-ast/build` (created per the
+`reference-libast-build` memory recipe; `libast.dylib` on macOS). Build the
+probe fresh (its old /tmp copy does not survive reboots): a ~25-line C program
+that `astRead`s argv[1] through an `astChannel` source callback, calls
+`astSimplify`, and `astShow`s the result — compile from inside `build/` with
+`cc -I. -I../src probe.c -L. -last -lm -Wl,-rpath,$PWD -o repro_dbg` (rpath
+makes LD_PRELOAD unnecessary). Sanity check: its output must byte-match the
+fixture's `.simp`.
+Add env-gated `fprintf` (guard `if(getenv("AST_DBG"))`; cmpmap.c needs
+`#include <stdlib.h>` added) to `reference/starlink-ast/src/*.c` — useful
+probe points: `astSimplify_` after `astSetIsSimple`, the cmpmap.c MapMerge
+head after `new = astSimplify(map)`, the nominate loop around `astMapMerge`,
+and the `astClearIsSimple` macro in mapping.h (print only on set→clear).
+Rebuild `cmake --build build --target ast`, run with `AST_DBG=1`. **MUST**
+`cd reference/starlink-ast && git checkout src/ && cmake --build build
+--target ast` (revert + rebuild clean) before committing.
 
 **Per-task discipline**: measure the exact gap first (disable/inspect), port the
 C logic faithfully, run all 4 gates, commit atomically with a message ending
@@ -143,6 +149,47 @@ cap_winmap_01's WcsMap `Invert=1`.
   `astGetInvert(map1/map2)`, nin/nout). That gives the exact target flag set per
   node. Then make `reconstruct`/`TranMap::simplified` reproduce it.
 
+**Verified C IsSimple lifecycle (2026-07-15, C-oracle traced on cap_wcsmap_01,
+brad, cmpmap_parallel_series_dim_mismatch — instrument `astClearIsSimple` in
+mapping.h to fprintf on set→clear transitions, plus mapping.c `astSimplify_`
+and the cmpmap.c MapMerge head/nominate loop):**
+
+1. `astSimplify_` (mapping.c) tags EVERY result with `IsSimple` — even when
+   the class Simplify returned `astClone(this)` unchanged: the clone shares
+   the object, so the *original tree node* gains the tag. All the failed
+   pass's nested head-tags likewise persist through shared objects.
+2. `astSetInvert` clears `IsSimple` even when setting the current value
+   (astMAKE_SET expansion, mapping.c:23256). `astClearInvert` does NOT clear
+   it (plain astMAKE_CLEAR).
+3. Probe side effects: matrixmap.c `CanSwap` (418-421 set, 580-581 restore)
+   `astSetInvert`s BOTH real list objects on every probe — any neighbour
+   class, even when no swap results — wiping their tags. Equivalent patterns
+   exist in winmap.c/wcsmap.c CanSwap and matrixmap.c PermGet. A wiped CmpMap
+   element re-runs the full recursive Simplify at its next nomination (the
+   `astGetIsSimple` shortcut no longer fires), re-tagging its nested
+   components; a tagged element short-circuits, freezing its subtree's flags.
+4. The MapMerge head brackets its `astSimplify` with an adjust/restore
+   `astSetInvert` pair when stored Invert ≠ applied invert_list value
+   (cmpmap.c:1432-1448); the restore wipes the fresh root tag immediately
+   (nested tags survive — the restore touches only the element object).
+5. The final "Construct the output Mapping" fold `astSetInvert`s every
+   element it wraps → a multi-element rebuilt result NEVER carries `IsSimp`
+   on a spine leaf. The `nmap == 1` path (`astCopy` + `astClearInvert`)
+   preserves tags. Nothing after the fold re-tags anything except the root
+   (tagged by the caller's `astSimplify_`).
+6. Consequently the final `IsSimp` placement is an EMERGENT property of the
+   full clear/re-tag sequence. Piecemeal ports all regress: dump-only
+   fold-clear broke cap_specmap_01 (C re-tags after an intermediate fold via
+   pass-2 nominations); fold-clear + matrix probe-clear + head-retag combos
+   broke brad / cmpmap_parallel_series_dim_mismatch / cap_specmap_01 (our
+   engine lacks C's shortcut state, so heads recurse and over-tag) and a
+   store-back variant broke cap_cmpmap_02's InvA/InvB placement (fingerprint
+   ignores orientation, so "unchanged" store-back re-oriented the element —
+   C never replaces the object in the unchanged case). Model the lifecycle
+   whole — tag-on-simplify, clear-on-set-invert (probes included),
+   shortcut-on-tagged, fold-clear — together with the orientation rework,
+   not as isolated patches.
+
 ## GROUP 2 — cap_winmap_02: WinMap shift-fold ASSOCIATIVITY (>4 ULP => real divergence)
 
 **Diff:** `Sft1 = -9.9999999999967808e-11` (ours) vs `-1.0000000000000751e-10`
@@ -174,18 +221,24 @@ rework — re-check cap_specmap_02 after Group 1.
 
 ## GROUP 4 — cap_wcsmap_01: orphan PermMap constants not pruned
 
+**STATUS (2026-07-15): constants DONE, landed as `permmap: compact the
+constants pool when rebuilding a PermMap`. The remaining 1-line diff (an
+extra `IsSimp = 1` on the parallel `[2×2-series ‖ UnitMap]` CmpMap child) is
+an IsSimple-lifecycle diff — moved into Group 1's scope (see the findings
+appended there).**
+
 **Diff:** 5 lines. The front PermMap serializes `Nconst = 4` with orphan
 `Con3 = <bad>` / `Con4 = <bad>` (two unreferenced constants) plus a cosmetic
 `IsSimp`; C emits `Nconst = 2`. C's `astSimplify(pmnew)` inside the PermMap
 MapMerge prunes constants no longer referenced by any `inperm`/`outperm` entry.
 Our PermMap rebuild (the `perm_get`/`mat_perm` path or `PermMap::simplified` /
-`canonical_null_form`) keeps the full constants array. **Fix:** when
-rebuilding/simplifying a PermMap, drop constants not referenced by any negative
-perm entry and renumber the remaining `-(k+1)` references — mirror C's
-constant-compaction in permmap.c (search the MapMerge/Simplify constant handling;
-constants are referenced as negative 1-based indices in inperm/outperm). Verify
-the other PermMap fixtures (cap_permmap_01, cmpmap_perm_*, winmap_perm_*) keep
-passing.
+`canonical_null_form`) keeps the full constants array. **Fix (landed):**
+`rebuild_perms` in `perm.rs` mirrors C's accumulation (permmap.c:1065-1094):
+walk inperm first then outperm (C's `back = 0/1` order), route missing/BAD
+constants to the bad marker `0`, dedupe by exact `==` into a fresh pool,
+renumber refs. `canonical_null_form` also gained C's final `simpler` tests
+(permmap.c:1375-1395, element-wise rebuilt-vs-stored comparison). All other
+PermMap fixtures verified passing.
 
 ## GROUP 5 — Region class-conversion (4 equal() failures) — SEPARATE SUBSYSTEM
 
