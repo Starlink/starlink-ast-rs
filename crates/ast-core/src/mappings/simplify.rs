@@ -384,6 +384,27 @@ fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> b
                 || decomposition_is_simpler(cmp.first(), child_inv_a, series)
                 || decomposition_is_simpler(cmp.second(), child_inv_b, series);
         }
+
+        // An *opposite-kind* CmpMap is not decomposed by `flatten` — it enters
+        // the nominate loop as a single opaque leaf, exactly as C `MapList`
+        // appends it unchanged. C's nominate loop then materialises it (its
+        // `astSimplify` in the self-simplify head returns a changed pointer),
+        // which sets the loop's change flag and forces the outer rebuild. Our
+        // `flatten` performs that leaf materialisation eagerly (via
+        // `.simplified()`), so the change is not visible as a merge-loop
+        // `changed`. Detect it here — mirroring C's rebuild trigger — by
+        // checking whether simplifying this opposite-kind CmpMap leaf in its
+        // effective direction actually changes it. This is the same predicate
+        // `flatten` uses for `leaf_changed`, evaluated read-only.
+        let mut oriented = cmp.clone_box();
+        if inv {
+            oriented.invert();
+        }
+        if let Ok(simplified) = oriented.simplified() {
+            if !simplified.equal(oriented.as_ref()) {
+                return true;
+            }
+        }
     }
     false
 }
@@ -1954,116 +1975,63 @@ fn compute_merge_series_pair_in_parallel(
     list: &[(DynMapping, bool, bool)],
     i: usize,
 ) -> Option<DynMapping> {
-    // Both must be series CmpMaps.
-    let is_ser1 = list[i]
-        .0
-        .as_any()
-        .downcast_ref::<CmpMap>()
-        .is_some_and(|c| c.composition() == Composition::Series);
-    let is_ser2 = list[i + 1]
-        .0
-        .as_any()
-        .downcast_ref::<CmpMap>()
-        .is_some_and(|c| c.composition() == Composition::Series);
-    if !is_ser1 || !is_ser2 {
-        return None;
-    }
-
-    let (ref m1, inv1, _) = list[i];
-    let (ref m2, inv2, _) = list[i + 1];
-
-    // Flatten both for series composition.
-    let Ok(ser_list1) = flatten(m1.as_ref(), inv1, true) else {
-        return None;
-    };
-    let Ok(ser_list2) = flatten(m2.as_ref(), inv2, true) else {
-        return None;
-    };
-
-    // Pad the shorter series list with UnitMaps to match lengths.
-    // (A;B;C) || (D;E) becomes (A;B;C) || (D;E;UnitMap) which is equivalent
-    // because UnitMap is the identity mapping and gets stripped after merging.
-    let mut ser_list1 = ser_list1;
-    let mut ser_list2 = ser_list2;
-    while ser_list1.len() < ser_list2.len() {
-        let nout = effective_nout(
-            ser_list1.last().unwrap().0.as_ref(),
-            ser_list1.last().unwrap().1,
-        );
-        ser_list1.push((Box::new(UnitMap::new(nout)), false, false));
-    }
-    while ser_list2.len() < ser_list1.len() {
-        let nout = effective_nout(
-            ser_list2.last().unwrap().0.as_ref(),
-            ser_list2.last().unwrap().1,
-        );
-        ser_list2.push((Box::new(UnitMap::new(nout)), false, false));
-    }
-
-    let n = ser_list1.len();
-    if n < 2 {
-        return None;
-    }
-
-    // Build parallel pairs: position k from each series list goes in parallel.
-    // Then the parallel pairs are combined in series.
-    let mut parallel_maps: Vec<(DynMapping, bool, bool)> = Vec::new();
-    let mut any_improvement = false;
-
-    for k in 0..n {
-        // Clone the mappings from each position.
-        let Ok(a) = ser_list1[k].0.simplified() else {
-            return None;
-        };
-        let Ok(c) = ser_list2[k].0.simplified() else {
-            return None;
-        };
-        let a_inv = ser_list1[k].1;
-        let c_inv = ser_list2[k].1;
-
-        // Apply inversion flags before composing in parallel.
-        let mut a_map = a;
-        let mut c_map = c;
-        if a_inv {
-            a_map.invert();
-        }
-        if c_inv {
-            c_map.invert();
-        }
-
-        // Build parallel CmpMap.
-        let Ok(par) = CmpMap::new(a_map, c_map, Composition::Parallel) else {
-            return None;
-        };
-
-        // Simplify the parallel CmpMap.
-        let par_box: DynMapping = Box::new(par);
-        let Ok(simplified) = simplify_mapping(par_box.as_ref()) else {
-            return None;
-        };
-
-        // Check if it actually simplified (pointer comparison isn't
-        // available with owned values, so check structure).
-        if !simplified.as_any().is::<CmpMap>() {
-            any_improvement = true;
-        } else if let Some(cmp) = simplified.as_any().downcast_ref::<CmpMap>() {
-            if cmp.composition() != Composition::Parallel {
-                any_improvement = true;
+    // C `cmpmap.c` 1582-1622 uses ONLY each series CmpMap's two binary
+    // children — it does not fully flatten the branches. From the two adjacent
+    // series CmpMaps it forms:
+    //
+    //   new1 = parallel( branch1.first-applied-child, branch2.first-applied-child )
+    //   new2 = parallel( branch1.second-applied-child, branch2.second-applied-child )
+    //
+    // simplifies each, and (when either genuinely simplified) recombines them
+    // in series. We extract each branch's two direct children in effective
+    // orientation, wrap them back into two forward binary series CmpMaps, and
+    // delegate to `recombine_distributed_branches`, which is the shared,
+    // tested implementation of that exact binary split (cmpmap.c:1590-1616).
+    let extract =
+        |entry: &(DynMapping, bool, bool)| -> Option<(DynMapping, bool, DynMapping, bool)> {
+            let cmp = entry.0.as_any().downcast_ref::<CmpMap>()?;
+            if cmp.composition() != Composition::Series {
+                return None;
             }
-        }
+            // Effective applied inversion of the whole CmpMap (C `invert1`), and
+            // the absolute math direction applied to each recorded child. The
+            // CmpMap transform applies direction `cmp_inv XOR inv_a` to a child
+            // (the child's own stored Invert cancels through `first_invert_changed`,
+            // exactly as `flatten` strips and re-XORs it at the leaf). So a
+            // forward-oriented child pairs with `cmp_inv XOR inv_x`, using the raw
+            // recorded snapshot — C `invert1a = cmpmap1->invert1 XOR invert1`.
+            let cmp_inv = entry.1 != cmp.is_inverted();
+            let a_eff = cmp_inv != cmp.inv_a();
+            let b_eff = cmp_inv != cmp.inv_b();
 
-        parallel_maps.push((simplified, false, false));
-    }
+            // Forward-orient each child; its full effective direction is carried by
+            // the paired bool (`invert1?...map2:...map1` swap: when the CmpMap is
+            // applied inverted, the second child is applied first).
+            let mut first = cmp.first().clone_box();
+            if first.is_inverted() {
+                first.invert();
+            }
+            let mut second = cmp.second().clone_box();
+            if second.is_inverted() {
+                second.invert();
+            }
 
-    if !any_improvement {
-        return None;
-    }
+            if !cmp_inv {
+                Some((first, a_eff, second, b_eff))
+            } else {
+                Some((second, b_eff, first, a_eff))
+            }
+        };
 
-    // Rebuild as series composition.
-    let Ok(result) = reconstruct(parallel_maps, true) else {
-        return None;
-    };
-    Some(result)
+    let (fa1, fa1_inv, sa1, sa1_inv) = extract(&list[i])?;
+    let (fa2, fa2_inv, sa2, sa2_inv) = extract(&list[i + 1])?;
+
+    // Rebuild each branch as a forward binary series CmpMap (first-applied then
+    // second-applied child), then delegate to the shared recombination core.
+    let branch1 = reconstruct(vec![(fa1, fa1_inv, false), (sa1, sa1_inv, false)], true).ok()?;
+    let branch2 = reconstruct(vec![(fa2, fa2_inv, false), (sa2, sa2_inv, false)], true).ok()?;
+
+    recombine_distributed_branches(&[(branch1, false, false), (branch2, false, false)])
 }
 
 /// Attempt the PermMap↔parallel-CmpMap swap at position `i` (PermMap)
@@ -2863,10 +2831,19 @@ pub(crate) fn recombine_distributed_branches(
     let new2 = reconstruct(vec![(b1, b1_inv, false), (b2, b2_inv, false)], false).ok()?;
 
     // Simplify each half and detect whether either changed (C's `simpler`).
+    // Use the internal `simplify_mapping` rather than the public `simplify`:
+    // the latter stamps `has_been_simplified` (the dumped `IsSimp` tag) on the
+    // returned root. C does set `IsSimple` on the `astSimplify(new1/new2)`
+    // results, but the merged pair is then re-fused into the outer tree where
+    // C's dump does not carry those child tags — matching the reference, whose
+    // inner components (e.g. brad's collapsed WinMap and `parallel(Lut,Wcs)`)
+    // are untagged. The selective `flag_parallel_series_trailing` pass below
+    // re-adds the tag exactly where C emits it (a trailing compound branch of a
+    // re-fused parallel-of-series, e.g. cap_specmap's `(Spec;Zoom)`).
     let fp1_before = mapping_fingerprint(new1.as_ref());
     let fp2_before = mapping_fingerprint(new2.as_ref());
-    let simp1 = new1.simplify().ok()?;
-    let mut simp2 = new2.simplify().ok()?;
+    let simp1 = simplify_mapping(new1.as_ref()).ok()?;
+    let mut simp2 = simplify_mapping(new2.as_ref()).ok()?;
     let simpler = mapping_fingerprint(simp1.as_ref()) != fp1_before
         || mapping_fingerprint(simp2.as_ref()) != fp2_before;
     if !simpler {
