@@ -113,10 +113,9 @@ impl PermMap {
             (&self.outperm, &self.inperm)
         };
 
-        // Normalise dangling constant references to "bad" (0), mirroring C's
+        // Rebuild the arrays and a compacted constants pool, mirroring C's
         // accumulation (permmap.c:1065-1094).
-        let out_norm = self.normalize_bad_consts(eff_out);
-        let in_norm = self.normalize_bad_consts(eff_in);
+        let (in_norm, out_norm, new_consts) = self.rebuild_perms(eff_in, eff_out);
         let nout = out_norm.len();
         let nin = in_norm.len();
 
@@ -156,8 +155,15 @@ impl PermMap {
             )
         };
 
-        let simpler =
-            self.inverted || (out_is_copy && !nullperm_out) || (in_is_copy && !nullperm_in);
+        // C's final tests (permmap.c:1375-1395): when a stored array is still
+        // needed, compare it element-wise against the rebuilt one — any
+        // difference (a re-routed bad reference or a renumbered constant) is
+        // itself a simplification.
+        let simpler = self.inverted
+            || (out_is_copy && !nullperm_out)
+            || (in_is_copy && !nullperm_in)
+            || (!in_is_copy && in_norm != *eff_in)
+            || (!out_is_copy && out_norm != *eff_out);
 
         if !simpler {
             return None;
@@ -166,7 +172,7 @@ impl PermMap {
         Some(Box::new(PermMap {
             outperm: out_norm,
             inperm: in_norm,
-            constants: self.constants.clone(),
+            constants: new_consts,
             inverted: false,
             has_been_simplified: false,
             out_is_copy,
@@ -179,27 +185,49 @@ impl PermMap {
         &self.constants
     }
 
-    /// Rewrite a permutation entry that references a missing or BAD
-    /// constant to the canonical BAD marker `0`.
+    /// Rebuild the effective permutation arrays and a compacted constants
+    /// pool, mirroring the accumulation C `permmap.c::MapMerge` performs when
+    /// it reconstructs a nominated PermMap (permmap.c:1065-1094).
     ///
-    /// Mirrors C `permmap.c::MapMerge` (1065-1094): when the simplified
-    /// PermMap is rebuilt, a negative entry whose referenced constant is
-    /// absent (no constants array) or equal to `AST__BAD` is stored as a
-    /// plain bad output (0), not a dangling constant reference.
-    fn normalize_bad_consts(&self, perm: &[i64]) -> Vec<i64> {
-        perm.iter()
-            .map(|&p| {
-                if p < 0 {
+    /// The inverse array is walked first, then the forward array (C fills
+    /// `inperm` on the `back == 0` pass before `outperm`). A negative entry
+    /// whose referenced constant is absent (no constants array) or equal to
+    /// `AST__BAD` becomes the plain bad marker `0`; every other referenced
+    /// constant is appended to a fresh pool — deduplicated by exact equality
+    /// (C: `con[ icon ] == constant`) — and the entry renumbered to reference
+    /// the compacted pool. Constants never referenced by either array are
+    /// dropped.
+    ///
+    /// Returns `(inperm, outperm, constants)` for the rebuilt PermMap.
+    fn rebuild_perms(
+        &self,
+        eff_inperm: &[i64],
+        eff_outperm: &[i64],
+    ) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
+        let mut pool: Vec<f64> = Vec::new();
+        let mut remap = |perm: &[i64]| -> Vec<i64> {
+            perm.iter()
+                .map(|&p| {
+                    if p >= 0 {
+                        return p;
+                    }
                     let cidx = (-p - 1) as usize;
                     match self.constants.get(cidx) {
-                        Some(&c) if c != BAD_VALUE => p,
+                        Some(&c) if c != BAD_VALUE => {
+                            let k = pool.iter().position(|&e| e == c).unwrap_or_else(|| {
+                                pool.push(c);
+                                pool.len() - 1
+                            });
+                            -((k + 1) as i64)
+                        }
                         _ => 0,
                     }
-                } else {
-                    p
-                }
-            })
-            .collect()
+                })
+                .collect()
+        };
+        let inperm = remap(eff_inperm);
+        let outperm = remap(eff_outperm);
+        (inperm, outperm, pool)
     }
 
     /// Return the `PermSplit` attribute (default `false`).
@@ -526,10 +554,13 @@ impl Mapping for PermMap {
         if outperm_is_identity && inperm_is_identity {
             Ok(Box::new(UnitMap::new(n)))
         } else if self.inverted {
+            // The effective inverse array is the stored `outperm` and vice
+            // versa; the rebuild resolves the Invert flag into the arrays.
+            let (in_norm, out_norm, constants) = self.rebuild_perms(&self.outperm, &self.inperm);
             Ok(Box::new(PermMap {
-                outperm: self.normalize_bad_consts(&self.inperm),
-                inperm: self.normalize_bad_consts(&self.outperm),
-                constants: self.constants.clone(),
+                outperm: out_norm,
+                inperm: in_norm,
+                constants,
                 inverted: false,
                 has_been_simplified: false,
                 out_is_copy: self.in_is_copy,
@@ -537,17 +568,16 @@ impl Mapping for PermMap {
                 perm_split: self.perm_split,
             }))
         } else {
-            // Normalise dangling constant references to bad (0), mirroring
+            // Rebuild the arrays and a compacted constants pool, mirroring
             // C MapMerge's rebuild (permmap.c:1065-1094).
-            let out_norm = self.normalize_bad_consts(&self.outperm);
-            let in_norm = self.normalize_bad_consts(&self.inperm);
+            let (in_norm, out_norm, constants) = self.rebuild_perms(&self.inperm, &self.outperm);
             if out_norm == self.outperm && in_norm == self.inperm {
                 Ok(Box::new(self.clone()))
             } else {
                 Ok(Box::new(PermMap {
                     outperm: out_norm,
                     inperm: in_norm,
-                    constants: self.constants.clone(),
+                    constants,
                     inverted: false,
                     has_been_simplified: false,
                     out_is_copy: self.out_is_copy,
