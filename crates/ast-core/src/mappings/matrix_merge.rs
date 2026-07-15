@@ -29,7 +29,7 @@ use super::matrix::{MatrixMap, is_diagonal};
 use super::perm::PermMap;
 use super::simplify::{MergeCtx, default_map_merge};
 use super::unit::UnitMap;
-use super::winmap::{WinMap, compose_linear, extract_linear_params};
+use super::winmap::{WinMap, extract_linear_params};
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 
@@ -238,15 +238,38 @@ fn merge_matrix_pair(
         if wshifts.len() != n {
             return None;
         }
-        return if mm_first {
-            // matrix (diag) applied first, then WinMap:
-            // out = wshift + wscale·(diag·x).
-            compose_linear(&zeros, &diag, &wshifts, &wscales)
+        // Compute the merged scale/shift terms exactly as C's MatWin2
+        // (matrixmap.c:3340). For a diagonal matrix, astTranN reduces to a
+        // per-axis multiply by the diagonal element.
+        let (newscales, newshifts): (Vec<f64>, Vec<f64>) = if mm_first {
+            // Matrix applied first, then WinMap: out = wscale·(diag·x) + wshift.
+            // C: newscales = M·wscales, newshifts = wshifts (unchanged).
+            (
+                (0..n).map(|i| diag[i] * wscales[i]).collect(),
+                wshifts.clone(),
+            )
         } else {
-            // WinMap applied first, then matrix (diag):
-            // out = diag·(wshift + wscale·x).
-            compose_linear(&wshifts, &wscales, &zeros, &diag)
+            // WinMap applied first, then matrix: out = diag·(wscale·x + wshift).
+            // C: newscales = M·wscales, newshifts = M·wshifts.
+            (
+                (0..n).map(|i| diag[i] * wscales[i]).collect(),
+                (0..n).map(|i| diag[i] * wshifts[i]).collect(),
+            )
         };
+        let _ = zeros;
+
+        // C constructs the result WinMap from corner points via astWinMap:
+        //   ina = 0, inb = 1, outa = newshift, outb = newscale + newshift.
+        // The WinMap constructor then recomputes the stored scale as
+        //   (outb - outa)/(inb - ina),
+        // carrying the rounding of the newscale+newshift add-then-subtract.
+        let ina = vec![0.0; n];
+        let inb = vec![1.0; n];
+        let outa = newshifts;
+        let outb: Vec<f64> = (0..n).map(|i| newscales[i] + outa[i]).collect();
+        let wm = WinMap::from_corners(&ina, &inb, &outa, &outb).ok()?;
+        let (fin_shifts, fin_scales) = (wm.shifts().to_vec(), wm.scales().to_vec());
+        return super::winmap::finalize_linear(fin_shifts, fin_scales);
     }
 
     None

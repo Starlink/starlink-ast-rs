@@ -571,6 +571,15 @@ impl MergeCtx {
         self.frozen.remove(i1 + 1);
     }
 
+    /// Remove the single entry at `index`, shuffling the tail down. Faithful
+    /// analogue of C `UnitMap::MapMerge` eliminating a UnitMap from a series
+    /// sequence (unitmap.c:519): the mapping is annulled and the following
+    /// elements shift down to fill the gap.
+    pub(crate) fn remove_at(&mut self, index: usize) {
+        self.list.remove(index);
+        self.frozen.remove(index);
+    }
+
     /// Replace the two adjacent entries at `i1`/`i1+1` with the supplied
     /// swapped pair (same count, reversed roles). Used by the WinMap swap
     /// helpers (`WinMat`/`WinPerm`/`WinWcs`), which leave the list length

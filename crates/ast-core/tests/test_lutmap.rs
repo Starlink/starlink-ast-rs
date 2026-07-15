@@ -635,9 +635,12 @@ fn lutmap_linear_inverted_simplifies() {
         s.as_any().is::<WinMap>(),
         "Inverted linear LUT should simplify to WinMap"
     );
-    assert!(s.is_inverted());
+    // C `lutmap.c::MapMerge` builds the WinMap from swapped corner points and
+    // clears the invert flag, so an inverted linear LutMap becomes a *forward*
+    // WinMap that directly implements the inverse transform.
+    assert!(!s.is_inverted());
 
-    // Verify the inverted WinMap produces the same values as inverted LutMap
+    // Verify the forward WinMap produces the same values as the inverted LutMap
     let pts = PointSet::from_rows([[5.0]]);
     let expected = lm.transform(&pts, true).unwrap();
     let actual = s.transform(&pts, true).unwrap();

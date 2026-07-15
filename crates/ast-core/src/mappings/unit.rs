@@ -86,6 +86,46 @@ impl Mapping for UnitMap {
         self.ncoord == other.ncoord
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // Faithful port of C unitmap.c::MapMerge (unitmap.c:357), series case
+        // only. In series with any other Mapping (nmap > 1) a UnitMap is
+        // simply eliminated (unitmap.c:519): the following elements shuffle
+        // down and the index of the first modified element is `where_`.
+        //
+        // Removing the UnitMap *in-loop* (rather than in a post-loop strip) is
+        // what advances the nominate cursor exactly as C does — after this
+        // returns `where_`, the map that shuffled into `where_` is nominated
+        // next, which is how C reaches e.g. `MatrixMap::MapMerge` (MatWin2)
+        // for a Win-Unit-Matrix run instead of the WinMap's own merge.
+        //
+        // The parallel case (adjacent-UnitMap coalescing and Invert clearing)
+        // and the lone-UnitMap Invert clearing are left to the existing
+        // post-loop handling, which the current fixtures already match.
+        if ctx.len() == 1 {
+            // A lone UnitMap: clear a set Invert flag, reporting the change
+            // (unitmap.c:508). Matches C returning `result = 0` when the
+            // single-map Invert flag was set.
+            let entry = ctx.entry(0);
+            if entry.1 || entry.2 {
+                ctx.set_pair_single(0, (Box::new(UnitMap::new(self.ncoord)), false, false));
+                return Some(0);
+            }
+            return None;
+        }
+
+        if series {
+            ctx.remove_at(where_);
+            return Some(where_);
+        }
+
+        super::simplify::default_map_merge(ctx, where_, series)
+    }
+
     fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         // Mirrors unitmap.c::MapSplit (~629). UnitMap is identity per axis,
         // so any subset of inputs is splittable: the result is just a

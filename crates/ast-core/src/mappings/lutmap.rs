@@ -578,21 +578,31 @@ impl Mapping for LutMap {
             return Ok(Box::new(self.clone()));
         }
 
-        // Linear LUT detected. The forward mapping is:
-        //   y = lut[idx] where idx = (x - start) / inc
-        //   y = a + b * idx = a + b * (x - start) / inc
-        //   y = (a - b*start/inc) + (b/inc) * x
-        //   y = shift + scale * x
-        let scale = b / self.inc;
-        let shift = a - scale * self.start;
+        // Linear LUT detected. C `lutmap.c:1152` builds an equivalent WinMap
+        // from corner points, always producing a *forward* WinMap (it clears
+        // the invert flag). The corner points are the input range
+        // (a1 = start, a2 = start + inc*(nlut-1)) and the output range
+        // (b1 = lut[0], b2 = lut[nlut-1]). When the LutMap is applied
+        // inverted, the input/output corner pairs are swapped so the forward
+        // WinMap directly implements the inverse transform:
+        //   not inverted: astWinMap(1, &a1, &a2, &b1, &b2)
+        //   inverted:     astWinMap(1, &b1, &b2, &a1, &a2)
+        // Reproducing this corner-point construction (rather than computing
+        // shift/scale directly and inverting) matches C's arithmetic and its
+        // forward, invert-cleared serialised form.
+        let a1 = self.start;
+        let a2 = self.start + self.inc * (n - 1) as f64;
+        let b1 = self.lut[0];
+        let b2 = self.lut[n - 1];
 
-        match WinMap::new(&[shift], &[scale]) {
-            Ok(mut wm) => {
-                if self.inverted {
-                    wm.invert();
-                }
-                Ok(Box::new(wm))
-            }
+        let wm = if !self.inverted {
+            WinMap::from_corners(&[a1], &[a2], &[b1], &[b2])
+        } else {
+            WinMap::from_corners(&[b1], &[b2], &[a1], &[a2])
+        };
+
+        match wm {
+            Ok(wm) => Ok(Box::new(wm)),
             Err(_) => Ok(Box::new(self.clone())),
         }
     }

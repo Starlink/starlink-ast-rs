@@ -551,6 +551,17 @@ pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> 
         }
     }
 
+    finalize_linear(new_shifts, new_scales)
+}
+
+/// Collapse per-axis `(shifts, scales)` into the simplest equivalent mapping.
+///
+/// Returns a `UnitMap` if the result is the identity, a `ShiftMap` if all
+/// scales are unity, a `ZoomMap` / diagonal `MatrixMap` if all shifts are
+/// zero, otherwise a `WinMap`.
+pub(crate) fn finalize_linear(new_shifts: Vec<f64>, new_scales: Vec<f64>) -> Option<DynMapping> {
+    let n = new_shifts.len();
+
     // Check if the result is the identity.
     if new_scales.iter().all(|&s| ast_equal(s, 1.0))
         && new_shifts.iter().all(|&s| ast_equal(s, 0.0))
