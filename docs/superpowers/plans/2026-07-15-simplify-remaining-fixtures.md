@@ -192,6 +192,21 @@ and the cmpmap.c MapMerge head/nominate loop):**
 
 ## GROUP 2 — cap_winmap_02: WinMap shift-fold ASSOCIATIVITY (>4 ULP => real divergence)
 
+**STATUS (2026-07-19): DONE — landed as `simplify: cancel WcsMap inverse
+pairs at either neighbour during WcsMap nomination`. The root cause was NOT
+WinMap arithmetic (`compose_linear` matches C's WinWin/WinShift/WinDiagMat
+per-pair formulas exactly); it was nominate-loop merge ORDER. C's
+`wcsmap.c::MapMerge` (3116-3161, via `CanMerge` 812) cancels a WcsMap
+inverse pair when EITHER member is nominated, checking the lower pair
+`(where-1, where)` first; our `wcs_map_merge` only reached the upper pair
+through `default_map_merge`, so the TAN pair cancelled one nomination later
+than in C. That let the `(shift_a∘diag)` WinMap fold `shift_b` before the
+front WinMap arrived, associating `w + (a + b)` instead of C's
+`(w + a) + b`. Porting the lower/upper pair checks makes the nominate
+cascade (`modified` jump-back, cmpmap.c:3619) match C event-for-event and
+cap_winmap_02 is byte-exact. Serialization failures 6→5; all other gates
+unchanged (407/999/192, 649/677).**
+
 **Diff:** `Sft1 = -9.9999999999967808e-11` (ours) vs `-1.0000000000000751e-10`
 (C). This is >4 ULP → we compute the shift by a different operation order than C.
 

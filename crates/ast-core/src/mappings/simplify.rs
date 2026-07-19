@@ -990,22 +990,50 @@ pub(crate) fn perm_map_merge(
     Some(where_)
 }
 
-/// Per-class `map_merge` for a nominated `WcsMap`, mirroring the swap logic
-/// of C `wcsmap.c::MapMerge` (2914). A WcsMap can only merge directly with
-/// its own inverse (handled by [`default_map_merge`] via `try_merge`); when
-/// no direct merge is available, the WcsMap tries to swap past an adjacent
-/// PermMap — either to move it next to a cancelling WcsMap on the far side,
-/// or because the swap itself yields a simpler pair (the WCSBAD →`UnitMap`
-/// case is handled by `simplified`). The swap is attempted on the upper pair
-/// `(where_, where_+1)` and the lower pair `(where_-1, where_)`; on success
-/// the first modified index is returned.
+/// Per-class `map_merge` for a nominated `WcsMap`, mirroring the merge and
+/// swap logic of C `wcsmap.c::MapMerge` (2914). A WcsMap can only merge
+/// directly with its own inverse (`CanMerge`, wcsmap.c:812): C checks the
+/// lower pair `(where_-1, where_)` first, then the upper pair
+/// `(where_, where_+1)`, replacing a cancelling pair with a UnitMap
+/// (wcsmap.c:3116-3161). Doing the lower check at this nomination — rather
+/// than waiting for the lower WcsMap's own nomination — matters: the
+/// returned `modified` index cascades the nominate loop back through the
+/// cancelled pair, which determines the association order of later linear
+/// folds. When no direct merge is available, the WcsMap tries to swap past
+/// an adjacent PermMap — either to move it next to a cancelling WcsMap on
+/// the far side, or because the swap itself yields a simpler pair (the
+/// WCSBAD →`UnitMap` case is handled by `simplified`). On success the first
+/// modified index is returned.
 pub(crate) fn wcs_map_merge(
     _wcs: &WcsMap,
     ctx: &mut MergeCtx,
     where_: usize,
     series: bool,
 ) -> Option<usize> {
-    if series {
+    if series && ctx.len() > 1 {
+        // Direct inverse-pair cancellation, lower neighbour first
+        // (C wcsmap.c:3116-3131). Both elements must be WcsMaps (CanMerge);
+        // `WcsMap::try_merge` implements the same-projection/opposite-sense
+        // equivalence and returns the replacement UnitMap.
+        let candidates = [
+            where_.checked_sub(1),
+            (where_ + 1 < ctx.len()).then_some(where_),
+        ];
+        for i1 in candidates.into_iter().flatten() {
+            let merged = {
+                let (m1, inv1, _) = ctx.entry(i1);
+                let (m2, inv2, _) = ctx.entry(i1 + 1);
+                if !m1.as_any().is::<WcsMap>() || !m2.as_any().is::<WcsMap>() {
+                    continue;
+                }
+                m1.try_merge(m2.as_ref(), true, *inv1, *inv2)
+            };
+            if let Some(merged) = merged {
+                ctx.replace_pair_with(i1, merged, false);
+                return Some(i1);
+            }
+        }
+
         // Upper neighbour: WcsMap at `where_`, candidate PermMap at `where_+1`.
         if where_ + 1 < ctx.len() && try_swap_wcsmap_past_permmap_at(&mut ctx.list, where_) {
             ctx.resync_frozen();
