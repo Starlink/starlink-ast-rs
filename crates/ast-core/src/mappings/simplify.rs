@@ -704,7 +704,13 @@ pub(crate) fn cmp_map_merge(
                 if let Some(cm) = fwd.as_any_mut().downcast_mut::<CmpMap>() {
                     cm.set_is_simple_serial(true);
                 }
-                ctx.set_pair_single(where_, (fwd, new_inv, false));
+                // C stores the result object at its own orientation and sets
+                // `invert_list[where] = astGetInvert(new)` (cmpmap.c:1463-1464),
+                // so effective == stored for the replaced element; the final
+                // fold's set/restore then serialises the child at that stored
+                // orientation. Record it as `orig_inv` so `reconstruct` does
+                // the same.
+                ctx.set_pair_single(where_, (fwd, new_inv, new_inv));
                 return Some(where_);
             }
         }
@@ -1927,17 +1933,28 @@ fn compute_merge_parallel_pair_in_series(
             }
         }
 
+        // C keeps each pair's `astSimplify` result at whatever orientation it
+        // was returned in — the rebuilt parallel CmpMap's snapshot records
+        // `astGetInvert(smc)` and the object serialises at that stored
+        // orientation (cmpmap.c:1629-1781 builds `astCmpMap(smc0, smc1, 0)`
+        // with no reorientation). Normalise to the list invariant
+        // (forward-stored + flags): effective == original == the result's
+        // returned orientation.
+        let new_inv = simplified.is_inverted();
+        let mut simplified = simplified;
+        if new_inv {
+            simplified.invert();
+        }
         // C `astSimplify_` (mapping.c:24759) tags every result. Each matched
         // pair was combined in series and `astSimplify`'d, so its reduced
-        // result carries `IsSimple`; the pair stays forward in the parallel
-        // reconstruct (never reoriented), so the tag survives into the dump.
-        let mut simplified = simplified;
+        // result carries `IsSimple`. Tag after the normalising `invert()`
+        // above, which clears any prior tag.
         if let Some(cm) = simplified.as_any_mut().downcast_mut::<CmpMap>() {
             cm.set_is_simple_serial(true);
         } else {
             simplified.set_has_been_simplified(true);
         }
-        simplified_pairs.push((simplified, false, false));
+        simplified_pairs.push((simplified, new_inv, new_inv));
     }
 
     if !any_improvement {
