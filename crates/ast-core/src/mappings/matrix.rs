@@ -804,7 +804,10 @@ impl Mapping for MatrixMap {
             // Use compose_linear with s1=[0..], c1=diag, s2=wshifts, c2=wscales.
             let diag: Vec<f64> = (0..n).map(|i| a[[i, i]]).collect();
             let zeros = vec![0.0; n];
-            return super::winmap::compose_linear(&zeros, &diag, &wshifts, &wscales);
+            // C merges a diagonal MatrixMap with a WinMap via MatWin2 /
+            // WinDiagMat, which transform the terms without WinWin's
+            // rounding snap.
+            return super::winmap::compose_linear(&zeros, &diag, &wshifts, &wscales, false);
         }
 
         None

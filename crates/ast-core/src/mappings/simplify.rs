@@ -1099,11 +1099,14 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
                     new_shifts.extend(s2);
                     let mut new_scales = c1;
                     new_scales.extend(c2);
+                    // C's parallel WinWin branch concatenates the two term
+                    // arrays verbatim (winmap.c:4072-4096) — no rounding snap.
                     super::winmap::compose_linear(
                         &vec![0.0; new_shifts.len()],
                         &vec![1.0; new_shifts.len()],
                         &new_shifts,
                         &new_scales,
+                        false,
                     )
                 }
             })

@@ -268,7 +268,9 @@ impl Mapping for ZoomMap {
         if s1.len() != s2.len() {
             return None;
         }
-        compose_linear(&s1, &c1, &s2, &c2)
+        // C's zoommap.c absorbs WinMap/ShiftMap neighbours by multiplying
+        // their terms directly (zoommap.c:1013-1057) — no rounding snap.
+        compose_linear(&s1, &c1, &s2, &c2, false)
     }
 
     fn has_been_simplified(&self) -> bool {

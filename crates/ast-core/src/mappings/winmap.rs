@@ -408,7 +408,10 @@ impl Mapping for WinMap {
             return None;
         }
 
-        compose_linear(&s1, &c1, &s2, &c2)
+        // C routes a WinMap neighbour through WinWin (with its rounding
+        // snaps); ZoomMap/ShiftMap/UnitMap neighbours go through
+        // WinZoom/WinShift/WinUnit, which do not snap.
+        compose_linear(&s1, &c1, &s2, &c2, other.as_any().is::<WinMap>())
     }
 
     fn map_merge(
@@ -529,9 +532,25 @@ pub(crate) fn extract_linear_params(
 /// This is the result of applying mapping 1 (`s1`, `c1`) first, then
 /// mapping 2 (`s2`, `c2`) second.
 ///
+/// `snap` applies C `WinWin`'s rounding checks (winmap.c:4033-4040): a
+/// near-zero shift (relative to the geometric mean of the two input shifts)
+/// snaps to 0 and a near-unity scale snaps to 1. Only the series merge of
+/// two WinMaps has these checks in C — `WinShift`, `WinZoom`, `WinUnit`,
+/// `WinDiagMat` (winmap.c), `MatWin2` (matrixmap.c) and the zoommap.c
+/// absorption arithmetic all fold terms without snapping, so callers pass
+/// `snap` only for the WinMap+WinMap pair (including a nominated ShiftMap,
+/// which C converts to a WinMap before delegating, reaching `WinWin` when
+/// its neighbour is a WinMap).
+///
 /// Returns a `UnitMap` if the result is the identity, otherwise a
 /// `WinMap`.
-pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> Option<DynMapping> {
+pub(crate) fn compose_linear(
+    s1: &[f64],
+    c1: &[f64],
+    s2: &[f64],
+    c2: &[f64],
+    snap: bool,
+) -> Option<DynMapping> {
     let n = s1.len();
     let mut new_shifts = vec![0.0; n];
     let mut new_scales = vec![0.0; n];
@@ -539,15 +558,14 @@ pub(crate) fn compose_linear(s1: &[f64], c1: &[f64], s2: &[f64], c2: &[f64]) -> 
         new_scales[i] = c2[i] * c1[i];
         new_shifts[i] = c2[i] * s1[i] + s2[i];
 
-        // Rounding checks for values close to a unit mapping, matching C
-        // winmap.c WinWin: snap a near-zero shift (relative to the geometric
-        // mean of the two input shifts) to 0, and a near-unity scale to 1.
-        let amean = (s1[i] * s2[i]).abs().sqrt();
-        if new_shifts[i].abs() < amean * 1e-15 {
-            new_shifts[i] = 0.0;
-        }
-        if (new_scales[i] - 1.0).abs() < 1e-15 {
-            new_scales[i] = 1.0;
+        if snap {
+            let amean = (s1[i] * s2[i]).abs().sqrt();
+            if new_shifts[i].abs() < amean * 1e-15 {
+                new_shifts[i] = 0.0;
+            }
+            if (new_scales[i] - 1.0).abs() < 1e-15 {
+                new_scales[i] = 1.0;
+            }
         }
     }
 

@@ -291,7 +291,16 @@ impl Mapping for ShiftMap {
         if n != s2.len() {
             return None;
         }
-        compose_linear(&s1, &c1, &s2, &c2)
+        // C converts a nominated ShiftMap to a WinMap and delegates to the
+        // WinMap MapMerge, which reaches WinWin (with its rounding snaps)
+        // only when the neighbour is itself a WinMap.
+        compose_linear(
+            &s1,
+            &c1,
+            &s2,
+            &c2,
+            other.as_any().is::<super::winmap::WinMap>(),
+        )
     }
 
     fn has_been_simplified(&self) -> bool {

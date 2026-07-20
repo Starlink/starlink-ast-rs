@@ -601,11 +601,15 @@ fn merge_linear_pair(
     if series {
         // Equal-and-opposite WinWin cancellation is handled inside
         // compose_linear via its rounding snaps; for the general case
-        // out = s2 + c2*(s1 + c1*x).
+        // out = s2 + c2*(s1 + c1*x). Only the WinMap+WinMap pair goes
+        // through C's WinWin and gets the snaps; the other neighbour
+        // classes (WinShift/WinZoom/WinUnit/WinDiagMat) do not snap.
         if s1.len() != s2.len() {
             return None;
         }
-        super::winmap::compose_linear(&s1, &c1, &s2, &c2)
+        let both_win =
+            m1.as_any().is::<super::winmap::WinMap>() && m2.as_any().is::<super::winmap::WinMap>();
+        super::winmap::compose_linear(&s1, &c1, &s2, &c2, both_win)
     } else {
         // Parallel: concatenate.
         let mut shifts = s1;
