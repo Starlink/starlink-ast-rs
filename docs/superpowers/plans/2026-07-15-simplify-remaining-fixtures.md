@@ -22,6 +22,11 @@ The `simplify_regression` test now PASSES (it hard-panics only on transform/othe
 failures; equal + serialization mismatches are reported but non-fatal). Do NOT
 regress: 407 passing fixtures, 999 lib tests, 192 wcsconv, 649/677 byte-exact.
 
+**Baseline update (2026-07-19):** serialization failures are down to 4
+(cap_cmpmap_01, cap_cmpmap_04, cap_specmap_02, cap_wcsmap_01) after Group 2
+(26158e7) and the Group 1 cap_winmap_01 fix (f24edc5) landed. All other
+gates unchanged.
+
 ## What the engine now is (context)
 
 The engine was rewritten this cycle to be C-faithful: `flatten` (=`astMapList`)
@@ -81,9 +86,73 @@ wrong — trace deeper, don't force.
 
 ## GROUP 1 — CmpMap child ORIENTATION REPRESENTATION (3 fixtures, one root cause)
 
-**Fixtures:** cap_cmpmap_01 (serial: 5 missing `IsSimp` + 1 `Invert`),
-cap_cmpmap_04 (serial: 4 `IsSimp` + 1 `Invert`), cap_winmap_01 (serial: 1
-missing `Invert=1` on a WcsMap child of a parallel CmpMap with `InvA=1`).
+**STATUS (2026-07-19): cap_winmap_01 DONE, landed as `simplify: store
+simplified elements at their returned orientation` (f24edc5). Root cause was
+the orientation store-back, not the TranMap: C stores a head-simplify result
+back into the working list at whatever orientation `astSimplify` returned it
+(`map_list[where] = new; invert_list[where] = astGetInvert(new)`,
+cmpmap.c:1463-1464), and the C `nmap == 1` fold path bakes the effective
+inversion into the copy's stored Invert (`astCopy` + `astSetInvert(result,1)`,
+cmpmap.c:3652-3660). Our `cmp_map_merge` head and
+`compute_merge_parallel_pair_in_series` both discarded the returned
+orientation (`orig_inv = false`); recording effective == original == returned
+orientation in both store-backs fixed the fixture with zero regression.
+Baseline is now 407 passed / 4 equal / 4 serialization (cap_cmpmap_01,
+cap_cmpmap_04, cap_specmap_02, cap_wcsmap_01).**
+
+**REMAINING (cap_cmpmap_01/04): attempted 2026-07-19, REVERTED — work
+preserved in git stash `group1-issimple-lifecycle-experiment` on
+tickets/DM-54793.** The stash contains a coherent whole-lifecycle model:
+recursive same-kind spine wipe at `simplify_mapping`'s final fold; a
+restructured `cmp_map_merge` head (shortcut-on-tagged + bracket-wipe +
+same-kind splice + nested-tag transfer); unchanged-nominee tagging;
+`has_been_simplified` tagging of recombine/pair-merge results;
+`flag_parallel_series_trailing` heuristic removal; and the
+`TranMap::simplified` rework (snapshot orientation, revisit emulation,
+component root-tag wipe, nested-tag transfer into the unchanged clone). Net
+outcome: cap_specmap_01's under-tag was correctly restored, but brad and
+cmpmap_series_in_parallel_inverted regressed (1 over-tag each) and
+cap_cmpmap_01/04 got WORSE (14/16 diff lines vs 12/10) — 7 serialization
+failures total, so the whole batch was reverted.
+
+**Newly verified C mechanics (2026-07-19, C-oracle traced on cap_cmpmap_01,
+cap_specmap_01, brad, cmpmap_series_in_parallel_inverted — SIMP>/< entry/exit
+prints in mapping.c `astSimplify_`, TRAN>/= prints in tranmap.c MapMerge):**
+
+7. The cmpmap.c MapMerge head, when the self-simplify comes back unchanged
+   (`new == map`), SPLICES a same-kind nominated CmpMap into its two
+   components and REPORTS that as a modification (cmpmap.c:1473-1502,
+   `new_map_list[where] = astClone(cmpmap->map1)` etc.). This forces
+   `simpler = 1`, so the final fold runs and wipes the spliced elements'
+   spine tags. Our fingerprint-based "unchanged" classification treats these
+   passes as unchanged (our flatten pre-splices silently), which is a REAL
+   divergence in the modified-signal protocol, not just in tag bookkeeping.
+8. The head's adjust/restore bracket (cmpmap.c:1432-1448) wipes the
+   element's `IsSimple` BEFORE the `astSimplify` call, so a bracketed
+   element (stored Invert ≠ applied invert_list) never takes the tagged
+   shortcut and always ends its nomination untagged; an unbracketed
+   unchanged element ends TAGGED (`astSimplify_` tags the returned clone,
+   which is the same shared object).
+9. TranMap MapMerge wipes both components' root tags at entry
+   (`astSetInvert(mapN, invertN)`, tranmap.c:826-832) and again at the exit
+   restore — so map1/map2 themselves never dump `IsSimp`, while tags on
+   nodes NESTED inside them (raised during the components' own simplify
+   passes) survive into the dump. Its changed test is pointer equality, and
+   changed results are used at their returned orientations
+   (`astTranMap(smap_f, smap_i)` snapshots capture them).
+10. `astCopy` PRESERVES the flags field (mapping.c `Copy` clears only
+    `report`), so `nmap == 1` fold results keep their descendants' tags.
+    The Dump writes `IsSimp` unconditionally whenever the flag is set
+    (mapping.c:23757-23762) — there is no dump-side filtering.
+11. brad's C trace shows the recombine/distribute cycle re-running MANY
+    times with genuinely different intermediate objects; the final tag
+    placement falls out of that full multi-pass merge event sequence.
+    CONCLUSION for the next attempt: align the Rust and C nominate event
+    streams for these fixtures FIRST (the Group 2 `NOM i/nmap [classes]`
+    side-by-side methodology — it found the WcsMap-pair fix in minutes),
+    porting C's modified-signal protocol (splice included) as engine
+    behaviour; only then layer the tag lifecycle on top. Tag placement is
+    downstream of merge-order equality.
 
 **Root cause (fully diagnosed):** C's CmpMap stores each component at its OWN
 `Invert` flag (`this->invert1`/`invert2`, captured at construction, cmpmap.c:4656)
