@@ -81,6 +81,21 @@ pub struct CmpMap {
     is_simple_serial: bool,
 }
 
+/// Clear a child CmpMap's `IsSimple` dump tag when the `reconstruct` fold
+/// re-sets its stored orientation. C's final "Construct the output Mapping"
+/// fold calls `astSetInvert` on every spine element it wraps, and
+/// `astSetInvert` clears the element's `IsSimple` even when the stored value
+/// is unchanged (mapping.c astMAKE_SET Invert → astClearIsSimple). In the
+/// dual-flag Rust model the dump tag is `has_been_simplified || is_simple_serial`,
+/// so both must be cleared to mirror C's single-flag clear. At fold time the
+/// child is fully simplified, so dropping the merge guard is safe.
+fn clear_child_simple_tag(child: &mut DynMapping) {
+    if let Some(cm) = child.as_any_mut().downcast_mut::<CmpMap>() {
+        cm.is_simple_serial = false;
+        cm.has_been_simplified = false;
+    }
+}
+
 impl CmpMap {
     /// Create a new `CmpMap`.
     ///
@@ -334,6 +349,7 @@ impl CmpMap {
     /// `invert1` from the component, then restores the component's own Invert
     /// to its original value before dumping).
     pub(crate) fn set_first_orientation(&mut self, orig: bool) {
+        clear_child_simple_tag(&mut self.first);
         if self.first.is_inverted() != orig {
             self.first.invert();
         }
@@ -342,6 +358,7 @@ impl CmpMap {
     /// Set the stored Invert orientation of the second child to `orig`,
     /// leaving `inv_b` untouched. See [`Self::set_first_orientation`].
     pub(crate) fn set_second_orientation(&mut self, orig: bool) {
+        clear_child_simple_tag(&mut self.second);
         if self.second.is_inverted() != orig {
             self.second.invert();
         }
