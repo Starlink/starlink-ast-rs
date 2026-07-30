@@ -259,6 +259,44 @@ and the cmpmap.c MapMerge head/nominate loop):**
    shortcut-on-tagged, fold-clear — together with the orientation rework,
    not as isolated patches.
 
+**NEW FINDING (2026-07-30, C-oracle traced on all three via env-gated
+`astSimplify_` entry/exit prints + Rust `reconstruct` list dump):**
+
+- Confirmed the three remaining serialization failures share ONE symptom
+  family, in two forms: (a) missing `IsSimp` tags on nodes in an
+  inverse-applied subtree; (b) an orientation flip where C keeps a
+  one-way branch stored inverted (`Invert=1` / `Fwd=0`) but our engine
+  normalizes it to forward (`IsSimp=1` / `Inv=0`). The TREE STRUCTURE
+  already matches C byte-for-byte for all three — only flags differ.
+  This means merge ORDER is already aligned for these three; the prior
+  reverted attempt's regressions in `brad` /
+  `cmpmap_series_in_parallel_inverted` came from its BUNDLED merge-logic
+  changes (head splice / bracket-wipe / same-kind splice), NOT from the
+  orientation-preservation idea itself.
+- DECISIVE: **cap_specmap_02 contains NO TranMap** (verified — grep
+  `Begin TranMap` in `cap_specmap_02.map` is empty), yet exhibits the
+  identical `Fwd=0`↔`Inv=0` flip on its MapB branch (golden line 123
+  `Fwd = 0, InvA = 1` vs ours `Inv = 0, InvA = 1`). So the root cause is
+  the GENERAL flatten/reconstruct definedness handling for a component
+  applied in its inverse direction — `TranMap::simplified` is only ONE
+  feeder of an inverse-applied branch, not the origin. A TranMap-only
+  rework (the plan's "Correct fix" above) is therefore necessary but NOT
+  sufficient; it would leave cap_specmap_02 unfixed.
+- MECHANISM for the `Fwd`/`Inv` flip: our top CmpMap's `tran_forward` is
+  computed by `CmpMap::new` as `first.has_forward() && second.has_forward()`
+  (cmpmap.rs:121, mirroring cmpmap.c:4590). In the Rust reconstruct list,
+  every top-level component reports `has_forward()==true` because the
+  inverse-only branch was normalized to forward before reaching
+  `CmpMap::new`; C instead keeps that branch inverse-only
+  (`GetTranForward` returns 0 for it), so C's top computes `map_f=0`
+  → dumps `Fwd = 0`. The fix must preserve each component's
+  stored-inverted orientation (and thus its true forward/inverse
+  definedness) through flatten→reconstruct so `CmpMap::new` sees the
+  same `has_forward`/`has_inverse` C's `astInitCmpMap` sees.
+- Round-trip WITHOUT simplify is byte-identical for cap_specmap_02
+  (verified) — so the serializer is correct; the divergence is produced
+  entirely by the simplify engine's orientation normalization.
+
 ## GROUP 2 — cap_winmap_02: WinMap shift-fold ASSOCIATIVITY (>4 ULP => real divergence)
 
 **STATUS (2026-07-19): DONE — landed as `simplify: cancel WcsMap inverse
