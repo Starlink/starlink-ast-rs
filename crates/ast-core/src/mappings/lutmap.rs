@@ -666,13 +666,31 @@ impl Mapping for LutMap {
         Some(Box::new(UnitMap::new(1)))
     }
 
+    fn has_forward(&self) -> bool {
+        // Intrinsically the forward transform is always defined and the
+        // inverse only when the table is monotonic (lutmap.c:2391). Report
+        // the *effective* direction so a parent CmpMap computes its own
+        // definedness exactly as C's invert-aware `astGetTranForward`
+        // (mapping.c:1823) does when the leaf is applied inverted.
+        if self.inverted {
+            self.tran_inverse
+        } else {
+            true
+        }
+    }
+
     fn has_inverse(&self) -> bool {
-        self.tran_inverse
+        if self.inverted {
+            true
+        } else {
+            self.tran_inverse
+        }
     }
 
     fn dump_tran_flags(&self) -> (bool, bool) {
         // C passes the monotonicity-derived inverse availability to
-        // astInitMapping (lutmap.c).
+        // astInitMapping (lutmap.c) and dumps the raw base-struct fields,
+        // which are unaffected by the Invert flag.
         (true, self.tran_inverse)
     }
 
