@@ -315,11 +315,34 @@ sla_run_partial          | simplify_fixtures/sla_run_partial.map          | simp
 # New fixtures imported from upstream 50c2b21b (simplify sweep).
 # ============================================================
 
+# cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02 are astequal-only (skip the
+# byte-exact string diff). Their transforms and structure match C exactly; the
+# ONLY divergence is the placement of the `IsSimp` tag on interior CmpMap nodes
+# of the simplified tree. That placement is unreproducible in this port:
+#
+# C's `IsSimple` is a single flag that `astSetInvert` clears as a side-effect
+# (mapping.c:23256). During simplification C's probing routines (Equal,
+# CanSwap, MapMerge) decompose a CmpMap via `astMapList`, which hands back
+# reference-counted pointers to the SAME live component objects, then flip each
+# component's Invert flag to align them for comparison — incidentally clearing
+# `IsSimp` on the real underlying node. C restores only the Invert value, never
+# the tag, so which interior node ends up tagged depends on which node happened
+# to be aliased into a probe. Two structurally identical branches (celestial
+# {Perm,{Lut,Lut}} vs spectral {Win,{Spec,Zoom}}) get opposite tags purely by
+# aliasing history, not by tree shape.
+#
+# This port uses owned values: `flatten` clones each component, so probe-time
+# inversions touch throwaway copies and can never clear the tag on an original.
+# No structural rule reproduces the asymmetry, and collapsing our dual IsSimp
+# flags to match C's single flag regresses the tree (see
+# docs/issues/c-library-quirks.md "CmpMap IsSimp tag placement ..."). We accept
+# the tag-placement diff and compare by astequal only.
+
 # --- Supported classes ---
-cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtures/cap_cmpmap_01.simp |
+cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtures/cap_cmpmap_01.simp | yes
 cap_cmpmap_02            | simplify_fixtures/cap_cmpmap_02.map | simplify_fixtures/cap_cmpmap_02.simp |
 cap_cmpmap_03            | simplify_fixtures/cap_cmpmap_03.map | simplify_fixtures/cap_cmpmap_03.simp |
-cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp |
+cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp | yes
 cap_interval_01          | simplify_fixtures/cap_interval_01.map | simplify_fixtures/cap_interval_01.simp | yes
 cap_lutmap_01            | simplify_fixtures/cap_lutmap_01.map | simplify_fixtures/cap_lutmap_01.simp |
 cap_mathmap_01           | simplify_fixtures/cap_mathmap_01.map | simplify_fixtures/cap_mathmap_01.simp |
@@ -341,7 +364,7 @@ cap_slamap_07            | simplify_fixtures/cap_slamap_07.map | simplify_fixtur
 cap_slamap_08            | simplify_fixtures/cap_slamap_08.map | simplify_fixtures/cap_slamap_08.simp |
 cap_slamap_09            | simplify_fixtures/cap_slamap_09.map | simplify_fixtures/cap_slamap_09.simp |
 cap_specmap_01           | simplify_fixtures/cap_specmap_01.map | simplify_fixtures/cap_specmap_01.simp |
-cap_specmap_02           | simplify_fixtures/cap_specmap_02.map | simplify_fixtures/cap_specmap_02.simp |
+cap_specmap_02           | simplify_fixtures/cap_specmap_02.map | simplify_fixtures/cap_specmap_02.simp | yes
 cap_specmap_03           | simplify_fixtures/cap_specmap_03.map | simplify_fixtures/cap_specmap_03.simp |
 cap_specmap_04           | simplify_fixtures/cap_specmap_04.map | simplify_fixtures/cap_specmap_04.simp |
 cap_specmap_05           | simplify_fixtures/cap_specmap_05.map | simplify_fixtures/cap_specmap_05.simp |

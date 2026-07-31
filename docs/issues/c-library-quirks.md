@@ -12,6 +12,111 @@ the quirk so reviewers can find both sides.
 
 ---
 
+## CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification
+
+**Status:** Open. Not reproducible in the Rust port by any structural
+rule; the three affected simplify fixtures (`cap_cmpmap_01`,
+`cap_cmpmap_04`, `cap_specmap_02`) are compared by `astequal` only
+(the byte-exact string diff is skipped — see
+`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`).
+The transforms and tree structure match C exactly; the sole divergence
+is *which interior `CmpMap` node carries the serialised `IsSimp = 1`
+tag*.
+
+**C location:**
+
+- `mapping.h:410` — `IsSimple` is a single bit of `Mapping.flags`
+  (`AST__ISSIMPLE_FLAG`).
+- `mapping.c:24731` `astSimplify_` — after a component is genuinely
+  reduced, `astSetIsSimple( result )` (mapping.c:24759) raises the
+  bit. The same routine short-circuits at the top
+  (`if( !astGetIsSimple( this ) && !astDoNotSimplify( this ) )`,
+  mapping.c:24740): a Mapping whose bit is already set is returned as
+  an unchanged clone. So the one bit inseparably means both "dump
+  `IsSimp = 1`" **and** "do not simplify again."
+- `mapping.c:23256` — `astMAKE_SET(Mapping,Invert,...,(astClearIsSimple(this),...))`.
+  Every `astSetInvert` call **clears** the bit as a side-effect, even
+  when the stored Invert value does not actually change.
+- `cmpmap.c:388` `Equal`, plus `CanSwap` and `MapMerge` — the probing
+  routines. Each decomposes a candidate `CmpMap` with `astMapList`,
+  which returns **reference-counted pointers to the same live
+  component objects** (not copies). To line the components up for
+  comparison or analysis the probe calls `astSetInvert` on them, then
+  restores the Invert **value** afterwards — but never restores the
+  `IsSimple` bit that `astSetInvert` incidentally cleared.
+
+**Observed:** which interior node ends up tagged `IsSimp = 1` in the
+final dump is decided by *which nodes happened to be aliased into a
+probe* during simplification, not by anything about the tree's shape.
+Two structurally identical branches of the same
+parallel-CmpMaps-in-series merge — the celestial
+`{PermMap, {LutMap, LutMap}}` sub-tree and the spectral
+`{WinMap, {SpecMap, ZoomMap}}` sub-tree — receive *opposite* tags.
+C tags the spectral outer node and clears the celestial one purely
+because the celestial branch was passed through an `Equal`/`CanSwap`
+probe (which cleared its bit via the shared pointer) while the
+spectral branch was not. Confirmed by instrumenting `libast` (built
+with cmake) with a per-node structural-signature printer plus a
+backtrace on every `astSetInvert` that clears `IsSimple`: the
+celestial clears trace back to `Equal` (×3), `CanSwap` (×2), and
+`MapMerge` (×4); the spectral node is never aliased into a probe and
+keeps its tag.
+
+**Consequence:** the native serialisation of a simplified CmpMap can
+place `IsSimp = 1` on a different interior node than a
+structure-driven implementation would choose. The tag is advisory
+metadata (it only tells a *later* `astSimplify` "already simplified,
+skip me") and has no effect on the Mapping's transform, so the diff is
+cosmetic — but it is a genuine byte-level difference in the dump.
+
+**Why the Rust port cannot reproduce it:** the port holds Mappings as
+**owned values** (per the design: `Clone` is a deep copy, no
+`Arc`/shared references). `simplify::flatten` (the analogue of
+`astMapList`) *clones* each component as it decomposes the tree, so
+the transient Invert flips inside a probe touch throwaway copies and
+can never clear a tag on an original node. There is no shared-pointer
+identity to alias, so C's path-dependent clears have no counterpart.
+No rule over the tree *structure* reproduces the asymmetry, because
+the asymmetry is not structural — it is a function of C's allocation
+and reference-counting history.
+
+We also tried the opposite tack: collapse the port's two-flag model
+(`has_been_simplified`, the merge/short-circuit guard = C `IsSimple`
+role 1; and `is_simple_serial`, the dump-only tag = C `IsSimp` in the
+output) down to a single flag matching C's one bit. That **regresses**
+the tree: the unified flag feeds `CmpMap::simplified`'s short-circuit,
+so a node tagged mid-merge freezes against further simplification and
+the engine stops at the wrong normal form (`cap_cmpmap_01` and
+`cap_cmpmap_04` then fail structural `astequal`, not just the string
+diff). In C the same node keeps simplifying only *because* a probe
+incidentally cleared its bit first — the very aliasing side-effect the
+owned-value model removes. The two-flag split is therefore
+load-bearing: it lets a result carry the dump tag without freezing
+re-simplification, which is what actually matches C's post-probe-clear
+behaviour.
+
+**Rust mirror:** `CmpMap` in
+`crates/ast-core/src/mappings/cmpmap.rs` keeps the two flags
+(`has_been_simplified` + `is_simple_serial`) with
+`dump_is_simple() = has_been_simplified || is_simple_serial`.
+`crates/ast-core/src/mappings/simplify.rs` raises `is_simple_serial`
+on changed CmpMap results of a simplify step (the serialisation tag)
+without setting the merge guard. This yields the correct transform,
+the correct tree structure, and a correct `IsSimp` tag on the nodes we
+*can* determine structurally — but not the specific interior-node
+placement that C's aliasing produces for these three fixtures.
+
+**Upstream discussion:** `IsSimple` conflating "already simplified"
+with "was simplified, dump it" — and having `astSetInvert` silently
+clear it on shared components inside read-only probes — makes the
+serialised tag placement an artifact of internal object lifetime
+rather than a property of the Mapping. Decoupling the dump tag from
+the simplify-guard bit (or having probes save/restore `IsSimple`
+alongside `Invert`) would make the output deterministic and
+implementation-independent.
+
+---
+
 ## RESOLVED (upstream ad04291c): VELOSYS drift via lossy `RefRA`/`RefDec` round-trip
 
 **Status:** Fixed upstream at commit ad04291c (SkyFrame Digits temporarily
