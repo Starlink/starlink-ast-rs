@@ -903,34 +903,16 @@ impl Region for Interval {
         self.data.frameset.clone()
     }
 
+    fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        &mut self.data.frameset
+    }
+
     fn set_uncertainty(&mut self, unc: DynRegion) {
         self.data.uncertainty = Some(unc);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
-    }
-
-    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
-        // Transform the defining points through the mapping.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = mapping.transform(&pts, true)?;
-
-        let naxes = frame.naxes();
-        let lbnd = transformed.point(0)[..naxes].to_vec();
-        let ubnd = transformed.point(1)[..naxes].to_vec();
-
-        let frameset = FrameSet::new(frame.snapshot());
-        let points = vec![lbnd, ubnd];
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-
-        Ok(Box::new(Interval { data }))
     }
 
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {

@@ -215,6 +215,15 @@ pub trait Region: Frame + Mapping {
     /// Get a copy of the encapsulated FrameSet (base → current).
     fn get_region_frameset(&self) -> FrameSet;
 
+    /// Mutable access to the encapsulated FrameSet.
+    ///
+    /// Used by the shared [`map_region`](Region::map_region) default to
+    /// perform the base→current edge surgery C's `astMapRegion` does on
+    /// `result->frameset` directly. Every concrete class returns
+    /// `&mut self.data.frameset`.
+    #[doc(hidden)]
+    fn region_frameset_mut(&mut self) -> &mut FrameSet;
+
     // ------------------------------------------------------------------
     // Uncertainty
     // ------------------------------------------------------------------
@@ -336,10 +345,182 @@ pub trait Region: Frame + Mapping {
 
     /// Map this region into a new frame.
     ///
-    /// The `mapping` transforms coordinates from this region's current
-    /// frame to the new `frame`. Returns a new region representing the
-    /// same area in the new coordinate system.
-    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion>;
+    /// The `mapping` transforms coordinates from this region's current Frame
+    /// to the new `frame`. Returns a new Region representing the same area in
+    /// the new coordinate system.
+    ///
+    /// Faithful port of C `astMapRegion` / `MapRegion` (region.c:5375). The C
+    /// method is defined **once** on the Region base class (`vtab->MapRegion =
+    /// MapRegion`, region.c:4620) and is *not* overridden per subclass, so this
+    /// is a single shared default rather than a per-class implementation.
+    ///
+    /// Crucially, it does **not** bake `mapping` into the Region's defining
+    /// points. It deep-copies the Region (preserving the original base Frame,
+    /// defining points, and any subclass sub-Regions), then installs `mapping`
+    /// as the base→current edge of the copy's FrameSet by adding `frame` as a
+    /// new current Frame connected via `mapping` and removing the original
+    /// current Frame. The base and current Frames of the result therefore
+    /// differ in general (so the Region dumps its full FrameSet).
+    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
+        // The supplied Mapping must define both a forward and an inverse
+        // transformation (region.c:5488-5498).
+        if !mapping.has_inverse() {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                "map_region: the supplied Mapping does not define an inverse transformation"
+                    .to_string(),
+            ));
+        }
+        if !mapping.has_forward() {
+            return Err(AstError::new(
+                ErrorCode::Nodef,
+                "map_region: the supplied Mapping does not define a forward transformation"
+                    .to_string(),
+            ));
+        }
+
+        // Number of axes in the supplied Region and in the returned Region.
+        let nold = self.naxes();
+        let nnew = frame.naxes();
+
+        // The forward transformation must not introduce any bad axis values.
+        // We can only test this reliably if the supplied Region's defining
+        // points are all good (region.c:5507-5581). `axflags[i]` is non-zero
+        // if the inverse transformation produces any good value for base axis
+        // `i`; it is only consulted by the axis-dropping block below.
+        let mut axflags: Option<Vec<bool>> = None;
+        let src_pts = self.get_region_points()?;
+        if src_pts.npoint() > 0 && src_pts.ncoord() > 0 {
+            let np = src_pts.npoint();
+            let ncoord = src_pts.ncoord();
+            let mut all_good = true;
+            'outer: for i in 0..ncoord {
+                for j in 0..np {
+                    if is_bad(src_pts.point(j)[i]) {
+                        all_good = false;
+                        break 'outer;
+                    }
+                }
+            }
+            if all_good {
+                // Transform the defining points into the current Frame, then
+                // through the supplied Mapping into the new Frame.
+                let fs = self.get_region_frameset();
+                let pst = fs.transform(&src_pts, true)?;
+                let ps2 = mapping.transform(&pst, true)?;
+
+                // Any bad axis value in the new Frame means the result is
+                // undefined (region.c:5539-5551).
+                let mut ok = true;
+                'chk: for i in 0..nnew {
+                    for j in 0..np {
+                        if is_bad(ps2.point(j)[i]) {
+                            ok = false;
+                            break 'chk;
+                        }
+                    }
+                }
+                if !ok {
+                    return Err(AstError::new(
+                        ErrorCode::Nodef,
+                        "map_region: the region which results from the supplied Mapping is \
+                         undefined"
+                            .to_string(),
+                    ));
+                }
+
+                // Inverse-transform back to the Region's Frame and record
+                // which base axes received any good value.
+                let back = mapping.transform(&ps2, false)?;
+                let mut flags = vec![false; nold];
+                for (i, flag) in flags.iter_mut().enumerate().take(nold.min(back.ncoord())) {
+                    for j in 0..np {
+                        if !is_bad(back.point(j)[i]) {
+                            *flag = true;
+                            break;
+                        }
+                    }
+                }
+                axflags = Some(flags);
+            }
+        }
+
+        // Assume we will use the supplied Region and Mapping unchanged.
+        let mut usethis: DynRegion = self.clone_region();
+        let mut usemap: DynMapping = mapping.clone_box();
+
+        // If the new Frame has fewer axes than the old Frame, try to discard
+        // some base-Frame axes (region.c:5587-5701). We only do this if the
+        // inverse would otherwise supply bad values for the unused axes.
+        if nnew < nold {
+            // astMapSplit selects inputs, so invert to select outputs; work
+            // on a clone so the original `mapping` is left untouched.
+            let mut inv = mapping.clone_box();
+            inv.invert();
+
+            // Required inputs of the inverted map: the new-Frame axes 0..nnew
+            // (1-based for map_split).
+            let inax: Vec<usize> = (1..=nnew).collect();
+            if let Some((outax_1, tmap)) = inv.map_split(&inax) {
+                // 1-based original old axes retained by the split mapping.
+                let outax: Vec<usize> = outax_1.iter().map(|&a| a - 1).collect();
+                let nkept = tmap.nout();
+
+                // Ensure any unused axis that still generates good values is
+                // retained (region.c:5612-5647).
+                let mut keep: Vec<usize> = Vec::new();
+                if let Some(flags) = &axflags {
+                    for i in 0..nold {
+                        // Keep an old axis if it survives the split, or if it
+                        // was dropped but still yields good values through the
+                        // Mapping (region.c:5612-5647).
+                        let retained = outax.iter().take(nkept).any(|&a| a == i);
+                        if retained || flags.get(i).copied().unwrap_or(false) {
+                            keep.push(i);
+                        }
+                    }
+                }
+                let ntotal = keep.len();
+
+                if axflags.is_none() || ntotal == nkept {
+                    // The split mapping can be used as-is: pick the retained
+                    // old axes from the Region and use the (re-inverted) split
+                    // mapping (region.c:5651-5668).
+                    let pick: Vec<usize> = outax.iter().take(nkept).copied().collect();
+                    if let PickedAxes::Region(r) = pick_axes_region(usethis.as_ref(), &pick)? {
+                        let mut sub = tmap;
+                        sub.invert();
+                        usethis = r;
+                        usemap = sub;
+                    }
+                } else if ntotal > nkept {
+                    // Retain the extra good-value axes: split the forward map
+                    // on the chosen old axes (region.c:5672-5692).
+                    if let Some((_out2, tmap2)) = mapping.map_split(&{
+                        let mut k: Vec<usize> = keep.iter().map(|&a| a + 1).collect();
+                        k.sort_unstable();
+                        k
+                    }) && let PickedAxes::Region(r) = pick_axes_region(usethis.as_ref(), &keep)?
+                    {
+                        usethis = r;
+                        usemap = tmap2;
+                    }
+                }
+            }
+        }
+
+        // Take a deep copy of the (possibly axis-reduced) Region and perform
+        // the base→current edge surgery on its FrameSet (region.c:5703-5722).
+        let mut result: DynRegion = usethis.clone_region();
+        {
+            let fs = result.region_frameset_mut();
+            let icurr = fs.current_idx() + 1; // 1-based for FrameRef::Index
+            fs.add_frame(FrameRef::Current, usemap, frame.snapshot())?;
+            fs.remove_frame(FrameRef::Index(icurr))?;
+        }
+
+        Ok(result)
+    }
 
     // ------------------------------------------------------------------
     // Axis selection (PickAxes / RegBasePick)

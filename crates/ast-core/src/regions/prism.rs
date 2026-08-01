@@ -503,33 +503,16 @@ impl Region for Prism {
         self.data.frameset.clone()
     }
 
+    fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        &mut self.data.frameset
+    }
+
     fn set_uncertainty(&mut self, unc: DynRegion) {
         self.data.uncertainty = Some(unc);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
-    }
-
-    fn map_region(&self, _mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
-        // For Prism, mapping the whole region is complex because the mapping
-        // might mix axes between the two sub-regions. For now, we create a
-        // new Prism with the same sub-regions and a new frameset.
-        let frameset = FrameSet::new(frame.snapshot());
-        let points = Vec::new();
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-
-        Ok(Box::new(Prism {
-            data,
-            region1: self.region1.clone(),
-            region2: self.region2.clone(),
-        }))
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

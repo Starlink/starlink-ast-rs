@@ -217,6 +217,48 @@ impl PolygonBuilder {
         })
     }
 
+    /// Create a builder for a Polygon from an owned [`DynFrame`].
+    ///
+    /// Equivalent to [`PolygonBuilder::new`] but accepts a boxed trait object,
+    /// for use when the frame is only available as a `DynFrame` (e.g. a
+    /// current-Frame snapshot during simplification).
+    pub(crate) fn from_dyn(frame: DynFrame, vertices: Vec<Vec<f64>>) -> AstResult<Self> {
+        let naxes = frame.naxes();
+        if naxes != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!("Polygon requires a 2-D frame but got {} axes", naxes),
+            ));
+        }
+        if vertices.len() < 3 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "Polygon requires at least 3 vertices but got {}",
+                    vertices.len()
+                ),
+            ));
+        }
+        for (i, v) in vertices.iter().enumerate() {
+            if v.len() != naxes {
+                return Err(AstError::new(
+                    ErrorCode::Naxin,
+                    format!(
+                        "Polygon vertex {} has {} coordinates but frame has {} axes",
+                        i,
+                        v.len(),
+                        naxes
+                    ),
+                ));
+            }
+        }
+        Ok(PolygonBuilder {
+            frame,
+            vertices,
+            uncertainty: None,
+        })
+    }
+
     /// Set an uncertainty region.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);
@@ -890,36 +932,16 @@ impl Region for Polygon {
         self.data.frameset.clone()
     }
 
+    fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        &mut self.data.frameset
+    }
+
     fn set_uncertainty(&mut self, unc: DynRegion) {
         self.data.uncertainty = Some(unc);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
-    }
-
-    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
-        // Transform the defining points (vertices) through the mapping.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = mapping.transform(&pts, true)?;
-
-        let naxes = frame.naxes();
-        let mut new_vertices = Vec::with_capacity(self.data.points.len());
-        for i in 0..self.data.points.len() {
-            let p = transformed.point(i);
-            new_vertices.push(p[..naxes].to_vec());
-        }
-
-        let frameset = FrameSet::new(frame.snapshot());
-        let mut data = RegionData::new(frameset, new_vertices);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-
-        Ok(Box::new(Polygon { data }))
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

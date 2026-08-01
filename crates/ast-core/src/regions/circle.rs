@@ -532,37 +532,16 @@ impl Region for Circle {
         self.data.frameset.clone()
     }
 
+    fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        &mut self.data.frameset
+    }
+
     fn set_uncertainty(&mut self, unc: DynRegion) {
         self.data.uncertainty = Some(unc);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
-    }
-
-    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
-        // Create a new Circle with the same geometry but in the new frame.
-        // The defining points are transformed through the mapping.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = mapping.transform(&pts, true)?;
-
-        let naxes = frame.naxes();
-        let centre = transformed.point(0)[..naxes].to_vec();
-        let edge = transformed.point(1)[..naxes].to_vec();
-
-        // Construct the Circle directly, bypassing the builder since we
-        // already have the edge point computed.
-        let frameset = FrameSet::new(frame.snapshot());
-        let points = vec![centre, edge];
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-
-        Ok(Box::new(Circle { data }))
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

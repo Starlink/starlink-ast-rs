@@ -987,6 +987,81 @@ impl Frame for SkyFrame {
         Ok(pal::dsep(a[lp], a[bp], b[lp], b[bp]))
     }
 
+    fn resolve_points(
+        &self,
+        point1: &[f64],
+        point2: &[f64],
+        input: &crate::coords::PointSet,
+    ) -> AstResult<crate::coords::PointSet> {
+        // Faithful port of `skyframe.c::ResolvePoints` (8399). Unlike the
+        // planar base-Frame implementation, this resolves each vector using
+        // spherical (great-circle) geometry: the parallel component is the
+        // signed arc distance measured along the great circle through
+        // `point1`->`point2`, and the perpendicular component is the signed
+        // arc distance from that great circle to the point.
+        let npoint = input.npoint();
+        let mut d1v = vec![BAD_VALUE; npoint];
+        let mut d2v = vec![BAD_VALUE; npoint];
+
+        // Axis permutation → (longitude,latitude) order. If the axes have been
+        // swapped, the sign of the returned perpendicular distances flips
+        // (skyframe.c:8575).
+        let perm = self.perm;
+        let sign = if perm[0] == 0 { -1.0 } else { 1.0 };
+
+        // Permute the two basis-vector endpoints into (lon,lat) order.
+        let mut p1 = [0.0f64; 2];
+        let mut p2 = [0.0f64; 2];
+        p1[perm[0]] = point1[0];
+        p1[perm[1]] = point1[1];
+        p2[perm[0]] = point2[0];
+        p2[perm[1]] = point2[1];
+
+        // Unit 3-vectors for the basis endpoints.
+        let v1 = pal::dcs2c(p1[0], p1[1]);
+        let v2 = pal::dcs2c(p2[0], p2[1]);
+
+        // Unit normal to the great-circle plane through v1 and v2. Undefined
+        // (bad results) when the endpoints coincide or are antipodal.
+        let (n1, vmod) = pal::dvn(&pal::dvxv(&v2, &v1));
+        if vmod > 0.0 {
+            // v5 is 90 degrees from v1 along the great circle, towards v2.
+            let v5 = pal::dvxv(&v1, &n1);
+
+            for ip in 0..npoint {
+                let point = input.point(ip);
+                let (px, py) = (point[0], point[1]);
+                if is_bad(px) || is_bad(py) {
+                    continue;
+                }
+
+                // Permute the outlying point into (lon,lat) order.
+                let mut p3 = [0.0f64; 2];
+                p3[perm[0]] = px;
+                p3[perm[1]] = py;
+                let v3 = pal::dcs2c(p3[0], p3[1]);
+
+                // Unit normal to the great circle through v3 perpendicular to
+                // n1. Undefined when v3 lies on the pole of the basis circle.
+                let (n2, vmod2) = pal::dvn(&pal::dvxv(&v3, &n1));
+                if vmod2 <= 0.0 {
+                    continue;
+                }
+
+                // Point of closest approach: intersection of the two great
+                // circles = n1 x n2 (already unit length).
+                let v4 = pal::dvxv(&n1, &n2);
+
+                // Parallel distance (signed, -PI..PI).
+                d1v[ip] = pal::dvdv(&v4, &v5).atan2(pal::dvdv(&v4, &v1));
+                // Perpendicular distance (signed by axis order).
+                d2v[ip] = sign * pal::dvdv(&v3, &n1).atan2(pal::dvdv(&v3, &v4));
+            }
+        }
+
+        crate::coords::PointSet::from_columns(&[&d1v, &d2v])
+    }
+
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         if a.iter().chain(b.iter()).chain(c.iter()).any(|&v| is_bad(v)) {
             return Ok(BAD_VALUE);
@@ -2927,6 +3002,56 @@ mod tests {
         let sky = SkyFrame::new(SkySystem::Fk5);
         let d = sky.distance(&[BAD_VALUE, 0.0], &[1.0, 0.5]).unwrap();
         assert_eq!(d, BAD_VALUE);
+    }
+
+    // -----------------------------------------------------------------------
+    // Frame trait: resolve_points (spherical / great-circle geometry)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn resolve_points_along_equator() {
+        // Basis vector runs east along the equator from (0,0) to (0.1,0). A
+        // point just north of it resolves to a parallel component equal to its
+        // longitude arc and a perpendicular component equal to its latitude
+        // arc. Per skyframe.c:8457, a positive perpendicular means rotation
+        // from the basis vector to the point matches the lon->lat sense, so a
+        // northward point is positive.
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let pts = crate::coords::PointSet::from_rows([[0.05, 0.02]].iter().map(|p| &p[..]));
+        let res = sky.resolve_points(&[0.0, 0.0], &[0.1, 0.0], &pts).unwrap();
+        let comp = res.point(0);
+        assert_close(comp[0], 0.05, 1.0e-6);
+        assert_close(comp[1], 0.02, 1.0e-6);
+    }
+
+    #[test]
+    fn resolve_points_differs_from_planar() {
+        // At high declination the great-circle perpendicular component is
+        // markedly smaller than the naive planar delta-latitude, because a
+        // parallel of latitude is a small circle. This divergence is what the
+        // planar base-Frame implementation gets wrong for sky coordinates.
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let lat = 1.2_f64; // ~68.75 deg
+        let pts =
+            crate::coords::PointSet::from_rows([[0.001, lat + 1.0e-5]].iter().map(|p| &p[..]));
+        let res = sky
+            .resolve_points(&[0.0, lat], &[0.002, lat], &pts)
+            .unwrap();
+        let comp = res.point(0);
+        // The spherical perpendicular differs from the planar 1e-5 by more
+        // than the sagitta of the small-circle chord over this longitude span.
+        assert!(comp[1].abs() < 1.0e-5, "prp={:.3e}", comp[1]);
+        assert!(comp[1].is_finite());
+    }
+
+    #[test]
+    fn resolve_points_bad_input() {
+        let sky = SkyFrame::new(SkySystem::Fk5);
+        let pts = crate::coords::PointSet::from_rows([[BAD_VALUE, 0.02]].iter().map(|p| &p[..]));
+        let res = sky.resolve_points(&[0.0, 0.0], &[0.1, 0.0], &pts).unwrap();
+        let comp = res.point(0);
+        assert_eq!(comp[0], BAD_VALUE);
+        assert_eq!(comp[1], BAD_VALUE);
     }
 
     // -----------------------------------------------------------------------

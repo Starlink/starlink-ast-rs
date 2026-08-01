@@ -194,6 +194,223 @@ impl BoxRegion {
         self.data.perm_axes(perm)
     }
 
+    /// Attempt to split this Box into two sub-regions on distinct current-Frame
+    /// axis subsets and join them into an equivalent, simplified Prism.
+    ///
+    /// Faithful port of C `astConvertToPrism_` (prism.c:232). Scans every
+    /// non-empty proper subset of the current-Frame axes; for the first subset
+    /// where both the selected and the complementary axes pick out same-class
+    /// sub-Regions (via [`pick_axes_region`](super::pick_axes_region), i.e.
+    /// `astPickAxes` splitting the current→base Mapping) and at least one of
+    /// those sub-Regions simplifies, it forms a `Prism` of the two simplified
+    /// halves, permutes its axes back into the original Box order, remaps it
+    /// into the Box's current Frame, and simplifies the Prism.
+    ///
+    /// Returns `None` when no subset yields a Prism (the caller then keeps the
+    /// original Box). The load-bearing guard `sp1 != pickfrm1 || sp2 != pickfrm2`
+    /// (at least one half must actually simplify) is modelled by structural
+    /// [`Mapping::equal`] comparison, matching C's pointer-inequality test.
+    fn convert_to_prism(&self) -> AstResult<Option<DynRegion>> {
+        use super::{PickedAxes, PrismBuilder, pick_axes_region};
+        use crate::mappings::UnitMap;
+
+        // Mapping from base to current Frame; nout = number of current-Frame
+        // axes (Mapping outputs).
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let nout = map.nout();
+
+        // Scan all subsets of the current-Frame axes (the binary pattern of
+        // "bitmask" marks the axes in the subset), stopping at the first
+        // subset that yields a Prism.
+        let topmask: u32 = 1u32 << nout;
+        for bitmask in 1..topmask {
+            // Indices of the axes forming the selected subset.
+            let ax_sel: Vec<usize> = (0..nout).filter(|&a| bitmask & (1 << a) != 0).collect();
+
+            // Pick the selected axes; proceed only if they form a Region.
+            let PickedAxes::Region(pickfrm1) = pick_axes_region(self, &ax_sel)? else {
+                continue;
+            };
+
+            // Indices of the remaining (unselected) axes.
+            let ax_comp: Vec<usize> = (0..nout).filter(|&a| bitmask & (1 << a) == 0).collect();
+
+            // When the subset spans every axis the complement is empty; C's
+            // astPickAxes builds a 0-axis Frame there, which astIsARegion
+            // rejects, so no Prism forms. Skip it (Rust's Frame builder
+            // rejects 0 axes outright).
+            if ax_comp.is_empty() {
+                continue;
+            }
+
+            // Pick the complementary axes; proceed only if they too form a
+            // Region.
+            let PickedAxes::Region(pickfrm2) = pick_axes_region(self, &ax_comp)? else {
+                continue;
+            };
+
+            // See if either picked Region can be simplified.
+            let sp1_map = Mapping::simplified(pickfrm1.as_ref())?;
+            let sp2_map = Mapping::simplified(pickfrm2.as_ref())?;
+            let changed1 = !sp1_map.equal(pickfrm1.as_ref() as &dyn Mapping);
+            let changed2 = !sp2_map.equal(pickfrm2.as_ref() as &dyn Mapping);
+            if !(changed1 || changed2) {
+                continue;
+            }
+
+            let sp1 = super::merge_util::mapping_into_region(sp1_map).unwrap_or(pickfrm1);
+            let sp2 = super::merge_util::mapping_into_region(sp2_map).unwrap_or(pickfrm2);
+
+            // Form a Prism containing the simplified Regions (selected axes
+            // first, complementary axes second).
+            let mut prism: DynRegion = Box::new(PrismBuilder::from_dyn(sp1, sp2)?.build()?);
+
+            // Permute the Prism's axes back into the original Box axis order.
+            // The Prism holds [selected axes..., complement axes...]; build
+            // the C axis-permutation array (perm[box_axis] = prism_axis) and
+            // apply it. `ax_comp`/`nsel` mirror C's `ax`/`nax` at this point.
+            let nsel = ax_sel.len();
+            let mut perm: Vec<i64> = vec![-1; nout];
+            for (i, &box_axis) in ax_comp.iter().enumerate() {
+                perm[box_axis] = (i + nsel) as i64;
+            }
+            let mut next = 0i64;
+            for slot in perm.iter_mut() {
+                if *slot == -1 {
+                    *slot = next;
+                    next += 1;
+                }
+            }
+            // reg_perm_axes uses 1-based indices (Rust convention); the
+            // zero-based `perm` above is C's astPermAxes argument.
+            let perm_one_based: Vec<usize> = perm.iter().map(|&p| (p + 1) as usize).collect();
+            prism.reg_perm_axes(&perm_one_based)?;
+
+            // Put the original current Frame back in place of the Prism's
+            // CmpFrame, then simplify the Prism.
+            let frm = self.data.frameset.current().snapshot();
+            let um = UnitMap::new(nout);
+            let newprism = prism.map_region(&um, frm.as_ref())?;
+            let simplified = Mapping::simplified(newprism.as_ref())?;
+            let result = super::merge_util::mapping_into_region(simplified).unwrap_or(newprism);
+            return Ok(Some(result));
+        }
+
+        Ok(None)
+    }
+
+    /// Try to represent a 2-D Box as a Polygon in its current Frame.
+    ///
+    /// Faithful port of the Polygon branch of `box.c::Simplify`
+    /// (box.c:3921-4024): build a Polygon whose four vertices are the Box
+    /// corners transformed into the current Frame, choosing the vertex order
+    /// (clockwise or anti-clockwise) that makes the interior the inside. If all
+    /// points of the Box's boundary mesh lie on the Polygon boundary (to within
+    /// the Region's uncertainty), the Polygon is an exact representation and is
+    /// returned; otherwise `None`.
+    ///
+    /// `map` is the simplified base→current Mapping.
+    fn convert_to_polygon(&self, map: &dyn Mapping) -> AstResult<Option<DynRegion>> {
+        use super::PolygonBuilder;
+
+        let frm = self.data.frameset.current().snapshot();
+        let is_sky = frm.as_any().is::<crate::frames::SkyFrame>();
+
+        // Box centre and per-axis extent in the base Frame.
+        let centre = &self.data.points[0];
+        let corner = &self.data.points[1];
+        let ext0 = (corner[0] - centre[0]).abs();
+        let ext1 = (corner[1] - centre[1]).abs();
+
+        // Current-Frame uncertainty, carried onto the Polygon. C uses
+        // `astGetUncFrm(new, AST__CURRENT)` (box.c:3891) — the *default*
+        // uncertainty mapped into the current Frame when none is set — which
+        // supplies the tolerance band astRegPins needs. `get_uncertainty`
+        // alone would return None and yield a zero-width band.
+        let unc = Some(self.get_unc_frm(FrameRef::Current)?);
+
+        // For a SkyFrame, the winding that makes the interior the inside is
+        // determined by transforming the Box centre into the current Frame and
+        // testing which vertex order encloses it.
+        let sky_centre: Option<Vec<f64>> = if is_sky {
+            let ps = PointSet::from_rows([[centre[0], centre[1]]].iter().map(|p| p.as_slice()));
+            let t = map.transform(&ps, true)?;
+            Some(t.point(0)[..2].to_vec())
+        } else {
+            None
+        };
+
+        // Current-Frame boundary mesh of the original Box (astRegMesh(new)).
+        let base_mesh = self.reg_base_mesh()?;
+        let base_mesh_ps = PointSet::from_rows(base_mesh.iter().map(|p| p.as_slice()));
+        let mesh = map.transform(&base_mesh_ps, true)?;
+
+        // Try clockwise (right_handed = 1) then anti-clockwise (0) vertex
+        // orders; keep the first that yields a Polygon whose inside is the
+        // interior.
+        let mut chosen: Option<super::Polygon> = None;
+        for right_handed in [true, false] {
+            // Box corners in the base Frame, in the required order.
+            let base_corners: [[f64; 2]; 4] = if right_handed {
+                [
+                    [centre[0] - ext0, centre[1] + ext1],
+                    [centre[0] - ext0, centre[1] - ext1],
+                    [centre[0] + ext0, centre[1] - ext1],
+                    [centre[0] + ext0, centre[1] + ext1],
+                ]
+            } else {
+                [
+                    [centre[0] + ext0, centre[1] + ext1],
+                    [centre[0] + ext0, centre[1] - ext1],
+                    [centre[0] - ext0, centre[1] - ext1],
+                    [centre[0] - ext0, centre[1] + ext1],
+                ]
+            };
+
+            // Transform the corners into the current Frame.
+            let corners_ps = PointSet::from_rows(base_corners.iter().map(|p| p.as_slice()));
+            let cur = map.transform(&corners_ps, true)?;
+            let vertices: Vec<Vec<f64>> = (0..4).map(|ic| cur.point(ic)[..2].to_vec()).collect();
+
+            let mut builder = PolygonBuilder::from_dyn(frm.snapshot(), vertices)?;
+            if let Some(u) = &unc {
+                builder = builder.uncertainty(u.clone_region());
+            }
+            let newpoly = builder.build()?;
+
+            // Is the inside of the Polygon its interior? For a SkyFrame, test
+            // whether the transformed Box centre falls inside; otherwise use
+            // the bounded flag.
+            let right_way_round = if let Some(sc) = &sky_centre {
+                newpoly.point_in_region(sc)?
+            } else {
+                newpoly.is_bounded()
+            };
+
+            if right_way_round {
+                chosen = Some(newpoly);
+                break;
+            }
+        }
+
+        let Some(newpoly) = chosen else {
+            return Ok(None);
+        };
+
+        // Confirm the Polygon exactly represents the Box: every point of the
+        // Box's current-Frame boundary mesh must lie on the Polygon boundary,
+        // to within the Region uncertainty.
+        let pins = newpoly.reg_pins(&mesh, None)?;
+        if pins {
+            Ok(Some(Box::new(newpoly)))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Compute the effective lower and upper bounds from centre and corner.
     ///
     /// The box extends symmetrically around the centre: the opposite corner
@@ -706,6 +923,10 @@ impl Region for BoxRegion {
         self.data.frameset.clone()
     }
 
+    fn region_frameset_mut(&mut self) -> &mut FrameSet {
+        &mut self.data.frameset
+    }
+
     fn set_uncertainty(&mut self, unc: DynRegion) {
         self.data.uncertainty = Some(unc);
     }
@@ -740,28 +961,6 @@ impl Region for BoxRegion {
         self.data.points[1] = new_corner;
         self.data.invalidate_cache();
         Ok(())
-    }
-
-    fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
-        // Transform the defining points through the mapping.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = mapping.transform(&pts, true)?;
-
-        let naxes = frame.naxes();
-        let centre = transformed.point(0)[..naxes].to_vec();
-        let corner = transformed.point(1)[..naxes].to_vec();
-
-        let frameset = FrameSet::new(frame.snapshot());
-        let points = vec![centre, corner];
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-
-        Ok(Box::new(BoxRegion { data }))
     }
 
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
@@ -1056,6 +1255,19 @@ impl Mapping for BoxRegion {
         let candidate_mesh = candidate.reg_base_mesh()?;
         if !self.verify_remap_exact(simple_map.as_ref(), &candidate_mesh)? {
             // The Box could not be re-defined as a Box in its current Frame.
+            // For a 2-D→2-D Box, try representing it as a Polygon whose four
+            // vertices are the transformed Box corners (box.c::Simplify, 3921).
+            if simple_map.nin() == 2 && simple_map.nout() == 2 {
+                if let Some(poly) = self.convert_to_polygon(simple_map.as_ref())? {
+                    return Ok(poly.clone_box());
+                }
+            }
+            // Otherwise try splitting it into two sub-regions on distinct axis
+            // subsets and joining them into a Prism (box.c::Simplify, 4036,
+            // calls astConvertToPrism when no simpler single Region was found).
+            if let Some(prism) = self.convert_to_prism()? {
+                return Ok(prism.clone_box());
+            }
             return Ok(self.clone_box());
         }
         Ok(Box::new(candidate))
