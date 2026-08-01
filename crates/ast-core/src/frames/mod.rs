@@ -33,6 +33,60 @@ use crate::mappings::{AsAny, DynMapping, PermMap};
 /// An owned, dynamically-dispatched Frame.
 pub type DynFrame = Box<dyn Frame>;
 
+/// A cached description of a line segment within a 2-D [`Frame`].
+///
+/// Mirrors C `AstLineDef` (frame.h:646). Created by [`Frame::line_def`] and
+/// consumed by [`Frame::line_crossing`] / [`Frame::line_offset`], it caches
+/// the intermediate values (length, unit direction, unit normal) that those
+/// methods reuse. For the base (planar) Frame the geometry is flat; SkyFrame
+/// overrides these methods with great-circle geometry (and stores extra
+/// spherical state, which is not represented here).
+#[derive(Debug, Clone)]
+pub struct LineDef {
+    /// Length of the line segment (geodesic distance start→end). For a planar
+    /// Frame this is the Cartesian distance; for a SkyFrame it is the
+    /// great-circle arc length in radians.
+    pub length: f64,
+    /// When true, the start and end points are disregarded and the line is
+    /// treated as extending from `start` for an infinite distance.
+    pub infinite: bool,
+    /// Frame axis values at the line start.
+    pub start: [f64; 2],
+    /// Frame axis values at the line end.
+    pub end: [f64; 2],
+    /// Unit vector pointing from start to end.
+    pub dir: [f64; 2],
+    /// Unit vector perpendicular to the line (dir rotated +90°).
+    pub q: [f64; 2],
+    /// Great-circle geometry for a line defined within a SkyFrame. `None` for
+    /// planar Frames. Mirrors C `SkyLineDef` (skyframe.c:814), which is a
+    /// distinct struct from the planar `AstLineDef`; here the spherical state
+    /// is carried alongside the planar fields and the SkyFrame line methods
+    /// use it in place of the planar geometry.
+    pub sky: Option<SkyLineDef>,
+}
+
+/// Great-circle description of a line segment within a SkyFrame.
+///
+/// Mirrors C `SkyLineDef` (skyframe.c:814): positions are held as 3-D unit
+/// vectors rather than (lon, lat) pairs. `start`/`end` are the segment
+/// end-points; `dir` is the point 90° along the great circle from `start`
+/// (so that `q`, `dir`, `start` form the spherical analogue of the planar
+/// direction/normal); `q` is the pole of the great circle, oriented so the
+/// pole lies to the left of the line travelling start→end.
+#[derive(Debug, Clone)]
+pub struct SkyLineDef {
+    /// Unit vector at the line start.
+    pub start: [f64; 3],
+    /// Unit vector at the line end.
+    pub end: [f64; 3],
+    /// Unit vector 90° along the great circle from `start` (the "quarter
+    /// point"), used to disambiguate forward vs reverse arc direction.
+    pub dir: [f64; 3],
+    /// Unit vector normal to the great-circle plane (its pole).
+    pub q: [f64; 3],
+}
+
 /// A coordinate frame defining the meaning of coordinate values.
 ///
 /// All concrete frame classes implement this trait. Frames are `Send`
@@ -614,6 +668,122 @@ pub trait Frame: AsAny + Send + fmt::Debug {
             cross[1] = mb * a1[0] + cb;
         }
         Ok(cross)
+    }
+
+    /// Create a cached description of the line segment from `start` to `end`
+    /// in this 2-D Frame. Returns `None` (without error) if any supplied axis
+    /// value is BAD. Mirrors C `astLineDef` (frame.c:6716); SkyFrame overrides
+    /// with great-circle geometry.
+    fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
+        use crate::mappings::helpers::is_bad;
+        if self.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "line_def can only be used with 2-dimensional Frames",
+            ));
+        }
+        if is_bad(start[0]) || is_bad(start[1]) || is_bad(end[0]) || is_bad(end[1]) {
+            return Ok(None);
+        }
+        let length = self.distance(start, end)?;
+        let (dir, q) = if length > 0.0 {
+            let dx = (end[0] - start[0]) / length;
+            let dy = (end[1] - start[1]) / length;
+            ([dx, dy], [-dy, dx])
+        } else {
+            ([1.0, 0.0], [0.0, 1.0])
+        };
+        Ok(Some(LineDef {
+            length,
+            infinite: false,
+            start: [start[0], start[1]],
+            end: [end[0], end[1]],
+            dir,
+            q,
+            sky: None,
+        }))
+    }
+
+    /// Return a position formed by moving `par` along `line` from its start
+    /// and then `prp` at right angles to it. Mirrors C `astLineOffset`
+    /// (frame.c:6829); SkyFrame overrides with great-circle geometry.
+    fn line_offset(&self, line: &LineDef, par: f64, prp: f64) -> AstResult<[f64; 2]> {
+        if self.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "line_offset can only be used with 2-dimensional Frames",
+            ));
+        }
+        Ok([
+            line.start[0] + par * line.dir[0] + prp * line.q[0],
+            line.start[1] + par * line.dir[1] + prp * line.q[1],
+        ])
+    }
+
+    /// Determine whether two line segments cross. Returns `(crossed, cross,
+    /// dist)`: `crossed` is true only when the crossing lies within the
+    /// `[start, end)` segment of every finite line (an infinite line imposes
+    /// no upper bound); `cross` is the axis values at the crossing point (BAD
+    /// when the lines are parallel); `dist` is the signed distance from the
+    /// start of `l1` to the crossing. Mirrors C `astLineCrossing`
+    /// (frame.c:6562); SkyFrame overrides with great-circle geometry.
+    fn line_crossing(&self, l1: &LineDef, l2: &LineDef) -> AstResult<(bool, [f64; 2], f64)> {
+        use crate::constants::BAD_VALUE;
+        if self.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "line_crossing can only be used with 2-dimensional Frames",
+            ));
+        }
+        // Each line is "p = start + t.dir". Solve start1 + t1.d1 = start2 +
+        // t2.d2 for t1 and t2.
+        let den = l1.dir[0] * l2.dir[1] - l2.dir[0] * l1.dir[1];
+        if den != 0.0 {
+            let dx = l2.start[0] - l1.start[0];
+            let dy = l2.start[1] - l1.start[1];
+            let t1 = (l2.dir[1] * dx - l2.dir[0] * dy) / den;
+            let t2 = (l1.dir[1] * dx - l1.dir[0] * dy) / den;
+
+            // Store the crossing point, using the smaller t value to reduce
+            // error.
+            let cross = if t1.abs() < t2.abs() {
+                [l1.start[0] + t1 * l1.dir[0], l1.start[1] + t1 * l1.dir[1]]
+            } else {
+                [l2.start[0] + t2 * l2.dir[0], l2.start[1] + t2 * l2.dir[1]]
+            };
+
+            let len1 = if l1.infinite { f64::MAX } else { l1.length };
+            let len2 = if l2.infinite { f64::MAX } else { l2.length };
+            let crossed = t1 >= 0.0 && t1 < len1 && t2 >= 0.0 && t2 < len2;
+            Ok((crossed, cross, t1))
+        } else {
+            Ok((false, [BAD_VALUE, BAD_VALUE], BAD_VALUE))
+        }
+    }
+
+    /// Determine whether `point` lies on the line `l`. The start point is
+    /// considered part of the line, the end point is not: the nearest point on
+    /// the line must be in `[start, end)` and the perpendicular offset must be
+    /// within `1e-7` of the line length. Mirrors C `astLineContains`
+    /// (frame.c:6466); SkyFrame overrides with great-circle geometry.
+    fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
+        use crate::mappings::helpers::is_bad;
+        if self.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "line_contains can only be used with 2-dimensional Frames",
+            ));
+        }
+        if is_bad(point[0]) || is_bad(point[1]) {
+            return Ok(false);
+        }
+        let dx = point[0] - l.start[0];
+        let dy = point[1] - l.start[1];
+        let p = dx * l.dir[0] + dy * l.dir[1];
+        if p >= 0.0 && p < l.length && (dx * l.q[0] + dy * l.q[1]).abs() <= 1.0e-7 * l.length {
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     /// Signed axis increment from `v1` to `v2` on a 1-based `axis`.

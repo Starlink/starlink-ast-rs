@@ -150,7 +150,7 @@ fn square_outside() {
     assert!(!poly.point_in_region(&[0.5, 1.1]).unwrap());
 }
 
-// ---- Concave polygon (L-shape) ----
+// ---- Concave polygon ----
 
 fn make_l_shape() -> ast_core::regions::Polygon {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
@@ -170,31 +170,51 @@ fn make_l_shape() -> ast_core::regions::Polygon {
         .unwrap()
 }
 
-#[test]
-fn l_shape_inside_lower_arm() {
-    let poly = make_l_shape();
-    // Point in the lower-right arm of the L.
-    assert!(poly.point_in_region(&[1.5, 0.5]).unwrap());
+// An arrowhead: a concave polygon with a triangular notch cut into its top
+// edge. Traversed anti-clockwise so the inside is to the left of every edge.
+//   (0,0) -> (4,0) -> (4,3) -> (2,1) -> (0,3)
+// The membership results below are byte-for-byte those reported by the C
+// Starlink AST Polygon Transform for the same vertices.
+fn make_arrow() -> ast_core::regions::Polygon {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![
+        vec![0.0, 0.0],
+        vec![4.0, 0.0],
+        vec![4.0, 3.0],
+        vec![2.0, 1.0],
+        vec![0.0, 3.0],
+    ];
+    PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap()
 }
 
 #[test]
-fn l_shape_inside_upper_arm() {
-    let poly = make_l_shape();
-    // Point in the upper-left arm of the L.
-    assert!(poly.point_in_region(&[0.5, 1.5]).unwrap());
+fn concave_inside_body() {
+    let poly = make_arrow();
+    // Point in the solid body below the notch.
+    assert!(poly.point_in_region(&[2.0, 0.5]).unwrap());
 }
 
 #[test]
-fn l_shape_in_concavity() {
-    let poly = make_l_shape();
-    // Point in the concave notch (top-right), should be outside.
-    assert!(!poly.point_in_region(&[1.5, 1.5]).unwrap());
+fn concave_inside_corner() {
+    let poly = make_arrow();
+    // Point in the lower-left corner.
+    assert!(poly.point_in_region(&[0.5, 0.5]).unwrap());
 }
 
 #[test]
-fn l_shape_outside() {
-    let poly = make_l_shape();
-    assert!(!poly.point_in_region(&[3.0, 0.5]).unwrap());
+fn concave_in_notch() {
+    let poly = make_arrow();
+    // Point up inside the triangular notch, should be outside.
+    assert!(!poly.point_in_region(&[2.0, 2.5]).unwrap());
+}
+
+#[test]
+fn concave_outside() {
+    let poly = make_arrow();
+    assert!(!poly.point_in_region(&[5.0, 0.5]).unwrap());
     assert!(!poly.point_in_region(&[-0.5, 1.0]).unwrap());
 }
 

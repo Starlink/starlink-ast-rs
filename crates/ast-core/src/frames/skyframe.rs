@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping, make_sky_mapping};
 use crate::frames::skyaxis::{SkyAxis, format_sky, unformat_sky};
-use crate::frames::{DynFrame, Frame, FrameRef};
+use crate::frames::{DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap, UnitMap};
 use crate::pal;
@@ -1094,6 +1094,196 @@ impl Frame for SkyFrame {
         Ok(())
     }
 
+    // --- Great-circle line geometry (skyframe.c LineDef/LineOffset/
+    // LineCrossing/LineContains) ---
+    //
+    // These override the planar Frame defaults with spherical geometry. A line
+    // is a great-circle arc; positions are held as 3-D unit vectors in the
+    // returned `LineDef`'s `sky` field. All four require a `SkyLineDef` built
+    // by `line_def`.
+
+    fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
+        if is_bad(start[0]) || is_bad(start[1]) || is_bad(end[0]) || is_bad(end[1]) {
+            return Ok(None);
+        }
+
+        let perm = self.perm;
+
+        // Permute external axis values into physical (longitude, latitude)
+        // order before converting to Cartesian.
+        let mut p1 = [0.0; 2];
+        let mut p2 = [0.0; 2];
+        p1[perm[0]] = start[0];
+        p1[perm[1]] = start[1];
+        p2[perm[0]] = end[0];
+        p2[perm[1]] = end[1];
+
+        let sv = pal::dcs2c(p1[0], p1[1]);
+        let ev = pal::dcs2c(p2[0], p2[1]);
+
+        // Great-circle length in radians. `palDvdv` gives the raw dot product;
+        // correct for palDcs2c rounding so the vectors are treated as unit
+        // length before taking the arc-cosine.
+        let dot = pal::dvdv(&sv, &ev);
+        let ls = sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2];
+        let le = ev[0] * ev[0] + ev[1] * ev[1] + ev[2] * ev[2];
+        let coslength = dot / (ls * le).sqrt();
+        let length = if coslength < -1.0 {
+            std::f64::consts::PI
+        } else if coslength > 1.0 {
+            0.0
+        } else {
+            coslength.acos()
+        };
+
+        // Pole of the great circle, oriented so it lies to the left of the
+        // line travelling start→end. Undefined for a zero-length or 180° arc,
+        // where an arbitrary nearby direction is used.
+        let pole_raw = if length == 0.0 || length > std::f64::consts::PI - 5.0e-11 {
+            let temp = pal::dcs2c(p1[0] + 0.01, p1[1] + 0.01);
+            pal::dvxv(&temp, &sv)
+        } else {
+            pal::dvxv(&ev, &sv)
+        };
+        let (q, _len) = pal::dvn(&pole_raw);
+
+        // Quarter point: 90° along the great circle from the start.
+        let dir = pal::dvxv(&sv, &q);
+
+        // Normalised external-order end points (mirrors C start_2d/end_2d).
+        let mut start_2d = [start[0], start[1]];
+        let mut end_2d = [end[0], end[1]];
+        self.norm(&mut start_2d)?;
+        self.norm(&mut end_2d)?;
+
+        Ok(Some(LineDef {
+            length,
+            infinite: false,
+            start: start_2d,
+            end: end_2d,
+            dir: [0.0, 0.0],
+            q: [0.0, 0.0],
+            sky: Some(SkyLineDef {
+                start: sv,
+                end: ev,
+                dir,
+                q,
+            }),
+        }))
+    }
+
+    fn line_offset(&self, line: &LineDef, par: f64, prp: f64) -> AstResult<[f64; 2]> {
+        let sl = line.sky.as_ref().ok_or_else(|| {
+            AstError::new(ErrorCode::Inter, "line_offset: line is not a SkyFrame line")
+        })?;
+
+        // Move a distance `par` along the great circle from the start.
+        let c = par.cos();
+        let s = par.sin();
+        let nx = c * sl.start[0] + s * sl.dir[0];
+        let ny = c * sl.start[1] + s * sl.dir[1];
+        let nz = c * sl.start[2] + s * sl.dir[2];
+
+        // Move a distance `prp` at right angles, towards the pole.
+        let v = if prp != 0.0 {
+            let c2 = prp.cos();
+            let s2 = prp.sin();
+            [
+                c2 * nx + s2 * sl.q[0],
+                c2 * ny + s2 * sl.q[1],
+                c2 * nz + s2 * sl.q[2],
+            ]
+        } else {
+            [nx, ny, nz]
+        };
+
+        let (lon, lat) = pal::dcc2s(&v);
+        let p = [lon, lat];
+        let perm = self.perm;
+        Ok([p[perm[0]], p[perm[1]]])
+    }
+
+    fn line_crossing(&self, l1: &LineDef, l2: &LineDef) -> AstResult<(bool, [f64; 2], f64)> {
+        let sl1 = l1.sky.as_ref().ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Inter,
+                "line_crossing: line 1 is not a SkyFrame line",
+            )
+        })?;
+        let sl2 = l2.sky.as_ref().ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Inter,
+                "line_crossing: line 2 is not a SkyFrame line",
+            )
+        })?;
+
+        // The two great circles intersect along the direction perpendicular to
+        // both poles.
+        let temp = pal::dvxv(&sl1.q, &sl2.q);
+        let (mut b, _len) = pal::dvn(&temp);
+
+        let mut dist = 0.0;
+        let mut result = false;
+
+        // See if the intersection point lies within both arcs; the `dist`
+        // side-effect on the `l1` test mirrors C's LineIncludes writing through
+        // its `dist` pointer whenever it is called.
+        if sky_line_includes(sl2, l2.length, l2.infinite, &b).0 {
+            let (r1, t2) = sky_line_includes(sl1, l1.length, l1.infinite, &b);
+            dist = t2;
+            if r1 {
+                result = true;
+            }
+        }
+        if !result {
+            b = [-b[0], -b[1], -b[2]];
+            if sky_line_includes(sl2, l2.length, l2.infinite, &b).0 {
+                let (r1, t2) = sky_line_includes(sl1, l1.length, l1.infinite, &b);
+                dist = t2;
+                if r1 {
+                    result = true;
+                }
+            }
+        }
+
+        let (lon, lat) = pal::dcc2s(&b);
+        let p = [lon, lat];
+        let perm = self.perm;
+        Ok((result, [p[perm[0]], p[perm[1]]], dist))
+    }
+
+    fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
+        let sl = l.sky.as_ref().ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Inter,
+                "line_contains: line is not a SkyFrame line",
+            )
+        })?;
+        if is_bad(point[0]) || is_bad(point[1]) {
+            return Ok(false);
+        }
+
+        let perm = self.perm;
+        let mut p1 = [0.0; 2];
+        p1[perm[0]] = point[0];
+        p1[perm[1]] = point[1];
+        let b = pal::dcs2c(p1[0], p1[1]);
+
+        // The point of closest approach must lie within the arc, and the point
+        // must be within a small angle of the great circle (90° from the pole).
+        if sky_line_includes(sl, l.length, l.infinite, &b).0 {
+            let t1 = pal::dvdv(&sl.q, &b);
+            let mut t2 = 1.0e-7 * l.length;
+            if t2 < 1.0e-10 {
+                t2 = 1.0e-10;
+            }
+            if t1.abs() <= t2 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         super::validate_permutation(perm, 2)?;
         let old = self.perm;
@@ -1539,6 +1729,38 @@ fn compute_last(
 
     let frac = last_off_mjd - last_off_mjd.floor();
     Ok(frac * 2.0 * std::f64::consts::PI)
+}
+
+/// Determine whether a great-circle segment includes a point known to lie on
+/// its great circle. Returns `(included, dist)` where `dist` is the distance in
+/// radians from the line's start to the point, measured forwards along the
+/// line. The end point is not part of the segment. Mirrors C `LineIncludes`
+/// (skyframe.c:5659).
+fn sky_line_includes(
+    sl: &SkyLineDef,
+    length: f64,
+    infinite: bool,
+    point: &[f64; 3],
+) -> (bool, f64) {
+    // Unsigned distance of the point from the start, 0 - 180 degs.
+    let t1 = pal::dvdv(&sl.start, point);
+    let mut t2 = t1.acos();
+
+    // If the point is more than 90 degrees from the quarter point it is in the
+    // reverse half of the great circle; convert to the forward distance.
+    let t3 = pal::dvdv(&sl.dir, point);
+    if t3 < -1.0e-10 {
+        t2 = 2.0 * std::f64::consts::PI - t2;
+    }
+
+    let result = if infinite {
+        true
+    } else if length > 0.0 {
+        t2 < length
+    } else {
+        t2 == 0.0
+    };
+    (result, t2)
 }
 
 /// Mirrors C `Overlay` for SkyFrame (skyframe.c:8010).

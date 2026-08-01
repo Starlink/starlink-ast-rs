@@ -17,6 +17,71 @@ use crate::mappings::{DynMapping, Mapping, UnitMap};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
+use crate::constants::BAD_VALUE;
+use crate::frames::{LineDef, SkyFrame};
+
+/// The width of the polygon perpendicular to edge `i`, and the point half
+/// way across.
+///
+/// Faithful port of C `Polywidth` (polygon.c:4047). Builds a line
+/// perpendicular to edge `i` through its mid-point, extending towards the
+/// polygon interior, and returns the distance to the nearest other edge
+/// (`AST__BAD` if none is hit within its length) together with the position
+/// half that distance along the perpendicular. When no width is found the
+/// returned point is the far end of the perpendicular probe line (a
+/// representative "inside" point for a clockwise/negated polygon).
+fn polywidth(
+    frm: &dyn Frame,
+    edges: &[LineDef],
+    i: usize,
+    nv: usize,
+) -> AstResult<(f64, [f64; 2])> {
+    let mut result = BAD_VALUE;
+
+    // Move to the mid point of edge `i`: the start of the perpendicular line.
+    let l1 = 0.5 * edges[i].length;
+    let start = frm.line_offset(&edges[i], l1, 0.0)?;
+
+    // Move away at right angles. Start at 10*l1; for spherical Frames this may
+    // wrap around, so shrink until the end is actually the requested distance
+    // from the start.
+    let mut l2 = 10.0 * l1;
+    let mut end;
+    loop {
+        end = frm.line_offset(&edges[i], l1, l2)?;
+        let d = frm.distance(&start, &end)?;
+        if !is_bad(d) && (d - l2).abs() < 1.0e-6 * l2 {
+            break;
+        }
+        l2 *= 0.5;
+    }
+
+    // Describe the perpendicular line, marked infinite so any crossing counts.
+    let mut line = frm
+        .line_def(&start, &end)?
+        .ok_or_else(|| AstError::new(ErrorCode::Inter, "polywidth: bad perpendicular line"))?;
+    line.infinite = true;
+
+    // Nearest crossing with any other edge.
+    for (j, edge) in edges.iter().enumerate().take(nv) {
+        if j == i {
+            continue;
+        }
+        let (crossed, _cross, d) = frm.line_crossing(&line, edge)?;
+        if crossed && !is_bad(d) && (d < result || is_bad(result)) {
+            result = d;
+        }
+    }
+
+    let cen = if !is_bad(result) {
+        let half = frm.offset(&start, &end, 0.5 * result)?;
+        [half[0], half[1]]
+    } else {
+        end
+    };
+
+    Ok((result, cen))
+}
 
 /// Compute the 2D convex hull using Andrew's monotone chain algorithm.
 ///
@@ -167,7 +232,12 @@ impl PolygonBuilder {
         let mut data = RegionData::new(frameset, points);
         data.uncertainty = self.uncertainty;
 
-        Ok(Polygon { data })
+        // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
+        // necessary so that the unnegated Polygon represents the bounded
+        // interior, matching the parent Region convention.
+        let mut polygon = Polygon { data };
+        polygon.ensure_inside()?;
+        Ok(polygon)
     }
 }
 
@@ -260,6 +330,142 @@ impl Polygon {
         let vertices: Vec<Vec<f64>> = hull.iter().map(|p| vec![p[0], p[1]]).collect();
         PolygonBuilder::new(frame, vertices)?.build()
     }
+
+    /// Calculate the cached intermediate values used by the membership and
+    /// bounded tests.
+    ///
+    /// Faithful port of C `Cache` (polygon.c:575). Builds an edge description
+    /// for each edge (edge `i` runs from vertex `i-1` to vertex `i`, edge 0
+    /// wrapping from the last vertex). For each non-degenerate edge it measures
+    /// the polygon width perpendicular to that edge via [`polywidth`] and keeps
+    /// the interior representative point for the widest edge. If any positive
+    /// width is found the vertices are stored in anti-clockwise order
+    /// (`acw = true`) and the retained point lies inside the polygon; if none
+    /// is found the vertices are in clockwise order (`acw = false`) and the
+    /// retained point lies outside (the probes ran off to the infinite exterior
+    /// of a polygonal hole). Returns `(edges, inside_point, acw)`.
+    fn cache(&self) -> AstResult<(Vec<LineDef>, [f64; 2], bool)> {
+        let bfrm = self.data.frameset.base();
+        let ptr = &self.data.points;
+        let nv = ptr.len();
+
+        let mut edges: Vec<LineDef> = Vec::with_capacity(nv);
+        let mut start = [ptr[nv - 1][0], ptr[nv - 1][1]];
+        for vertex in ptr.iter() {
+            let end = [vertex[0], vertex[1]];
+            let edge = bfrm
+                .line_def(&start, &end)?
+                .ok_or_else(|| AstError::new(ErrorCode::Inter, "cache: bad polygon edge"))?;
+            edges.push(edge);
+            start = end;
+        }
+
+        // Find a point well inside the polygon: the mid-width point of the edge
+        // with the greatest perpendicular width. `polcen` tracks the latest
+        // probe centre so that, if no positive width is found (a clockwise
+        // polygon), `inside` falls back to a point outside the polygonal hole.
+        let mut maxwid = -1.0;
+        let mut inside = [BAD_VALUE, BAD_VALUE];
+        let mut polcen = [BAD_VALUE, BAD_VALUE];
+        for i in 0..nv {
+            if edges[i].length > 0.0 {
+                let (polwid, cen) = polywidth(bfrm, &edges, i, nv)?;
+                polcen = cen;
+                if !is_bad(polwid) && polwid > maxwid {
+                    maxwid = polwid;
+                    inside = cen;
+                }
+            }
+        }
+
+        if maxwid < 0.0 {
+            inside = polcen;
+        }
+
+        Ok((edges, inside, maxwid >= 0.0))
+    }
+
+    /// Whether the base-Frame vertices are stored in anti-clockwise order.
+    fn cache_acw(&self) -> AstResult<bool> {
+        Ok(self.cache()?.2)
+    }
+
+    /// The solid angle (steradians) subtended by a Polygon defined in a
+    /// SkyFrame.
+    ///
+    /// Faithful port of C `SkyArea` (polygon.c:5469): sum the interior angle at
+    /// each vertex (folded into `0..2*PI`) and subtract `(n-2)*PI`.
+    fn sky_area(&self) -> AstResult<f64> {
+        let bfrm = self.data.frameset.base();
+        let ptr = &self.data.points;
+        let nvert = ptr.len();
+        let mut result = 0.0;
+        for ivert in 0..nvert {
+            let b = [ptr[ivert][0], ptr[ivert][1]];
+            let a = if ivert < nvert - 1 {
+                [ptr[ivert + 1][0], ptr[ivert + 1][1]]
+            } else {
+                [ptr[0][0], ptr[0][1]]
+            };
+            let c = if ivert > 0 {
+                [ptr[ivert - 1][0], ptr[ivert - 1][1]]
+            } else {
+                [ptr[nvert - 1][0], ptr[nvert - 1][1]]
+            };
+            let mut angle = bfrm.angle(&a, &b, &c)?;
+            if angle < 0.0 {
+                angle += 2.0 * std::f64::consts::PI;
+            }
+            result += angle;
+        }
+        result -= (nvert as f64 - 2.0) * std::f64::consts::PI;
+        Ok(result)
+    }
+
+    /// Whether the (possibly negated) Polygon is bounded.
+    ///
+    /// Faithful port of C `GetBounded` (polygon.c:2749): SkyFrame Polygons are
+    /// always bounded (a finite region has a finite negation on the sphere).
+    /// Otherwise the result depends on the vertex order (`acw`) and the
+    /// negation flag: anti-clockwise ⇒ bounded iff not negated; clockwise ⇒
+    /// bounded iff negated.
+    fn bounded_impl(&self) -> AstResult<bool> {
+        let is_sky = self.data.frameset.base().as_any().is::<SkyFrame>();
+        if is_sky {
+            return Ok(true);
+        }
+        let acw = self.cache_acw()?;
+        let neg = self.data.negated;
+        Ok(if acw { !neg } else { neg })
+    }
+
+    /// Ensure the unnegated Polygon represents the inside of the polygon.
+    ///
+    /// Faithful port of C `EnsureInside` (polygon.c:1768). Reversing the vertex
+    /// order is equivalent to negating the Polygon, but the parent Region class
+    /// assumes an unnegated closed region is bounded. So if the unnegated
+    /// Polygon would be unbounded, reverse the vertex order and toggle the
+    /// negation flag to compensate, leaving the represented region unchanged
+    /// while restoring the bounded-when-unnegated convention.
+    ///
+    /// For a SkyFrame Polygon both lobes are bounded, so "bounded" is taken to
+    /// mean the smaller lobe: area < 2π steradians.
+    fn ensure_inside(&mut self) -> AstResult<()> {
+        let is_sky = self.data.frameset.base().as_any().is::<SkyFrame>();
+        let bounded = if is_sky {
+            self.sky_area()? < 2.0 * std::f64::consts::PI
+        } else {
+            self.bounded_impl()?
+        };
+
+        let negated = self.data.negated;
+        if (bounded && negated) || (!bounded && !negated) {
+            self.data.points.reverse();
+            self.data.negated = !negated;
+            self.data.invalidate_cache();
+        }
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -276,13 +482,29 @@ impl RegionGeometry for Polygon {
     }
 
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+        // Faithful port of C Polygon Transform (polygon.c:6235). The membership
+        // test is winding-relative: a line is drawn from a cached interior
+        // point to the test point, and the number of edges crossed determines
+        // whether the two lie on the same side of the boundary. This mirrors C
+        // exactly (rather than a winding-absolute ray-cast to infinity) so that
+        // reversing the vertex order in `ensure_inside` is a true no-op on the
+        // represented region, as it is in C. The caller applies negation, so
+        // this returns the un-negated membership (C's `neg == 0` branch).
         let npoint = pts.npoint();
-        let nv = self.data.points.len();
         let closed = self.data.closed;
+        let bfrm = self.data.frameset.base();
 
-        // Pre-extract vertex x/y arrays for cache-friendly access.
-        let vx: Vec<f64> = self.data.points.iter().map(|p| p[0]).collect();
-        let vy: Vec<f64> = self.data.points.iter().map(|p| p[1]).collect();
+        let (edges, in_point, _acw) = self.cache()?;
+        let nv = edges.len();
+
+        // Boundary position of a test point relative to the polygon.
+        #[derive(PartialEq)]
+        enum Pos {
+            Unknown,
+            In,
+            Out,
+            On,
+        }
 
         let mut result = vec![false; npoint];
 
@@ -294,96 +516,35 @@ impl RegionGeometry for Polygon {
                 continue;
             }
 
-            let px = point[0];
-            let py = point[1];
+            let p = [point[0], point[1]];
 
-            // Crossing-number (ray-casting) algorithm.
-            // Cast a ray from (px, py) in the +x direction.
-            // Count how many polygon edges the ray crosses.
+            // Define the line from the interior point to the test point.
+            let a = bfrm
+                .line_def(&in_point, &p)?
+                .ok_or_else(|| AstError::new(ErrorCode::Inter, "reg_base_inside: bad test line"))?;
+
+            // Count crossings of this line with the polygon edges.
             let mut ncross = 0i32;
-            let mut on_edge = false;
+            let mut pos = Pos::Unknown;
 
-            for i in 0..nv {
-                let j = (i + 1) % nv;
-
-                let y0 = vy[i];
-                let y1 = vy[j];
-                let x0 = vx[i];
-                let x1 = vx[j];
-
-                // Check if test point's y is between the edge's y-endpoints.
-                let (y_min, y_max) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
-
-                // Skip edge if point's y is completely outside the edge's y range.
-                if py < y_min || py > y_max {
-                    continue;
-                }
-
-                // Always check if point lies on this edge (needed for both
-                // closed and open boundary handling).
-                // Check if the point is at a vertex.
-                if (px == x0 && py == y0) || (px == x1 && py == y1) {
-                    on_edge = true;
+            for edge in edges.iter().take(nv) {
+                if bfrm.line_contains(edge, &p)? {
+                    pos = Pos::On;
                     break;
-                }
-
-                // Check if point lies on the edge (collinear and within bounds).
-                if py >= y_min && py <= y_max {
-                    if y0 == y1 {
-                        // Horizontal edge: check if px is between x0 and x1.
-                        let (xmin, xmax) = if x0 < x1 { (x0, x1) } else { (x1, x0) };
-                        if px >= xmin && px <= xmax {
-                            on_edge = true;
-                            break;
-                        }
-                        continue;
-                    }
-
-                    // Compute x-intersection at this y.
-                    let x_intersect = x0 + (py - y0) * (x1 - x0) / (y1 - y0);
-                    let tol = f64::EPSILON * (px.abs() + x_intersect.abs() + 1.0);
-                    if (px - x_intersect).abs() <= tol {
-                        on_edge = true;
-                        break;
-                    }
-                }
-
-                // Standard crossing-number test using half-open interval on y.
-                // A crossing is counted if:
-                // - The ray at y=py intersects the edge
-                // - The intersection x is > px (ray goes in +x direction)
-                // Use the convention: count if y is in [y_low, y_high) where
-                // y_low is the lower y vertex. This avoids double-counting
-                // at shared vertices.
-                let upward = y1 > y0;
-                let crosses = if upward {
-                    // Edge goes upward: count if py in [y0, y1)
-                    py >= y0 && py < y1
-                } else if y0 > y1 {
-                    // Edge goes downward: count if py in [y1, y0)
-                    py >= y1 && py < y0
-                } else {
-                    // Horizontal edge: no crossing
-                    false
-                };
-
-                if crosses {
-                    // Compute x-intersection of edge with horizontal line y=py.
-                    let x_intersect = x0 + (py - y0) * (x1 - x0) / (y1 - y0);
-                    if x_intersect > px {
-                        ncross += 1;
-                    }
+                } else if bfrm.line_crossing(edge, &a)?.0 {
+                    ncross += 1;
                 }
             }
 
-            // Determine if point is inside.
-            if on_edge {
-                // Point is on the boundary: inside if closed, outside if open.
-                *inside = closed;
-            } else {
-                // Odd crossings = inside, even = outside.
-                *inside = (ncross % 2) != 0;
+            if pos == Pos::Unknown {
+                pos = if ncross % 2 == 0 { Pos::In } else { Pos::Out };
             }
+
+            *inside = match pos {
+                Pos::In => true,
+                Pos::Out => false,
+                _ => closed,
+            };
         }
 
         Ok(result)
@@ -480,8 +641,11 @@ impl RegionGeometry for Polygon {
     }
 
     fn is_bounded_inner(&self) -> bool {
-        // A polygon is always bounded.
-        true
+        // Mirrors C GetBounded (polygon.c:2749): SkyFrame Polygons are always
+        // bounded; otherwise it depends on vertex order and negation. If the
+        // geometric probe fails (bad edges), fall back to treating the region
+        // as bounded — the historical default for a well-formed Polygon.
+        self.bounded_impl().unwrap_or(true)
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
@@ -890,7 +1054,12 @@ impl Mapping for Polygon {
         data.mesh_size = self.data.mesh_size;
         data.fill_factor = self.data.fill_factor;
         data.adaptive = self.data.adaptive;
-        Ok(Box::new(Polygon { data }))
+        // Remapping the vertices into the current Frame can change their
+        // winding order, so restore the bounded-when-unnegated convention as
+        // C astLoadPolygon (polygon.c:7325) does after loading vertices.
+        let mut polygon = Polygon { data };
+        polygon.ensure_inside()?;
+        Ok(Box::new(polygon))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

@@ -2102,12 +2102,16 @@ fn sky_polygon_basic_membership() {
     // Vertices form a small quadrilateral far from the pole.
     let sky = SkyFrame::new(SkySystem::Icrs);
 
-    // Square-ish polygon ~6 degrees wide at Dec ~30 degrees.
+    // Square-ish polygon ~6 degrees wide at Dec ~30 degrees. Vertices are
+    // ordered so that the enclosed patch (not its spherical complement) is the
+    // interior: on the sky the winding that bounds the small region is the
+    // reverse of the naive planar clockwise order. These membership results are
+    // byte-for-byte those reported by the C Starlink AST Polygon Transform.
     let vertices = vec![
         vec![1.0, 0.5],
-        vec![1.1, 0.5],
-        vec![1.1, 0.6],
         vec![1.0, 0.6],
+        vec![1.1, 0.6],
+        vec![1.1, 0.5],
     ];
 
     let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
@@ -2140,7 +2144,9 @@ fn sky_polygon_triangle_membership() {
     // Triangle on SkyFrame.
     let sky = SkyFrame::new(SkySystem::Icrs);
 
-    let vertices = vec![vec![0.5, 0.2], vec![0.7, 0.2], vec![0.6, 0.4]];
+    // Vertices wound so the small triangular patch is the interior (see the
+    // note on `sky_polygon_basic_membership`). C-verified membership.
+    let vertices = vec![vec![0.5, 0.2], vec![0.6, 0.4], vec![0.7, 0.2]];
 
     let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
 
