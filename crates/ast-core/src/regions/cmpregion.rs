@@ -772,10 +772,15 @@ impl Mapping for CmpRegion {
         let Some(other) = other.as_any().downcast_ref::<CmpRegion>() else {
             return false;
         };
+        // Mirror C cmpregion.c::Equal (502): the parent Region check covers
+        // class, Negated, Closed, and the current Frame; equivalence then
+        // requires equal component Regions and an equal boolean operator.
         self.data.negated == other.data.negated
             && self.data.closed == other.data.closed
             && self.operator == other.operator
             && Frame::equal(self.data.frameset.current(), other.data.frameset.current())
+            && (self.region1.as_ref() as &dyn Mapping).equal(other.region1.as_ref() as &dyn Mapping)
+            && (self.region2.as_ref() as &dyn Mapping).equal(other.region2.as_ref() as &dyn Mapping)
     }
 
     fn clone_box(&self) -> DynMapping {
