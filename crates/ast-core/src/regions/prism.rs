@@ -352,6 +352,80 @@ impl Region for Prism {
         super::overlap::compute_overlap(self, other)
     }
 
+    fn reg_pins_mask(
+        &self,
+        pts: &PointSet,
+        _unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
+        // Faithful port of prism.c::RegPins (prism.c:2627). A point in the
+        // Prism's base Frame (== the current Frames of the two component
+        // Regions, concatenated) lies on the Prism boundary iff it lies on
+        // the boundary of one component AND on or within the boundary of the
+        // other. The supplied `unc` is unused: C uses each component's own
+        // base-Frame uncertainty (astGetUncFrm(reg, AST__BASE)), not the
+        // Prism-level uncertainty passed in.
+        //
+        // C temporarily forces each component's Closed attribute to its
+        // current value, promoting the unset default to closed=true; the Rust
+        // Region default is already closed=true and explicitly-set values are
+        // preserved, so that toggle is a no-op here.
+        let reg1 = self.region1.as_ref();
+        let reg2 = self.region2.as_ref();
+        let nax1 = self.naxes1();
+        let nax2 = self.naxes2();
+        let np = pts.npoint();
+
+        // Sub-PointSet holding just the axes for each component (astSetSubPoints
+        // prism.c:2742/2761): the first nax1 coords for reg1, the next nax2 for
+        // reg2.
+        let ps1 = PointSet::from_rows((0..np).map(|ip| &pts.point(ip)[..nax1]));
+        let ps2 = PointSet::from_rows((0..np).map(|ip| &pts.point(ip)[nax1..nax1 + nax2]));
+
+        // Boundary mask of each component. astRegPins expects base-Frame
+        // points, so map the sub-points current->base first, and take each
+        // component's own base-Frame uncertainty.
+        let ps1b = reg1.get_region_frameset().transform(&ps1, false)?;
+        let unc1 = reg1.get_unc_frm(FrameRef::Base)?;
+        let mask1 = reg1.reg_pins_mask(&ps1b, Some(unc1.as_ref()))?.1;
+        // Membership: reg1 as a Mapping maps interior points through and sets
+        // exterior points to BAD (prism.c:2756).
+        let ps1b2 = reg1.transform(&ps1b, true)?;
+
+        let ps2b = reg2.get_region_frameset().transform(&ps2, false)?;
+        let unc2 = reg2.get_unc_frm(FrameRef::Base)?;
+        let mask2 = reg2.reg_pins_mask(&ps2b, Some(unc2.as_ref()))?.1;
+        let ps2b2 = reg2.transform(&ps2b, true)?;
+
+        // Combine per prism.c:2778-2821.
+        let mut mask = Vec::with_capacity(np);
+        let mut result = true;
+        for i in 0..np {
+            let on = if mask1[i] {
+                if mask2[i] {
+                    // On the boundary of both components.
+                    true
+                } else {
+                    // On reg1's boundary: on the Prism boundary iff within
+                    // reg2's volume (no BAD axis through reg2).
+                    !ps2b2.point(i)[..nax2].iter().any(|&v| is_bad(v))
+                }
+            } else if mask2[i] {
+                // On reg2's boundary: on the Prism boundary iff within reg1's
+                // volume.
+                !ps1b2.point(i)[..nax1].iter().any(|&v| is_bad(v))
+            } else {
+                // On the boundary of neither component.
+                false
+            };
+            mask.push(on);
+            if !on {
+                result = false;
+            }
+        }
+
+        Ok((result, mask))
+    }
+
     fn negated_copy(&self) -> DynRegion {
         let mut copy = self.clone();
         copy.data.negated = !copy.data.negated;

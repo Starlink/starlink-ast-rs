@@ -355,7 +355,11 @@ impl Region for Circle {
         super::overlap::compute_overlap(self, other)
     }
 
-    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+    fn reg_pins_mask(
+        &self,
+        pts: &PointSet,
+        unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
         // Faithful port of circle.c::RegPins (1289). The border half-width is
         // half the total geodesic length of the diagonals of the two
         // uncertainty bounding boxes: `drad = 0.5*(l1 + l2)`. A point is on
@@ -415,15 +419,15 @@ impl Region for Circle {
         let small_circle = make_circle(small_edge, true);
 
         // On the boundary iff inside both the large Circle and the negated
-        // small Circle: chain the two forward transforms and require no BAD.
+        // small Circle: chain the two forward transforms; a point is on the
+        // boundary iff the result has no BAD.
         let ps1 = super::data::region_transform(&large_circle, pts, true)?;
         let ps2 = super::data::region_transform(&small_circle, &ps1, true)?;
-        for j in 0..ps2.npoint() {
-            if ps2.point(j).iter().any(|&v| is_bad(v)) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        let mask: Vec<bool> = (0..ps2.npoint())
+            .map(|j| !ps2.point(j).iter().any(|&v| is_bad(v)))
+            .collect();
+        let result = mask.iter().all(|&b| b);
+        Ok((result, mask))
     }
 
     fn negated_copy(&self) -> DynRegion {

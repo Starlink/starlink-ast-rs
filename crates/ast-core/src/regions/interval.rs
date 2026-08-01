@@ -621,7 +621,11 @@ impl Region for Interval {
         super::overlap::compute_overlap(self, other)
     }
 
-    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+    fn reg_pins_mask(
+        &self,
+        pts: &PointSet,
+        unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
         // Faithful port of interval.c::RegPins (2580). If the Interval is
         // effectively an un-negated Box (all axes finite and consistently
         // oriented) delegate to the equivalent Box's on-boundary test
@@ -692,7 +696,7 @@ impl Region for Interval {
             bbox.data.negated = self.data.negated;
             bbox.data.closed = self.data.closed;
             bbox.data.closed_set = self.data.closed_set;
-            return bbox.reg_pins(pts, unc);
+            return bbox.reg_pins_mask(pts, unc);
         }
 
         // Not Box-equivalent: at least one infinite boundary. The border
@@ -766,16 +770,15 @@ impl Region for Interval {
         let small_int = make_interval(small_lbnd, small_ubnd, true);
 
         // Points are on the boundary iff inside both the large Interval and
-        // the negated small Interval: chain the two forward transforms and
-        // require no BAD in the result (interval.c:2799-2855).
+        // the negated small Interval: chain the two forward transforms; a point
+        // is on the boundary iff the result has no BAD (interval.c:2799-2855).
         let ps1 = super::data::region_transform(&large_int, pts, true)?;
         let ps2 = super::data::region_transform(&small_int, &ps1, true)?;
-        for j in 0..ps2.npoint() {
-            if ps2.point(j).iter().any(|&v| is_bad(v)) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        let mask: Vec<bool> = (0..ps2.npoint())
+            .map(|j| !ps2.point(j).iter().any(|&v| is_bad(v)))
+            .collect();
+        let result = mask.iter().all(|&b| b);
+        Ok((result, mask))
     }
 
     fn negated_copy(&self) -> DynRegion {

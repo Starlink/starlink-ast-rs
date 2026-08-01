@@ -54,8 +54,12 @@ pub enum Overlap {
     SecondInside,
     /// Partial overlap (some points of each lie inside the other).
     Partial,
-    /// The regions are identical (or equivalent after negation).
+    /// The regions are identical to within their uncertainties (C code 5).
     Same,
+    /// The second region is the exact negation of the first to within their
+    /// uncertainties (C code 6): the two regions are mutually exclusive and
+    /// together cover the whole coordinate system.
+    Negation,
 }
 
 /// Comparison operator for combining regions.
@@ -313,7 +317,33 @@ pub trait Region: Frame + Mapping {
     /// in [`RegionGeometry::reg_base_inside`](data::RegionGeometry::reg_base_inside).
     /// The abstract default reports [`ErrorCode::Inter`]; every concrete class
     /// used by Simplify/Overlap overrides it.
-    fn reg_pins(&self, _pts: &PointSet, _unc: Option<&dyn Region>) -> AstResult<bool> {
+    ///
+    /// Returns the overall flag only. Callers needing the per-point boundary
+    /// mask (C `astRegPins`'s `int **mask` argument) call [`reg_pins_mask`]
+    /// directly. The default forwards to it and discards the mask.
+    ///
+    /// [`reg_pins_mask`]: Region::reg_pins_mask
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        Ok(self.reg_pins_mask(pts, unc)?.0)
+    }
+
+    /// Like [`reg_pins`](Region::reg_pins), but also returns the per-point
+    /// boundary mask.
+    ///
+    /// Mirrors the full C `astRegPins(this, pset, unc, int **mask)` signature:
+    /// the returned `bool` is non-zero iff *every* supplied point lies on this
+    /// Region's boundary, and `mask[i]` is `true` iff point `i` individually
+    /// lies on the boundary. `OverlapX` (region.c:6996) uses the mask to split
+    /// a mesh into on- and off-boundary sub-meshes, so the per-point flags must
+    /// be computed even when the overall flag is already known to be false.
+    ///
+    /// The abstract default reports [`ErrorCode::Inter`]; every concrete class
+    /// used by Simplify/Overlap overrides it.
+    fn reg_pins_mask(
+        &self,
+        _pts: &PointSet,
+        _unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
         Err(AstError::new(
             ErrorCode::Inter,
             "reg_pins: this Region class does not implement the astRegPins method".to_string(),

@@ -322,7 +322,11 @@ impl Region for PointList {
         super::overlap::compute_overlap(self, other)
     }
 
-    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+    fn reg_pins_mask(
+        &self,
+        pts: &PointSet,
+        unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
         // Faithful port of C PointList RegPins (pointlist.c:1868). The
         // supplied points (`pts`, in this PointList's base Frame) all lie on
         // the boundary iff mutual coverage holds in both directions, within
@@ -337,10 +341,12 @@ impl Region for PointList {
         // PointList — i.e. coincide with one of this PointList's defining
         // points, to within this PointList's own uncertainty. `reg_base_inside`
         // is the raw (un-negated) membership test, matching C's temporary
-        // `astSetNegated(this, 0)`.
+        // `astSetNegated(this, 0)`. This per-point flag is the boundary mask
+        // (pointlist.c:1980-2007). The overall result additionally requires the
+        // opposite-direction coverage check below.
         let inside = self.reg_base_inside(pts)?;
         if inside.iter().any(|&b| !b) {
-            return Ok(false);
+            return Ok((false, inside));
         }
 
         // Direction 2: build a PointList from the supplied points, using the
@@ -368,7 +374,9 @@ impl Region for PointList {
         // supplied points, so they do not all lie on the boundary.
         let def_pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
         let covered = pl.reg_base_inside(&def_pts)?;
-        Ok(covered.iter().all(|&b| b))
+        let result = covered.iter().all(|&b| b);
+        // `inside` is all-true here (direction 1 passed); it is the mask.
+        Ok((result, inside))
     }
 
     fn negated_copy(&self) -> DynRegion {

@@ -39,6 +39,14 @@ impl NullRegionBuilder {
         }
     }
 
+    /// Create a builder from a boxed (dynamic) frame.
+    pub fn from_dyn(frame: DynFrame) -> Self {
+        NullRegionBuilder {
+            frame,
+            uncertainty: None,
+        }
+    }
+
     /// Set an uncertainty region.
     pub fn uncertainty(mut self, unc: DynRegion) -> Self {
         self.uncertainty = Some(unc);

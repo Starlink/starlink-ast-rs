@@ -1,252 +1,431 @@
-//! Mesh-based overlap algorithm for determining how two Regions relate.
+//! Geometric overlap algorithm for determining how two Regions relate.
 //!
-//! This module provides the shared [`compute_overlap`] function that
-//! implements the overlap logic described in the C library's `region.c`
-//! `OverlapX` function. Each concrete Region's `overlap()` method
-//! delegates here.
+//! This module provides the shared [`compute_overlap`] function that is a
+//! faithful port of the C library's `region.c` `OverlapX` function
+//! (region.c:6996), together with the `NullRegion`-specific table
+//! (`nullregion.c:874`) and the `GetSubMesh` helper (region.c:3688).
+//! Each concrete Region's `overlap()` method delegates here.
 
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::FrameRef;
 use crate::mappings::helpers::is_bad;
+use crate::mappings::{CmpMap, Composition, Mapping};
 
+use super::nullregion::NullRegion;
 use super::{Overlap, Region};
 
-/// Fraction of mesh points that must agree for a definitive "all inside"
-/// or "all outside" classification. This accounts for floating-point
-/// imprecision on boundary points — mesh points generated on the
-/// boundary (e.g., by `reg_base_mesh`) may test as slightly inside or
-/// outside due to floating-point arithmetic. The C library handles this
-/// via uncertainty regions; we use a simpler threshold.
+/// Map a C `astOverlap` return code (0-6) to the Rust [`Overlap`] enum.
 ///
-/// Set at 0.90 to tolerate up to 10% boundary-ambiguity noise while
-/// still distinguishing genuine partial overlap (which typically shows
-/// 30-60% of points inside).
-const THRESHOLD: f64 = 0.90;
+/// C code 0 ("the check could not be performed because the second Region
+/// could not be mapped into the coordinate system of the first Region")
+/// has no distinct variant; it collapses to [`Overlap::None`], matching the
+/// enum's inability to represent the un-mappable case.
+fn code_to_overlap(code: i32) -> Overlap {
+    match code {
+        2 => Overlap::FirstInside,
+        3 => Overlap::SecondInside,
+        4 => Overlap::Partial,
+        5 => Overlap::Same,
+        6 => Overlap::Negation,
+        // 0 (cannot perform) and 1 (no overlap) both map to None.
+        _ => Overlap::None,
+    }
+}
 
 /// Compute the overlap relationship between two Regions.
 ///
-/// The algorithm:
-/// 1. Handle trivial NullRegion cases (empty or universal).
-/// 2. Quick-reject via bounding boxes (for non-negated bounded regions).
-/// 3. Get the boundary mesh of region B, test each point against A.
-/// 4. If the result is clearly mixed, return `Partial`.
-/// 5. Get the boundary mesh of region A, test against B.
-/// 6. Classify the relationship based on the combined results.
-///
-/// Both regions must have the same number of axes. This function does
-/// **not** attempt frame alignment — it assumes both regions are already
-/// in compatible coordinate systems (for the initial implementation,
-/// both should be in the same frame).
+/// `region_a` plays the role of `this` in the public `astOverlap(this, that)`
+/// and `region_b` the role of `that`. C's public method swaps the arguments
+/// and invokes `OverlapX(that, this)`, dispatching the method on the class of
+/// `that` (region.c:6992). We reproduce that dispatch here: when `region_b`
+/// (the `that` argument) is a [`NullRegion`], the `NullRegion` override
+/// (`nullregion.c:874`) is used; otherwise the generic geometric `OverlapX`
+/// (region.c:6996) runs.
 pub(crate) fn compute_overlap(region_a: &dyn Region, region_b: &dyn Region) -> AstResult<Overlap> {
-    // --- Handle NullRegion cases ---
-    // A non-negated NullRegion is empty (contains nothing).
-    // A negated NullRegion is universal (contains everything).
-    let a_is_empty = is_null_empty(region_a);
-    let b_is_empty = is_null_empty(region_b);
-    let a_is_universal = is_null_universal(region_a);
-    let b_is_universal = is_null_universal(region_b);
+    // Dispatch on the class of `that` (== region_b), mirroring the C vtab
+    // dispatch of astOverlapX on its first argument.
+    if region_b.as_any().is::<NullRegion>() {
+        return Ok(code_to_overlap(null_overlap(region_b, region_a)?));
+    }
+    Ok(code_to_overlap(overlap_x(region_b, region_a)?))
+}
 
-    // Two empty regions: Same (both contain nothing).
-    if a_is_empty && b_is_empty {
-        return Ok(Overlap::Same);
-    }
-    // Two universal regions: Same (both contain everything).
-    if a_is_universal && b_is_universal {
-        return Ok(Overlap::Same);
-    }
-    // One empty, one not: None (the empty region doesn't overlap anything).
-    if a_is_empty || b_is_empty {
-        return Ok(Overlap::None);
-    }
-    // A is universal: B is entirely inside A.
-    if a_is_universal {
-        return Ok(Overlap::SecondInside);
-    }
-    // B is universal: A is entirely inside B.
-    if b_is_universal {
-        return Ok(Overlap::FirstInside);
-    }
-
-    // --- Quick bounding-box rejection ---
-    // Only applicable if both regions are bounded and neither is negated.
-    if region_a.is_bounded()
-        && region_b.is_bounded()
-        && !region_a.is_negated()
-        && !region_b.is_negated()
+/// Faithful port of `NullRegion::OverlapX` (nullregion.c:874).
+///
+/// Parameters follow the C signature `OverlapX(that, this)`: `that` is the
+/// Region the method was dispatched on (always a [`NullRegion`] here), `this`
+/// is the other Region. The returned code is expressed in the public
+/// `astOverlap(this, that)` convention (2 = `this` inside `that`, etc).
+fn null_overlap(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
+    // Check that the Regions can be compared meaningfully (astConvert).
+    if this
+        .get_region_frame()
+        .convert_to(that.get_region_frame().as_ref(), &[])?
+        .is_none()
     {
-        if let (Ok((lb_a, ub_a)), Ok((lb_b, ub_b))) =
-            (region_a.get_region_bounds(), region_b.get_region_bounds())
-        {
-            if bounding_boxes_disjoint(&lb_a, &ub_a, &lb_b, &ub_b) {
-                return Ok(Overlap::None);
+        return Ok(0);
+    }
+
+    let this_null = this.as_any().is::<NullRegion>();
+    let that_null = that.as_any().is::<NullRegion>();
+    let this_neg = this.is_negated();
+    let that_neg = that.is_negated();
+
+    let result = if this_null && that_null {
+        // Both NullRegions: identical if Negated matches, else mutually
+        // exclusive.
+        if this_neg == that_neg { 5 } else { 6 }
+    } else if (this_null && !this_neg) || (that_null && !that_neg) {
+        // An empty NullRegion overlaps nothing.
+        1
+    } else if that_null && that_neg {
+        // "that" is infinite: "this" lies entirely inside it.
+        2
+    } else if this_null && this_neg {
+        // "this" is infinite: "that" lies entirely inside it.
+        3
+    } else {
+        4
+    };
+
+    Ok(result)
+}
+
+/// Faithful port of the generic `Region::OverlapX` (region.c:6996).
+///
+/// Parameters follow the C signature `OverlapX(that, this)`. The returned
+/// code is in the public `astOverlap(this, that)` convention.
+fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
+    // Return 5 if the two Regions are equal, or 6 if they are equal after
+    // temporarily negating the first (region.c:7072-7083).
+    if (this as &dyn Mapping).equal(that as &dyn Mapping) {
+        return Ok(5);
+    }
+    let this_neg = this.negated_copy();
+    if (this_neg.as_ref() as &dyn Mapping).equal(that as &dyn Mapping) {
+        return Ok(6);
+    }
+
+    // Get the Mapping from the Frame of the second Region (that) to the Frame
+    // of the first Region (this). astConvert(that, this) yields a FrameSet
+    // whose base->current Mapping runs that_current -> this_current
+    // (region.c:7088).
+    let fs0 = match that
+        .get_region_frame()
+        .convert_to(this.get_region_frame().as_ref(), &[])?
+    {
+        Some(fs) => fs,
+        None => return Ok(0),
+    };
+    // cmap maps reg2_current -> reg1_current. This invariant is preserved
+    // across the region swap below by inverting cmap.
+    let mut cmap = fs0.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    // reg1 = this, reg2 = that initially; `reg2_is_that` tracks whether reg2
+    // is still the original `that` (used to orient codes 2/3). `first` guards
+    // the single retry with the regions swapped (region.c:7097-7099).
+    let mut reg1: &dyn Region = this;
+    let mut reg2: &dyn Region = that;
+    let mut reg2_is_that = true;
+    let mut first = true;
+
+    // Bounds of the transformed reg2 mesh, in reg1's base Frame. Filled in the
+    // loop; needed for the unbounded-reg1 fallback in the FALSE branch.
+    let nc0 = this.get_region_frameset().base().naxes().max(that.naxes());
+    let mut lbnd = vec![f64::MAX; nc0];
+    let mut ubnd = vec![-f64::MAX; nc0];
+
+    // The transformed reg2 mesh (reg1 base Frame), reg2 mesh (reg2 current
+    // Frame), and the reg2_current -> reg1_base Mapping, resolved when the
+    // L1 loop breaks on a usable mesh.
+    //
+    // L1 (region.c:7100): try to mesh reg2 and transform it into reg1's base
+    // Frame; on failure (no mesh, or no good transformed points) swap the
+    // regions once and retry.
+    let (ps1, reg2_mesh, map, map_reg1) = loop {
+        // astRegMesh(reg2): reg2's boundary mesh in its *current* Frame. The
+        // Rust get_region_mesh returns *base* Frame points, so map them
+        // base->current to match C.
+        let base_mesh = reg2.get_region_mesh()?;
+        let cur_mesh = reg2.get_region_frameset().transform(&base_mesh, true)?;
+
+        let usable = mesh_has_good(&cur_mesh);
+        if !usable {
+            if first {
+                std::mem::swap(&mut reg1, &mut reg2);
+                reg2_is_that = !reg2_is_that;
+                cmap.invert();
+                first = false;
+                continue;
+            }
+            // Neither Region generated a usable mesh: cannot determine
+            // overlap (region.c:7179).
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                "astOverlap(Region): neither of the two supplied Regions has a finite boundary"
+                    .to_string(),
+            ));
+        }
+
+        // map_reg1: reg1 current -> base (region.c:7125).
+        let m_reg1 = reg1
+            .get_region_frameset()
+            .mapping(FrameRef::Current, FrameRef::Base)?;
+        // map: reg2 current -> reg1 base (region.c:7129).
+        let m = CmpMap::new(cmap.clone_box(), m_reg1.clone_box(), Composition::Series)?;
+        let m: crate::mappings::DynMapping = Box::new(m);
+
+        // Transform the mesh into reg1's base Frame (region.c:7132).
+        let transformed = m.transform(&cur_mesh, true)?;
+
+        // Check for good points and find the bounds (region.c:7136-7154).
+        let nc = transformed.ncoord();
+        let np = transformed.npoint();
+        let mut good = false;
+        for i in 0..nc {
+            lbnd[i] = f64::MAX;
+            ubnd[i] = -f64::MAX;
+            for j in 0..np {
+                let v = transformed.point(j)[i];
+                if !is_bad(v) {
+                    good = true;
+                    if v > ubnd[i] {
+                        ubnd[i] = v;
+                    }
+                    if v < lbnd[i] {
+                        lbnd[i] = v;
+                    }
+                }
             }
         }
-    }
 
-    // --- Get mesh of region B and test against region A ---
-    let mesh_b = region_b.get_region_mesh()?;
-    let (b_inside_a, b_total) = count_inside(region_a, &mesh_b)?;
-
-    // --- Get mesh of region A and test against region B ---
-    let mesh_a = region_a.get_region_mesh()?;
-    let (a_inside_b, a_total) = count_inside(region_b, &mesh_a)?;
-
-    // --- Classify ---
-    classify(a_inside_b, a_total, b_inside_a, b_total)
-}
-
-/// Classify the overlap relationship given mesh-test counts.
-///
-/// - `a_inside_b`: count of A's mesh points that are inside B.
-/// - `a_total`: total valid points in A's mesh.
-/// - `b_inside_a`: count of B's mesh points that are inside A.
-/// - `b_total`: total valid points in B's mesh.
-fn classify(
-    a_inside_b: usize,
-    a_total: usize,
-    b_inside_a: usize,
-    b_total: usize,
-) -> AstResult<Overlap> {
-    // Determine whether "essentially all" or "essentially none" of each
-    // mesh is inside the other region.
-    let all_a_in_b = is_all(a_inside_b, a_total);
-    let none_a_in_b = is_none(a_inside_b, a_total);
-    let all_b_in_a = is_all(b_inside_a, b_total);
-    let none_b_in_a = is_none(b_inside_a, b_total);
-
-    if all_a_in_b && all_b_in_a {
-        // Both meshes entirely inside the other → Same.
-        Ok(Overlap::Same)
-    } else if all_a_in_b && none_b_in_a {
-        // A's boundary is inside B, B's boundary is outside A → A inside B.
-        Ok(Overlap::FirstInside)
-    } else if all_b_in_a && none_a_in_b {
-        // B's boundary is inside A, A's boundary is outside B → B inside A.
-        Ok(Overlap::SecondInside)
-    } else if none_a_in_b && none_b_in_a {
-        // Neither mesh has points inside the other → no overlap.
-        Ok(Overlap::None)
-    } else {
-        // Any other combination implies partial overlap.
-        Ok(Overlap::Partial)
-    }
-}
-
-/// Returns `true` if "essentially all" valid points tested inside.
-///
-/// When total is 0 (empty mesh), returns `true` (vacuously, all zero
-/// points are inside).
-fn is_all(inside: usize, total: usize) -> bool {
-    if total == 0 {
-        return true;
-    }
-    (inside as f64) / (total as f64) >= THRESHOLD
-}
-
-/// Returns `true` if "essentially none" of the valid points tested inside.
-///
-/// When total is 0 (empty mesh), returns `true` (vacuously, none of
-/// zero points are inside).
-fn is_none(inside: usize, total: usize) -> bool {
-    if total == 0 {
-        return true;
-    }
-    (inside as f64) / (total as f64) <= (1.0 - THRESHOLD)
-}
-
-/// Test whether a region is a non-negated NullRegion (empty set).
-///
-/// We detect this by checking: the region is not bounded, not negated,
-/// and its mesh has no valid (non-BAD) points. This is the characteristic
-/// of a NullRegion — it has no boundary and contains nothing.
-fn is_null_empty(region: &dyn Region) -> bool {
-    if region.is_negated() || region.is_bounded() {
-        return false;
-    }
-    // Check if the mesh is empty or contains only BAD values.
-    if let Ok(mesh) = region.get_region_mesh() {
-        if mesh.npoint() == 0 {
-            return true;
-        }
-        // Check if all points are BAD (NullRegion returns a single BAD point).
-        for i in 0..mesh.npoint() {
-            let point = mesh.point(i);
-            if !point.iter().all(|&v| is_bad(v)) {
-                return false;
-            }
-        }
-        true
-    } else {
-        false
-    }
-}
-
-/// Test whether a region is a negated NullRegion (universal set).
-///
-/// A negated NullRegion contains everything. We detect it the same way
-/// as `is_null_empty` but with the negation flag set.
-fn is_null_universal(region: &dyn Region) -> bool {
-    if !region.is_negated() || region.is_bounded() {
-        return false;
-    }
-    // Check if the mesh is empty or contains only BAD values.
-    if let Ok(mesh) = region.get_region_mesh() {
-        if mesh.npoint() == 0 {
-            return true;
-        }
-        for i in 0..mesh.npoint() {
-            let point = mesh.point(i);
-            if !point.iter().all(|&v| is_bad(v)) {
-                return false;
-            }
-        }
-        true
-    } else {
-        false
-    }
-}
-
-/// Test whether two axis-aligned bounding boxes are disjoint.
-///
-/// Returns `true` if the boxes do not overlap on any axis. Axes with
-/// BAD bounds are treated as unbounded (never disjoint on that axis).
-fn bounding_boxes_disjoint(lb_a: &[f64], ub_a: &[f64], lb_b: &[f64], ub_b: &[f64]) -> bool {
-    let naxes = lb_a.len().min(lb_b.len());
-    for i in 0..naxes {
-        // Skip axes with BAD bounds (treat as unbounded).
-        if is_bad(lb_a[i]) || is_bad(ub_a[i]) || is_bad(lb_b[i]) || is_bad(ub_b[i]) {
+        if !good && first {
+            std::mem::swap(&mut reg1, &mut reg2);
+            reg2_is_that = !reg2_is_that;
+            cmap.invert();
+            first = false;
             continue;
         }
-        // Check if separated on this axis.
-        if ub_a[i] < lb_b[i] || ub_b[i] < lb_a[i] {
+
+        break (transformed, cur_mesh, m, m_reg1);
+    };
+
+    let mut ps1 = ps1;
+    let nc = ps1.ncoord();
+    let np = ps1.npoint();
+
+    // Transform the uncertainty of reg2 into reg1's base Frame (region.c:7193).
+    let unc = reg2.get_unc_frm(FrameRef::Current)?;
+    let bfrm_reg1 = reg1.get_region_frameset().base().snapshot();
+    let unc1 = unc.map_region(map.as_ref(), bfrm_reg1.as_ref())?;
+
+    // See if every transformed mesh point lies on reg1's boundary, to within
+    // the joint uncertainty. If so the two boundaries are equivalent
+    // (region.c:7202).
+    let (pins, mask) = reg1.reg_pins_mask(&ps1, Some(unc1.as_ref()))?;
+
+    let mut touch = false;
+    let result: i32;
+
+    if pins {
+        // Equivalent boundaries: the Regions are either identical or mutually
+        // exclusive. Distinguish by transforming the mean pin position and
+        // testing membership of both Regions (region.c:7204-7258).
+        let mut ps4 = PointSet::zeros(1, nc);
+        for i in 0..nc {
+            let mut good = 0usize;
+            let mut axsum = 0.0;
+            for j in 0..np {
+                let v = ps1.point(j)[i];
+                if !is_bad(v) {
+                    good += 1;
+                    axsum += v;
+                }
+            }
+            ps4.point_mut(0)[i] = if good > 0 {
+                axsum / good as f64
+            } else {
+                crate::constants::BAD_VALUE
+            };
+        }
+
+        // Is the mean position inside reg1? Transform reg1 base -> current
+        // (map_reg1 inverse), then mask with reg1 as a Mapping. C uses
+        // forward=0 for both transforms; for a Region the forward and inverse
+        // transforms are identical (both mask by membership), so the masking
+        // forward direction reproduces C's behaviour (region.c:7236-7239).
+        let ps3 = map_reg1.transform(&ps4, false)?;
+        let ps5 = (reg1 as &dyn Mapping).transform(&ps3, true)?;
+        let inside1 = !is_bad(ps5.point(0)[0]);
+
+        // Is the mean position inside reg2? Transform reg1 base -> reg2
+        // current (map inverse), then mask with reg2 (region.c:7246-7249).
+        let ps3 = map.transform(&ps4, false)?;
+        let ps5 = (reg2 as &dyn Mapping).transform(&ps3, true)?;
+        let inside2 = !is_bad(ps5.point(0)[0]);
+
+        result = if inside1 == inside2 { 5 } else { 6 };
+    } else {
+        // The boundaries are not equivalent. Build a sub-mesh of the reg2
+        // points that are NOT on reg1's boundary (region.c:7266).
+        let reg2_submesh = get_sub_mesh(&mask, &reg2_mesh);
+
+        // Transform the submesh into reg1's current Frame, then mask with reg1
+        // as a Mapping (region.c:7271-7275).
+        let ps1_sub = cmap.transform(&reg2_submesh, true)?;
+        let ps2 = (reg1 as &dyn Mapping).transform(&ps1_sub, true)?;
+        let np2 = ps2.npoint();
+
+        // Any common boundary points? (region.c:7283).
+        touch = reg2_mesh.npoint() != np2;
+
+        // Are the submesh points all inside reg1, all outside, or mixed?
+        // (region.c:7290-7306).
+        let mut allbad = true;
+        let mut allgood = true;
+        for iax in 0..ps2.ncoord() {
+            for ip in 0..np2 {
+                if is_bad(ps2.point(ip)[iax]) {
+                    allgood = false;
+                } else {
+                    allbad = false;
+                }
+            }
+        }
+
+        if !allgood && !allbad {
+            // Some in, some out: partial overlap (region.c:7310).
+            result = 4;
+        } else {
+            // Use a mesh on reg1's boundary to differentiate the remaining
+            // cases (region.c:7315-7409).
+            let ps3 = reg1.get_region_mesh()?; // base Frame mesh
+            let ps3 = if mesh_has_good(&ps3) {
+                Some(ps3)
+            } else {
+                // reg1 unbounded: use the part of its boundary overlapping a
+                // box twice the size of reg2's bounding box (region.c:7329).
+                let mut lb2 = lbnd.clone();
+                let mut ub2 = ubnd.clone();
+                for i in 0..nc {
+                    lb2[i] *= 2.0;
+                    ub2[i] *= 2.0;
+                }
+                bnd_base_mesh(reg1, &lb2[..nc], &ub2[..nc])?
+            };
+
+            let ps3 = ps3.ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Inter,
+                    "astOverlap: cannot determine the overlap between the supplied Regions"
+                        .to_string(),
+                )
+            })?;
+
+            // Transform reg1's boundary mesh into reg2's current Frame
+            // (map inverse), then mask with reg2 (region.c:7352-7355).
+            let ps4 = map.transform(&ps3, false)?;
+            let ps5 = (reg2 as &dyn Mapping).transform(&ps4, true)?;
+
+            // Count points of reg1's boundary that lie inside reg2
+            // (region.c:7360-7371).
+            let np5 = ps5.npoint();
+            let mut inside_count = 0usize;
+            for ip in 0..np5 {
+                if !is_bad(ps5.point(ip)[0]) {
+                    inside_count += 1;
+                }
+            }
+            let inside1 = inside_count > np5 / 2;
+
+            if allgood {
+                // Entire reg2 submesh inside reg1 (region.c:7382-7392).
+                result = if inside1 {
+                    4
+                } else if reg2_is_that {
+                    3
+                } else {
+                    2
+                };
+            } else {
+                // Entire reg2 submesh outside reg1 (region.c:7398-7408).
+                result = if inside1 {
+                    if reg2_is_that { 2 } else { 3 }
+                } else {
+                    1
+                };
+            }
+        }
+
+        // If the regions do not overlap but touch, treat as intersecting when
+        // either is closed (region.c:7421-7425).
+        let result = if touch && result == 1 && (this.is_closed() || that.is_closed()) {
+            4
+        } else {
+            result
+        };
+        return Ok(result);
+    }
+
+    // Silence unused warning on `ps1`/`touch` in the pins branch.
+    let _ = (&mut ps1, touch);
+    Ok(result)
+}
+
+/// Faithful port of `astBndBaseMesh` (region.c:1683): a mesh on the part of
+/// `reg1`'s boundary that overlaps the current-Frame box `[lbnd, ubnd]`,
+/// returned in `reg1`'s base Frame. Returns `None` when the box does not
+/// partially overlap the Region.
+fn bnd_base_mesh(reg1: &dyn Region, lbnd: &[f64], ubnd: &[f64]) -> AstResult<Option<PointSet>> {
+    use super::box_region::BoxRegion;
+    use super::{CmpOperator, CmpRegionBuilder};
+
+    // Form a Box describing the required box in reg1's current Frame.
+    let boxreg = BoxRegion::from_bounds_frame(reg1.get_region_frame(), lbnd, ubnd)?;
+
+    // Only proceed if there is partial (or greater) overlap: astOverlap > 3.
+    let ov = reg1.overlap(&boxreg)?;
+    let code = match ov {
+        Overlap::Partial => 4,
+        Overlap::Same => 5,
+        Overlap::Negation => 6,
+        _ => 0,
+    };
+    if code > 3 {
+        // Intersection of reg1 and the box; its boundary mesh.
+        let cmpreg =
+            CmpRegionBuilder::from_dyn(reg1.clone_region(), Box::new(boxreg), CmpOperator::And)?
+                .build()?;
+        Ok(Some(cmpreg.get_region_mesh()?))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Faithful port of `GetSubMesh` (region.c:3688): copy the points of `input`
+/// whose mask entry is `false` (C's mask value 0) into a new PointSet.
+fn get_sub_mesh(mask: &[bool], input: &PointSet) -> PointSet {
+    let nc = input.ncoord();
+    let mut rows: Vec<Vec<f64>> = Vec::new();
+    for ip in 0..input.npoint() {
+        if !mask.get(ip).copied().unwrap_or(false) {
+            rows.push(input.point(ip)[..nc].to_vec());
+        }
+    }
+    if rows.is_empty() {
+        PointSet::zeros(0, nc)
+    } else {
+        PointSet::from_rows(rows.iter().map(|r| r.as_slice()))
+    }
+}
+
+/// Whether a PointSet contains at least one point with all-good coordinates.
+fn mesh_has_good(pts: &PointSet) -> bool {
+    for ip in 0..pts.npoint() {
+        if !pts.point(ip).iter().any(|&v| is_bad(v)) {
             return true;
         }
     }
     false
-}
-
-/// Count how many valid points in a mesh are inside a given region.
-///
-/// Returns `(count_inside, count_total_valid)` where `count_total_valid`
-/// is the number of mesh points that have all non-BAD coordinates.
-fn count_inside(region: &dyn Region, mesh: &PointSet) -> AstResult<(usize, usize)> {
-    let npoint = mesh.npoint();
-    let mut inside_count = 0usize;
-    let mut valid_count = 0usize;
-
-    for i in 0..npoint {
-        let point = mesh.point(i);
-
-        // Skip points with BAD coordinates.
-        if point.iter().any(|&v| is_bad(v)) {
-            continue;
-        }
-
-        valid_count += 1;
-        if region.point_in_region(point)? {
-            inside_count += 1;
-        }
-    }
-
-    Ok((inside_count, valid_count))
 }

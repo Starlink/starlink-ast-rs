@@ -744,7 +744,11 @@ impl Region for Polygon {
         super::overlap::compute_overlap(self, other)
     }
 
-    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+    fn reg_pins_mask(
+        &self,
+        pts: &PointSet,
+        unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
         // Faithful port of polygon.c::RegPins (4562). The margin width `wid` is
         // half the total geodesic length of the diagonals of the two
         // uncertainty bounding boxes: `wid = 0.5*(l1 + l2)`. Each supplied
@@ -813,8 +817,10 @@ impl Region for Polygon {
             start = end.clone();
         }
 
-        // On the boundary iff every supplied point lies on some edge.
-        Ok(on_edge.iter().all(|&b| b))
+        // On the boundary iff every supplied point lies on some edge. The
+        // per-point `on_edge` flags are the boundary mask.
+        let result = on_edge.iter().all(|&b| b);
+        Ok((result, on_edge))
     }
 
     fn negated_copy(&self) -> DynRegion {

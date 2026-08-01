@@ -15,10 +15,10 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping};
 
 use super::data::{RegionData, RegionGeometry};
-use super::{CmpOperator, DynRegion, Overlap, Region};
+use super::{CmpOperator, DynRegion, NullRegion, NullRegionBuilder, Overlap, Region};
 
 /// A compound region combining two sub-regions with AND (intersection)
 /// or OR (union).
@@ -158,6 +158,106 @@ impl CmpRegion {
     /// Get a reference to the second component region.
     pub fn region2(&self) -> &dyn Region {
         self.region2.as_ref()
+    }
+
+    /// Return the two component Regions, the combining operator, and the
+    /// `Negated` flags that should be used with each component so that the
+    /// pair — combined with `oper` — is equivalent to this (possibly negated)
+    /// CmpRegion.
+    ///
+    /// Faithful port of C `GetRegions` (cmpregion.c:981): if the CmpRegion is
+    /// itself negated the De Morgan rewrite is applied (AND<->OR with both
+    /// component `Negated` flags toggled). The returned component clones carry
+    /// their *stored* `Negated` flags; the returned `neg1`/`neg2` are the
+    /// *required* flags — a caller that needs a component to actually carry
+    /// its required flag replaces it with [`Region::negated_copy`] when the two
+    /// differ (cmpregion.c:775-788, 3617).
+    fn get_regions(&self) -> (DynRegion, DynRegion, CmpOperator, bool, bool) {
+        let reg1 = self.region1.clone_region();
+        let reg2 = self.region2.clone_region();
+        let mut oper = self.operator;
+        let mut neg1 = self.region1.is_negated();
+        let mut neg2 = self.region2.is_negated();
+        if self.data.negated {
+            oper = match oper {
+                CmpOperator::And => CmpOperator::Or,
+                CmpOperator::Or => CmpOperator::And,
+            };
+            neg1 = !neg1;
+            neg2 = !neg2;
+        }
+        (reg1, reg2, oper, neg1, neg2)
+    }
+
+    /// Map the Region `that` into the base (or current) Frame of the Region
+    /// `into`.
+    ///
+    /// Faithful port of C `MatchRegion` (cmpregion.c:1406): find the conversion
+    /// FrameSet from `that`'s current Frame to the requested Frame of `into`
+    /// (its base Frame when `use_base` is true, else its current Frame), then
+    /// [`map_region`](Region::map_region) `that` through the base->current
+    /// Mapping of that FrameSet. Used to express a supplied point uncertainty
+    /// in the base Frame of each component Region.
+    fn match_region(into: &dyn Region, use_base: bool, that: &dyn Region) -> AstResult<DynRegion> {
+        let into_fs = into.get_region_frameset();
+        let target_frm = if use_base {
+            into_fs.base().snapshot()
+        } else {
+            into_fs.current().snapshot()
+        };
+        let that_frm = that.get_region_frame();
+        let fs = that_frm
+            .convert_to(target_frm.as_ref(), &[])?
+            .ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Inter,
+                    "MatchRegion: cannot convert between the two supplied coordinate Frames"
+                        .to_string(),
+                )
+            })?;
+        let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+        that.map_region(map.as_ref(), target_frm.as_ref())
+    }
+
+    /// Whether this CmpRegion is bounded.
+    ///
+    /// Faithful port of C `GetBounded` (cmpregion.c:703). The component Regions
+    /// (with De Morgan applied via [`get_regions`](CmpRegion::get_regions), each
+    /// forced to carry its required `Negated` flag) are examined together with
+    /// the operator:
+    ///
+    /// * AND: bounded if either component is bounded; if neither is, the AND is
+    ///   unbounded when the two components have partial, no, or exactly-negating
+    ///   overlap (C codes 1, 4, 6) and bounded otherwise.
+    /// * OR: unbounded if either component is unbounded, bounded otherwise.
+    fn get_bounded(&self) -> AstResult<bool> {
+        let (mut reg1, mut reg2, oper, neg1, neg2) = self.get_regions();
+        if neg1 != reg1.is_negated() {
+            reg1 = reg1.negated_copy();
+        }
+        if neg2 != reg2.is_negated() {
+            reg2 = reg2.negated_copy();
+        }
+
+        let reg1b = reg1.is_bounded();
+        let reg2b = reg2.is_bounded();
+
+        let result = match oper {
+            CmpOperator::And => {
+                if reg1b || reg2b {
+                    true
+                } else {
+                    // Neither component is bounded: the AND is unbounded when
+                    // they have partial, no, or exactly-negating overlap.
+                    !matches!(
+                        reg1.overlap(reg2.as_ref())?,
+                        Overlap::None | Overlap::Partial | Overlap::Negation
+                    )
+                }
+            }
+            CmpOperator::Or => reg1b && reg2b,
+        };
+        Ok(result)
     }
 }
 
@@ -455,6 +555,70 @@ impl Region for CmpRegion {
         super::overlap::compute_overlap(self, other)
     }
 
+    fn reg_pins_mask(
+        &self,
+        pts: &PointSet,
+        unc: Option<&dyn Region>,
+    ) -> AstResult<(bool, Vec<bool>)> {
+        // Faithful port of C cmpregion.c::RegPins (cmpregion.c:2185). The
+        // supplied points are in the base Frame of this CmpRegion, which is
+        // equivalent to the current Frame of both component Regions.
+        let reg1 = self.region1.as_ref();
+        let reg2 = self.region2.as_ref();
+
+        // Boundary mask of each component: transform the points into the
+        // component's base Frame (astRegTransform, forward=0) and map the
+        // supplied uncertainty into that same base Frame (MatchRegion).
+        let psetb1 = reg1.get_region_frameset().transform(pts, false)?;
+        let mask1 = match unc {
+            Some(u) => {
+                let unc1 = Self::match_region(reg1, true, u)?;
+                reg1.reg_pins_mask(&psetb1, Some(unc1.as_ref()))?.1
+            }
+            None => reg1.reg_pins_mask(&psetb1, None)?.1,
+        };
+
+        let psetb2 = reg2.get_region_frameset().transform(pts, false)?;
+        let mask2 = match unc {
+            Some(u) => {
+                let unc2 = Self::match_region(reg2, true, u)?;
+                reg2.reg_pins_mask(&psetb2, Some(unc2.as_ref()))?.1
+            }
+            None => reg2.reg_pins_mask(&psetb2, None)?.1,
+        };
+
+        // Transform the supplied points through each component *as a Mapping*
+        // (membership test): the first-axis output value is BAD iff the point
+        // is outside that component. For OR the components are temporarily
+        // negated so the test reports "outside" rather than "inside".
+        let (pset1, pset2) = match self.operator {
+            CmpOperator::And => (reg1.transform(pts, true)?, reg2.transform(pts, true)?),
+            CmpOperator::Or => {
+                let neg1 = reg1.negated_copy();
+                let neg2 = reg2.negated_copy();
+                (neg1.transform(pts, true)?, neg2.transform(pts, true)?)
+            }
+        };
+
+        // Boundary rule (cmpregion.c:2339): a point is on the CmpRegion
+        // boundary iff it is on component 1's boundary and non-BAD through
+        // component 2, or on component 2's boundary and non-BAD through
+        // component 1.
+        let np = pts.npoint();
+        let mut mask = Vec::with_capacity(np);
+        let mut result = true;
+        for ip in 0..np {
+            let p1_bad = is_bad(pset1.point(ip)[0]);
+            let p2_bad = is_bad(pset2.point(ip)[0]);
+            let on = (mask1[ip] && !p2_bad) || (mask2[ip] && !p1_bad);
+            mask.push(on);
+            if !on {
+                result = false;
+            }
+        }
+        Ok((result, mask))
+    }
+
     fn negated_copy(&self) -> DynRegion {
         let mut copy = self.clone();
         copy.data.negated = !copy.data.negated;
@@ -495,7 +659,7 @@ impl Region for CmpRegion {
     }
 
     fn is_bounded(&self) -> bool {
-        self.is_bounded_inner()
+        self.get_bounded().unwrap_or(false)
     }
 
     fn is_adaptive(&self) -> bool {
@@ -616,6 +780,26 @@ impl Region for CmpRegion {
     }
 }
 
+/// Build a null (empty) or infinite (negated null) Region in the Frame of
+/// `othereg`, carrying `othereg`'s uncertainty.
+///
+/// Mirrors C `astNullRegion( othereg, astGetUnc( othereg, 0 ), ... )`
+/// (cmpregion.c:3654): the new NullRegion is defined in `othereg`'s current
+/// Frame and takes `othereg`'s explicit uncertainty when one is set (the
+/// `def=0` argument to `astGetUnc` means no default uncertainty is substituted).
+fn build_null_like(othereg: &DynRegion, negated: bool) -> AstResult<DynRegion> {
+    let frame = othereg.get_region_frame();
+    let mut builder = NullRegionBuilder::from_dyn(frame);
+    if let Some(unc) = othereg.get_uncertainty() {
+        builder = builder.uncertainty(unc);
+    }
+    let mut null = builder.build()?;
+    if negated {
+        null.negate();
+    }
+    Ok(Box::new(null) as DynRegion)
+}
+
 // ============================================================================
 // Frame trait — delegate to encapsulated FrameSet's current frame
 // ============================================================================
@@ -715,38 +899,167 @@ impl Mapping for CmpRegion {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let map = self
+        // Faithful port of cmpregion.c::Simplify (cmpregion.c:3517). The two
+        // component Regions live in a Frame equivalent to the parent's base
+        // Frame; simplification is performed there and the result mapped into
+        // the parent's current Frame before being returned.
+        use super::merge_util::mapping_into_region;
+
+        // The current Frame and base->current Mapping of the parent.
+        let cfrm = self.data.frameset.current().snapshot();
+        let bcmap = self
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplified()?;
-        if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return Ok(self.clone_box());
+
+        // GetRegions (cmpregion.c:981): clone the two component Regions and
+        // read the operator and each component's required Negated flag. If the
+        // CmpRegion is itself negated, apply the De Morgan rewrite: AND<->OR
+        // with both component flags toggled.
+        let (mut reg1, mut reg2, oper, neg1, neg2) = self.get_regions();
+
+        // If a component does not already carry its required Negated flag,
+        // replace it with its negation (cmpregion.c:3617).
+        if neg1 != reg1.is_negated() {
+            reg1 = reg1.negated_copy();
         }
-        // Remap both sub-regions into the current frame using map_region.
-        let current_frame = self.data.frameset.current().snapshot();
-        let new_region1 = self
-            .region1
-            .map_region(simple_map.as_ref(), current_frame.as_ref())?;
-        let new_region2 = self
-            .region2
-            .map_region(simple_map.as_ref(), current_frame.as_ref())?;
-        // Construct new CmpRegion in current frame with fresh FrameSet.
-        let frameset = FrameSet::new(current_frame);
-        let points = Vec::new();
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-        Ok(Box::new(CmpRegion {
-            data,
-            region1: new_region1,
-            region2: new_region2,
-            operator: self.operator,
-        }))
+        if neg2 != reg2.is_negated() {
+            reg2 = reg2.negated_copy();
+        }
+
+        // Simplify each of the two components (cmpregion.c:3634).
+        let sreg1 = mapping_into_region(Mapping::simplified(reg1.as_ref())?)
+            .unwrap_or_else(|| reg1.clone_region());
+        let sreg2 = mapping_into_region(Mapping::simplified(reg2.as_ref())?)
+            .unwrap_or_else(|| reg2.clone_region());
+
+        // Note whether any simplification has taken place. The C code also
+        // seeds this from the parent FrameSet simplify (newc != this); for a
+        // Region built or read here the encapsulated FrameSet carries a single
+        // Frame, so the map_region + simplify of a collapsed result below
+        // subsumes that step (as in prism.c::Simplify).
+        let mut simpler = !(sreg1.as_ref() as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
+            || !(sreg2.as_ref() as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping);
+
+        // The (possibly) simplified Region expressed in the base Frame, or
+        // None if no base-Frame result was produced (cmpregion.c:3603).
+        let mut newb: Option<DynRegion> = None;
+
+        // If either component is null or infinite we can exclude it from the
+        // returned Region (cmpregion.c:3644).
+        let sreg1_null = sreg1.as_any().is::<NullRegion>();
+        let sreg2_null = sreg2.as_any().is::<NullRegion>();
+        if sreg1_null || sreg2_null {
+            // Select the null/infinite Region and the "other" Region. This is
+            // valid even when both are null or infinite (the first is used).
+            let (nullreg, othereg): (&DynRegion, &DynRegion) = if sreg1_null {
+                (&sreg1, &sreg2)
+            } else {
+                (&sreg2, &sreg1)
+            };
+
+            if !nullreg.is_negated() {
+                // Null (empty) component.
+                match oper {
+                    CmpOperator::And => {
+                        // empty AND x = empty.
+                        newb = Some(build_null_like(othereg, false)?);
+                    }
+                    CmpOperator::Or => {
+                        // empty OR x = x.
+                        newb = Some(othereg.clone_region());
+                    }
+                }
+            } else {
+                // Infinite component.
+                match oper {
+                    CmpOperator::And => {
+                        // infinite AND x = x.
+                        newb = Some(othereg.clone_region());
+                    }
+                    CmpOperator::Or => {
+                        // infinite OR x = infinite.
+                        newb = Some(build_null_like(othereg, true)?);
+                    }
+                }
+            }
+            simpler = true;
+
+        // Otherwise, use the overlap between the two components to try to
+        // remove one or both of them (cmpregion.c:3695).
+        } else {
+            let overlap = sreg1.overlap(sreg2.as_ref())?;
+            match (overlap, oper) {
+                // No overlap (or exact negation) combined with AND: the
+                // intersection is empty (cmpregion.c:3699).
+                (Overlap::None | Overlap::Negation, CmpOperator::And) => {
+                    newb = Some(build_null_like(&sreg1, false)?);
+                    simpler = true;
+                }
+                // One component is the negation of the other, combined with
+                // OR: the union is infinite, represented by a negated null
+                // Region (cmpregion.c:3706).
+                (Overlap::Negation, CmpOperator::Or) => {
+                    newb = Some(build_null_like(&sreg1, true)?);
+                    simpler = true;
+                }
+                // The two components are identical: the CmpRegion is either
+                // component (cmpregion.c:3712).
+                (Overlap::Same, _) => {
+                    newb = Some(sreg1.clone_region());
+                    simpler = true;
+                }
+                // First component contained within the second: AND keeps the
+                // first, OR keeps the second (cmpregion.c:3725).
+                (Overlap::FirstInside, CmpOperator::And) => {
+                    newb = Some(sreg1.clone_region());
+                    simpler = true;
+                }
+                (Overlap::FirstInside, CmpOperator::Or) => {
+                    newb = Some(sreg2.clone_region());
+                    simpler = true;
+                }
+                // Second component contained within the first: AND keeps the
+                // second, OR keeps the first (cmpregion.c:3732).
+                (Overlap::SecondInside, CmpOperator::And) => {
+                    newb = Some(sreg2.clone_region());
+                    simpler = true;
+                }
+                (Overlap::SecondInside, CmpOperator::Or) => {
+                    newb = Some(sreg1.clone_region());
+                    simpler = true;
+                }
+                // No further reduction: rebuild the CmpRegion only if a
+                // component actually simplified (cmpregion.c:3739).
+                _ => {
+                    if simpler {
+                        let cr = CmpRegionBuilder::from_dyn(
+                            sreg1.clone_region(),
+                            sreg2.clone_region(),
+                            oper,
+                        )?
+                        .build()?;
+                        newb = Some(Box::new(cr) as DynRegion);
+                    }
+                }
+            }
+        }
+
+        // Decide whether to use the base-Frame result "newb" or a clone of the
+        // supplied Region (cmpregion.c:3760). A base-Frame result is mapped
+        // into the parent's current Frame and simplified.
+        let result: DynRegion = if simpler {
+            if let Some(nb) = newb {
+                let mapped = nb.map_region(bcmap.as_ref(), cfrm.as_ref())?;
+                mapping_into_region(Mapping::simplified(mapped.as_ref())?).unwrap_or(mapped)
+            } else {
+                self.clone_region()
+            }
+        } else {
+            self.clone_region()
+        };
+
+        Ok(result.clone_box())
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
