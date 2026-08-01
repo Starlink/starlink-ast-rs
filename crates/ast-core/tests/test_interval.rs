@@ -580,3 +580,68 @@ fn parsed_c_format_pointset_preserves_bounds() {
         );
     }
 }
+
+// ---- reg_pins: on-boundary-within-uncertainty test (astRegPins port) ----
+
+#[test]
+fn reg_pins_bounded_interval_delegates_to_box() {
+    // A fully-bounded Interval is Box-equivalent: RegPins must behave like
+    // the Box on-boundary test. Band ~5e-6/axis from the default uncertainty.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let interval = IntervalBuilder::new(frame, vec![0.0, 0.0], vec![10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // On an edge / corner → on boundary.
+    let on_edge = PointSet::from_rows([[0.0_f64, 5.0]]);
+    assert!(interval.reg_pins(&on_edge, None).unwrap());
+    let corner = PointSet::from_rows([[10.0_f64, 10.0]]);
+    assert!(interval.reg_pins(&corner, None).unwrap());
+
+    // Interior / exterior → not on boundary.
+    let centre = PointSet::from_rows([[5.0_f64, 5.0]]);
+    assert!(!interval.reg_pins(&centre, None).unwrap());
+    let far = PointSet::from_rows([[20.0_f64, 20.0]]);
+    assert!(!interval.reg_pins(&far, None).unwrap());
+}
+
+#[test]
+fn reg_pins_semi_infinite_interval_boundary() {
+    // Interval unbounded below on axis 0 (lbnd BAD), bounded above at 10;
+    // axis 1 bounded [0,10].
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let interval = IntervalBuilder::new(frame, vec![BAD_VALUE, 0.0], vec![10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // The x==10 face is NOT reported on-boundary: axis 0 is unbounded, so the
+    // default uncertainty collapses to zero width on that axis (region.c
+    // GetDefUnc 3570-3573). With a zero band the closed narrowed Interval
+    // still contains x==10, so the negated-small transform rejects it.
+    let on_x_face = PointSet::from_rows([[10.0_f64, 5.0]]);
+    assert!(!interval.reg_pins(&on_x_face, None).unwrap());
+
+    // A point deep in the interior is likewise not on the boundary.
+    let interior = PointSet::from_rows([[-100.0_f64, 5.0]]);
+    assert!(!interval.reg_pins(&interior, None).unwrap());
+}
+
+#[test]
+fn reg_pins_semi_infinite_boundary_mesh_when_bounded_axis() {
+    // The finite y-face boundary of a semi-infinite interval: y==0 within the
+    // x<=10 half-plane is on the boundary.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let interval = IntervalBuilder::new(frame, vec![BAD_VALUE, 0.0], vec![10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let on_y_face = PointSet::from_rows([[5.0_f64, 0.0]]);
+    assert!(interval.reg_pins(&on_y_face, None).unwrap());
+
+    // Mixed set: one on-boundary, one interior → whole set fails.
+    let mixed = PointSet::from_rows([[10.0_f64, 5.0], [-100.0, 5.0]]);
+    assert!(!interval.reg_pins(&mixed, None).unwrap());
+}

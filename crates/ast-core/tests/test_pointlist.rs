@@ -489,3 +489,53 @@ fn with_integrity_preserves_points() {
     assert!(pl.point_in_region(&[3.0, 4.0]).unwrap());
     assert!(!pl.point_in_region(&[0.0, 0.0]).unwrap());
 }
+
+// ---- reg_pins (on-boundary within uncertainty) ----
+
+#[test]
+fn reg_pins_defining_points_on_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let points = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+    let pl = PointListBuilder::new(frame, points.clone())
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // The defining points themselves lie on the boundary: mutual coverage
+    // holds in both directions.
+    let pts = PointSet::from_rows(points.iter().map(|p| p.as_slice()));
+    assert!(pl.reg_pins(&pts, None).unwrap());
+}
+
+#[test]
+fn reg_pins_point_off_boundary_reports_false() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let points = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+    let pl = PointListBuilder::new(frame, points)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // A supplied point far from every defining point fails direction 1.
+    let supplied = [vec![1.0, 2.0], vec![10.0, 10.0]];
+    let pts = PointSet::from_rows(supplied.iter().map(|p| p.as_slice()));
+    assert!(!pl.reg_pins(&pts, None).unwrap());
+}
+
+#[test]
+fn reg_pins_incomplete_cover_reports_false() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    // This PointList has three defining points.
+    let points = vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]];
+    let pl = PointListBuilder::new(frame, points)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // The supplied points cover only two of the three defining points. Every
+    // supplied point is on the boundary (direction 1 passes), but the third
+    // defining point is not close to any supplied point (direction 2 fails).
+    let supplied = [vec![1.0, 2.0], vec![3.0, 4.0]];
+    let pts = PointSet::from_rows(supplied.iter().map(|p| p.as_slice()));
+    assert!(!pl.reg_pins(&pts, None).unwrap());
+}

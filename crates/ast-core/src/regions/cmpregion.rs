@@ -174,7 +174,7 @@ impl RegionGeometry for CmpRegion {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let naxes = self.data.frameset.base().naxes();
 

@@ -89,7 +89,7 @@ impl RegionGeometry for NullRegion {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         // NullRegion (un-negated) contains no points at all.
         Ok(vec![false; pts.npoint()])
     }

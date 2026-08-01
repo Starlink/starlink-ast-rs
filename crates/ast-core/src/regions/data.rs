@@ -188,16 +188,16 @@ pub(crate) trait RegionGeometry {
     ///
     /// This is the primary performance-critical method. Implementations
     /// should process all points in a tight loop to allow vectorisation.
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>>;
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>>;
 
     /// Test whether a single point (in the *base* frame) is inside the
     /// un-negated region boundary.
     ///
-    /// Default implementation calls `reg_pins` with a 1-point PointSet.
+    /// Default implementation calls `reg_base_inside` with a 1-point PointSet.
     /// Override for efficiency if single-point queries are common.
-    fn reg_base_pick(&self, point: &[f64]) -> AstResult<bool> {
+    fn reg_base_inside_point(&self, point: &[f64]) -> AstResult<bool> {
         let pts = PointSet::from_rows(std::iter::once(point));
-        let result = self.reg_pins(&pts)?;
+        let result = self.reg_base_inside(&pts)?;
         Ok(result[0])
     }
 
@@ -285,7 +285,7 @@ pub(crate) trait RegionGeometry {
 
         // Filter: keep only points inside the region.
         let pts = PointSet::from_rows(grid.iter().map(|p| p.as_slice()));
-        let inside = self.reg_pins(&pts)?;
+        let inside = self.reg_base_inside(&pts)?;
 
         let result: Vec<Vec<f64>> = grid
             .into_iter()
@@ -303,7 +303,7 @@ pub(crate) trait RegionGeometry {
     /// Mirrors the inverse-direction check in `box.c::Simplify`
     /// (3905-3907): map the candidate's boundary mesh back into this
     /// Region's base Frame with the inverse of `map`, then verify every
-    /// point lies on `self`'s boundary (its `reg_pins` is true for a closed
+    /// point lies on `self`'s boundary (its `reg_base_inside` is true for a closed
     /// Region). When the base->current Mapping does not preserve
     /// axis-alignment (e.g. a shear MatrixMap), a candidate axis-aligned Box
     /// or Interval is strictly larger than the true region, so some
@@ -323,7 +323,7 @@ pub(crate) trait RegionGeometry {
         let mesh = PointSet::from_rows(candidate_mesh.iter().map(|p| p.as_slice()));
         // Inverse-transform the candidate boundary into the base Frame.
         let base_mesh = map.transform(&mesh, false)?;
-        let pins = self.reg_pins(&base_mesh)?;
+        let pins = self.reg_base_inside(&base_mesh)?;
         Ok(pins.iter().all(|&inside| inside))
     }
 }
@@ -400,7 +400,7 @@ where
 /// maps interior → pass-through, exterior → BAD; inverse always passes
 /// points unchanged.
 ///
-/// Uses the batch `reg_pins` predicate for efficient processing of
+/// Uses the batch `reg_base_inside` predicate for efficient processing of
 /// large point sets (tens of thousands of points at a time).
 pub(crate) fn region_transform<R: RegionGeometry>(
     region: &R,
@@ -424,7 +424,7 @@ pub(crate) fn region_transform<R: RegionGeometry>(
     let base_pts = data.frameset.transform(pts, false)?;
 
     // Batch predicate: test all points at once.
-    let inside = region.reg_pins(&base_pts)?;
+    let inside = region.reg_base_inside(&base_pts)?;
 
     // Build output: passthrough for inside, BAD for outside.
     let mut out = PointSet::zeros(npoint, ncoord);

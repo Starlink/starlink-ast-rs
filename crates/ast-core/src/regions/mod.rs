@@ -33,8 +33,9 @@ pub use prism::{Prism, PrismBuilder};
 pub use masking::mask;
 
 use crate::coords::PointSet;
-use crate::error::AstResult;
-use crate::frames::{DynFrame, Frame, FrameSet};
+use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::mappings::helpers::is_bad;
 use crate::mappings::{CmpMap, DynMapping, Mapping, UnitMap};
 
 /// An owned, dynamically-dispatched Region.
@@ -228,6 +229,107 @@ pub trait Region: Frame + Mapping {
     /// Get a copy of the uncertainty region, if one has been set.
     fn get_uncertainty(&self) -> Option<DynRegion>;
 
+    /// Return the default uncertainty Region for this Region, in its base
+    /// Frame.
+    ///
+    /// Mirrors C `astGetDefUnc` (region.c:3488): a Box covering `1.0E-6` of
+    /// this Region's base-Frame bounding box, centred on the box centre.
+    /// For each axis with finite bounds the half-width is
+    /// `|0.5E-6 * (ubnd - lbnd)|`, or `c * 0.5E-6` (with `c` the axis centre)
+    /// when that width is zero; axes with infinite bounds collapse to a
+    /// zero-width `[0, 0]` interval.
+    ///
+    /// The default implementation is the C `GetDefUnc` body; only Regions
+    /// with a bespoke default (none in this port) need override it.
+    fn get_def_unc(&self) -> AstResult<DynRegion> {
+        let (mut lbnd, mut ubnd) = self.get_region_bounds()?;
+        let nax = lbnd.len();
+        let bfrm = self.get_region_frameset().base().snapshot();
+        for i in 0..nax {
+            if !is_bad(ubnd[i]) && !is_bad(lbnd[i]) {
+                let mut hw = (0.5e-6 * (ubnd[i] - lbnd[i])).abs();
+                let c = 0.5 * (ubnd[i] + lbnd[i]);
+                if hw == 0.0 {
+                    hw = c * 0.5e-6;
+                }
+                ubnd[i] = c + hw;
+                lbnd[i] = c - hw;
+            } else {
+                ubnd[i] = 0.0;
+                lbnd[i] = 0.0;
+            }
+        }
+        Ok(Box::new(BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?))
+    }
+
+    /// Return the uncertainty Region for this Region in the requested Frame.
+    ///
+    /// Mirrors C `astGetUncFrm` (region.c:3912): the explicit uncertainty if
+    /// one is set, otherwise the default ([`get_def_unc`](Region::get_def_unc)).
+    /// For [`FrameRef::Base`] the uncertainty (which is always defined in the
+    /// base Frame) is returned directly; for [`FrameRef::Current`] it is
+    /// mapped through the base→current Mapping unless that is a `UnitMap`.
+    fn get_unc_frm(&self, ifrm: FrameRef) -> AstResult<DynRegion> {
+        let unc = match self.get_uncertainty() {
+            Some(u) => u,
+            None => self.get_def_unc()?,
+        };
+        match ifrm {
+            FrameRef::Base => Ok(unc),
+            _ => {
+                let fs = self.get_region_frameset();
+                let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+                if map.as_any().is::<UnitMap>() {
+                    Ok(unc)
+                } else {
+                    let frm = fs.current().snapshot();
+                    unc.map_region(map.as_ref(), frm.as_ref())
+                }
+            }
+        }
+    }
+
+    /// Check whether every point in `pts` (given in this Region's *base*
+    /// Frame) lies on this Region's boundary, to within the joint
+    /// uncertainty of this Region and the supplied `unc`.
+    ///
+    /// Mirrors C `astRegPins` (region.c:8879 abstract). The tolerance band on
+    /// each axis is half the total width of the two uncertainty bounding
+    /// boxes (this Region's uncertainty plus the supplied `unc`); with
+    /// `unc = None`, only this Region's own uncertainty contributes. A point
+    /// is "on the boundary" iff it lies inside a Region widened by that band
+    /// and outside a Region narrowed by it.
+    ///
+    /// This is a *boundary* test, distinct from the interior membership test
+    /// in [`RegionGeometry::reg_base_inside`](data::RegionGeometry::reg_base_inside).
+    /// The abstract default reports [`ErrorCode::Inter`]; every concrete class
+    /// used by Simplify/Overlap overrides it.
+    fn reg_pins(&self, _pts: &PointSet, _unc: Option<&dyn Region>) -> AstResult<bool> {
+        Err(AstError::new(
+            ErrorCode::Inter,
+            "reg_pins: this Region class does not implement the astRegPins method".to_string(),
+        ))
+    }
+
+    /// Shift the centre of this Region to the supplied base-Frame position.
+    ///
+    /// `cen` holds the new centre coordinates in this Region's *base* Frame
+    /// (length `naxes()`); any [`BAD_VALUE`](crate::constants::BAD_VALUE)
+    /// component leaves the corresponding centre axis unchanged. Mirrors the
+    /// set-path of C `astRegCentre` (region.c:8397 abstract) with `ifrm =
+    /// AST__BASE`: the base-Frame enquiry/return path is not exposed here
+    /// because the only caller (PointList membership) supplies a new centre.
+    ///
+    /// The abstract default reports [`ErrorCode::Inter`], matching the C
+    /// behaviour of erroring when the set-path is invoked on a Region class
+    /// that has no centre. Only classes that carry a centre (Box) override it.
+    fn reg_centre_set(&mut self, _cen: &[f64]) -> AstResult<()> {
+        Err(AstError::new(
+            ErrorCode::Inter,
+            "reg_centre_set: this Region class has no centre".to_string(),
+        ))
+    }
+
     // ------------------------------------------------------------------
     // Remapping
     // ------------------------------------------------------------------
@@ -331,7 +433,6 @@ pub enum PickedAxes {
 /// [`PickedAxes::Frame`].
 ///
 /// Faithful port of C `region.c::PickAxes` (region.c:7579).
-#[allow(dead_code)] // wired into Box::convert_to_prism in sub-project A2
 pub(crate) fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<PickedAxes> {
     use crate::frames::FrameRef;
 

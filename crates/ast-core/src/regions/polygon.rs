@@ -275,7 +275,7 @@ impl RegionGeometry for Polygon {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let nv = self.data.points.len();
         let closed = self.data.closed;
@@ -524,7 +524,7 @@ impl Region for Polygon {
         }
 
         // Test raw geometry.
-        let inside = self.reg_base_pick(&base_point[..naxes])?;
+        let inside = self.reg_base_inside_point(&base_point[..naxes])?;
 
         // Apply negation.
         if self.data.negated {
@@ -536,6 +536,79 @@ impl Region for Polygon {
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
         super::overlap::compute_overlap(self, other)
+    }
+
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        // Faithful port of polygon.c::RegPins (4562). The margin width `wid` is
+        // half the total geodesic length of the diagonals of the two
+        // uncertainty bounding boxes: `wid = 0.5*(l1 + l2)`. Each supplied
+        // point is tested against every polygon edge by resolving it into
+        // components parallel and perpendicular to the edge; a point counts as
+        // on the boundary iff, for at least one edge, its parallel component is
+        // in `(-wid, edge_len+wid)` and its perpendicular component is in
+        // `(-wid, wid)`. A point on no edge fails the whole test.
+        let bfrm = self.data.frameset.base();
+        if pts.ncoord() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "reg_pins(Polygon): PointSet has {} coordinates per point, expected 2",
+                    pts.ncoord()
+                ),
+            ));
+        }
+
+        // `tunc` is this Polygon's own uncertainty in the base Frame; `l1` is
+        // the geodesic length of its bounding-box diagonal. Re-centring is
+        // omitted (bound width is centre-invariant; the reachable default
+        // uncertainty is already centred — tracked as the RCENT / R-UNC gaps).
+        let tunc = self.get_unc_frm(FrameRef::Base)?;
+        let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
+        let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;
+
+        let l2 = if let Some(unc) = unc {
+            let (lbnd_unc, ubnd_unc) = unc.get_region_bounds()?;
+            bfrm.distance(&lbnd_unc, &ubnd_unc)?
+        } else {
+            0.0
+        };
+
+        let wid = 0.5 * (l1 + l2);
+
+        let vertices = &self.data.points;
+        let nv = vertices.len();
+        let np = pts.npoint();
+
+        // `on_edge[ip]` becomes true once point `ip` is found to lie within the
+        // margin of some edge (mirrors C setting the point BAD in pset1).
+        let mut on_edge = vec![false; np];
+
+        // Edge `i` runs from vertex `i-1` to vertex `i`; edge 0 runs from the
+        // last vertex to vertex 0.
+        let mut start = vertices[nv - 1].clone();
+        for end in vertices.iter() {
+            let edge_len = bfrm.distance(&start, end)?;
+            let resolved = bfrm.resolve_points(&start, end, pts)?;
+            let parmax = edge_len + wid;
+            for (ip, on) in on_edge.iter_mut().enumerate() {
+                let comp = resolved.point(ip);
+                let par = comp[0];
+                let prp = comp[1];
+                if !is_bad(par)
+                    && !is_bad(prp)
+                    && par > -wid
+                    && par < parmax
+                    && prp > -wid
+                    && prp < wid
+                {
+                    *on = true;
+                }
+            }
+            start = end.clone();
+        }
+
+        // On the boundary iff every supplied point lies on some edge.
+        Ok(on_edge.iter().all(|&b| b))
     }
 
     fn negated_copy(&self) -> DynRegion {

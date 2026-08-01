@@ -386,3 +386,47 @@ fn mesh_points_lie_on_boundary() {
         );
     }
 }
+
+// ---- reg_pins: on-boundary-within-uncertainty test (astRegPins port) ----
+
+#[test]
+fn reg_pins_ellipse_edge_on_boundary() {
+    // Axis-aligned ellipse: a=5 along axis 1, b=3 along axis 2.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // The ends of the two semi-axes lie on the boundary.
+    let major_end = PointSet::from_rows([[5.0_f64, 0.0]]);
+    assert!(e.reg_pins(&major_end, None).unwrap());
+    let minor_end = PointSet::from_rows([[0.0_f64, 3.0]]);
+    assert!(e.reg_pins(&minor_end, None).unwrap());
+}
+
+#[test]
+fn reg_pins_ellipse_interior_and_exterior_off_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let interior = PointSet::from_rows([[0.0_f64, 0.0]]);
+    assert!(!e.reg_pins(&interior, None).unwrap());
+    let exterior = PointSet::from_rows([[20.0_f64, 20.0]]);
+    assert!(!e.reg_pins(&exterior, None).unwrap());
+}
+
+#[test]
+fn reg_pins_ellipse_full_mesh_on_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let e = EllipseBuilder::new(frame, vec![0.0, 0.0], [5.0, 3.0], 0.0)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = e.get_region_mesh().unwrap();
+    assert!(e.reg_pins(&mesh, None).unwrap());
+}

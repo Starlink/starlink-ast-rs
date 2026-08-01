@@ -403,7 +403,7 @@ impl RegionGeometry for Interval {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
         let (lbnd, ubnd) = self.effective_bounds();
@@ -607,7 +607,7 @@ impl Region for Interval {
         }
 
         // Test raw geometry.
-        let inside = self.reg_base_pick(&base_point[..naxes])?;
+        let inside = self.reg_base_inside_point(&base_point[..naxes])?;
 
         // Apply negation.
         if self.data.negated {
@@ -619,6 +619,163 @@ impl Region for Interval {
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
         super::overlap::compute_overlap(self, other)
+    }
+
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        // Faithful port of interval.c::RegPins (2580). If the Interval is
+        // effectively an un-negated Box (all axes finite and consistently
+        // oriented) delegate to the equivalent Box's on-boundary test
+        // (interval.c:2682, via Cache interval.c:489). Otherwise build
+        // Intervals widened and narrowed by the joint uncertainty band and
+        // require every point to lie inside the larger and outside the
+        // smaller.
+        let nc = self.data.points[0].len();
+        if pts.ncoord() != nc {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "reg_pins(Interval): PointSet has {} coordinates per point, expected {}",
+                    pts.ncoord(),
+                    nc
+                ),
+            ));
+        }
+
+        let raw_l = &self.data.points[0];
+        let raw_u = &self.data.points[1];
+
+        // Cache: decide Box-equivalence exactly as interval.c:441-485. A BAD
+        // axis limit means unconstrained (-/+DBL_MAX); any infinite limit
+        // disqualifies the Box form. All axes must share the first axis's
+        // included/excluded orientation.
+        let mut is_box = true;
+        let mut lbnd = vec![0.0f64; nc];
+        let mut ubnd = vec![0.0f64; nc];
+        let mut neg = false;
+        for i in 0..nc {
+            lbnd[i] = if is_bad(raw_l[i]) {
+                -f64::MAX
+            } else {
+                raw_l[i]
+            };
+            ubnd[i] = if is_bad(raw_u[i]) { f64::MAX } else { raw_u[i] };
+            if lbnd[i].abs() == f64::MAX {
+                is_box = false;
+            }
+            if ubnd[i].abs() == f64::MAX {
+                is_box = false;
+            }
+            if i == 0 {
+                neg = lbnd[i] > ubnd[i];
+            } else if neg {
+                if lbnd[i] < ubnd[i] {
+                    is_box = false;
+                }
+            } else if lbnd[i] > ubnd[i] {
+                is_box = false;
+            }
+        }
+
+        // If effectively an un-negated Box, delegate to the equivalent Box's
+        // RegPins (interval.c:2682). The Box is built in the Interval's base
+        // Frame with the same bound limits; the Interval's negation and
+        // Closed attribute are transferred (interval.c:509,512). C's Cache
+        // also maps the box into the current Frame when the base->current
+        // Mapping is not a UnitMap, purely for its own cache reuse; that
+        // remapping is elided because RegPins tests points in the base Frame
+        // and the base-Frame Box is the equivalent region (matches C for the
+        // reachable UnitMap case; tracked with the RCENT / R-UNC gaps).
+        if is_box && !neg {
+            let bfrm = self.data.frameset.base().snapshot();
+            let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
+            bbox.data.uncertainty = self.get_uncertainty();
+            bbox.data.negated = self.data.negated;
+            bbox.data.closed = self.data.closed;
+            bbox.data.closed_set = self.data.closed_set;
+            return bbox.reg_pins(pts, unc);
+        }
+
+        // Not Box-equivalent: at least one infinite boundary. The border
+        // half-width per axis is half the total width of the two uncertainty
+        // bounding boxes (interval.c:2707-2757). `tunc` is this Interval's own
+        // uncertainty in the base Frame; re-centring is omitted for the same
+        // reason as the Box port (bound width is centre-invariant; the
+        // reachable default uncertainty is already centred).
+        let bfrm = self.data.frameset.base();
+        let tunc = self.get_unc_frm(FrameRef::Base)?;
+        let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
+        let wid: Vec<f64> = if let Some(unc) = unc {
+            let (lbnd_unc, ubnd_unc) = unc.get_region_bounds()?;
+            (0..nc)
+                .map(|i| -> AstResult<f64> {
+                    let dt = bfrm.ax_distance(i + 1, lbnd_tunc[i], ubnd_tunc[i])?;
+                    let du = bfrm.ax_distance(i + 1, lbnd_unc[i], ubnd_unc[i])?;
+                    Ok(0.5 * (dt.abs() + du.abs()))
+                })
+                .collect::<AstResult<Vec<f64>>>()?
+        } else {
+            (0..nc)
+                .map(|i| -> AstResult<f64> {
+                    let dt = bfrm.ax_distance(i + 1, lbnd_tunc[i], ubnd_tunc[i])?;
+                    Ok((0.5 * dt).abs())
+                })
+                .collect::<AstResult<Vec<f64>>>()?
+        };
+
+        // Build larger and smaller Intervals (interval.c:2762-2791). An
+        // infinite side of "this" stays unconstrained (AST__BAD) in both the
+        // larger and smaller Interval.
+        let mut large_lbnd = vec![0.0f64; nc];
+        let mut large_ubnd = vec![0.0f64; nc];
+        let mut small_lbnd = vec![0.0f64; nc];
+        let mut small_ubnd = vec![0.0f64; nc];
+        for i in 0..nc {
+            let mut lb = lbnd[i];
+            let mut ub = ubnd[i];
+            if lb > ub {
+                std::mem::swap(&mut lb, &mut ub);
+            }
+            let w = wid[i].abs();
+            if lb != -f64::MAX {
+                large_lbnd[i] = lb - w;
+                small_lbnd[i] = lb + w;
+            } else {
+                large_lbnd[i] = BAD_VALUE;
+                small_lbnd[i] = BAD_VALUE;
+            }
+            if ub != f64::MAX {
+                large_ubnd[i] = ub + w;
+                small_ubnd[i] = ub - w;
+            } else {
+                large_ubnd[i] = BAD_VALUE;
+                small_ubnd[i] = BAD_VALUE;
+            }
+            if small_lbnd[i] > small_ubnd[i] {
+                small_lbnd[i] = small_ubnd[i];
+            }
+        }
+
+        let make_interval = |lb: Vec<f64>, ub: Vec<f64>, negated: bool| -> Interval {
+            let frameset = FrameSet::new(self.data.frameset.base().snapshot());
+            let mut data = RegionData::new(frameset, vec![lb, ub]);
+            data.negated = negated;
+            Interval { data }
+        };
+        let large_int = make_interval(large_lbnd, large_ubnd, false);
+        // Negate the smaller Interval (interval.c:2797).
+        let small_int = make_interval(small_lbnd, small_ubnd, true);
+
+        // Points are on the boundary iff inside both the large Interval and
+        // the negated small Interval: chain the two forward transforms and
+        // require no BAD in the result (interval.c:2799-2855).
+        let ps1 = super::data::region_transform(&large_int, pts, true)?;
+        let ps2 = super::data::region_transform(&small_int, &ps1, true)?;
+        for j in 0..ps2.npoint() {
+            if ps2.point(j).iter().any(|&v| is_bad(v)) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn negated_copy(&self) -> DynRegion {

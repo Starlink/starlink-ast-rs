@@ -517,3 +517,75 @@ fn with_integrity_preserves_points() {
     assert!((ubnd[0] - orig_ubnd[0]).abs() < 1e-10);
     assert!((ubnd[1] - orig_ubnd[1]).abs() < 1e-10);
 }
+
+// ---- reg_pins: on-boundary-within-uncertainty test (astRegPins port) ----
+
+#[test]
+fn reg_pins_boundary_point_is_on_boundary() {
+    // Box spanning [0,0]-[10,10]; default uncertainty band ~5e-6 per axis.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // A point exactly on the left edge is on the boundary.
+    let on_edge = PointSet::from_rows([[0.0_f64, 5.0]]);
+    assert!(b.reg_pins(&on_edge, None).unwrap());
+
+    // A corner is on the boundary.
+    let corner = PointSet::from_rows([[10.0_f64, 10.0]]);
+    assert!(b.reg_pins(&corner, None).unwrap());
+}
+
+#[test]
+fn reg_pins_interior_point_is_not_on_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // The centre is well inside, not on the boundary.
+    let centre = PointSet::from_rows([[5.0_f64, 5.0]]);
+    assert!(!b.reg_pins(&centre, None).unwrap());
+}
+
+#[test]
+fn reg_pins_exterior_point_is_not_on_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // A point far outside is not on the boundary.
+    let far = PointSet::from_rows([[20.0_f64, 20.0]]);
+    assert!(!b.reg_pins(&far, None).unwrap());
+}
+
+#[test]
+fn reg_pins_full_boundary_mesh_all_on_boundary() {
+    // Every point of the region's own boundary mesh must test as on-boundary.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mesh = b.get_region_mesh().unwrap();
+    assert!(b.reg_pins(&mesh, None).unwrap());
+}
+
+#[test]
+fn reg_pins_mixed_set_reports_false() {
+    // If any point is off the boundary, the whole set fails.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let b = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let mixed = PointSet::from_rows([[0.0_f64, 5.0], [5.0, 5.0]]);
+    assert!(!b.reg_pins(&mixed, None).unwrap());
+}

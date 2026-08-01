@@ -191,7 +191,7 @@ impl RegionGeometry for Ellipse {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let (a, b, angle) = self.ellipse_params()?;
         let centre = &self.data.points[0];
@@ -307,7 +307,7 @@ impl Region for Ellipse {
             return Ok(false);
         }
 
-        let inside = self.reg_base_pick(&base_point[..2])?;
+        let inside = self.reg_base_inside_point(&base_point[..2])?;
 
         if self.data.negated {
             Ok(!inside)
@@ -318,6 +318,82 @@ impl Region for Ellipse {
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
         super::overlap::compute_overlap(self, other)
+    }
+
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        // Faithful port of ellipse.c::RegPins (1381). The border half-width is
+        // half the total geodesic length of the diagonals of the two
+        // uncertainty bounding boxes: `drad = 0.5*(l1 + l2)`. A point is on
+        // the boundary iff it lies inside an Ellipse with semi-axes enlarged
+        // by `0.5*drad` and outside one with semi-axes shrunk by `0.5*drad`
+        // (floored at `1e-6*drad`).
+        let bfrm = self.data.frameset.base();
+        if pts.ncoord() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "reg_pins(Ellipse): PointSet has {} coordinates per point, expected 2",
+                    pts.ncoord()
+                ),
+            ));
+        }
+
+        // `tunc` is this Ellipse's own uncertainty in the base Frame; `l1` is
+        // the geodesic length of its bounding-box diagonal. Re-centring is
+        // omitted (bound width is centre-invariant; the reachable default
+        // uncertainty is already centred — tracked as the RCENT / R-UNC gaps).
+        let tunc = self.get_unc_frm(FrameRef::Base)?;
+        let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
+        let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;
+
+        let l2 = if let Some(unc) = unc {
+            let (lbnd_unc, ubnd_unc) = unc.get_region_bounds()?;
+            bfrm.distance(&lbnd_unc, &ubnd_unc)?
+        } else {
+            0.0
+        };
+
+        let drad = 0.5 * (l1 + l2);
+        let (a, b, angle) = self.ellipse_params()?;
+        let centre = &self.data.points[0];
+
+        // Reconstruct the two defining boundary points from the centre, the
+        // (adjusted) semi-axes, and the unchanged angle — as `build()` does.
+        let make_ellipse = |sa: f64, sb: f64, negated: bool| -> Ellipse {
+            let cos_a = angle.cos();
+            let sin_a = angle.sin();
+            let p1 = vec![centre[0] + sa * cos_a, centre[1] + sa * sin_a];
+            let p2 = vec![centre[0] - sb * sin_a, centre[1] + sb * cos_a];
+            let frameset = FrameSet::new(bfrm.snapshot());
+            let mut data = RegionData::new(frameset, vec![centre.clone(), p1, p2]);
+            data.negated = negated;
+            Ellipse { data }
+        };
+
+        let large_ellipse = make_ellipse(a + 0.5 * drad, b + 0.5 * drad, false);
+
+        let lim = 1.0E-6 * drad;
+        let mut small_a = a - 0.5 * drad;
+        let mut small_b = b - 0.5 * drad;
+        if small_a < lim {
+            small_a = lim;
+        }
+        if small_b < lim {
+            small_b = lim;
+        }
+        // Negate the smaller region (ellipse.c:1550).
+        let small_ellipse = make_ellipse(small_a, small_b, true);
+
+        // On the boundary iff inside both the large Ellipse and the negated
+        // small Ellipse: chain the two forward transforms and require no BAD.
+        let ps1 = super::data::region_transform(&large_ellipse, pts, true)?;
+        let ps2 = super::data::region_transform(&small_ellipse, &ps1, true)?;
+        for j in 0..ps2.npoint() {
+            if ps2.point(j).iter().any(|&v| is_bad(v)) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn negated_copy(&self) -> DynRegion {

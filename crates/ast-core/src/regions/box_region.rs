@@ -143,6 +143,39 @@ impl BoxRegionBuilder {
 // ============================================================================
 
 impl BoxRegion {
+    /// Build a `BoxRegion` directly from an owned `DynFrame` and explicit
+    /// lower/upper bounds, without an intervening `impl Frame` type parameter.
+    ///
+    /// Used internally where the base Frame is only available as a boxed trait
+    /// object (e.g. constructing a default uncertainty Box from a Region's own
+    /// base Frame). The centre is the midpoint of the bounds and the corner is
+    /// the upper bound, matching [`BoxRegionBuilder::from_bounds`].
+    pub(crate) fn from_bounds_frame(
+        frame: DynFrame,
+        lbnd: &[f64],
+        ubnd: &[f64],
+    ) -> AstResult<BoxRegion> {
+        let centre: Vec<f64> = lbnd
+            .iter()
+            .zip(ubnd.iter())
+            .map(|(l, u)| 0.5 * (l + u))
+            .collect();
+        let corner: Vec<f64> = ubnd.to_vec();
+        Self::from_corner_frame(frame, centre, corner)
+    }
+
+    /// Build a `BoxRegion` directly from an owned `DynFrame`, a centre, and a
+    /// corner (the native Box parameterisation, `astBox` with `form=0`).
+    pub(crate) fn from_corner_frame(
+        frame: DynFrame,
+        centre: Vec<f64>,
+        corner: Vec<f64>,
+    ) -> AstResult<BoxRegion> {
+        let frameset = FrameSet::new(frame);
+        let data = RegionData::new(frameset, vec![centre, corner]);
+        Ok(BoxRegion { data })
+    }
+
     /// Mutate the current frame with region integrity enforcement.
     ///
     /// When adaptive (the default), the FrameSet's base-to-current mapping is
@@ -185,6 +218,49 @@ impl BoxRegion {
     }
 }
 
+/// Half the geodesic distance along each edge of a box.
+///
+/// Faithful port of C `GeoLengths` (box.c:975): for each axis, the geodesic
+/// distance from the centre to the corner along that axis alone (walking one
+/// axis at a time so `distance` sees a single-axis displacement).
+fn geo_lengths(frm: &dyn Frame, nc: usize, centre: &[f64], corner: &[f64]) -> AstResult<Vec<f64>> {
+    let mut geolen = vec![0.0; nc];
+    let mut p1 = centre.to_vec();
+    let mut p2 = centre.to_vec();
+    for i in 0..nc {
+        p2[i] = corner[i];
+        geolen[i] = frm.distance(&p1, &p2)?;
+        p1[i] = corner[i];
+    }
+    Ok(geolen)
+}
+
+/// The corner position implied by a centre and geodesic half-lengths.
+///
+/// Faithful port of C `GeoCorner` (box.c:838): starting at the centre, offset
+/// away along each axis in turn by the geodesic distance `geolen[i]`, probing
+/// the axis direction with a small step. Unlike the C version, the array-swap
+/// dance (which only exists to land the result in the caller-supplied buffer)
+/// is unnecessary here — we accumulate directly.
+fn geo_corner(frm: &dyn Frame, nc: usize, centre: &[f64], geolen: &[f64]) -> AstResult<Vec<f64>> {
+    let mut p1 = centre.to_vec();
+    for i in 0..nc {
+        let mut p2 = p1.clone();
+        let mut off = if geolen[i] != 0.0 {
+            0.0001 * geolen[i].abs()
+        } else {
+            1.0e-6
+        };
+        let off0 = (1.0e-10 * centre[i]).abs();
+        if off < off0 {
+            off = off0;
+        }
+        p2[i] += off;
+        p1 = frm.offset(&p1, &p2, geolen[i])?;
+    }
+    Ok(p1)
+}
+
 // ============================================================================
 // RegionGeometry implementation
 // ============================================================================
@@ -198,7 +274,7 @@ impl RegionGeometry for BoxRegion {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
         let (lbnd, ubnd) = self.bounds();
@@ -415,7 +491,7 @@ impl Region for BoxRegion {
         }
 
         // Test raw geometry.
-        let inside = self.reg_base_pick(&base_point[..naxes])?;
+        let inside = self.reg_base_inside_point(&base_point[..naxes])?;
 
         // Apply negation.
         if self.data.negated {
@@ -427,6 +503,91 @@ impl Region for BoxRegion {
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
         super::overlap::compute_overlap(self, other)
+    }
+
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        // Faithful port of box.c::RegPins (box.c:2952): a point lies on the
+        // boundary of the Box iff it falls inside a Box widened by the joint
+        // uncertainty band and outside a Box narrowed by the same band.
+        let (lbnd_box, ubnd_box) = self.bounds();
+        let naxes = lbnd_box.len();
+        if pts.ncoord() != naxes {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "reg_pins(Box): PointSet has {} coordinates per point, expected {}",
+                    pts.ncoord(),
+                    naxes
+                ),
+            ));
+        }
+
+        // Box centre and half-extent per axis (this->centre / this->extent).
+        let centre = &self.data.points[0];
+        let extent: Vec<f64> = (0..naxes)
+            .map(|i| 0.5 * (ubnd_box[i] - lbnd_box[i]))
+            .collect();
+
+        let bfrm = self.data.frameset.base();
+
+        // Border half-width per axis. `tunc` is this Box's own uncertainty in
+        // the base Frame (explicit or default); `unc` describes the supplied
+        // points' uncertainty. Re-centring `tunc`/`unc` on the region's safe
+        // interior point (box.c:3078,3088) is omitted: it exists only to fix
+        // bounds when an uncertainty straddles a discontinuity, and a Box's
+        // bound width — the only quantity used below — is centre-invariant.
+        // The reachable default uncertainty is a tiny box already centred at
+        // the region centre, so the re-centre is a proven no-op (tracked as
+        // the RCENT / R-UNC parity gaps).
+        let tunc = self.get_unc_frm(FrameRef::Base)?;
+        let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
+
+        let wid: Vec<f64> = if let Some(unc) = unc {
+            let (lbnd_unc, ubnd_unc) = unc.get_region_bounds()?;
+            (0..naxes)
+                .map(|i| -> AstResult<f64> {
+                    let dt = bfrm.ax_distance(i + 1, lbnd_tunc[i], ubnd_tunc[i])?;
+                    let du = bfrm.ax_distance(i + 1, lbnd_unc[i], ubnd_unc[i])?;
+                    Ok(0.5 * (dt.abs() + du.abs()))
+                })
+                .collect::<AstResult<Vec<f64>>>()?
+        } else {
+            (0..naxes)
+                .map(|i| -> AstResult<f64> {
+                    let dt = bfrm.ax_distance(i + 1, lbnd_tunc[i], ubnd_tunc[i])?;
+                    Ok((0.5 * dt).abs())
+                })
+                .collect::<AstResult<Vec<f64>>>()?
+        };
+
+        // Build the larger and smaller corner arrays (box.c:3118-3123).
+        let mut large = Vec::with_capacity(naxes);
+        let mut small = Vec::with_capacity(naxes);
+        for i in 0..naxes {
+            large.push(centre[i] + extent[i] + wid[i]);
+            let mut s = extent[i] - wid[i];
+            if s < 0.0 {
+                s = 0.0;
+            }
+            small.push(centre[i] + s);
+        }
+
+        let large_box = BoxRegion::from_corner_frame(bfrm.snapshot(), centre.clone(), large)?;
+        let mut small_box = BoxRegion::from_corner_frame(bfrm.snapshot(), centre.clone(), small)?;
+        small_box.data.negated = true;
+
+        // Points on the boundary of "this" are inside both the large box and
+        // the negated small box (box.c:3134-3135): chain the two forward
+        // transforms and require no BAD in the result.
+        let ps1 = super::data::region_transform(&large_box, pts, true)?;
+        let ps2 = super::data::region_transform(&small_box, &ps1, true)?;
+
+        for j in 0..ps2.npoint() {
+            if ps2.point(j).iter().any(|&v| is_bad(v)) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn negated_copy(&self) -> DynRegion {
@@ -551,6 +712,34 @@ impl Region for BoxRegion {
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn reg_centre_set(&mut self, cen: &[f64]) -> AstResult<()> {
+        let bfrm = self.data.frameset.base().snapshot();
+        let ncb = self.data.points[0].len();
+
+        // Geodesic half-lengths of the current box (GeoLengths, box.c:975):
+        // distance along each axis from the centre to the corner.
+        let centre = self.data.points[0].clone();
+        let corner = self.data.points[1].clone();
+        let geolen = geo_lengths(bfrm.as_ref(), ncb, &centre, &corner)?;
+
+        // Store the new base-Frame centre, skipping BAD components (box.c:2915).
+        let mut bc = centre;
+        for ic in 0..ncb {
+            if !is_bad(cen[ic]) {
+                bc[ic] = cen[ic];
+            }
+        }
+
+        // Recompute the corner from the new centre and the geodesic
+        // half-lengths (GeoCorner, box.c:838).
+        let new_corner = geo_corner(bfrm.as_ref(), ncb, &bc, &geolen)?;
+
+        self.data.points[0] = bc;
+        self.data.points[1] = new_corner;
+        self.data.invalidate_cache();
+        Ok(())
     }
 
     fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion> {
@@ -866,6 +1055,7 @@ impl Mapping for BoxRegion {
         // unchanged (keeping its FrameSet).
         let candidate_mesh = candidate.reg_base_mesh()?;
         if !self.verify_remap_exact(simple_map.as_ref(), &candidate_mesh)? {
+            // The Box could not be re-defined as a Box in its current Frame.
             return Ok(self.clone_box());
         }
         Ok(Box::new(candidate))

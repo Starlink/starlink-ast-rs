@@ -714,3 +714,49 @@ fn with_integrity_error_propagates() {
     // Circle should still be functional after the failed integrity call.
     assert!(circle.point_in_region(&[0.0, 0.0]).unwrap());
 }
+
+// ---- reg_pins: on-boundary-within-uncertainty test (astRegPins port) ----
+
+#[test]
+fn reg_pins_circle_edge_on_boundary() {
+    // Circle centred at origin, radius 5; default uncertainty band is tiny.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let c = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    // A point on the circle (radius 5 along axis 1) is on the boundary.
+    let on_edge = PointSet::from_rows([[5.0_f64, 0.0]]);
+    assert!(c.reg_pins(&on_edge, None).unwrap());
+}
+
+#[test]
+fn reg_pins_circle_interior_and_exterior_off_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let c = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    // The centre is interior, a far point is exterior; neither is on-boundary.
+    let interior = PointSet::from_rows([[0.0_f64, 0.0]]);
+    assert!(!c.reg_pins(&interior, None).unwrap());
+    let exterior = PointSet::from_rows([[20.0_f64, 0.0]]);
+    assert!(!c.reg_pins(&exterior, None).unwrap());
+}
+
+#[test]
+fn reg_pins_circle_full_mesh_on_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let c = CircleBuilder::new(frame, vec![0.0, 0.0])
+        .unwrap()
+        .radius(5.0)
+        .build()
+        .unwrap();
+
+    let mesh = c.get_region_mesh().unwrap();
+    assert!(c.reg_pins(&mesh, None).unwrap());
+}

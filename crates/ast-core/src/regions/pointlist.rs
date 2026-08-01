@@ -145,10 +145,6 @@ impl PointList {
 // RegionGeometry implementation
 // ============================================================================
 
-/// Default tolerance for point matching when no uncertainty is set.
-/// This is a small relative tolerance used with `Frame::distance()`.
-const DEFAULT_TOLERANCE: f64 = 1.0e-10;
-
 impl RegionGeometry for PointList {
     fn region_data(&self) -> &RegionData {
         &self.data
@@ -158,42 +154,52 @@ impl RegionGeometry for PointList {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+        // Faithful port of the uncertainty-driven PointList membership test
+        // (pointlist.c:2504). A supplied point is inside the (un-negated)
+        // PointList iff it coincides — to within the positional uncertainty —
+        // with at least one of the defining points. C negates the base-Frame
+        // uncertainty Region, recentres it at each defining point in turn, and
+        // transforms the supplied points through it, accumulating a BAD mask
+        // wherever a point falls inside a recentred uncertainty. The net raw
+        // membership is therefore the OR, over all defining points, of "the
+        // supplied point lies inside the uncertainty Region recentred at that
+        // defining point". We compute that directly: negation is applied by
+        // the `region_transform` caller, so here we return the un-negated
+        // membership using the un-negated uncertainty.
         let npoint = pts.npoint();
-        let base_frame = self.data.frameset.base();
-        let naxes = base_frame.naxes();
-        let closed = self.data.closed;
+        let naxes = self.data.frameset.base().naxes();
 
-        // Compute a tolerance. Without an uncertainty region, use a small
-        // value derived from the extent of the defining points.
-        let tolerance = self.compute_tolerance()?;
+        // Base-Frame uncertainty Region (default: a tiny Box centred on the
+        // PointList's bounding-box centre). Mirrors astGetUncFrm(this,
+        // AST__BASE); its current Frame is the PointList's base Frame, so the
+        // supplied base-Frame points can be transformed through it directly.
+        let mut unc = self.get_unc_frm(FrameRef::Base)?;
 
         let mut result = vec![false; npoint];
-        for (r, test_point) in result.iter_mut().zip((0..npoint).map(|i| pts.point(i))) {
-            if point_has_bad(test_point) {
+        for def_point in &self.data.points {
+            if def_point[..naxes].iter().any(|&v| is_bad(v)) {
                 continue;
             }
 
-            // Check against each defining point.
-            for def_point in &self.data.points {
-                if def_point[..naxes].iter().any(|&v| is_bad(v)) {
+            // Recentre the uncertainty Region at this defining point
+            // (astRegCentre(unc, NULL, ptr_base, point, AST__BASE)).
+            unc.reg_centre_set(&def_point[..naxes])?;
+
+            // Transform the supplied points through the (un-negated)
+            // uncertainty: interior points pass through, exterior points
+            // become BAD. A surviving (non-BAD) point coincides with this
+            // defining point.
+            let masked = unc.transform(pts, true)?;
+            for (i, r) in result.iter_mut().enumerate() {
+                if *r {
                     continue;
                 }
-
-                let dist = base_frame.distance(&test_point[..naxes], &def_point[..naxes])?;
-                if is_bad(dist) {
+                if point_has_bad(pts.point(i)) {
                     continue;
                 }
-
-                let matches = if closed {
-                    dist <= tolerance
-                } else {
-                    dist < tolerance
-                };
-
-                if matches {
+                if !point_has_bad(masked.point(i)) {
                     *r = true;
-                    break;
                 }
             }
         }
@@ -281,52 +287,6 @@ impl RegionGeometry for PointList {
     }
 }
 
-impl PointList {
-    /// Compute the matching tolerance for `reg_pins`.
-    ///
-    /// Without an uncertainty region, uses a small fraction of the
-    /// characteristic scale of the defining points. If all points are
-    /// identical or there is only one point, falls back to `DEFAULT_TOLERANCE`.
-    fn compute_tolerance(&self) -> AstResult<f64> {
-        let naxes = self.data.frameset.base().naxes();
-        let npoints = self.data.points.len();
-
-        if npoints <= 1 {
-            return Ok(DEFAULT_TOLERANCE);
-        }
-
-        // Use the bounding box diagonal as characteristic scale.
-        let mut max_extent: f64 = 0.0;
-        for ax in 0..naxes {
-            let mut lo = f64::MAX;
-            let mut hi = f64::MIN;
-            for pt in &self.data.points {
-                let v = pt[ax];
-                if !is_bad(v) {
-                    if v < lo {
-                        lo = v;
-                    }
-                    if v > hi {
-                        hi = v;
-                    }
-                }
-            }
-            if hi > lo {
-                let extent = hi - lo;
-                if extent > max_extent {
-                    max_extent = extent;
-                }
-            }
-        }
-
-        if max_extent > 0.0 {
-            Ok(max_extent * DEFAULT_TOLERANCE)
-        } else {
-            Ok(DEFAULT_TOLERANCE)
-        }
-    }
-}
-
 // ============================================================================
 // Region trait
 // ============================================================================
@@ -348,7 +308,7 @@ impl Region for PointList {
         }
 
         // Test raw geometry.
-        let inside = self.reg_base_pick(&base_point[..naxes])?;
+        let inside = self.reg_base_inside_point(&base_point[..naxes])?;
 
         // Apply negation.
         if self.data.negated {
@@ -360,6 +320,55 @@ impl Region for PointList {
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
         super::overlap::compute_overlap(self, other)
+    }
+
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        // Faithful port of C PointList RegPins (pointlist.c:1868). The
+        // supplied points (`pts`, in this PointList's base Frame) all lie on
+        // the boundary iff mutual coverage holds in both directions, within
+        // the joint positional uncertainty. C temporarily aliases the current
+        // Frame to the base Frame so that its `astTransform` calls treat the
+        // supplied base-Frame points as current-Frame points; here we test
+        // base-Frame membership directly, which is the same computation.
+        let base_frame = self.data.frameset.base();
+        let naxes = base_frame.naxes();
+
+        // Direction 1: every supplied point must lie within this (un-negated)
+        // PointList — i.e. coincide with one of this PointList's defining
+        // points, to within this PointList's own uncertainty. `reg_base_inside`
+        // is the raw (un-negated) membership test, matching C's temporary
+        // `astSetNegated(this, 0)`.
+        let inside = self.reg_base_inside(pts)?;
+        if inside.iter().any(|&b| !b) {
+            return Ok(false);
+        }
+
+        // Direction 2: build a PointList from the supplied points, using the
+        // supplied uncertainty `unc` both as the defining Frame and as the
+        // positional uncertainty (C `astPointList(unc, pset, unc)`), then check
+        // that every one of this PointList's defining points lies within it.
+        // The supplied `unc` is stored verbatim as the new PointList's
+        // uncertainty; its negation for the membership test happens inside
+        // `reg_base_inside` (matching C's Transform, which negates the
+        // uncertainty internally).
+        let np = pts.npoint();
+        let supplied: Vec<Vec<f64>> = (0..np).map(|i| pts.point(i)[..naxes].to_vec()).collect();
+
+        let pl_frame: DynFrame = match unc {
+            Some(u) => u.get_region_frame(),
+            None => base_frame.snapshot(),
+        };
+        let frameset = FrameSet::new(pl_frame);
+        let mut data = RegionData::new(frameset, supplied);
+        data.uncertainty = unc.map(|u| u.clone_region());
+        let pl = PointList { data };
+
+        // Transform this PointList's own defining points through `pl`: any that
+        // fall outside (BAD) mean this PointList is not fully covered by the
+        // supplied points, so they do not all lie on the boundary.
+        let def_pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
+        let covered = pl.reg_base_inside(&def_pts)?;
+        Ok(covered.iter().all(|&b| b))
     }
 
     fn negated_copy(&self) -> DynRegion {

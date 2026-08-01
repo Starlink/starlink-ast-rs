@@ -179,7 +179,7 @@ impl RegionGeometry for Circle {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let base_frame = self.data.frameset.base();
         let centre = &self.data.points[0];
@@ -341,7 +341,7 @@ impl Region for Circle {
         }
 
         // Test raw geometry.
-        let inside = self.reg_base_pick(&base_point[..naxes])?;
+        let inside = self.reg_base_inside_point(&base_point[..naxes])?;
 
         // Apply negation.
         if self.data.negated {
@@ -353,6 +353,77 @@ impl Region for Circle {
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
         super::overlap::compute_overlap(self, other)
+    }
+
+    fn reg_pins(&self, pts: &PointSet, unc: Option<&dyn Region>) -> AstResult<bool> {
+        // Faithful port of circle.c::RegPins (1289). The border half-width is
+        // half the total geodesic length of the diagonals of the two
+        // uncertainty bounding boxes: `drad = 0.5*(l1 + l2)`. A point is on
+        // the boundary iff it lies inside a Circle enlarged by `0.5*drad` and
+        // outside a Circle shrunk by `0.5*drad`.
+        let bfrm = self.data.frameset.base();
+        let nc = bfrm.naxes();
+        if pts.ncoord() != nc {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "reg_pins(Circle): PointSet has {} coordinates per point, expected {}",
+                    pts.ncoord(),
+                    nc
+                ),
+            ));
+        }
+
+        // `tunc` is this Circle's own uncertainty in the base Frame; `l1` is
+        // the geodesic length of its bounding-box diagonal. Re-centring is
+        // omitted (bound width is centre-invariant; the reachable default
+        // uncertainty is already centred — tracked as the RCENT / R-UNC gaps).
+        let tunc = self.get_unc_frm(FrameRef::Base)?;
+        let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
+        let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;
+
+        let l2 = if let Some(unc) = unc {
+            let (lbnd_unc, ubnd_unc) = unc.get_region_bounds()?;
+            bfrm.distance(&lbnd_unc, &ubnd_unc)?
+        } else {
+            0.0
+        };
+
+        let drad = 0.5 * (l1 + l2);
+        let radius = self.radius()?;
+        let centre = &self.data.points[0];
+        let edge = &self.data.points[1];
+
+        // Build the larger / smaller edge points by offsetting from the centre
+        // toward the existing edge point by the adjusted radius.
+        let large_r = radius + 0.5 * drad;
+        let mut small_r = radius - 0.5 * drad;
+        if small_r < 0.0 {
+            small_r = 0.0;
+        }
+        let large_edge = bfrm.offset(centre, edge, large_r)?;
+        let small_edge = bfrm.offset(centre, edge, small_r)?;
+
+        let make_circle = |edge_pt: Vec<f64>, negated: bool| -> Circle {
+            let frameset = FrameSet::new(bfrm.snapshot());
+            let mut data = RegionData::new(frameset, vec![centre.clone(), edge_pt]);
+            data.negated = negated;
+            Circle { data }
+        };
+        let large_circle = make_circle(large_edge, false);
+        // Negate the smaller region (circle.c:1459).
+        let small_circle = make_circle(small_edge, true);
+
+        // On the boundary iff inside both the large Circle and the negated
+        // small Circle: chain the two forward transforms and require no BAD.
+        let ps1 = super::data::region_transform(&large_circle, pts, true)?;
+        let ps2 = super::data::region_transform(&small_circle, &ps1, true)?;
+        for j in 0..ps2.npoint() {
+            if ps2.point(j).iter().any(|&v| is_bad(v)) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     fn negated_copy(&self) -> DynRegion {

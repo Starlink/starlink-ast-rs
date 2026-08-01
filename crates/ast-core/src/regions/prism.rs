@@ -153,7 +153,7 @@ impl RegionGeometry for Prism {
         &mut self.data
     }
 
-    fn reg_pins(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
+    fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
         let npoint = pts.npoint();
         let naxes1 = self.naxes1();
         let naxes2 = self.naxes2();

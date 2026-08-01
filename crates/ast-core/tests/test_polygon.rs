@@ -400,3 +400,66 @@ fn region_points_returns_vertices() {
     assert!((pts.point(2)[0] - 0.0).abs() < 1e-10);
     assert!((pts.point(2)[1] - 3.0).abs() < 1e-10);
 }
+
+// ---- reg_pins: on-boundary-within-uncertainty test (astRegPins port) ----
+
+#[test]
+fn reg_pins_polygon_edge_and_vertex_on_boundary() {
+    // Square with vertices (0,0),(4,0),(4,4),(0,4).
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![
+        vec![0.0, 0.0],
+        vec![4.0, 0.0],
+        vec![4.0, 4.0],
+        vec![0.0, 4.0],
+    ];
+    let poly = PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // A point on the bottom edge and a vertex are both on the boundary.
+    let on_edge = PointSet::from_rows([[2.0_f64, 0.0]]);
+    assert!(poly.reg_pins(&on_edge, None).unwrap());
+    let vertex = PointSet::from_rows([[4.0_f64, 4.0]]);
+    assert!(poly.reg_pins(&vertex, None).unwrap());
+}
+
+#[test]
+fn reg_pins_polygon_interior_and_exterior_off_boundary() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![
+        vec![0.0, 0.0],
+        vec![4.0, 0.0],
+        vec![4.0, 4.0],
+        vec![0.0, 4.0],
+    ];
+    let poly = PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let interior = PointSet::from_rows([[2.0_f64, 2.0]]);
+    assert!(!poly.reg_pins(&interior, None).unwrap());
+    let exterior = PointSet::from_rows([[10.0_f64, 10.0]]);
+    assert!(!poly.reg_pins(&exterior, None).unwrap());
+}
+
+#[test]
+fn reg_pins_polygon_mixed_set_reports_false() {
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let vertices = vec![
+        vec![0.0, 0.0],
+        vec![4.0, 0.0],
+        vec![4.0, 4.0],
+        vec![0.0, 4.0],
+    ];
+    let poly = PolygonBuilder::new(frame, vertices)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // One edge point, one interior point: the whole set fails.
+    let mixed = PointSet::from_rows([[2.0_f64, 0.0], [2.0, 2.0]]);
+    assert!(!poly.reg_pins(&mixed, None).unwrap());
+}
