@@ -253,6 +253,86 @@ impl Region for NullRegion {
         Ok(Box::new(NullRegion { data }))
     }
 
+    fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        // Port of nullregion.c::RegBasePick (nullregion.c:1106): rebuild a
+        // NullRegion on the picked base Frame. NullRegion has no defining
+        // points; the negation flag is copied later by reg_overlay.
+        let bfrm = self.data.frameset.base();
+        let target: Vec<i32> = axes.iter().map(|&a| a as i32).collect();
+        let frm = bfrm.pick_axes_snapshot(&target)?;
+
+        // Select the same axes from the base-Frame uncertainty (if any); drop
+        // it if picking does not yield a Region (nullregion.c:1174-1183).
+        let unc = match &self.data.uncertainty {
+            Some(u) => match super::pick_axes_region(u.as_ref(), axes)? {
+                super::PickedAxes::Region(r) => Some(r),
+                super::PickedAxes::Frame(_) => None,
+            },
+            None => None,
+        };
+
+        let frameset = FrameSet::new(frm);
+        let mut data = RegionData::new(frameset, Vec::new());
+        data.uncertainty = unc;
+        Ok(Some(Box::new(NullRegion { data })))
+    }
+
+    fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.perm_axes(perm)
+    }
+
+    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+        // Faithful port of `nullregion.c::MergeNullRegion` (571). A NullRegion
+        // only merges with another NullRegion (other classes handle merging a
+        // NullRegion with themselves). `intfirst` selects the axis order.
+        //
+        // Guard (nullregion.c:645): same Closed, and either both or neither
+        // have a defined uncertainty; both must have equal Negated.
+        let other = other_reg.as_any().downcast_ref::<NullRegion>()?;
+        if self.is_closed() != other.is_closed()
+            || self.data.uncertainty.is_some() != other.data.uncertainty.is_some()
+            || self.data.negated != other.data.negated
+        {
+            return None;
+        }
+
+        // Combine the two current Frames into a CmpFrame in the requested
+        // order.
+        let f_this = self.data.frameset.current().snapshot();
+        let f_reg = other_reg.get_region_frame();
+        let cmp_frame = if intfirst {
+            crate::frames::CmpFrame::new(f_this, f_reg)
+        } else {
+            crate::frames::CmpFrame::new(f_reg, f_this)
+        };
+        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        // NullRegion has no defining points.
+        let mut data = RegionData::new(frameset, Vec::new());
+        data.negated = self.data.negated;
+        data.closed = self.data.closed && other.data.closed;
+        data.closed_set = self.data.closed_set || other.data.closed_set;
+        data.adaptive = self.data.adaptive && other.data.adaptive;
+
+        // Combine uncertainties into a Prism when both are present, in the
+        // requested order (nullregion.c:694). C additionally simplifies the
+        // Prism; storing it unsimplified is transform-equivalent (a later
+        // simplify pass reduces it).
+        if let (Some(u1), Some(u2)) = (&self.data.uncertainty, &other.data.uncertainty) {
+            let (first, second) = if intfirst {
+                (u1.clone(), u2.clone())
+            } else {
+                (u2.clone(), u1.clone())
+            };
+            if let Ok(prism) = super::PrismBuilder::from_dyn(first, second).and_then(|b| b.build())
+            {
+                data.uncertainty = Some(Box::new(prism) as DynRegion);
+            }
+        }
+
+        Some(Box::new(NullRegion { data }))
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }
@@ -399,43 +479,25 @@ impl Mapping for NullRegion {
         self_inv: bool,
         other_inv: bool,
     ) -> Option<DynMapping> {
-        // Parallel merge of two same-class NullRegions into a single
-        // NullRegion over the CmpFrame of the two current frames. Mirrors C
-        // `nullregion.c::MergeNullRegion` (571): both must share the same
-        // Negated flag; the merged region carries the combined negation and
-        // (when both have one) a Prism uncertainty.
+        // Parallel merge only (series of two Regions is not a Region). The
+        // direct pairwise path always has `self` as the lower-index (left)
+        // component, so this NullRegion's axes go first (`intfirst = 1`). The
+        // nominate loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;
         }
-        let other = other.as_any().downcast_ref::<NullRegion>()?;
-        if self.data.negated != other.data.negated {
-            return None;
-        }
+        let other_reg: &dyn Region = super::as_region(other)?;
+        Region::region_merge(self, other_reg, true)
+    }
 
-        let f1 = self.data.frameset.current().snapshot();
-        let f2 = other.data.frameset.current().snapshot();
-        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
-        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
-
-        // NullRegion has no defining points.
-        let mut data = RegionData::new(frameset, Vec::new());
-        data.negated = self.data.negated;
-        data.closed = self.data.closed && other.data.closed;
-        data.closed_set = self.data.closed_set || other.data.closed_set;
-        data.adaptive = self.data.adaptive && other.data.adaptive;
-
-        // Combine uncertainties into a Prism when both are present, mirroring
-        // C `nullregion.c:686` (order: this then reg). C additionally
-        // simplifies the Prism; storing it unsimplified is transform-
-        // equivalent (a later simplify pass reduces it).
-        if let (Some(u1), Some(u2)) = (&self.data.uncertainty, &other.data.uncertainty)
-            && let Ok(prism) =
-                super::PrismBuilder::from_dyn(u1.clone(), u2.clone()).and_then(|b| b.build())
-        {
-            data.uncertainty = Some(Box::new(prism) as DynRegion);
-        }
-
-        Some(Box::new(NullRegion { data }))
+    fn map_merge(
+        &self,
+        ctx: &mut crate::mappings::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        crate::mappings::simplify::region_map_merge(self, ctx, where_, series)
     }
 
     fn clone_box(&self) -> DynMapping {

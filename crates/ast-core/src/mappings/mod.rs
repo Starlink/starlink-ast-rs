@@ -193,6 +193,30 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// factor 2 inverted equals ZoomMap with factor 0.5 non-inverted).
     fn equal(&self, other: &dyn Mapping) -> bool;
 
+    /// Decompose this mapping into a list of component mappings for the given
+    /// composition direction, mirroring an overriding C `astMapList`.
+    ///
+    /// The simplification engine's `flatten` calls this on every non-CmpMap
+    /// leaf before treating it as atomic. The default returns `None`, meaning
+    /// "atomic leaf — append me as-is". A class that, when it appears in a
+    /// compound of the matching kind, is equivalent to a sequence of simpler
+    /// mappings (e.g. a `Prism`, which is a *parallel* combination of its two
+    /// component Regions) returns `Some(components)` so the engine can
+    /// continue flattening them and let the nominate loop merge across them.
+    ///
+    /// Each returned tuple is `(mapping, effective_inv)` — the effective
+    /// inversion already combined with the caller-supplied `inv`. `series`
+    /// selects the requested composition kind; a class only decomposes when
+    /// `series` matches the kind it combines its components in (a Prism only
+    /// for `series == false`).
+    ///
+    /// Port of C's overridable protected `astMapList` (mapping.c:7358);
+    /// `Prism::MapList` (prism.c:1527) is the sole current override.
+    #[doc(hidden)]
+    fn map_list_decompose(&self, _inv: bool, _series: bool) -> Option<Vec<(DynMapping, bool)>> {
+        None
+    }
+
     /// Attempt to merge this mapping with an adjacent mapping.
     ///
     /// If `series` is true, the mappings are composed in series (self then

@@ -257,6 +257,20 @@ pub(crate) fn flatten(
         }
     }
 
+    // A class that overrides C `astMapList` (currently only `Prism`, which is
+    // a *parallel* combination of its two component Regions) decomposes here
+    // into those components so the nominate loop can merge across them, exactly
+    // as C's `Prism::MapList` (prism.c:1527) concatenates the MapLists of its
+    // two Regions when a parallel decomposition is requested. Each component is
+    // recursively flattened at its effective orientation.
+    if let Some(components) = mapping.map_list_decompose(inv, series) {
+        let mut result = Vec::new();
+        for (comp, comp_inv) in components {
+            result.extend(flatten(comp.as_ref(), comp_inv, series)?);
+        }
+        return Ok(result);
+    }
+
     // Leaf: clone via simplified(), then normalise the invert flag.
     //
     // C `cmpmap.c::MapList` does *not* simplify atomic component Mappings as
@@ -313,7 +327,20 @@ pub(crate) fn flatten(
         .as_any()
         .downcast_ref::<super::SpecMap>()
         .is_some_and(|s| s.is_inverted());
-    let mut cloned = if defer_winmap || defer_perm || defer_spec {
+    // A Region leaf is kept atomic through the decomposition, exactly as C
+    // `cmpmap.c::MapList` does: it never simplifies component Mappings as it
+    // flattens the tree. Region reduction happens in-context in the nominate
+    // loop via `region_map_merge`'s self-simplify head, but only *after* the
+    // loop has had a chance to merge the Region with a neighbour. This
+    // ordering is load-bearing: a bounded `Interval` self-simplifies to a
+    // `Box` (interval.c::Cache), and recovering bounds from a Box's
+    // centre/corner storage rounds them (`2*centre - corner`). If we
+    // reclassified the leaf here, an adjacent Interval could only absorb it
+    // through the lossy `Interval + Box` branch of `MergeInterval`; keeping
+    // it an Interval lets the exact `Interval + Interval` branch (raw
+    // `astIntervalPoints`) fire first, preserving the defining bounds.
+    let defer_region = crate::regions::as_region(mapping).is_some();
+    let mut cloned = if defer_winmap || defer_perm || defer_spec || defer_region {
         mapping.clone_box()
     } else {
         mapping.simplified()?
@@ -322,7 +349,8 @@ pub(crate) fn flatten(
     // `smap != map` pointer test). Only a *changed* compound component is left
     // tagged with `IsSimple` in C's dump; an unchanged one is a
     // CombineMaps-reconstruction wrapper C never re-tags.
-    let leaf_changed = !defer_winmap && !defer_perm && !defer_spec && !cloned.equal(mapping);
+    let leaf_changed =
+        !defer_winmap && !defer_perm && !defer_spec && !defer_region && !cloned.equal(mapping);
     // Preserve the AllowSimplify flag (C `AlSimp`) across the leaf's own
     // simplification: `astMapList` keeps each component's flags, and a
     // restricted parent CmpMap relies on it to decide which leaves may be
@@ -1139,6 +1167,80 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
     list.remove(i + 1);
     ctx.resync_frozen();
     Some(i)
+}
+
+/// `map_merge` for a nominated Region (Box/Interval/PointList/NullRegion),
+/// a faithful port of the per-class `MapMerge` shared by those classes
+/// (interval.c:991, box.c, pointlist.c:972, nullregion.c:338).
+///
+/// The structure, identical across the four classes:
+/// 1. **Self-simplify head.** `astSimplify(this)`; if the result differs from
+///    the original Region, replace the nominated component with it and return
+///    (this is how, e.g., a fully-bounded Interval reclassifies to a Box, or
+///    a remapped Region collapses to a simpler class).
+/// 2. **Parallel-only neighbour merge.** With the head having made no change:
+///    - try the **lower** neighbour (`where-1`) via
+///      [`Region::region_merge`] with `intfirst = false` (the neighbour's axes
+///      go first), storing the merged Region at `where-1`;
+///    - failing that, try the **upper** neighbour (`where+1`) with
+///      `intfirst = true` (this Region's axes go first), storing at `where`.
+///
+///    On success, C annuls both entries, stores the merged Region at `i1`, and
+///    shuffles the tail down — [`MergeCtx::replace_pair_with`] does the same.
+/// 3. In series, nothing (a series of two Regions is not a Region).
+///
+/// The nominated Region's own [`try_merge`] only ever covers the direct
+/// pairwise (upper-neighbour, `intfirst = true`) case, so this method is what
+/// lets a Region absorb the neighbour that sits *before* it in the list — the
+/// case C reaches through the lower-neighbour branch and Rust cannot reach via
+/// `default_map_merge` (which merges the nominee only with `where+1`).
+pub(crate) fn region_map_merge(
+    this: &dyn crate::regions::Region,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    use crate::regions::as_region;
+
+    // ---- 1. Self-simplify head (astSimplify(this)) ----
+    // C compares object pointers (`new != oldint`); the Rust analogue is a
+    // structural inequality test via `Mapping::equal`, since Region simplify
+    // returns a clone of `this` when nothing changed.
+    if let Ok(simplified) = Mapping::simplified(this) {
+        if !simplified.equal(this as &dyn Mapping) {
+            ctx.set_pair_single(where_, (simplified, false, false));
+            return Some(where_);
+        }
+    }
+
+    // ---- 2. Parallel-only neighbour merge ----
+    if !series {
+        // Lower neighbour first (intfirst = 0: neighbour axes go first).
+        if where_ > 0 {
+            let merged = {
+                let (m, _, _) = ctx.entry(where_ - 1);
+                as_region(m.as_ref()).and_then(|lower| this.region_merge(lower, false))
+            };
+            if let Some(merged) = merged {
+                ctx.replace_pair_with(where_ - 1, merged, false);
+                return Some(where_ - 1);
+            }
+        }
+
+        // Upper neighbour (intfirst = 1: this Region's axes go first).
+        if where_ + 1 < ctx.len() {
+            let merged = {
+                let (m, _, _) = ctx.entry(where_ + 1);
+                as_region(m.as_ref()).and_then(|upper| this.region_merge(upper, true))
+            };
+            if let Some(merged) = merged {
+                ctx.replace_pair_with(where_, merged, false);
+                return Some(where_);
+            }
+        }
+    }
+
+    None
 }
 
 /// Append `val` to `list` and report the wavelength of any repeating

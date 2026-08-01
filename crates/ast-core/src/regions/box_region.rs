@@ -575,6 +575,157 @@ impl Region for BoxRegion {
         Ok(Box::new(BoxRegion { data }))
     }
 
+    fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        // Port of box.c::RegBasePick (box.c:2655): build a Box spanned by the
+        // selected base-Frame axes by slicing the centre/corner defining
+        // points to those axes.
+        let bfrm = self.data.frameset.base();
+        let target: Vec<i32> = axes.iter().map(|&a| a as i32).collect();
+        let frm = bfrm.pick_axes_snapshot(&target)?;
+
+        // Slice the centre (points[0]) and corner (points[1]) to the selected
+        // base-Frame axes.
+        let centre: Vec<f64> = axes.iter().map(|&a| self.data.points[0][a]).collect();
+        let corner: Vec<f64> = axes.iter().map(|&a| self.data.points[1][a]).collect();
+
+        // Select the same axes from the base-Frame uncertainty (if any); drop
+        // it if picking does not yield a Region (box.c:2727-2736).
+        let unc = match &self.data.uncertainty {
+            Some(u) => match super::pick_axes_region(u.as_ref(), axes)? {
+                super::PickedAxes::Region(r) => Some(r),
+                super::PickedAxes::Frame(_) => None,
+            },
+            None => None,
+        };
+
+        let frameset = FrameSet::new(frm);
+        let mut data = RegionData::new(frameset, vec![centre, corner]);
+        data.uncertainty = unc;
+        Ok(Some(Box::new(BoxRegion { data })))
+    }
+
+    fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.perm_axes(perm)
+    }
+
+    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+        // Faithful port of `box.c::MergeBox` (1658). `intfirst` selects the
+        // axis order: when true this Box's axes go first and `other`'s second;
+        // when false `other`'s axes go first.
+        let other = other_reg.as_any();
+
+        // Guard shared by every branch (box.c:1749): the two Regions must have
+        // the same Closed attribute, and either both or neither must have a
+        // defined uncertainty.
+        if self.is_closed() != other_reg.is_closed()
+            || self.data.uncertainty.is_some() != other_reg.get_uncertainty().is_some()
+        {
+            return None;
+        }
+
+        let neg_this = self.data.negated;
+        let nax_this = self.naxes();
+        let nax_reg = other_reg.naxes();
+        let centre_this = &self.data.points[0];
+
+        // Place the two axis-value slices in the order given by `intfirst`.
+        let concat = |this_v: &[f64], reg_v: &[f64]| -> Vec<f64> {
+            let mut v = Vec::with_capacity(nax_this + nax_reg);
+            if intfirst {
+                v.extend_from_slice(this_v);
+                v.extend_from_slice(reg_v);
+            } else {
+                v.extend_from_slice(reg_v);
+                v.extend_from_slice(this_v);
+            }
+            v
+        };
+
+        let built: Option<MergedRegion> = if let Some(other) = other.downcast_ref::<BoxRegion>() {
+            // Box + Box → Box (box.c:1783). Both un-negated.
+            if neg_this || other.data.negated {
+                None
+            } else {
+                let centre = concat(centre_this, &other.data.points[0]);
+                let corner = concat(&self.data.points[1], &other.data.points[1]);
+                Some(MergedRegion::Box(centre, corner))
+            }
+        } else if let Some(other) = other.downcast_ref::<Interval>() {
+            // Box + Interval → Interval (box.c:1809). Both un-negated.
+            if neg_this || other.is_negated() {
+                None
+            } else {
+                let (blb, bub) = self.bounds();
+                let lbnd = concat(&blb, &other.data.points[0]);
+                let ubnd = concat(&bub, &other.data.points[1]);
+                Some(MergedRegion::Interval(lbnd, ubnd))
+            }
+        } else if let Some(other) = other.downcast_ref::<NullRegion>() {
+            // Box + NullRegion → Interval (box.c:1855). The NullRegion must be
+            // negated and the Box must not.
+            if neg_this || !other.is_negated() {
+                None
+            } else {
+                let (blb, bub) = self.bounds();
+                let bad = vec![BAD_VALUE; nax_reg];
+                let lbnd = concat(&blb, &bad);
+                let ubnd = concat(&bub, &bad);
+                Some(MergedRegion::Interval(lbnd, ubnd))
+            }
+        } else if let Some(other) = other.downcast_ref::<PointList>() {
+            // Box + PointList → PointList (box.c:1907). Both un-negated, and
+            // the Box must be a single point (zero width relative to its
+            // uncertainty).
+            if neg_this || other.is_negated() {
+                None
+            } else {
+                let (blb, bub) = self.bounds();
+                if !super::merge_util::region_is_point(&blb, &bub, self.data.uncertainty.as_ref()) {
+                    None
+                } else {
+                    let merged: Vec<Vec<f64>> = other
+                        .data
+                        .points
+                        .iter()
+                        .map(|p| concat(centre_this, p))
+                        .collect();
+                    Some(MergedRegion::PointList(merged))
+                }
+            }
+        } else {
+            None
+        };
+
+        let built = built?;
+
+        // Combine the two current Frames into a CmpFrame in the requested
+        // order.
+        let f_this = self.data.frameset.current().snapshot();
+        let f_reg = other_reg.get_region_frame();
+        let cmp_frame = if intfirst {
+            crate::frames::CmpFrame::new(f_this, f_reg)
+        } else {
+            crate::frames::CmpFrame::new(f_reg, f_this)
+        };
+        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        // Combine uncertainties in the requested order when both are present.
+        let unc = super::merge_util::combine_uncertainties(
+            self.data.uncertainty.clone(),
+            other_reg.get_uncertainty(),
+            intfirst,
+        );
+
+        super::merge_util::finish_region_merge(
+            built,
+            frameset,
+            self.data.closed,
+            self.data.closed_set,
+            self.data.adaptive,
+            unc,
+        )
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }
@@ -741,121 +892,25 @@ impl Mapping for BoxRegion {
         self_inv: bool,
         other_inv: bool,
     ) -> Option<DynMapping> {
-        // Parallel merge only (series of two Regions is not a Region).
-        // Mirrors C `box.c::MergeBox` (1658): the Box axes always go first
-        // (`boxfirst = 1`) because the merge loop only ever calls
-        // `list[i].try_merge(list[i+1])`, so `self` is the lower-index
-        // (left) component.
+        // Parallel merge only (series of two Regions is not a Region). The
+        // direct pairwise path always has `self` as the lower-index (left)
+        // component, so the Box axes go first (`intfirst = 1`). The nominate
+        // loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;
         }
-
-        // Guard shared by every branch (box.c:1749): the two Regions must
-        // have the same Closed attribute, and either both or neither must
-        // have a defined uncertainty.
         let other_reg: &dyn Region = super::as_region(other)?;
-        if self.is_closed() != other_reg.is_closed()
-            || self.data.uncertainty.is_some() != other_reg.get_uncertainty().is_some()
-        {
-            return None;
-        }
+        Region::region_merge(self, other_reg, true)
+    }
 
-        let neg_this = self.data.negated;
-        // Raw centre/corner of this Box (astBoxPoints).
-        let centre_this = &self.data.points[0];
-        let corner_this = &self.data.points[1];
-
-        let built: Option<MergedRegion> = if let Some(other) =
-            other.as_any().downcast_ref::<BoxRegion>()
-        {
-            // Box + Box → Box (box.c:1783). Both un-negated.
-            if neg_this || other.data.negated {
-                None
-            } else {
-                let mut centre = centre_this.clone();
-                centre.extend(other.data.points[0].iter().copied());
-                let mut corner = corner_this.clone();
-                corner.extend(other.data.points[1].iter().copied());
-                Some(MergedRegion::Box(centre, corner))
-            }
-        } else if let Some(other) = other.as_any().downcast_ref::<Interval>() {
-            // Box + Interval → Interval (box.c:1809). Both un-negated.
-            if neg_this || other.is_negated() {
-                None
-            } else {
-                // Convert this Box's centre/corner to lower/upper bounds.
-                let (mut lbnd, mut ubnd) = self.bounds();
-                // Append the Interval's raw bounds.
-                lbnd.extend(other.data.points[0].iter().copied());
-                ubnd.extend(other.data.points[1].iter().copied());
-                Some(MergedRegion::Interval(lbnd, ubnd))
-            }
-        } else if let Some(other) = other.as_any().downcast_ref::<NullRegion>() {
-            // Box + NullRegion → Interval (box.c:1855). The NullRegion must
-            // be negated and the Box must not.
-            if neg_this || !other.is_negated() {
-                None
-            } else {
-                let (mut lbnd, mut ubnd) = self.bounds();
-                let nax_other = other.naxes();
-                lbnd.extend(std::iter::repeat_n(BAD_VALUE, nax_other));
-                ubnd.extend(std::iter::repeat_n(BAD_VALUE, nax_other));
-                Some(MergedRegion::Interval(lbnd, ubnd))
-            }
-        } else if let Some(other) = other.as_any().downcast_ref::<PointList>() {
-            // Box + PointList → PointList (box.c:1907). Both un-negated, and
-            // the Box must be a single point (zero width relative to its
-            // uncertainty).
-            if neg_this || other.is_negated() {
-                None
-            } else {
-                // Zero-width test uses the raw bounding box (centre/corner
-                // ordered) against the Box's own uncertainty.
-                let (blb, bub) = self.bounds();
-                if !super::merge_util::region_is_point(&blb, &bub, self.data.uncertainty.as_ref()) {
-                    None
-                } else {
-                    // Each merged point is the PointList point with the
-                    // Box centre appended on the Box's axes. Box axes first.
-                    let other_pts = &other.data.points;
-                    let merged: Vec<Vec<f64>> = other_pts
-                        .iter()
-                        .map(|p| {
-                            let mut row = centre_this.clone();
-                            row.extend(p.iter().copied());
-                            row
-                        })
-                        .collect();
-                    Some(MergedRegion::PointList(merged))
-                }
-            }
-        } else {
-            None
-        };
-
-        let built = built?;
-
-        // Combine the two current Frames into a CmpFrame (Box axes first).
-        let f1 = self.data.frameset.current().snapshot();
-        let f2 = other_reg.get_region_frame();
-        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
-        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
-
-        // Combine uncertainties (Box first) when both are present.
-        let unc = super::merge_util::combine_uncertainties(
-            self.data.uncertainty.clone(),
-            other_reg.get_uncertainty(),
-            true,
-        );
-
-        super::merge_util::finish_region_merge(
-            built,
-            frameset,
-            self.data.closed,
-            self.data.closed_set,
-            self.data.adaptive,
-            unc,
-        )
+    fn map_merge(
+        &self,
+        ctx: &mut crate::mappings::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        crate::mappings::simplify::region_map_merge(self, ctx, where_, series)
     }
 
     fn clone_box(&self) -> DynMapping {

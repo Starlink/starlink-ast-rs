@@ -240,12 +240,140 @@ pub trait Region: Frame + Mapping {
     fn map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion>;
 
     // ------------------------------------------------------------------
+    // Axis selection (PickAxes / RegBasePick)
+    // ------------------------------------------------------------------
+
+    /// Return a Region formed by picking selected *base* Frame axes from
+    /// this Region, or `None` if no same-class sub-region can be formed.
+    ///
+    /// `axes` holds zero-based base-Frame axis indices. Mirrors C
+    /// `astRegBasePick` (region.c:13679 default → `None`); classes that can
+    /// split their defining geometry per-axis (Box, Interval, PointList,
+    /// NullRegion) override this. Classes whose geometry cannot be sliced
+    /// axis-wise (Circle, Ellipse, Polygon, CmpRegion, Prism) use the
+    /// default and return `None`.
+    fn reg_base_pick_axes(&self, _axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        Ok(None)
+    }
+
+    /// Copy selected properties from `that` onto this Region.
+    ///
+    /// Mirrors C `astRegOverlay` (region.c:9861): copies Negated, Closed,
+    /// and Adaptive; copies MeshSize/FillFactor only when the axis counts
+    /// match. The `unc` flag controls uncertainty clearing (unused here as
+    /// the picked regions carry their own uncertainty).
+    fn reg_overlay(&mut self, that: &dyn Region) {
+        if self.is_negated() != that.is_negated() {
+            self.negate();
+        }
+        self.set_closed(that.is_closed());
+        self.set_adaptive(that.is_adaptive());
+        if self.naxes() == that.naxes() {
+            self.set_mesh_size(that.mesh_size());
+            self.set_fill_factor(that.fill_factor());
+        }
+    }
+
+    /// Permute the axes of this region's current Frame, updating the
+    /// encapsulated FrameSet and defining points to preserve the region
+    /// integrity invariant. Mirrors C `astPermAxes` applied to a Region.
+    ///
+    /// `perm` holds zero-based target indices, one per current axis.
+    fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()>;
+
+    // ------------------------------------------------------------------
+    // Parallel merge (MergeXxx)
+    // ------------------------------------------------------------------
+
+    /// Attempt to combine this Region with `other` into a Region of higher
+    /// dimensionality, for a parallel `CmpMap` of the two.
+    ///
+    /// `intfirst` selects the axis order in the combined Region: when true,
+    /// this Region's axes go first and `other`'s axes second; when false,
+    /// `other`'s axes go first. Returns the merged Region as a `DynMapping`,
+    /// or `None` if the two Regions cannot be merged.
+    ///
+    /// Mirrors the per-class `MergeXxx` helpers in the C reference
+    /// (`interval.c::MergeInterval`, `box.c::MergeBox`,
+    /// `pointlist.c::MergePointList`, `nullregion.c::MergeNullRegion`), whose
+    /// `intfirst`/`boxfirst`/`plsfirst` parameter this mirrors. The default
+    /// returns `None` (classes that never merge in parallel — Circle,
+    /// Ellipse, Polygon, CmpRegion, Prism).
+    #[doc(hidden)]
+    fn region_merge(&self, _other: &dyn Region, _intfirst: bool) -> Option<DynMapping> {
+        None
+    }
+
+    // ------------------------------------------------------------------
     // Cloning (object-safe deep copy)
     // ------------------------------------------------------------------
 
     /// Clone this region into a boxed trait object.
     #[doc(hidden)]
     fn clone_region(&self) -> DynRegion;
+}
+
+/// Result of picking axes from a Region: either a same-class sub-Region
+/// (when the current→base Mapping splits cleanly) or a plain Frame.
+///
+/// Mirrors the dual return of C `region.c::PickAxes` (region.c:7579), which
+/// returns a Frame that `astIsARegion` may or may not accept.
+pub enum PickedAxes {
+    /// A Region spanning the selected axes.
+    Region(DynRegion),
+    /// A plain Frame (the Mapping did not split, or no sub-region formed).
+    Frame(DynFrame),
+}
+
+/// Pick `axes` (zero-based current-Frame indices) from `region`, returning a
+/// [`PickedAxes::Region`] when the current→base Mapping splits cleanly on the
+/// selected axes and the region's class can form a base sub-region, else a
+/// [`PickedAxes::Frame`].
+///
+/// Faithful port of C `region.c::PickAxes` (region.c:7579).
+#[allow(dead_code)] // wired into Box::convert_to_prism in sub-project A2
+pub(crate) fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<PickedAxes> {
+    use crate::frames::FrameRef;
+
+    // Pick the required axes from the current Frame. The C code passes the
+    // axis list straight to astPickAxes (frame.c) which uses zero-based
+    // indices; pick_axes_snapshot takes i32 with -1 meaning "default axis".
+    let cfrm = region.get_region_frame();
+    let target: Vec<i32> = axes.iter().map(|&a| a as i32).collect();
+    let picked_frame = cfrm.pick_axes_snapshot(&target)?;
+
+    // No default axes are supported for the Region path (C returns a basic
+    // Frame if any default axes were requested). We only reach here with
+    // concrete indices, so proceed to the split test.
+    //
+    // See if the requested current-Frame axes correspond to a unique set of
+    // base-Frame axes by attempting to split the current->base Mapping.
+    let cbmap = region
+        .get_region_frameset()
+        .mapping(FrameRef::Current, FrameRef::Base)?;
+
+    // map_split expects 1-based axis indices and returns the (1-based)
+    // output axes of `cbmap` — i.e. the base-Frame axes generated by the
+    // selected current-Frame axes.
+    let one_based: Vec<usize> = axes.iter().map(|&a| a + 1).collect();
+    if let Some((out_axes, fsmap)) = cbmap.map_split(&one_based) {
+        // Convert the returned base-Frame axis indices to zero-based for
+        // reg_base_pick_axes, which slices the base defining geometry.
+        let base_axes: Vec<usize> = out_axes.iter().map(|&a| a - 1).collect();
+
+        if let Some(breg) = region.reg_base_pick_axes(&base_axes)? {
+            // Invert fsmap so it maps selected base axes -> selected current
+            // axes, then map the base region into the picked current Frame.
+            let mut fsmap = fsmap;
+            fsmap.invert();
+            let mut creg = breg.map_region(fsmap.as_ref(), picked_frame.as_ref())?;
+            // Copy properties from the old Region to the new Region.
+            creg.reg_overlay(region);
+            return Ok(PickedAxes::Region(creg));
+        }
+    }
+
+    Ok(PickedAxes::Frame(picked_frame))
 }
 
 impl Clone for Box<dyn Region> {

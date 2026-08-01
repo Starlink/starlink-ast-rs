@@ -19,7 +19,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{CmpFrame, DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
@@ -532,6 +532,10 @@ impl Region for Prism {
         }))
     }
 
+    fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.perm_axes(perm)
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }
@@ -636,31 +640,208 @@ impl Mapping for Prism {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let map = self
+        // Faithful port of prism.c::Simplify (prism.c:3204). Attempts to
+        // express the Prism's two component Regions within the parent
+        // Region's current Frame, collapsing the Prism to a single Region
+        // (or a simpler Prism) where possible.
+        use crate::mappings::{CmpMap, Composition};
+
+        // GetRegions (prism.c:1137): clone the two component Regions and read
+        // the Prism's Negated flag. The component current Frames are
+        // equivalent to components of the parent base Frame.
+        let reg1 = self.region1.clone_region();
+        let reg2 = self.region2.clone_region();
+        let neg = self.data.negated;
+
+        // Get the current Frame and the base->current Mapping of the parent.
+        let cfrm = self.data.frameset.current().snapshot();
+        let bcmap = self
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplified()?;
-        if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return Ok(self.clone_box());
+
+        // Combine the two Regions into a parallel CmpMap (a Region is a
+        // Mapping) and simplify it. This drives the per-class astMapMerge
+        // methods to merge adjacent Regions (prism.c:3305).
+        let cmpmap = CmpMap::new(
+            reg1.clone_region(),
+            reg2.clone_region(),
+            Composition::Parallel,
+        )?;
+        let smap = Mapping::simplified(&cmpmap)?;
+
+        // Initially assume we cannot form a new Region from the simplified
+        // CmpMap.
+        let mut new: Option<DynRegion> = None;
+
+        // If the result is a Region, use it (prism.c:3318).
+        if let Some(region) = super::merge_util::mapping_into_region(smap.clone_box()) {
+            new = Some(region);
+        // If the result is a parallel CmpMap whose two components are both
+        // Regions differing from the originals, form a new Prism from them
+        // (prism.c:3324).
+        } else if let Some(cm) = smap.as_any().downcast_ref::<CmpMap>()
+            && cm.composition() == Composition::Parallel
+            && let (Some(m1), Some(m2)) =
+                (super::as_region(cm.first()), super::as_region(cm.second()))
+        {
+            // The C `(AstRegion *) map1 != reg1` pointer test guards against
+            // rebuilding an identical Prism. Rust has value semantics, so
+            // compare by structural equality of the component Regions.
+            let same = (m1 as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
+                && (m2 as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping);
+            if !same {
+                let prism =
+                    PrismBuilder::from_dyn(m1.clone_region(), m2.clone_region())?.build()?;
+                new = Some(Box::new(prism) as DynRegion);
+            }
         }
-        // For Prism, rebuild with the current frame. Since the sub-regions
-        // have their own geometry, clone them and update the outer FrameSet.
-        let current_frame = self.data.frameset.current().snapshot();
-        let frameset = FrameSet::new(current_frame);
-        let points = Vec::new();
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.fill_factor = self.data.fill_factor;
-        data.adaptive = self.data.adaptive;
-        Ok(Box::new(Prism {
-            data,
-            region1: self.region1.clone(),
-            region2: self.region2.clone(),
-        }))
+
+        // If the above produced a simplified Region, map it into the current
+        // Frame of the parent and simplify it (prism.c:3342).
+        if let Some(region) = new.take() {
+            let mapped = region.map_region(bcmap.as_ref(), cfrm.as_ref())?;
+            let simplified = Mapping::simplified(mapped.as_ref())?;
+            // astSimplify of a Region always yields a Region; if the concrete
+            // simplified form is not a plain Region class, keep the mapped
+            // Region unchanged.
+            new = Some(super::merge_util::mapping_into_region(simplified).unwrap_or(mapped));
+        } else {
+            // A different approach (prism.c:3349): use astMapSplit to see
+            // whether each component's axes correspond to a distinct set of
+            // current-Frame axes.
+            let nax1 = reg1.naxes();
+            let nax2 = reg2.naxes();
+
+            // Split bcmap on the first component's axes (0..nax1) and the
+            // second component's axes (nax1..nax1+nax2). map_split takes
+            // 1-based input axes and returns 1-based output-axis indices.
+            let axin1: Vec<usize> = (0..nax1).map(|i| i + 1).collect();
+            let split1 = bcmap.map_split(&axin1);
+            let axin2: Vec<usize> = (0..nax2).map(|i| nax1 + i + 1).collect();
+            let split2 = bcmap.map_split(&axin2);
+
+            // Assume the component Regions cannot be simplified: use a clone
+            // of the supplied Prism (prism.c:3382).
+            new = Some(self.clone_region());
+
+            let naxout1 = split1.as_ref().map(|(_, m)| m.nout()).unwrap_or(0);
+            let naxout2 = split2.as_ref().map(|(_, m)| m.nout()).unwrap_or(0);
+            let naxt = bcmap.nout();
+
+            // axout* are the zero-based current-Frame axes each component maps
+            // to (map_split returns 1-based; decrement).
+            let axout1: Vec<usize> = split1
+                .as_ref()
+                .map(|(o, _)| o.iter().map(|&a| a - 1).collect())
+                .unwrap_or_default();
+            let axout2: Vec<usize> = split2
+                .as_ref()
+                .map(|(o, _)| o.iter().map(|&a| a - 1).collect())
+                .unwrap_or_default();
+
+            if naxout1 == naxt && naxout2 == 0 {
+                // The second component contributes no axes; ignore it
+                // (prism.c:3401).
+                let (_, nmap1) = split1.as_ref().unwrap();
+                let target: Vec<i32> = axout1.iter().map(|&a| a as i32).collect();
+                let newfrm1 = cfrm.pick_axes_snapshot(&target)?;
+                let newreg1 = reg1.map_region(nmap1.as_ref(), newfrm1.as_ref())?;
+                let mut simplified =
+                    super::merge_util::mapping_into_region(Mapping::simplified(newreg1.as_ref())?)
+                        .unwrap_or(newreg1);
+                if neg {
+                    simplified.negate();
+                }
+                // reg_perm_axes uses 1-based indices (Rust convention); the
+                // zero-based axout list is C's astPermAxes argument.
+                let perm: Vec<usize> = axout1.iter().map(|&a| a + 1).collect();
+                simplified.reg_perm_axes(&perm)?;
+                new = Some(simplified);
+            } else if naxout1 == 0 && naxout2 == naxt {
+                // The first component contributes no axes; ignore it
+                // (prism.c:3418).
+                let (_, nmap2) = split2.as_ref().unwrap();
+                let target: Vec<i32> = axout2.iter().map(|&a| a as i32).collect();
+                let newfrm2 = cfrm.pick_axes_snapshot(&target)?;
+                let newreg2 = reg2.map_region(nmap2.as_ref(), newfrm2.as_ref())?;
+                let mut simplified =
+                    super::merge_util::mapping_into_region(Mapping::simplified(newreg2.as_ref())?)
+                        .unwrap_or(newreg2);
+                if neg {
+                    simplified.negate();
+                }
+                let perm: Vec<usize> = axout2.iter().map(|&a| a + 1).collect();
+                simplified.reg_perm_axes(&perm)?;
+                new = Some(simplified);
+            } else if let (Some((_, nmap1)), Some((_, nmap2))) = (&split1, &split2) {
+                // Both components correspond to a distinct subspace of the
+                // current Frame: express each within the current Frame
+                // (prism.c:3436).
+                let target1: Vec<i32> = axout1.iter().map(|&a| a as i32).collect();
+                let newfrm1 = cfrm.pick_axes_snapshot(&target1)?;
+                let newreg1 = reg1.map_region(nmap1.as_ref(), newfrm1.as_ref())?;
+                let snewreg1_map = Mapping::simplified(newreg1.as_ref())?;
+
+                let target2: Vec<i32> = axout2.iter().map(|&a| a as i32).collect();
+                let newfrm2 = cfrm.pick_axes_snapshot(&target2)?;
+                let newreg2 = reg2.map_region(nmap2.as_ref(), newfrm2.as_ref())?;
+                let snewreg2_map = Mapping::simplified(newreg2.as_ref())?;
+
+                // Detect whether either component actually simplified by
+                // structural comparison, mirroring C's pointer inequality
+                // `snewreg1 != newreg1 || snewreg2 != newreg2` (prism.c:3457).
+                let changed1 = !snewreg1_map.equal(newreg1.as_ref() as &dyn Mapping);
+                let changed2 = !snewreg2_map.equal(newreg2.as_ref() as &dyn Mapping);
+
+                if changed1 || changed2 {
+                    let snewreg1 = super::merge_util::mapping_into_region(snewreg1_map)
+                        .unwrap_or_else(|| newreg1.clone_region());
+                    let snewreg2 = super::merge_util::mapping_into_region(snewreg2_map)
+                        .unwrap_or_else(|| newreg2.clone_region());
+                    let prism = PrismBuilder::from_dyn(snewreg1, snewreg2)?.build()?;
+                    let mut prism: DynRegion = Box::new(prism);
+                    if neg {
+                        prism.negate();
+                    }
+                    // Restore the original current-Frame axis order
+                    // (prism.c:3466). reg_perm_axes uses 1-based indices.
+                    let mut perm = vec![0usize; naxout1 + naxout2];
+                    for i in 0..naxout1 {
+                        perm[i] = axout1[i] + 1;
+                    }
+                    for i in 0..naxout2 {
+                        perm[naxout1 + i] = axout2[i] + 1;
+                    }
+                    prism.reg_perm_axes(&perm)?;
+                    new = Some(prism);
+                }
+            }
+        }
+
+        // Carry any explicitly-supplied uncertainty forward to the new Region
+        // (prism.c:3494). Each collapse branch above already maps its result
+        // into the parent's current Frame and simplifies it, which subsumes
+        // the parent Region Simplify's FrameSet step (region.c:11042) for a
+        // builder-constructed single-Frame FrameSet; the fallback is a clone
+        // of the supplied Prism.
+        let mut result = match new {
+            Some(mut region) => {
+                if let Some(unc) = self.data.uncertainty.clone() {
+                    region.set_uncertainty(unc);
+                }
+                region
+            }
+            None => self.clone_region(),
+        };
+
+        // If any simplification occurred, overlay the original Region
+        // attributes onto the result (prism.c:3512).
+        if !(result.as_ref() as &dyn Mapping).equal(self as &dyn Mapping) {
+            result.reg_overlay(self);
+        }
+
+        Ok(result.clone_box())
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -683,5 +864,21 @@ impl Mapping for Prism {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+
+    fn map_list_decompose(&self, _inv: bool, series: bool) -> Option<Vec<(DynMapping, bool)>> {
+        // Port of C `Prism::MapList` (prism.c:1527): a Prism, considered as a
+        // CmpMap, always combines its two component Regions in *parallel*. So
+        // only decompose for a parallel request; a series request leaves the
+        // Prism atomic (C falls back to the parent MapList, appending it whole).
+        // Each component is a Region — unaffected by the Invert flag — so C
+        // appends both with invert=0.
+        if series {
+            return None;
+        }
+        Some(vec![
+            ((self.region1.as_ref() as &dyn Mapping).clone_box(), false),
+            ((self.region2.as_ref() as &dyn Mapping).clone_box(), false),
+        ])
     }
 }

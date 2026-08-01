@@ -455,6 +455,10 @@ impl Region for Ellipse {
         Ok(Box::new(Ellipse { data }))
     }
 
+    fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.perm_axes(perm)
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }

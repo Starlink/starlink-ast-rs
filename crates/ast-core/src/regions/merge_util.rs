@@ -10,7 +10,7 @@
 //! per-class bounds/points.
 
 use crate::frames::FrameSet;
-use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping};
 
 use super::data::RegionData;
 use super::{
@@ -87,7 +87,10 @@ pub(super) fn finish_region_merge(
 /// the simplified result of a CmpMap of two Regions may itself be a
 /// Region (when the two merged) or remain a CmpMap (when they did not).
 pub(super) fn mapping_into_region(map: DynMapping) -> Option<DynRegion> {
-    let a = map.as_any();
+    // Deref the Box to `&dyn Mapping` before `as_any`: calling `as_any` on the
+    // `Box<dyn Mapping>` directly resolves the blanket `AsAny` impl for the Box
+    // itself, whose `Any` downcasts never match the inner concrete Region.
+    let a = (*map).as_any();
     if let Some(r) = a.downcast_ref::<Circle>() {
         Some(Box::new(r.clone()))
     } else if let Some(r) = a.downcast_ref::<BoxRegion>() {

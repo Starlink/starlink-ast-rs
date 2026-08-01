@@ -18,8 +18,8 @@ use ast_core::frames::{
 };
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
-    BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
-    IntervalBuilder, Overlap, PolygonBuilder, PrismBuilder, Region, remove_regions,
+    BoxRegion, BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
+    Interval, IntervalBuilder, Overlap, PolygonBuilder, PrismBuilder, Region, remove_regions,
 };
 
 /// Check whether a value represents "unbounded below" (very large negative).
@@ -3413,4 +3413,78 @@ fn convex_hull_basic() {
     expected.sort();
 
     assert_eq!(vertices, expected, "hull vertices don't match expected set");
+}
+
+// ============================================================================
+// Uncertainty carry-forward through Prism::simplified
+//
+// No equal()-checking simplify fixture exercises this: Interval::equal ignores
+// the uncertainty Region, so the corpus cannot detect whether an explicit
+// uncertainty survives a Prism collapse. This standalone test pins the A1
+// carry-forward behaviour directly.
+//
+// A Prism of two bounded 1-D Intervals collapses (prism.c::Simplify → parallel
+// CmpMap → MergeInterval's Interval+Interval branch → reclassify to Box) to a
+// single 2-D Region. Any uncertainty stored explicitly on the *Prism itself*
+// must be transferred to the collapsed Region — C does this via
+// `astTestUnc(reg)` / `astGetUnc` / `astSetUnc` (prism.c:3493-3497), mirrored
+// in `Prism::simplified` by `set_uncertainty` after the collapse+map_region.
+// ============================================================================
+
+#[test]
+fn prism_simplify_carries_explicit_uncertainty() {
+    let frm_a = BasicFrameBuilder::new(1).build().unwrap();
+    let interval_a = IntervalBuilder::new(frm_a, vec![0.0], vec![10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let frm_b = BasicFrameBuilder::new(1).build().unwrap();
+    let interval_b = IntervalBuilder::new(frm_b, vec![0.0], vec![20.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    // Explicit 2-D uncertainty stored on the Prism: a small box spanning
+    // [-0.1, 0.1] x [-0.2, 0.2] about the origin.
+    let unc_frm = BasicFrameBuilder::new(2).build().unwrap();
+    let unc = BoxRegionBuilder::new(unc_frm, vec![0.0, 0.0], vec![0.1, 0.2])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let prism = PrismBuilder::new(interval_a, interval_b)
+        .unwrap()
+        .uncertainty(Box::new(unc))
+        .build()
+        .unwrap();
+
+    let simplified = Mapping::simplified(&prism).unwrap();
+
+    // The two bounded 1-D Intervals merge and reclassify to a single 2-D
+    // Region (a BoxRegion, since both are bounded and closed — not a Prism).
+    let any = simplified.as_ref().as_any();
+    let carried = if let Some(bx) = any.downcast_ref::<BoxRegion>() {
+        assert_eq!(bx.naxes(), 2, "collapsed Region should be 2-D");
+        bx.get_uncertainty()
+    } else if let Some(iv) = any.downcast_ref::<Interval>() {
+        assert_eq!(iv.naxes(), 2, "collapsed Region should be 2-D");
+        iv.get_uncertainty()
+    } else {
+        panic!("simplified Prism should collapse to a single 2-D Interval/Box");
+    };
+
+    // The explicit uncertainty stored on the Prism must survive the collapse
+    // and still span both axes.
+    let carried = carried.expect("explicit uncertainty must be carried forward");
+    let (ulb, uub) = carried.get_region_bounds().unwrap();
+    assert_eq!(ulb.len(), 2, "carried uncertainty should be 2-D");
+    assert!(
+        (uub[0] - ulb[0] - 0.2).abs() < 1e-9,
+        "axis-0 uncertainty width"
+    );
+    assert!(
+        (uub[1] - ulb[1] - 0.4).abs() < 1e-9,
+        "axis-1 uncertainty width"
+    );
 }

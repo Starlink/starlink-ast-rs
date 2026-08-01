@@ -509,6 +509,98 @@ impl Region for PointList {
         Ok(Box::new(PointList { data }))
     }
 
+    fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        // Port of pointlist.c::RegBasePick (pointlist.c:1738): build a
+        // PointList spanned by the selected base-Frame axes by slicing each
+        // point's coordinates to those axes.
+        let bfrm = self.data.frameset.base();
+        let target: Vec<i32> = axes.iter().map(|&a| a as i32).collect();
+        let frm = bfrm.pick_axes_snapshot(&target)?;
+
+        let new_points: Vec<Vec<f64>> = self
+            .data
+            .points
+            .iter()
+            .map(|p| axes.iter().map(|&a| p[a]).collect())
+            .collect();
+
+        // Select the same axes from the base-Frame uncertainty (if any); drop
+        // it if picking does not yield a Region (pointlist.c:1817-1826).
+        let unc = match &self.data.uncertainty {
+            Some(u) => match super::pick_axes_region(u.as_ref(), axes)? {
+                super::PickedAxes::Region(r) => Some(r),
+                super::PickedAxes::Frame(_) => None,
+            },
+            None => None,
+        };
+
+        let frameset = FrameSet::new(frm);
+        let mut data = RegionData::new(frameset, new_points);
+        data.uncertainty = unc;
+        Ok(Some(Box::new(PointList { data })))
+    }
+
+    fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
+        self.perm_axes(perm)
+    }
+
+    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+        // Faithful port of `pointlist.c::MergePointList` (1205). A PointList
+        // only merges with another PointList (other classes handle merging a
+        // PointList with themselves). `intfirst` selects the axis order: when
+        // true this PointList's axes go first, when false `other`'s go first.
+        //
+        // Guard (pointlist.c:1289): same Closed, and either both or neither
+        // have a defined uncertainty; both must have equal Negated and contain
+        // exactly one point.
+        let other = other_reg.as_any().downcast_ref::<PointList>()?;
+        if self.is_closed() != other.is_closed()
+            || self.data.uncertainty.is_some() != other.data.uncertainty.is_some()
+            || self.data.negated != other.data.negated
+            || self.data.points.len() != 1
+            || other.data.points.len() != 1
+        {
+            return None;
+        }
+
+        // Concatenate the two single points' axis values in the requested
+        // order.
+        let mut point = Vec::with_capacity(self.naxes() + other.naxes());
+        if intfirst {
+            point.extend_from_slice(&self.data.points[0]);
+            point.extend_from_slice(&other.data.points[0]);
+        } else {
+            point.extend_from_slice(&other.data.points[0]);
+            point.extend_from_slice(&self.data.points[0]);
+        }
+
+        // Combine the two current Frames into a CmpFrame in the requested
+        // order.
+        let f_this = self.data.frameset.current().snapshot();
+        let f_reg = other_reg.get_region_frame();
+        let cmp_frame = if intfirst {
+            crate::frames::CmpFrame::new(f_this, f_reg)
+        } else {
+            crate::frames::CmpFrame::new(f_reg, f_this)
+        };
+        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        let unc = super::merge_util::combine_uncertainties(
+            self.data.uncertainty.clone(),
+            other_reg.get_uncertainty(),
+            intfirst,
+        );
+
+        let mut data = RegionData::new(frameset, vec![point]);
+        data.negated = self.data.negated;
+        data.closed = self.data.closed && other.data.closed;
+        data.closed_set = self.data.closed_set || other.data.closed_set;
+        data.adaptive = self.data.adaptive && other.data.adaptive;
+        data.uncertainty = unc;
+
+        Some(Box::new(PointList { data }))
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }
@@ -662,38 +754,25 @@ impl Mapping for PointList {
         self_inv: bool,
         other_inv: bool,
     ) -> Option<DynMapping> {
-        // Parallel merge of two single-point PointLists into one PointList
-        // over the CmpFrame of the two current frames, whose single point is
-        // the concatenation of the two points' axes. Mirrors C
-        // `pointlist.c::MergePointList` (guard at ~1064: same Negated, each
-        // list exactly one point).
+        // Parallel merge only (series of two Regions is not a Region). The
+        // direct pairwise path always has `self` as the lower-index (left)
+        // component, so this PointList's axes go first (`intfirst = 1`). The
+        // nominate loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;
         }
-        let other = other.as_any().downcast_ref::<PointList>()?;
-        if self.data.negated != other.data.negated
-            || self.data.points.len() != 1
-            || other.data.points.len() != 1
-        {
-            return None;
-        }
+        let other_reg: &dyn Region = super::as_region(other)?;
+        Region::region_merge(self, other_reg, true)
+    }
 
-        let f1 = self.data.frameset.current().snapshot();
-        let f2 = other.data.frameset.current().snapshot();
-        let cmp_frame = crate::frames::CmpFrame::new(f1, f2);
-        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
-
-        // Concatenate the two single points' axis values.
-        let mut point = self.data.points[0].clone();
-        point.extend(other.data.points[0].iter().copied());
-
-        let mut data = RegionData::new(frameset, vec![point]);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed && other.data.closed;
-        data.closed_set = self.data.closed_set || other.data.closed_set;
-        data.adaptive = self.data.adaptive && other.data.adaptive;
-
-        Some(Box::new(PointList { data }))
+    fn map_merge(
+        &self,
+        ctx: &mut crate::mappings::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        crate::mappings::simplify::region_map_merge(self, ctx, where_, series)
     }
 
     fn clone_box(&self) -> DynMapping {
