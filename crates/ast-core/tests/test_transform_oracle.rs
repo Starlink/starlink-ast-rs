@@ -10,7 +10,13 @@
 // Constants and helpers below are consumed by later tasks in this oracle suite.
 #![allow(dead_code)]
 
+use ast_core::AnyObject;
+use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
+use ast_core::fitschan::FitsChan;
+use ast_core::frames::{Frame, FrameRef};
+use ast_core::from_native_string;
+use ast_core::mappings::Mapping;
 
 /// Golden tolerance: live outputs vs recorded oracle values. Wide enough to
 /// absorb cross-architecture libm differences (~5e-9 near singularities)
@@ -144,6 +150,68 @@ fn parse_oracle(text: &str) -> Result<Vec<Section>, String> {
 }
 
 use std::path::PathBuf;
+
+/// A loaded fixture: the owned object plus whether it is a FrameSet (so the
+/// checker knows to pull base/current frames for angular detection).
+struct Loaded {
+    obj: AnyObject,
+    is_frameset: bool,
+}
+
+impl Loaded {
+    /// The mapping under test. For a FrameSet this is the object itself
+    /// (it implements `Mapping` as base->current); for a bare Mapping,
+    /// itself; `None` for a non-Mapping object.
+    fn mapping(&self) -> Option<&dyn Mapping> {
+        self.obj.as_mapping()
+    }
+
+    /// The output frame for a given direction: current frame (forward) or
+    /// base frame (inverse). `None` unless the fixture is a FrameSet.
+    fn frame(&self, forward: bool) -> Option<&dyn Frame> {
+        if !self.is_frameset {
+            return None;
+        }
+        let AnyObject::FrameSet(fs) = &self.obj else {
+            return None;
+        };
+        let which = if forward {
+            FrameRef::Current
+        } else {
+            FrameRef::Base
+        };
+        fs.frame(which).ok()
+    }
+}
+
+/// Load a fixture named by an oracle relpath. Dispatches by extension:
+/// `.head` through a `FitsChan`, everything else through
+/// `from_native_string`. Returns `Ok(None)` for a resolved-but-non-Mapping
+/// object (KeyMap, non-Region STC), `Err` for a resolved-but-unreadable one.
+fn load_fixture(relpath: &str) -> Result<Option<Loaded>, String> {
+    let path = match resolve_fixture(relpath) {
+        Some(p) => p,
+        None => return Err(format!("fixture not found: {relpath}")),
+    };
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("read {relpath}: {e}"))?;
+
+    let obj = if relpath.ends_with(".head") {
+        let mut fc =
+            FitsChan::from_header(&text).map_err(|e| format!("from_header {relpath}: {e}"))?;
+        match fc.read().map_err(|e| format!("read {relpath}: {e}"))? {
+            Some(o) => o,
+            None => return Err(format!("FitsChan read returned None: {relpath}")),
+        }
+    } else {
+        from_native_string(&text).map_err(|e| format!("from_native_string {relpath}: {e}"))?
+    };
+
+    let is_frameset = matches!(obj, AnyObject::FrameSet(_));
+    if obj.as_mapping().is_none() {
+        return Ok(None); // resolved but not a Mapping — legitimately skipped
+    }
+    Ok(Some(Loaded { obj, is_frameset }))
+}
 
 /// Resolve an oracle relpath (rooted at the C `ast_tester/` dir) to the
 /// on-disk Rust fixture. Searches a fixed, ordered list of the directories
@@ -313,5 +381,32 @@ mod primitive_tests {
             GOLDEN_RTOL,
             GOLDEN_ATOL
         ));
+    }
+}
+
+#[cfg(test)]
+mod loader_tests {
+    use super::*;
+
+    #[test]
+    fn loads_native_mapping() {
+        let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
+            .expect("no error")
+            .expect("is a mapping");
+        let m = l.mapping().expect("mapping");
+        assert_eq!(m.nin(), 2);
+        assert!(l.frame(true).is_none(), "bare mapping has no frame");
+    }
+
+    #[test]
+    fn loads_head_frameset_with_frames() {
+        let l = load_fixture("cobe.head")
+            .expect("no error")
+            .expect("is a mapping");
+        assert!(l.is_frameset);
+        let m = l.mapping().expect("mapping");
+        assert_eq!(m.nin(), 2);
+        assert!(l.frame(true).is_some(), "forward -> current frame");
+        assert!(l.frame(false).is_some(), "inverse -> base frame");
     }
 }
