@@ -1,13 +1,25 @@
 # Phase 5 — Region cross-cutting parity: port spec + required C fixtures
 
 Ticket DM-54793.
-Status as of 2026-08-01, verified against HEAD (commit `d834b81`).
+Status as of 2026-08-02: **all 8 gaps CLOSED.** Verified against HEAD
+(commit `a96bc80`).
+
+| Gap | Verdict | Landed as |
+|---|---|---|
+| R-UNC | CLOSED | shared `map_region` refactor (deep-copies uncertainty) |
+| PR-MAP | CLOSED | shared `map_region` refactor (C Prism has no override either) |
+| RB-PICK | CLOSED | `f62a41f` |
+| MERGE-FF | CLOSED | `e4898b1` |
+| SETUNC | CLOSED | `d5e78b6` |
+| DEFUNC | CLOSED | `c608570` |
+| SIMP-STAB | CLOSED | `24ce72e` |
+| CE-FIT | CLOSED | `a96bc80` |
 
 ## Why this document exists
 
-The 4 critical Group 5 `equal()` failures are closed.
-The remaining Phase 5 items are faithful-port gaps in region machinery that
-**no current fixture exercises** — which is exactly why they went unnoticed.
+The 4 critical Group 5 `equal()` failures were closed first.
+The remaining Phase 5 items were faithful-port gaps in region machinery that
+**no fixture exercised** — which is exactly why they went unnoticed.
 
 Per the project principle "lack of test coverage is not a reason to skip a C
 branch" (`feedback_test_coverage_is_separate_from_porting`), the response to
@@ -54,7 +66,9 @@ harness. Both mechanisms are noted per gap below.
 ## Gap RB-PICK (small) — base `reg_base_pick_axes` + CmpRegion/Prism overrides
 
 ### Verdict
-OPEN. Two distinct sub-gaps sharing one root.
+CLOSED (`f62a41f`). Base copy-on-permutation path plus CmpRegion/Prism overrides
+landed; the mod.rs doc comment was corrected. Two distinct sub-gaps shared one
+root.
 
 ### Rust target
 - `regions/mod.rs:568` — base default returns `Ok(None)` unconditionally.
@@ -119,10 +133,11 @@ answer, the unit test asserts the Rust API contract.
 ## Gap DEFUNC (medium) — per-class `get_def_unc` overrides
 
 ### Verdict
-PARTIAL. The base `get_def_unc` arithmetic (mod.rs:257-276) is a faithful port
-of C base `GetDefUnc` (region.c:3488-3588). But four C classes override it and
-Rust has none of the overrides — every concrete class incorrectly falls through
-to the base.
+CLOSED (`c608570`). The four class overrides (Interval, NullRegion, Prism,
+CmpRegion) were ported on top of the faithful base `get_def_unc` port, along with
+the RegBaseBox2 distinction. Previously PARTIAL: the base arithmetic
+(mod.rs:257-276) mirrored C base `GetDefUnc` (region.c:3488-3588) but every
+concrete class incorrectly fell through to the base.
 
 ### C reference (all four bodies read in full)
 - **Interval** — `interval.c:583-703`: if the Interval caches to an equivalent
@@ -200,10 +215,9 @@ uncertainty is otherwise internal. Document the probe alongside the fixture.
 ## Gap SETUNC (medium) — `set_uncertainty` full remap/validate/recentre body
 
 ### Verdict
-OPEN. Rust `set_uncertainty` is a bare `self.data.uncertainty = Some(unc)` in
-all 9 classes (trait decl mod.rs:240; stores in box_region.rs, circle.rs,
-ellipse.rs, polygon.rs, pointlist.rs, nullregion.rs, interval.rs, prism.rs,
-cmpregion.rs). It drops the entire C `SetUnc` body.
+CLOSED (`d5e78b6`). The full C `SetUnc` body (validate/remap/negate-to-bound/
+RegionFS/recentre/cache) landed as a shared default trait method, replacing the
+9 bare `self.data.uncertainty = Some(unc)` stores. Previously OPEN.
 
 ### C reference — `region.c:10754-10911`, read in full
 In order:
@@ -275,11 +289,11 @@ exercise the `Unc` read/write path under a non-trivial Frame relationship.
 ## Gap SIMP-STAB (medium) — parent-Region Simplify uncertainty stability check
 
 ### Verdict
-OPEN. The 0.1%-tolerance uncertainty-stability check in C
-`Region::Simplify` is absent from every Rust `simplified()`. There is no shared
-parent-Region simplify helper at all — each class re-implements the
-base→current-map simplify inline (e.g. box_region.rs:1223-1231) and none touch
-the uncertainty Region.
+CLOSED (`24ce72e`). The shared parent-Region simplify helper was factored out and
+the 0.1%-tolerance uncertainty-stability check ported into it. Previously OPEN:
+the check was absent from every Rust `simplified()` and each class re-implemented
+the base→current-map simplify inline (e.g. box_region.rs:1223-1231) without
+touching the uncertainty Region.
 
 ### C reference — `region.c:11042-11328`, stability block read in full (11145-11312)
 The base `Region::Simplify` runs BEFORE each class's own simplify work (invoked
@@ -347,8 +361,11 @@ stability test would still pass the linear and slice fixtures.
 ## Gap MERGE-FF (medium) — FillFactor / MeshSize scaling in parallel merges
 
 ### Verdict
-OPEN. The merge helpers copy Negated/Closed/Adaptive/uncertainty but omit the
-C FillFactor (product) and MeshSize (product-of-ratios × default) scaling.
+CLOSED (`e4898b1`). The FillFactor (product) and MeshSize (product-of-ratios ×
+default) scaling landed in the merge helpers, backed by new `mesh_size_set` /
+`fill_factor_set` tracking flags that also drive the serialization emit guards.
+Previously OPEN: the merge helpers copied Negated/Closed/Adaptive/uncertainty
+but omitted the scaling.
 
 ### Rust target
 - `merge_util.rs::finish_region_merge` (merge_util.rs:43-81), `apply_attrs`
@@ -503,30 +520,27 @@ FrameSet, not a collapsed Circle).
 
 ---
 
-## Recommended landing order
+## Landing order (as executed)
 
-Independent, safe first; uncertainty cluster (interdependent) next; largest last.
+Independent/safe first; uncertainty cluster (interdependent) next; largest last.
+All seven steps landed in this order, each its own commit with the full
+regression gate (simplify regression + byte-exact corpus failure-set diff +
+lib/wcsconv/frameset/test_regions + fmt + clippy) and its C fixtures generated
+and committed into
+`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`.
 
-1. **RB-PICK** (small, self-contained) — base copy-on-permutation + CmpRegion/
-   Prism overrides + doc fix. No uncertainty interaction.
-2. **MERGE-FF** (medium, self-contained apart from the `*_set` flag plumbing) —
-   adds `mesh_size_set`/`fill_factor_set`, changes serialization emit guards
-   (re-run byte-exact corpus, compare failure set).
+1. **RB-PICK** (`f62a41f`) — base copy-on-permutation + CmpRegion/Prism overrides
+   + doc fix. No uncertainty interaction.
+2. **MERGE-FF** (`e4898b1`) — added `mesh_size_set`/`fill_factor_set`, changed the
+   serialization emit guards (byte-exact corpus re-run, failure set compared).
 3. **`reg_centre` query + `test_unc` primitives** — shared prerequisite for the
-   next three.
-4. **SETUNC** (medium) — full remap/validate/recentre/cache body as a shared
-   default; delete the 9 bare stores.
-5. **DEFUNC** (medium) — 4 per-class `get_def_unc` overrides (reuses `test_unc`,
-   `get_unc_frm`, zero-radius Circle).
-6. **SIMP-STAB** (medium) — factor the shared parent-simplify helper; add the
-   0.1% stability check (depends on SETUNC + `reg_centre` query).
-7. **CE-FIT** (large) — port `astBestCircle`/`astBestEllipse`; rewrite Circle/
-   Ellipse `simplified()` on top of the SIMP-STAB parent-simplify helper.
-
-Each step is its own commit with the full regression gate (simplify regression +
-byte-exact corpus failure-set diff + lib/wcsconv/frameset/test_regions + fmt +
-clippy), per the plan's Phase-5 discipline. All C fixtures listed above must be
-generated and committed into
-`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/` (plus the
-`gen_defunc_fixtures` / round-trip probe for the SETUNC/DEFUNC internal-state
-fixtures) before the corresponding port is claimed complete.
+   next three (landed alongside SETUNC in `d5e78b6`).
+4. **SETUNC** (`d5e78b6`) — full remap/validate/recentre/cache body as a shared
+   default; deleted the 9 bare stores.
+5. **DEFUNC** (`c608570`) — 4 per-class `get_def_unc` overrides (reuses
+   `test_unc`, `get_unc_frm`, zero-radius Circle) + RegBaseBox2.
+6. **SIMP-STAB** (`24ce72e`) — factored the shared parent-simplify helper; added
+   the 0.1% stability check (depends on SETUNC + `reg_centre` query).
+7. **CE-FIT** (`a96bc80`) — ported `astBestCircle`/`astBestEllipse`; rewrote
+   Circle/Ellipse `simplified()` on the SIMP-STAB parent-simplify helper, and
+   fixed the `Ellipse::reg_base_mesh` two-`astOffset2` / from-+Y angle convention.
