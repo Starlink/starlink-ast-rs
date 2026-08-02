@@ -19,8 +19,8 @@ use ast_core::frames::{
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
     BoxRegion, BoxRegionBuilder, Circle, CircleBuilder, CmpOperator, CmpRegion, CmpRegionBuilder,
-    EllipseBuilder, Interval, IntervalBuilder, Overlap, PickedAxes, PolygonBuilder, PrismBuilder,
-    Region, pick_axes_region, remove_regions,
+    Ellipse, EllipseBuilder, Interval, IntervalBuilder, Overlap, PickedAxes, PolygonBuilder,
+    PrismBuilder, Region, pick_axes_region, remove_regions,
 };
 
 /// Check whether a value represents "unbounded below" (very large negative).
@@ -3805,6 +3805,8 @@ fn simpstab_simplified_native(map_name: &str) -> String {
         AnyObject::BoxRegion(b.clone())
     } else if let Some(c) = r.as_any().downcast_ref::<Circle>() {
         AnyObject::Circle(c.clone())
+    } else if let Some(e) = r.as_any().downcast_ref::<Ellipse>() {
+        AnyObject::Ellipse(e.clone())
     } else if let Some(i) = r.as_any().downcast_ref::<Interval>() {
         AnyObject::Interval(i.clone())
     } else if let Some(p) = r.as_any().downcast_ref::<ast_core::regions::Prism>() {
@@ -3851,6 +3853,74 @@ fn simplify_stability_permmap_slice_unc() {
     assert_eq!(
         simpstab_simplified_native("simpstab_permmap_slice_unc.map"),
         simpstab_fixture("simpstab_permmap_slice_unc.simp")
+    );
+}
+
+// ============================================================================
+// Circle / Ellipse Simplify re-fit, validate, and degrade (circle.c:1840,
+// ellipse.c:1957). Each fixture is a Circle or Ellipse mapped into a new Frame;
+// Simplify meshes the boundary in the current Frame, re-fits a best Circle
+// (astBestCircle) and, on nc==2, a best Ellipse (astBestEllipse), validates the
+// candidate via astRegPins, and degrades the class when a simpler shape fits.
+// ============================================================================
+
+#[test]
+fn simplify_circle_conformal_keeps_circle() {
+    // Oracle: cefit_circle_conformal. A Circle mapped through an isotropic
+    // ZoomMap. astBestCircle re-fits and astRegPins confirms the boundary, so
+    // the Circle is adopted -- but circle.c:1882-1886 does NOT set simpler for
+    // the best-circle branch, so Simplify returns the original Circle with its
+    // live ZoomMap FrameSet still attached rather than a collapsed Circle.
+    assert_eq!(
+        simpstab_simplified_native("cefit_circle_conformal.map"),
+        simpstab_fixture("cefit_circle_conformal.simp")
+    );
+}
+
+#[test]
+fn simplify_circle_to_ellipse() {
+    // Oracle: cefit_circle_to_ellipse. A Circle mapped through an anisotropic
+    // (diagonal 2,1) MatrixMap becomes an ellipse. astBestCircle fails
+    // astRegPins; on nc==2 astBestEllipse fits and validates, so Simplify sets
+    // simpler and degrades the Circle to an Ellipse (circle.c:1904).
+    assert_eq!(
+        simpstab_simplified_native("cefit_circle_to_ellipse.map"),
+        simpstab_fixture("cefit_circle_to_ellipse.simp")
+    );
+}
+
+#[test]
+fn simplify_ellipse_to_circle() {
+    // Oracle: cefit_ellipse_to_circle. An Ellipse mapped through a diagonal
+    // (1,2) MatrixMap that rescales it back to a circular boundary. Ellipse
+    // Simplify tries astBestCircle first (ellipse.c:1994); astRegPins confirms
+    // it, so the Ellipse degrades to a Circle and simpler is set.
+    assert_eq!(
+        simpstab_simplified_native("cefit_ellipse_to_circle.map"),
+        simpstab_fixture("cefit_ellipse_to_circle.simp")
+    );
+}
+
+#[test]
+fn simplify_circle_nonconformal_keeps_circle() {
+    // Oracle: cefit_circle_nonconformal_keep. A Circle mapped through a
+    // non-linear MathMap warps the boundary into a non-elliptical closed curve.
+    // Neither astBestCircle nor astBestEllipse validates via astRegPins, so
+    // Simplify keeps the original Circle with its live MathMap FrameSet.
+    assert_eq!(
+        simpstab_simplified_native("cefit_circle_nonconformal_keep.map"),
+        simpstab_fixture("cefit_circle_nonconformal_keep.simp")
+    );
+}
+
+#[test]
+fn simplify_regbasepick_circle_permaxes() {
+    // Oracle: regbasepick_circle_permaxes. A Circle mapped through a PermMap
+    // that swaps the two axes. The Circle class cannot be axis-sliced by
+    // RegBasePick, so Simplify keeps the Circle with its live PermMap FrameSet.
+    assert_eq!(
+        simpstab_simplified_native("regbasepick_circle_permaxes.map"),
+        simpstab_fixture("regbasepick_circle_permaxes.simp")
     );
 }
 

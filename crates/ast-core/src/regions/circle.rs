@@ -7,6 +7,7 @@
 
 use std::f64::consts::PI;
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{BasicFrame, DynFrame, Frame, FrameRef, FrameSet};
@@ -26,6 +27,50 @@ fn circum_point(frm: &dyn Frame, centre: &[f64], radius: f64) -> AstResult<Vec<f
     let mut work = centre.to_vec();
     work[0] = frm.ax_offset(1, work[0], radius)?;
     frm.offset(centre, &work, radius)
+}
+
+/// Find the best-fitting Circle through a mesh of points.
+///
+/// Faithful port of C `astBestCircle` (circle.c:176). The `mesh` points and
+/// the supplied `centre` are in the Frame represented by `unc` (the current
+/// Frame of the Region being simplified). The radius is the RMS distance of
+/// the mesh points from the centre, `rad = sqrt(nc * s2r / n)`, where `s2r` is
+/// the sum of squared per-axis increments from the centre over all good mesh
+/// points and `n` the count of good axis values. Returns `None` when no good
+/// value contributes. The returned Circle inherits `unc`'s Frame and carries
+/// `unc` as its uncertainty.
+pub(crate) fn best_circle(
+    mesh: &PointSet,
+    centre: &[f64],
+    unc: &dyn Region,
+) -> AstResult<Option<Circle>> {
+    let np = mesh.npoint();
+    let nc = mesh.ncoord();
+
+    let mut s2r = 0.0_f64;
+    let mut n = 0_usize;
+    for (ic, &p0) in centre.iter().enumerate().take(nc) {
+        for ip in 0..np {
+            let v = mesh.point(ip)[ic];
+            if v != BAD_VALUE {
+                let d = v - p0;
+                s2r += d * d;
+                n += 1;
+            }
+        }
+    }
+
+    if n == 0 {
+        return Ok(None);
+    }
+
+    let rad = ((nc as f64) * s2r / (n as f64)).sqrt();
+    let frm = unc.get_region_frame();
+    let circle = CircleBuilder::from_dyn(frm, centre.to_vec())?
+        .radius(rad)
+        .uncertainty(unc.clone_region())
+        .build()?;
+    Ok(Some(circle))
 }
 
 /// A circular region within a coordinate frame.
@@ -860,36 +905,69 @@ impl Mapping for Circle {
             }
             None => self,
         };
-        let simpler = parent.is_some();
+        let mut simpler = parent.is_some();
 
+        // The best-fitting region adopted below, if any. Defaults to the
+        // parent-simplified Circle.
+        let mut new: DynRegion = this.clone_region();
+
+        // If the base->current Mapping is not a UnitMap, attempt to re-define
+        // the Circle within its current Frame. Transforming it may leave it no
+        // longer circular, so test by re-fitting a mesh of boundary points.
         let map = this
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        if map.as_any().is::<UnitMap>() {
-            return if simpler {
-                let mut result = this.clone_region();
-                result.reg_overlay(self, true);
-                Ok(result.clone_box())
-            } else {
-                Ok(self.clone_box())
-            };
+        if !map.as_any().is::<UnitMap>() {
+            // A mesh of points covering the Circle in its current Frame
+            // (astRegMesh returns current-Frame points; get_region_mesh
+            // returns base-Frame points, so map them forward).
+            let base_mesh = this.get_region_mesh()?;
+            let mesh = this.data.frameset.transform(&base_mesh, true)?;
+
+            // The uncertainty Region within the Circle in its current Frame.
+            let unc = this.get_unc_frm(FrameRef::Current)?;
+
+            // Transform the circle centre (defining point 0) into the current
+            // Frame.
+            let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
+            let ps2 = map.transform(&pts, true)?;
+            let nc = ps2.ncoord();
+            let cen: Vec<f64> = (0..nc).map(|ic| ps2.point(0)[ic]).collect();
+            let ok = cen.iter().all(|&v| v != BAD_VALUE);
+
+            // Find the best fitting Circle through the mesh, and see whether
+            // every mesh point falls on its boundary within the uncertainty.
+            let mut adopted = false;
+            if ok {
+                if let Some(newreg) = best_circle(&mesh, &cen, unc.as_ref())? {
+                    if newreg.reg_pins(&mesh, None)? {
+                        // Use the new Circle in place of the original. Note this
+                        // branch does NOT set simpler (circle.c:1882-1886).
+                        new = Box::new(newreg);
+                        adopted = true;
+                    }
+                }
+            }
+
+            // Otherwise, if the region is 2-D, see whether an Ellipse can
+            // represent the mesh.
+            if !adopted && ok && nc == 2 {
+                if let Some(newreg) = super::ellipse::best_ellipse(&mesh, &cen, unc.as_ref())? {
+                    if newreg.reg_pins(&mesh, None)? {
+                        new = Box::new(newreg);
+                        simpler = true;
+                    }
+                }
+            }
         }
-        // Transform defining points to current frame.
-        let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
-        let transformed = map.transform(&pts, true)?;
-        let current_frame = this.data.frameset.current().snapshot();
-        let naxes = current_frame.naxes();
-        let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
-            .map(|i| transformed.point(i)[..naxes].to_vec())
-            .collect();
-        // Construct new Circle in current frame with fresh FrameSet.
-        let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, new_points);
-        data.uncertainty = this.data.uncertainty.clone();
-        let mut result: DynRegion = Box::new(Circle { data });
-        result.reg_overlay(self, true);
-        Ok(result.clone_box())
+
+        if simpler {
+            new.reg_overlay(self, true);
+            Ok(new.clone_box())
+        } else {
+            Ok(self.clone_box())
+        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

@@ -6,14 +6,209 @@
 
 use std::f64::consts::PI;
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
+
+/// Offset of pi/2 from the primary to the secondary ellipse axis
+/// (C `AST__DPIBY2`).
+const DPIBY2: f64 = PI / 2.0;
+
+/// Find the best fitting Ellipse through a given mesh of points.
+///
+/// Faithful port of C `astBestEllipse` (ellipse.c:191). Ellipses are always
+/// 2-dimensional. The `mesh` points and the supplied `centre` are in the Frame
+/// represented by `unc` (the current Frame of the Region being simplified).
+///
+/// The method (as the C source notes, not very accurate and assuming the mesh
+/// covers the whole ellipse uniformly): find the mesh point furthest from the
+/// centre — the end of the primary axis — via the radial distance and position
+/// angle of every point; fit a quadratic through the (radius, angle) samples at
+/// that point and its two neighbours to locate the turning point; resolve every
+/// mesh point into components parallel and perpendicular to the primary axis and
+/// derive the mean secondary-axis length weighted by the perpendicular
+/// component; then build the Ellipse from the centre, the primary-axis end, and
+/// a point at the mean secondary-axis length.
+///
+/// Returns `None` if no suitable primary axis or secondary-axis mean can be
+/// found. The returned Ellipse inherits `unc`'s Frame and carries `unc` as its
+/// uncertainty.
+pub(crate) fn best_ellipse(
+    mesh: &PointSet,
+    centre: &[f64],
+    unc: &dyn Region,
+) -> AstResult<Option<Ellipse>> {
+    let np = mesh.npoint();
+    let frm = unc.get_region_frame();
+
+    let mut dist = vec![BAD_VALUE; np];
+    let mut ang = vec![BAD_VALUE; np];
+
+    // Find the first mesh point which is at a non-zero distance from the
+    // centre.
+    let mut ip = 0usize;
+    while ip < np {
+        let row = mesh.point(ip);
+        let p = [row[0], row[1]];
+        dist[ip] = frm.distance(centre, &p)?;
+        if dist[ip] != BAD_VALUE && dist[ip] != 0.0 {
+            break;
+        } else {
+            ang[ip] = BAD_VALUE;
+            dist[ip] = BAD_VALUE;
+        }
+        ip += 1;
+    }
+    if ip >= np {
+        return Ok(None);
+    }
+
+    // Find a point which is this distance away from the centre along the second
+    // axis. This point defines zero angle when calling astAngle below.
+    let first_row = mesh.point(ip);
+    let mut p = [first_row[0], first_row[1]];
+    let (aa, _) = frm.offset2(centre, 0.0, dist[ip])?;
+    ang[ip] = frm.angle(&aa, centre, &p)?;
+
+    // Get the distance from the centre to each of the remaining mesh points,
+    // and the orientation of the radial line to each. Track the index of the
+    // point with the largest radial distance.
+    let mut maxat = ip;
+    let mut r2 = dist[maxat];
+    ip += 1;
+    while ip < np {
+        let row = mesh.point(ip);
+        p = [row[0], row[1]];
+        dist[ip] = frm.distance(centre, &p)?;
+        ang[ip] = frm.angle(&aa, centre, &p)?;
+        if dist[ip] != BAD_VALUE && dist[ip] > r2 {
+            r2 = dist[ip];
+            maxat = ip;
+        }
+        ip += 1;
+    }
+
+    // Find the higher-index neighbouring point, wrapping back to the start of
+    // the list when the end is reached. Note the radius and position angle
+    // (relative to the max-radius angle a0).
+    let t2 = 0.0_f64;
+    let a0 = ang[maxat];
+    let mut r3 = BAD_VALUE;
+    let mut t3 = BAD_VALUE;
+    for j in (maxat + 1)..np {
+        if dist[j] != BAD_VALUE {
+            r3 = dist[j];
+            t3 = crate::pal::drange(ang[j] - a0);
+            break;
+        }
+    }
+    if r3 == BAD_VALUE {
+        for j in 0..maxat {
+            if dist[j] != BAD_VALUE {
+                r3 = dist[j];
+                t3 = crate::pal::drange(ang[j] - a0);
+                break;
+            }
+        }
+    }
+
+    // Find the lower-index neighbouring point, wrapping back to the end of the
+    // list when the start is reached.
+    let mut r1 = BAD_VALUE;
+    let mut t1 = BAD_VALUE;
+    for j in (0..maxat).rev() {
+        if dist[j] != BAD_VALUE {
+            r1 = dist[j];
+            t1 = crate::pal::drange(ang[j] - a0);
+            break;
+        }
+    }
+    if r1 == BAD_VALUE {
+        for j in ((maxat + 1)..np).rev() {
+            if dist[j] != BAD_VALUE {
+                r1 = dist[j];
+                t1 = crate::pal::drange(ang[j] - a0);
+                break;
+            }
+        }
+    }
+
+    // Fit a quadratic through the three pairs of (radius, angle) values. The
+    // centre point (r2, t2) is the point which is furthest from the centre; the
+    // other two are the neighbouring points found above.
+    let a = r2 - r1;
+    let b = t2 - t1;
+    let c = t2 * t2 - t1 * t1;
+    let d = r3 - r2;
+    let e = t3 - t2;
+    let f = t3 * t3 - t2 * t2;
+
+    let den = c * e - b * f;
+    if den == 0.0 {
+        return Ok(None);
+    }
+
+    // The co-efficients of the interpolating polynomial.
+    let c1 = (d * c - a * f) / den;
+    let c2 = (a * e - d * b) / den;
+    let c0 = r1 - c1 * t1 - c2 * t1 * t1;
+
+    // Find the largest radius (the turning point of the quadratic), and the
+    // angle at which it occurs.
+    let (mx, at) = if c2 < 0.0 {
+        ((4.0 * c0 * c2 - c1 * c1) / (4.0 * c2), a0 - c1 / (2.0 * c2))
+    } else {
+        (r2, a0 - t2)
+    };
+
+    // This point is the end of the ellipse primary axis. Find its (x,y) coords,
+    // and store in "pa".
+    let (pa, _) = frm.offset2(centre, at, mx)?;
+
+    // Resolve all the supplied points into components parallel and
+    // perpendicular to the line joining the centre and "pa".
+    let ps2 = frm.resolve_points(centre, &pa, mesh)?;
+
+    // For each mesh point, work out the length of the secondary axis which
+    // would result if we used that point to define the ellipse. Find the mean
+    // of these lengths, weighted by the length of the y component to reduce the
+    // influence of poor conditioning at very low y.
+    let mut smn = 0.0_f64;
+    let mut sw = 0.0_f64;
+    for j in 0..np {
+        let row = ps2.point(j);
+        let px = row[0];
+        let py = row[1];
+        if px != BAD_VALUE && py != BAD_VALUE {
+            let den = mx * mx - px * px;
+            if den > 0.0 {
+                smn += (mx * py * py).abs() / den.sqrt();
+                sw += py.abs();
+            }
+        }
+    }
+
+    if sw <= 0.0 {
+        return Ok(None);
+    }
+    let mn = smn / sw;
+
+    // Find the coords at the end of the mean secondary axis, and store in "pb".
+    let (pb, _) = frm.offset2(centre, at + DPIBY2, mn)?;
+
+    // Create the Ellipse to return, storing the three defining points directly
+    // (astEllipse form 0).
+    match Ellipse::from_defining_points(frm, centre.to_vec(), pa, pb, Some(unc.clone_region())) {
+        Ok(ellipse) => Ok(Some(ellipse)),
+        Err(_) => Ok(None),
+    }
+}
 
 /// A rotated elliptical region within a 2-D coordinate frame.
 ///
@@ -125,6 +320,46 @@ impl EllipseBuilder {
 // ============================================================================
 
 impl Ellipse {
+    /// Construct an Ellipse from three defining points in the given frame.
+    ///
+    /// Mirrors C `astEllipse` with `form = 0` (ellipse.c:2381): the region is
+    /// defined by the centre, the coordinates at the end of the primary axis
+    /// (`point1`), and the coordinates of any other point on the boundary
+    /// (`point2`). The three points are stored directly as the defining
+    /// points, exactly as C stores them; the geometric parameters are derived
+    /// on demand. Returns an error if the points do not determine an ellipse
+    /// (zero-length primary axis or non-positive secondary axis).
+    pub(crate) fn from_defining_points(
+        frame: DynFrame,
+        centre: Vec<f64>,
+        point1: Vec<f64>,
+        point2: Vec<f64>,
+        uncertainty: Option<DynRegion>,
+    ) -> AstResult<Self> {
+        if frame.naxes() != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                "Ellipse requires a 2-dimensional frame",
+            ));
+        }
+        let frameset = FrameSet::new(frame);
+        let points = vec![centre, point1, point2];
+        let mut data = RegionData::new(frameset, points);
+        data.uncertainty = uncertainty;
+        let ellipse = Ellipse { data };
+        // Validate that the supplied points determine an ellipse (a > 0 and a
+        // finite, positive secondary axis), matching the CalcPars check in
+        // astInitEllipse (ellipse.c:654).
+        let (a, b, _) = ellipse.ellipse_params()?;
+        if a <= 0.0 || is_bad(a) || b <= 0.0 || is_bad(b) {
+            return Err(AstError::new(
+                ErrorCode::Badin,
+                "The supplied points do not determine an ellipse",
+            ));
+        }
+        Ok(ellipse)
+    }
+
     /// Mutate the current frame with region integrity enforcement.
     ///
     /// When adaptive (the default), the FrameSet's base→current mapping is
@@ -246,20 +481,38 @@ impl RegionGeometry for Ellipse {
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
-        let (a, b, angle) = self.ellipse_params()?;
         let centre = &self.data.points[0];
+        let point1 = &self.data.points[1];
+        let point2 = &self.data.points[2];
+        let frm = self.data.frameset.base();
         let np = self.data.effective_mesh_size();
-        let cos_a = angle.cos();
-        let sin_a = angle.sin();
+
+        // Ellipse parameters in the geodesic convention used by the mesh
+        // (CalcPars, ellipse.c:697): the angle is measured from the positive
+        // direction of axis 2 to the primary ellipse axis.
+        let a = frm.distance(centre, point1)?;
+        let (_, x, y) = frm.resolve(centre, point1, point2)?;
+        let b = {
+            let bb = a * a - x * x;
+            if bb > 0.0 { a * y / bb.sqrt() } else { a }
+        };
+        let point3 = vec![centre[0], centre[1] + (0.1 * a).abs()];
+        let angle = frm.angle(&point3, centre, point1)?;
 
         let delta = 2.0 * PI / np as f64;
         let mut mesh = Vec::with_capacity(np);
 
-        for i in 0..np {
-            let t = i as f64 * delta;
-            let x = centre[0] + a * t.cos() * cos_a - b * t.sin() * sin_a;
-            let y = centre[1] + a * t.cos() * sin_a + b * t.sin() * cos_a;
-            mesh.push(vec![x, y]);
+        // The parametric angle phi runs from axis 2 toward axis 1. For each
+        // point, move a geodesic distance dx along the primary axis, then a
+        // distance dy at right angles to it (ellipse.c:1115).
+        let mut phi = 0.0_f64;
+        for _ in 0..np {
+            let dx = a * phi.cos();
+            let dy = b * phi.sin();
+            let (p, dir) = frm.offset2(centre, angle, dx)?;
+            let (p2, _) = frm.offset2(&p, dir + DPIBY2, dy)?;
+            mesh.push(vec![p2[0], p2[1]]);
+            phi += delta;
         }
 
         Ok(mesh)
@@ -728,35 +981,65 @@ impl Mapping for Ellipse {
             }
             None => self,
         };
-        let simpler = parent.is_some();
+        let mut simpler = parent.is_some();
 
+        // The best-fitting region adopted below, if any. Defaults to the
+        // parent-simplified Ellipse.
+        let mut new: DynRegion = this.clone_region();
+
+        // Attempt to re-define the Ellipse within its current Frame.
+        // Transforming it may leave the region no longer elliptical, so test by
+        // re-fitting a mesh of boundary points. Unlike Circle, the Ellipse path
+        // always attempts the fit (no UnitMap short-circuit, ellipse.c:1957).
         let map = this
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        if map.as_any().is::<UnitMap>() {
-            return if simpler {
-                let mut result = this.clone_region();
-                result.reg_overlay(self, true);
-                Ok(result.clone_box())
-            } else {
-                Ok(self.clone_box())
-            };
-        }
-        // Transform defining points to current frame.
+
+        // A mesh of points covering the Ellipse in its current Frame.
+        let base_mesh = this.get_region_mesh()?;
+        let mesh = this.data.frameset.transform(&base_mesh, true)?;
+
+        // The uncertainty Region within the Ellipse in its current Frame.
+        let unc = this.get_unc_frm(FrameRef::Current)?;
+
+        // Transform the ellipse centre (defining point 0) into the current
+        // Frame.
         let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
-        let transformed = map.transform(&pts, true)?;
-        let current_frame = this.data.frameset.current().snapshot();
-        let naxes = current_frame.naxes();
-        let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
-            .map(|i| transformed.point(i)[..naxes].to_vec())
-            .collect();
-        let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, new_points);
-        data.uncertainty = this.data.uncertainty.clone();
-        let mut result: DynRegion = Box::new(Ellipse { data });
-        result.reg_overlay(self, true);
-        Ok(result.clone_box())
+        let ps2 = map.transform(&pts, true)?;
+        let nc = ps2.ncoord();
+        let cen: Vec<f64> = (0..nc).map(|ic| ps2.point(0)[ic]).collect();
+        let ok = cen.iter().all(|&v| v != BAD_VALUE);
+
+        // Find the best fitting Circle through the mesh, degrading the Ellipse
+        // to a Circle if every mesh point falls on the Circle boundary.
+        let mut adopted = false;
+        if ok {
+            if let Some(newreg) = super::circle::best_circle(&mesh, &cen, unc.as_ref())? {
+                if newreg.reg_pins(&mesh, None)? {
+                    new = Box::new(newreg);
+                    simpler = true;
+                    adopted = true;
+                }
+            }
+        }
+
+        // Otherwise, if the region is 2-D, re-fit an Ellipse to the mesh.
+        if !adopted && ok && nc == 2 {
+            if let Some(newreg) = best_ellipse(&mesh, &cen, unc.as_ref())? {
+                if newreg.reg_pins(&mesh, None)? {
+                    new = Box::new(newreg);
+                    simpler = true;
+                }
+            }
+        }
+
+        if simpler {
+            new.reg_overlay(self, true);
+            Ok(new.clone_box())
+        } else {
+            Ok(self.clone_box())
+        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

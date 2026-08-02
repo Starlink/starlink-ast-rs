@@ -414,12 +414,16 @@ also validate the new `*_set` serialization path.
 ## Gap CE-FIT (large) — Circle/Ellipse Simplify re-fit / validate / degrade
 
 ### Verdict
-OPEN. `Circle::simplified` (circle.rs:661-688) and `Ellipse::simplified`
-(ellipse.rs:627) are naive point-transform stubs: when the base→current Mapping
-is not a UnitMap they transform the defining points and rebuild the same class,
-assuming the mapping keeps a circle a circle. They do NOT mesh the boundary,
-re-fit, validate with `astRegPins`, or degrade — the exact branches C uses
-precisely because a non-conformal map turns a circle into a non-circle.
+CLOSED. `best_circle` (circle.c:176) and `best_ellipse` (ellipse.c:191) are
+ported as free helpers; both `Circle::simplified` and `Ellipse::simplified` now
+mesh the current-Frame boundary, re-fit, validate via `reg_pins`, and degrade
+class per the C control flow (Circle keeps its `!UnitMap` guard and adopts a
+best-circle fit without setting `simpler`; Ellipse always attempts and degrades
+to Circle first). Porting also revealed that `Ellipse::reg_base_mesh` used a
+single-shot rotation formula with a from-+X angle convention; C generates the
+mesh with two sequential `astOffset2` calls (move `dx` along the primary axis,
+then `dy` perpendicular) using the from-+Y `CalcPars` angle, so the mesh was
+rewritten to mirror C exactly, restoring byte-exact fitted-ellipse points.
 
 ### C reference — `circle.c:1840-1930` (Circle), `ellipse.c:1957+` (Ellipse)
 Circle (after `parent_simplify`):
@@ -480,13 +484,22 @@ Add to `gen_region_fixtures()`:
 - `cefit_ellipse_to_circle` — an Ellipse mapped through a Mapping that
   equalises the axes into a circle. Expect `.simp` to be a **Circle** (Ellipse
   degrades).
-- `cefit_circle_nonconformal_keep` — a Circle mapped through a shear/rotation so
-  neither BestCircle nor BestEllipse validates via RegPins. Expect `.simp` to
-  KEEP the original Circle (with its FrameSet) — the "no simplification" branch.
+- `cefit_circle_nonconformal_keep` — a Circle mapped through a NON-LINEAR
+  MathMap so neither BestCircle nor BestEllipse validates via RegPins. A linear
+  shear or rotation of a circle is still an ellipse (BestEllipse would validate
+  it), so a non-linear map is required to exercise the keep branch. Expect
+  `.simp` to KEEP the original Circle (with its live FrameSet) — the "no
+  simplification" branch.
+- `regbasepick_circle_permaxes` — a Circle mapped through an axis-swapping
+  PermMap. The Circle class cannot be axis-sliced, so `.simp` keeps the Circle
+  with its live PermMap FrameSet.
 
 The `cefit_circle_to_ellipse` and `cefit_ellipse_to_circle` fixtures are the
 ones the current naive stubs would fail; the conformal and non-conformal-keep
-fixtures pin the boundaries.
+fixtures pin the boundaries. As landed, `cefit_circle_conformal` keeps a Circle
+carrying its live ZoomMap FrameSet (the best-circle branch adopts the fit but
+does NOT set `simpler`, so the returned Region is the original with its
+FrameSet, not a collapsed Circle).
 
 ---
 

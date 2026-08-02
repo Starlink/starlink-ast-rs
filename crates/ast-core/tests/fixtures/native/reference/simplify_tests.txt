@@ -311,6 +311,11 @@ defunc_cmpregion_component_unc | simplify_fixtures/defunc_cmpregion_component_un
 simpstab_box_linear_unc | simplify_fixtures/simpstab_box_linear_unc.map | simplify_fixtures/simpstab_box_linear_unc.simp |
 simpstab_box_nonlinear_unc | simplify_fixtures/simpstab_box_nonlinear_unc.map | simplify_fixtures/simpstab_box_nonlinear_unc.simp |
 simpstab_permmap_slice_unc | simplify_fixtures/simpstab_permmap_slice_unc.map | simplify_fixtures/simpstab_permmap_slice_unc.simp |
+cefit_circle_conformal | simplify_fixtures/cefit_circle_conformal.map | simplify_fixtures/cefit_circle_conformal.simp |
+cefit_circle_to_ellipse | simplify_fixtures/cefit_circle_to_ellipse.map | simplify_fixtures/cefit_circle_to_ellipse.simp |
+cefit_ellipse_to_circle | simplify_fixtures/cefit_ellipse_to_circle.map | simplify_fixtures/cefit_ellipse_to_circle.simp |
+cefit_circle_nonconformal_keep | simplify_fixtures/cefit_circle_nonconformal_keep.map | simplify_fixtures/cefit_circle_nonconformal_keep.simp |
+regbasepick_circle_permaxes | simplify_fixtures/regbasepick_circle_permaxes.map | simplify_fixtures/regbasepick_circle_permaxes.simp |
 
 # Wcsconv-derived integration fixture. Captures the pixel->IWC mapping the
 # FitsChan write path simplifies for the gappt_fits-wcs test. Both Rust and
