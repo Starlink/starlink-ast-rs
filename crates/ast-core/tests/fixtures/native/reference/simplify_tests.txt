@@ -13,6 +13,12 @@
 spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec_cel_invert.simp |
 
 # Scenario fixtures (integration regressions, stay in ast_tester/).
+# lsst/rigby: astequal-only because their .simp references were captured from a
+# C run that emitted NO inline `\t#` comments (0 comment lines in both files),
+# whereas our Channel serializer always emits them. The object content matches
+# byte-for-byte once comments are ignored; the byte-exact diff would trip on the
+# comment text alone, so we compare by astequal. (rigby also exercises the
+# celestial WinMat Scl->1.0 path — see project_rigby_winmat_trace.)
 brad  | brad.map  | brad.simp  |
 lsst1 | lsst1.map | lsst1.simp |
 lsst  | lsst.ast  | lsst.simp  | yes
@@ -162,6 +168,17 @@ matrix_swap_win_simplifies | simplify_fixtures/matrix_swap_win_simplifies.map | 
 
 
 # Negative (guard-rejection) fixtures: same file in both columns, astequal only.
+#
+# These prove a map that should NOT simplify is returned structurally
+# unchanged. The reference is the raw un-simplified input (no `IsSimp` tag).
+# Rust's `simplify()` always tags its returned map `IsSimp = 1` even when it
+# made no change, so the ONLY serialization difference from the reference is
+# that one tag line — the transform and every other token match byte-for-byte.
+# The byte-exact string diff would flag that tag; astequal ignores it, so these
+# run astequal-only. (Exceptions carry their own inline note below:
+# neg_box_asymmetric_2d is byte-exact and runs the full diff;
+# neg_time_5arg_mismatch additionally differs by a single last-ulp digit in one
+# TimeMap argument — see its entry.)
 neg_matrix_diag_unequal | simplify_fixtures/neg_matrix_diag_unequal.map | simplify_fixtures/neg_matrix_diag_unequal.map | yes
 neg_matrix_full_offdiag | simplify_fixtures/neg_matrix_full_offdiag.map | simplify_fixtures/neg_matrix_full_offdiag.map | yes
 neg_matrix_parallel_no_merge | simplify_fixtures/neg_matrix_parallel_no_merge.map | simplify_fixtures/neg_matrix_parallel_no_merge.map | yes
@@ -193,7 +210,7 @@ neg_matrix_perm_not_bidirectional | simplify_fixtures/neg_matrix_perm_not_bidire
 # encoding (X1=centre[0], X2=centre[1], X3=corner[0], X4=corner[1]).
 # Any layout-iteration bug in serial::{read,write}_pointset_node would
 # corrupt the off-diagonal entries (X2 and X3) here.
-neg_box_asymmetric_2d   | simplify_fixtures/neg_box_asymmetric_2d.map   | simplify_fixtures/neg_box_asymmetric_2d.map   | yes
+neg_box_asymmetric_2d   | simplify_fixtures/neg_box_asymmetric_2d.map   | simplify_fixtures/neg_box_asymmetric_2d.map   |
 neg_ratemap_nonratemap_neighbour | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | yes
 neg_ratemap_different_inner | simplify_fixtures/neg_ratemap_different_inner.map | simplify_fixtures/neg_ratemap_different_inner.map | yes
 neg_sph_polarlong_mismatch | simplify_fixtures/neg_sph_polarlong_mismatch.map | simplify_fixtures/neg_sph_polarlong_mismatch.map | yes
@@ -240,6 +257,10 @@ neg_grism_zoom_before_fwd | simplify_fixtures/neg_grism_zoom_before_fwd.map | si
 neg_grism_nonzoom_before_inv | simplify_fixtures/neg_grism_nonzoom_before_inv.map | simplify_fixtures/neg_grism_nonzoom_before_inv.map | yes
 neg_win_mixed_no_selfsimplify | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | yes
 neg_ratemap_parallel    | simplify_fixtures/neg_ratemap_parallel.map    | simplify_fixtures/neg_ratemap_parallel.map    | yes
+# Besides the shared IsSimp tag, one TimeMap argument (Time1f) differs in its
+# last ulp (-3799.9547800119039 vs C -3799.9547800119035): the 5-argument
+# MJD->BEPOCH conversion accumulates cancellation-amplified libm drift below the
+# astequal threshold. astequal-only.
 neg_time_5arg_mismatch  | simplify_fixtures/neg_time_5arg_mismatch.map  | simplify_fixtures/neg_time_5arg_mismatch.map  | yes
 neg_spec_6arg_mismatch  | simplify_fixtures/neg_spec_6arg_mismatch.map  | simplify_fixtures/neg_spec_6arg_mismatch.map  | yes
 neg_sla_4arg_mismatch   | simplify_fixtures/neg_sla_4arg_mismatch.map   | simplify_fixtures/neg_sla_4arg_mismatch.map   | yes
@@ -343,15 +364,34 @@ cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtur
 cap_cmpmap_02            | simplify_fixtures/cap_cmpmap_02.map | simplify_fixtures/cap_cmpmap_02.simp |
 cap_cmpmap_03            | simplify_fixtures/cap_cmpmap_03.map | simplify_fixtures/cap_cmpmap_03.simp |
 cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp | yes
+# cap_interval_01: the Prism->Interval collapse is astequal-equal (same region
+# geometry), but its serialized default uncertainty region diverges in two ways
+# astequal cannot see: (1) C emits Fill=0.02 where we emit Closed=1 — the
+# default-uncertainty Box carries a different FillFactor/Closed attribute set
+# (tracked as Phase 5 gap MERGE-FF, docs/audits/region-phase5-parity-spec.md);
+# (2) the time (4th) axis half-width prints as X7=5.787e-10 in C vs 5.0e-05 for
+# us — a factor of exactly 86400 (s/day), i.e. C stores the encapsulated
+# uncertainty in days while we leave it in seconds. Both are genuine parity
+# gaps in the uncertainty-region port, not precision noise; astequal-only until
+# they are closed.
 cap_interval_01          | simplify_fixtures/cap_interval_01.map | simplify_fixtures/cap_interval_01.simp | yes
 cap_lutmap_01            | simplify_fixtures/cap_lutmap_01.map | simplify_fixtures/cap_lutmap_01.simp |
 cap_mathmap_01           | simplify_fixtures/cap_mathmap_01.map | simplify_fixtures/cap_mathmap_01.simp |
 cap_matrixmap_01         | simplify_fixtures/cap_matrixmap_01.map | simplify_fixtures/cap_matrixmap_01.simp |
 cap_matrixmap_02         | simplify_fixtures/cap_matrixmap_02.map | simplify_fixtures/cap_matrixmap_02.simp |
+# cap_matrixmap_03: structure identical; four matrix elements (M2, M3, IM1,
+# IM3) differ at a relative ~1.6e-11 from C. The MatrixMap merge inverts a 2x2
+# block; the small numbers here (M2/M3 ~1e-4) amplify libm rounding in the
+# matrix-inversion (pal dmat) path above the 4-ulp string tolerance but well
+# below the astequal threshold. Real math, astequal-only.
 cap_matrixmap_03         | simplify_fixtures/cap_matrixmap_03.map | simplify_fixtures/cap_matrixmap_03.simp | yes
 cap_matrixmap_04         | simplify_fixtures/cap_matrixmap_04.map | simplify_fixtures/cap_matrixmap_04.simp |
 cap_permmap_01           | simplify_fixtures/cap_permmap_01.map | simplify_fixtures/cap_permmap_01.simp |
 cap_permmap_02           | simplify_fixtures/cap_permmap_02.map | simplify_fixtures/cap_permmap_02.simp |
+# cap_pointlist_01: simplifies to a Prism; astequal-equal and transform-equal.
+# The encapsulated PointList's X5/X6 coordinates differ from the committed .simp
+# at ~1e-14 relative (3.1241551949160478 vs ...575), cross-build libm drift in
+# the point projection below the astequal threshold. astequal-only.
 cap_pointlist_01         | simplify_fixtures/cap_pointlist_01.map | simplify_fixtures/cap_pointlist_01.simp | yes
 cap_pointlist_02         | simplify_fixtures/cap_pointlist_02.map | simplify_fixtures/cap_pointlist_02.simp |
 cap_slamap_01            | simplify_fixtures/cap_slamap_01.map | simplify_fixtures/cap_slamap_01.simp |
@@ -378,6 +418,10 @@ cap_specmap_12           | simplify_fixtures/cap_specmap_12.map | simplify_fixtu
 cap_specmap_13           | simplify_fixtures/cap_specmap_13.map | simplify_fixtures/cap_specmap_13.simp |
 cap_specmap_14           | simplify_fixtures/cap_specmap_14.map | simplify_fixtures/cap_specmap_14.simp |
 cap_sphmap_01            | simplify_fixtures/cap_sphmap_01.map | simplify_fixtures/cap_sphmap_01.simp |
+# cap_timemap_01: structure identical; a single TimeMap argument (Time1b)
+# differs in its last ulp (-6.6895549625895119e-04 vs C ...5108). Last-digit
+# libm drift in the MJD-conversion constant, below the astequal threshold.
+# astequal-only.
 cap_timemap_01           | simplify_fixtures/cap_timemap_01.map | simplify_fixtures/cap_timemap_01.simp | yes
 cap_timemap_03           | simplify_fixtures/cap_timemap_03.map | simplify_fixtures/cap_timemap_03.simp |
 cap_timemap_04           | simplify_fixtures/cap_timemap_04.map | simplify_fixtures/cap_timemap_04.simp |
@@ -390,6 +434,12 @@ cap_unitnormmap_01       | simplify_fixtures/cap_unitnormmap_01.map | simplify_f
 cap_wcsmap_01            | simplify_fixtures/cap_wcsmap_01.map | simplify_fixtures/cap_wcsmap_01.simp |
 cap_winmap_01            | simplify_fixtures/cap_winmap_01.map | simplify_fixtures/cap_winmap_01.simp |
 cap_winmap_02            | simplify_fixtures/cap_winmap_02.map | simplify_fixtures/cap_winmap_02.simp |
+# cap_winmap_03: structure identical except C's inner ShiftMap emits an extra
+# Sft2 = -1.0061396160665481e-16 line for axis 2 where our WinMap->ShiftMap
+# conversion computes that shift as exactly 0.0 (which the ShiftMap serializer
+# omits, only emitting nonzero shifts). C's residue is a sub-ulp rounding
+# artefact of its shift extraction; both are astequal-equal (|-1e-16| is far
+# below threshold). astequal-only.
 cap_winmap_03            | simplify_fixtures/cap_winmap_03.map | simplify_fixtures/cap_winmap_03.simp | yes
 cap_winmap_04            | simplify_fixtures/cap_winmap_04.map | simplify_fixtures/cap_winmap_04.simp |
 cap_zoommap_01           | simplify_fixtures/cap_zoommap_01.map | simplify_fixtures/cap_zoommap_01.simp |
@@ -413,8 +463,8 @@ neg_zoom_parallel_lone           | simplify_fixtures/neg_zoom_parallel_lone.map 
 neg_cmpmap_neighbour_nonexcmpmap | simplify_fixtures/neg_cmpmap_neighbour_nonexcmpmap.map | simplify_fixtures/neg_cmpmap_neighbour_nonexcmpmap.map | yes
 neg_tranmap_oneway       | simplify_fixtures/neg_tranmap_oneway.map | simplify_fixtures/neg_tranmap_oneway.map | yes
 neg_math_inv_text_mismatch | simplify_fixtures/neg_math_inv_text_mismatch.map | simplify_fixtures/neg_math_inv_text_mismatch.map | yes
-pcd_search_blocked       | simplify_fixtures/pcd_search_blocked.map | simplify_fixtures/pcd_search_blocked.simp | yes
-cmpmap_solo_after_unit   | simplify_fixtures/cmpmap_solo_after_unit.map | simplify_fixtures/cmpmap_solo_after_unit.simp | yes
+pcd_search_blocked       | simplify_fixtures/pcd_search_blocked.map | simplify_fixtures/pcd_search_blocked.simp |
+cmpmap_solo_after_unit   | simplify_fixtures/cmpmap_solo_after_unit.map | simplify_fixtures/cmpmap_solo_after_unit.simp |
 neg_normmap_diff_frame         | simplify_fixtures/neg_normmap_diff_frame.map | simplify_fixtures/neg_normmap_diff_frame.map | yes
 neg_normmap_inv_diff_frame     | simplify_fixtures/neg_normmap_inv_diff_frame.map | simplify_fixtures/neg_normmap_inv_diff_frame.map | yes
 neg_normmap_parallel_sky       | simplify_fixtures/neg_normmap_parallel_sky.map | simplify_fixtures/neg_normmap_parallel_sky.map | yes
@@ -441,8 +491,8 @@ neg_switchmap_parallel           | simplify_fixtures/neg_switchmap_parallel.map 
 switchmap_inverse_cancel_tail      | simplify_fixtures/switchmap_inverse_cancel_tail.map | simplify_fixtures/switchmap_inverse_cancel_tail.simp |
 switchmap_fwdonly_simplify         | simplify_fixtures/switchmap_fwdonly_simplify.map | simplify_fixtures/switchmap_fwdonly_simplify.simp |
 switchmap_invonly_simplify         | simplify_fixtures/switchmap_invonly_simplify.map | simplify_fixtures/switchmap_invonly_simplify.simp |
-switchmap_inv_invonly              | simplify_fixtures/switchmap_inv_invonly.map | simplify_fixtures/switchmap_inv_invonly.map | yes
-switchmap_inv_fwdonly              | simplify_fixtures/switchmap_inv_fwdonly.map | simplify_fixtures/switchmap_inv_fwdonly.map | yes
+switchmap_inv_invonly              | simplify_fixtures/switchmap_inv_invonly.map | simplify_fixtures/switchmap_inv_invonly.simp |
+switchmap_inv_fwdonly              | simplify_fixtures/switchmap_inv_fwdonly.map | simplify_fixtures/switchmap_inv_fwdonly.simp |
 neg_switchmap_series_lower         | simplify_fixtures/neg_switchmap_series_lower.map | simplify_fixtures/neg_switchmap_series_lower.map | yes
 neg_unitnormmap_inv_fwd_diffcentre       | simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map | simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map | yes
 neg_unitnormmap_shift_inv                | simplify_fixtures/neg_unitnormmap_shift_inv.map | simplify_fixtures/neg_unitnormmap_shift_inv.map | yes
@@ -477,6 +527,12 @@ neg_pcd_perm_nonswap       | simplify_fixtures/neg_pcd_perm_nonswap.map | simpli
 sph_matrix_sandwich_negz       | simplify_fixtures/sph_matrix_sandwich_negz.map | simplify_fixtures/sph_matrix_sandwich_negz.simp |
 specmap_invert_normalize       | simplify_fixtures/specmap_invert_normalize.map | simplify_fixtures/specmap_invert_normalize.simp |
 slamap_invert_normalize        | simplify_fixtures/slamap_invert_normalize.map | simplify_fixtures/slamap_invert_normalize.simp |
+# timemap_invert_normalize: structure identical; the TCB offset Time7b differs
+# in its last ulp (-6.3794510090455121e-04 vs committed -...5511). The .simp was
+# generated by an upstream C build whose libm rounds the invert-normalize
+# constant one ulp away from ours; rebuilding the reference with the local
+# oracle reproduces our value exactly. Genuine cross-build last-ulp variation,
+# below the astequal threshold. astequal-only.
 timemap_invert_normalize       | simplify_fixtures/timemap_invert_normalize.map | simplify_fixtures/timemap_invert_normalize.simp | yes
 specmap_pair_cancel            | simplify_fixtures/specmap_pair_cancel.map | simplify_fixtures/specmap_pair_cancel.simp |
 slamap_pair_cancel             | simplify_fixtures/slamap_pair_cancel.map | simplify_fixtures/slamap_pair_cancel.simp |
@@ -485,8 +541,8 @@ pcd_inverse_cancel_tail        | simplify_fixtures/pcd_inverse_cancel_tail.map |
 nullregion_merge_tail          | simplify_fixtures/nullregion_merge_tail.map | simplify_fixtures/nullregion_merge_tail.simp |
 grism_inverse_cancel_tail      | simplify_fixtures/grism_inverse_cancel_tail.map | simplify_fixtures/grism_inverse_cancel_tail.simp |
 tranmap_merge_tail             | simplify_fixtures/tranmap_merge_tail.map | simplify_fixtures/tranmap_merge_tail.simp |
-interval_remapped_simplify     | simplify_fixtures/interval_remapped_simplify.map | simplify_fixtures/interval_remapped_simplify.map | yes
-interval_halfinf_simplify      | simplify_fixtures/interval_halfinf_simplify.map | simplify_fixtures/interval_halfinf_simplify.map | yes
+interval_remapped_simplify     | simplify_fixtures/interval_remapped_simplify.map | simplify_fixtures/interval_remapped_simplify.map |
+interval_halfinf_simplify      | simplify_fixtures/interval_halfinf_simplify.map | simplify_fixtures/interval_halfinf_simplify.map |
 
 # --- Unsupported classes: fixtures exercising Mapping/Region classes not
 # --- yet ported (IntraMap, XphMap, StcResourceProfile) have been moved to
