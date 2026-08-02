@@ -844,3 +844,173 @@ mod check_tests {
         assert_eq!(misses[0].row, 1);
     }
 }
+
+enum Outcome {
+    Pass,
+    LoadFail(String),
+    Skipped(String),
+    SkippedByOverride(String),
+    Arity(String),
+    Mismatch(Vec<AxisMiss>),
+}
+
+struct SectionReport {
+    relpath: String,
+    forward: bool,
+    outcome: Outcome,
+}
+
+/// Does relpath end with the given extension?
+fn has_ext(relpath: &str, ext: &str) -> bool {
+    relpath.rsplit('.').next().map(|e| format!(".{e}")) == Some(ext.to_string())
+}
+
+/// Stem (path minus final extension).
+fn path_stem(relpath: &str) -> &str {
+    match relpath.rfind('.') {
+        Some(i) => &relpath[..i],
+        None => relpath,
+    }
+}
+
+/// Run every section of one oracle file. Never asserts; records an outcome
+/// per section. Section pairing mirrors the C generator's emission order.
+fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
+    let sections = parse_oracle(oracle_text).expect("oracle parses");
+    let mut reports = Vec::with_capacity(sections.len());
+
+    // One-slot caches keyed on the C emission order.
+    let mut prev_fwd: Option<Section> = None; // for round-trip
+    let mut prev_map: Option<(Section, Vec<Vec<f64>>)> = None; // (.map fwd, its live outputs) for equiv
+
+    for s in sections {
+        let loaded = match load_fixture(&s.relpath) {
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                reports.push(SectionReport {
+                    relpath: s.relpath.clone(),
+                    forward: s.forward,
+                    outcome: Outcome::Skipped("not a mapping".into()),
+                });
+                continue;
+            }
+            Err(e) => {
+                reports.push(SectionReport {
+                    relpath: s.relpath.clone(),
+                    forward: s.forward,
+                    outcome: Outcome::LoadFail(e),
+                });
+                continue;
+            }
+        };
+        let map = loaded.mapping().expect("load_fixture guaranteed a mapping");
+        let live = match transform_section(map, &s) {
+            Ok(v) => v,
+            Err(e) => {
+                reports.push(SectionReport {
+                    relpath: s.relpath.clone(),
+                    forward: s.forward,
+                    outcome: Outcome::Arity(e),
+                });
+                continue;
+            }
+        };
+        let angular = angular_flags(&loaded, &s);
+        let mut misses: Vec<AxisMiss> = Vec::new();
+        let mut skipped_by_override = false;
+
+        // Golden check (fwd or inv), unless disabled by an override.
+        if overrides.golden_off(&s.relpath, s.forward) {
+            skipped_by_override = true;
+        } else {
+            let kind = if s.forward {
+                CheckKind::GoldenFwd
+            } else {
+                CheckKind::GoldenInv
+            };
+            misses.extend(compare_golden(kind, &live, &s.outputs, &angular));
+        }
+
+        // Round-trip: an inverse section of a GRID fixture paired with the
+        // immediately-preceding forward section of the same fixture.
+        let grid = has_ext(&s.relpath, ".head") || has_ext(&s.relpath, ".ast");
+        if !s.forward && grid {
+            if let Some(fwd) = prev_fwd
+                .as_ref()
+                .filter(|f| f.relpath == s.relpath && f.nin == s.nout && f.npoint() == s.npoint())
+            {
+                if let Some((rtol, atol)) = overrides.rtrip(&s.relpath) {
+                    misses.extend(compare_rtrip(map, fwd, &live, rtol, atol));
+                }
+            }
+        }
+
+        // Equivalence: a .simp forward whose stem matches the cached .map fwd.
+        if s.forward && has_ext(&s.relpath, ".simp") {
+            if let Some((mmap, mlive)) = prev_map.as_ref().filter(|(m, _)| {
+                m.nout == s.nout
+                    && m.npoint() == s.npoint()
+                    && path_stem(&m.relpath) == path_stem(&s.relpath)
+            }) {
+                misses.extend(compare_equiv(
+                    mlive,
+                    &live,
+                    &mmap.outputs,
+                    &s.outputs,
+                    &angular,
+                ));
+            }
+        }
+
+        // Update caches (before moving `s` into the report).
+        if s.forward {
+            prev_fwd = Some(clone_section_meta(&s));
+        }
+        if s.forward && has_ext(&s.relpath, ".map") {
+            prev_map = Some((clone_section_meta(&s), live.clone()));
+        }
+
+        let outcome = if skipped_by_override && misses.is_empty() {
+            Outcome::SkippedByOverride(format!("golden-{}", if s.forward { "fwd" } else { "inv" }))
+        } else if misses.is_empty() {
+            Outcome::Pass
+        } else {
+            Outcome::Mismatch(misses)
+        };
+        reports.push(SectionReport {
+            relpath: s.relpath,
+            forward: s.forward,
+            outcome,
+        });
+    }
+    reports
+}
+
+/// Cheap copy of a section including its data columns (the caches need the
+/// recorded inputs/outputs for later pairing).
+fn clone_section_meta(s: &Section) -> Section {
+    Section {
+        relpath: s.relpath.clone(),
+        nin: s.nin,
+        nout: s.nout,
+        forward: s.forward,
+        inputs: s.inputs.clone(),
+        outputs: s.outputs.clone(),
+    }
+}
+
+#[cfg(test)]
+mod driver_tests {
+    use super::*;
+
+    #[test]
+    fn runs_framesets_oracle_without_panicking() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+        let oracle = std::fs::read_to_string(format!("{dir}/framesets.oracle")).unwrap();
+        let ov = parse_overrides(
+            &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt")).unwrap(),
+        );
+        let reports = run_oracle(&oracle, &ov);
+        assert_eq!(reports.len(), 20, "framesets.oracle has 20 sections");
+    }
+}
