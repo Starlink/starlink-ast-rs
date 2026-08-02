@@ -473,6 +473,130 @@ fn transform_section(map: &dyn Mapping, s: &Section) -> Result<Vec<Vec<f64>>, St
     Ok(cols)
 }
 
+use std::collections::HashMap;
+
+#[derive(Clone, Copy)]
+struct RtripRule {
+    off: bool,
+    rtol: f64,
+    atol: f64,
+}
+#[derive(Clone, Copy, Default)]
+struct GoldenRule {
+    fwd_off: bool,
+    inv_off: bool,
+}
+
+/// Parsed `transform_oracle_overrides.txt`. Round-trip and golden rules are
+/// looked up independently, matching the C checker.
+#[derive(Default)]
+struct Overrides {
+    rtrip: HashMap<String, RtripRule>,
+    golden: HashMap<String, GoldenRule>,
+}
+
+fn parse_overrides(text: &str) -> Overrides {
+    let mut o = Overrides::default();
+    for line in text.lines() {
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
+        let mut it = line.split_whitespace();
+        let (Some(rel), Some(what)) = (it.next(), it.next()) else {
+            continue;
+        };
+        if let Some(kind) = what.strip_prefix("golden") {
+            let entry = o.golden.entry(rel.to_string()).or_default();
+            let (fwd, inv) = match kind {
+                "" => (true, true), // "golden"
+                "-fwd" => (true, false),
+                "-inv" => (false, true),
+                _ => (false, false),
+            };
+            entry.fwd_off |= fwd;
+            entry.inv_off |= inv;
+        } else if what == "off" {
+            o.rtrip.insert(
+                rel.to_string(),
+                RtripRule {
+                    off: true,
+                    rtol: 0.0,
+                    atol: 0.0,
+                },
+            );
+        } else {
+            // "<rtol> <atol>" loosened tolerances (fall back to defaults).
+            let rtol = what.parse().unwrap_or(RTRIP_RTOL);
+            let atol = it.next().and_then(|t| t.parse().ok()).unwrap_or(RTRIP_ATOL);
+            o.rtrip.insert(
+                rel.to_string(),
+                RtripRule {
+                    off: false,
+                    rtol,
+                    atol,
+                },
+            );
+        }
+    }
+    o
+}
+
+impl Overrides {
+    /// `None` = round-trip disabled for this fixture; `Some((rtol, atol))`
+    /// = enabled with these tolerances.
+    fn rtrip(&self, relpath: &str) -> Option<(f64, f64)> {
+        match self.rtrip.get(relpath) {
+            Some(r) if r.off => None,
+            Some(r) => Some((r.rtol, r.atol)),
+            None => Some((RTRIP_RTOL, RTRIP_ATOL)),
+        }
+    }
+
+    fn golden_off(&self, relpath: &str, forward: bool) -> bool {
+        self.golden
+            .get(relpath)
+            .is_some_and(|g| if forward { g.fwd_off } else { g.inv_off })
+    }
+}
+
+#[cfg(test)]
+mod override_tests {
+    use super::*;
+
+    #[test]
+    fn parses_independent_rtrip_and_golden_lines() {
+        let text = "# comment\n\
+                    rtoff.head off\n\
+                    loose.head 2e-3 4e-2\n\
+                    noisy.map golden-inv off\n\
+                    both.map golden off\n\
+                    fwdonly.map golden-fwd off\n";
+        let o = parse_overrides(text);
+        assert_eq!(o.rtrip("rtoff.head"), None);
+        assert_eq!(o.rtrip("loose.head"), Some((2e-3, 4e-2)));
+        // golden-only fixture keeps default round-trip enabled
+        assert_eq!(o.rtrip("noisy.map"), Some((RTRIP_RTOL, RTRIP_ATOL)));
+        assert!(!o.golden_off("rtoff.head", true) && !o.golden_off("rtoff.head", false));
+        assert!(!o.golden_off("noisy.map", true) && o.golden_off("noisy.map", false));
+        assert!(o.golden_off("both.map", true) && o.golden_off("both.map", false));
+        assert!(o.golden_off("fwdonly.map", true) && !o.golden_off("fwdonly.map", false));
+    }
+
+    #[test]
+    fn parses_committed_overrides_file() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/oracle/transform_oracle_overrides.txt"
+        );
+        let o = parse_overrides(&std::fs::read_to_string(path).unwrap());
+        // tnx-cheb.head has round-trip disabled.
+        assert_eq!(o.rtrip("tnx-cheb.head"), None);
+        // neg_unitnormmap_inv_fwd_diffcentre.map skips golden inverse only.
+        let rel = "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map";
+        assert!(o.golden_off(rel, false) && !o.golden_off(rel, true));
+    }
+}
+
 #[cfg(test)]
 mod transform_tests {
     use super::*;
