@@ -22,11 +22,24 @@ use super::rate::numeric_rate;
 use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
 
-/// Radians per degree.
+/// Radians per degree, as used *inside* the SAOimage `platepos` / `platepix`
+/// routines (their literal `cond2r`). This truncated value is part of the
+/// faithful port of those routines and must not be substituted with the
+/// full-precision constant.
 const COND2R: f64 = 1.745329252e-2;
 
-/// Arcseconds per radian.
+/// Arcseconds per radian, as used inside `platepos` / `platepix` (their
+/// literal `cons2r` / `conr2s`).
 const CONS2R: f64 = 206264.8062470964;
+
+/// Degrees per radian (`AST__DR2D`), used by the `Transform` wrapper to
+/// convert the sky coordinates fed to `platepix`. Full precision, matching C.
+const DR2D: f64 = 180.0 / std::f64::consts::PI;
+
+/// Radians per degree (`AST__DD2R`), used by the `Transform` wrapper to
+/// convert the sky coordinates returned by `platepos`. Full precision,
+/// matching C.
+const DD2R: f64 = std::f64::consts::PI / 180.0;
 
 /// 2 * pi.
 const TWOPI: f64 = std::f64::consts::TAU;
@@ -470,8 +483,8 @@ impl Mapping for DssMap {
                     let mut ypos = 0.0;
                     if self.platepos(inp[0], inp[1], &mut xpos, &mut ypos).is_ok() {
                         // platepos returns degrees; convert to radians
-                        outp[0] = xpos * COND2R;
-                        outp[1] = ypos * COND2R;
+                        outp[0] = xpos * DD2R;
+                        outp[1] = ypos * DD2R;
                     } else {
                         outp[0] = BAD_VALUE;
                         outp[1] = BAD_VALUE;
@@ -488,8 +501,8 @@ impl Mapping for DssMap {
                     outp[1] = BAD_VALUE;
                 } else {
                     // Convert from radians to degrees for platepix
-                    let ra_deg = inp[0] / COND2R;
-                    let dec_deg = inp[1] / COND2R;
+                    let ra_deg = inp[0] * DR2D;
+                    let dec_deg = inp[1] * DR2D;
                     let mut xpix = 0.0;
                     let mut ypix = 0.0;
                     if self.platepix(ra_deg, dec_deg, &mut xpix, &mut ypix).is_ok() {
