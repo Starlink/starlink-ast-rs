@@ -143,6 +143,75 @@ fn parse_oracle(text: &str) -> Result<Vec<Section>, String> {
     Ok(sections)
 }
 
+use std::path::PathBuf;
+
+/// Resolve an oracle relpath (rooted at the C `ast_tester/` dir) to the
+/// on-disk Rust fixture. Searches a fixed, ordered list of the directories
+/// the corpus was vendored into, trying the full relpath then the basename
+/// in each. `native/generated/` is intentionally excluded: it holds
+/// Rust-produced dumps that differ from the C-provenance source.
+fn resolve_fixture(relpath: &str) -> Option<PathBuf> {
+    const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    const DIRS: [&str; 8] = [
+        "wcsconv/inputs",
+        "native/reference",
+        "native/reference/simplify_fixtures",
+        "native/reference/simplify_fixtures_unsupported/xphmap",
+        "native/reference/simplify_fixtures_unsupported/intramap",
+        "native/reference/simplify_fixtures_unsupported/stcresourceprofile",
+        "wcsconv/expected",
+        "fits/headers",
+    ];
+    let basename = relpath.rsplit('/').next().unwrap_or(relpath);
+    for dir in DIRS {
+        for candidate in [
+            format!("{ROOT}/{dir}/{relpath}"),
+            format!("{ROOT}/{dir}/{basename}"),
+        ] {
+            let p = PathBuf::from(candidate);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::*;
+
+    #[test]
+    fn resolves_every_oracle_relpath() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+        let mut missing = Vec::new();
+        for name in [
+            "simplify_fixtures.oracle",
+            "headers.oracle",
+            "framesets.oracle",
+        ] {
+            let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
+            for s in parse_oracle(&text).unwrap() {
+                if resolve_fixture(&s.relpath).is_none() {
+                    missing.push(s.relpath);
+                }
+            }
+        }
+        missing.sort();
+        missing.dedup();
+        assert!(missing.is_empty(), "unresolved fixtures: {missing:?}");
+    }
+
+    #[test]
+    fn never_resolves_into_generated() {
+        // lsst.ast exists in native/generated (Rust output) and in
+        // native/reference + wcsconv/inputs (C source). The resolver must
+        // pick a non-generated copy.
+        let p = resolve_fixture("lsst.ast").expect("lsst.ast resolves");
+        assert!(!p.to_string_lossy().contains("native/generated"));
+    }
+}
+
 #[cfg(test)]
 mod parse_tests {
     use super::*;
