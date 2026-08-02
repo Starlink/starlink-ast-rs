@@ -1,19 +1,25 @@
 #include <stddef.h>
 
+#include "proj.h"
+
 /*
- * Stub implementation of astSizeOf_ for standalone wcslib compilation.
+ * astSizeOf_ for the ast-core FFI build of wcslib.
  *
- * In the full AST library, astSizeOf_ returns the allocated size of a
- * memory block tracked by AST's memory subsystem. Here we return 0
- * which causes the ZPN projection initialiser to treat the p array as
- * empty — this is safe because:
+ * In the full AST library astSizeOf_ returns the allocated byte size of a
+ * memory block tracked by AST's memory subsystem.  Its only caller in this
+ * vendored subset is astZPNset (proj.c), which computes
  *
- * 1. During bootstrap, no code actually calls the ZPN projection.
- * 2. Once ast-core provides its real memory infrastructure, this stub
- *    will be replaced by the proper implementation.
+ *     plen = astSizeOf( prj->p )/sizeof( double );
+ *
+ * and scans prj->p[plen-1 .. 0] for the highest nonzero polynomial
+ * coefficient.  ast-core always backs prj->p and prj->p2 with a
+ * WCSLIB_MXPAR-length double buffer (see PrjParams in wcslib.rs), so the
+ * true allocation size of every block passed here is
+ * WCSLIB_MXPAR * sizeof( double ).  Reporting that lets astZPNset locate
+ * the coefficient degree exactly as the reference library does.
  */
 size_t astSizeOf_( const void *ptr, int *status ) {
     (void)ptr;
     (void)status;
-    return 0;
+    return WCSLIB_MXPAR * sizeof( double );
 }

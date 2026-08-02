@@ -361,6 +361,9 @@ unsafe extern "C" {
 /// internal pointers.
 pub(crate) struct PrjParams {
     inner: AstPrjPrm,
+    /// The projection type, retained so the wcslib setup routine can be
+    /// re-run when a parameter is changed.
+    proj: WcsProjection,
     /// Backing storage for `inner.p` (latitude-axis projection parameters).
     p_storage: Box<[f64; WCSLIB_MXPAR]>,
     /// Backing storage for `inner.p2` (longitude-axis projection parameters, TPN only).
@@ -421,12 +424,41 @@ impl PrjParams {
             rev: None,
         };
 
+        // Run the wcslib setup routine.  For the polynomial projections
+        // (ZPN/ZPX/TPN) this cannot complete while the parameter arrays are
+        // still all-zero: `astZPNset` returns early before installing the
+        // `astPRJfwd`/`astPRJrev` pointers.  That is not a construction
+        // failure — the C library defers the same setup until the
+        // parameters are present (it runs `astZPNset` lazily inside
+        // `astZPNfwd`).  Rerun the setup from [`set_param`] once parameters
+        // have been supplied so the pointers get installed.
+        Self::run_setup(&mut inner, proj)?;
+
+        Ok(Self {
+            inner,
+            proj,
+            p_storage,
+            p2_storage,
+        })
+    }
+
+    /// Run the wcslib projection setup routine for `proj`, installing the
+    /// forward/reverse function pointers into `inner`.
+    ///
+    /// `astPRJset` returns non-zero only for an unrecognised projection
+    /// code, which is a genuine error.  The per-projection setup routines
+    /// (e.g. `astZPNset`) may decline to install pointers when the
+    /// parameters are not yet valid; that is expected during construction
+    /// and is not reported as an error here.
+    fn run_setup(inner: &mut AstPrjPrm, proj: WcsProjection) -> AstResult<()> {
+        // Force wcslib to recompute intermediate values on the next call.
+        inner.flag = 0;
         // TPN is not handled by astPRJset (it's defined in tpn.c with
         // its own astTPNset entry point).
         let status = if matches!(proj, WcsProjection::Tpn) {
-            unsafe { astTPNset(&mut inner) }
+            unsafe { astTPNset(inner) }
         } else {
-            unsafe { astPRJset(code.as_ptr(), &mut inner) }
+            unsafe { astPRJset(inner.code.as_ptr(), inner) }
         };
         if status != 0 {
             return Err(AstError::new(
@@ -438,12 +470,7 @@ impl PrjParams {
                 ),
             ));
         }
-
-        Ok(Self {
-            inner,
-            p_storage,
-            p2_storage,
-        })
+        Ok(())
     }
 
     /// Set a projection parameter.
@@ -452,8 +479,11 @@ impl PrjParams {
     /// - `m`: parameter index (0-based, must be < [`WCSLIB_MXPAR`]).
     /// - `value`: the parameter value.
     ///
-    /// Sets the internal `flag` to 0 so that the next forward/reverse
-    /// call triggers re-initialisation inside wcslib.
+    /// Re-runs the wcslib setup routine so that the forward/reverse
+    /// function pointers are (re)installed for the now-current parameters.
+    /// The polynomial projections leave those pointers unset when
+    /// constructed with empty parameters, so this call is what makes them
+    /// callable once coefficients have been supplied.
     ///
     /// # Panics
     ///
@@ -468,8 +498,11 @@ impl PrjParams {
             _ => unreachable!(),
         }
 
-        // Force re-initialisation on next use.
-        self.inner.flag = 0;
+        // Re-run setup: this resets `flag` so wcslib recomputes intermediate
+        // values, and installs the fwd/rev pointers now that parameters are
+        // present.  The only failure mode is an unrecognised projection
+        // code, which cannot occur after a successful `new`.
+        let _ = Self::run_setup(&mut self.inner, self.proj);
     }
 
     /// Read a projection parameter.
@@ -790,16 +823,28 @@ mod tests {
     }
 
     #[test]
-    fn set_param_resets_flag() {
+    fn set_param_keeps_projection_callable() {
         let mut prj = PrjParams::new(WcsProjection::Tan).unwrap();
-        // After init, flag should be non-zero.
+        // After init, the projection is set up (flag holds the type code).
         assert_ne!(prj.inner.flag, 0);
-        // Setting a parameter should reset flag to 0.
+        // Setting a parameter re-runs setup, leaving the projection callable.
         prj.set_param(0, 0, 1.0);
-        assert_eq!(prj.inner.flag, 0);
-        // Forward call should still work (triggers re-init inside wcslib).
+        assert_ne!(prj.inner.flag, 0);
         let result = prj.forward(0.0, 90.0);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn zpn_callable_only_after_parameter_set() {
+        // ZPN's setup routine declines to install the forward/reverse
+        // pointers while its coefficients are all zero, so a freshly
+        // constructed ZPN has no usable transform.
+        let mut prj = PrjParams::new(WcsProjection::Zpn).unwrap();
+        assert!(prj.forward(0.0, 80.0).is_err());
+        // Supplying the linear coefficient makes the polynomial well-defined;
+        // set_param re-runs setup and installs the pointers.
+        prj.set_param(0, 1, 1.0);
+        assert!(prj.forward(0.0, 80.0).is_ok());
     }
 
     #[test]
