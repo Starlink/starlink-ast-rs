@@ -13,6 +13,7 @@
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
+use ast_core::coords::PointSet;
 use ast_core::fitschan::FitsChan;
 use ast_core::frames::{Frame, FrameRef};
 use ast_core::from_native_string;
@@ -408,5 +409,125 @@ mod loader_tests {
         assert_eq!(m.nin(), 2);
         assert!(l.frame(true).is_some(), "forward -> current frame");
         assert!(l.frame(false).is_some(), "inverse -> base frame");
+    }
+}
+
+/// Port of C `axis_is_cyclic`: is output `axis` (0-based slice index) of
+/// `frame` 2*pi-periodic?  Normalizes a test point and a copy shifted by
+/// 2*pi on that axis; the axis is cyclic iff the normalized values agree to
+/// within 1e-6.
+fn axis_is_cyclic(frame: &dyn Frame, axis: usize) -> bool {
+    let naxes = frame.naxes();
+    if axis >= naxes {
+        return false;
+    }
+    let mut p = vec![0.1_f64; naxes];
+    let mut q = vec![0.1_f64; naxes];
+    q[axis] += TWO_PI;
+    if frame.norm(&mut p).is_err() || frame.norm(&mut q).is_err() {
+        return false;
+    }
+    (p[axis] - q[axis]).abs() < 1e-6
+}
+
+/// One angular flag per output axis (`section.nout` long).  For a bare
+/// Mapping (no frame) every axis is treated as angular — the C fallback.
+fn angular_flags(loaded: &Loaded, section: &Section) -> Vec<bool> {
+    match loaded.frame(section.forward) {
+        Some(frame) => (0..section.nout)
+            .map(|a| axis_is_cyclic(frame, a))
+            .collect(),
+        None => vec![true; section.nout],
+    }
+}
+
+/// Run the recorded inputs through the live mapping.  Returns column-major
+/// `[nout][npoint]`.  Returns `Err` on arity mismatch (a structural fixture
+/// change) or on a transform error.
+fn transform_section(map: &dyn Mapping, s: &Section) -> Result<Vec<Vec<f64>>, String> {
+    let (want_in, want_out) = if s.forward {
+        (s.nin, s.nout)
+    } else {
+        (s.nout, s.nin)
+    };
+    if map.nin() != want_in || map.nout() != want_out {
+        return Err(format!(
+            "arity: fixture nin/nout {}/{} != mapping {}/{}",
+            want_in,
+            want_out,
+            map.nin(),
+            map.nout()
+        ));
+    }
+    let npoint = s.npoint();
+    let rows: Vec<Vec<f64>> = (0..npoint)
+        .map(|r| (0..s.nin).map(|a| s.inputs[a][r]).collect())
+        .collect();
+    let pts = PointSet::from_rows(rows);
+    let out = map
+        .transform(&pts, s.forward)
+        .map_err(|e| format!("transform: {e}"))?;
+    let cols: Vec<Vec<f64>> = (0..s.nout)
+        .map(|a| (0..out.npoint()).map(|r| out.point(r)[a]).collect())
+        .collect();
+    Ok(cols)
+}
+
+#[cfg(test)]
+mod transform_tests {
+    use super::*;
+
+    #[test]
+    fn skyframe_longitude_is_cyclic_pixel_is_not() {
+        let l = load_fixture("cobe.head").unwrap().unwrap();
+        let flags = angular_flags(
+            &l,
+            &Section {
+                relpath: "cobe.head".into(),
+                nin: 2,
+                nout: 2,
+                forward: true,
+                inputs: vec![vec![], vec![]],
+                outputs: vec![vec![], vec![]],
+            },
+        );
+        assert!(
+            flags.iter().any(|&f| f),
+            "at least one axis cyclic (sky lon)"
+        );
+    }
+
+    #[test]
+    fn bare_mapping_all_axes_angular() {
+        let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
+            .unwrap()
+            .unwrap();
+        let s = Section {
+            relpath: "x.map".into(),
+            nin: 2,
+            nout: 2,
+            forward: true,
+            inputs: vec![vec![], vec![]],
+            outputs: vec![vec![], vec![]],
+        };
+        assert_eq!(angular_flags(&l, &s), vec![true, true]);
+    }
+
+    #[test]
+    fn transform_reproduces_oracle_shape() {
+        let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
+            .unwrap()
+            .unwrap();
+        let s = Section {
+            relpath: "x.map".into(),
+            nin: 2,
+            nout: 2,
+            forward: true,
+            inputs: vec![vec![1.0, 2.0], vec![3.0, 4.0]],
+            outputs: vec![vec![0.0, 0.0], vec![0.0, 0.0]],
+        };
+        let out = transform_section(l.mapping().unwrap(), &s).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].len(), 2);
     }
 }
