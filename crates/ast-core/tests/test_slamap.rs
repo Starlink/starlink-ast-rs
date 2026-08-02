@@ -253,10 +253,11 @@ fn multi_step_fk4_fk5_galactic() {
     assert!(gl.is_finite(), "galactic longitude should be finite");
     assert!(gb.is_finite(), "galactic latitude should be finite");
 
-    // Round-trip through inverse
+    // Round-trip through inverse. The FK45Z/FK54Z leg leaves a genuine ~5e-11
+    // residual (see fk4_fk5_round_trip); 1e-9 sits above it with teeth.
     let back = sla.transform(&out, false).unwrap();
-    assert_angle_close(back.point(0)[0], ra_fk4, 1e-6, "fk4 ra round-trip");
-    assert_close(back.point(0)[1], dec_fk4, 1e-6, "fk4 dec round-trip");
+    assert_angle_close(back.point(0)[0], ra_fk4, 1e-9, "fk4 ra round-trip");
+    assert_close(back.point(0)[1], dec_fk4, 1e-9, "fk4 dec round-trip");
 }
 
 // ===========================================================================
@@ -532,8 +533,13 @@ fn fk4_fk5_round_trip() {
     let fk5 = sla.transform(&pts, true).unwrap();
     let back = sla.transform(&fk5, false).unwrap();
 
-    assert_close(back.point(0)[0], ra, 1e-6, "fk45z ra round-trip");
-    assert_close(back.point(0)[1], dec, 1e-6, "fk45z dec round-trip");
+    // FK45Z then FK54Z is not a perfect inverse: the E-term and fictitious
+    // proper-motion handling leaves a genuine ~6e-11 residual, present
+    // identically in the C library (both call the same vendored palFk45z /
+    // palFk54z). 1e-9 sits comfortably above that residual while still
+    // catching a real regression.
+    assert_close(back.point(0)[0], ra, 1e-9, "fk45z ra round-trip");
+    assert_close(back.point(0)[1], dec, 1e-9, "fk45z dec round-trip");
 }
 
 // ===========================================================================
