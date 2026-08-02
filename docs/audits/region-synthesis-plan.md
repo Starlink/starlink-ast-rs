@@ -159,10 +159,49 @@ boundary test C uses in Simplify/Overlap.
    still needed after I-CACHE.
 
 ### Phase 5 — Cross-cutting parity (not on the 4 critical paths; land last)
-R-UNC (map_region uncertainty carry — see memory, needs axis-slice care),
-PR-MAP (Prism::map_region), RB-PICK, DEFUNC, SETUNC, SIMP-STAB, MERGE-FF,
-CE-FIT. These are correctness gaps that do not block the 4 failures but should
-be tracked; each is independently landable and re-runs the byte-exact corpus.
+
+Re-verified against HEAD (2026-08-01, after the shared-`map_region` refactor).
+The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
+
+**CLOSED by the refactor (no work needed):**
+- **R-UNC** — `map_region` is now a shared trait default (mod.rs:394) that
+  deep-copies uncertainty via `clone_region()` (data.rs:87); the axis-reducing
+  path slices uncertainty per-class in `reg_base_pick_axes` (box_region.rs:984,
+  interval.rs:934, pointlist.rs:527, nullregion.rs:263), faithfully mirroring C
+  `RegBasePick` (box.c:2731 etc.). Matches C `astMapRegion` (region.c:5704).
+- **PR-MAP** — C `Prism` has no `MapRegion` vtab override; the Rust shared
+  default is the faithful behaviour.
+
+**OPEN — genuine gaps, each independently landable, re-run byte-exact corpus:**
+- **RB-PICK** (small) — base `reg_base_pick_axes` (mod.rs:568) always returns
+  `None`; C base (region.c:8342-8388) returns a *copy* when ALL base axes are
+  selected (permuted if needed), NULL only for a strict subset. Also missing
+  `CmpRegion` (cmpregion.c:2096) and `Prism` (prism.c:2287) overrides; the
+  mod.rs:565-567 doc comment wrongly lists them as using the default.
+- **DEFUNC** (medium, PARTIAL) — base `get_def_unc` (mod.rs:257) arithmetic is
+  correct, but 4 per-class overrides are missing: Interval (interval.c:583, uses
+  own limits not bounds), NullRegion (nullregion.c:170, zero-radius Circle not
+  Box), Prism (prism.c:1207, Prism of component default uncs), CmpRegion
+  (cmpregion.c:1090, delegates to a component with explicit unc).
+- **SETUNC** (medium) — bare field store in 9 classes (mod.rs:240 + per-class);
+  C `SetUnc` (region.c:10754-10911) remaps the unc into the base Frame,
+  validates centro-symmetry via `astRegCentre`, negates if unbounded, clears
+  `RegionFS` on UnitMap, re-centres at the first defining point, resets cache.
+  Interacts with DEFUNC/`get_unc_frm` (unnormalised uncs flow downstream).
+- **SIMP-STAB** (medium) — the 0.1%-tolerance uncertainty-stability check in C
+  `Region::Simplify` (region.c:11145-11312, test at 11277-11284) is absent; no
+  shared parent-Region simplify helper exists (each class re-implements the
+  base→current map simplify inline and none touch uncertainty). Factoring out a
+  shared parent-simplify benefits CE-FIT too.
+- **MERGE-FF** (medium) — merge helpers omit FillFactor (product) and MeshSize
+  (product-of-ratios × default) scaling (merge_util.rs:43, pointlist.rs:592,
+  nullregion.rs:308) per C `MergeBox` (box.c:2049-2085). Blocked on adding
+  `mesh_size_set` / `fill_factor_set` tracking flags to `RegionData` (only
+  `closed_set` exists today).
+- **CE-FIT** (large) — Circle/Ellipse `simplified()` (circle.rs, ellipse.rs) are
+  naive point-transform stubs; C (circle.c:1769, ellipse.c:1879) mesh the
+  boundary, re-fit via `astBestCircle`/`astBestEllipse` (unported), validate
+  with `astRegPins`, and degrade Ellipse→Circle when warranted.
 
 ## 5. Risks
 
