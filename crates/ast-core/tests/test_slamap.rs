@@ -709,12 +709,14 @@ fn matrix_op_longitude_is_normalized_to_0_2pi() {
     let out = m.transform(&pin, true).unwrap();
     let got = out.point(0)[0];
     assert!((0.0..2.0 * PI).contains(&got), "lon in [0,2pi): {got}");
-    // palPrec for equal epochs is not bit-exactly the identity: it carries an
-    // ~1e-7 rotation (verified against the C oracle, which returns
-    // 5.2831853953259547 for this point). The tolerance accommodates that
-    // real palPrec behaviour; the point is essentially unchanged apart from
-    // the [0, 2pi) wrap applied by palDranrm.
-    assert_angle_close(got, neg_lon, 1e-6, "wrapped value equals input mod 2pi");
+    // palPrec for equal epochs is not bit-exactly the identity: eraPmat06
+    // evaluates the precession polynomials even at t=0, so PREC(2000,2000)
+    // carries an ~1e-7 rotation. The exact C-oracle output for this point is
+    // 5.2831853953259547 (palDranrm applied to the precessed longitude), which
+    // Rust reproduces to the last bit because pal::prec calls the same
+    // vendored palPrec. Assert against that golden, not the raw input.
+    const GOLDEN_PREC_LON: f64 = 5.283_185_395_325_954_7;
+    assert_close(got, GOLDEN_PREC_LON, 1e-9, "PREC lon matches C golden");
 }
 
 // Off-J2000 EQECL golden value from C. C builds
