@@ -43,11 +43,18 @@ fn code_to_overlap(code: i32) -> Overlap {
 /// (`nullregion.c:874`) is used; otherwise the generic geometric `OverlapX`
 /// (region.c:6996) runs.
 pub(crate) fn compute_overlap(region_a: &dyn Region, region_b: &dyn Region) -> AstResult<Overlap> {
-    // Dispatch on the class of `that` (== region_b), mirroring the C vtab
-    // dispatch of astOverlapX on its first argument.
-    if region_b.as_any().is::<NullRegion>() {
+    // NullRegion overrides both `Overlap` and `OverlapX` (nullregion.c:317-318),
+    // so its special-casing fires when *either* operand is a NullRegion: with
+    // `this` a NullRegion, `NullRegion::Overlap` calls its own `OverlapX`; with
+    // `that` a NullRegion, the base `Region::Overlap` dispatches `astOverlapX`
+    // onto it. `null_overlap` inspects both operands and returns the
+    // `astOverlap(this, that)` convention, so the fixed `(region_b, region_a)`
+    // argument order yields `astOverlap(region_a, region_b)` in either case.
+    if region_a.as_any().is::<NullRegion>() || region_b.as_any().is::<NullRegion>() {
         return Ok(code_to_overlap(null_overlap(region_b, region_a)?));
     }
+    // Otherwise the generic geometric OverlapX (region.c:6996) runs, dispatched
+    // on the class of `that` (== region_b).
     Ok(code_to_overlap(overlap_x(region_b, region_a)?))
 }
 

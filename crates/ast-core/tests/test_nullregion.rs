@@ -23,7 +23,15 @@ fn construct_basic() {
 
     assert_eq!(nr.naxes(), 2);
     assert!(!nr.is_negated());
-    assert!(!nr.is_bounded());
+    // Un-negated NullRegion is the empty set: bounded (a finite region has a
+    // finite negation). Only the negation (the whole space) is unbounded.
+    assert!(nr.is_bounded());
+
+    let mut neg = NullRegionBuilder::new(BasicFrameBuilder::new(2).build().unwrap())
+        .build()
+        .unwrap();
+    neg.negate();
+    assert!(!neg.is_bounded());
 }
 
 #[test]
@@ -201,9 +209,9 @@ fn map_region_preserves_null() {
     let zoom = ZoomMap::new(2, 2.0).unwrap();
     let mapped = nr.map_region(&zoom, &frame).unwrap();
 
-    // Still a NullRegion — nothing inside.
+    // Still a NullRegion — nothing inside, and (un-negated) bounded.
     assert!(!mapped.point_in_region(&[0.0, 0.0]).unwrap());
-    assert!(!mapped.is_bounded());
+    assert!(mapped.is_bounded());
 }
 
 #[test]
