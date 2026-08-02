@@ -305,12 +305,19 @@ fn and_bounded_if_either_bounded() {
         .build()
         .unwrap();
 
-    // A NullRegion (unbounded).
-    let null = NullRegionBuilder::new(frame.clone()).build().unwrap();
+    // A negated circle: the exterior of a disc is unbounded.
+    let mut unbounded = CircleBuilder::new(frame.clone(), vec![10.0, 10.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+    unbounded.negate();
+    assert!(!unbounded.is_bounded());
 
     // AND of bounded + unbounded -> bounded (intersection can't be larger
-    // than the bounded component).
-    let cmp = CmpRegionBuilder::new(circle, null, CmpOperator::And)
+    // than the bounded component). C cmpregion.c GetBounded: result = 1 when
+    // either component is bounded.
+    let cmp = CmpRegionBuilder::new(circle, unbounded, CmpOperator::And)
         .unwrap()
         .build()
         .unwrap();
@@ -318,13 +325,41 @@ fn and_bounded_if_either_bounded() {
 }
 
 #[test]
+fn null_region_is_bounded() {
+    // An un-negated NullRegion is the empty set, which C treats as bounded
+    // (nullregion.c has no GetBounded override, so it inherits the base rule
+    // region.c:3358 -> !Negated). Its negated form (the whole space) is not.
+    let frame = BasicFrameBuilder::new(2).build().unwrap();
+    let null = NullRegionBuilder::new(frame.clone()).build().unwrap();
+    assert!(null.is_bounded());
+
+    let mut neg_null = NullRegionBuilder::new(frame).build().unwrap();
+    neg_null.negate();
+    assert!(!neg_null.is_bounded());
+}
+
+#[test]
 fn and_unbounded_if_both_unbounded() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    let null1 = NullRegionBuilder::new(frame.clone()).build().unwrap();
-    let null2 = NullRegionBuilder::new(frame).build().unwrap();
 
-    // AND of two unbounded -> unbounded.
-    let cmp = CmpRegionBuilder::new(null1, null2, CmpOperator::And)
+    // Two negated circles centred far apart: both exteriors are unbounded
+    // and their overlap is Partial (C overlap code 4). C cmpregion.c
+    // GetBounded: when neither AND component is bounded, the result is
+    // unbounded for overlap codes 1/4/6.
+    let mut a = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+    a.negate();
+    let mut b = CircleBuilder::new(frame, vec![10.0, 10.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+    b.negate();
+
+    let cmp = CmpRegionBuilder::new(a, b, CmpOperator::And)
         .unwrap()
         .build()
         .unwrap();
@@ -340,10 +375,18 @@ fn or_bounded_only_if_both_bounded() {
         .radius(3.0)
         .build()
         .unwrap();
-    let null = NullRegionBuilder::new(frame.clone()).build().unwrap();
 
-    // OR of bounded + unbounded -> unbounded.
-    let cmp = CmpRegionBuilder::new(circle.clone(), null, CmpOperator::Or)
+    // A negated circle is unbounded; OR with an unbounded component is
+    // unbounded (C cmpregion.c GetBounded: result = 0 if either OR component
+    // is unbounded).
+    let mut unbounded = CircleBuilder::new(frame.clone(), vec![10.0, 10.0])
+        .unwrap()
+        .radius(1.0)
+        .build()
+        .unwrap();
+    unbounded.negate();
+
+    let cmp = CmpRegionBuilder::new(circle.clone(), unbounded, CmpOperator::Or)
         .unwrap()
         .build()
         .unwrap();
