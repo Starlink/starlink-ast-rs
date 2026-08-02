@@ -655,3 +655,192 @@ mod transform_tests {
         assert_eq!(out[0].len(), 2);
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CheckKind {
+    GoldenFwd,
+    GoldenInv,
+    Equivalence,
+    RoundTrip,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AxisMiss {
+    check: CheckKind,
+    row: usize,
+    axis: usize,
+    reference: f64,
+    got: f64,
+    rel: f64,
+}
+
+fn rel_diff(got: f64, reference: f64) -> f64 {
+    let d = (got - reference).abs();
+    if reference != 0.0 {
+        d / reference.abs()
+    } else {
+        d
+    }
+}
+
+/// Wrap-aware on angular axes, plain otherwise (C `axis_match`).
+fn axis_match(got: f64, reference: f64, rtol: f64, atol: f64, angular: bool) -> bool {
+    if angular {
+        within_tol_wrap(got, reference, rtol, atol)
+    } else {
+        within_tol(got, reference, rtol, atol)
+    }
+}
+
+/// Golden check A/B: live output vs recorded output, per axis.
+fn compare_golden(
+    check: CheckKind,
+    live: &[Vec<f64>],
+    recorded: &[Vec<f64>],
+    angular: &[bool],
+) -> Vec<AxisMiss> {
+    let mut misses = Vec::new();
+    let npoint = recorded.first().map_or(0, Vec::len);
+    for row in 0..npoint {
+        for (axis, rec_col) in recorded.iter().enumerate() {
+            let (got, reference) = (live[axis][row], rec_col[row]);
+            if !axis_match(got, reference, GOLDEN_RTOL, GOLDEN_ATOL, angular[axis]) {
+                misses.push(AxisMiss {
+                    check,
+                    row,
+                    axis,
+                    reference,
+                    got,
+                    rel: rel_diff(got, reference),
+                });
+            }
+        }
+    }
+    misses
+}
+
+/// Equivalence check C, gated on stored agreement: compare live `.map` vs
+/// live `.simp` only where the recorded values already agree.
+fn compare_equiv(
+    map_live: &[Vec<f64>],
+    simp_live: &[Vec<f64>],
+    map_ref: &[Vec<f64>],
+    simp_ref: &[Vec<f64>],
+    angular: &[bool],
+) -> Vec<AxisMiss> {
+    let mut misses = Vec::new();
+    let npoint = map_ref.first().map_or(0, Vec::len);
+    for row in 0..npoint {
+        for axis in 0..map_ref.len() {
+            if !axis_match(
+                map_ref[axis][row],
+                simp_ref[axis][row],
+                EQUIV_RTOL,
+                EQUIV_ATOL,
+                angular[axis],
+            ) {
+                continue; // out of shared domain at generation time
+            }
+            let (a, b) = (map_live[axis][row], simp_live[axis][row]);
+            if !axis_match(a, b, EQUIV_RTOL, EQUIV_ATOL, angular[axis]) {
+                misses.push(AxisMiss {
+                    check: CheckKind::Equivalence,
+                    row,
+                    axis,
+                    reference: b,
+                    got: a,
+                    rel: rel_diff(a, b),
+                });
+            }
+        }
+    }
+    misses
+}
+
+/// Round-trip accuracy (GRID corpora): inverse(forward(P)) ~= P, BAD-skipping
+/// and alias-aware (a different recovered pixel is accepted if it
+/// forward-maps to the same sky). `inv_live` is the live output of the
+/// inverse section (i.e. inverse(forward(P))).
+fn compare_rtrip(
+    map: &dyn Mapping,
+    fwd: &Section,
+    inv_live: &[Vec<f64>],
+    rtol: f64,
+    atol: f64,
+) -> Vec<AxisMiss> {
+    let mut misses = Vec::new();
+    let npoint = fwd.npoint();
+    // Forward-transform the recovered pixels to detect aliased preimages.
+    let recovered = Section {
+        relpath: fwd.relpath.clone(),
+        nin: fwd.nin,
+        nout: fwd.nin,
+        forward: true,
+        inputs: inv_live.to_vec(),
+        outputs: Vec::new(),
+    };
+    let sky2 = transform_section(map, &recovered).ok();
+
+    for row in 0..npoint {
+        // Skip points whose forward output was BAD (no inverse).
+        if (0..fwd.nout).any(|b| fwd.outputs[b][row] == BAD_VALUE) {
+            continue;
+        }
+        let pixel_ok =
+            (0..fwd.nin).all(|a| within_tol(inv_live[a][row], fwd.inputs[a][row], rtol, atol));
+        if pixel_ok {
+            continue;
+        }
+        // Different pixel: accept if it forward-maps to the same sky.
+        if let Some(sky2) = &sky2 {
+            let alias = (0..fwd.nout).all(|b| {
+                within_tol_wrap(sky2[b][row], fwd.outputs[b][row], GOLDEN_RTOL, GOLDEN_ATOL)
+            });
+            if alias {
+                continue;
+            }
+        }
+        for (a, (inv_col, inp_col)) in inv_live.iter().zip(fwd.inputs.iter()).enumerate() {
+            let (got, reference) = (inv_col[row], inp_col[row]);
+            if !within_tol(got, reference, rtol, atol) {
+                misses.push(AxisMiss {
+                    check: CheckKind::RoundTrip,
+                    row,
+                    axis: a,
+                    reference,
+                    got,
+                    rel: rel_diff(got, reference),
+                });
+            }
+        }
+    }
+    misses
+}
+
+#[cfg(test)]
+mod check_tests {
+    use super::*;
+
+    #[test]
+    fn golden_flags_out_of_tolerance_axis() {
+        let live = vec![vec![1.0, 2.0]];
+        let recorded = vec![vec![1.0, 2.5]];
+        let misses = compare_golden(CheckKind::GoldenFwd, &live, &recorded, &[false]);
+        assert_eq!(misses.len(), 1);
+        assert_eq!((misses[0].row, misses[0].axis), (1, 0));
+    }
+
+    #[test]
+    fn equiv_skips_points_where_recorded_disagree() {
+        // recorded map/simp disagree at row 0 (out of shared domain) but the
+        // live values also disagree there — must be skipped. Row 1 agrees in
+        // the record but diverges live — must be flagged.
+        let map_ref = vec![vec![10.0, 1.0]];
+        let simp_ref = vec![vec![20.0, 1.0]];
+        let map_live = vec![vec![10.0, 1.0]];
+        let simp_live = vec![vec![20.0, 9.0]];
+        let misses = compare_equiv(&map_live, &simp_live, &map_ref, &simp_ref, &[false]);
+        assert_eq!(misses.len(), 1);
+        assert_eq!(misses[0].row, 1);
+    }
+}
