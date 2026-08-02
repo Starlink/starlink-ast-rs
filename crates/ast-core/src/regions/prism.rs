@@ -449,6 +449,15 @@ impl Region for Prism {
         self.data.closed_set = true;
     }
 
+    fn test_closed(&self) -> bool {
+        self.data.closed_set
+    }
+
+    fn set_closed_raw(&mut self, closed: bool, set: bool) {
+        self.data.closed = closed;
+        self.data.closed_set = set;
+    }
+
     fn fill_factor(&self) -> f64 {
         self.data.effective_fill_factor()
     }
@@ -461,6 +470,10 @@ impl Region for Prism {
         self.data.fill_factor_set
     }
 
+    fn clear_fill_factor(&mut self) {
+        self.data.clear_fill_factor();
+    }
+
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -471,6 +484,10 @@ impl Region for Prism {
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
+    }
+
+    fn clear_mesh_size(&mut self) {
+        self.data.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
@@ -596,6 +613,10 @@ impl Region for Prism {
 
     fn set_region_fs_flag(&mut self, value: bool) {
         self.data.set_region_fs_flag(value);
+    }
+
+    fn region_fs_flag(&self) -> bool {
+        self.data.region_fs
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
@@ -994,25 +1015,29 @@ impl Mapping for Prism {
         }
 
         // Carry any explicitly-supplied uncertainty forward to the new Region
-        // (prism.c:3494). Each collapse branch above already maps its result
-        // into the parent's current Frame and simplifies it, which subsumes
-        // the parent Region Simplify's FrameSet step (region.c:11042) for a
-        // builder-constructed single-Frame FrameSet; the fallback is a clone
-        // of the supplied Prism.
+        // (prism.c:3494), then invoke the parent Region Simplify on it
+        // (prism.c:3502) to simplify the encapsulated FrameSet and uncertainty
+        // Region. The C split path always leaves `new` non-NULL (defaulting to
+        // a clone of the supplied Prism), so the parent simplify is always run;
+        // it returns the input unchanged when nothing simplifies.
         let mut result = match new {
             Some(mut region) => {
                 if let Some(unc) = self.data.uncertainty.clone() {
                     region.set_uncertainty(unc);
                 }
-                region
+                match region.parent_region_simplify()? {
+                    Some(simplified) => simplified,
+                    None => region,
+                }
             }
             None => self.clone_region(),
         };
 
         // If any simplification occurred, overlay the original Region
-        // attributes onto the result (prism.c:3512).
+        // attributes onto the result (prism.c:3514 passes unc=0: uncertainty
+        // is carried forward explicitly above, so it is left untouched here).
         if !(result.as_ref() as &dyn Mapping).equal(self as &dyn Mapping) {
-            result.reg_overlay(self);
+            result.reg_overlay(self, false);
         }
 
         Ok(result.clone_box())

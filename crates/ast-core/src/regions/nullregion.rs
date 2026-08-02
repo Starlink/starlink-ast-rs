@@ -164,6 +164,15 @@ impl Region for NullRegion {
         self.data.closed_set = true;
     }
 
+    fn test_closed(&self) -> bool {
+        self.data.closed_set
+    }
+
+    fn set_closed_raw(&mut self, closed: bool, set: bool) {
+        self.data.closed = closed;
+        self.data.closed_set = set;
+    }
+
     fn fill_factor(&self) -> f64 {
         self.data.effective_fill_factor()
     }
@@ -176,6 +185,10 @@ impl Region for NullRegion {
         self.data.fill_factor_set
     }
 
+    fn clear_fill_factor(&mut self) {
+        self.data.clear_fill_factor();
+    }
+
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -186,6 +199,10 @@ impl Region for NullRegion {
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
+    }
+
+    fn clear_mesh_size(&mut self) {
+        self.data.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
@@ -257,6 +274,10 @@ impl Region for NullRegion {
 
     fn set_region_fs_flag(&mut self, value: bool) {
         self.data.set_region_fs_flag(value);
+    }
+
+    fn region_fs_flag(&self) -> bool {
+        self.data.region_fs
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
@@ -471,28 +492,62 @@ impl Mapping for NullRegion {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let map = self
+        // Invoke the parent Region simplify first (nullregion.c:1376); it
+        // simplifies the encapsulated FrameSet and any explicit uncertainty.
+        // All further work is done on the returned copy.
+        let parent = self.parent_region_simplify()?;
+        let new_owned;
+        let new: &NullRegion = match &parent {
+            Some(p) => {
+                new_owned = p
+                    .as_ref()
+                    .as_any()
+                    .downcast_ref::<NullRegion>()
+                    .expect("parent_region_simplify preserves the Region class")
+                    .clone();
+                &new_owned
+            }
+            None => self,
+        };
+
+        // Test the base->current Mapping of the parent-simplified Region
+        // (nullregion.c:1379). A UnitMap means no geometric change is possible.
+        let map = new
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplified()?;
-        if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return Ok(self.clone_box());
+        let simpler = parent.is_some();
+
+        let mut result: DynRegion = if map.as_any().is::<UnitMap>() {
+            new.clone_region()
+        } else {
+            // Build a NullRegion on the parent-simplified current Frame,
+            // carrying the parent's uncertainty (nullregion.c:1386-1389).
+            let current_frame = new.data.frameset.current().snapshot();
+            let frameset = FrameSet::new(current_frame);
+            let mut data = RegionData::new(frameset, Vec::new());
+            data.negated = new.data.negated;
+            data.closed = new.data.closed;
+            data.closed_set = new.data.closed_set;
+            data.mesh_size = new.data.mesh_size;
+            data.mesh_size_set = new.data.mesh_size_set;
+            data.fill_factor = new.data.fill_factor;
+            data.fill_factor_set = new.data.fill_factor_set;
+            data.adaptive = new.data.adaptive;
+            data.uncertainty = new.data.uncertainty.clone();
+            Box::new(NullRegion { data })
+        };
+
+        // If any simplification occurred (FrameSet/uncertainty changed, or the
+        // Mapping was not a UnitMap), overlay the original Region's attributes
+        // and clear a fitted uncertainty if the original had none
+        // (nullregion.c:1400). Otherwise keep the original.
+        if simpler || !map.as_any().is::<UnitMap>() {
+            result.reg_overlay(self, true);
+            Ok(result.clone_box())
+        } else {
+            Ok(self.clone_box())
         }
-        // NullRegion has no defining points; just construct in current frame.
-        let current_frame = self.data.frameset.current().snapshot();
-        let frameset = FrameSet::new(current_frame);
-        let points = Vec::new();
-        let mut data = RegionData::new(frameset, points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.mesh_size_set = self.data.mesh_size_set;
-        data.fill_factor = self.data.fill_factor;
-        data.fill_factor_set = self.data.fill_factor_set;
-        data.adaptive = self.data.adaptive;
-        Ok(Box::new(NullRegion { data }))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

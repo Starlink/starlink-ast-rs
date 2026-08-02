@@ -478,6 +478,181 @@ fn geo_corner(frm: &dyn Frame, nc: usize, centre: &[f64], geolen: &[f64]) -> Ast
     Ok(p1)
 }
 
+/// Find the best-fitting Box through a mesh of points.
+///
+/// Faithful port of C `BestBox` (box.c:407). The `mesh` points are given in
+/// the Frame represented by `unc` (the current Frame of the Region being
+/// simplified). The box is fitted one axis at a time: the mesh extremes on
+/// each axis give a first guess of the lower/upper faces, then the values
+/// "close to" each face — within 20 uncertainty widths, or one tenth of the
+/// box size, whichever is smaller — are averaged with a single 3-sigma clip to
+/// reject values that actually lie on other faces. The resulting mean face
+/// positions become the box bounds on that axis. Returns `None` if every value
+/// on some axis is bad. The returned Box inherits `unc`'s Frame and carries
+/// `unc` as its uncertainty.
+fn best_box(frm: &dyn Frame, mesh: &PointSet, unc: &dyn Region) -> AstResult<Option<BoxRegion>> {
+    let np = mesh.npoint();
+    let nc = mesh.ncoord();
+
+    // Bounding box of the uncertainty region, giving the per-axis tolerance.
+    let (ulbnd, uubnd) = unc.get_region_bounds()?;
+
+    let mut blbnd = vec![0.0_f64; nc];
+    let mut bubnd = vec![0.0_f64; nc];
+    let mut axval = vec![0.0_f64; np];
+
+    // Fit the box one axis at a time.
+    for ic in 0..nc {
+        // Find the first good value on this axis.
+        let mut ip = 0;
+        let mut org = BAD_VALUE;
+        while ip < np {
+            org = mesh.point(ip)[ic];
+            axval[ip] = org;
+            if org != BAD_VALUE {
+                break;
+            }
+            ip += 1;
+        }
+
+        // Abort if all the axis values were bad.
+        if ip >= np {
+            return Ok(None);
+        }
+
+        // Find the upper and lower limits of the supplied mesh on this axis by
+        // accumulating signed geodesic increments away from the first value.
+        let mut lb = 0.0_f64;
+        let mut ub = 0.0_f64;
+        let mut p0 = org;
+        let mut d = 0.0_f64;
+        ip += 1;
+        while ip < np {
+            let p = mesh.point(ip)[ic];
+            let dinc = frm.ax_distance(ic + 1, p0, p)?;
+            if dinc != BAD_VALUE {
+                d += dinc;
+                if d < lb {
+                    lb = d;
+                }
+                if d > ub {
+                    ub = d;
+                }
+            }
+            axval[ip] = org + d;
+            p0 = p;
+            ip += 1;
+        }
+
+        // Convert relative offsets to actual axis values.
+        lb += org;
+        ub += org;
+
+        // Scan again for values "close to" the lower or upper bound: within 20
+        // uncertainty widths, or one tenth of the box size (smaller wins).
+        let mut lim = 20.0 * (uubnd[ic] - ulbnd[ic]);
+        let lim2 = 0.1 * (ub - lb);
+        if lim2 < lim {
+            lim = lim2;
+        }
+
+        let mut sxl = 0.0_f64;
+        let mut sxl2 = 0.0_f64;
+        let mut nxl = 0_usize;
+        let mut sxu = 0.0_f64;
+        let mut sxu2 = 0.0_f64;
+        let mut nxu = 0_usize;
+
+        for &v in axval.iter() {
+            if v != BAD_VALUE {
+                if (v - lb).abs() <= lim {
+                    sxl += v;
+                    sxl2 += v * v;
+                    nxl += 1;
+                } else if (v - ub).abs() <= lim {
+                    sxu += v;
+                    sxu2 += v * v;
+                    nxu += 1;
+                }
+            }
+        }
+
+        // Mean and clipping limit for the lower face.
+        let mut mxl;
+        let liml;
+        if nxl > 0 {
+            mxl = sxl / nxl as f64;
+            let mut var = if nxl > 1 {
+                sxl2 / nxl as f64 - mxl * mxl
+            } else {
+                0.0
+            };
+            let eps = 100.0 * mxl * f64::EPSILON;
+            if var < eps * eps {
+                var = eps;
+            } else {
+                var = 3.0 * var.sqrt();
+            }
+            liml = var;
+        } else {
+            mxl = lb;
+            liml = 0.0;
+        }
+
+        // Mean and clipping limit for the upper face.
+        let mut mxu;
+        let limu;
+        if nxu > 0 {
+            mxu = sxu / nxu as f64;
+            let mut var = if nxu > 1 {
+                sxu2 / nxu as f64 - mxu * mxu
+            } else {
+                0.0
+            };
+            let eps = 100.0 * mxu * f64::EPSILON;
+            if var < eps * eps {
+                var = eps;
+            } else {
+                var = 3.0 * var.sqrt();
+            }
+            limu = var;
+        } else {
+            mxu = ub;
+            limu = 0.0;
+        }
+
+        // Single 3-sigma clipping iteration to reject values on other faces.
+        sxl = 0.0;
+        nxl = 0;
+        sxu = 0.0;
+        nxu = 0;
+        for &v in axval.iter() {
+            if v != BAD_VALUE {
+                if (v - mxl).abs() <= liml {
+                    sxl += v;
+                    nxl += 1;
+                } else if (v - mxu).abs() <= limu {
+                    sxu += v;
+                    nxu += 1;
+                }
+            }
+        }
+
+        mxl = if nxl > 0 { sxl / nxl as f64 } else { lb };
+        mxu = if nxu > 0 { sxu / nxu as f64 } else { ub };
+
+        blbnd[ic] = mxl;
+        bubnd[ic] = mxu;
+    }
+
+    // Build the returned Box, inheriting the uncertainty's Frame and carrying
+    // `unc` as its own uncertainty (astBox( unc, 1, blbnd, bubnd, unc, ... )).
+    let box_frame = frm.snapshot();
+    let mut region = BoxRegion::from_bounds_frame(box_frame, &blbnd, &bubnd)?;
+    region.data.uncertainty = Some(unc.clone_region());
+    Ok(Some(region))
+}
+
 // ============================================================================
 // RegionGeometry implementation
 // ============================================================================
@@ -835,6 +1010,15 @@ impl Region for BoxRegion {
         self.data.closed_set = true;
     }
 
+    fn test_closed(&self) -> bool {
+        self.data.closed_set
+    }
+
+    fn set_closed_raw(&mut self, closed: bool, set: bool) {
+        self.data.closed = closed;
+        self.data.closed_set = set;
+    }
+
     fn fill_factor(&self) -> f64 {
         self.data.effective_fill_factor()
     }
@@ -847,6 +1031,10 @@ impl Region for BoxRegion {
         self.data.fill_factor_set
     }
 
+    fn clear_fill_factor(&mut self) {
+        self.data.clear_fill_factor();
+    }
+
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -857,6 +1045,10 @@ impl Region for BoxRegion {
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
+    }
+
+    fn clear_mesh_size(&mut self) {
+        self.data.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
@@ -947,6 +1139,10 @@ impl Region for BoxRegion {
 
     fn set_region_fs_flag(&mut self, value: bool) {
         self.data.set_region_fs_flag(value);
+    }
+
+    fn region_fs_flag(&self) -> bool {
+        self.data.region_fs
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
@@ -1272,61 +1468,136 @@ impl Mapping for BoxRegion {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let map = self
+        // Invoke the parent Region simplify first (box.c:3705); it simplifies
+        // the encapsulated FrameSet and any explicit uncertainty Region. All
+        // subsequent work is done on the returned copy. `simpler` tracks
+        // whether any simplification took place (box.c:3710).
+        let parent = self.parent_region_simplify()?;
+        let mut simpler = parent.is_some();
+        let parent_box;
+        let this: &BoxRegion = match &parent {
+            Some(p) => {
+                parent_box = p
+                    .as_ref()
+                    .as_any()
+                    .downcast_ref::<BoxRegion>()
+                    .expect("parent_region_simplify preserves the Region class")
+                    .clone();
+                &parent_box
+            }
+            None => self,
+        };
+
+        let map = this
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
         let simple_map = map.simplified()?;
-        if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return Ok(self.clone_box());
-        }
-        // Transform defining points to current frame to form a candidate
-        // remapped Box.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = simple_map.transform(&pts, true)?;
-        let current_frame = self.data.frameset.current().snapshot();
-        let naxes = current_frame.naxes();
-        let new_points: Vec<Vec<f64>> = (0..self.data.points.len())
-            .map(|i| transformed.point(i)[..naxes].to_vec())
-            .collect();
-        let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, new_points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.mesh_size_set = self.data.mesh_size_set;
-        data.fill_factor = self.data.fill_factor;
-        data.fill_factor_set = self.data.fill_factor_set;
-        data.adaptive = self.data.adaptive;
-        let candidate = BoxRegion { data };
 
-        // A direct point transform only yields a valid axis-aligned Box when
-        // the base->current Mapping preserves axis-alignment (diagonal
-        // scale, shift, permutation). For a shear or rotation the candidate
-        // box is strictly larger than the true region; verify via the
-        // boundary round-trip (box.c::Simplify, 3905). If the candidate is
-        // not exact, no simplification is possible — return the original Box
-        // unchanged (keeping its FrameSet).
-        let candidate_mesh = candidate.reg_base_mesh()?;
-        if !self.verify_remap_exact(simple_map.as_ref(), &candidate_mesh)? {
-            // The Box could not be re-defined as a Box in its current Frame.
-            // For a 2-D→2-D Box, try representing it as a Polygon whose four
-            // vertices are the transformed Box corners (box.c::Simplify, 3921).
-            if simple_map.nin() == 2 && simple_map.nout() == 2 {
-                if let Some(poly) = self.convert_to_polygon(simple_map.as_ref())? {
-                    return Ok(poly.clone_box());
+        // `new` holds the simplified Region (initially the parent-simplified
+        // copy). Any of the re-fit branches below replaces it and sets
+        // `simpler`. At the single exit the original Region's attributes are
+        // overlaid via astRegOverlay (box.c:4061).
+        let mut new: DynRegion = this.clone_region();
+
+        if !simple_map.as_ref().as_any().is::<UnitMap>() {
+            // Transform defining points to current frame to form a candidate
+            // remapped Box.
+            let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
+            let transformed = simple_map.transform(&pts, true)?;
+            let current_frame = this.data.frameset.current().snapshot();
+            let naxes = current_frame.naxes();
+            let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
+                .map(|i| transformed.point(i)[..naxes].to_vec())
+                .collect();
+            let frameset = FrameSet::new(current_frame);
+            let mut data = RegionData::new(frameset, new_points);
+            data.negated = this.data.negated;
+            data.closed = this.data.closed;
+            data.closed_set = this.data.closed_set;
+            data.mesh_size = this.data.mesh_size;
+            data.mesh_size_set = this.data.mesh_size_set;
+            data.fill_factor = this.data.fill_factor;
+            data.fill_factor_set = this.data.fill_factor_set;
+            data.adaptive = this.data.adaptive;
+            data.uncertainty = this.data.uncertainty.clone();
+            let candidate = BoxRegion { data };
+
+            // A direct point transform only yields a valid axis-aligned Box
+            // when the base->current Mapping preserves axis-alignment
+            // (diagonal scale, shift, permutation). For a shear or rotation
+            // the candidate box is strictly larger than the true region;
+            // verify via the boundary round-trip (box.c::Simplify, 3905).
+            let candidate_mesh = candidate.reg_base_mesh()?;
+            if this.verify_remap_exact(simple_map.as_ref(), &candidate_mesh)? {
+                new = Box::new(candidate);
+                simpler = true;
+            } else {
+                // The Box could not be re-defined as an axis-aligned Box by a
+                // direct corner transform. Fit the best Box through the
+                // current-Frame mesh (box.c::Simplify, 3895 → BestBox): a mesh
+                // whose points all fall on the fitted Box boundary (to within
+                // the uncertainty) means the current-Frame region really is a
+                // Box even though the corner transform was not exact — this
+                // keeps a nonlinear-but-separable remap (e.g. u=x*x) a Box
+                // rather than degrading it.
+                let base_mesh = this.reg_base_mesh()?;
+                let base_mesh_ps = PointSet::from_rows(base_mesh.iter().map(|p| p.as_slice()));
+                let mesh = simple_map.transform(&base_mesh_ps, true)?;
+                let unc = this.get_unc_frm(FrameRef::Current)?;
+                let cur_frame = this.data.frameset.current().snapshot();
+                let mut replaced = false;
+                if let Some(newbox) = best_box(cur_frame.as_ref(), &mesh, unc.as_ref())?
+                    && newbox.reg_pins(&mesh, None)?
+                {
+                    // Confirm the inverse: transform the fitted Box's own
+                    // boundary mesh back into the original base Frame and check
+                    // it lies on the original Box's boundary
+                    // (box.c::Simplify, 3905).
+                    let nb_base_mesh = newbox.reg_base_mesh()?;
+                    let nb_mesh_ps = PointSet::from_rows(nb_base_mesh.iter().map(|p| p.as_slice()));
+                    let nb_basemesh = simple_map.transform(&nb_mesh_ps, false)?;
+                    if this.reg_pins(&nb_basemesh, None)? {
+                        new = Box::new(newbox);
+                        simpler = true;
+                        replaced = true;
+                    }
+                }
+                // The Box could not be re-defined as a Box in its current
+                // Frame. For a 2-D→2-D Box, try representing it as a Polygon
+                // whose four vertices are the transformed Box corners
+                // (box.c::Simplify, 3921).
+                if !replaced && simple_map.nin() == 2 && simple_map.nout() == 2 {
+                    if let Some(poly) = this.convert_to_polygon(simple_map.as_ref())? {
+                        new = poly;
+                        simpler = true;
+                        replaced = true;
+                    }
+                }
+                // Otherwise try splitting it into two sub-regions on distinct
+                // axis subsets and joining them into a Prism (box.c::Simplify,
+                // 4036, calls astConvertToPrism when no simpler single Region
+                // was found).
+                if !replaced {
+                    if let Some(prism) = this.convert_to_prism()? {
+                        new = prism;
+                        simpler = true;
+                    }
                 }
             }
-            // Otherwise try splitting it into two sub-regions on distinct axis
-            // subsets and joining them into a Prism (box.c::Simplify, 4036,
-            // calls astConvertToPrism when no simpler single Region was found).
-            if let Some(prism) = self.convert_to_prism()? {
-                return Ok(prism.clone_box());
-            }
-            return Ok(self.clone_box());
         }
-        Ok(Box::new(candidate))
+
+        // If any simplification could be performed, copy Region attributes
+        // from the original Region to the returned Region (box.c:4060). The
+        // unc=true flag clears the result's uncertainty when the original
+        // Region had none, so a Box fitted through a default-uncertainty mesh
+        // does not acquire a spurious explicit uncertainty.
+        if simpler {
+            new.reg_overlay(self, true);
+            Ok(new.clone_box())
+        } else {
+            Ok(self.clone_box())
+        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

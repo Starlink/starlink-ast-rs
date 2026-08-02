@@ -308,6 +308,9 @@ defunc_interval_unbounded | simplify_fixtures/defunc_interval_unbounded.map | si
 defunc_nullregion_2d | simplify_fixtures/defunc_nullregion_2d.map | simplify_fixtures/defunc_nullregion_2d.simp |
 defunc_prism_box_interval | simplify_fixtures/defunc_prism_box_interval.map | simplify_fixtures/defunc_prism_box_interval.simp |
 defunc_cmpregion_component_unc | simplify_fixtures/defunc_cmpregion_component_unc.map | simplify_fixtures/defunc_cmpregion_component_unc.simp |
+simpstab_box_linear_unc | simplify_fixtures/simpstab_box_linear_unc.map | simplify_fixtures/simpstab_box_linear_unc.simp |
+simpstab_box_nonlinear_unc | simplify_fixtures/simpstab_box_nonlinear_unc.map | simplify_fixtures/simpstab_box_nonlinear_unc.simp |
+simpstab_permmap_slice_unc | simplify_fixtures/simpstab_permmap_slice_unc.map | simplify_fixtures/simpstab_permmap_slice_unc.simp |
 
 # Wcsconv-derived integration fixture. Captures the pixel->IWC mapping the
 # FitsChan write path simplifies for the gappt_fits-wcs test. Both Rust and

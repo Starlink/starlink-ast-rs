@@ -3761,6 +3761,100 @@ fn pick_axes_cmpregion_subset_keeps_cmpregion() {
 }
 
 // ============================================================================
+// Parent-Region Simplify uncertainty-stability check (region.c:11042-11328).
+//
+// C `Region::Simplify` runs BEFORE each subclass's own simplify: it deep-copies
+// the Region, simplifies the encapsulated FrameSet, deletes a DEFAULT
+// uncertainty, and — for an EXPLICIT uncertainty — runs a stability check.
+// The check simplifies the uncertainty Region; if the simplified form differs,
+// it re-centres the simplified uncertainty at the lower and upper corners of a
+// test box (the base bounding box when bounded) and compares the resulting
+// widths per axis. When they agree to within 0.5% of their sum on every axis
+// the simplified uncertainty is stable and is installed on the result.
+//
+// The simplify-regression harness cannot exercise this path: its Check 3
+// (`mapping_to_native_string`) returns None for Region results, so the
+// serialization of a simplified Region — and thus its uncertainty — is never
+// compared. These fixtures were generated with `astMapRegion` so the supplied
+// uncertainty carries a live base->current FrameSet (PIXEL -> ZOOMED etc); the
+// `.simp` reference has that FrameSet stripped and the uncertainty points
+// rescaled, which only the parent-Region stability check produces.
+// ============================================================================
+
+fn simpstab_fixture(name: &str) -> String {
+    let path = format!(
+        "{}/tests/fixtures/native/reference/simplify_fixtures/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        name
+    );
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+/// Load a `.map` fixture as a Region, simplify it, and serialize the whole
+/// simplified Region to native form for byte-exact comparison with `.simp`.
+fn simpstab_simplified_native(map_name: &str) -> String {
+    let text = simpstab_fixture(map_name);
+    let obj =
+        ast_core::from_native_string(&text).unwrap_or_else(|e| panic!("parse {map_name}: {e}"));
+    let mapping = obj
+        .into_mapping()
+        .unwrap_or_else(|| panic!("{map_name} is not a Mapping"));
+    let simplified = mapping.simplify().expect("simplify failed");
+    let r: &dyn Mapping = simplified.as_ref();
+    let any = if let Some(b) = r.as_any().downcast_ref::<BoxRegion>() {
+        AnyObject::BoxRegion(b.clone())
+    } else if let Some(c) = r.as_any().downcast_ref::<Circle>() {
+        AnyObject::Circle(c.clone())
+    } else if let Some(i) = r.as_any().downcast_ref::<Interval>() {
+        AnyObject::Interval(i.clone())
+    } else if let Some(p) = r.as_any().downcast_ref::<ast_core::regions::Prism>() {
+        AnyObject::Prism(p.clone())
+    } else if let Some(cr) = r.as_any().downcast_ref::<CmpRegion>() {
+        AnyObject::CmpRegion(cr.clone())
+    } else {
+        panic!("{map_name} simplified to an unexpected Region class");
+    };
+    ast_core::to_native_string(&any).unwrap()
+}
+
+#[test]
+fn simplify_stability_box_linear_unc() {
+    // Oracle: simpstab_box_linear_unc. A Box mapped through a ZoomMap (factor 2)
+    // carries an uncertainty Box whose base->current FrameSet is that same
+    // ZoomMap. Simplifying the uncertainty is a rigid rescale (linear), so the
+    // stability widths agree and the rescaled uncertainty is installed on the
+    // simplified Box, its FrameSet stripped.
+    assert_eq!(
+        simpstab_simplified_native("simpstab_box_linear_unc.map"),
+        simpstab_fixture("simpstab_box_linear_unc.simp")
+    );
+}
+
+#[test]
+fn simplify_stability_box_nonlinear_unc() {
+    // Oracle: simpstab_box_nonlinear_unc. The uncertainty is mapped through a
+    // per-axis monotonic MathMap (squaring). astSimplify locally linearises and
+    // collapses the uncertainty to a rigid UnitMap Box, so the stability widths
+    // still agree and the collapsed uncertainty is installed.
+    assert_eq!(
+        simpstab_simplified_native("simpstab_box_nonlinear_unc.map"),
+        simpstab_fixture("simpstab_box_nonlinear_unc.simp")
+    );
+}
+
+#[test]
+fn simplify_stability_permmap_slice_unc() {
+    // Oracle: simpstab_permmap_slice_unc. The Region is mapped through a PermMap
+    // that drops an axis (2-D -> 1-D), so nin != nout and the stability check
+    // re-centres the uncertainty by transforming its current centre
+    // forward-then-back before simplifying.
+    assert_eq!(
+        simpstab_simplified_native("simpstab_permmap_slice_unc.map"),
+        simpstab_fixture("simpstab_permmap_slice_unc.simp")
+    );
+}
+
+// ============================================================================
 // Parallel-merge FillFactor / MeshSize scaling (box.c:2049-2085).
 //
 // When two Regions merge in a parallel CmpMap to form one higher-dimensional

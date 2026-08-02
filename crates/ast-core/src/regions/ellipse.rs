@@ -423,6 +423,15 @@ impl Region for Ellipse {
         self.data.closed_set = true;
     }
 
+    fn test_closed(&self) -> bool {
+        self.data.closed_set
+    }
+
+    fn set_closed_raw(&mut self, closed: bool, set: bool) {
+        self.data.closed = closed;
+        self.data.closed_set = set;
+    }
+
     fn fill_factor(&self) -> f64 {
         self.data.effective_fill_factor()
     }
@@ -435,6 +444,10 @@ impl Region for Ellipse {
         self.data.fill_factor_set
     }
 
+    fn clear_fill_factor(&mut self) {
+        self.data.clear_fill_factor();
+    }
+
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -445,6 +458,10 @@ impl Region for Ellipse {
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
+    }
+
+    fn clear_mesh_size(&mut self) {
+        self.data.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
@@ -524,6 +541,10 @@ impl Region for Ellipse {
 
     fn set_region_fs_flag(&mut self, value: bool) {
         self.data.set_region_fs_flag(value);
+    }
+
+    fn region_fs_flag(&self) -> bool {
+        self.data.region_fs
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
@@ -690,33 +711,52 @@ impl Mapping for Ellipse {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        let map = self
+        // Invoke the parent Region simplify first (ellipse.c:1950); it
+        // simplifies the encapsulated FrameSet and any explicit uncertainty.
+        // All further work is done on the returned copy.
+        let parent = self.parent_region_simplify()?;
+        let new_owned;
+        let this: &Ellipse = match &parent {
+            Some(p) => {
+                new_owned = p
+                    .as_ref()
+                    .as_any()
+                    .downcast_ref::<Ellipse>()
+                    .expect("parent_region_simplify preserves the Region class")
+                    .clone();
+                &new_owned
+            }
+            None => self,
+        };
+        let simpler = parent.is_some();
+
+        let map = this
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplified()?;
-        if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return Ok(self.clone_box());
+        if map.as_any().is::<UnitMap>() {
+            return if simpler {
+                let mut result = this.clone_region();
+                result.reg_overlay(self, true);
+                Ok(result.clone_box())
+            } else {
+                Ok(self.clone_box())
+            };
         }
         // Transform defining points to current frame.
-        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
-        let transformed = simple_map.transform(&pts, true)?;
-        let current_frame = self.data.frameset.current().snapshot();
+        let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
+        let transformed = map.transform(&pts, true)?;
+        let current_frame = this.data.frameset.current().snapshot();
         let naxes = current_frame.naxes();
-        let new_points: Vec<Vec<f64>> = (0..self.data.points.len())
+        let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
             .map(|i| transformed.point(i)[..naxes].to_vec())
             .collect();
         let frameset = FrameSet::new(current_frame);
         let mut data = RegionData::new(frameset, new_points);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed;
-        data.closed_set = self.data.closed_set;
-        data.mesh_size = self.data.mesh_size;
-        data.mesh_size_set = self.data.mesh_size_set;
-        data.fill_factor = self.data.fill_factor;
-        data.fill_factor_set = self.data.fill_factor_set;
-        data.adaptive = self.data.adaptive;
-        Ok(Box::new(Ellipse { data }))
+        data.uncertainty = this.data.uncertainty.clone();
+        let mut result: DynRegion = Box::new(Ellipse { data });
+        result.reg_overlay(self, true);
+        Ok(result.clone_box())
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

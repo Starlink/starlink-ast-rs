@@ -242,6 +242,17 @@ impl RegionData {
         self.fill_factor_set = true;
     }
 
+    /// Clear the MeshSize attribute, mirroring C `astClearMeshSize`.
+    pub(crate) fn clear_mesh_size(&mut self) {
+        self.mesh_size_set = false;
+        self.invalidate_cache();
+    }
+
+    /// Clear the FillFactor attribute, mirroring C `astClearFillFactor`.
+    pub(crate) fn clear_fill_factor(&mut self) {
+        self.fill_factor_set = false;
+    }
+
     /// Invalidate the cached mesh (call after geometry changes).
     #[allow(dead_code)]
     pub(crate) fn invalidate_cache(&self) {

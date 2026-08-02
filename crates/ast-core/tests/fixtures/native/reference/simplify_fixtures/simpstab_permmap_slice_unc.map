@@ -1,0 +1,98 @@
+ Begin Box 	# Axis intervals
+#   Title = "1-d coordinate system" 	# Title of coordinate system
+#   Naxes = 1 	# Number of coordinate axes
+#   Domain = "SLICE" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   System = "Cartesian" 	# Coordinate system type
+ IsA Frame 	# Coordinate system description
+    Adapt = 1 	# Region adapts to coord sys changes
+    Frm = 	# Coordinate system
+       Begin Frame 	# Coordinate system description
+#         Title = "1-d coordinate system" 	# Title of coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Domain = "SLICE" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Points = 	# Points defining the shape
+       Begin PointSet 	# Container for a set of points
+          Npoint = 2 	# Number of points
+          Ncoord = 1 	# Number of coordinates per point
+          X1 = 5 	# Coordinate values...
+          X2 = 10
+       End PointSet
+    Unc = 	# Region defining positional uncertainties.
+       Begin Box 	# Axis intervals
+#         Title = "1-d coordinate system" 	# Title of coordinate system
+#         Naxes = 1 	# Number of coordinate axes
+#         Domain = "SLICE" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         System = "Cartesian" 	# Coordinate system type
+       IsA Frame 	# Coordinate system description
+          Adapt = 1 	# Region adapts to coord sys changes
+          FrmSet = 	# Original & current coordinate systems
+             Begin FrameSet 	# Set of inter-related coordinate systems
+#               Title = "1-d coordinate system" 	# Title of coordinate system
+#               Naxes = 1 	# Number of coordinate axes
+#               Domain = "SLICE" 	# Coordinate system domain
+#               Lbl1 = "Axis 1" 	# Label for axis 1
+             IsA Frame 	# Coordinate system description
+                Nframe = 2 	# Number of Frames in FrameSet
+                Base = 1 	# Index of base Frame
+                Currnt = 2 	# Index of current Frame
+                Lnk2 = 1 	# Node 2 is derived from node 1
+                Frm1 = 	# Frame number 1
+                   Begin Frame 	# Coordinate system description
+#                     Title = "2-d coordinate system" 	# Title of coordinate system
+                      Naxes = 2 	# Number of coordinate axes
+                      Domain = "PIXEL" 	# Coordinate system domain
+#                     Lbl1 = "Axis 1" 	# Label for axis 1
+#                     Lbl2 = "Axis 2" 	# Label for axis 2
+                      ActUnt = 0 	# Unit strings do not affect alignment
+                      Ax1 = 	# Axis number 1
+                         Begin Axis 	# Coordinate axis
+                         End Axis
+                      Ax2 = 	# Axis number 2
+                         Begin Axis 	# Coordinate axis
+                         End Axis
+                   End Frame
+                Frm2 = 	# Frame number 2
+                   Begin Frame 	# Coordinate system description
+#                     Title = "1-d coordinate system" 	# Title of coordinate system
+                      Naxes = 1 	# Number of coordinate axes
+                      Domain = "SLICE" 	# Coordinate system domain
+#                     Lbl1 = "Axis 1" 	# Label for axis 1
+                      Ax1 = 	# Axis number 1
+                         Begin Axis 	# Coordinate axis
+                         End Axis
+                   End Frame
+                Map2 = 	# Mapping between nodes 1 and 2
+                   Begin PermMap 	# Coordinate permutation
+                      Nin = 2 	# Number of input coordinates
+                      Nout = 1 	# Number of output coordinates
+                      IsSimp = 1 	# Mapping has been simplified
+                   IsA Mapping 	# Mapping between coordinate systems
+                      OutCpy = 1 	# Output coordinates = input coordinates
+                      In1 = 1 	# Input coordinate 1 = output coordinate 1
+                      In2 = -1 	# Input coordinate 2 = constant no. 1
+                      Nconst = 1 	# Number of constants
+                      Con1 = 0 	# Constant number 1
+                   End PermMap
+             End FrameSet
+          Points = 	# Points defining the shape
+             Begin PointSet 	# Container for a set of points
+                Npoint = 2 	# Number of points
+                Ncoord = 2 	# Number of coordinates per point
+                X1 = 5 	# Coordinate values...
+                X2 = 0
+                X3 = 5.5
+                X4 = 0.5
+             End PointSet
+       IsA Region 	# An area within a coordinate system
+       End Box
+ IsA Region 	# An area within a coordinate system
+ End Box

@@ -733,6 +733,15 @@ impl Region for CmpRegion {
         self.data.closed_set = true;
     }
 
+    fn test_closed(&self) -> bool {
+        self.data.closed_set
+    }
+
+    fn set_closed_raw(&mut self, closed: bool, set: bool) {
+        self.data.closed = closed;
+        self.data.closed_set = set;
+    }
+
     fn fill_factor(&self) -> f64 {
         self.data.effective_fill_factor()
     }
@@ -745,6 +754,10 @@ impl Region for CmpRegion {
         self.data.fill_factor_set
     }
 
+    fn clear_fill_factor(&mut self) {
+        self.data.clear_fill_factor();
+    }
+
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -755,6 +768,10 @@ impl Region for CmpRegion {
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
+    }
+
+    fn clear_mesh_size(&mut self) {
+        self.data.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
@@ -896,6 +913,10 @@ impl Region for CmpRegion {
 
     fn set_region_fs_flag(&mut self, value: bool) {
         self.data.set_region_fs_flag(value);
+    }
+
+    fn region_fs_flag(&self) -> bool {
+        self.data.region_fs
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
@@ -1068,12 +1089,21 @@ impl Mapping for CmpRegion {
         // the parent's current Frame before being returned.
         use super::merge_util::mapping_into_region;
 
-        // The current Frame and base->current Mapping of the parent.
-        let cfrm = self.data.frameset.current().snapshot();
-        let bcmap = self
-            .data
-            .frameset
-            .mapping(FrameRef::Base, FrameRef::Current)?;
+        // Invoke the parent Region Simplify first (cmpregion.c:3595): it
+        // simplifies the encapsulated FrameSet and any explicit uncertainty.
+        // `newc` is that simplified copy (or a clone of self when nothing
+        // changed); all subsequent work — the base->current Mapping, the
+        // current Frame, and the no-`newb` fallback — is expressed in terms of
+        // it, and `simpler` is seeded from whether it differs from self.
+        let newc = self
+            .parent_region_simplify()?
+            .unwrap_or_else(|| self.clone_region());
+        let mut simpler = !(newc.as_ref() as &dyn Mapping).equal(self as &dyn Mapping);
+
+        // The current Frame and base->current Mapping of `newc`.
+        let newc_fs = newc.get_region_frameset();
+        let cfrm = newc_fs.current().snapshot();
+        let bcmap = newc_fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
         // GetRegions (cmpregion.c:981): clone the two component Regions and
         // read the operator and each component's required Negated flag. If the
@@ -1096,12 +1126,11 @@ impl Mapping for CmpRegion {
         let sreg2 = mapping_into_region(Mapping::simplified(reg2.as_ref())?)
             .unwrap_or_else(|| reg2.clone_region());
 
-        // Note whether any simplification has taken place. The C code also
-        // seeds this from the parent FrameSet simplify (newc != this); for a
-        // Region built or read here the encapsulated FrameSet carries a single
-        // Frame, so the map_region + simplify of a collapsed result below
-        // subsumes that step (as in prism.c::Simplify).
-        let mut simpler = !(sreg1.as_ref() as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
+        // Note whether either component simplified, OR-ing into the value
+        // already seeded from the parent FrameSet/uncertainty simplify
+        // (cmpregion.c:3636 `simpler = simpler || ...`).
+        simpler = simpler
+            || !(sreg1.as_ref() as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
             || !(sreg2.as_ref() as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping);
 
         // The (possibly) simplified Region expressed in the base Frame, or
@@ -1216,7 +1245,9 @@ impl Mapping for CmpRegion {
                 let mapped = nb.map_region(bcmap.as_ref(), cfrm.as_ref())?;
                 mapping_into_region(Mapping::simplified(mapped.as_ref())?).unwrap_or(mapped)
             } else {
-                self.clone_region()
+                // No base-Frame result: use the parent-simplified copy
+                // (cmpregion.c:3767 `result = astClone( newc )`).
+                newc
             }
         } else {
             self.clone_region()

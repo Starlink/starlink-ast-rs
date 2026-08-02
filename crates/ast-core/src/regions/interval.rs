@@ -863,6 +863,15 @@ impl Region for Interval {
         self.data.closed_set = true;
     }
 
+    fn test_closed(&self) -> bool {
+        self.data.closed_set
+    }
+
+    fn set_closed_raw(&mut self, closed: bool, set: bool) {
+        self.data.closed = closed;
+        self.data.closed_set = set;
+    }
+
     fn fill_factor(&self) -> f64 {
         self.data.effective_fill_factor()
     }
@@ -875,6 +884,10 @@ impl Region for Interval {
         self.data.fill_factor_set
     }
 
+    fn clear_fill_factor(&mut self) {
+        self.data.clear_fill_factor();
+    }
+
     fn mesh_size(&self) -> usize {
         self.data.effective_mesh_size()
     }
@@ -885,6 +898,10 @@ impl Region for Interval {
 
     fn test_mesh_size(&self) -> bool {
         self.data.mesh_size_set
+    }
+
+    fn clear_mesh_size(&mut self) {
+        self.data.clear_mesh_size();
     }
 
     fn is_bounded(&self) -> bool {
@@ -984,6 +1001,10 @@ impl Region for Interval {
 
     fn set_region_fs_flag(&mut self, value: bool) {
         self.data.set_region_fs_flag(value);
+    }
+
+    fn region_fs_flag(&self) -> bool {
+        self.data.region_fs
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
@@ -1383,18 +1404,47 @@ impl Mapping for Interval {
             return Ok(Box::new(super::BoxRegion { data }));
         }
 
-        let map = self
+        // Not equivalent to a Box: invoke the parent Region simplify
+        // (interval.c:3208), which simplifies the encapsulated FrameSet and any
+        // explicit uncertainty. All further work is done on the returned copy.
+        let parent = self.parent_region_simplify()?;
+        let new_owned;
+        let this: &Interval = match &parent {
+            Some(p) => {
+                new_owned = p
+                    .as_ref()
+                    .as_any()
+                    .downcast_ref::<Interval>()
+                    .expect("parent_region_simplify preserves the Region class")
+                    .clone();
+                &new_owned
+            }
+            None => self,
+        };
+        let simpler = parent.is_some();
+
+        let map = this
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
         let simple_map = map.simplified()?;
         if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return Ok(self.clone_box());
+            return if simpler {
+                let mut result = this.clone_region();
+                result.reg_overlay(self, true);
+                Ok(result.clone_box())
+            } else {
+                Ok(self.clone_box())
+            };
         }
 
         // Non-UnitMap base->current: attempt to re-express the Interval in
         // its current Frame. Port of interval.c::Simplify (3216-3517).
-        self.simplify_remapped(simple_map.as_ref())
+        let simplified = this.simplify_remapped(simple_map.as_ref())?;
+        let mut result = super::merge_util::mapping_into_region(simplified)
+            .expect("Interval::simplify_remapped returns a Region");
+        result.reg_overlay(self, true);
+        Ok(result.clone_box())
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

@@ -132,6 +132,17 @@ pub trait Region: Frame + Mapping {
     /// Set the closed/open flag.
     fn set_closed(&mut self, closed: bool);
 
+    /// Whether the closed/open flag has been explicitly set (C `TestClosed`,
+    /// `this->closed != -INT_MAX`).
+    fn test_closed(&self) -> bool;
+
+    /// Copy the closed/open flag together with its explicitly-set state,
+    /// mirroring C's raw field assignment `this->closed = that->closed`
+    /// (which propagates the `-INT_MAX` unset sentinel). Unlike
+    /// [`set_closed`](Region::set_closed) this does not force the attribute to
+    /// appear explicitly set.
+    fn set_closed_raw(&mut self, closed: bool, set: bool);
+
     /// The fill factor (fraction of the bounding box that is interior).
     ///
     /// Used by the mesh and overlap algorithms to estimate point density.
@@ -144,6 +155,9 @@ pub trait Region: Frame + Mapping {
     /// Whether the fill factor has been explicitly set (C `TestFillFactor`).
     fn test_fill_factor(&self) -> bool;
 
+    /// Clear the fill factor, reverting to the default (C `ClearFillFactor`).
+    fn clear_fill_factor(&mut self);
+
     /// The number of points used to represent the boundary mesh.
     ///
     /// When unset, this is the naxes-dependent default (1-D → 2, 2-D → 200,
@@ -155,6 +169,9 @@ pub trait Region: Frame + Mapping {
 
     /// Whether the mesh size has been explicitly set (C `TestMeshSize`).
     fn test_mesh_size(&self) -> bool;
+
+    /// Clear the mesh size, reverting to the default (C `ClearMeshSize`).
+    fn clear_mesh_size(&mut self);
 
     /// Whether this region is bounded (has finite extent in all directions).
     fn is_bounded(&self) -> bool;
@@ -299,6 +316,12 @@ pub trait Region: Frame + Mapping {
     /// which installs a real FrameSet.
     #[doc(hidden)]
     fn set_region_fs_flag(&mut self, value: bool);
+
+    /// The current value of the boolean `RegionFS` attribute (whether the
+    /// encapsulated FrameSet is included in a dump). Mirrors reading C's
+    /// `regionfs` field, used by [`reg_overlay`](Region::reg_overlay).
+    #[doc(hidden)]
+    fn region_fs_flag(&self) -> bool;
 
     /// Set the uncertainty region associated with boundary positions.
     ///
@@ -846,21 +869,174 @@ pub trait Region: Frame + Mapping {
         Ok(Some(result))
     }
 
+    /// Simplify the encapsulated FrameSet and any explicit uncertainty Region.
+    ///
+    /// Faithful port of the parent `Region::Simplify` (region.c:11042). Each
+    /// concrete Region's [`simplified`](Mapping::simplified) invokes this first
+    /// (matching C, where every subclass `Simplify` calls `(*parent_simplify)`),
+    /// then continues re-fitting from the returned Region.
+    ///
+    /// Returns `Some(new)` when either the FrameSet or the uncertainty was
+    /// simplified, and `None` when nothing changed (the caller should keep the
+    /// original Region). A default uncertainty is regenerated on demand, so it
+    /// needs no explicit deletion here; only an explicit uncertainty
+    /// ([`test_unc`](Region::test_unc)) is simplified.
+    ///
+    /// The uncertainty is simplified only if its simplified form is *stable*
+    /// across the extent of this Region: the simplified uncertainty is
+    /// re-centred at opposite corners of a test box (this Region's base
+    /// bounding box when bounded, else a box 100× the uncertainty size) and its
+    /// per-axis bounding-box widths must agree to within 0.5% of their sum.
+    fn parent_region_simplify(&self) -> AstResult<Option<DynRegion>> {
+        // Deep-copy the supplied Region so the result differs from the input
+        // when simplification occurs (region.c:11131).
+        let mut new = self.clone_region();
+        let mut simpler = false;
+
+        // Simplify the encapsulated FrameSet, noting whether it changed
+        // (region.c:11135-11143). FrameSet::simplified simplifies each internal
+        // edge Mapping and returns a FrameSet.
+        let fs = new.get_region_frameset();
+        let simplified_map = Mapping::simplified(&fs)?;
+        if let Some(new_fs) = simplified_map.as_any().downcast_ref::<FrameSet>()
+            && !Mapping::equal(&fs, new_fs)
+        {
+            *new.region_frameset_mut() = new_fs.clone();
+            simpler = true;
+        }
+
+        // An explicit uncertainty is simplified in place; a default uncertainty
+        // is regenerated on demand, so there is nothing to delete for it
+        // (region.c:11145-11148).
+        if new.test_unc() {
+            // The uncertainty in this Region's base Frame (region.c:11155).
+            let mut unc = new.get_unc_frm(FrameRef::Base)?;
+
+            // The base->current Mapping of the original Region (region.c:11158).
+            let map = self
+                .get_region_frameset()
+                .mapping(FrameRef::Base, FrameRef::Current)?;
+            let nin = map.nin();
+            let nout = map.nout();
+
+            // A slicing Mapping (nin != nout, e.g. a PermMap) requires the
+            // uncertainty to be re-centred on the slice: transform its current
+            // centre forward then back through the base->current Mapping
+            // (region.c:11165-11188).
+            if nin != nout
+                && let Ok(Some(cen)) = unc.reg_centre_query(FrameRef::Current)
+            {
+                let pset1 = PointSet::from_rows(std::iter::once(cen.as_slice()));
+                let pset2 = map.transform(&pset1, true)?;
+                let back = map.transform(&pset2, false)?;
+                let recentre = back.point(0).to_vec();
+                unc.reg_centre_set(&recentre, FrameRef::Current)?;
+            }
+
+            // Try simplifying the uncertainty. Only proceed if it changed
+            // (region.c:11193-11196).
+            let sunc_map = Mapping::simplified(unc.as_ref())?;
+            let unc_changed = !Mapping::equal(unc.as_ref(), sunc_map.as_ref());
+            if unc_changed && let Some(mut sunc) = merge_util::mapping_into_region(sunc_map) {
+                // The stability check (region.c:11213-11306): re-centre the
+                // simplified uncertainty at opposite corners of a test box and
+                // require its per-axis bounding-box widths to agree.
+                let orig_cen = sunc.reg_centre_query(FrameRef::Base)?;
+                let naxb = self.get_region_frameset().base().naxes();
+
+                // The test box: this Region's base bounding box if bounded,
+                // else a box 100× the uncertainty size centred on the
+                // uncertainty centre (region.c:11221-11236).
+                let (lbnd, ubnd) = if self.is_bounded() {
+                    self.get_region_bounds()?
+                } else {
+                    let (slb, sub) = sunc.get_region_bounds()?;
+                    let cen = orig_cen.clone().unwrap_or_else(|| vec![0.0; naxb]);
+                    let mut lb = vec![0.0; naxb];
+                    let mut ub = vec![0.0; naxb];
+                    for ic in 0..naxb {
+                        let delta = 0.5 * (sub[ic] - slb[ic]).abs();
+                        lb[ic] = cen[ic] - delta;
+                        ub[ic] = cen[ic] + delta;
+                    }
+                    (lb, ub)
+                };
+
+                // Re-centre at the lower corner and record the bounding-box
+                // widths (region.c:11238-11246).
+                sunc.reg_centre_set(&lbnd, FrameRef::Current)?;
+                let (s1_lbnd, s1_ubnd) = sunc.get_region_bounds()?;
+
+                // Re-centre at the upper corner and record the widths
+                // (region.c:11248-11255).
+                sunc.reg_centre_set(&ubnd, FrameRef::Current)?;
+                let (s2_lbnd, s2_ubnd) = sunc.get_region_bounds()?;
+
+                // The widths must agree to within 0.5% of their sum on every
+                // axis (region.c:11260-11285). The 0.005 factor is taken
+                // directly from the C source (its comment says 0.1%).
+                let mut ok = true;
+                for ic in 0..naxb {
+                    let w1 = s1_ubnd[ic] - s1_lbnd[ic];
+                    let w2 = s2_ubnd[ic] - s2_lbnd[ic];
+                    if (w1 - w2).abs() > 0.005 * (w1.abs() + w2.abs()) {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                // Reinstate the original centre (region.c:11289).
+                if let Some(oc) = orig_cen {
+                    sunc.reg_centre_set(&oc, FrameRef::Base)?;
+                }
+
+                // If stable, install the simplified uncertainty
+                // (region.c:11303-11306).
+                if ok {
+                    simpler = true;
+                    new.set_uncertainty(sunc);
+                }
+            }
+        }
+
+        if simpler { Ok(Some(new)) } else { Ok(None) }
+    }
+
     /// Copy selected properties from `that` onto this Region.
     ///
-    /// Mirrors C `astRegOverlay` (region.c:9861): copies Negated, Closed,
-    /// and Adaptive; copies MeshSize/FillFactor only when the axis counts
-    /// match. The `unc` flag controls uncertainty clearing (unused here as
-    /// the picked regions carry their own uncertainty).
-    fn reg_overlay(&mut self, that: &dyn Region) {
+    /// Faithful port of C `astRegOverlay` (region.c:9861): copies Negated,
+    /// Closed, RegionFS, and Adaptive; when the axis counts match, copies
+    /// MeshSize/FillFactor only where `that` has an explicit value, otherwise
+    /// clears both. When `clear_unc` is true and `that` has no *explicit*
+    /// uncertainty ([`test_unc`](Region::test_unc) false), this Region's
+    /// uncertainty is cleared — mirroring the C `if( unc && !astTestUnc(that) )
+    /// astClearUnc(this)` branch, which is how a simplified Region built from a
+    /// default-uncertainty source ends up carrying no explicit uncertainty.
+    fn reg_overlay(&mut self, that: &dyn Region, clear_unc: bool) {
         if self.is_negated() != that.is_negated() {
             self.negate();
         }
-        self.set_closed(that.is_closed());
+        // C `astRegOverlay` copies `this->closed = that->closed` as a raw
+        // field assignment, propagating the `-INT_MAX` unset sentinel; mirror
+        // that by copying both the value and its explicitly-set state rather
+        // than forcing the attribute set (which would spuriously emit `Closed`
+        // on re-dump).
+        self.set_closed_raw(that.is_closed(), that.test_closed());
+        self.set_region_fs_flag(that.region_fs_flag());
         self.set_adaptive(that.is_adaptive());
         if self.naxes() == that.naxes() {
-            self.set_mesh_size(that.mesh_size());
-            self.set_fill_factor(that.fill_factor());
+            if that.test_mesh_size() {
+                self.set_mesh_size(that.mesh_size());
+            }
+            if that.test_fill_factor() {
+                self.set_fill_factor(that.fill_factor());
+            }
+        } else {
+            self.clear_mesh_size();
+            self.clear_fill_factor();
+        }
+        if clear_unc && !that.test_unc() {
+            self.store_uncertainty(None);
         }
     }
 
@@ -956,8 +1132,9 @@ pub fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<Picked
             let mut fsmap = fsmap;
             fsmap.invert();
             let mut creg = breg.map_region(fsmap.as_ref(), picked_frame.as_ref())?;
-            // Copy properties from the old Region to the new Region.
-            creg.reg_overlay(region);
+            // Copy properties from the old Region to the new Region
+            // (region.c:7723 passes unc=0: uncertainty is left untouched).
+            creg.reg_overlay(region, false);
             return Ok(PickedAxes::Region(creg));
         }
     }
