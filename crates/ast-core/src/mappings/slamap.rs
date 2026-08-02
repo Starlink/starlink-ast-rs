@@ -1169,7 +1169,11 @@ impl Mapping for SlaMap {
             .conversions
             .iter()
             .map(|cvt| match cvt.cvt_type {
-                SlaCvtType::Map | SlaCvtType::Amp => Some(pal::mappa(cvt.args[0], cvt.args[1])),
+                // MAP args are (EQ, DATE): palMappa(eq=args[0], ep=args[1]).
+                SlaCvtType::Map => Some(pal::mappa(cvt.args[0], cvt.args[1])),
+                // AMP args are (DATE, EQ): palMappa(eq=args[1], ep=args[0])
+                // (slamap.c:3815). MAP and AMP order their args oppositely.
+                SlaCvtType::Amp => Some(pal::mappa(cvt.args[1], cvt.args[0])),
                 _ => None,
             })
             .collect();

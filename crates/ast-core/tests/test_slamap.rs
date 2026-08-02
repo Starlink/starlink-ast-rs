@@ -757,6 +757,30 @@ fn bad_arg_propagates_to_bad_output() {
     }
 }
 
+// AMP then MAP at matching equinox/date must round-trip to the input.
+// AMP args are (DATE, EQ) so palMappa receives (eq=args[1], ep=args[0])
+// (slamap.c:3815); MAP args are (EQ, DATE) so palMappa receives
+// (eq=args[0], ep=args[1]) (slamap.c:3851).  With mismatched argument
+// order the two amprms arrays differ and the steps do not cancel.
+#[test]
+fn amp_map_round_trip() {
+    // AMP args are (DATE, EQ); MAP args are (EQ, DATE). Chaining AMP then
+    // MAP with matching equinox/date must return the input.
+    let eq = 2000.0;
+    let date = 55197.0; // MJD 2010-01-01
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Amp, &[date, eq]); // apparent -> mean  (args: DATE, EQ)
+    m.add(SlaCvtType::Map, &[eq, date]); // mean -> apparent  (args: EQ, DATE)
+
+    let ra = deg2rad(120.0);
+    let dec = deg2rad(-15.0);
+    let pin = PointSet::from_rows([[ra, dec]].iter().map(|p| p.as_slice()));
+    let out = m.transform(&pin, true).unwrap();
+
+    assert_angle_close(out.point(0)[0], ra, 1e-9, "ra AMP-then-MAP round-trip");
+    assert_close(out.point(0)[1], dec, 1e-9, "dec AMP-then-MAP round-trip");
+}
+
 // A bad input coordinate produces bad output on both axes (TRAN_ARRAY
 // couples the axes: either bad -> both bad), and a NaN input is treated
 // identically (is_bad includes !is_finite).
