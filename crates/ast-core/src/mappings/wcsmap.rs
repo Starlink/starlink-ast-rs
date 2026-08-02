@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use crate::wcslib::{PrjParams, WcsProjection};
 
@@ -17,6 +18,38 @@ use super::{DynMapping, Mapping};
 
 /// Maximum number of projection parameters per axis (from wcslib).
 const MXPAR: usize = 100;
+
+/// Prepare native spherical coordinates for a forward WCSLIB projection call.
+///
+/// The WcsMap forward input is longitude and latitude in radians; WCSLIB
+/// expects degrees with the longitude in `[-180,180]` and the latitude in
+/// `[-90,90]`. Any point whose latitude falls outside `[-90,90]` is converted
+/// to the equivalent point on the complementary meridian. This mirrors
+/// wcsmap.c:2820-2839.
+///
+/// `factor` scales the WcsMap input into radians. It is `1.0` whenever the
+/// `TPNTan` attribute is non-zero (the default and only reachable state via
+/// this API), and `AST__DD2R` when `TPNTan` has been reset to zero.
+///
+/// Returns `(longitude, latitude)` in degrees, ready for `WcsFwd`.
+fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
+    const DR2D: f64 = 180.0 / std::f64::consts::PI;
+
+    let latitude = DR2D * pal::drange(factor * in1);
+    if latitude > 90.0 {
+        (
+            DR2D * pal::drange(std::f64::consts::PI + factor * in0),
+            180.0 - latitude,
+        )
+    } else if latitude < -90.0 {
+        (
+            DR2D * pal::drange(std::f64::consts::PI + factor * in0),
+            -180.0 - latitude,
+        )
+    } else {
+        (DR2D * pal::drange(factor * in0), latitude)
+    }
+}
 
 /// A mapping that applies a FITS-WCS sky projection.
 ///
@@ -537,8 +570,11 @@ impl Mapping for WcsMap {
             }
 
             if fwd {
-                let lon_deg = v1.to_degrees();
-                let lat_deg = v2.to_degrees();
+                // Wrap the native longitude/latitude into the ranges WCSLIB
+                // requires, folding out-of-range latitudes onto the
+                // complementary meridian (wcsmap.c:2820-2839). `factor` is 1.0
+                // because `TPNTan` defaults to (and cannot be reset from) 1.
+                let (lon_deg, lat_deg) = forward_prep(v1, v2, 1.0);
                 match prj.forward(lon_deg, lat_deg) {
                     Ok((x, y)) => {
                         outp[self.lonax] = x.to_radians();
@@ -615,9 +651,12 @@ impl Mapping for WcsMap {
             }
 
             if fwd {
-                // Forward: native spherical (lon, lat in radians) -> projected (x, y)
-                let lon_deg = v1.to_degrees();
-                let lat_deg = v2.to_degrees();
+                // Forward: native spherical (lon, lat in radians) -> projected (x, y).
+                // Wrap the native longitude/latitude into the ranges WCSLIB
+                // requires, folding out-of-range latitudes onto the
+                // complementary meridian (wcsmap.c:2820-2839). `factor` is 1.0
+                // because `TPNTan` defaults to (and cannot be reset from) 1.
+                let (lon_deg, lat_deg) = forward_prep(v1, v2, 1.0);
                 match prj.forward(lon_deg, lat_deg) {
                     Ok((x, y)) => {
                         outp[self.lonax] = x.to_radians();
