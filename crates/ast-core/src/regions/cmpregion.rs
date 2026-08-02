@@ -866,6 +866,24 @@ impl Region for CmpRegion {
         self.perm_axes(perm)
     }
 
+    fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        // Port of cmpregion.c::RegBasePick (cmpregion.c:2096). Both
+        // encapsulated regions refer to the same Frame (the base Frame of the
+        // parent Region), so pick the same axes from each. Only if both picks
+        // yield Regions can we form the sub-CmpRegion.
+        let picked1 = match super::pick_axes_region(self.region1.as_ref(), axes)? {
+            super::PickedAxes::Region(r) => r,
+            super::PickedAxes::Frame(_) => return Ok(None),
+        };
+        let picked2 = match super::pick_axes_region(self.region2.as_ref(), axes)? {
+            super::PickedAxes::Region(r) => r,
+            super::PickedAxes::Frame(_) => return Ok(None),
+        };
+
+        let result = CmpRegionBuilder::from_dyn(picked1, picked2, self.operator)?.build()?;
+        Ok(Some(Box::new(result)))
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }

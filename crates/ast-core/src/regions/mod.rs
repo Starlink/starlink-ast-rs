@@ -560,13 +560,57 @@ pub trait Region: Frame + Mapping {
     /// this Region, or `None` if no same-class sub-region can be formed.
     ///
     /// `axes` holds zero-based base-Frame axis indices. Mirrors C
-    /// `astRegBasePick` (region.c:13679 default → `None`); classes that can
-    /// split their defining geometry per-axis (Box, Interval, PointList,
-    /// NullRegion) override this. Classes whose geometry cannot be sliced
-    /// axis-wise (Circle, Ellipse, Polygon, CmpRegion, Prism) use the
-    /// default and return `None`.
-    fn reg_base_pick_axes(&self, _axes: &[usize]) -> AstResult<Option<DynRegion>> {
-        Ok(None)
+    /// `astRegBasePick` (region.c:8277). The base implementation returns a
+    /// same-class copy only when *all* base-Frame axes are selected, possibly
+    /// in a permuted order; a strict subset yields `None`. Classes that can
+    /// slice their defining geometry per-axis (Box, Interval, PointList,
+    /// NullRegion) override this to support subset picks; the compound classes
+    /// (CmpRegion, Prism) override it to recurse into their components.
+    /// Classes whose geometry cannot be sliced axis-wise (Circle, Ellipse,
+    /// Polygon) inherit this default, so an all-axes permutation still
+    /// preserves the Region type.
+    fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        // Port of the base astRegBasePick (region.c:8277). We only proceed if
+        // every base-Frame axis is selected exactly once (a genuine
+        // permutation); otherwise no same-class sub-region can be formed.
+        let nax = self.get_region_frameset().base().naxes();
+        if axes.len() != nax {
+            return Ok(None);
+        }
+
+        // Verify `axes` is a genuine permutation of 0..nax: each index appears
+        // exactly once. Track whether it is the identity (a unit map).
+        let mut unit = true;
+        for i in 0..nax {
+            let mut found = false;
+            for (j, &a) in axes.iter().enumerate() {
+                if a == i {
+                    if found {
+                        return Ok(None);
+                    }
+                    found = true;
+                    if i != j {
+                        unit = false;
+                    }
+                }
+            }
+            if !found {
+                return Ok(None);
+            }
+        }
+
+        // Genuine permutation: copy the Region and reset it to represent its
+        // base Frame (astSetRegFS), then permute the axes if not the identity.
+        let base_frame = self.get_region_frameset().base().snapshot();
+        let mut result = self.clone_region();
+        result.set_region_fs(base_frame.as_ref());
+        if !unit {
+            // C astPermAxes uses zero-based `axes`; reg_perm_axes takes a
+            // 1-based permutation.
+            let perm: Vec<usize> = axes.iter().map(|&a| a + 1).collect();
+            result.reg_perm_axes(&perm)?;
+        }
+        Ok(Some(result))
     }
 
     /// Copy selected properties from `that` onto this Region.
@@ -644,7 +688,7 @@ pub enum PickedAxes {
 /// [`PickedAxes::Frame`].
 ///
 /// Faithful port of C `region.c::PickAxes` (region.c:7579).
-pub(crate) fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<PickedAxes> {
+pub fn pick_axes_region(region: &dyn Region, axes: &[usize]) -> AstResult<PickedAxes> {
     use crate::frames::FrameRef;
 
     // Pick the required axes from the current Frame. The C code passes the

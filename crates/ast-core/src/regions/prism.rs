@@ -593,6 +593,58 @@ impl Region for Prism {
         self.perm_axes(perm)
     }
 
+    fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
+        // Port of prism.c::RegBasePick (prism.c:2287). Partition the requested
+        // base-Frame axes between the two encapsulated Regions at nax1, pick
+        // the corresponding axes from each, and return the single sub-region
+        // (when the selection falls entirely in one component) or a Prism of
+        // both.
+        let nax1 = self.region1.naxes();
+
+        let mut axes1: Vec<usize> = Vec::new();
+        let mut axes2: Vec<usize> = Vec::new();
+        for &j in axes {
+            if j < nax1 {
+                axes1.push(j);
+            } else {
+                axes2.push(j - nax1);
+            }
+        }
+
+        // Pick any required axes from the first sub-region. Only a Region
+        // result is usable (prism.c:2400-2404).
+        let frm1: Option<DynRegion> = if axes1.is_empty() {
+            None
+        } else {
+            match super::pick_axes_region(self.region1.as_ref(), &axes1)? {
+                super::PickedAxes::Region(r) => Some(r),
+                super::PickedAxes::Frame(_) => None,
+            }
+        };
+
+        // Pick any required axes from the second sub-region.
+        let frm2: Option<DynRegion> = if axes2.is_empty() {
+            None
+        } else {
+            match super::pick_axes_region(self.region2.as_ref(), &axes2)? {
+                super::PickedAxes::Region(r) => Some(r),
+                super::PickedAxes::Frame(_) => None,
+            }
+        };
+
+        // Assemble the result per the C decision table (prism.c:2419-2434).
+        let result: Option<DynRegion> = match (axes1.is_empty(), axes2.is_empty(), frm1, frm2) {
+            (false, true, Some(r1), _) => Some(r1),
+            (true, false, _, Some(r2)) => Some(r2),
+            (false, false, Some(r1), Some(r2)) => {
+                Some(Box::new(PrismBuilder::from_dyn(r1, r2)?.build()?))
+            }
+            _ => None,
+        };
+
+        Ok(result)
+    }
+
     fn clone_region(&self) -> DynRegion {
         Box::new(self.clone())
     }

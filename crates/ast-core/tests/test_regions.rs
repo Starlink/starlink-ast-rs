@@ -18,8 +18,9 @@ use ast_core::frames::{
 };
 use ast_core::mappings::Mapping;
 use ast_core::regions::{
-    BoxRegion, BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
-    Interval, IntervalBuilder, Overlap, PolygonBuilder, PrismBuilder, Region, remove_regions,
+    BoxRegion, BoxRegionBuilder, Circle, CircleBuilder, CmpOperator, CmpRegion, CmpRegionBuilder,
+    EllipseBuilder, Interval, IntervalBuilder, Overlap, PickedAxes, PolygonBuilder, PrismBuilder,
+    Region, pick_axes_region, remove_regions,
 };
 
 /// Check whether a value represents "unbounded below" (very large negative).
@@ -3484,4 +3485,68 @@ fn prism_simplify_carries_explicit_uncertainty() {
         (uub[1] - ulb[1] - 0.4).abs() < 1e-9,
         "axis-1 uncertainty width"
     );
+}
+
+#[test]
+fn pick_axes_all_axes_permuted_preserves_region_class() {
+    // Region-level astPickAxes (region.c::PickAxes) picks current-Frame axes,
+    // splits the current->base Mapping, and calls astRegBasePick to rebuild a
+    // same-class Region over the corresponding base axes. When all axes are
+    // selected in a permuted order, the base Region::RegBasePick copy path
+    // (region.c:8342) applies: the result must remain a Region of the original
+    // class, not degrade to a plain Frame.
+    let frm = BasicFrameBuilder::new(2).build().unwrap();
+    let circle = CircleBuilder::new(frm, vec![3.0, 5.0])
+        .unwrap()
+        .radius(2.0)
+        .build()
+        .unwrap();
+
+    // Pick both current-Frame axes in swapped order (0-based indices).
+    match pick_axes_region(&circle, &[1, 0]).unwrap() {
+        PickedAxes::Region(r) => {
+            assert!(
+                r.as_any().downcast_ref::<Circle>().is_some(),
+                "permuted all-axes pick must stay a Circle, got a different Region class"
+            );
+            assert_eq!(r.naxes(), 2, "picked Region should be 2-D");
+        }
+        PickedAxes::Frame(_) => {
+            panic!("permuted all-axes pick degraded to a Frame; RegBasePick copy path not taken");
+        }
+    }
+}
+
+#[test]
+fn pick_axes_cmpregion_subset_keeps_cmpregion() {
+    // CmpRegion::reg_base_pick_axes (cmpregion.c:2096) picks the same base axes
+    // from each sub-region and, when both yield Regions, rebuilds a CmpRegion
+    // with the same operator. An AND of two 3-D Boxes picked on all three axes
+    // (permuted) must therefore stay a CmpRegion.
+    let frm = BasicFrameBuilder::new(3).build().unwrap();
+    let box_a = BoxRegionBuilder::new(frm.clone(), vec![0.0, 0.0, 0.0], vec![10.0, 10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let box_b = BoxRegionBuilder::new(frm, vec![2.0, 2.0, 2.0], vec![8.0, 8.0, 8.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let cmp = CmpRegionBuilder::new(box_a, box_b, CmpOperator::And)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    match pick_axes_region(&cmp, &[2, 1, 0]).unwrap() {
+        PickedAxes::Region(r) => {
+            assert!(
+                r.as_any().downcast_ref::<CmpRegion>().is_some(),
+                "permuted all-axes pick of a CmpRegion must stay a CmpRegion"
+            );
+            assert_eq!(r.naxes(), 3, "picked CmpRegion should be 3-D");
+        }
+        PickedAxes::Frame(_) => {
+            panic!("CmpRegion pick degraded to a Frame; override not taken");
+        }
+    }
 }
