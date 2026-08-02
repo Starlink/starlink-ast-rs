@@ -130,6 +130,63 @@ impl Interval {
         (lbnd, ubnd)
     }
 
+    /// If this Interval is equivalent to an un-negated Box, return that Box in
+    /// the base Frame; otherwise return `None`.
+    ///
+    /// Mirrors C `Cache` (interval.c:441-513): the Interval is a Box iff every
+    /// axis limit is finite and every axis shares the first axis's
+    /// included/excluded orientation. A missing limit resolves to `∓DBL_MAX`,
+    /// which is infinite and therefore disqualifies the Box form. When the
+    /// Interval is an *excluded* (negated) Box, C stores a negated Box; the
+    /// callers that use this helper want the un-negated equivalent only, so a
+    /// negated orientation returns `None`. The Interval's own negation and
+    /// Closed attributes are transferred onto the returned Box.
+    fn equivalent_box(&self) -> AstResult<Option<super::BoxRegion>> {
+        let raw_l = &self.data.points[0];
+        let raw_u = &self.data.points[1];
+        let nc = raw_l.len();
+
+        let mut lbnd = vec![0.0f64; nc];
+        let mut ubnd = vec![0.0f64; nc];
+        let mut is_box = true;
+        let mut neg = false;
+        for i in 0..nc {
+            lbnd[i] = if is_bad(raw_l[i]) {
+                -f64::MAX
+            } else {
+                raw_l[i]
+            };
+            ubnd[i] = if is_bad(raw_u[i]) { f64::MAX } else { raw_u[i] };
+            if lbnd[i].abs() == f64::MAX {
+                is_box = false;
+            }
+            if ubnd[i].abs() == f64::MAX {
+                is_box = false;
+            }
+            if i == 0 {
+                neg = lbnd[i] > ubnd[i];
+            } else if neg {
+                if lbnd[i] < ubnd[i] {
+                    is_box = false;
+                }
+            } else if lbnd[i] > ubnd[i] {
+                is_box = false;
+            }
+        }
+
+        if !is_box || neg {
+            return Ok(None);
+        }
+
+        let bfrm = self.data.frameset.base().snapshot();
+        let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
+        bbox.data.uncertainty = self.get_uncertainty();
+        bbox.data.negated = self.data.negated;
+        bbox.data.closed = self.data.closed;
+        bbox.data.closed_set = self.data.closed_set;
+        Ok(Some(bbox))
+    }
+
     /// Re-express this Interval in its current Frame across a non-UnitMap
     /// base->current mapping. Faithful port of the unbounded branch of
     /// `interval.c::Simplify` (3216-3517).
@@ -931,6 +988,49 @@ impl Region for Interval {
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn get_def_unc(&self) -> AstResult<DynRegion> {
+        // Port of interval.c::GetDefUnc (interval.c:583). If this Interval is
+        // equivalent to a Box, delegate to that Box's default uncertainty.
+        if let Some(box_reg) = self.equivalent_box()? {
+            return box_reg.get_def_unc();
+        }
+
+        // Otherwise build a Box covering 1.0E-6 of each axis interval using the
+        // Interval's OWN limits (not the base-class bounding box). An axis with
+        // an infinite limit collapses to a zero-width [0, 0] interval.
+        let raw_l = &self.data.points[0];
+        let raw_u = &self.data.points[1];
+        let nax = raw_l.len();
+        let bfrm = self.data.frameset.base().snapshot();
+
+        let mut lbnd = vec![0.0f64; nax];
+        let mut ubnd = vec![0.0f64; nax];
+        for i in 0..nax {
+            let lb = if is_bad(raw_l[i]) {
+                -f64::MAX
+            } else {
+                raw_l[i]
+            };
+            let ub = if is_bad(raw_u[i]) { f64::MAX } else { raw_u[i] };
+            if lb != -f64::MAX && ub != f64::MAX {
+                let mut hw = (0.5e-6 * (ub - lb)).abs();
+                let c = 0.5 * (ub + lb);
+                if hw == 0.0 {
+                    hw = c * 0.5e-6;
+                }
+                ubnd[i] = c + hw;
+                lbnd[i] = c - hw;
+            } else {
+                ubnd[i] = 0.0;
+                lbnd[i] = 0.0;
+            }
+        }
+
+        Ok(Box::new(super::BoxRegion::from_bounds_frame(
+            bfrm, &lbnd, &ubnd,
+        )?))
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {

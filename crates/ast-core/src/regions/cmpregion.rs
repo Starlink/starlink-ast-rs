@@ -791,6 +791,33 @@ impl Region for CmpRegion {
         self.reg_base_box()
     }
 
+    fn reg_base_box2(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        // Faithful port of C `cmpregion.c::RegBaseBox2` (cmpregion.c:1719):
+        // combine the component boxes assuming neither the CmpRegion nor its
+        // components have been negated. The component `get_region_bounds2`
+        // gives each component's box in the CmpRegion's base Frame (the
+        // components' current Frame); AND intersects, other operators union.
+        let naxes = self.data.frameset.base().naxes();
+        let (clbnd1, cubnd1) = self.region1.get_region_bounds2()?;
+        let (clbnd2, cubnd2) = self.region2.get_region_bounds2()?;
+
+        let mut lbnd = vec![0.0; naxes];
+        let mut ubnd = vec![0.0; naxes];
+        for i in 0..naxes {
+            match self.operator {
+                CmpOperator::And => {
+                    lbnd[i] = clbnd1[i].max(clbnd2[i]);
+                    ubnd[i] = cubnd1[i].min(cubnd2[i]);
+                }
+                CmpOperator::Or => {
+                    lbnd[i] = clbnd1[i].min(clbnd2[i]);
+                    ubnd[i] = cubnd1[i].max(cubnd2[i]);
+                }
+            }
+        }
+        Ok((lbnd, ubnd))
+    }
+
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
         // Compute bounding disc from the bounding box.
         let (lbnd, ubnd) = self.reg_base_box()?;
@@ -873,6 +900,20 @@ impl Region for CmpRegion {
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn get_def_unc(&self) -> AstResult<DynRegion> {
+        // Port of cmpregion.c::GetDefUnc (cmpregion.c:1090). Both component
+        // Regions share the CmpRegion's base Frame in their current Frame. If a
+        // component carries an explicit uncertainty, use it; otherwise defer to
+        // the base-class bounding-box default.
+        if self.region1.test_unc() {
+            self.region1.get_unc_frm(FrameRef::Current)
+        } else if self.region2.test_unc() {
+            self.region2.get_unc_frm(FrameRef::Current)
+        } else {
+            self.default_bounding_box_unc()
+        }
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

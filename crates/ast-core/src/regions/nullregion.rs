@@ -263,6 +263,18 @@ impl Region for NullRegion {
         self.data.uncertainty.clone()
     }
 
+    fn get_def_unc(&self) -> AstResult<DynRegion> {
+        // Port of nullregion.c::GetDefUnc (nullregion.c:170): the default
+        // uncertainty is a zero-radius Circle centred on the origin of the
+        // base Frame, not the base-class bounding box.
+        let bfrm = self.data.frameset.base().snapshot();
+        let n = bfrm.naxes();
+        let circle = super::CircleBuilder::from_dyn(bfrm, vec![0.0; n])?
+            .radius(0.0)
+            .build()?;
+        Ok(Box::new(circle))
+    }
+
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
         // Port of nullregion.c::RegBasePick (nullregion.c:1106): rebuild a
         // NullRegion on the picked base Frame. NullRegion has no defining

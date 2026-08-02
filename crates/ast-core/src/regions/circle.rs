@@ -73,6 +73,28 @@ impl CircleBuilder {
         })
     }
 
+    /// Create a builder for a Circle from a boxed (dynamic) frame.
+    pub fn from_dyn(frame: DynFrame, centre: Vec<f64>) -> AstResult<Self> {
+        let naxes = frame.naxes();
+        if centre.len() != naxes {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "Circle centre has {} coordinates but frame has {} axes",
+                    centre.len(),
+                    naxes
+                ),
+            ));
+        }
+        Ok(CircleBuilder {
+            frame,
+            centre,
+            edge_point: None,
+            radius: None,
+            uncertainty: None,
+        })
+    }
+
     /// Specify the circle by a point on the circumference.
     pub fn edge_point(mut self, point: Vec<f64>) -> Self {
         self.edge_point = Some(point);

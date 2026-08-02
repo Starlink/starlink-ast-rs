@@ -188,6 +188,43 @@ pub trait Region: Frame + Mapping {
     /// Axes that are unbounded use [`BAD_VALUE`](crate::constants::BAD_VALUE).
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)>;
 
+    /// Bounding box of the *un-negated* region in the base Frame, ignoring the
+    /// Negated attribute of any component Regions.
+    ///
+    /// Mirrors C `astRegBaseBox2` (region.c:7909). The base-class behaviour is
+    /// identical to [`get_region_bounds`](Region::get_region_bounds); only
+    /// compound classes (CmpRegion) override it so the un-negated assumption is
+    /// propagated to their components.
+    fn reg_base_box2(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        self.get_region_bounds()
+    }
+
+    /// Bounding box of the un-negated region in the *current* Frame, ignoring
+    /// the Negated attribute of any component Regions.
+    ///
+    /// Mirrors C `astGetRegionBounds2` (region.c:9139): compute the base-Frame
+    /// box via [`reg_base_box2`](Region::reg_base_box2), then map it through the
+    /// simplified base→current Mapping (a `UnitMap` copies the bounds directly;
+    /// otherwise each output axis is bounded with `astMapBox`).
+    fn get_region_bounds2(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        let (lbndb, ubndb) = self.reg_base_box2()?;
+        let fs = self.get_region_frameset();
+        let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+        let smap = map.simplified()?;
+        let ncur = fs.current().naxes();
+        if smap.as_any().is::<UnitMap>() {
+            return Ok((lbndb, ubndb));
+        }
+        let mut lbnd = vec![0.0; ncur];
+        let mut ubnd = vec![0.0; ncur];
+        for (i, (lo, hi)) in lbnd.iter_mut().zip(ubnd.iter_mut()).enumerate() {
+            let mb = smap.map_box(&lbndb, &ubndb, true, i)?;
+            *lo = mb.lbnd_out;
+            *hi = mb.ubnd_out;
+        }
+        Ok((lbnd, ubnd))
+    }
+
     /// Get a bounding disc for this region.
     ///
     /// Returns `(centre, radius)` where `centre` has length `naxes()`
@@ -374,20 +411,32 @@ pub trait Region: Frame + Mapping {
     /// Get a copy of the uncertainty region, if one has been set.
     fn get_uncertainty(&self) -> Option<DynRegion>;
 
-    /// Return the default uncertainty Region for this Region, in its base
-    /// Frame.
+    /// Whether an explicit (non-default) uncertainty has been assigned.
     ///
-    /// Mirrors C `astGetDefUnc` (region.c:3488): a Box covering `1.0E-6` of
-    /// this Region's base-Frame bounding box, centred on the box centre.
-    /// For each axis with finite bounds the half-width is
-    /// `|0.5E-6 * (ubnd - lbnd)|`, or `c * 0.5E-6` (with `c` the axis centre)
-    /// when that width is zero; axes with infinite bounds collapse to a
-    /// zero-width `[0, 0]` interval.
+    /// Mirrors C `astTestUnc` (region.c): true iff a specific uncertainty
+    /// Region has been stored, false when the Region relies on its default
+    /// uncertainty ([`get_def_unc`](Region::get_def_unc)).
+    fn test_unc(&self) -> bool {
+        self.get_uncertainty().is_some()
+    }
+
+    /// The base-class default uncertainty: a Box covering `1.0E-6` of this
+    /// Region's base-Frame bounding box, centred on the box centre.
     ///
-    /// The default implementation is the C `GetDefUnc` body; only Regions
-    /// with a bespoke default (none in this port) need override it.
-    fn get_def_unc(&self) -> AstResult<DynRegion> {
-        let (mut lbnd, mut ubnd) = self.get_region_bounds()?;
+    /// Mirrors C base `GetDefUnc` (region.c:3488). For each axis with finite
+    /// bounds the half-width is `|0.5E-6 * (ubnd - lbnd)|`, or `c * 0.5E-6`
+    /// (with `c` the axis centre) when that width is zero; axes with infinite
+    /// bounds collapse to a zero-width `[0, 0]` interval.
+    ///
+    /// The bounding box is taken from [`reg_base_box2`](Region::reg_base_box2)
+    /// (not [`get_region_bounds`](Region::get_region_bounds)) because C uses
+    /// `astRegBaseBox2` here: for compound Regions the un-negated assumption
+    /// must be propagated to the component Regions.
+    ///
+    /// Classes that override [`get_def_unc`](Region::get_def_unc) call this to
+    /// reach the inherited (parent) behaviour when their bespoke rule defers.
+    fn default_bounding_box_unc(&self) -> AstResult<DynRegion> {
+        let (mut lbnd, mut ubnd) = self.reg_base_box2()?;
         let nax = lbnd.len();
         let bfrm = self.get_region_frameset().base().snapshot();
         for i in 0..nax {
@@ -405,6 +454,17 @@ pub trait Region: Frame + Mapping {
             }
         }
         Ok(Box::new(BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?))
+    }
+
+    /// Return the default uncertainty Region for this Region, in its base
+    /// Frame.
+    ///
+    /// Mirrors C `astGetDefUnc` (region.c:3488). The base-class rule is the
+    /// bounding-box Box in [`default_bounding_box_unc`](Region::default_bounding_box_unc);
+    /// Interval, NullRegion, Prism, and CmpRegion override this with their own
+    /// C-defined defaults.
+    fn get_def_unc(&self) -> AstResult<DynRegion> {
+        self.default_bounding_box_unc()
     }
 
     /// Return the uncertainty Region for this Region in the requested Frame.

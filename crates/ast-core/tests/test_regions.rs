@@ -3557,6 +3557,145 @@ fn set_uncertainty_negates_unbounded() {
     assert_eq!(got, setunc_fixture_map("setunc_unbounded_negated"));
 }
 
+// ============================================================================
+// get_def_unc (astGetDefUnc) computational parity
+//
+// C `astGetUnc(this, 1)` returns a copy of the default uncertainty Region in
+// the CURRENT Frame with RegionFS cleared (region.c:3784). The oracle `.map`
+// fixtures store that Region. These tests reconstruct the parent Region from
+// the same primitives the fixture generator uses, call `get_unc_frm(Current)`
+// (equivalent to `astGetUnc` with a plain — hence UnitMap — FrameSet), and
+// compare the serialization byte-for-byte, pinning the per-class default
+// uncertainty rule directly.
+// ============================================================================
+
+fn defunc_fixture_map(name: &str) -> String {
+    let path = format!(
+        "{}/tests/fixtures/native/reference/simplify_fixtures/{}.map",
+        env!("CARGO_MANIFEST_DIR"),
+        name
+    );
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+/// Serialize a default-uncertainty Region to native form. C `astGetUnc`
+/// clears RegionFS on the returned copy; the parent Regions here all have a
+/// plain (UnitMap) FrameSet, so `get_unc_frm(Current)` returns the base-Frame
+/// uncertainty directly.
+fn defunc_native(region: &dyn Region) -> String {
+    let mut unc = region.get_unc_frm(FrameRef::Current).unwrap();
+    // Mirror the public C `astGetUnc` (region.c:3808): clear RegionFS on the
+    // returned copy so the uncertainty's Frame is always dumped, even when its
+    // FrameSet was internally flagged for omission (as `set_uncertainty` does).
+    unc.set_region_fs_flag(true);
+    let any = if let Some(r) = unc.as_any().downcast_ref::<BoxRegion>() {
+        AnyObject::BoxRegion(r.clone())
+    } else if let Some(r) = unc.as_any().downcast_ref::<Circle>() {
+        AnyObject::Circle(r.clone())
+    } else if let Some(r) = unc.as_any().downcast_ref::<ast_core::regions::Prism>() {
+        AnyObject::Prism(r.clone())
+    } else if let Some(r) = unc.as_any().downcast_ref::<Interval>() {
+        AnyObject::Interval(r.clone())
+    } else if let Some(r) = unc.as_any().downcast_ref::<CmpRegion>() {
+        AnyObject::CmpRegion(r.clone())
+    } else {
+        panic!("unexpected default-uncertainty Region class");
+    };
+    ast_core::to_native_string(&any).unwrap()
+}
+
+#[test]
+fn get_def_unc_interval_unbounded() {
+    // Oracle: defunc_interval_unbounded. A 2-D Interval with a bounded axis 1
+    // ([2, 8]) and a half-open axis 2 (no upper limit) is not Box-equivalent,
+    // so Interval::get_def_unc (interval.c:583) builds a Box covering 1.0E-6 of
+    // its own limits: axis 1 half-width 3.0E-6 about centre 5, axis 2 collapses
+    // to [0, 0].
+    let frm = BasicFrameBuilder::new(2).build().unwrap();
+    let interval = IntervalBuilder::new(frm, vec![2.0, 3.0], vec![8.0, BAD_VALUE])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        defunc_native(&interval),
+        defunc_fixture_map("defunc_interval_unbounded")
+    );
+}
+
+#[test]
+fn get_def_unc_nullregion_is_zero_circle() {
+    // Oracle: defunc_nullregion_2d. NullRegion::get_def_unc (nullregion.c:170)
+    // is a zero-radius Circle centred on the origin, not the base-class
+    // bounding-box Box.
+    let frm = BasicFrameBuilder::new(2).build().unwrap();
+    let null = ast_core::regions::NullRegionBuilder::new(frm)
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        defunc_native(&null),
+        defunc_fixture_map("defunc_nullregion_2d")
+    );
+}
+
+#[test]
+fn get_def_unc_prism_combines_components() {
+    // Oracle: defunc_prism_box_interval. Prism::get_def_unc (prism.c:1207) is a
+    // Prism of the two component default uncertainties (Box's and Interval's).
+    let f2 = BasicFrameBuilder::new(2).build().unwrap();
+    let boxr = BoxRegionBuilder::from_bounds(f2, &[0.0, 0.0], &[4.0, 6.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let f1 = BasicFrameBuilder::new(1).build().unwrap();
+    let interval = IntervalBuilder::new(f1, vec![1.0], vec![5.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let prism = PrismBuilder::new(boxr, interval).unwrap().build().unwrap();
+
+    assert_eq!(
+        defunc_native(&prism),
+        defunc_fixture_map("defunc_prism_box_interval")
+    );
+}
+
+#[test]
+fn get_def_unc_cmpregion_uses_component_uncertainty() {
+    // Oracle: defunc_cmpregion_component_unc. CmpRegion::get_def_unc
+    // (cmpregion.c:1090) returns the first component's uncertainty when that
+    // component has an explicit (non-default) uncertainty, recentred by
+    // set_uncertainty on the component's centre (5, 5).
+    let f = BasicFrameBuilder::new(2).build().unwrap();
+    let mut reg1 = BoxRegionBuilder::from_bounds(f, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    let ufrm = BasicFrameBuilder::new(2).build().unwrap();
+    let unc = BoxRegionBuilder::from_bounds(ufrm, &[-0.2, -0.2], &[0.2, 0.2])
+        .unwrap()
+        .build()
+        .unwrap();
+    reg1.set_uncertainty(Box::new(unc));
+
+    let f2 = BasicFrameBuilder::new(2).build().unwrap();
+    let reg2 = BoxRegionBuilder::from_bounds(f2, &[5.0, 5.0], &[15.0, 15.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let cmp = CmpRegionBuilder::new(reg1, reg2, CmpOperator::And)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        defunc_native(&cmp),
+        defunc_fixture_map("defunc_cmpregion_component_unc")
+    );
+}
+
 #[test]
 fn pick_axes_all_axes_permuted_preserves_region_class() {
     // Region-level astPickAxes (region.c::PickAxes) picks current-Frame axes,

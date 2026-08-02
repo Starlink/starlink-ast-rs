@@ -602,6 +602,17 @@ impl Region for Prism {
         self.data.uncertainty.clone()
     }
 
+    fn get_def_unc(&self) -> AstResult<DynRegion> {
+        // Port of prism.c::GetDefUnc (prism.c:1207): a Prism formed from the
+        // two component uncertainty Regions. The components' current Frames are
+        // equivalent to the Prism's base Frame, so their current-Frame
+        // uncertainties combine directly into the default uncertainty.
+        let bunc1 = self.region1.get_unc_frm(FrameRef::Current)?;
+        let bunc2 = self.region2.get_unc_frm(FrameRef::Current)?;
+        let prism = super::PrismBuilder::from_dyn(bunc1, bunc2)?.build()?;
+        Ok(Box::new(prism))
+    }
+
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
         // Port of prism.c::RegCentre query path (prism.c:2551-2580). The two
         // component Regions' current Frames together form the parent's base
