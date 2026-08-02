@@ -490,20 +490,51 @@ impl TimeFrame {
         self.format_str = None;
     }
 
-    /// The axis label. Mirrors C `GetLabel` (timeframe.c): a date Format
+    /// The axis label. Mirrors C `GetLabel` (timeframe.c:2579): a date Format
     /// overrides the system label with `"Date/Time"` (when a time field is
-    /// present) or `"Date"` (date only); otherwise the system label is used.
+    /// present) or `"Date"` (date only); otherwise the system label is used,
+    /// and — when a non-zero TimeOrigin is set — the origin is appended as an
+    /// absolute `iso.0` date/time (` offset from <date>`, with a trailing
+    /// ` 00:00:00` time-of-day stripped). A Local Time timescale appends the
+    /// `(UTC±offset)` suffix.
     fn axis_label(&self) -> String {
         let (is_date, ndp, _sep) = date_format(self.format_str());
-        if is_date {
-            if ndp >= 0 {
+        let mut result = if is_date {
+            return if ndp >= 0 {
                 "Date/Time".to_string()
             } else {
                 "Date".to_string()
-            }
+            };
         } else {
             self.system.label().to_string()
+        };
+
+        // Append the TimeOrigin offset as an absolute iso.0 date/time when a
+        // non-zero origin is set (C timeframe.c:2670-2699).
+        if self.time_origin() != 0.0 {
+            if let Ok(mut date) = self.format_iso0_zero() {
+                // Strip a trailing "00:00:00" time-of-day, keeping the space
+                // that precedes it — C only nulls the last 8 characters
+                // (timeframe.c:2696-2698).
+                if let Some(stripped) = date.strip_suffix("00:00:00") {
+                    date = stripped.to_string();
+                }
+                result.push_str(" offset from ");
+                result.push_str(&date);
+            }
         }
+
+        // Local Time: indicate the offset from UTC (C timeframe.c:2726-2734).
+        if self.timescale == TimeScale::Lt {
+            let ltoff = self.lt_offset();
+            if ltoff >= 0.0 {
+                result = format!("{result} (UTC+{})", fmt_g(ltoff));
+            } else {
+                result = format!("{result} (UTC-{})", fmt_g(-ltoff));
+            }
+        }
+
+        result
     }
 
     /// Return the Local Time offset from UTC (hours).

@@ -1663,7 +1663,6 @@ impl Serializable for FrameSet {
             .as_any()
             .downcast_ref::<super::CmpFrame>()
             .is_some();
-        let mut has_epoch = false;
         let mut has_system = false;
         let mut injected_system = false;
         for item in &current_node.items {
@@ -1679,6 +1678,13 @@ impl Serializable for FrameSet {
             }
             // Skip Object-level and class-specific attributes — not proxied.
             if item.key == "Ident" || item.key == "AlSys" {
+                continue;
+            }
+            // For CmpFrame the effective (commented) Epoch is reconstructed and
+            // injected after Domain below. The CmpFrame's own dump emits an
+            // uncommented Epoch only when its own field is set; that item must
+            // not be replayed here or the commented Epoch would appear twice.
+            if is_cmpframe && item.key == "Epoch" {
                 continue;
             }
             // The proxy header shows only the unset values that C's
@@ -1702,11 +1708,37 @@ impl Serializable for FrameSet {
             if matches!(inner, NodeValue::Object(_)) {
                 continue;
             }
-            if item.key == "Epoch" {
-                has_epoch = true;
-            }
             if item.key == "System" {
                 has_system = true;
+            }
+            // For CmpFrame: inject the commented Epoch after Domain. C's
+            // `Frame::Dump` writes Epoch with `helpful = !isFrame`; for a
+            // FrameSet whose current Frame is a CmpFrame `isFrame = 0`
+            // (frame.c:14271-14273), so the commented effective epoch is
+            // shown. The CmpFrame's *own* dump suppresses it (isFrame = 1
+            // there), so it is absent from `current_node` and must be
+            // reconstructed here from the effective value.
+            if is_cmpframe && item.key == "Domain" {
+                node.push_unset(&item.key, inner.clone(), item.comment.clone());
+                if let Some(cmp) = self.current().as_any().downcast_ref::<super::CmpFrame>() {
+                    let mjd = cmp.epoch_mjd();
+                    let (epoch_year, is_besselian) = if mjd < crate::pal::epj2d(1984.0) {
+                        (crate::pal::epb(mjd), true)
+                    } else {
+                        (crate::pal::epj(mjd), false)
+                    };
+                    let comment = if is_besselian {
+                        "Besselian epoch of observation"
+                    } else {
+                        "Julian epoch of observation"
+                    };
+                    node.push_unset(
+                        "Epoch",
+                        NodeValue::Double(epoch_year),
+                        Some(comment.to_string()),
+                    );
+                }
+                continue;
             }
             // For CmpFrame: inject System="Compound" before first Uni entry.
             if is_cmpframe && !has_system && !injected_system && item.key.starts_with("Uni") {
@@ -1716,33 +1748,6 @@ impl Serializable for FrameSet {
                     Some("Coordinate system type".to_string()),
                 );
                 injected_system = true;
-            }
-            // After Domain, inject Epoch from child frames if CmpFrame doesn't have it.
-            if item.key == "Domain" && !has_epoch && is_cmpframe {
-                node.push_unset(&item.key, inner.clone(), item.comment.clone());
-                if let Some(cmp) = self.current().as_any().downcast_ref::<super::CmpFrame>() {
-                    let child_node = FrameToNode::to_node(cmp.frame1())?;
-                    if let Some(epoch_val) = child_node.get_any("Epoch") {
-                        node.push_unset(
-                            "Epoch",
-                            epoch_val.clone(),
-                            Some("Julian epoch of observation".to_string()),
-                        );
-                        has_epoch = true;
-                    }
-                    if !has_epoch {
-                        let child_node = FrameToNode::to_node(cmp.frame2())?;
-                        if let Some(epoch_val) = child_node.get_any("Epoch") {
-                            node.push_unset(
-                                "Epoch",
-                                epoch_val.clone(),
-                                Some("Julian epoch of observation".to_string()),
-                            );
-                            has_epoch = true;
-                        }
-                    }
-                }
-                continue;
             }
             // ActUnt is written as active (not commented) in the FrameSet proxy.
             if item.key == "ActUnt" {

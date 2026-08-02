@@ -700,26 +700,22 @@ pub(crate) fn write_frame_inheritance_for_region(node: &mut Node, frame: &dyn Fr
     }
 
     // Epoch — always commented at the Region level (`!isFrame = 1`).
-    // Pull whatever the Frame's own serialiser produced (Besselian / Julian
-    // year + matching comment); fall back to the J2000 default if absent.
-    let (epoch_value, epoch_comment) =
-        if let Some(item) = frame_node.items.iter().find(|i| i.key == "Epoch") {
-            let v = match &item.value {
-                NodeValue::Unset(inner) => (**inner).clone(),
-                other => other.clone(),
-            };
-            let c = item
-                .comment
-                .clone()
-                .unwrap_or_else(|| "Julian epoch of observation".to_string());
-            (v, c)
-        } else {
-            (
-                NodeValue::Double(2000.0),
-                "Julian epoch of observation".to_string(),
-            )
-        };
-    node.push_unset("Epoch", epoch_value, Some(epoch_comment));
+    // C's `frame.c::Dump` uses `astGetEpoch(this)` (the *effective* value,
+    // never the "if set" one), converted to a Besselian year below J1984 or
+    // a Julian year at/above it. Scraping the frame's own serialiser fails
+    // for classes that omit their own Epoch (e.g. CmpFrame), so compute the
+    // effective epoch directly.
+    let (epoch_year, is_besselian) = crate::frames::frame_epoch_effective_year(frame);
+    let epoch_comment = if is_besselian {
+        "Besselian epoch of observation"
+    } else {
+        "Julian epoch of observation"
+    };
+    node.push_unset(
+        "Epoch",
+        NodeValue::Double(epoch_year),
+        Some(epoch_comment.to_string()),
+    );
 
     // Per-axis Labels — pull from the Frame's Lbl* keys; fall back to the
     // standard "Axis N" default if the Frame elided them.
@@ -743,6 +739,51 @@ pub(crate) fn write_frame_inheritance_for_region(node: &mut Node, frame: &dyn Fr
         NodeValue::String(system_str),
         Some("Coordinate system type".to_string()),
     );
+
+    // Remaining Frame-level attributes (AlSys, Uni*, Dir*, Bot*, Top*,
+    // observer attributes, ActUnt, …). `frame.c::Dump` writes them after
+    // System, all commented at the Region level (`!isFrame = 1`). The
+    // frame's own serialiser already produced these items with the correct
+    // comments and in frame.c order; carry over each scalar item that
+    // precedes the frame's own `IsA Frame` marker, forcing it commented and
+    // skipping the keys emitted explicitly above. Anything after `IsA Frame`
+    // (nested component frames, CmpFrame `Axp*` permutation records) belongs
+    // to the concrete class, not the inherited Frame block, and is dropped.
+    for item in &frame_node.items {
+        // Stop at the frame's own `IsA Frame` marker: everything after it
+        // (nested component frames, CmpFrame `Axp*` permutation records)
+        // belongs to the concrete class, not the inherited Frame block.
+        // Earlier IsA markers (e.g. `IsA Object`, which precedes the Frame
+        // attributes when an Ident is set) are skipped, not treated as the
+        // stopping point.
+        if item.key == "IsA" {
+            if matches!(&item.value, NodeValue::String(s) if s == "Frame") {
+                break;
+            }
+            continue;
+        }
+        let is_handled = matches!(
+            item.key.as_str(),
+            // Emitted explicitly above.
+            "Title" | "Naxes" | "Domain" | "Epoch" | "System"
+            // Object-level attributes: in a Region dump these come from the
+            // Region itself, not the encapsulated frame, so drop the inner
+            // frame's copies.
+            | "Ident" | "ID"
+        ) || item.key.starts_with("Lbl");
+        if is_handled {
+            continue;
+        }
+        // Only scalar attributes appear in the inherited Frame block.
+        if matches!(item.value, NodeValue::Object(_)) {
+            continue;
+        }
+        let value = match &item.value {
+            NodeValue::Unset(inner) => (**inner).clone(),
+            other => other.clone(),
+        };
+        node.push_unset(&item.key, value, item.comment.clone());
+    }
 }
 
 /// Emit the `IsA Region` marker that terminates the Region instance-variable
@@ -971,7 +1012,7 @@ impl Serializable for Circle {
     fn to_node(&self) -> AstResult<Node> {
         Ok(region_to_node_skeleton(
             "Circle",
-            "Circular region",
+            "Circular or spherical region",
             &self.data,
         ))
     }
@@ -1025,11 +1066,18 @@ impl Serializable for Polygon {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        Ok(region_to_node_skeleton(
-            "Polygon",
-            "Polygonal region",
-            &self.data,
-        ))
+        let mut node = region_to_node_skeleton("Polygon", "Polygonal region", &self.data);
+        // Polygon instance variables (polygon.c::Dump, :6701). AST always
+        // records the vertex-order convention: a non-zero value indicates the
+        // STC system (inside to the left when moving anti-clockwise round the
+        // vertices as viewed from the inside of the celestial sphere), which is
+        // what AST currently uses.
+        node.push_int(
+            "Order",
+            1,
+            Some("Polygon uses STC vertex order convention".to_string()),
+        );
+        Ok(node)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1110,23 +1158,23 @@ impl Serializable for CmpRegion {
 
         // CmpRegion-specific: operator and sub-regions. These follow the
         // `IsA Region` marker — written after the parent class skeleton.
-        let oper = match self.operator {
-            CmpOperator::And => 1,
-            CmpOperator::Or => 2,
+        let (oper, oper_comment) = match self.operator {
+            CmpOperator::And => (1, "Regions combined using Boolean AND"),
+            CmpOperator::Or => (2, "Regions combined using Boolean OR"),
         };
-        node.push_int("Operator", oper, Some("Combination operator".to_string()));
+        node.push_int("Operator", oper, Some(oper_comment.to_string()));
 
         let node_a = RegionToNode::to_node(self.region1.as_ref())?;
         let node_b = RegionToNode::to_node(self.region2.as_ref())?;
         node.push_object(
             "RegionA",
             node_a,
-            Some("First component region".to_string()),
+            Some("First component Region".to_string()),
         );
         node.push_object(
             "RegionB",
             node_b,
-            Some("Second component region".to_string()),
+            Some("Second component Region".to_string()),
         );
 
         Ok(node)
@@ -1180,23 +1228,29 @@ impl Serializable for Prism {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Region extrusion into higher dimensions".to_string());
-        write_mapping_base(&mut node, self);
-        write_region_base(&mut node, &self.data);
+        // A Region dump does not chain the Mapping-class Dump; the parent
+        // class written by C `region.c::Dump` is the Frame (the commented
+        // inheritance block), then the Region instance variables. Use the
+        // shared skeleton so Prism matches the leaf classes and C — the
+        // Mapping base (`Nin`/`IsA Mapping`) is never emitted.
+        let mut node = region_to_node_skeleton(
+            "Prism",
+            "Region extrusion into higher dimensions",
+            &self.data,
+        );
 
-        // Prism-specific: sub-regions.
+        // Prism-specific: sub-regions, after the `IsA Region` marker.
         let node_a = RegionToNode::to_node(self.region1.as_ref())?;
         let node_b = RegionToNode::to_node(self.region2.as_ref())?;
         node.push_object(
             "RegionA",
             node_a,
-            Some("First component region".to_string()),
+            Some("First component Region".to_string()),
         );
         node.push_object(
             "RegionB",
             node_b,
-            Some("Second component region".to_string()),
+            Some("Second component Region".to_string()),
         );
 
         Ok(node)

@@ -1244,6 +1244,52 @@ pub(crate) fn frame_epoch_if_set(f: &dyn Frame) -> Option<f64> {
     None
 }
 
+/// The *effective* Epoch (TDB MJD) of a frame, mirroring C's
+/// `astGetEpoch`: every concrete class returns a value even when the
+/// attribute was never explicitly set (the class-specific default —
+/// J2000 for most, B1950 for FK4 SkyFrames, and for CmpFrame whatever a
+/// component supplies). Unlike [`frame_epoch_if_set`], this never
+/// returns `None`; the fallback is the J2000 MJD used by the C base
+/// `GetEpoch` (`frame.c:3210`).
+pub(crate) fn frame_epoch_effective_mjd(f: &dyn Frame) -> f64 {
+    let any = f.as_any();
+    if let Some(sf) = any.downcast_ref::<SkyFrame>() {
+        return sf.epoch_mjd();
+    }
+    if let Some(sf) = any.downcast_ref::<SpecFrame>() {
+        return sf.epoch_mjd();
+    }
+    if let Some(tf) = any.downcast_ref::<TimeFrame>() {
+        return tf.epoch_mjd();
+    }
+    if let Some(df) = any.downcast_ref::<DSBSpecFrame>() {
+        return df.epoch_mjd();
+    }
+    if let Some(cf) = any.downcast_ref::<CmpFrame>() {
+        return cf.epoch_mjd();
+    }
+    if let Some(bf) = any.downcast_ref::<BasicFrame>() {
+        if let Some(mjd) = bf.epoch() {
+            return mjd;
+        }
+    }
+    crate::pal::epj2d(2000.0)
+}
+
+/// The effective Epoch of a frame as a decimal year, using the
+/// Besselian calendar below J1984 and the Julian calendar at or above
+/// it — exactly the branch `frame.c::Dump` takes (frame.c:14338-14343).
+/// Returns `(year, is_besselian)` so the caller can pick the matching
+/// comment string.
+pub(crate) fn frame_epoch_effective_year(f: &dyn Frame) -> (f64, bool) {
+    let mjd = frame_epoch_effective_mjd(f);
+    if mjd < crate::pal::epj2d(1984.0) {
+        (crate::pal::epb(mjd), true)
+    } else {
+        (crate::pal::epj(mjd), false)
+    }
+}
+
 /// Set the Epoch (TDB MJD) on a frame, per concrete class. Classes
 /// without an epoch setter are skipped (C stores Epoch on the Frame
 /// base struct for every class; the Rust BasicFrame only has a

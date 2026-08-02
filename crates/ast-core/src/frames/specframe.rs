@@ -2408,8 +2408,8 @@ impl Serializable for SpecFrame {
         }
         if let Some(ref unit) = self.unit {
             let comment = match crate::units::unit_label(unit) {
-                Some(lab) => format!("Axis units ({lab})"),
-                None => "Axis units".to_string(),
+                Some(lab) if lab != unit => format!("Axis units ({lab})"),
+                _ => "Axis units".to_string(),
             };
             axis_node.push_string("Unit", unit, Some(comment));
         }

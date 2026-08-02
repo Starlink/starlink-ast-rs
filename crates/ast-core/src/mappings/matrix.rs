@@ -1126,9 +1126,12 @@ impl Serializable for MatrixMap {
                 let nel = nin.min(nout);
                 let has_inv = (0..nel).any(|i| node.get(&format!("IM{i}")).is_some());
                 if has_inv {
+                    // A missing diagonal IMi element defaults to AST__BAD on
+                    // load (matrixmap.c: BAD inverse elements are not written
+                    // and load back as AST__BAD), not to zero.
                     let mut mat = Array2::zeros((nin, nout));
                     for i in 0..nel {
-                        mat[[i, i]] = node.get_double(&format!("IM{i}"), 0.0);
+                        mat[[i, i]] = node.get_double(&format!("IM{i}"), BAD_VALUE);
                     }
                     Some(mat)
                 } else {

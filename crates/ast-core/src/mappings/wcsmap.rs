@@ -71,6 +71,12 @@ pub struct WcsMap {
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     has_been_simplified: bool,
+    /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
+    /// inverse projection clips returned longitude values to the projection's
+    /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
+    /// explicitly set value. Mirrors C's `loncheck` field, whose sentinel
+    /// `-INT_MAX` means "not set" (astMAKE_TEST/GET at wcsmap.c:4818-4821).
+    lon_check: Option<bool>,
 }
 
 impl WcsMap {
@@ -134,6 +140,7 @@ impl WcsMap {
                     prj: RefCell::new(prj),
                     inverted: false,
                     has_been_simplified: false,
+                    lon_check: None,
                 });
             }
             other => other,
@@ -153,6 +160,7 @@ impl WcsMap {
             prj: RefCell::new(prj),
             inverted: false,
             has_been_simplified: false,
+            lon_check: None,
         })
     }
 
@@ -227,6 +235,26 @@ impl WcsMap {
             return None;
         };
         self.params[prj_axis].get(m).copied().flatten()
+    }
+
+    /// Set the protected `LonCheck` attribute (wcsmap.c:4787). When `false`,
+    /// the inverse projection accepts longitude values outside the
+    /// projection's primary range instead of setting them bad. Mirrors C
+    /// `astSetLonCheck`, whose `astMAKE_SET` stores `value != 0`.
+    pub fn set_lon_check(&mut self, value: bool) {
+        self.lon_check = Some(value);
+    }
+
+    /// Return the effective `LonCheck` value (default `true` when unset),
+    /// mirroring C `astGetLonCheck` (wcsmap.c:4818).
+    pub fn lon_check(&self) -> bool {
+        self.lon_check.unwrap_or(true)
+    }
+
+    /// Whether `LonCheck` has been explicitly set, mirroring C
+    /// `astTestLonCheck` (wcsmap.c:4821).
+    pub fn test_lon_check(&self) -> bool {
+        self.lon_check.is_some()
     }
 
     /// Return the 1-based longitude axis index.
@@ -336,6 +364,7 @@ impl WcsMap {
             prj: RefCell::new(prj),
             inverted: self.inverted,
             has_been_simplified: self.has_been_simplified,
+            lon_check: self.lon_check,
         })
     }
 
@@ -381,6 +410,7 @@ impl Clone for WcsMap {
             prj: RefCell::new(prj),
             inverted: self.inverted,
             has_been_simplified: self.has_been_simplified,
+            lon_check: self.lon_check,
         }
     }
 }
@@ -788,6 +818,19 @@ impl Serializable for WcsMap {
         }
         node.push_string("Type", self.proj.code(), Some(comment));
 
+        // LonCheck — written with `helpful = 0` (wcsmap.c:5341), so only an
+        // explicitly set value appears (as an active card); an unset value is
+        // suppressed. The comment reflects the value.
+        if self.test_lon_check() {
+            let val = self.lon_check();
+            let comment = if val {
+                "Check returned lon values"
+            } else {
+                "Do not check returned lon values"
+            };
+            node.push_int("LonChk", val as i64, Some(comment.to_string()));
+        }
+
         // PV parameters. C `WcsMap::Dump` (wcsmap.c:5355) loops over the
         // internal axis index `i` in 0..nin and emits `PV{i+1}_{m}` for each,
         // so the cards come out in *axis* order (PV1_* before PV2_*). The
@@ -863,6 +906,11 @@ impl Serializable for WcsMap {
                     }
                 }
             }
+        }
+
+        // LonCheck — only present when explicitly set (helpful=0 in the dump).
+        if node.get("LonChk").is_some() {
+            wcs.set_lon_check(node.get_int("LonChk", 1) != 0);
         }
 
         if base.inverted {

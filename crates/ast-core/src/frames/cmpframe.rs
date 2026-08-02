@@ -324,8 +324,20 @@ impl Frame for CmpFrame {
         // ask the component for its external axis rather than descending
         // through primary_frame (which would strip the component's own
         // permutation and re-permute via the leaf getter).
+        //
+        // C `MAKE_GET(Label)` (cmpframe.c:10263) over-rides the default
+        // label only when the immediate component is a *plain* Frame
+        // (`astGetClass == "Frame"`) with an unset label: it then uses
+        // `"Axis N"` numbered by this CmpFrame level's axis argument. For a
+        // nested CmpFrame (or any non-plain frame) it delegates, so the
+        // enclosing-level numbering is applied at whichever level directly
+        // owns the plain Frame.
         let (child, local_axis) = self.route_axis(axis);
-        child.effective_label(local_axis)
+        if child.as_any().is::<super::BasicFrame>() && !child.test_axis_label(local_axis) {
+            format!("Axis {axis}")
+        } else {
+            child.effective_label(local_axis)
+        }
     }
 
     fn effective_unit(&self, axis: usize) -> String {
@@ -334,8 +346,19 @@ impl Frame for CmpFrame {
     }
 
     fn effective_symbol(&self, axis: usize) -> String {
+        // Mirrors C `MAKE_GET(Symbol)` (cmpframe.c:10278): a plain-Frame
+        // component with an unset Symbol takes the `"Axis N"` default
+        // numbered by this level's external axis (BasicFrame falls back
+        // from Symbol to Label to that default), matching Label above.
         let (child, local_axis) = self.route_axis(axis);
-        child.effective_symbol(local_axis)
+        if child.as_any().is::<super::BasicFrame>()
+            && !child.test_axis_label(local_axis)
+            && child.effective_symbol(local_axis) == format!("Axis {local_axis}")
+        {
+            format!("Axis {axis}")
+        } else {
+            child.effective_symbol(local_axis)
+        }
     }
 
     fn effective_format(&self, axis: usize) -> String {
@@ -840,6 +863,30 @@ impl Serializable for CmpFrame {
             );
         }
 
+        // Epoch. C `Frame::Dump` (frame.c:14333-14343) writes the epoch
+        // after Domain. For a CmpFrame `isFrame = 1` (frame.c:14275-14276),
+        // so `helpful = !isFrame = 0`: the commented default is suppressed at
+        // the Full level, and only an explicitly-set Epoch is emitted (then
+        // uncommented). The `set` flag is `astTestEpoch(this)`, which the
+        // CmpFrame does *not* override — so it reflects the compound frame's
+        // *own* Epoch only, not the component delegation used for the value
+        // (`GetEpoch` is overridden, cmpframe.c:3917). The value is converted
+        // to a Besselian year below J1984 or a Julian year at/above it.
+        if self.epoch.is_some() {
+            let mjd = self.epoch_mjd();
+            let (epoch_year, is_besselian) = if mjd < crate::pal::epj2d(1984.0) {
+                (crate::pal::epb(mjd), true)
+            } else {
+                (crate::pal::epj(mjd), false)
+            };
+            let comment = if is_besselian {
+                "Besselian epoch of observation"
+            } else {
+                "Julian epoch of observation"
+            };
+            node.push_double("Epoch", epoch_year, Some(comment.to_string()));
+        }
+
         // Per-axis attributes (Lbl/Uni/Dir) are emitted in INTERNAL
         // (unpermuted) axis order, mirroring C `Frame::Dump`
         // (frame.c:14345-14358 Lbl, 14435-14453 Uni, 14508-14518 Dir):
@@ -874,19 +921,14 @@ impl Serializable for CmpFrame {
             invperm[self.perm[ext - 1]] = ext;
         }
 
-        // Lbl{n}: internal order, value via the child's perm-aware label.
+        // Lbl{n}: internal order, value via `astGetLabel(this,
+        // invperm[axis])` (frame.c:14358). `effective_label` on the
+        // CmpFrame applies the enclosing-level `"Axis N"` default numbering
+        // for plain-Frame components (mirroring C `MAKE_GET(Label)`), so no
+        // post-hoc renumbering is needed here.
         for i in 1..=naxes {
-            let (child, local_ax) = internal_child(i);
-            let lbl = child.effective_label(local_ax);
-            // Renumber a generic "Axis {local}" default to the CmpFrame's
-            // external axis number for this slot (C builds the default from
-            // the whole-Frame external axis index).
-            let ext = invperm[i - 1];
-            let lbl = if lbl == format!("Axis {local_ax}") && local_ax != ext {
-                format!("Axis {ext}")
-            } else {
-                lbl
-            };
+            let external = invperm[i - 1];
+            let lbl = self.effective_label(external);
             node.push_unset(
                 &format!("Lbl{i}"),
                 NodeValue::String(lbl),
@@ -1103,6 +1145,16 @@ impl Serializable for CmpFrame {
         }
         if node.get("Dut1").is_some() {
             cmp.set_dut1(node.get_double("Dut1", 0.0));
+        }
+
+        // Epoch: the base Frame loader reads the Epoch card (a Besselian or
+        // Julian year) and calls `astSetEpoch`, which the CmpFrame overrides
+        // to store its own value and forward to both components
+        // (cmpframe.c:8763 SetEpoch). Only an explicitly-set (active) card is
+        // restored; a commented default reaches us as absent via `Node::get`.
+        if node.get("Epoch").is_some() {
+            let year = node.get_double("Epoch", 2000.0);
+            cmp.set_epoch_mjd(crate::frames::date_time::year_to_mjd_iau1984(year));
         }
 
         // Ident (Object-level identification string).
