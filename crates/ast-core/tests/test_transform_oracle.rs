@@ -1182,6 +1182,120 @@ fn write_json_report(path: &str, reports: &[SectionReport]) -> std::io::Result<(
     Ok(())
 }
 
+/// SlaMap-family oracle sections not yet matching C, each with a one-line
+/// reason. The goal is to keep this list empty; it only ever shrinks. A
+/// section is identified by `(relpath, forward)`. Reasons must name the
+/// divergence class (e.g. `"simplifier: normal-form"` for a `.simp`
+/// equivalence gap that belongs to Phase 2, not to SlaMap transform math). A
+/// precession-only divergence is never a legitimate entry: palPrec is the
+/// same C code on both sides, so C and Rust must agree there.
+///
+/// After the Phase 1 transform fixes (scalar carrier, AMP arg order,
+/// per-step longitude normalization, bad-args guard) every SlaMap section
+/// matches the C oracle, so this list is empty.
+const SLAMAP_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
+    // Empty: SlaMap transform parity with C is proven for the whole *sla*
+    // simplify corpus. Add a row only for a genuinely out-of-Phase-1 gap,
+    // with a specific reason.
+];
+
+/// Is this oracle section owned by SlaMap transform math (a *sla* fixture in
+/// the simplify corpus)?
+fn is_slamap_section(relpath: &str) -> bool {
+    let base = relpath.rsplit('/').next().unwrap_or(relpath);
+    base.contains("sla") // cap_slamap_*, sla_*, slamap_*, neg_sla_*
+}
+
+/// Regression gate: every SlaMap-family oracle section matches C, except the
+/// explicitly-excluded ones. Mirrors the `NATIVE_READ_EXCLUDED` discipline in
+/// `test_wcsconv.rs` — the list only shrinks; an empty list means parity is
+/// proven for this class. The two invariants: no un-excluded SlaMap section
+/// diverges, and no excluded section secretly passes (a stale entry).
+#[test]
+fn slamap_sections_match_oracle() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let ov = parse_overrides(
+        &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt"))
+            .expect("overrides file present"),
+    );
+    let text =
+        std::fs::read_to_string(format!("{dir}/simplify_fixtures.oracle")).expect("oracle present");
+    let reports = run_oracle(&text, &ov);
+
+    let excluded: std::collections::HashSet<(&str, bool)> = SLAMAP_ORACLE_EXCLUDED
+        .iter()
+        .map(|(rp, fwd, _)| (*rp, *fwd))
+        .collect();
+
+    // A section fails the gate when its transform outputs diverge from C, the
+    // fixture won't load, or its arity no longer matches. Pass /
+    // SkippedByOverride / Skipped are all acceptable ("not a divergence").
+    let is_fail = |o: &Outcome| {
+        matches!(
+            o,
+            Outcome::Mismatch(_) | Outcome::LoadFail(_) | Outcome::Arity(_)
+        )
+    };
+
+    let mut unexpected_failures: Vec<String> = Vec::new();
+    // Every excluded key that never turned up as a live failure is stale.
+    let mut stale_exclusions: std::collections::HashSet<(&str, bool)> = excluded.clone();
+
+    for r in &reports {
+        if !is_slamap_section(&r.relpath) {
+            continue;
+        }
+        let key = (r.relpath.as_str(), r.forward);
+        if excluded.contains(&key) {
+            if is_fail(&r.outcome) {
+                stale_exclusions.remove(&key);
+            }
+            // An excluded section that now passes stays in `stale_exclusions`.
+        } else if is_fail(&r.outcome) {
+            unexpected_failures.push(format!(
+                "{} (forward={}): {:?}",
+                r.relpath,
+                r.forward,
+                describe_outcome(&r.outcome),
+            ));
+        }
+    }
+
+    assert!(
+        unexpected_failures.is_empty(),
+        "SlaMap oracle sections diverged from C (not excluded):\n{}",
+        unexpected_failures.join("\n"),
+    );
+    assert!(
+        stale_exclusions.is_empty(),
+        "SLAMAP_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
+        stale_exclusions,
+    );
+}
+
+/// Short human description of a non-pass outcome for gate failure messages.
+fn describe_outcome(o: &Outcome) -> String {
+    match o {
+        Outcome::Pass => "pass".to_string(),
+        Outcome::LoadFail(e) => format!("load-fail: {e}"),
+        Outcome::Skipped(e) => format!("skipped: {e}"),
+        Outcome::SkippedByOverride(e) => format!("skipped-override: {e}"),
+        Outcome::Arity(e) => format!("arity: {e}"),
+        Outcome::Mismatch(m) => {
+            let (worst, bad) = worst_miss(m).expect("mismatch has >=1 miss");
+            format!(
+                "mismatch:{} bucket={} worst_rel={:.3e} nmiss={} ref={:.6e} got={:.6e}",
+                check_name(worst.check),
+                magnitude_bucket(worst.rel, bad),
+                worst.rel,
+                m.len(),
+                worst.reference,
+                worst.got,
+            )
+        }
+    }
+}
+
 /// Investigative harness. Not part of the normal suite or CI: run with
 ///   cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
 /// It runs every oracle section, prints a summary, and writes a JSON report
