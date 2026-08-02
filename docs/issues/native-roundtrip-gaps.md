@@ -1,5 +1,9 @@
 # Native Serialization Round-Trip Gaps
 
+> **HISTORICAL DOCUMENT (resolved).** 24/24 generated fixtures and 139/139
+> frameset objects pass byte-exact round-trip. Retained as a record; no
+> outstanding work.
+
 Status: 24/24 C-generated fixtures pass byte-exact round-trip.
 Date: 2026-05-09
 

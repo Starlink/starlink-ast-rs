@@ -1,5 +1,11 @@
 # TimeFrame Besselian `astUnformat` report — findings
 
+> **HISTORICAL DOCUMENT (resolved).** The Besselian `astUnformat` discrepancy
+> was not a C bug but a missing `TimeOrigin` re-expression in the Rust port,
+> fixed 2026-06-25 (`origin_scale`/`origin_system` on
+> `set_system`/`set_timescale`/`clear_*`); four named regression tests pass.
+> Retained as a post-mortem; no outstanding work.
+
 This documents the outcome of investigating the reported discrepancy in
 `astUnformat` of a Besselian-epoch string (e.g. `"B2001.5"`) on a
 `system=jepoch, timescale=utc, timeorigin=2005` TimeFrame.

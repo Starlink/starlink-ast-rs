@@ -42,31 +42,40 @@ Detail and C↔Rust locations in `docs/audits/region-class-coverage-audit.md`.
 
 | Area | Doc | Status |
 |---|---|---|
-| Frame + Mapping class C-port gaps (function-by-function) | `docs/issues/frame-mapping-c-port-gaps.md` | audit COMPLETE; work items tracked within |
-| Mapping implementation gaps vs C oracle | `docs/mapping-gaps-audit.md` | OPEN |
-| Per-class Mapping performance vs C oracle | `docs/issues/mapping-perf-vs-c-oracle.md` | OPEN — inverse-transform 1.7× gap has known path |
-| WcsMap NAXIS refactor | `docs/issues/wcsmap-naxis-refactor.md` | OPEN |
-| TimeFrame port + Epoch/Equinox API | `docs/issues/timeframe-and-epoch-api-port.md` | OPEN |
-| TimeFrame unformat findings | `docs/issues/timeframe-unformat-findings.md` | OPEN |
+| Frame + Mapping class C-port gaps (function-by-function) | `docs/issues/frame-mapping-c-port-gaps.md` | OPEN — audit COMPLETE; remaining items are deferred delivery-step work only (Rebin/Resample/TranGrid/QuadApprox, JSON/XML/YAML renderers, absent classes, wcslib port 6a, Plot-support Frame methods + NormalPoints, SkyAxis Format precision) |
+| Per-class Mapping performance vs C oracle | `docs/issues/mapping-perf-vs-c-oracle.md` | SNAPSHOT (2026-05-19) — bench report; opt targets (permmap-fwd, wcsmap-fwd, chebymap SIMD) unactioned, none on the SCUBA-2 hot path |
+| TimeFrame port + Epoch/Equinox API | `docs/issues/timeframe-and-epoch-api-port.md` | OPEN (residual) — Issue A (DATE-OBS/TDB drift) RESOLVED; only Issue-B doc/hygiene items remain (Equinox=UTC note; `_year` setter public/private decision) |
+
+Closed (marked historical in-doc, removed as active work): `mapping-gaps-audit.md`
+(superseded by `frame-mapping-c-port-gaps.md`), `wcsmap-naxis-refactor.md`
+(landed), `timeframe-unformat-findings.md` (resolved 2026-06-25).
 
 ## 3. Simplifier
 
-| Area | Doc | Status |
-|---|---|---|
-| MapMerge rebuild plan | `docs/issues/simplifier-mapmerge-rebuild-plan.md` | OPEN |
-| WinMap inverted-merge bug | `docs/issues/simplifier-winmap-inverted-merge-bug.md` | OPEN |
-| Simplify serialization gaps | `docs/issues/simplify-serialization-gaps.md` | OPEN |
-| SphMap fwd/inv unit-radius cancellation analysis | `docs/issues/sph_fwd_inv_unitradius_cancel_analysis.md` | OPEN |
+All four simplifier docs are now **historical** (rebuild complete, bugs fixed —
+each carries an in-doc note): `simplifier-mapmerge-rebuild-plan.md` (nominate
+loop + per-class `map_merge` landed, rigby byte-exact),
+`simplifier-winmap-inverted-merge-bug.md` (fixed `a4bff3c`, `spec_cel_invert`
+active regression), `simplify-serialization-gaps.md` (0 failures, 719/719),
+`sph_fwd_inv_unitradius_cancel_analysis.md` (fixture byte-exact). No active
+simplifier work remains here; ongoing simplify parity is tracked by the
+regression corpus.
 
 ## 4. Serialization / FITS / round-trip
 
 | Area | Doc | Status |
 |---|---|---|
-| FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | OPEN |
-| Native round-trip gaps | `docs/issues/native-roundtrip-gaps.md` | OPEN |
-| Native round-trip simplify gaps | `docs/issues/native-roundtrip-simplify-gaps.md` | OPEN |
-| `fset_to_store` port gaps | `docs/issues/fset_to_store-port-gaps.md` | OPEN |
-| wcsconv residual classification | `docs/issues/wcsconv-residual-classification.md` | OPEN |
+| FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace ported (192/192 wcsconv); remaining: `-ZPX` distortion PolyMap, unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
+| `fset_to_store` port gaps | `docs/issues/fset_to_store-port-gaps.md` | MOSTLY DONE — SIPIntWorld + VELOSYS + Group 3/5 branches ported; only `-TAB` (IsMapTab1D/2D) remains, blocked on the un-ported FitsTable infrastructure |
+
+Cross-cutting blocker for the two rows above: the **FitsTable / `-TAB`
+algorithm** port is unported and gates the remaining FitsChan and
+`fset_to_store` `-TAB` branches.
+
+Closed (marked historical in-doc, removed as active work):
+`native-roundtrip-gaps.md` (24/24 + 139/139 byte-exact),
+`native-roundtrip-simplify-gaps.md` (719/719 byte-exact),
+`wcsconv-residual-classification.md` (wcsconv 192/192, all buckets cleared).
 
 ## 5. Cross-cutting
 

@@ -1,5 +1,12 @@
 # `fitschan.c` C-vs-Rust Port Gaps
 
+**Status: PARTIALLY DONE.** DSS/SAO/DSBSetUp/SipReplace are ported (all 192/192
+wcsconv cases pass). Remaining gaps: the `-ZPX` distortion PolyMap, the unported
+attribute quartets (`carlin`/`polytan`/`sipok`/`clean`/`iwc`/`fitstol`/`card`
+and the `-TAB` family), the public-API helpers, and Warn cards. The `-TAB`
+branches are blocked on the un-ported FitsTable infrastructure (shared blocker
+with `fset_to_store-port-gaps.md`).
+
 This document catalogues C `fitschan.c` logic that is not yet ported
 to the Rust `crates/ast-core/src/fitschan/` tree.
 Companion to the existing

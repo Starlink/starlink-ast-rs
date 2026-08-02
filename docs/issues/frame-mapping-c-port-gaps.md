@@ -56,9 +56,12 @@ Ordered roughly by impact.
 - **[HIGH] SpecFluxFrame — cross-system conversion.** *(FIXED 2026-06-14.)*
   C `specfluxframe.c::MakeSFMapping` (1060) and its helpers `MakeMapF`/`MakeMapI` (754/895), `MakeMap2`/`MakeMap3` (516/631), and the standardised `GetFluxFrame`/`GetSpecFrame` (186/255) are ported into `specfluxframe.rs`. The 2-axis (spec, flux) conversion scales the flux value by the rate of change of the output spectral system w.r.t. the input — evaluated at the actual spectral coordinate via a `RateMap` — through the PermMap + parallel CmpMaps + `TranMap`(`MathMap` divide/multiply) graph, wired into `specfluxframe_sub_frame` with axis-swap bracketing. Oracle-verified against `testspecflux.c`: Jy FLXDN → W/m²/Angstrom FLXDNW = 1.33425638e-26; log(W/m2/nm) → -24.8747607; surface brightness → -21.3585154 (spectral axis passed through). Supporting fixes: `MathMap` accepts a bare-identifier inverse expression as an input-name declaration (matching C `ExtractVariables`); FluxFrame Overlay clears the Unit on a default-unit-changing System overlay (fluxframe.c:105); `convert_frames`/`FrameSet::edge_mapping` avoid re-simplifying into the simplify-engine gap that drops the TranMap inverse; `make_sf_mapping` short-circuits identity conversions to a UnitMap. A residual simplify-engine limitation (it cannot fully collapse the TranMap-carrying graph) is worked around, not yet fixed — noted in `docs/issues/simplify-serialization-gaps.md`. Tests: `tests/test_fluxframe.rs`.
 
-- **[MED] Frame — `astReadDateTime` only partially ported.**
-  `crates/ast-core/src/frames/date_time.rs:4` ports only the decimal-year branch of C `frame.c:8892`; the Besselian/Julian-epoch prefix (`B1950.0`, `J2000.0`), MJD/JD, and Gregorian date/time string forms are missing.
-  Any Epoch string-setting path through ast-capi will mis-handle those forms.
+- **[MED] Frame — `astReadDateTime` only partially ported.** — **FIXED.**
+  `frames/date_time.rs::read_date_time` now ports the full C `frame.c:8892`:
+  B/J epochs, decimal years (IAU-1984), MJD, JD, and Gregorian dates with named
+  months and `-`/`/`/`:`/space/`T` separators (see the item at the end of
+  section 6 recording the complete port). Earlier snapshot's "decimal-year only"
+  claim is superseded.
 
 - **[MED→FIXED 2026-06-14] PermMap — `PermSplit` attribute.**
   `PermMap` now carries a settable `perm_split` attribute (`perm_split`/`set_perm_split`/`test_perm_split`/`clear_perm_split`), and `map_split_zero_based` ports the alternative `MapSplit` branch (permmap.c:1633): when set, the forward `outperm` is ignored, `inperm` is treated as the exact inverse, and the split returns a `UnitMap(nin)` with output indices read from the selected inputs' `inperm` values — failing when a selected input is fed by a constant or when two selected inputs share an output. The `pmsplt` token round-trips through the native dump. Oracle-verified against the built reference libast (protected `astSetPermSplit`/`astMapSplit` probe): pick {0,1}→UnitMap outs [1,0]; constant-fed→NONE; duplicate-output→NONE. Tests: `tests/test_permmap.rs`.
@@ -102,9 +105,9 @@ Ordered roughly by impact.
 - **[LOW] Serialisation — JSON renderer from design step 5 absent.**
   Native read/write exists (`serial/native_read.rs`, `native_write.rs`) but no JSON/XML/YAML renderer despite the spec listing JSON in step 5.
 
-- **[PROCESS] PLAN.md is empty.**
-  It contains only a title line, so the C→Rust test-migration tracker that CLAUDE.md mandates does not exist.
-  Reconstruct it from `docs/superpower/plans/` and the design spec's delivery order; without it, "missing vs not-yet-scheduled" cannot be policed.
+- **[PROCESS] PLAN.md is empty.** — **FIXED.**
+  PLAN.md is now the clearing-house index of active audited work (this doc is
+  linked from it) and retains the C→Rust test-migration tracker.
 
 ## 2. Absent classes (confirm scheduling, not bugs)
 
@@ -199,8 +202,11 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
 - **[HIGH] Frame — Format attribute is not printf-style and Digits is absent.** — **FIXED.**
   C formats through the Axis Format attribute, a full printf specifier with default `"%1.<Digits>G"` (`axis.c GetDefaultFormat`, Digits default 7) including integer-cast handling for `%d`. The printf-format interpreter is ported as `frames/axis_format.rs::format_value` (the `%G`/`%E`/`%f`/`%d` subset) with the Digits-derived default, and `BasicFrame` carries per-axis Format/Digits state (section 0 item 7). The leaf spectral/flux divergence was closed 2026-06-14: `SpecFrame`/`FluxFrame` had hand-rolled `format` overrides (fixed-decimal precision, and SpecFrame *appended units* — neither matches C, which uses `%1.7G` with no units) even though **C does not override Format for SpecFrame, FluxFrame or DSBSpecFrame** (no `static int Format` — they inherit the base). Fixed by mirroring C's inheritance: the `Frame` trait now carries a default `format` (validate axis → `<bad>` token → `effective_format`/`axis_digits` → `format_value`), `BasicFrame::format` and the `SpecFrame`/`FluxFrame`/`DSBSpecFrame` overrides were deleted so all inherit it (`SpecFluxFrame` keeps CmpFrame-inherited per-axis routing; `CmpFrame`/`TimeFrame`/`SkyFrame` keep their genuine overrides). Oracle-verified for all five classes (`1.5e9`→`1.5E+09`, `1/3`→`0.3333333`, `1e-26`→`1E-26`, BAD→`<bad>`). The pre-existing `test_format_freq` had asserted unit-appended output (a Rust mistake, not a C-bug workaround) and was corrected to the C result. Tests: `tests/test_specframe.rs`, `tests/test_fluxframe.rs`.
 
-- **[MED] Frame — Digits and Direction attributes do not exist.**
-  No `digits` or `direction` symbol anywhere under `frames/` (verified by grep); C has frame-level `Digits`, per-axis `Digits(axis)`, and per-axis `Direction(axis)` (`axis.c:1421-1765`) with Format interplay and Plot consumers.
+- **[MED] Frame — Digits and Direction attributes do not exist.** — **FIXED.**
+  `BasicFrame` carries per-axis Format/Digits state and `frames/axis_format.rs`
+  consumes the Digits-derived default (section 0 item 7); CmpFrame per-axis
+  Direction routes to the owning component (section 6 CmpFrame item). Any
+  remaining `Direction` consumers are Plot-only and tracked with the Plot work.
 
 - **[MED] Frame — `unformat` error/whitespace contract differs.** — **FIXED 2026-06-14.**
   C `astUnformat` (`frame.c:11819` → `axis.c:1284`, `sscanf("%lf %n")`) returns nread=0 *without raising an error* on parse failure, counts leading and trailing whitespace in nread, and recognises the `<bad>` token. `BasicFrame::unformat` already matched this; the gap was that `SpecFrame`/`FluxFrame` carried hand-rolled `unformat` overrides (dropping trailing whitespace from nread, not handling `<bad>`) even though **C does not override Unformat for either class** (no `static int Unformat` in specframe.c/fluxframe.c — they inherit the base). Fixed by mirroring C's inheritance: the shared base contract is now a free fn `basic::axis_unformat`, the `Frame` trait carries a default `unformat` (validate axis → `axis_unformat`), and the spurious overrides in `specframe.rs`/`fluxframe.rs`/`dsbspecframe.rs` were deleted so all four inherit it (`SpecFluxFrame` keeps its CmpFrame-inherited per-axis routing override, cmpframe.c:10041). `CmpFrame`/`TimeFrame`/`SkyFrame` keep their genuine C overrides. Oracle-verified against the built reference libast for all five classes: `"  12.5  "`→(12.5, 8), `"<bad>"`/`" < b a d > "`→(BAD, 5/11), `"12.5xyz"`→(12.5, 4), unparseable→(BAD, 0). Tests: `tests/test_specframe.rs`, `tests/test_fluxframe.rs`, `tests/test_dsbspecframe.rs`.

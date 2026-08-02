@@ -1,5 +1,10 @@
 # `fset_to_store` Port Gaps — C Branches Not Yet Ported
 
+**Status: MOSTLY DONE.** SIPIntWorld, VELOSYS, and all Group 3/5 branches are
+ported. The only remaining gaps are the `-TAB` branches (`IsMapTab1D`/
+`IsMapTab2D`), both blocked on the un-ported FitsTable infrastructure (shared
+blocker with `fitschan-c-port-gaps.md`).
+
 This document tracks every C branch in `fitschan.c` that is referenced
 by the `fset_to_store` pipeline but is **not yet ported** to the
 Rust side. Earlier commits in Groups 3–5 of the

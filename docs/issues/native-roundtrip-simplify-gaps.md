@@ -1,5 +1,9 @@
 # Native Serialization Round-Trip Gaps — Simplify-Fixture Corpus
 
+> **HISTORICAL DOCUMENT (resolved).** The simplify-fixture corpus now passes
+> 719/719 byte-exact (was 348/389 at the time of writing). Retained as a
+> record; no outstanding work.
+
 **Status (2026-05-19):** 348 / 389 fixtures pass byte-exact round-trip
 (89%). 41 fixtures fail. Test now hard-fails on these — see
 [commit 5cc131c](../../#5cc131c).

@@ -1,5 +1,9 @@
 # N-axis WcsMap construction refactor
 
+> **HISTORICAL DOCUMENT (completed).** The N-axis WcsMap refactor landed
+> (commits `d9cbfd8`→`95eac6a`); `sip_3d_swap_fits_wcs` is green and wcsconv
+> passes 192/192. Retained as a record of the refactor; no outstanding work.
+
 ## Background
 
 The C library's `WcsCelestial` (`fitschan.c:35458`) and `WcsNative`

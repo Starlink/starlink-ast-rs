@@ -1,5 +1,10 @@
 # Mapping Implementation Gaps: Rust vs C Oracle
 
+> **HISTORICAL DOCUMENT (superseded).** All §1–§5 items from this 2026-05-08
+> audit have been verified fixed and folded into
+> `docs/issues/frame-mapping-c-port-gaps.md` (§6g/6h/6i/6j/6l). Retained for
+> provenance only; not an active work source.
+
 Audit date: 2026-05-08
 Branch: `tickets/DM-54793`
 

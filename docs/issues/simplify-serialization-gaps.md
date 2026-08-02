@@ -1,5 +1,10 @@
 # Remaining Simplification Serialization Gaps
 
+> **HISTORICAL DOCUMENT (resolved).** All enumerated gaps are closed: the
+> simplify regression reports 0 serialization failures and the byte-exact
+> corpus is 719/719. Retained as a record of the 116→0 reduction; no
+> outstanding work.
+
 Status: 2 serialization mismatches remain (down from 22, originally 116).
 Date: 2026-05-09
 

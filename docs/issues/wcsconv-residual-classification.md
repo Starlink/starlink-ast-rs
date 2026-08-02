@@ -1,5 +1,9 @@
 # wcsconv residual classification (26 failures, 2026-06-04)
 
+> **HISTORICAL DOCUMENT (resolved).** wcsconv now passes 192/192 (0 ignored);
+> every bucket classified here has been cleared. Retained as a record; no
+> outstanding work.
+
 Snapshot of remaining `cargo test -p ast-core --test test_wcsconv -- --include-ignored`
 failures on `tickets/DM-54793` after the SpecTrans port (166/192 passing).
 

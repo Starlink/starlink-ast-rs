@@ -1,5 +1,11 @@
 # Simplifier corruption: WinMap merged past an inverted WcsMap/SpecMap
 
+> **HISTORICAL DOCUMENT (resolved).** Fixed `a4bff3c`; `spec_cel_invert` is an
+> active passing regression (string + astequal). The `try_swap_winmap_wcsmap`
+> helper cited below was later retired in the map-merge rebuild — the
+> invert-flag handling now lives in the nominate-loop model — but the bug
+> remains fixed. Retained as a record; no outstanding work.
+
 **Status (2026-06-25):** FIXED. The reproducing fixture
 (`simplify_fixtures/spec_cel_invert.{map,simp}`, commit `5595fbc`) is now an
 active regression test (manifest line re-enabled). This was a **simplifier

@@ -1,5 +1,9 @@
 # Analysis: sph_fwd_inv_unitradius_cancel fixture discrepancy
 
+> **HISTORICAL DOCUMENT (resolved).** The C fixture was corrected to Nin=3
+> (`fb6762b`) and `SphMap::map_merge` landed (`74e2b38`); the fixture is now
+> byte-exact. Retained as an analysis record; no outstanding work.
+
 ## Fixture files
 
 - **Input:** `tests/fixtures/native/reference/simplify_fixtures/sph_fwd_inv_unitradius_cancel.map`

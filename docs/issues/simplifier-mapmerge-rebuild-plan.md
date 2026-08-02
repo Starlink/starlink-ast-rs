@@ -1,5 +1,11 @@
 # Porting plan: rebuild the simplifier around C's `MapMerge` architecture
 
+> **HISTORICAL DOCUMENT (completed).** The entire phased rebuild landed: the
+> simplifier now mirrors C's nominate-loop + per-class `MapMerge` architecture
+> (`run_nominate_loop`, per-class `map_merge` on every Mapping class), the
+> legacy global-helper scaffold was retired, and the canonical rigby case is
+> byte-exact. Retained as a record of the rebuild; no outstanding work.
+
 ## Status
 
 In progress.
