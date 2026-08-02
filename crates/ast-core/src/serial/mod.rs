@@ -551,15 +551,17 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
     if data.negated {
         node.push_int("Negate", 1, Some("Region negated".to_string()));
     }
-    if data.fill_factor != 1.0e18 && data.fill_factor != 1.0 {
-        // `astMAKE_GET` default is 1.0; sentinel 1.0e18 means "unset".
+    // FillFactor and MeshSize emit only when explicitly set, mirroring C
+    // `region.c:13063,13071` where `set = Test<Attr>()` gates emission
+    // (helpful = 0), independent of whether the value equals a default.
+    if data.fill_factor_set {
         node.push_double(
             "Fill",
             data.fill_factor,
             Some("Region fill factor".to_string()),
         );
     }
-    if data.mesh_size != 200 {
+    if data.mesh_size_set {
         node.push_int(
             "MeshSz",
             data.mesh_size as i64,
@@ -807,8 +809,21 @@ pub(crate) fn push_frame_isa_marker(node: &mut Node) {
 /// defining points, and the optional uncertainty region.
 pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
     let negated = node.get_int("Negate", 0) != 0;
+    // A present `Fill`/`MeshSz` line means the attribute was explicitly set
+    // (C emits them only when Test<Attr> is true). Their absence leaves the
+    // effective value at the class default.
+    let fill_factor_set = node
+        .items
+        .iter()
+        .find(|i| i.key == "Fill")
+        .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
     let fill_factor = node.get_double("Fill", 1.0);
-    let mesh_size = node.get_int("MeshSz", 200) as usize;
+    let mesh_size_set = node
+        .items
+        .iter()
+        .find(|i| i.key == "MeshSz")
+        .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
+    let mesh_size = node.get_int("MeshSz", 0) as usize;
     let closed = node.get_int("Closed", 1) != 0;
     // C tracks Closed via `closed != -INT_MAX` (`region.c` line 12766). For
     // the round-trip we model the same explicit-set state via `closed_set`:
@@ -893,7 +908,9 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         closed,
         closed_set,
         mesh_size,
+        mesh_size_set,
         fill_factor,
+        fill_factor_set,
         adaptive,
         uncertainty,
         dummy_fs,

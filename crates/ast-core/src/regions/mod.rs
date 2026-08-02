@@ -141,11 +141,20 @@ pub trait Region: Frame + Mapping {
     /// Set the fill factor.
     fn set_fill_factor(&mut self, factor: f64);
 
+    /// Whether the fill factor has been explicitly set (C `TestFillFactor`).
+    fn test_fill_factor(&self) -> bool;
+
     /// The number of points used to represent the boundary mesh.
+    ///
+    /// When unset, this is the naxes-dependent default (1-D → 2, 2-D → 200,
+    /// ≥3-D → 2000), mirroring C `astGetMeshSize`.
     fn mesh_size(&self) -> usize;
 
     /// Set the boundary mesh size.
     fn set_mesh_size(&mut self, size: usize);
+
+    /// Whether the mesh size has been explicitly set (C `TestMeshSize`).
+    fn test_mesh_size(&self) -> bool;
 
     /// Whether this region is bounded (has finite extent in all directions).
     fn is_bounded(&self) -> bool;

@@ -210,7 +210,7 @@ impl RegionGeometry for Prism {
         // mesh_size budget between end caps and side walls, get boundary meshes
         // and interior grids for both sub-regions, then form the cross products.
 
-        let mszp = self.data.mesh_size;
+        let mszp = self.data.effective_mesh_size();
 
         // Compute mesh/grid sizes for each component region.
         // For 1-D regions the mesh is always 2 points (lower + upper bound).
@@ -450,19 +450,27 @@ impl Region for Prism {
     }
 
     fn fill_factor(&self) -> f64 {
-        self.data.fill_factor
+        self.data.effective_fill_factor()
     }
 
     fn set_fill_factor(&mut self, factor: f64) {
-        self.data.fill_factor = factor;
+        self.data.set_fill_factor(factor);
+    }
+
+    fn test_fill_factor(&self) -> bool {
+        self.data.fill_factor_set
     }
 
     fn mesh_size(&self) -> usize {
-        self.data.mesh_size
+        self.data.effective_mesh_size()
     }
 
     fn set_mesh_size(&mut self, size: usize) {
-        self.data.mesh_size = size;
+        self.data.set_mesh_size(size);
+    }
+
+    fn test_mesh_size(&self) -> bool {
+        self.data.mesh_size_set
     }
 
     fn is_bounded(&self) -> bool {

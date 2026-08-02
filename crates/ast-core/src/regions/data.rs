@@ -16,6 +16,18 @@ use crate::mappings::{Mapping, UnitMap};
 
 use super::DynRegion;
 
+/// The default MeshSize for a Region with the given number of axes.
+///
+/// Mirrors the naxes-dependent default in C `astGetMeshSize`
+/// (region.c:12714): 1-D → 2, 2-D → 200, ≥3-D → 2000.
+pub(crate) fn default_mesh_size(naxes: usize) -> usize {
+    match naxes {
+        1 => 2,
+        2 => 200,
+        _ => 2000,
+    }
+}
+
 /// Shared data for all Region implementations.
 ///
 /// Every concrete region struct embeds one of these. Fields are
@@ -49,10 +61,28 @@ pub(crate) struct RegionData {
     pub(crate) closed_set: bool,
 
     /// Number of points used for boundary mesh approximation.
+    ///
+    /// Only meaningful when [`mesh_size_set`](Self::mesh_size_set) is true.
+    /// When unset, the effective value is the naxes-dependent default from
+    /// [`default_mesh_size`].
     pub(crate) mesh_size: usize,
 
+    /// Tracks whether `mesh_size` was explicitly set. Mirrors the C
+    /// library's `TestMeshSize` predicate (`this->meshsize != -INT_MAX`,
+    /// region.c:12713) so dump emission is gated on the set-flag rather than
+    /// on the value differing from a default.
+    pub(crate) mesh_size_set: bool,
+
     /// Fraction of the bounding box that is interior.
+    ///
+    /// Only meaningful when [`fill_factor_set`](Self::fill_factor_set) is
+    /// true; the default effective value is `1.0`.
     pub(crate) fill_factor: f64,
+
+    /// Tracks whether `fill_factor` was explicitly set. Mirrors the C
+    /// library's `TestFillFactor` predicate (`this->fillfactor != AST__BAD`,
+    /// region.c:12650).
+    pub(crate) fill_factor_set: bool,
 
     /// Whether adaptive meshing is enabled.
     pub(crate) adaptive: bool,
@@ -94,7 +124,9 @@ impl Clone for RegionData {
             closed: self.closed,
             closed_set: self.closed_set,
             mesh_size: self.mesh_size,
+            mesh_size_set: self.mesh_size_set,
             fill_factor: self.fill_factor,
+            fill_factor_set: self.fill_factor_set,
             adaptive: self.adaptive,
             uncertainty: self.uncertainty.clone(),
             dummy_fs: self.dummy_fs,
@@ -127,8 +159,10 @@ impl RegionData {
             negated: false,
             closed: true,
             closed_set: false,
-            mesh_size: 200,
+            mesh_size: 0,
+            mesh_size_set: false,
             fill_factor: 1.0,
+            fill_factor_set: false,
             adaptive: true,
             uncertainty: None,
             dummy_fs: false,
@@ -161,6 +195,43 @@ impl RegionData {
         {
             unc.set_region_fs(frame);
         }
+    }
+
+    /// The effective MeshSize: the explicitly-set value if any, otherwise
+    /// the naxes-dependent default (`astGetMeshSize`, region.c:12714): 1-D →
+    /// 2, 2-D → 200, ≥3-D → 2000. The naxes count is that of the current
+    /// Frame.
+    pub(crate) fn effective_mesh_size(&self) -> usize {
+        if self.mesh_size_set {
+            self.mesh_size
+        } else {
+            default_mesh_size(self.frameset.current().naxes())
+        }
+    }
+
+    /// The effective FillFactor: the explicitly-set value if any, otherwise
+    /// `1.0` (`astGetFillFactor`, region.c:12648).
+    pub(crate) fn effective_fill_factor(&self) -> f64 {
+        if self.fill_factor_set {
+            self.fill_factor
+        } else {
+            1.0
+        }
+    }
+
+    /// Set the MeshSize, mirroring C `SetMeshSize` (region.c:12712): values
+    /// are clamped to be greater than 5, and the set-flag is raised.
+    pub(crate) fn set_mesh_size(&mut self, value: usize) {
+        self.mesh_size = if value > 5 { value } else { 5 };
+        self.mesh_size_set = true;
+        self.invalidate_cache();
+    }
+
+    /// Set the FillFactor and raise the set-flag. Callers supply a value in
+    /// the C `SetFillFactor` valid range `0.0..=1.0` (region.c:12651).
+    pub(crate) fn set_fill_factor(&mut self, value: f64) {
+        self.fill_factor = value;
+        self.fill_factor_set = true;
     }
 
     /// Invalidate the cached mesh (call after geometry changes).

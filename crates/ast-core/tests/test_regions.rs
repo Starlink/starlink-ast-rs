@@ -3550,3 +3550,75 @@ fn pick_axes_cmpregion_subset_keeps_cmpregion() {
         }
     }
 }
+
+// ============================================================================
+// Parallel-merge FillFactor / MeshSize scaling (box.c:2049-2085).
+//
+// When two Regions merge in a parallel CmpMap to form one higher-dimensional
+// Region, the merged FillFactor is the product of the two source FillFactors
+// (when either was set) and the merged MeshSize (when either was set) is the
+// result's naxes-default scaled by the product of each source's used/default
+// ratio. The per-naxes default is 2 (1-D), 200 (2-D), 2000 (>2-D).
+// ============================================================================
+
+#[test]
+fn parallel_merge_scales_mesh_size() {
+    use ast_core::mappings::{CmpMap, Composition};
+
+    // Two 1-D Boxes, each with an explicit MeshSize.
+    let f1 = BasicFrameBuilder::new(1).build().unwrap();
+    let mut b1 = BoxRegionBuilder::from_bounds(f1, &[0.0], &[10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    b1.set_mesh_size(30);
+
+    let f2 = BasicFrameBuilder::new(1).build().unwrap();
+    let mut b2 = BoxRegionBuilder::from_bounds(f2, &[0.0], &[10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    b2.set_mesh_size(50);
+
+    // Parallel merge -> 2-D Box.
+    let cm = CmpMap::new(Box::new(b1), Box::new(b2), Composition::Parallel).unwrap();
+    let simp = cm.simplified().unwrap();
+    let region = simp
+        .as_any()
+        .downcast_ref::<BoxRegion>()
+        .expect("parallel merge of two 1-D Boxes should be a 2-D Box");
+
+    // (30/2) * (50/2) * 200 = 75000.
+    assert!(region.test_mesh_size(), "merged MeshSize should be set");
+    assert_eq!(region.mesh_size(), 75000);
+}
+
+#[test]
+fn parallel_merge_scales_fill_factor() {
+    use ast_core::mappings::{CmpMap, Composition};
+
+    let f1 = BasicFrameBuilder::new(1).build().unwrap();
+    let mut b1 = BoxRegionBuilder::from_bounds(f1, &[0.0], &[10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    b1.set_fill_factor(0.5);
+
+    let f2 = BasicFrameBuilder::new(1).build().unwrap();
+    let mut b2 = BoxRegionBuilder::from_bounds(f2, &[0.0], &[10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    b2.set_fill_factor(0.8);
+
+    let cm = CmpMap::new(Box::new(b1), Box::new(b2), Composition::Parallel).unwrap();
+    let simp = cm.simplified().unwrap();
+    let region = simp
+        .as_any()
+        .downcast_ref::<BoxRegion>()
+        .expect("parallel merge of two 1-D Boxes should be a 2-D Box");
+
+    // 0.5 * 0.8 = 0.4.
+    assert!(region.test_fill_factor(), "merged FillFactor should be set");
+    assert!((region.fill_factor() - 0.4).abs() < 1e-12);
+}

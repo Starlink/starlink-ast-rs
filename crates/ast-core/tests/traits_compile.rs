@@ -111,10 +111,16 @@ impl Region for DummyRegion {
         1.0
     }
     fn set_fill_factor(&mut self, _factor: f64) {}
+    fn test_fill_factor(&self) -> bool {
+        false
+    }
     fn mesh_size(&self) -> usize {
         200
     }
     fn set_mesh_size(&mut self, _size: usize) {}
+    fn test_mesh_size(&self) -> bool {
+        false
+    }
     fn is_bounded(&self) -> bool {
         true
     }

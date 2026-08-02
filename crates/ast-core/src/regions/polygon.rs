@@ -622,7 +622,7 @@ impl RegionGeometry for Polygon {
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
         let nv = self.data.points.len();
-        let np = self.data.mesh_size;
+        let np = self.data.effective_mesh_size();
 
         // Compute edge lengths.
         let mut edge_lengths = Vec::with_capacity(nv);
@@ -847,19 +847,27 @@ impl Region for Polygon {
     }
 
     fn fill_factor(&self) -> f64 {
-        self.data.fill_factor
+        self.data.effective_fill_factor()
     }
 
     fn set_fill_factor(&mut self, factor: f64) {
-        self.data.fill_factor = factor;
+        self.data.set_fill_factor(factor);
+    }
+
+    fn test_fill_factor(&self) -> bool {
+        self.data.fill_factor_set
     }
 
     fn mesh_size(&self) -> usize {
-        self.data.mesh_size
+        self.data.effective_mesh_size()
     }
 
     fn set_mesh_size(&mut self, size: usize) {
-        self.data.mesh_size = size;
+        self.data.set_mesh_size(size);
+    }
+
+    fn test_mesh_size(&self) -> bool {
+        self.data.mesh_size_set
     }
 
     fn is_bounded(&self) -> bool {
@@ -1080,7 +1088,9 @@ impl Mapping for Polygon {
         data.closed = self.data.closed;
         data.closed_set = self.data.closed_set;
         data.mesh_size = self.data.mesh_size;
+        data.mesh_size_set = self.data.mesh_size_set;
         data.fill_factor = self.data.fill_factor;
+        data.fill_factor_set = self.data.fill_factor_set;
         data.adaptive = self.data.adaptive;
         // Remapping the vertices into the current Frame can change their
         // winding order, so restore the bounded-when-unnegated convention as

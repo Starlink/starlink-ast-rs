@@ -12,7 +12,7 @@
 use crate::frames::FrameSet;
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping};
 
-use super::data::RegionData;
+use super::data::{RegionData, default_mesh_size};
 use super::{
     BoxRegion, Circle, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList, Polygon,
     Prism, PrismBuilder,
@@ -30,16 +30,63 @@ pub(super) enum MergedRegion {
     PointList(Vec<Vec<f64>>),
 }
 
+/// The FillFactor and MeshSize scaling inputs from the two merging
+/// Regions, threaded from `MergeBox`/`MergeInterval` into the shared tail.
+///
+/// Each `(value, set)` pair mirrors the C `astGetMeshSize`/`astTestMeshSize`
+/// (and FillFactor) queries taken on the two supplied Regions before the
+/// merge (box.c:2049-2085).
+pub(super) struct MergeScaling {
+    /// `(effective_mesh_size, was_set, naxes)` for `this`.
+    pub(super) msz_this: (usize, bool, usize),
+    /// `(effective_mesh_size, was_set, naxes)` for `reg`.
+    pub(super) msz_reg: (usize, bool, usize),
+    /// `(effective_fill_factor, was_set)` for `this`.
+    pub(super) fill_this: (f64, bool),
+    /// `(effective_fill_factor, was_set)` for `reg`.
+    pub(super) fill_reg: (f64, bool),
+}
+
+/// Apply the FillFactor/MeshSize scaling of a parallel Region merge to the
+/// merged Region's `data`, given the two source Regions' scaling inputs.
+///
+/// Faithful port of the shared scaling block in `MergeBox`/`MergeInterval`/
+/// `MergePointList`/`MergeNullRegion` (box.c:2049-2085 and identical
+/// elsewhere): the FillFactor is the product of the two supplied
+/// FillFactors when either was set, and the MeshSize (when either was set)
+/// is the result's default scaled by the product of each source's
+/// used/default ratio. The per-source and result defaults are the
+/// naxes-dependent `astGetMeshSize` values.
+pub(super) fn apply_merge_scaling(data: &mut RegionData, scaling: &MergeScaling) {
+    if scaling.fill_this.1 || scaling.fill_reg.1 {
+        data.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0);
+    }
+
+    if scaling.msz_this.1 || scaling.msz_reg.1 {
+        let def_this = default_mesh_size(scaling.msz_this.2) as f64;
+        let def_reg = default_mesh_size(scaling.msz_reg.2) as f64;
+        let fac_this = scaling.msz_this.0 as f64 / def_this;
+        let fac_reg = scaling.msz_reg.0 as f64 / def_reg;
+        let def_result = default_mesh_size(data.frameset.current().naxes()) as f64;
+        let scaled = (fac_this * fac_reg * def_result).round() as usize;
+        data.set_mesh_size(scaled);
+    }
+}
+
 /// Finish a cross-type Region merge: build the concrete merged Region in
 /// the combined `frameset`, propagate the `this`-side attributes, clear
-/// the Negated flag, attach the combined uncertainty, and (for an
-/// Interval result) re-simplify so a fully-bounded Interval reclassifies
-/// to a Box.
+/// the Negated flag, attach the combined uncertainty, apply the
+/// FillFactor/MeshSize scaling, and (for an Interval result) re-simplify so
+/// a fully-bounded Interval reclassifies to a Box.
 ///
 /// Mirrors the shared tail of `MergeInterval`/`MergeBox`
 /// (interval.c:1537, box.c:1983): `astRegOverlay(new, this, 1)` copies
 /// Negated/Closed/Adaptive from `this`, `astClearNegated` then forces the
-/// result un-negated, and `astSetUnc` assigns the combined uncertainty.
+/// result un-negated, `astSetUnc` assigns the combined uncertainty, and the
+/// FillFactor/MeshSize scaling block (box.c:2049-2085) sets the merged
+/// FillFactor to the product of the two and the merged MeshSize to the
+/// result default scaled by the product of each source's used/default
+/// ratio.
 pub(super) fn finish_region_merge(
     built: MergedRegion,
     frameset: FrameSet,
@@ -47,6 +94,7 @@ pub(super) fn finish_region_merge(
     this_closed_set: bool,
     this_adaptive: bool,
     uncertainty: Option<DynRegion>,
+    scaling: MergeScaling,
 ) -> Option<DynMapping> {
     let apply_attrs = |data: &mut RegionData| {
         // astRegOverlay copies Closed and Adaptive from `this`; Negated is
@@ -56,6 +104,8 @@ pub(super) fn finish_region_merge(
         data.adaptive = this_adaptive;
         data.negated = false;
         data.uncertainty = uncertainty.clone();
+
+        apply_merge_scaling(data, &scaling);
     };
 
     match built {

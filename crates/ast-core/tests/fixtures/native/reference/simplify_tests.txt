@@ -298,6 +298,9 @@ normmap_frame_simplifies | simplify_fixtures/normmap_frame_simplifies.map | simp
 selectormap_region_simplify | simplify_fixtures/selectormap_region_simplify.map | simplify_fixtures/selectormap_region_simplify.simp |
 regbasepick_prism_subset | simplify_fixtures/regbasepick_prism_subset.map | simplify_fixtures/regbasepick_prism_subset.simp |
 regbasepick_cmpregion_subset | simplify_fixtures/regbasepick_cmpregion_subset.map | simplify_fixtures/regbasepick_cmpregion_subset.simp |
+merge_box_meshsize_scaled | simplify_fixtures/merge_box_meshsize_scaled.map | simplify_fixtures/merge_box_meshsize_scaled.simp |
+merge_box_fillfactor_product | simplify_fixtures/merge_box_fillfactor_product.map | simplify_fixtures/merge_box_fillfactor_product.simp |
+merge_interval_meshsize_scaled | simplify_fixtures/merge_interval_meshsize_scaled.map | simplify_fixtures/merge_interval_meshsize_scaled.simp |
 
 # Wcsconv-derived integration fixture. Captures the pixel->IWC mapping the
 # FitsChan write path simplifies for the gappt_fits-wcs test. Both Rust and
