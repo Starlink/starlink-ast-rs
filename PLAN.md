@@ -91,3 +91,4 @@ Closed (marked historical in-doc, removed as active work):
 |---|---|---|
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
+| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | `#[ignore]` investigative harness (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; not a CI gate pending divergence fixes; `gen_transform_oracle` intentionally not ported |
