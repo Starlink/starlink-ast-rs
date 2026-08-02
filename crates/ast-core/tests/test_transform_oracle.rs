@@ -474,6 +474,7 @@ fn transform_section(map: &dyn Mapping, s: &Section) -> Result<Vec<Vec<f64>>, St
 }
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 #[derive(Clone, Copy)]
 struct RtripRule {
@@ -1013,4 +1014,204 @@ mod driver_tests {
         let reports = run_oracle(&oracle, &ov);
         assert_eq!(reports.len(), 20, "framesets.oracle has 20 sections");
     }
+}
+
+fn check_name(c: CheckKind) -> &'static str {
+    match c {
+        CheckKind::GoldenFwd => "golden-fwd",
+        CheckKind::GoldenInv => "golden-inv",
+        CheckKind::Equivalence => "equivalence",
+        CheckKind::RoundTrip => "round-trip",
+    }
+}
+
+/// Coarse magnitude bucket for a mismatch's worst relative divergence.
+fn magnitude_bucket(rel: f64, bad_mismatch: bool) -> &'static str {
+    if bad_mismatch {
+        "bad-mismatch"
+    } else if rel <= 1e-6 {
+        "<=1e-6"
+    } else if rel <= 1e-3 {
+        "1e-6..1e-3"
+    } else if rel <= 1.0 {
+        "1e-3..1"
+    } else {
+        ">1"
+    }
+}
+
+/// Minimal JSON string escaping (quotes, backslashes, control chars).
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A mismatch's worst (highest-rel) axis, and whether it is a BAD mismatch.
+fn worst_miss(misses: &[AxisMiss]) -> Option<(&AxisMiss, bool)> {
+    misses
+        .iter()
+        .map(|m| {
+            let bad = m.got == BAD_VALUE || m.reference == BAD_VALUE;
+            (m, bad)
+        })
+        .max_by(|a, b| {
+            a.0.rel
+                .partial_cmp(&b.0.rel)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+/// Write the machine-readable divergence report as JSON (no serde: this crate
+/// has no serde dependency, and the schema is tiny and fixed).
+fn write_json_report(path: &str, reports: &[SectionReport]) -> std::io::Result<()> {
+    let mut pass = 0;
+    let mut load_fail = 0;
+    let mut skipped = 0;
+    let mut skipped_override = 0;
+    let mut arity = 0;
+    let mut failed = 0;
+
+    let mut sections_json = String::new();
+    for r in reports {
+        let (status, detail) = match &r.outcome {
+            Outcome::Pass => {
+                pass += 1;
+                ("pass".to_string(), String::new())
+            }
+            Outcome::LoadFail(e) => {
+                load_fail += 1;
+                ("load-fail".to_string(), e.clone())
+            }
+            Outcome::Skipped(e) => {
+                skipped += 1;
+                ("skipped".to_string(), e.clone())
+            }
+            Outcome::SkippedByOverride(e) => {
+                skipped_override += 1;
+                ("skipped-override".to_string(), e.clone())
+            }
+            Outcome::Arity(e) => {
+                arity += 1;
+                ("arity".to_string(), e.clone())
+            }
+            Outcome::Mismatch(m) => {
+                failed += 1;
+                let (worst, bad) = worst_miss(m).unwrap();
+                (
+                    format!("mismatch:{}", check_name(worst.check)),
+                    format!(
+                        "bucket={} worst_rel={:.3e} nmiss={} ref={:.17e} got={:.17e}",
+                        magnitude_bucket(worst.rel, bad),
+                        worst.rel,
+                        m.len(),
+                        worst.reference,
+                        worst.got
+                    ),
+                )
+            }
+        };
+        let _ = writeln!(
+            sections_json,
+            "    {{\"relpath\":\"{}\",\"forward\":{},\"status\":\"{}\",\"detail\":\"{}\"}},",
+            json_escape(&r.relpath),
+            r.forward,
+            status,
+            json_escape(&detail)
+        );
+    }
+    // Trim trailing comma+newline for valid JSON.
+    let sections_json = sections_json.trim_end().trim_end_matches(',');
+
+    let json = format!(
+        "{{\n  \"totals\": {{\"sections\":{},\"pass\":{},\"failed\":{},\"skipped\":{},\"skipped_override\":{},\"load_fail\":{},\"arity\":{}}},\n  \"sections\": [\n{}\n  ]\n}}\n",
+        reports.len(),
+        pass,
+        failed,
+        skipped,
+        skipped_override,
+        load_fail,
+        arity,
+        sections_json
+    );
+    std::fs::write(path, json)?;
+
+    // stdout human summary: headline + worst divergences.
+    println!(
+        "transform-oracle: {} sections | pass={} fail={} skip={} skip-override={} load-fail={} arity={}",
+        reports.len(),
+        pass,
+        failed,
+        skipped,
+        skipped_override,
+        load_fail,
+        arity
+    );
+    let mut worst: Vec<(&str, bool, f64, &AxisMiss)> = reports
+        .iter()
+        .filter_map(|r| match &r.outcome {
+            Outcome::Mismatch(m) => {
+                worst_miss(m).map(|(w, _bad)| (r.relpath.as_str(), r.forward, w.rel, w))
+            }
+            _ => None,
+        })
+        .collect();
+    worst.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    println!("worst {} divergences:", worst.len().min(40));
+    for (relpath, forward, rel, m) in worst.iter().take(40) {
+        println!(
+            "  {:<52} {:<7} {:<11} rel={:.3e} row={} axis={} ref={:.6e} got={:.6e}",
+            relpath,
+            if *forward { "fwd" } else { "inv" },
+            check_name(m.check),
+            rel,
+            m.row,
+            m.axis,
+            m.reference,
+            m.got
+        );
+    }
+    Ok(())
+}
+
+/// Investigative harness. Not part of the normal suite or CI: run with
+///   cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
+/// It runs every oracle section, prints a summary, and writes a JSON report
+/// to `target/transform_oracle_report.json`. It never asserts on divergence
+/// (the whole point is to measure it); it panics only on a broken harness.
+#[test]
+#[ignore = "investigative: measures Rust-vs-C transform divergence; run with --ignored"]
+fn transform_oracle_report() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let ov = parse_overrides(
+        &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt"))
+            .expect("overrides file present"),
+    );
+    let mut reports = Vec::new();
+    for name in [
+        "simplify_fixtures.oracle",
+        "headers.oracle",
+        "framesets.oracle",
+    ] {
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        reports.extend(run_oracle(&text, &ov));
+    }
+    assert_eq!(reports.len(), 1606, "harness must cover every section");
+    let out = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../target/transform_oracle_report.json"
+    );
+    write_json_report(out, &reports).expect("report writes");
+    println!("wrote {out}");
 }
