@@ -179,10 +179,13 @@ impl WcsMap {
             other => other,
         };
 
-        let prj = PrjParams::new(underlying)?;
+        let mut prj = PrjParams::new(underlying)?;
 
         // Initialise empty parameter arrays for 2 axes (lat=0, lon=1).
         let params = vec![Vec::new(), Vec::new()];
+
+        // Assign default projection parameters (C astInitWcsMap_ → InitPrjPrm).
+        prj.init_prj_prm(&params);
 
         Ok(Self {
             proj,
@@ -242,8 +245,9 @@ impl WcsMap {
         }
         pv[m] = Some(value);
 
-        // Push to wcslib.
-        self.prj.borrow_mut().set_param(prj_axis, m, value);
+        // Rebuild the wcslib parameter arrays with defaults reapplied and the
+        // fwd/rev pointers reinstalled (C SetPV → InitPrjPrm, wcsmap.c:3939).
+        self.prj.borrow_mut().init_prj_prm(&self.params);
 
         Ok(())
     }
@@ -405,13 +409,7 @@ impl WcsMap {
             other => other,
         };
         let mut prj = PrjParams::new(underlying)?;
-        for (prj_axis, pv) in self.params.iter().enumerate() {
-            for (m, val) in pv.iter().enumerate() {
-                if let Some(v) = val {
-                    prj.set_param(prj_axis, m, *v);
-                }
-            }
-        }
+        prj.init_prj_prm(&self.params);
         Ok(prj)
     }
 

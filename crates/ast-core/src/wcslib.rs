@@ -10,6 +10,7 @@
 
 use std::ffi::c_int;
 
+use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 // ---------------------------------------------------------------------------
@@ -430,8 +431,8 @@ impl PrjParams {
         // `astPRJfwd`/`astPRJrev` pointers.  That is not a construction
         // failure — the C library defers the same setup until the
         // parameters are present (it runs `astZPNset` lazily inside
-        // `astZPNfwd`).  Rerun the setup from [`set_param`] once parameters
-        // have been supplied so the pointers get installed.
+        // `astZPNfwd`).  Rerun the setup from [`init_prj_prm`](Self::init_prj_prm)
+        // once parameters have been supplied so the pointers get installed.
         Self::run_setup(&mut inner, proj)?;
 
         Ok(Self {
@@ -473,36 +474,128 @@ impl PrjParams {
         Ok(())
     }
 
-    /// Set a projection parameter.
+    /// Initialise the projection parameter arrays from the values supplied
+    /// on the owning `WcsMap`, assigning defaults for any parameter that was
+    /// not supplied, and (re)install the forward/reverse function pointers.
     ///
-    /// - `axis`: 0 for the latitude axis (`p`), 1 for the longitude axis (`p2`).
-    /// - `m`: parameter index (0-based, must be < [`WCSLIB_MXPAR`]).
-    /// - `value`: the parameter value.
-    ///
-    /// Re-runs the wcslib setup routine so that the forward/reverse
-    /// function pointers are (re)installed for the now-current parameters.
-    /// The polynomial projections leave those pointers unset when
-    /// constructed with empty parameters, so this call is what makes them
-    /// callable once coefficients have been supplied.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `m >= WCSLIB_MXPAR` or `axis > 1`.
-    pub(crate) fn set_param(&mut self, axis: usize, m: usize, value: f64) {
-        assert!(m < WCSLIB_MXPAR, "parameter index {m} out of range");
-        assert!(axis <= 1, "axis must be 0 (lat/p) or 1 (lon/p2)");
+    /// Port of C `InitPrjPrm` (wcsmap.c:2219). `params` is indexed by
+    /// projection role: `params[0]` holds the latitude-axis parameters
+    /// (wcslib `p`) and `params[1]` the longitude-axis parameters (wcslib
+    /// `p2`, used by the TPN projection). A `None` entry means the parameter
+    /// was not supplied — C stores `AST__BAD` in that slot and later replaces
+    /// it with a per-projection default (or zero).
+    pub(crate) fn init_prj_prm(&mut self, params: &[Vec<Option<f64>>]) {
+        let proj = self.proj;
 
-        match axis {
-            0 => self.p_storage[m] = value,
-            1 => self.p2_storage[m] = value,
-            _ => unreachable!(),
+        // Tell the wcslib "proj.c" routines to re-calculate intermediate
+        // values on the next call.
+        self.inner.flag = 0;
+        self.inner.r0 = 0.0;
+
+        // If this is a TPN projection, indicate whether the transformation
+        // should include the TAN projection or just the polynomial
+        // correction. The TPNTan attribute defaults to 1 (astGetTPNTan,
+        // wcsmap.c:4780) and cannot be cleared through this API, so the TAN
+        // part is always included. For every other projection type `n` is
+        // left for the per-projection setup routine to fill (e.g. astHPXset
+        // sets it from p[2]).
+        if matches!(proj, WcsProjection::Tpn) {
+            self.inner.n = 1;
         }
 
-        // Re-run setup: this resets `flag` so wcslib recomputes intermediate
-        // values, and installs the fwd/rev pointers now that parameters are
-        // present.  The only failure mode is an unrecognised projection
+        // Initially set all parameters to the bad value.
+        self.p_storage.fill(BAD_VALUE);
+        self.p2_storage.fill(BAD_VALUE);
+
+        // Copy the supplied parameters into the arrays.
+        if let Some(pv) = params.first() {
+            for (m, v) in pv.iter().enumerate().take(WCSLIB_MXPAR) {
+                if let Some(v) = v {
+                    self.p_storage[m] = *v;
+                }
+            }
+        }
+        if let Some(pv) = params.get(1) {
+            for (m, v) in pv.iter().enumerate().take(WCSLIB_MXPAR) {
+                if let Some(v) = v {
+                    self.p2_storage[m] = *v;
+                }
+            }
+        }
+
+        // Supply default values for any missing projection parameters which
+        // do not default to zero.
+        let p = &mut self.p_storage;
+        let p2 = &mut self.p2_storage;
+        match proj {
+            WcsProjection::Szp => {
+                if p[3] == BAD_VALUE {
+                    p[3] = 90.0;
+                }
+            }
+            WcsProjection::Air => {
+                if p[1] == BAD_VALUE {
+                    p[1] = 90.0;
+                }
+            }
+            WcsProjection::Cyp => {
+                if p[1] == BAD_VALUE {
+                    p[1] = 1.0;
+                }
+                if p[2] == BAD_VALUE {
+                    p[2] = 1.0;
+                }
+            }
+            WcsProjection::Cea => {
+                if p[1] == BAD_VALUE {
+                    p[1] = 1.0;
+                }
+            }
+            WcsProjection::Tpn => {
+                if p[1] == BAD_VALUE {
+                    p[1] = 1.0;
+                }
+                if p2[1] == BAD_VALUE {
+                    p2[1] = 1.0;
+                }
+            }
+            WcsProjection::Hpx => {
+                if p[1] == BAD_VALUE {
+                    p[1] = 4.0;
+                }
+                if p[2] == BAD_VALUE {
+                    p[2] = 3.0;
+                }
+            }
+            _ => {}
+        }
+
+        // Use a default of zero for any remaining unspecified values, except
+        // for the un-defaultable parameter (index 1) of the Bonne and conic
+        // projections, which retain the bad value.
+        let undefaultable = matches!(
+            proj,
+            WcsProjection::Bon
+                | WcsProjection::Cop
+                | WcsProjection::Coe
+                | WcsProjection::Cod
+                | WcsProjection::Coo
+        );
+        for (i, slot) in p.iter_mut().enumerate() {
+            if !(undefaultable && i == 1) && *slot == BAD_VALUE {
+                *slot = 0.0;
+            }
+        }
+        for (i, slot) in p2.iter_mut().enumerate() {
+            if !(undefaultable && i == 1) && *slot == BAD_VALUE {
+                *slot = 0.0;
+            }
+        }
+
+        // Install the forward/reverse pointers for the now-complete
+        // parameters. The only failure mode is an unrecognised projection
         // code, which cannot occur after a successful `new`.
-        let _ = Self::run_setup(&mut self.inner, self.proj);
+        let _ = Self::run_setup(&mut self.inner, proj);
     }
 
     /// Read a projection parameter.
@@ -823,12 +916,12 @@ mod tests {
     }
 
     #[test]
-    fn set_param_keeps_projection_callable() {
+    fn init_prj_prm_keeps_projection_callable() {
         let mut prj = PrjParams::new(WcsProjection::Tan).unwrap();
         // After init, the projection is set up (flag holds the type code).
         assert_ne!(prj.inner.flag, 0);
-        // Setting a parameter re-runs setup, leaving the projection callable.
-        prj.set_param(0, 0, 1.0);
+        // Re-initialising with parameters leaves the projection callable.
+        prj.init_prj_prm(&[vec![Some(1.0)], Vec::new()]);
         assert_ne!(prj.inner.flag, 0);
         let result = prj.forward(0.0, 90.0);
         assert!(result.is_ok());
@@ -842,8 +935,8 @@ mod tests {
         let mut prj = PrjParams::new(WcsProjection::Zpn).unwrap();
         assert!(prj.forward(0.0, 80.0).is_err());
         // Supplying the linear coefficient makes the polynomial well-defined;
-        // set_param re-runs setup and installs the pointers.
-        prj.set_param(0, 1, 1.0);
+        // init_prj_prm re-runs setup and installs the pointers.
+        prj.init_prj_prm(&[vec![None, Some(1.0)], Vec::new()]);
         assert!(prj.forward(0.0, 80.0).is_ok());
     }
 
@@ -856,11 +949,25 @@ mod tests {
 
     #[test]
     #[allow(clippy::approx_constant)] // -3.14 is opaque test parameter, not π
-    fn set_and_get_param() {
+    fn init_prj_prm_copies_supplied_params() {
         let mut prj = PrjParams::new(WcsProjection::Tan).unwrap();
-        prj.set_param(0, 5, 42.0);
+        prj.init_prj_prm(&[
+            vec![None, None, None, None, None, Some(42.0)],
+            vec![
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(-3.14),
+            ],
+        ]);
         assert_eq!(prj.get_param(0, 5), Some(42.0));
-        prj.set_param(1, 10, -3.14);
         assert_eq!(prj.get_param(1, 10), Some(-3.14));
     }
 
