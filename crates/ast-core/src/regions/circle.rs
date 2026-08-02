@@ -866,9 +866,8 @@ impl Mapping for Circle {
     }
 
     fn invert(&mut self) {
-        // Inversion for a region swaps forward/inverse semantics.
-        // For now, this is a no-op stub — full implementation handles
-        // the inverted flag.
+        // A Region's forward and inverse transforms are identical (membership
+        // is direction-independent), so inverting has no effect on behaviour.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {

@@ -1063,7 +1063,8 @@ impl Mapping for CmpRegion {
     }
 
     fn invert(&mut self) {
-        // No-op for now — region inversion handled via negation.
+        // A Region's forward and inverse transforms are identical (membership
+        // is direction-independent), so inverting has no effect on behaviour.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {

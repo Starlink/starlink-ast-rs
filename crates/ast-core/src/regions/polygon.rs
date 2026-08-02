@@ -1072,7 +1072,8 @@ impl Mapping for Polygon {
     }
 
     fn invert(&mut self) {
-        // No-op for now.
+        // A Region's forward and inverse transforms are identical (membership
+        // is direction-independent), so inverting has no effect on behaviour.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {

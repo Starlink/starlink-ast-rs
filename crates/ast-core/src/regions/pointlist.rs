@@ -729,8 +729,8 @@ impl Mapping for PointList {
     }
 
     fn invert(&mut self) {
-        // Inversion for a region swaps forward/inverse semantics.
-        // For now, this is a no-op stub.
+        // A Region's forward and inverse transforms are identical (membership
+        // is direction-independent), so inverting has no effect on behaviour.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
