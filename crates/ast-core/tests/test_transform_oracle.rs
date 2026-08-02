@@ -7,9 +7,6 @@
 //! the Rust outputs diverge from the C reference values. This harness never
 //! regenerates the oracle: the C values are the frozen baseline.
 
-// Constants and helpers below are consumed by later tasks in this oracle suite.
-#![allow(dead_code)]
-
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
@@ -775,7 +772,7 @@ fn compare_rtrip(
     let recovered = Section {
         relpath: fwd.relpath.clone(),
         nin: fwd.nin,
-        nout: fwd.nin,
+        nout: fwd.nout,
         forward: true,
         inputs: inv_live.to_vec(),
         outputs: Vec::new(),
