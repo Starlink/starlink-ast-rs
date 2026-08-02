@@ -53,6 +53,142 @@ fn within_tol_wrap(got: f64, reference: f64, rtol: f64, atol: f64) -> bool {
     ((got - reference).abs() - TWO_PI).abs() <= atol + rtol * reference.abs()
 }
 
+/// One corpus entry: recorded inputs and outputs for one fixture+direction.
+struct Section {
+    relpath: String,
+    nin: usize,
+    nout: usize,
+    forward: bool,
+    /// Column-major: `inputs[axis][row]`, `axis in 0..nin`.
+    inputs: Vec<Vec<f64>>,
+    /// Column-major: `outputs[axis][row]`, `axis in 0..nout`.
+    outputs: Vec<Vec<f64>>,
+}
+
+impl Section {
+    fn npoint(&self) -> usize {
+        self.inputs.first().map_or(0, Vec::len)
+    }
+}
+
+/// Port of C `oracle_parse_double`: the `BAD` token maps to `BAD_VALUE`;
+/// otherwise the whole token must parse as an `f64`.
+fn parse_double(tok: &str) -> Option<f64> {
+    if tok == "BAD" {
+        return Some(BAD_VALUE);
+    }
+    tok.parse::<f64>().ok()
+}
+
+/// Parse a whole `.oracle` file. Section headers look like
+/// `[<relpath>  nin=N nout=M dir=forward]`; data rows are `nin` inputs then
+/// `nout` outputs. A malformed data row is a hard error (a truncated oracle
+/// must not pass on reduced coverage), matching the C checker.
+fn parse_oracle(text: &str) -> Result<Vec<Section>, String> {
+    let mut sections: Vec<Section> = Vec::new();
+    for line in text.lines() {
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('[') {
+            let inside = rest.strip_suffix(']').unwrap_or(rest);
+            let mut it = inside.split_whitespace();
+            let relpath = it.next().ok_or("empty section header")?.to_string();
+            let mut nin = None;
+            let mut nout = None;
+            let mut forward = true;
+            for tok in it {
+                if let Some(v) = tok.strip_prefix("nin=") {
+                    nin = v.parse().ok();
+                } else if let Some(v) = tok.strip_prefix("nout=") {
+                    nout = v.parse().ok();
+                } else if let Some(v) = tok.strip_prefix("dir=") {
+                    forward = v != "inverse";
+                }
+            }
+            let nin = nin.ok_or_else(|| format!("bad section header: {line}"))?;
+            let nout = nout.ok_or_else(|| format!("bad section header: {line}"))?;
+            sections.push(Section {
+                relpath,
+                nin,
+                nout,
+                forward,
+                inputs: vec![Vec::new(); nin],
+                outputs: vec![Vec::new(); nout],
+            });
+            continue;
+        }
+        let cur = sections
+            .last_mut()
+            .ok_or("data row before any section header")?;
+        let vals: Vec<f64> = line
+            .split_whitespace()
+            .map(|t| parse_double(t).ok_or_else(|| format!("unparseable token {t:?}")))
+            .collect::<Result<_, _>>()?;
+        if vals.len() != cur.nin + cur.nout {
+            return Err(format!(
+                "malformed data row in [{}]: got {} of {} columns",
+                cur.relpath,
+                vals.len(),
+                cur.nin + cur.nout
+            ));
+        }
+        for (axis, v) in vals.iter().take(cur.nin).enumerate() {
+            cur.inputs[axis].push(*v);
+        }
+        for (axis, v) in vals.iter().skip(cur.nin).enumerate() {
+            cur.outputs[axis].push(*v);
+        }
+    }
+    Ok(sections)
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn parses_header_bad_token_and_direction() {
+        let text = "# header\n\n\
+                    [foo.map  nin=2 nout=1 dir=forward]\n\
+                    \x201 2  3\n\
+                    \x204 5  BAD\n\n\
+                    [bar.head  nin=1 nout=1 dir=inverse]\n\
+                    \x207  8\n";
+        let secs = parse_oracle(text).expect("parse ok");
+        assert_eq!(secs.len(), 2);
+        assert_eq!(secs[0].relpath, "foo.map");
+        assert_eq!((secs[0].nin, secs[0].nout, secs[0].forward), (2, 1, true));
+        assert_eq!(secs[0].npoint(), 2);
+        assert_eq!(secs[0].inputs[0][0], 1.0);
+        assert_eq!(secs[0].inputs[1][1], 5.0);
+        assert_eq!(secs[0].outputs[0][0], 3.0);
+        assert_eq!(secs[0].outputs[0][1], BAD_VALUE);
+        assert!(!secs[1].forward);
+    }
+
+    #[test]
+    fn malformed_row_is_hard_error() {
+        let text = "[foo.map  nin=2 nout=1 dir=forward]\n  1 2\n";
+        assert!(parse_oracle(text).is_err());
+    }
+
+    #[test]
+    fn parses_all_three_committed_oracles() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+        let mut total = 0;
+        for name in [
+            "simplify_fixtures.oracle",
+            "headers.oracle",
+            "framesets.oracle",
+        ] {
+            let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
+            total += parse_oracle(&text).expect("committed oracle parses").len();
+        }
+        assert_eq!(total, 1606);
+    }
+}
+
 #[cfg(test)]
 mod primitive_tests {
     use super::*;
@@ -70,6 +206,7 @@ mod primitive_tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant, clippy::excessive_precision)]
     fn within_tol_wrap_accepts_full_turn_and_ci_pairs() {
         assert!(within_tol_wrap(1.0, 1.0, GOLDEN_RTOL, GOLDEN_ATOL));
         assert!(within_tol_wrap(TWO_PI, 0.0, GOLDEN_RTOL, GOLDEN_ATOL));
