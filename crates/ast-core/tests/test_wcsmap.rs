@@ -176,6 +176,90 @@ fn nan_treated_as_bad() {
 }
 
 // ===========================================================================
+// LonCheck: inverse-transform out-of-domain clipping (wcsmap.c Map:2878,
+// LongRange:2597). Expected values captured from the C oracle
+// (reference/starlink-ast) via a probe over these exact (x,y) inputs.
+// ===========================================================================
+
+// AIT at (x,y) = (3.0, 0.0) radians: with factor = 1.0 (TPNTan defaults to 1)
+// the value handed to the wcslib reverse projection is 3.0 rad expressed in
+// degrees, i.e. 171.887 deg. The AIT domain test computes
+// u = 1 - x*x*w[2] = 0.4375, which is below 0.5 - tol, so astAITrev returns
+// status 2 (outside the physical domain) -> BAD. This is independent of the
+// LonCheck gate: the projection itself rejects the point before the longitude
+// range test is even reached, so both LonCheck on and off yield BAD.
+//
+// (An older wcslib used a u < 0 domain test that accepted this point and
+// returned lon = 3.392248 rad; the current AST source, which this port
+// mirrors, uses the u < 0.5 - tol test and rejects it.)
+#[test]
+fn ait_inverse_out_of_range_clipped_when_loncheck_on() {
+    let wcs = WcsMap::new(2, WcsProjection::Ait, 1, 2).unwrap();
+    let pts = PointSet::from_rows([[3.0, 0.0]]);
+    let out = wcs.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+}
+
+#[test]
+fn ait_inverse_out_of_range_bad_regardless_of_loncheck_off() {
+    let mut wcs = WcsMap::new(2, WcsProjection::Ait, 1, 2).unwrap();
+    wcs.set_lon_check(false);
+    let pts = PointSet::from_rows([[3.0, 0.0]]);
+    let out = wcs.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+}
+
+// CAR at (x,y) = (3.5, 0.0) radians: longitude is 200.5 deg, outside
+// [-180,180]. Clipped to BAD with LonCheck on; passed through unchanged with
+// LonCheck off (CAR longitude wraps and its inverse is identity in longitude).
+#[test]
+fn car_inverse_out_of_range_clipped_when_loncheck_on() {
+    let wcs = WcsMap::new(2, WcsProjection::Car, 1, 2).unwrap();
+    let pts = PointSet::from_rows([[3.5, 0.0]]);
+    let out = wcs.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+}
+
+#[test]
+fn car_inverse_out_of_range_kept_when_loncheck_off() {
+    let mut wcs = WcsMap::new(2, WcsProjection::Car, 1, 2).unwrap();
+    wcs.set_lon_check(false);
+    let pts = PointSet::from_rows([[3.5, 0.0]]);
+    let out = wcs.transform(&pts, false).unwrap();
+    assert_close(out.point(0)[0], 3.5, 1e-12, "car lon (loncheck off)");
+    assert_close(out.point(0)[1], 0.0, 1e-12, "car lat (loncheck off)");
+}
+
+// ZEA at (x,y) = (3.0, 0.0): the inverse is undefined (outside the projection
+// disc), so wcslib returns bad regardless of LonCheck — this exercises the
+// projection-Err branch rather than the longitude gate.
+#[test]
+fn zea_inverse_off_disc_bad_regardless_of_loncheck() {
+    for loncheck in [true, false] {
+        let mut wcs = WcsMap::new(2, WcsProjection::Zea, 1, 2).unwrap();
+        wcs.set_lon_check(loncheck);
+        let pts = PointSet::from_rows([[3.0, 0.0]]);
+        let out = wcs.transform(&pts, false).unwrap();
+        assert_eq!(out.point(0)[0], BAD_VALUE, "zea lon loncheck={loncheck}");
+        assert_eq!(out.point(0)[1], BAD_VALUE, "zea lat loncheck={loncheck}");
+    }
+}
+
+// In-domain inverse points are unaffected by the gate: AIT at the origin
+// round-trips to (0,0) with LonCheck on.
+#[test]
+fn ait_inverse_in_domain_unaffected_by_loncheck() {
+    let wcs = WcsMap::new(2, WcsProjection::Ait, 1, 2).unwrap();
+    let pts = PointSet::from_rows([[0.0, 0.0]]);
+    let out = wcs.transform(&pts, false).unwrap();
+    assert_close(out.point(0)[0], 0.0, 1e-12, "ait origin lon");
+    assert_close(out.point(0)[1], 0.0, 1e-12, "ait origin lat");
+}
+
+// ===========================================================================
 // Inversion
 // ===========================================================================
 

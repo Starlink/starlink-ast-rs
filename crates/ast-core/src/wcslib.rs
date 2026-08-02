@@ -564,6 +564,45 @@ impl PrjParams {
         }
     }
 
+    /// Forward projection, returning the raw wcslib status alongside the
+    /// output (x, y) in degrees.
+    ///
+    /// Unlike [`forward`](Self::forward), this never converts a non-zero
+    /// status into an error — it returns whatever the C function wrote to
+    /// the output slots together with the status code. This mirrors C call
+    /// sites (e.g. `LongRange`, wcsmap.c:2675) that read the projected
+    /// coordinates regardless of the returned status.
+    pub(crate) fn forward_raw(&mut self, phi: f64, theta: f64) -> (c_int, f64, f64) {
+        let Some(fwd) = self.inner.fwd else {
+            return (1, 0.0, 0.0);
+        };
+        let mut x = 0.0;
+        let mut y = 0.0;
+        // SAFETY: the function pointer was set by astPRJset and operates
+        // on the AstPrjPrm struct. We pass valid mutable pointers.
+        let status = unsafe { fwd(phi, theta, &mut self.inner, &mut x, &mut y) };
+        (status, x, y)
+    }
+
+    /// Reverse projection, returning the raw wcslib status alongside the
+    /// output (longitude, latitude) in degrees.
+    ///
+    /// The status-agnostic counterpart to [`reverse`](Self::reverse); see
+    /// [`forward_raw`](Self::forward_raw). Used by `LongRange`
+    /// (wcsmap.c:2664) which inspects the returned longitude only when the
+    /// status is zero.
+    pub(crate) fn reverse_raw(&mut self, x: f64, y: f64) -> (c_int, f64, f64) {
+        let Some(rev) = self.inner.rev else {
+            return (1, 0.0, 0.0);
+        };
+        let mut phi = 0.0;
+        let mut theta = 0.0;
+        // SAFETY: the function pointer was set by astPRJset and operates
+        // on the AstPrjPrm struct. We pass valid mutable pointers.
+        let status = unsafe { rev(x, y, &mut self.inner, &mut phi, &mut theta) };
+        (status, phi, theta)
+    }
+
     /// Return the reference point (phi0, theta0) in degrees.
     pub(crate) fn reference_point(&self) -> (f64, f64) {
         (self.inner.phi0, self.inner.theta0)

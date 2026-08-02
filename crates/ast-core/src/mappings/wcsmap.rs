@@ -257,6 +257,48 @@ impl WcsMap {
         self.lon_check.is_some()
     }
 
+    /// Determine the acceptable longitude range and cyclicity for the
+    /// inverse (xy->sky) transformation. Port of `LongRange`
+    /// (wcsmap.c:2597).
+    ///
+    /// Returns `(cyclic, longhi, longlo)`. `cyclic` is true when
+    /// `[a,0]` and `[a+2.PI,0]` map to the same Cartesian position (so the
+    /// out-of-range longitude test can be skipped). `longhi`/`longlo` bound
+    /// the primary longitude range the projection produces — either
+    /// `[-180,180]` or `[0,360]` — used to reject inverse solutions that
+    /// fall outside the physical domain of the projection.
+    fn long_range(&self, prj: &mut PrjParams) -> (bool, f64, f64) {
+        // Sample points near the projection origin (in degrees).
+        const XX: [f64; 4] = [-1.0e-6, 0.0, 1.0e-6, 0.0];
+        const YY: [f64; 4] = [0.0, 1.0e-6, 0.0, -1.0e-6];
+
+        let mut high = 180.0;
+        let mut low = -180.0;
+
+        // Project each sample. If any inverse longitude exceeds 180 degrees,
+        // the projection uses the [0,360] range instead of [-180,180]. `bb`
+        // carries the latitude of the final sample forward to the cyclic
+        // test, exactly as in the C code.
+        let mut bb = 0.0;
+        for point in 0..4 {
+            let (status, aa, b) = prj.reverse_raw(XX[point], YY[point]);
+            bb = b;
+            if status == 0 && aa > 180.0 {
+                high = 360.0;
+                low = 0.0;
+                break;
+            }
+        }
+
+        // See if the projection is cyclic: transform sky positions
+        // [90,bb] and [450,bb] into Cartesian and compare them.
+        let (_s0, x0, y0) = prj.forward_raw(90.0, bb);
+        let (_s1, x1, y1) = prj.forward_raw(450.0, bb);
+        let cyclic = (x0 - x1).abs() < 1.0e-10 && (y0 - y1).abs() < 1.0e-10;
+
+        (cyclic, high, low)
+    }
+
     /// Return the 1-based longitude axis index.
     pub fn lonax(&self) -> usize {
         self.lonax + 1
@@ -469,6 +511,17 @@ impl Mapping for WcsMap {
         let fwd = self.effective_forward(forward);
         let mut prj = self.prj.borrow_mut();
 
+        // Reverse-path longitude clipping gate — identical to
+        // `transform_into` (the C `Map` function has a single body; this
+        // NaN-as-bad variant is a Rust-side optimization and must apply the
+        // same domain check). See `long_range` and wcsmap.c:2878.
+        let (docheck, cyclic, longhi, longlo) = if fwd {
+            (false, false, 0.0, 0.0)
+        } else {
+            let (cyclic, longhi, longlo) = self.long_range(&mut prj);
+            (self.lon_check(), cyclic, longhi, longlo)
+        };
+
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -500,9 +553,16 @@ impl Mapping for WcsMap {
                 let x_deg = v1.to_degrees();
                 let y_deg = v2.to_degrees();
                 match prj.reverse(x_deg, y_deg) {
-                    Ok((phi, theta)) => {
-                        outp[self.lonax] = phi.to_radians();
-                        outp[self.latax] = theta.to_radians();
+                    Ok((longitude, latitude)) => {
+                        if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
+                            && latitude.abs() <= 90.0
+                        {
+                            outp[self.lonax] = longitude.to_radians();
+                            outp[self.latax] = latitude.to_radians();
+                        } else {
+                            outp[self.lonax] = f64::NAN;
+                            outp[self.latax] = f64::NAN;
+                        }
                     }
                     Err(_) => {
                         outp[self.lonax] = f64::NAN;
@@ -525,6 +585,18 @@ impl Mapping for WcsMap {
 
         let fwd = self.effective_forward(forward);
         let mut prj = self.prj.borrow_mut();
+
+        // For the inverse (xy->sky) transformation, determine whether
+        // out-of-range longitude solutions should be rejected. C computes
+        // `docheck` from the LonCheck attribute and `cyclic`/`longhi`/
+        // `longlo` from LongRange (wcsmap.c:2797-2802). The gate is only
+        // consulted on the reverse path.
+        let (docheck, cyclic, longhi, longlo) = if fwd {
+            (false, false, 0.0, 0.0)
+        } else {
+            let (cyclic, longhi, longlo) = self.long_range(&mut prj);
+            (self.lon_check(), cyclic, longhi, longlo)
+        };
 
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
@@ -561,9 +633,21 @@ impl Mapping for WcsMap {
                 let x_deg = v1.to_degrees();
                 let y_deg = v2.to_degrees();
                 match prj.reverse(x_deg, y_deg) {
-                    Ok((phi, theta)) => {
-                        outp[self.lonax] = phi.to_radians();
-                        outp[self.latax] = theta.to_radians();
+                    Ok((longitude, latitude)) => {
+                        // Reject solutions outside the physical domain of the
+                        // projection (wcsmap.c:2878). Non-cyclic projections
+                        // (ARC, AIT, ZPN, ...) only accept longitudes within
+                        // the primary range; the latitude must be within
+                        // [-90,90]. `longitude`/`latitude` are in degrees here.
+                        if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
+                            && latitude.abs() <= 90.0
+                        {
+                            outp[self.lonax] = longitude.to_radians();
+                            outp[self.latax] = latitude.to_radians();
+                        } else {
+                            outp[self.lonax] = BAD_VALUE;
+                            outp[self.latax] = BAD_VALUE;
+                        }
                     }
                     Err(_) => {
                         outp[self.lonax] = BAD_VALUE;
