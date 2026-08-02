@@ -276,6 +276,12 @@ The C ABI is **frozen**. Existing applications must keep linking.
   `reference/starlink-ast/src/<class>.c`. Read it to understand
   what the Rust class needs to do; do not copy its structure — the
   Rust shape diverges from the C OO system by design.
+- **C-oracle probe recipe**: `docs/issues/c-oracle-probe-recipe.md`.
+  When the C source alone doesn't settle a "what does C do here?"
+  question, build a tiny C program linked against the repo's own
+  `libast` and call the same functions. Records the stale-conda-libast
+  trap and how to call protected APIs (`astGetBounded_` etc.) via
+  `astMakePointer`.
 - **Vendored C provenance**: `vendor/README.md` records where each
   vendored directory was copied from and what AST-specific local
   modifications were applied.
