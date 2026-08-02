@@ -930,123 +930,112 @@ fn dh2e_with_aberration(az: f64, el: f64, phi: f64, diurab: f64) -> (f64, f64) {
     (ha, dec)
 }
 
-/// Apply a single conversion step to a 3-vector, in the forward direction.
+/// Frame-tie rotation matrix from dynamical J2000.0 to ICRS (slamap.c:1855).
+fn j2000h_matrix() -> [[f64; 3]; 3] {
+    pal::deuler("XYZ", -0.0068192 * AS2R, 0.0166172 * AS2R, 0.0146000 * AS2R)
+}
+
+/// Apply a single conversion step to a scalar `(alpha, delta)` pair, in the
+/// forward direction.
 ///
-/// Returns the updated 3-vector.
-fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21]>) -> [f64; 3] {
+/// Mirrors the forward arms of `slamap.c` `Transform`, carrying scalar
+/// longitude/latitude exactly as C does.  The four matrix conversions
+/// (`Prec`, `Prebn`, `Ecleq`, `Eqecl`) re-normalize the longitude into
+/// `[0, 2*pi)` with `palDranrm` after the round-trip; the other arms do not.
+fn apply_step_forward(
+    cvt: &SlaConversion,
+    alpha: f64,
+    delta: f64,
+    amprms: Option<&[f64; 21]>,
+) -> (f64, f64) {
     match cvt.cvt_type {
-        SlaCvtType::Galeq => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (ra, dec) = pal::galeq(lon, lat);
-            pal::dcs2c(ra, dec)
-        }
-        SlaCvtType::Eqgal => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (gl, gb) = pal::eqgal(lon, lat);
-            pal::dcs2c(gl, gb)
-        }
-        SlaCvtType::Galsup => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (sl, sb) = pal::galsup(lon, lat);
-            pal::dcs2c(sl, sb)
-        }
-        SlaCvtType::Supgal => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (gl, gb) = pal::supgal(lon, lat);
-            pal::dcs2c(gl, gb)
-        }
+        SlaCvtType::Galeq => pal::galeq(alpha, delta),
+        SlaCvtType::Eqgal => pal::eqgal(alpha, delta),
+        SlaCvtType::Galsup => pal::galsup(alpha, delta),
+        SlaCvtType::Supgal => pal::supgal(alpha, delta),
+        // Precession: convert to Cartesian, apply the precession matrix,
+        // convert back to polar, then constrain longitude to [0, 2*pi)
+        // (palDcc2s does not; slamap.c:3762).
         SlaCvtType::Prec => {
             let m = pal::prec(cvt.args[0], cvt.args[1]);
-            pal::dmxv(&m, &v)
+            let v = pal::dcs2c(alpha, delta);
+            let (a, d) = pal::dcc2s(&pal::dmxv(&m, &v));
+            (pal::dranrm(a), d)
         }
         SlaCvtType::Prebn => {
             let m = pal::prebn(cvt.args[0], cvt.args[1]);
-            pal::dmxv(&m, &v)
+            let v = pal::dcs2c(alpha, delta);
+            let (a, d) = pal::dcc2s(&pal::dmxv(&m, &v));
+            (pal::dranrm(a), d)
         }
-        SlaCvtType::Fk45z => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (ra, dec) = pal::fk45z(lon, lat, cvt.args[0]);
-            pal::dcs2c(ra, dec)
-        }
+        SlaCvtType::Fk45z => pal::fk45z(alpha, delta, cvt.args[0]),
         SlaCvtType::Fk54z => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (ra, dec, _, _) = pal::fk54z(lon, lat, cvt.args[0]);
-            pal::dcs2c(ra, dec)
+            let (ra, dec, _, _) = pal::fk54z(alpha, delta, cvt.args[0]);
+            (ra, dec)
         }
-        SlaCvtType::Fk5hz => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (rh, dh) = pal::fk5hz(lon, lat, cvt.args[0]);
-            pal::dcs2c(rh, dh)
-        }
+        SlaCvtType::Fk5hz => pal::fk5hz(alpha, delta, cvt.args[0]),
         SlaCvtType::Hfk5z => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (r5, d5, _, _) = pal::hfk5z(lon, lat, cvt.args[0]);
-            pal::dcs2c(r5, d5)
+            let (r5, d5, _, _) = pal::hfk5z(alpha, delta, cvt.args[0]);
+            (r5, d5)
         }
+        // Ecliptic (of date) to equatorial J2000.0.  C builds the combined
+        // matrix precessing J2000 equatorial to the date then rotating to
+        // ecliptic (slamap.c:3888); ECLEQ applies its inverse (palDimxv).
+        // Longitude is wrapped into [0, 2*pi) afterwards (slamap.c:3906).
         SlaCvtType::Ecleq => {
-            let m = pal::ecmat(cvt.args[0]);
-            // Ecliptic to equatorial = inverse (transpose) of the ecliptic matrix
-            pal::dimxv(&m, &v)
+            let precess = pal::prec(2000.0, pal::epj(cvt.args[0]));
+            let rotate = pal::ecmat(cvt.args[0]);
+            let convert = pal::dmxm(&rotate, &precess);
+            let v = pal::dcs2c(alpha, delta);
+            let (a, d) = pal::dcc2s(&pal::dimxv(&convert, &v));
+            (pal::dranrm(a), d)
         }
+        // Equatorial J2000.0 to ecliptic (of date).  Forward applies the
+        // matrix directly (palDmxv) (slamap.c:3941).
         SlaCvtType::Eqecl => {
-            let m = pal::ecmat(cvt.args[0]);
-            pal::dmxv(&m, &v)
+            let precess = pal::prec(2000.0, pal::epj(cvt.args[0]));
+            let rotate = pal::ecmat(cvt.args[0]);
+            let convert = pal::dmxm(&rotate, &precess);
+            let v = pal::dcs2c(alpha, delta);
+            let (a, d) = pal::dcc2s(&pal::dmxv(&convert, &v));
+            (pal::dranrm(a), d)
         }
-        SlaCvtType::Addet => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (rc, dc) = pal::addet(lon, lat, cvt.args[0]);
-            pal::dcs2c(rc, dc)
-        }
-        SlaCvtType::Subet => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let (rm, dm) = pal::subet(lon, lat, cvt.args[0]);
-            pal::dcs2c(rm, dm)
-        }
+        SlaCvtType::Addet => pal::addet(alpha, delta, cvt.args[0]),
+        SlaCvtType::Subet => pal::subet(alpha, delta, cvt.args[0]),
         SlaCvtType::Map => {
             let cached = amprms.expect("Map step requires pre-computed amprms");
-            let (lon, lat) = pal::dcc2s(&v);
-            let (ra, da) = pal::mapqkz(lon, lat, cached);
-            pal::dcs2c(ra, da)
+            pal::mapqkz(alpha, delta, cached)
         }
         SlaCvtType::Amp => {
             let cached = amprms.expect("Amp step requires pre-computed amprms");
-            let (lon, lat) = pal::dcc2s(&v);
-            let (rm, dm) = pal::ampqk(lon, lat, cached);
-            pal::dcs2c(rm, dm)
+            pal::ampqk(alpha, delta, cached)
         }
-        SlaCvtType::De2h => {
-            let (ha, dec) = pal::dcc2s(&v);
-            let (az, el) = de2h_with_aberration(ha, dec, cvt.args[0], cvt.args[1]);
-            pal::dcs2c(az, el)
-        }
-        SlaCvtType::Dh2e => {
-            let (az, el) = pal::dcc2s(&v);
-            let (ha, dec) = dh2e_with_aberration(az, el, cvt.args[0], cvt.args[1]);
-            pal::dcs2c(ha, dec)
-        }
-        // R2H and H2R both perform: longitude' = LAST - longitude.
-        // The operation is self-inverse (applying it twice returns to
-        // the original coordinates), so forward and inverse are the
-        // same for each type.  R2H and H2R are each other's inverse()
-        // in the SlaCvtType sense but the computation is identical.
-        SlaCvtType::R2h | SlaCvtType::H2r => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let new_lon = cvt.args[0] - lon;
-            pal::dcs2c(new_lon, lat)
-        }
-        // J2000H: dynamical J2000 to ICRS via frame-tie rotation.
+        SlaCvtType::De2h => de2h_with_aberration(alpha, delta, cvt.args[0], cvt.args[1]),
+        SlaCvtType::Dh2e => dh2e_with_aberration(alpha, delta, cvt.args[0], cvt.args[1]),
+        // R2H and H2R are identical scalar operations (self-inverse): the
+        // longitude is reflected about the local sidereal time, un-normalized
+        // (slamap.c:4206).
+        SlaCvtType::R2h | SlaCvtType::H2r => (cvt.args[0] - alpha, delta),
+        // J2000H: dynamical J2000 to ICRS via frame-tie rotation.  The C
+        // J2000H helper does not normalize the longitude (slamap.c:1872).
         SlaCvtType::J2000h => {
-            let rmat = pal::deuler("XYZ", -0.0068192 * AS2R, 0.0166172 * AS2R, 0.0146000 * AS2R);
-            pal::dmxv(&rmat, &v)
+            let rmat = j2000h_matrix();
+            let v = pal::dcs2c(alpha, delta);
+            pal::dcc2s(&pal::dmxv(&rmat, &v))
         }
         // HJ2000: ICRS to dynamical J2000 (inverse of J2000H).
         SlaCvtType::Hj2000 => {
-            let rmat = pal::deuler("XYZ", -0.0068192 * AS2R, 0.0166172 * AS2R, 0.0146000 * AS2R);
-            pal::dimxv(&rmat, &v)
+            let rmat = j2000h_matrix();
+            let v = pal::dcs2c(alpha, delta);
+            pal::dcc2s(&pal::dimxv(&rmat, &v))
         }
         // STP coordinate conversions (solar coordinate systems).
-        SlaCvtType::Hpceq | SlaCvtType::Hpreq | SlaCvtType::Heeq => {
-            let (lon, lat) = pal::dcc2s(&v);
+        SlaCvtType::Hpceq
+        | SlaCvtType::Hpreq
+        | SlaCvtType::Heeq
+        | SlaCvtType::Eqhpc
+        | SlaCvtType::Eqhpr
+        | SlaCvtType::Eqhe => {
             let obs = if cvt.args.len() >= 4 {
                 Some([cvt.args[1], cvt.args[2], cvt.args[3]])
             } else {
@@ -1054,59 +1043,55 @@ fn apply_step_forward(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21
             };
             let result = stp_convert(
                 cvt.args[0],
-                &[lon, lat, 0.0],
+                &[alpha, delta, 0.0],
                 cvt.cvt_type,
                 obs.as_ref(),
                 true,
             );
-            pal::dcs2c(result[0], result[1])
-        }
-        SlaCvtType::Eqhpc | SlaCvtType::Eqhpr | SlaCvtType::Eqhe => {
-            let (lon, lat) = pal::dcc2s(&v);
-            let obs = if cvt.args.len() >= 4 {
-                Some([cvt.args[1], cvt.args[2], cvt.args[3]])
-            } else {
-                None
-            };
-            let result = stp_convert(
-                cvt.args[0],
-                &[lon, lat, 0.0],
-                cvt.cvt_type,
-                obs.as_ref(),
-                true,
-            );
-            pal::dcs2c(result[0], result[1])
+            (result[0], result[1])
         }
     }
 }
 
-/// Apply a single conversion step in the inverse direction.
+/// Apply a single conversion step to a scalar `(alpha, delta)` pair in the
+/// inverse direction.
 ///
 /// For most types this calls the inverse type's forward function.
 /// For Prec/Prebn, it swaps the epoch arguments.
 /// For J2000H/HJ2000, uses the transpose directly.
 /// For STP types, passes forward=false to the STP converter.
-fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21]>) -> [f64; 3] {
+fn apply_step_inverse(
+    cvt: &SlaConversion,
+    alpha: f64,
+    delta: f64,
+    amprms: Option<&[f64; 21]>,
+) -> (f64, f64) {
     match cvt.cvt_type {
         SlaCvtType::Prec => {
-            // Inverse precession: swap epoch arguments
+            // Inverse precession: swap epoch arguments.
             let m = pal::prec(cvt.args[1], cvt.args[0]);
-            pal::dmxv(&m, &v)
+            let v = pal::dcs2c(alpha, delta);
+            let (a, d) = pal::dcc2s(&pal::dmxv(&m, &v));
+            (pal::dranrm(a), d)
         }
         SlaCvtType::Prebn => {
-            // Inverse Besselian precession: swap epoch arguments
+            // Inverse Besselian precession: swap epoch arguments.
             let m = pal::prebn(cvt.args[1], cvt.args[0]);
-            pal::dmxv(&m, &v)
+            let v = pal::dcs2c(alpha, delta);
+            let (a, d) = pal::dcc2s(&pal::dmxv(&m, &v));
+            (pal::dranrm(a), d)
         }
-        // J2000H inverse = transpose multiplication (same matrix, dimxv)
+        // J2000H inverse = transpose multiplication (same matrix, dimxv).
         SlaCvtType::J2000h => {
-            let rmat = pal::deuler("XYZ", -0.0068192 * AS2R, 0.0166172 * AS2R, 0.0146000 * AS2R);
-            pal::dimxv(&rmat, &v)
+            let rmat = j2000h_matrix();
+            let v = pal::dcs2c(alpha, delta);
+            pal::dcc2s(&pal::dimxv(&rmat, &v))
         }
-        // HJ2000 inverse = forward multiplication (same matrix, dmxv)
+        // HJ2000 inverse = forward multiplication (same matrix, dmxv).
         SlaCvtType::Hj2000 => {
-            let rmat = pal::deuler("XYZ", -0.0068192 * AS2R, 0.0166172 * AS2R, 0.0146000 * AS2R);
-            pal::dmxv(&rmat, &v)
+            let rmat = j2000h_matrix();
+            let v = pal::dcs2c(alpha, delta);
+            pal::dcc2s(&pal::dmxv(&rmat, &v))
         }
         // STP types: pass forward=false to the converter.
         SlaCvtType::Hpceq
@@ -1115,7 +1100,6 @@ fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21
         | SlaCvtType::Eqhpr
         | SlaCvtType::Heeq
         | SlaCvtType::Eqhe => {
-            let (lon, lat) = pal::dcc2s(&v);
             let obs = if cvt.args.len() >= 4 {
                 Some([cvt.args[1], cvt.args[2], cvt.args[3]])
             } else {
@@ -1123,12 +1107,12 @@ fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21
             };
             let result = stp_convert(
                 cvt.args[0],
-                &[lon, lat, 0.0],
+                &[alpha, delta, 0.0],
                 cvt.cvt_type,
                 obs.as_ref(),
                 false,
             );
-            pal::dcs2c(result[0], result[1])
+            (result[0], result[1])
         }
         _ => {
             // For all other types, use the inverse type's forward operation.
@@ -1138,7 +1122,7 @@ fn apply_step_inverse(cvt: &SlaConversion, v: [f64; 3], amprms: Option<&[f64; 21
                 cvt_type: cvt.cvt_type.inverse(),
                 args: cvt.args.clone(),
             };
-            apply_step_forward(&inv_cvt, v, amprms)
+            apply_step_forward(&inv_cvt, alpha, delta, amprms)
         }
     }
 }
@@ -1178,7 +1162,9 @@ impl Mapping for SlaMap {
 
         // Pre-compute star-independent mean-to-apparent parameters for any
         // Map/Amp steps.  pal::mappa is expensive (precession, nutation,
-        // aberration matrices) and constant across all points.
+        // aberration matrices) and constant across all points.  The cache is
+        // indexed by conversion position and consumed in that same order in
+        // both directions, matching C reading cvtargs[cvt] for the current cvt.
         let mappa_cache: Vec<Option<[f64; 21]>> = self
             .conversions
             .iter()
@@ -1188,93 +1174,56 @@ impl Mapping for SlaMap {
             })
             .collect();
 
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let outp = out.point_mut(i);
+        // Initialise the output by copying the input (slamap.c:3630).
+        let npoint = pts.npoint();
+        for i in 0..npoint {
+            out.point_mut(i)[0] = pts.point(i)[0];
+            out.point_mut(i)[1] = pts.point(i)[1];
+        }
 
-            let lon = inp[0];
-            let lat = inp[1];
+        // Apply each conversion in order (reverse for inverse), mutating the
+        // output arrays in place — the scalar (alpha, delta) carrier.
+        let order: Vec<usize> = if fwd {
+            (0..self.conversions.len()).collect()
+        } else {
+            (0..self.conversions.len()).rev().collect()
+        };
 
-            if is_bad(lon) || is_bad(lat) {
-                outp[0] = BAD_VALUE;
-                outp[1] = BAD_VALUE;
+        for &ci in &order {
+            let cvt = &self.conversions[ci];
+            let cached = mappa_cache[ci].as_ref();
+
+            // Bad-args guard (slamap.c:3672-3687): if any of this conversion's
+            // nargs arguments is bad, the whole step outputs BAD for every
+            // point (subsequent conversions then propagate the bad values).
+            let nargs = cvt.cvt_type.nargs();
+            if cvt.args.iter().take(nargs).any(|&a| is_bad(a)) {
+                for i in 0..npoint {
+                    let p = out.point_mut(i);
+                    p[0] = BAD_VALUE;
+                    p[1] = BAD_VALUE;
+                }
                 continue;
             }
 
-            // Convert to 3-vector
-            let mut v = pal::dcs2c(lon, lat);
-
-            if fwd {
-                // Forward: iterate conversions in order
-                for (cvt, cached) in self.conversions.iter().zip(mappa_cache.iter()) {
-                    v = apply_step_forward(cvt, v, cached.as_ref());
-                }
-            } else {
-                // Inverse: iterate conversions in REVERSE order, applying inverse
-                for (cvt, cached) in self.conversions.iter().rev().zip(mappa_cache.iter().rev()) {
-                    v = apply_step_inverse(cvt, v, cached.as_ref());
-                }
+            // TRAN_ARRAY (slamap.c:3652): per point, either axis bad -> both
+            // bad, else apply the conversion.
+            for i in 0..npoint {
+                let (alpha, delta) = {
+                    let p = out.point(i);
+                    (p[0], p[1])
+                };
+                let (a, d) = if is_bad(alpha) || is_bad(delta) {
+                    (BAD_VALUE, BAD_VALUE)
+                } else if fwd {
+                    apply_step_forward(cvt, alpha, delta, cached)
+                } else {
+                    apply_step_inverse(cvt, alpha, delta, cached)
+                };
+                let p = out.point_mut(i);
+                p[0] = a;
+                p[1] = d;
             }
-
-            // Convert back to spherical
-            let (out_lon, out_lat) = pal::dcc2s(&v);
-            outp[0] = out_lon;
-            outp[1] = out_lat;
-        }
-
-        Ok(())
-    }
-
-    /// NaN-as-bad fast path. Drops the per-point `is_bad(lon)/is_bad(lat)`
-    /// gate. The gate in [`transform_into`] exists only to avoid feeding pal
-    /// numerical garbage (BAD_VALUE = -1.8e308 is outside any astronomical
-    /// domain, so pal's transcendentals produce wild numbers) — it isn't a
-    /// safety against pal crashing on the input. Once the caller has
-    /// substituted `BAD_VALUE → NaN` at the pipeline boundary (per
-    /// [`dyn Mapping::transform_nan_protocol`]) the per-step work is all
-    /// `cos`/`sin`/`atan2`/matrix-multiply with no value-dependent
-    /// branches, so NaN propagates cleanly through to a NaN output that
-    /// the boundary post-pass converts back to `BAD_VALUE`. End result is
-    /// identical, with one fewer branch per point per stage.
-    fn transform_into_nan(
-        &self,
-        pts: &PointSet,
-        forward: bool,
-        out: &mut PointSet,
-    ) -> AstResult<()> {
-        let fwd = self.effective_forward(forward);
-
-        let mappa_cache: Vec<Option<[f64; 21]>> = self
-            .conversions
-            .iter()
-            .map(|cvt| match cvt.cvt_type {
-                SlaCvtType::Map | SlaCvtType::Amp => Some(pal::mappa(cvt.args[0], cvt.args[1])),
-                _ => None,
-            })
-            .collect();
-
-        for i in 0..pts.npoint() {
-            let inp = pts.point(i);
-            let outp = out.point_mut(i);
-
-            let lon = inp[0];
-            let lat = inp[1];
-            // No is_bad gate: NaN inputs produce NaN through dcs2c →
-            // conversion steps → dcc2s and reach the boundary post-pass.
-
-            let mut v = pal::dcs2c(lon, lat);
-            if fwd {
-                for (cvt, cached) in self.conversions.iter().zip(mappa_cache.iter()) {
-                    v = apply_step_forward(cvt, v, cached.as_ref());
-                }
-            } else {
-                for (cvt, cached) in self.conversions.iter().rev().zip(mappa_cache.iter().rev()) {
-                    v = apply_step_inverse(cvt, v, cached.as_ref());
-                }
-            }
-            let (out_lon, out_lat) = pal::dcc2s(&v);
-            outp[0] = out_lon;
-            outp[1] = out_lat;
         }
 
         Ok(())

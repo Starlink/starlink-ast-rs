@@ -1179,8 +1179,12 @@ fn ecliptic_vernal_equinox() {
     let fk5 = SkyFrame::new(SkySystem::Fk5);
     let fs = ecl.convert_to(&fk5, &[]).unwrap().unwrap();
 
+    // ECLEQ normalizes longitude into [0, 2*pi) via palDranrm, so a value
+    // fractionally below zero wraps to ~2*pi; compare RA as an angle
+    // (RA 0 and RA 2*pi are the same point).
     let (ra, dec) = transform_fwd(&fs, 0.0, 0.0);
-    assert_close(ra, 0.0, 1.0e-6, "vernal equinox RA");
+    let ra_wrapped = (ra + PI).rem_euclid(2.0 * PI) - PI;
+    assert_close(ra_wrapped, 0.0, 1.0e-6, "vernal equinox RA");
     assert_close(dec, 0.0, 1.0e-6, "vernal equinox Dec");
 }
 

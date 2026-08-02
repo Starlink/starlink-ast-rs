@@ -1178,9 +1178,12 @@ mod tests {
         .unwrap();
 
         // Ecliptic (lon=0, lat=0) is the vernal equinox, which in FK5
-        // J2000 is RA=0, Dec=0.
+        // J2000 is RA=0, Dec=0. ECLEQ normalizes longitude into [0, 2*pi)
+        // via palDranrm, so a value fractionally below zero wraps to ~2*pi;
+        // compare RA as an angle (RA 0 and RA 2*pi are the same point).
         let (ra, dec) = transform_fwd(&*map, 0.0, 0.0);
-        assert_close(ra, 0.0, 1.0e-6);
+        let ra_wrapped = (ra + PI).rem_euclid(2.0 * PI) - PI;
+        assert_close(ra_wrapped, 0.0, 1.0e-6);
         assert_close(dec, 0.0, 1.0e-6);
 
         // Round-trip test.

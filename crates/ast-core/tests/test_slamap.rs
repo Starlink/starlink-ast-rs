@@ -669,3 +669,109 @@ fn simplified_returns_clone() {
     assert_close(out2.point(0)[0], out1.point(0)[0], 1e-15, "simplified lon");
     assert_close(out2.point(0)[1], out1.point(0)[1], 1e-15, "simplified lat");
 }
+
+// ===========================================================================
+// Scalar-carrier transform parity (mirrors slamap.c Transform)
+// ===========================================================================
+
+// R2H then H2R is the identity, and C carries the raw (un-normalized)
+// longitude scalar through both steps, so a large out-of-range input
+// longitude must survive verbatim. The vector carrier cannot reproduce
+// this (a unit vector only recovers (-pi, pi]); the scalar carrier can.
+#[test]
+fn r2h_h2r_preserves_raw_longitude() {
+    let last = 3.5;
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::R2h, &[last]); // alpha' = last - alpha
+    m.add(SlaCvtType::H2r, &[last]); // alpha'' = last - alpha' = alpha
+    // A longitude far outside [0, 2pi): the net map is the identity, and C
+    // returns it unchanged rather than wrapping it.
+    let raw_lon = -1000.0_f64;
+    let lat = 0.3;
+    let pin = PointSet::from_rows([[raw_lon, lat]].iter().map(|p| p.as_slice()));
+    let out = m.transform(&pin, true).unwrap();
+    assert_close(out.point(0)[0], raw_lon, 1e-9, "raw longitude preserved");
+    assert_close(out.point(0)[1], lat, 1e-9, "latitude preserved");
+}
+
+// A single matrix conversion (PREC) must return longitude in [0, 2pi):
+// C applies palDranrm after the matrix multiply. Feed a point whose
+// precessed longitude is small-negative before wrapping, and confirm the
+// output is the positive wrapped value (i.e. >= 0), not a (-pi, 0) value.
+#[test]
+fn matrix_op_longitude_is_normalized_to_0_2pi() {
+    // PREC from J2000.0 to J2000.0 is the identity matrix, so the output
+    // longitude equals palDranrm(input longitude). A negative input
+    // longitude must come back wrapped into [0, 2pi).
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Prec, &[2000.0, 2000.0]);
+    let neg_lon = -1.0_f64; // ~ -57 deg
+    let pin = PointSet::from_rows([[neg_lon, 0.2]].iter().map(|p| p.as_slice()));
+    let out = m.transform(&pin, true).unwrap();
+    let got = out.point(0)[0];
+    assert!((0.0..2.0 * PI).contains(&got), "lon in [0,2pi): {got}");
+    // palPrec for equal epochs is not bit-exactly the identity: it carries an
+    // ~1e-7 rotation (verified against the C oracle, which returns
+    // 5.2831853953259547 for this point). The tolerance accommodates that
+    // real palPrec behaviour; the point is essentially unchanged apart from
+    // the [0, 2pi) wrap that the un-normalized vector carrier would not apply.
+    assert_angle_close(got, neg_lon, 1e-6, "wrapped value equals input mod 2pi");
+}
+
+// Off-J2000 EQECL golden value from C. C builds
+// convert = ecmat(date) . prec(2000, epj(date)); the identity-at-J2000
+// ecmat-only matrix is wrong away from J2000.0.
+#[test]
+fn eqecl_matches_c_off_j2000() {
+    // MJD 55197.0 = 2010-01-01, ~10 years from J2000.0. Golden values from
+    // a C probe of palSlaMap EQECL at this date for (ra,dec) = (83deg,22deg)
+    // linked against reference/starlink-ast/build-ast/libast.so.
+    let date = 55197.0;
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Eqecl, &[date]);
+    let pin = PointSet::from_rows(
+        [[deg2rad(83.0), deg2rad(22.0)]]
+            .iter()
+            .map(|p| p.as_slice()),
+    );
+    let out = m.transform(&pin, true).unwrap();
+    const GOLDEN_LON: f64 = 1.459_968_862_726_898;
+    const GOLDEN_LAT: f64 = -0.022_347_584_010_998_657;
+    assert_angle_close(out.point(0)[0], GOLDEN_LON, 1e-9, "ecl lon");
+    assert_close(out.point(0)[1], GOLDEN_LAT, 1e-9, "ecl lat");
+}
+
+// A conversion with a bad argument zeroes (bad-values) the whole step's
+// output for every point, and the bad propagates to the chain output.
+#[test]
+fn bad_arg_propagates_to_bad_output() {
+    // ECLEQ needs one arg (the date). Supply BAD_VALUE: the step outputs
+    // BAD for all points regardless of input, matching slamap.c:3672-3687.
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Eqecl, &[BAD_VALUE]);
+    let pin = PointSet::from_rows([[0.5, 0.2], [1.0, -0.3]].iter().map(|p| p.as_slice()));
+    let out = m.transform(&pin, true).unwrap();
+    for i in 0..2 {
+        assert_eq!(out.point(i)[0], BAD_VALUE, "point {i} lon bad");
+        assert_eq!(out.point(i)[1], BAD_VALUE, "point {i} lat bad");
+    }
+}
+
+// A bad input coordinate produces bad output on both axes (TRAN_ARRAY
+// couples the axes: either bad -> both bad), and a NaN input is treated
+// identically (is_bad includes !is_finite).
+#[test]
+fn bad_and_nan_input_produce_bad_output() {
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Prec, &[2000.0, 2010.0]);
+    let pin = PointSet::from_rows(
+        [[BAD_VALUE, 0.2], [f64::NAN, 0.3], [0.5, BAD_VALUE]]
+            .iter()
+            .map(|p| p.as_slice()),
+    );
+    let out = m.transform(&pin, true).unwrap();
+    for i in 0..3 {
+        assert_eq!(out.point(i)[0], BAD_VALUE, "point {i} lon bad");
+        assert_eq!(out.point(i)[1], BAD_VALUE, "point {i} lat bad");
+    }
+}
