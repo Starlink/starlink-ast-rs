@@ -16,6 +16,18 @@ use crate::mappings::{DynMapping, Mapping, UnitMap};
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
 
+/// Return a point on the circumference of a circle, mirroring C `CircumPoint`
+/// (circle.c:570): the point where the circle crosses the first Frame axis.
+///
+/// A work position is offset away from `centre` along the first axis by
+/// `radius` (used only as a convenient offset length), then `frm.offset`
+/// walks the geodesic from `centre` toward that work position by `radius`.
+fn circum_point(frm: &dyn Frame, centre: &[f64], radius: f64) -> AstResult<Vec<f64>> {
+    let mut work = centre.to_vec();
+    work[0] = frm.ax_offset(1, work[0], radius)?;
+    frm.offset(centre, &work, radius)
+}
+
 /// A circular region within a coordinate frame.
 ///
 /// Defined by a centre point and a point on the circumference (or
@@ -616,12 +628,65 @@ impl Region for Circle {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
+        // Circle always has a centre (circle.c:1206-1211). Return the
+        // base-Frame centre, or transform it into the current Frame.
+        let centre = self.data.points[0].clone();
+        match ifrm {
+            FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
+            _ => Ok(Some(centre)),
+        }
+    }
+
+    fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
+        let bfrm = self.data.frameset.base().snapshot();
+        let ncb = self.data.points[0].len();
+        let radius = self.radius()?;
+
+        // Resolve the supplied centre into a base-Frame position
+        // (circle.c:1228-1267). A current-Frame centre is transformed to the
+        // base Frame; BAD components fall back to the existing centre value.
+        let mut bc = self.data.points[0].clone();
+        match ifrm {
+            FrameRef::Current => {
+                let tc = self.reg_tran_point(cen, false)?;
+                for ic in 0..ncb {
+                    if !is_bad(tc[ic]) {
+                        bc[ic] = tc[ic];
+                    }
+                }
+            }
+            _ => {
+                for ic in 0..ncb {
+                    if !is_bad(cen[ic]) {
+                        bc[ic] = cen[ic];
+                    }
+                }
+            }
+        }
+
+        // Recompute the circumference point from the new centre and radius
+        // (CircumPoint, circle.c:570): offset from the centre along the first
+        // axis by the geodesic radius.
+        let circum = circum_point(bfrm.as_ref(), &bc, radius)?;
+
+        self.data.points[0] = bc;
+        self.data.points[1] = circum;
+        self.data.invalidate_cache();
+        Ok(())
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

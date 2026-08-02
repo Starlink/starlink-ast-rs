@@ -3487,6 +3487,76 @@ fn prism_simplify_carries_explicit_uncertainty() {
     );
 }
 
+// ============================================================================
+// set_uncertainty (astSetUnc) computational parity
+//
+// The native round-trip corpus reads a pre-`SetUnc` object and re-serializes
+// it, so it validates read/write symmetry but not the `set_uncertainty`
+// computation (C `astLoadRegion` stores the `Unc` node directly, bypassing
+// `astSetUnc`). These tests reconstruct the region and uncertainty from the
+// same primitives the C fixture generator uses, invoke `set_uncertainty`, and
+// compare the serialization byte-for-byte against the committed oracle `.map`,
+// pinning the validate/remap/negate/RegionFS/recentre body directly.
+// ============================================================================
+
+fn setunc_fixture_map(name: &str) -> String {
+    let path = format!(
+        "{}/tests/fixtures/native/reference/simplify_fixtures/{}.map",
+        env!("CARGO_MANIFEST_DIR"),
+        name
+    );
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+#[test]
+fn set_uncertainty_unitmap_clears_region_fs() {
+    // Oracle: setunc_unitmap_regionfs_omitted. Region and uncertainty share a
+    // plain 2-D Frame, so the remap into the region's base Frame is a UnitMap.
+    // C clears the uncertainty's RegionFS attribute (region.c:10869) so its
+    // FrameSet is omitted from the dump, and re-centres it at the box centre
+    // (5, 5).
+    let frm = BasicFrameBuilder::new(2).build().unwrap();
+    let mut region = BoxRegionBuilder::from_bounds(frm, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let ufrm = BasicFrameBuilder::new(2).build().unwrap();
+    let unc = BoxRegionBuilder::from_bounds(ufrm, &[-0.5, -0.5], &[0.5, 0.5])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    region.set_uncertainty(Box::new(unc));
+
+    let got = ast_core::to_native_string(&AnyObject::BoxRegion(region)).unwrap();
+    assert_eq!(got, setunc_fixture_map("setunc_unitmap_regionfs_omitted"));
+}
+
+#[test]
+fn set_uncertainty_negates_unbounded() {
+    // Oracle: setunc_unbounded_negated. A negated (hence unbounded) uncertainty
+    // Box is supplied; C negates it again (region.c:10856) to restore a bounded
+    // uncertainty before storing, then re-centres it at the box centre (5, 5).
+    let frm = BasicFrameBuilder::new(2).build().unwrap();
+    let mut region = BoxRegionBuilder::from_bounds(frm, &[0.0, 0.0], &[10.0, 10.0])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let ufrm = BasicFrameBuilder::new(2).build().unwrap();
+    let mut unc = BoxRegionBuilder::from_bounds(ufrm, &[-1.0, -1.0], &[1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    unc.negate();
+
+    region.set_uncertainty(Box::new(unc));
+
+    let got = ast_core::to_native_string(&AnyObject::BoxRegion(region)).unwrap();
+    assert_eq!(got, setunc_fixture_map("setunc_unbounded_negated"));
+}
+
 #[test]
 fn pick_axes_all_axes_permuted_preserves_region_class() {
     // Region-level astPickAxes (region.c::PickAxes) picks current-Frame axes,

@@ -940,15 +940,30 @@ impl Region for BoxRegion {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
     }
 
-    fn reg_centre_set(&mut self, cen: &[f64]) -> AstResult<()> {
+    fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
+        // Box always has a centre (box.c:2872-2881). Return the base-Frame
+        // centre, or transform it into the current Frame when requested.
+        let centre = self.data.points[0].clone();
+        match ifrm {
+            FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
+            _ => Ok(Some(centre)),
+        }
+    }
+
+    fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
         let bfrm = self.data.frameset.base().snapshot();
         let ncb = self.data.points[0].len();
 
@@ -958,11 +973,25 @@ impl Region for BoxRegion {
         let corner = self.data.points[1].clone();
         let geolen = geo_lengths(bfrm.as_ref(), ncb, &centre, &corner)?;
 
-        // Store the new base-Frame centre, skipping BAD components (box.c:2915).
-        let mut bc = centre;
-        for ic in 0..ncb {
-            if !is_bad(cen[ic]) {
-                bc[ic] = cen[ic];
+        // Resolve the supplied centre into a base-Frame position (box.c:2893).
+        // When supplied in the current Frame, transform it to the base Frame
+        // and replace any BAD component with the existing centre value.
+        let mut bc = centre.clone();
+        match ifrm {
+            FrameRef::Current => {
+                let tc = self.reg_tran_point(cen, false)?;
+                for ic in 0..ncb {
+                    if !is_bad(tc[ic]) {
+                        bc[ic] = tc[ic];
+                    }
+                }
+            }
+            _ => {
+                for ic in 0..ncb {
+                    if !is_bad(cen[ic]) {
+                        bc[ic] = cen[ic];
+                    }
+                }
             }
         }
 

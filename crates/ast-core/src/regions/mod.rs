@@ -241,12 +241,135 @@ pub trait Region: Frame + Mapping {
     // Uncertainty
     // ------------------------------------------------------------------
 
+    /// Store (or clear) the raw uncertainty Region without validation or
+    /// remapping, invalidating any cached information.
+    ///
+    /// This is the low-level field write used by
+    /// [`set_uncertainty`](Region::set_uncertainty); it corresponds to the C
+    /// `this->unc = ...` assignments plus `astResetCache`. Callers that want
+    /// the full C `astSetUnc` semantics (class validation, remap into the base
+    /// Frame, negate-if-unbounded, RegionFS optimisation, re-centre) must use
+    /// [`set_uncertainty`](Region::set_uncertainty).
+    #[doc(hidden)]
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>);
+
+    /// Set the boolean `RegionFS` attribute, controlling whether the
+    /// encapsulated FrameSet is included in a dump.
+    ///
+    /// Mirrors C `astSetRegionFS` (region.c:12603): setting it to `false`
+    /// causes the FrameSet to be omitted when the base→current Mapping is a
+    /// UnitMap. This is distinct from [`set_region_fs`](Region::set_region_fs),
+    /// which installs a real FrameSet.
+    #[doc(hidden)]
+    fn set_region_fs_flag(&mut self, value: bool);
+
     /// Set the uncertainty region associated with boundary positions.
     ///
-    /// The uncertainty region defines the positional uncertainty of
-    /// points on the boundary. It must have the same number of axes
-    /// as this region and be centred at the origin.
-    fn set_uncertainty(&mut self, unc: DynRegion);
+    /// Faithful port of C `astSetUnc` (region.c:10754). Each Region may carry
+    /// an uncertainty Region describing the positional uncertainty of points
+    /// on its boundary. The supplied `unc` must be of a centro-symmetric class
+    /// (`Box`, `Circle`, `Ellipse`) or a `Prism` of such — i.e. a class that
+    /// can be re-centred; otherwise an [`ErrorCode::Badin`] error is reported.
+    ///
+    /// The supplied Region is deep-copied and remapped into this Region's base
+    /// Frame, negated if it is unbounded (so it becomes bounded), tagged to omit
+    /// its FrameSet from dumps when the base→current Mapping simplifies to a
+    /// UnitMap, and re-centred at this Region's first defining point.
+    ///
+    /// This is a shared default; the C body is fully generic (it touches only
+    /// the FrameSet, defining points, uncertainty field, and cache). Only the
+    /// construction-time uncertainty supplied through a builder bypasses this
+    /// path (C routes it through `SetUnc` at region.c:13372; the builders store
+    /// it directly, which the existing serialization corpus does not exercise
+    /// under a non-trivial Frame relationship).
+    fn set_uncertainty(&mut self, unc: DynRegion) {
+        // Validate that the supplied Region is of a re-centreable
+        // (centro-symmetric) class. C tests this via
+        // astRegCentre(unc, NULL, NULL, 0, CURRENT) returning non-NULL
+        // (region.c:10836).
+        let usable = match unc.reg_centre_query(FrameRef::Current) {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(_) => false,
+        };
+
+        if !usable {
+            // Annul any existing uncertainty and report the error, mirroring
+            // C (region.c:10826-10832, 10899-10904). The bad shape leaves the
+            // Region with no uncertainty.
+            if self.get_uncertainty().is_some() {
+                self.store_uncertainty(None);
+            }
+            return;
+        }
+
+        // Map the supplied uncertainty into this Region's base Frame. C
+        // inverts this->frameset, runs Conv(unc->frameset, ...), then
+        // astMapRegion (region.c:10840-10850). The base Frame of this Region
+        // is the target coordinate system.
+        let target = self.get_region_frameset().base().snapshot();
+        let conv = match unc.get_region_frame().convert_to(target.as_ref(), &[]) {
+            Ok(Some(fs)) => fs,
+            _ => {
+                // Frames not convertible: annul existing, mirroring C's error
+                // branch (region.c:10889-10896) which leaves no uncertainty.
+                if self.get_uncertainty().is_some() {
+                    self.store_uncertainty(None);
+                }
+                return;
+            }
+        };
+        let map = match conv.mapping(FrameRef::Base, FrameRef::Current) {
+            Ok(m) => m,
+            Err(_) => {
+                if self.get_uncertainty().is_some() {
+                    self.store_uncertainty(None);
+                }
+                return;
+            }
+        };
+        let mut new_unc = match unc.map_region(map.as_ref(), target.as_ref()) {
+            Ok(u) => u,
+            Err(_) => {
+                if self.get_uncertainty().is_some() {
+                    self.store_uncertainty(None);
+                }
+                return;
+            }
+        };
+
+        // Ensure the uncertainty is bounded. Negating an unbounded
+        // uncertainty makes it bounded because it consists of Circles, Boxes
+        // and/or Ellipses (region.c:10853-10856).
+        if !new_unc.is_bounded() {
+            new_unc.negate();
+        }
+
+        // If the uncertainty's base→current Mapping simplifies to a UnitMap,
+        // its current Frame equals this Region's base Frame, so the FrameSet
+        // can be omitted from the dump (region.c:10858-10869).
+        if let Ok(m2) = new_unc
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)
+            && let Ok(smap) = m2.simplified()
+            && smap.as_any().is::<UnitMap>()
+        {
+            new_unc.set_region_fs_flag(false);
+        }
+
+        // Re-centre the uncertainty at this Region's first defining point
+        // (region.c:10871-10876). The point is expressed in this Region's
+        // base Frame, which is the uncertainty's current Frame, so it is
+        // supplied to the uncertainty's set-path with `ifrm = Current`.
+        if let Ok(points) = self.get_region_points()
+            && points.npoint() > 0
+        {
+            let first = points.point(0).to_vec();
+            let _ = new_unc.reg_centre_set(&first, FrameRef::Current);
+        }
+
+        self.store_uncertainty(Some(new_unc));
+    }
 
     /// Get a copy of the uncertainty region, if one has been set.
     fn get_uncertainty(&self) -> Option<DynRegion>;
@@ -359,23 +482,64 @@ pub trait Region: Frame + Mapping {
         ))
     }
 
-    /// Shift the centre of this Region to the supplied base-Frame position.
+    /// Transform a single point between this Region's base and current Frames.
     ///
-    /// `cen` holds the new centre coordinates in this Region's *base* Frame
-    /// (length `naxes()`); any [`BAD_VALUE`](crate::constants::BAD_VALUE)
-    /// component leaves the corresponding centre axis unchanged. Mirrors the
-    /// set-path of C `astRegCentre` (region.c:8397 abstract) with `ifrm =
-    /// AST__BASE`: the base-Frame enquiry/return path is not exposed here
-    /// because the only caller (PointList membership) supplies a new centre.
+    /// Faithful port of C `astRegTranPoint` (region.c:11788). When `forward` is
+    /// true the supplied point is in the base Frame and is transformed to the
+    /// current Frame; when false it is in the current Frame and is transformed
+    /// to the base Frame.
+    fn reg_tran_point(&self, point: &[f64], forward: bool) -> AstResult<Vec<f64>> {
+        let fs = self.get_region_frameset();
+        let map = if forward {
+            fs.mapping(FrameRef::Base, FrameRef::Current)?
+        } else {
+            fs.mapping(FrameRef::Current, FrameRef::Base)?
+        };
+        let pset = PointSet::from_rows(std::iter::once(point));
+        let out = map.transform(&pset, true)?;
+        Ok(out.point(0).to_vec())
+    }
+
+    /// Shift the centre of this Region to the supplied position.
+    ///
+    /// `cen` holds the new centre coordinates (length equal to the number of
+    /// axes in the base Frame when `ifrm` is [`FrameRef::Base`], or the current
+    /// Frame when [`FrameRef::Current`]); any
+    /// [`BAD_VALUE`](crate::constants::BAD_VALUE) component leaves the
+    /// corresponding centre axis unchanged. Mirrors the set-path of C
+    /// `astRegCentre` (region.c:8397 abstract): when `ifrm` is
+    /// [`FrameRef::Current`] the supplied point is first transformed into the
+    /// base Frame via the region's base→current Mapping.
     ///
     /// The abstract default reports [`ErrorCode::Inter`], matching the C
     /// behaviour of erroring when the set-path is invoked on a Region class
-    /// that has no centre. Only classes that carry a centre (Box) override it.
-    fn reg_centre_set(&mut self, _cen: &[f64]) -> AstResult<()> {
+    /// that has no centre. Only centro-symmetric classes (`Box`, `Circle`,
+    /// `Ellipse`, `Interval`-when-a-Box, `Prism`-of-such) override it.
+    fn reg_centre_set(&mut self, _cen: &[f64], _ifrm: FrameRef) -> AstResult<()> {
         Err(AstError::new(
             ErrorCode::Inter,
             "reg_centre_set: this Region class has no centre".to_string(),
         ))
+    }
+
+    /// Return the centre of this Region, or `None` if the class has no centre.
+    ///
+    /// Mirrors the *query* path of C `astRegCentre` (region.c:8397 abstract),
+    /// invoked with both `cen` and `ptr` NULL. The centre is returned in the
+    /// base Frame for [`FrameRef::Base`] and transformed through the
+    /// base→current Mapping for [`FrameRef::Current`]. Classes that are not
+    /// centro-symmetric — the same set that cannot serve as an uncertainty
+    /// Region (`PointList`, `Polygon`, `CmpRegion`, `NullRegion`) — return
+    /// `None`, matching the C base method which returns a NULL pointer without
+    /// error for the query path. `Box`, `Circle`, `Ellipse` always return a
+    /// centre; `Interval` only when it is effectively a `Box`; `Prism` only
+    /// when both component Regions are re-centreable.
+    ///
+    /// This is distinct from the geometric-centroid
+    /// [`RegionGeometry::reg_centre`](data::RegionGeometry::reg_centre), which
+    /// always returns a value.
+    fn reg_centre_query(&self, _ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
+        Ok(None)
     }
 
     // ------------------------------------------------------------------

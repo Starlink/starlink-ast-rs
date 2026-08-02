@@ -589,12 +589,58 @@ impl Region for Prism {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
+        // Port of prism.c::RegCentre query path (prism.c:2551-2580). The two
+        // component Regions' current Frames together form the parent's base
+        // Frame. Both components must be re-centreable; if either returns None,
+        // the Prism has no centre.
+        let cen1 = self.region1.reg_centre_query(FrameRef::Current)?;
+        let cen2 = self.region2.reg_centre_query(FrameRef::Current)?;
+        let (Some(cen1), Some(cen2)) = (cen1, cen2) else {
+            return Ok(None);
+        };
+
+        let mut total = cen1;
+        total.extend(cen2);
+
+        // `total` is in the parent base Frame; transform to the current Frame
+        // when requested (prism.c:2569-2570).
+        match ifrm {
+            FrameRef::Current => Ok(Some(self.reg_tran_point(&total, true)?)),
+            _ => Ok(Some(total)),
+        }
+    }
+
+    fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
+        // Port of prism.c::RegCentre set path (prism.c:2582-2617). Transform the
+        // supplied centre into the parent base Frame (the component current
+        // Frames) when supplied in the current Frame, then hand each component
+        // its slice.
+        let bc = match ifrm {
+            FrameRef::Current => self.reg_tran_point(cen, false)?,
+            _ => cen.to_vec(),
+        };
+
+        let nax1 = self.region1.naxes();
+        self.region1
+            .reg_centre_set(&bc[..nax1], FrameRef::Current)?;
+        self.region2
+            .reg_centre_set(&bc[nax1..], FrameRef::Current)?;
+        self.data.invalidate_cache();
+        Ok(())
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

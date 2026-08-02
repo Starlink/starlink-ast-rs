@@ -184,7 +184,7 @@ impl RegionGeometry for PointList {
 
             // Recentre the uncertainty Region at this defining point
             // (astRegCentre(unc, NULL, ptr_base, point, AST__BASE)).
-            unc.reg_centre_set(&def_point[..naxes])?;
+            unc.reg_centre_set(&def_point[..naxes], FrameRef::Base)?;
 
             // Transform the supplied points through the (un-negated)
             // uncertainty: interior points pass through, exterior points
@@ -507,8 +507,13 @@ impl Region for PointList {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {

@@ -950,8 +950,13 @@ impl Region for Polygon {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {

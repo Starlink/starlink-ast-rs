@@ -517,12 +517,69 @@ impl Region for Ellipse {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
+        // Ellipse always has a centre (ellipse.c:1305-1310). Return the
+        // base-Frame centre, or transform it into the current Frame.
+        let centre = self.data.points[0].clone();
+        match ifrm {
+            FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
+            _ => Ok(Some(centre)),
+        }
+    }
+
+    fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
+        let bfrm = self.data.frameset.base().snapshot();
+        let old_centre = self.data.points[0].clone();
+
+        // Resolve the supplied centre into a base-Frame position
+        // (ellipse.c:1324-1350). An ellipse always has 2 base-Frame axes; a
+        // current-Frame centre is transformed to the base Frame and BAD
+        // components fall back to the existing centre value.
+        let mut bc = old_centre.clone();
+        match ifrm {
+            FrameRef::Current => {
+                let tc = self.reg_tran_point(cen, false)?;
+                for ic in 0..2 {
+                    if !is_bad(tc[ic]) {
+                        bc[ic] = tc[ic];
+                    }
+                }
+            }
+            _ => {
+                for ic in 0..2 {
+                    if !is_bad(cen[ic]) {
+                        bc[ic] = cen[ic];
+                    }
+                }
+            }
+        }
+
+        // Find the direction and length of the offset between the old and new
+        // centre, then shift all three defining points by that same offset
+        // (ellipse.c:1352-1366).
+        let angle = bfrm.ax_angle(&old_centre, &bc, 2)?;
+        let dist = bfrm.distance(&old_centre, &bc)?;
+
+        for ip in 0..self.data.points.len() {
+            let (shifted, _) = bfrm.offset2(&self.data.points[ip], angle, dist)?;
+            self.data.points[ip] = shifted;
+        }
+
+        self.data.invalidate_cache();
+        Ok(())
     }
 
     fn reg_perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {

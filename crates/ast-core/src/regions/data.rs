@@ -197,6 +197,14 @@ impl RegionData {
         }
     }
 
+    /// Set the boolean `RegionFS` attribute (C `astSetRegionFS`,
+    /// region.c:12603). When `false`, the encapsulated FrameSet is omitted
+    /// from a dump. Unlike [`set_region_fs`](Self::set_region_fs), this does
+    /// not install a new FrameSet — it only toggles the dump flag.
+    pub(crate) fn set_region_fs_flag(&mut self, value: bool) {
+        self.region_fs = value;
+    }
+
     /// The effective MeshSize: the explicitly-set value if any, otherwise
     /// the naxes-dependent default (`astGetMeshSize`, region.c:12714): 1-D →
     /// 2, 2-D → 200, ≥3-D → 2000. The naxes count is that of the current

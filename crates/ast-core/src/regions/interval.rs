@@ -920,12 +920,66 @@ impl Region for Interval {
         &mut self.data.frameset
     }
 
-    fn set_uncertainty(&mut self, unc: DynRegion) {
-        self.data.uncertainty = Some(unc);
+    fn store_uncertainty(&mut self, unc: Option<DynRegion>) {
+        self.data.uncertainty = unc;
+        self.data.invalidate_cache();
+    }
+
+    fn set_region_fs_flag(&mut self, value: bool) {
+        self.data.set_region_fs_flag(value);
     }
 
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
+    }
+
+    fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
+        // An Interval can only be re-centred (or report a centre) when it is
+        // effectively a closed Box (interval.c:2534-2567). Otherwise there is
+        // no centre and the query returns None without error.
+        if !self.is_bounded_inner() {
+            return Ok(None);
+        }
+        let (lbnd, ubnd) = self.effective_bounds();
+        let centre: Vec<f64> = lbnd.iter().zip(&ubnd).map(|(l, u)| 0.5 * (l + u)).collect();
+        match ifrm {
+            FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
+            _ => Ok(Some(centre)),
+        }
+    }
+
+    fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
+        // Only re-centreable when effectively a closed Box (interval.c:2569).
+        if !self.is_bounded_inner() {
+            return Err(AstError::new(
+                ErrorCode::Regcn,
+                "The supplied Interval is not a closed Interval and so cannot be re-centred"
+                    .to_string(),
+            ));
+        }
+
+        // Delegate to the equivalent Box (interval.c:2535-2557): build a Box
+        // over the current bounds that shares this Interval's FrameSet, set
+        // its centre, then read back the new base-Frame bounds.
+        let (lbnd, ubnd) = self.effective_bounds();
+        let mut box_data = RegionData::new(self.data.frameset.clone(), {
+            let centre: Vec<f64> = lbnd.iter().zip(&ubnd).map(|(l, u)| 0.5 * (l + u)).collect();
+            vec![centre, ubnd.clone()]
+        });
+        box_data.closed = true;
+        box_data.closed_set = true;
+        let mut box_reg = super::BoxRegion { data: box_data };
+
+        box_reg.reg_centre_set(cen, ifrm)?;
+
+        // Recover the new base-Frame bounds from the re-centred Box and store
+        // them back in the Interval's defining points.
+        let (nlbnd, nubnd) = box_reg.reg_base_box()?;
+        let nax = self.data.points[0].len();
+        self.data.points[0][..nax].copy_from_slice(&nlbnd[..nax]);
+        self.data.points[1][..nax].copy_from_slice(&nubnd[..nax]);
+        self.data.invalidate_cache();
+        Ok(())
     }
 
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
