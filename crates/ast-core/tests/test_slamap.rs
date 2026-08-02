@@ -676,8 +676,7 @@ fn simplified_returns_clone() {
 
 // R2H then H2R is the identity, and C carries the raw (un-normalized)
 // longitude scalar through both steps, so a large out-of-range input
-// longitude must survive verbatim. The vector carrier cannot reproduce
-// this (a unit vector only recovers (-pi, pi]); the scalar carrier can.
+// longitude survives verbatim rather than being wrapped into a 2pi interval.
 #[test]
 fn r2h_h2r_preserves_raw_longitude() {
     let last = 3.5;
@@ -714,7 +713,7 @@ fn matrix_op_longitude_is_normalized_to_0_2pi() {
     // ~1e-7 rotation (verified against the C oracle, which returns
     // 5.2831853953259547 for this point). The tolerance accommodates that
     // real palPrec behaviour; the point is essentially unchanged apart from
-    // the [0, 2pi) wrap that the un-normalized vector carrier would not apply.
+    // the [0, 2pi) wrap applied by palDranrm.
     assert_angle_close(got, neg_lon, 1e-6, "wrapped value equals input mod 2pi");
 }
 
