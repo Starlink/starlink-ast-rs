@@ -1199,6 +1199,11 @@ const SLAMAP_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
     // with a specific reason.
 ];
 
+/// Number of SlaMap-family oracle section-directions currently in the corpus.
+/// The gate asserts it examined at least this many, so a future rename or
+/// deletion of the fixtures cannot make the gate pass vacuously.
+const SLAMAP_SECTION_FLOOR: usize = 136;
+
 /// Is this oracle section owned by SlaMap transform math (a *sla* fixture in
 /// the simplify corpus)?
 fn is_slamap_section(relpath: &str) -> bool {
@@ -1240,11 +1245,13 @@ fn slamap_sections_match_oracle() {
     let mut unexpected_failures: Vec<String> = Vec::new();
     // Every excluded key that never turned up as a live failure is stale.
     let mut stale_exclusions: std::collections::HashSet<(&str, bool)> = excluded.clone();
+    let mut checked = 0usize;
 
     for r in &reports {
         if !is_slamap_section(&r.relpath) {
             continue;
         }
+        checked += 1;
         let key = (r.relpath.as_str(), r.forward);
         if excluded.contains(&key) {
             if is_fail(&r.outcome) {
@@ -1270,6 +1277,11 @@ fn slamap_sections_match_oracle() {
         stale_exclusions.is_empty(),
         "SLAMAP_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
         stale_exclusions,
+    );
+    assert!(
+        checked >= SLAMAP_SECTION_FLOOR,
+        "gate examined only {checked} SlaMap sections (expected >= {SLAMAP_SECTION_FLOOR}); \
+         fixtures may have been renamed or removed",
     );
 }
 
