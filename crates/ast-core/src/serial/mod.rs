@@ -595,14 +595,15 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
         );
     }
 
-    // Write the FrameSet. If the base→current mapping is a UnitMap, write
-    // just the current frame (as "Frm") to save space. Otherwise write the
-    // full FrameSet. C library `region.c` lines 13099-13112: the unit-map
-    // shortcut also omits `RegFS` (set=0, helpful=0); the non-unit path
-    // emits `RegFS = 0` uncommented only when RegionFS was explicitly set
-    // to 0. We don't track that explicit-set state yet, so on the non-unit
-    // path we emit `RegFS = 1` to make the reader pick FrmSet — matches
-    // the existing reader behaviour without breaking fixtures.
+    // Write the FrameSet, mirroring C `region.c:13099-13112`. If the
+    // base→current mapping is a UnitMap, the vertices are the same in both
+    // Frames, so dump just the current Frame (as `Frm`) — but only when the
+    // `RegionFS` attribute is non-zero. When `region_fs` is false (e.g. an
+    // uncertainty sub-region whose current Frame equals its parent's base
+    // Frame), the Frame can be inferred from the enclosing context, so C
+    // omits both `Frm` and the `RegFS` line entirely. If the mapping is not
+    // a UnitMap, dump the whole FrameSet and emit `RegFS` uncommented only
+    // when RegionFS was explicitly set to 0.
     let mapping = data.frameset.mapping(FrameRef::Base, FrameRef::Current);
     let is_unit = mapping
         .as_ref()
@@ -610,9 +611,11 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
         .unwrap_or(false);
 
     if is_unit {
-        let frame_node =
-            FrameToNode::to_node(data.frameset.current()).unwrap_or_else(|_| Node::new("Frame"));
-        node.push_object("Frm", frame_node, Some("Coordinate system".to_string()));
+        if data.region_fs {
+            let frame_node = FrameToNode::to_node(data.frameset.current())
+                .unwrap_or_else(|_| Node::new("Frame"));
+            node.push_object("Frm", frame_node, Some("Coordinate system".to_string()));
+        }
     } else {
         let fs_node =
             Serializable::to_node(&data.frameset).unwrap_or_else(|_| Node::new("FrameSet"));
@@ -621,6 +624,9 @@ pub(crate) fn write_region_base(node: &mut Node, data: &RegionData) {
             fs_node,
             Some("Original & current coordinate systems".to_string()),
         );
+        if !data.region_fs {
+            node.push_int("RegFS", 0, Some("Do not include Frame in dump".to_string()));
+        }
     }
 
     // Defining points (if any) — else emit RegAxes so the loader knows the
@@ -798,8 +804,12 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
     // dummy FrameSet with RegionFS=0 (`region.c:13593-13601`) that the
     // parent later replaces via `astSetRegFS`; we mirror that with the
     // `dummy_fs` flag.
-    let (frameset, dummy_fs) = if let Some(fs_node) = node.get_object("FrmSet") {
-        (FrameSet::from_node(fs_node)?, false)
+    // C loader `region.c:13563-13603`: `Frm` present → RegionFS = 1;
+    // `FrmSet` present → read RegFS (default 1); neither → dummy FrameSet
+    // with RegionFS = 0.
+    let (frameset, dummy_fs, region_fs) = if let Some(fs_node) = node.get_object("FrmSet") {
+        let region_fs = node.get_int("RegFS", 1) != 0;
+        (FrameSet::from_node(fs_node)?, false, region_fs)
     } else if let Some(frm_node) = node.get_object("Frm") {
         // Only a single Frame stored — create a 2-frame FrameSet with
         // UnitMap connecting base to current (matches the C library and
@@ -810,10 +820,11 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
             .expect("adding current frame to region FrameSet");
-        (fs, false)
+        (fs, false, true)
     } else {
         // Dummy FrameSet: a default BasicFrame of `naxpt` axes (>= 1),
         // marked dummy so the parent re-associates the real frame.
+        // RegionFS = 0 (the Frame is inferred from the enclosing context).
         let nax = if naxpt > 0 { naxpt } else { 1 };
         let frame: DynFrame = Box::new(
             BasicFrameBuilder::new(nax)
@@ -824,7 +835,7 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)), current_snap)
             .expect("adding current frame to dummy region FrameSet");
-        (fs, true)
+        (fs, true, false)
     };
 
     // Read uncertainty.
@@ -845,6 +856,7 @@ pub(crate) fn read_region_base(node: &Node) -> AstResult<RegionData> {
         adaptive,
         uncertainty,
         dummy_fs,
+        region_fs,
         cached_base_mesh: RefCell::new(None),
     };
 

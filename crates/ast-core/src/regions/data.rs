@@ -63,11 +63,23 @@ pub(crate) struct RegionData {
     /// Whether `frameset` is a *dummy* FrameSet synthesised at load time
     /// because the serialised region carried neither `Frm` nor `FrmSet`
     /// (a nested region that inherits its container's frame). Mirrors C's
-    /// `RegionFS == 0` / `DUMMY_FS` marker (`region.c:13593-13601`). A
-    /// dummy FrameSet must be replaced by the real frame via
-    /// [`RegionData::set_region_fs`] before the region is used; the parent
-    /// compound loader performs that re-association.
+    /// `DUMMY_FS` marker (`region.c:13593-13601`). A dummy FrameSet must be
+    /// replaced by the real frame via [`RegionData::set_region_fs`] before
+    /// the region is used; the parent compound loader performs that
+    /// re-association.
     pub(crate) dummy_fs: bool,
+
+    /// The C `RegionFS` attribute (`region.c:12603-12607`): non-zero means
+    /// "include the Frame in the dump". Default (unset) is treated as 1.
+    ///
+    /// This is distinct from [`dummy_fs`](Self::dummy_fs): a frame-less
+    /// nested region loads with `region_fs = false`, and although
+    /// `set_region_fs` later gives it a real FrameSet (clearing `dummy_fs`),
+    /// `region_fs` stays false — so on re-dump the Frame is still omitted,
+    /// matching C's `astSetRegFS` leaving `regionfs` untouched
+    /// (`region.c:10738-10747`) and the unit-map dump branch writing `Frm`
+    /// only when `regionfs != 0` (`region.c:13099-13107`).
+    pub(crate) region_fs: bool,
 
     /// Cached base-frame boundary mesh (lazily computed).
     pub(crate) cached_base_mesh: RefCell<Option<Vec<Vec<f64>>>>,
@@ -86,6 +98,7 @@ impl Clone for RegionData {
             adaptive: self.adaptive,
             uncertainty: self.uncertainty.clone(),
             dummy_fs: self.dummy_fs,
+            region_fs: self.region_fs,
             cached_base_mesh: RefCell::new(self.cached_base_mesh.borrow().clone()),
         }
     }
@@ -119,6 +132,7 @@ impl RegionData {
             adaptive: true,
             uncertainty: None,
             dummy_fs: false,
+            region_fs: true,
             cached_base_mesh: RefCell::new(None),
         }
     }
