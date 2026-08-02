@@ -107,6 +107,10 @@ impl Region for DummyRegion {
         true
     }
     fn set_closed(&mut self, _closed: bool) {}
+    fn test_closed(&self) -> bool {
+        false
+    }
+    fn set_closed_raw(&mut self, _closed: bool, _set: bool) {}
     fn fill_factor(&self) -> f64 {
         1.0
     }
@@ -114,6 +118,7 @@ impl Region for DummyRegion {
     fn test_fill_factor(&self) -> bool {
         false
     }
+    fn clear_fill_factor(&mut self) {}
     fn mesh_size(&self) -> usize {
         200
     }
@@ -121,6 +126,7 @@ impl Region for DummyRegion {
     fn test_mesh_size(&self) -> bool {
         false
     }
+    fn clear_mesh_size(&mut self) {}
     fn is_bounded(&self) -> bool {
         true
     }
@@ -161,6 +167,9 @@ impl Region for DummyRegion {
     }
     fn store_uncertainty(&mut self, _unc: Option<DynRegion>) {}
     fn set_region_fs_flag(&mut self, _value: bool) {}
+    fn region_fs_flag(&self) -> bool {
+        false
+    }
     fn get_uncertainty(&self) -> Option<DynRegion> {
         None
     }
