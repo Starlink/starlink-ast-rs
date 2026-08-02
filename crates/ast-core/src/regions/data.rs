@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
-use crate::frames::{Frame, FrameRef, FrameSet};
+use crate::frames::{Frame, FrameRef, FrameSet, SkyFrame};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{Mapping, UnitMap};
 
@@ -167,6 +167,21 @@ impl RegionData {
     #[allow(dead_code)]
     pub(crate) fn invalidate_cache(&self) {
         *self.cached_base_mesh.borrow_mut() = None;
+    }
+
+    /// Whether a closed-curve region (Circle, Ellipse, Box, …) is bounded.
+    ///
+    /// Faithful port of the base `Region::GetBounded` (region.c:3358): a
+    /// region defined by one or more closed curves is bounded so long as it
+    /// has not been negated. The exception is a region defined within a
+    /// SkyFrame (i.e. on a sphere), which is always bounded because a finite
+    /// region has a finite negation.
+    pub(crate) fn closed_curve_bounded(&self) -> bool {
+        if self.frameset.base().as_any().is::<SkyFrame>() {
+            true
+        } else {
+            !self.negated
+        }
     }
 
     /// Permute the axes of the encapsulated FrameSet's current frame.

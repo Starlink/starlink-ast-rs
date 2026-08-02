@@ -1049,7 +1049,17 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// singularities. The base Frame has none, so the bounds are left
     /// unchanged. SkyFrame overrides this (pole inclusion). Mirrors C
     /// `astNormBox` (frame.c:7766).
-    fn norm_box(&self, _lbnd: &mut [f64], _ubnd: &mut [f64]) -> AstResult<()> {
+    ///
+    /// `inside` is a membership predicate for the box: it returns `true`
+    /// when a supplied point lies inside. It mirrors the C `reg` Mapping
+    /// argument (which leaves interior points unchanged and sets exterior
+    /// points bad); the SkyFrame override uses it to test the poles.
+    fn norm_box(
+        &self,
+        _lbnd: &mut [f64],
+        _ubnd: &mut [f64],
+        _inside: &dyn Fn(&[f64]) -> AstResult<bool>,
+    ) -> AstResult<()> {
         Ok(())
     }
 }

@@ -167,7 +167,6 @@ fn general_prism_bounds() {
 }
 
 #[test]
-#[ignore] // get_region_bounds() does not yet account for negation (negated bounded -> unbounded)
 fn general_negated_circle_or_bounds() {
     // When circle is negated, its complement is unbounded in all directions.
     // OR of Interval with negated Circle should be unbounded everywhere.
@@ -198,7 +197,6 @@ fn general_negated_circle_or_bounds() {
 }
 
 #[test]
-#[ignore] // get_region_bounds() does not yet account for negation (negated bounded -> unbounded)
 fn general_negated_circle_prism_bounds() {
     // Prism of (Interval OR negated Circle) + 1D interval
     let frm = BasicFrameBuilder::new(2).build().unwrap();
@@ -238,7 +236,6 @@ fn general_negated_circle_prism_bounds() {
 }
 
 #[test]
-#[ignore] // get_region_bounds() does not yet account for negation (negated bounded -> unbounded)
 fn general_negated_circle_and_bounds() {
     // AND of Interval with negated Circle: the intersection is Interval minus
     // the interior of the circle. The bounds come from the Interval since the
@@ -273,7 +270,6 @@ fn general_negated_circle_and_bounds() {
 }
 
 #[test]
-#[ignore] // get_region_bounds() does not yet account for negation (negated bounded -> unbounded)
 fn general_negated_circle_and_prism_bounds() {
     // Prism of (Interval AND negated Circle) + 1D interval
     let frm = BasicFrameBuilder::new(2).build().unwrap();
@@ -412,7 +408,6 @@ fn sphere_3d_transform_opposite_direction() {
 }
 
 #[test]
-#[ignore] // mesh-based overlap does not reliably detect Same for 3D circles (mesh sampling noise)
 fn sphere_3d_overlap_same() {
     // Self-overlap should be Same.
     let frm = BasicFrameBuilder::new(3).build().unwrap();
@@ -504,7 +499,6 @@ fn sphere_3d_overlap_none() {
 }
 
 #[test]
-#[ignore] // mesh-based overlap cannot reliably detect single-point boundary contact
 fn sphere_3d_overlap_touching_closed() {
     // Two spheres that touch at exactly one point (closed boundaries).
     let frm = BasicFrameBuilder::new(3).build().unwrap();
@@ -990,7 +984,6 @@ fn prism_overlap_same() {
 }
 
 #[test]
-#[ignore] // mesh-based overlap for Prism does not reliably detect containment
 fn prism_overlap_second_inside() {
     // Prism with smaller interval: smaller prism inside larger.
     let frm2 = BasicFrameBuilder::new(2).build().unwrap();
@@ -1677,30 +1670,35 @@ fn sky_circle_bounds_equator() {
 
     let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
 
-    // At the equator, the RA extent is approximately radius/cos(dec) = radius.
-    // The Dec extent is simply ±radius.
-    // With the current naive implementation (centre ± radius), the bounds are:
+    // Bounds come from the great-circle mesh (circle.c::RegBaseMesh +
+    // skyframe.c::NormBox), not a planar centre ± radius box. At the equator
+    // the RA extent is ±radius (cos(dec)=1) and the Dec extent runs from
+    // -radius to just under +radius: the mesh's northernmost sample sits a
+    // hair inside the true top, so the upper Dec is ~0.09995 rather than 0.1.
     assert!(
-        (lbnd[1] - (centre[1] - radius)).abs() < 1.0e-10,
-        "SkyCircle equator bounds: lower Dec"
+        (lbnd[1] - (centre[1] - radius)).abs() < 1.0e-4,
+        "SkyCircle equator bounds: lower Dec, got {}",
+        lbnd[1]
     );
     assert!(
-        (ubnd[1] - (centre[1] + radius)).abs() < 1.0e-10,
-        "SkyCircle equator bounds: upper Dec"
+        (ubnd[1] - 0.09995).abs() < 1.0e-4,
+        "SkyCircle equator bounds: upper Dec, got {}",
+        ubnd[1]
     );
-    // RA bounds — naive implementation gives centre ± radius.
+    // RA bounds — great-circle offset of radius due east/west of centre.
     assert!(
-        (lbnd[0] - (centre[0] - radius)).abs() < 1.0e-10,
-        "SkyCircle equator bounds: lower RA"
+        (lbnd[0] - (centre[0] - radius)).abs() < 1.0e-4,
+        "SkyCircle equator bounds: lower RA, got {}",
+        lbnd[0]
     );
     assert!(
-        (ubnd[0] - (centre[0] + radius)).abs() < 1.0e-10,
-        "SkyCircle equator bounds: upper RA"
+        (ubnd[0] - (centre[0] + radius)).abs() < 1.0e-4,
+        "SkyCircle equator bounds: upper RA, got {}",
+        ubnd[0]
     );
 }
 
 #[test]
-#[ignore] // reg_base_box uses naive centre±radius; does not expand RA bounds near pole
 fn sky_circle_bounds_near_pole() {
     // Circle centred near north pole: RA bounds should wrap to [0, 2*pi].
     // From checkCircle lines 1765-1771 of testregions.c.
@@ -2915,19 +2913,13 @@ fn fitschan_sky_circle_bounds() {
 
     let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
 
-    // Current implementation uses simple centre +/- radius (Euclidean).
-    // The Dec bounds are correct regardless:
-    //   lbnd[1] = 1.0 - 0.01 = 0.99
-    //   ubnd[1] = 1.0 + 0.01 = 1.01
-    // The RA bounds are also +/- 0.01 (no cos(dec) correction yet).
-    //
-    // NOTE: When reg_base_box gains SkyFrame-aware bounds, the RA values
-    // should become +/- 0.01/cos(1.0) = +/- 0.01850666, and the Dec upper
-    // should be ~1.00999499 (great-circle correction). Update these asserts
-    // when that lands.
+    // Bounds come from the great-circle mesh (circle.c::RegBaseMesh +
+    // skyframe.c::NormBox), so the RA extent carries the cos(dec) correction
+    // (radius/cos(1.0) = 0.01850666) and the Dec upper carries the
+    // great-circle correction (~1.00999499). Dec lower stays at 0.99.
     assert!(
-        (lbnd[0] - (-0.01)).abs() < 1.0e-6,
-        "fitschan circle lbnd[0]: got {}, expected -0.01",
+        (lbnd[0] - (-0.01850666)).abs() < 1.0e-6,
+        "fitschan circle lbnd[0]: got {}, expected -0.01850666",
         lbnd[0]
     );
     assert!(
@@ -2936,13 +2928,13 @@ fn fitschan_sky_circle_bounds() {
         lbnd[1]
     );
     assert!(
-        (ubnd[0] - 0.01).abs() < 1.0e-6,
-        "fitschan circle ubnd[0]: got {}, expected 0.01",
+        (ubnd[0] - 0.01850666).abs() < 1.0e-6,
+        "fitschan circle ubnd[0]: got {}, expected 0.01850666",
         ubnd[0]
     );
     assert!(
-        (ubnd[1] - 1.01).abs() < 1.0e-6,
-        "fitschan circle ubnd[1]: got {}, expected 1.01",
+        (ubnd[1] - 1.00999499).abs() < 1.0e-6,
+        "fitschan circle ubnd[1]: got {}, expected 1.00999499",
         ubnd[1]
     );
 
@@ -3020,7 +3012,6 @@ fn fitschan_sky_circle_membership() {
 }
 
 #[test]
-#[ignore] // reg_base_box does not yet handle pole-wrapping for SkyFrame circles
 fn fitschan_sky_circle_near_pole_bounds() {
     // C testregions.c lines 1649-1656:
     // Circle at (0.0, 1.57) rad with radius 0.01 — near north pole.

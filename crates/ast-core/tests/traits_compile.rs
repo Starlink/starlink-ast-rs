@@ -147,6 +147,12 @@ impl Region for DummyRegion {
     fn get_region_frameset(&self) -> ast_core::frames::FrameSet {
         panic!("not implemented")
     }
+    fn region_frameset_mut(&mut self) -> &mut ast_core::frames::FrameSet {
+        panic!("not implemented")
+    }
+    fn reg_perm_axes(&mut self, _perm: &[usize]) -> AstResult<()> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
     fn set_uncertainty(&mut self, _unc: DynRegion) {}
     fn get_uncertainty(&self) -> Option<DynRegion> {
         None

@@ -1115,6 +1115,23 @@ impl Frame for FrameSet {
         self.current().offset(from, to, dist)
     }
 
+    fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
+        self.current().offset2(point1, angle, offset)
+    }
+
+    fn ax_distance(&self, axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
+        self.current().ax_distance(axis, v1, v2)
+    }
+
+    fn norm_box(
+        &self,
+        lbnd: &mut [f64],
+        ubnd: &mut [f64],
+        inside: &dyn Fn(&[f64]) -> AstResult<bool>,
+    ) -> AstResult<()> {
+        self.current().norm_box(lbnd, ubnd, inside)
+    }
+
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         self.current().norm(coords)
     }

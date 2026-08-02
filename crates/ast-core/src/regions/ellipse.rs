@@ -270,7 +270,7 @@ impl RegionGeometry for Ellipse {
     }
 
     fn is_bounded_inner(&self) -> bool {
-        true
+        self.data.closed_curve_bounded()
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {

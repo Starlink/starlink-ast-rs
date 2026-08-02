@@ -1169,6 +1169,162 @@ impl Frame for SkyFrame {
         Ok(())
     }
 
+    /// Signed axis increment from `v1` to `v2`, normalised into +PI to
+    /// -PI. Mirrors C `SkyAxis::AxisDistance` (skyaxis.c:405) via the
+    /// Frame `astAxDistance` dispatch — every SkyFrame axis is a SkyAxis.
+    fn ax_distance(&self, _axis: usize, v1: f64, v2: f64) -> AstResult<f64> {
+        Ok(if is_bad(v1) || is_bad(v2) {
+            BAD_VALUE
+        } else {
+            pal::drange(v2 - v1)
+        })
+    }
+
+    /// Offset along a great circle at a given bearing. Mirrors C
+    /// `SkyFrame::Offset2` (skyframe.c:7829): builds the reference
+    /// vectors via Shcal, offsets via Shapp, normalises, and returns the
+    /// bearing of the great circle at the end point.
+    fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
+        let perm = self.perm;
+
+        // Bad inputs give all-BAD output and a BAD returned angle.
+        if is_bad(point1[0]) || is_bad(point1[1]) || is_bad(angle) || is_bad(offset) {
+            return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
+        }
+
+        let piby2 = std::f64::consts::FRAC_PI_2;
+
+        // Apply the axis permutation to obtain (longitude, latitude) order.
+        let mut p1 = [0.0f64; 2];
+        p1[perm[0]] = point1[0];
+        p1[perm[1]] = point1[1];
+
+        // If the axes are permuted, convert the supplied angle into a
+        // position angle (measured from north).
+        let pa = if perm[0] == 0 { angle } else { piby2 - angle };
+
+        // Shcal: reference vector R0 and the point 90 degrees along the
+        // great circle R3.
+        let (r0, r3) = shcal(p1[0], p1[1], pa);
+
+        // Shapp: the new position offset by `offset` along the great circle.
+        let mut p2 = shapp(offset, &r0, &r3, p1[0]);
+
+        // Normalise the result. `p2` is in physical (lon, lat) order;
+        // `norm` reads/writes lon at lon_pos and lat at lat_pos, so map
+        // through the permutation and back.
+        {
+            let mut ext = vec![0.0; 2];
+            ext[self.lon_pos()] = p2[0];
+            ext[self.lat_pos()] = p2[1];
+            self.norm(&mut ext)?;
+            p2[0] = ext[self.lon_pos()];
+            p2[1] = ext[self.lat_pos()];
+        }
+
+        // Compute the bearing of the great circle at the required point.
+        let sina1 = p2[0].sin();
+        let cosa1 = p2[0].cos();
+        let sinb1 = p2[1].sin();
+        let cosb1 = p2[1].cos();
+
+        // Q1: point in the meridian of p2, 90 deg further north.
+        let q1 = [-sinb1 * cosa1, -sinb1 * sina1, cosb1];
+        // Q2: point on the equator, 90 deg west of p2.
+        let q2 = [-sina1, cosa1, 0.0];
+        // Q3: point 90 deg away from p2 along the great circle.
+        let cosoff = offset.cos();
+        let sinoff = offset.sin();
+        let q3 = [
+            -sinoff * r0[0] + cosoff * r3[0],
+            -sinoff * r0[1] + cosoff * r3[1],
+            -sinoff * r0[2] + cosoff * r3[2],
+        ];
+
+        let pa_end = pal::dvdv(&q3, &q2).atan2(pal::dvdv(&q3, &q1));
+        let result = if perm[0] == 0 { pa_end } else { piby2 - pa_end };
+        let result = pal::dranrm(result);
+
+        // Undo the axis permutation on the output coordinates.
+        let mut point2 = vec![0.0; 2];
+        point2[0] = p2[perm[0]];
+        point2[1] = p2[perm[1]];
+
+        Ok((point2, result))
+    }
+
+    /// Extend a box to include the effect of the celestial poles. Mirrors
+    /// C `SkyFrame::NormBox` (skyframe.c:7142): tests whether the box (via
+    /// the supplied region-membership predicate) includes either pole and,
+    /// if so, expands the longitude range to 0..2*PI and pins the latitude
+    /// limit to the pole.
+    fn norm_box(
+        &self,
+        lbnd: &mut [f64],
+        ubnd: &mut [f64],
+        inside: &dyn Fn(&[f64]) -> AstResult<bool>,
+    ) -> AstResult<()> {
+        let perm = self.perm;
+        let piby2 = std::f64::consts::FRAC_PI_2;
+
+        // Obtain the sky longitude and latitude limits, allowing for any
+        // axis permutation.
+        let mut lb = [0.0f64; 2];
+        let mut ub = [0.0f64; 2];
+        lb[perm[0]] = lbnd[0];
+        lb[perm[1]] = lbnd[1];
+        ub[perm[0]] = ubnd[0];
+        ub[perm[1]] = ubnd[1];
+
+        // Coordinates of the north and south poles, in external axis order.
+        let (npole, spole) = if perm[0] == 0 {
+            ([0.0, piby2], [0.0, -piby2])
+        } else {
+            ([piby2, 0.0], [-piby2, 0.0])
+        };
+
+        // Test whether the box includes each pole.
+        let north_in = inside(&npole)?;
+        let south_in = inside(&spole)?;
+
+        // If the box includes the north pole...
+        if north_in {
+            let t = if !is_bad(ub[1]) && !is_bad(lb[1]) {
+                let t = pal::drange(ub[1]);
+                let t2 = pal::drange(lb[1]);
+                if t2 < t { t2 } else { t }
+            } else {
+                BAD_VALUE
+            };
+            lb[1] = t;
+            ub[1] = piby2;
+            lb[0] = 0.0;
+            ub[0] = 2.0 * std::f64::consts::PI;
+        }
+
+        // If the box includes the south pole...
+        if south_in {
+            let t = if !is_bad(ub[1]) && !is_bad(lb[1]) {
+                let t = pal::drange(ub[1]);
+                let t2 = pal::drange(lb[1]);
+                if t2 > t { t2 } else { t }
+            } else {
+                BAD_VALUE
+            };
+            lb[1] = -piby2;
+            ub[1] = t;
+            lb[0] = 0.0;
+            ub[0] = 2.0 * std::f64::consts::PI;
+        }
+
+        // Return the modified limits, undoing the axis permutation.
+        lbnd[0] = lb[perm[0]];
+        lbnd[1] = lb[perm[1]];
+        ubnd[0] = ub[perm[0]];
+        ubnd[1] = ub[perm[1]];
+        Ok(())
+    }
+
     // --- Great-circle line geometry (skyframe.c LineDef/LineOffset/
     // LineCrossing/LineContains) ---
     //
@@ -2797,6 +2953,66 @@ impl Serializable for SkyFrame {
 
         Ok(sky)
     }
+}
+
+/// Calculate the reference vectors used by `Offset2`. Mirrors C `Shcal`
+/// (skyframe.c:9766): returns `(r0, r3)` where `r0` is the 3-vector of the
+/// sky position `(a0, b0)` and `r3` is the 3-vector 90 degrees away along
+/// the great circle passing through `r0` at position angle `angle`
+/// (measured from north to east). The XY plane is the equator, Z is north,
+/// X towards longitude 0, Y towards longitude 90 degrees.
+fn shcal(a0: f64, b0: f64, angle: f64) -> ([f64; 3], [f64; 3]) {
+    let sina0 = a0.sin();
+    let cosa0 = a0.cos();
+    let sinb0 = b0.sin();
+    let cosb0 = b0.cos();
+    let sinpa = angle.sin();
+    let cospa = angle.cos();
+
+    // R0: the given point.
+    let r0 = [cosb0 * cosa0, cosb0 * sina0, sinb0];
+
+    // R1: the point in the meridian of R0, 90 deg further north.
+    let r1 = [-sinb0 * cosa0, -sinb0 * sina0, cosb0];
+
+    // R2: the point on the equator, 90 deg west of R0.
+    let r2 = [-sina0, cosa0, 0.0];
+
+    // R3: the point 90 deg away from R0 along the required great circle.
+    let r3 = [
+        cospa * r1[0] + sinpa * r2[0],
+        cospa * r1[1] + sinpa * r2[1],
+        cospa * r1[2] + sinpa * r2[2],
+    ];
+
+    (r0, r3)
+}
+
+/// Use the vectors from `shcal` to find the sky position offset by `dist`
+/// along the great circle. Mirrors C `Shapp` (skyframe.c:9680). Returns
+/// `[lon, lat]` in radians; a point at a pole is assigned the reference
+/// longitude `a0`.
+fn shapp(dist: f64, r0: &[f64; 3], r3: &[f64; 3], a0: f64) -> [f64; 2] {
+    let sindst = dist.sin();
+    let cosdst = dist.cos();
+
+    // R4: the required position, a linear sum of R0 and R3.
+    let r4 = [
+        cosdst * r0[0] + sindst * r3[0],
+        cosdst * r0[1] + sindst * r3[1],
+        cosdst * r0[2] + sindst * r3[2],
+    ];
+
+    let lon = if r4[0] != 0.0 || r4[1] != 0.0 {
+        r4[1].atan2(r4[0])
+    } else {
+        a0
+    };
+
+    let z = r4[2].clamp(-1.0, 1.0);
+    let lat = z.asin();
+
+    [lon, lat]
 }
 
 #[cfg(test)]

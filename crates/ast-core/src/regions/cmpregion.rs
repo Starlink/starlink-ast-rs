@@ -324,65 +324,156 @@ impl RegionGeometry for CmpRegion {
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        // Faithful port of C `cmpregion.c::RegBaseBox` (cmpregion.c:1508).
+        // Returns the bounding box of the *un-negated* CmpRegion in its base
+        // Frame: the parent Negated attribute is ignored here, but each
+        // component's own Negated flag matters.
         let naxes = self.data.frameset.base().naxes();
 
-        // Get bounding boxes of both sub-regions.
-        let (lbnd1, ubnd1) = self.region1.get_region_bounds()?;
-        let (lbnd2, ubnd2) = self.region2.get_region_bounds()?;
+        // If the CmpRegion is bounded, find the bounding box from a mesh of
+        // points spread evenly over its boundary.
+        if self.get_bounded()? {
+            let mesh = self.reg_base_mesh()?;
+            let mut lbnd = vec![f64::MAX; naxes];
+            let mut ubnd = vec![-f64::MAX; naxes];
+            for point in &mesh {
+                for i in 0..naxes {
+                    let v = point[i];
+                    if !is_bad(v) {
+                        if v < lbnd[i] {
+                            lbnd[i] = v;
+                        }
+                        if v > ubnd[i] {
+                            ubnd[i] = v;
+                        }
+                    }
+                }
+            }
+            return Ok((lbnd, ubnd));
+        }
+
+        // The CmpRegion is not bounded, so look at each axis individually.
+        // Get the component bounding boxes and their raw Negated flags. The
+        // component `get_region_bounds` already ignores each component's own
+        // Negated attribute, so a negated component's box describes the
+        // *excluded* interval on each axis.
+        let neg1 = self.region1.is_negated();
+        let neg2 = self.region2.is_negated();
+        let (mut clbnd1, mut cubnd1) = self.region1.get_region_bounds()?;
+        let (mut clbnd2, mut cubnd2) = self.region2.get_region_bounds()?;
 
         let mut lbnd = vec![0.0; naxes];
         let mut ubnd = vec![0.0; naxes];
 
-        match self.operator {
-            CmpOperator::And => {
-                // AND (intersection): bounding box is the intersection of
-                // the two component bounding boxes (maximum of lower bounds,
-                // minimum of upper bounds).
-                for i in 0..naxes {
-                    let l1 = lbnd1[i];
-                    let l2 = lbnd2[i];
-                    let u1 = ubnd1[i];
-                    let u2 = ubnd2[i];
+        // Component `get_region_bounds` uses BAD_VALUE (= -f64::MAX) as its
+        // lower-infinity marker and +f64::MAX as its upper-infinity marker.
+        // C's RegBaseBox reasons in terms of -DBL_MAX / +DBL_MAX, so treat
+        // both -f64::MAX and BAD_VALUE consistently as -infinity.
+        let neg_inf = -f64::MAX;
+        let pos_inf = f64::MAX;
+        let is_neg_inf = |v: f64| v == neg_inf || is_bad(v);
 
-                    // Handle BAD values: if either bound is BAD, use the other.
-                    lbnd[i] = if is_bad(l1) {
-                        l2
-                    } else if is_bad(l2) {
-                        l1
+        for i in 0..naxes {
+            // If the first component has been negated, its bounds describe an
+            // *excluded* interval. If either end is infinite we can swap it to
+            // an included interval; if both ends are finite we cannot, so —
+            // when there is more than one axis — assume the gap is filled on
+            // another axis and treat this axis as an unbounded included
+            // interval. With a single axis the interval stays excluded.
+            let mut inc1 = true;
+            if neg1 {
+                let lb = clbnd1[i];
+                let ub = cubnd1[i];
+                if is_neg_inf(lb) {
+                    clbnd1[i] = ub;
+                }
+                if ub == pos_inf {
+                    cubnd1[i] = lb;
+                }
+                if !is_neg_inf(lb) && ub != pos_inf {
+                    if naxes == 1 {
+                        inc1 = false;
                     } else {
-                        l1.max(l2)
-                    };
-                    ubnd[i] = if is_bad(u1) {
-                        u2
-                    } else if is_bad(u2) {
-                        u1
-                    } else {
-                        u1.min(u2)
-                    };
+                        clbnd1[i] = neg_inf;
+                        cubnd1[i] = pos_inf;
+                    }
                 }
             }
-            CmpOperator::Or => {
-                // OR (union): bounding box is the union (enclosing box) of
-                // the two component bounding boxes (minimum of lower bounds,
-                // maximum of upper bounds).
-                for i in 0..naxes {
-                    let l1 = lbnd1[i];
-                    let l2 = lbnd2[i];
-                    let u1 = ubnd1[i];
-                    let u2 = ubnd2[i];
 
-                    // Handle BAD values: if either is BAD, result is BAD
-                    // (unbounded on that axis).
-                    lbnd[i] = if is_bad(l1) || is_bad(l2) {
-                        BAD_VALUE
+            // Likewise for the second component.
+            let mut inc2 = true;
+            if neg2 {
+                let lb = clbnd2[i];
+                let ub = cubnd2[i];
+                if is_neg_inf(lb) {
+                    clbnd2[i] = ub;
+                }
+                if ub == pos_inf {
+                    cubnd2[i] = lb;
+                }
+                if !is_neg_inf(lb) && ub != pos_inf {
+                    if naxes == 1 {
+                        inc2 = false;
                     } else {
-                        l1.min(l2)
-                    };
-                    ubnd[i] = if is_bad(u1) || is_bad(u2) {
-                        BAD_VALUE
+                        clbnd2[i] = neg_inf;
+                        cubnd2[i] = pos_inf;
+                    }
+                }
+            }
+
+            match self.operator {
+                CmpOperator::And => {
+                    // AND: overlap of the axis intervals, depending on whether
+                    // each interval is included or excluded.
+                    if inc1 {
+                        if inc2 {
+                            lbnd[i] = clbnd1[i].max(clbnd2[i]);
+                            ubnd[i] = cubnd1[i].min(cubnd2[i]);
+                        } else {
+                            lbnd[i] = if clbnd1[i] < clbnd2[i] {
+                                clbnd1[i]
+                            } else {
+                                cubnd2[i]
+                            };
+                            ubnd[i] = if cubnd1[i] > cubnd2[i] {
+                                cubnd1[i]
+                            } else {
+                                clbnd2[i]
+                            };
+                        }
+                    } else if inc2 {
+                        lbnd[i] = if clbnd2[i] < clbnd1[i] {
+                            clbnd2[i]
+                        } else {
+                            cubnd1[i]
+                        };
+                        ubnd[i] = if cubnd2[i] > cubnd1[i] {
+                            cubnd2[i]
+                        } else {
+                            clbnd1[i]
+                        };
                     } else {
-                        u1.max(u2)
-                    };
+                        lbnd[i] = if clbnd1[i] < clbnd2[i] {
+                            clbnd1[i]
+                        } else {
+                            cubnd2[i]
+                        };
+                        ubnd[i] = if cubnd1[i] > cubnd2[i] {
+                            cubnd1[i]
+                        } else {
+                            clbnd2[i]
+                        };
+                    }
+                }
+                CmpOperator::Or => {
+                    // OR: union of the axis intervals.
+                    if inc1 && inc2 {
+                        lbnd[i] = clbnd1[i].min(clbnd2[i]);
+                        ubnd[i] = cubnd1[i].max(cubnd2[i]);
+                    } else {
+                        lbnd[i] = neg_inf;
+                        ubnd[i] = pos_inf;
+                    }
                 }
             }
         }

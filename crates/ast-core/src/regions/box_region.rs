@@ -664,8 +664,10 @@ impl RegionGeometry for BoxRegion {
     }
 
     fn is_bounded_inner(&self) -> bool {
-        // A box is always bounded (it has finite extent in all axes).
-        true
+        // Base Region::GetBounded (region.c:3358): a closed-curve region is
+        // bounded unless negated, except within a SkyFrame where a finite
+        // region always has a finite negation.
+        self.data.closed_curve_bounded()
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
