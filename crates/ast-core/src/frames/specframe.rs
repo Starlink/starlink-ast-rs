@@ -2343,8 +2343,8 @@ impl Serializable for SpecFrame {
             .unwrap_or(self.system.default_display_units());
         if !display_unit.is_empty() {
             let comment = match crate::units::unit_label(display_unit) {
-                Some(lab) => format!("Units for axis 1 ({lab})"),
-                None => "Units for axis 1".to_string(),
+                Some(lab) if lab != display_unit => format!("Units for axis 1 ({lab})"),
+                _ => "Units for axis 1".to_string(),
             };
             node.push_unset(
                 "Uni1",

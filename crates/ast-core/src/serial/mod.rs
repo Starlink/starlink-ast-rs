@@ -1093,7 +1093,8 @@ impl Serializable for CmpRegion {
     }
 
     fn to_node(&self) -> AstResult<Node> {
-        let mut node = region_to_node_skeleton("CmpRegion", "Compound region", &self.data);
+        let mut node =
+            region_to_node_skeleton("CmpRegion", "Combination of two Regions", &self.data);
 
         // CmpRegion-specific: operator and sub-regions. These follow the
         // `IsA Region` marker — written after the parent class skeleton.
@@ -1168,7 +1169,7 @@ impl Serializable for Prism {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
-        node.class_comment = Some("Extruded region".to_string());
+        node.class_comment = Some("Region extrusion into higher dimensions".to_string());
         write_mapping_base(&mut node, self);
         write_region_base(&mut node, &self.data);
 
