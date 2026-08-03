@@ -70,7 +70,6 @@ fn fixtures_dir() -> PathBuf {
 /// shift); BEGAST/ENDAST = object-shape divergence; EPOCH/DTAI/DUT1 = time
 /// attribute set-ness; CONTINUE = long-string card split; etc.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("ait-highlatpole_native", "BEGAST: object shape"),
     ("alt-spectral_native", "SYSTEM: spectral system"),
     ("awav-a2f_native", "ASTWARN: warning card"),
     ("axes-swap_native", "DOMAIN: nested CmpFrame domain"),
@@ -99,7 +98,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("freq-log_native", "BEGAST: object shape"),
     ("freq-wav_native", "SFT1: ShiftMap"),
     ("gappt_native", "SREFIS: SkyRefIs"),
-    ("gls_native", "BEGAST: object shape"),
     ("grism_native", "BEGAST: object shape"),
     ("multi-wcs_native", "EPOCH: alt-plane epoch"),
     ("multi-wcs-spec_native", "DTAI: time attribute"),

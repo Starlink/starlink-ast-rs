@@ -1315,27 +1315,6 @@ fn describe_outcome(o: &Outcome) -> String {
 /// different shape/attribute than C), never serialisation or simplifier
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
 const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
-    // A1 LONPOLE default (wcs_celestial LONPOLE):
-    (
-        "ait-highlatpole.head",
-        true,
-        "A1: LONPOLE forced to 180 before wcs_nat_pole",
-    ),
-    (
-        "ait-highlatpole.head",
-        false,
-        "A1: LONPOLE forced to 180 before wcs_nat_pole",
-    ),
-    (
-        "gls.head",
-        true,
-        "A1: LONPOLE forced to 180 before wcs_nat_pole",
-    ),
-    (
-        "gls.head",
-        false,
-        "A1: LONPOLE forced to 180 before wcs_nat_pole",
-    ),
     // A2 generic celestial recognition + System=Unknown:
     (
         "unknown-cel.head",

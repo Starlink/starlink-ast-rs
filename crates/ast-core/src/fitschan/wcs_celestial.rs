@@ -561,9 +561,12 @@ fn build_iwc_to_sky_mapping(
     let crval_lon = store.crval[lon_axis].unwrap_or(0.0) * deg2rad;
     let crval_lat = store.crval[lat_axis].unwrap_or(0.0) * deg2rad;
 
-    // LONPOLE and LATPOLE (in degrees).
-    let lonpole = store.lonpole.unwrap_or(180.0) * deg2rad;
-    let _latpole = store.latpole.map(|v| v * deg2rad);
+    // LONPOLE (in degrees), kept optional so WcsNatPole can resolve the
+    // projection-aware default (fitschan.c::WcsNatPole): 0° for θ0=0
+    // projections (SFL/GLS, AIT, …), 180° otherwise.  C passes AST__BAD
+    // here and lets WcsNatPole choose; hard-defaulting to 180° before that
+    // call is wrong for θ0=0 projections and mirrors the pole.
+    let lonpole = store.lonpole.map(|v| v * deg2rad);
 
     // Step 1: Degrees to radians on the celestial axes only; identity
     // elsewhere. Diagonal MatrixMap, recognised by MatrixMap::form()
@@ -668,7 +671,7 @@ fn build_iwc_to_sky_mapping(
         &wcsmap_fwd,
         crval_lon,
         crval_lat,
-        Some(lonpole),
+        lonpole,
         latpole_rad,
     )?;
 

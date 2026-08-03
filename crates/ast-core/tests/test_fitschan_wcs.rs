@@ -444,3 +444,61 @@ fn skyref_alt_reads_versioned_sref() {
         "alt SkyFrame sky_ref_is should be Origin (SREFISA='ORIGIN')"
     );
 }
+
+// ===========================================================================
+// A1 LONPOLE default: WcsNatPole must resolve it, not a hard 180° constant
+// ===========================================================================
+
+/// GLS (= SFL) is a θ0=0 projection: the correct LONPOLE default is 0°, not
+/// 180°. Forcing 180° before calling WcsNatPole flips the pole and mirrors the
+/// transform. C passes AST__BAD and lets WcsNatPole choose per projection.
+///
+/// Golden values sourced from `tests/fixtures/oracle/headers.oracle`, section
+/// `[gls.head  nin=2 nout=2 dir=forward]`, rows 1 and 4.
+#[test]
+#[allow(clippy::excessive_precision)] // oracle values; extra digits are from C reference output
+fn gls_lonpole_default_matches_c() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/gls.head",
+    ))
+    .expect("gls.head should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("gls.head should produce a FrameSet");
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+
+    // Point 1: pixel (1, 1) → oracle forward (radians).
+    {
+        let pts = PointSet::from_rows([[1.0_f64, 1.0_f64]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let lon = out.point(0)[0];
+        let lat = out.point(0)[1];
+        assert!(
+            (lon - 0.20594209297728069_f64).abs() < 1e-9,
+            "gls fwd (1,1) lon: expected 0.20594209297728069, got {lon}"
+        );
+        assert!(
+            (lat - 0.071602883102475187_f64).abs() < 1e-9,
+            "gls fwd (1,1) lat: expected 0.071602883102475187, got {lat}"
+        );
+    }
+
+    // Point 4: pixel (180.5, 90.5) → oracle forward (radians).
+    {
+        let pts = PointSet::from_rows([[180.5_f64, 90.5_f64]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let lon = out.point(0)[0];
+        let lat = out.point(0)[1];
+        assert!(
+            (lon - 0.17453292519943275_f64).abs() < 1e-9,
+            "gls fwd (180.5,90.5) lon: expected 0.17453292519943275, got {lon}"
+        );
+        assert!(
+            (lat - 0.087266462599716377_f64).abs() < 1e-9,
+            "gls fwd (180.5,90.5) lat: expected 0.087266462599716377, got {lat}"
+        );
+    }
+}
