@@ -1329,8 +1329,6 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
     // B1 CarLin attribute:
     ("car4.head", true, "B1: CarLin attribute unimplemented"),
     ("car4.head", false, "B1: CarLin attribute unimplemented"),
-    // B2 LogWcs:
-    ("freq-log.head", false, "B2: -LOG LogWcs MathMap unported"),
     // B3 GrismSpecWcs:
     ("grism.head", false, "B3: -GRI/-GRA GrismSpecWcs unported"),
     // C1x serpens large RA error (~13 deg) after DUT1 fix — separate root cause:

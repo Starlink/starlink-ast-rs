@@ -205,10 +205,14 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
             // linear so the FrameSet still loads).
             _ => Box::new(ShiftMap::new(vec![crval])),
         }
+    } else if algcode == "-LOG" {
+        match log_wcs(crval) {
+            Some(m) => m,
+            None => Box::new(ShiftMap::new(vec![crval])),
+        }
     } else {
-        // -LOG and -GRI / -GRA are handled by separate readers
-        // (currently a TODO in this function); fall back to linear
-        // until they're ported.
+        // -GRI / -GRA (GrismSpecWcs) have no reader yet; fall back to
+        // linear so the FrameSet still loads.
         Box::new(ShiftMap::new(vec![crval]))
     };
 
@@ -319,6 +323,32 @@ fn nonlin_spec_wcs(
     // IWC → S = (IWC → X) ∘ (X → S). Mirrors C:23691.
     let iwc_to_s = CmpMap::new(iwc_to_x, x_to_s, Composition::Series)?;
     Ok(Some(Box::new(iwc_to_s)))
+}
+
+/// Build the IWC→S mapping for a FITS-WCS paper III `-LOG` spectral axis.
+///
+/// Mirrors C `LogWcs` (fitschan.c:20666-20748): S = Sr*exp(w/Sr) forward,
+/// w = Sr*log(S/Sr) inverse, where Sr is the axis CRVAL. A zero Sr has no
+/// logarithmic form, so C returns NULL and the axis stays linear.
+fn log_wcs(crval: f64) -> Option<DynMapping> {
+    // crval is already resolved (upstream `unwrap_or(0.0)` substitutes the
+    // C AST__BAD default), so test == 0.0 directly, matching C after its
+    // `if( crv == AST__BAD ) crv = 0.0;`.
+    if crval == 0.0 {
+        return None;
+    }
+    // C uses "%.*g" with AST__DBL_DIG (=17); format_double_g reproduces that
+    // exactly so the serialised MathMap expression is byte-identical.
+    let sr = crate::serial::native_write::format_double_g(crval, 17);
+    let forexp = format!("s={sr}*exp(w/{sr})");
+    let invexp = format!("w={sr}*log(s/{sr})");
+    // C LogWcs sets SIMPFI=1 and SIMPIF=1 (fitschan.c:20741-20742), mirrored
+    // here so the serialised native output is byte-identical. These flags only
+    // affect the simplifier, not the transform itself.
+    let mut map = crate::mappings::MathMap::new(1, 1, &[&forexp], &[&invexp]).ok()?;
+    map.set_simp_fi(true);
+    map.set_simp_if(true);
+    Some(Box::new(map))
 }
 
 /// Parse CTYPE into (spectral system, algorithm code).

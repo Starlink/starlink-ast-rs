@@ -7,7 +7,9 @@
 
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
+use ast_core::coords::PointSet;
 use ast_core::fitschan::{Encoding, FitsChan};
+use ast_core::mappings::Mapping;
 
 // ===========================================================================
 // Helpers
@@ -251,5 +253,105 @@ fn dss_frameset_has_sky() {
         );
     } else {
         panic!("Expected FrameSet, got {:?}", obj);
+    }
+}
+
+// ===========================================================================
+// 4. -LOG spectral axis: LogWcs MathMap
+// ===========================================================================
+
+/// Verify that a FITS-WCS FREQ-LOG header builds a logarithmic IWC→S mapping,
+/// matching the C oracle (fitschan.c LogWcs). The inverse transform takes
+/// spectral frequency S back to pixel coordinate; with a linear ShiftMap the
+/// result would be wrong (~1.4e9 range error).
+///
+/// Oracle goldens from `crates/ast-core/tests/fixtures/oracle/headers.oracle`
+/// section `[freq-log.head  nin=1 nout=1 dir=inverse]`.
+#[test]
+#[allow(clippy::excessive_precision)]
+fn freq_log_builds_log_mapping() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/freq-log.head"
+    ))
+    .unwrap();
+    let mut fc = FitsChan::from_header(&text).unwrap();
+    let obj = fc.read().unwrap().expect("freq-log.head should read");
+    let AnyObject::FrameSet(ref fs) = obj else {
+        panic!("Expected FrameSet, got {:?}", obj);
+    };
+
+    // The FrameSet acts as a Mapping: forward = pixel→spectral, inverse =
+    // spectral→pixel. Run the inverse using the C oracle golden pairs from
+    // headers.oracle section [freq-log.head nin=1 nout=1 dir=inverse].
+    let s_inputs: &[f64] = &[
+        1420399999.4884999,
+        1420400000.5114999,
+        1420399999.4884999,
+        1420400000.0,
+        1420400000.0,
+        1420399999.7442501,
+        1420400000.2557499,
+        1420399999.616375,
+        1420400000.1278751,
+        1420399999.8721251,
+        1420400000.383625,
+        1420399999.5524375,
+        1420400000.0639377,
+        1420399999.8081875,
+        1420400000.3196874,
+        1420399999.6803126,
+        1420400000.1918123,
+        1420399999.9360623,
+        1420400000.4475627,
+        1420399999.5204687,
+        1420400000.0319688,
+        1420399999.7762187,
+        1420400000.2877188,
+    ];
+    // C oracle pixel outputs (exact C output; do not modify).
+    let expected_pixels: &[f64] = &[
+        0.99983848147604526,
+        1023.999845942171,
+        0.99983848147604526,
+        512.5,
+        512.5,
+        256.75007695984095,
+        768.24992299410997,
+        128.87495772641466,
+        640.37511919888948,
+        384.62519618175503,
+        896.12504216997502,
+        64.937555801462807,
+        576.43755960088379,
+        320.68747887615859,
+        832.1874825834816,
+        192.8126750406453,
+        704.31236340186047,
+        448.5622827001597,
+        960.06260175359046,
+        32.968775989868405,
+        544.46877980080171,
+        288.71869907032033,
+        800.21870278915549,
+    ];
+
+    // Tolerance: pixel coordinates are O(1)–O(1000), so 1e-9 relative is safe.
+    let rtol = 1e-9_f64;
+    let atol = 1e-9_f64;
+
+    let rows: Vec<Vec<f64>> = s_inputs.iter().map(|&s| vec![s]).collect();
+    let pts = PointSet::from_rows(rows);
+    // false = inverse direction (world→pixel).
+    let out = fs.transform(&pts, false).expect("inverse transform");
+
+    for (i, (&expected, &s)) in expected_pixels.iter().zip(s_inputs.iter()).enumerate() {
+        let got = out.point(i)[0];
+        let tol = atol + rtol * expected.abs();
+        assert!(
+            (got - expected).abs() <= tol,
+            "point {i}: S={s} → pixel got={got}, expected={expected}, diff={diff:.3e}",
+            diff = (got - expected).abs(),
+        );
     }
 }
