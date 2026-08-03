@@ -1308,6 +1308,211 @@ fn describe_outcome(o: &Outcome) -> String {
     }
 }
 
+/// `.head` oracle sections not yet matching C, each with a one-line reason
+/// naming the unported C read-path branch. The goal is to keep this list
+/// empty; it only ever shrinks. A section is identified by `(relpath,
+/// forward)`. These are FITS-read structural gaps (the decoded object has a
+/// different shape/attribute than C), never serialisation or simplifier
+/// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
+const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
+    // A1 LONPOLE default (wcs_celestial LONPOLE):
+    (
+        "ait-highlatpole.head",
+        true,
+        "A1: LONPOLE forced to 180 before wcs_nat_pole",
+    ),
+    (
+        "ait-highlatpole.head",
+        false,
+        "A1: LONPOLE forced to 180 before wcs_nat_pole",
+    ),
+    (
+        "gls.head",
+        true,
+        "A1: LONPOLE forced to 180 before wcs_nat_pole",
+    ),
+    (
+        "gls.head",
+        false,
+        "A1: LONPOLE forced to 180 before wcs_nat_pole",
+    ),
+    // A2 generic celestial recognition + System=Unknown:
+    (
+        "unknown-cel.head",
+        true,
+        "A2: generic xLON/xLAT recognition missing",
+    ),
+    (
+        "unknown-cel.head",
+        false,
+        "A2: generic xLON/xLAT recognition missing",
+    ),
+    (
+        "unknown-cel2.head",
+        true,
+        "A2: generic xLON/xLAT recognition missing",
+    ),
+    (
+        "unknown-cel2.head",
+        false,
+        "A2: generic xLON/xLAT recognition missing",
+    ),
+    // A3 CAR-linear no-projection-code branch:
+    (
+        "class-noproj.head",
+        true,
+        "A3: CAR-linear branch for no-proj-code CTYPE missing",
+    ),
+    (
+        "class-noproj.head",
+        false,
+        "A3: CAR-linear branch for no-proj-code CTYPE missing",
+    ),
+    // B1 CarLin attribute:
+    ("car4.head", true, "B1: CarLin attribute unimplemented"),
+    ("car4.head", false, "B1: CarLin attribute unimplemented"),
+    // B2 LogWcs:
+    ("freq-log.head", false, "B2: -LOG LogWcs MathMap unported"),
+    // B3 GrismSpecWcs:
+    ("grism.head", false, "B3: -GRI/-GRA GrismSpecWcs unported"),
+    // C1 DUT1 x86400:
+    ("serpens.head", true, "C1: DUT1 stored raw, not x SPD"),
+    ("serpens.head", false, "C1: DUT1 stored raw, not x SPD"),
+    // C2 SREF version letter:
+    ("tidy-offsets.head", true, "C2: SREF version letter ignored"),
+    (
+        "tidy-offsets.head",
+        false,
+        "C2: SREF version letter ignored",
+    ),
+    ("tidy-pole.head", true, "C2: SREF version letter ignored"),
+    ("tidy-pole.head", false, "C2: SREF version letter ignored"),
+    ("skyref-alt.head", true, "C2: SREF version letter ignored"),
+    ("skyref-alt.head", false, "C2: SREF version letter ignored"),
+    // C3 PolyTan auto-detect:
+    (
+        "tan-polytan.head",
+        true,
+        "C3: PolyTan TAN->TPN auto-detect unported",
+    ),
+    (
+        "tan-polytan.head",
+        false,
+        "C3: PolyTan TAN->TPN auto-detect unported",
+    ),
+    // C4 SkyRefIs through FrameSet:
+    (
+        "skyref.head",
+        true,
+        "C4: SkyRefIs set directly, bypassing FrameSet remap",
+    ),
+    (
+        "skyref.head",
+        false,
+        "C4: SkyRefIs set directly, bypassing FrameSet remap",
+    ),
+    // C5 astRate drift:
+    (
+        "freq-wav.head",
+        false,
+        "C5: astRate finite-diff drift into ShiftMap scale",
+    ),
+    (
+        "wave-f2w.head",
+        false,
+        "C5: astRate finite-diff drift into ShiftMap scale",
+    ),
+    // C6 MatrixMap inverse-undefined:
+    (
+        "crota-3d.head",
+        true,
+        "C6: near-singular MatrixMap keeps defined inverse",
+    ),
+];
+
+/// Number of `.head` oracle section-directions currently in the corpus. The
+/// gate asserts it examined at least this many, so a rename or deletion of a
+/// fixture cannot make the gate pass vacuously.
+const HEAD_SECTION_FLOOR: usize = 259;
+
+/// Is this oracle section a `.head` FITS-read fixture?
+fn is_head_section(relpath: &str) -> bool {
+    relpath.ends_with(".head")
+}
+
+/// Regression gate: every `.head` oracle section matches C, except the
+/// explicitly-excluded ones. The list only shrinks; an empty list means parity
+/// is proven for all FITS-read fixtures. The two invariants: no un-excluded
+/// head section diverges, and no excluded section secretly passes (a stale
+/// entry).
+#[test]
+fn head_sections_match_oracle() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let ov = parse_overrides(
+        &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt"))
+            .expect("overrides file present"),
+    );
+    let text = std::fs::read_to_string(format!("{dir}/headers.oracle")).expect("oracle present");
+    let reports = run_oracle(&text, &ov);
+
+    let excluded: std::collections::HashSet<(&str, bool)> = HEAD_ORACLE_EXCLUDED
+        .iter()
+        .map(|(rp, fwd, _)| (*rp, *fwd))
+        .collect();
+
+    // A section fails the gate when its transform outputs diverge from C, the
+    // fixture won't load, or its arity no longer matches. Pass /
+    // SkippedByOverride / Skipped are all acceptable ("not a divergence").
+    let is_fail = |o: &Outcome| {
+        matches!(
+            o,
+            Outcome::Mismatch(_) | Outcome::LoadFail(_) | Outcome::Arity(_)
+        )
+    };
+
+    let mut unexpected_failures: Vec<String> = Vec::new();
+    // Every excluded key that never turned up as a live failure is stale.
+    let mut stale_exclusions: std::collections::HashSet<(&str, bool)> = excluded.clone();
+    let mut checked = 0usize;
+
+    for r in &reports {
+        if !is_head_section(&r.relpath) {
+            continue;
+        }
+        checked += 1;
+        let key = (r.relpath.as_str(), r.forward);
+        if excluded.contains(&key) {
+            if is_fail(&r.outcome) {
+                stale_exclusions.remove(&key);
+            }
+            // An excluded section that now passes stays in `stale_exclusions`.
+        } else if is_fail(&r.outcome) {
+            unexpected_failures.push(format!(
+                "{} (forward={}): {:?}",
+                r.relpath,
+                r.forward,
+                describe_outcome(&r.outcome),
+            ));
+        }
+    }
+
+    assert!(
+        unexpected_failures.is_empty(),
+        "head oracle sections diverged from C (not excluded):\n{}",
+        unexpected_failures.join("\n"),
+    );
+    assert!(
+        stale_exclusions.is_empty(),
+        "HEAD_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
+        stale_exclusions,
+    );
+    assert!(
+        checked >= HEAD_SECTION_FLOOR,
+        "gate examined only {checked} head sections (expected >= {HEAD_SECTION_FLOOR}); \
+         fixtures may have been renamed or removed",
+    );
+}
+
 /// Investigative harness. Not part of the normal suite or CI: run with
 ///   cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
 /// It runs every oracle section, prints a summary, and writes a JSON report
