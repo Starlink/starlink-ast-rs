@@ -116,7 +116,10 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("projp-pv_native", "PV / shape"),
     ("rfval_native", "SREF1: SkyRef fiducial"),
     ("scp_native", "SREF2: SkyRef fiducial"),
-    ("serpens_native", "DUT1: time attribute"),
+    (
+        "serpens_native",
+        "MatrixMap vs ShiftMap simplifier divergence",
+    ),
     ("sip-alt_native", "SREF1: SkyRef fiducial"),
     ("skyref-alt_native", "SREF1: SkyRef fiducial"),
     ("skyref_native", "M0: matrix / offset"),

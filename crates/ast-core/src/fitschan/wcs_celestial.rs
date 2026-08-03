@@ -318,7 +318,9 @@ pub(crate) fn build_celestial_with_def_b1950(
         sky_frame.set_dtai(dtai);
     }
     if let Some(dut1) = store.dut1 {
-        sky_frame.set_dut1(dut1);
+        // C fitschan.c:37888: the SkyFrame Dut1 attribute is in seconds,
+        // while the FITS DUT1 keyword is in days; convert with seconds-per-day.
+        sky_frame.set_dut1(dut1 * 86_400.0);
     }
 
     // Step 7d: OBSGEO-X/Y/Z → ObsLon/ObsLat/ObsAlt. Mirrors C

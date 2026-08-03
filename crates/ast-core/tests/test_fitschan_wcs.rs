@@ -7,6 +7,7 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::{Encoding, FitsChan};
+use ast_core::frames::Frame;
 
 // ===========================================================================
 // Helpers
@@ -350,5 +351,37 @@ fn sip_read_sipreplace_off_keeps_supplied_inverse() {
         "round trip: got ({}, {})",
         back.point(0)[0],
         back.point(0)[1]
+    );
+}
+
+// ===========================================================================
+// DUT1 unit conversion: FITS keyword is days, SkyFrame attribute is seconds
+// ===========================================================================
+
+#[test]
+fn serpens_dut1_is_seconds() {
+    // serpens.head contains `DUT1 = -1.145603703E-6` in days.
+    // C fitschan.c:37888 multiplies by SPD (86400) before calling
+    // astSetDut1, so the SkyFrame stores seconds. Verify Rust matches.
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/serpens.head",
+    ))
+    .expect("serpens.head should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("serpens.head should produce a FrameSet");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("expected FrameSet");
+    };
+    // DUT1 card value in days; expected SkyFrame value in seconds.
+    let dut1_days = -1.145603703e-6_f64;
+    let expected = dut1_days * 86_400.0; // -0.09898015993920001
+    let got = fs.dut1().expect("Dut1 must be set from the DUT1 FITS card");
+    assert!(
+        (got - expected).abs() < 1e-9,
+        "Dut1 should be {expected} s (days × 86400), got {got} s"
     );
 }

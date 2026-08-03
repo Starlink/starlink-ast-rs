@@ -1375,9 +1375,17 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
     ("freq-log.head", false, "B2: -LOG LogWcs MathMap unported"),
     // B3 GrismSpecWcs:
     ("grism.head", false, "B3: -GRI/-GRA GrismSpecWcs unported"),
-    // C1 DUT1 x86400:
-    ("serpens.head", true, "C1: DUT1 stored raw, not x SPD"),
-    ("serpens.head", false, "C1: DUT1 stored raw, not x SPD"),
+    // C1x serpens large RA error (~13 deg) after DUT1 fix — separate root cause:
+    (
+        "serpens.head",
+        true,
+        "C1x: RA ~13 deg error not caused by DUT1",
+    ),
+    (
+        "serpens.head",
+        false,
+        "C1x: RA ~13 deg error not caused by DUT1",
+    ),
     // C2 SREF version letter:
     ("tidy-offsets.head", true, "C2: SREF version letter ignored"),
     (
