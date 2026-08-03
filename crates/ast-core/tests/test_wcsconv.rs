@@ -136,7 +136,7 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("unknown-cel_native", "BEGAST: object shape"),
     ("unknown-spec_native", "DOMAIN: domain"),
     ("vopt-f2w_native", "REFDEC: spectral ref"),
-    ("wave-f2w_native", "SREF2: SkyRef fiducial"),
+    ("wave-f2w_native", "ISSIMP: mapping shape divergence"),
     ("wave-w2f_native", "ASTWARN: warning card"),
     ("zero-cdelt_native", "SFT1: ShiftMap"),
     ("zpx_native", "XAPNOM: object shape divergence"),
