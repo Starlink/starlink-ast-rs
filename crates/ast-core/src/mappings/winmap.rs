@@ -551,6 +551,42 @@ pub(crate) fn compose_linear(
     c2: &[f64],
     snap: bool,
 ) -> Option<DynMapping> {
+    let (new_shifts, new_scales) = compose_linear_terms(s1, c1, s2, c2, snap);
+    finalize_linear(new_shifts, new_scales)
+}
+
+/// Compose two linear mappings and return the result as a `WinMap`, without
+/// collapsing it to a narrower class.
+///
+/// This is the shape C's `winmap.c::MapMerge` direct-merge branch produces:
+/// `WinWin`, `WinZoom`, `WinShift` and `WinDiagMat` all return an
+/// `AstWinMap *` (winmap.c:1189-1229), and the narrowing to a ShiftMap
+/// happens only in the *deferred* final step of `MapMerge` (winmap.c:1653)
+/// or at top-level `astSimplify`. Keeping the merged product a WinMap
+/// matters because a WinMap is a class a nominated MatrixMap will swap past
+/// (matrixmap.c:2102-2104) while a ShiftMap is not.
+pub(crate) fn compose_linear_win(
+    s1: &[f64],
+    c1: &[f64],
+    s2: &[f64],
+    c2: &[f64],
+    snap: bool,
+) -> Option<DynMapping> {
+    let (new_shifts, new_scales) = compose_linear_terms(s1, c1, s2, c2, snap);
+    WinMap::new(&new_shifts, &new_scales)
+        .ok()
+        .map(|m| Box::new(m) as DynMapping)
+}
+
+/// Per-axis arithmetic shared by [`compose_linear`] and
+/// [`compose_linear_win`]: `out = s2 + c2 * (s1 + c1 * x)`.
+fn compose_linear_terms(
+    s1: &[f64],
+    c1: &[f64],
+    s2: &[f64],
+    c2: &[f64],
+    snap: bool,
+) -> (Vec<f64>, Vec<f64>) {
     let n = s1.len();
     let mut new_shifts = vec![0.0; n];
     let mut new_scales = vec![0.0; n];
@@ -568,8 +604,7 @@ pub(crate) fn compose_linear(
             }
         }
     }
-
-    finalize_linear(new_shifts, new_scales)
+    (new_shifts, new_scales)
 }
 
 /// Collapse per-axis `(shifts, scales)` into the simplest equivalent mapping.

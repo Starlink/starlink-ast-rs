@@ -588,6 +588,11 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
 
 /// Compose two linear mappings (one of which is the WinMap) into a single
 /// mapping, in series or parallel. Reuses the shared linear arithmetic.
+///
+/// The product is always a `WinMap`, matching C: every direct-merge branch of
+/// `winmap.c::MapMerge` installs the `AstWinMap *` returned by `WinWin` /
+/// `WinZoom` / `WinShift` / `WinDiagMat`, and the collapse to a ShiftMap is
+/// deferred to `MapMerge`'s final step.
 fn merge_linear_pair(
     m1: &dyn Mapping,
     inv1: bool,
@@ -609,7 +614,7 @@ fn merge_linear_pair(
         }
         let both_win =
             m1.as_any().is::<super::winmap::WinMap>() && m2.as_any().is::<super::winmap::WinMap>();
-        super::winmap::compose_linear(&s1, &c1, &s2, &c2, both_win)
+        super::winmap::compose_linear_win(&s1, &c1, &s2, &c2, both_win)
     } else {
         // Parallel: concatenate.
         let mut shifts = s1;

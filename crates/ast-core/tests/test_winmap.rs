@@ -366,3 +366,73 @@ fn winmap_cancels_with_own_inverse_exactly() {
         "W ∘ W^-1 should simplify to the exact identity (UnitMap)"
     );
 }
+
+#[test]
+fn offdiagonal_cd_chain_fuses_deg2rad_into_the_matrixmap() {
+    // The FITS-WCS read path for a header with an off-diagonal CD matrix builds
+    //
+    //   WinMap(-CRPIX, unit scale) ; MatrixMap(CD) ; UnitMap ;
+    //   MatrixMap(deg2rad, diagonal) ; WcsMap(TAN)^-1
+    //
+    // and C simplifies it to a leading ShiftMap plus a single full MatrixMap
+    // carrying CD·(pi/180). Reaching that shape depends on the WinMap-family
+    // direct merges staying WinMaps: `matrixmap.c::MapMerge` will swap a
+    // nominated MatrixMap past a WinMap or a PermMap (matrixmap.c:2102-2104)
+    // but not past a ShiftMap, so a merged product narrowed to a ShiftMap too
+    // early strands the deg2rad MatrixMap between the CD matrix and the
+    // WcsMap. The matrix values below are the C oracle's.
+    use ast_core::mappings::{
+        CmpMap, Composition, DynMapping, Mapping, MatrixMap, UnitMap, WcsMap, WcsProjection, WinMap,
+    };
+    use ndarray::array;
+
+    let crpix = [75.910_204_f64, 60.359_184];
+    let win = WinMap::new(&[-crpix[0], -crpix[1]], &[1.0, 1.0]).unwrap();
+    let cd = MatrixMap::new(array![
+        [-0.001_831_773_954_f64, -8.541_702_226e-4],
+        [0.000_854_170_222_6, -0.001_831_773_954]
+    ])
+    .unwrap();
+    let d2r = std::f64::consts::PI / 180.0;
+    let deg2rad = MatrixMap::new(array![[d2r, 0.0], [0.0, d2r]]).unwrap();
+    let mut wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    wcs.invert();
+
+    let c1 = CmpMap::new(Box::new(win), Box::new(cd), Composition::Series).unwrap();
+    let c2 = CmpMap::new(Box::new(c1), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+    let c3 = CmpMap::new(Box::new(c2), Box::new(deg2rad), Composition::Series).unwrap();
+    let chain: DynMapping =
+        Box::new(CmpMap::new(Box::new(c3), Box::new(wcs), Composition::Series).unwrap());
+
+    let simp = chain.simplify().unwrap();
+    let outer = simp
+        .as_any()
+        .downcast_ref::<CmpMap>()
+        .expect("simplified chain is a series CmpMap");
+    let text = to_native_string(&AnyObject::CmpMap(outer.clone())).unwrap();
+
+    // Exactly three leaves, in series order: ShiftMap, MatrixMap, WcsMap. No
+    // WinMap survives, and no second MatrixMap is stranded behind the
+    // projection.
+    let classes: Vec<&str> = text
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("Begin "))
+        .map(|l| l.split_whitespace().next().unwrap_or(""))
+        .filter(|c| *c != "CmpMap")
+        .collect();
+    assert_eq!(classes, ["ShiftMap", "MatrixMap", "WcsMap"], "{text}");
+
+    // CRPIX survives as the leading shift; the CD matrix carries the deg2rad
+    // scaling, so its off-diagonals stay non-zero and the form stays Full.
+    for token in [
+        "Sft1 = -75.910203999999993",
+        "Sft2 = -60.359183999999999",
+        "M0 = -3.1970486649575151e-05",
+        "M1 = -1.4908082756862879e-05",
+        "M2 = 1.4908082756862879e-05",
+        "M3 = -3.1970486649575151e-05",
+        "Form = \"Full\"",
+    ] {
+        assert!(text.contains(token), "expected {token} in:\n{text}");
+    }
+}

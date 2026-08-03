@@ -721,7 +721,8 @@ fn matrix_op_longitude_is_normalized_to_0_2pi() {
     // 5.2831853953259547 (palDranrm applied to the precessed longitude), which
     // Rust reproduces to the last bit because pal::prec calls the same
     // vendored palPrec. Assert against that golden, not the raw input.
-    const GOLDEN_PREC_LON: f64 = 5.283_185_395_325_954_7;
+    // Shortest literal that round-trips to the same f64 as the C printout.
+    const GOLDEN_PREC_LON: f64 = 5.283_185_395_325_955;
     assert_close(got, GOLDEN_PREC_LON, 1e-9, "PREC lon matches C golden");
 }
 

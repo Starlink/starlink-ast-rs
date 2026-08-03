@@ -117,6 +117,62 @@ implementation-independent.
 
 ---
 
+## `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages
+
+**Status:** Open, and deliberately *not* mirrored in the Rust port.
+`serpens_native` stays in `NATIVE_READ_EXCLUDED`
+(`crates/ast-core/tests/test_wcsconv.rs`) partly for this reason.
+
+**C location:** `fitschan.c:38391-38412` (`WcsNative`, stages 1 and 3).
+When the celestial axes are not already at slots 0 and 1, C builds
+**one** `AstPermMap` and uses it twice:
+
+```c
+permmap = astPermMap( naxis, inperm, naxis, outperm, NULL, "", status );
+cmpmap  = astCmpMap( permmap, new, 1, "", status );   /* stage 1, forward */
+new     = (AstMapping *) cmpmap;
+astInvert( permmap );                                 /* stage 3 */
+cmpmap  = astCmpMap( new, permmap, 1, "", status );
+```
+
+`astCmpMap` clones rather than copies (`CombineMaps`, cmpmap.c:616,
+only makes a copy when the *same* pointer is passed for both
+components of one CmpMap — not the case here), so the stage-1 CmpMap
+holds the same object that `astInvert` then flips.
+
+**Observed:** the stage-1 CmpMap records `invert1 = 0` at construction
+time, so it dumps no `InvA`, yet its child PermMap dumps
+`Invert = 1` — the state it acquired *after* being encapsulated. In
+`serpens.native` that is `INVERT_B= 1` under `BEGAST_O= 'PermMap '`,
+and it shifts the suffix of every later `INVERT_` card.
+
+**Consequence:** cosmetic in behaviour, real in the dump. The flag is
+vestigial: `Transform` forces the parent's recorded `invert1` onto the
+child before transforming (`astSetInvert( map->map1, map->invert1 )`,
+cmpmap.c:3073 and the equivalent at 3862), so the child's own Invert
+never reaches the math. But it is serialised, and a reader that trusts
+it would need the parent's `InvA` to cancel it back out.
+
+**Why the Rust port does not mirror it:** the port holds Mappings as
+owned values, so `embed_celestial_in_naxis`
+(`crates/ast-core/src/fitschan/wcs_celestial.rs`) builds two
+independent forward PermMaps and the artifact cannot arise from
+construction order. Replaying it would mean calling
+`CmpMap::set_first_orientation` on the stage-1 CmpMap purely to stamp a
+flag the transform then ignores — encoding C's object-lifetime history
+into the read path. This is the same class of issue as
+[CmpMap `IsSimp` tag placement](#cmpmap-issimp-tag-placement-depends-on-shared-pointer-aliasing-during-simplification):
+a serialised value determined by C's reference counting rather than by
+the Mapping, and the port's answer is the same — record it here rather
+than shadow it in the Rust code.
+
+**Upstream discussion:** `WcsNative` could `astCopy` the PermMap for
+stage 3 (or build a second one from the same perm arrays) so neither
+CmpMap's child carries a flag set after encapsulation. That would make
+the dump reflect the Mapping rather than the construction sequence.
+
+---
+
 ## RESOLVED (upstream ad04291c): VELOSYS drift via lossy `RefRA`/`RefDec` round-trip
 
 **Status:** Fixed upstream at commit ad04291c (SkyFrame Digits temporarily

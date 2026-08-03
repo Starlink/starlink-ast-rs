@@ -728,14 +728,13 @@ fn class_noproj_builds_sfl() {
         let out = mapping
             .transform(&PointSet::from_rows([*pix]), true)
             .unwrap();
-        for k in 0..3 {
+        for (k, &expected) in want.iter().enumerate() {
             let got = out.point(0)[k];
             // Spectral axis (~1e11 Hz) tolerates 1e-3 absolute; celestial uses 1e-9.
             let tol: f64 = if k == 0 { 1e-3 } else { 1e-9 };
             assert!(
-                (got - want[k]).abs() <= tol.max(want[k].abs() * 1e-12),
-                "class-noproj fwd {pix:?} axis {k}: expected {}, got {got}",
-                want[k]
+                (got - expected).abs() <= tol.max(expected.abs() * 1e-12),
+                "class-noproj fwd {pix:?} axis {k}: expected {expected}, got {got}"
             );
         }
     }
@@ -755,12 +754,11 @@ fn class_noproj_builds_sfl() {
         let out = mapping
             .transform(&PointSet::from_rows([*world]), false)
             .unwrap();
-        for k in 0..3 {
+        for (k, &expected) in want.iter().enumerate() {
             let got = out.point(0)[k];
             assert!(
-                (got - want[k]).abs() < 1e-6,
-                "class-noproj inv {world:?} axis {k}: expected {}, got {got}",
-                want[k]
+                (got - expected).abs() < 1e-6,
+                "class-noproj inv {world:?} axis {k}: expected {expected}, got {got}"
             );
         }
     }

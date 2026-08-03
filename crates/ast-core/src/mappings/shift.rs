@@ -178,13 +178,12 @@ impl Mapping for ShiftMap {
         // WinMap, delegate to WinMap's MapMerge (which has the full
         // swap/merge logic), then revert to a ShiftMap if the WinMap merge
         // did nothing or merely turned the WinMap back into this ShiftMap.
-        // First try the direct pairwise merge (ShiftMap+ShiftMap, and the
-        // UnitNormMap absorption via `try_merge`). These already match C and
-        // must not be bypassed by the WinMap conversion below.
-        if let Some(r) = super::simplify::default_map_merge(ctx, where_, series) {
-            return Some(r);
-        }
-
+        //
+        // Every neighbour class a ShiftMap could pair with is reached through
+        // that conversion, including another ShiftMap (C `WinShift`) and a
+        // UnitNormMap — C notes at unitnormmap.c:359 that its own
+        // ShiftMap+UnitNormMap branch never runs precisely because the
+        // ShiftMap has become a WinMap by this point.
         let n = self.shift.len();
         let eff_inv = ctx.entry(where_).1;
 

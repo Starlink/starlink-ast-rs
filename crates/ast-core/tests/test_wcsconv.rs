@@ -114,7 +114,10 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("scp_native", "BEGAST: MatrixMap/ShiftMap simplifier"),
     (
         "serpens_native",
-        "MatrixMap vs ShiftMap simplifier divergence",
+        "INVERT: WcsNative aliases one PermMap across the to-2D and back \
+         stages, so the stage-1 child dumps a vestigial Invert=1 (see \
+         docs/issues/c-library-quirks.md); behind it, the swapped-axis \
+         celestial cards are not marked consumed",
     ),
     ("sip-alt_native", "SYSTEM: alt-plane frameset shape"),
     ("specflux_native", "flux frame"),
