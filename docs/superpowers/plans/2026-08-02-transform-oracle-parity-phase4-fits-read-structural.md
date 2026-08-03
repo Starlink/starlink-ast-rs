@@ -1465,13 +1465,85 @@ crota-3d is bucketed `INV: matrix inverse` in `test_wcsconv.rs` — the forward 
 
 ---
 
+### Task 14: C1x — swapped-axis celestial (lat on axis 1, lon on axis 2) mis-routes the native→celestial rotation
+
+serpens.head is `CTYPE1='DEC--TAN'` (latitude on FITS axis 1), `CTYPE2='RA---TAN'` (longitude on FITS axis 2) — the celestial axes are transposed relative to the usual RA/DEC order. The forward pixel→sky transform diverges from C by a gross rotation error (not precision drift): serpens pixel `(150, 120)` forward gives Rust `(-0.021491650, 1.460209855)` vs oracle `(0.018049750, -1.440691695)` — the latitude axis sign flips. The transform-oracle report records serpens fwd `nmiss=48 worst_rel≈3.1`, inverse `nmiss=86`.
+
+This is the residual serpens transform-oracle failure that the C1 DUT1 fix (Task 2) did *not* clear — DUT1 only touches the AzEl/LAST path and cannot affect an FK5→TAN pixel transform. It is verified swap-specific: the two closest non-swapped controls `tan-rotated.head` and `tan-cdmatrix.head` (same off-diagonal CD structure, same TAN projection, `CTYPE1=RA`/`CTYPE2=DEC`) transform bit-exact against the oracle. The only structural difference between them and serpens is the axis swap.
+
+**Root cause (verified by source trace):** `wcs_celestial.rs:398-405` handles the `naxis == 2 && lat_axis < lon_axis` case by wrapping the *entire* `inner` pipeline (zoom → WcsMap → rotation) in an outer PermMap sandwich `PermMap[2,1] ; inner ; PermMap[2,1]`. But `build_iwc_to_sky_mapping` (`wcs_celestial.rs:551-696`) builds the zoom MatrixMap (573-576), the WcsMap lon/lat slots, the rotation (`build_native_to_celestial_rotation_for_wcsmap`, 667-673), and `ref_pos` (685-688) all assuming (lon at slot 0, lat at slot 1). Under the swap, `inner` emits (lat, lon), so the outer sandwich is a patch over a pipeline whose internal wiring never accounted for the swap — the WcsMap and rotation see the axes misordered.
+
+C does not use an outer sandwich. In `WcsNative` (`reference/starlink-ast/src/fitschan.c:38073-38095`) the PermMap sandwich sits *immediately around the rotation only* (`SphMap ; MatrixMap ; SphMap`): longitude is routed to slot 0 and latitude to slot 1 *inside* the rotation, then restored. The WcsMap is built on physical axes `axlon+1`/`axlat+1` (`fitschan.c:~35965`) and `WcsNative` is invoked with the physical lon/lat indices, so the projection math always sees (lon, lat) regardless of FITS axis order.
+
+**Faithful fix:** mirror C — route the swap *inside* the rotation embedding (the `build_native_to_celestial_rotation` / celestial-embed region), and build the WcsMap and rotation on the physical lon/lat axis indices, so they always receive (lon, lat) in the correct order. Remove the outer whole-pipeline PermMap sandwich at 398-405. Do not paper over it with an extra permutation or a tolerance ([[feedback_no_corner_cuts_on_c]], [[feedback_c_logic_beats_existing_rust]]).
+
+**Investigation gate (mandatory — confirm the exact C construction before coding):** read serpens.head through the repo `libast.so` (`reference/starlink-ast/build-ast/libast.so`; mind the conda-RPATH trap, [[reference_oracle_conda_rpath_trap]]) and dump the pixel→sky mapping chain C builds for the swapped case. Confirm where C places the PermMap (around the rotation only, per `WcsNative`) and which physical axis indices the WcsMap uses. Record the dumped chain in the task report before writing the fix, so the Rust structure matches C node-for-node rather than being reverse-engineered from the numeric error.
+
+**Fixture cleared:** serpens (fwd+inv) from `HEAD_ORACLE_EXCLUDED` (the `C1x` rows added in Task 2). This task does NOT clear `serpens_native` — that is Task 15.
+
+**Files:**
+- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:398-405` (remove outer sandwich) and `551-696` (route swap inside the rotation, build WcsMap/rotation on physical lon/lat indices).
+- Test: `crates/ast-core/tests/test_fitschan_wcs.rs` (targeted swapped-axis forward-transform assertion) + the head oracle gate.
+
+**Interfaces:**
+- Consumes: `FitsChan::from_header(&str)`, `Channel::read`, the `Mapping` transform API, the swapped-axis fields already parsed into the celestial store (`lon_axis`, `lat_axis`).
+- Produces: nothing new for later tasks.
+
+- [ ] **Step 1: C-oracle probe (gate above)** — dump C's serpens pixel→sky chain via the repo `libast.so`; record the PermMap placement and the WcsMap physical axis indices in the report.
+- [ ] **Step 2: Write the failing test** — in `test_fitschan_wcs.rs`, read serpens.head, run the *forward* transform on pixel `(150.0, 120.0)`, assert the sky result is `(0.018049750, -1.440691695)` (RA, DEC in radians) to ≤1e-6. Currently returns `(-0.021491650, 1.460209855)`.
+- [ ] **Step 3: Run to verify it fails** — `cargo test -p ast-core --test test_fitschan_wcs serpens_swapped_axis_transform`.
+- [ ] **Step 4: Apply the faithful fix** — mirror `WcsNative` (swap inside the rotation, physical-axis WcsMap); delete the outer PermMap sandwich. No heuristics.
+- [ ] **Step 5: Run to verify it passes**; confirm the non-swapped controls `tan-rotated`/`tan-cdmatrix` and all other celestial head fixtures still transform exactly (no regression).
+- [ ] **Step 6: Shrink the head gate** — remove the two `serpens.head` `C1x` rows from `HEAD_ORACLE_EXCLUDED`; run `cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture`. Leave `serpens_native` in `NATIVE_READ_EXCLUDED` (Task 15 owns it).
+- [ ] **Step 7: Format, clippy, commit** — `"fitschan: route swapped celestial axes inside the rotation like C WcsNative (serpens)"` (+ AI trailer).
+
+---
+
+### Task 15: C1y — off-diagonal-CD celestial read: fuse deg2rad into the CD MatrixMap and keep CRPIX as a leading ShiftMap
+
+serpens's `.native` output diverges from C in the pixel→IWC block shape: Rust emits `MatrixMap`(CD alone) + `WinMap`(deg2rad scale + CRPIX residue), while C emits `ShiftMap`(CRPIX) + `MatrixMap`(CD·deg2rad, fused). This is the residual `serpens_native` failure that neither the DUT1 fix (Task 2) nor the swapped-axis fix (Task 14) clears.
+
+**Verified independent of the axis swap.** The same probe on the non-swapped off-diagonal-CD controls (`tan-rotated`, `tan-cdmatrix`) produces the *identical* Rust normal form (`MatrixMap` CD-alone + `WinMap` deg2rad+shift) even though those fixtures transform numerically exact. A shape divergence that persists when the transform is correct cannot be downstream of the transform bug — so Task 14 (which fixes the swap) will remove serpens's *extra* PermMap sandwich but will not fuse deg2rad into CD, and serpens would remain `.native`-divergent until this task lands. This is a simplifier / `map_merge` normal-form issue, not a read-path issue (same class as [[project_wcsconv_tail_190of192]]).
+
+**Root cause (verified by source trace):** C fuses the deg2rad zoom into the CD MatrixMap and keeps CRPIX as a leading ShiftMap; Rust does neither.
+- The deg2rad zoom MatrixMap (`wcs_celestial.rs:573-576`) is not merged into the CD MatrixMap (`wcs_matrix.rs:120-132`, `build_cd_matrix`) during simplification — C performs a MatrixMap×(zoom MatrixMap) fusion in this order that Rust does not.
+- The CRPIX shift (`wcs_matrix.rs:81-92`, `build_crpix_shift`, scales all 1.0) should remain a clean leading `ShiftMap`. Rust instead pushes the CRPIX shift through the CD matrix and absorbs it into the trailing deg2rad WinMap's `Sft`; because `winmap.rs:264/277` only narrows a WinMap→ShiftMap when `all_scales_one` and the deg2rad WinMap has `scale=0.01745≠1`, it never narrows and the CRPIX shift is stranded inside it.
+
+For a *diagonal* CD, C itself collapses the whole block to a WinMap (`expected/sao-tan.native`: `WinMap SFT1=-17.88 SCL1=0.017453...`), so the divergence is specifically the off-diagonal case where C promotes to `ShiftMap` + fused `MatrixMap`.
+
+**Faithful fix (in the simplifier / `map_merge`, not the read path):** make the deg2rad zoom fuse into the CD MatrixMap (MatrixMap×MatrixMap / MatrixMap×zoom merge in C's order), and keep the CRPIX ShiftMap as a separate leading node rather than pushing it through CD. Mirror C's `map_merge` ordering exactly ([[project_matrixmap_mapmerge_port]], [[feedback_no_corner_cuts_on_c]]); do not special-case serpens.
+
+**Investigation gate (mandatory):** dump C's serpens pixel→IWC mapping chain via the repo `libast.so` (conda-RPATH trap: [[reference_oracle_conda_rpath_trap]]) and confirm the exact node order and fused matrix values (`ShiftMap` CRPIX, then `MatrixMap` == `CD · π/180`). Identify in the C simplifier (`matrixmap.c` map_merge and the wcslib→AST assembly in `fitschan.c`) the precise merge step that produces this order, and record it in the report before coding. Because this shape is general to off-diagonal CD, verify against `tan-rotated`/`tan-cdmatrix` too.
+
+**Note for the reviewer:** the investigation labelled `tan-rotated`/`tan-cdmatrix` as "byte-exact-passing" controls, but they exhibit the same MatrixMap+WinMap Rust shape — they are almost certainly transform-only fixtures not present in the `.native` corpus, which is why no native test currently fails for them. Confirm which fixtures are in the wcsconv native corpus and re-run the *full* `test_wcsconv` after the fix: the simplifier change touches every off-diagonal-CD celestial read, so it must not regress any currently-passing native fixture (diagonal-CD WinMap collapse, sao-tan, etc.).
+
+**Fixture cleared:** `serpens_native` from `NATIVE_READ_EXCLUDED`.
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/matrix.rs` (MatrixMap×MatrixMap / MatrixMap×zoom `map_merge` fusion) and/or `crates/ast-core/src/mappings/winmap.rs` (CRPIX ShiftMap narrowing / not absorbing the shift into the deg2rad WinMap). The read-path builders (`wcs_matrix.rs`, `wcs_celestial.rs`) are the *source* of the nodes but the fix is in how the simplifier combines them — match C's order there.
+- Test: `crates/ast-core/tests/test_wcsconv.rs` native gate + a targeted `.native`-shape assertion.
+
+**Interfaces:**
+- Consumes: MatrixMap `map_merge` ([[project_matrixmap_mapmerge_port]]), WinMap→ShiftMap narrowing (`winmap.rs:264/277`), the native serializer (`to_native_string`).
+- Produces: nothing new for later tasks.
+
+- [ ] **Step 1: C-oracle probe (gate above)** — dump C's serpens pixel→IWC chain; record `ShiftMap`(CRPIX) + `MatrixMap`(CD·deg2rad) node order and values, and the C `map_merge` step that yields it. Confirm the shape on `tan-rotated`/`tan-cdmatrix`.
+- [ ] **Step 2: Write the failing test** — assert serpens's `.native` (or `to_native_string`) pixel→IWC block begins with a `ShiftMap` node (SFT == −CRPIX) followed by a single `MatrixMap` whose `M0 == CD[0][0]·(π/180)`. Fails on the current MatrixMap+WinMap shape.
+- [ ] **Step 3: Run to verify it fails.**
+- [ ] **Step 4: Apply the faithful fix** — fuse deg2rad into the CD MatrixMap and keep CRPIX as a leading ShiftMap, mirroring C's `map_merge` order. No serpens special-case, no tolerance heuristic.
+- [ ] **Step 5: Run to verify it passes**; run the *full* `cargo test -p ast-core --test test_wcsconv` and confirm no other native fixture regressed (diagonal-CD WinMap collapse, sao-tan, tan-rotated, tan-cdmatrix, every off-diagonal-CD celestial read).
+- [ ] **Step 6: Shrink `NATIVE_READ_EXCLUDED`** — remove `serpens_native`; run `cargo test -p ast-core --test test_wcsconv`.
+- [ ] **Step 7: Format, clippy, commit** — `"simplify: fuse deg2rad into CD MatrixMap and keep CRPIX ShiftMap like C (serpens)"` (+ AI trailer).
+
+---
+
 ## Phase 4 completion
 
-When Tasks 1-13 are all committed and both gates are green with empty Phase-4-owned exclusions:
+When Tasks 1-15 are all committed and both gates are green with empty Phase-4-owned exclusions:
 
 - [ ] `HEAD_ORACLE_EXCLUDED` contains no Phase-4 rows (only rows owned by other phases, if any remain).
 - [ ] Every Phase-4 fixture removed from `NATIVE_READ_EXCLUDED`.
 - [ ] Run the full head section gate: `cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture` — passes with `checked >= HEAD_SECTION_FLOOR`.
 - [ ] Run the full native read-fidelity suite: `cargo test -p ast-core --test test_wcsconv` — green.
 - [ ] Update `PLAN.md` and the design spec's Phase 4 status to DONE.
-- [ ] Record a project memory summarising the 12 root causes fixed and the two-gate pattern, linking [[project_phase4_reconciliation]].
+- [ ] Record a project memory summarising the 14 root causes fixed (C1 DUT1, C1x swapped-axis routing, C1y off-diagonal-CD deg2rad fusion, plus A1-A3/B1-B3/C2-C6) and the two-gate pattern, linking [[project_phase4_reconciliation]].
