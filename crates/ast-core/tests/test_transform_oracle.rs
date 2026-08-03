@@ -1386,17 +1386,39 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
         false,
         "C1x: RA ~13 deg error not caused by DUT1",
     ),
-    // C2 SREF version letter:
-    ("tidy-offsets.head", true, "C2: SREF version letter ignored"),
+    // C2/C4 SREF version letter + SkyRefIs-through-FrameSet: SREF keywords now
+    // read correctly for alt planes, but the offset-sky TidyOffsets path that
+    // applies SkyRefIs=Origin/Pole to remapping is not yet complete (C4).
+    (
+        "tidy-offsets.head",
+        true,
+        "C4: offset-sky SkyRefIs remapping unported",
+    ),
     (
         "tidy-offsets.head",
         false,
-        "C2: SREF version letter ignored",
+        "C4: offset-sky SkyRefIs remapping unported",
     ),
-    ("tidy-pole.head", true, "C2: SREF version letter ignored"),
-    ("tidy-pole.head", false, "C2: SREF version letter ignored"),
-    ("skyref-alt.head", true, "C2: SREF version letter ignored"),
-    ("skyref-alt.head", false, "C2: SREF version letter ignored"),
+    (
+        "tidy-pole.head",
+        true,
+        "C4: offset-sky SkyRefIs remapping unported",
+    ),
+    (
+        "tidy-pole.head",
+        false,
+        "C4: offset-sky SkyRefIs remapping unported",
+    ),
+    (
+        "skyref-alt.head",
+        true,
+        "C4: offset-sky SkyRefIs remapping unported",
+    ),
+    (
+        "skyref-alt.head",
+        false,
+        "C4: offset-sky SkyRefIs remapping unported",
+    ),
     // C3 PolyTan auto-detect:
     (
         "tan-polytan.head",

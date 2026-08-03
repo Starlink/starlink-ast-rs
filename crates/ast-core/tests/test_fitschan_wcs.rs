@@ -7,7 +7,7 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::{Encoding, FitsChan};
-use ast_core::frames::Frame;
+use ast_core::frames::{Frame, FrameRef, SkyFrame, SkyRefIs};
 
 // ===========================================================================
 // Helpers
@@ -383,5 +383,64 @@ fn serpens_dut1_is_seconds() {
     assert!(
         (got - expected).abs() < 1e-9,
         "Dut1 should be {expected} s (days × 86400), got {got} s"
+    );
+}
+
+// ===========================================================================
+// SREF alt-plane version letter (C2)
+// ===========================================================================
+
+/// Alt-plane SREF* cards carry a version letter suffix (e.g. SREF1A, SREF2A,
+/// SREFISA). The extractor must use the version-aware key_for helper rather
+/// than hard-coded primary names, so the alt SkyFrame sees its own SREF values
+/// rather than the primary plane's.
+#[test]
+fn skyref_alt_reads_versioned_sref() {
+    // skyref-alt.head has primary SREF1=120, SREF2=30, SREFIS='ORIGIN'
+    // and alternate-A SREF1A=236.592, SREF2A=50.669, SREFISA='ORIGIN'.
+    // The SkyFrame convention stores coordinates in radians.
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/skyref-alt.head",
+    ))
+    .expect("skyref-alt.head should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("skyref-alt.head should produce a FrameSet");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("expected FrameSet");
+    };
+
+    // Frame 3 is the alt-A sky frame (Galactic, Ident="A").
+    let alt_frame = fs.frame(FrameRef::Index(3)).expect("frame 3 should exist");
+    let sky = alt_frame
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .expect("frame 3 should be a SkyFrame");
+
+    // SREF1A=236.592 deg, SREF2A=50.669 deg.  SkyRef stores the raw
+    // degree values as read from the FITS card (C does the same: the
+    // store->skyref array holds FITS degrees and WcsSkyFrame passes
+    // them directly to astSetSkyRef without unit conversion).
+    let expected_lon = 236.592_f64;
+    let expected_lat = 50.669_f64;
+    let got = sky.sky_ref();
+    assert!(
+        (got[0] - expected_lon).abs() < 1e-9,
+        "alt SkyFrame sky_ref lon should be {expected_lon} (SREF1A), got {}",
+        got[0]
+    );
+    assert!(
+        (got[1] - expected_lat).abs() < 1e-9,
+        "alt SkyFrame sky_ref lat should be {expected_lat} (SREF2A), got {}",
+        got[1]
+    );
+    // SREFISA='ORIGIN'.
+    assert_eq!(
+        sky.sky_ref_is(),
+        SkyRefIs::Origin,
+        "alt SkyFrame sky_ref_is should be Origin (SREFISA='ORIGIN')"
     );
 }

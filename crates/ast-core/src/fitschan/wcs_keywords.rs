@@ -263,11 +263,11 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     store.ssyssrc = cards.get_string_marked("SSYSSRC");
     store.zsource = cards.get_float_marked("ZSOURCE");
     store.imagfreq = cards.get_float_marked("IMAGFREQ");
-    store.skyrefis = cards.get_string_marked("SREFIS");
+    store.skyrefis = cards.get_string_marked(&key_for("SREFIS", None, s));
     for i in 0..naxis {
         let axis_num = i + 1;
-        store.skyref[i] = cards.get_float_marked(&format!("SREF{axis_num}"));
-        store.skyrefp[i] = cards.get_float_marked(&format!("SREFP{axis_num}"));
+        store.skyref[i] = cards.get_float_marked(&key_for("SREF", Some(axis_num), s));
+        store.skyrefp[i] = cards.get_float_marked(&key_for("SREFP", Some(axis_num), s));
     }
 
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
