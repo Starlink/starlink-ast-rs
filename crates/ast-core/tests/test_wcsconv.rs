@@ -119,8 +119,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "MatrixMap vs ShiftMap simplifier divergence",
     ),
     ("sip-alt_native", "SYSTEM: alt-plane frameset shape"),
-    ("skyref-alt_native", "M0: offset-sky rotation (C4 unported)"),
-    ("skyref_native", "M0: matrix / offset"),
     ("specflux_native", "flux frame"),
     ("ssysobs_native", "SFT1: ShiftMap"),
     ("tan-zeropv_native", "ENDAST: object shape"),

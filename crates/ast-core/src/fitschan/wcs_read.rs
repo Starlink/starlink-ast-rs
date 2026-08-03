@@ -598,18 +598,23 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
         };
         if let Some(skyrefis) = marker {
             // C `TidyOffsets` (fitschan.c:34464-34468) sets SkyRefIs
-            // *through the FrameSet* so the FrameSet integrity machinery
-            // re-maps the SkyFrame to offset coordinates. Here the
-            // SkyFrame read from an OFLN/OFLT header already carries the
-            // offset (linear) pixel→sky Mapping, so the attribute only
-            // needs recording on the Frame itself — applying it through
-            // FrameSet integrity would re-fuse the Mapping into a form
-            // that loses the offset description. Set it directly,
-            // leaving the Domain marker (SKY_ORIGIN / SKY_POLE) intact
-            // so the writer's `IsASkyFrame` test routes the Frame
-            // through `OtherAxes`.
-            let f = fs.frame_mut(FrameRef::Index(ifrm))?;
-            apply_skyrefis(f, skyrefis);
+            // *through the FrameSet*: it makes frame `ifrm` current, sets
+            // SkyRefIs, then restores the original current frame. Setting
+            // the attribute through the FrameSet lets the integrity
+            // machinery re-map the SkyFrame into offset coordinates, so
+            // the pixel→sky Mapping carries the SREF offset rotation. A
+            // direct `frame_mut` set records the attribute but leaves the
+            // Mapping pointing at the raw (unrotated) offset axes, which
+            // diverges from C. The integrity remap only appends the
+            // SkyRefIs delta; it leaves the SKY_ORIGIN / SKY_POLE marker
+            // Domain intact so the writer's `IsASkyFrame` test still
+            // routes the Frame through `OtherAxes`.
+            fs.set_current(FrameRef::Index(ifrm))?;
+            fs.with_integrity(|f| {
+                apply_skyrefis(f, skyrefis);
+                Ok(())
+            })?;
+            fs.set_current(FrameRef::Index(icurr_1))?;
         }
         kinds.push(kind);
     }

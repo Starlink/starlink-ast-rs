@@ -1215,6 +1215,55 @@ fn compute_form(m: &Array2<f64>) -> MatrixForm {
     }
 }
 
+/// Zero the near-zero off-diagonal elements of a matrix in place, mirroring
+/// the FULL-matrix branch of C `CompressMatrix` (matrixmap.c:687-750).
+///
+/// An off-diagonal element is set to `0.0` when its magnitude is `<=
+/// sqrt(DBL_EPSILON)` times the largest magnitude in both its own row and its
+/// own column — i.e. it is insignificant relative to both. `BAD_VALUE`
+/// elements are left untouched (they force FULL storage in C and never
+/// participate in the max). Diagonal elements are never modified.
+///
+/// C runs this on every MatrixMap it constructs (`astInitMatrixMap`) and on
+/// every product (`astMtrMult`); it removes the ~1e-16 trig residue that a
+/// spherical-rotation product otherwise leaves in an off-diagonal cell.
+pub(crate) fn compress_off_diagonals(m: &mut Array2<f64>) {
+    let tol = f64::EPSILON.sqrt();
+    let nrow = m.nrows();
+    let ncol = m.ncols();
+
+    let mut rowmax = vec![0.0_f64; nrow];
+    let mut colmax = vec![0.0_f64; ncol];
+    for i in 0..nrow {
+        for j in 0..ncol {
+            let v = m[[i, j]];
+            if !is_bad(v) {
+                let a = v.abs();
+                if a > rowmax[i] {
+                    rowmax[i] = a;
+                }
+                if a > colmax[j] {
+                    colmax[j] = a;
+                }
+            }
+        }
+    }
+
+    for i in 0..nrow {
+        for j in 0..ncol {
+            if i != j {
+                let v = m[[i, j]];
+                if !is_bad(v) {
+                    let a = v.abs();
+                    if a <= rowmax[i] * tol && a <= colmax[j] * tol {
+                        m[[i, j]] = 0.0;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Check if a square matrix is diagonal (all off-diagonal elements are
 /// zero within `ast_equal` tolerance).
 pub(crate) fn is_diagonal(m: &Array2<f64>) -> bool {

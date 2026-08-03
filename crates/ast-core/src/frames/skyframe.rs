@@ -1588,6 +1588,22 @@ impl Frame for SkyFrame {
         let prev = previous.as_any().downcast_ref::<SkyFrame>();
         match prev {
             Some(prev_sky) => {
+                // When both systems are Unknown, C `MakeSkyMapping`
+                // (skyframe.c:5975) returns a UnitMap and returns before the
+                // `SkyOffsetMap` section, so no offset rotation is ever
+                // applied. Two Unknown SkyFrames are assumed identical; this
+                // keeps a bare Title/SkyRefIs change from breaking FrameSet
+                // integrity. Mirror that early return here — applying the
+                // offset maps below would wrongly rotate an Unknown offset
+                // Frame.
+                if prev_sky.system == SkySystem::Unknown && self.system == SkySystem::Unknown {
+                    return Ok(wrap_with_axis_swap(
+                        Box::new(UnitMap::new(2)),
+                        prev_sky,
+                        self,
+                    ));
+                }
+
                 let prev_last = prev_sky.compute_last()?;
                 let self_last = self.compute_last()?;
                 let mut mapping: DynMapping = make_sky_mapping(

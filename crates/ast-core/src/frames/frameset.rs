@@ -542,7 +542,11 @@ impl FrameSet {
                 right_inverted,
                 Composition::Series,
             )?);
-            let simplified = combined.simplified()?;
+            // C `TidyNodes` (frameset.c:11191) calls `astSimplify` on the
+            // combined Mapping, which sets the IsSimple flag (→ `IsSimp = 1`
+            // in the native dump). Use `simplify()` (not the internal
+            // `simplified()`) so the stored edge carries that flag.
+            let simplified = (combined.as_ref() as &dyn Mapping).simplify()?;
 
             // Remove the two edges (highest index first) and insert
             // the combined edge.

@@ -517,230 +517,68 @@ fn add_fk5_to_system(
 // Offset coordinate rotation
 // ---------------------------------------------------------------------------
 
-use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::mappings::Mapping;
-use crate::mappings::helpers::{ast_equal, point_has_bad};
-use crate::mappings::rate::numeric_rate;
-use std::fmt;
+use crate::mappings::{CmpMap, Composition, Mapping, MatrixMap, SphMap};
+use ndarray::Array2;
 
-/// A private spherical rotation mapping for offset coordinates.
+/// Build the 3×3 spherical-rotation matrix `mat[9]` used by
+/// [`make_offset_mapping`], laid out row-major as three unit vectors.
 ///
-/// Converts 2D (lon, lat) coordinates through a 3D rotation matrix on the
-/// unit sphere:
-///   forward:  dcs2c → dmxv  → dcc2s
-///   inverse:  dcs2c → dimxv → dcc2s
-#[derive(Clone)]
-struct RotationMap {
-    /// 3x3 rotation matrix (offset→standard direction).
-    matrix: [[f64; 3]; 3],
-    inverted: bool,
-}
-
-impl fmt::Debug for RotationMap {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RotationMap")
-            .field("inverted", &self.inverted)
-            .finish()
-    }
-}
-
-impl RotationMap {
-    fn new(matrix: [[f64; 3]; 3]) -> Self {
-        Self {
-            matrix,
-            inverted: false,
-        }
-    }
-
-    /// Apply the rotation to a single (lon, lat) point.
-    fn rotate_point(&self, lon: f64, lat: f64, forward: bool) -> (f64, f64) {
-        let v = pal::dcs2c(lon, lat);
-        let effective_fwd = forward != self.inverted;
-        let v_out = if effective_fwd {
-            pal::dmxv(&self.matrix, &v)
-        } else {
-            pal::dimxv(&self.matrix, &v)
-        };
-        pal::dcc2s(&v_out)
-    }
-}
-
-impl Mapping for RotationMap {
-    fn nin(&self) -> usize {
-        2
-    }
-    fn nout(&self) -> usize {
-        2
-    }
-    fn is_inverted(&self) -> bool {
-        self.inverted
-    }
-    fn invert(&mut self) {
-        self.inverted = !self.inverted;
-    }
-
-    fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        let np = pts.npoint();
-        let mut out = PointSet::zeros(np, 2);
-        self.transform_into(pts, forward, &mut out)?;
-        Ok(out)
-    }
-
-    fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
-        let np = pts.npoint();
-        let view = pts.view();
-        let mut oview = out.view_mut();
-        for i in 0..np {
-            let lon_in = view[[i, 0]];
-            let lat_in = view[[i, 1]];
-            if point_has_bad(&[lon_in, lat_in]) {
-                oview[[i, 0]] = BAD_VALUE;
-                oview[[i, 1]] = BAD_VALUE;
-            } else {
-                let (lon_out, lat_out) = self.rotate_point(lon_in, lat_in, forward);
-                oview[[i, 0]] = lon_out;
-                oview[[i, 1]] = lat_out;
-            }
-        }
-        Ok(())
-    }
-
-    fn simplified(&self) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
-    }
-
-    fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
-        numeric_rate(self, at, ax1, ax2)
-    }
-
-    fn equal(&self, other: &dyn Mapping) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<RotationMap>() else {
-            return false;
-        };
-        if self.inverted != other.inverted {
-            return false;
-        }
-        for (row_a, row_b) in self.matrix.iter().zip(&other.matrix) {
-            for (&a, &b) in row_a.iter().zip(row_b) {
-                if !ast_equal(a, b) {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    fn clone_box(&self) -> DynMapping {
-        Box::new(self.clone())
-    }
-}
-
-/// Build a rotation matrix for SkyRefIs::Origin.
+/// Faithful port of the matrix-building section of C `SkyOffsetMap`
+/// (skyframe.c:7744-7810). Each row is one axis of the offset coordinate
+/// frame expressed in the standard (absolute) system:
 ///
-/// The rotation maps offset coordinates to standard coordinates such that:
-/// - (0, 0) in offset → `sky_ref` in standard
-/// - The direction toward positive latitude at offset origin → direction
-///   from `sky_ref` toward `sky_ref_p` on the sphere
-fn build_origin_rotation(sky_ref: [f64; 2], sky_ref_p: [f64; 2]) -> [[f64; 3]; 3] {
-    let v_ref = pal::dcs2c(sky_ref[0], sky_ref[1]);
-    let v_refp = pal::dcs2c(sky_ref_p[0], sky_ref_p[1]);
-
-    // e1 = direction to reference point (new origin on the sphere)
-    let e1 = v_ref;
-
-    // e3 = component of v_refp perpendicular to v_ref, normalized.
-    // This defines the "north" direction in the offset system.
-    let dot = pal::dvdv(&v_refp, &v_ref);
-    let perp = [
-        v_refp[0] - dot * v_ref[0],
-        v_refp[1] - dot * v_ref[1],
-        v_refp[2] - dot * v_ref[2],
-    ];
-    let (perp_len, mag) = pal::dvn(&perp);
-
-    // If sky_ref_p is coincident with or antipodal to sky_ref, fall back
-    // to the standard north pole as the "up" direction.
-    let e3 = if mag < 1.0e-20 {
-        let pole = [0.0, 0.0, 1.0];
-        let dot2 = pal::dvdv(&pole, &v_ref);
-        let perp2 = [
-            pole[0] - dot2 * v_ref[0],
-            pole[1] - dot2 * v_ref[1],
-            pole[2] - dot2 * v_ref[2],
-        ];
-        let (n2, _) = pal::dvn(&perp2);
-        n2
+/// - **Origin** (`SkyRef` is the offset origin): row `vx` points at
+///   `SkyRef`, `vy = SkyRefP × vx` (normalised), `vz = vx × vy`.
+/// - **Pole** (`SkyRef` is the offset north pole): row `vz` points at
+///   `SkyRef`, `vy = vz × SkyRefP` (normalised), `vx = vy × vz`.
+///
+/// Errors with [`ErrorCode::Badoc`] when `SkyRefP` is coincident with or
+/// antipodal to `SkyRef` (`vmod == 0.0`), mirroring C's `astError`.
+fn build_offset_matrix(
+    sky_ref: [f64; 2],
+    sky_ref_p: [f64; 2],
+    sky_ref_is: SkyRefIs,
+) -> AstResult<[[f64; 3]; 3]> {
+    let vp = pal::dcs2c(sky_ref_p[0], sky_ref_p[1]);
+    let (vx, vy, vz);
+    if matches!(sky_ref_is, SkyRefIs::Origin) {
+        // SkyRef defines the X axis of the offset coord system.
+        vx = pal::dcs2c(sky_ref[0], sky_ref[1]);
+        // Y axis perpendicular to both X and SkyRefP.
+        let (vy_unit, vmod) = pal::dvn(&pal::dvxv(&vp, &vx));
+        if vmod == 0.0 {
+            return Err(offset_badoc());
+        }
+        vy = vy_unit;
+        // Z axis completes the right-handed triad.
+        vz = pal::dvxv(&vx, &vy);
     } else {
-        perp_len
-    };
-
-    // e2 = e3 x e1 (completes right-handed system)
-    let e2 = pal::dvxv(&e3, &e1);
-
-    // Rotation matrix: columns are the new basis vectors.
-    // Maps (1,0,0) -> e1, (0,1,0) -> e2, (0,0,1) -> e3.
-    // The standard (lon=0,lat=0) direction in 3-vector is (1,0,0).
-    // The standard pole direction in 3-vector is (0,0,1).
-    // So this maps standard-origin to sky_ref and standard-pole to e3.
-    [
-        [e1[0], e2[0], e3[0]],
-        [e1[1], e2[1], e3[1]],
-        [e1[2], e2[2], e3[2]],
-    ]
+        // SkyRef defines the Z axis (north pole) of the offset system.
+        vz = pal::dcs2c(sky_ref[0], sky_ref[1]);
+        // Y axis perpendicular to both Z and SkyRefP.
+        let (vy_unit, vmod) = pal::dvn(&pal::dvxv(&vz, &vp));
+        if vmod == 0.0 {
+            return Err(offset_badoc());
+        }
+        vy = vy_unit;
+        // X axis completes the right-handed triad.
+        vx = pal::dvxv(&vy, &vz);
+    }
+    Ok([vx, vy, vz])
 }
 
-/// Build a rotation matrix for SkyRefIs::Pole.
-///
-/// `sky_ref` becomes the north pole of the offset coordinate system.
-/// `sky_ref_p` defines the zero-meridian direction.
-fn build_pole_rotation(sky_ref: [f64; 2], sky_ref_p: [f64; 2]) -> [[f64; 3]; 3] {
-    let v_pole = pal::dcs2c(sky_ref[0], sky_ref[1]);
-    let v_zero = pal::dcs2c(sky_ref_p[0], sky_ref_p[1]);
-
-    // e3 (new pole) = v_pole
-    let e3 = v_pole;
-
-    // e1 (new zero meridian direction) = component of v_zero perpendicular to e3
-    let dot = pal::dvdv(&v_zero, &e3);
-    let perp = [
-        v_zero[0] - dot * e3[0],
-        v_zero[1] - dot * e3[1],
-        v_zero[2] - dot * e3[2],
-    ];
-    let (perp_len, mag) = pal::dvn(&perp);
-
-    // Fallback: if sky_ref_p is at the pole, use the standard origin direction.
-    let e1 = if mag < 1.0e-20 {
-        let origin = [1.0, 0.0, 0.0];
-        let dot2 = pal::dvdv(&origin, &e3);
-        let perp2 = [
-            origin[0] - dot2 * e3[0],
-            origin[1] - dot2 * e3[1],
-            origin[2] - dot2 * e3[2],
-        ];
-        let (n2, _) = pal::dvn(&perp2);
-        n2
-    } else {
-        perp_len
-    };
-
-    // e2 = e3 x e1 (right-handed)
-    let e2 = pal::dvxv(&e3, &e1);
-
-    // Rotation matrix columns.
-    [
-        [e1[0], e2[0], e3[0]],
-        [e1[1], e2[1], e3[1]],
-        [e1[2], e2[2], e3[2]],
-    ]
+/// The `AST__BADOC` error raised when `SkyRefP` is coincident with or
+/// opposite to `SkyRef` (skyframe.c:7770).
+fn offset_badoc() -> AstError {
+    AstError::new(
+        ErrorCode::Badoc,
+        "The position specified by the SkyRefP attribute is either \
+         coincident with, or opposite to, the position specified by the \
+         SkyRef attribute.",
+    )
 }
 
-/// Build a rotation mapping for offset coordinates.
-///
-/// Returns a mapping that converts FROM offset coordinates TO standard
-/// (unrotated) celestial coordinates. Returns `None` if `sky_ref_is ==
-/// Ignored`.
 /// Test whether a system-conversion mapping is effectively a unit
 /// transformation to within `tol` arcseconds.
 ///
@@ -782,35 +620,67 @@ pub(crate) fn is_effectively_unit(map: &dyn Mapping, tol_arcsec: f64) -> bool {
     maxshift.to_degrees() * 3600.0 < tol_arcsec
 }
 
-/// Build the offset→standard rotation for a SkyFrame, or `None` when the
+/// Build the offset→standard Mapping for a SkyFrame, or `None` when the
 /// frame does not use an offset coordinate system.
 ///
-/// Mirrors C `SkyOffsetMap` (skyframe.c:7649): a UnitMap (here `None`) is
-/// returned when `SkyRefIs == Ignored` **or** neither SkyRef axis has been
-/// set. `sky_ref_set` is `astTestSkyRef(0) || astTestSkyRef(1)`. The
+/// Faithful port of C `SkyOffsetMap` (skyframe.c:7649): a UnitMap (here
+/// `None`) is returned when `SkyRefIs == Ignored` **or** neither SkyRef axis
+/// has been set. `sky_ref_set` is `astTestSkyRef(0) || astTestSkyRef(1)`. The
 /// SkyRefIs-only gate is not sufficient — a frame with SkyRefIs=Origin but
 /// an unset (default 0,0) SkyRef must still produce no offset, so its
 /// conversion to a plain SkyFrame is the identity (skyframe.c:7722-7724).
+///
+/// C `SkyOffsetMap` returns the *standard→offset* Mapping
+/// `CmpMap(SphMap⁻¹, CmpMap(MatrixMap, SphMap))`, built from serialisable
+/// primitives so it survives a Channel round-trip and lets the simplifier
+/// fuse it with the neighbouring WCS rotation. `MakeSkyMapping`
+/// (skyframe.c:6556) then inverts it to obtain offset→standard. This
+/// function returns that same offset→standard chain — i.e. C's structure
+/// already inverted — matching the direction its callers compose.
 pub(crate) fn make_offset_mapping(
     sky_ref: [f64; 2],
     sky_ref_p: [f64; 2],
     sky_ref_is: SkyRefIs,
     sky_ref_set: bool,
 ) -> AstResult<Option<DynMapping>> {
-    if !sky_ref_set {
+    if !sky_ref_set || matches!(sky_ref_is, SkyRefIs::Ignored) {
         return Ok(None);
     }
-    match sky_ref_is {
-        SkyRefIs::Ignored => Ok(None),
-        SkyRefIs::Origin => {
-            let matrix = build_origin_rotation(sky_ref, sky_ref_p);
-            Ok(Some(Box::new(RotationMap::new(matrix))))
-        }
-        SkyRefIs::Pole => {
-            let matrix = build_pole_rotation(sky_ref, sky_ref_p);
-            Ok(Some(Box::new(RotationMap::new(matrix))))
+
+    let mat = build_offset_matrix(sky_ref, sky_ref_p, sky_ref_is)?;
+
+    // MatrixMap implementing the spherical rotation. Each row is one unit
+    // axis vector (skyframe.c:7801, `astMatrixMap( 3, 3, 0, mat, ... )`).
+    let mut m = Array2::<f64>::zeros((3, 3));
+    for (i, row) in mat.iter().enumerate() {
+        for (j, &val) in row.iter().enumerate() {
+            m[[i, j]] = val;
         }
     }
+    let map1 = MatrixMap::new(m)?;
+
+    // 3D Cartesian ↔ 2D spherical Mapping, UnitRadius=1 (skyframe.c:7804)
+    // so a forward+inverse SphMap pair collapses in the simplifier.
+    let mut map2 = SphMap::new();
+    map2.set_unit_radius(true);
+
+    // C forms `map3 = CmpMap(map1, map2, series)` (cart→cart→sph) then
+    // inverts map2 to get `result = CmpMap(map2⁻¹, map3, series)`
+    // (standard→offset). We build the *inverse* of that result directly,
+    // since our callers want offset→standard: reversing a two-component
+    // series CmpMap swaps the order and inverts each half, giving
+    // `CmpMap(map3⁻¹, map2)` = `CmpMap(CmpMap(map2⁻¹, map1⁻¹), map2)`.
+    // Equivalently, offset→standard is sph⁻¹ → matrix⁻¹ → sph:
+    //   (lon,lat)_offset → (x,y,z) → rotate by matⁱ → (lon,lat)_standard.
+    let mut sph_in = map2.clone(); // (lon,lat)→(x,y,z): SphMap inverted
+    sph_in.invert();
+    let mut matrix_inv = map1; // matrix⁻¹: rotate offset axes → standard
+    matrix_inv.invert();
+    let sph_out = map2; // (x,y,z)→(lon,lat)
+
+    let inner = CmpMap::new(Box::new(matrix_inv), Box::new(sph_out), Composition::Series)?;
+    let result = CmpMap::new(Box::new(sph_in), Box::new(inner), Composition::Series)?;
+    Ok(Some(Box::new(result)))
 }
 
 // ---------------------------------------------------------------------------
@@ -820,6 +690,7 @@ pub(crate) fn make_offset_mapping(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::BAD_VALUE;
     use crate::coords::PointSet;
     use crate::mappings::Mapping;
     use std::f64::consts::{FRAC_PI_2, PI};

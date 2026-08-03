@@ -1326,50 +1326,6 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
         false,
         "C1x: RA ~13 deg error not caused by DUT1",
     ),
-    // C2/C4 SREF version letter + SkyRefIs-through-FrameSet: SREF keywords now
-    // read correctly for alt planes, but the offset-sky TidyOffsets path that
-    // applies SkyRefIs=Origin/Pole to remapping is not yet complete (C4).
-    (
-        "tidy-offsets.head",
-        true,
-        "C4: offset-sky SkyRefIs remapping unported",
-    ),
-    (
-        "tidy-offsets.head",
-        false,
-        "C4: offset-sky SkyRefIs remapping unported",
-    ),
-    (
-        "tidy-pole.head",
-        true,
-        "C4: offset-sky SkyRefIs remapping unported",
-    ),
-    (
-        "tidy-pole.head",
-        false,
-        "C4: offset-sky SkyRefIs remapping unported",
-    ),
-    (
-        "skyref-alt.head",
-        true,
-        "C4: offset-sky SkyRefIs remapping unported",
-    ),
-    (
-        "skyref-alt.head",
-        false,
-        "C4: offset-sky SkyRefIs remapping unported",
-    ),
-    // C4 SkyRefIs through FrameSet:
-    (
-        "skyref.head",
-        true,
-        "C4: SkyRefIs set directly, bypassing FrameSet remap",
-    ),
-    (
-        "skyref.head",
-        false,
-        "C4: SkyRefIs set directly, bypassing FrameSet remap",
-    ),
     // C5 astRate drift:
     (
         "freq-wav.head",
