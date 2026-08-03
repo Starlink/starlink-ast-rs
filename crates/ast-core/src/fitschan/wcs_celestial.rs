@@ -490,11 +490,14 @@ fn determine_sky_system(store: &FitsStore) -> SkySystem {
         // Unrecognised celestial prefix: C WcsSkyFrame (fitschan.c:39325)
         // uses System=Unknown without consulting RADESYS or EQUINOX.
         Some(CelKind::Unknown) => return SkySystem::Unknown,
-        // Offset sky and equatorial both fall through to the RADESYS
-        // / EQUINOX rules — the offset SkyFrame inherits its
-        // underlying system from the same lookup C does in
-        // WcsSkyFrame after the OF early-out.
-        Some(CelKind::Equatorial) | Some(CelKind::OffsetSky) | None => {}
+        // Equatorial (and no CTYPE prefix at all) fall through to the RADESYS /
+        // EQUINOX rules below.
+        Some(CelKind::Equatorial) | None => {}
+        // OffsetSky is intercepted by the `ctype_is_offset` early-out in
+        // `build_celestial_with_def_b1950` before this function is reached,
+        // and produces System=Unknown to match C (fitschan.c:39325).  The arm
+        // is required for match exhaustiveness; it is not reachable at runtime.
+        Some(CelKind::OffsetSky) => return SkySystem::Unknown,
     }
 
     // Equatorial (or no CTYPE prefix at all) → look at RADESYS.
@@ -563,8 +566,7 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
         return Some(CelKind::AzEl);
     }
     // 1-letter prefix: xLON / xLAT (fitschan.c:35718-35726).
-    // The `is_longitude_ctype`/`is_latitude_ctype` guards already confirmed
-    // len > 4 and b[4] == '-', so slicing bytes[1..4] is safe here.
+    // The `ctype.len() >= 4` guard below makes the byte slices safe.
     if ctype.len() >= 4 {
         let bytes = ctype.as_bytes();
         if &bytes[1..4] == b"LON" || &bytes[1..4] == b"LAT" {

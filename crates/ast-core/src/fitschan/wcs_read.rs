@@ -439,9 +439,9 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 /// loop. Also returns any warning messages to surface as ASTWARN cards.
 /// `def_b1950` mirrors the FitsChan `DefB1950` attribute.
 ///
-/// Inner variant of the former public wrappers, used by
-/// warning messages collected during decoding. Used by [`super::FitsChan::read`]
-/// to surface warnings as ASTWARN cards.
+/// Returns any warning messages (e.g. `badcel`) alongside the decoded object;
+/// callers pass the warnings to [`super::FitsChan::read`] for insertion as
+/// ASTWARN cards.
 pub(crate) fn decode_wcs_with_alts_inner(
     primary: &FitsStore,
     alts: &[(char, FitsStore)],
