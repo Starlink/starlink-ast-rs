@@ -1315,9 +1315,6 @@ fn describe_outcome(o: &Outcome) -> String {
 /// different shape/attribute than C), never serialisation or simplifier
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
 const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
-    // B1 CarLin attribute:
-    ("car4.head", true, "B1: CarLin attribute unimplemented"),
-    ("car4.head", false, "B1: CarLin attribute unimplemented"),
     // C1x serpens large RA error (~13 deg) after DUT1 fix — separate root cause:
     (
         "serpens.head",

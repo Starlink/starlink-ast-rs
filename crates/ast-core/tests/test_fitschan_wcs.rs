@@ -819,3 +819,80 @@ fn tan_polytan_promotes_to_tpn() {
         );
     }
 }
+
+// ===========================================================================
+// MSX CAR CRPIX longitude wrap with a CD matrix (car4).
+//
+// car4 is a coded `GLON-CAR`/`GLAT-CAR` header carrying a CD matrix and no
+// CDELT. C `SpecTrans` converts CD→PC/CDELT (CDELT = row-vector length,
+// fitschan.c:31331) *before* the MSX-CAR block (fitschan.c:32009), so the MSX
+// block sees an effective CDELT and rewrites CRPIX via `palDrange` to bring
+// the image's native longitude back into the CAR domain [-180,180]. Without
+// that CRPIX wrap the reference longitude is ~351.79°, which the CAR reverse
+// projection rejects (out of primary range) → BAD. The transform-oracle
+// harness reads this fixture bare (CarLin default 0 → spherical CAR), so the
+// golden below is the spherical-CAR decode.
+// ===========================================================================
+
+#[test]
+#[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
+fn car4_cd_matrix_wraps_crpix_for_car() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/car4.head",
+    ))
+    .expect("car4.head fixture should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("car4.head should produce a FrameSet");
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+
+    // Forward: pixel → celestial (radians). Verbatim from headers.oracle
+    // car4 forward section.
+    let fwd: &[([f64; 2], [f64; 2])] = &[
+        ([1.0, 1.0], [-0.14326231996941075, -0.013799562362167875]),
+        (
+            [951.0, 1851.0],
+            [-0.17089670034534191, 0.040014757317276994],
+        ),
+    ];
+    for (pix, want) in fwd {
+        let out = mapping
+            .transform(&PointSet::from_rows([*pix]), true)
+            .unwrap();
+        for (k, want_k) in want.iter().enumerate() {
+            let got = out.point(0)[k];
+            assert!(
+                (got - want_k).abs() < 1e-12,
+                "car4 fwd {pix:?} axis {k}: expected {want_k}, got {got}"
+            );
+        }
+    }
+
+    // Inverse: celestial → pixel. Verbatim from headers.oracle car4 inverse
+    // section.
+    let inv: &[([f64; 2], [f64; 2])] = &[
+        (
+            [-0.14326231996941075, -0.013799562362167875],
+            [0.99999999999925548, 1.0000000000000284],
+        ),
+        (
+            [-0.17089670034534191, 0.040014757317276994],
+            [950.99999999999966, 1851.0],
+        ),
+    ];
+    for (world, want) in inv {
+        let out = mapping
+            .transform(&PointSet::from_rows([*world]), false)
+            .unwrap();
+        for (k, want_k) in want.iter().enumerate() {
+            let got = out.point(0)[k];
+            assert!(
+                (got - want_k).abs() < 1e-6,
+                "car4 inv {world:?} axis {k}: expected {want_k}, got {got}"
+            );
+        }
+    }
+}

@@ -1129,7 +1129,15 @@ fn translate_msx_car(cards: &mut CardList) {
     if !projection_suffix(ctype_lon.trim()).is_some_and(|p| p.eq_ignore_ascii_case("CAR")) {
         return;
     }
-    let Some(cdelti) = cards.get_float(&format!("CDELT{axlon}")) else {
+    // C `SpecTrans` converts a CD matrix to PC + CDELT (CDELT = row-vector
+    // length, fitschan.c:31331) before this block, so its longitude scale
+    // comes from CDELT even for a CDi_j-only header. The Rust store keeps the
+    // CD matrix directly, so derive the effective longitude CDELT the same way
+    // when the CDELT keyword is absent.
+    let Some(cdelti) = cards
+        .get_float(&format!("CDELT{axlon}"))
+        .or_else(|| cd_row_cdelt(cards, axlon))
+    else {
         return;
     };
     let Some(crpix_old) = cards.get_float(&format!("CRPIX{axlon}")) else {
@@ -1150,6 +1158,28 @@ fn translate_msx_car(cards: &mut CardList) {
         .and_then(|c| c.comment.clone())
         .unwrap_or_default();
     cards.set_float(&format!("CRPIX{axlon}"), crpix_new, &comment);
+}
+
+/// Effective CDELT for a matrix row derived from CD keywords, matching C's
+/// CD→PC/CDELT conversion (fitschan.c:31317-31331): the length of the row
+/// vector, signed by the diagonal element. Returns `None` when the header
+/// carries no `CD{row}_{i}` keywords, so the caller falls through as it would
+/// for a header with neither CDELT nor CD.
+fn cd_row_cdelt(cards: &CardList, row: usize) -> Option<f64> {
+    let naxis = cards.get_int("NAXIS").unwrap_or(0).max(0) as usize;
+    let mut rowsum2 = 0.0;
+    let mut diag = 1.0;
+    let mut found = false;
+    for i in 1..=naxis {
+        if let Some(v) = cards.get_float(&format!("CD{row}_{i}")) {
+            found = true;
+            rowsum2 += v * v;
+            if i == row {
+                diag = if v >= 0.0 { 1.0 } else { -1.0 };
+            }
+        }
+    }
+    found.then(|| rowsum2.sqrt() * diag)
 }
 
 /// Translation #20 helper: RESTFREQ → RESTFRQ with MHz/GHz unit
