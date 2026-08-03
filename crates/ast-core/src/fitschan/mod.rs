@@ -681,7 +681,10 @@ impl Channel for FitsChan {
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
                 }
-                let obj = wcs_read::decode_wcs_with_alts(&primary, &alts)?;
+                let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(&primary, &alts, false)?;
+                for w in warnings {
+                    self.cards.push_astwarn(&w);
+                }
                 self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
@@ -698,7 +701,10 @@ impl Channel for FitsChan {
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
                 }
-                let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
+                let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true)?;
+                for w in warnings {
+                    self.cards.push_astwarn(&w);
+                }
                 self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
@@ -709,21 +715,30 @@ impl Channel for FitsChan {
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
                 }
-                let obj = wcs_read::decode_wcs_with_alts_def_b1950(&primary, &alts, true)?;
+                let (obj, warnings) = wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true)?;
+                for w in warnings {
+                    self.cards.push_astwarn(&w);
+                }
                 self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
                 let trans = spec_trans::spec_trans(&self.cards, enc);
                 let store = enc_aips::read_from_cards(&trans)?;
-                let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
+                let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true)?;
+                for w in warnings {
+                    self.cards.push_astwarn(&w);
+                }
                 self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass);
                 let store = enc_class::read_from_cards(&trans)?;
-                let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
+                let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true)?;
+                for w in warnings {
+                    self.cards.push_astwarn(&w);
+                }
                 self.finish_read_consumption(&trans);
                 Ok(Some(obj))
             }
@@ -733,7 +748,10 @@ impl Channel for FitsChan {
                 // reader records consumed names directly on `self.cards`
                 // (no SpecTrans copy), so promote them in place.
                 let store = enc_dss::read_from_cards(&self.cards)?;
-                let obj = wcs_read::decode_wcs_with_def_b1950(&store, true)?;
+                let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true)?;
+                for w in warnings {
+                    self.cards.push_astwarn(&w);
+                }
                 for name in self.cards.take_consumed_names() {
                     self.cards.mark_card(&name);
                 }

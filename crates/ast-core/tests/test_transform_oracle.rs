@@ -1315,27 +1315,6 @@ fn describe_outcome(o: &Outcome) -> String {
 /// different shape/attribute than C), never serialisation or simplifier
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
 const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
-    // A2 generic celestial recognition + System=Unknown:
-    (
-        "unknown-cel.head",
-        true,
-        "A2: generic xLON/xLAT recognition missing",
-    ),
-    (
-        "unknown-cel.head",
-        false,
-        "A2: generic xLON/xLAT recognition missing",
-    ),
-    (
-        "unknown-cel2.head",
-        true,
-        "A2: generic xLON/xLAT recognition missing",
-    ),
-    (
-        "unknown-cel2.head",
-        false,
-        "A2: generic xLON/xLAT recognition missing",
-    ),
     // A3 CAR-linear no-projection-code branch:
     (
         "class-noproj.head",

@@ -91,6 +91,10 @@ pub(crate) struct CelestialResult {
     /// 35948). Used to stamp the SkyFrame's SkyRef on read. `None` when either
     /// CRVAL is absent.
     pub ref_pos: Option<(f64, f64)>,
+    /// Warning messages to emit as ASTWARN cards (mirrors C `Warn`, e.g. the
+    /// `badcel` condition for an unrecognised celestial system prefix,
+    /// fitschan.c:39358).
+    pub warnings: Vec<String>,
 }
 
 /// If celestial axes are present in the FitsStore, build the IWC-to-sky
@@ -168,14 +172,17 @@ pub(crate) fn build_celestial_with_def_b1950(
         }
     }
 
+    // Classify the longitude CTYPE prefix.
+    let lon_ctype_prefix = store.ctype[lon_axis]
+        .as_deref()
+        .map(|c| c.trim().to_ascii_uppercase());
+    let lon_cel_kind = lon_ctype_prefix.as_deref().and_then(classify_ctype_prefix);
+
     // Detect whether the CTYPE prefix indicates an offset sky frame
     // (CTYPE = OFLN/OFLT). C `WcsSkyFrame` (fitschan.c:39277) tags
     // the resulting SkyFrame with Domain = SKY_OFFSETS so TidyOffsets
     // can identify it.
-    let ctype_is_offset = store.ctype[lon_axis]
-        .as_deref()
-        .map(|c| classify_ctype_prefix(c) == Some(CelKind::OffsetSky))
-        .unwrap_or(false);
+    let ctype_is_offset = lon_cel_kind == Some(CelKind::OffsetSky);
 
     // Step 4: Determine the coordinate system from RADESYS.
     //
@@ -213,15 +220,53 @@ pub(crate) fn build_celestial_with_def_b1950(
         let _ = crate::frames::Frame::perm_axes(&mut sky_frame, &[2, 1]);
     }
 
-    // For an offset (`OF`) sky frame, set the axis Symbols to
-    // OFLN / OFLT. Mirrors C `WcsSkyFrame` (fitschan.c:39268-39275)
-    // which builds the two-letter `sym` from the system code plus
-    // "LN" / "LT". These Symbols become the CTYPE values when the
-    // writer's `OtherAxes` re-emits the (non-celestial, because
-    // Domain != "SKY") offset axes.
-    if ctype_is_offset {
-        let _ = sky_frame.set_axis_symbol(1, "OFLN");
-        let _ = sky_frame.set_axis_symbol(2, "OFLT");
+    // For an offset (`OF`) or otherwise unknown celestial prefix, set
+    // the axis Symbols from the system code. Mirrors C `WcsSkyFrame`
+    // (fitschan.c:39325-39342): for a 1-char system prefix `x`, symbols
+    // are `xLON`/`xLAT`; for a 2-char prefix `xy`, symbols are
+    // `xyLN`/`xyLT`. The `OF` case uses the same 2-char path and is
+    // handled identically here (Domain=SKY_OFFSETS is set below).
+    if matches!(
+        lon_cel_kind,
+        Some(CelKind::Unknown) | Some(CelKind::OffsetSky)
+    ) {
+        // Extract the raw system prefix from the CTYPE (before the `-`
+        // at position 4). The CTYPE is already upper-cased in
+        // lon_ctype_prefix.
+        let ctype_raw = lon_ctype_prefix.as_deref().unwrap_or("XLON");
+        let bytes = ctype_raw.as_bytes();
+        // 1-char prefix: bytes[1..4] == b"LON", so bytes[0] is the char.
+        // 2-char prefix: bytes[2..4] == b"LN", so bytes[0..2] is the code.
+        let (lon_sym, lat_sym) = if bytes.len() >= 4 && &bytes[1..4] == b"LON" {
+            // 1-char system prefix (fitschan.c:39328-39334).
+            let c = bytes[0] as char;
+            (format!("{c}LON"), format!("{c}LAT"))
+        } else {
+            // 2-char system prefix (fitschan.c:39336-39342).
+            let c0 = bytes[0] as char;
+            let c1 = bytes[1] as char;
+            (format!("{c0}{c1}LN"), format!("{c0}{c1}LT"))
+        };
+        // Axis numbering is 1-based (SkyFrame lon=1, lat=2 after any perm).
+        let (lon_api, lat_api) = if lat_axis < lon_axis { (2, 1) } else { (1, 2) };
+        let _ = sky_frame.set_axis_symbol(lon_api, &lon_sym);
+        let _ = sky_frame.set_axis_symbol(lat_api, &lat_sym);
+    }
+
+    // For a genuinely unknown celestial system (not offset sky), emit the
+    // `badcel` warning. Mirrors C `WcsSkyFrame` (fitschan.c:39351-39358):
+    // the warning is guarded by `report` (false for `OF`) and by the
+    // `Warnings` attribute including `badcel` (in the default Warnings value).
+    let mut warnings: Vec<String> = Vec::new();
+    if lon_cel_kind == Some(CelKind::Unknown) {
+        let lontype = store.ctype[lon_axis].as_deref().unwrap_or("?");
+        let lattype = store.ctype[lat_axis].as_deref().unwrap_or("?");
+        warnings.push(format!(
+            "This FITS header contains references to an unknown \
+             spherical co-ordinate system specified in the values \
+             {lontype} and {lattype}. It may not be possible to convert to \
+             other standard co-ordinate systems."
+        ));
     }
 
     // Store the projection description (mirrors C `WcsSkyFrame`,
@@ -418,6 +463,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         lon_axis,
         lat_axis,
         ref_pos,
+        warnings,
     })
 }
 
@@ -441,6 +487,9 @@ fn determine_sky_system(store: &FitsStore) -> SkySystem {
         Some(CelKind::Helioecliptic) => return SkySystem::Helioecliptic,
         Some(CelKind::Supergalactic) => return SkySystem::Supergalactic,
         Some(CelKind::AzEl) => return SkySystem::Azel,
+        // Unrecognised celestial prefix: C WcsSkyFrame (fitschan.c:39325)
+        // uses System=Unknown without consulting RADESYS or EQUINOX.
+        Some(CelKind::Unknown) => return SkySystem::Unknown,
         // Offset sky and equatorial both fall through to the RADESYS
         // / EQUINOX rules — the offset SkyFrame inherits its
         // underlying system from the same lookup C does in
@@ -486,17 +535,25 @@ enum CelKind {
     /// FK5/ICRS via the equatorial fallback) and is tagged with
     /// Domain = SKY_OFFSETS.
     OffsetSky,
+    /// Unrecognised single- or two-character celestial-system prefix.
+    /// Mirrors C `WcsSkyFrame` (fitschan.c:39325): any `sys` value that
+    /// is not "EQU", "AZL", "G", "E", "S", "H", or "OF" results in
+    /// `System=Unknown`.
+    Unknown,
 }
 
 /// Classify a CTYPE prefix into the C library's celestial-system code.
-/// Mirrors fitschan.c:35648-35716. Recognised prefixes (4-char
+///
+/// Mirrors fitschan.c:35648-35734. Recognised prefixes (first four characters,
 /// before any `-` projection suffix):
-///  - `RA--`, `AZ--`, `EL--` (special 2-char codes)
+///  - `RA--`, `AZ--`, `EL--` (special 2-char system codes)
 ///  - `xLON` / `xLAT` (1-letter system + LON/LAT) — `x` ∈ {`G`, `E`,
-///    `S`, `H`} for galactic / ecliptic / supergalactic /
-///    helioecliptic.
-///  - `xyLN` / `xyLT` (2-letter system + LN/LT) — used for offset
-///    sky frames etc.
+///    `S`, `H`} for Galactic / Ecliptic / Supergalactic / Helioecliptic;
+///    any other `x` maps to `CelKind::Unknown`.
+///  - `xyLN` / `xyLT` (2-letter system + LN/LT) — `OF` maps to
+///    `CelKind::OffsetSky`; any other `xy` maps to `CelKind::Unknown`.
+///
+/// Returns `None` only when the CTYPE does not look celestial at all.
 fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
     let ctype = ctype.trim();
     if ctype.starts_with("RA--") || ctype == "RA" || ctype.starts_with("DEC-") || ctype == "DEC" {
@@ -505,30 +562,32 @@ fn classify_ctype_prefix(ctype: &str) -> Option<CelKind> {
     if ctype.starts_with("AZ--") || ctype == "AZ" || ctype.starts_with("EL--") || ctype == "EL" {
         return Some(CelKind::AzEl);
     }
-    // 1-letter prefix: xLON / xLAT.
+    // 1-letter prefix: xLON / xLAT (fitschan.c:35718-35726).
+    // The `is_longitude_ctype`/`is_latitude_ctype` guards already confirmed
+    // len > 4 and b[4] == '-', so slicing bytes[1..4] is safe here.
     if ctype.len() >= 4 {
         let bytes = ctype.as_bytes();
-        if (&bytes[1..4] == b"LON" || &bytes[1..4] == b"LAT")
-            && let Some(c) = ctype.chars().next()
-        {
-            match c {
-                'G' => return Some(CelKind::Galactic),
-                'E' => return Some(CelKind::Ecliptic),
-                'S' => return Some(CelKind::Supergalactic),
-                'H' => return Some(CelKind::Helioecliptic),
-                _ => {}
-            }
+        if &bytes[1..4] == b"LON" || &bytes[1..4] == b"LAT" {
+            let c = ctype.chars().next().unwrap();
+            return Some(match c {
+                'G' => CelKind::Galactic,
+                'E' => CelKind::Ecliptic,
+                'S' => CelKind::Supergalactic,
+                'H' => CelKind::Helioecliptic,
+                // Any other 1-char prefix is an unrecognised system
+                // (fitschan.c:39325 else-if branch → System=Unknown).
+                _ => CelKind::Unknown,
+            });
         }
-    }
-    // 2-letter prefix: xyLN / xyLT. The only one we recognise here
-    // is `OF` (offset sky), used with codes `OFLN` / `OFLT`. C
-    // labels these as `sys = "OF"` (fitschan.c:39277) and tags the
-    // resulting Frame with Domain = SKY_OFFSETS so TidyOffsets can
-    // identify it later.
-    if ctype.len() >= 4 {
-        let bytes = ctype.as_bytes();
-        if (&bytes[2..4] == b"LN" || &bytes[2..4] == b"LT") && &bytes[0..2] == b"OF" {
-            return Some(CelKind::OffsetSky);
+        // 2-letter prefix: xyLN / xyLT (fitschan.c:35728-35734).
+        if &bytes[2..4] == b"LN" || &bytes[2..4] == b"LT" {
+            return Some(if &bytes[0..2] == b"OF" {
+                // Offset sky-frame (fitschan.c:39277).
+                CelKind::OffsetSky
+            } else {
+                // Unrecognised 2-char prefix (fitschan.c:39325).
+                CelKind::Unknown
+            });
         }
     }
     None

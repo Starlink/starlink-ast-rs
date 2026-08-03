@@ -130,8 +130,14 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("timj_native", "IM5: matrix inverse"),
     ("tnx-cheb_native", "BEGAST: object shape"),
     ("tnx_native", "BEGAST: object shape"),
-    ("unknown-cel2_native", "BEGAST: object shape"),
-    ("unknown-cel_native", "BEGAST: object shape"),
+    (
+        "unknown-cel2_native",
+        "ASTWARN: card insertion position not yet reproduced",
+    ),
+    (
+        "unknown-cel_native",
+        "ASTWARN: card insertion position not yet reproduced",
+    ),
     ("unknown-spec_native", "DOMAIN: domain"),
     ("vopt-f2w_native", "REFDEC: spectral ref"),
     ("wave-f2w_native", "ISSIMP: mapping shape divergence"),

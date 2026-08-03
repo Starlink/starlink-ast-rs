@@ -7,7 +7,7 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::{Encoding, FitsChan};
-use ast_core::frames::{Frame, FrameRef, SkyFrame, SkyRefIs};
+use ast_core::frames::{Frame, FrameRef, SkyFrame, SkyRefIs, SkySystem};
 
 // ===========================================================================
 // Helpers
@@ -501,4 +501,138 @@ fn gls_lonpole_default_matches_c() {
             "gls fwd (180.5,90.5) lat: expected 0.087266462599716377, got {lat}"
         );
     }
+}
+
+// ===========================================================================
+// A2 generic celestial CTYPE recognition: xLON/xLAT (1-char) and xyLN/xyLT (2-char)
+// ===========================================================================
+
+/// Verify that an unknown 1-char celestial system (XLON-TAN / XLAT-TAN)
+/// produces a SkyFrame with System=Unknown and a transform matching the
+/// C oracle.
+///
+/// Golden values from `tests/fixtures/oracle/headers.oracle`, section
+/// `[unknown-cel.head  nin=2 nout=2 dir=forward]`, rows 1 and 4.
+#[test]
+#[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
+fn unknown_cel_builds_unknown_skyframe() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/unknown-cel.head"
+    ))
+    .expect("unknown-cel.head fixture should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("unknown-cel.head should produce an object");
+    let AnyObject::FrameSet(ref fs) = obj else {
+        panic!("expected FrameSet, got {:?}", obj);
+    };
+
+    // The current (world) frame must be a SkyFrame with System=Unknown.
+    let sky = fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .expect("current frame should be a SkyFrame for unknown-cel.head");
+    assert_eq!(
+        sky.system(),
+        SkySystem::Unknown,
+        "unknown-cel SkyFrame system should be Unknown"
+    );
+
+    // Forward transform: pixel (1,1) → C oracle row 1, pixel (50.5,50.5) → row 4.
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+
+    let pts = PointSet::from_rows([[1.0_f64, 1.0_f64]]);
+    let out = mapping.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - (-3.1412533210012499_f64)).abs() < 1e-9,
+        "fwd (1,1) lon: expected -3.1412533210012499, got {}",
+        out.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - 0.78515813264463685_f64).abs() < 1e-9,
+        "fwd (1,1) lat: expected 0.78515813264463685, got {}",
+        out.point(0)[1]
+    );
+
+    let pts = PointSet::from_rows([[50.5_f64, 50.5_f64]]);
+    let out = mapping.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - std::f64::consts::PI).abs() < 1e-9,
+        "fwd (50.5,50.5) lon: expected PI (3.1415926535897931), got {}",
+        out.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - 0.78539816339744839_f64).abs() < 1e-9,
+        "fwd (50.5,50.5) lat: expected 0.78539816339744839, got {}",
+        out.point(0)[1]
+    );
+}
+
+/// Verify that an unknown 2-char celestial system (XYLN-TAN / XYLT-TAN)
+/// produces a SkyFrame with System=Unknown and a transform matching the
+/// C oracle.
+///
+/// Golden values from `tests/fixtures/oracle/headers.oracle`, section
+/// `[unknown-cel2.head  nin=2 nout=2 dir=forward]`, rows 1 and 4.
+#[test]
+#[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
+fn unknown_cel2_builds_unknown_skyframe() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/unknown-cel2.head"
+    ))
+    .expect("unknown-cel2.head fixture should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("unknown-cel2.head should produce an object");
+    let AnyObject::FrameSet(ref fs) = obj else {
+        panic!("expected FrameSet, got {:?}", obj);
+    };
+
+    // The current (world) frame must be a SkyFrame with System=Unknown.
+    let sky = fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .expect("current frame should be a SkyFrame for unknown-cel2.head");
+    assert_eq!(
+        sky.system(),
+        SkySystem::Unknown,
+        "unknown-cel2 SkyFrame system should be Unknown"
+    );
+
+    // Forward transform: pixel (1,1) → C oracle row 1, pixel (50.5,50.5) → row 4.
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+
+    let pts = PointSet::from_rows([[1.0_f64, 1.0_f64]]);
+    let out = mapping.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - (-3.1412533210012499_f64)).abs() < 1e-9,
+        "fwd (1,1) lon: expected -3.1412533210012499, got {}",
+        out.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - 0.78515813264463685_f64).abs() < 1e-9,
+        "fwd (1,1) lat: expected 0.78515813264463685, got {}",
+        out.point(0)[1]
+    );
+
+    let pts = PointSet::from_rows([[50.5_f64, 50.5_f64]]);
+    let out = mapping.transform(&pts, true).unwrap();
+    assert!(
+        (out.point(0)[0] - std::f64::consts::PI).abs() < 1e-9,
+        "fwd (50.5,50.5) lon: expected PI (3.1415926535897931), got {}",
+        out.point(0)[0]
+    );
+    assert!(
+        (out.point(0)[1] - 0.78539816339744839_f64).abs() < 1e-9,
+        "fwd (50.5,50.5) lat: expected 0.78539816339744839, got {}",
+        out.point(0)[1]
+    );
 }

@@ -269,32 +269,29 @@ impl FitsStore {
 
 /// Check if a CTYPE value represents a celestial longitude axis.
 ///
-/// Recognised patterns: starts with "RA--", "GLON", "ELON", "HLON", "SLON".
+/// Mirrors C `GetSkyAxes` (fitschan.c:10715-10725): a celestial axis has a
+/// `-` as its fifth character; a longitude axis is `RA--`, `AZ--`, `xLON`
+/// (chars 1..4 == "LON"), or `xyLN` (chars 2..4 == "LN").
 fn is_longitude_ctype(ctype: &str) -> bool {
     let ct = ctype.trim();
-    ct.starts_with("RA--")
-        || ct.starts_with("RA-") && ct.len() >= 8 && ct.as_bytes().get(3) == Some(&b'-')
-        || ct.starts_with("GLON")
-        || ct.starts_with("ELON")
-        || ct.starts_with("HLON")
-        || ct.starts_with("SLON")
-        || ct.starts_with("AZ--")
-        || ct.starts_with("OFLN")
+    let b = ct.as_bytes();
+    if b.len() <= 4 || b[4] != b'-' {
+        return false;
+    }
+    ct.starts_with("RA--") || ct.starts_with("AZ--") || &ct[1..4] == "LON" || &ct[2..4] == "LN"
 }
 
 /// Check if a CTYPE value represents a celestial latitude axis.
 ///
-/// Recognised patterns: starts with "DEC-", "GLAT", "ELAT", "HLAT", "SLAT".
+/// Mirrors C `GetSkyAxes` (fitschan.c:10727-10731): latitude is `DEC-`,
+/// `EL--`, `xLAT` (chars 1..4 == "LAT"), or `xyLT` (chars 2..4 == "LT").
 fn is_latitude_ctype(ctype: &str) -> bool {
     let ct = ctype.trim();
-    ct.starts_with("DEC-")
-        || ct.starts_with("DEC--")
-        || ct.starts_with("GLAT")
-        || ct.starts_with("ELAT")
-        || ct.starts_with("HLAT")
-        || ct.starts_with("SLAT")
-        || ct.starts_with("EL--")
-        || ct.starts_with("OFLT")
+    let b = ct.as_bytes();
+    if b.len() <= 4 || b[4] != b'-' {
+        return false;
+    }
+    ct.starts_with("DEC-") || ct.starts_with("EL--") || &ct[1..4] == "LAT" || &ct[2..4] == "LT"
 }
 
 /// Check if a CTYPE value represents a spectral axis.
