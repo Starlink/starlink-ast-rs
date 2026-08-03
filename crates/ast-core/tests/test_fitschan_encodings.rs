@@ -355,3 +355,104 @@ fn freq_log_builds_log_mapping() {
         );
     }
 }
+
+// ===========================================================================
+// 5. -GRI/-GRA grism spectral axis: GrismMap-based mapping
+// ===========================================================================
+
+/// Verify that a FITS-WCS WAVE-GRI header builds a GrismMap-based IWC→S
+/// mapping, matching the C oracle (fitschan.c GrismSpecWcs). The inverse
+/// transform takes spectral wavelength back to pixel coordinate; with a
+/// linear ShiftMap the result would be wrong.
+///
+/// Oracle goldens from `crates/ast-core/tests/fixtures/oracle/headers.oracle`
+/// section `[grism.head  nin=1 nout=1 dir=inverse]`.
+#[test]
+#[allow(clippy::excessive_precision)]
+fn grism_builds_grism_mapping() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/grism.head"
+    ))
+    .unwrap();
+    let mut fc = FitsChan::from_header(&text).unwrap();
+    let obj = fc.read().unwrap().expect("grism.head should read");
+    let AnyObject::FrameSet(ref fs) = obj else {
+        panic!("Expected FrameSet, got {:?}", obj);
+    };
+
+    // The FrameSet acts as a Mapping: forward = pixel→spectral, inverse =
+    // spectral→pixel. Run the inverse using the C oracle golden pairs from
+    // headers.oracle section [grism.head nin=1 nout=1 dir=inverse].
+    let s_inputs: &[f64] = &[
+        5.0009999999999998e-07,
+        5.0999999999999999e-07,
+        5.0009999999999998e-07,
+        5.0505000000000004e-07,
+        5.0505000000000004e-07,
+        5.0257500000000001e-07,
+        5.0752500000000007e-07,
+        5.0133749999999995e-07,
+        5.062875e-07,
+        5.0381249999999997e-07,
+        5.0876250000000003e-07,
+        5.0071874999999997e-07,
+        5.0566875000000002e-07,
+        5.0319374999999999e-07,
+        5.0814375000000005e-07,
+        5.0195625000000003e-07,
+        5.0690624999999998e-07,
+        5.0443124999999995e-07,
+        5.0938125000000001e-07,
+        5.0040937500000003e-07,
+        5.0535937499999998e-07,
+        5.0288437499999995e-07,
+        5.07834375e-07,
+        5.0164687499999999e-07,
+    ];
+    // C oracle pixel outputs (exact C output; do not modify).
+    let expected_pixels: &[f64] = &[
+        0.99999999999969269,
+        99.999999999999559,
+        0.99999999999969269,
+        50.499999999999964,
+        50.499999999999964,
+        25.749999999999829,
+        75.250000000000767,
+        13.374999999999087,
+        62.875000000000036,
+        38.124999999999893,
+        87.625000000000171,
+        7.1874999999997264,
+        56.6875,
+        31.937499999999861,
+        81.437500000000128,
+        19.562500000000469,
+        69.062499999999389,
+        44.312499999999261,
+        93.812500000000199,
+        4.0937500000003828,
+        53.593749999999979,
+        28.843749999999172,
+        78.343750000000114,
+        16.468749999999776,
+    ];
+
+    let rtol = 1e-9_f64;
+    let atol = 1e-9_f64;
+
+    let rows: Vec<Vec<f64>> = s_inputs.iter().map(|&s| vec![s]).collect();
+    let pts = PointSet::from_rows(rows);
+    // false = inverse direction (world→pixel).
+    let out = fs.transform(&pts, false).expect("inverse transform");
+
+    for (i, (&expected, &s)) in expected_pixels.iter().zip(s_inputs.iter()).enumerate() {
+        let got = out.point(i)[0];
+        let tol = atol + rtol * expected.abs();
+        assert!(
+            (got - expected).abs() <= tol,
+            "point {i}: S={s} → pixel got={got}, expected={expected}, diff={diff:.3e}",
+            diff = (got - expected).abs(),
+        );
+    }
+}

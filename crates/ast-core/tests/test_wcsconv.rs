@@ -97,7 +97,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("freq-f2w_native", "ASTWARN: warning card"),
     ("freq-wav_native", "SFT1: ShiftMap"),
     ("gappt_native", "SREFIS: SkyRefIs"),
-    ("grism_native", "BEGAST: object shape"),
     ("multi-wcs_native", "EPOCH: alt-plane epoch"),
     ("multi-wcs-spec_native", "DTAI: time attribute"),
     ("ncp_native", "SREF/shape"),

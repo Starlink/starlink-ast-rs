@@ -15,7 +15,12 @@
 use super::fits_store::FitsStore;
 use crate::error::AstResult;
 use crate::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
-use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap, ZoomMap};
+use crate::mappings::{
+    CmpMap, Composition, DynMapping, GrismMap, Mapping, ShiftMap, UnitMap, ZoomMap,
+};
+
+/// Degrees to radians. Mirrors C's `AST__DD2R` (ast_par.h).
+const DD2R: f64 = std::f64::consts::PI / 180.0;
 
 /// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
 /// the other axes. Identity-fast for `naxis == 1`. Mirrors C
@@ -210,9 +215,13 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
             Some(m) => m,
             None => Box::new(ShiftMap::new(vec![crval])),
         }
+    } else if algcode == "-GRI" || algcode == "-GRA" {
+        match grism_spec_wcs(&algcode, store, axis, &frame) {
+            Ok(Some(m)) => m,
+            _ => Box::new(ShiftMap::new(vec![crval])),
+        }
     } else {
-        // -GRI / -GRA (GrismSpecWcs) have no reader yet; fall back to
-        // linear so the FrameSet still loads.
+        // Unrecognised algorithm; fall back to linear so the FrameSet still loads.
         Box::new(ShiftMap::new(vec![crval]))
     };
 
@@ -323,6 +332,110 @@ fn nonlin_spec_wcs(
     // IWC → S = (IWC → X) ∘ (X → S). Mirrors C:23691.
     let iwc_to_s = CmpMap::new(iwc_to_x, x_to_s, Composition::Series)?;
     Ok(Some(Box::new(iwc_to_s)))
+}
+
+/// Build the IWC→S mapping for a FITS-WCS paper III `-GRI` or `-GRA` grism axis.
+///
+/// Mirrors C `GrismSpecWcs` (fitschan.c:14210-14372). `-GRI` disperses in
+/// vacuum wavelength, `-GRA` in air wavelength. The returned mapping is
+/// `w → S`, built from a GrismMap whose parameters come from PVi_0..6.
+///
+/// Returns `Ok(None)` when the SpecFrame cannot be converted to wavelength,
+/// or when the rate of change `dg/dS` is zero or undefined at the reference
+/// point (mirrors C returning NULL when `dg == AST__BAD || dg == 0.0`).
+fn grism_spec_wcs(
+    algcode: &str,
+    store: &FitsStore,
+    axis: usize,
+    specfrm: &SpecFrame,
+) -> AstResult<Option<DynMapping>> {
+    // Determine whether we want vacuum wavelength (-GRI) or air wavelength
+    // (-GRA). Mirrors C:14299.
+    let wave_system = if algcode == "-GRI" {
+        SpecSystem::Wavelen
+    } else {
+        SpecSystem::Airwave
+    };
+
+    // Copy the supplied SpecFrame (to inherit std_of_rest, epoch, etc.),
+    // then set System to wavelength and Unit to metres. Mirrors C:14298-14300.
+    let mut wfrm = specfrm.clone();
+    wfrm.set_system(wave_system);
+    wfrm.set_unit("m");
+
+    // Get the S → wavelength mapping via astConvert. Mirrors C:14301-14304.
+    let Some(fs) = specfrm.convert_to(&wfrm, &[])? else {
+        return Ok(None);
+    };
+    let smap = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+
+    // CRVAL for the spectral axis (in S units), default 0. Mirrors C:14307-14308.
+    let crv = store.crval[axis].unwrap_or(0.0);
+
+    // Convert CRVAL to the wavelength system (vacuum or air) in metres.
+    // Mirrors C:14311.
+    let wcrv = {
+        let out = smap.transform(&crate::coords::PointSet::from_rows([[crv]]), true)?;
+        out.point(0)[0]
+    };
+
+    // Helper: read PVi_m from store (0-based axis, m). Absent → None.
+    // Mirrors C `GetItem(&(store->pv), i, m, ...)` which returns AST__BAD
+    // when absent.
+    let pv =
+        |m: usize| -> Option<f64> { store.pv.get(axis).and_then(|v| v.get(m)).copied().flatten() };
+
+    // Build a GrismMap with parameters from PVi_0..6 and WaveR = wcrv.
+    // Defaults and degrees→radians conversions mirror C:14319-14336.
+    let g = pv(0).unwrap_or(0.0);
+    let m_order = pv(1).map(|v| (v + 0.5) as i32).unwrap_or(0);
+    let alpha = pv(2).map(|v| v * DD2R).unwrap_or(0.0);
+    let nr = pv(3).unwrap_or(1.0);
+    let nrp = pv(4).unwrap_or(0.0);
+    let eps = pv(5).map(|v| v * DD2R).unwrap_or(0.0);
+    let theta = pv(6).map(|v| v * DD2R).unwrap_or(0.0);
+    let gmap = GrismMap::new(nr, nrp, wcrv, alpha, g, m_order, eps, theta);
+
+    // Invert the GrismMap to get wavelength → grism-parameter. Then compose
+    // with smap (S → wavelength) to get map1 = S → grism-parameter.
+    // Mirrors C:14341-14342.
+    let mut gmap_inv = gmap.clone();
+    gmap_inv.invert();
+    let map1 = CmpMap::new(smap, Box::new(gmap_inv) as DynMapping, Composition::Series)?;
+
+    // Convert the reference wavelength to grism-parameter. Mirrors C:14345.
+    // Use a fresh inverted copy of gmap (forward: grism-param → wavelength;
+    // inverted: wavelength → grism-param).
+    let gcrv = {
+        let mut gmap_inv2 = gmap.clone();
+        gmap_inv2.invert();
+        let out = gmap_inv2.transform(&crate::coords::PointSet::from_rows([[wcrv]]), true)?;
+        out.point(0)[0]
+    };
+
+    // Rate of change dg/dS at the reference point. Mirrors C:14349-14350.
+    let dg = match map1.rate(&[crv], 1, 1) {
+        Ok(r) if r != 0.0 && r.is_finite() => r,
+        _ => return Ok(None),
+    };
+
+    // FITS-WCS paper III: dS/dw = 1 at the reference point, so dg/dw = dg/dS.
+    // Build map2 = ZoomMap(dg) ∘ ShiftMap(gcrv): w → grism-parameter.
+    // Mirrors C:14355-14358.
+    let map2a: DynMapping = Box::new(ZoomMap::new(1, dg)?);
+    let map2b: DynMapping = Box::new(ShiftMap::new(vec![gcrv]));
+    let map2 = CmpMap::new(map2a, map2b, Composition::Series)?;
+
+    // Invert map1 to get grism-parameter → S, then compose map2 with it
+    // to get the returned w → S mapping. Mirrors C:14363-14364.
+    let mut map1_inv = map1;
+    map1_inv.invert();
+    let ret = CmpMap::new(
+        Box::new(map2) as DynMapping,
+        Box::new(map1_inv) as DynMapping,
+        Composition::Series,
+    )?;
+    Ok(Some(Box::new(ret)))
 }
 
 /// Build the IWC→S mapping for a FITS-WCS paper III `-LOG` spectral axis.
