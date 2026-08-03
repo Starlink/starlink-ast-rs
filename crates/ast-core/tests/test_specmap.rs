@@ -158,6 +158,64 @@ fn velocity_to_beta() {
     );
 }
 
+/// `astRate` on a single-step wavelength->frequency SpecMap uses the analytic
+/// derivative `d(f)/d(wave) = -c/wave^2`, mirroring the SpecMap `Rate`
+/// override in `reference/starlink-ast/src/specmap.c:2717`. The base-class
+/// finite-difference estimator drifts from this by ~5e-10 relative, so the
+/// override is required for FITS-WCS paper III non-linear spectral
+/// linearisation to match C bit-for-bit.
+#[test]
+fn rate_wvtofr_is_analytic() {
+    let mut spec = SpecMap::new();
+    spec.add(SpecCvtType::WvToFr, &[]);
+
+    let wave = 0.21106199521261618_f64; // metres
+    let rate = spec.rate(&[wave], 1, 1).unwrap();
+    let expected = -C_LIGHT / (wave * wave);
+    assert!(
+        (rate - expected).abs() <= 1e-12 * expected.abs(),
+        "WvToFr rate: got {rate:.17e}, expected analytic {expected:.17e}"
+    );
+}
+
+/// The analytic `-c/at^2` derivative is inversion-symmetric (both freq->wave
+/// and wave->freq are reciprocal relations), so C reads the raw first
+/// conversion type and ignores the invert flag (specmap.c:2713). A
+/// frequency->wavelength SpecMap therefore yields the same analytic form
+/// evaluated at the supplied frequency.
+#[test]
+fn rate_frtowv_is_analytic() {
+    let mut spec = SpecMap::new();
+    spec.add(SpecCvtType::FrToWv, &[]);
+
+    let freq = 1.4204e9_f64; // Hz
+    let rate = spec.rate(&[freq], 1, 1).unwrap();
+    let expected = -C_LIGHT / (freq * freq);
+    assert!(
+        (rate - expected).abs() <= 1e-12 * expected.abs(),
+        "FrToWv rate: got {rate:.17e}, expected analytic {expected:.17e}"
+    );
+}
+
+/// A multi-step SpecMap, or one whose first conversion is not a freq<->wave
+/// pair, falls back to the base-class finite-difference `astRate` (the C
+/// `parent_rate` branch, specmap.c:2718-2720). The result must still be a
+/// finite, sensible gradient.
+#[test]
+fn rate_multistep_falls_back_to_numeric() {
+    let mut spec = SpecMap::new();
+    spec.add(SpecCvtType::FrToWv, &[]);
+    spec.add(SpecCvtType::WvToFr, &[]); // net identity, two steps
+
+    let freq = 1.4204e9_f64;
+    let rate = spec.rate(&[freq], 1, 1).unwrap();
+    // Net mapping is the identity, so d(out)/d(in) = 1.
+    assert!(
+        (rate - 1.0).abs() <= 1e-6,
+        "multi-step rate: got {rate}, expected ~1.0 via numeric fallback"
+    );
+}
+
 /// Redshift to relativistic velocity and back.
 #[test]
 fn roundtrip_redshift_velocity() {

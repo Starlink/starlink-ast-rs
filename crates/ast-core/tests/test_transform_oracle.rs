@@ -1326,17 +1326,6 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
         false,
         "C1x: RA ~13 deg error not caused by DUT1",
     ),
-    // C5 astRate drift:
-    (
-        "freq-wav.head",
-        false,
-        "C5: astRate finite-diff drift into ShiftMap scale",
-    ),
-    (
-        "wave-f2w.head",
-        false,
-        "C5: astRate finite-diff drift into ShiftMap scale",
-    ),
     // C6 MatrixMap inverse-undefined:
     (
         "crota-3d.head",

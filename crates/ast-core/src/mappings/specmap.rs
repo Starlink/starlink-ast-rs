@@ -1362,6 +1362,30 @@ impl Mapping for SpecMap {
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
+        // SpecMap overrides the base finite-difference `astRate` with an
+        // analytic derivative for a single frequency<->wavelength conversion,
+        // mirroring `Rate` in `reference/starlink-ast/src/specmap.c:2640`.
+        //
+        // A SpecMap with no conversions is the identity, so its rate is 1.0
+        // (specmap.c:2710). For a single WVTOFR/FRTOWV step the analytic
+        // expression `d/dx (c/x) = -c/x^2` holds in both directions, because
+        // frequency<->wavelength is the reciprocal relation `y = c/x` either
+        // way. C reads the *raw* first conversion type (`cvttype[0]`) and
+        // ignores the invert flag for exactly this reason (specmap.c:2713).
+        // Any other shape (more than one step, or a first step that is not a
+        // freq<->wave pair) defers to the parent finite-difference estimator
+        // (specmap.c:2718-2720).
+        if self.conversions.is_empty() {
+            return Ok(1.0);
+        }
+        let cvt = self.conversions[0].cvt_type;
+        if self.conversions.len() == 1 && matches!(cvt, SpecCvtType::WvToFr | SpecCvtType::FrToWv) {
+            let x = at[ax2 - 1];
+            if is_bad(x) {
+                return Ok(BAD_VALUE);
+            }
+            return Ok(-C_LIGHT / (x * x));
+        }
         numeric_rate(self, at, ax1, ax2)
     }
 
