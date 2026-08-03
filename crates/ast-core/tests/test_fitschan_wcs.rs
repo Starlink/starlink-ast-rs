@@ -386,6 +386,46 @@ fn serpens_dut1_is_seconds() {
     );
 }
 
+/// serpens.head has swapped celestial axes: CTYPE1='DEC--TAN' (latitude on
+/// FITS axis 1), CTYPE2='RA---TAN' (longitude on FITS axis 2). The pixel→sky
+/// forward transform must route the axes into the native→celestial rotation
+/// as C `WcsNative` does (fitschan.c:38073), so the projection math always
+/// sees (lon, lat) in the correct order while the FITS axis order is
+/// preserved on the outputs. Golden values are the repo libast oracle's
+/// result for pixel (150, 120).
+#[test]
+fn serpens_swapped_axis_transform() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/serpens.head",
+    ))
+    .expect("serpens.head should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("serpens.head should produce a FrameSet");
+    let mapping = obj.as_mapping().expect("FrameSet should be a Mapping");
+
+    // Forward pixel → sky. Axis 1 is DEC, axis 2 is RA (radians).
+    let pts = PointSet::from_rows([[150.0, 120.0]]);
+    let out = mapping.transform(&pts, true).unwrap();
+    let got_axis1 = out.point(0)[0];
+    let got_axis2 = out.point(0)[1];
+
+    // Repo libast oracle: (0.018049750, -1.440691695) rad on (axis1, axis2).
+    let want_axis1 = 0.018_049_750;
+    let want_axis2 = -1.440_691_695;
+    assert!(
+        (got_axis1 - want_axis1).abs() < 1e-6,
+        "serpens fwd axis1 (DEC): expected {want_axis1}, got {got_axis1}"
+    );
+    assert!(
+        (got_axis2 - want_axis2).abs() < 1e-6,
+        "serpens fwd axis2 (RA): expected {want_axis2}, got {got_axis2}"
+    );
+}
+
 // ===========================================================================
 // SREF alt-plane version letter (C2)
 // ===========================================================================

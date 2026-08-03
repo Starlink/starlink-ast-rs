@@ -425,38 +425,18 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
-    let (inner, ref_pos) =
+    let (mapping, ref_pos) =
         build_iwc_to_sky_mapping(store, wcsmap, store.naxis, lon_axis, lat_axis)?;
 
-    // For `naxis == 2` with `lat_axis < lon_axis` the rotation
-    // embedding short-circuits to the bare 2-axis rotation, which
-    // expects `(lon, lat)` at slots `(0, 1)` — but the WcsMap+zoom
-    // pipeline has emitted `(lat, lon)` at those slots because
-    // `lat_axis = 0` and `lon_axis = 1`. Sandwich `inner` with a 2D
-    // swap so cel.mapping accepts `(lat_proj, lon_proj)` and emits
-    // `(cel_lat, cel_lon)`, matching FITS axis order. Mirrors C's
-    // PermMap sandwich at fitschan.c:5247-5296.
-    //
-    // For `naxis >= 3` the rotation embedding's PermMap sandwich
-    // already routes lon/lat to the rotation's slots `(0, 1)` and
-    // back to FITS positions, so no extra outer swap is needed.
-    let mapping: DynMapping = if store.naxis == 2 && lat_axis < lon_axis {
-        let pre = PermMap::new(&[2, 1], &[2, 1], &[]).ok()?;
-        let post = PermMap::new(&[2, 1], &[2, 1], &[]).ok()?;
-        let m = CmpMap::new(Box::new(pre), inner, Composition::Series).ok()?;
-        Box::new(CmpMap::new(Box::new(m), Box::new(post), Composition::Series).ok()?)
-    } else {
-        inner
-    };
-
-    // For `naxis >= 3` `mapping` is a full-rank N-axis mapping that
-    // emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS slot
-    // `lat_axis`, with identity on every other axis. For `naxis == 2`
-    // with `lat_axis < lon_axis` the wrapping above produces
-    // (cel_lat, cel_lon) at slots (0, 1), matching the SkyFrame's
-    // permuted external layout. Either way `build_general_iwc_to_world`
-    // composes the per-class mappings in series — no axis-permute
-    // step is needed at the composer.
+    // `mapping` emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS
+    // slot `lat_axis`, with identity on every other axis: the PermMap
+    // sandwich inside `embed_celestial_in_naxis` routes the celestial pair
+    // into the rotation's slots (0, 1) and restores them to their FITS
+    // positions, matching C `WcsNative` (fitschan.c:38391-38414). For the
+    // swapped-axis case (`lat_axis < lon_axis`) that leaves (cel_lat,
+    // cel_lon) at slots (0, 1), matching the SkyFrame's permuted external
+    // layout. `build_general_iwc_to_world` composes the per-class mappings
+    // in series — no axis-permute step is needed at the composer.
     Some(CelestialResult {
         mapping,
         frame: sky_frame,
@@ -759,14 +739,18 @@ fn build_iwc_to_sky_mapping(
     Some((Box::new(full), ref_pos))
 }
 
-/// Embed a 2-axis mapping that operates on (lon, lat) into an
-/// `naxis`-rank mapping that passes the other axes through unchanged.
-/// Identity-fast for `naxis == 2` (returns `inner` directly).
+/// Embed the 2-axis native→celestial rotation into an `naxis`-rank mapping,
+/// routing the celestial pair to the rotation's slots `(0, 1)` and restoring
+/// them to their FITS positions on output. The non-celestial axes pass
+/// through unchanged.
 ///
-/// Internally, the embedding is implemented as
-/// `PermMap_to_2d ; (inner || UnitMap_(N-2)) ; PermMap_back` —
-/// mirrors C `fitschan.c:38304-38347` (the nax_rem > 0 branch and
-/// the surrounding PermMap sandwich at 38325-38346).
+/// Mirrors C `WcsNative` (fitschan.c:38378-38414):
+///  - When there are non-celestial axes (`nax_rem = naxis - 2 > 0`), a
+///    `UnitMap(nax_rem)` runs in parallel with the rotation (stages 4/5).
+///  - When the celestial axes are not already at slots `(0, 1)`
+///    (`axlon != 0 || axlat != 1`), a PermMap routes them there and its
+///    inverse restores them (stages 1/3). Otherwise the core is returned
+///    unchanged.
 fn embed_celestial_in_naxis(
     inner: DynMapping,
     naxis: usize,
@@ -776,8 +760,19 @@ fn embed_celestial_in_naxis(
     debug_assert_eq!(inner.nin(), 2);
     debug_assert_eq!(inner.nout(), 2);
 
-    if naxis == 2 {
-        return Some(inner);
+    // Stages 4/5: place a UnitMap in parallel for the non-celestial axes,
+    // but only when there are any (fitschan.c:38380 `if( nax_rem > 0 )`).
+    let core: DynMapping = if naxis > 2 {
+        let unit_rest = UnitMap::new(naxis - 2);
+        Box::new(CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel).ok()?)
+    } else {
+        inner
+    };
+
+    // Stages 1/3: only rearrange when the celestial axes are not already at
+    // slots (0, 1) (fitschan.c:38391 `if( axlon != 0 || axlat != 1 )`).
+    if lon_axis_0based == 0 && lat_axis_0based == 1 {
+        return Some(core);
     }
 
     let others: Vec<usize> = (0..naxis)
@@ -814,14 +809,7 @@ fn embed_celestial_in_naxis(
     }
     let perm_back = PermMap::new(&inperm_back, &outperm_back, &[]).ok()?;
 
-    let unit_rest = UnitMap::new(naxis - 2);
-    let parallel = CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel).ok()?;
-    let s1 = CmpMap::new(
-        Box::new(perm_to_2d),
-        Box::new(parallel),
-        Composition::Series,
-    )
-    .ok()?;
+    let s1 = CmpMap::new(Box::new(perm_to_2d), core, Composition::Series).ok()?;
     let s2 = CmpMap::new(Box::new(s1), Box::new(perm_back), Composition::Series).ok()?;
     Some(Box::new(s2))
 }

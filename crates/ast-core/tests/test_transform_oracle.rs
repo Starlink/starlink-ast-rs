@@ -1314,19 +1314,7 @@ fn describe_outcome(o: &Outcome) -> String {
 /// forward)`. These are FITS-read structural gaps (the decoded object has a
 /// different shape/attribute than C), never serialisation or simplifier
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
-const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
-    // C1x serpens large RA error (~13 deg) after DUT1 fix — separate root cause:
-    (
-        "serpens.head",
-        true,
-        "C1x: RA ~13 deg error not caused by DUT1",
-    ),
-    (
-        "serpens.head",
-        false,
-        "C1x: RA ~13 deg error not caused by DUT1",
-    ),
-];
+const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 
 /// Number of `.head` oracle section-directions currently in the corpus. The
 /// gate asserts it examined at least this many, so a rename or deletion of a
