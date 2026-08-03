@@ -83,7 +83,10 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("cd-cross_native", "BEGAST: object shape"),
     ("class-arc_native", "SFT1: ShiftMap"),
     ("class-hel_native", "IDENT: ident"),
-    ("class-noproj_native", "BEGAST: object shape"),
+    (
+        "class-noproj_native",
+        "PROJ_A: SFL description string (Sanson-Flamsteed vs sinusoidal)",
+    ),
     ("class-sin_native", "SFT1: ShiftMap"),
     ("class-spec_native", "IDENT: ident"),
     ("cname_native", "LABEL: axis label"),

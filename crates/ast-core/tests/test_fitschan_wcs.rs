@@ -638,6 +638,95 @@ fn unknown_cel2_builds_unknown_skyframe() {
 }
 
 // ===========================================================================
+// A3 FITS-CLASS: bare celestial CTYPE defaults to -GLS (→ -SFL)
+// ===========================================================================
+
+/// FITS-CLASS headers carry bare celestial CTYPEs with no projection code
+/// (`RA--`, `DEC-`). C `ClassTrans` (fitschan.c:7097-7118) appends `-GLS` to
+/// any celestial CTYPE whose projection-suffix bytes are all blank, then
+/// SpecTrans translation #11 rewrites `-GLS` to `-SFL`. The decoded projection
+/// is therefore sinusoidal (SFL), not linear (CAR).
+///
+/// Golden values from `tests/fixtures/oracle/headers.oracle:1044-1094`.
+#[test]
+#[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
+fn class_noproj_builds_sfl() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/class-noproj.head",
+    ))
+    .expect("class-noproj.head fixture should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("class-noproj.head should produce a FrameSet");
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+
+    // Forward. Oracle rows (headers.oracle:1045-1068): pix2=pix3=1 are fixed;
+    // celestial output is constant SFL (0.71082041703064114, 1.0984753171674055).
+    // Spectral axis (freq) varies with pix1.
+    let fwd_cases: &[([f64; 3], [f64; 3])] = &[
+        (
+            [1.0, 1.0, 1.0],
+            [110181373831.25, 0.71082041703064114, 1.0984753171674055],
+        ),
+        (
+            [512.5, 1.0, 1.0],
+            [110201354300.0, 0.71082041703064114, 1.0984753171674055],
+        ),
+        (
+            [1024.0, 1.0, 1.0],
+            [110221334768.75, 0.71082041703064114, 1.0984753171674055],
+        ),
+        (
+            [256.75, 1.0, 1.0],
+            [110191364065.625, 0.71082041703064114, 1.0984753171674055],
+        ),
+    ];
+    for (pix, want) in fwd_cases {
+        let out = mapping
+            .transform(&PointSet::from_rows([*pix]), true)
+            .unwrap();
+        for k in 0..3 {
+            let got = out.point(0)[k];
+            // Spectral axis (~1e11 Hz) tolerates 1e-3 absolute; celestial uses 1e-9.
+            let tol: f64 = if k == 0 { 1e-3 } else { 1e-9 };
+            assert!(
+                (got - want[k]).abs() <= tol.max(want[k].abs() * 1e-12),
+                "class-noproj fwd {pix:?} axis {k}: expected {}, got {got}",
+                want[k]
+            );
+        }
+    }
+
+    // Inverse. Oracle rows (headers.oracle:1071-1094): world → pixel.
+    let inv_cases: &[([f64; 3], [f64; 3])] = &[
+        (
+            [110201354300.0, 0.71082041703064114, 1.0984753171674055],
+            [512.5, 1.0000000000000495, 1.0000000000005198],
+        ),
+        (
+            [110181373831.25, 0.71082041703064114, 1.0984753171674055],
+            [1.0000000000000231, 1.0000000000000495, 1.0000000000005198],
+        ),
+    ];
+    for (world, want) in inv_cases {
+        let out = mapping
+            .transform(&PointSet::from_rows([*world]), false)
+            .unwrap();
+        for k in 0..3 {
+            let got = out.point(0)[k];
+            assert!(
+                (got - want[k]).abs() < 1e-6,
+                "class-noproj inv {world:?} axis {k}: expected {}, got {got}",
+                want[k]
+            );
+        }
+    }
+}
+
+// ===========================================================================
 // C3 PolyTan auto-detect: TAN + PVi_m → TPN (distorted TAN)
 // ===========================================================================
 

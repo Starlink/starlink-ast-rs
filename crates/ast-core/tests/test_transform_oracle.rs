@@ -1315,17 +1315,6 @@ fn describe_outcome(o: &Outcome) -> String {
 /// different shape/attribute than C), never serialisation or simplifier
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
 const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
-    // A3 CAR-linear no-projection-code branch:
-    (
-        "class-noproj.head",
-        true,
-        "A3: CAR-linear branch for no-proj-code CTYPE missing",
-    ),
-    (
-        "class-noproj.head",
-        false,
-        "A3: CAR-linear branch for no-proj-code CTYPE missing",
-    ),
     // B1 CarLin attribute:
     ("car4.head", true, "B1: CarLin attribute unimplemented"),
     ("car4.head", false, "B1: CarLin attribute unimplemented"),

@@ -1379,17 +1379,21 @@ fn translate_class(cards: &mut CardList) {
     // frequencies.
     cards.set_string("SPECSYS", "SOURCE", "Standard of rest");
 
-    // Default empty projection suffix to -GLS (later remapped to
-    // -SFL by translation #11). The CTYPE may have trailing blanks
-    // already that look like an "empty" suffix.
+    // Mirrors C ClassTrans (fitschan.c:7097-7118): a bare celestial CTYPE
+    // (coordinate name only, no "-PRJ" projection suffix) defaults to "-GLS",
+    // which SpecTrans translation #11 later remaps to "-SFL". A CTYPE that
+    // already carries a projection suffix has more than 4 characters; a bare
+    // name such as "RA--" or "DEC-" is at most 4 characters. The coordinate
+    // name is padded to 4 chars before "-GLS" is appended, matching C's
+    // strncpy(newtype, cval, 4) layout.
     for ax in [axlon, axlat] {
         let key = format!("CTYPE{ax}");
         if let Some(ctype) = cards.get_string(&key)
-            && ctype.len() > 4
-            && ctype[4..].chars().all(|c| c == ' ' || c == '\0')
+            && !ctype.is_empty()
+            && ctype.len() <= 4
         {
-            let mut new_ctype = ctype[..4].to_string();
-            new_ctype.push_str("-GLS");
+            let coord = format!("{:<4}", ctype);
+            let new_ctype = format!("{coord}-GLS");
             let comment = cards
                 .find(&key)
                 .and_then(|c| c.comment.clone())
