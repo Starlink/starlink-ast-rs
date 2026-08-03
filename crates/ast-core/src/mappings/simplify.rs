@@ -3084,9 +3084,40 @@ pub(crate) fn recombine_distributed_branches(
 /// `orig_inv` is honoured only for series reconstruction. The parallel path
 /// keeps the existing `invert_into_structure` behaviour, which already emits
 /// the canonical form C uses for parallel CmpMaps.
+///
+/// Used both as C `Simplify`'s closing fold and as a plain tree builder by
+/// individual merge routines. Only the former clears component `IsSimple` tags;
+/// see [`reconstruct_simplified`].
 pub(crate) fn reconstruct(
     list: Vec<(DynMapping, bool, bool)>,
     series: bool,
+) -> AstResult<DynMapping> {
+    reconstruct_inner(list, series, false)
+}
+
+/// [`reconstruct`] as C `Simplify` performs it: the fold that closes
+/// `astSimplify` on a CmpMap.
+///
+/// C's fold calls `astSetInvert( map_list[ i ], invert_list[ i ] )` on each
+/// component-list element before wrapping it (cmpmap.c:3677 and 3700), which
+/// clears that element's `IsSimple` unconditionally — even when the stored value
+/// already is the one wanted (mapping.c:23256). Nothing else in the library sets
+/// `Invert` unconditionally: `CombineMaps` sets it only to reach a value the
+/// component does not already have, and reaches `Invert = 0` with
+/// `astClearInvert`, which leaves `IsSimple` alone (mapping.c:23253). So a tag
+/// raised during merging survives on components nested *below* a
+/// component-list element, but never on an element itself.
+pub(crate) fn reconstruct_simplified(
+    list: Vec<(DynMapping, bool, bool)>,
+    series: bool,
+) -> AstResult<DynMapping> {
+    reconstruct_inner(list, series, true)
+}
+
+fn reconstruct_inner(
+    list: Vec<(DynMapping, bool, bool)>,
+    series: bool,
+    clear_component_tags: bool,
 ) -> AstResult<DynMapping> {
     let kind = if series {
         Composition::Series
@@ -3143,6 +3174,18 @@ pub(crate) fn reconstruct(
             apply_effective(&mut m);
         }
         let mut cmp = CmpMap::new(m, acc, kind)?;
+
+        // `first` is always a component-list element; `second` is one only on
+        // the first wrap, while it is still the seed — after that it is the
+        // accumulating result, which C never sets `Invert` on. The orientation
+        // restores below skip CmpMap children on the parallel path, but C's
+        // clear applies to every element, so do it here.
+        if clear_component_tags {
+            cmp.clear_first_simple_tag();
+            if seed_orig.is_some() {
+                cmp.clear_second_simple_tag();
+            }
+        }
 
         // Restore each child to the orientation it should serialise in (its
         // original tree orientation), leaving inv_a/inv_b carrying the
@@ -3234,7 +3277,7 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
         return Ok(cloned);
     }
 
-    reconstruct(list, series)
+    reconstruct_simplified(list, series)
 }
 
 // ------------------------------------------------------------------ //

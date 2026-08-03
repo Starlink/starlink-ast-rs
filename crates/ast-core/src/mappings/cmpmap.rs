@@ -364,6 +364,29 @@ impl CmpMap {
         }
     }
 
+    /// Clear the first child's `IsSimple` dump tag, as C's reconstruct fold does
+    /// for every component-list element it encapsulates.
+    ///
+    /// C's "Construct the output Mapping" fold calls
+    /// `astSetInvert( map_list[ i ], invert_list[ i ] )` on each list element
+    /// before wrapping it (cmpmap.c:3677 and 3700), and that macro clears the
+    /// element's `IsSimple` unconditionally — even when the stored value already
+    /// is the one wanted (mapping.c:23256). `astClearInvert` does not
+    /// (mapping.c:23253), so the clear is tied to the fold's *set*, not to the
+    /// later restore. The accumulating `result` is never set this way, so a tag
+    /// raised by a merge survives on components nested below a list element but
+    /// not on a list element itself.
+    pub(crate) fn clear_first_simple_tag(&mut self) {
+        clear_child_simple_tag(&mut self.first);
+    }
+
+    /// Clear the second child's `IsSimple` dump tag. See
+    /// [`Self::clear_first_simple_tag`]; applicable only when the second child
+    /// is a component-list element rather than the accumulating result.
+    pub(crate) fn clear_second_simple_tag(&mut self) {
+        clear_child_simple_tag(&mut self.second);
+    }
+
     /// Propagate the `IsSimple` flag that C's "Series CmpMaps in parallel"
     /// merge (cmpmap.c:1577-1620) stamps on the trailing components of two
     /// parallel series CmpMaps.
