@@ -629,12 +629,114 @@ fn translate_qv_to_pv(cards: &mut CardList) {
     }
 }
 
+/// Resolve the auto (`PolyTan = -1`) decision from the PV cards, mirroring
+/// C `GetUsedPolyTan` (fitschan.c:13890-14073).
+///
+/// Returns `true` when the distorted-TAN (TPN) convention applies: a PVi_m
+/// present on the latitude axis, or a PVi_m with `m > 4` on the longitude
+/// axis.  Returns `false` when no qualifying PV cards are found, or when all
+/// distortion coefficients (`m >= 1`) on the deciding axis are zero — in that
+/// case the zero-valued PV cards are deleted to prevent later mis-use
+/// (fitschan.c:14037-14049, 14058-14073).
+///
+/// The `PolyTan` AST attribute (positive/zero explicit values) is not exposed
+/// in this port, so only the auto (`ret < 0` → `ret = 0`, then promote)
+/// branch exists.  The function mirrors C's sequential both-axes guard: if the
+/// latitude axis passes, the longitude axis is checked next; if either is
+/// all-zero, the function demotes to standard TAN and deletes that axis's PV
+/// cards.
+fn get_used_poly_tan(cards: &mut CardList, axlon: usize, axlat: usize, s: char) -> bool {
+    // Build the PVi_m keyword name for axis ax, order m, version s.
+    let pv_name = |ax: usize, m: usize| -> String {
+        if s == ' ' {
+            format!("PV{ax}_{m}")
+        } else {
+            format!("PV{ax}_{m}{s}")
+        }
+    };
+
+    // Mirror C astKeyFields: find the highest m present on each axis.
+    // astKeyFields scans for a template "PVi_%d" and returns lbnd/ubnd
+    // of the integer field. We replicate this by scanning m = 0..=99.
+    let find_ubnd = |ax: usize| -> Option<usize> {
+        (0usize..=99)
+            .filter(|&m| cards.find(&pv_name(ax, m)).is_some())
+            .max()
+    };
+
+    // C: auto path — ret starts at 0.
+    let mut ret: i32 = 0;
+
+    let ubnd_lat = find_ubnd(axlat);
+    let ubnd_lon = find_ubnd(axlon);
+    let nfound1 = ubnd_lat.is_some();
+    let nfound2 = ubnd_lon.is_some();
+
+    // C: if any lat PV present, or lon PV present with m > 4, use TPN.
+    if nfound1 || (nfound2 && ubnd_lon.is_some_and(|u| u > 4)) {
+        ret = 1;
+    }
+
+    // C: if ret > 0, guard that at least one m>=1 coefficient is non-zero.
+    if ret > 0 {
+        // Latitude axis first (fitschan.c:14004-14049).
+        let mut ok = false;
+        let ulat = ubnd_lat.unwrap_or(0);
+        let mut m = 1usize;
+        while m <= ulat && !ok {
+            let pval =
+                cards
+                    .get_float(&pv_name(axlat, m))
+                    .unwrap_or(if m == 1 { 1.0 } else { 0.0 });
+            if pval != 0.0 {
+                ok = true;
+            }
+            m += 1;
+        }
+
+        if !ok {
+            // Mirror C: Warn "badpv"; no warning machinery in this port yet.
+            ret = 0;
+            // Delete all PVlat_m (m = 1..=ubnd_lat) to prevent mis-use.
+            for m in 1..=ulat {
+                cards.delete(&pv_name(axlat, m));
+            }
+        } else {
+            // Latitude OK; now check longitude (fitschan.c:14051-14073).
+            ok = false;
+            let ulon = ubnd_lon.unwrap_or(0);
+            let mut m = 1usize;
+            while m <= ulon && !ok {
+                let pval =
+                    cards
+                        .get_float(&pv_name(axlon, m))
+                        .unwrap_or(if m == 1 { 1.0 } else { 0.0 });
+                if pval != 0.0 {
+                    ok = true;
+                }
+                m += 1;
+            }
+            if !ok {
+                // Mirror C: Warn "badpv"; no warning machinery in this port yet.
+                ret = 0;
+                // Delete all PVlon_m (m = 1..=ubnd_lon) to prevent mis-use.
+                for m in 1..=ulon {
+                    cards.delete(&pv_name(axlon, m));
+                }
+            }
+        }
+    }
+
+    ret == 1
+}
+
 /// Translation #16 helper: TPV → TPN, and TAN+PolyTan → TPN.
 ///
-/// Mirrors fitschan.c:31425-31447. The PolyTan attribute is an AST
-/// FitsChan setting; in the absence of an explicit AST attribute
-/// model we mirror the default (PolyTan = false), so only the
-/// `-TPV` rename branch fires.
+/// Mirrors fitschan.c:31425-31447. For the `-TPV` rename, the CTYPE suffix
+/// is changed directly. For the TAN case, the C default `PolyTan = -1`
+/// (auto-detect) is resolved by `get_used_poly_tan`: if PVi_m distortion
+/// cards are present on the latitude axis (or on the longitude axis with
+/// `m > 4`), the projection is promoted from TAN to TPN.
 ///
 /// Per-version letter; no encoding gate.
 fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList) {
@@ -652,12 +754,21 @@ fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList) {
         let Some(ctype) = cards.get_string(&key("CTYPE", axlon)) else {
             continue;
         };
-        if projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TPV")) {
+        let should_rename =
+            if projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TPV")) {
+                // Explicit TPV distortion suffix: always promote to TPN.
+                true
+            } else {
+                // Standard TAN: promote to TPN only when PVi_m distortion
+                // cards are present and non-zero (PolyTan = -1 auto-detect,
+                // fitschan.c:13890).
+                projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TAN"))
+                    && get_used_poly_tan(cards, axlon, axlat, s)
+            };
+        if should_rename {
             replace_projection_suffix(cards, &key("CTYPE", axlon), "TPN");
             replace_projection_suffix(cards, &key("CTYPE", axlat), "TPN");
         }
-        // PolyTan branch deliberately omitted — defaults to false in
-        // C (`GetUsedPolyTan` returns 0 when the attribute is unset).
     }
 }
 /// Translation #17 helper: IRAF -ZPX projections.

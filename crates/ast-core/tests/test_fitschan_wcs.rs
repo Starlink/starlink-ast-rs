@@ -636,3 +636,97 @@ fn unknown_cel2_builds_unknown_skyframe() {
         out.point(0)[1]
     );
 }
+
+// ===========================================================================
+// C3 PolyTan auto-detect: TAN + PVi_m → TPN (distorted TAN)
+// ===========================================================================
+
+/// TAN header carrying PVi_m distortion coefficients must auto-promote to TPN.
+///
+/// The C `GetUsedPolyTan` function defaults `PolyTan=-1` (auto): if any PVi_m
+/// are present on the latitude axis the header uses distorted TAN (TPN). Here
+/// the header has `PV2_1=1.0, PV2_2=0.0001` (latitude axis 2) so C promotes
+/// to TPN. Transforms computed with plain TAN (ignoring PVs) will not match
+/// the oracle, making this a discriminating test.
+///
+/// Golden values from `tests/fixtures/oracle/headers.oracle`, section
+/// `[tan-polytan.head  nin=2 nout=2 dir=forward]`, rows 1, 2, 5, 6.
+#[test]
+#[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
+fn tan_polytan_promotes_to_tpn() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/tan-polytan.head",
+    ))
+    .expect("tan-polytan.head fixture should be readable");
+    let obj = FitsChan::from_header(&text)
+        .unwrap()
+        .read()
+        .unwrap()
+        .expect("tan-polytan.head should produce a FrameSet");
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+
+    // Row 1: pixel (1, 1) → oracle forward.
+    {
+        let pts = PointSet::from_rows([[1.0_f64, 1.0_f64]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let lon = out.point(0)[0];
+        let lat = out.point(0)[1];
+        assert!(
+            (lon - (-3.1379125794819318_f64)).abs() < 1e-9,
+            "tan-polytan fwd (1,1) lon: expected -3.1379125794819318, got {lon}"
+        );
+        assert!(
+            (lat - 0.78278577731432675_f64).abs() < 1e-9,
+            "tan-polytan fwd (1,1) lat: expected 0.78278577731432675, got {lat}"
+        );
+    }
+
+    // Row 2: pixel (300, 300) → oracle forward.
+    {
+        let pts = PointSet::from_rows([[300.0_f64, 300.0_f64]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let lon = out.point(0)[0];
+        let lat = out.point(0)[1];
+        assert!(
+            (lon - 3.1378933267530766_f64).abs() < 1e-9,
+            "tan-polytan fwd (300,300) lon: expected 3.1378933267530766, got {lon}"
+        );
+        assert!(
+            (lat - 0.78800374256667105_f64).abs() < 1e-9,
+            "tan-polytan fwd (300,300) lat: expected 0.78800374256667105, got {lat}"
+        );
+    }
+
+    // Row 5: pixel (150.5, 100.666...) → oracle forward.
+    {
+        let pts = PointSet::from_rows([[150.5_f64, 100.66666666666666_f64]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let lon = out.point(0)[0];
+        let lat = out.point(0)[1];
+        assert!(
+            (lon - 3.1415925306946453_f64).abs() < 1e-9,
+            "tan-polytan fwd (150.5,100.667) lon: expected 3.1415925306946453, got {lon}"
+        );
+        assert!(
+            (lat - 0.78452840787285039_f64).abs() < 1e-9,
+            "tan-polytan fwd (150.5,100.667) lat: expected 0.78452840787285039, got {lat}"
+        );
+    }
+
+    // Row 6: pixel (75.75, 200.333...) → oracle forward.
+    {
+        let pts = PointSet::from_rows([[75.75_f64, 200.33333333333331_f64]]);
+        let out = mapping.transform(&pts, true).unwrap();
+        let lon = out.point(0)[0];
+        let lat = out.point(0)[1];
+        assert!(
+            (lon - (-3.139745895662664_f64)).abs() < 1e-9,
+            "tan-polytan fwd (75.75,200.333) lon: expected -3.139745895662664, got {lon}"
+        );
+        assert!(
+            (lat - 0.78626719675739976_f64).abs() < 1e-9,
+            "tan-polytan fwd (75.75,200.333) lat: expected 0.78626719675739976, got {lat}"
+        );
+    }
+}

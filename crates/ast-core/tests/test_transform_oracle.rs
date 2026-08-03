@@ -1373,17 +1373,6 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
         false,
         "C4: offset-sky SkyRefIs remapping unported",
     ),
-    // C3 PolyTan auto-detect:
-    (
-        "tan-polytan.head",
-        true,
-        "C3: PolyTan TAN->TPN auto-detect unported",
-    ),
-    (
-        "tan-polytan.head",
-        false,
-        "C3: PolyTan TAN->TPN auto-detect unported",
-    ),
     // C4 SkyRefIs through FrameSet:
     (
         "skyref.head",

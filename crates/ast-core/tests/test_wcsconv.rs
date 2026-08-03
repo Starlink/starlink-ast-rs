@@ -120,7 +120,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("skyref_native", "M0: matrix / offset"),
     ("specflux_native", "flux frame"),
     ("ssysobs_native", "SFT1: ShiftMap"),
-    ("tan-polytan_native", "PROJ: projection desc"),
     ("tan-zeropv_native", "ENDAST: object shape"),
     ("tidy-offsets_native", "NFRAME: frameset shape"),
     ("tidy-pole_native", "NAXES: frame shape"),
