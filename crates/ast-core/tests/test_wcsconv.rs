@@ -90,7 +90,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("class-sin_native", "SFT1: ShiftMap"),
     ("class-spec_native", "IDENT: ident"),
     ("cname_native", "LABEL: axis label"),
-    ("crota-3d_native", "INV: matrix inverse"),
     ("cube-reorder_native", "SFT1: ShiftMap"),
     ("date-frac_native", "date handling"),
     ("date-short_native", "date handling"),

@@ -1326,12 +1326,6 @@ const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[
         false,
         "C1x: RA ~13 deg error not caused by DUT1",
     ),
-    // C6 MatrixMap inverse-undefined:
-    (
-        "crota-3d.head",
-        true,
-        "C6: near-singular MatrixMap keeps defined inverse",
-    ),
 ];
 
 /// Number of `.head` oracle section-directions currently in the corpus. The

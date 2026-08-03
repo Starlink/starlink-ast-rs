@@ -896,3 +896,79 @@ fn car4_cd_matrix_wraps_crpix_for_car() {
         }
     }
 }
+
+/// crota-3d.head is a 3-axis header (WAVE, RA---TAN, DEC--TAN) with a `CROTA3`
+/// rotation coupling the two celestial axes. It is a plain-AIPS-style header,
+/// so the read path runs SpecTrans (which turns `CROTA3` into PC keywords on
+/// the celestial axes 2/3 and deletes the CROTA cards) before the AIPS
+/// keyword reader consumes the store. Two things must hold, both taken from
+/// the repo's own libast:
+///
+///  1. Forward (pixel → world) must reproduce the C golden. If the reader
+///     dropped the CROTA3 rotation (the pre-fix bug), the RA is off by
+///     ~7.6e-5 rad.
+///  2. The inverse (world → pixel) must be **undefined**, matching C's
+///     `astGetTranInverse == 0`. The CD-fused pixel→IWC MatrixMap that C
+///     builds for this header is near-singular (a degenerate wavelength axis
+///     coupled with the rotation), so C marks the inverse undefined and
+///     serialises it with `INV_A=0` ("Inverse transformation not defined").
+#[test]
+#[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
+fn crota_3d_forward_matches_oracle_inverse_undefined() {
+    let obj = read_wcsconv_fixture("crota-3d.head");
+    let mapping = obj.as_mapping().expect("FrameSet is a Mapping");
+    assert_eq!(mapping.nin(), 3);
+    assert_eq!(mapping.nout(), 3);
+
+    // Forward: pixel → world (wavelength/m, RA/rad, Dec/rad). Verbatim from
+    // headers.oracle crota-3d forward section.
+    let fwd: &[([f64; 3], [f64; 3])] = &[
+        (
+            [1.0, 1.0, 1.0],
+            [
+                4.9509999999999993e-07,
+                -3.1411770285409264,
+                0.78522841319200321,
+            ],
+        ),
+        (
+            [100.0, 100.0, 100.0],
+            [
+                5.0499999999999993e-07,
+                3.1411768874480201,
+                0.78556782720147966,
+            ],
+        ),
+        (
+            [50.5, 34.0, 20.800000000000001],
+            [
+                5.0004999999999998e-07,
+                -3.1414306817462232,
+                0.78527976807175792,
+            ],
+        ),
+    ];
+    for (pix, want) in fwd {
+        let out = mapping
+            .transform(&PointSet::from_rows([*pix]), true)
+            .unwrap();
+        for (k, want_k) in want.iter().enumerate() {
+            let got = out.point(0)[k];
+            assert!(
+                (got - want_k).abs() < 1e-12,
+                "crota-3d fwd {pix:?} axis {k}: expected {want_k}, got {got}"
+            );
+        }
+    }
+
+    // The pixel→IWC MatrixMap is near-singular, so C leaves the inverse
+    // undefined. The Rust reader must agree.
+    assert!(
+        mapping.has_forward(),
+        "crota-3d forward transform should be defined"
+    );
+    assert!(
+        !mapping.has_inverse(),
+        "crota-3d inverse transform must be undefined (C astGetTranInverse == 0)"
+    );
+}

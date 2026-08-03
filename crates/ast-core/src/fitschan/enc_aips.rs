@@ -107,23 +107,20 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
             let key = format!("CD{axis_num}_{col_num}");
             store.cd[i][j] = cards.get_float_marked(&key);
         }
-    }
 
-    // CROTA → PC rotation matrix.
-    // Prefer CROTA2, fall back to CROTA1.
-    let crota = cards
-        .get_float_marked("CROTA2")
-        .or_else(|| cards.get_float_marked("CROTA1"));
-    if let Some(angle_deg) = crota {
-        let angle_rad = angle_deg.to_radians();
-        let cos_a = angle_rad.cos();
-        let sin_a = angle_rad.sin();
-        // Only set if we have at least 2 axes
-        if naxis >= 2 {
-            store.pc[0][0] = Some(cos_a);
-            store.pc[0][1] = Some(-sin_a);
-            store.pc[1][0] = Some(sin_a);
-            store.pc[1][1] = Some(cos_a);
+        // PCi_j matrix. CROTA rotation is normalised into PC keywords by
+        // SpecTrans (`translate_crota`, mirroring C's WcsFcRead which runs
+        // SpecTrans on every encoding before WcsToStore), so — like C — the
+        // reader never interprets CROTA itself; it consumes the PC cards
+        // SpecTrans produced on the celestial axes. Try the 3-digit format
+        // (`PC003002`) first, then underscore (`PC3_2`).
+        for j in 0..naxis {
+            let col_num = j + 1;
+            let key_3digit = format!("PC{axis_num:03}{col_num:03}");
+            let key_underscore = format!("PC{axis_num}_{col_num}");
+            store.pc[i][j] = cards
+                .get_float_marked(&key_3digit)
+                .or_else(|| cards.get_float_marked(&key_underscore));
         }
     }
 
@@ -813,14 +810,23 @@ CTYPE2  = 'DEC--TAN'           / Axis type
 CROTA2  =               30.0   / Rotation angle
 EPOCH   =             2000.0   / Epoch
 END";
+        // The AIPS read path runs SpecTrans first (mirroring C WcsFcRead),
+        // which converts CROTA2 into PC keywords on the celestial axes and
+        // deletes the CROTA cards. `read_from_cards` then consumes the PC
+        // cards — it never interprets CROTA itself.
         let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
+        let trans =
+            crate::fitschan::spec_trans::spec_trans(&cards, crate::fitschan::Encoding::FitsAips);
+        let store = read_from_cards(&trans).unwrap();
 
         assert_eq!(store.naxis, 2);
 
-        // CROTA2=30 degrees -> PC matrix with cos(30)/sin(30)
+        // CROTA2=30 degrees, with CDELT1=-CDELT2 (|lambda|=1), yields a PC
+        // matrix carrying cos(30)/sin(30). SpecTrans stores off-diagonals as
+        // PC2_1 = sin/lambda and PC1_2 = -sin*lambda with lambda=CDELT2/CDELT1.
         let cos30 = 30.0_f64.to_radians().cos();
         let sin30 = 30.0_f64.to_radians().sin();
+        let lambda = 0.0002778 / -0.0002778; // CDELT2 / CDELT1 = -1
 
         let pc00 = store.pc[0][0].unwrap();
         let pc01 = store.pc[0][1].unwrap();
@@ -828,8 +834,14 @@ END";
         let pc11 = store.pc[1][1].unwrap();
 
         assert!((pc00 - cos30).abs() < 1e-10, "PC[0][0] = cos(30)");
-        assert!((pc01 - (-sin30)).abs() < 1e-10, "PC[0][1] = -sin(30)");
-        assert!((pc10 - sin30).abs() < 1e-10, "PC[1][0] = sin(30)");
+        assert!(
+            (pc01 - (-sin30 * lambda)).abs() < 1e-10,
+            "PC[0][1] = -sin(30)*lambda"
+        );
+        assert!(
+            (pc10 - sin30 / lambda).abs() < 1e-10,
+            "PC[1][0] = sin(30)/lambda"
+        );
         assert!((pc11 - cos30).abs() < 1e-10, "PC[1][1] = cos(30)");
     }
 
@@ -1216,12 +1228,19 @@ CTYPE2  = 'DEC--TAN'           / Axis type
 CROTA1  =               45.0   / Rotation angle
 EPOCH   =             2000.0   / Epoch
 END";
+        // As with CROTA2, SpecTrans normalises CROTA1 into PC keywords before
+        // the AIPS reader runs. C reads CROTA on the latitude axis first, then
+        // the longitude axis, so CROTA1 (on the longitude axis) is used when
+        // CROTA2 is absent.
         let cards = CardList::from_header(header).unwrap();
-        let store = read_from_cards(&cards).unwrap();
+        let trans =
+            crate::fitschan::spec_trans::spec_trans(&cards, crate::fitschan::Encoding::FitsAips);
+        let store = read_from_cards(&trans).unwrap();
 
         // CROTA1=45 fallback when CROTA2 is absent
         let cos45 = 45.0_f64.to_radians().cos();
         let sin45 = 45.0_f64.to_radians().sin();
+        let lambda = 0.0002778 / -0.0002778; // CDELT2 / CDELT1 = -1
 
         let pc00 = store.pc[0][0].unwrap();
         let pc01 = store.pc[0][1].unwrap();
@@ -1229,8 +1248,8 @@ END";
         let pc11 = store.pc[1][1].unwrap();
 
         assert!((pc00 - cos45).abs() < 1e-10);
-        assert!((pc01 - (-sin45)).abs() < 1e-10);
-        assert!((pc10 - sin45).abs() < 1e-10);
+        assert!((pc01 - (-sin45 * lambda)).abs() < 1e-10);
+        assert!((pc10 - sin45 / lambda).abs() < 1e-10);
         assert!((pc11 - cos45).abs() < 1e-10);
     }
 
