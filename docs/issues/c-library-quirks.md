@@ -19,6 +19,8 @@ rule; the three affected simplify fixtures (`cap_cmpmap_01`,
 `cap_cmpmap_04`, `cap_specmap_02`) are compared by `astequal` only
 (the byte-exact string diff is skipped — see
 `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`).
+The wcsconv case `wave-f2w_native` is excluded for the same reason
+(`crates/ast-core/tests/test_wcsconv.rs` `NATIVE_READ_EXCLUDED`).
 The transforms and tree structure match C exactly; the sole divergence
 is *which interior `CmpMap` node carries the serialised `IsSimp = 1`
 tag*.
@@ -27,9 +29,13 @@ tag*.
 
 - `mapping.h:410` — `IsSimple` is a single bit of `Mapping.flags`
   (`AST__ISSIMPLE_FLAG`).
-- `mapping.c:24731` `astSimplify_` — after a component is genuinely
-  reduced, `astSetIsSimple( result )` (mapping.c:24759) raises the
-  bit. The same routine short-circuits at the top
+- `mapping.c:24731` `astSimplify_` — `astSetIsSimple( result )`
+  (mapping.c:24759) raises the bit on whatever the routine returns,
+  whether or not the object actually reduced; the `if( result )` at
+  mapping.c:24755 is a null check, not a reduction test. The only
+  exception is a Mapping under `astRestrictedSimplify`, where
+  `RestrictedSimplify` is cleared on the result instead. The same
+  routine short-circuits at the top
   (`if( !astGetIsSimple( this ) && !astDoNotSimplify( this ) )`,
   mapping.c:24740): a Mapping whose bit is already set is returned as
   an unchanged clone. So the one bit inseparably means both "dump
@@ -37,6 +43,8 @@ tag*.
 - `mapping.c:23256` — `astMAKE_SET(Mapping,Invert,...,(astClearIsSimple(this),...))`.
   Every `astSetInvert` call **clears** the bit as a side-effect, even
   when the stored Invert value does not actually change.
+  `astMAKE_CLEAR(Mapping,Invert,...)` (mapping.c:23253) does not, so
+  `astClearInvert` is tag-preserving and only `astSetInvert` clears.
 - `cmpmap.c:388` `Equal`, plus `CanSwap` and `MapMerge` — the probing
   routines. Each decomposes a candidate `CmpMap` with `astMapList`,
   which returns **reference-counted pointers to the same live
@@ -61,6 +69,29 @@ backtrace on every `astSetInvert` that clears `IsSimple`: the
 celestial clears trace back to `Equal` (×3), `CanSwap` (×2), and
 `MapMerge` (×4); the spectral node is never aliased into a probe and
 keeps its tag.
+
+`wave-f2w` is the same effect with the branches the other way round.
+Its `parallel { CmpMap(Nin=1), CmpMap(Nin=2) }` node has both children
+tagged by their own `astSimplify`, yet only the `Nin=2` child keeps the
+tag in the dump. Confirmed non-destructively by interposing
+`astSetInvert_`, `astClearInvert_`, `astGetIsSimple_`, `astSimplify_`,
+`astCopy_` and `astTune_` on the built `libast.so.9` with `LD_PRELOAD`
+(the interposer forces `ObjectCaching` to 0 so addresses are not
+recycled and pointer identity is readable across the whole run):
+
+- the `Nin=2` child receives **no** `astSetInvert` call at any point in
+  the run, so its tag survives into the dump;
+- the `Nin=1` child is tagged by `astSimplify`, then cleared by
+  `SETINVERT value=0 wasIsSimple=1` whose backtrace `addr2line`
+  resolves to `Equal` (cmpmap.c) ← `Simplify` ← `astSimplify_` ←
+  `MapMerge` ← `Simplify`. `Equal` (cmpmap.c:387-445) decomposes both
+  candidates with `astMapList` and calls `astSetInvert` on the live
+  shared components to line them up for comparison; it restores the
+  Invert value but not the incidentally cleared `IsSimple` bit.
+
+So which child of an otherwise symmetric parallel node keeps the tag is
+decided by whether an `Equal` comparison happened to alias it, which
+depends on the order the enclosing `MapMerge` probes its neighbours.
 
 **Consequence:** the native serialisation of a simplified CmpMap can
 place `IsSimp = 1` on a different interior node than a
@@ -104,7 +135,19 @@ on changed CmpMap results of a simplify step (the serialisation tag)
 without setting the merge guard. This yields the correct transform,
 the correct tree structure, and a correct `IsSimp` tag on the nodes we
 *can* determine structurally — but not the specific interior-node
-placement that C's aliasing produces for these three fixtures.
+placement that C's aliasing produces for these fixtures.
+
+The one clear C *does* make deterministically is mirrored:
+`Simplify`'s closing fold sets `Invert` on every component-list element
+before wrapping it (cmpmap.c:3677 and 3700) and never on the
+accumulating result, so a tag raised during merging survives on
+components nested *below* a list element and never on an element
+itself. `simplify::reconstruct_simplified` performs that clear via
+`CmpMap::clear_first_simple_tag` / `clear_second_simple_tag`, while the
+plain `simplify::reconstruct` used by the individual merge routines
+leaves tags alone — matching `CombineMaps` (cmpmap.c:596-675), which
+only ever calls `astSetInvert(map,1)` or the tag-preserving
+`astClearInvert`.
 
 **Upstream discussion:** `IsSimple` conflating "already simplified"
 with "was simplified, dump it" — and having `astSetInvert` silently

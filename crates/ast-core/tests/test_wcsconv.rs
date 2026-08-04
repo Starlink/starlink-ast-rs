@@ -141,7 +141,7 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("vopt-f2w_native", "REFDEC: spectral ref"),
     (
         "wave-f2w_native",
-        "ISSIMP: nested-CmpMap simplifier normal form (spectral WinMap scale now byte-exact via astRate)",
+        "ISSIMP: C shared-pointer aliasing clears the tag on one of two symmetric parallel children (docs/issues/c-library-quirks.md)",
     ),
     ("wave-w2f_native", "ASTWARN: warning card"),
     ("zero-cdelt_native", "SFT1: ShiftMap"),
