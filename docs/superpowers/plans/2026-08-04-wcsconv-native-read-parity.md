@@ -6,7 +6,7 @@
 
 **Architecture:** Thirteen independent work units, one per diagnosed root cause, each landing as its own commit that ends by re-measuring and removing the now-passing entries from `NATIVE_READ_EXCLUDED`. Units are ordered cheapest-first across three tiers: writer/harness fixes (U1-U4, U12, U13), narrow reader fixes (U5, U6, U10, U11), then the deeper read-path port work (U7, U8, U9). Two further deliverables are independent of all thirteen: a test-harness rule that licenses the one documented C aliasing difference (U4), and a deferred-fixture walker plus `PLAN.md` section (D3).
 
-The spec named eleven causes. Measurement during planning split two of its groupings: `car6` and `projp-pv` are each their own single-case cause, not members of causes 1 or 7. They become U12 and U13.
+Measurement during planning split two of the spec's original groupings: `car6` and `projp-pv` are each their own single-case cause, not members of causes 1 or 7. They become U12 and U13, and the spec records all thirteen.
 
 **Tech Stack:** Rust 2024 edition, `cargo test` / `cargo fmt` / `cargo clippy`. Reference C source at `reference/starlink-ast/src/fitschan.c` (and friends) is the authority for every behavioral question. The C oracle probe recipe is `docs/issues/c-oracle-probe-recipe.md`.
 
@@ -294,11 +294,14 @@ native cases regenerate byte-identical to what is committed.
 top-level world Frame, plus an ungated `DTAI` read where C gates on `TELESCOP`.
 ```
 
-- [ ] **Step 5: Correct cause 7's count**
+- [ ] **Step 5: Correct the per-unit counts**
 
-Change cause 7's heading to `### Cause 7 — ASTWARN insertion position (7 cases)` and leave its seven-name list as it stands.
-`car6` was never in it; the count line in the "Work units" table says 8 and must become 7.
-In the same table, change U1's count from 4 to 2 and add U12 and U13 rows with 1 case each.
+Cause 7 keeps its eight-name list and its count of 8: `car6` was never among
+them, so splitting `car6` out of cause 1 leaves cause 7 untouched.
+In the "Work units" table, change U1's count from 4 to 2 and add U12 and U13
+rows with 1 case each.
+Change the totals sentence from eleven root causes to thirteen; the total
+stays 45.
 
 - [ ] **Step 6: Commit**
 
@@ -8214,10 +8217,11 @@ The corpus goes from 192 to 193 cases.
 Two outcomes, both acceptable:
 
 - It passes → nothing more to do.
-- It fails → add one `NATIVE_READ_EXCLUDED` entry naming its measured first
-  differing line, and check that line against the eleven causes. `offset-sref`
-  is an offset-sky TAN header, so a `SkyRef`/`SkyRefIs` diff belongs to Task 7
-  (U5) or Task 12 (U8) sub-fix D and should be recorded as such.
+- It fails → measure its first differing line and check that line against the
+  thirteen causes. `offset-sref` is an offset-sky TAN header, so a
+  `SkyRef`/`SkyRefIs` diff belongs to Task 7 (U5) or Task 12 (U8) sub-fix D.
+  Fix it under whichever task owns the cause. An exclusion entry is not an
+  option: the list shrinks monotonically, and Task 15 requires it empty.
 
 Adding an exclusion here does not conflict with the plan's goal: the final
 task's gate is that the list is empty, and this row is inside the plan's
