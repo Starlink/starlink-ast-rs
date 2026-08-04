@@ -266,6 +266,17 @@ fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> 
 
 /// Run a single test case. Returns Ok on pass, Err with description on failure.
 fn run_test_case(case: &TestCase) -> Result<(), String> {
+    run_case(case, false)
+}
+
+/// Run a case with the [`NATIVE_READ_EXCLUDED`] bypass forced on, whatever
+/// the environment says. Used by the stale-entry gate, which must ask "does
+/// this excluded case actually still differ?".
+fn run_with_comparison_forced(case: &TestCase) -> Result<(), String> {
+    run_case(case, true)
+}
+
+fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
     // Load input object plus the FitsChan it was read through.
     let (obj, fc_in) = load_input(case)?;
 
@@ -351,7 +362,8 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     // NATIVE_READ_EXCLUDED). This keeps the comparison visible instead of
     // hidden behind a manifest skip flag. Set WCSCONV_NO_EXCLUDE=1 to compare
     // every native case (to measure progress against the exclusion list).
-    let native_excluded = !std::env::var("WCSCONV_NO_EXCLUDE").is_ok_and(|v| !v.is_empty())
+    let native_excluded = !force_comparison
+        && !std::env::var("WCSCONV_NO_EXCLUDE").is_ok_and(|v| !v.is_empty())
         && is_native
         && NATIVE_READ_EXCLUDED.iter().any(|(n, _)| *n == case.name);
     // Every case is compared. `AstEqual` only relaxes the comparator, and is
@@ -441,6 +453,52 @@ fn run_named_case(name: &str) {
     if let Err(msg) = run_test_case(case) {
         panic!("{}: {}", case.name, msg);
     }
+}
+
+/// Every `NATIVE_READ_EXCLUDED` entry must still fail. An entry that has
+/// started passing is a stale exclusion: the comparison it was suppressing
+/// now succeeds, so the entry hides nothing and must be deleted.
+///
+/// This is the other half of the exclusion list's bookkeeping. The generated
+/// per-case tests catch a case that regresses; this catches one that has been
+/// fixed without the list being updated. Together they mean the list can only
+/// be wrong in a way some test reports.
+#[test]
+fn native_read_excluded_entries_still_fail() {
+    let cases = parse_manifest();
+    let mut stale = Vec::new();
+    let mut unknown = Vec::new();
+
+    for (name, reason) in NATIVE_READ_EXCLUDED {
+        let Some(case) = cases.iter().find(|c| c.name == *name) else {
+            unknown.push(*name);
+            continue;
+        };
+        if !fixtures_dir()
+            .join("inputs")
+            .join(&case.input_file)
+            .exists()
+        {
+            unknown.push(*name);
+            continue;
+        }
+        // Compare unconditionally: `run_test_case` consults the exclusion
+        // list itself, so ask it the question with the list bypassed.
+        if run_with_comparison_forced(case).is_ok() {
+            stale.push(format!("{name}  (recorded reason: {reason})"));
+        }
+    }
+
+    assert!(
+        unknown.is_empty(),
+        "NATIVE_READ_EXCLUDED names cases the manifest does not have, or whose \
+         input fixture is missing:\n{unknown:?}",
+    );
+    assert!(
+        stale.is_empty(),
+        "NATIVE_READ_EXCLUDED entries now pass — delete them:\n{}",
+        stale.join("\n"),
+    );
 }
 
 include!(concat!(env!("OUT_DIR"), "/wcsconv_generated.rs"));
