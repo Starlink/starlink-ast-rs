@@ -380,6 +380,27 @@ fn is_swappable_class(m: &dyn Mapping) -> bool {
     m.as_any().is::<WinMap>() || m.as_any().is::<PermMap>()
 }
 
+/// `CanSwap` on the adjacent pair `(i1, i1 + 1)` of the working list.
+///
+/// C's `CanSwap` (matrixmap.c:416-421) forces the `Invert` attribute of both
+/// candidates to the orientations recorded in `invert_list`, then restores the
+/// original values on exit (matrixmap.c:582-583). `astSetInvert` has no
+/// unchanged-value guard, so all four calls clear `IsSimple` on the live
+/// Mappings — the predicate itself is side-effect-free, but running it is not.
+/// Reproduce that clear here; the tag governs both the `IsSimp` token and
+/// whether a later `simplify` re-dispatches on the component.
+fn can_swap_at(ctx: &mut MergeCtx, i1: usize) -> (bool, bool) {
+    let ret = can_swap(
+        ctx.entry(i1).0.as_ref(),
+        ctx.entry(i1).1,
+        ctx.entry(i1 + 1).0.as_ref(),
+        ctx.entry(i1 + 1).1,
+    );
+    ctx.clear_component_simple_tag(i1);
+    ctx.clear_component_simple_tag(i1 + 1);
+    ret
+}
+
 /// C `matrixmap.c::CanSwap` (331): can the MatrixMap and its neighbour swap,
 /// and would the swap make either intrinsically simpler (`simpler`)? One of
 /// the pair is the MatrixMap. Returns `(can_swap, simpler)`.
@@ -600,22 +621,12 @@ fn try_swap_strategy(
 
     // swaphi/do2 (upper neighbour), swaplo/do1 (lower neighbour).
     let (swaphi, do2) = if where_ + 1 < n {
-        can_swap(
-            ctx.entry(where_).0.as_ref(),
-            ctx.entry(where_).1,
-            ctx.entry(where_ + 1).0.as_ref(),
-            ctx.entry(where_ + 1).1,
-        )
+        can_swap_at(ctx, where_)
     } else {
         (false, false)
     };
     let (swaplo, do1) = if where_ > 0 {
-        can_swap(
-            ctx.entry(where_ - 1).0.as_ref(),
-            ctx.entry(where_ - 1).1,
-            ctx.entry(where_).0.as_ref(),
-            ctx.entry(where_).1,
-        )
+        can_swap_at(ctx, where_ - 1)
     } else {
         (false, false)
     };

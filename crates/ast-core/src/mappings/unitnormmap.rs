@@ -415,11 +415,40 @@ impl Mapping for UnitNormMap {
         None
     }
 
-    /// Try to merge when this UnitNormMap is the *second* mapping (other is first).
-    ///
-    /// This handles the cases:
-    /// - ShiftMap + UnitNormMap(forward)
-    /// - WinMap(unit scale) + UnitNormMap(forward)
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // C `unitnormmap.c::MapMerge` (820-880). A UnitNormMap cannot combine
+        // in parallel with anything.
+        if !series {
+            return None;
+        }
+
+        // C scans both pairs the nominated map takes part in, starting at
+        // `i1 = MAX( where - 1, 0 )`, so a merge is found whether the
+        // UnitNormMap is the second member of the pair (the
+        // `<linear> ; UnitNormMap(forward)` absorptions) or the first (the
+        // `UnitNormMap(inverted) ; <linear>` ones). Neither `default_map_merge`
+        // nor the neighbours' own MapMerge covers the lower pair: WinMap's
+        // routes every case through `merge_linear_pair`, which handles only
+        // linear classes.
+        let i1_start = where_.saturating_sub(1);
+        for i1 in i1_start..ctx.len().saturating_sub(1) {
+            let i2 = i1 + 1;
+            let (m1, inv1, _) = ctx.entry(i1);
+            let (m2, inv2, _) = ctx.entry(i2);
+            if let Some(merged) = make_merged_map(m1.as_ref(), *inv1, m2.as_ref(), *inv2) {
+                ctx.replace_pair_with(i1, merged, false);
+                return Some(i1);
+            }
+        }
+
+        None
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.has_been_simplified
     }
@@ -430,6 +459,51 @@ impl Mapping for UnitNormMap {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+/// Merge an adjacent pair of Mappings, one of which must be a UnitNormMap.
+///
+/// Port of C `unitnormmap.c::MakeMergedMap` (323). The supported series
+/// merges, in C's own order, are:
+///
+/// | first | second | result |
+/// |---|---|---|
+/// | ShiftMap | UnitNormMap(forward) | UnitNormMap(forward) |
+/// | WinMap (unit scale) | UnitNormMap(forward) | UnitNormMap(forward) |
+/// | UnitNormMap(inverted) | ShiftMap | UnitNormMap(inverted) |
+/// | UnitNormMap(inverted) | WinMap (unit scale) | UnitNormMap(inverted) |
+/// | UnitNormMap | opposite-direction UnitNormMap | UnitMap or ShiftMap |
+///
+/// Returns `None` unless both members are one of UnitNormMap / ShiftMap /
+/// WinMap and at least one is a UnitNormMap — C's `GetMappingType` gate.
+fn make_merged_map(
+    m1: &dyn Mapping,
+    inv1: bool,
+    m2: &dyn Mapping,
+    inv2: bool,
+) -> Option<DynMapping> {
+    let unm1 = m1.as_any().downcast_ref::<UnitNormMap>();
+    let unm2 = m2.as_any().downcast_ref::<UnitNormMap>();
+
+    // One of the pair must be a UnitNormMap; the other must be a UnitNormMap,
+    // a ShiftMap or a WinMap (C type 1/2/3, everything else type 0).
+    let is_linear = |m: &dyn Mapping| {
+        m.as_any().is::<ShiftMap>() || m.as_any().is::<WinMap>() || m.as_any().is::<UnitNormMap>()
+    };
+    if !is_linear(m1) || !is_linear(m2) {
+        return None;
+    }
+
+    match (unm1, unm2) {
+        // Two UnitNormMaps in opposite directions — C's final `else` branch,
+        // reached through the nominated map's own pairwise merge.
+        (Some(unm), Some(_)) => unm.try_merge(m2, true, inv1, inv2),
+        // `<linear> ; UnitNormMap(forward)` — C's type1 == 2 / type1 == 3.
+        (None, Some(unm)) => try_merge_into_unitnormmap(m1, inv1, unm, inv2),
+        // `UnitNormMap(inverted) ; <linear>` — C's type2 == 2 / type2 == 3.
+        (Some(unm), None) => unm.try_merge(m2, true, inv1, inv2),
+        (None, None) => None,
     }
 }
 

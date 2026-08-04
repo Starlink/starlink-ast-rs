@@ -137,17 +137,46 @@ the correct tree structure, and a correct `IsSimp` tag on the nodes we
 *can* determine structurally — but not the specific interior-node
 placement that C's aliasing produces for these fixtures.
 
-The one clear C *does* make deterministically is mirrored:
-`Simplify`'s closing fold sets `Invert` on every component-list element
-before wrapping it (cmpmap.c:3677 and 3700) and never on the
-accumulating result, so a tag raised during merging survives on
-components nested *below* a list element and never on an element
-itself. `simplify::reconstruct_simplified` performs that clear via
-`CmpMap::clear_first_simple_tag` / `clear_second_simple_tag`, while the
-plain `simplify::reconstruct` used by the individual merge routines
-leaves tags alone — matching `CombineMaps` (cmpmap.c:596-675), which
-only ever calls `astSetInvert(map,1)` or the tag-preserving
-`astClearInvert`.
+The clears C makes *deterministically* — the ones that happen on every
+run regardless of allocation history, because the aliased component is
+reached unconditionally — are mirrored. Each is an `astSetInvert` on a
+live `astMapList` element inside a routine whose visible contract is
+read-only:
+
+- **The closing fold.** `Simplify` sets `Invert` on every
+  component-list element before wrapping it (cmpmap.c:3677 and 3700)
+  and never on the accumulating result, so a tag raised during merging
+  survives on components nested *below* a list element and never on an
+  element itself. `simplify::reconstruct_simplified` performs that
+  clear via `CmpMap::clear_first_simple_tag` /
+  `clear_second_simple_tag`, while the plain `simplify::reconstruct`
+  used by the individual merge routines leaves tags alone — matching
+  `CombineMaps` (cmpmap.c:596-675), which only ever calls
+  `astSetInvert(map,1)` or the tag-preserving `astClearInvert`.
+- **`CanSwap`.** Both `matrixmap.c::CanSwap` (416-421, restored at
+  582-583) and `winmap.c::CanSwap` (102-106, restored at 201-202)
+  force both candidates' `Invert` to the `invert_list` orientations and
+  restore the value — not the tag — on exit. Mirrored by
+  `can_swap_at` in `mappings/matrix_merge.rs` and
+  `mappings/winmap_merge.rs`, which clear both entries' tags after
+  evaluating the predicate.
+- **The recursion guard's `Equal`.** `Simplify`'s guard loop
+  (cmpmap.c:3480) compares the supplied Mapping against each Mapping
+  already on the simplify stack with `astEqual`; `CmpMap::Equal`
+  decomposes both operands and sets each component's `Invert`
+  (cmpmap.c:386-398). The loop bounds on the stack depth, so the
+  outermost simplify performs no comparison and no clear while every
+  nested one strips the tag from its whole decomposition — whether the
+  comparison matches or not. Mirrored in `simplify::simplify_mapping`,
+  gated on `SIMPLIFY_DEPTH > 0`, via `clear_element_simple_tags` on
+  the guard-match early return and a per-entry clear otherwise.
+- **Write-back through the alias.** `SeparateMappings`
+  (cmpmap.c:3326) leaves each non-duplicate list entry aliasing the
+  real child, so a tag the nominate loop raises on an entry
+  (cmpmap.c:1437) is also on `this`'s child when `Simplify` returns
+  `astClone( this )` (cmpmap.c:3634). `simplify::mirror_simple_tags`
+  and `apply_component_stamps` transplant those tags — sets and clears
+  alike — from the component list onto the preserved tree.
 
 **Upstream discussion:** `IsSimple` conflating "already simplified"
 with "was simplified, dump it" — and having `astSetInvert` silently

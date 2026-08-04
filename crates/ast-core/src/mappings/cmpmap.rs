@@ -150,6 +150,15 @@ impl CmpMap {
         self.is_simple_serial = flag;
     }
 
+    /// Drop both halves of the `IsSimple` tag, mirroring C's single-flag
+    /// `astClearIsSimple`. The dump tag is `has_been_simplified ||
+    /// is_simple_serial`, so both must go for the object to read as untagged
+    /// and to be re-dispatched by a subsequent `simplify`.
+    pub(crate) fn clear_simple_tags(&mut self) {
+        self.is_simple_serial = false;
+        self.has_been_simplified = false;
+    }
+
     /// The first component mapping.
     pub(crate) fn first(&self) -> &dyn Mapping {
         self.first.as_ref()
@@ -364,6 +373,17 @@ impl CmpMap {
         }
     }
 
+    /// Mutable access to the first component, for the `IsSimple` write-back
+    /// that mirrors C's in-place mutation of live `map_list` entries.
+    pub(crate) fn first_mut(&mut self) -> &mut DynMapping {
+        &mut self.first
+    }
+
+    /// Mutable access to the second component. See [`Self::first_mut`].
+    pub(crate) fn second_mut(&mut self) -> &mut DynMapping {
+        &mut self.second
+    }
+
     /// Clear the first child's `IsSimple` dump tag, as C's reconstruct fold does
     /// for every component-list element it encapsulates.
     ///
@@ -385,49 +405,6 @@ impl CmpMap {
     /// is a component-list element rather than the accumulating result.
     pub(crate) fn clear_second_simple_tag(&mut self) {
         clear_child_simple_tag(&mut self.second);
-    }
-
-    /// Propagate the `IsSimple` flag that C's "Series CmpMaps in parallel"
-    /// merge (cmpmap.c:1577-1620) stamps on the trailing components of two
-    /// parallel series CmpMaps.
-    ///
-    /// When C re-fuses `parallel(A1;B1, A2;B2)` it forms
-    /// `new2 = CombineMaps(B1, B2, parallel)` and calls `astSimplify(new2)`,
-    /// which (via `astSimplify_`, mapping.c:24732) tags each nominated
-    /// component — here `B1` and `B2` — with `IsSimple`, *even when the
-    /// re-fusion itself makes no reduction and is discarded*. Because C
-    /// `astClone`s reference the same underlying objects, that tag survives on
-    /// the `B1`/`B2` still held by the original `parallel(A1;B1, A2;B2)`.
-    /// Rust's deep-clone simplification loses the tag, so this method re-applies
-    /// it: for a parallel CmpMap whose two children are binary series CmpMaps,
-    /// it flags each child's trailing (`map2`) component — but only when that
-    /// trailing component is *itself* a CmpMap — and recurses into it. C's
-    /// recursive `astSimplify` tags the compound components it nominates, not
-    /// bare leaf classes (a trailing `ZoomMap`, for example, keeps whatever
-    /// flag state it already carried), so restricting the tag to compound
-    /// trailing components matches the structure C emits.
-    pub(crate) fn flag_parallel_series_trailing(&mut self) {
-        if self.kind != Composition::Parallel {
-            return;
-        }
-        fn flag_child(child: &mut DynMapping) {
-            if let Some(cm) = child.as_any_mut().downcast_mut::<CmpMap>() {
-                if cm.kind == Composition::Series {
-                    // Only the trailing component that is itself a CmpMap is
-                    // tagged: C's recursive `astSimplify` on `parallel(B1, B2)`
-                    // nominates each *compound* branch component, not a bare
-                    // leaf (e.g. a trailing ZoomMap keeps its own flag state).
-                    if let Some(inner) = cm.second.as_any_mut().downcast_mut::<CmpMap>() {
-                        if !inner.has_been_simplified() {
-                            inner.set_has_been_simplified(true);
-                        }
-                        inner.flag_parallel_series_trailing();
-                    }
-                }
-            }
-        }
-        flag_child(&mut self.first);
-        flag_child(&mut self.second);
     }
 
     /// Whether the first child's current Invert differs from the recorded

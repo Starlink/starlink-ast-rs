@@ -78,6 +78,27 @@ fn is_swappable_class(m: &dyn Mapping) -> bool {
     m.as_any().is::<MatrixMap>() || m.as_any().is::<WcsMap>() || m.as_any().is::<PermMap>()
 }
 
+/// `CanSwap` on the adjacent pair `(i1, i1 + 1)` of the working list.
+///
+/// C's `CanSwap` (winmap.c:102-106) forces the `Invert` attribute of both
+/// candidates to the orientations recorded in `invert_list`, then restores the
+/// original values on exit (winmap.c:201-202). `astSetInvert` has no
+/// unchanged-value guard, so all four calls clear `IsSimple` on the live
+/// Mappings — the predicate itself is side-effect-free, but running it is not.
+/// Reproduce that clear here; the tag governs both the `IsSimp` token and
+/// whether a later `simplify` re-dispatches on the component.
+fn can_swap_at(ctx: &mut MergeCtx, i1: usize) -> (bool, bool) {
+    let ret = can_swap(
+        ctx.entry(i1).0.as_ref(),
+        ctx.entry(i1).1,
+        ctx.entry(i1 + 1).0.as_ref(),
+        ctx.entry(i1 + 1).1,
+    );
+    ctx.clear_component_simple_tag(i1);
+    ctx.clear_component_simple_tag(i1 + 1);
+    ret
+}
+
 /// C `winmap.c::CanSwap` (258): can the WinMap and its neighbour swap, and
 /// would the swap make either intrinsically simpler (`*simpler`)?
 ///
@@ -503,10 +524,31 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     let par_idx = if cmlow { i1 } else { i2 };
     let par_inv = ctx.entry(par_idx).1;
     let cm = ctx.entry(par_idx).0.as_any().downcast_ref::<CmpMap>()?;
-    // Direct children in effective-forward orientation.
+    // Direct children stripped to their forward orientation, each paired with
+    // the absolute direction the CmpMap applies to it.
+    //
+    // C reads that direction straight off `astDecompose`, which returns the
+    // recorded `invert1`/`invert2` snapshots (cmpmap.c:758-786), and then
+    // *overwrites* each component's own stored `Invert` with it
+    // (`astSetInvert( mc[ i ], ic[ i ] )`, winmap.c:1310-1314). So the
+    // direction is the raw snapshot XOR the CmpMap's own inversion — the
+    // component's stored `Invert` does not enter it. The
+    // `inv_a != first.is_inverted()` form used elsewhere is the *relative*
+    // flag of cmpmap.c:3862, which only becomes absolute once the component is
+    // applied in its stored orientation rather than stripped forward.
+    //
+    // The component's stored `Invert` is still needed, though: C restores it
+    // after building the branch (`astSetInvert( mc[ i ], inc[ i + 2 ] )`,
+    // winmap.c:1379-1380) and, because the branch holds the same pointer, the
+    // component inside the branch is restored with it — leaving the branch's
+    // `InvA`/`InvB` carrying the effective direction and the component itself
+    // serialised in its original orientation. So carry that orientation
+    // alongside as the element's `orig_inv`.
     let cmp_inv = par_inv != cm.is_inverted();
-    let child_a_inv = cmp_inv != (cm.inv_a() != cm.first().is_inverted());
-    let child_b_inv = cmp_inv != (cm.inv_b() != cm.second().is_inverted());
+    let child_a_inv = cmp_inv != cm.inv_a();
+    let child_b_inv = cmp_inv != cm.inv_b();
+    let child_a_orig = cm.first().is_inverted();
+    let child_b_orig = cm.second().is_inverted();
     let mut child_a = cm.first().clone_box();
     if child_a.is_inverted() {
         child_a.invert();
@@ -515,7 +557,10 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     if child_b.is_inverted() {
         child_b.invert();
     }
-    let components: [(DynMapping, bool); 2] = [(child_a, child_a_inv), (child_b, child_b_inv)];
+    let components: [(DynMapping, bool, bool); 2] = [
+        (child_a, child_a_inv, child_a_orig),
+        (child_b, child_b_inv, child_b_orig),
+    ];
 
     // Split-dimension for each component: outputs when the CmpMap is the lower
     // neighbour (WinMap acts on outputs), inputs otherwise.
@@ -539,7 +584,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     // Build the two per-branch series CmpMaps and simplify each.
     let mut branches: Vec<(DynMapping, bool, bool)> = Vec::with_capacity(2);
     let mut simpler = false;
-    for (idx, (comp, comp_inv)) in components.iter().enumerate() {
+    for (idx, (comp, comp_inv, comp_orig)) in components.iter().enumerate() {
         let (start, dim) = if idx == 0 { (0, dim0) } else { (dim0, dim1) };
         let sub_win = WinMap::new(&a[start..start + dim], &b[start..start + dim]).ok()?;
 
@@ -548,17 +593,35 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
             comp_clone.invert();
         }
 
-        let series_branch = if cmlow {
+        let mut series_branch = if cmlow {
             CmpMap::new(comp_clone, Box::new(sub_win), Composition::Series)
         } else {
             CmpMap::new(Box::new(sub_win), comp_clone, Composition::Series)
         }
         .ok()?;
+        // `CmpMap::new` has captured the effective direction into the branch's
+        // `InvA`/`InvB`; now put the component back into the orientation it is
+        // stored in, as C's `astSetInvert( mc[ i ], inc[ i + 2 ] )` restore
+        // (winmap.c:1379-1380) does through the pointer the branch shares.
+        if cmlow {
+            series_branch.set_first_orientation(*comp_orig);
+        } else {
+            series_branch.set_second_orientation(*comp_orig);
+        }
 
         let fp_before = mapping_fingerprint(&series_branch);
         let branch_dyn: &dyn Mapping = &series_branch;
+        super::simplify::clear_simplify_rebuilt();
         let simplified = branch_dyn.simplify().ok()?;
-        if mapping_fingerprint(simplified.as_ref()) != fp_before {
+        // C's test is `simpler = ( simp1 != nc[0] ) || ( simp2 != nc[1] )`
+        // (winmap.c:1370) — pointer identity. `CmpMap::Simplify` returns
+        // `astClone( this )` only when its own `simpler` flag stayed 0; once it
+        // folds a replacement out of its component list the pointer differs even
+        // if the fold reproduces the branch's shape. Structural comparison alone
+        // cannot see that, so consult the rebuild flag as well.
+        if super::simplify::simplify_rebuilt()
+            || mapping_fingerprint(simplified.as_ref()) != fp_before
+        {
             simpler = true;
         }
         branches.push((simplified, false, false));
@@ -635,22 +698,12 @@ fn try_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<
 
     // ---- Determine swaphi/do2 (upper) and swaplo/do1 (lower).
     let (swaphi, do2) = if where_ + 1 < n {
-        can_swap(
-            ctx.entry(where_).0.as_ref(),
-            ctx.entry(where_).1,
-            ctx.entry(where_ + 1).0.as_ref(),
-            ctx.entry(where_ + 1).1,
-        )
+        can_swap_at(ctx, where_)
     } else {
         (false, false)
     };
     let (swaplo, do1) = if where_ > 0 {
-        can_swap(
-            ctx.entry(where_ - 1).0.as_ref(),
-            ctx.entry(where_ - 1).1,
-            ctx.entry(where_).0.as_ref(),
-            ctx.entry(where_).1,
-        )
+        can_swap_at(ctx, where_ - 1)
     } else {
         (false, false)
     };

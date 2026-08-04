@@ -1,7 +1,16 @@
 # Simplify regression tests -- pipe-delimited
 # Fields: name | input | reference | skip_string_compare
-# skip_string_compare: blank = run both string-diff and astequal tests
-#                      yes  = run astequal test only (ulp-level variation)
+# skip_string_compare: blank = compare the simplified dump byte-for-byte
+#                             against the reference (numeric tokens to 4 ulp)
+#                             as well as by astequal
+#                      yes  = astequal only; every such entry carries a comment
+#                             above it recording the diagnosed reason
+#
+# A negative fixture names the same file as both input and reference: the
+# assertion is that `simplify` returns the Mapping unchanged. Those keep the
+# byte-exact comparison; the harness ignores only the `IsSimp` line, which C's
+# `astSimplify` stamps on every result it returns (mapping.c:24759) and which a
+# never-simplified reference therefore cannot carry.
 
 # spec_cel_invert.{map,simp} capture a FITS cube's pixel→world Mapping (FREQ
 # spectral axis + celestial axes) just before/after C `astSimplify`
@@ -179,93 +188,93 @@ matrix_swap_win_simplifies | simplify_fixtures/matrix_swap_win_simplifies.map | 
 # neg_box_asymmetric_2d is byte-exact and runs the full diff;
 # neg_time_5arg_mismatch additionally differs by a single last-ulp digit in one
 # TimeMap argument — see its entry.)
-neg_matrix_diag_unequal | simplify_fixtures/neg_matrix_diag_unequal.map | simplify_fixtures/neg_matrix_diag_unequal.map | yes
-neg_matrix_full_offdiag | simplify_fixtures/neg_matrix_full_offdiag.map | simplify_fixtures/neg_matrix_full_offdiag.map | yes
-neg_matrix_parallel_no_merge | simplify_fixtures/neg_matrix_parallel_no_merge.map | simplify_fixtures/neg_matrix_parallel_no_merge.map | yes
-neg_win_nonmergeable_series | simplify_fixtures/neg_win_nonmergeable_series.map | simplify_fixtures/neg_win_nonmergeable_series.map | yes
-neg_win_nonmergeable_parallel | simplify_fixtures/neg_win_nonmergeable_parallel.map | simplify_fixtures/neg_win_nonmergeable_parallel.map | yes
-neg_poly_nonlinear      | simplify_fixtures/neg_poly_nonlinear.map      | simplify_fixtures/neg_poly_nonlinear.map      | yes
-neg_chebymap_standalone | simplify_fixtures/neg_chebymap_standalone.map | simplify_fixtures/neg_chebymap_standalone.map | yes
-neg_math_no_simpfi      | simplify_fixtures/neg_math_no_simpfi.map      | simplify_fixtures/neg_math_no_simpfi.map      | yes
-neg_sla_arg_mismatch    | simplify_fixtures/neg_sla_arg_mismatch.map    | simplify_fixtures/neg_sla_arg_mismatch.map    | yes
-neg_spec_arg_mismatch   | simplify_fixtures/neg_spec_arg_mismatch.map   | simplify_fixtures/neg_spec_arg_mismatch.map   | yes
-neg_time_arg_mismatch   | simplify_fixtures/neg_time_arg_mismatch.map   | simplify_fixtures/neg_time_arg_mismatch.map   | yes
-neg_sph_non_sphmap_neighbour | simplify_fixtures/neg_sph_non_sphmap_neighbour.map | simplify_fixtures/neg_sph_non_sphmap_neighbour.map | yes
-neg_grism_same_direction | simplify_fixtures/neg_grism_same_direction.map | simplify_fixtures/neg_grism_same_direction.map | yes
-neg_wcs_same_direction  | simplify_fixtures/neg_wcs_same_direction.map  | simplify_fixtures/neg_wcs_same_direction.map  | yes
-neg_sla_prec_no_common  | simplify_fixtures/neg_sla_prec_no_common.map  | simplify_fixtures/neg_sla_prec_no_common.map  | yes
-neg_zoom_no_absorb      | simplify_fixtures/neg_zoom_no_absorb.map      | simplify_fixtures/neg_zoom_no_absorb.map      | yes
-neg_lut_nonlinear       | simplify_fixtures/neg_lut_nonlinear.map       | simplify_fixtures/neg_lut_nonlinear.map       | yes
-neg_lut_different_tables | simplify_fixtures/neg_lut_different_tables.map | simplify_fixtures/neg_lut_different_tables.map | yes
-neg_pcd_parallel        | simplify_fixtures/neg_pcd_parallel.map        | simplify_fixtures/neg_pcd_parallel.map        | yes
-neg_pcd_nonpcd_neighbour | simplify_fixtures/neg_pcd_nonpcd_neighbour.map | simplify_fixtures/neg_pcd_nonpcd_neighbour.map | yes
-neg_wcs_different_projection | simplify_fixtures/neg_wcs_different_projection.map | simplify_fixtures/neg_wcs_different_projection.map | yes
-neg_tranmap_unequal_components | simplify_fixtures/neg_tranmap_unequal_components.map | simplify_fixtures/neg_tranmap_unequal_components.map | yes
-neg_spline_same_direction | simplify_fixtures/neg_spline_same_direction.map | simplify_fixtures/neg_spline_same_direction.map | yes
-neg_normmap_parallel    | simplify_fixtures/neg_normmap_parallel.map    | simplify_fixtures/neg_normmap_parallel.map    | yes
-neg_perm_no_merge       | simplify_fixtures/neg_perm_no_merge.map       | simplify_fixtures/neg_perm_no_merge.map       | yes
-neg_win_swap_no_simplify | simplify_fixtures/neg_win_swap_no_simplify.map | simplify_fixtures/neg_win_swap_no_simplify.map | yes
-neg_matrix_perm_not_bidirectional | simplify_fixtures/neg_matrix_perm_not_bidirectional.map | simplify_fixtures/neg_matrix_perm_not_bidirectional.map | yes
+neg_matrix_diag_unequal | simplify_fixtures/neg_matrix_diag_unequal.map | simplify_fixtures/neg_matrix_diag_unequal.map |
+neg_matrix_full_offdiag | simplify_fixtures/neg_matrix_full_offdiag.map | simplify_fixtures/neg_matrix_full_offdiag.map |
+neg_matrix_parallel_no_merge | simplify_fixtures/neg_matrix_parallel_no_merge.map | simplify_fixtures/neg_matrix_parallel_no_merge.map |
+neg_win_nonmergeable_series | simplify_fixtures/neg_win_nonmergeable_series.map | simplify_fixtures/neg_win_nonmergeable_series.map |
+neg_win_nonmergeable_parallel | simplify_fixtures/neg_win_nonmergeable_parallel.map | simplify_fixtures/neg_win_nonmergeable_parallel.map |
+neg_poly_nonlinear      | simplify_fixtures/neg_poly_nonlinear.map      | simplify_fixtures/neg_poly_nonlinear.map      |
+neg_chebymap_standalone | simplify_fixtures/neg_chebymap_standalone.map | simplify_fixtures/neg_chebymap_standalone.map |
+neg_math_no_simpfi      | simplify_fixtures/neg_math_no_simpfi.map      | simplify_fixtures/neg_math_no_simpfi.map      |
+neg_sla_arg_mismatch    | simplify_fixtures/neg_sla_arg_mismatch.map    | simplify_fixtures/neg_sla_arg_mismatch.map    |
+neg_spec_arg_mismatch   | simplify_fixtures/neg_spec_arg_mismatch.map   | simplify_fixtures/neg_spec_arg_mismatch.map   |
+neg_time_arg_mismatch   | simplify_fixtures/neg_time_arg_mismatch.map   | simplify_fixtures/neg_time_arg_mismatch.map   |
+neg_sph_non_sphmap_neighbour | simplify_fixtures/neg_sph_non_sphmap_neighbour.map | simplify_fixtures/neg_sph_non_sphmap_neighbour.map |
+neg_grism_same_direction | simplify_fixtures/neg_grism_same_direction.map | simplify_fixtures/neg_grism_same_direction.map |
+neg_wcs_same_direction  | simplify_fixtures/neg_wcs_same_direction.map  | simplify_fixtures/neg_wcs_same_direction.map  |
+neg_sla_prec_no_common  | simplify_fixtures/neg_sla_prec_no_common.map  | simplify_fixtures/neg_sla_prec_no_common.map  |
+neg_zoom_no_absorb      | simplify_fixtures/neg_zoom_no_absorb.map      | simplify_fixtures/neg_zoom_no_absorb.map      |
+neg_lut_nonlinear       | simplify_fixtures/neg_lut_nonlinear.map       | simplify_fixtures/neg_lut_nonlinear.map       |
+neg_lut_different_tables | simplify_fixtures/neg_lut_different_tables.map | simplify_fixtures/neg_lut_different_tables.map |
+neg_pcd_parallel        | simplify_fixtures/neg_pcd_parallel.map        | simplify_fixtures/neg_pcd_parallel.map        |
+neg_pcd_nonpcd_neighbour | simplify_fixtures/neg_pcd_nonpcd_neighbour.map | simplify_fixtures/neg_pcd_nonpcd_neighbour.map |
+neg_wcs_different_projection | simplify_fixtures/neg_wcs_different_projection.map | simplify_fixtures/neg_wcs_different_projection.map |
+neg_tranmap_unequal_components | simplify_fixtures/neg_tranmap_unequal_components.map | simplify_fixtures/neg_tranmap_unequal_components.map |
+neg_spline_same_direction | simplify_fixtures/neg_spline_same_direction.map | simplify_fixtures/neg_spline_same_direction.map |
+neg_normmap_parallel    | simplify_fixtures/neg_normmap_parallel.map    | simplify_fixtures/neg_normmap_parallel.map    |
+neg_perm_no_merge       | simplify_fixtures/neg_perm_no_merge.map       | simplify_fixtures/neg_perm_no_merge.map       |
+neg_win_swap_no_simplify | simplify_fixtures/neg_win_swap_no_simplify.map | simplify_fixtures/neg_win_swap_no_simplify.map |
+neg_matrix_perm_not_bidirectional | simplify_fixtures/neg_matrix_perm_not_bidirectional.map | simplify_fixtures/neg_matrix_perm_not_bidirectional.map |
 # Asymmetric 2-D PointSet — exercises C-compatible point-major X-key
 # encoding (X1=centre[0], X2=centre[1], X3=corner[0], X4=corner[1]).
 # Any layout-iteration bug in serial::{read,write}_pointset_node would
 # corrupt the off-diagonal entries (X2 and X3) here.
 neg_box_asymmetric_2d   | simplify_fixtures/neg_box_asymmetric_2d.map   | simplify_fixtures/neg_box_asymmetric_2d.map   |
-neg_ratemap_nonratemap_neighbour | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | yes
-neg_ratemap_different_inner | simplify_fixtures/neg_ratemap_different_inner.map | simplify_fixtures/neg_ratemap_different_inner.map | yes
-neg_sph_polarlong_mismatch | simplify_fixtures/neg_sph_polarlong_mismatch.map | simplify_fixtures/neg_sph_polarlong_mismatch.map | yes
-neg_sph_no_unitradius   | simplify_fixtures/neg_sph_no_unitradius.map   | simplify_fixtures/neg_sph_no_unitradius.map   | yes
-neg_lut_parallel        | simplify_fixtures/neg_lut_parallel.map        | simplify_fixtures/neg_lut_parallel.map        | yes
-neg_sla_2arg_mismatch   | simplify_fixtures/neg_sla_2arg_mismatch.map   | simplify_fixtures/neg_sla_2arg_mismatch.map   | yes
-neg_spec_2arg_mismatch  | simplify_fixtures/neg_spec_2arg_mismatch.map  | simplify_fixtures/neg_spec_2arg_mismatch.map  | yes
-neg_spec_3arg_mismatch  | simplify_fixtures/neg_spec_3arg_mismatch.map  | simplify_fixtures/neg_spec_3arg_mismatch.map  | yes
-neg_time_3arg_mismatch  | simplify_fixtures/neg_time_3arg_mismatch.map  | simplify_fixtures/neg_time_3arg_mismatch.map  | yes
-neg_grism_different_attrs | simplify_fixtures/neg_grism_different_attrs.map | simplify_fixtures/neg_grism_different_attrs.map | yes
-neg_normmap_different_frames | simplify_fixtures/neg_normmap_different_frames.map | simplify_fixtures/neg_normmap_different_frames.map | yes
-neg_wcs_different_params | simplify_fixtures/neg_wcs_different_params.map | simplify_fixtures/neg_wcs_different_params.map | yes
-neg_sla_lone_forward    | simplify_fixtures/neg_sla_lone_forward.map    | simplify_fixtures/neg_sla_lone_forward.map    | yes
-neg_sla_parallel        | simplify_fixtures/neg_sla_parallel.map        | simplify_fixtures/neg_sla_parallel.map        | yes
-neg_spec_parallel       | simplify_fixtures/neg_spec_parallel.map       | simplify_fixtures/neg_spec_parallel.map       | yes
-neg_time_parallel       | simplify_fixtures/neg_time_parallel.map       | simplify_fixtures/neg_time_parallel.map       | yes
-neg_grism_parallel      | simplify_fixtures/neg_grism_parallel.map      | simplify_fixtures/neg_grism_parallel.map      | yes
-neg_grism_inv_then_zoom | simplify_fixtures/neg_grism_inv_then_zoom.map | simplify_fixtures/neg_grism_inv_then_zoom.map | yes
-neg_grism_fwd_then_nonzoom | simplify_fixtures/neg_grism_fwd_then_nonzoom.map | simplify_fixtures/neg_grism_fwd_then_nonzoom.map | yes
-neg_math_nonmath_neighbour | simplify_fixtures/neg_math_nonmath_neighbour.map | simplify_fixtures/neg_math_nonmath_neighbour.map | yes
-neg_wcs_parallel        | simplify_fixtures/neg_wcs_parallel.map        | simplify_fixtures/neg_wcs_parallel.map        | yes
-neg_spline_parallel     | simplify_fixtures/neg_spline_parallel.map     | simplify_fixtures/neg_spline_parallel.map     | yes
-neg_lut_nonlut_neighbour | simplify_fixtures/neg_lut_nonlut_neighbour.map | simplify_fixtures/neg_lut_nonlut_neighbour.map | yes
-neg_poly_parallel_nonlinear | simplify_fixtures/neg_poly_parallel_nonlinear.map | simplify_fixtures/neg_poly_parallel_nonlinear.map | yes
-neg_poly_same_direction | simplify_fixtures/neg_poly_same_direction.map | simplify_fixtures/neg_poly_same_direction.map | yes
-neg_spec_lone_forward   | simplify_fixtures/neg_spec_lone_forward.map   | simplify_fixtures/neg_spec_lone_forward.map   | yes
-neg_time_lone_forward   | simplify_fixtures/neg_time_lone_forward.map   | simplify_fixtures/neg_time_lone_forward.map   | yes
-neg_poly_nonpoly_neighbour | simplify_fixtures/neg_poly_nonpoly_neighbour.map | simplify_fixtures/neg_poly_nonpoly_neighbour.map | yes
-neg_spline_nonspline_neighbour | simplify_fixtures/neg_spline_nonspline_neighbour.map | simplify_fixtures/neg_spline_nonspline_neighbour.map | yes
-neg_matrix_swap_refused | simplify_fixtures/neg_matrix_swap_refused.map | simplify_fixtures/neg_matrix_swap_refused.map | yes
-neg_poly_nin_ne_nout    | simplify_fixtures/neg_poly_nin_ne_nout.map    | simplify_fixtures/neg_poly_nin_ne_nout.map    | yes
-neg_tranmap_parallel    | simplify_fixtures/neg_tranmap_parallel.map    | simplify_fixtures/neg_tranmap_parallel.map    | yes
-neg_tranmap_nontranmap_neighbour | simplify_fixtures/neg_tranmap_nontranmap_neighbour.map | simplify_fixtures/neg_tranmap_nontranmap_neighbour.map | yes
-neg_sph_sandwich_wrong_middle | simplify_fixtures/neg_sph_sandwich_wrong_middle.map | simplify_fixtures/neg_sph_sandwich_wrong_middle.map | yes
-neg_sph_sandwich_unequal_diag | simplify_fixtures/neg_sph_sandwich_unequal_diag.map | simplify_fixtures/neg_sph_sandwich_unequal_diag.map | yes
-neg_pcd_nonswappable_between | simplify_fixtures/neg_pcd_nonswappable_between.map | simplify_fixtures/neg_pcd_nonswappable_between.map | yes
-neg_wcs_nonperm_between | simplify_fixtures/neg_wcs_nonperm_between.map | simplify_fixtures/neg_wcs_nonperm_between.map | yes
-neg_sph_parallel        | simplify_fixtures/neg_sph_parallel.map        | simplify_fixtures/neg_sph_parallel.map        | yes
-neg_sph_sandwich_full_matrix | simplify_fixtures/neg_sph_sandwich_full_matrix.map | simplify_fixtures/neg_sph_sandwich_full_matrix.map | yes
-neg_normmap_nonnorm_neighbour | simplify_fixtures/neg_normmap_nonnorm_neighbour.map | simplify_fixtures/neg_normmap_nonnorm_neighbour.map | yes
-neg_unitnormmap_nonunit_scale | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | yes
-neg_unitnormmap_nonmergeable | simplify_fixtures/neg_unitnormmap_nonmergeable.map | simplify_fixtures/neg_unitnormmap_nonmergeable.map | yes
-neg_grism_zoom_before_fwd | simplify_fixtures/neg_grism_zoom_before_fwd.map | simplify_fixtures/neg_grism_zoom_before_fwd.map | yes
-neg_grism_nonzoom_before_inv | simplify_fixtures/neg_grism_nonzoom_before_inv.map | simplify_fixtures/neg_grism_nonzoom_before_inv.map | yes
-neg_win_mixed_no_selfsimplify | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | yes
-neg_ratemap_parallel    | simplify_fixtures/neg_ratemap_parallel.map    | simplify_fixtures/neg_ratemap_parallel.map    | yes
+neg_ratemap_nonratemap_neighbour | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map | simplify_fixtures/neg_ratemap_nonratemap_neighbour.map |
+neg_ratemap_different_inner | simplify_fixtures/neg_ratemap_different_inner.map | simplify_fixtures/neg_ratemap_different_inner.map |
+neg_sph_polarlong_mismatch | simplify_fixtures/neg_sph_polarlong_mismatch.map | simplify_fixtures/neg_sph_polarlong_mismatch.map |
+neg_sph_no_unitradius   | simplify_fixtures/neg_sph_no_unitradius.map   | simplify_fixtures/neg_sph_no_unitradius.map   |
+neg_lut_parallel        | simplify_fixtures/neg_lut_parallel.map        | simplify_fixtures/neg_lut_parallel.map        |
+neg_sla_2arg_mismatch   | simplify_fixtures/neg_sla_2arg_mismatch.map   | simplify_fixtures/neg_sla_2arg_mismatch.map   |
+neg_spec_2arg_mismatch  | simplify_fixtures/neg_spec_2arg_mismatch.map  | simplify_fixtures/neg_spec_2arg_mismatch.map  |
+neg_spec_3arg_mismatch  | simplify_fixtures/neg_spec_3arg_mismatch.map  | simplify_fixtures/neg_spec_3arg_mismatch.map  |
+neg_time_3arg_mismatch  | simplify_fixtures/neg_time_3arg_mismatch.map  | simplify_fixtures/neg_time_3arg_mismatch.map  |
+neg_grism_different_attrs | simplify_fixtures/neg_grism_different_attrs.map | simplify_fixtures/neg_grism_different_attrs.map |
+neg_normmap_different_frames | simplify_fixtures/neg_normmap_different_frames.map | simplify_fixtures/neg_normmap_different_frames.map |
+neg_wcs_different_params | simplify_fixtures/neg_wcs_different_params.map | simplify_fixtures/neg_wcs_different_params.map |
+neg_sla_lone_forward    | simplify_fixtures/neg_sla_lone_forward.map    | simplify_fixtures/neg_sla_lone_forward.map    |
+neg_sla_parallel        | simplify_fixtures/neg_sla_parallel.map        | simplify_fixtures/neg_sla_parallel.map        |
+neg_spec_parallel       | simplify_fixtures/neg_spec_parallel.map       | simplify_fixtures/neg_spec_parallel.map       |
+neg_time_parallel       | simplify_fixtures/neg_time_parallel.map       | simplify_fixtures/neg_time_parallel.map       |
+neg_grism_parallel      | simplify_fixtures/neg_grism_parallel.map      | simplify_fixtures/neg_grism_parallel.map      |
+neg_grism_inv_then_zoom | simplify_fixtures/neg_grism_inv_then_zoom.map | simplify_fixtures/neg_grism_inv_then_zoom.map |
+neg_grism_fwd_then_nonzoom | simplify_fixtures/neg_grism_fwd_then_nonzoom.map | simplify_fixtures/neg_grism_fwd_then_nonzoom.map |
+neg_math_nonmath_neighbour | simplify_fixtures/neg_math_nonmath_neighbour.map | simplify_fixtures/neg_math_nonmath_neighbour.map |
+neg_wcs_parallel        | simplify_fixtures/neg_wcs_parallel.map        | simplify_fixtures/neg_wcs_parallel.map        |
+neg_spline_parallel     | simplify_fixtures/neg_spline_parallel.map     | simplify_fixtures/neg_spline_parallel.map     |
+neg_lut_nonlut_neighbour | simplify_fixtures/neg_lut_nonlut_neighbour.map | simplify_fixtures/neg_lut_nonlut_neighbour.map |
+neg_poly_parallel_nonlinear | simplify_fixtures/neg_poly_parallel_nonlinear.map | simplify_fixtures/neg_poly_parallel_nonlinear.map |
+neg_poly_same_direction | simplify_fixtures/neg_poly_same_direction.map | simplify_fixtures/neg_poly_same_direction.map |
+neg_spec_lone_forward   | simplify_fixtures/neg_spec_lone_forward.map   | simplify_fixtures/neg_spec_lone_forward.map   |
+neg_time_lone_forward   | simplify_fixtures/neg_time_lone_forward.map   | simplify_fixtures/neg_time_lone_forward.map   |
+neg_poly_nonpoly_neighbour | simplify_fixtures/neg_poly_nonpoly_neighbour.map | simplify_fixtures/neg_poly_nonpoly_neighbour.map |
+neg_spline_nonspline_neighbour | simplify_fixtures/neg_spline_nonspline_neighbour.map | simplify_fixtures/neg_spline_nonspline_neighbour.map |
+neg_matrix_swap_refused | simplify_fixtures/neg_matrix_swap_refused.map | simplify_fixtures/neg_matrix_swap_refused.map |
+neg_poly_nin_ne_nout    | simplify_fixtures/neg_poly_nin_ne_nout.map    | simplify_fixtures/neg_poly_nin_ne_nout.map    |
+neg_tranmap_parallel    | simplify_fixtures/neg_tranmap_parallel.map    | simplify_fixtures/neg_tranmap_parallel.map    |
+neg_tranmap_nontranmap_neighbour | simplify_fixtures/neg_tranmap_nontranmap_neighbour.map | simplify_fixtures/neg_tranmap_nontranmap_neighbour.map |
+neg_sph_sandwich_wrong_middle | simplify_fixtures/neg_sph_sandwich_wrong_middle.map | simplify_fixtures/neg_sph_sandwich_wrong_middle.map |
+neg_sph_sandwich_unequal_diag | simplify_fixtures/neg_sph_sandwich_unequal_diag.map | simplify_fixtures/neg_sph_sandwich_unequal_diag.map |
+neg_pcd_nonswappable_between | simplify_fixtures/neg_pcd_nonswappable_between.map | simplify_fixtures/neg_pcd_nonswappable_between.map |
+neg_wcs_nonperm_between | simplify_fixtures/neg_wcs_nonperm_between.map | simplify_fixtures/neg_wcs_nonperm_between.map |
+neg_sph_parallel        | simplify_fixtures/neg_sph_parallel.map        | simplify_fixtures/neg_sph_parallel.map        |
+neg_sph_sandwich_full_matrix | simplify_fixtures/neg_sph_sandwich_full_matrix.map | simplify_fixtures/neg_sph_sandwich_full_matrix.map |
+neg_normmap_nonnorm_neighbour | simplify_fixtures/neg_normmap_nonnorm_neighbour.map | simplify_fixtures/neg_normmap_nonnorm_neighbour.map |
+neg_unitnormmap_nonunit_scale | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | simplify_fixtures/neg_unitnormmap_nonunit_scale.map |
+neg_unitnormmap_nonmergeable | simplify_fixtures/neg_unitnormmap_nonmergeable.map | simplify_fixtures/neg_unitnormmap_nonmergeable.map |
+neg_grism_zoom_before_fwd | simplify_fixtures/neg_grism_zoom_before_fwd.map | simplify_fixtures/neg_grism_zoom_before_fwd.map |
+neg_grism_nonzoom_before_inv | simplify_fixtures/neg_grism_nonzoom_before_inv.map | simplify_fixtures/neg_grism_nonzoom_before_inv.map |
+neg_win_mixed_no_selfsimplify | simplify_fixtures/neg_win_mixed_no_selfsimplify.map | simplify_fixtures/neg_win_mixed_no_selfsimplify.map |
+neg_ratemap_parallel    | simplify_fixtures/neg_ratemap_parallel.map    | simplify_fixtures/neg_ratemap_parallel.map    |
 # Besides the shared IsSimp tag, one TimeMap argument (Time1f) differs in its
 # last ulp (-3799.9547800119039 vs C -3799.9547800119035): the 5-argument
 # MJD->BEPOCH conversion accumulates cancellation-amplified libm drift below the
 # astequal threshold. astequal-only.
-neg_time_5arg_mismatch  | simplify_fixtures/neg_time_5arg_mismatch.map  | simplify_fixtures/neg_time_5arg_mismatch.map  | yes
-neg_spec_6arg_mismatch  | simplify_fixtures/neg_spec_6arg_mismatch.map  | simplify_fixtures/neg_spec_6arg_mismatch.map  | yes
-neg_sla_4arg_mismatch   | simplify_fixtures/neg_sla_4arg_mismatch.map   | simplify_fixtures/neg_sla_4arg_mismatch.map   | yes
-neg_poly_no_forward     | simplify_fixtures/neg_poly_no_forward.map     | simplify_fixtures/neg_poly_no_forward.map     | yes
-neg_spline_different_coeffs | simplify_fixtures/neg_spline_different_coeffs.map | simplify_fixtures/neg_spline_different_coeffs.map | yes
+neg_time_5arg_mismatch  | simplify_fixtures/neg_time_5arg_mismatch.map  | simplify_fixtures/neg_time_5arg_mismatch.map  |
+neg_spec_6arg_mismatch  | simplify_fixtures/neg_spec_6arg_mismatch.map  | simplify_fixtures/neg_spec_6arg_mismatch.map  |
+neg_sla_4arg_mismatch   | simplify_fixtures/neg_sla_4arg_mismatch.map   | simplify_fixtures/neg_sla_4arg_mismatch.map   |
+neg_poly_no_forward     | simplify_fixtures/neg_poly_no_forward.map     | simplify_fixtures/neg_poly_no_forward.map     |
+neg_spline_different_coeffs | simplify_fixtures/neg_spline_different_coeffs.map | simplify_fixtures/neg_spline_different_coeffs.map |
 cmpmap_parallel_in_series_merge | simplify_fixtures/cmpmap_parallel_in_series_merge.map | simplify_fixtures/cmpmap_parallel_in_series_merge.simp |
 cmpmap_perm_swap_aconstants | simplify_fixtures/cmpmap_perm_swap_aconstants.map | simplify_fixtures/cmpmap_perm_swap_aconstants.simp |
 cmpmap_perm_swap_bconstants | simplify_fixtures/cmpmap_perm_swap_bconstants.map | simplify_fixtures/cmpmap_perm_swap_bconstants.simp |
@@ -359,7 +368,9 @@ sla_run_partial          | simplify_fixtures/sla_run_partial.map          | simp
 # cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02 are astequal-only (skip the
 # byte-exact string diff). Their transforms and structure match C exactly; the
 # ONLY divergence is the placement of the `IsSimp` tag on interior CmpMap nodes
-# of the simplified tree. That placement is unreproducible in this port:
+# of the simplified tree (cap_cmpmap_01/_04 additionally place one `Invert` line
+# on the enclosing CmpMap rather than its child). That placement follows from
+# aliasing rather than tree shape:
 #
 # C's `IsSimple` is a single flag that `astSetInvert` clears as a side-effect
 # (mapping.c:23256). During simplification C's probing routines (Equal,
@@ -384,17 +395,7 @@ cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtur
 cap_cmpmap_02            | simplify_fixtures/cap_cmpmap_02.map | simplify_fixtures/cap_cmpmap_02.simp |
 cap_cmpmap_03            | simplify_fixtures/cap_cmpmap_03.map | simplify_fixtures/cap_cmpmap_03.simp |
 cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp | yes
-# cap_interval_01: the Prism->Interval collapse is astequal-equal (same region
-# geometry), but its serialized default uncertainty region diverges in two ways
-# astequal cannot see: (1) C emits Fill=0.02 where we emit Closed=1 — the
-# default-uncertainty Box carries a different FillFactor/Closed attribute set
-# (tracked as Phase 5 gap MERGE-FF, docs/audits/region-phase5-parity-spec.md);
-# (2) the time (4th) axis half-width prints as X7=5.787e-10 in C vs 5.0e-05 for
-# us — a factor of exactly 86400 (s/day), i.e. C stores the encapsulated
-# uncertainty in days while we leave it in seconds. Both are genuine parity
-# gaps in the uncertainty-region port, not precision noise; astequal-only until
-# they are closed.
-cap_interval_01          | simplify_fixtures/cap_interval_01.map | simplify_fixtures/cap_interval_01.simp | yes
+cap_interval_01          | simplify_fixtures/cap_interval_01.map | simplify_fixtures/cap_interval_01.simp |
 cap_lutmap_01            | simplify_fixtures/cap_lutmap_01.map | simplify_fixtures/cap_lutmap_01.simp |
 cap_mathmap_01           | simplify_fixtures/cap_mathmap_01.map | simplify_fixtures/cap_mathmap_01.simp |
 cap_matrixmap_01         | simplify_fixtures/cap_matrixmap_01.map | simplify_fixtures/cap_matrixmap_01.simp |
@@ -408,11 +409,7 @@ cap_matrixmap_03         | simplify_fixtures/cap_matrixmap_03.map | simplify_fix
 cap_matrixmap_04         | simplify_fixtures/cap_matrixmap_04.map | simplify_fixtures/cap_matrixmap_04.simp |
 cap_permmap_01           | simplify_fixtures/cap_permmap_01.map | simplify_fixtures/cap_permmap_01.simp |
 cap_permmap_02           | simplify_fixtures/cap_permmap_02.map | simplify_fixtures/cap_permmap_02.simp |
-# cap_pointlist_01: simplifies to a Prism; astequal-equal and transform-equal.
-# The encapsulated PointList's X5/X6 coordinates differ from the committed .simp
-# at ~1e-14 relative (3.1241551949160478 vs ...575), cross-build libm drift in
-# the point projection below the astequal threshold. astequal-only.
-cap_pointlist_01         | simplify_fixtures/cap_pointlist_01.map | simplify_fixtures/cap_pointlist_01.simp | yes
+cap_pointlist_01         | simplify_fixtures/cap_pointlist_01.map | simplify_fixtures/cap_pointlist_01.simp |
 cap_pointlist_02         | simplify_fixtures/cap_pointlist_02.map | simplify_fixtures/cap_pointlist_02.simp |
 cap_slamap_01            | simplify_fixtures/cap_slamap_01.map | simplify_fixtures/cap_slamap_01.simp |
 cap_slamap_02            | simplify_fixtures/cap_slamap_02.map | simplify_fixtures/cap_slamap_02.simp |
@@ -438,11 +435,7 @@ cap_specmap_12           | simplify_fixtures/cap_specmap_12.map | simplify_fixtu
 cap_specmap_13           | simplify_fixtures/cap_specmap_13.map | simplify_fixtures/cap_specmap_13.simp |
 cap_specmap_14           | simplify_fixtures/cap_specmap_14.map | simplify_fixtures/cap_specmap_14.simp |
 cap_sphmap_01            | simplify_fixtures/cap_sphmap_01.map | simplify_fixtures/cap_sphmap_01.simp |
-# cap_timemap_01: structure identical; a single TimeMap argument (Time1b)
-# differs in its last ulp (-6.6895549625895119e-04 vs C ...5108). Last-digit
-# libm drift in the MJD-conversion constant, below the astequal threshold.
-# astequal-only.
-cap_timemap_01           | simplify_fixtures/cap_timemap_01.map | simplify_fixtures/cap_timemap_01.simp | yes
+cap_timemap_01           | simplify_fixtures/cap_timemap_01.map | simplify_fixtures/cap_timemap_01.simp |
 cap_timemap_03           | simplify_fixtures/cap_timemap_03.map | simplify_fixtures/cap_timemap_03.simp |
 cap_timemap_04           | simplify_fixtures/cap_timemap_04.map | simplify_fixtures/cap_timemap_04.simp |
 cap_timemap_05           | simplify_fixtures/cap_timemap_05.map | simplify_fixtures/cap_timemap_05.simp |
@@ -466,60 +459,60 @@ cap_zoommap_01           | simplify_fixtures/cap_zoommap_01.map | simplify_fixtu
 cap_zoommap_02           | simplify_fixtures/cap_zoommap_02.map | simplify_fixtures/cap_zoommap_02.simp |
 cap_zoommap_03           | simplify_fixtures/cap_zoommap_03.map | simplify_fixtures/cap_zoommap_03.simp |
 cap_zoommap_04           | simplify_fixtures/cap_zoommap_04.map | simplify_fixtures/cap_zoommap_04.simp |
-neg_zoom_lower_nonzoom   | simplify_fixtures/neg_zoom_lower_nonzoom.map | simplify_fixtures/neg_zoom_lower_nonzoom.map | yes
-neg_tranmap_adjacent_no_merge | simplify_fixtures/neg_tranmap_adjacent_no_merge.map | simplify_fixtures/neg_tranmap_adjacent_no_merge.map | yes
-neg_lut_constant         | simplify_fixtures/neg_lut_constant.map | simplify_fixtures/neg_lut_constant.map | yes
-neg_unit_lone                | simplify_fixtures/neg_unit_lone.map | simplify_fixtures/neg_unit_lone.map | yes
-neg_zoom_lone                | simplify_fixtures/neg_zoom_lone.map | simplify_fixtures/neg_zoom_lone.map | yes
-neg_math_lone                | simplify_fixtures/neg_math_lone.map | simplify_fixtures/neg_math_lone.map | yes
-neg_matrix_singular_diag     | simplify_fixtures/neg_matrix_singular_diag.map | simplify_fixtures/neg_matrix_singular_diag.map | yes
-neg_win_mixed_scale_shift    | simplify_fixtures/neg_win_mixed_scale_shift.map | simplify_fixtures/neg_win_mixed_scale_shift.map | yes
-neg_pcd_zoom_no_target   | simplify_fixtures/neg_pcd_zoom_no_target.map | simplify_fixtures/neg_pcd_zoom_no_target.map | yes
-neg_ratemap_lower_nonrate    | simplify_fixtures/neg_ratemap_lower_nonrate.map | simplify_fixtures/neg_ratemap_lower_nonrate.map | yes
-neg_ratemap_same_invert      | simplify_fixtures/neg_ratemap_same_invert.map | simplify_fixtures/neg_ratemap_same_invert.map | yes
-neg_ratemap_diff_indices     | simplify_fixtures/neg_ratemap_diff_indices.map | simplify_fixtures/neg_ratemap_diff_indices.map | yes
-neg_ratemap_diff_inner       | simplify_fixtures/neg_ratemap_diff_inner.map | simplify_fixtures/neg_ratemap_diff_inner.map | yes
-neg_zoom_parallel_lone           | simplify_fixtures/neg_zoom_parallel_lone.map | simplify_fixtures/neg_zoom_parallel_lone.map | yes
-neg_cmpmap_neighbour_nonexcmpmap | simplify_fixtures/neg_cmpmap_neighbour_nonexcmpmap.map | simplify_fixtures/neg_cmpmap_neighbour_nonexcmpmap.map | yes
-neg_tranmap_oneway       | simplify_fixtures/neg_tranmap_oneway.map | simplify_fixtures/neg_tranmap_oneway.map | yes
-neg_math_inv_text_mismatch | simplify_fixtures/neg_math_inv_text_mismatch.map | simplify_fixtures/neg_math_inv_text_mismatch.map | yes
+neg_zoom_lower_nonzoom   | simplify_fixtures/neg_zoom_lower_nonzoom.map | simplify_fixtures/neg_zoom_lower_nonzoom.map |
+neg_tranmap_adjacent_no_merge | simplify_fixtures/neg_tranmap_adjacent_no_merge.map | simplify_fixtures/neg_tranmap_adjacent_no_merge.map |
+neg_lut_constant         | simplify_fixtures/neg_lut_constant.map | simplify_fixtures/neg_lut_constant.map |
+neg_unit_lone                | simplify_fixtures/neg_unit_lone.map | simplify_fixtures/neg_unit_lone.map |
+neg_zoom_lone                | simplify_fixtures/neg_zoom_lone.map | simplify_fixtures/neg_zoom_lone.map |
+neg_math_lone                | simplify_fixtures/neg_math_lone.map | simplify_fixtures/neg_math_lone.map |
+neg_matrix_singular_diag     | simplify_fixtures/neg_matrix_singular_diag.map | simplify_fixtures/neg_matrix_singular_diag.map |
+neg_win_mixed_scale_shift    | simplify_fixtures/neg_win_mixed_scale_shift.map | simplify_fixtures/neg_win_mixed_scale_shift.map |
+neg_pcd_zoom_no_target   | simplify_fixtures/neg_pcd_zoom_no_target.map | simplify_fixtures/neg_pcd_zoom_no_target.map |
+neg_ratemap_lower_nonrate    | simplify_fixtures/neg_ratemap_lower_nonrate.map | simplify_fixtures/neg_ratemap_lower_nonrate.map |
+neg_ratemap_same_invert      | simplify_fixtures/neg_ratemap_same_invert.map | simplify_fixtures/neg_ratemap_same_invert.map |
+neg_ratemap_diff_indices     | simplify_fixtures/neg_ratemap_diff_indices.map | simplify_fixtures/neg_ratemap_diff_indices.map |
+neg_ratemap_diff_inner       | simplify_fixtures/neg_ratemap_diff_inner.map | simplify_fixtures/neg_ratemap_diff_inner.map |
+neg_zoom_parallel_lone           | simplify_fixtures/neg_zoom_parallel_lone.map | simplify_fixtures/neg_zoom_parallel_lone.map |
+neg_cmpmap_neighbour_nonexcmpmap | simplify_fixtures/neg_cmpmap_neighbour_nonexcmpmap.map | simplify_fixtures/neg_cmpmap_neighbour_nonexcmpmap.map |
+neg_tranmap_oneway       | simplify_fixtures/neg_tranmap_oneway.map | simplify_fixtures/neg_tranmap_oneway.map |
+neg_math_inv_text_mismatch | simplify_fixtures/neg_math_inv_text_mismatch.map | simplify_fixtures/neg_math_inv_text_mismatch.map |
 pcd_search_blocked       | simplify_fixtures/pcd_search_blocked.map | simplify_fixtures/pcd_search_blocked.simp |
 cmpmap_solo_after_unit   | simplify_fixtures/cmpmap_solo_after_unit.map | simplify_fixtures/cmpmap_solo_after_unit.simp |
-neg_normmap_diff_frame         | simplify_fixtures/neg_normmap_diff_frame.map | simplify_fixtures/neg_normmap_diff_frame.map | yes
-neg_normmap_inv_diff_frame     | simplify_fixtures/neg_normmap_inv_diff_frame.map | simplify_fixtures/neg_normmap_inv_diff_frame.map | yes
-neg_normmap_parallel_sky       | simplify_fixtures/neg_normmap_parallel_sky.map | simplify_fixtures/neg_normmap_parallel_sky.map | yes
+neg_normmap_diff_frame         | simplify_fixtures/neg_normmap_diff_frame.map | simplify_fixtures/neg_normmap_diff_frame.map |
+neg_normmap_inv_diff_frame     | simplify_fixtures/neg_normmap_inv_diff_frame.map | simplify_fixtures/neg_normmap_inv_diff_frame.map |
+neg_normmap_parallel_sky       | simplify_fixtures/neg_normmap_parallel_sky.map | simplify_fixtures/neg_normmap_parallel_sky.map |
 nullregion_parallel_merge_pair | simplify_fixtures/nullregion_parallel_merge_pair.map | simplify_fixtures/nullregion_parallel_merge_pair.simp |
-neg_nullregion_series        | simplify_fixtures/neg_nullregion_series.map | simplify_fixtures/neg_nullregion_series.map | yes
-neg_nullregion_parallel_nonregion | simplify_fixtures/neg_nullregion_parallel_nonregion.map | simplify_fixtures/neg_nullregion_parallel_nonregion.map | yes
+neg_nullregion_series        | simplify_fixtures/neg_nullregion_series.map | simplify_fixtures/neg_nullregion_series.map |
+neg_nullregion_parallel_nonregion | simplify_fixtures/neg_nullregion_parallel_nonregion.map | simplify_fixtures/neg_nullregion_parallel_nonregion.map |
 pointlist_parallel_merge_pair      | simplify_fixtures/pointlist_parallel_merge_pair.map | simplify_fixtures/pointlist_parallel_merge_pair.simp |
 interval_self_simplify_cmp         | simplify_fixtures/interval_self_simplify_cmp.map | simplify_fixtures/interval_self_simplify_cmp.simp |
-neg_pointlist_series               | simplify_fixtures/neg_pointlist_series.map | simplify_fixtures/neg_pointlist_series.map | yes
-neg_pointlist_parallel_nonregion   | simplify_fixtures/neg_pointlist_parallel_nonregion.map | simplify_fixtures/neg_pointlist_parallel_nonregion.map | yes
-neg_box_series                     | simplify_fixtures/neg_box_series.map | simplify_fixtures/neg_box_series.map | yes
-neg_box_parallel_nonregion         | simplify_fixtures/neg_box_parallel_nonregion.map | simplify_fixtures/neg_box_parallel_nonregion.map | yes
-neg_interval_series                | simplify_fixtures/neg_interval_series.map | simplify_fixtures/neg_interval_series.map | yes
-neg_interval_parallel_nonregion    | simplify_fixtures/neg_interval_parallel_nonregion.map | simplify_fixtures/neg_interval_parallel_nonregion.map | yes
+neg_pointlist_series               | simplify_fixtures/neg_pointlist_series.map | simplify_fixtures/neg_pointlist_series.map |
+neg_pointlist_parallel_nonregion   | simplify_fixtures/neg_pointlist_parallel_nonregion.map | simplify_fixtures/neg_pointlist_parallel_nonregion.map |
+neg_box_series                     | simplify_fixtures/neg_box_series.map | simplify_fixtures/neg_box_series.map |
+neg_box_parallel_nonregion         | simplify_fixtures/neg_box_parallel_nonregion.map | simplify_fixtures/neg_box_parallel_nonregion.map |
+neg_interval_series                | simplify_fixtures/neg_interval_series.map | simplify_fixtures/neg_interval_series.map |
+neg_interval_parallel_nonregion    | simplify_fixtures/neg_interval_parallel_nonregion.map | simplify_fixtures/neg_interval_parallel_nonregion.map |
 selectormap_region_simplify_real     | simplify_fixtures/selectormap_region_simplify_real.map | simplify_fixtures/selectormap_region_simplify_real.simp |
-neg_selectormap_series_upper         | simplify_fixtures/neg_selectormap_series_upper.map | simplify_fixtures/neg_selectormap_series_upper.map | yes
-neg_selectormap_series_lower         | simplify_fixtures/neg_selectormap_series_lower.map | simplify_fixtures/neg_selectormap_series_lower.map | yes
-neg_selectormap_not_equal            | simplify_fixtures/neg_selectormap_not_equal.map | simplify_fixtures/neg_selectormap_not_equal.map | yes
-neg_selectormap_parallel             | simplify_fixtures/neg_selectormap_parallel.map | simplify_fixtures/neg_selectormap_parallel.map | yes
+neg_selectormap_series_upper         | simplify_fixtures/neg_selectormap_series_upper.map | simplify_fixtures/neg_selectormap_series_upper.map |
+neg_selectormap_series_lower         | simplify_fixtures/neg_selectormap_series_lower.map | simplify_fixtures/neg_selectormap_series_lower.map |
+neg_selectormap_not_equal            | simplify_fixtures/neg_selectormap_not_equal.map | simplify_fixtures/neg_selectormap_not_equal.map |
+neg_selectormap_parallel             | simplify_fixtures/neg_selectormap_parallel.map | simplify_fixtures/neg_selectormap_parallel.map |
 selectormap_inverse_cancel_tail      | simplify_fixtures/selectormap_inverse_cancel_tail.map | simplify_fixtures/selectormap_inverse_cancel_tail.simp |
-neg_switchmap_not_equal          | simplify_fixtures/neg_switchmap_not_equal.map | simplify_fixtures/neg_switchmap_not_equal.map | yes
-neg_switchmap_series             | simplify_fixtures/neg_switchmap_series.map | simplify_fixtures/neg_switchmap_series.map | yes
-neg_switchmap_parallel           | simplify_fixtures/neg_switchmap_parallel.map | simplify_fixtures/neg_switchmap_parallel.map | yes
+neg_switchmap_not_equal          | simplify_fixtures/neg_switchmap_not_equal.map | simplify_fixtures/neg_switchmap_not_equal.map |
+neg_switchmap_series             | simplify_fixtures/neg_switchmap_series.map | simplify_fixtures/neg_switchmap_series.map |
+neg_switchmap_parallel           | simplify_fixtures/neg_switchmap_parallel.map | simplify_fixtures/neg_switchmap_parallel.map |
 switchmap_inverse_cancel_tail      | simplify_fixtures/switchmap_inverse_cancel_tail.map | simplify_fixtures/switchmap_inverse_cancel_tail.simp |
 switchmap_fwdonly_simplify         | simplify_fixtures/switchmap_fwdonly_simplify.map | simplify_fixtures/switchmap_fwdonly_simplify.simp |
 switchmap_invonly_simplify         | simplify_fixtures/switchmap_invonly_simplify.map | simplify_fixtures/switchmap_invonly_simplify.simp |
 switchmap_inv_invonly              | simplify_fixtures/switchmap_inv_invonly.map | simplify_fixtures/switchmap_inv_invonly.simp |
 switchmap_inv_fwdonly              | simplify_fixtures/switchmap_inv_fwdonly.map | simplify_fixtures/switchmap_inv_fwdonly.simp |
-neg_switchmap_series_lower         | simplify_fixtures/neg_switchmap_series_lower.map | simplify_fixtures/neg_switchmap_series_lower.map | yes
-neg_unitnormmap_inv_fwd_diffcentre       | simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map | simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map | yes
-neg_unitnormmap_shift_inv                | simplify_fixtures/neg_unitnormmap_shift_inv.map | simplify_fixtures/neg_unitnormmap_shift_inv.map | yes
-neg_unitnormmap_fwd_shift                | simplify_fixtures/neg_unitnormmap_fwd_shift.map | simplify_fixtures/neg_unitnormmap_fwd_shift.map | yes
-neg_unitnormmap_same_dir                 | simplify_fixtures/neg_unitnormmap_same_dir.map | simplify_fixtures/neg_unitnormmap_same_dir.map | yes
-neg_unitnormmap_parallel                 | simplify_fixtures/neg_unitnormmap_parallel.map | simplify_fixtures/neg_unitnormmap_parallel.map | yes
-neg_unitnormmap_flanked                  | simplify_fixtures/neg_unitnormmap_flanked.map | simplify_fixtures/neg_unitnormmap_flanked.map | yes
+neg_switchmap_series_lower         | simplify_fixtures/neg_switchmap_series_lower.map | simplify_fixtures/neg_switchmap_series_lower.map |
+neg_unitnormmap_inv_fwd_diffcentre       | simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map | simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map |
+neg_unitnormmap_shift_inv                | simplify_fixtures/neg_unitnormmap_shift_inv.map | simplify_fixtures/neg_unitnormmap_shift_inv.map |
+neg_unitnormmap_fwd_shift                | simplify_fixtures/neg_unitnormmap_fwd_shift.map | simplify_fixtures/neg_unitnormmap_fwd_shift.map |
+neg_unitnormmap_same_dir                 | simplify_fixtures/neg_unitnormmap_same_dir.map | simplify_fixtures/neg_unitnormmap_same_dir.map |
+neg_unitnormmap_parallel                 | simplify_fixtures/neg_unitnormmap_parallel.map | simplify_fixtures/neg_unitnormmap_parallel.map |
+neg_unitnormmap_flanked                  | simplify_fixtures/neg_unitnormmap_flanked.map | simplify_fixtures/neg_unitnormmap_flanked.map |
 unitnormmap_winmap_inv_refused           | simplify_fixtures/unitnormmap_winmap_inv_refused.map | simplify_fixtures/unitnormmap_winmap_inv_refused.simp |
 unitnormmap_fwd_winmap_refused           | simplify_fixtures/unitnormmap_fwd_winmap_refused.map | simplify_fixtures/unitnormmap_fwd_winmap_refused.simp |
 unitnormmap_shift_merge_tail             | simplify_fixtures/unitnormmap_shift_merge_tail.map | simplify_fixtures/unitnormmap_shift_merge_tail.simp |
@@ -530,20 +523,20 @@ interval_unc_fillfactor_merge      | simplify_fixtures/interval_unc_fillfactor_m
 box_pointlist_merge              | simplify_fixtures/box_pointlist_merge.map | simplify_fixtures/box_pointlist_merge.simp |
 box_nullregion_merge             | simplify_fixtures/box_nullregion_merge.map | simplify_fixtures/box_nullregion_merge.simp |
 box_unc_fillfactor_merge         | simplify_fixtures/box_unc_fillfactor_merge.map | simplify_fixtures/box_unc_fillfactor_merge.simp |
-neg_box_unc_mismatch             | simplify_fixtures/neg_box_unc_mismatch.map | simplify_fixtures/neg_box_unc_mismatch.map | yes
+neg_box_unc_mismatch             | simplify_fixtures/neg_box_unc_mismatch.map | simplify_fixtures/neg_box_unc_mismatch.map |
 nullregion_unc_fillfactor_merge      | simplify_fixtures/nullregion_unc_fillfactor_merge.map | simplify_fixtures/nullregion_unc_fillfactor_merge.simp |
 pointlist_unc_fillfactor_merge       | simplify_fixtures/pointlist_unc_fillfactor_merge.map | simplify_fixtures/pointlist_unc_fillfactor_merge.simp |
 winmap_perm_swap_to_zoom         | simplify_fixtures/winmap_perm_swap_to_zoom.map | simplify_fixtures/winmap_perm_swap_to_zoom.simp |
 neg_winmap_perm_nonbidir         | simplify_fixtures/neg_winmap_perm_nonbidir.map | simplify_fixtures/neg_winmap_perm_nonbidir.simp |
 matrix_perm_const_swap           | simplify_fixtures/matrix_perm_const_swap.map | simplify_fixtures/matrix_perm_const_swap.simp |
-neg_wcsmap_perm_nonbidir           | simplify_fixtures/neg_wcsmap_perm_nonbidir.map | simplify_fixtures/neg_wcsmap_perm_nonbidir.map | yes
-neg_wcsmap_perm_disconnect         | simplify_fixtures/neg_wcsmap_perm_disconnect.map | simplify_fixtures/neg_wcsmap_perm_disconnect.map | yes
-neg_wcsmap_perm_disconnect_lower       | simplify_fixtures/neg_wcsmap_perm_disconnect_lower.map | simplify_fixtures/neg_wcsmap_perm_disconnect_lower.map | yes
-neg_wcsmap_pv_mismatch                 | simplify_fixtures/neg_wcsmap_pv_mismatch.map | simplify_fixtures/neg_wcsmap_pv_mismatch.map | yes
-neg_pcd_diff_disco         | simplify_fixtures/neg_pcd_diff_disco.map | simplify_fixtures/neg_pcd_diff_disco.map | yes
-neg_pcd_diff_centre        | simplify_fixtures/neg_pcd_diff_centre.map | simplify_fixtures/neg_pcd_diff_centre.map | yes
-neg_pcd_same_invert        | simplify_fixtures/neg_pcd_same_invert.map | simplify_fixtures/neg_pcd_same_invert.map | yes
-neg_pcd_perm_nonswap       | simplify_fixtures/neg_pcd_perm_nonswap.map | simplify_fixtures/neg_pcd_perm_nonswap.map | yes
+neg_wcsmap_perm_nonbidir           | simplify_fixtures/neg_wcsmap_perm_nonbidir.map | simplify_fixtures/neg_wcsmap_perm_nonbidir.map |
+neg_wcsmap_perm_disconnect         | simplify_fixtures/neg_wcsmap_perm_disconnect.map | simplify_fixtures/neg_wcsmap_perm_disconnect.map |
+neg_wcsmap_perm_disconnect_lower       | simplify_fixtures/neg_wcsmap_perm_disconnect_lower.map | simplify_fixtures/neg_wcsmap_perm_disconnect_lower.map |
+neg_wcsmap_pv_mismatch                 | simplify_fixtures/neg_wcsmap_pv_mismatch.map | simplify_fixtures/neg_wcsmap_pv_mismatch.map |
+neg_pcd_diff_disco         | simplify_fixtures/neg_pcd_diff_disco.map | simplify_fixtures/neg_pcd_diff_disco.map |
+neg_pcd_diff_centre        | simplify_fixtures/neg_pcd_diff_centre.map | simplify_fixtures/neg_pcd_diff_centre.map |
+neg_pcd_same_invert        | simplify_fixtures/neg_pcd_same_invert.map | simplify_fixtures/neg_pcd_same_invert.map |
+neg_pcd_perm_nonswap       | simplify_fixtures/neg_pcd_perm_nonswap.map | simplify_fixtures/neg_pcd_perm_nonswap.map |
 sph_matrix_sandwich_negz       | simplify_fixtures/sph_matrix_sandwich_negz.map | simplify_fixtures/sph_matrix_sandwich_negz.simp |
 specmap_invert_normalize       | simplify_fixtures/specmap_invert_normalize.map | simplify_fixtures/specmap_invert_normalize.simp |
 slamap_invert_normalize        | simplify_fixtures/slamap_invert_normalize.map | simplify_fixtures/slamap_invert_normalize.simp |
@@ -553,7 +546,7 @@ slamap_invert_normalize        | simplify_fixtures/slamap_invert_normalize.map |
 # constant one ulp away from ours; rebuilding the reference with the local
 # oracle reproduces our value exactly. Genuine cross-build last-ulp variation,
 # below the astequal threshold. astequal-only.
-timemap_invert_normalize       | simplify_fixtures/timemap_invert_normalize.map | simplify_fixtures/timemap_invert_normalize.simp | yes
+timemap_invert_normalize       | simplify_fixtures/timemap_invert_normalize.map | simplify_fixtures/timemap_invert_normalize.simp |
 specmap_pair_cancel            | simplify_fixtures/specmap_pair_cancel.map | simplify_fixtures/specmap_pair_cancel.simp |
 slamap_pair_cancel             | simplify_fixtures/slamap_pair_cancel.map | simplify_fixtures/slamap_pair_cancel.simp |
 timemap_pair_cancel            | simplify_fixtures/timemap_pair_cancel.map | simplify_fixtures/timemap_pair_cancel.simp |

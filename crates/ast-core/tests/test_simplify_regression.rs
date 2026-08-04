@@ -110,6 +110,14 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
     to_native_string(&obj).ok()
 }
 
+/// Drop the `IsSimp` attribute line from a native dump.
+fn strip_is_simp(s: &str) -> String {
+    s.lines()
+        .filter(|l| !l.trim_start().starts_with("IsSimp ="))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn simplify_regression() {
     let fixture_dir = PathBuf::from(concat!(
@@ -147,6 +155,13 @@ fn simplify_regression() {
         let input_path = fixture_dir.join(fields[1]);
         let reference_path = fixture_dir.join(fields[2]);
         let skip_string_compare = fields.get(3).map(|s| s.trim()) == Some("yes");
+        // A negative fixture names the same file as both input and reference:
+        // the assertion is that `simplify` leaves the Mapping alone. C's
+        // `astSimplify` still stamps `IsSimple` on whatever it returns
+        // (mapping.c:24759), so the result carries an `IsSimp = 1` line the
+        // never-simplified reference cannot have. That one token is the only
+        // licensed difference for these fixtures; every other line must match.
+        let ignore_is_simp_line = fields[1] == fields[2];
 
         // Skip if files don't exist (expected for any not-yet-imported entry)
         if !input_path.exists() || !reference_path.exists() {
@@ -258,10 +273,15 @@ fn simplify_regression() {
             transform_failures.push(name.to_string());
         }
 
-        // === Check 3: Serialization comparison (optional) ===
+        // === Check 3: Serialization comparison ===
         if !skip_string_compare {
             if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
-                if !common::native_strings_equivalent(&simp_str, &ref_text, 4) {
+                let (got, want) = if ignore_is_simp_line {
+                    (strip_is_simp(&simp_str), strip_is_simp(&ref_text))
+                } else {
+                    (simp_str, ref_text.clone())
+                };
+                if !common::native_strings_equivalent(&got, &want, 4) {
                     serial_failures.push(name.to_string());
                 }
             }
@@ -315,12 +335,18 @@ fn simplify_regression() {
         }
     }
 
-    // Hard-fail on transform or other failures (correctness).
-    if !transform_failures.is_empty() || !other_failures.is_empty() {
-        panic!(
-            "{} simplify regression tests failed (correctness)",
-            transform_failures.len() + other_failures.len()
-        );
+    // Every check is a hard failure. `equal()` mismatches mean the simplified
+    // tree is not the one C produces; serialization mismatches mean the dumped
+    // form diverges from the `.simp` reference. A fixture whose serialization
+    // difference has been diagnosed as a C-side artefact (see
+    // `docs/issues/c-library-quirks.md`) opts out per-fixture via the manifest's
+    // `skip_string_compare` flag, with the reason recorded there.
+    let total = equal_failures.len()
+        + transform_failures.len()
+        + serial_failures.len()
+        + other_failures.len();
+    if total > 0 {
+        panic!("{total} simplify regression tests failed");
     }
 
     // Require at least one test actually ran

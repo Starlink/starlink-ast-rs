@@ -53,6 +53,35 @@ thread_local! {
     /// We use structural fingerprints (hashes) instead of pointer
     /// equality since Rust values move.
     static SIMPLIFY_STACK: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+
+    /// Whether the most recent [`simplify_mapping`] of a `CmpMap` built a fresh
+    /// object rather than handing back a copy of its input.
+    ///
+    /// C's `CmpMap::Simplify` returns `astClone( this )` when its `simpler` flag
+    /// stayed 0 and a newly folded Mapping otherwise (cmpmap.c:3630-3636), and
+    /// callers distinguish the two by pointer identity. `MapMerge`'s
+    /// self-simplify head is one such caller: `simpler = ( new != map ) || ...`
+    /// (cmpmap.c:1456). A fold can reproduce the input's structure exactly and
+    /// still be a different pointer, so structural comparison alone is not
+    /// enough to reproduce that test — this flag supplies the missing bit.
+    static SIMPLIFY_REBUILT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the `simplify` call that just returned built a fresh object rather
+/// than handing back a copy of its input.
+///
+/// This is the bit C reads by comparing pointers after `astSimplify`. Callers
+/// that reproduce such a test — `CmpMap::MapMerge`'s self-simplify head
+/// (cmpmap.c:1456) and `WinMap::MapMerge`'s parallel distribution
+/// (winmap.c:1370) — consult it alongside a structural comparison, since a
+/// rebuild can reproduce its input's shape exactly and still be a new pointer.
+pub(crate) fn simplify_rebuilt() -> bool {
+    SIMPLIFY_REBUILT.get()
+}
+
+/// Reset the rebuild flag before a `simplify` call whose outcome will be tested.
+pub(crate) fn clear_simplify_rebuilt() {
+    SIMPLIFY_REBUILT.set(false);
 }
 
 /// Compute a structural fingerprint of a mapping for recursion detection.
@@ -281,24 +310,19 @@ pub(crate) fn flatten(
     // swap-and-seek that may absorb its scales into an adjacent MatrixMap
     // (`WinMat`, winmap.c:2793).
     //
-    // `WinMap::simplified()` narrows an all-unit-scale WinMap to a `ShiftMap`
-    // using the `astEQUAL` tolerance, so a WinMap whose scales are *within
-    // tolerance* of 1.0 but not exactly 1.0 (e.g. `0.99999999997788802` from a
-    // celestial fiducial round-trip) is collapsed to a `ShiftMap` here, before
-    // the nominate loop ever sees it adjacent to a MatrixMap. That destroys the
-    // residual scale that `WinMat` is supposed to fold into the matrix. In that
-    // specific window we defer to the nominate loop (matching C, which keeps the
-    // WinMap atomic through `astMapList` and only narrows it via `win_map_merge`
-    // after the swap-and-seek). Exactly-unit and genuinely non-unit WinMaps keep
-    // the normal leaf reduction, which the rest of the engine relies on (e.g.
-    // an identity WinMap must still collapse so it vanishes against a neighbour).
+    // `WinMap::simplified()` narrows an all-unit-scale WinMap to a `ShiftMap`,
+    // which would collapse it here before the nominate loop ever sees it
+    // adjacent to a MatrixMap — destroying the residual scale `WinMat` folds
+    // into the matrix. So any WinMap whose scales are all unit (to `astEQUAL`
+    // tolerance, the same test `win_map_merge`'s final narrowing applies) is
+    // left atomic for the nominate loop, where `win_map_merge` narrows it after
+    // the swap-and-seek. Genuinely non-unit WinMaps keep the normal leaf
+    // reduction.
     let defer_winmap = mapping
         .as_any()
         .downcast_ref::<WinMap>()
         .and_then(|w| super::winmap::extract_linear_params(w, false))
-        .is_some_and(|(_, scales)| {
-            scales.iter().any(|&s| s != 1.0) && scales.iter().all(|&s| ast_equal(s, 1.0))
-        });
+        .is_some_and(|(_, scales)| scales.iter().all(|&s| ast_equal(s, 1.0)));
     // A PermMap whose canonical stored form drops a now-redundant permutation
     // array (→ `OutCpy`/`InCpy`) must be canonicalised inside the nominate
     // loop, not here: C keeps each leaf atomic through `astMapList` and only
@@ -345,12 +369,6 @@ pub(crate) fn flatten(
     } else {
         mapping.simplified()?
     };
-    // Whether this leaf's own `astSimplify` actually reduced it (C's
-    // `smap != map` pointer test). Only a *changed* compound component is left
-    // tagged with `IsSimple` in C's dump; an unchanged one is a
-    // CombineMaps-reconstruction wrapper C never re-tags.
-    let leaf_changed =
-        !defer_winmap && !defer_perm && !defer_spec && !defer_region && !cloned.equal(mapping);
     // Preserve the AllowSimplify flag (C `AlSimp`) across the leaf's own
     // simplification: `astMapList` keeps each component's flags, and a
     // restricted parent CmpMap relies on it to decide which leaves may be
@@ -358,6 +376,21 @@ pub(crate) fn flatten(
     // flag, so carry it over explicitly.
     if mapping.allow_simplify() {
         cloned.set_allow_simplify(true);
+    }
+    // Likewise the `IsSimple` dump tag (C `IsSimp`). C `astMapList` appends the
+    // component pointer itself, so every flag already on the component travels
+    // with it into the list and on to the reconstructed tree; only a class's
+    // `simplified()` (called here in place of that pass-through) returns a fresh
+    // object without them. Carry the serialisation-only tag, not the merge
+    // guard: the guard would stop a parent `flatten` from decomposing this
+    // component, which C's `MapList` does regardless of `IsSimple`.
+    if mapping
+        .as_any()
+        .downcast_ref::<CmpMap>()
+        .is_some_and(|c| c.dump_is_simple())
+        && let Some(cm) = cloned.as_any_mut().downcast_mut::<CmpMap>()
+    {
+        cm.set_is_simple_serial(true);
     }
     // The leaf's own (intrinsic) Invert state, independent of any inversion
     // imposed by a parent CmpMap. This is preserved as the element's
@@ -412,14 +445,24 @@ pub(crate) fn flatten(
         orig_inv = cloned.is_inverted();
     }
 
-    // C's `astSimplify_` (mapping.c:24759) tags every result with `IsSimple`.
-    // A changed opaque (opposite-kind) CmpMap component carries that tag into
-    // the dump; raise the serialisation-only tag (not the merge guard, which
-    // would stop a parent `flatten` from decomposing it).
-    if leaf_changed && let Some(cm) = cloned.as_any_mut().downcast_mut::<CmpMap>() {
+    // C's `astSimplify_` (mapping.c:24759) stamps `IsSimple` on *every* result
+    // it returns, including the `astClone( this )` a class `Simplify` hands back
+    // when it finds nothing to do — and for a component that clone is the live
+    // object, so the tag lands on the component itself. The nominated leaf
+    // reaches that call through `CmpMap::MapMerge`'s self-simplify head
+    // (cmpmap.c:1437), so an opposite-kind CmpMap component always ends up
+    // tagged, whether or not it was reduced. Raise the serialisation-only tag,
+    // not the merge guard: the guard would stop a parent `flatten` from
+    // decomposing this component, which C's `MapList` does regardless of
+    // `IsSimple`.
+    if !defer_winmap
+        && !defer_perm
+        && !defer_spec
+        && !defer_region
+        && let Some(cm) = cloned.as_any_mut().downcast_mut::<CmpMap>()
+    {
         cm.set_is_simple_serial(true);
     }
-
     Ok(vec![(cloned, effective_inv, orig_inv)])
 }
 
@@ -429,8 +472,9 @@ pub(crate) fn flatten(
 /// encounters any same-kind CmpMap in an inverted state. Such an inversion
 /// is normalised away by the flatten/reconstruct round-trip, so C treats it
 /// as a simplification even when no component pair merges. Opposite-kind
-/// CmpMaps and non-CmpMap leaves contribute nothing (they are simplified
-/// independently via their own `simplified()`).
+/// CmpMaps and non-CmpMap leaves contribute nothing here; the change an
+/// opposite-kind component can report comes from the nominate loop instead
+/// (see [`opaque_leaf_is_simpler`]).
 fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> bool {
     let target_kind = if series {
         Composition::Series
@@ -448,29 +492,109 @@ fn decomposition_is_simpler(mapping: &dyn Mapping, inv: bool, series: bool) -> b
                 || decomposition_is_simpler(cmp.first(), child_inv_a, series)
                 || decomposition_is_simpler(cmp.second(), child_inv_b, series);
         }
+    }
+    false
+}
 
-        // An *opposite-kind* CmpMap is not decomposed by `flatten` — it enters
-        // the nominate loop as a single opaque leaf, exactly as C `MapList`
-        // appends it unchanged. C's nominate loop then materialises it (its
-        // `astSimplify` in the self-simplify head returns a changed pointer),
-        // which sets the loop's change flag and forces the outer rebuild. Our
-        // `flatten` performs that leaf materialisation eagerly (via
-        // `.simplified()`), so the change is not visible as a merge-loop
-        // `changed`. Detect it here — mirroring C's rebuild trigger — by
-        // checking whether simplifying this opposite-kind CmpMap leaf in its
-        // effective direction actually changes it. This is the same predicate
-        // `flatten` uses for `leaf_changed`, evaluated read-only.
+/// Why an *opposite-kind* `CmpMap` component was reduced by [`flatten`]'s eager
+/// leaf reduction, and therefore how the enclosing node must be rebuilt.
+///
+/// The two reducing paths have different consequences in C, because they place
+/// the rebuild in different objects.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpaqueLeafReduction {
+    /// No component was reduced.
+    None,
+    /// The component's own `astMapList` reports `simpler` — an inverted
+    /// same-kind CmpMap inside it — so its `Simplify` always takes the rebuild
+    /// branch and hands back a *new* pointer. The enclosing node's
+    /// `simpler = ( new != map )` (cmpmap.c:1456) is therefore 1 and its closing
+    /// fold runs.
+    Rebuilds,
+    /// The component's own `astMapList` reports nothing, so the reduction can
+    /// only come from its nominate loop. That loop converges: once it has run,
+    /// the reduced object sits in the tree and a further `astSimplify` on it
+    /// finds nothing and returns the supplied pointer (mapping.c:24740, or the
+    /// `astClone( this )` at cmpmap.c:3634 which `astSimplify_` then stamps in
+    /// place). The enclosing node's `simpler` is 0 on that converged visit, so
+    /// it takes `astClone( this )` and never folds.
+    Converged,
+}
+
+/// Whether an *opposite-kind* `CmpMap` component would be normalised by
+/// [`flatten`]'s eager leaf reduction, and so must be adopted from the
+/// component list rather than read back off the original tree.
+///
+/// C never needs this test. Its `astMapList` appends such a component
+/// unchanged, and the nominate loop's self-simplify head reduces it in place
+/// (`astSimplify( map )` then `new != map`, cmpmap.c:1437-1456) — mutating the
+/// very list entry the closing fold later wraps. `flatten` performs that
+/// reduction as it builds the list instead, so the change never registers as a
+/// merge-loop `changed`; detect it here, read-only, from the same tree C
+/// inspects.
+///
+/// A component already carrying `IsSimple` is exempt: C's `astSimplify_`
+/// early-out (mapping.c:24740) returns it as a clone of the supplied pointer
+/// without dispatching to the class `Simplify`, so `new != map` is false. That
+/// tag reaches the component because `flatten` carries it across the leaf
+/// reduction, as C `astMapList` carries every flag on the component pointer it
+/// appends. The exemption is conditional on the component's stored `Invert`
+/// already matching the effective direction: C reaches `astSimplify` through
+/// `astSetInvert( map, invert_list[ where ] )` (cmpmap.c:1433), and that macro
+/// clears `IsSimple` (mapping.c:23256), so a component that has to be re-oriented
+/// arrives at the early-out untagged and does dispatch.
+fn opaque_leaf_reduction(mapping: &dyn Mapping, inv: bool, series: bool) -> OpaqueLeafReduction {
+    let target_kind = if series {
+        Composition::Series
+    } else {
+        Composition::Parallel
+    };
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == target_kind {
+            let cmp_inv = inv != cmp.is_inverted();
+            let child_inv_a = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+            let child_inv_b = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+            let a = opaque_leaf_reduction(cmp.first(), child_inv_a, series);
+            // A rebuilding component anywhere in the list drives the enclosing
+            // fold, so it dominates a merely-converged one.
+            if a == OpaqueLeafReduction::Rebuilds {
+                return a;
+            }
+            let b = opaque_leaf_reduction(cmp.second(), child_inv_b, series);
+            return if b == OpaqueLeafReduction::None { a } else { b };
+        }
+        // C re-orients the component to its effective direction before
+        // simplifying, and only an *unchanged* stored `Invert` leaves the tag in
+        // place for the early-out to honour.
+        let reoriented = inv != cmp.is_inverted();
+        if cmp.dump_is_simple() && !reoriented {
+            return OpaqueLeafReduction::None;
+        }
+        // C's `new != map`: `astSimplify` returns a new object precisely when
+        // the component's own `Simplify` took its rebuild branch. Half of that
+        // decision is decidable without running it — `astMapList` inside the
+        // component reports `simpler` as `invert || r1 || r2` over the
+        // component's *own* composition kind, evaluated at the effective
+        // direction C imposes with `astSetInvert(map, invert_list[where])`
+        // (cmpmap.c:1433). An effectively-inverted component therefore always
+        // rebuilds, however transform-identical the result.
+        let own_series = cmp.composition() == Composition::Series;
+        if decomposition_is_simpler(cmp, inv, own_series) {
+            return OpaqueLeafReduction::Rebuilds;
+        }
+        // Otherwise the rebuild can only come from the component's nominate
+        // loop, which shows up as a structural difference.
         let mut oriented = cmp.clone_box();
         if inv {
             oriented.invert();
         }
-        if let Ok(simplified) = oriented.simplified() {
-            if !simplified.equal(oriented.as_ref()) {
-                return true;
-            }
+        if let Ok(simplified) = oriented.simplified()
+            && !simplified.equal(oriented.as_ref())
+        {
+            return OpaqueLeafReduction::Converged;
         }
     }
-    false
+    OpaqueLeafReduction::None
 }
 
 /// Working state for the per-class `map_merge` nominate loop.
@@ -577,6 +701,67 @@ impl MergeCtx {
     /// WinMap replace-with-simpler steps (→ MatrixMap / ShiftMap).
     pub(crate) fn set_pair_single(&mut self, index: usize, entry: (DynMapping, bool, bool)) {
         self.list[index] = entry;
+    }
+
+    /// Raise the serialisation-only `IsSimple` tag on the component at `index`.
+    ///
+    /// Mirrors the stamp C's `astSimplify` leaves on a nominated component even
+    /// when it returns that component unreduced (`astSimplify_`, mapping.c:24759
+    /// — the tag is set on the returned clone, which for an unreduced Mapping is
+    /// the component itself).
+    pub(crate) fn set_component_simple_tag(&mut self, index: usize) {
+        if let Some(cm) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.set_is_simple_serial(true);
+        }
+    }
+
+    /// Mirror the `IsSimple` tag pattern of `src` onto the component at
+    /// `index`, node for node.
+    ///
+    /// C's self-simplify head (cmpmap.c:1437) hands `astSimplify` the *live*
+    /// component. When no reduction is found, `astSimplify` returns
+    /// `astClone( this )` — the same object — so `new == map`, `simpler` is
+    /// false, and the "put the result back" branch never runs: the component
+    /// already carries whatever the recursion did to its tags. That includes
+    /// both directions. Stamps raised on interior nodes stay raised, and
+    /// stamps the recursion *cleared* (`CmpMap::Equal`, cmpmap.c:386-398,
+    /// unconditionally sets and restores `Invert` on every element of both
+    /// decompositions, and `Simplify`'s own recursion guard at cmpmap.c:3481
+    /// calls it on entry) stay cleared.
+    ///
+    /// This port simplifies a clone, so the pattern has to be mirrored back.
+    /// Copying only the raised tags reproduces half of C's behaviour and
+    /// leaves stale tags in place, so assign the tag at every matching node.
+    pub(crate) fn mirror_component_simple_tags(&mut self, index: usize, src: &dyn Mapping) {
+        let Some(s) = src.as_any().downcast_ref::<CmpMap>() else {
+            return;
+        };
+        let (s_first, s_second, s_inv) = (s.first(), s.second(), s.is_inverted());
+        let Some(d) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() else {
+            return;
+        };
+        if s_inv != d.is_inverted() {
+            return;
+        }
+        mirror_simple_tags(s_first, d.first_mut());
+        mirror_simple_tags(s_second, d.second_mut());
+    }
+
+    /// Clear the `IsSimple` tag on the component at `index`.
+    ///
+    /// The per-class `CanSwap` helpers (matrixmap.c:416-421 / winmap.c:102-106)
+    /// temporarily force the `Invert` attribute of both candidate neighbours to
+    /// the orientations held in `invert_list`, then restore the original values
+    /// on exit. `astSetInvert` carries no unchanged-value guard
+    /// (`astMAKE_SET(Mapping,Invert,...)`, mapping.c:23256), so each of those
+    /// four calls clears `IsSimple` on the live Mapping whether or not the
+    /// stored orientation actually changes. The tag drives both the `IsSimp`
+    /// serialisation token and whether `astSimplify` re-dispatches on the
+    /// component, so a faithful port must reproduce the clear.
+    pub(crate) fn clear_component_simple_tag(&mut self, index: usize) {
+        if let Some(cm) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.clear_simple_tags();
+        }
     }
 
     /// Replace the two adjacent entries at `i1`/`i1+1` with a single merged
@@ -715,11 +900,17 @@ pub(crate) fn cmp_map_merge(
         }
         let fp_before = mapping_fingerprint(oriented.as_ref());
 
+        SIMPLIFY_REBUILT.set(false);
         if let Ok(simplified) = oriented.simplify() {
-            // C compares pointers (`new != map`); we compare structural
-            // fingerprints. A change replaces the component (the new Invert
-            // flag is split back out into the effective-direction bool).
-            if mapping_fingerprint(simplified.as_ref()) != fp_before {
+            // C's test is `simpler = ( new != map ) || ( new_invert !=
+            // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
+            // structure. A `CmpMap::Simplify` that set its own `simpler` flag
+            // folds a new object out of its component list, so `new != map` holds
+            // even when the fold reproduces the input's shape exactly; only the
+            // `astClone( this )` branch yields the original pointer. Reproduce
+            // that with the structural comparison *or* the rebuild flag the
+            // recursion just set.
+            if SIMPLIFY_REBUILT.get() || mapping_fingerprint(simplified.as_ref()) != fp_before {
                 let new_inv = simplified.is_inverted();
                 let mut fwd = simplified;
                 if new_inv {
@@ -741,7 +932,25 @@ pub(crate) fn cmp_map_merge(
                 ctx.set_pair_single(where_, (fwd, new_inv, new_inv));
                 return Some(where_);
             }
+
+            // The nominee did not reduce, so C falls through to the neighbour
+            // and expansion branches below with the component untouched:
+            // `astSimplify( map )` (cmpmap.c:1437) returned `astClone( map )`,
+            // so `new == map` and the replace branch never runs. The component
+            // therefore keeps whatever the recursion did to the `IsSimple` tags
+            // inside it — both the stamps it raised on interior nodes and the
+            // ones it cleared. This port simplifies a clone, so mirror the
+            // resulting tag pattern back onto the list entry before discarding
+            // it. Undo the orientation applied above first so the two trees
+            // pair their children the same way round.
+            let mut aligned = simplified;
+            if eff_inv {
+                aligned.invert();
+            }
+            ctx.mirror_component_simple_tags(where_, aligned.as_ref());
         }
+
+        ctx.set_component_simple_tag(where_);
     }
 
     // Merge adjacent CmpMaps (C `cmpmap.c::MapMerge` 1528-1813).
@@ -1409,7 +1618,7 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
 /// Simplify a flattened component list in place. When `restricted` is true,
 /// only components carrying `AllowSimplify` may be nominated, and the legacy
 /// global swap helpers (not part of C's restricted engine) are skipped.
-pub(crate) fn merge_loop_restricted(
+fn merge_loop_restricted(
     list: &mut Vec<(DynMapping, bool, bool)>,
     series: bool,
     restricted: bool,
@@ -2997,16 +3206,30 @@ pub(crate) fn recombine_distributed_branches(
 
     // Each branch must be a forward, binary series CmpMap. The branches are
     // produced in forward orientation (effective_inv == false) by the
-    // distribution loop, so the leaf-level effective inverts are exactly the
-    // children's recorded inv_a/inv_b XOR their own stored Invert (matching
-    // `flatten`'s `child_inv_*` computation with `cmp_inv == false`).
-    let split = |entry: &(DynMapping, bool, bool)| -> Option<(DynMapping, bool, DynMapping, bool)> {
+    // distribution loop, so each child's absolute applied direction is just the
+    // branch's recorded `inv_a`/`inv_b` snapshot — the same value C reads from
+    // `astDecompose` (cmpmap.c:758-786) and then writes over the component's own
+    // stored `Invert`. Since the children are stripped to forward here, the
+    // snapshot is used raw; the `inv_x != child.is_inverted()` form is the
+    // relative flag of cmpmap.c:3862, which would double-count a
+    // stored-inverted child.
+    //
+    // The stored orientation is carried separately as each element's `orig_inv`:
+    // C `CombineMaps` sets the component's `Invert` to the effective direction
+    // only for the duration of the `astCmpMap` call and restores the original
+    // afterwards (cmpmap.c:625-662), so the enclosing CmpMap records the
+    // effective direction in `InvA`/`InvB` while the component still serialises
+    // in the orientation it was stored in.
+    type SplitHalves = (DynMapping, bool, bool, DynMapping, bool, bool);
+    let split = |entry: &(DynMapping, bool, bool)| -> Option<SplitHalves> {
         let cmp = entry.0.as_any().downcast_ref::<CmpMap>()?;
         if cmp.composition() != Composition::Series {
             return None;
         }
-        let a_inv = cmp.inv_a() != cmp.first().is_inverted();
-        let b_inv = cmp.inv_b() != cmp.second().is_inverted();
+        let a_inv = cmp.inv_a();
+        let b_inv = cmp.inv_b();
+        let a_orig = cmp.first().is_inverted();
+        let b_orig = cmp.second().is_inverted();
         let mut a = cmp.first().clone_box();
         if a.is_inverted() {
             a.invert();
@@ -3015,46 +3238,29 @@ pub(crate) fn recombine_distributed_branches(
         if b.is_inverted() {
             b.invert();
         }
-        Some((a, a_inv, b, b_inv))
+        Some((a, a_inv, a_orig, b, b_inv, b_orig))
     };
 
-    let (a1, a1_inv, b1, b1_inv) = split(&branches[0])?;
-    let (a2, a2_inv, b2, b2_inv) = split(&branches[1])?;
+    let (a1, a1_inv, a1_orig, b1, b1_inv, b1_orig) = split(&branches[0])?;
+    let (a2, a2_inv, a2_orig, b2, b2_inv, b2_orig) = split(&branches[1])?;
 
     // new1 = A1 ‖ A2, new2 = B1 ‖ B2 (C CombineMaps with series == 0).
-    let new1 = reconstruct(vec![(a1, a1_inv, false), (a2, a2_inv, false)], false).ok()?;
-    let new2 = reconstruct(vec![(b1, b1_inv, false), (b2, b2_inv, false)], false).ok()?;
+    let new1 = reconstruct(vec![(a1, a1_inv, a1_orig), (a2, a2_inv, a2_orig)], false).ok()?;
+    let new2 = reconstruct(vec![(b1, b1_inv, b1_orig), (b2, b2_inv, b2_orig)], false).ok()?;
 
     // Simplify each half and detect whether either changed (C's `simpler`).
-    // Use the internal `simplify_mapping` rather than the public `simplify`:
-    // the latter stamps `has_been_simplified` (the dumped `IsSimp` tag) on the
-    // returned root. C does set `IsSimple` on the `astSimplify(new1/new2)`
-    // results, but the merged pair is then re-fused into the outer tree where
-    // C's dump does not carry those child tags — matching the reference, whose
-    // inner components (e.g. brad's collapsed WinMap and `parallel(Lut,Wcs)`)
-    // are untagged. The selective `flag_parallel_series_trailing` pass below
-    // re-adds the tag exactly where C emits it (a trailing compound branch of a
-    // re-fused parallel-of-series, e.g. cap_specmap's `(Spec;Zoom)`).
+    // C stamps `IsSimple` on each half here (cmpmap.c:1602), but both halves
+    // become elements of the series list the closing fold walks, and that fold's
+    // `astSetInvert` clears the tag again — so the halves reach the dump
+    // untagged and the plain pipeline entry is the faithful call.
     let fp1_before = mapping_fingerprint(new1.as_ref());
     let fp2_before = mapping_fingerprint(new2.as_ref());
     let simp1 = simplify_mapping(new1.as_ref()).ok()?;
-    let mut simp2 = simplify_mapping(new2.as_ref()).ok()?;
+    let simp2 = simplify_mapping(new2.as_ref()).ok()?;
     let simpler = mapping_fingerprint(simp1.as_ref()) != fp1_before
         || mapping_fingerprint(simp2.as_ref()) != fp2_before;
     if !simpler {
         return None;
-    }
-
-    // When `simp2` settles as a parallel CmpMap of two series branches (the
-    // common case: the celestial and spectral chains stay side-by-side), C's
-    // recursive simplify has run the "Series CmpMaps in parallel" merge on it.
-    // That merge `astSimplify`s the trailing component of each branch and tags
-    // it `IsSimple` as a side effect, even though the re-fusion is discarded
-    // here. Rust's deep-clone simplify dropped that side-effect tag; re-apply
-    // it so the nested branch CmpMaps carry `IsSimp = 1` exactly as the C dump
-    // does (e.g. the celestial `WcsMap`-wrapper sub-chain).
-    if let Some(cm) = simp2.as_any_mut().downcast_mut::<CmpMap>() {
-        cm.flag_parallel_series_trailing();
     }
 
     // Compose the two simplified halves in series (C astCmpMap(simp1, simp2, 1)).
@@ -3232,6 +3438,140 @@ fn reconstruct_inner(
 /// For `CmpMap` inputs this decomposes the tree, attempts pairwise
 /// merges, and rebuilds. For non-`CmpMap` inputs it delegates to the
 /// mapping's own `simplified()` method.
+/// Write the nominate loop's `IsSimple` stamps back onto the tree that
+/// `simplify_mapping` is about to return unchanged.
+///
+/// C's `SeparateMappings` (cmpmap.c:3326) only deep-copies *duplicate*
+/// component pointers; every other entry of `map_list` aliases the live child
+/// of the CmpMap being simplified. So when the nominate loop's self-simplify
+/// head stamps `IsSimple` on an entry it reduced no further — `astSimplify`
+/// (cmpmap.c:1437) tags even the clone it returns for an unreduced Mapping —
+/// the stamp mutates the real child, and is still there when `Simplify` takes
+/// its `!simpler` branch and returns `astClone( this )` (cmpmap.c:3634).
+///
+/// Our list holds clones, so the stamps would otherwise be discarded with it.
+/// Copy them across, walking the tree in the order [`flatten`] built the list so
+/// entry *i* lands on the component it came from. A stamp can sit anywhere
+/// inside an entry, not just on its root — the entry is a whole subtree that C
+/// shares with the tree, so [`mirror_simple_tags`] transplants the entry's tag
+/// state at every level.
+fn apply_component_stamps(
+    node: &mut DynMapping,
+    inv: bool,
+    series: bool,
+    entries: &[DynMapping],
+    next: &mut usize,
+) {
+    let target_kind = if series {
+        Composition::Series
+    } else {
+        Composition::Parallel
+    };
+    if let Some(cmp) = node.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == target_kind {
+            let cmp_inv = inv != cmp.is_inverted();
+            let first_inv = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+            let second_inv = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+            // `flatten` reverses the child order for an inverted series CmpMap.
+            let reversed = cmp_inv && series;
+            let cmp = node
+                .as_any_mut()
+                .downcast_mut::<CmpMap>()
+                .expect("downcast succeeded immediately above");
+            if reversed {
+                apply_component_stamps(cmp.second_mut(), second_inv, series, entries, next);
+                apply_component_stamps(cmp.first_mut(), first_inv, series, entries, next);
+            } else {
+                apply_component_stamps(cmp.first_mut(), first_inv, series, entries, next);
+                apply_component_stamps(cmp.second_mut(), second_inv, series, entries, next);
+            }
+            return;
+        }
+    }
+    // A class overriding C `astMapList` contributes its own components; skip
+    // past the indices they occupy without descending, since only a `CmpMap`
+    // component can carry the tag.
+    if let Some(components) = node.map_list_decompose(inv, series) {
+        for (comp, comp_inv) in components {
+            *next += flatten(comp.as_ref(), comp_inv, series)
+                .map(|f| f.len())
+                .unwrap_or(1);
+        }
+        return;
+    }
+    // Leaf: `flatten` emitted exactly one entry for this component.
+    if let Some(entry) = entries.get(*next) {
+        mirror_simple_tags(entry.as_ref(), node);
+    }
+    *next += 1;
+}
+
+/// Clear the `IsSimple` tag on every element of `node`'s `series`-decomposition,
+/// in place.
+///
+/// This is the effect C's recursion guard has on the Mapping it is about to
+/// return: `astEqual` decomposes the operand and sets each element's `Invert`
+/// twice (cmpmap.c:386-398), and `astSetInvert` clears `IsSimple` even when the
+/// value is unchanged (mapping.c:23256). The decomposition boundary matters —
+/// only elements are touched, never nodes nested below one, because those are
+/// not in `map_list`.
+fn clear_element_simple_tags(node: &mut DynMapping, inv: bool, series: bool) {
+    let target_kind = if series {
+        Composition::Series
+    } else {
+        Composition::Parallel
+    };
+    if let Some(cmp) = node.as_any().downcast_ref::<CmpMap>() {
+        if cmp.composition() == target_kind {
+            let cmp_inv = inv != cmp.is_inverted();
+            let first_inv = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+            let second_inv = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+            let cmp = node
+                .as_any_mut()
+                .downcast_mut::<CmpMap>()
+                .expect("downcast succeeded immediately above");
+            clear_element_simple_tags(cmp.first_mut(), first_inv, series);
+            clear_element_simple_tags(cmp.second_mut(), second_inv, series);
+            return;
+        }
+    }
+    // Decomposition element: clear its tag and stop, leaving anything nested
+    // below it alone.
+    if let Some(cm) = node.as_any_mut().downcast_mut::<CmpMap>() {
+        cm.clear_simple_tags();
+    }
+}
+
+/// Assign to `dst` the `IsSimple` tag carried by the structurally-corresponding
+/// `CmpMap` in `src`, descending both trees in step.
+///
+/// The tag is mirrored in both directions: where `src` is untagged the tag is
+/// removed from `dst`. `src` is a component-list entry and `dst` the same
+/// component on the tree the caller preserves; in C they are one object, so
+/// every set *and* every clear performed on the entry has to land on `dst`.
+fn mirror_simple_tags(src: &dyn Mapping, dst: &mut DynMapping) {
+    let Some(s) = src.as_any().downcast_ref::<CmpMap>() else {
+        return;
+    };
+    let (s_tag, s_inv) = (s.dump_is_simple(), s.is_inverted());
+    let Some(d) = dst.as_any_mut().downcast_mut::<CmpMap>() else {
+        return;
+    };
+    if s_tag {
+        d.set_is_simple_serial(true);
+    } else {
+        d.clear_simple_tags();
+    }
+    // A differing stored orientation means the two trees pair children the other
+    // way round; without a shared shape there is nothing to descend into.
+    if s_inv != d.is_inverted() {
+        return;
+    }
+    let (s_first, s_second) = (s.first(), s.second());
+    mirror_simple_tags(s_first, d.first_mut());
+    mirror_simple_tags(s_second, d.second_mut());
+}
+
 pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
         return mapping.simplified();
@@ -3241,18 +3581,52 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     // detects cycles (same structure reappearing on the call stack) and
     // the depth counter caps absolute recursion depth.  Either condition
     // causes an immediate bail — we return the mapping unchanged.
+    let series = cmp.composition() == Composition::Series;
+
+    // C's recursion guard (cmpmap.c:3480) compares the supplied Mapping against
+    // each Mapping already being simplified higher up the stack, using
+    // `astEqual`. `CmpMap::Equal` decomposes *both* operands with `astMapList`
+    // and then, per component, saves the stored `Invert`, sets it to the
+    // decomposition's value, compares, and sets it back (cmpmap.c:386-398).
+    // `astSetInvert` has no unchanged-value guard (mapping.c:23256), so each of
+    // those calls clears `IsSimple` on the live component whether or not the
+    // orientation actually changes. Since `SeparateMappings` has not run yet,
+    // the list entries are the CmpMap's own children, so the clear lands on the
+    // real tree.
+    //
+    // The guard loop bounds on `simplify_depth`, which is zero at the outermost
+    // call, so a top-level simplify performs no comparison and no clear. Every
+    // nested simplify performs at least one, stripping the tag from every
+    // element of its own decomposition before any merging begins — and it does
+    // so whether the comparison matches (early return) or not.
+    let nested = SIMPLIFY_DEPTH.get() > 0;
+
     let _guard = match SimplifyGuard::enter(mapping) {
         Some(g) => g,
         None => {
-            // Cycle detected or depth exceeded — return unchanged.
-            return Ok(mapping.clone_box());
+            // The guard matched, so C returns `astClone( this_mapping )`. The
+            // comparison that produced the match has already cleared the
+            // element tags on the object being cloned.
+            let mut cloned = mapping.clone_box();
+            if nested {
+                clear_element_simple_tags(&mut cloned, false, series);
+            }
+            return Ok(cloned);
         }
     };
 
-    let series = cmp.composition() == Composition::Series;
     let restricted = cmp.restricted_simplify();
 
     let mut list = flatten(mapping, false, series)?;
+
+    if nested {
+        for (m, _, _) in list.iter_mut() {
+            if let Some(cm) = m.as_any_mut().downcast_mut::<CmpMap>() {
+                cm.clear_simple_tags();
+            }
+        }
+    }
+
     let changed = merge_loop_restricted(&mut list, series, restricted);
 
     // If no simplification occurred, preserve the original tree structure
@@ -3268,15 +3642,47 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     // whose only redundancy is an inverted CmpMap (e.g. a buried linear
     // residue that decomposition floats to the front) is left in its
     // original nesting instead of the canonical form C produces.
+    // C's `simpler` (cmpmap.c:3634) — the flag that decides between cloning the
+    // supplied CmpMap and rebuilding it from the component list.
     let simpler = decomposition_is_simpler(mapping, false, series);
-    if !changed && !simpler && list.len() > 1 {
+    // An opposite-kind component that `flatten` reduced eagerly must still be
+    // adopted, so the tree has to be rebuilt from the list. Whether that rebuild
+    // is C's closing fold depends on which reduction fired — see
+    // [`OpaqueLeafReduction`]. A `Converged` one leaves C's `simpler` at 0, so
+    // C took `astClone( this )`: no component `Invert` was set and no nested
+    // `IsSimple` was cleared.
+    let reduction = opaque_leaf_reduction(mapping, false, series);
+    let adopt_reduced_leaf = reduction != OpaqueLeafReduction::None;
+    if !changed && !simpler && !adopt_reduced_leaf && list.len() > 1 {
         let mut cloned = mapping.clone_box();
         if let Some(cmp_mut) = cloned.as_any_mut().downcast_mut::<CmpMap>() {
             cmp_mut.normalize_unitmap_children();
         }
+        // Every `IsSimple` now on a list entry is one C raised on the *live*
+        // component: `SeparateMappings` (cmpmap.c:3326) leaves each non-duplicate
+        // entry aliasing the real child, and both stampers — the nominate loop's
+        // `astSimplify` (cmpmap.c:1437) and the recursive simplify of a component
+        // that `flatten` performs eagerly — write through that alias. So the tags
+        // are still on `this`'s children when `Simplify` returns `astClone( this )`
+        // (cmpmap.c:3634), and they must be transplanted onto our fresh clone.
+        let entries: Vec<DynMapping> = list.into_iter().map(|(m, _, _)| m).collect();
+        apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
+        // C's `!simpler` branch: `astClone( this )`, not a fresh object.
+        SIMPLIFY_REBUILT.set(false);
         return Ok(cloned);
     }
 
+    // The plain builder is used both when nothing reduced at all and when the
+    // only reduction was a `Converged` one: in the latter case C rebuilt nothing
+    // itself, so there is no fold whose `astSetInvert` would clear component tags.
+    if !changed && !simpler && reduction != OpaqueLeafReduction::Rebuilds {
+        SIMPLIFY_REBUILT.set(false);
+        return reconstruct(list, series);
+    }
+
+    // C's `simpler` branch: the result is folded afresh from the component list,
+    // so it is a new pointer even when the fold reproduces the input's shape.
+    SIMPLIFY_REBUILT.set(true);
     reconstruct_simplified(list, series)
 }
 
