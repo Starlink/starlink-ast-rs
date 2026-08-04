@@ -83,7 +83,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
-    ("car6_native", "FITS: card-level"),
     ("cd-cross_native", "INVERT_B: mapping-invert placement"),
     ("class-hel_native", "IDENT_A: ident"),
     (

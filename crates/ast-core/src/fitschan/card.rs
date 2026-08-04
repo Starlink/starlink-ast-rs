@@ -54,11 +54,16 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
                      non-printing character (ascii value {c})."
                 ));
             }
-            return Some(format!(
-                "The FITS keyword name ('{trimmed}') contains an illegal \
-                 character ('{}').",
-                c as char
-            ));
+            if c > b' ' {
+                return Some(format!(
+                    "The FITS keyword name ('{trimmed}') contains an illegal \
+                     character ('{}').",
+                    c as char
+                ));
+            }
+            // C's chain has no arm for a space (fitschan.c:5985-6008): it
+            // breaks out of the loop without warning.
+            return None;
         }
     }
     None
@@ -1180,6 +1185,15 @@ mod tests {
         assert_eq!(check_fits_name("        "), None);
         // An '=' before column 9 is a C error, not a warning.
         assert_eq!(check_fits_name("A=B     "), None);
+    }
+
+    #[test]
+    fn check_fits_name_space_is_not_reported() {
+        // C CheckFitsName (fitschan.c:5985-6008) branches on `== '='`,
+        // `< ' '` and `> ' '`. A space matches none of them, so no warning
+        // is issued for a name field that contains one.
+        assert_eq!(check_fits_name("FITS hea"), None);
+        assert_eq!(check_fits_name("A B     "), None);
     }
 
     #[test]
