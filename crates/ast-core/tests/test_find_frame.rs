@@ -192,21 +192,6 @@ fn cmpframe_match_with_default_max_axes_fails() {
     assert!(result.is_none());
 }
 
-/// `cmpframe_match_against_skyframe_template_with_max_axes` (resume
-/// doc).
-///
-/// SkyFrame template with MaxAxes=3, MinAxes=2 against a CmpFrame
-/// target containing a SkyFrame component. The cardinality gate now
-/// accepts (3 axes within [2..=3]); the SkyFrame::match_template
-/// downcast then needs to walk into the CmpFrame to find the
-/// SkyFrame component. That walk requires a Rust equivalent of C's
-/// `astPrimaryFrame` and is not yet implemented (the SkyFrame::Match
-/// only handles direct SkyFrame targets — see skyframe.rs:1049-1057).
-///
-/// Marked #[ignore] until the SkyFrame walk into CmpFrame components
-/// lands. The `cmpframe_match_with_default_max_axes_fails` test
-/// above confirms the cardinality side of the contract works
-/// today.
 // ---------------------------------------------------------------------
 // FrameSet::find_frame_template integration tests (Task 10).
 // ---------------------------------------------------------------------
@@ -300,6 +285,15 @@ fn frameset_find_frame_no_match_returns_none() {
     assert!(result.is_none());
 }
 
+/// SkyFrame template (MinAxes=2, MaxAxes=3) matched against a 3-axis
+/// CmpFrame whose first component is a SkyFrame.
+///
+/// Two steps must both work: the cardinality gate in `default_match`
+/// accepts 3 axes within [2..=3], and `SkyFrame::match_template` then
+/// walks `astPrimaryFrame` over each target axis (skyframe.c:6759-6803)
+/// to find the two axes owned by the embedded SkyFrame. The companion
+/// `cmpframe_match_with_default_max_axes_fails` above covers the
+/// cardinality rejection with the default MinAxes=MaxAxes=2.
 #[test]
 fn cmpframe_match_against_skyframe_template_with_max_axes() {
     let mut template = SkyFrame::new(SkySystem::Fk5);
