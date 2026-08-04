@@ -93,42 +93,13 @@ fn build_crpix_shift(store: &FitsStore) -> AstResult<WinMap> {
 
 /// Build the PC rotation matrix and CDELT diagonal scaling.
 ///
-/// If a CD matrix is present, it is used as the rotation matrix and CDELT
-/// defaults to unity. Otherwise, PC defaults to identity and CDELT to 1.0
-/// for missing values.
+/// A `CDj_i` matrix in the header never reaches here: `SpecTrans` has already
+/// converted it into an equivalent `PCj_i` matrix plus per-row `CDELTj`, which
+/// is why the FITS store the C library builds has no CD member either.
 fn build_rotation_and_scale(store: &FitsStore) -> AstResult<(DynMapping, DynMapping)> {
-    let naxis = store.naxis;
-
-    if store.has_cd_matrix() {
-        // CD matrix present: use it as the PC matrix, with CDELT = 1.
-        // The C library's approach: when CD is present, PC = CD and CDELT = 1.
-        let pc_map = build_cd_matrix(store)?;
-        let cdelt_map: DynMapping = Box::new(UnitMap::new(naxis));
-        Ok((pc_map, cdelt_map))
-    } else {
-        // PC matrix (defaults to identity) + CDELT (defaults to 1.0).
-        let pc_map = build_pc_matrix(store)?;
-        let cdelt_map = build_cdelt_matrix(store)?;
-        Ok((pc_map, cdelt_map))
-    }
-}
-
-/// Build a MatrixMap from the CD matrix elements.
-///
-/// Missing elements default to 0.0 (off-diagonal) or 0.0 (diagonal too,
-/// unlike PC which defaults diagonal to 1.0 — CD has no such default).
-fn build_cd_matrix(store: &FitsStore) -> AstResult<DynMapping> {
-    let naxis = store.naxis;
-    let mut mat = Array2::zeros((naxis, naxis));
-
-    for i in 0..naxis {
-        for j in 0..naxis {
-            mat[[i, j]] = store.cd[i][j].unwrap_or(0.0);
-        }
-    }
-
-    let mm = MatrixMap::new(mat)?;
-    Ok(Box::new(mm))
+    let pc_map = build_pc_matrix(store)?;
+    let cdelt_map = build_cdelt_matrix(store)?;
+    Ok((pc_map, cdelt_map))
 }
 
 /// Build a MatrixMap from the PC matrix elements.
@@ -475,15 +446,27 @@ mod tests {
         store
     }
 
-    /// Build a FitsStore with a CD matrix (Spitzer-like).
+    /// The store a rotated-and-skewed Spitzer-like `CDj_i` header produces once
+    /// `SpecTrans` has split it into a unit-row `PCj_i` matrix and per-row
+    /// `CDELTj`. Derived here by the same row-normalisation `SpecTrans` applies,
+    /// so `PC * CDELT` reproduces `CD` to the last bit and the transform
+    /// assertions below are the CD matrix's own.
     fn cd_matrix_store() -> FitsStore {
+        const CD: [[f64; 2]; 2] = [[0.000250, 0.000230], [0.000230, -0.000250]];
+
         let mut store = FitsStore::new(2);
         store.crpix[0] = Some(128.0);
         store.crpix[1] = Some(128.0);
-        store.cd[0][0] = Some(0.000250);
-        store.cd[0][1] = Some(0.000230);
-        store.cd[1][0] = Some(0.000230);
-        store.cd[1][1] = Some(-0.000250);
+        for (j, row) in CD.iter().enumerate() {
+            // Row length, signed by the diagonal element.
+            let rowsum2: f64 = row.iter().map(|v| v * v).sum();
+            let diag = if row[j] >= 0.0 { 1.0 } else { -1.0 };
+            let cdeltj = rowsum2.sqrt() * diag;
+            store.cdelt[j] = Some(cdeltj);
+            for (i, &cd) in row.iter().enumerate() {
+                store.pc[j][i] = Some(cd / cdeltj);
+            }
+        }
         store
     }
 

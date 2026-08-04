@@ -65,45 +65,44 @@ fn fixtures_dir() -> PathBuf {
 /// byte-exact (see `native_byte_exact_round_trip_frameset_fixtures`). Listed
 /// explicitly with a one-line reason so the comparison is *visible*: every
 /// other native case is byte-compared. The goal is to empty this list by
-/// fixing the FITS reader. Categories (first differing keyword):
-/// SREF/SREFIS = SkyRef fiducial/offset handling; SFT = ShiftMap (IWC/CRVAL
-/// shift); BEGAST/ENDAST = object-shape divergence; EPOCH/DTAI/DUT1 = time
-/// attribute set-ness; CONTINUE = long-string card split; etc.
+/// fixing the FITS reader. Each reason names the first differing keyword, so
+/// the entries group by cause: SREF = SkyRef fiducial handling;
+/// BEGAST/ENDAST/INVERT = object-shape divergence; EPOCH/DTAI = time-attribute
+/// set-ness; SYSTEM/DOMAIN/LABEL/IDENT = Frame attribute defaulting;
+/// ASTWARN = warning-card insertion position; CONTINUE = long-string split.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("alt-spectral_native", "SYSTEM: spectral system"),
+    ("alt-spectral_native", "SYSTEM_C: spectral system"),
     ("awav-a2f_native", "ASTWARN: warning card"),
-    ("axes-swap_native", "DOMAIN: nested CmpFrame domain"),
+    ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
     ("axref_native", "SREF1: AXREF fiducial override not plumbed"),
-    ("azel_native", "EPOCH: AzEl epoch"),
-    ("car1_native", "SREF1: CAR fiducial longitude"),
-    ("car2_native", "SREF1: CAR fiducial longitude"),
-    ("car4_native", "BEGAST: object shape"),
-    ("car5_native", "CROTA: rotation"),
+    ("azel_native", "EPOCH_A: AzEl epoch"),
+    ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
+    ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
+    ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car6_native", "FITS: card-level"),
-    ("cd-cross_native", "BEGAST: object shape"),
-    ("class-hel_native", "IDENT: ident"),
+    ("cd-cross_native", "INVERT_B: mapping-invert placement"),
+    ("class-hel_native", "IDENT_A: ident"),
     (
         "class-noproj_native",
         "PROJ_A: SFL description string (Sanson-Flamsteed vs sinusoidal)",
     ),
-    ("class-spec_native", "IDENT: ident"),
-    ("cname_native", "LABEL: axis label"),
-    ("fits-pc-alt_native", "SREFIS: SkyRefIs"),
-    ("fits-pc-unit_native", "SREFIS: SkyRefIs"),
+    ("class-spec_native", "IDENT_A: ident"),
+    ("cname_native", "LABEL_C: axis label"),
+    ("fits-pc-alt_native", "REFRA_B: spectral reference RA"),
+    ("fits-pc-unit_native", "REFRA_B: spectral reference RA"),
     ("freq-f2w_native", "ASTWARN: warning card"),
-    ("multi-wcs_native", "EPOCH: alt-plane epoch"),
-    ("multi-wcs-spec_native", "DTAI: time attribute"),
-    ("offset-sky_native", "EPOCH: offset epoch"),
-    ("offset-sky-pole_native", "EPOCH: offset epoch"),
-    ("origin_native", "SYSTEM: system"),
+    ("multi-wcs_native", "EPOCH_A: alt-plane epoch"),
+    ("multi-wcs-spec_native", "DTAI_A: time attribute"),
+    ("offset-sky_native", "EPOCH_A: offset epoch"),
+    ("offset-sky-pole_native", "EPOCH_A: offset epoch"),
+    ("origin_native", "SYSTEM_A: system"),
     ("polco2_native", "CONTINUE: long-string split"),
     ("polco_native", "CONTINUE: long-string split"),
-    ("projp_native", "ENDAST: object shape"),
-    ("projp-nopv0_native", "ENDAST: object shape"),
-    ("projp-pv0only_native", "ENDAST: object shape"),
-    ("projp-pv_native", "PV / shape"),
+    ("projp_native", "ASTWARN: card insertion position"),
+    ("projp-nopv0_native", "ASTWARN: card insertion position"),
+    ("projp-pv0only_native", "ASTWARN: card insertion position"),
+    ("projp-pv_native", "line count: 135 vs 138"),
     ("rfval_native", "SREF1: RFVAL fiducial override not plumbed"),
-    ("scp_native", "BEGAST: MatrixMap/ShiftMap simplifier"),
     (
         "serpens_native",
         "INVERT: WcsNative aliases one PermMap across the to-2D and back \
@@ -111,14 +110,14 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
          docs/issues/c-library-quirks.md); behind it, the swapped-axis \
          celestial cards are not marked consumed",
     ),
-    ("sip-alt_native", "SYSTEM: alt-plane frameset shape"),
-    ("specflux_native", "flux frame"),
-    ("tan-zeropv_native", "ENDAST: object shape"),
-    ("tidy-offsets_native", "NFRAME: frameset shape"),
-    ("tidy-pole_native", "NAXES: frame shape"),
-    ("timeplot_native", "time frame"),
-    ("tnx-cheb_native", "BEGAST: object shape"),
-    ("tnx_native", "BEGAST: object shape"),
+    ("sip-alt_native", "SYSTEM_B: alt-plane frameset shape"),
+    ("specflux_native", "line count: 54 vs 27 (flux frame)"),
+    ("tan-zeropv_native", "ENDAST_H: WcsMap object shape"),
+    ("tidy-offsets_native", "NAXES_B: frame shape"),
+    ("tidy-pole_native", "NAXES_B: frame shape"),
+    ("timeplot_native", "line count: 66 vs 33 (time frame)"),
+    ("tnx-cheb_native", "RA: string-value padding"),
+    ("tnx_native", "RA: string-value padding"),
     (
         "unknown-cel2_native",
         "ASTWARN: card insertion position not yet reproduced",
@@ -127,14 +126,17 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "unknown-cel_native",
         "ASTWARN: card insertion position not yet reproduced",
     ),
-    ("unknown-spec_native", "DOMAIN: domain"),
-    ("vopt-f2w_native", "REFDEC: spectral ref"),
+    ("unknown-spec_native", "DOMAIN_B: domain"),
+    (
+        "vopt-f2w_native",
+        "ISA_I: ISSIMP tag placement (see wave-f2w)",
+    ),
     (
         "wave-f2w_native",
-        "ISSIMP: C shared-pointer aliasing clears the tag on one of two symmetric parallel children (docs/issues/c-library-quirks.md)",
+        "ISA_I: C shared-pointer aliasing clears the ISSIMP tag on one of two symmetric parallel children (docs/issues/c-library-quirks.md)",
     ),
     ("wave-w2f_native", "ASTWARN: warning card"),
-    ("zpx_native", "XAPNOM: object shape divergence"),
+    ("zpx_native", "BEGAST_I: ShiftMap vs MatrixMap object shape"),
 ];
 
 fn parse_manifest() -> Vec<TestCase> {

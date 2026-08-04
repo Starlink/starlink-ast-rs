@@ -18,6 +18,7 @@
 
 use super::Encoding;
 use super::card_list::CardList;
+use super::fits_match::match_keyword;
 
 /// Build the temporary "translations" CardList for `cards`, mirroring
 /// C `SpecTrans` (fitschan.c:30828).
@@ -66,19 +67,13 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
     // encoding gate. C sits this inside the per-version loop at 31038.
     translate_zero_cdelt(cards);
 
-    // Translation 3 (fitschan.c:31206-31238): CDjjjiii → PCj_i +
-    // CDELT=1.0. FITS-IRAF only — other encodings silently ignore
-    // the legacy 6-digit form. Mirrors C's strict
-    // `encoding == FITSIRAF_ENCODING` gate at fitschan.c:31223.
-    if encoding == Encoding::FitsIraf {
-        translate_cdjjjiii(cards);
+    // Translations 3-4 (fitschan.c:31263-31445): the whole family of
+    // PC-producing conversions — CDjjjiii, CDj_i, PCjjjiii and CROTAi —
+    // under C's single `gotpcij` gate. Run once per coordinate version;
+    // no encoding gate (the CDjjjiii branch alone is FITS-IRAF only).
+    for s in std::iter::once(' ').chain('A'..='Z') {
+        translate_pc_family(cards, s, encoding);
     }
-
-    // Translation 4 (fitschan.c:31298-31380): CROTA → PCi_j matrix.
-    // Primary plane only. Requires celestial axes and CDELTs on both
-    // celestial axes. The latitude axis's CROTA wins over the
-    // longitude axis's when both are present.
-    translate_crota(cards);
 
     // Translation 5 (fitschan.c:31386-31435): PROJPi → PV<axlat>_i.
     // Primary plane only, FITS-PC / FITS-IRAF only, gated on
@@ -226,44 +221,6 @@ fn translate_zero_cdelt(cards: &mut CardList) {
     }
 }
 
-/// Translation #3 helper: rewrite the legacy 6-digit `CD{jjj}{iii}`
-/// matrix into `PC{j}_{i}` + `CDELT{j} = 1.0`. Mirrors fitschan.c
-/// :31206-31238. FITS-IRAF only — the caller is gated.
-fn translate_cdjjjiii(cards: &mut CardList) {
-    // C iterates the same 9×9 grid bounded by `astKeyFields`'s max
-    // index detection; we use a fixed 9×9 since the 6-digit form
-    // can encode at most that.
-    let mut emitted_any = false;
-    for j in 1..=9 {
-        for i in 1..=9 {
-            let from = format!("CD{j:03}{i:03}");
-            let Some(value) = cards.get_float(&from) else {
-                continue;
-            };
-            cards.delete_consumed(&from);
-            cards.set_float(&format!("PC{j}_{i}"), value, "PC matrix element");
-            emitted_any = true;
-        }
-    }
-    if emitted_any {
-        // C resets CDELT for every covered row to 1.0 (fitschan.c
-        // :31226-31229). Find the max row index touched.
-        for j in 1..=9 {
-            // Only set CDELT for rows that had at least one PC value.
-            let mut had_value = false;
-            for i in 1..=9 {
-                if cards.find(&format!("PC{j}_{i}")).is_some() {
-                    had_value = true;
-                    break;
-                }
-            }
-            if had_value {
-                cards.set_float(&format!("CDELT{j}"), 1.0, "Pixel scale");
-            }
-        }
-    }
-}
-
 /// Test whether a CTYPE prefix denotes a celestial axis (longitude
 /// or latitude) per the FITS-WCS conventions C `SpecTrans` walks
 /// (fitschan.c:31040-31060). Returns `Some((true, _))` for
@@ -317,19 +274,6 @@ fn celestial_axes(cards: &CardList, s: char) -> Option<(usize, usize)> {
         }
     }
     axlon.zip(axlat)
-}
-
-/// Highest CTYPE axis index in the primary version (mirrors C
-/// `astKeyFields(template, 1, &naxis, lbnd)` on `CTYPE%d`).
-fn primary_naxis(cards: &CardList) -> usize {
-    let mut max = 0;
-    for j in 1..=9 {
-        if cards.find(&format!("CTYPE{j}")).is_some() || cards.find(&format!("CDELT{j}")).is_some()
-        {
-            max = j;
-        }
-    }
-    max
 }
 
 // =============================================================
@@ -1752,27 +1696,20 @@ fn translate_cnxxx(cards: &mut CardList) {
         // PCjjjiii → PCj_i{S} for the CmELTi block (mirrors C:31556-31573).
         for j in 1..=naxis_m {
             for i in 1..=naxis_m {
-                let pc_3digit = format!("PC{j:03}{i:03}");
-                let value = cards.get_float(&pc_3digit);
-                let dval = match value {
-                    Some(v) => v,
-                    None => {
-                        if i == j {
-                            1.0
-                        } else {
-                            0.0
-                        }
+                // Absent elements take the unit-matrix default. Only the
+                // elements actually read are consumed, so a header whose
+                // 6-digit matrix is never reached keeps its cards.
+                let key = format!("PC{j:03}{i:03}");
+                let dval = match cards.get_float(&key) {
+                    Some(v) => {
+                        cards.delete_consumed(&key);
+                        v
                     }
+                    None if i == j => 1.0,
+                    None => 0.0,
                 };
                 cards.set_float(&format!("PC{j}_{i}{alt}"), dval, "PC matrix element");
             }
-        }
-    }
-    // Drop any leftover PCjjjiii cards (consumed above for FITS-IRAF
-    // alt-axis CDELT branch). C marks them used; we delete.
-    for j in 1..=9 {
-        for i in 1..=9 {
-            cards.delete_consumed(&format!("PC{j:03}{i:03}"));
         }
     }
 }
@@ -1838,57 +1775,211 @@ fn translate_projp(cards: &mut CardList) {
     }
 }
 
-fn translate_crota(cards: &mut CardList) {
-    let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
-        return;
-    };
-    // C reads CROTA on the longitude axis first, then the latitude
-    // axis — so latitude wins when both are present (fitschan.c:31298-31307).
-    let crota_deg = cards
-        .get_float(&format!("CROTA{axlat}"))
-        .or_else(|| cards.get_float(&format!("CROTA{axlon}")));
-    let Some(crota_deg) = crota_deg else { return };
-    // If a PC matrix is already present, C still consumes CROTA but
-    // does not derive a new PC matrix (fitschan.c:31280-31300). Drop
-    // the CROTA cards so they don't pollute downstream readers.
-    let has_pc = cards.find(&format!("PC{axlon}_{axlon}")).is_some()
-        || cards.find(&format!("PC{axlon}_{axlat}")).is_some()
-        || cards.find(&format!("PC{axlat}_{axlon}")).is_some()
-        || cards.find(&format!("PC{axlat}_{axlat}")).is_some();
-    if !has_pc {
-        let cdelt_lon = cards.get_float(&format!("CDELT{axlon}"));
-        let cdelt_lat = cards.get_float(&format!("CDELT{axlat}"));
-        if let (Some(cdelt_lon), Some(cdelt_lat)) = (cdelt_lon, cdelt_lat) {
-            let cosrota = crota_deg.to_radians().cos();
-            let sinrota = crota_deg.to_radians().sin();
-            let lambda = cdelt_lat / cdelt_lon;
-            let naxis = primary_naxis(cards);
-            // Diagonal: cos(crota) on celestial axes, 1.0 elsewhere.
-            for i in 1..=naxis {
-                let val = if i == axlon || i == axlat {
-                    cosrota
-                } else {
-                    1.0
-                };
-                cards.set_float(&format!("PC{i}_{i}"), val, "PC matrix element");
+/// Count the cards whose keyword matches `template`, and return the highest
+/// value taken by each of the template's integer (`%d`) fields.
+///
+/// Port of C `astKeyFields` (fitschan.c:14377). The whole card list is
+/// searched irrespective of the current-card position; `ubnd[i]` is the maximum
+/// value seen for the i'th `%d` field, or `-1` when nothing matched. C also
+/// returns lower bounds, which no `SpecTrans` caller reads.
+fn key_fields(cards: &CardList, template: &str, nfld: usize) -> (usize, Vec<i32>) {
+    let mut nmatch = 0;
+    let mut ubnd = vec![-1i32; nfld];
+    for card in cards.iter() {
+        if let Some(fields) = match_keyword(&card.keyword, template, nfld) {
+            nmatch += 1;
+            for (u, f) in ubnd.iter_mut().zip(fields) {
+                *u = (*u).max(f);
             }
-            // Off-diagonal celestial entries.
-            cards.set_float(
-                &format!("PC{axlat}_{axlon}"),
-                sinrota / lambda,
-                "PC matrix element",
-            );
-            cards.set_float(
-                &format!("PC{axlon}_{axlat}"),
-                -sinrota * lambda,
-                "PC matrix element",
-            );
         }
     }
-    // Drop all CROTA cards so they don't reach the downstream reader.
-    for j in 1..=9 {
-        cards.delete_consumed(&format!("CROTA{j}"));
+    (nmatch, ubnd)
+}
+
+/// Version-suffixed form of a template or keyword root: unchanged for the
+/// primary plane (`s == ' '`), otherwise with `s` appended.
+fn versioned(root: &str, s: char) -> String {
+    if s == ' ' {
+        root.to_string()
+    } else {
+        format!("{root}{s}")
     }
+}
+
+/// The version character as a keyword suffix: empty for the primary plane.
+fn suffix(s: char) -> String {
+    if s == ' ' {
+        String::new()
+    } else {
+        s.to_string()
+    }
+}
+
+/// The family of translations that produce `PCi_j` keywords, run once per
+/// coordinate version. Mirrors the whole `if( !gotpcij )` block at
+/// fitschan.c:31263-31445.
+///
+/// A single gate covers all four sources, in C's precedence order: the legacy
+/// 6-digit `CDjjjiii` matrix, `CDj_i`, the 6-digit `PCjjjiii` matrix, and
+/// `CROTAi`. The gate opens only when the header carries no `PCi_j` keyword for
+/// this version, and each source that emits a matrix closes it against the
+/// remaining ones — so, for example, a header with both `CDj_i` and `CROTAi`
+/// takes its rotation from the CD matrix and leaves the CROTA cards untouched.
+fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
+    if key_fields(cards, &versioned("PC%d_%d", s), 0).0 > 0 {
+        return;
+    }
+    let mut gotpcij = false;
+
+    // CDjjjiii (fitschan.c:31274-31300). Primary plane only, and the matrix is
+    // only stored under FITS-IRAF — other encodings read the cards (consuming
+    // them) but discard the values.
+    if s == ' ' {
+        let (nmatch, ubnd) = key_fields(cards, "CD%3d%3d", 1);
+        if nmatch > 0 {
+            let naxis = ubnd[0].max(0) as usize;
+            for j in 1..=naxis {
+                for i in 1..=naxis {
+                    let key = format!("CD{j:03}{i:03}");
+                    let Some(dval) = cards.get_float(&key) else {
+                        continue;
+                    };
+                    cards.delete_consumed(&key);
+                    if encoding == Encoding::FitsIraf {
+                        cards.set_float(&format!("PC{j}_{i}"), dval, "PC matrix element");
+                        // The CD matrix carries the pixel scale, so CDELT
+                        // reverts to its default of 1.0.
+                        cards.set_float(&format!("CDELT{j}{}", suffix(s)), 1.0, "Pixel scale");
+                        gotpcij = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // CDj_i (fitschan.c:31303-31350). Each row is normalised to a unit vector,
+    // its length becoming that row's CDELT so the pixel scale stays meaningful.
+    if !gotpcij {
+        let (nmatch, ubnd) = key_fields(cards, &versioned("CD%d_%d", s), 2);
+        if nmatch > 0 {
+            let naxis = ubnd[0].max(ubnd[1]).max(0) as usize;
+            for j in 1..=naxis {
+                // Row-vector length, signed by the diagonal element so the
+                // diagonal PC element comes out positive.
+                let mut rowsum2 = 0.0;
+                let mut diag = 1.0;
+                for i in 1..=naxis {
+                    if let Some(dval) = cards.get_float(&versioned(&format!("CD{j}_{i}"), s)) {
+                        rowsum2 += dval * dval;
+                        if i == j {
+                            diag = if dval >= 0.0 { 1.0 } else { -1.0 };
+                        }
+                    }
+                }
+                let cdelti = rowsum2.sqrt() * diag;
+                cards.set_float(&versioned(&format!("CDELT{j}"), s), cdelti, "Pixel scale");
+                for i in 1..=naxis {
+                    // Every CD element defaults to zero, diagonal included.
+                    let key = versioned(&format!("CD{j}_{i}"), s);
+                    let mut dval = cards.get_float(&key).unwrap_or(0.0);
+                    cards.delete_consumed(&key);
+                    if cdelti != 0.0 {
+                        dval /= cdelti;
+                    }
+                    cards.set_float(
+                        &versioned(&format!("PC{j}_{i}"), s),
+                        dval,
+                        "PC matrix element",
+                    );
+                    gotpcij = true;
+                }
+            }
+        }
+    }
+
+    // PCjjjiii and CROTAi (fitschan.c:31353-31444). Both need CDELT keywords:
+    // the 6-digit rename because the matrix alone carries no scale, and the
+    // CROTA derivation because it works from the CDELT ratio.
+    if gotpcij {
+        return;
+    }
+    let (nmatch, ubnd) = key_fields(cards, &versioned("CDELT%d", s), 1);
+    if nmatch == 0 {
+        return;
+    }
+    let naxis = ubnd[0].max(0) as usize;
+
+    // C reads CROTA on the longitude axis first, then the latitude axis, so
+    // latitude wins when both are present. Both are read either way, which
+    // consumes them so neither reaches the output.
+    let axes = celestial_axes(cards, s);
+    let mut crota = None;
+    if let Some((axlon, axlat)) = axes {
+        for ax in [axlon, axlat] {
+            let key = versioned(&format!("CROTA{ax}"), s);
+            if let Some(v) = cards.get_float(&key) {
+                crota = Some(v);
+                cards.delete_consumed(&key);
+            }
+        }
+    }
+
+    // 6-digit PCjjjiii → PCj_i. Primary plane only; absent elements take the
+    // unit-matrix default rather than being skipped.
+    if s == ' ' && key_fields(cards, "PC%3d%3d", 0).0 > 0 {
+        for j in 1..=naxis {
+            for i in 1..=naxis {
+                let key = format!("PC{j:03}{i:03}");
+                let dval = match cards.get_float(&key) {
+                    Some(v) => {
+                        cards.delete_consumed(&key);
+                        v
+                    }
+                    None if i == j => 1.0,
+                    None => 0.0,
+                };
+                cards.set_float(&format!("PC{j}_{i}"), dval, "PC matrix element");
+            }
+        }
+        return;
+    }
+
+    // CROTA → PCi_j. Needs celestial axes and a CDELT on each of them.
+    let (Some((axlon, axlat)), Some(crota)) = (axes, crota) else {
+        return;
+    };
+    let (Some(cdelti), Some(cdeltj)) = (
+        cards.get_float(&versioned(&format!("CDELT{axlon}"), s)),
+        cards.get_float(&versioned(&format!("CDELT{axlat}"), s)),
+    ) else {
+        return;
+    };
+    let cosrota = crota.to_radians().cos();
+    let sinrota = crota.to_radians().sin();
+    let lambda = cdeltj / cdelti;
+    // Diagonal: cos(crota) on the celestial axes, 1.0 elsewhere.
+    for i in 1..=naxis {
+        let dval = if i == axlon || i == axlat {
+            cosrota
+        } else {
+            1.0
+        };
+        cards.set_float(
+            &versioned(&format!("PC{i}_{i}"), s),
+            dval,
+            "PC matrix element",
+        );
+    }
+    cards.set_float(
+        &versioned(&format!("PC{axlat}_{axlon}"), s),
+        sinrota / lambda,
+        "PC matrix element",
+    );
+    cards.set_float(
+        &versioned(&format!("PC{axlon}_{axlat}"), s),
+        -sinrota * lambda,
+        "PC matrix element",
+    );
 }
 
 /// Move a keyword's value and comment from `from` to `to`, deleting
@@ -2059,10 +2150,11 @@ mod tests {
     }
 
     #[test]
-    fn cdjjjiii_ignored_for_non_iraf_encoding() {
-        // C only translates CDjjjiii under FITS-IRAF. For other
-        // encodings the legacy keys are silently left in place; the
-        // downstream readers won't recognise them.
+    fn cdjjjiii_consumed_without_translation_for_non_iraf_encoding() {
+        // Only FITS-IRAF turns CDjjjiii into a PC matrix, but the read of each
+        // legacy card sits outside that encoding test (fitschan.c:31285), so the
+        // cards are consumed under every encoding — their values are simply
+        // discarded.
         let mut cards = CardList::from_header(
             "CD001001=                  1.0\n\
              CD002002=                  1.0\n\
@@ -2070,7 +2162,8 @@ mod tests {
         )
         .unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc);
-        assert!(cards.find("CD001001").is_some());
+        assert!(cards.find("CD001001").is_none());
+        assert!(cards.find("CD002002").is_none());
         assert!(cards.find("PC1_1").is_none());
     }
 
@@ -2101,7 +2194,10 @@ mod tests {
     }
 
     #[test]
-    fn crota_drops_when_pc_already_present() {
+    fn crota_survives_when_pc_already_present() {
+        // The CROTA reads live inside the `!gotpcij` gate, so an existing PC
+        // matrix means CROTA is never looked at — and an unread card is an
+        // unconsumed one, which reaches the output.
         let mut cards = CardList::from_header(
             "CTYPE1  = 'RA---TAN'\n\
              CTYPE2  = 'DEC--TAN'\n\
@@ -2114,10 +2210,35 @@ mod tests {
         )
         .unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc);
-        // CROTA card was consumed.
-        assert!(cards.find("CROTA2").is_none());
+        assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         // PC values were not overwritten.
         assert_eq!(cards.get_float("PC1_1"), Some(1.0));
+    }
+
+    #[test]
+    fn crota_suppressed_by_pc_on_a_non_celestial_axis() {
+        // The gate is `astKeyFields( this, "PC%d_%d", ... )` — a template sweep
+        // over every card, so a PC keyword naming only the spectral axis still
+        // suppresses the CROTA translation, leaving the CROTA card in place.
+        let mut cards = CardList::from_header(
+            "CTYPE1  = 'RA---TAN'\n\
+             CTYPE2  = 'DEC--TAN'\n\
+             CTYPE3  = 'FREQ'\n\
+             CDELT1  =                 -1.0\n\
+             CDELT2  =                  1.0\n\
+             CDELT3  =                  1.0\n\
+             PC3_3   =                  1.0\n\
+             CROTA2  =                 30.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        assert_eq!(cards.get_float("CROTA2"), Some(30.0));
+        assert!(cards.find("PC1_1").is_none());
+        assert!(cards.find("PC1_2").is_none());
+        assert!(cards.find("PC2_1").is_none());
+        assert!(cards.find("PC2_2").is_none());
+        assert_eq!(cards.get_float("PC3_3"), Some(1.0));
     }
 
     #[test]

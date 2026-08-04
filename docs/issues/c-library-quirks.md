@@ -1254,3 +1254,26 @@ sweep (with the template list and the `mark = 0` exceptions annotated against
 their C line numbers), `CardList::mark_card` keeps the first-match semantics for
 the `GetValue` path, and `spec_trans::translate_date_obs` reads DATE-OBS before
 consulting MJD-OBS so the ordering-dependent mark matches.
+
+## `CDjjjiii` cards are consumed under encodings that discard their values
+
+`SpecTrans`'s translation of the legacy 6-digit `CDjjjiii` matrix
+(`fitschan.c:31274-31300`) reads each card with `GetValue2` unconditionally,
+but stores the result — as `PCj_i` plus `CDELTj = 1.0` — only when
+`encoding == FITSIRAF_ENCODING`.
+Because reading a card marks it used, a header carrying `CDjjjiii` loses those
+cards under *every* encoding, while only FITS-IRAF gets the rotation matrix they
+describe.
+Under FITS-WCS or FITS-PC the values are read, thrown away, and the cards still
+fail to reach the output, so the rotation is silently lost rather than either
+honoured or passed through.
+
+Moving the read inside the encoding test would keep the cards under the other
+encodings, but would change which cards `astRead` strips from a production
+header, so the behaviour is mirrored rather than corrected.
+
+**Rust mirror:** `spec_trans::translate_pc_family`'s first branch in
+`crates/ast-core/src/fitschan/spec_trans.rs` calls `delete_consumed` on each
+`CD%.3d%.3d` card outside its `Encoding::FitsIraf` guard, matching C's marking;
+the unit test `cdjjjiii_consumed_without_translation_for_non_iraf_encoding`
+pins it.

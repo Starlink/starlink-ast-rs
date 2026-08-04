@@ -220,9 +220,6 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
         // CD / PC / PV: per-version, no primary fallback (mirrors C
         // GetItem semantics — see lookup_with_fallback's doc).
         for j in 0..naxis {
-            store.cd[i][j] = cards.get_float_marked(&key_for_2("CD", axis_num, j + 1, s));
-        }
-        for j in 0..naxis {
             store.pc[i][j] = cards.get_float_marked(&key_for_2("PC", axis_num, j + 1, s));
         }
         for m in 0..store.pv[i].len() {
@@ -589,7 +586,9 @@ END";
     }
 
     #[test]
-    fn cd_matrix_header() {
+    fn cd_matrix_header_arrives_as_pc_and_cdelt() {
+        // A CD matrix never reaches the store as such: `SpecTrans` normalises
+        // each row to unit length, the row length becoming that row's CDELT.
         let header = "\
 NAXIS   =                    2 / Number of axes
 CRPIX1  =                128.0 / Reference pixel
@@ -603,15 +602,25 @@ CD2_2   =         -0.000250000 / CD matrix element
 CTYPE1  = 'RA---TAN'           / Axis type
 CTYPE2  = 'DEC--TAN'           / Axis type
 END";
-        let cards = cards_from(header);
+        let mut cards = cards_from(header);
+        super::super::spec_trans::spec_trans_inplace(&mut cards, crate::Encoding::FitsWcs);
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
-        assert!(store.has_cd_matrix());
-        assert!(!store.has_pc_matrix());
-        assert!((store.cd[0][0].unwrap() - 0.000250).abs() < 1e-10);
-        assert!((store.cd[0][1].unwrap() - 0.000230).abs() < 1e-10);
-        assert!((store.cd[1][0].unwrap() - 0.000230).abs() < 1e-10);
-        assert!((store.cd[1][1].unwrap() - (-0.000250)).abs() < 1e-10);
+        assert!(store.has_pc_matrix());
+        // Row 2's CDELT is negative because its diagonal element is.
+        let cdelt = 0.00033970575502926056;
+        assert!((store.cdelt[0].unwrap() - cdelt).abs() < 1e-17);
+        assert!((store.cdelt[1].unwrap() + cdelt).abs() < 1e-17);
+        // PC * CDELT reproduces the original CD matrix.
+        for (i, j, cd) in [
+            (0, 0, 0.000250),
+            (0, 1, 0.000230),
+            (1, 0, 0.000230),
+            (1, 1, -0.000250),
+        ] {
+            let got = store.pc[i][j].unwrap() * store.cdelt[i].unwrap();
+            assert!((got - cd).abs() < 1e-15, "PC*CDELT[{i}][{j}] = {got}");
+        }
     }
 
     #[test]
@@ -636,7 +645,8 @@ END";
             "/tests/fixtures/fits/headers/sip.head"
         ))
         .unwrap();
-        let cards = cards_from(&sip_header);
+        let mut cards = cards_from(&sip_header);
+        super::super::spec_trans::spec_trans_inplace(&mut cards, crate::Encoding::FitsWcs);
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
         // Verify basic keywords.
@@ -662,9 +672,10 @@ END";
         assert!((store.sip_a[2][0] - (-2.3863e-05)).abs() < 1e-12);
         assert!((store.sip_b[0][2] - 2.31e-05).abs() < 1e-12);
 
-        // CD matrix.
-        assert!(store.has_cd_matrix());
-        assert!((store.cd[0][0].unwrap() - 0.000249756880272355).abs() < 1e-15);
+        // The CD matrix reaches the store as PC + CDELT.
+        assert!(store.has_pc_matrix());
+        let cd00 = store.pc[0][0].unwrap() * store.cdelt[0].unwrap();
+        assert!((cd00 - 0.000249756880272355).abs() < 1e-15);
 
         // Scalar keywords.
         assert_eq!(store.radesys, Some("ICRS".to_string()));
