@@ -119,8 +119,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("tidy-offsets_native", "NAXES_B: frame shape"),
     ("tidy-pole_native", "NAXES_B: frame shape"),
     ("timeplot_native", "line count: 66 vs 33 (time frame)"),
-    ("tnx-cheb_native", "RA: string-value padding"),
-    ("tnx_native", "RA: string-value padding"),
     (
         "unknown-cel2_native",
         "ASTWARN: card insertion position not yet reproduced",

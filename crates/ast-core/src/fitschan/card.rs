@@ -564,8 +564,15 @@ fn parse_string_value(
     // If we ended the loop with last_was_quote true and didn't break,
     // that means the closing quote was at the end of the area.
 
-    // Trim trailing spaces from the string value (FITS standard).
-    let result = result.trim_end().to_string();
+    // The FITS standard pads string values shorter than 8 characters with
+    // trailing spaces, so those spaces carry no information and are
+    // stripped. Longer values may have significant trailing spaces, which
+    // are preserved (C fitschan.c:15343-15352 and the MAKE_FGET macro).
+    let result = if result.len() <= 8 {
+        result.trim_end().to_string()
+    } else {
+        result
+    };
 
     // Everything after the closing quote is potential comment area.
     // Find the '/' comment separator in the remainder.
@@ -852,6 +859,31 @@ mod tests {
         assert_eq!(parsed.keyword, "COMMENT1");
         assert_eq!(parsed.value, FitsValue::String("It's a test".into()));
         assert_eq!(parsed.comment, Some("Escaped quote".to_string()));
+    }
+
+    #[test]
+    fn parse_string_value_keeps_padding_on_long_values() {
+        // C strips trailing spaces only when the value is 8 characters or
+        // fewer (fitschan.c:15343-15352). An 18-character padded value
+        // keeps its padding.
+        let card = FitsCard::parse(
+            "RA      = '07:21:44.00       ' / RA of observation (hr)                        ",
+        )
+        .unwrap();
+        assert_eq!(
+            card.value,
+            FitsValue::String("07:21:44.00       ".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_string_value_strips_padding_on_short_values() {
+        // An 8-character value is stripped, as C does.
+        let card = FitsCard::parse(
+            "CTYPE1  = 'RA--    '           / Axis type                                     ",
+        )
+        .unwrap();
+        assert_eq!(card.value, FitsValue::String("RA--".to_string()));
     }
 
     #[test]
