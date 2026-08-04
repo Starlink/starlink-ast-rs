@@ -75,9 +75,9 @@ line (`WCSCONV_NO_EXCLUDE=1`, parsing the per-case panic output).
 They collapse into eleven root causes summing to exactly 45, and three of
 the recorded reasons in `test_wcsconv.rs` are wrong about the cause.
 
-### Cause 1 — read-consumed cards not deleted (4 cases)
+### Cause 1 — read-consumed cards not deleted (2 cases)
 
-`specflux`, `timeplot`, `projp-pv`, `car6`.
+`specflux`, `timeplot`.
 
 Recorded as "line count: 54 vs 27 (flux frame)" and "(time frame)".
 Neither has anything to do with flux or time frames.
@@ -88,13 +88,16 @@ chan, so the subsequent `write()` to the same chan appends a second copy.
 Measured:
 
 ```
-specflux: ncard after read=27  reuse=56  fresh=29   (input .head = 28 cards)
-timeplot: ncard after read=33  reuse=68  fresh=35   (input .head = 34 cards)
+specflux: ncard after read=27  reuse=27   (input .head = 28 cards)
+timeplot: ncard after read=33  reuse=33   (input .head = 34 cards)
 ```
 
-A fresh chan produces the right length; reusing the read chan — which is
-what `ast_tester/wcsconverter.c` does, and what our harness mirrors —
-doubles it.
+The chan is not doubling in card *count*.
+`read()` leaves the consumed cards in place, and the subsequent `write()` to the
+same chan emits them a second time — so the doubling is in the written output,
+not in `ncard`.
+The fix is the same either way: the native read path must mark the cards it
+consumes so the consumption finisher deletes them, as the FITS arms already do.
 
 C marks each card as it is consumed.
 `GetNextData` (fitschan.c:17703) calls `MarkCard` (fitschan.c:23012), which
@@ -113,7 +116,7 @@ consumed-card work.
 What is missing is the native read path setting the flag as it consumes.
 The `PROTECTED` guard must be ported too, or protected cards get swept.
 
-This is the highest-value single fix in the set: four cases, one cause, and
+This is the highest-value single fix in the set: two cases, one cause, and
 the fix is in machinery that already exists.
 
 ### Cause 2 — CONTINUE long-string split (2 cases)
@@ -128,7 +131,14 @@ An escaped-quote doubling bug at the split boundary.
 `tnx`, `tnx-cheb`.
 
 We emit `RA = '07:21:44.00'`, C emits `RA = '07:21:44.00       '`.
-C pads short string values to the 8-column minimum; we do not.
+
+The defect is on the parse side, not the write side.
+`format_string_value` already pads short values to 8 columns, matching C
+`EncodeValue`.
+C strips trailing spaces from a string keyword value only when the value is 8
+characters or fewer (fitschan.c:15343-15352 and the `MAKE_FGET` macro at
+~15408); we strip unconditionally.
+`tnx.head`'s `RA` value is 18 characters, so C preserves its padding.
 
 ### Cause 4 — documented C aliasing quirk (3 cases)
 
@@ -161,11 +171,22 @@ The fiducial override is not plumbed.
 
 `azel`, `multi-wcs-spec`.
 
-`azel` is a 0.783 s epoch offset, not a set-ness difference: we compute
-`EPOCH_A = 2017.5519807675657`, C computes `2017.5519807923772`, a delta of
-2.48e-8 yr.
-Ours is DATE-OBS + 69.18 s, C's is DATE-OBS + 69.97 s.
-`multi-wcs-spec` is a missing `DTAI_A = 37.0` card.
+`azel`'s 0.783 s epoch difference is a **stale fixture**, not a port defect.
+Both sides apply the same +69.1835 s TT−UTC offset for 2017; the difference is
+entirely in the parsed seconds field of `DATE-OBS= '2017-07-21T08:38:39.087'` —
+the fixture's epoch corresponds to `.870`, ours to `.087`.
+That is C's old `DateObs` bug, in which the fractional-seconds field was read
+with `"%d"` into an `int` and lost its leading zero.
+The reference submodule fixed it on 20-JUN-2026 (commit `254d4c99`, changelog
+at fitschan.c:1354-1359) by capturing the field width with `"%n"`; the fixture
+predates the fix.
+Probing `astRead` on `azel.head` against the pinned submodule returns
+`Epoch = 2017.5519807675655`, matching our port to 2 ULP.
+`azel.native` is the only stale expected file in the corpus — the other 44
+native cases regenerate byte-identical to what is committed.
+
+`multi-wcs-spec` is a genuine port gap: a missing `DTAI_A = 37.0` card on the
+top-level world Frame, plus an ungated `DTAI` read where C gates on `TELESCOP`.
 
 `offset-sky` and `offset-sky-pole` carry epoch reasons in the current
 exclusion list but are classified under cause 8 by their measured first diff
@@ -173,7 +194,7 @@ exclusion list but are classified under cause 8 by their measured first diff
 They are the clearest candidates to need a second fix from this unit after
 cause 8 lands.
 
-### Cause 7 — ASTWARN insertion position (8 cases)
+### Cause 7 — ASTWARN insertion position (7 cases)
 
 `projp`, `projp-nopv0`, `projp-pv0only`, `unknown-cel`, `unknown-cel2`,
 `awav-a2f`, `freq-f2w`, `wave-w2f`.
@@ -266,6 +287,29 @@ The spectral reference position is not being carried onto the SpecFrame.
 Related to cause 5 (both are reference-position plumbing) but on a different
 class and from a different source card, so kept separate until measured.
 
+### Cause 12 — space in a keyword name warns when C does not (1 case)
+
+`car6`.
+
+`car6.head` line 1 is the bare text `FITS headers in CHIPASS_Equ.fits:`, whose
+8-column name field is `FITS hea`.
+C `CheckFitsName` (fitschan.c:5985-6008) branches on the first non-`isFits`
+character three ways — `== '='` errors, `< ' '` warns "illegal non-printing
+character", `> ' '` warns "illegal character" — then `break`s.
+A space matches none of the three, so C issues no warning.
+Our port's final arm has no `> ' '` guard, so we emit a four-card ASTWARN block
+C never wrote.
+
+### Cause 13 — PROJP cards deleted when C retains them (1 case)
+
+`projp-pv`.
+
+Our output tail is `NAXIS1`, `NAXIS2`, `END`; C's is `NAXIS1`, `NAXIS2`,
+`PROJP0`, `PROJP1`, `PROJP2`.
+`translate_projp` deletes the PROJP cards in its `!use_projp` branch, which C
+does not do, and omits C's `encoding == FITSPC_ENCODING || encoding ==
+FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write (fitschan.c:31449-31502).
+
 ### Unexercised imported fixtures
 
 `inputs/offset-sref.head` is present but referenced by no manifest row —
@@ -310,10 +354,12 @@ Tier 1 — writer and harness, self-contained:
 
 | Unit | Cause | Cases |
 |---|---|---|
-| U1 | Read-consumed cards not deleted | 4 |
+| U1 | Read-consumed cards not deleted | 2 |
 | U2 | CONTINUE long-string split | 2 |
 | U3 | String-value padding | 2 |
 | U4 | `IsSimp`/`Invert` aliasing harness rule (D2) | 3 |
+| U12 | Space in a keyword name warns when C does not | 1 |
+| U13 | PROJP cards deleted when C retains them | 1 |
 
 Tier 2 — narrow reader fixes:
 
@@ -328,7 +374,7 @@ Tier 3 — the real port work:
 
 | Unit | Cause | Cases |
 |---|---|---|
-| U7 | ASTWARN insertion position | 8 |
+| U7 | ASTWARN insertion position | 7 |
 | U8 | Frame vs SkyFrame, attribute defaulting | 10 |
 | U9 | Object shape, CmpMap vs WinMap | 6 |
 
