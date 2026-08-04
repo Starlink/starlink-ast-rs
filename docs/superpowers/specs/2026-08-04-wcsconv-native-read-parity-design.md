@@ -72,7 +72,7 @@ Measured, not asserted:
 
 The 45 entries were re-measured by extracting each case's first differing
 line (`WCSCONV_NO_EXCLUDE=1`, parsing the per-case panic output).
-They collapse into eleven root causes summing to exactly 45, and three of
+They collapse into thirteen root causes summing to exactly 45, and three of
 the recorded reasons in `test_wcsconv.rs` are wrong about the cause.
 
 ### Cause 1 — read-consumed cards not deleted (2 cases)
@@ -194,7 +194,7 @@ exclusion list but are classified under cause 8 by their measured first diff
 They are the clearest candidates to need a second fix from this unit after
 cause 8 lands.
 
-### Cause 7 — ASTWARN insertion position (7 cases)
+### Cause 7 — ASTWARN insertion position (8 cases)
 
 `projp`, `projp-nopv0`, `projp-pv0only`, `unknown-cel`, `unknown-cel2`,
 `awav-a2f`, `freq-f2w`, `wave-w2f`.
@@ -374,7 +374,7 @@ Tier 3 — the real port work:
 
 | Unit | Cause | Cases |
 |---|---|---|
-| U7 | ASTWARN insertion position | 7 |
+| U7 | ASTWARN insertion position | 8 |
 | U8 | Frame vs SkyFrame, attribute defaulting | 10 |
 | U9 | Object shape, CmpMap vs WinMap | 6 |
 
@@ -385,17 +385,17 @@ U10 is a strong tier-2 candidate to attempt early: four cases, and two of
 them already produce the right string, so the fix is likely confined to the
 set-ness predicate.
 
-D3 is independent of all eleven units and may land at any point.
+D3 is independent of all thirteen units and may land at any point.
 
 ### Case counts are upper bounds
 
-The eleven causes each account for a disjoint set of cases and sum to
+The thirteen causes each account for a disjoint set of cases and sum to
 exactly 45, but they were derived from each case's **first** differing line.
 A case leaves the exclusion list only when it is fully byte-exact, so a
 fixed case may reveal a second diff belonging to another cause — for example
 `offset-sky` is classified under cause 8 by its first diff and its reason
 string names an epoch difference, so it may need cause 6's fix as well.
-The counts are therefore upper bounds on progress per unit, and eleven units
+The counts are therefore upper bounds on progress per unit, and thirteen units
 will not necessarily land 45 cases.
 
 **Re-measure protocol.** After each unit, re-extract the first differing

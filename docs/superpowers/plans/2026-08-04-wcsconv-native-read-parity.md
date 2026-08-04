@@ -124,7 +124,8 @@ Our output tail is `NAXIS1`, `NAXIS2`, `END`; the reference tail is `NAXIS1`, `N
 `translate_projp` (`crates/ast-core/src/fitschan/spec_trans.rs:1717-1776`) diverges from C (fitschan.c:31449-31502) twice: its `!use_projp` branch calls `delete_consumed` on each PROJP card (C never deletes them), and its translate branch omits C's `encoding == FITSPC_ENCODING || encoding == FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write.
 
 U1 therefore targets exactly two cases, `specflux` and `timeplot` — the only two showing the exact-doubling signature (55 vs 27, 67 vs 33).
-U7 targets the spec's seven, not eight.
+U7's eight cases are unchanged from the spec.
+`car6` was never among them, so removing `car6` from cause 1 does not change cause 7's count.
 
 **`cd_cross` → U4 or U9, decided by measurement.**
 It shows the same `ISA_x = 'Mapping '` vs `INVERT_B= 1` shape as `serpens`, which the spec assigns to the U4 aliasing quirk.
