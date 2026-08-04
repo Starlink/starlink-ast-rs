@@ -182,10 +182,11 @@ fn merge_matrix_pair(
         if b.ncols() != a.nrows() {
             return None;
         }
-        let mut product = b.dot(&a);
-        // C `astMtrMult` compresses its product (matrixmap.c:3768) before
-        // returning, zeroing near-zero off-diagonal residue.
-        super::matrix::compress_off_diagonals(&mut product);
+        let product = b.dot(&a);
+        // C `astMtrMult` builds the product as a FULL matrix and hands it to
+        // `astInitMatrixMap` (matrixmap.c:3760), which compresses it — zeroing
+        // the near-zero off-diagonal residue. `MatrixMap::new` does the same,
+        // so the product needs no separate compression pass here.
         return mat_or_unit(product);
     }
 

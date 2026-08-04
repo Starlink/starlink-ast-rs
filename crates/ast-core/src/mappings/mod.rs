@@ -12,6 +12,7 @@ pub use shift::ShiftMap;
 mod matrix;
 mod matrix_merge;
 pub use matrix::MatrixMap;
+pub(crate) use matrix::compress_full_matrix;
 mod perm;
 pub use perm::PermMap;
 mod winmap;

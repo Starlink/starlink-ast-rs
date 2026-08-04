@@ -1026,38 +1026,26 @@ fn mtr_rot(mat: &mut [[f64; 3]; 3], theta: f64, axis: [f64; 3]) {
     }
 }
 
-/// Snap a near-diagonal 3×3 matrix to exact diagonal form, mirroring C
-/// `CompressMatrix` (matrixmap.c:580). An off-diagonal element is treated as
-/// zero (and physically set to `0.0`) when its magnitude is `<=
+/// Snap a near-diagonal 3×3 matrix to exact diagonal form by running the
+/// shared port of C `CompressMatrix` (matrixmap.c:587) over it.
+///
+/// An off-diagonal element is set to `0.0` when its magnitude is `<=
 /// sqrt(DBL_EPSILON)·max` of the largest magnitude in both its row and its
 /// column. This removes the ~1e-16 trig residue (e.g. `sin(pi)`) that would
 /// otherwise propagate through subsequent rotations and surface as non-zero
 /// matrix elements in the serialised dump.
+///
+/// C compresses these intermediate rotations in place inside `astMtrRot`
+/// (matrixmap.c:3903, 3973), where the resulting storage form is recorded on the
+/// MatrixMap being rotated. Here the rotation is still a bare array, so the
+/// resulting form is discarded; the final MatrixMap derives its own form when
+/// the array is handed over.
 fn compress_matrix(mat: &mut [[f64; 3]; 3]) {
-    let tol = f64::EPSILON.sqrt();
-
-    let mut rowmax = [0.0_f64; 3];
-    let mut colmax = [0.0_f64; 3];
+    let mut arr = ndarray::Array2::from_shape_fn((3, 3), |(i, j)| mat[i][j]);
+    crate::mappings::compress_full_matrix(&mut arr);
     for i in 0..3 {
         for j in 0..3 {
-            let v = mat[i][j].abs();
-            if v > rowmax[i] {
-                rowmax[i] = v;
-            }
-            if v > colmax[j] {
-                colmax[j] = v;
-            }
-        }
-    }
-
-    for i in 0..3 {
-        for j in 0..3 {
-            if i != j {
-                let v = mat[i][j].abs();
-                if v <= rowmax[i] * tol && v <= colmax[j] * tol {
-                    mat[i][j] = 0.0;
-                }
-            }
+            mat[i][j] = arr[[i, j]];
         }
     }
 }

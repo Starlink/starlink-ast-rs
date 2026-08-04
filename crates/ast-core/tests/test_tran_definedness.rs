@@ -64,21 +64,50 @@ fn chebymap_forward_only_has_no_inverse() {
     assert!(!cm.has_inverse());
 }
 
+/// A 2-out/3-in matrix that stays in FULL form: no off-diagonal element is
+/// small enough to be zeroed, so it cannot compress and a non-square full
+/// matrix has no inverse (matrixmap.c `InvertMatrix`, 1554).
+fn non_square_full_matrixmap() -> MatrixMap {
+    let m = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+    MatrixMap::new(m).unwrap()
+}
+
 #[test]
-fn matrixmap_non_square_has_no_inverse() {
-    // 2 outputs from 3 inputs: no inverse matrix exists.
-    let m = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
-    let mm = MatrixMap::new(m).unwrap();
+fn matrixmap_non_square_full_has_no_inverse() {
+    let mm = non_square_full_matrixmap();
     assert!(mm.has_forward());
     assert!(!mm.has_inverse());
 }
 
 #[test]
 fn matrixmap_invert_swaps_definedness() {
-    let m = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
-    let mut mm = MatrixMap::new(m).unwrap();
+    let mut mm = non_square_full_matrixmap();
     mm.invert();
     assert!(!mm.has_forward());
+    assert!(mm.has_inverse());
+}
+
+#[test]
+fn matrixmap_singular_square_has_no_inverse() {
+    // Rank-1: palDmat reports it singular, so no inverse is stored.
+    let m = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 4.0]).unwrap();
+    let mm = MatrixMap::new(m).unwrap();
+    assert!(mm.has_forward());
+    assert!(!mm.has_inverse());
+}
+
+#[test]
+fn matrixmap_non_square_unit_has_both_directions() {
+    // A 2-out/3-in selection matrix compresses to UNIT form, and C declares
+    // every UNIT MatrixMap defined in both directions regardless of shape
+    // (matrixmap.c `GetTranForward` 4946 / `GetTranInverse` 5028). The
+    // inverse copies the two available axes back and zero-fills the third.
+    let m = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
+    let mut mm = MatrixMap::new(m).unwrap();
+    assert!(mm.has_forward());
+    assert!(mm.has_inverse());
+    mm.invert();
+    assert!(mm.has_forward());
     assert!(mm.has_inverse());
 }
 
