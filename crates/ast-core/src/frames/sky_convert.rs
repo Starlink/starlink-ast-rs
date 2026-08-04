@@ -664,14 +664,13 @@ pub(crate) fn make_offset_mapping(
     let mut map2 = SphMap::new();
     map2.set_unit_radius(true);
 
-    // C forms `map3 = CmpMap(map1, map2, series)` (cart→cart→sph) then
-    // inverts map2 to get `result = CmpMap(map2⁻¹, map3, series)`
-    // (standard→offset). We build the *inverse* of that result directly,
-    // since our callers want offset→standard: reversing a two-component
-    // series CmpMap swaps the order and inverts each half, giving
-    // `CmpMap(map3⁻¹, map2)` = `CmpMap(CmpMap(map2⁻¹, map1⁻¹), map2)`.
-    // Equivalently, offset→standard is sph⁻¹ → matrix⁻¹ → sph:
-    //   (lon,lat)_offset → (x,y,z) → rotate by matⁱ → (lon,lat)_standard.
+    // C builds the standard→offset direction, as
+    // `CmpMap(map2⁻¹, CmpMap(map1, map2))`. Callers here want offset→standard,
+    // which is that mapping reversed: each component inverted and the order
+    // flipped. Series composition is associative, so the tree is built
+    // right-associated to keep it a mirror image of C's:
+    //   `CmpMap(map2⁻¹, CmpMap(map1⁻¹, map2))`
+    //   (lon,lat)_offset → (x,y,z) → rotate by mat⁻¹ → (lon,lat)_standard.
     let mut sph_in = map2.clone(); // (lon,lat)→(x,y,z): SphMap inverted
     sph_in.invert();
     let mut matrix_inv = map1; // matrix⁻¹: rotate offset axes → standard

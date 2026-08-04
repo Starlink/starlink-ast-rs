@@ -308,6 +308,7 @@ fn freq_log_builds_log_mapping() {
         1420400000.0319688,
         1420399999.7762187,
         1420400000.2877188,
+        1420399999.6483438,
     ];
     // C oracle pixel outputs (exact C output; do not modify).
     let expected_pixels: &[f64] = &[
@@ -334,6 +335,7 @@ fn freq_log_builds_log_mapping() {
         544.46877980080171,
         288.71869907032033,
         800.21870278915549,
+        160.84373753585044,
     ];
 
     // Tolerance: pixel coordinates are O(1)–O(1000), so 1e-9 relative is safe.
