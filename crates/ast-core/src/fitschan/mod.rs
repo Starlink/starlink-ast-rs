@@ -12,6 +12,7 @@ pub(crate) mod enc_dss;
 pub(crate) mod enc_iraf;
 pub(crate) mod enc_native;
 pub(crate) mod enc_pc;
+pub(crate) mod fits_match;
 pub(crate) mod fits_store;
 pub mod format;
 pub(crate) mod fset_to_store;
@@ -20,6 +21,7 @@ pub(crate) mod spec_trans;
 pub(crate) mod wcs_celestial;
 pub(crate) mod wcs_decompose;
 pub(crate) mod wcs_keywords;
+pub(crate) mod wcs_mark;
 pub(crate) mod wcs_matrix;
 pub(crate) mod wcs_read;
 pub(crate) mod wcs_spectral;
@@ -618,18 +620,25 @@ impl FitsChan {
         self.cards.insert_front(block);
     }
 
-    /// Propagate consumption from a SpecTrans-derived `trans` CardList back
-    /// onto `self.cards` after a successful read, then promote provisional
-    /// flags to `Used`. Mirrors C's read-completion `FixUsed(promote)` — the
-    /// keywords the reader consumed (via the `*_marked` getters / SpecTrans
-    /// `record_consumed`) are flagged so they are excluded from later output.
-    /// Names with no matching `self.cards` card (SpecTrans-synthesised
-    /// keywords) are silently ignored by `mark_card`.
-    fn finish_read_consumption(&mut self, trans: &CardList) {
+    /// Flag the cards a completed FITS-WCS-family read consumed, then promote
+    /// them to `Used` so they are excluded from later output. Mirrors C's
+    /// read-completion `FixUsed(promote)` (fitschan.c:16431) over the two
+    /// sources of consumption:
+    ///
+    ///  * [`wcs_mark::mark_wcs_cards`] sweeps every card, as C `WcsFcRead`
+    ///    (fitschan.c:36233) does — so every copy of a repeated WCS keyword is
+    ///    consumed, not merely the first.
+    ///  * names recorded on the SpecTrans-derived `trans` list (by the
+    ///    `*_marked` getters and `record_consumed`) mark their first matching
+    ///    card, as C `GetValue` / `GetValue2` do. Names with no matching card —
+    ///    keywords SpecTrans synthesised — are silently ignored.
+    fn finish_read_consumption(&mut self, trans: &CardList) -> AstResult<()> {
+        wcs_mark::mark_wcs_cards(&mut self.cards)?;
         for name in trans.take_consumed_names() {
             self.cards.mark_card(&name);
         }
         self.cards.fix_used(true, false);
+        Ok(())
     }
 }
 
@@ -685,7 +694,7 @@ impl Channel for FitsChan {
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
-                self.finish_read_consumption(&trans);
+                self.finish_read_consumption(&trans)?;
                 Ok(Some(obj))
             }
             Encoding::FitsPc => {
@@ -705,7 +714,7 @@ impl Channel for FitsChan {
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
-                self.finish_read_consumption(&trans);
+                self.finish_read_consumption(&trans)?;
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
@@ -719,7 +728,7 @@ impl Channel for FitsChan {
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
-                self.finish_read_consumption(&trans);
+                self.finish_read_consumption(&trans)?;
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
@@ -729,7 +738,7 @@ impl Channel for FitsChan {
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
-                self.finish_read_consumption(&trans);
+                self.finish_read_consumption(&trans)?;
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
@@ -739,7 +748,7 @@ impl Channel for FitsChan {
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
-                self.finish_read_consumption(&trans);
+                self.finish_read_consumption(&trans)?;
                 Ok(Some(obj))
             }
             Encoding::Dss => {

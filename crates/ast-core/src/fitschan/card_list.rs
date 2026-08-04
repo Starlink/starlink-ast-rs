@@ -525,6 +525,12 @@ impl CardList {
         self.cards.iter()
     }
 
+    /// Return a mutating iterator over all cards, for passes that visit every
+    /// card in turn (see [`super::wcs_mark`]).
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut FitsCard> {
+        self.cards.iter_mut()
+    }
+
     /// Parse multi-line FITS header text into a CardList.
     ///
     /// Each line is parsed as a FITS card. Lines that fail to parse are

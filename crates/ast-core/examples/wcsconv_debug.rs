@@ -135,9 +135,11 @@ fn main() {
             }
         }
     }
-    if enc == Encoding::Native {
-        // Native target: serialise via an AST text dump, mirroring
-        // wcsconverter.c's use of an astChannel rather than the FitsChan.
+    // Two NATIVE-family targets, mirroring wcsconverter.c's branch on
+    // `strcasecmp(encoding, "AST")`: `ast` is an astChannel text dump, while
+    // `native` is a FitsChan write under NATIVE encoding (the
+    // COMMENT-banner + BEGAST/ENDAST keyword-card form).
+    if target_enc == "ast" {
         let dump = ast_core::to_native_string(&obj).unwrap();
         println!("=== {} → {} ===", fixture, target_enc);
         println!("{dump}");

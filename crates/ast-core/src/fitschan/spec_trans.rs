@@ -1601,19 +1601,23 @@ fn replace_projection_suffix(cards: &mut CardList, key: &str, new_prj: &str) {
     cards.set_string(key, &new_ctype, &comment);
 }
 
-/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31634-31655).
+/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31703-31721).
 ///
-/// Only fires when DATE-OBS is present and MJD-OBS is absent. The
-/// DATE-OBS card is left in place — C marks it as "used" but doesn't
-/// delete it; downstream readers see only MJD-OBS take effect because
-/// MJD-OBS has priority in `read_time_keywords`.
+/// DATE-OBS is read unconditionally, and only then is MJD-OBS consulted: a
+/// header carrying both keeps its MJD-OBS, but its DATE-OBS is consumed either
+/// way. MJD-OBS is consumed too when it was reached — a `GetValue2` read marks
+/// the source card, overriding the `mark = 0` its own `WcsFcRead` branch sets.
+///
+/// The DATE-OBS card is left in the working list rather than deleted; MJD-OBS
+/// takes priority in `read_time_keywords`, so the translated value is the one
+/// that reaches the store.
 fn translate_date_obs(cards: &mut CardList) {
-    if cards.find("MJD-OBS").is_some() {
-        return;
-    }
-    let Some(date) = cards.get_string("DATE-OBS") else {
+    let Some(date) = cards.get_string_marked("DATE-OBS") else {
         return;
     };
+    if cards.get_float_marked("MJD-OBS").is_some() {
+        return;
+    }
     let Some(mjd) = crate::fitschan::wcs_write::date_str_to_mjd(&date) else {
         return;
     };

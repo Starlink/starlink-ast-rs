@@ -1212,3 +1212,45 @@ only unsupported case is a *bare* `Frame` (outside a FrameSet) carrying
 variants — which the C public test surface (`testframeset.c`) never exercises.
 Revisit if a consumer needs Frame-level variants. Tests:
 `crates/ast-core/tests/test_frameset_variants.rs`.
+
+---
+
+## Duplicate-keyword consumption is inconsistent between `WcsFcRead` and `SpecTrans`
+
+**C behaviour:** reading a FITS-WCS header consumes cards — flags them used so
+they are excluded from any subsequent write — via two paths that treat repeated
+keywords differently.
+
+`WcsFcRead` (`fitschan.c:36233`) is a card *sweep*: it calls `astClearCard` and
+walks every card in the FitsChan, pattern-matching each card's keyword name
+against a fixed template list and calling `MarkCard` on each match. Every copy
+of a repeated keyword is therefore consumed.
+
+`SpecTrans` (`fitschan.c:30880`) reads through `GetValue2`, which delegates to
+`GetValue` → `SearchCard` → `FindKeyCard` — a *first-match* forward search
+(`fitschan.c:18185`). It marks exactly one card however many copies exist. The
+keywords `SpecTrans` alone handles — `CDi_j`, `RADECSYS`, `CROTAi`, `PROJPi`,
+`EPOCH`, `LONGPOLE`, `DATE-OBS` — have no `WcsFcRead` branch, so they are only
+ever marked once.
+
+**Consequence:** for a header holding two HDUs' worth of WCS cards (a primary
+plus an `XTENSION='IMAGE'`), a single `astRead` strips *both* copies of
+`CRPIXi`, `CRVALi`, `CTYPEi` and `EQUINOX`, but leaves the second copy of
+`CDi_j`, `RADECSYS` and `DATE-OBS` behind. The surviving cards are a partial,
+self-inconsistent WCS description: `CD` without `CRPIX`/`CRVAL`/`CTYPE`. Which
+keywords survive is decided by which of the two read paths happens to handle
+them, not by any property of the keyword. Visible in
+`crates/ast-core/tests/fixtures/wcsconv/expected/serpens.native`, whose second
+HDU retains only `CD1_1`…`CD2_2`, `RADECSYS` and `DATE-OBS`.
+
+A related asymmetry: `WcsFcRead`'s `MJD-OBS` branch sets `mark = 0`
+deliberately, so an MJD-OBS card survives a read. But when `DATE-OBS` is also
+present, `SpecTrans`'s translation-9 block (`fitschan.c:31703`) reaches MJD-OBS
+through `GetValue2` with `mark = 1`, consuming it after all. Whether MJD-OBS
+survives thus depends on whether an unrelated keyword sits alongside it.
+
+**Rust mirror:** `crates/ast-core/src/fitschan/wcs_mark.rs` reproduces the
+sweep (with the template list and the `mark = 0` exceptions annotated against
+their C line numbers), `CardList::mark_card` keeps the first-match semantics for
+the `GetValue` path, and `spec_trans::translate_date_obs` reads DATE-OBS before
+consulting MJD-OBS so the ordering-dependent mark matches.
