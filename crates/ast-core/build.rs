@@ -46,7 +46,7 @@ fn generate_wcsconv_tests(manifest_dir: &Path) {
         if line.is_empty() || line.starts_with('#') || line.starts_with("name") {
             continue;
         }
-        // Manifest columns: name | input | expected | encoding | attrs | skip
+        // Manifest columns: name | input | expected | encoding | attrs | compare_mode
         let name = match line.split('|').next() {
             Some(n) => n.trim(),
             None => continue,

@@ -3,9 +3,10 @@
 //! Data-driven tests from wcsconv_tests.txt that verify encoding round-trips.
 //! Each test reads an input, writes in a target encoding, and compares output.
 //!
-//! The harness is designed to be permissive: individual test failures are
-//! reported but do not prevent the suite from completing. Only zero passes
-//! (infrastructure failure) causes a panic.
+//! `build.rs` generates one `#[test]` per manifest case, each of which panics
+//! on any difference from the reference. The only cases not compared are the
+//! native ones named in [`NATIVE_READ_EXCLUDED`], where the outstanding
+//! FITS-read gap is recorded per case.
 
 use std::path::PathBuf;
 
@@ -30,16 +31,16 @@ enum CompareMode {
     /// check. For outputs carrying values whose last bits are platform-libm
     /// dependent (e.g. cancellation-amplified geodetic altitude). `astequal`.
     AstEqual,
-    /// No string comparison (legacy `yes`: the C oracle ran astEqual only).
-    /// Retained for the FITS cases that historically skipped the diff.
-    Skip,
 }
 
 impl CompareMode {
+    /// Parse the manifest's 6th column. Anything other than `astequal` is
+    /// strict — there is no mode that skips the comparison, so a typo relaxes
+    /// nothing. A native case that cannot yet be byte-compared is named in
+    /// [`NATIVE_READ_EXCLUDED`] instead, where the reason is recorded.
     fn parse(field: &str) -> Self {
         match field.trim().to_ascii_lowercase().as_str() {
             "astequal" => CompareMode::AstEqual,
-            "yes" | "skip" => CompareMode::Skip,
             _ => CompareMode::Strict,
         }
     }
@@ -75,7 +76,10 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("awav-a2f_native", "ASTWARN: warning card"),
     ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
     ("axref_native", "SREF1: AXREF fiducial override not plumbed"),
-    ("azel_native", "EPOCH_A: AzEl epoch"),
+    (
+        "azel_native",
+        "EPOCH_A: AzEl epoch 0.78 s early (DATE-OBS + 69.18 s vs C's + 69.97 s)",
+    ),
     ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
@@ -350,21 +354,11 @@ fn run_test_case(case: &TestCase) -> Result<(), String> {
     let native_excluded = !std::env::var("WCSCONV_NO_EXCLUDE").is_ok_and(|v| !v.is_empty())
         && is_native
         && NATIVE_READ_EXCLUDED.iter().any(|(n, _)| *n == case.name);
-    // Compare decision by mode:
-    //   AstEqual — always compare, with the relaxed astEQUAL comparator. This
-    //              is the per-case relaxation; it is not gated by the native
-    //              exclusion list (which tracks FITS-read bugs, not tolerance).
-    //   native (Strict/Skip) — byte-compared unless excluded. Native ignores
-    //              the legacy `yes`/`skip` flag (the comparison is kept visible
-    //              via NATIVE_READ_EXCLUDED, not the manifest column).
-    //   non-native Skip — never string-compare (legacy `yes`).
-    //   non-native Strict — exact string compare.
-    let compare = match case.compare_mode {
-        CompareMode::AstEqual => true,
-        _ if is_native => !native_excluded,
-        CompareMode::Skip => false,
-        CompareMode::Strict => true,
-    };
+    // Every case is compared. `AstEqual` only relaxes the comparator, and is
+    // not gated by the exclusion list (which tracks FITS-read bugs, not
+    // tolerance); a native case is skipped only while it is named in
+    // NATIVE_READ_EXCLUDED.
+    let compare = case.compare_mode == CompareMode::AstEqual || !native_excluded;
     if compare {
         let expected_path = fixtures_dir().join("expected").join(&case.expected_file);
         let expected_text =
