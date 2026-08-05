@@ -122,3 +122,42 @@ fn absent_cname_leaves_skyframe_labels_at_their_defaults() {
     assert_eq!(sky.axis_label(1).unwrap(), "Right ascension");
     assert_eq!(sky.axis_label(2).unwrap(), "Declination");
 }
+
+/// C `WcsSkyFrame` builds every SkyFrame from an explicit attribute string —
+/// `astSkyFrame("System=ICRS")` for an ICRS header, exactly as it uses
+/// `astSkyFrame("System=FK5")` for an FK5 one (fitschan.c:39292-39321). So
+/// `astTestSystem` is true on a SkyFrame read from FITS whatever the system,
+/// and the Dump writes an active card. ICRS is the only value for which
+/// `SkyFrame::new` leaves the flag clear, so it is the only value that
+/// exposes the difference.
+#[test]
+fn fits_read_sets_system_even_when_the_value_is_the_icrs_default() {
+    let sky = read_sky_frame(&equatorial_header("RADESYS = 'ICRS    '\n"));
+    assert_eq!(sky.system(), SkySystem::Icrs);
+    assert!(
+        sky.test_system(),
+        "System must be explicitly set on a SkyFrame built by the FITS reader"
+    );
+}
+
+/// The FK5 companion. It pins the other side: the unconditional `set_system`
+/// must not change behaviour for the systems that were already correct.
+#[test]
+fn fits_read_sets_system_for_a_non_default_value_too() {
+    let sky = read_sky_frame(&equatorial_header(
+        "RADESYS = 'FK5     '\nEQUINOX =               2000.0\n",
+    ));
+    assert_eq!(sky.system(), SkySystem::Fk5);
+    assert!(sky.test_system());
+}
+
+/// `SkyFrame::unset_system` keeps its "genuinely unset" contract —
+/// `enc_class.rs` relies on it to build a template a later set can override.
+/// This is why the reader sets System at its own construction site rather
+/// than in `SkyFrame::new`.
+#[test]
+fn unset_system_still_leaves_system_unset() {
+    let sky = SkyFrame::unset_system();
+    assert_eq!(sky.system(), SkySystem::Icrs);
+    assert!(!sky.test_system());
+}
