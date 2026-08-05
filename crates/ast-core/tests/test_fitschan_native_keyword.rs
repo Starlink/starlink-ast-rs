@@ -49,3 +49,23 @@ fn specflux_loads() {
 fn timeplot_loads() {
     let _obj = read_fixture("timeplot.head");
 }
+
+/// A successful NATIVE read consumes the cards it read, as C `Read` does by
+/// calling `FixUsed` with `remove` set for NATIVE encoding
+/// (fitschan.c:25811-25817). The AST banner COMMENT blocks go with them
+/// (C `ComBlock`, fitschan.c:7878).
+#[test]
+fn native_read_consumes_its_cards() {
+    for name in ["specflux.head", "timeplot.head", "polco.head"] {
+        let text = std::fs::read_to_string(fixture_path(name))
+            .unwrap_or_else(|e| panic!("read {name}: {e}"));
+        let mut fc =
+            FitsChan::from_header(&text).unwrap_or_else(|e| panic!("from_header {name}: {e}"));
+        assert!(fc.ncard() > 0, "{name}: no cards to start with");
+        let _obj = fc
+            .read()
+            .unwrap_or_else(|e| panic!("read {name}: {e}"))
+            .unwrap_or_else(|| panic!("read {name}: returned None"));
+        assert_eq!(fc.ncard(), 0, "{name}: cards left after a NATIVE read");
+    }
+}

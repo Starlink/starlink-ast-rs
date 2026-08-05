@@ -436,11 +436,20 @@ fn overwrite_false_appends_duplicate() {
 }
 
 // ===========================================================================
-// Additional: rewind and re-read yields same object
+// Additional: rewinding after a native read finds nothing to re-read
 // ===========================================================================
 
 #[test]
 fn native_rewind_and_reread() {
+    // A native read consumes the cards it read: C `Read` calls
+    // `FixUsed( this, 0, 1, remove )` with `remove` set for NATIVE encoding
+    // (fitschan.c:25811-25817), which physically deletes them rather than
+    // merely marking them used. So a rewind after the read has nothing left
+    // to find a `BEGAST` in, and the second read returns `None`. Verified
+    // against the reference library with a standalone oracle probe: the
+    // first `astRead` on a fresh native FitsChan succeeds and leaves one
+    // blank card behind; a second `astClearCard` + `astRead` on the same
+    // FitsChan returns a null Object pointer.
     let zm = ZoomMap::new(2, 3.0).unwrap();
 
     let mut fc = FitsChan::new();
@@ -453,11 +462,11 @@ fn native_rewind_and_reread() {
     let m1 = obj1.as_mapping().unwrap();
     assert_eq!(m1.nin(), 2);
 
-    // Rewind and read again — same object.
+    // Rewind and read again — the cards are gone, so there is nothing left
+    // to read.
     fc.rewind();
-    let obj2 = fc.read().unwrap().expect("second read");
-    let m2 = obj2.as_mapping().unwrap();
-    assert_eq!(m2.nin(), 2);
+    let obj2 = fc.read().unwrap();
+    assert!(obj2.is_none(), "second read should find no object");
 }
 
 // ===========================================================================

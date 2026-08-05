@@ -90,6 +90,40 @@ pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
         .any(|card| matches!(classify(&card.keyword), KeywordKind::Begin))
 }
 
+/// Index range of the first complete top-level object in a keyword-card
+/// NATIVE header: from its `BEGAST<xx>` card to the `ENDAST<xx>` card that
+/// closes it, inclusive. `None` when there is no `BEGAST` or the object is
+/// unterminated.
+///
+/// This is the span C `FindAst` walks with `skip` 0, and therefore the span
+/// it marks as used (fitschan.c:17859). Cards before the `BEGAST` are walked
+/// with `skip` 1 and left unmarked.
+pub(crate) fn native_span(cards: &CardList) -> Option<(usize, usize)> {
+    let mut first = None;
+    let mut depth = 0usize;
+    for (i, card) in cards.iter().enumerate() {
+        match classify(&card.keyword) {
+            KeywordKind::Begin => {
+                if first.is_none() {
+                    first = Some(i);
+                }
+                depth += 1;
+            }
+            KeywordKind::End => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    return first.map(|f| (f, i));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Result of formatting a card value for native-text emission.
 #[derive(Debug)]
 pub(crate) enum FormattedValue {

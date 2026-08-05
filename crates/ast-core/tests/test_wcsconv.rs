@@ -113,11 +113,9 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
          celestial cards are not marked consumed",
     ),
     ("sip-alt_native", "SYSTEM_B: alt-plane frameset shape"),
-    ("specflux_native", "line count: 54 vs 27 (flux frame)"),
     ("tan-zeropv_native", "ENDAST_H: WcsMap object shape"),
     ("tidy-offsets_native", "NAXES_B: frame shape"),
     ("tidy-pole_native", "NAXES_B: frame shape"),
-    ("timeplot_native", "line count: 66 vs 33 (time frame)"),
     (
         "unknown-cel2_native",
         "ASTWARN: card insertion position not yet reproduced",

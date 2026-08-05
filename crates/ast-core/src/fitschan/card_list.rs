@@ -320,6 +320,54 @@ impl CardList {
         }
     }
 
+    /// Mark the card at `index` as provisionally consumed, mirroring C
+    /// `MarkCard` (fitschan.c:23012): a card carrying the `PROTECTED` flag is
+    /// exempt, and a card already `Used` is left alone.
+    pub(crate) fn mark_at(&mut self, index: usize) {
+        if let Some(card) = self.cards.get_mut(index)
+            && !card.flags.protected
+            && card.flags.consumption != Consumption::Used
+        {
+            card.flags.consumption = Consumption::Provisional;
+        }
+    }
+
+    /// Validate and mark the AST banner comment block adjacent to the card at
+    /// `index`, mirroring C `ComBlock` (fitschan.c:7878). `incr` is `-1` to
+    /// scan backwards from the card before `index` (delimiter character `+`)
+    /// and `1` to scan forwards from the card after it (delimiter `-`).
+    ///
+    /// A block is complete when every card in it is a COMMENT whose text
+    /// starts and ends with `AST`, terminated by a card whose interior is
+    /// nothing but the delimiter character and spaces. Nothing is marked
+    /// unless the whole block validates.
+    pub(crate) fn mark_com_block(&mut self, index: usize, incr: i32) -> bool {
+        let del = if incr == 1 { '-' } else { '+' };
+        let mut found = Vec::new();
+        let mut i = index as isize;
+        loop {
+            i += incr as isize;
+            if i < 0 || i as usize >= self.cards.len() {
+                return false;
+            }
+            let FitsValue::Comment(text) = &self.cards[i as usize].value else {
+                return false;
+            };
+            let t = text.trim_end();
+            if t.len() < 6 || !t.starts_with("AST") || !t.ends_with("AST") {
+                return false;
+            }
+            found.push(i as usize);
+            if t[3..t.len() - 3].chars().all(|c| c == del || c == ' ') {
+                break;
+            }
+        }
+        for idx in found {
+            self.mark_at(idx);
+        }
+        true
+    }
+
     /// Resolve provisional consumption after a read completes, mirroring C
     /// `FixUsed` (fitschan.c:16392). On success (`promote`) provisional cards
     /// become `Used`; otherwise they revert to `Free`. When `remove` is set

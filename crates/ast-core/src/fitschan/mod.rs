@@ -671,6 +671,20 @@ impl Channel for FitsChan {
                 }
                 let node = serial::native_read::parse_native(&text)?;
                 let obj = serial::any_object_from_node(&node)?;
+
+                // C `Read` calls `FixUsed( this, 0, 1, remove )` with
+                // `remove` set for NATIVE encoding (fitschan.c:25811-25817),
+                // so the cards a successful native read consumed are deleted
+                // rather than merely flagged.
+                if let Some((first, last)) = enc_native::native_span(&self.cards) {
+                    for i in first..=last {
+                        self.cards.mark_at(i);
+                    }
+                    self.cards.mark_com_block(first, -1);
+                    self.cards.mark_com_block(last, 1);
+                    self.cards.fix_used(true, true);
+                }
+
                 Ok(Some(obj))
             }
             Encoding::FitsWcs => {
