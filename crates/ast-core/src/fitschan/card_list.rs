@@ -632,10 +632,6 @@ impl CardList {
             }
             match FitsCard::parse(line) {
                 Ok(card) => {
-                    // Skip END cards — they're structural markers, not data.
-                    if card.keyword == "END" {
-                        continue;
-                    }
                     // Validate the keyword name (original case, columns 1-8)
                     // and insert ASTWARN cards before the offending card if it
                     // contains an illegal character. Mirrors C `CheckFitsName`
@@ -1059,8 +1055,8 @@ mod tests {
     #[test]
     fn from_header_parses_cards() {
         let list = CardList::from_header(sample_header()).unwrap();
-        // END is skipped, so we should have 7 cards.
-        assert_eq!(list.len(), 7);
+        // END is stored as an ordinary commentary card, so 8 cards total.
+        assert_eq!(list.len(), 8);
         assert!(!list.is_empty());
     }
 
@@ -1210,7 +1206,7 @@ mod tests {
         assert_eq!(
             keywords,
             vec![
-                "SIMPLE", "BITPIX", "NAXIS", "NAXIS1", "NAXIS2", "CRVAL1", "CTYPE1"
+                "SIMPLE", "BITPIX", "NAXIS", "NAXIS1", "NAXIS2", "CRVAL1", "CTYPE1", "END"
             ]
         );
     }
@@ -1219,6 +1215,6 @@ mod tests {
     fn from_header_skips_empty_lines() {
         let text = "NAXIS   =                    2 / Number of axes\n\n\nEND\n";
         let list = CardList::from_header(text).unwrap();
-        assert_eq!(list.len(), 1);
+        assert_eq!(list.len(), 2);
     }
 }

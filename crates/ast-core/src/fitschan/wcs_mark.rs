@@ -243,6 +243,9 @@ mod tests {
         mark_wcs_cards(&mut cards).unwrap();
         cards
             .iter()
+            // The structural END card is never a WCS keyword; exclude it so
+            // these assertions stay focused on WCS-card marking.
+            .filter(|c| c.keyword != "END")
             .map(|c| {
                 (
                     c.keyword.clone(),

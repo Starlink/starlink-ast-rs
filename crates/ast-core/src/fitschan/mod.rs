@@ -81,7 +81,7 @@ const DEFAULT_FITS_DIGITS: usize = 17;
 ///               NAXIS   =                    2 / Number of axes\n\
 ///               END";
 /// let mut fc = FitsChan::from_header(header).unwrap();
-/// assert_eq!(fc.ncard(), 2);
+/// assert_eq!(fc.ncard(), 3); // SIMPLE, NAXIS, END
 /// assert_eq!(fc.get_fits_i("NAXIS"), Some(2));
 /// ```
 pub struct FitsChan {
@@ -128,8 +128,10 @@ impl FitsChan {
 
     /// Create a FitsChan from FITS header text.
     ///
-    /// The text is split into lines and each is parsed as a FITS card.
-    /// END cards are skipped; unparseable lines are silently ignored.
+    /// The text is split into lines and each is parsed as a FITS card. An
+    /// `END` card has no `=` in column 9, so it is stored as an ordinary
+    /// commentary card, just like `HISTORY`, `COMMENT` or a blank keyword.
+    /// Unparseable lines are silently ignored.
     pub fn from_header(text: &str) -> AstResult<Self> {
         let cards = CardList::from_header(text)?;
         Ok(Self {
@@ -174,9 +176,6 @@ impl FitsChan {
             }
             match FitsCard::parse(line) {
                 Ok(card) => {
-                    if card.keyword == "END" {
-                        continue;
-                    }
                     // Emit ASTWARN cards for an illegal keyword name before the
                     // offending card, mirroring C `CheckFitsName`/`Warn` in
                     // `astPutFits` (fitschan.c:32259).
@@ -255,18 +254,27 @@ impl FitsChan {
 
     /// Format all stored cards as a FITS header string.
     ///
-    /// Each card is formatted as an 80-character line followed by a newline.
-    /// A trailing `END` card is always appended — `from_header` strips it on
-    /// read, so producing it here keeps the output a complete FITS header
-    /// and the round-trip idempotent.
+    /// Each card is formatted as an 80-character line, joined with newlines.
+    /// `END` cards already present in the card list (stored verbatim by
+    /// `from_header`/`put_cards`) are written out in their original
+    /// position, matching C `WriteToSink`, which never synthesises one on a
+    /// read-then-rewrite round trip. A trailing `END` is appended only when
+    /// the card list has none at all — e.g. a `FitsChan` built purely from
+    /// typed setters.
     pub fn to_header(&self) -> String {
-        let mut lines: Vec<String> = self
+        let visible: Vec<&FitsCard> = self
             .cards
             .iter()
             .filter(|card| !card.is_consumed())
+            .collect();
+        let has_end = visible.iter().any(|card| card.keyword == "END");
+        let mut lines: Vec<String> = visible
+            .iter()
             .map(|card| card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding))
             .collect();
-        lines.push(format!("{:<80}", "END"));
+        if !has_end {
+            lines.push(format!("{:<80}", "END"));
+        }
         lines.join("\n")
     }
 
@@ -973,7 +981,7 @@ mod tests {
                       NAXIS   =                    2 / Number of axes\n\
                       END";
         let fc = FitsChan::from_header(header).unwrap();
-        assert_eq!(fc.ncard(), 3); // END is skipped
+        assert_eq!(fc.ncard(), 4); // END is stored as a commentary card
     }
 
     #[test]
@@ -1138,7 +1146,7 @@ mod tests {
                      NAXIS   =                    2 / Number of axes\n\
                      END";
         fc.put_cards(cards).unwrap();
-        assert_eq!(fc.ncard(), 2); // END is skipped
+        assert_eq!(fc.ncard(), 3); // END is stored as a commentary card
     }
 
     #[test]
