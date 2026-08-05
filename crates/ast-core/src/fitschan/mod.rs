@@ -180,6 +180,11 @@ impl FitsChan {
                     // offending card, mirroring C `CheckFitsName`/`Warn` in
                     // `astPutFits` (fitschan.c:32259).
                     if let Some(text) = card::check_fits_name(line) {
+                        // `push_astwarn` inserts in front of the current card.
+                        // These cards are appended, so the cursor belongs at
+                        // the end of the list — where C's is while
+                        // `astPutFits` appends.
+                        self.cards.set_position(self.cards.len());
                         self.cards.push_astwarn(&text);
                     }
                     self.cards.push(card);

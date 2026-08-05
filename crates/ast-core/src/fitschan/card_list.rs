@@ -57,27 +57,24 @@ impl CardList {
         self.position += n;
     }
 
-    /// Append a block of `ASTWARN` comment cards holding `text`, mirroring the
-    /// card sequence C `Warn` (fitschan.c:35055) inserts: a leading blank
-    /// `ASTWARN`, one card per wrapped ~60-character line of the text, then a
-    /// trailing blank `ASTWARN`. Each card is stored as a string-valued
-    /// `ASTWARN` keyword so the header writer renders `ASTWARN = '...'`.
+    /// Insert a block of `ASTWARN` comment cards holding `text` in front of the
+    /// current card, mirroring the card sequence C `Warn` (fitschan.c:35055)
+    /// writes: a leading blank `ASTWARN`, one card per wrapped ~60-character
+    /// line of the text, then a trailing blank `ASTWARN`. Each card is stored
+    /// as a string-valued `ASTWARN` keyword so the header writer renders
+    /// `ASTWARN = '...'`.
     ///
-    /// The block is *not* added if an identical block already exists in the
-    /// list (C dedups on the first line, fitschan.c:35022).
+    /// C writes every card with `astSetFitsS( ..., overwrite = 0 )`, which
+    /// `InsCard` (fitschan.c:15926) inserts before the current card and leaves
+    /// that card current — so the position advances past the block and
+    /// consecutive warnings chain in front of the same card.
+    ///
+    /// The block is *not* added if an identical block of adjacent `ASTWARN`
+    /// cards already exists (fitschan.c:35060-35118).
     pub(crate) fn push_astwarn(&mut self, text: &str) {
         let lines = super::card::wrap_warning_text(text);
-
-        // Dedup: if any existing ASTWARN card already holds the first wrapped
-        // line, assume the whole block is present and skip (mirrors C).
-        if let Some(first) = lines.first() {
-            let exists = self.cards.iter().any(|c| {
-                c.keyword.eq_ignore_ascii_case("ASTWARN")
-                    && matches!(&c.value, FitsValue::String(s) if s == first)
-            });
-            if exists {
-                return;
-            }
+        if lines.is_empty() || self.astwarn_block_exists(&lines) {
+            return;
         }
 
         let astwarn = |s: &str| FitsCard {
@@ -88,11 +85,46 @@ impl CardList {
             flags: crate::fitschan::card::CardFlags::default(),
         };
 
-        self.cards.push(astwarn(" "));
+        let mut block = Vec::with_capacity(lines.len() + 2);
+        block.push(astwarn(" "));
         for line in &lines {
-            self.cards.push(astwarn(line));
+            block.push(astwarn(line));
         }
-        self.cards.push(astwarn(" "));
+        block.push(astwarn(" "));
+
+        let n = block.len();
+        let at = self.position.min(self.cards.len());
+        self.cards.splice(at..at, block);
+        // The card that was current stays current; it has moved down by `n`.
+        self.position = at + n;
+    }
+
+    /// True when the list already holds `lines` as a run of adjacent `ASTWARN`
+    /// cards. Mirrors C `Warn`'s dedup probe (fitschan.c:35060-35118): search
+    /// the whole list for the first line, then require each later line on the
+    /// next card. A partial match is not a match. Leaves the current position
+    /// unchanged, as C does by reinstating the saved card index
+    /// (fitschan.c:35120).
+    fn astwarn_block_exists(&self, lines: &[String]) -> bool {
+        let is_astwarn_holding = |card: &FitsCard, want: &str| {
+            card.keyword.eq_ignore_ascii_case("ASTWARN")
+                && matches!(&card.value, FitsValue::String(s) if s == want)
+        };
+        let first = &lines[0];
+        for start in 0..self.cards.len() {
+            if !is_astwarn_holding(&self.cards[start], first) {
+                continue;
+            }
+            let all_present = lines[1..].iter().enumerate().all(|(k, line)| {
+                self.cards
+                    .get(start + 1 + k)
+                    .is_some_and(|c| is_astwarn_holding(c, line))
+            });
+            if all_present {
+                return true;
+            }
+        }
+        false
     }
 
     /// Insert or replace a card.
@@ -641,6 +673,11 @@ impl CardList {
                     // (the Warnings attribute includes "BadKeyName", Clean is
                     // off).
                     if let Some(text) = check_fits_name(line) {
+                        // `push_astwarn` inserts in front of the current card,
+                        // as C's `InsCard` does. Here the cards are being
+                        // appended, so the cursor belongs at the end of the
+                        // list — where C's is while `astPutFits` appends.
+                        list.position = list.cards.len();
                         list.push_astwarn(&text);
                     }
                     list.push(card);
@@ -1216,5 +1253,136 @@ mod tests {
         let text = "NAXIS   =                    2 / Number of axes\n\n\nEND\n";
         let list = CardList::from_header(text).unwrap();
         assert_eq!(list.len(), 2);
+    }
+
+    // -----------------------------------------------------------------
+    // push_astwarn (C `Warn`, fitschan.c:34990-35167)
+    // -----------------------------------------------------------------
+
+    fn int_card(keyword: &str, value: i64) -> FitsCard {
+        FitsCard {
+            keyword: keyword.to_string(),
+            value: FitsValue::Int(value),
+            comment: None,
+            used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
+        }
+    }
+
+    fn keywords_of(list: &CardList) -> Vec<String> {
+        list.iter().map(|c| c.keyword.clone()).collect()
+    }
+
+    fn astwarn_values(list: &CardList) -> Vec<String> {
+        list.iter()
+            .filter(|c| c.keyword == "ASTWARN")
+            .map(|c| match &c.value {
+                FitsValue::String(s) => s.clone(),
+                other => panic!("ASTWARN card holds {other:?}"),
+            })
+            .collect()
+    }
+
+    /// C `Warn` writes each card with `astSetFitsS( ..., overwrite = 0 )`,
+    /// which `InsCard` inserts in front of the current card, leaving that card
+    /// current. So the block lands before the card at the current position,
+    /// and the position follows its card down the list.
+    #[test]
+    fn push_astwarn_inserts_before_the_current_card() {
+        let mut list = CardList::new();
+        list.push(int_card("NAXIS1", 512));
+        list.push(int_card("NAXIS2", 512));
+        list.set_position(1); // current card = NAXIS2
+
+        list.push_astwarn("short warning");
+
+        assert_eq!(
+            keywords_of(&list),
+            vec!["NAXIS1", "ASTWARN", "ASTWARN", "ASTWARN", "NAXIS2"]
+        );
+        // The current card is still NAXIS2, now at index 4.
+        assert_eq!(list.position(), 4);
+    }
+
+    /// Consecutive warnings chain into a growing run of blocks in front of the
+    /// same card, because each insertion carries the position with it.
+    #[test]
+    fn consecutive_push_astwarn_calls_chain_before_the_same_card() {
+        let mut list = CardList::new();
+        list.push(int_card("NAXIS1", 512));
+        list.push(int_card("NAXIS2", 512));
+        list.set_position(1);
+
+        list.push_astwarn("first warning");
+        list.push_astwarn("second warning");
+
+        assert_eq!(
+            astwarn_values(&list),
+            vec![" ", "first warning", " ", " ", "second warning", " "]
+        );
+        assert_eq!(keywords_of(&list).last().unwrap(), "NAXIS2");
+        assert_eq!(list.position(), 7);
+    }
+
+    /// C dedups on the whole block: the first line is searched for anywhere in
+    /// the list, then every later line must be on the *next* card
+    /// (fitschan.c:35088-35118). An identical block is not repeated.
+    #[test]
+    fn push_astwarn_skips_an_identical_existing_block() {
+        let text = "The FITS keyword name ('sys.') contains an illegal character ('.').";
+        let mut list = CardList::new();
+        list.push(int_card("NAXIS1", 512));
+        list.set_position(0);
+        list.push_astwarn(text);
+        let after_first = astwarn_values(&list);
+
+        list.push_astwarn(text);
+
+        assert_eq!(astwarn_values(&list), after_first);
+    }
+
+    /// Two blocks whose first lines differ but whose *second* lines are
+    /// identical must both be stored: the adjacency requirement means matching
+    /// only the shared trailing line is not a match.
+    #[test]
+    fn push_astwarn_stores_blocks_that_share_a_trailing_line() {
+        let first = "Projection parameter PV2_1 found, but is not used by -TAN projections.";
+        let second = "Projection parameter PV2_2 found, but is not used by -TAN projections.";
+        let mut list = CardList::new();
+        list.push(int_card("NAXIS2", 512));
+        list.set_position(0);
+
+        list.push_astwarn(first);
+        list.push_astwarn(second);
+
+        let values = astwarn_values(&list);
+        assert_eq!(
+            values.len(),
+            8,
+            "two 4-card blocks expected, got {values:?}"
+        );
+        assert!(
+            values[1].contains("PV2_1") && values[5].contains("PV2_2"),
+            "both blocks must be stored, got {values:?}"
+        );
+        assert_eq!(values[2], values[6], "shared trailing line");
+    }
+
+    /// The dedup probe rewinds to search but must leave the position where it
+    /// found it, mirroring `astSetCard( this, icard )` at fitschan.c:35120.
+    #[test]
+    fn push_astwarn_dedup_probe_does_not_move_the_position() {
+        let text = "a repeated warning";
+        let mut list = CardList::new();
+        list.push(int_card("NAXIS1", 512));
+        list.push(int_card("NAXIS2", 512));
+        list.set_position(0);
+        list.push_astwarn(text);
+        let pos = list.position();
+
+        // Second call dedups and returns without writing.
+        list.push_astwarn(text);
+
+        assert_eq!(list.position(), pos);
     }
 }
