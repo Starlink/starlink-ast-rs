@@ -4,14 +4,35 @@
 //! into a complete FrameSet: pixel Frame → world Frame. This mirrors the C
 //! library's `FsetFromStore` / `WcsMapFrm` functions (fitschan.c ~line 37632).
 
+use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use super::wcs_celestial::{self, CelestialResult};
+use super::wcs_keywords::key_for;
 use super::wcs_matrix;
 use super::wcs_spectral::{self, SpectralResult};
 use crate::error::AstResult;
 use crate::frames::{BasicFrameBuilder, CmpFrame, DynFrame, FrameRef, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, UnitMap};
 use crate::serial::AnyObject;
+
+/// Read `RFVAL<i>` (primary plane) or `RFVAL<i><s>` (alt plane `s`) off
+/// `cards`, unmarked, mirroring C `GetValue(this, FormatKey("RFVAL", axis,
+/// -1, s, ...), ..., mark = 0, ...)` (fitschan.c:36091-36097).
+///
+/// `RFVAL` has no `WcsFcRead` branch and no `FitsStore` member: C reads it
+/// fresh off the FitsChan at the point of use in `WcsCelestial`, via `this`
+/// — the FitsChan passed to `FsetFromStore` (fitschan.c:25783) — rather than
+/// through the extraction pipeline that populates the rest of the store
+/// (see [`super::fits_store::FitsStore::axref`] for the contrasting `AXREF`
+/// case, which does go through that pipeline). `RFVAL` is read but never
+/// written anywhere in `fitschan.c`; its only three appearances are the
+/// comment and the two `GetValue` calls at fitschan.c:36088-36097, so its
+/// value is always whatever the caller supplied on the header.
+fn read_rfval(cards: &CardList, naxis: usize, s: char) -> Vec<Option<f64>> {
+    (0..naxis)
+        .map(|i| cards.get_float(&key_for("RFVAL", Some(i + 1), s)))
+        .collect()
+}
 
 /// Decode a [`FitsStore`] into a FrameSet (wrapped as [`AnyObject`]).
 ///
@@ -21,7 +42,7 @@ use crate::serial::AnyObject;
 /// - Mapping: pixel → world
 #[cfg(test)]
 pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
-    let (obj, _warnings) = decode_wcs_inner(store, false)?;
+    let (obj, _warnings) = decode_wcs_inner(store, false, &CardList::new(), ' ')?;
     Ok(obj)
 }
 
@@ -29,9 +50,16 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
 /// decoding (e.g. the `badcel` warning for unknown celestial systems,
 /// fitschan.c:39358). Callers that need to surface warnings to the
 /// FitsChan as ASTWARN cards use this variant directly.
+///
+/// `cards` is the FitsChan's own card list — the same `this` C's
+/// `WcsCelestial` reads `RFVAL<i>` from (fitschan.c:36091-36097) — and `s`
+/// is this plane's version character (`' '` for the primary plane, `'A'`..
+/// `'Z'` for an alt plane).
 pub(crate) fn decode_wcs_inner(
     store: &FitsStore,
     def_b1950: bool,
+    cards: &CardList,
+    s: char,
 ) -> AstResult<(AnyObject, Vec<String>)> {
     let naxis = store.naxis;
 
@@ -39,10 +67,15 @@ pub(crate) fn decode_wcs_inner(
     let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(store)?;
 
     // Step 2: Try to decode celestial axes.
-    let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950);
+    let rfval = read_rfval(cards, naxis, s);
+    let celestial = wcs_celestial::build_celestial_with_def_b1950(store, def_b1950, Some(&rfval));
     // Capture the celestial fiducial position (radians) before the decoder
     // result is consumed below; it is stamped onto the SkyFrame as SkyRef.
     let celestial_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
+    // AXREF forces SkyRef unconditionally, bypassing the astTestSkyRef gate
+    // that CRVAL / RFVAL are subject to (fitschan.c:36099-36110 vs
+    // 36209-36223).
+    let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
     // Collect warnings from the celestial decoder (e.g. badcel for unknown
     // celestial systems).
     let warnings: Vec<String> = celestial
@@ -96,13 +129,13 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 8b: stamp the celestial reference position onto the SkyFrame as
     // SkyRef + SkyRefIs=Ignored. Mirrors C `WcsCelestial`
-    // (fitschan.c:36030-36040), which, when the SkyFrame's SkyRef has not
+    // (fitschan.c:36098-36110), which, when the SkyFrame's SkyRef has not
     // already been set, stores (reflon, reflat) and sets SkyRefIs=Ignored so
     // the SkyFrame still represents absolute celestial coordinates. Because
     // SkyRefIs=Ignored leaves the coordinate semantics unchanged, this adds
     // no remapping — we set it via `frame_mut` to bypass FrameSet integrity,
     // matching C which sets it on the Frame before the FrameSet wraps it.
-    set_sky_ref_from_celestial(&mut frameset, celestial_ref_pos)?;
+    set_sky_ref_from_celestial(&mut frameset, celestial_ref_pos, celestial_ref_pos_forced)?;
 
     // Step 9: SpecFrame RefRA/RefDec from celestial fiducial. Mirrors
     // C `astSetRefPos(specfrm, reffrm, reflon, reflat)` at
@@ -236,19 +269,25 @@ fn set_spec_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -
 
 /// Stamp the celestial reference position onto the SkyFrame in the current
 /// world frame as `SkyRef` + `SkyRefIs=Ignored`, mirroring C `WcsCelestial`
-/// (fitschan.c:36030-36040).
+/// (fitschan.c:36098-36110, 36209-36223).
 ///
-/// The reference position is the celestial fiducial in the SkyFrame's own
-/// coordinate system — computed, like the SpecFrame RefRA/RefDec, by feeding
-/// CRPIX through the pixel→world Mapping. C only sets it when the SkyFrame's
-/// SkyRef has not already been set (`astTestSkyRef`); we honour the same
-/// gate. Setting `SkyRefIs=Ignored` leaves absolute-coordinate semantics
-/// unchanged, so this is applied via `frame_mut` without triggering a
-/// FrameSet-integrity remap.
-fn set_sky_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) -> AstResult<()> {
-    // The celestial reference position is the raw CRVAL pair (converted to
-    // radians) computed by the celestial decoder, mirroring C `WcsCelestial`
-    // (fitschan.c:35945-35948). Nothing to stamp if it could not be determined.
+/// The reference position is the celestial reference longitude / latitude the
+/// decoder resolved — CRVAL by default, overridden by `RFVAL<i>` and then by
+/// `AXREF<i>`. When `forced` is `false` (the CRVAL / RFVAL case) C only sets
+/// it when the SkyFrame's SkyRef has not already been set (`astTestSkyRef`,
+/// fitschan.c:36103), and skips offset SkyFrames; we honour the same gate.
+/// When `forced` is `true` (the AXREF case) C calls `astSetSkyRef`
+/// unconditionally (fitschan.c:36220-36221), outside that gate. Setting
+/// `SkyRefIs=Ignored` leaves absolute-coordinate semantics unchanged, so this
+/// is applied via `frame_mut` without triggering a FrameSet-integrity remap.
+fn set_sky_ref_from_celestial(
+    fs: &mut FrameSet,
+    ref_pos: Option<(f64, f64)>,
+    forced: bool,
+) -> AstResult<()> {
+    // The reference position (radians) as resolved by the celestial decoder,
+    // mirroring C `WcsCelestial` (fitschan.c:36012-36015 for the CRVAL case).
+    // Nothing to stamp if it could not be determined.
     let Some((reflon, reflat)) = ref_pos else {
         return Ok(());
     };
@@ -258,13 +297,18 @@ fn set_sky_ref_from_celestial(fs: &mut FrameSet, ref_pos: Option<(f64, f64)>) ->
         return Ok(());
     }
 
-    // Skip if the SkyFrame's SkyRef is already set (C `astTestSkyRef`), or
-    // if this is an offset SkyFrame whose SkyRef defines the offset origin /
-    // pole (Domain SKY_OFFSETS / SKY_POLE / SKY_ORIGIN, set by WcsSkyFrame
-    // before tidy_offsets runs). For those, the SkyRef is the offset
-    // definition, not an "ignored" celestial reference, so stamping the
-    // celestial fiducial would corrupt the offset representation.
-    {
+    // C applies the `astTestSkyRef` gate and the offset-domain check to the
+    // CRVAL / RFVAL reference position (fitschan.c:36104-36111) but not to
+    // the AXREF one, which is stored unconditionally (fitschan.c:36214-
+    // 36220).
+    if !forced {
+        // Skip if the SkyFrame's SkyRef is already set (C `astTestSkyRef`),
+        // or if this is an offset SkyFrame whose SkyRef defines the offset
+        // origin / pole (Domain SKY_OFFSETS / SKY_POLE / SKY_ORIGIN, set by
+        // WcsSkyFrame before tidy_offsets runs). For those, the SkyRef is
+        // the offset definition, not an "ignored" celestial reference, so
+        // stamping the celestial fiducial would corrupt the offset
+        // representation.
         let cur = fs.current();
         if let Some(sky) = peek_sky(cur) {
             if sky.test_sky_ref(0) {
@@ -442,13 +486,18 @@ fn peek_sky(frame: &dyn crate::frames::Frame) -> Option<&crate::frames::SkyFrame
 /// Returns any warning messages (e.g. `badcel`) alongside the decoded object;
 /// callers pass the warnings to [`super::FitsChan::read`] for insertion as
 /// ASTWARN cards.
+///
+/// `cards` is the FitsChan's own card list, used to read `RFVAL<i>` /
+/// `RFVAL<i><s>` for the primary plane and each alt plane respectively
+/// (fitschan.c:36091-36097).
 pub(crate) fn decode_wcs_with_alts_inner(
     primary: &FitsStore,
     alts: &[(char, FitsStore)],
     def_b1950: bool,
+    cards: &CardList,
 ) -> AstResult<(AnyObject, Vec<String>)> {
     // Step 1: build the primary FrameSet via the inner decoder.
-    let (primary_obj, mut warnings) = decode_wcs_inner(primary, def_b1950)?;
+    let (primary_obj, mut warnings) = decode_wcs_inner(primary, def_b1950, cards, ' ')?;
     let mut fs = match primary_obj {
         AnyObject::FrameSet(f) => f,
         _ => unreachable!("decode_wcs always returns AnyObject::FrameSet"),
@@ -462,12 +511,15 @@ pub(crate) fn decode_wcs_with_alts_inner(
     // Step 2: append one alt frame per (letter, alt_store).
     for (letter, alt_store) in alts {
         let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(alt_store)?;
-        let celestial = wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950);
+        let rfval = read_rfval(cards, alt_store.naxis, *letter);
+        let celestial =
+            wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950, Some(&rfval));
         // Capture the alt plane's celestial fiducial before the decoder is
         // consumed, so the alt SkyFrame gets the same SkyRef/SkyRefIs=Ignored
         // stamp as the primary (C applies WcsCelestial's SkyRef-from-fiducial
         // to every plane, not just the primary).
         let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
+        let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
         // Collect warnings from alt planes too.
         if let Some(ref cel) = celestial {
             warnings.extend(cel.warnings.iter().cloned());
@@ -488,7 +540,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
         // add_frame moves `current` to the newly-added alt frame, so the
         // SkyRef stamp below targets it.
         fs.add_frame(FrameRef::Base, full_mapping, world_frame)?;
-        set_sky_ref_from_celestial(&mut fs, alt_ref_pos)?;
+        set_sky_ref_from_celestial(&mut fs, alt_ref_pos, alt_ref_pos_forced)?;
     }
 
     // Restore current to the primary frame (add_frame moved it).

@@ -72,10 +72,9 @@ fn fixtures_dir() -> PathBuf {
 /// set-ness; SYSTEM/DOMAIN/LABEL/IDENT = Frame attribute defaulting;
 /// ASTWARN = warning-card insertion position; CONTINUE = long-string split.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("alt-spectral_native", "SYSTEM_C: spectral system"),
+    ("alt-spectral_native", "REFRA_B: spectral reference RA"),
     ("awav-a2f_native", "ASTWARN: warning card"),
     ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
-    ("axref_native", "SREF1: AXREF fiducial override not plumbed"),
     (
         "azel_native",
         "EPOCH_A: AzEl epoch 0.78 s early (DATE-OBS + 69.18 s vs C's + 69.97 s)",
@@ -97,12 +96,14 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("multi-wcs-spec_native", "DTAI_A: time attribute"),
     ("offset-sky_native", "EPOCH_A: offset epoch"),
     ("offset-sky-pole_native", "EPOCH_A: offset epoch"),
-    ("origin_native", "SYSTEM_A: system"),
+    ("origin_native", "EQNOX_A: equinox attribute set-ness"),
     ("projp_native", "ASTWARN: card insertion position"),
     ("projp-nopv0_native", "ASTWARN: card insertion position"),
     ("projp-pv0only_native", "ASTWARN: card insertion position"),
-    ("rfval_native", "SREF1: RFVAL fiducial override not plumbed"),
-    ("sip-alt_native", "SYSTEM_B: alt-plane frameset shape"),
+    (
+        "sip-alt_native",
+        "A_ORDER: alt-plane SIP cards keep the version character",
+    ),
     ("tan-zeropv_native", "ENDAST_H: WcsMap object shape"),
     ("tidy-offsets_native", "NAXES_B: frame shape"),
     ("tidy-pole_native", "NAXES_B: frame shape"),

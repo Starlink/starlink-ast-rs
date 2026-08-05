@@ -99,6 +99,13 @@ pub(crate) struct FitsStore {
     pub skyref: Vec<Option<f64>>,
     /// `SkyRefP` reference-point pole coords per axis.
     pub skyrefp: Vec<Option<f64>>,
+    /// `AXREF<i>` values in degrees, indexed by 0-based FITS axis. A
+    /// non-standard keyword AST uses to communicate the reference position on
+    /// axes described by `-TAB` that have no inverse transformation; C writes
+    /// it from `store->axref` in `WcsFromStore` (fitschan.c:37238-37250). On
+    /// read it overrides the CRVAL-derived sky reference position and forces
+    /// SkyRef to be set (fitschan.c:36209-36223).
+    pub axref: Vec<Option<f64>>,
     // -- WCSNAME (fitschan.c:29960) --
     /// `WCSNAMEa` from the SkyFrame's `Domain` attribute.
     pub wcsname: Option<String>,
@@ -184,6 +191,7 @@ impl FitsStore {
             skyrefis: None,
             skyref: vec![None; naxis],
             skyrefp: vec![None; naxis],
+            axref: vec![None; naxis],
             wcsname: None,
             obsgeox: None,
             obsgeoy: None,

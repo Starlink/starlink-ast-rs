@@ -292,7 +292,9 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     store.obsgeox = cards.get_float("OBSGEO-X");
     store.obsgeoy = cards.get_float("OBSGEO-Y");
     store.obsgeoz = cards.get_float("OBSGEO-Z");
-    // SSYSSRC / ZSOURCE / IMAGFREQ / SREF* are WCS-description (mark=1).
+    // SSYSSRC / ZSOURCE / IMAGFREQ / SREF* / AXREF* are WCS-description
+    // (mark=1). RFVAL is deliberately absent: C has no WcsFcRead branch for
+    // it (fitschan.c only reads it at the point of use, unmarked).
     store.ssyssrc = CardList::strip_wcs_store_string(cards.get_string_marked("SSYSSRC"));
     store.zsource = cards.get_float_marked("ZSOURCE");
     store.imagfreq = cards.get_float_marked("IMAGFREQ");
@@ -302,6 +304,7 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
         let axis_num = i + 1;
         store.skyref[i] = cards.get_float_marked(&key_for("SREF", Some(axis_num), s));
         store.skyrefp[i] = cards.get_float_marked(&key_for("SREFP", Some(axis_num), s));
+        store.axref[i] = cards.get_float_marked(&key_for("AXREF", Some(axis_num), s));
     }
 
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
