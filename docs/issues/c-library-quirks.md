@@ -1318,3 +1318,20 @@ header, so the behaviour is mirrored rather than corrected.
 `CD%.3d%.3d` card outside its `Encoding::FitsIraf` guard, matching C's marking;
 the unit test `cdjjjiii_consumed_without_translation_for_non_iraf_encoding`
 pins it.
+
+## `azel.native` regenerated after the C `DateObs` fractional-seconds fix
+
+Not a quirk the port mirrors — a fixture-provenance note.
+
+`azel.head` carries `DATE-OBS= '2017-07-21T08:38:39.087'`.
+The committed `azel.native` expected an epoch corresponding to `.870`, because
+C's `DateObs` read the fractional-seconds field with `"%d"` into an `int` and so
+lost its leading zero: `.087` parsed as `87` and was reconstructed as `0.87 s`.
+The reference submodule fixed this on 20-JUN-2026 (commit `254d4c99`, changelog
+at `fitschan.c:1354-1359`) by capturing the field width with `"%n"`.
+
+The fixture predated the fix and has been regenerated against the pinned
+submodule HEAD; the port itself needed no change.
+`azel` is the only fixture in the wcsconv corpus with a leading-zero `DATE-OBS`
+fraction, and it is the only one of the 108 native cases that did not regenerate
+byte-identical.

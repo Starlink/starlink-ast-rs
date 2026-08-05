@@ -74,10 +74,6 @@ fn fixtures_dir() -> PathBuf {
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("awav-a2f_native", "ASTWARN: warning card"),
     ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
-    (
-        "azel_native",
-        "EPOCH_A: AzEl epoch 0.78 s early (DATE-OBS + 69.18 s vs C's + 69.97 s)",
-    ),
     ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
