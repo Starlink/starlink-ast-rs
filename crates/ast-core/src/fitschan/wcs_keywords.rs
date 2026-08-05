@@ -119,7 +119,11 @@ pub(crate) fn infer_axis_count_from_indexed_keywords(cards: &CardList) -> Option
 ///   3. DATE-OBS (parsed via date_str_to_mjd)
 ///   4. DATE-AVG (parsed via date_str_to_mjd)
 pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
-    store.timesys = cards.get_string("TIMESYS");
+    // TIMESYS is mark=0 in C (fitschan.c:36816-36823, never consumed) but
+    // still passes through WcsFcRead's unconditional string strip before
+    // being stored — mark only gates card consumption, not the strip. See
+    // `CardList::strip_wcs_store_string` for the C citation.
+    store.timesys = CardList::strip_wcs_store_string(cards.get_string("TIMESYS"));
     // C only recognises the hyphenated FITS-WCS spellings (MJD-AVG /
     // MJD-OBS / DATE-OBS / DATE-AVG). Non-standard underscored
     // variants like MJD_OBS or DATE_OBS (e.g. Spitzer headers) are
@@ -207,15 +211,27 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
         });
         // NAXISn is structural (not a WCS keyword); never consumed.
         store.dims[i] = cards.get_float(&format!("NAXIS{axis_num}"));
-        store.ctype[i] = lookup_with_fallback(cards, "CTYPE", Some(axis_num), s, |c, k| {
-            c.get_string_marked(k)
-        });
-        store.cunit[i] = lookup_with_fallback(cards, "CUNIT", Some(axis_num), s, |c, k| {
-            c.get_string_marked(k)
-        });
-        store.cname[i] = lookup_with_fallback(cards, "CNAME", Some(axis_num), s, |c, k| {
-            c.get_string_marked(k)
-        });
+        store.ctype[i] = CardList::strip_wcs_store_string(lookup_with_fallback(
+            cards,
+            "CTYPE",
+            Some(axis_num),
+            s,
+            |c, k| c.get_string_marked(k),
+        ));
+        store.cunit[i] = CardList::strip_wcs_store_string(lookup_with_fallback(
+            cards,
+            "CUNIT",
+            Some(axis_num),
+            s,
+            |c, k| c.get_string_marked(k),
+        ));
+        store.cname[i] = CardList::strip_wcs_store_string(lookup_with_fallback(
+            cards,
+            "CNAME",
+            Some(axis_num),
+            s,
+            |c, k| c.get_string_marked(k),
+        ));
 
         // CD / PC / PV: per-version, no primary fallback (mirrors C
         // GetItem semantics — see lookup_with_fallback's doc).
@@ -227,8 +243,16 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
         }
     }
 
-    // Scalar WCS keywords (mark=1).
-    store.radesys = lookup_with_fallback(cards, "RADESYS", None, s, |c, k| c.get_string_marked(k));
+    // Scalar WCS keywords (mark=1). String-typed fields get the
+    // unconditional WcsFcRead strip (fitschan.c:36906) via
+    // `strip_wcs_store_string` — see that function's doc comment.
+    store.radesys = CardList::strip_wcs_store_string(lookup_with_fallback(
+        cards,
+        "RADESYS",
+        None,
+        s,
+        |c, k| c.get_string_marked(k),
+    ));
     store.equinox = lookup_with_fallback(cards, "EQUINOX", None, s, |c, k| c.get_float_marked(k));
     store.lonpole = lookup_with_fallback(cards, "LONPOLE", None, s, |c, k| c.get_float_marked(k));
     store.latpole = lookup_with_fallback(cards, "LATPOLE", None, s, |c, k| c.get_float_marked(k));
@@ -237,7 +261,13 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     // with mark=0 (C WcsFcRead: MJD-OBS line 36519, MJD-AVG 36715, TIMESYS
     // 36751) so they are NOT consumed — they survive into the output header.
     read_epoch_into_store(cards, &mut store);
-    store.specsys = lookup_with_fallback(cards, "SPECSYS", None, s, |c, k| c.get_string_marked(k));
+    store.specsys = CardList::strip_wcs_store_string(lookup_with_fallback(
+        cards,
+        "SPECSYS",
+        None,
+        s,
+        |c, k| c.get_string_marked(k),
+    ));
     store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float_marked(k));
     store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float_marked(k));
     // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1 line
@@ -250,17 +280,24 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     // AST-extension keywords. Mirrors WcsFromStore writes at
     // fitschan.c:37005-37372. WCSNAME, OBSGEO-{X,Y,Z}, SSYSSRC,
     // ZSOURCE, IMAGFREQ, SREFIS / SREF{i} / SREFP{i}.
-    store.wcsname = lookup_with_fallback(cards, "WCSNAME", None, s, |c, k| c.get_string_marked(k));
+    store.wcsname = CardList::strip_wcs_store_string(lookup_with_fallback(
+        cards,
+        "WCSNAME",
+        None,
+        s,
+        |c, k| c.get_string_marked(k),
+    ));
     // OBSGEO-{X,Y,Z} are observation-global, mark=0 (C WcsFcRead lines
     // 36724/33/42) — never consumed.
     store.obsgeox = cards.get_float("OBSGEO-X");
     store.obsgeoy = cards.get_float("OBSGEO-Y");
     store.obsgeoz = cards.get_float("OBSGEO-Z");
     // SSYSSRC / ZSOURCE / IMAGFREQ / SREF* are WCS-description (mark=1).
-    store.ssyssrc = cards.get_string_marked("SSYSSRC");
+    store.ssyssrc = CardList::strip_wcs_store_string(cards.get_string_marked("SSYSSRC"));
     store.zsource = cards.get_float_marked("ZSOURCE");
     store.imagfreq = cards.get_float_marked("IMAGFREQ");
-    store.skyrefis = cards.get_string_marked(&key_for("SREFIS", None, s));
+    store.skyrefis =
+        CardList::strip_wcs_store_string(cards.get_string_marked(&key_for("SREFIS", None, s)));
     for i in 0..naxis {
         let axis_num = i + 1;
         store.skyref[i] = cards.get_float_marked(&key_for("SREF", Some(axis_num), s));
@@ -498,6 +535,41 @@ mod tests {
     fn key_for_2_handles_pc_cd() {
         assert_eq!(key_for_2("PC", 1, 2, ' '), "PC1_2");
         assert_eq!(key_for_2("CD", 1, 1, 'B'), "CD1_1B");
+    }
+
+    #[test]
+    fn wcs_store_string_strip_is_unconditional_unlike_generic_accessor() {
+        // C keeps two distinct string-trimming rules (fitschan.c:36906):
+        // the generic accessor (`astGetFitsS`/MAKE_FGET, fitschan.c
+        // ~15407-15420) strips trailing spaces only when the value is
+        // <= 8 characters, but WcsFcRead's FitsStore-store path strips
+        // them unconditionally, regardless of length or `mark`:
+        //
+        //     if( CnvValue( fc, AST__STRING, undef, &cval, method, status ) ) {
+        //        cval[ astChrLen( cval ) ] = 0;  /* Exclude trailing spaces */
+        //        SetItemC( (char *****) item, i, jm, s, cval, status );
+        //
+        // A 13-character padded SPECSYS value (well over the 8-char
+        // gate) must arrive in the FitsStore stripped, while the same
+        // raw card value read through the generic accessor keeps its
+        // padding.
+        let header = "\
+NAXIS   =                    2
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+SPECSYS = 'BARYCENTRIC  '
+END";
+        let cards = cards_from(header);
+
+        // Generic accessor: no unconditional strip, padding survives.
+        assert_eq!(
+            cards.get_string("SPECSYS"),
+            Some("BARYCENTRIC  ".to_string())
+        );
+
+        // WCS-store path: unconditional strip removes the padding.
+        let store = extract_wcs_keywords(&cards, ' ').unwrap();
+        assert_eq!(store.specsys, Some("BARYCENTRIC".to_string()));
     }
 
     #[test]

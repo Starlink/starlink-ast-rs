@@ -68,15 +68,18 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         let key = format!("CDELT{axis_num}");
         store.cdelt[i] = cards.get_float_marked(&key);
 
-        // CTYPE — translate CLASS-specific projection codes
+        // CTYPE — translate CLASS-specific projection codes. C's
+        // WcsFcRead applies an unconditional trailing-space strip
+        // (fitschan.c:36906, see `CardList::strip_wcs_store_string`)
+        // before storing any recognised string keyword.
         let key = format!("CTYPE{axis_num}");
-        if let Some(ctype_raw) = cards.get_string_marked(&key) {
+        if let Some(ctype_raw) = CardList::strip_wcs_store_string(cards.get_string_marked(&key)) {
             store.ctype[i] = Some(translate_class_projection_read(&ctype_raw));
         }
 
         // CUNIT
         let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = cards.get_string_marked(&key);
+        store.cunit[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
     }
 
     // Read RESTFREQ (or RESTFRQ) — required for offset correction.
@@ -90,8 +93,8 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // before this reader runs. We just pass through the cards as
     // standard FITS-WCS at this point. SPECSYS/SSYSSRC/etc. are
     // picked up by the generic FITS-WCS keyword reader downstream.
-    store.specsys = cards.get_string_marked("SPECSYS");
-    store.ssyssrc = cards.get_string_marked("SSYSSRC");
+    store.specsys = CardList::strip_wcs_store_string(cards.get_string_marked("SPECSYS"));
+    store.ssyssrc = CardList::strip_wcs_store_string(cards.get_string_marked("SSYSSRC"));
     store.zsource = cards.get_float_marked("ZSOURCE");
 
     // IMAGFREQ — the image-sideband frequency (Hz). When present, the
@@ -111,9 +114,11 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     store.obsgeoz = cards.get_float("OBSGEO-Z");
 
     // RADESYS / RADECSYS
-    store.radesys = cards
-        .get_string_marked("RADESYS")
-        .or_else(|| cards.get_string_marked("RADECSYS"));
+    store.radesys = CardList::strip_wcs_store_string(
+        cards
+            .get_string_marked("RADESYS")
+            .or_else(|| cards.get_string_marked("RADECSYS")),
+    );
 
     // EQUINOX
     store.equinox = cards.get_float_marked("EQUINOX");

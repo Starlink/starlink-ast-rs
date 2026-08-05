@@ -251,6 +251,45 @@ impl CardList {
         v
     }
 
+    /// Apply the unconditional trailing-space strip that C's FITS-WCS
+    /// ingestion path (`WcsFcRead`) applies to every recognised string
+    /// keyword immediately before storing it into the `FitsStore`
+    /// (fitschan.c:36906):
+    ///
+    /// ```c
+    /// if( CnvValue( fc, AST__STRING, undef, &cval, method, status ) ) {
+    ///    cval[ astChrLen( cval ) ] = 0;  /* Exclude trailing spaces */
+    ///    SetItemC( (char *****) item, i, jm, s, cval, status );
+    /// ```
+    ///
+    /// This has no length gate, unlike the generic-accessor `<= 8` char
+    /// rule (`card.rs::parse_string_value`, mirroring `MAKE_FGET`/
+    /// `astGetFits<X>`, fitschan.c ~15407-15420): C keeps the two rules
+    /// distinct, so a long padded value read through `astGetFitsS` keeps
+    /// its padding, while the same value read into the `FitsStore` by
+    /// `WcsFcRead` does not. This applies regardless of the keyword's
+    /// `mark` flag — `mark` only gates whether the source card is later
+    /// flagged consumed, not whether the stored value gets stripped
+    /// (e.g. TIMESYS is `mark=0` at fitschan.c:36816-36823 but still
+    /// goes through this same strip).
+    ///
+    /// Callers apply this at WCS-store call sites only
+    /// (`wcs_keywords.rs`, `enc_aips.rs`, `enc_class.rs`) — never at
+    /// plain `get_string`/`get_string_marked` sites used for other
+    /// purposes, such as `SpecTrans`'s own CTYPE condition checks
+    /// (which mirror C's `GetValue2`, which does no stripping at all).
+    pub(crate) fn strip_wcs_store_string(value: Option<String>) -> Option<String> {
+        // Mirrors C `ChrLen` (fitschan.c:6294-6353), which scans back
+        // from the end and stops at the first character that is both
+        // printable and not whitespace (`isprint(c) && !isspace(c)`) —
+        // equivalent to the first ASCII graphic character (space is
+        // printable but is whitespace, so it does not stop the scan).
+        value.map(|s| {
+            s.trim_end_matches(|c: char| !c.is_ascii_graphic())
+                .to_string()
+        })
+    }
+
     /// `find`, recording the keyword as consumed when a card is found.
     #[allow(dead_code)]
     pub(crate) fn find_marked(&self, keyword: &str) -> Option<&FitsCard> {

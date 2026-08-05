@@ -82,9 +82,14 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         let key = format!("CDELT{axis_num}");
         store.cdelt[i] = cards.get_float_marked(&key);
 
-        // CTYPE — translate AIPS spectral types and extract SPECSYS
+        // CTYPE — translate AIPS spectral types and extract SPECSYS.
+        // C's WcsFcRead applies an unconditional trailing-space strip
+        // (fitschan.c:36906, see `CardList::strip_wcs_store_string`)
+        // before storing any recognised string keyword; apply it here
+        // before the AIPS-specific branching so both branches see the
+        // stripped value, matching C.
         let key = format!("CTYPE{axis_num}");
-        if let Some(ctype_raw) = cards.get_string_marked(&key) {
+        if let Some(ctype_raw) = CardList::strip_wcs_store_string(cards.get_string_marked(&key)) {
             if is_aips_spectral(&ctype_raw) {
                 let (standard_ctype, specsys) = translate_aips_spectral_read(&ctype_raw);
                 store.ctype[i] = Some(standard_ctype);
@@ -99,7 +104,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 
         // CUNIT
         let key = format!("CUNIT{axis_num}");
-        store.cunit[i] = cards.get_string_marked(&key);
+        store.cunit[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
 
         // CDi_j matrix (for AIPS++ headers)
         for j in 0..naxis {
@@ -138,9 +143,11 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     }
 
     // RADESYS/RADECSYS if present (overrides IAU rule)
-    store.radesys = cards
-        .get_string_marked("RADESYS")
-        .or_else(|| cards.get_string_marked("RADECSYS"));
+    store.radesys = CardList::strip_wcs_store_string(
+        cards
+            .get_string_marked("RADESYS")
+            .or_else(|| cards.get_string_marked("RADECSYS")),
+    );
 
     // If RADESYS not explicitly set, apply IAU 1984 rule based on equinox
     if store.radesys.is_none() {
@@ -158,7 +165,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     store.latpole = cards.get_float_marked("LATPOLE");
 
     // Spectral keywords (explicit SPECSYS overrides the one derived from CTYPE)
-    if let Some(specsys) = cards.get_string_marked("SPECSYS") {
+    if let Some(specsys) = CardList::strip_wcs_store_string(cards.get_string_marked("SPECSYS")) {
         store.specsys = Some(specsys);
     }
     store.restfrq = cards
