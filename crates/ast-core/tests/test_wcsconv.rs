@@ -99,8 +99,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("offset-sky_native", "EPOCH_A: offset epoch"),
     ("offset-sky-pole_native", "EPOCH_A: offset epoch"),
     ("origin_native", "SYSTEM_A: system"),
-    ("polco2_native", "CONTINUE: long-string split"),
-    ("polco_native", "CONTINUE: long-string split"),
     ("projp_native", "ASTWARN: card insertion position"),
     ("projp-nopv0_native", "ASTWARN: card insertion position"),
     ("projp-pv0only_native", "ASTWARN: card insertion position"),

@@ -146,12 +146,14 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
             if trimmed.is_empty() {
                 Some(FormattedValue::ObjectMarker)
             } else {
-                // Quote the string for native text. Embedded double-quotes
+                // Reverse the FITS-level pre-quoting (fitschan.c:18010) before
+                // applying the channel-text quoting. Embedded double-quotes
                 // are escaped by doubling (`""`), matching the convention
                 // un-escaped by `parse_native::parse_scalar_value`. Backslash
                 // is NOT a metacharacter in this format — it passes through
                 // unchanged.
-                let escaped = trimmed.replace('"', "\"\"");
+                let unquoted = un_pre_quote(trimmed);
+                let escaped = unquoted.replace('"', "\"\"");
                 Some(FormattedValue::Scalar(format!("\"{escaped}\"")))
             }
         }
@@ -250,11 +252,25 @@ pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
 
 fn expect_class_name(value: &FitsValue, keyword: &str) -> AstResult<String> {
     match value {
-        FitsValue::String(s) => Ok(s.trim().to_string()),
+        FitsValue::String(s) => Ok(un_pre_quote(s.trim_end()).to_string()),
         _ => Err(AstError::new(
             ErrorCode::Rderr,
             format!("NATIVE keyword '{keyword}' must have string value, got {value:?}"),
         )),
+    }
+}
+
+/// Reverse `pre_quote`: strip one outer pair of double quotes when the first
+/// and last characters are both `"`. Mirrors C `UnPreQuote`
+/// (fitschan.c:34680-34751). Interior double quotes are untouched — the ends
+/// of the string are known from the FITS quoting, so only the first and last
+/// characters are significant.
+fn un_pre_quote(value: &str) -> &str {
+    let b = value.as_bytes();
+    if b.len() >= 2 && b[0] == b'"' && b[b.len() - 1] == b'"' {
+        &value[1..value.len() - 1]
+    } else {
+        value
     }
 }
 
@@ -277,8 +293,10 @@ fn format_value_with_continues(
     if !trimmed.ends_with('&') {
         return Ok((format_value(value), 0));
     }
-    // Strip the trailing &, then walk CONTINUE cards.
-    let mut joined = trimmed.trim_end_matches('&').to_string();
+    // C stores the first card of a continued value raw (fitschan.c:18011) and
+    // overwrites its trailing ampersand with the next segment; only the
+    // CONTINUE segments are un-quoted (fitschan.c:18032).
+    let mut joined = trimmed.strip_suffix('&').unwrap_or(trimmed).to_string();
     let mut consumed = 0usize;
     for next in rest {
         if next.keyword != "CONTINUE" {
@@ -297,9 +315,11 @@ fn format_value_with_continues(
             }
         };
         let seg_trimmed = seg.trim_end();
+        // The ampersand test comes first, on the raw value, before
+        // un-quoting — exactly C's ordering at fitschan.c:18029-18032.
         let next_continues = seg_trimmed.ends_with('&');
-        let seg_text = seg_trimmed.trim_end_matches('&');
-        joined.push_str(seg_text);
+        let seg_text = seg_trimmed.strip_suffix('&').unwrap_or(seg_trimmed);
+        joined.push_str(un_pre_quote(seg_text));
         if !next_continues {
             break;
         }
@@ -898,6 +918,33 @@ END
             panic!("expected Scalar");
         };
         assert_eq!(s, r#""a\b""#);
+    }
+
+    #[test]
+    fn un_pre_quote_strips_one_outer_pair() {
+        // C UnPreQuote (fitschan.c:34733-34745).
+        assert_eq!(un_pre_quote("\",1)     \""), ",1)     ");
+        assert_eq!(un_pre_quote("plain"), "plain");
+        // Interior double quotes are left alone.
+        assert_eq!(un_pre_quote("\"a\"b\""), "a\"b");
+        // A single character is never a pair.
+        assert_eq!(un_pre_quote("\""), "\"");
+        assert_eq!(un_pre_quote(""), "");
+    }
+
+    #[test]
+    fn continued_value_un_pre_quotes_each_continue_segment() {
+        let cards = cards_from(concat!(
+            "BEGAST_A= 'Frame   '\n",
+            "TITLE_A = 'first pixel at (1&'\n",
+            "CONTINUE  '\",1)     \"'\n",
+            "ENDAST_A= 'Frame   '\n",
+        ));
+        let text = cards_to_native_text(&cards).expect("translates");
+        assert!(
+            text.contains("Title = \"first pixel at (1,1)     \""),
+            "trailing spaces must survive un-quoting; got:\n{text}"
+        );
     }
 
     #[test]
