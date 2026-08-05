@@ -36,11 +36,11 @@ The constant stays as an empty slice with a comment explaining what would
 justify a new entry, matching the other three exclusion lists.
 
 **D2 — Harness rule for the `IsSimp`/`Invert` aliasing quirk.**
-Three cases differ only in where C's shared-pointer aliasing leaves an
+Four cases differ only in where C's shared-pointer aliasing leaves an
 `IsSimp` or `Invert` tag.
 This is a C artifact the port deliberately does not reproduce, so those
-three become passing tests with one narrow licensed difference rather than
-three exclusions.
+four become passing tests with one narrow licensed difference rather than
+four exclusions.
 
 **D3 — Deferred-fixture visibility.**
 A PLAN.md section listing the three unported classes with file counts and
@@ -140,9 +140,9 @@ characters or fewer (fitschan.c:15343-15352 and the `MAKE_FGET` macro at
 ~15408); we strip unconditionally.
 `tnx.head`'s `RA` value is 18 characters, so C preserves its padding.
 
-### Cause 4 — documented C aliasing quirk (3 cases)
+### Cause 4 — documented C aliasing quirk (4 cases)
 
-`wave-f2w`, `vopt-f2w`, `serpens`.
+`wave-f2w`, `vopt-f2w`, `serpens`, `cd-cross`.
 
 These differ only in which interior node carries an `IsSimp` or `Invert`
 tag.
@@ -152,6 +152,10 @@ shared node, and which node keeps its tag depends on C's aliasing history
 rather than on tree shape.
 The port uses owned values (`flatten` clones), so probe-time inversions
 touch throwaway copies and the asymmetry is unreproducible by construction.
+`cd-cross`'s first diff (`ISA_K = 'Mapping '` where the reference has
+`INVERT_B= 1`) reads like the mapping-invert shape divergence in cause 9,
+but measurement shows dropping the `ISSIMP`/`INVERT` tag cards from both
+sides leaves no diff at all — it belongs here.
 
 Already recorded in `docs/issues/c-library-quirks.md` under "CmpMap
 `IsSimp` tag placement".
@@ -237,9 +241,9 @@ This unit is the one most likely to split: ten cases share a first-diff
 *shape*, which is weaker evidence of a shared cause than the other groups
 have.
 
-### Cause 9 — object shape, CmpMap vs WinMap (6 cases)
+### Cause 9 — object shape, CmpMap vs WinMap (5 cases)
 
-`car1`, `car2`, `car4`, `zpx`, `tan-zeropv`, `cd-cross`.
+`car1`, `car2`, `car4`, `zpx`, `tan-zeropv`.
 
 `car1/2/4` expect `BEGAST_H='WinMap'` where we emit `'CmpMap'`.
 `car4` is an MSX header (`TELESCOP='MSX'`), and C's `SpecTrans` has an
@@ -256,9 +260,8 @@ collapse CAR to a UnitMap, because that would lose the cyclic 2π≡0
 property.
 Stated here so it is not rediscovered the wrong way.
 
-`zpx` (ShiftMap vs MatrixMap), `tan-zeropv` (WcsMap shape) and `cd-cross`
-(mapping-invert placement) are shape divergences in the same family but not
-necessarily the same fix.
+`zpx` (ShiftMap vs MatrixMap) and `tan-zeropv` (WcsMap shape) are shape
+divergences in the same family but not necessarily the same fix.
 
 ### Cause 10 — `Ident` set-ness (4 cases)
 
@@ -357,7 +360,7 @@ Tier 1 — writer and harness, self-contained:
 | U1 | Read-consumed cards not deleted | 2 |
 | U2 | CONTINUE long-string split | 2 |
 | U3 | String-value padding | 2 |
-| U4 | `IsSimp`/`Invert` aliasing harness rule (D2) | 3 |
+| U4 | `IsSimp`/`Invert` aliasing harness rule (D2) | 4 |
 | U12 | Space in a keyword name warns when C does not | 1 |
 | U13 | PROJP cards deleted when C retains them | 1 |
 
@@ -376,7 +379,7 @@ Tier 3 — the real port work:
 |---|---|---|
 | U7 | ASTWARN insertion position | 8 |
 | U8 | Frame vs SkyFrame, attribute defaulting | 10 |
-| U9 | Object shape, CmpMap vs WinMap | 6 |
+| U9 | Object shape, CmpMap vs WinMap | 5 |
 
 U7 is writer-side but sits in tier 3 because insertion position interacts
 with the card ordering U1 touches.

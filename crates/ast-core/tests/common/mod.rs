@@ -30,6 +30,30 @@ pub fn native_strings_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
     }
 }
 
+/// Drop the `IsSimp` attribute line from a native dump.
+pub fn strip_is_simp(s: &str) -> String {
+    s.lines()
+        .filter(|l| !l.trim_start().starts_with("IsSimp ="))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// True for a keyword-card line holding a `IsSimp` or `Invert` tag
+/// (`ISSIMP<xx>=` / `INVERT<xx>=`, where `<xx>` is a two-character sequence
+/// number).
+///
+/// Where these tags land inside a compound Mapping is decided in C by which
+/// nodes were aliased into a simplification probe, because `astSetInvert`
+/// clears a shared node's `IsSimple` bit as a side effect
+/// (`mapping.c:23256`). The port holds components by value, so the asymmetry
+/// has no analogue here. Callers that compare a serialised object against a
+/// C-generated reference use this to drop the tags from both sides.
+/// See `docs/issues/c-library-quirks.md`.
+pub fn is_aliasing_tag_card(line: &str) -> bool {
+    let key = line.split(['=', ' ']).next().unwrap_or("");
+    (key.starts_with("ISSIMP") && key.len() == 8) || (key.starts_with("INVERT") && key.len() == 8)
+}
+
 /// Compare two whitespace-tokenised lines for equivalence: tokens must be
 /// byte-equal, except numeric tokens that parse as `f64` may differ by up to
 /// `max_ulps` ULP.

@@ -19,8 +19,18 @@ rule; the three affected simplify fixtures (`cap_cmpmap_01`,
 `cap_cmpmap_04`, `cap_specmap_02`) are compared by `astequal` only
 (the byte-exact string diff is skipped — see
 `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`).
-The wcsconv case `wave-f2w_native` is excluded for the same reason
-(`crates/ast-core/tests/test_wcsconv.rs` `NATIVE_READ_EXCLUDED`).
+The four affected wcsconv cases — `serpens`, `wave-f2w`, `vopt-f2w` and
+`cd-cross` — are compared with every `ISSIMP<xx>`/`INVERT<xx>` card
+dropped from both the Rust output and the C reference
+(`common::is_aliasing_tag_card`, applied by `ALIASING_TAG_LICENSED` in
+`crates/ast-core/tests/test_wcsconv.rs`); every other card is still
+byte-compared. `cd-cross` looks at first glance like the mapping-invert
+shape divergence below (its first diff is `ISA_K = 'Mapping '` where
+the reference has `INVERT_B= 1`), but dropping the tag cards from both
+sides leaves no diff at all — it belongs here, not there. The tag
+*count* also differs between the two sides (Rust emits 4 tag cards
+where C emits 5 for `cd-cross`, 3 vs 4 for `serpens`), which is why the
+harness drops the lines rather than pairing them up positionally.
 The transforms and tree structure match C exactly; the sole divergence
 is *which interior `CmpMap` node carries the serialised `IsSimp = 1`
 tag*.
@@ -192,8 +202,10 @@ implementation-independent.
 ## `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages
 
 **Status:** Open, and deliberately *not* mirrored in the Rust port.
-`serpens_native` stays in `NATIVE_READ_EXCLUDED`
-(`crates/ast-core/tests/test_wcsconv.rs`) partly for this reason.
+`serpens_native` compares under `ALIASING_TAG_LICENSED`
+(`crates/ast-core/tests/test_wcsconv.rs`), which drops the `INVERT_B` card
+this quirk produces from both sides, alongside the `IsSimp` tag-placement
+quirk above.
 
 **C location:** `fitschan.c:38391-38412` (`WcsNative`, stages 1 and 3).
 When the celestial axes are not already at slots 0 and 1, C builds

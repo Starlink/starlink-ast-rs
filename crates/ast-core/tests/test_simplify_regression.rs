@@ -110,14 +110,6 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
     to_native_string(&obj).ok()
 }
 
-/// Drop the `IsSimp` attribute line from a native dump.
-fn strip_is_simp(s: &str) -> String {
-    s.lines()
-        .filter(|l| !l.trim_start().starts_with("IsSimp ="))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 #[test]
 fn simplify_regression() {
     let fixture_dir = PathBuf::from(concat!(
@@ -277,7 +269,10 @@ fn simplify_regression() {
         if !skip_string_compare {
             if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
                 let (got, want) = if ignore_is_simp_line {
-                    (strip_is_simp(&simp_str), strip_is_simp(&ref_text))
+                    (
+                        common::strip_is_simp(&simp_str),
+                        common::strip_is_simp(&ref_text),
+                    )
                 } else {
                     (simp_str, ref_text.clone())
                 };
