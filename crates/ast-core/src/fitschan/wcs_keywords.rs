@@ -270,11 +270,24 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     ));
     store.restfrq = lookup_with_fallback(cards, "RESTFRQ", None, s, |c, k| c.get_float_marked(k));
     store.restwav = lookup_with_fallback(cards, "RESTWAV", None, s, |c, k| c.get_float_marked(k));
-    // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1 line
-    // 36497, DTAI 36506). Never consumed. DTAI in C is only handled at all for
-    // JCMT/UKIRT; reading it unmarked here leaves it in the output regardless,
-    // which matches C (it is never marked mark=1).
-    store.dtai = cards.get_float(&key_for("DTAI", None, s));
+    // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1
+    // fitschan.c:36562-36563, DTAI fitschan.c:36571-36573). The DTAI *card*
+    // is never consumed either way (C never sets mark=1 for it), but C only
+    // stores the value into the FitsStore — and hence only sets the Dtai
+    // attribute on the resulting Frame (fitschan.c:37890-37892) — when a
+    // TELESCOP card is present and names JCMT or UKIRT, since other
+    // telescopes may use DTAI for unrelated purposes. TELESCOP itself is
+    // read unmarked (mark=0 in the C `GetValue` call) and always as the
+    // primary (unsuffixed) keyword, regardless of the alt-plane letter `s`
+    // being decoded.
+    let telescop_is_jcmt_or_ukirt = cards
+        .get_string("TELESCOP")
+        .is_some_and(|t| t.starts_with("JCMT") || t.starts_with("UKIRT"));
+    store.dtai = if telescop_is_jcmt_or_ukirt {
+        cards.get_float(&key_for("DTAI", None, s))
+    } else {
+        None
+    };
     store.dut1 = cards.get_float(&key_for("DUT1", None, s));
 
     // AST-extension keywords. Mirrors WcsFromStore writes at

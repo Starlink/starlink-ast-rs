@@ -96,6 +96,14 @@ pub(crate) fn decode_wcs_inner(
     // that the native dump renders (with the inherited `IsA Object` block).
     set_frame_ident(world_frame.as_mut(), " ");
 
+    // Stamp DUT1/DTAI onto the world Frame, as C `WcsMapFrm` does
+    // immediately after the `astSetIdent` call above (fitschan.c:37883-37892).
+    set_frame_dut1_dtai(
+        world_frame.as_mut(),
+        store.dut1.map(|v| v * 86_400.0),
+        store.dtai,
+    );
+
     // Step 5: Build the full pixel → world mapping (consumes the decoder
     // results). C `WcsMapFrm` (fitschan.c:37768-37810) returns
     // `astSimplify(map8)` — the pixel→WCS Mapping is simplified before it is
@@ -537,10 +545,26 @@ pub(crate) fn decode_wcs_with_alts_inner(
         // can recover it.
         set_frame_ident(world_frame.as_mut(), &letter.to_string());
 
+        // Stamp DUT1/DTAI onto the alt world Frame, exactly as for the
+        // primary plane above — C `WcsMapFrm` runs once per plane
+        // (fitschan.c:2641 loops over version characters).
+        set_frame_dut1_dtai(
+            world_frame.as_mut(),
+            alt_store.dut1.map(|v| v * 86_400.0),
+            alt_store.dtai,
+        );
+
         // add_frame moves `current` to the newly-added alt frame, so the
-        // SkyRef stamp below targets it.
+        // SkyRef/RefRA-RefDec/DSB stamps below target it.
         fs.add_frame(FrameRef::Base, full_mapping, world_frame)?;
         set_sky_ref_from_celestial(&mut fs, alt_ref_pos, alt_ref_pos_forced)?;
+
+        // SpecFrame RefRA/RefDec and DSBSpecFrame setup, exactly as for
+        // the primary plane above — C `WcsSpectral`'s `astSetRefPos` /
+        // `DSBSetUp` calls (fitschan.c:39574, 39585-39588) run once per
+        // plane, driven by the per-plane `s` loop at fitschan.c:2641.
+        set_spec_ref_from_celestial(&mut fs, alt_ref_pos)?;
+        dsb_set_up_in_frameset(&mut fs, alt_store)?;
     }
 
     // Restore current to the primary frame (add_frame moved it).
@@ -738,6 +762,57 @@ fn set_frame_ident(frame: &mut dyn crate::frames::Frame, ident: &str) {
     }
     if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<FluxFrame>() {
         f.set_ident(ident);
+    }
+}
+
+/// Helper: stamp DUT1/DTAI onto a boxed Frame, dispatching by concrete
+/// type, mirroring C `WcsMapFrm`'s calls to `astSetDut1` / `astSetDtai`
+/// on `*frm` (fitschan.c:37883-37892). `dut1` is in seconds (the FITS
+/// `DUT1` keyword is in days; the caller converts by `SPD` before calling
+/// this).
+///
+/// In C, `Dut1` and `Dtai` are base-`Frame` attributes (`frame.h:622`,
+/// `frame.c:12384-12387`), so every Frame class carries them. In the port
+/// they are currently implemented on `SkyFrame`, `SpecFrame`, `TimeFrame`,
+/// and `CmpFrame` only; `BasicFrame` and `FluxFrame` have no such fields, so
+/// a Frame of either type is left unstamped.
+fn set_frame_dut1_dtai(frame: &mut dyn crate::frames::Frame, dut1: Option<f64>, dtai: Option<f64>) {
+    use crate::frames::{CmpFrame, SkyFrame, SpecFrame, TimeFrame};
+    use crate::mappings::AsAny;
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<SkyFrame>() {
+        if let Some(v) = dut1 {
+            f.set_dut1(v);
+        }
+        if let Some(v) = dtai {
+            f.set_dtai(v);
+        }
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<SpecFrame>() {
+        if let Some(v) = dut1 {
+            f.set_dut1(v);
+        }
+        if let Some(v) = dtai {
+            f.set_dtai(v);
+        }
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<TimeFrame>() {
+        if let Some(v) = dut1 {
+            f.set_dut1(v);
+        }
+        if let Some(v) = dtai {
+            f.set_dtai(v);
+        }
+        return;
+    }
+    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<CmpFrame>() {
+        if let Some(v) = dut1 {
+            f.set_dut1(v);
+        }
+        if let Some(v) = dtai {
+            f.set_dtai(v);
+        }
     }
 }
 

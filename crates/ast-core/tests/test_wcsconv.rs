@@ -72,7 +72,6 @@ fn fixtures_dir() -> PathBuf {
 /// set-ness; SYSTEM/DOMAIN/LABEL/IDENT = Frame attribute defaulting;
 /// ASTWARN = warning-card insertion position; CONTINUE = long-string split.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("alt-spectral_native", "REFRA_B: spectral reference RA"),
     ("awav-a2f_native", "ASTWARN: warning card"),
     ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
     (
@@ -88,12 +87,10 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "PROJ_A: SFL description string (Sanson-Flamsteed vs sinusoidal)",
     ),
     ("class-spec_native", "IDENT_A: ident"),
-    ("cname_native", "LABEL_C: axis label"),
     ("fits-pc-alt_native", "REFRA_B: spectral reference RA"),
     ("fits-pc-unit_native", "REFRA_B: spectral reference RA"),
     ("freq-f2w_native", "ASTWARN: warning card"),
     ("multi-wcs_native", "EPOCH_A: alt-plane epoch"),
-    ("multi-wcs-spec_native", "DTAI_A: time attribute"),
     ("offset-sky_native", "EPOCH_A: offset epoch"),
     ("offset-sky-pole_native", "EPOCH_A: offset epoch"),
     ("origin_native", "EQNOX_A: equinox attribute set-ness"),

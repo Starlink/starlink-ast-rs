@@ -276,6 +276,21 @@ pub(crate) fn build_celestial_with_def_b1950(
         let _ = sky_frame.set_axis_symbol(lat_api, &lat_sym);
     }
 
+    // Step 5b: CNAME → Label. Mirrors C `WcsSkyFrame` (fitschan.c:39378-
+    // 39381): when either CNAME keyword is set, it becomes the axis Label —
+    // `astSetLabel(ret, 0, ...)` for the longitude axis and
+    // `astSetLabel(ret, 1, ...)` for the latitude axis. C addresses the
+    // Label axes with exactly the same indices it uses for the Symbols at
+    // fitschan.c:39332-39339, so the same lon-first/lat-second 1-based
+    // numbering used for the Symbols above applies here.
+    let (lon_api, lat_api) = if lat_axis < lon_axis { (2, 1) } else { (1, 2) };
+    if let Some(cname) = &store.cname[lon_axis] {
+        let _ = sky_frame.set_axis_label(lon_api, cname.clone());
+    }
+    if let Some(cname) = &store.cname[lat_axis] {
+        let _ = sky_frame.set_axis_label(lat_api, cname.clone());
+    }
+
     // For a genuinely unknown celestial system (not offset sky), emit the
     // `badcel` warning. Mirrors C `WcsSkyFrame` (fitschan.c:39351-39358):
     // the warning is guarded by `report` (false for `OF`) and by the

@@ -194,6 +194,13 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame.set_unit(&cunit);
     }
 
+    // CNAME → axis Label. Mirrors C `WcsSpectral` (fitschan.c:39636-
+    // 39638): when the CNAME keyword is set for the spectral axis, it
+    // becomes the SpecFrame's (sole) axis Label.
+    if let Some(cname) = &store.cname[axis] {
+        frame.set_axis_label(cname.clone());
+    }
+
     // Step 4: Build the IWC→S mapping. For a linear axis (no algcode)
     // this is just `IWC + CRVAL`. For an `-X2P` non-linear axis we
     // call the algorithm-specific builder (mirrors C `WcsSpectral`
