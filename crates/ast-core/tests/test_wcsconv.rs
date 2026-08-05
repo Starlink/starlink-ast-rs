@@ -81,8 +81,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "class-noproj_native",
         "PROJ_A: SFL description string (Sanson-Flamsteed vs sinusoidal)",
     ),
-    ("fits-pc-alt_native", "REFRA_B: spectral reference RA"),
-    ("fits-pc-unit_native", "REFRA_B: spectral reference RA"),
     ("freq-f2w_native", "ASTWARN: warning card"),
     ("multi-wcs_native", "EPOCH_A: alt-plane epoch"),
     ("offset-sky_native", "EPOCH_A: offset epoch"),

@@ -648,10 +648,15 @@ impl SpecFrame {
         // (ICRS), which leaves a sub-SkyTol SlaMap residue that perturbs
         // the stored RefRA at the f32 level and breaks the downstream
         // Geocentric/Heliocentric SpecMap cancellation.
-        let canonical = super::SkyFrame::new(super::SkySystem::Fk5);
-        // (The C version sets equinox=J2000 explicitly; SkyFrame::new
-        // uses J2000 as the default Equinox, so no explicit set is
-        // needed here.)
+        let mut canonical = super::SkyFrame::new(super::SkySystem::Fk5);
+        // C builds the template as `astSkyFrame("system=FK5,equinox=J2000")`
+        // (specframe.c:3994), which leaves Equinox *set*. Set-ness is
+        // load-bearing: `Match`/`SubFrame` only impose the template's Equinox
+        // on the result when the template has tested it, so leaving it at the
+        // (numerically identical) J2000 default would let a B1950 source
+        // frame carry its own equinox through the alignment, collapsing the
+        // conversion to a near-identity.
+        canonical.set_equinox_year(2000.0);
         let Some(fs) = crate::frames::Frame::find_frame_template(frm, &canonical, " ")? else {
             // Alignment was not possible — leave RefRA/RefDec unchanged
             // (C silently no-ops in this case).
@@ -2915,6 +2920,33 @@ mod tests {
         assert!(
             (f_hz - 999_996_664.359_048).abs() < 1.0e-3,
             "VRAD 1000 m/s -> FREQ should be 999996664.359048 Hz, got {f_hz}"
+        );
+    }
+
+    #[test]
+    fn set_ref_pos_converts_from_fk4_b1950() {
+        // RefRA/RefDec are stored in FK5 J2000, so a position supplied in
+        // FK4 B1950 must actually be precessed. Golden values are the
+        // `REFRA_B` / `REFDEC_B` cards of the `fits-pc-alt` wcsconv
+        // reference, whose alternate plane describes RA/Dec = 180/45 deg
+        // in FK4 B1950.
+        let mut fk4 = crate::frames::SkyFrame::new(crate::frames::SkySystem::Fk4);
+        fk4.set_equinox_year(1950.0);
+        fk4.set_epoch_year(1950.0);
+
+        let mut spec = SpecFrame::new(SpecSystem::Wavelen);
+        spec.set_ref_pos(Some(&fk4), 180.0_f64.to_radians(), 45.0_f64.to_radians())
+            .unwrap();
+
+        let ra = spec.ref_ra().expect("RefRA set");
+        let dec = spec.ref_dec().expect("RefDec set");
+        assert!(
+            (ra - 3.152_747_005_821_885).abs() < 1.0e-12,
+            "RefRA should be 3.1527470058218849, got {ra}"
+        );
+        assert!(
+            (dec - 0.780_540_387_333_539_5).abs() < 1.0e-12,
+            "RefDec should be 0.78054038733353948, got {dec}"
         );
     }
 }
