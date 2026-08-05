@@ -7,6 +7,7 @@
 //! Mirrors C library `fitschan.c::GetNextData` (line 17703) and
 //! `fitschan.c::CreateKeyword` (line 8244).
 
+use super::card::{FITS_CARD_LEN, FITS_NAME_LEN};
 use super::card_list::CardList;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::fitschan::card::{FitsCard, FitsValue};
@@ -660,29 +661,48 @@ fn chr_len(s: &str) -> usize {
     s.trim_end().chars().count()
 }
 
-/// Pre-quote a sub-string with surrounding double quotes when it has leading
-/// double quotes or trailing white space that FITS would otherwise discard.
-/// Mirrors C `PreQuote` (fitschan.c:24925). Returns the (possibly
-/// double-quoted) string; embedded single quotes are NOT doubled here — the
-/// card formatter doubles them when rendering the FITS card.
+/// Pre-quote a value with surrounding double quotes when it has trailing
+/// white space or double quotes at either end, truncating it to what a FITS
+/// card can hold. Mirrors C `PreQuote` (fitschan.c:24989-25111).
+///
+/// Embedded single quotes are not doubled here — the card formatter doubles
+/// them when rendering the card — but they are *counted* against the length
+/// limit, because that doubling is what makes them cost two columns.
+/// Interior double quotes are left alone: FITS delimits the value, so only
+/// the first and last characters matter when un-quoting.
 fn pre_quote(value: &str) -> String {
-    let bytes: Vec<char> = value.chars().collect();
-    if bytes.is_empty() {
-        return String::new();
+    // C: AST__FITSCHAN_FITSCARDLEN - FITSNAMLEN - 4 == 80 - 8 - 4.
+    const MAX: usize = FITS_CARD_LEN - FITS_NAME_LEN - 4;
+
+    let chars: Vec<char> = value.chars().collect();
+    let starts_dquote = chars.first() == Some(&'"');
+
+    // A zero-length value keeps the initial 2, so it is emitted as `""`.
+    let mut dquotes = 2;
+    let mut nc = 0;
+    let mut sq = 0;
+
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '\'' {
+            sq += 1;
+        }
+        let dq = if c.is_whitespace() || (starts_dquote && c == '"') {
+            2
+        } else {
+            0
+        };
+        if nc + 1 + dq + sq > MAX {
+            break;
+        }
+        nc = i + 1;
+        dquotes = dq;
     }
-    let starts_dquote = bytes[0] == '"';
-    let needs = bytes
-        .iter()
-        .any(|&c| c.is_whitespace() || (starts_dquote && c == '"'));
-    // C only adds double quotes when the *final accommodated* character needed
-    // them; in practice this is trailing white space or a leading/trailing
-    // double quote. Trailing white space is the common case for fixed-width
-    // class names handled elsewhere, so guard on the actual need.
-    let trailing_ws = bytes.last().is_some_and(|c| c.is_whitespace());
-    if needs && (trailing_ws || starts_dquote) {
-        format!("\"{value}\"")
+
+    let body: String = chars[..nc].iter().collect();
+    if dquotes != 0 {
+        format!("\"{body}\"")
     } else {
-        value.to_string()
+        body
     }
 }
 
@@ -1113,6 +1133,44 @@ END
         assert!(text.contains("IsA Mapping"));
         assert!(text.contains("End UnitMap"));
         assert!(text.contains("End CmpMap"));
+    }
+
+    #[test]
+    fn pre_quote_empty_value_is_two_double_quotes() {
+        // C PreQuote initialises dquotes = 2 and the loop never runs
+        // (fitschan.c:25056-25064), so a zero-length value is emitted as "".
+        assert_eq!(pre_quote(""), "\"\"");
+    }
+
+    #[test]
+    fn pre_quote_truncates_at_the_fits_value_limit() {
+        // The accommodation test is
+        //   nc + 1 + dq + sq > AST__FITSCHAN_FITSCARDLEN - FITSNAMLEN - 4
+        // (fitschan.c:25089), i.e. > 68 for the standard 80/8 card layout.
+        let long = "x".repeat(80);
+        assert_eq!(pre_quote(&long), "x".repeat(68));
+        // Each single quote will be doubled by the card formatter, so it
+        // costs two of the 68 columns.
+        let quotes = "'".repeat(80);
+        assert_eq!(pre_quote(&quotes), "'".repeat(34));
+    }
+
+    #[test]
+    fn pre_quote_uses_the_last_accommodated_character() {
+        // Trailing white space that is truncated away does not force quotes,
+        // because dquotes tracks the last *accepted* character.
+        let v = format!("{}   ", "y".repeat(68));
+        assert_eq!(pre_quote(&v), "y".repeat(68));
+        // Trailing white space that survives does force them.
+        assert_eq!(pre_quote("z  "), "\"z  \"");
+    }
+
+    #[test]
+    fn pre_quote_un_pre_quote_round_trip() {
+        for v in ["", "z  ", "\"lead", "plain", "a\"b"] {
+            let q = pre_quote(v);
+            assert_eq!(un_pre_quote(&q), v, "round trip failed for {v:?}");
+        }
     }
 
     /// A long string value is split across CONTINUE cards with a trailing

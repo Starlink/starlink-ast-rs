@@ -7,10 +7,10 @@
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Length of a FITS header card in characters.
-const FITS_CARD_LEN: usize = 80;
+pub(super) const FITS_CARD_LEN: usize = 80;
 
 /// Length of a FITS keyword name field (columns 1-8).
-const FITS_NAME_LEN: usize = 8;
+pub(super) const FITS_NAME_LEN: usize = 8;
 
 /// A legal FITS keyword-name character: letter, digit, `-`, or `_`.
 /// Mirrors C `isFits` (fitschan.c:1361).
