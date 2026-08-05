@@ -72,6 +72,11 @@ pub(crate) struct SpectralResult {
     /// (IF / DSBCentre / SideBand) are filled in by `dsb_set_up` after the
     /// reference position has been propagated from the celestial axes.
     pub is_dsb: bool,
+    /// Warning messages to emit as ASTWARN cards. Mirrors C `Warn`'s
+    /// `badctype` condition: the `-X2P` algorithm code's `P` character
+    /// disagrees with the one the axis's own system implies
+    /// (fitschan.c:23696-23704).
+    pub warnings: Vec<String>,
 }
 
 impl SpectralResult {
@@ -206,16 +211,20 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
     // call the algorithm-specific builder (mirrors C `WcsSpectral`
     // dispatch at fitschan.c:39593-39610).
     let crval = store.crval[axis].unwrap_or(0.0);
+    let mut warnings: Vec<String> = Vec::new();
     let mapping: DynMapping = if algcode.is_empty() {
         Box::new(ShiftMap::new(vec![crval]))
     } else if is_nonlin_x2p(&algcode) {
         match nonlin_spec_wcs(&algcode, &frame, crval) {
-            Ok(Some(m)) => m,
-            // Fallback: emit a linear shift if we couldn't build the
-            // non-linear mapping (mirrors C's "unable to implement
-            // algorithm" branch — but C errors out; we degrade to
-            // linear so the FrameSet still loads).
-            _ => Box::new(ShiftMap::new(vec![crval])),
+            Ok((map, warns)) => {
+                warnings = warns;
+                // Fallback: emit a linear shift if we couldn't build the
+                // non-linear mapping (mirrors C's "unable to implement
+                // algorithm" branch — but C errors out; we degrade to
+                // linear so the FrameSet still loads).
+                map.unwrap_or_else(|| Box::new(ShiftMap::new(vec![crval])))
+            }
+            Err(_) => Box::new(ShiftMap::new(vec![crval])),
         }
     } else if algcode == "-LOG" {
         match log_wcs(crval) {
@@ -249,6 +258,7 @@ pub(crate) fn build_spectral(store: &FitsStore) -> Option<SpectralResult> {
         frame,
         axis,
         is_dsb,
+        warnings,
     })
 }
 
@@ -271,14 +281,16 @@ fn is_nonlin_x2p(algcode: &str) -> bool {
 /// system `S`. The resulting mapping is `IWC → X (via WinMap or
 /// ZoomMap) → S (via SpecMap S↔X inverted)`.
 ///
-/// Returns `Ok(None)` when the algorithm code's X system is unrecognised
-/// or when the X-to-S rate of change is zero/undefined at the reference
-/// point.
+/// The mapping is `None` when the algorithm code's X system is unrecognised
+/// or when the X-to-S rate of change is zero/undefined at the reference point.
+/// The warnings are returned separately because C's `Warn` appends its cards
+/// to the FitsChan as it runs, so a warning raised before a later failure
+/// still reaches the header even though the mapping does not.
 fn nonlin_spec_wcs(
     algcode: &str,
     specfrm: &SpecFrame,
     crval: f64,
-) -> AstResult<Option<DynMapping>> {
+) -> AstResult<(Option<DynMapping>, Vec<String>)> {
     // Identify the "X" system from algcode[1] and build a SpecFrame
     // copy describing X. Mirrors C:23579-23600. Copying the supplied
     // SpecFrame ensures rest_freq, std_of_rest, etc. are preserved.
@@ -288,7 +300,7 @@ fn nonlin_spec_wcs(
         Some(b'W') => SpecSystem::Wavelen,
         Some(b'V') => SpecSystem::Vrel,
         Some(b'A') => SpecSystem::Airwave,
-        _ => return Ok(None),
+        _ => return Ok((None, Vec::new())),
     };
     let mut xfrm = specfrm.clone();
     xfrm.set_system(x_system);
@@ -297,8 +309,39 @@ fn nonlin_spec_wcs(
     // Build the S → X mapping via Frame::convert (mirrors
     // C:23606-23612). This returns a FrameSet whose forward mapping
     // takes S values to X values.
-    let Some(fs) = specfrm.convert_to(&xfrm, &[])? else {
-        return Ok(None);
+    let fs = specfrm.convert_to(&xfrm, &[])?;
+
+    // Warn when the algorithm code's "P" character disagrees with the one the
+    // axis's own system implies. Mirrors C:23675-23704, which runs this whether
+    // or not the conversion above succeeded — the only guard is that the X
+    // system was identified. AST interprets the illegal "P" system correctly,
+    // so nothing about the mapping changes.
+    let mut warnings: Vec<String> = Vec::new();
+    let s_sys = specfrm.system();
+    let pc = match s_sys {
+        // C's final `else` raises AST__INTER because it cannot prove the four
+        // groups cover every system. They do, so an exhaustive match makes
+        // that a compile-time guarantee and the branch unreachable.
+        SpecSystem::Freq | SpecSystem::Energy | SpecSystem::Wavenum | SpecSystem::Vradio => b'F',
+        SpecSystem::Wavelen | SpecSystem::Voptical | SpecSystem::Redshift => b'W',
+        SpecSystem::Airwave => b'A',
+        SpecSystem::Beta | SpecSystem::Vrel => b'V',
+    };
+    if bytes.get(3).copied() != Some(pc) {
+        // C's format is "%s%s ... %s%.3s%c": the system name, the full
+        // algorithm code, then the system name, the code's first three
+        // characters, and the required "P" character.
+        let text = s_sys.as_str();
+        let stem = &algcode[..algcode.len().min(3)];
+        warnings.push(format!(
+            "The spectral CTYPE value {text}{algcode} is not legal - using \
+             {text}{stem}{} instead.",
+            pc as char
+        ));
+    }
+
+    let Some(fs) = fs else {
+        return Ok((None, warnings));
     };
     let s_to_x = fs.mapping(FrameRef::Base, FrameRef::Current)?;
 
@@ -317,7 +360,7 @@ fn nonlin_spec_wcs(
     // C:23667 — `astRate(map1, &crv_x, 0, 0)` after the invert.
     let ds = match x_to_s.rate(&[crv_x], 1, 1) {
         Ok(r) if r != 0.0 && r.is_finite() => r,
-        _ => return Ok(None),
+        _ => return Ok((None, warnings)),
     };
 
     // FITS-WCS paper III: dS/dw = 1 at the reference point, so
@@ -338,7 +381,7 @@ fn nonlin_spec_wcs(
 
     // IWC → S = (IWC → X) ∘ (X → S). Mirrors C:23691.
     let iwc_to_s = CmpMap::new(iwc_to_x, x_to_s, Composition::Series)?;
-    Ok(Some(Box::new(iwc_to_s)))
+    Ok((Some(Box::new(iwc_to_s)), warnings))
 }
 
 /// Build the IWC→S mapping for a FITS-WCS paper III `-GRI` or `-GRA` grism axis.

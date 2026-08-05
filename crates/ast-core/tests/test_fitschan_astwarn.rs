@@ -118,3 +118,49 @@ fn badpv_warning_names_each_unusable_parameter_in_ascending_order() {
         ]
     );
 }
+
+/// `awav-a2f`-shaped: an air-wavelength axis whose algorithm code says the
+/// values are expressed as frequency. C keeps the mapping — it interprets the
+/// illegal `P` character correctly — and warns.
+///
+/// Same shape as the `awav-a2f` fixture header
+/// (`tests/fixtures/wcsconv/inputs/awav-a2f.head`).
+const ONE_AXIS_BADCTYPE: &str = "\
+SIMPLE  =                    T / Fits standard
+BITPIX  =                  -32 / Bits per pixel
+NAXIS   =                    1 / Number of dimensions
+NAXIS1  =                 1024 / Length of axis
+CTYPE1  = 'AWAV-A2F'           / Air wavelength sampled, expressed as frequency
+CRVAL1  =            5.000E-07 / Reference air wavelength (metres)
+CRPIX1  =              512.500 / Reference pixel
+CDELT1  =            1.000E-10 / Wavelength increment (metres)
+CUNIT1  = 'm       '           / Axis units
+RESTFRQ =           5.996E+14  / Rest frequency (Hz)
+SPECSYS = 'BARYCENT'           / Spectral reference frame
+";
+
+#[test]
+fn badctype_warning_names_the_legal_ctype_and_precedes_naxis1() {
+    let mut fc = FitsChan::from_header(ONE_AXIS_BADCTYPE).expect("header parses");
+    let _ = fc.read().expect("read succeeds");
+    // Text and wrapping copied from `expected/awav-a2f.native:52-55`.
+    assert_eq!(
+        astwarn_values(&fc),
+        vec![
+            "        ",
+            "The spectral CTYPE value AWAV-A2F is not legal - using ",
+            "AWAV-A2A instead.",
+            "        ",
+        ]
+    );
+
+    // A 1-axis header parks C's card cursor on NAXIS1, so the block precedes
+    // it rather than sitting between two NAXIS cards.
+    let kws = keywords(&fc);
+    let first_warn = kws.iter().position(|k| k == "ASTWARN").expect("ASTWARN");
+    let naxis1 = kws.iter().position(|k| k == "NAXIS1").expect("NAXIS1");
+    assert!(
+        first_warn < naxis1,
+        "ASTWARN block must precede NAXIS1, got {kws:?}"
+    );
+}

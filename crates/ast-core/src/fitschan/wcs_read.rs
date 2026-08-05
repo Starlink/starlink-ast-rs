@@ -78,13 +78,20 @@ pub(crate) fn decode_wcs_inner(
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
     // Collect warnings from the celestial decoder (e.g. badcel for unknown
     // celestial systems).
-    let warnings: Vec<String> = celestial
+    let mut warnings: Vec<String> = celestial
         .as_ref()
         .map(|c| c.warnings.clone())
         .unwrap_or_default();
 
     // Step 3: Try to decode spectral axis.
     let spectral = wcs_spectral::build_spectral(store);
+    // Warnings in C's generation order: `WcsCelestial` runs before
+    // `WcsSpectral` in `WcsMapFrm` (fitschan.c:37855-37861), and `Warn`
+    // appends each block in front of the same current card, so the celestial
+    // warnings collected above precede the spectral ones.
+    if let Some(sp) = spectral.as_ref() {
+        warnings.extend(sp.warnings.iter().cloned());
+    }
 
     // Step 4: Build the world frame (before consuming the decoders).
     let mut world_frame = build_world_frame(store, &celestial, &spectral)?;
