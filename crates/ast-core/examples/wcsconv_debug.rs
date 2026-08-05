@@ -18,12 +18,16 @@ fn main() {
         ast_core::from_native_string(&text).expect("native parse")
     } else {
         let mut fc = FitsChan::from_header(&text).unwrap();
-        // Apply sipreplace before read, mirroring wcsconverter.c.
+        // Apply the read-side attributes before read, mirroring wcsconverter.c.
         for kv in attrs.split(',') {
             if let Some((k, v)) = kv.trim().split_once('=') {
-                if k.trim().eq_ignore_ascii_case("sipreplace") {
-                    let v = v.trim();
-                    fc.set_sip_replace(v == "1" || v.eq_ignore_ascii_case("true"));
+                let v = v.trim();
+                let on = v == "1" || v.eq_ignore_ascii_case("true");
+                let k = k.trim();
+                if k.eq_ignore_ascii_case("sipreplace") {
+                    fc.set_sip_replace(on);
+                } else if k.eq_ignore_ascii_case("carlin") {
+                    fc.set_car_lin(on);
                 }
             }
         }

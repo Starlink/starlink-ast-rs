@@ -1010,3 +1010,107 @@ fn crota_3d_forward_matches_oracle_inverse_undefined() {
         "crota-3d inverse transform must be undefined (C astGetTranInverse == 0)"
     );
 }
+
+// ===========================================================================
+// CarLin: a -CAR projection read as a linear pixel-to-sky mapping
+// ===========================================================================
+
+/// Read `car1.head` with the CarLin attribute set as given, and return the
+/// resulting FrameSet.
+fn read_car1(car_lin: bool) -> ast_core::frames::FrameSet {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/car1.head",
+    ))
+    .expect("car1.head should be readable");
+
+    let mut fc = FitsChan::from_header(&text).unwrap();
+    fc.set_encoding(Encoding::FitsWcs);
+    fc.set_car_lin(car_lin);
+    let obj = fc.read().unwrap().expect("car1.head should read");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("expected FrameSet");
+    };
+    fs
+}
+
+#[test]
+fn carlin_car_header_yields_a_single_winmap() {
+    // With CarLin set, C `WcsCelestial` (fitschan.c:35908-35953) builds
+    // WcsMap(AST__WCSBAD) + a CRVAL-shift WinMap instead of calling
+    // WcsNative. The unknown-projection WcsMap collapses to a UnitMap on
+    // simplify, so the whole pixel-to-sky chain reduces to one WinMap with
+    // scale = CDELT*d2r and shift = CRVAL*d2r - CRPIX*CDELT*d2r.
+    use ast_core::mappings::WinMap;
+
+    let fs = read_car1(true);
+    let map = fs
+        .mapping(FrameRef::Base, FrameRef::Current)
+        .expect("base-to-current mapping");
+    let win = map
+        .as_any()
+        .downcast_ref::<WinMap>()
+        .expect("CarLin CAR should give a bare WinMap, not a CmpMap");
+
+    // Transform the reference pixel: it must land on CRVAL in radians.
+    let d2r = std::f64::consts::PI / 180.0;
+    let pix = PointSet::from_columns(&[&[1.0_f64], &[1.0_f64]]).unwrap();
+    let sky = ast_core::mappings::Mapping::transform(win, &pix, true).unwrap();
+    assert!(
+        (sky.point(0)[0] - 185.0 * d2r).abs() < 1e-12,
+        "lon at CRPIX: got {}, want {}",
+        sky.point(0)[0],
+        185.0 * d2r
+    );
+    assert!(
+        (sky.point(0)[1] - -35.0 * d2r).abs() < 1e-12,
+        "lat at CRPIX: got {}, want {}",
+        sky.point(0)[1],
+        -35.0 * d2r
+    );
+
+    // One pixel along each axis must move by exactly CDELT*d2r.
+    let pix2 = PointSet::from_columns(&[&[2.0_f64], &[2.0_f64]]).unwrap();
+    let sky2 = ast_core::mappings::Mapping::transform(win, &pix2, true).unwrap();
+    assert!(
+        (sky2.point(0)[0] - sky.point(0)[0] - -0.125 * d2r).abs() < 1e-15,
+        "lon step: got {}",
+        sky2.point(0)[0] - sky.point(0)[0]
+    );
+    assert!(
+        (sky2.point(0)[1] - sky.point(0)[1] - 0.125 * d2r).abs() < 1e-15,
+        "lat step: got {}",
+        sky2.point(0)[1] - sky.point(0)[1]
+    );
+}
+
+#[test]
+fn carlin_off_car_header_keeps_the_spherical_projection() {
+    // The two-sided guard: without CarLin the same header must still build
+    // the spherical CAR pipeline (a CmpMap), not the linear one. C takes the
+    // `else` branch at fitschan.c:36002 and calls WcsNative.
+    let fs = read_car1(false);
+    let map = fs
+        .mapping(FrameRef::Base, FrameRef::Current)
+        .expect("base-to-current mapping");
+    assert!(
+        map.as_any()
+            .downcast_ref::<ast_core::mappings::WinMap>()
+            .is_none(),
+        "CarLin off must not collapse to a bare WinMap"
+    );
+}
+
+#[test]
+fn carlin_keeps_the_cartesian_projection_description() {
+    // C passes the real `prj` (AST__CAR) to WcsSkyFrame (fitschan.c:36077),
+    // not the AST__WCSBAD substitute given to astWcsMap, so the SkyFrame's
+    // Projection is still "Cartesian".
+    let fs = read_car1(true);
+    let sky = fs
+        .current()
+        .as_any()
+        .downcast_ref::<SkyFrame>()
+        .expect("current frame should be a SkyFrame");
+    assert_eq!(sky.projection(), Some("Cartesian"));
+}

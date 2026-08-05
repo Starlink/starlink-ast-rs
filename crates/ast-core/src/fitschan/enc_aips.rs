@@ -822,8 +822,11 @@ END";
         // deletes the CROTA cards. `read_from_cards` then consumes the PC
         // cards — it never interprets CROTA itself.
         let cards = CardList::from_header(header).unwrap();
-        let trans =
-            crate::fitschan::spec_trans::spec_trans(&cards, crate::fitschan::Encoding::FitsAips);
+        let trans = crate::fitschan::spec_trans::spec_trans(
+            &cards,
+            crate::fitschan::Encoding::FitsAips,
+            false,
+        );
         let store = read_from_cards(&trans).unwrap();
 
         assert_eq!(store.naxis, 2);
@@ -1240,8 +1243,11 @@ END";
         // the longitude axis, so CROTA1 (on the longitude axis) is used when
         // CROTA2 is absent.
         let cards = CardList::from_header(header).unwrap();
-        let trans =
-            crate::fitschan::spec_trans::spec_trans(&cards, crate::fitschan::Encoding::FitsAips);
+        let trans = crate::fitschan::spec_trans::spec_trans(
+            &cards,
+            crate::fitschan::Encoding::FitsAips,
+            false,
+        );
         let store = read_from_cards(&trans).unwrap();
 
         // CROTA1=45 fallback when CROTA2 is absent

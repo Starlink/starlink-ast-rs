@@ -37,16 +37,16 @@ use super::fits_match::match_keyword;
 /// specific encodings (e.g. `Cnxxx` → `*A` is FITS-PC / FITS-IRAF
 /// only; AIPS spectral CTYPE rewrites are AIPS-only). Translations
 /// not gated by encoding apply to all FITS encodings uniformly.
-pub(crate) fn spec_trans(cards: &CardList, encoding: Encoding) -> CardList {
+pub(crate) fn spec_trans(cards: &CardList, encoding: Encoding, car_lin: bool) -> CardList {
     let mut trans = cards.clone();
-    spec_trans_inplace(&mut trans, encoding);
+    spec_trans_inplace(&mut trans, encoding, car_lin);
     trans
 }
 
 /// In-place translation worker shared between [`spec_trans`] and the
 /// module's tests. Most consumers should call [`spec_trans`] which
 /// preserves the input list.
-pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
+pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding, car_lin: bool) {
     // C `SpecTrans` never writes to the source chan `this` — every `SetValue`
     // and `DeleteCard` in its body targets the return chan `ret`. Translations
     // here rewrite `cards` in place instead, so a translation that must consult
@@ -151,8 +151,12 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
     // Some MSX images have CAR projections whose CRPIX puts the
     // valid native longitude range entirely outside the image; C
     // shifts CRPIX1 by ±360°/CDELT1 to bring it back in range.
+    // Suppressed when CarLin is set, because a linear CAR reading has no
+    // restricted native longitude range to bring the array into.
     // Per-version letter, no encoding gate.
-    translate_msx_car(cards);
+    if !car_lin {
+        translate_msx_car(cards);
+    }
 
     // Translation 20 (fitschan.c:31573-31614): RESTFREQ → RESTFRQ
     // with MHz/GHz unit detection from the comment. Per-version
@@ -1080,10 +1084,7 @@ fn concat_wat(cards: &CardList, axis: usize) -> String {
 /// CAR images that span more than 360° in pixel space need their
 /// CRPIX shifted so the image's mid-pixel longitude lies in
 /// [-180°, 180°]. Mirrors fitschan.c:31944-31972. Primary plane only;
-/// no encoding gate. The C code is gated on `astGetCarLin(this)`
-/// being false (the default); we mirror this default unconditionally
-/// since FitsChan attribute support isn't wired through to
-/// `spec_trans` yet.
+/// no encoding gate. The caller applies C's `!astGetCarLin( this )` gate.
 fn translate_msx_car(cards: &mut CardList) {
     let Some((axlon, _axlat)) = celestial_axes(cards, ' ') else {
         return;
@@ -2095,7 +2096,7 @@ mod tests {
         )
         .unwrap();
         let before = cards.iter().count();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs);
+        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false);
         let after = cards.iter().count();
         assert_eq!(before, after);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
@@ -2113,7 +2114,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs);
+        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false);
         // Non-zero CDELT untouched; zero CDELTs become 1.0 (the C fallback,
         // since 1.0E-6 * the zero CDELT is still zero).
         assert_eq!(cards.get_float("CDELT1"), Some(1.0e-10));
@@ -2129,7 +2130,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs);
+        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false);
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
         assert_eq!(cards.get_float("CDELT2A"), Some(2.5));
     }
@@ -2169,7 +2170,7 @@ mod tests {
     fn translates_radecsys_to_radesys() {
         let mut cards =
             CardList::from_header("RADECSYS= 'FK5     '           / Old-style frame\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("RADECSYS").is_none());
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
     }
@@ -2178,7 +2179,7 @@ mod tests {
     fn keeps_radesys_when_both_present() {
         let mut cards =
             CardList::from_header("RADECSYS= 'FK4     '\nRADESYS = 'FK5     '\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("RADESYS"), Some("FK5".to_string()));
     }
 
@@ -2186,7 +2187,7 @@ mod tests {
     fn translates_longpole_to_lonpole() {
         let mut cards =
             CardList::from_header("LONGPOLE=                180.0 / Old name\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("LONGPOLE").is_none());
         assert_eq!(cards.get_float("LONPOLE"), Some(180.0));
     }
@@ -2201,7 +2202,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsIraf);
+        spec_trans_inplace(&mut cards, Encoding::FitsIraf, false);
         assert!(cards.find("CD001001").is_none());
         assert_eq!(cards.get_float("PC1_1"), Some(-2.0));
         assert_eq!(cards.get_float("PC2_2"), Some(3.0));
@@ -2222,7 +2223,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("CD001001").is_none());
         assert!(cards.find("CD002002").is_none());
         assert!(cards.find("PC1_1").is_none());
@@ -2244,7 +2245,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("CROTA2").is_none());
         let cos30 = 30.0_f64.to_radians().cos();
         assert!((cards.get_float("PC1_1").unwrap() - cos30).abs() < 1e-10);
@@ -2270,7 +2271,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         // PC values were not overwritten.
         assert_eq!(cards.get_float("PC1_1"), Some(1.0));
@@ -2293,7 +2294,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("CROTA2"), Some(30.0));
         assert!(cards.find("PC1_1").is_none());
         assert!(cards.find("PC1_2").is_none());
@@ -2313,7 +2314,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         // C reads PROJP with `GetValue2(ret, this, ...)` (fitschan.c:
         // 31493-31494), which marks the source card used but never
         // deletes it (fitschan.c:18360-18362) — the card list itself
@@ -2341,7 +2342,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         // PROJP card untouched, no PV2_0 written from it.
         assert!(cards.find("PROJP0").is_some());
         assert!(cards.find("PV2_0").is_none());
@@ -2360,7 +2361,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         // PROJP0 consumed and rewritten as PV2_0.
         assert_eq!(cards.get_float("PV2_0"), Some(0.0));
     }
@@ -2379,7 +2380,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("C1YPE1").is_none());
         assert!(cards.find("C1ELT1").is_none());
         assert_eq!(cards.get_string("CTYPE1A"), Some("GLON-TAN".to_string()));
@@ -2399,7 +2400,7 @@ mod tests {
         // FITS-WCS uses *A..*Z directly; Cnxxx is foreign and should
         // be left alone.
         let mut cards = CardList::from_header("C1YPE1  = 'GLON-TAN'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsWcs);
+        spec_trans_inplace(&mut cards, Encoding::FitsWcs, false);
         assert!(cards.find("C1YPE1").is_some());
         assert!(cards.find("CTYPE1A").is_none());
     }
@@ -2415,14 +2416,14 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
     }
 
     #[test]
     fn translates_epoch_to_equinox() {
         let mut cards = CardList::from_header("EPOCH   =               1995.0\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("EPOCH").is_none());
         assert_eq!(cards.get_float("EQUINOX"), Some(1995.0));
     }
@@ -2430,7 +2431,7 @@ mod tests {
     #[test]
     fn epoch_zero_becomes_b1950_equinox() {
         let mut cards = CardList::from_header("EPOCH   =                  0.0\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
     }
 
@@ -2440,7 +2441,7 @@ mod tests {
             "EPOCH   =               1995.0\nEQUINOX =               2000.0\nEND",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("EPOCH").is_none());
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
     }
@@ -2448,14 +2449,14 @@ mod tests {
     #[test]
     fn equinox_zero_becomes_b1950() {
         let mut cards = CardList::from_header("EQUINOX =                  0.0\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("EQUINOX"), Some(1950.0));
     }
 
     #[test]
     fn translates_equinox_b1995_string_to_julian_number() {
         let mut cards = CardList::from_header("EQUINOX = 'B1995.0'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         let eq = cards.get_float("EQUINOX").unwrap_or(-1.0);
         // B1995 → MJD ≈ 49718.2 → J ≈ 1994.9988 (Besselian and
         // Julian years drift ~1 day per ~70 years between epochs).
@@ -2468,14 +2469,14 @@ mod tests {
     #[test]
     fn translates_equinox_j2000_string_to_plain_number() {
         let mut cards = CardList::from_header("EQUINOX = 'J2000.0'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("EQUINOX"), Some(2000.0));
     }
 
     #[test]
     fn translates_date_obs_to_mjd_obs() {
         let mut cards = CardList::from_header("DATE-OBS= '2000-01-15T12:00:00'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         let mjd = cards.get_float("MJD-OBS").unwrap();
         assert!((mjd - 51558.5).abs() < 1e-6);
         // DATE-OBS stays in the chan; downstream readers ignore it
@@ -2489,7 +2490,7 @@ mod tests {
             "DATE-OBS= '2000-01-15T12:00:00'\nMJD-OBS =              50000.0\nEND",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_float("MJD-OBS"), Some(50000.0));
     }
 
@@ -2502,7 +2503,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SIN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SIN".to_string()));
         let cot30 = 1.0 / 30.0_f64.to_radians().tan();
@@ -2518,7 +2519,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---SFL".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--SFL".to_string()));
     }
@@ -2534,14 +2535,14 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--NCP".to_string()));
     }
 
     #[test]
     fn early_paper_iii_wave_frq_becomes_wave_f2w() {
         let mut cards = CardList::from_header("CTYPE3  = 'WAVE-FRQ'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE3"), Some("WAVE-F2W".to_string()));
     }
 
@@ -2549,7 +2550,7 @@ mod tests {
     fn early_paper_iii_velo_vel_redundant_blanks() {
         // VELO with X='V' and P='V' (because VELO maps to V) → blanks.
         let mut cards = CardList::from_header("CTYPE3  = 'VELO-VEL'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         // Trailing-blank padding to 8 chars.
         assert_eq!(cards.get_string("CTYPE3"), Some("VELO    ".to_string()));
     }
@@ -2570,7 +2571,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         // CTYPE rewrites: SAO writes TPV, then translation 16 rewrites
         // TPV→TPN before this assertion runs.
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
@@ -2592,7 +2593,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsClass);
+        spec_trans_inplace(&mut cards, Encoding::FitsClass, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---AIT".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--AIT".to_string()));
     }
@@ -2607,7 +2608,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
         assert_eq!(cards.get_float("PV2_1"), Some(0.5));
@@ -2623,7 +2624,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
     }
@@ -2637,7 +2638,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---ZPN-ZPX".to_string()));
         assert_eq!(cards.get_float("PV2_1"), Some(1.0));
         assert_eq!(cards.get_float("PV2_2"), Some(-0.4));
@@ -2647,7 +2648,7 @@ mod tests {
     fn translates_tnx_to_tpn() {
         let mut cards =
             CardList::from_header("CTYPE1  = 'RA---TNX'\nCTYPE2  = 'DEC--TNX'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE1"), Some("RA---TPN".to_string()));
         assert_eq!(cards.get_string("CTYPE2"), Some("DEC--TPN".to_string()));
     }
@@ -2665,7 +2666,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         // CRPIX should now lie close to the image (within one full
         // wrap cycle of the original).
         let crpix1 = cards.get_float("CRPIX1").unwrap();
@@ -2673,11 +2674,41 @@ mod tests {
     }
 
     #[test]
+    fn carlin_suppresses_the_msx_car_wrap() {
+        // C fitschan.c:32012 gates the whole block on
+        // `!astGetCarLin( this )`. car4.head is the fixture that needs it:
+        // CRPIX1 = 211076 with CD1_1 = -0.0016666667 gives an unwrapped
+        // shift of 6.1399520760316237 rad, which is what C emits.
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/wcsconv/inputs/car4.head",
+        ))
+        .expect("car4.head should be readable");
+        let base = CardList::from_header(&text).unwrap();
+
+        let mut wrapped = base.clone();
+        spec_trans_inplace(&mut wrapped, Encoding::FitsWcs, false);
+        assert_ne!(
+            wrapped.get_float("CRPIX1"),
+            Some(211076.0),
+            "CarLin off: the wrap must rewrite CRPIX1"
+        );
+
+        let mut kept = base.clone();
+        spec_trans_inplace(&mut kept, Encoding::FitsWcs, true);
+        assert_eq!(
+            kept.get_float("CRPIX1"),
+            Some(211076.0),
+            "CarLin on: CRPIX1 must be left alone"
+        );
+    }
+
+    #[test]
     fn translates_restfreq_to_restfrq_with_ghz_scale() {
         let mut cards =
             CardList::from_header("RESTFREQ=                1.42 / Rest frequency in GHz\nEND")
                 .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("RESTFREQ").is_none());
         let restfrq = cards.get_float("RESTFRQ").unwrap();
         assert!((restfrq - 1.42e9).abs() < 1.0);
@@ -2686,7 +2717,7 @@ mod tests {
     #[test]
     fn translates_velo_lsr_to_vrad_plus_specsys() {
         let mut cards = CardList::from_header("CTYPE3  = 'VELO-LSR'\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE3"), Some("VRAD    ".to_string()));
         assert_eq!(cards.get_string("SPECSYS"), Some("LSRK".to_string()));
     }
@@ -2694,7 +2725,7 @@ mod tests {
     #[test]
     fn translates_lambda_to_wave() {
         let mut cards = CardList::from_header("CTYPE3  = 'LAMBDA  '\nEND").unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CTYPE3"), Some("WAVE".to_string()));
     }
 
@@ -2707,7 +2738,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert_eq!(cards.get_string("CUNIT1"), Some("Hz".to_string()));
         assert_eq!(cards.get_string("CUNIT2"), Some("m/s".to_string()));
         assert_eq!(cards.get_string("CUNIT3"), Some("km/s".to_string()));
@@ -2719,7 +2750,7 @@ mod tests {
             "WAT1_001= 'foo'\nWAT2_001= 'bar'\nMWCS1   =                   1\nLTM1_1  =                  1.0\nLTV1    =                  0.0\nWSV1_LEN=                   3\nEND",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsPc);
+        spec_trans_inplace(&mut cards, Encoding::FitsPc, false);
         assert!(cards.find("WAT1_001").is_none());
         assert!(cards.find("WAT2_001").is_none());
         assert!(cards.find("MWCS1").is_none());
@@ -2742,7 +2773,7 @@ mod tests {
              END",
         )
         .unwrap();
-        spec_trans_inplace(&mut cards, Encoding::FitsClass);
+        spec_trans_inplace(&mut cards, Encoding::FitsClass, false);
         // Spectral CRVAL was 0; after CLASS shift = RESTFREQ.
         assert_eq!(cards.get_float("CRVAL3"), Some(1.0e9));
         assert_eq!(cards.get_string("SPECSYS"), Some("SOURCE".to_string()));

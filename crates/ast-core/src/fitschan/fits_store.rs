@@ -24,6 +24,9 @@ pub(crate) struct FitsStore {
     pub dims: Vec<Option<f64>>,
     /// The reading FitsChan's SipReplace attribute (C default 1).
     pub sip_replace: bool,
+    /// The reading FitsChan's CarLin attribute (C default 0): read `-CAR`
+    /// projections as a linear pixel-to-sky mapping.
+    pub car_lin: bool,
     /// PC rotation matrix, shape [row][col] (PCi_j).
     pub pc: Vec<Vec<Option<f64>>>,
     /// CD matrix, shape [row][col] (CDi_j).
@@ -161,6 +164,7 @@ impl FitsStore {
             cdelt: vec![None; naxis],
             dims: vec![None; naxis],
             sip_replace: true,
+            car_lin: false,
             pc: vec![vec![None; naxis]; naxis],
             cd: vec![vec![None; naxis]; naxis],
             ctype: vec![None; naxis],

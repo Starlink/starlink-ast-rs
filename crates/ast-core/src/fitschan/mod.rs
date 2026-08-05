@@ -105,6 +105,10 @@ pub struct FitsChan {
     /// SIP header, replace any supplied inverse by an astPolyTran fit
     /// (falling back to the iterative inverse if the fit fails).
     sip_replace: bool,
+    /// The CarLin attribute (fitschan.c default 0): when true a `-CAR`
+    /// projection is read as a simple linear pixel-to-sky mapping rather
+    /// than as a spherical Cartesian projection.
+    car_lin: bool,
 }
 
 impl FitsChan {
@@ -123,6 +127,7 @@ impl FitsChan {
             fits_rounding: 10,
             cd_matrix: false,
             sip_replace: true,
+            car_lin: false,
         }
     }
 
@@ -143,6 +148,7 @@ impl FitsChan {
             fits_rounding: 10,
             cd_matrix: false,
             sip_replace: true,
+            car_lin: false,
         })
     }
 
@@ -485,6 +491,19 @@ impl FitsChan {
         self.sip_replace = v;
     }
 
+    /// Set the CarLin attribute (mirrors C `CarLin`, default false): when
+    /// true, a `-CAR` projection is read as a simple linear pixel-to-sky
+    /// mapping rather than as a spherical Cartesian projection, and the
+    /// MSX-CAR `CRPIX` wrap in `spec_trans` is suppressed.
+    pub fn set_car_lin(&mut self, v: bool) {
+        self.car_lin = v;
+    }
+
+    /// Return whether CarLin is enabled.
+    pub fn car_lin(&self) -> bool {
+        self.car_lin
+    }
+
     /// Return whether CD matrix notation is enabled.
     pub fn cd_matrix(&self) -> bool {
         self.cd_matrix
@@ -711,11 +730,13 @@ impl Channel for FitsChan {
                 // round-trip — mirrors fitschan.c:11430-11438 which
                 // creates a temporary FitsChan `ret` and deletes it
                 // after WcsToStore.
-                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsWcs);
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsWcs, self.car_lin);
                 let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                 primary.sip_replace = self.sip_replace;
+                primary.car_lin = self.car_lin;
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
+                    st.car_lin = self.car_lin;
                 }
                 let naxes = primary.naxis;
                 let (obj, warnings) =
@@ -736,11 +757,13 @@ impl Channel for FitsChan {
                 // After SpecTrans, alt-axis cards are in the *A..*Z
                 // form, so we route through the multi-plane
                 // FitsWcs decoder to pick up secondary planes.
-                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsPc);
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsPc, self.car_lin);
                 let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                 primary.sip_replace = self.sip_replace;
+                primary.car_lin = self.car_lin;
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
+                    st.car_lin = self.car_lin;
                 }
                 let naxes = primary.naxis;
                 let (obj, warnings) =
@@ -755,11 +778,13 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsIraf => {
-                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsIraf);
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsIraf, self.car_lin);
                 let (mut primary, mut alts) = wcs_keywords::extract_wcs_keywords_with_alts(&trans)?;
                 primary.sip_replace = self.sip_replace;
+                primary.car_lin = self.car_lin;
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
+                    st.car_lin = self.car_lin;
                 }
                 let naxes = primary.naxis;
                 let (obj, warnings) =
@@ -774,7 +799,7 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsAips | Encoding::FitsAipsPP => {
-                let trans = spec_trans::spec_trans(&self.cards, enc);
+                let trans = spec_trans::spec_trans(&self.cards, enc, self.car_lin);
                 let store = enc_aips::read_from_cards(&trans)?;
                 let naxes = store.naxis;
                 let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
@@ -788,7 +813,7 @@ impl Channel for FitsChan {
                 Ok(Some(obj))
             }
             Encoding::FitsClass => {
-                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass);
+                let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass, self.car_lin);
                 let store = enc_class::read_from_cards(&trans)?;
                 let naxes = store.naxis;
                 let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;

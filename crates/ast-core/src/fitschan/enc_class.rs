@@ -639,7 +639,7 @@ mod tests {
     /// will see absolute frequencies that haven't been shifted.
     fn translated(header: &str) -> CardList {
         let cards = CardList::from_header(header).unwrap();
-        spec_trans(&cards, Encoding::FitsClass)
+        spec_trans(&cards, Encoding::FitsClass, false)
     }
 
     /// Standard CLASS header for testing.
@@ -888,7 +888,7 @@ DELTAV  = -0.106265872717E+003
         let mut cards_out = CardList::new();
         write_to_cards(&store, &mut cards_out, ' ', true).unwrap();
 
-        let cards_out_translated = spec_trans(&cards_out, Encoding::FitsClass);
+        let cards_out_translated = spec_trans(&cards_out, Encoding::FitsClass, false);
         let store2 = read_from_cards(&cards_out_translated).unwrap();
 
         // Spectral axis should round-trip

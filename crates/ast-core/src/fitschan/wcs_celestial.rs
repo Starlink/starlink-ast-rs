@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 
 use super::fits_store::FitsStore;
 use crate::frames::{SkyFrame, SkySystem};
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap};
+use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, WcsMap, WinMap};
 use crate::wcslib::WcsProjection;
 
 /// Apply C `WcsSkyFrame`'s NORADEC + DefB1950 fallback rule to a
@@ -133,9 +133,32 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 1: Find the celestial axis pair.
     let (lon_axis, lat_axis) = store.celestial_axes()?;
 
-    // Step 2: Get the projection code.
-    let proj_code = store.projection_code(lon_axis)?;
-    let proj = WcsProjection::from_code(&proj_code)?;
+    // Step 2: Get the projection code. C `WcsCelestial` takes it from the
+    // last four characters of CTYPE, and when the CTYPE is too short to
+    // carry one it assumes simple linear axes: `prj = AST__CAR` with the
+    // local `carlin` flag forced on (fitschan.c:35748-35756 for longitude,
+    // :35803-35811 for latitude). C applies the same test to both axes and
+    // reports an error when they disagree, so reading one is enough. C's
+    // middle branch — `AST__WCSBAD` for a short CTYPE in a `-TAB` header —
+    // has no counterpart here because this reader does not decode `-TAB`
+    // axes.
+    let short_ctype = store.ctype[lon_axis]
+        .as_deref()
+        .is_some_and(|ct| ct.trim_end().len() <= 4);
+    let (proj, forced_car_lin) = if short_ctype {
+        (WcsProjection::Car, true)
+    } else {
+        // An unrecognised four-character code is C's `AST__WCSBAD`, which C
+        // turns into an error report (fitschan.c:35758-35764); leave the
+        // header undecoded here.
+        let proj_code = store.projection_code(lon_axis)?;
+        (WcsProjection::from_code(&proj_code)?, false)
+    };
+
+    // C keeps one local `carlin`, initialised from the attribute
+    // (fitschan.c:35683) and forced on for a projectionless CTYPE. It never
+    // writes the attribute back, so reading a header leaves `CarLin` alone.
+    let car_lin = store.car_lin || forced_car_lin;
 
     // Step 3: Create WcsMap.
     // Full-rank N-axis WcsMap: `ncoord` is the full pipeline rank,
@@ -488,8 +511,15 @@ pub(crate) fn build_celestial_with_def_b1950(
     // Step 8: Build the mapping.
     // The IWC values are in degrees; WcsMap works in radians.
     // Pipeline: IWC(deg) → deg2rad → WcsMap(inverse: projected→native) → rotation
-    let (mapping, ref_pos, ref_pos_forced) =
-        build_iwc_to_sky_mapping(store, wcsmap, store.naxis, lon_axis, lat_axis, rfval)?;
+    let (mapping, ref_pos, ref_pos_forced) = build_iwc_to_sky_mapping(
+        store,
+        wcsmap,
+        store.naxis,
+        lon_axis,
+        lat_axis,
+        rfval,
+        car_lin,
+    )?;
 
     // `mapping` emits cel_lon at FITS slot `lon_axis` and cel_lat at FITS
     // slot `lat_axis`, with identity on every other axis: the PermMap
@@ -660,8 +690,13 @@ fn build_iwc_to_sky_mapping(
     lon_axis: usize,
     lat_axis: usize,
     rfval: Option<&[Option<f64>]>,
+    car_lin: bool,
 ) -> Option<(DynMapping, Option<(f64, f64)>, bool)> {
     let deg2rad = PI / 180.0;
+
+    // Read the projection before `wcsmap` is consumed by the inverse binding
+    // below. C keeps `latprj` in a local for the same reason.
+    let proj = wcsmap.projection();
 
     // CRVAL for the celestial axes (in degrees, convert to radians for the rotation).
     let crval_lon = store.crval[lon_axis].unwrap_or(0.0) * deg2rad;
@@ -683,6 +718,17 @@ fn build_iwc_to_sky_mapping(
     zoom_mat[[lon_axis, lon_axis]] = deg2rad;
     zoom_mat[[lat_axis, lat_axis]] = deg2rad;
     let zoom = crate::mappings::MatrixMap::new(zoom_mat).ok()?;
+
+    // A `-CAR` projection read under CarLin is a plain linear mapping of IWC
+    // to celestial coordinates, so the native-spherical rotation is skipped
+    // entirely (fitschan.c:35900-35953). C still applies the RFVAL / AXREF
+    // reference-position overrides afterwards, in common with the spherical
+    // path, so hand off to the shared tail rather than returning the seed.
+    if car_lin && matches!(proj, WcsProjection::Car) {
+        let (full, seed) = build_linear_car_mapping(store, naxis, lon_axis, lat_axis, zoom)?;
+        let (ref_pos, ref_pos_forced) = apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed);
+        return Some((full, ref_pos, ref_pos_forced));
+    }
 
     // Step 2: WcsMap inverse maps from projected plane to native spherical.
     // The WcsMap forward direction is: native spherical → projected.
@@ -789,10 +835,32 @@ fn build_iwc_to_sky_mapping(
     // become −175°) and loses precision in the last ULPs; the raw CRVAL
     // avoids both. Only set when both CRVAL values are present (C guards on
     // `*reflon/*reflat != AST__BAD`).
-    let mut ref_pos = match (store.crval[lon_axis], store.crval[lat_axis]) {
+    let seed = match (store.crval[lon_axis], store.crval[lat_axis]) {
         (Some(_), Some(_)) => Some((crval_lon, crval_lat)),
         _ => None,
     };
+    let (ref_pos, ref_pos_forced) = apply_ref_overrides(store, rfval, lon_axis, lat_axis, seed);
+
+    let rotation_naxis = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis)?;
+
+    // Pipeline: zoom (N→N diagonal) → wcsmap_inv (N→N) → rotation_naxis (N→N)
+    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
+    let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series).ok()?;
+    Some((Box::new(full), ref_pos, ref_pos_forced))
+}
+
+/// Apply the `RFVAL<i>` and `AXREF<i>` overrides to a celestial reference
+/// position seeded from CRVAL. Returns the final position and whether SkyRef
+/// must be set even when the SkyFrame already carries one.
+fn apply_ref_overrides(
+    store: &FitsStore,
+    rfval: Option<&[Option<f64>]>,
+    lon_axis: usize,
+    lat_axis: usize,
+    seed: Option<(f64, f64)>,
+) -> (Option<(f64, f64)>, bool) {
+    let deg2rad = PI / 180.0;
+    let mut ref_pos = seed;
     let mut ref_pos_forced = false;
 
     // RFVAL<i> overrides CRVAL (fitschan.c:36091-36097). C's comment there
@@ -815,12 +883,76 @@ fn build_iwc_to_sky_mapping(
         ref_pos_forced = true;
     }
 
-    let rotation_naxis = embed_celestial_in_naxis(rotation, naxis, lon_axis, lat_axis)?;
+    (ref_pos, ref_pos_forced)
+}
 
-    // Pipeline: zoom (N→N diagonal) → wcsmap_inv (N→N) → rotation_naxis (N→N)
-    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsmap_inv), Composition::Series).ok()?;
-    let full = CmpMap::new(Box::new(step1), rotation_naxis, Composition::Series).ok()?;
-    Some((Box::new(full), ref_pos, ref_pos_forced))
+/// Build the IWC-to-celestial mapping for a `-CAR` projection read under
+/// CarLin, mirroring C `WcsCelestial`'s linear branch
+/// (fitschan.c:35908-35953).
+///
+/// The pipeline is `zoom` (deg→rad on the celestial axes) followed by a
+/// projectionless `WcsMap` — which `WcsMap::simplified` collapses to a
+/// `UnitMap`, matching C's `astWcsMap( naxes, AST__WCSBAD, ... )` — and a
+/// `WinMap` that adds the CRVAL values in radians to the two celestial axes
+/// and leaves every other axis alone.
+///
+/// Also returns the celestial reference position seeded from CRVAL, or `None`
+/// when either CRVAL is absent; C stores `AST__BAD` in `*reflon`/`*reflat` in
+/// that case and puts `AST__BAD` in the WinMap corner too, which
+/// `WinMap::from_corners` reproduces.
+fn build_linear_car_mapping(
+    store: &FitsStore,
+    naxis: usize,
+    lon_axis: usize,
+    lat_axis: usize,
+    zoom: crate::mappings::MatrixMap,
+) -> Option<(DynMapping, Option<(f64, f64)>)> {
+    let deg2rad = PI / 180.0;
+
+    // The `AST__WCSBAD` WcsMap. C keeps a real WcsMap (rather than a UnitMap)
+    // on the CAR path so the FrameSet→FitsStore write path can read the
+    // projection back off it; `WcsProjection::Unknown` is the same idea, and
+    // `WcsMap::simplified` collapses it to a UnitMap when the pipeline is
+    // simplified (wcsmap.c:3087-3097).
+    let wcsbad = WcsMap::new(naxis, WcsProjection::Unknown, lon_axis + 1, lat_axis + 1).ok()?;
+
+    // The WinMap that adds CRVAL. C builds it from the corner pair
+    // `(ina, inb) = (0, 1)` to `(outa, outb) = (reflon, 1 + reflon)`, i.e.
+    // unit scale and a per-axis shift, with `AST__BAD` on a celestial axis
+    // whose CRVAL is absent (fitschan.c:35915-35950).
+    let ina = vec![0.0; naxis];
+    let inb = vec![1.0; naxis];
+    let mut outa = ina.clone();
+    let mut outb = inb.clone();
+
+    let mut ref_lon = None;
+    let mut ref_lat = None;
+    for (axis, slot) in [(lon_axis, &mut ref_lon), (lat_axis, &mut ref_lat)] {
+        match store.crval[axis] {
+            Some(val) => {
+                // For a recognised projection the CRVAL value is required to
+                // be in degrees, so convert to radians.
+                let rad = val * deg2rad;
+                *slot = Some(rad);
+                outa[axis] += rad;
+                outb[axis] += rad;
+            }
+            None => {
+                outa[axis] = crate::constants::BAD_VALUE;
+                outb[axis] = crate::constants::BAD_VALUE;
+            }
+        }
+    }
+    let winmap = WinMap::from_corners(&ina, &inb, &outa, &outb).ok()?;
+
+    let step1 = CmpMap::new(Box::new(zoom), Box::new(wcsbad), Composition::Series).ok()?;
+    let full = CmpMap::new(Box::new(step1), Box::new(winmap), Composition::Series).ok()?;
+
+    let ref_pos = match (ref_lon, ref_lat) {
+        (Some(lon), Some(lat)) => Some((lon, lat)),
+        _ => None,
+    };
+    Some((Box::new(full), ref_pos))
 }
 
 /// Embed the 2-axis native→celestial rotation into an `naxis`-rank mapping,

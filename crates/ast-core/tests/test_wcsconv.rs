@@ -71,9 +71,6 @@ fn fixtures_dir() -> PathBuf {
 /// EQNOX = time-attribute set-ness; DOMAIN = Frame attribute defaulting;
 /// A_ORDER = alt-plane distortion cards; ASTWARN = an unported warning card.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
-    ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
-    ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("origin_native", "EQNOX_A: equinox attribute set-ness"),
     (
         "sip-alt_native",
@@ -205,10 +202,13 @@ fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> 
         let fc = FitsChan::from_header(&text).map_err(|e| format!("from_header: {e}"))?;
         let mut fc = fc;
         // C wcsconverter applies the attribute string *before* astRead
-        // (wcsconverter.c:87-113); SipReplace affects the read.
+        // (wcsconverter.c:87-113); SipReplace and CarLin affect the read.
         for (key, val) in &case.attrs {
-            if key.as_str() == "sipreplace" {
-                fc.set_sip_replace(val == "1" || val.eq_ignore_ascii_case("true"));
+            let on = val == "1" || val.eq_ignore_ascii_case("true");
+            match key.as_str() {
+                "sipreplace" => fc.set_sip_replace(on),
+                "carlin" => fc.set_car_lin(on),
+                _ => {}
             }
         }
         let obj = fc
@@ -265,8 +265,8 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
                     fc_out.set_fits_rounding(r);
                 }
             }
-            // sipreplace is read-side and applied in load_input.
-            // carlin, sipok -- not yet supported.
+            // sipreplace and carlin are read-side, applied in load_input.
+            // sipok -- not yet supported.
             _ => {}
         }
     }
