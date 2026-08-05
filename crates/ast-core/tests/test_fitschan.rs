@@ -459,3 +459,49 @@ fn native_rewind_and_reread() {
     let m2 = obj2.as_mapping().unwrap();
     assert_eq!(m2.nin(), 2);
 }
+
+// ===========================================================================
+// Additional: PROJP cards survive a FITS-PC read
+// ===========================================================================
+
+#[test]
+fn translate_projp_retains_source_cards() {
+    // C's PROJP block (fitschan.c:31449-31502) is only entered when
+    // the PROJP-vs-PV disagreement heuristic (fitschan.c:31454-31488)
+    // decides PROJP should be trusted over a conflicting PV set; when
+    // it decides PV wins instead, PROJP is left completely alone —
+    // never read, never marked, never deleted — so it survives into
+    // the output header. A full, self-consistent PV1_0/1/2 set
+    // alongside PROJP0/1/2 on the longitude axis is exactly the case
+    // that makes C prefer PV (confirmed against the reference
+    // library's own libast with a standalone oracle probe reading
+    // this header and dumping the post-read, Native-re-encoded
+    // output).
+    let header = "\
+SIMPLE  =                    T / Fits standard
+NAXIS   =                    2 / Number of dimensions
+CTYPE1  = 'RA---TAN'           / Axis type
+CTYPE2  = 'DEC--TAN'           / Axis type
+CRVAL1  =                 40.0 / Reference value
+CRVAL2  =                 60.0 / Reference value
+CRPIX1  =                256.0 / Reference pixel
+CRPIX2  =                256.0 / Reference pixel
+CDELT1  =                -0.01 / Pixel size
+CDELT2  =                 0.01 / Pixel size
+PROJP0  =                999.0 / Projection parameter
+PROJP1  =                999.0 / Projection parameter
+PROJP2  =                999.0 / Projection parameter
+PV1_0   =                  0.0 / Standard PV
+PV1_1   =                  0.0 / Standard PV
+PV1_2   =                  0.0 / Standard PV
+END
+";
+    let mut fc = FitsChan::from_header(header).unwrap();
+    let _obj = fc.read().unwrap().unwrap();
+    fc.set_encoding(Encoding::Native);
+    fc.write(&_obj).unwrap();
+    let out = fc.to_header();
+    for key in ["PROJP0", "PROJP1", "PROJP2"] {
+        assert!(out.contains(key), "{key} should survive the read");
+    }
+}

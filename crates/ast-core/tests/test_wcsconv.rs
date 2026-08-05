@@ -104,7 +104,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("projp_native", "ASTWARN: card insertion position"),
     ("projp-nopv0_native", "ASTWARN: card insertion position"),
     ("projp-pv0only_native", "ASTWARN: card insertion position"),
-    ("projp-pv_native", "line count: 135 vs 138"),
     ("rfval_native", "SREF1: RFVAL fiducial override not plumbed"),
     (
         "serpens_native",

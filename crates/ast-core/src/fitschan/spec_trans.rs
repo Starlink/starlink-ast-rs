@@ -75,12 +75,13 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
         translate_pc_family(cards, s, encoding);
     }
 
-    // Translation 5 (fitschan.c:31386-31435): PROJPi → PV<axlat>_i.
-    // Primary plane only, FITS-PC / FITS-IRAF only, gated on
-    // PROJP-vs-PV disagreement heuristic.
-    if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
-        translate_projp(cards);
-    }
+    // Translation 5 (fitschan.c:31449-31502): PROJPi → PV<axlat>_i.
+    // Primary plane only. C guards the disagreement heuristic on
+    // `axlat != -1` (fitschan.c:31454) but not on encoding — the PV
+    // write itself is what's gated to FITS-PC / FITS-IRAF
+    // (fitschan.c:31495-31496), so run this unconditionally and let
+    // the function apply that gate internally.
+    translate_projp(cards, encoding);
 
     // Translation 6 (fitschan.c:31437-31578): C{m}{VAL/PIX/YPE/NIT/ELT}{i}
     // → CRVAL{i}{S} / CRPIX{i}{S} / CTYPE{i}{S} / CUNIT{i}{S} /
@@ -1715,8 +1716,8 @@ fn translate_cnxxx(cards: &mut CardList) {
 }
 
 /// Translation #5 helper: PROJPi → PV<axlat>_i. Mirrors
-/// fitschan.c:31386-31435. Primary plane only.
-fn translate_projp(cards: &mut CardList) {
+/// fitschan.c:31386-31502. Primary plane only.
+fn translate_projp(cards: &mut CardList, encoding: Encoding) {
     // Need celestial axes (specifically the latitude axis) to know
     // where to write PV cards.
     let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
@@ -1755,23 +1756,32 @@ fn translate_projp(cards: &mut CardList) {
         }
     }
     if !use_projp {
-        // Drop the PROJP cards anyway (they've been "used").
-        for i in projp_indices {
-            cards.delete_consumed(&format!("PROJP{i}"));
-        }
+        // C's PROJP block (fitschan.c:31449-31502) is only entered at
+        // all when `use_projp` is true; when it's false the PROJP
+        // cards are simply left alone.
         return;
     }
     for i in projp_indices {
         let from = format!("PROJP{i}");
-        let Some(value) = cards.get_float(&from) else {
+        // C reads PROJP with `GetValue2(ret, this, ...)`
+        // (fitschan.c:31493-31494), which marks the card as used
+        // only when the value comes from `this` (the source
+        // FitsChan) — see the GetValue2 contract at
+        // fitschan.c:18360-18362. `ret` never holds a PROJP value at
+        // this point, so every hit here is a `this` hit and gets
+        // marked, but the card itself is never deleted.
+        let Some(value) = cards.get_float_marked(&from) else {
             continue;
         };
         let comment = cards
             .find(&from)
             .and_then(|c| c.comment.clone())
             .unwrap_or_default();
-        cards.delete_consumed(&from);
-        cards.set_float(&format!("PV{axlat}_{i}"), value, &comment);
+        // C writes the PV equivalent only for the two encodings that
+        // read PROJP in the first place (fitschan.c:31495-31496).
+        if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
+            cards.set_float(&format!("PV{axlat}_{i}"), value, &comment);
+        }
     }
 }
 
@@ -2253,8 +2263,14 @@ mod tests {
         )
         .unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc);
-        assert!(cards.find("PROJP0").is_none());
-        assert!(cards.find("PROJP1").is_none());
+        // C reads PROJP with `GetValue2(ret, this, ...)` (fitschan.c:
+        // 31493-31494), which marks the source card used but never
+        // deletes it (fitschan.c:18360-18362) — the card list itself
+        // is untouched here; only the read pipeline's later
+        // `fix_used(promote, remove)` pass (for a NATIVE-encoding
+        // read) would actually strip it from output.
+        assert!(cards.find("PROJP0").is_some());
+        assert!(cards.find("PROJP1").is_some());
         assert_eq!(cards.get_float("PV2_0"), Some(0.0));
         assert_eq!(cards.get_float("PV2_1"), Some(1.0));
         assert_eq!(cards.get_float("PV2_2"), Some(-0.4));
@@ -2262,7 +2278,8 @@ mod tests {
 
     #[test]
     fn projp_skipped_when_consistent_pv_set_present() {
-        // PV0+PV1+PV2 all set on lon → C trusts PV, PROJP dropped.
+        // PV0+PV1+PV2 all set on lon → C trusts PV, PROJP left alone
+        // (fitschan.c:31449-31502 is never entered for this plane).
         let mut cards = CardList::from_header(
             "CTYPE1  = 'RA---ZPN'\n\
              CTYPE2  = 'DEC--ZPN'\n\
@@ -2274,8 +2291,8 @@ mod tests {
         )
         .unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc);
-        // PROJP card consumed, PV2_0 not written from PROJP.
-        assert!(cards.find("PROJP0").is_none());
+        // PROJP card untouched, no PV2_0 written from it.
+        assert!(cards.find("PROJP0").is_some());
         assert!(cards.find("PV2_0").is_none());
     }
 
