@@ -4,8 +4,8 @@
 //! into the line-oriented text format consumed by
 //! [`crate::serial::native_read::parse_native`].
 //!
-//! Mirrors C library `fitschan.c::FindAst` (line 17820) and
-//! `fitschan.c::CreateKeyword` (line 8209).
+//! Mirrors C library `fitschan.c::GetNextData` (line 17703) and
+//! `fitschan.c::CreateKeyword` (line 8244).
 
 use super::card_list::CardList;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -95,9 +95,9 @@ pub(crate) fn has_keyword_native(cards: &CardList) -> bool {
 /// closes it, inclusive. `None` when there is no `BEGAST` or the object is
 /// unterminated.
 ///
-/// This is the span C `FindAst` walks with `skip` 0, and therefore the span
-/// it marks as used (fitschan.c:17859). Cards before the `BEGAST` are walked
-/// with `skip` 1 and left unmarked.
+/// This is the span C `GetNextData` walks with `skip` 0, and therefore the
+/// span it marks as used (fitschan.c:17859). Cards before the `BEGAST` are
+/// walked with `skip` 1 and left unmarked.
 pub(crate) fn native_span(cards: &CardList) -> Option<(usize, usize)> {
     let mut first = None;
     let mut depth = 0usize;
@@ -185,9 +185,9 @@ fn format_native_float(x: f64) -> String {
 /// skipped. Data cards whose value type is not representable as a NATIVE
 /// scalar (Logical, Comment, Continue, Undef, complex) are also silently
 /// skipped — this matches the C library's value-type gate in
-/// `fitschan.c::FindAst` (line 17932) where `BEGAST`/`ENDAST`/`ISA`
-/// require `AST__STRING` and data cards require
-/// `AST__STRING | AST__INT | AST__FLOAT`.
+/// `fitschan.c::GetNextData` (lines 17887, 17918, 17943, 17971-17978) where
+/// `BEGAST`/`ENDAST`/`ISA` require `AST__STRING` and data cards require
+/// `AST__STRING | AST__INT | AST__KINT | AST__FLOAT`.
 ///
 /// Returns an error only if a `BEGAST`/`ENDAST`/`ISA` marker has a
 /// non-string value (an outright invalid header).
@@ -235,8 +235,8 @@ pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
                     }
                     None => {
                         // Non-scalar Data card; skip silently. C library gates
-                        // Data emission on AST__STRING|AST__INT|AST__FLOAT
-                        // (fitschan.c::FindAst line 17932).
+                        // Data emission on AST__STRING|AST__INT|AST__KINT|AST__FLOAT
+                        // (fitschan.c::GetNextData lines 17971-17978).
                     }
                 }
                 i += advance;
