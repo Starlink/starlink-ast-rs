@@ -47,6 +47,13 @@ pub(crate) fn spec_trans(cards: &CardList, encoding: Encoding) -> CardList {
 /// module's tests. Most consumers should call [`spec_trans`] which
 /// preserves the input list.
 pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
+    // C `SpecTrans` never writes to the source chan `this` — every `SetValue`
+    // and `DeleteCard` in its body targets the return chan `ret`. Translations
+    // here rewrite `cards` in place instead, so a translation that must consult
+    // the *untranslated* header (C's `GetValue( this, … )` rather than
+    // `GetValue2( ret, this, … )`) needs this snapshot to read.
+    let src = cards.clone();
+
     // Translation 1 (fitschan.c:31137-31144): RADECSYS → RADESYS.
     // FITS-PC and FITS-IRAF only.
     if matches!(encoding, Encoding::FitsPc | Encoding::FitsIraf) {
@@ -125,7 +132,7 @@ pub(crate) fn spec_trans_inplace(cards: &mut CardList, encoding: Encoding) {
     // PolyTan attribute non-zero → TPN. Per-version letter, no
     // encoding gate. (PolyTan is an AST attribute, defaulting to
     // false; we mirror by treating it as off.)
-    translate_tpv_and_polytan_to_tpn(cards);
+    translate_tpv_and_polytan_to_tpn(cards, &src);
 
     // Translation 17 (fitschan.c:31444-31538): IRAF ZPX projection.
     // Replace -ZPX with -ZPN-ZPX (ZPN with ZPX distortion code) and
@@ -590,7 +597,21 @@ fn translate_qv_to_pv(cards: &mut CardList) {
 /// latitude axis passes, the longitude axis is checked next; if either is
 /// all-zero, the function demotes to standard TAN and deletes that axis's PV
 /// cards.
-fn get_used_poly_tan(cards: &mut CardList, axlon: usize, axlat: usize, s: char) -> bool {
+///
+/// Every PV read here comes from `src`, the untranslated header: C's
+/// `astKeyFields` and `GetValue` calls (fitschan.c:13979, :14020) take `this`,
+/// not the `GetValue2( ret, this, … )` pair the surrounding translations use,
+/// so a PV card an earlier translation synthesised (e.g. `PROJPm` →
+/// `PV<axlat>_m`, fitschan.c:31495) is invisible to the decision. The
+/// deletions still target `cards`, matching C's `DeleteCard( this, … )` in a
+/// port where the translations rewrite the header in place.
+fn get_used_poly_tan(
+    cards: &mut CardList,
+    src: &CardList,
+    axlon: usize,
+    axlat: usize,
+    s: char,
+) -> bool {
     // Build the PVi_m keyword name for axis ax, order m, version s.
     let pv_name = |ax: usize, m: usize| -> String {
         if s == ' ' {
@@ -605,7 +626,7 @@ fn get_used_poly_tan(cards: &mut CardList, axlon: usize, axlat: usize, s: char) 
     // of the integer field. We replicate this by scanning m = 0..=99.
     let find_ubnd = |ax: usize| -> Option<usize> {
         (0usize..=99)
-            .filter(|&m| cards.find(&pv_name(ax, m)).is_some())
+            .filter(|&m| src.find(&pv_name(ax, m)).is_some())
             .max()
     };
 
@@ -629,10 +650,9 @@ fn get_used_poly_tan(cards: &mut CardList, axlon: usize, axlat: usize, s: char) 
         let ulat = ubnd_lat.unwrap_or(0);
         let mut m = 1usize;
         while m <= ulat && !ok {
-            let pval =
-                cards
-                    .get_float(&pv_name(axlat, m))
-                    .unwrap_or(if m == 1 { 1.0 } else { 0.0 });
+            let pval = src
+                .get_float(&pv_name(axlat, m))
+                .unwrap_or(if m == 1 { 1.0 } else { 0.0 });
             if pval != 0.0 {
                 ok = true;
             }
@@ -653,8 +673,7 @@ fn get_used_poly_tan(cards: &mut CardList, axlon: usize, axlat: usize, s: char) 
             let mut m = 1usize;
             while m <= ulon && !ok {
                 let pval =
-                    cards
-                        .get_float(&pv_name(axlon, m))
+                    src.get_float(&pv_name(axlon, m))
                         .unwrap_or(if m == 1 { 1.0 } else { 0.0 });
                 if pval != 0.0 {
                     ok = true;
@@ -683,8 +702,9 @@ fn get_used_poly_tan(cards: &mut CardList, axlon: usize, axlat: usize, s: char) 
 /// cards are present on the latitude axis (or on the longitude axis with
 /// `m > 4`), the projection is promoted from TAN to TPN.
 ///
-/// Per-version letter; no encoding gate.
-fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList) {
+/// Per-version letter; no encoding gate. `src` is the untranslated header,
+/// which is what `get_used_poly_tan` reads its PV values from.
+fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList, src: &CardList) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         let Some((axlon, axlat)) = celestial_axes(cards, s) else {
             continue;
@@ -708,7 +728,7 @@ fn translate_tpv_and_polytan_to_tpn(cards: &mut CardList) {
                 // cards are present and non-zero (PolyTan = -1 auto-detect,
                 // fitschan.c:13890).
                 projection_suffix(ctype.trim()).is_some_and(|p| p.eq_ignore_ascii_case("TAN"))
-                    && get_used_poly_tan(cards, axlon, axlat, s)
+                    && get_used_poly_tan(cards, src, axlon, axlat, s)
             };
         if should_rename {
             replace_projection_suffix(cards, &key("CTYPE", axlon), "TPN");

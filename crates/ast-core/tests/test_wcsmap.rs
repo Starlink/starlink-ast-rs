@@ -583,8 +583,10 @@ fn wcsmap_natlat_natlon() {
 
 #[test]
 fn wcsmap_equal_different_params() {
-    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    // -ZPN, not -TAN: these compare a `PV2_1` value, and only a projection
+    // whose `mxpar` reaches 1 accepts that index (C `SetPV`, wcsmap.c:3884).
+    let mut w1 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
     // Same projection, same axes => equal
     assert!(w1.equal(&w2));
 
@@ -597,8 +599,10 @@ fn wcsmap_equal_different_params() {
 
 #[test]
 fn wcsmap_equal_same_params() {
-    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    // -ZPN, not -TAN: these compare a `PV2_1` value, and only a projection
+    // whose `mxpar` reaches 1 accepts that index (C `SetPV`, wcsmap.c:3884).
+    let mut w1 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
     w1.set_pv(2, 1, 0.5).unwrap();
     w2.set_pv(2, 1, 0.5).unwrap();
     // Same PV => equal
@@ -607,8 +611,10 @@ fn wcsmap_equal_same_params() {
 
 #[test]
 fn wcsmap_no_cancel_different_params() {
-    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    // -ZPN, not -TAN: these compare a `PV2_1` value, and only a projection
+    // whose `mxpar` reaches 1 accepts that index (C `SetPV`, wcsmap.c:3884).
+    let mut w1 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
     w1.set_pv(2, 1, 0.5).unwrap();
     w2.set_pv(2, 1, 0.7).unwrap();
     // Should NOT cancel (different params) even though opposite invert directions
@@ -618,8 +624,10 @@ fn wcsmap_no_cancel_different_params() {
 
 #[test]
 fn wcsmap_cancel_same_params() {
-    let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    // -ZPN, not -TAN: these compare a `PV2_1` value, and only a projection
+    // whose `mxpar` reaches 1 accepts that index (C `SetPV`, wcsmap.c:3884).
+    let mut w1 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
+    let mut w2 = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
     w1.set_pv(2, 1, 0.5).unwrap();
     w2.set_pv(2, 1, 0.5).unwrap();
     // Same params + opposite invert directions => should cancel to UnitMap
@@ -767,4 +775,53 @@ fn unknown_projection_is_identity() {
         simp.as_any().is::<ast_core::mappings::UnitMap>(),
         "Unknown WcsMap should simplify to a UnitMap"
     );
+}
+
+// ===========================================================================
+// Per-axis projection-parameter limits
+// ===========================================================================
+
+/// `astGetPVMax` reports the longitude axis's limit from the `PrjInfo`
+/// table's `mxpar2` column and the latitude axis's from `mxpar`
+/// (wcsmap.c:2205-2210), and -1 — here `None` — for any other axis.
+#[test]
+fn pv_max_is_per_axis() {
+    // 2-axis TAN: lon = axis 1, lat = axis 2.
+    let map = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    assert_eq!(map.pv_max(1), Some(4)); // mxpar2
+    assert_eq!(map.pv_max(2), Some(0)); // mxpar
+    // A third axis is neither the longitude nor the latitude axis.
+    let map3 = WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap();
+    assert_eq!(map3.pv_max(3), None);
+    assert_eq!(map3.pv_max(0), None);
+    // The limit follows the *declared* projection: NCP keeps its own even
+    // though it transforms through SIN (C `FindPrjData( this->type )`).
+    let ncp = WcsMap::new(2, WcsProjection::Ncp, 1, 2).unwrap();
+    assert_eq!(ncp.pv_max(2), Some(2));
+}
+
+/// C `SetPV` raises `AST__AXIIN` for a parameter index the projection cannot
+/// use (wcsmap.c:3884-3890). `-TAN` accepts only `PV<lat>_0`, and 4 on the
+/// longitude axis.
+#[test]
+fn set_pv_rejects_an_index_the_projection_cannot_use() {
+    use ast_core::error::ErrorCode;
+
+    let mut map = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
+    assert!(map.set_pv(2, 0, 0.0).is_ok(), "PV2_0 is legal for TAN");
+    let err = map
+        .set_pv(2, 1, 0.0)
+        .expect_err("PV2_1 is not legal for TAN");
+    assert_eq!(err.code(), ErrorCode::Axiin);
+    // The longitude axis accepts up to m = 4.
+    assert!(map.set_pv(1, 4, 0.0).is_ok());
+    assert!(map.set_pv(1, 5, 0.0).is_err());
+    // A rejected parameter is not stored.
+    assert_eq!(map.get_pv(2, 1), None);
+
+    // ZPN's latitude axis accepts the full polynomial range.
+    let mut zpn = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
+    assert!(zpn.set_pv(2, 99, 0.0).is_ok());
+    assert!(zpn.set_pv(2, 100, 0.0).is_ok());
+    assert!(zpn.set_pv(2, 101, 0.0).is_err());
 }

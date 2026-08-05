@@ -86,14 +86,14 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("offset-sky_native", "EPOCH_A: offset epoch"),
     ("offset-sky-pole_native", "EPOCH_A: offset epoch"),
     ("origin_native", "EQNOX_A: equinox attribute set-ness"),
-    ("projp_native", "ASTWARN: card insertion position"),
-    ("projp-nopv0_native", "ASTWARN: card insertion position"),
-    ("projp-pv0only_native", "ASTWARN: card insertion position"),
     (
         "sip-alt_native",
         "A_ORDER: alt-plane SIP cards keep the version character",
     ),
-    ("tan-zeropv_native", "ENDAST_H: WcsMap object shape"),
+    (
+        "tan-zeropv_native",
+        "ASTWARN: GetUsedPolyTan's all-zero-coefficient warning",
+    ),
     ("unknown-spec_native", "DOMAIN_B: domain"),
     ("wave-w2f_native", "ASTWARN: warning card"),
     ("zpx_native", "BEGAST_I: ShiftMap vs MatrixMap object shape"),

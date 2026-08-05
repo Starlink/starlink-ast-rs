@@ -145,20 +145,37 @@ pub(crate) fn build_celestial_with_def_b1950(
     // contribution as an N-axis mapping at the top level.
     let mut wcsmap = WcsMap::new(store.naxis, proj, lon_axis + 1, lat_axis + 1).ok()?;
 
-    // Set any PV projection parameters on the latitude FITS axis.
-    // FITS-WCS places the projection-controlling PVs on the latitude
-    // axis; here we forward them to the WcsMap at the latitude axis's
-    // FITS position.
-    for m in 0..store.pv[lat_axis].len() {
-        if let Some(val) = store.pv[lat_axis][m] {
-            // WcsMap set_pv uses 1-based FITS axis indices.
-            let _ = wcsmap.set_pv(lat_axis + 1, m, val);
-        }
-    }
-    // PV parameters on the longitude axis.
-    for m in 0..store.pv[lon_axis].len() {
-        if let Some(val) = store.pv[lon_axis][m] {
-            let _ = wcsmap.set_pv(lon_axis + 1, m, val);
+    // Warning messages to emit as ASTWARN cards, in generation order — C
+    // appends them to the FitsChan as each `Warn` call is reached, and the
+    // `badpv` ones below come before `badcel`.
+    let mut warnings: Vec<String> = Vec::new();
+
+    // Store the supplied PVi_m projection parameters on the WcsMap, warning
+    // for any the projection cannot use. Mirrors C `WcsCelestial`
+    // (fitschan.c:35965-36001): one ascending pass over m up to the highest
+    // index present on any axis, checking the latitude axis before the
+    // longitude axis at each index, which is the order the ASTWARN cards
+    // appear in.
+    let np = store.pv[lat_axis]
+        .len()
+        .max(store.pv[lon_axis].len())
+        .saturating_sub(1);
+    let prj_name = format!("-{}", proj.code());
+    for m in 0..=np {
+        for axis in [lat_axis, lon_axis] {
+            let Some(val) = store.pv[axis].get(m).copied().flatten() else {
+                continue;
+            };
+            // `set_pv` enforces the projection's per-axis limit, so its error
+            // is the "parameter not used by this projection" signal.
+            if wcsmap.set_pv(axis + 1, m, val).is_err() {
+                warnings.push(format!(
+                    "Projection parameter PV{}_{} found, but is not used by {} projections.",
+                    axis + 1,
+                    m,
+                    prj_name
+                ));
+            }
         }
     }
 
@@ -295,7 +312,6 @@ pub(crate) fn build_celestial_with_def_b1950(
     // `badcel` warning. Mirrors C `WcsSkyFrame` (fitschan.c:39351-39358):
     // the warning is guarded by `report` (false for `OF`) and by the
     // `Warnings` attribute including `badcel` (in the default Warnings value).
-    let mut warnings: Vec<String> = Vec::new();
     if lon_cel_kind == Some(CelKind::Unknown) {
         let lontype = store.ctype[lon_axis].as_deref().unwrap_or("?");
         let lattype = store.ctype[lat_axis].as_deref().unwrap_or("?");

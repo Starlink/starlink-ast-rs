@@ -16,9 +16,6 @@ use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
-/// Maximum number of projection parameters per axis (from wcslib).
-const MXPAR: usize = 100;
-
 /// Prepare native spherical coordinates for a forward WCSLIB projection call.
 ///
 /// The WcsMap forward input is longitude and latitude in radians; WCSLIB
@@ -200,22 +197,35 @@ impl WcsMap {
         })
     }
 
+    /// Largest legal projection-parameter index for a 1-based axis index, or
+    /// `None` when the axis is neither the longitude nor the latitude axis.
+    ///
+    /// Mirrors `astGetPVMax` (wcsmap.c:2152-2217), which reads the limit off
+    /// the size of the per-axis parameter array — allocated from the
+    /// projection table's `mxpar` / `mxpar2` columns — and returns -1 for any
+    /// other axis. The lookup uses the declared projection type, as C's
+    /// `FindPrjData( this->type )` does: `NCP` and `GLS` keep their own limits
+    /// even though they transform through `SIN` and `SFL`.
+    pub fn pv_max(&self, axis: usize) -> Option<usize> {
+        if axis == 0 || axis > self.ncoord {
+            return None;
+        }
+        if axis - 1 == self.lonax {
+            Some(self.proj.pv_max_lon())
+        } else if axis - 1 == self.latax {
+            Some(self.proj.pv_max_lat())
+        } else {
+            None
+        }
+    }
+
     /// Set a projection parameter.
     ///
     /// - `axis`: 1-based axis index. Must be either `lonax()` or `latax()`.
-    /// - `m`: parameter number (0-based, must be < 100).
+    /// - `m`: parameter number (0-based), no greater than [`WcsMap::pv_max`]
+    ///   for that axis.
     /// - `value`: the parameter value.
     pub fn set_pv(&mut self, axis: usize, m: usize, value: f64) -> AstResult<()> {
-        if m >= MXPAR {
-            return Err(AstError::new(
-                ErrorCode::Wcspa,
-                format!(
-                    "WcsMap PV parameter index {m} out of range (max {})",
-                    MXPAR - 1
-                ),
-            ));
-        }
-
         // Determine which wcslib axis this corresponds to.
         // axis is 1-based.  latax is 0-based internally.
         let prj_axis = if axis == 0 || axis > self.ncoord {
@@ -237,6 +247,22 @@ impl WcsMap {
                 ),
             ));
         };
+
+        // Reject a parameter index the projection does not read, as C `SetPV`
+        // does (wcsmap.c:3884-3890) — it raises AST__AXIIN naming the
+        // projection's ctype and the limit `astGetPVMax` reports.
+        let mxpar = self.pv_max(axis).unwrap_or(0);
+        if m > mxpar {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!(
+                    "WcsMap set_pv parameter index ({m}) is invalid in attribute \
+                     PV{axis}_{m} for a \"-{}\" projection - it should be in the \
+                     range 0 to {mxpar}",
+                    self.proj.code()
+                ),
+            ));
+        }
 
         // Grow the parameter vector if needed.
         let pv = &mut self.params[prj_axis];

@@ -9,6 +9,21 @@
 use ast_core::channel::Channel;
 use ast_core::fitschan::FitsChan;
 
+/// The string value of every `ASTWARN` card, in order.
+fn astwarn_values(fc: &FitsChan) -> Vec<String> {
+    fc.to_header()
+        .lines()
+        .filter(|l| l.starts_with("ASTWARN"))
+        .map(|l| {
+            // `KEYWORD = 'value'` — take what is between the first pair of
+            // quotes, keeping the trailing spaces C's wrapping produces.
+            let start = l.find('\'').expect("ASTWARN card holds a string") + 1;
+            let end = start + l[start..].find('\'').expect("closing quote");
+            l[start..end].to_string()
+        })
+        .collect()
+}
+
 /// The keyword of every card in the chan, in order.
 fn keywords(fc: &FitsChan) -> Vec<String> {
     fc.to_header()
@@ -53,5 +68,53 @@ fn astwarn_block_precedes_the_last_naxis_card_for_two_axes() {
     assert!(
         naxis1 < first_warn && first_warn < naxis2,
         "ASTWARN block must sit between NAXIS1 and NAXIS2, got {kws:?}"
+    );
+}
+
+/// `projp`-shaped: `PROJP0/1/2` translate to `PV2_0/PV2_1/PV2_2`, but `-TAN`
+/// accepts only `PV2_0`. C warns once per unusable parameter, latitude axis
+/// before longitude at each index, in ascending `m` order.
+///
+/// Same shape as the `projp` fixture header
+/// (`tests/fixtures/wcsconv/inputs/projp.head`).
+const TWO_AXIS_BADPV: &str = "\
+NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =                  512 / length of data axis 2
+CTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DEC--TAN'           / Gnomonic projection
+CRVAL1  =              180.000 / Reference RA (deg)
+CRVAL2  =               45.000 / Reference Dec (deg)
+CRPIX1  =              256.500 / Reference pixel on axis 1
+CRPIX2  =              256.500 / Reference pixel on axis 2
+CD1_1   =        -8.3332205E-4 / CD matrix
+CD1_2   =                  0.0 / CD matrix
+CD2_1   =                  0.0 / CD matrix
+CD2_2   =        0.00083332205 / CD matrix
+RADECSYS= 'FK5     '           / Old-style reference frame keyword
+EQUINOX =               2000.0 / Equinox
+PROJP0  =                  0.0 / Legacy projection parameter 0
+PROJP1  =                  0.0 / Legacy projection parameter 1
+PROJP2  =                  0.0 / Legacy projection parameter 2
+LONGPOLE=              180.000 / Native longitude of celestial pole
+";
+
+#[test]
+fn badpv_warning_names_each_unusable_parameter_in_ascending_order() {
+    let mut fc = FitsChan::from_header(TWO_AXIS_BADPV).expect("header parses");
+    let _ = fc.read().expect("read succeeds");
+    // Text and wrapping copied from `expected/projp.native:134-141`, including
+    // the trailing space where C's 60-character wrap breaks the line.
+    assert_eq!(
+        astwarn_values(&fc),
+        vec![
+            "        ",
+            "Projection parameter PV2_1 found, but is not used by -TAN ",
+            "projections.",
+            "        ",
+            "        ",
+            "Projection parameter PV2_2 found, but is not used by -TAN ",
+            "projections.",
+            "        ",
+        ]
     );
 }

@@ -171,6 +171,58 @@ impl WcsProjection {
         }
     }
 
+    /// Largest legal `m` in `PVi_m` on the *latitude* axis.
+    ///
+    /// The `mxpar` column of C's `PrjInfo` table (wcsmap.c:684-716). C sizes
+    /// `params.p` as `mxpar + 1` doubles (wcsmap.c:5862) and `astGetPVMax`
+    /// reports that allocation minus one for the latitude axis
+    /// (wcsmap.c:2208-2212), so the limit is `mxpar` itself.
+    pub fn pv_max_lat(&self) -> usize {
+        match self {
+            Self::Azp
+            | Self::Sin
+            | Self::Cyp
+            | Self::Cop
+            | Self::Coe
+            | Self::Cod
+            | Self::Coo
+            | Self::Ncp
+            | Self::Hpx => 2,
+            Self::Szp => 3,
+            Self::Air | Self::Cea | Self::Bon => 1,
+            Self::Zpn | Self::Tpn => WCSLIB_MXPAR,
+            Self::Tan
+            | Self::Stg
+            | Self::Arc
+            | Self::Zea
+            | Self::Car
+            | Self::Mer
+            | Self::Sfl
+            | Self::Par
+            | Self::Mol
+            | Self::Ait
+            | Self::Pco
+            | Self::Tsc
+            | Self::Csc
+            | Self::Qsc
+            | Self::Gls
+            | Self::Xph
+            | Self::Unknown => 0,
+        }
+    }
+
+    /// Largest legal `m` in `PVi_m` on the *longitude* axis.
+    ///
+    /// The `mxpar2` column of the same table, which is 4 for every projection
+    /// except `-TPN`, whose longitude axis also carries polynomial
+    /// coefficients.
+    pub fn pv_max_lon(&self) -> usize {
+        match self {
+            Self::Tpn => WCSLIB_MXPAR,
+            _ => 4,
+        }
+    }
+
     /// Parse a 3-letter FITS projection code (case-insensitive).
     ///
     /// Returns `None` if the code is not recognised.
@@ -320,12 +372,23 @@ impl WcsProjection {
 // Raw FFI types and extern declarations
 // ---------------------------------------------------------------------------
 
-/// Maximum number of projection parameters per axis.
+/// Largest projection-parameter index any projection accepts — C's
+/// `WCSLIB_MXPAR` (`vendor/wcslib/proj.h:59`), which is the `mxpar` /
+/// `mxpar2` column value of `-ZPN` and `-TPN` in the `PrjInfo` table
+/// (wcsmap.c:684-716).
 const WCSLIB_MXPAR: usize = 100;
+
+/// Number of slots in a projection-parameter array.
+///
+/// C allocates `mxpar + 1` doubles per axis (wcsmap.c:5862-5863) so that
+/// index `mxpar` itself is addressable; `astGetPVMax` reports that allocation
+/// minus one (wcsmap.c:2205-2212). Every array here is sized for the largest
+/// projection, so the same indices are legal.
+const PRJ_PARAM_SLOTS: usize = WCSLIB_MXPAR + 1;
 
 /// FFI representation of the C `struct AstPrjPrm` from `vendor/wcslib/proj.h`.
 ///
-/// The `p` and `p2` pointers point into owned `Box<[f64; WCSLIB_MXPAR]>`
+/// The `p` and `p2` pointers point into owned `Box<[f64; PRJ_PARAM_SLOTS]>`
 /// storage managed by [`PrjParams`].  The `fwd` and `rev` function
 /// pointers are set by `astPRJset`.
 #[repr(C)]
@@ -366,9 +429,9 @@ pub(crate) struct PrjParams {
     /// re-run when a parameter is changed.
     proj: WcsProjection,
     /// Backing storage for `inner.p` (latitude-axis projection parameters).
-    p_storage: Box<[f64; WCSLIB_MXPAR]>,
+    p_storage: Box<[f64; PRJ_PARAM_SLOTS]>,
     /// Backing storage for `inner.p2` (longitude-axis projection parameters, TPN only).
-    p2_storage: Box<[f64; WCSLIB_MXPAR]>,
+    p2_storage: Box<[f64; PRJ_PARAM_SLOTS]>,
 }
 
 // SAFETY: PrjParams is fully self-contained — the internal pointers
@@ -402,8 +465,8 @@ impl PrjParams {
             ));
         }
 
-        let mut p_storage = Box::new([0.0f64; WCSLIB_MXPAR]);
-        let mut p2_storage = Box::new([0.0f64; WCSLIB_MXPAR]);
+        let mut p_storage = Box::new([0.0f64; PRJ_PARAM_SLOTS]);
+        let mut p2_storage = Box::new([0.0f64; PRJ_PARAM_SLOTS]);
 
         // Build the null-terminated 3-letter code.
         let code_str = proj.code().as_bytes();
@@ -509,14 +572,14 @@ impl PrjParams {
 
         // Copy the supplied parameters into the arrays.
         if let Some(pv) = params.first() {
-            for (m, v) in pv.iter().enumerate().take(WCSLIB_MXPAR) {
+            for (m, v) in pv.iter().enumerate().take(PRJ_PARAM_SLOTS) {
                 if let Some(v) = v {
                     self.p_storage[m] = *v;
                 }
             }
         }
         if let Some(pv) = params.get(1) {
-            for (m, v) in pv.iter().enumerate().take(WCSLIB_MXPAR) {
+            for (m, v) in pv.iter().enumerate().take(PRJ_PARAM_SLOTS) {
                 if let Some(v) = v {
                     self.p2_storage[m] = *v;
                 }
@@ -603,10 +666,10 @@ impl PrjParams {
     /// - `axis`: 0 for the latitude axis (`p`), 1 for the longitude axis (`p2`).
     /// - `m`: parameter index (0-based).
     ///
-    /// Returns `None` if `m >= WCSLIB_MXPAR` or `axis > 1`.
+    /// Returns `None` if `m >= PRJ_PARAM_SLOTS` or `axis > 1`.
     #[allow(dead_code)] // Used by SkyFrame (Step 7b)
     pub(crate) fn get_param(&self, axis: usize, m: usize) -> Option<f64> {
-        if m >= WCSLIB_MXPAR || axis > 1 {
+        if m >= PRJ_PARAM_SLOTS || axis > 1 {
             return None;
         }
         match axis {
@@ -764,6 +827,51 @@ impl std::fmt::Debug for PrjParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `mxpar` / `mxpar2` columns of C's `PrjInfo` table
+    /// (wcsmap.c:684-716), as `astGetPVMax` reports them. Golden values come
+    /// from a probe against the reference `libast`; `mxpar2` is 4 everywhere
+    /// except `-TPN`.
+    #[test]
+    fn pv_limits_match_the_c_projection_table() {
+        let cases: &[(WcsProjection, usize, usize)] = &[
+            (WcsProjection::Azp, 2, 4),
+            (WcsProjection::Szp, 3, 4),
+            (WcsProjection::Tan, 0, 4),
+            (WcsProjection::Stg, 0, 4),
+            (WcsProjection::Sin, 2, 4),
+            (WcsProjection::Arc, 0, 4),
+            (WcsProjection::Zpn, WCSLIB_MXPAR, 4),
+            (WcsProjection::Zea, 0, 4),
+            (WcsProjection::Air, 1, 4),
+            (WcsProjection::Cyp, 2, 4),
+            (WcsProjection::Cea, 1, 4),
+            (WcsProjection::Car, 0, 4),
+            (WcsProjection::Mer, 0, 4),
+            (WcsProjection::Sfl, 0, 4),
+            (WcsProjection::Par, 0, 4),
+            (WcsProjection::Mol, 0, 4),
+            (WcsProjection::Ait, 0, 4),
+            (WcsProjection::Cop, 2, 4),
+            (WcsProjection::Coe, 2, 4),
+            (WcsProjection::Cod, 2, 4),
+            (WcsProjection::Coo, 2, 4),
+            (WcsProjection::Bon, 1, 4),
+            (WcsProjection::Pco, 0, 4),
+            (WcsProjection::Tsc, 0, 4),
+            (WcsProjection::Csc, 0, 4),
+            (WcsProjection::Qsc, 0, 4),
+            (WcsProjection::Ncp, 2, 4),
+            (WcsProjection::Gls, 0, 4),
+            (WcsProjection::Hpx, 2, 4),
+            (WcsProjection::Xph, 0, 4),
+            (WcsProjection::Tpn, WCSLIB_MXPAR, WCSLIB_MXPAR),
+        ];
+        for &(proj, lat, lon) in cases {
+            assert_eq!(proj.pv_max_lat(), lat, "mxpar for {}", proj.code());
+            assert_eq!(proj.pv_max_lon(), lon, "mxpar2 for {}", proj.code());
+        }
+    }
 
     #[test]
     fn tan_reference_point() {
@@ -943,7 +1051,7 @@ mod tests {
     #[test]
     fn get_param_out_of_range() {
         let prj = PrjParams::new(WcsProjection::Tan).unwrap();
-        assert!(prj.get_param(0, WCSLIB_MXPAR).is_none());
+        assert!(prj.get_param(0, PRJ_PARAM_SLOTS).is_none());
         assert!(prj.get_param(2, 0).is_none());
     }
 

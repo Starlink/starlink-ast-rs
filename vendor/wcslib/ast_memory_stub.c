@@ -13,13 +13,14 @@
  *
  * and scans prj->p[plen-1 .. 0] for the highest nonzero polynomial
  * coefficient.  ast-core always backs prj->p and prj->p2 with a
- * WCSLIB_MXPAR-length double buffer (see PrjParams in wcslib.rs), so the
- * true allocation size of every block passed here is
- * WCSLIB_MXPAR * sizeof( double ).  Reporting that lets astZPNset locate
- * the coefficient degree exactly as the reference library does.
+ * (WCSLIB_MXPAR + 1)-length double buffer (PRJ_PARAM_SLOTS in wcslib.rs),
+ * matching the reference library, which allocates mxpar + 1 doubles per axis
+ * (wcsmap.c:5862) so that index mxpar itself is addressable.  Reporting that
+ * size lets astZPNset locate the coefficient degree exactly as the reference
+ * library does, and keeps its scan inside the buffer.
  */
 size_t astSizeOf_( const void *ptr, int *status ) {
     (void)ptr;
     (void)status;
-    return WCSLIB_MXPAR * sizeof( double );
+    return ( WCSLIB_MXPAR + 1 ) * sizeof( double );
 }
