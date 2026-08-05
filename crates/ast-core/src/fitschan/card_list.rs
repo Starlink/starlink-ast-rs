@@ -192,6 +192,28 @@ impl CardList {
         None
     }
 
+    /// Look `keyword` up from the start of the list and return its
+    /// floating-point value, leaving the found card current.
+    ///
+    /// Mirrors C `astGetFitsF`, which finds its card via `SearchCard` — "if the
+    /// requested card is found, it becomes the current card" (fitschan.c:15358)
+    /// — and, unlike `GetValue`, does *not* reinstate the original card index.
+    /// The cursor it leaves behind is what decides where `Warn` inserts its
+    /// `ASTWARN` block, so callers that must not disturb it use [`get_float`].
+    pub(crate) fn get_float_at_cursor(&mut self, keyword: &str) -> Option<f64> {
+        let idx = self
+            .cards
+            .iter()
+            .position(|c| c.keyword.eq_ignore_ascii_case(keyword))?;
+        let value = match &self.cards[idx].value {
+            FitsValue::Float(v) => *v,
+            FitsValue::Int(v) => *v as f64,
+            _ => return None,
+        };
+        self.position = idx;
+        Some(value)
+    }
+
     /// Like [`find_next`], but skips cards consumed by a read (mirrors C
     /// `CARDUSED` / `ignore_used` in the public card-search path). Used by the
     /// public `find_fits`; internal callers use [`find_next`] so they still

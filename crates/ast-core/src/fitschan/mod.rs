@@ -717,8 +717,12 @@ impl Channel for FitsChan {
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
                 }
+                let naxes = primary.naxis;
                 let (obj, warnings) =
                     wcs_read::decode_wcs_with_alts_inner(&primary, &alts, false, &self.cards)?;
+                // C parks the card cursor on NAXIS<naxes> during the read, and
+                // `Warn` inserts its block in front of the current card.
+                move_cursor_to_last_naxis(&mut self.cards, naxes);
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
@@ -738,8 +742,12 @@ impl Channel for FitsChan {
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
                 }
+                let naxes = primary.naxis;
                 let (obj, warnings) =
                     wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
+                // C parks the card cursor on NAXIS<naxes> during the read, and
+                // `Warn` inserts its block in front of the current card.
+                move_cursor_to_last_naxis(&mut self.cards, naxes);
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
@@ -753,8 +761,12 @@ impl Channel for FitsChan {
                 for (_, st) in &mut alts {
                     st.sip_replace = self.sip_replace;
                 }
+                let naxes = primary.naxis;
                 let (obj, warnings) =
                     wcs_read::decode_wcs_with_alts_inner(&primary, &alts, true, &self.cards)?;
+                // C parks the card cursor on NAXIS<naxes> during the read, and
+                // `Warn` inserts its block in front of the current card.
+                move_cursor_to_last_naxis(&mut self.cards, naxes);
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
@@ -764,7 +776,11 @@ impl Channel for FitsChan {
             Encoding::FitsAips | Encoding::FitsAipsPP => {
                 let trans = spec_trans::spec_trans(&self.cards, enc);
                 let store = enc_aips::read_from_cards(&trans)?;
+                let naxes = store.naxis;
                 let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                // C parks the card cursor on NAXIS<naxes> during the read, and
+                // `Warn` inserts its block in front of the current card.
+                move_cursor_to_last_naxis(&mut self.cards, naxes);
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
@@ -774,7 +790,11 @@ impl Channel for FitsChan {
             Encoding::FitsClass => {
                 let trans = spec_trans::spec_trans(&self.cards, Encoding::FitsClass);
                 let store = enc_class::read_from_cards(&trans)?;
+                let naxes = store.naxis;
                 let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                // C parks the card cursor on NAXIS<naxes> during the read, and
+                // `Warn` inserts its block in front of the current card.
+                move_cursor_to_last_naxis(&mut self.cards, naxes);
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
@@ -787,7 +807,11 @@ impl Channel for FitsChan {
                 // reader records consumed names directly on `self.cards`
                 // (no SpecTrans copy), so promote them in place.
                 let store = enc_dss::read_from_cards(&self.cards)?;
+                let naxes = store.naxis;
                 let (obj, warnings) = wcs_read::decode_wcs_inner(&store, true, &self.cards, ' ')?;
+                // C parks the card cursor on NAXIS<naxes> during the read, and
+                // `Warn` inserts its block in front of the current card.
+                move_cursor_to_last_naxis(&mut self.cards, naxes);
                 for w in warnings {
                     self.cards.push_astwarn(&w);
                 }
@@ -908,6 +932,31 @@ impl Channel for FitsChan {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/// Look up `NAXIS1`…`NAXIS<naxes>` on `cards`, leaving the cursor on the last
+/// one found. Mirrors C `DistortMaps`'s opening loop (fitschan.c:8809-8813):
+///
+/// ```c
+/// for( i = 0; i < naxes; i++ ){
+///    if( !astGetFitsF( this, FormatKey( "NAXIS", i + 1, -1, ' ', status ),
+///                      dim + i ) ) dim[ i ] = AST__BAD;
+/// }
+/// ```
+///
+/// The values themselves reach the `FitsStore` through `extract_wcs_keywords`;
+/// what this reproduces is the *side effect*. `astGetFitsF` finds its card via
+/// `SearchCard`, which makes it current, and unlike every other read on the
+/// path it does not go through `GetValue`, so it does not reinstate the
+/// original card index. The cursor it leaves behind — `NAXIS<naxes>` — is
+/// where C `Warn` then inserts any `ASTWARN` block.
+///
+/// C reads these off the FitsChan itself rather than the `SpecTrans` copy, so
+/// the cursor this moves is the one the warning cards are written against.
+fn move_cursor_to_last_naxis(cards: &mut CardList, naxes: usize) {
+    for i in 1..=naxes {
+        let _ = cards.get_float_at_cursor(&format!("NAXIS{i}"));
+    }
+}
 
 /// Extract NAXISn dimensions from a card list, in WCS axis order
 /// (`NAXIS1` → index 0, `NAXIS2` → index 1, …). The total axis count
