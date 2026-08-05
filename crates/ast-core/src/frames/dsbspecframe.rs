@@ -760,6 +760,24 @@ impl Frame for DSBSpecFrame {
         self.spec.set_domain(domain);
     }
 
+    // Ident is an Object-level attribute (`object.c:5217-5229`), and the
+    // component SpecFrame supplies the storage the dump reads back.
+    fn ident(&self) -> &str {
+        self.spec.ident()
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.spec.set_ident(ident);
+    }
+
+    fn clear_ident(&mut self) {
+        Frame::clear_ident(&mut self.spec);
+    }
+
+    fn test_ident(&self) -> bool {
+        Frame::test_ident(&self.spec)
+    }
+
     fn effective_label(&self, axis: usize) -> String {
         // Mirror DSBSpecFrame::GetLabel (dsbspecframe.c:688): take the parent
         // SpecFrame label, and if it is a default (not explicitly set), append

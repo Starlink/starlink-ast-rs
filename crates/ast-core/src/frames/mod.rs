@@ -254,6 +254,22 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         ""
     }
 
+    /// Set the Ident token. Default no-op; concrete classes with an Ident
+    /// field override this. Mirrors C `astSetIdent`, which is an
+    /// Object-level attribute (`object.c:5225`) and so applies to every
+    /// class.
+    fn set_ident(&mut self, _ident: &str) {}
+
+    /// Clear Ident, restoring the unset state. Mirrors C `astClearIdent`
+    /// (`object.c:5217`).
+    fn clear_ident(&mut self) {}
+
+    /// Whether Ident has been explicitly set. Mirrors C `astTestIdent`
+    /// (`object.c:5229`).
+    fn test_ident(&self) -> bool {
+        false
+    }
+
     // -----------------------------------------------------------------
     // Match-control attributes (used by `astFindFrame` / `astMatch`).
     // Mirrors the C virtual getters / setters / testers — see

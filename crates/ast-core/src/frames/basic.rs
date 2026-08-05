@@ -877,6 +877,18 @@ impl Frame for BasicFrame {
         BasicFrame::ident(self)
     }
 
+    fn set_ident(&mut self, ident: &str) {
+        BasicFrame::set_ident(self, ident);
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn match_template(
         &self,
         target: &dyn Frame,

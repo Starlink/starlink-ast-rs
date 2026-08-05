@@ -666,6 +666,18 @@ impl Frame for FluxFrame {
         FluxFrame::ident(self)
     }
 
+    fn set_ident(&mut self, ident: &str) {
+        FluxFrame::set_ident(self, ident);
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     // -----------------------------------------------------------------
     // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
     // -----------------------------------------------------------------

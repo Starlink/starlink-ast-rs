@@ -1289,70 +1289,98 @@ fn translate_cunit_case(cards: &mut CardList) {
 
 /// Translation #23 helper: CLASS-specific rewrites.
 ///
-/// Mirrors fitschan.c::ClassTrans (line 6955-7129):
+/// Mirrors fitschan.c::ClassTrans (line 6990-7163):
 ///
-///  1. The spectral axis (the one that's neither lon nor lat) must
-///     be `FREQ`. CRVAL on that axis is shifted by RESTFREQ (CLASS
-///     stores spectral CRVAL as an offset from the rest frequency).
-///  2. SPECSYS becomes `SOURCE`.
-///  3. If CTYPE for the celestial pair has an empty projection
+///  1. If the spectral axis (the one that is neither lon nor lat) has a
+///     `FREQ` CTYPE, shift its CRVAL by RESTFREQ — CLASS stores the spectral
+///     CRVAL as an offset from the rest frequency — and set SPECSYS to
+///     `SOURCE`. Both live in the same branch, so a header whose spectral axis
+///     index does not resolve to a CTYPE card gets neither.
+///  2. If CTYPE for the celestial pair has an empty projection
 ///     suffix, default to `-GLS` (which translation #11 then maps to
 ///     `-SFL`). C runs ClassTrans from inside the SpecTrans loop
 ///     before the GLS rewrite, so the rewrite chain works.
-///  4. Pick a velocity reference from VELO-HEL / VELO-OBS / VELO-TOP
-///     / VELO-EAR / VELO-GEO / VELO-LSR / VLSR; emit SSYSSRC and
-///     ZSOURCE based on that reference.
+///  3. Unconditionally pick a velocity reference from VELO-HEL / VELO-OBS /
+///     VELO-TOP / VELO-EAR / VELO-GEO / VELO-LSR / VLSR and emit SSYSSRC and
+///     ZSOURCE from it. This block runs even when the header has no celestial
+///     axes and step 1 found no spectral CTYPE.
 ///
 /// FitsClass-only; primary plane only.
 fn translate_class(cards: &mut CardList) {
-    // Need the celestial pair to determine which axis is spectral.
-    let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
-        return;
+    // Axis indices are 0-based here, as in C, and are -1 when the
+    // corresponding axis is absent: C's `SpecTrans` sets `axlon = axlat = -1`
+    // before each coordinate version (fitschan.c:31110-31111) and calls
+    // `ClassTrans` unconditionally for the primary plane (fitschan.c:31726),
+    // so a header with no celestial axes still runs this translation. The
+    // `+ 1` at each keyword lookup mirrors C's `FormatKey( "CTYPE",
+    // axlon + 1, ... )`, which yields an unmatchable `CTYPE0` for an absent
+    // axis and so makes the corresponding block a no-op.
+    let (axlon, axlat) = match celestial_axes(cards, ' ') {
+        Some((lon, lat)) => (lon as i32 - 1, lat as i32 - 1),
+        None => (-1, -1),
     };
-    // Spectral axis = the one that's neither lon nor lat among
-    // {1, 2, 3}. Mirrors C:7027-7035 (uses 1-based axis indices).
-    let axspec = match (axlon, axlat) {
-        (1, 2) | (2, 1) => 3,
-        (1, 3) | (3, 1) => 2,
-        (2, 3) | (3, 2) => 1,
-        _ => return, // unsupported axis layout
+    // Spectral axis = the one that is neither lon nor lat. Mirrors
+    // fitschan.c:7060-7066; the final `else` is a catch-all, reached both for
+    // the {0,2} celestial pair and for a header with no celestial axes at all.
+    let axspec: i32 = if axlat + axlon == 1 {
+        2
+    } else if axlat + axlon == 3 {
+        0
+    } else {
+        1
     };
 
-    // Get RESTFREQ. Try the standard then the AIPS-spelling.
+    // Get RESTFREQ. Try the standard then the AIPS-spelling. Every read in this
+    // function goes through C's `GetValue2`, which marks the source card as used
+    // (fitschan.c:18360-18362), so the `_marked` getters are the faithful
+    // analogue: the cards these reads consume are excluded from the output.
     let restfreq = cards
-        .get_float("RESTFRQ")
-        .or_else(|| cards.get_float("RESTFREQ"));
+        .get_float_marked("RESTFRQ")
+        .or_else(|| cards.get_float_marked("RESTFREQ"));
     let Some(restfreq) = restfreq else {
         // C errors out; we silently skip. Downstream readers will
         // produce a clearer error.
         return;
     };
 
-    // Grab CRVAL on the spectral axis up-front.
-    let crval_spec_orig = cards.get_float(&format!("CRVAL{axspec}")).unwrap_or(0.0);
+    // Reference-channel frequency, used below to derive the source velocity.
+    //
+    // C declares `crval` without an initialiser (fitschan.c:7038) and assigns
+    // it only inside the spectral-CTYPE branch below. When that branch does not
+    // run — no `CTYPE<axspec+1>` card, as for a 1-axis CLASS header whose only
+    // axis lands outside `axspec` — C reads the uninitialised stack slot at
+    // fitschan.c:7154. That is undefined behaviour in C, confirmed under
+    // valgrind ("uninitialised value ... created by a stack allocation in
+    // ClassTrans", flowing into SetValue for ZSOURCE). In the reference build
+    // the slot reads as zero, which is the value the committed `class-spec` and
+    // `class-hel` expectations encode, so zero is what this port uses. Unlike
+    // C's, this read is defined.
+    let mut crval = 0.0_f64;
 
-    // Spectral CTYPE check + CRVAL shift. Track the *absolute* spectral
-    // CRVAL (offset + RESTFREQ) — C increments `crval` in place at
-    // fitschan.c:7052 and reuses that incremented value when computing the
-    // reference-channel radio velocity `v0` at fitschan.c:7118.
-    let mut crval_spec_abs = crval_spec_orig;
-    if let Some(ctype_spec) = cards.get_string(&format!("CTYPE{axspec}")) {
-        let trimmed = ctype_spec.trim();
-        if trimmed.eq_ignore_ascii_case("FREQ") {
-            // CRVAL_spec += RESTFREQ.
-            crval_spec_abs = crval_spec_orig + restfreq;
-            let comment = cards
-                .find(&format!("CRVAL{axspec}"))
-                .and_then(|c| c.comment.clone())
-                .unwrap_or_default();
-            cards.set_float(&format!("CRVAL{axspec}"), crval_spec_abs, &comment);
+    // Spectral CTYPE check + CRVAL shift: CLASS stores the spectral CRVAL as an
+    // offset from the rest frequency. C increments `crval` in place
+    // (fitschan.c:7086) and reuses that incremented value for the
+    // reference-channel radio velocity `v0` (fitschan.c:7154).
+    if let Some(ctype_spec) = cards.get_string_marked(&format!("CTYPE{}", axspec + 1)) {
+        if ctype_spec.trim().eq_ignore_ascii_case("FREQ") {
+            let key = format!("CRVAL{}", axspec + 1);
+            if let Some(orig) = cards.get_float_marked(&key) {
+                crval = orig + restfreq;
+                let comment = cards
+                    .find(&key)
+                    .and_then(|c| c.comment.clone())
+                    .unwrap_or_default();
+                cards.set_float(&key, crval, &comment);
+            }
         }
         // C errors out for non-FREQ axes; we silently skip.
-    }
 
-    // SPECSYS = SOURCE. CLASS frequency axes describe source-frame
-    // frequencies.
-    cards.set_string("SPECSYS", "SOURCE", "Standard of rest");
+        // SPECSYS = SOURCE. CLASS frequency axes describe source-frame
+        // frequencies. C sets this inside the same CTYPE branch
+        // (fitschan.c:7093-7095), so a header without that CTYPE keeps
+        // whatever SPECSYS it already carried.
+        cards.set_string("SPECSYS", "SOURCE", "Standard of rest");
+    }
 
     // Mirrors C ClassTrans (fitschan.c:7097-7118): a bare celestial CTYPE
     // (coordinate name only, no "-PRJ" projection suffix) defaults to "-GLS",
@@ -1362,8 +1390,8 @@ fn translate_class(cards: &mut CardList) {
     // name is padded to 4 chars before "-GLS" is appended, matching C's
     // strncpy(newtype, cval, 4) layout.
     for ax in [axlon, axlat] {
-        let key = format!("CTYPE{ax}");
-        if let Some(ctype) = cards.get_string(&key)
+        let key = format!("CTYPE{}", ax + 1);
+        if let Some(ctype) = cards.get_string_marked(&key)
             && !ctype.is_empty()
             && ctype.len() <= 4
         {
@@ -1377,35 +1405,38 @@ fn translate_class(cards: &mut CardList) {
         }
     }
 
-    // Look for velocity-reference keywords.
-    let (ssyssrc, vref) = if let Some(v) = cards.get_float("VELO-HEL") {
+    // Look for velocity-reference keywords. The standard of rest is determined
+    // by which keyword name matched, so the variants are tried in C's order
+    // (fitschan.c:7121-7147) and each `or_else` mirrors C's short-circuiting
+    // `||`: the second variant is only read when the first is absent, so only
+    // the keyword actually used is consumed.
+    let (ssyssrc, vref) = if let Some(v) = cards.get_float_marked("VELO-HEL") {
         ("BARYCENT", v)
     } else if let Some(v) = cards
-        .get_float("VELO-OBS")
-        .or_else(|| cards.get_float("VELO-TOP"))
+        .get_float_marked("VELO-OBS")
+        .or_else(|| cards.get_float_marked("VELO-TOP"))
     {
         ("TOPOCENT", v)
     } else if let Some(v) = cards
-        .get_float("VELO-EAR")
-        .or_else(|| cards.get_float("VELO-GEO"))
+        .get_float_marked("VELO-EAR")
+        .or_else(|| cards.get_float_marked("VELO-GEO"))
     {
         ("GEOCENTR", v)
     } else if let Some(v) = cards
-        .get_float("VELO-LSR")
-        .or_else(|| cards.get_float("VLSR"))
+        .get_float_marked("VELO-LSR")
+        .or_else(|| cards.get_float_marked("VLSR"))
     {
         ("LSRK", v)
     } else {
+        // C emits a "badval" Warn card here (fitschan.c:7143-7147).
         ("LSRK", 0.0)
     };
 
-    // Compute radio velocity at the reference channel:
+    // Radio velocity at the reference channel, in the source rest frame:
     //   v0 = c * (restfreq - crval) / restfreq
-    // where `crval` is the *absolute* (post-shift) spectral CRVAL — C
-    // increments `crval` by RESTFREQ at fitschan.c:7052 and uses that same
-    // value at fitschan.c:7118.
+    // Mirrors fitschan.c:7154.
     const C_LIGHT_M_S: f64 = 299_792_458.0;
-    let v0 = C_LIGHT_M_S * (restfreq - crval_spec_abs) / restfreq;
+    let v0 = C_LIGHT_M_S * (restfreq - crval) / restfreq;
     let vsource = vref - v0;
 
     cards.set_string("SSYSSRC", ssyssrc, "Source standard of rest");

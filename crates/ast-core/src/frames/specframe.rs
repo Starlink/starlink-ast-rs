@@ -1859,6 +1859,18 @@ impl Frame for SpecFrame {
         SpecFrame::ident(self)
     }
 
+    fn set_ident(&mut self, ident: &str) {
+        SpecFrame::set_ident(self, ident);
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     // -----------------------------------------------------------------
     // Match / SubFrame / Overlay (specframe.c:2998 / 4705 / 3381).
     // -----------------------------------------------------------------

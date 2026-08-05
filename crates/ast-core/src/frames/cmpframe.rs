@@ -381,6 +381,18 @@ impl Frame for CmpFrame {
         CmpFrame::ident(self)
     }
 
+    fn set_ident(&mut self, ident: &str) {
+        CmpFrame::set_ident(self, ident);
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn system_string(&self) -> Option<&str> {
         Some("Compound")
     }

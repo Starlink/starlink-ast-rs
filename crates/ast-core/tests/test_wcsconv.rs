@@ -77,12 +77,10 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
-    ("class-hel_native", "IDENT_A: ident"),
     (
         "class-noproj_native",
         "PROJ_A: SFL description string (Sanson-Flamsteed vs sinusoidal)",
     ),
-    ("class-spec_native", "IDENT_A: ident"),
     ("fits-pc-alt_native", "REFRA_B: spectral reference RA"),
     ("fits-pc-unit_native", "REFRA_B: spectral reference RA"),
     ("freq-f2w_native", "ASTWARN: warning card"),

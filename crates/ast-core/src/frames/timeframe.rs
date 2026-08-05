@@ -1523,6 +1523,18 @@ impl Frame for TimeFrame {
         TimeFrame::ident(self)
     }
 
+    fn set_ident(&mut self, ident: &str) {
+        TimeFrame::set_ident(self, ident);
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     // -----------------------------------------------------------------
     // Match-control attributes (mirror C `astGet/SetMinAxes` etc.).
     // -----------------------------------------------------------------

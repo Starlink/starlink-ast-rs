@@ -1714,6 +1714,18 @@ impl Frame for SkyFrame {
         SkyFrame::ident(self)
     }
 
+    fn set_ident(&mut self, ident: &str) {
+        SkyFrame::set_ident(self, ident);
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     // -----------------------------------------------------------------
     // Match / SubFrame / Overlay (skyframe.c:6604 / 9869 / 8010).
     // -----------------------------------------------------------------

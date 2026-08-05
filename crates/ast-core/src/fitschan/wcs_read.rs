@@ -735,34 +735,12 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
     Ok(())
 }
 
-/// Helper: stamp `ident` onto a boxed Frame, dispatching by concrete
-/// type. Falls back silently for frame variants we don't yet label.
+/// Helper: stamp `ident` onto a boxed Frame. `Ident` is an Object-level
+/// attribute in C (`object.c:5225`), so C's `astSetIdent( *frm, id )`
+/// (fitschan.c:37756) applies whatever class the world Frame turned out to
+/// be; the trait method carries the same property here.
 fn set_frame_ident(frame: &mut dyn crate::frames::Frame, ident: &str) {
-    use crate::frames::{BasicFrame, CmpFrame, FluxFrame, SkyFrame, SpecFrame, TimeFrame};
-    use crate::mappings::AsAny;
-    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<BasicFrame>() {
-        f.set_ident(ident);
-        return;
-    }
-    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<SkyFrame>() {
-        f.set_ident(ident);
-        return;
-    }
-    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<SpecFrame>() {
-        f.set_ident(ident);
-        return;
-    }
-    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<TimeFrame>() {
-        f.set_ident(ident);
-        return;
-    }
-    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<CmpFrame>() {
-        f.set_ident(ident);
-        return;
-    }
-    if let Some(f) = AsAny::as_any_mut(frame).downcast_mut::<FluxFrame>() {
-        f.set_ident(ident);
-    }
+    frame.set_ident(ident);
 }
 
 /// Helper: stamp DUT1/DTAI onto a boxed Frame, dispatching by concrete
