@@ -68,14 +68,16 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         let key = format!("CDELT{axis_num}");
         store.cdelt[i] = cards.get_float_marked(&key);
 
-        // CTYPE — translate CLASS-specific projection codes. C's
-        // WcsFcRead applies an unconditional trailing-space strip
-        // (fitschan.c:36906, see `CardList::strip_wcs_store_string`)
+        // CTYPE. CLASS-specific projection rewrites (blank → -GLS, -ATF →
+        // -AIT) are applied by SpecTrans before this reader runs, mirroring
+        // C: the CLASS read path is SpecTrans → WcsToStore
+        // (fitschan.c:11459-11473), with every CLASS-specific rewrite living
+        // in ClassTrans (fitschan.c:6990). There is no CLASS-specific
+        // ToStore. C's WcsFcRead applies an unconditional trailing-space
+        // strip (fitschan.c:36906, see `CardList::strip_wcs_store_string`)
         // before storing any recognised string keyword.
         let key = format!("CTYPE{axis_num}");
-        if let Some(ctype_raw) = CardList::strip_wcs_store_string(cards.get_string_marked(&key)) {
-            store.ctype[i] = Some(translate_class_projection_read(&ctype_raw));
-        }
+        store.ctype[i] = CardList::strip_wcs_store_string(cards.get_string_marked(&key));
 
         // CUNIT
         let key = format!("CUNIT{axis_num}");
@@ -323,32 +325,6 @@ pub(crate) fn write_to_cards(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-/// Translate CLASS-specific projection codes on read.
-///
-/// CLASS uses older projection codes that must be translated:
-/// - GLS → SFL (Sanson-Flamsteed)
-/// - ATF → AIT (Aitoff/Hammer-Aitoff)
-fn translate_class_projection_read(ctype: &str) -> String {
-    // Replace GLS with SFL and ATF with AIT in the projection portion.
-    // FITS CTYPE format: "XXXX-YYY" where YYY is the projection code.
-    if ctype.len() >= 8 {
-        let base = &ctype[..5]; // e.g. "GLON-" or "RA---"
-        let proj = &ctype[5..];
-        let new_proj = match proj.to_uppercase().as_str() {
-            "GLS" => "SFL",
-            "ATF" => "AIT",
-            _ => return ctype.to_string(),
-        };
-        return format!("{base}{new_proj}");
-    }
-    // Try matching in longer CTYPEs (e.g. "GLON-GLS")
-    ctype
-        .replace("GLS", "SFL")
-        .replace("ATF", "AIT")
-        .replace("gls", "SFL")
-        .replace("atf", "AIT")
-}
 
 /// Translate standard projection codes back to CLASS format on write.
 ///

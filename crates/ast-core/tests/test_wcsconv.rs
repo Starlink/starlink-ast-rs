@@ -68,17 +68,13 @@ fn fixtures_dir() -> PathBuf {
 /// other native case is byte-compared. The goal is to empty this list by
 /// fixing the FITS reader. Each reason names the first differing keyword, so
 /// the entries group by cause: BEGAST/ENDAST = object-shape divergence;
-/// EQNOX = time-attribute set-ness; DOMAIN/PROJ = Frame attribute defaulting;
+/// EQNOX = time-attribute set-ness; DOMAIN = Frame attribute defaulting;
 /// A_ORDER = alt-plane distortion cards; ASTWARN = an unported warning card.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
     ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
-    (
-        "class-noproj_native",
-        "PROJ_A: SFL description string (Sanson-Flamsteed vs sinusoidal)",
-    ),
     ("origin_native", "EQNOX_A: equinox attribute set-ness"),
     (
         "sip-alt_native",
