@@ -331,9 +331,9 @@ pub(crate) fn build_celestial_with_def_b1950(
         sky_frame.set_projection(proj.description());
     }
 
-    // C's "EQU" / "ECL" classification — the systems for which an equinox
-    // value is computed at all (fitschan.c equinox defaulting + epoch
-    // fallback). Includes ICRS and GAPPT.
+    // C's "EQU" / "ECL" classification — the systems for which the Equinox
+    // attribute is stored at all (fitschan.c:39371-39373). Includes ICRS and
+    // GAPPT, which C classes as "EQU" even though they carry no equinox.
     let is_equ_or_ecl = matches!(
         system,
         SkySystem::Fk4
@@ -359,26 +359,34 @@ pub(crate) fn build_celestial_with_def_b1950(
             | SkySystem::Helioecliptic
     );
 
-    // Effective equinox year, mirroring C's defaulting (fitschan.c:39128-
-    // 39189): a supplied EQUINOX is used as-is; otherwise, when an explicit
-    // RADESYS is present, FK4/FK4-no-E default to B1950 and the others to
-    // J2000. The no-RADESYS / no-EQUINOX case is NOT defaulted here — C
-    // leaves equinox = AST__BAD (the NORADEC / DefB1950 path is handled by
-    // `apply_b1950_fallback_if_needed`). This value feeds both the Equinox
-    // attribute (when stored) and the epoch fallback.
-    let eq_year: Option<f64> = if let Some(eq) = store.equinox {
-        is_equ_or_ecl.then_some(eq)
-    } else if store.radesys.is_some() && is_equ_or_ecl {
-        match system {
-            SkySystem::Fk4 | SkySystem::Fk4NoE => Some(1950.0),
-            _ => Some(2000.0),
-        }
+    // Effective equinox year, mirroring C's defaulting (fitschan.c:39193-
+    // 39256): a supplied EQUINOX is used as-is; otherwise the default comes
+    // from the RADESYS keyword alone — FK4/FK4-NO-E give B1950, FK5 gives
+    // J2000, and ICRS/GAPPT get no equinox at all. C resolves its `radesys`
+    // variable straight from the keyword (fitschan.c:39168-39191), never from
+    // the CTYPE-derived `sys`, so a Galactic axis with `RADESYS='FK5'` still
+    // picks up the J2000 default. The no-RADESYS / no-EQUINOX case is NOT
+    // defaulted here — C leaves equinox = AST__BAD (the NORADEC / DefB1950
+    // path is handled by `apply_b1950_fallback_if_needed`).
+    //
+    // No system guard: C computes `eqmjd` from whatever equinox it has
+    // (fitschan.c:39204-39210) and uses it as the Epoch fallback for every
+    // system (fitschan.c:39215-39216, applied unguarded at :39370).
+    let equinox_year: Option<f64> = if let Some(eq) = store.equinox {
+        Some(eq)
     } else {
-        None
+        match store.radesys.as_deref().map(|r| r.trim().to_uppercase()) {
+            Some(ref r) if r == "FK4" || r == "FK4-NO-E" || r == "FK4_NO_E" => Some(1950.0),
+            Some(ref r) if r == "FK5" => Some(2000.0),
+            // ICRS, GAPPT, an unrecognised value, or no RADESYS at all.
+            _ => None,
+        }
     };
 
-    // Step 6: set the Equinox attribute, but only for the systems that store
-    // one (fitschan.c:39306-39308, minus ICRS/GAPPT).
+    // Step 6: set the Equinox attribute. C restricts this to equatorial and
+    // ecliptic systems (fitschan.c:39371-39373), and AST does not dump an
+    // Equinox for the equinox-independent ICRS / GAPPT within that group.
+    let eq_year: Option<f64> = is_equ_or_ecl.then_some(equinox_year).flatten();
     if stores_equinox && let Some(eq) = eq_year {
         sky_frame.set_equinox_year(eq);
     }
@@ -406,9 +414,10 @@ pub(crate) fn build_celestial_with_def_b1950(
             _ => crate::fitschan::wcs_write::utc_mjd_to_tdb(raw_mjd),
         };
         sky_frame.set_epoch_mjd(tdb_mjd);
-    } else if let Some(eq) = eq_year {
-        // mjdobs ← eqmjd fallback (fitschan.c:39215-39216): only the
-        // equinox-bearing systems have an eqmjd to fall back to.
+    } else if let Some(eq) = equinox_year {
+        // mjdobs ← eqmjd fallback (fitschan.c:39215-39216), applied to every
+        // system (fitschan.c:39370). Only the Equinox attribute above is
+        // restricted by system.
         sky_frame.set_epoch_year(eq);
     }
 
