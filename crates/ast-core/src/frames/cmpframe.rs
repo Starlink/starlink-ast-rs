@@ -414,6 +414,13 @@ impl Frame for CmpFrame {
         })
     }
 
+    fn clear_domain(&mut self) {
+        self.domain = None;
+        // The default is derived from the component domains, so drop the
+        // memoised value along with the explicit one.
+        self.domain_default = std::cell::OnceCell::new();
+    }
+
     fn test_domain(&self) -> bool {
         self.domain.is_some()
     }

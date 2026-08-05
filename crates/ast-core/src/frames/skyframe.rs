@@ -1706,6 +1706,10 @@ impl Frame for SkyFrame {
         SkyFrame::domain(self)
     }
 
+    fn clear_domain(&mut self) {
+        SkyFrame::clear_domain(self);
+    }
+
     fn test_domain(&self) -> bool {
         SkyFrame::test_domain(self)
     }

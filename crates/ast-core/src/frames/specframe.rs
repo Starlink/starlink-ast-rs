@@ -1851,6 +1851,10 @@ impl Frame for SpecFrame {
         SpecFrame::set_domain(self, domain);
     }
 
+    fn clear_domain(&mut self) {
+        SpecFrame::clear_domain(self);
+    }
+
     fn test_domain(&self) -> bool {
         SpecFrame::test_domain(self)
     }

@@ -667,11 +667,15 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
 
     let nfrm = fs.nframe();
     let mut kinds = Vec::with_capacity(nfrm);
+    // Which Frames carried a SKY_POLE / SKY_ORIGIN marker Domain: pass 2 clears
+    // Ident and Domain on exactly these, and not on a plain "SKY" Frame.
+    let mut markers = Vec::with_capacity(nfrm);
     for ifrm in 1..=nfrm {
         let (kind, marker) = {
             let f = fs.frame(FrameRef::Index(ifrm))?;
             classify(f)
         };
+        markers.push(marker);
         if let Some(skyrefis) = marker {
             // C `TidyOffsets` (fitschan.c:34464-34468) sets SkyRefIs
             // *through the FrameSet*: it makes frame `ifrm` current, sets
@@ -701,31 +705,53 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
     // Pass 2: only remove offset Frames when an absolute counterpart
     // exists — otherwise the offset Frame is the only sky description
     // we have and removing it would lose the SkyRef information.
-    // Mirrors C:34476-34540.
+    // Mirrors C:34541-34580.
     if has_abs && has_off {
-        // Remove offsets in reverse order so the indices stay valid
-        // as we delete.
+        // C walks downwards so an `astRemoveFrame` never disturbs an index it
+        // has yet to visit (fitschan.c:34544).
+        let mut icurr_is_offset = icurr_1 <= kinds.len() && kinds[icurr_1 - 1] == FrameKind::Offset;
         for ifrm in (1..=nfrm).rev() {
-            if kinds[ifrm - 1] == FrameKind::Offset {
-                fs.remove_frame(FrameRef::Index(ifrm))?;
+            match kinds[ifrm - 1] {
+                FrameKind::Offset => {
+                    fs.remove_frame(FrameRef::Index(ifrm))?;
+                }
+                FrameKind::Absolute => {
+                    // Only the marker Domains reach the clearing arm in C
+                    // (fitschan.c:34558-34559): a Frame whose SkyFrame Domain
+                    // was already "SKY" is left entirely alone.
+                    if markers[ifrm - 1].is_none() {
+                        continue;
+                    }
+                    // Ident holds the FITS-WCS alternate axis description
+                    // character; the marker Domain has served its purpose once
+                    // the offset Frames are going away. C clears Ident on the
+                    // Frame and Domain on the *primary* Frame of the axis —
+                    // i.e. the nested SkyFrame, not the compound wrapper.
+                    let frame = fs.frame_mut(FrameRef::Index(ifrm))?;
+                    frame.clear_ident();
+                    clear_sky_domain(frame);
+
+                    // If the Frame that was current is being deleted for being
+                    // an offset Frame, hand current to the first absolute Frame
+                    // reached instead (fitschan.c:34564-34567).
+                    if icurr_is_offset {
+                        fs.set_current(FrameRef::Index(ifrm))?;
+                        icurr_is_offset = false;
+                    }
+                }
+                FrameKind::Other => {}
             }
         }
-        // remove_frame may have invalidated `icurr_1`; the C library
-        // re-resolves the current index through the original Frame
-        // pointer. We approximate by clamping to the last absolute
-        // Frame if the original was an offset.
-        let new_nfrm = fs.nframe();
-        let original_was_offset = icurr_1 <= kinds.len() && kinds[icurr_1 - 1] == FrameKind::Offset;
-        if icurr_1 > new_nfrm || original_was_offset {
-            // Pick the highest-index non-removed absolute Frame.
-            for ifrm in (1..=new_nfrm).rev() {
-                if kinds[ifrm - 1] == FrameKind::Absolute {
-                    fs.set_current(FrameRef::Index(ifrm))?;
-                    break;
-                }
-            }
-        } else if icurr_1 <= new_nfrm {
-            fs.set_current(FrameRef::Index(icurr_1))?;
+        // C leaves Current wherever the loop put it: either the original Frame
+        // (still present, its index tracked by astRemoveFrame) or the absolute
+        // Frame promoted above. Restoring `icurr_1` by index here would instead
+        // name whichever Frame the removals shifted into that slot.
+        if !icurr_is_offset && kinds[icurr_1 - 1] != FrameKind::Offset {
+            // Translate the original index through the removals.
+            let removed_below = (1..icurr_1)
+                .filter(|i| kinds[i - 1] == FrameKind::Offset)
+                .count();
+            fs.set_current(FrameRef::Index(icurr_1 - removed_below))?;
         }
     } else {
         // No removals — restore the original current.
@@ -733,6 +759,22 @@ fn tidy_offsets(fs: &mut FrameSet) -> AstResult<()> {
     }
 
     Ok(())
+}
+
+/// Clear the Domain of the SkyFrame reached by `astPrimaryFrame` — the nested
+/// SkyFrame within a compound Frame, or the Frame itself when it is one.
+/// Mirrors C's `astClearDomain( pfrm )` (fitschan.c:34559), where `pfrm` is the
+/// primary Frame of the axis being examined rather than the Frame itself.
+fn clear_sky_domain(frame: &mut dyn crate::frames::Frame) {
+    use crate::frames::{CmpFrame, SkyFrame};
+    if let Some(sky) = frame.as_any_mut().downcast_mut::<SkyFrame>() {
+        sky.clear_domain();
+        return;
+    }
+    if let Some(cmp) = frame.as_any_mut().downcast_mut::<CmpFrame>() {
+        clear_sky_domain(cmp.frame1_mut());
+        clear_sky_domain(cmp.frame2_mut());
+    }
 }
 
 /// Helper: stamp `ident` onto a boxed Frame. `Ident` is an Object-level

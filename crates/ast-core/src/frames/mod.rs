@@ -239,6 +239,11 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// Domain field override this. Mirrors C `astSetDomain`.
     fn set_domain(&mut self, _domain: &str) {}
 
+    /// Clear Domain, restoring the class default. Default no-op; concrete
+    /// classes with a Domain field override this. Mirrors C `astClearDomain`,
+    /// which reaches every class through the Frame virtual-function table.
+    fn clear_domain(&mut self) {}
+
     /// Whether the domain attribute has been explicitly set (non-default).
     /// Mirrors C's `astTestDomain`. The default implementation returns
     /// `false`; concrete frames that distinguish "explicit" from

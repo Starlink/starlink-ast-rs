@@ -96,8 +96,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "A_ORDER: alt-plane SIP cards keep the version character",
     ),
     ("tan-zeropv_native", "ENDAST_H: WcsMap object shape"),
-    ("tidy-offsets_native", "NAXES_B: frame shape"),
-    ("tidy-pole_native", "NAXES_B: frame shape"),
     (
         "unknown-cel2_native",
         "ASTWARN: card insertion position not yet reproduced",

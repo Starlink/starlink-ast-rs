@@ -760,6 +760,10 @@ impl Frame for DSBSpecFrame {
         self.spec.set_domain(domain);
     }
 
+    fn clear_domain(&mut self) {
+        self.spec.clear_domain();
+    }
+
     // Ident is an Object-level attribute (`object.c:5217-5229`), and the
     // component SpecFrame supplies the storage the dump reads back.
     fn ident(&self) -> &str {

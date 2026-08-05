@@ -869,6 +869,10 @@ impl Frame for BasicFrame {
         BasicFrame::set_domain(self, domain.to_string());
     }
 
+    fn clear_domain(&mut self) {
+        BasicFrame::clear_domain(self);
+    }
+
     fn test_domain(&self) -> bool {
         BasicFrame::test_domain(self)
     }

@@ -658,6 +658,10 @@ impl Frame for FluxFrame {
         self.domain.as_deref().unwrap_or("FLUX")
     }
 
+    fn clear_domain(&mut self) {
+        FluxFrame::clear_domain(self);
+    }
+
     fn test_domain(&self) -> bool {
         FluxFrame::test_domain(self)
     }

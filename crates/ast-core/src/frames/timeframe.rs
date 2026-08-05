@@ -1515,6 +1515,10 @@ impl Frame for TimeFrame {
         self.domain.as_deref().unwrap_or("TIME")
     }
 
+    fn clear_domain(&mut self) {
+        TimeFrame::clear_domain(self);
+    }
+
     fn test_domain(&self) -> bool {
         TimeFrame::test_domain(self)
     }
