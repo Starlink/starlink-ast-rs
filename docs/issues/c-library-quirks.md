@@ -19,18 +19,19 @@ rule; the three affected simplify fixtures (`cap_cmpmap_01`,
 `cap_cmpmap_04`, `cap_specmap_02`) are compared by `astequal` only
 (the byte-exact string diff is skipped — see
 `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`).
-The four affected wcsconv cases — `serpens`, `wave-f2w`, `vopt-f2w` and
-`cd-cross` — are compared with every `ISSIMP<xx>`/`INVERT<xx>` card
-dropped from both the Rust output and the C reference
-(`common::is_aliasing_tag_card`, applied by `ALIASING_TAG_LICENSED` in
-`crates/ast-core/tests/test_wcsconv.rs`); every other card is still
-byte-compared. `cd-cross` looks at first glance like the mapping-invert
-shape divergence below (its first diff is `ISA_K = 'Mapping '` where
-the reference has `INVERT_B= 1`), but dropping the tag cards from both
-sides leaves no diff at all — it belongs here, not there. The tag
-*count* also differs between the two sides (Rust emits 4 tag cards
-where C emits 5 for `cd-cross`, 3 vs 4 for `serpens`), which is why the
-harness drops the lines rather than pairing them up positionally.
+The five affected wcsconv cases — `serpens`, `wave-f2w`, `vopt-f2w`,
+`cd-cross` and `axes-swap` — are compared with every
+`ISSIMP<xx>`/`INVERT<xx>` card dropped from both the Rust output and the
+C reference (`common::is_aliasing_tag_card`, applied by
+`ALIASING_TAG_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs`);
+every other card is still byte-compared. `cd-cross` and `axes-swap` look
+at first glance like the mapping-invert shape divergence below (their
+first diffs are `ISA_K = 'Mapping '` and `ISA_I = 'Mapping '` where the
+reference has `INVERT_B= 1`), but dropping the tag cards from both sides
+leaves no diff at all — they belong here, not there. The tag *count*
+also differs between the two sides (Rust emits 4 tag cards where C emits
+5 for `cd-cross` and for `axes-swap`, 3 vs 4 for `serpens`), which is why
+the harness drops the lines rather than pairing them up positionally.
 The transforms and tree structure match C exactly; the sole divergence
 is *which interior `CmpMap` node carries the serialised `IsSimp = 1`
 tag*.

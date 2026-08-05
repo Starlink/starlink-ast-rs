@@ -7,7 +7,7 @@
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::FitsChan;
-use ast_core::frames::{SkyFrame, SkySystem};
+use ast_core::frames::{BasicFrame, SkyFrame, SkySystem};
 
 /// A 2-axis Galactic header carrying EQUINOX and no observation date.
 const GALACTIC_EQUINOX_ONLY: &str = "\
@@ -149,6 +149,112 @@ fn fits_read_sets_system_for_a_non_default_value_too() {
     ));
     assert_eq!(sky.system(), SkySystem::Fk5);
     assert!(sky.test_system());
+}
+
+/// Read a header and return its current frame's Domain plus whether the
+/// attribute is set.
+fn read_current_domain(header: &str) -> (String, bool) {
+    let obj = FitsChan::from_header(header)
+        .expect("header parses")
+        .read()
+        .expect("read succeeds")
+        .expect("header should produce an object");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("read should produce a FrameSet");
+    };
+    let frame = fs.current();
+    (frame.domain().to_string(), frame.test_domain())
+}
+
+/// A 1-axis linear header with `{ctype}` substituted for its CTYPE card.
+fn one_axis_header(ctype: &str) -> String {
+    format!(
+        "\
+NAXIS   =                    1
+NAXIS1  =                  100
+CRVAL1  =                  1.0
+CRPIX1  =                  1.0
+CDELT1  =                  0.1
+{ctype}"
+    )
+}
+
+/// C `WcsOthers` gives the leftover plain Frame a Domain built from the CTYPE
+/// values of the axes it could not classify, joined with "-"
+/// (fitschan.c:38887-38945). A single unrecognized spectral-looking code
+/// therefore yields that code verbatim as the Domain.
+#[test]
+fn unclassified_axis_domain_comes_from_ctype() {
+    let (domain, is_set) = read_current_domain(&one_axis_header("CTYPE1  = 'XXXX-WAV'\n"));
+    assert_eq!(domain, "XXXX-WAV");
+    assert!(
+        is_set,
+        "Domain must be explicitly set, not merely defaulted"
+    );
+}
+
+/// An absent CTYPE is replaced by the `AXIS<n>` default before the Domain is
+/// built (fitschan.c:38866-38870), so the Domain is that default rather than
+/// nothing. Confirmed against the C library.
+#[test]
+fn absent_ctype_falls_back_to_the_axis_number() {
+    let (domain, is_set) = read_current_domain(&one_axis_header(""));
+    assert_eq!(domain, "AXIS1");
+    assert!(is_set);
+}
+
+/// A *blank* CTYPE is the case that reaches `astClearDomain`: the value is
+/// present, so the `AXIS<n>` default does not apply, but `astChrLen` is zero
+/// so nothing is appended and `newdom` stays NULL (fitschan.c:38888-38944).
+/// The `AST_FITSCHAN` sentinel must never escape into the read object.
+#[test]
+fn blank_ctype_leaves_domain_unset_and_never_leaks_the_sentinel() {
+    let (domain, is_set) = read_current_domain(&one_axis_header("CTYPE1  = '        '\n"));
+    assert!(!is_set);
+    assert_eq!(domain, "");
+    assert_ne!(domain, "AST_FITSCHAN");
+}
+
+/// Two unclassified axes join with "-", in axis order. C builds `newdom` by
+/// prefixing each value after the first with "-" (fitschan.c:38890-38897).
+#[test]
+fn two_unclassified_axes_join_their_ctypes_with_a_dash() {
+    let header = "\
+NAXIS   =                    2
+NAXIS1  =                  100
+NAXIS2  =                   10
+CTYPE1  = 'AAAA    '
+CTYPE2  = 'BBBB    '
+CRVAL1  =                  1.0
+CRVAL2  =                  2.0
+CRPIX1  =                  1.0
+CRPIX2  =                  1.0
+CDELT1  =                  0.1
+CDELT2  =                  0.2
+";
+    let (domain, _) = read_current_domain(header);
+    assert_eq!(domain, "AAAA-BBBB");
+}
+
+/// C strips a trailing "-LOG" from each CTYPE before appending it
+/// (fitschan.c:38875-38885); the stripped value is also the axis Symbol.
+#[test]
+fn log_suffix_is_stripped_from_the_domain_and_symbol() {
+    let obj = FitsChan::from_header(&one_axis_header("CTYPE1  = 'ZZZZ-LOG'\n"))
+        .expect("header parses")
+        .read()
+        .expect("read succeeds")
+        .expect("-LOG header should produce an object");
+    let AnyObject::FrameSet(fs) = obj else {
+        panic!("read should produce a FrameSet");
+    };
+    let frame = fs.current();
+    assert_eq!(frame.domain(), "ZZZZ");
+    let basic = frame
+        .as_any()
+        .downcast_ref::<BasicFrame>()
+        .expect("a linear axis yields a BasicFrame");
+    assert_eq!(basic.symbol(1).unwrap(), "ZZZZ");
 }
 
 /// `SkyFrame::unset_system` keeps its "genuinely unset" contract —

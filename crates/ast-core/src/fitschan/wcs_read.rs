@@ -929,9 +929,13 @@ fn build_world_frame(
         let spec = spectral.as_ref().unwrap();
         return Ok(spec.world_frame());
     }
+    // The axes no class stage claimed — the ones whose CTYPEs make up the
+    // leftover Frame's Domain (C's sentinel-tagged axes, fitschan.c:38861).
+    let unclaimed: Vec<usize> = (0..naxis).filter(|&i| !claimed[i]).collect();
+
     if celestial.is_none() && spectral.is_none() {
         // All-linear: a single BasicFrame carrying the per-axis CTYPE info.
-        return seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>());
+        return seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>(), &unclaimed);
     }
 
     // Mixed case: replicate C `WcsMapFrm`'s in-place frame morph
@@ -949,7 +953,8 @@ fn build_world_frame(
     // symbol / label / unit (the WcsOthers step, fitschan.c:38622 — it
     // only affects the linear axes, since the celestial/spectral axes are
     // replaced by their own frames below).
-    let mut frame: DynFrame = seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>())?;
+    let mut frame: DynFrame =
+        seed_linear_frame(store, &(0..naxis).collect::<Vec<_>>(), &unclaimed)?;
 
     // --- Celestial stage (WcsCelestial, fitschan.c:36043-36086) ---
     if let Some(cel) = celestial.as_ref() {
@@ -973,25 +978,84 @@ fn build_world_frame(
     Ok(frame)
 }
 
+/// The CTYPE value C `WcsOthers` works from for one axis: the keyword value
+/// with any trailing `-LOG` removed, defaulting to `AXIS<n>` when the header
+/// carries no CTYPE for the axis (fitschan.c:38866-38885). C uses this same
+/// `buf2` string for the axis Symbol, for the Label fallback, and as the
+/// contribution to the Frame's Domain.
+fn others_axis_ctype(store: &FitsStore, axis: usize) -> String {
+    let ctype = store.ctype[axis]
+        .clone()
+        .unwrap_or_else(|| format!("AXIS{}", axis + 1));
+    match ctype.strip_suffix("-LOG") {
+        Some(stripped) => stripped.to_string(),
+        None => ctype,
+    }
+}
+
+/// Build the Domain for the Frame holding the axes no class stage claimed.
+///
+/// C `WcsOthers` (fitschan.c:38887-38945) joins those axes' CTYPE values with
+/// `-` separators — each already `-LOG`-stripped — and sets the result as the
+/// Domain of the primary Frame containing them, or clears the Domain when no
+/// axis contributed a non-blank value.
+///
+/// C identifies the axes by seeding the whole physical Frame with a sentinel
+/// `Domain=AST_FITSCHAN` (fitschan.c:37823) and then testing which axes still
+/// carry it once the class stages have replaced the rest. Here the caller
+/// already holds the leftover axis list, so there is nothing for a sentinel to
+/// determine.
+fn ctype_domain(store: &FitsStore, axes: &[usize]) -> Option<String> {
+    let mut parts: Vec<String> = Vec::with_capacity(axes.len());
+    for &axis in axes {
+        // C's guard is `astChrLen( ckeyval ) > 0` on the *raw* keyword value,
+        // so a blank CTYPE contributes nothing to the Domain even though it
+        // still supplies the axis Symbol.
+        let raw_is_blank = store.ctype[axis]
+            .as_deref()
+            .is_some_and(|c| c.trim().is_empty());
+        if raw_is_blank {
+            continue;
+        }
+        parts.push(others_axis_ctype(store, axis));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("-"))
+    }
+}
+
 /// Build a BasicFrame over the given FITS axes (0-based), carrying each
 /// axis's CTYPE symbol, label (CNAME or CTYPE), and unit. Mirrors the
 /// per-axis attribute setup C performs (WcsOthers `astSetSymbol`/`astSetLabel`,
-/// fitschan.c:38622+).
-fn seed_linear_frame(store: &FitsStore, axes: &[usize]) -> AstResult<DynFrame> {
+/// fitschan.c:38900-38912).
+///
+/// `domain_axes` lists the axes whose CTYPEs make up the Frame's Domain — the
+/// unclassified axes only, which is the subset C's sentinel walk arrives at.
+/// It is a subset of `axes`, since the caller seeds the Frame over every axis
+/// and lets the celestial / spectral stages replace the ones they claim.
+fn seed_linear_frame(
+    store: &FitsStore,
+    axes: &[usize],
+    domain_axes: &[usize],
+) -> AstResult<DynFrame> {
     let mut builder = BasicFrameBuilder::new(axes.len());
     for (k, &axis) in axes.iter().enumerate() {
         let idx_1based = k + 1;
-        if let Some(ctype) = &store.ctype[axis] {
-            builder = builder.symbol(idx_1based, ctype.clone());
-        }
+        let ctype = others_axis_ctype(store, axis);
+        builder = builder.symbol(idx_1based, ctype.clone());
         if let Some(label) = &store.cname[axis] {
             builder = builder.label(idx_1based, label.clone());
-        } else if let Some(ctype) = &store.ctype[axis] {
-            builder = builder.label(idx_1based, ctype.clone());
+        } else {
+            builder = builder.label(idx_1based, ctype);
         }
         if let Some(unit) = &store.cunit[axis] {
             builder = builder.unit(idx_1based, unit.clone());
         }
+    }
+    if let Some(domain) = ctype_domain(store, domain_axes) {
+        builder = builder.domain(&domain);
     }
     Ok(Box::new(builder.build()?))
 }

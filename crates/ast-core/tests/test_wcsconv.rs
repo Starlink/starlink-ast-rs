@@ -71,7 +71,6 @@ fn fixtures_dir() -> PathBuf {
 /// EQNOX = time-attribute set-ness; DOMAIN = Frame attribute defaulting;
 /// A_ORDER = alt-plane distortion cards; ASTWARN = an unported warning card.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("axes-swap_native", "DOMAIN_B: nested CmpFrame domain"),
     ("car1_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car2_native", "BEGAST_H: WinMap vs CmpMap object shape"),
     ("car4_native", "BEGAST_H: WinMap vs CmpMap object shape"),
@@ -84,7 +83,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "tan-zeropv_native",
         "ASTWARN: GetUsedPolyTan's all-zero-coefficient warning",
     ),
-    ("unknown-spec_native", "DOMAIN_B: domain"),
     ("zpx_native", "BEGAST_I: ShiftMap vs MatrixMap object shape"),
 ];
 
@@ -97,6 +95,7 @@ const ALIASING_TAG_LICENSED: &[&str] = &[
     "wave-f2w_native",
     "vopt-f2w_native",
     "cd-cross_native",
+    "axes-swap_native",
 ];
 
 fn parse_manifest() -> Vec<TestCase> {
