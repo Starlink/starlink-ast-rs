@@ -4,8 +4,11 @@
 //! reading individual FITS keywords from the header cards and populating the
 //! intermediate [`FitsStore`] structure.
 
+use super::card::FitsValue;
 use super::card_list::CardList;
+use super::fits_match::match_keyword;
 use super::fits_store::FitsStore;
+use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Build a FITS keyword name with the version-letter suffix.
@@ -321,7 +324,7 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsS
     }
 
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
-    extract_sip(cards, &mut store);
+    extract_sip(cards, &mut store, s);
 
     // NCP → SIN normalisation (legacy alias). See [`normalise_ncp_to_sin`].
     normalise_ncp_to_sin(&mut store);
@@ -425,101 +428,94 @@ pub(crate) fn normalise_ncp_to_sin(store: &mut FitsStore) {
     }
 }
 
+/// Read the SIP coefficient cards for one keyword prefix into a table.
+///
+/// Mirrors the `A_%d_%d` / `A_%d_%d%1c` branches of C `WcsFcRead`
+/// (fitschan.c:36827-36892) and their B / AP / BP counterparts: a matching
+/// card is stored at `[i][jm]`, the two `%d` fields, in the slot belonging to
+/// the coordinate version named by the trailing letter (the primary version
+/// when the template has none). Slots with no card hold [`BAD_VALUE`], which
+/// is what `SIPMapping`'s `GetItem` reports for them, and an axis with no
+/// cards at all leaves an empty row where C leaves a NULL pointer.
+fn read_sip_coeffs(cards: &CardList, prefix: &str, s: char) -> Vec<Vec<f64>> {
+    let pattern = if s == ' ' {
+        format!("{prefix}_%d_%d")
+    } else {
+        format!("{prefix}_%d_%d%1c")
+    };
+
+    let mut table: Vec<Vec<f64>> = Vec::new();
+    for card in cards.iter() {
+        let Some(fields) = match_keyword(&card.keyword, &pattern, 2) else {
+            continue;
+        };
+        if fields.len() != 2 || fields[0] < 0 || fields[1] < 0 {
+            continue;
+        }
+        if s != ' ' && !card.keyword.ends_with(s) {
+            continue;
+        }
+        // C converts the card to AST__FLOAT via CnvValue and skips the card
+        // when the conversion fails (fitschan.c:36900-36913).
+        let value = match &card.value {
+            FitsValue::Float(v) => *v,
+            FitsValue::Int(v) => *v as f64,
+            FitsValue::String(text) => match text.trim().parse::<f64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            },
+            _ => continue,
+        };
+
+        let (i, jm) = (fields[0] as usize, fields[1] as usize);
+        if table.len() <= i {
+            table.resize(i + 1, Vec::new());
+        }
+        let row = &mut table[i];
+        if row.len() <= jm {
+            row.resize(jm + 1, BAD_VALUE);
+        }
+        row[jm] = value;
+    }
+    table
+}
+
 /// Check for SIP distortion and extract coefficients.
 ///
-/// If CTYPE values end with "-SIP", the suffix is stripped and the SIP
-/// polynomial coefficients are read from the header.
-fn extract_sip(cards: &CardList, store: &mut FitsStore) {
-    // Check if CTYPE values contain "-SIP".
-    let has_sip = store.ctype.iter().take(2).any(|ct| {
-        ct.as_ref()
-            .is_some_and(|s| s.to_uppercase().ends_with("-SIP"))
-    });
+/// Mirrors the `-SIP` branch of C `DistortMaps` (fitschan.c:8818-8851): the
+/// distortion is present only when *both* of the first two CTYPE values end
+/// with `-SIP`, and the suffix is stripped from each so later steps see a plain
+/// projection code. The `A_ORDER` / `B_ORDER` / `AP_ORDER` / `BP_ORDER` cards
+/// are deliberately not read: `SIPMapping` derives the powers it needs from the
+/// coefficient cards themselves (`GetMaxI` / `GetMaxJM`, fitschan.c:29384-29405),
+/// and the ORDER keywords appear on the write side only. Leaving them unread
+/// also leaves them unconsumed, so they survive into a re-written header.
+fn extract_sip(cards: &CardList, store: &mut FitsStore, s: char) {
+    fn strip_sip(ctype: Option<&mut String>) -> bool {
+        let Some(ct) = ctype else { return false };
+        if !ct.trim_end().to_uppercase().ends_with("-SIP") {
+            return false;
+        }
+        let nc = ct.trim_end().len() - 4;
+        ct.truncate(nc);
+        true
+    }
 
-    if !has_sip {
+    // C tests and strips axis 1 first, and only looks at axis 2 when axis 1
+    // carried the code — so a lone `-SIP` on axis 1 is still stripped but
+    // yields no distortion.
+    if !strip_sip(store.ctype.first_mut().and_then(|c| c.as_mut())) {
+        return;
+    }
+    if !strip_sip(store.ctype.get_mut(1).and_then(|c| c.as_mut())) {
         return;
     }
 
-    // Strip "-SIP" from CTYPE values (first two axes only, per convention).
-    for s in store.ctype.iter_mut().take(2).flatten() {
-        let upper = s.to_uppercase();
-        if upper.ends_with("-SIP") {
-            let new_len = s.len() - 4;
-            s.truncate(new_len);
-        }
-    }
-
-    // Forward A coefficients.
-    if let Some(order) = cards.get_int_marked("A_ORDER") {
-        let order = order as usize;
-        store.sip_a_order = Some(order);
-        let size = order + 1;
-        store.sip_a = vec![vec![0.0; size]; size];
-        for i in 0..size {
-            for j in 0..size {
-                if i + j <= order {
-                    let key = format!("A_{i}_{j}");
-                    if let Some(val) = cards.get_float_marked(&key) {
-                        store.sip_a[i][j] = val;
-                    }
-                }
-            }
-        }
-    }
-
-    // Forward B coefficients.
-    if let Some(order) = cards.get_int_marked("B_ORDER") {
-        let order = order as usize;
-        store.sip_b_order = Some(order);
-        let size = order + 1;
-        store.sip_b = vec![vec![0.0; size]; size];
-        for i in 0..size {
-            for j in 0..size {
-                if i + j <= order {
-                    let key = format!("B_{i}_{j}");
-                    if let Some(val) = cards.get_float_marked(&key) {
-                        store.sip_b[i][j] = val;
-                    }
-                }
-            }
-        }
-    }
-
-    // Inverse AP coefficients.
-    if let Some(order) = cards.get_int_marked("AP_ORDER") {
-        let order = order as usize;
-        store.sip_ap_order = Some(order);
-        let size = order + 1;
-        store.sip_ap = vec![vec![0.0; size]; size];
-        for i in 0..size {
-            for j in 0..size {
-                if i + j <= order {
-                    let key = format!("AP_{i}_{j}");
-                    if let Some(val) = cards.get_float_marked(&key) {
-                        store.sip_ap[i][j] = val;
-                    }
-                }
-            }
-        }
-    }
-
-    // Inverse BP coefficients.
-    if let Some(order) = cards.get_int_marked("BP_ORDER") {
-        let order = order as usize;
-        store.sip_bp_order = Some(order);
-        let size = order + 1;
-        store.sip_bp = vec![vec![0.0; size]; size];
-        for i in 0..size {
-            for j in 0..size {
-                if i + j <= order {
-                    let key = format!("BP_{i}_{j}");
-                    if let Some(val) = cards.get_float_marked(&key) {
-                        store.sip_bp[i][j] = val;
-                    }
-                }
-            }
-        }
-    }
+    store.sip = true;
+    store.sip_a = read_sip_coeffs(cards, "A", s);
+    store.sip_b = read_sip_coeffs(cards, "B", s);
+    store.sip_ap = read_sip_coeffs(cards, "AP", s);
+    store.sip_bp = read_sip_coeffs(cards, "BP", s);
 }
 
 // ---------------------------------------------------------------------------
@@ -758,12 +754,13 @@ END";
         assert_eq!(store.ctype[0], Some("RA---TAN".to_string()));
         assert_eq!(store.ctype[1], Some("DEC--TAN".to_string()));
 
-        // SIP should be detected.
+        // SIP should be detected. The read path does not look at the ORDER
+        // keywords, so the coefficient tables are the only record of it.
         assert!(store.has_sip());
-        assert_eq!(store.sip_a_order, Some(3));
-        assert_eq!(store.sip_b_order, Some(3));
-        assert_eq!(store.sip_ap_order, Some(3));
-        assert_eq!(store.sip_bp_order, Some(3));
+        assert_eq!(store.sip_a_order, None);
+        assert_eq!(store.sip_b_order, None);
+        assert_eq!(store.sip_ap_order, None);
+        assert_eq!(store.sip_bp_order, None);
 
         // Check a few SIP coefficients.
         assert!((store.sip_a[0][2] - 2.9656e-06).abs() < 1e-12);

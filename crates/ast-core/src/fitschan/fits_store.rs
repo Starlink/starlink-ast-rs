@@ -77,17 +77,26 @@ pub(crate) struct FitsStore {
     /// Number of WCS axes as declared (WCSAXES).
     pub wcsaxes: Option<usize>,
     // -- SIP distortion coefficients --
-    /// SIP forward polynomial order for axis 1 (A_ORDER).
+    /// Set by the read path when both of the first two CTYPE values carried a
+    /// `-SIP` distortion code. C has no equivalent field — `DistortMaps` tests
+    /// the CTYPE values and calls `SIPMapping` in the same breath, before
+    /// truncating them (fitschan.c:8825-8848) — so this records the answer for
+    /// the later `distort_maps` step, which sees only the stripped values.
+    pub sip: bool,
+    /// SIP forward polynomial order for axis 1 (A_ORDER). Write path only; the
+    /// read path derives the powers from the coefficient tables as C does.
     pub sip_a_order: Option<usize>,
-    /// SIP forward polynomial order for axis 2 (B_ORDER).
+    /// SIP forward polynomial order for axis 2 (B_ORDER). Write path only.
     pub sip_b_order: Option<usize>,
-    /// SIP A coefficients, shape [i][j].
+    /// SIP A coefficients, shape [i][j]. Absent entries hold
+    /// [`BAD_VALUE`](crate::constants::BAD_VALUE), mirroring the `AST__BAD`
+    /// C `GetItem` reports for an unset `FitsStore` slot.
     pub sip_a: Vec<Vec<f64>>,
     /// SIP B coefficients, shape [i][j].
     pub sip_b: Vec<Vec<f64>>,
-    /// SIP inverse polynomial order for axis 1 (AP_ORDER).
+    /// SIP inverse polynomial order for axis 1 (AP_ORDER). Write path only.
     pub sip_ap_order: Option<usize>,
-    /// SIP inverse polynomial order for axis 2 (BP_ORDER).
+    /// SIP inverse polynomial order for axis 2 (BP_ORDER). Write path only.
     pub sip_bp_order: Option<usize>,
     /// SIP AP coefficients (inverse), shape [i][j].
     pub sip_ap: Vec<Vec<f64>>,
@@ -184,6 +193,7 @@ impl FitsStore {
             restwav: None,
             velosys: None,
             wcsaxes: None,
+            sip: false,
             sip_a_order: None,
             sip_b_order: None,
             sip_a: Vec::new(),
@@ -219,9 +229,13 @@ impl FitsStore {
         self.pc.iter().any(|row| row.iter().any(|v| v.is_some()))
     }
 
-    /// Returns `true` if SIP distortion coefficients are present.
+    /// Returns `true` if the header declared `-SIP` distortion on both of the
+    /// first two axes. Note this is independent of whether any coefficient
+    /// cards were present: C `DistortMaps` calls `SIPMapping` on the strength
+    /// of the CTYPE codes alone (fitschan.c:8837), and `SIPMapping` answers
+    /// with a UnitMap when the store holds no coefficients.
     pub(crate) fn has_sip(&self) -> bool {
-        self.sip_a_order.is_some() || self.sip_b_order.is_some()
+        self.sip
     }
 
     /// Find the pair of celestial (longitude, latitude) axes from CTYPE values.
@@ -420,7 +434,7 @@ mod tests {
     fn has_sip_detection() {
         let mut store = FitsStore::new(2);
         assert!(!store.has_sip());
-        store.sip_a_order = Some(3);
+        store.sip = true;
         assert!(store.has_sip());
     }
 

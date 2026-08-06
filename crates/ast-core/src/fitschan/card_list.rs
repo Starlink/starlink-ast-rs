@@ -278,15 +278,6 @@ impl CardList {
         self.consumed_names.borrow_mut().push(keyword.to_string());
     }
 
-    /// `get_int`, recording the keyword as consumed when a card is found.
-    pub(crate) fn get_int_marked(&self, keyword: &str) -> Option<i64> {
-        let v = self.get_int(keyword);
-        if v.is_some() {
-            self.record_consumed(keyword);
-        }
-        v
-    }
-
     /// `get_float`, recording the keyword as consumed when a card is found.
     pub(crate) fn get_float_marked(&self, keyword: &str) -> Option<f64> {
         let v = self.get_float(keyword);

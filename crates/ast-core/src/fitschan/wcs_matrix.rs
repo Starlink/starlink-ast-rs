@@ -18,6 +18,7 @@ use ndarray::Array2;
 
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
+use crate::constants::BAD_VALUE;
 use crate::error::AstResult;
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PolyMap, PolyTerm, UnitMap, WcsMap, WinMap,
@@ -361,14 +362,15 @@ fn build_cdelt_matrix(store: &FitsStore) -> AstResult<DynMapping> {
 ///
 /// The polynomial includes the identity (linear pass-through) term.
 /// For the forward direction, the coefficient for `u^1 * v^0` on output 1
-/// is `1 + A_1_0`, and `v^0 * u^0 * v^1` on output 2 is `1 + B_0_1`.
+/// is `1 + A_1_0`, and `u^0 * v^1` on output 2 is `1 + B_0_1`.
 ///
-/// If additional axes exist beyond the first 2, they pass through unchanged.
-/// However, PolyMap only handles 2-in/2-out; we wrap with a PermMap if needed.
-/// For simplicity, this implementation assumes SIP only applies to axes 1 and 2
-/// (the standard SIP convention).
+/// Axes beyond the first two pass through unchanged, added in parallel with a
+/// UnitMap as C `AddUnitMaps` does.
 ///
-/// This mirrors the C `SIPMapping` function.
+/// Port of C `SIPMapping` (fitschan.c:29176). When neither direction has any
+/// coefficient in the store the whole distortion is a UnitMap over every axis,
+/// which is the answer for a header that names `-SIP` in its CTYPE values but
+/// supplies no `A_i_j` / `B_i_j` cards.
 fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     let naxis = store.naxis;
 
@@ -377,6 +379,10 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
 
     // Build inverse polynomial terms (if available).
     let inverse_terms = build_sip_inverse_terms(store);
+
+    if forward_terms.is_empty() && inverse_terms.is_empty() {
+        return Ok(Box::new(UnitMap::new(naxis)));
+    }
 
     let inv = if inverse_terms.is_empty() {
         None
@@ -428,211 +434,102 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     }
 }
 
-/// Build forward SIP polynomial terms from A and B coefficients.
+/// Largest first index stored in a SIP coefficient table.
 ///
-/// The forward transformation is:
-/// - Output 1 (U): u + sum(A_p_q * u^p * v^q)
-/// - Output 2 (V): v + sum(B_p_q * u^p * v^q)
+/// Port of C `GetMaxI` (fitschan.c:13396): the largest intermediate-axis index
+/// for which the table holds a row, or -1 when the table is empty. C skips
+/// trailing NULL row pointers; the Rust equivalent is a trailing empty row.
+fn sip_max_i(table: &[Vec<f64>]) -> i32 {
+    let mut ret = -1;
+    for (i, row) in table.iter().enumerate() {
+        if !row.is_empty() {
+            ret = i as i32;
+        }
+    }
+    ret
+}
+
+/// Largest second index stored in a SIP coefficient table.
 ///
-/// We include the identity term by adding 1.0 to the coefficient that
-/// corresponds to the linear pass-through (p=1, q=0 for output 1;
-/// p=0, q=1 for output 2).
-fn build_sip_forward_terms(store: &FitsStore) -> Vec<PolyTerm> {
+/// Port of C `GetMaxJM` (fitschan.c:13183): the maximum over all rows of the
+/// largest index holding a value other than `AST__BAD`, or -1 when the table
+/// holds no values at all.
+fn sip_max_jm(table: &[Vec<f64>]) -> i32 {
+    let mut ret = -1;
+    for row in table {
+        for (jm, value) in row.iter().enumerate() {
+            if *value != BAD_VALUE && (jm as i32) > ret {
+                ret = jm as i32;
+            }
+        }
+    }
+    ret
+}
+
+/// Coefficient descriptions for one half of the SIP distortion.
+///
+/// Port of the two coefficient-gathering loops of C `SIPMapping`
+/// (fitschan.c:29263-29390), which differ only in which pair of `FitsStore`
+/// items they read and in whether the axis index is called `iout` or `iin`.
+/// `tables` holds the table for each of the two axes in order.
+///
+/// For each axis the powers actually swept come from the store, not from any
+/// `*_ORDER` keyword: `pmax` and `qmax` are the largest indices present, and an
+/// absent slot contributes zero. Since the polynomial describes a *correction*
+/// to the input while the Mapping is a direct transformation, the term matching
+/// the axis itself is incremented by one. Terms whose coefficient works out to
+/// zero are dropped, and if the store held no value at all for either axis the
+/// whole transformation is undefined and no terms are returned.
+fn build_sip_terms(tables: [&[Vec<f64>]; 2]) -> Vec<PolyTerm> {
     let mut terms = Vec::new();
+    let mut def = false;
 
-    // Output axis 1: U = u + sum(A_p_q * u^p * v^q)
-    let a_order = store.sip_a_order.unwrap_or(0);
-    let a_size = if store.sip_a.is_empty() {
-        0
-    } else {
-        store.sip_a.len()
-    };
+    for (iax, table) in tables.iter().enumerate() {
+        let pmax = sip_max_i(table);
+        let qmax = sip_max_jm(table);
 
-    for p in 0..=a_order {
-        for q in 0..=a_order {
-            if p + q > a_order {
-                continue;
-            }
-            let mut coeff = if p < a_size && q < store.sip_a.get(p).map_or(0, |r| r.len()) {
-                store.sip_a[p][q]
-            } else {
-                0.0
-            };
+        for p in 0..=pmax {
+            for q in 0..=qmax {
+                let mut cof = table
+                    .get(p as usize)
+                    .and_then(|row| row.get(q as usize))
+                    .copied()
+                    .unwrap_or(BAD_VALUE);
+                if cof == BAD_VALUE {
+                    cof = 0.0;
+                } else {
+                    def = true;
+                }
 
-            // Add the identity term: for output 1, p=1, q=0 gets +1.
-            if p == 1 && q == 0 {
-                coeff += 1.0;
-            }
+                if p as usize == 1 - iax && q as usize == iax {
+                    cof += 1.0;
+                }
 
-            if coeff != 0.0 {
-                terms.push(PolyTerm {
-                    coeff,
-                    powers: vec![p, q],
-                    out_axis: 1,
-                });
-            }
-        }
-    }
-
-    // If no A coefficients at all, still need the identity for output 1.
-    if a_order == 0 && !terms.iter().any(|t| t.out_axis == 1) {
-        terms.push(PolyTerm {
-            coeff: 1.0,
-            powers: vec![1, 0],
-            out_axis: 1,
-        });
-    }
-
-    // Output axis 2: V = v + sum(B_p_q * u^p * v^q)
-    let b_order = store.sip_b_order.unwrap_or(0);
-    let b_size = if store.sip_b.is_empty() {
-        0
-    } else {
-        store.sip_b.len()
-    };
-
-    for p in 0..=b_order {
-        for q in 0..=b_order {
-            if p + q > b_order {
-                continue;
-            }
-            let mut coeff = if p < b_size && q < store.sip_b.get(p).map_or(0, |r| r.len()) {
-                store.sip_b[p][q]
-            } else {
-                0.0
-            };
-
-            // Add the identity term: for output 2, p=0, q=1 gets +1.
-            if p == 0 && q == 1 {
-                coeff += 1.0;
-            }
-
-            if coeff != 0.0 {
-                terms.push(PolyTerm {
-                    coeff,
-                    powers: vec![p, q],
-                    out_axis: 2,
-                });
+                if cof != 0.0 {
+                    terms.push(PolyTerm {
+                        coeff: cof,
+                        powers: vec![p as usize, q as usize],
+                        out_axis: iax + 1,
+                    });
+                }
             }
         }
     }
 
-    // If no B coefficients at all, still need the identity for output 2.
-    if b_order == 0 && !terms.iter().any(|t| t.out_axis == 2) {
-        terms.push(PolyTerm {
-            coeff: 1.0,
-            powers: vec![0, 1],
-            out_axis: 2,
-        });
+    if !def {
+        terms.clear();
     }
-
     terms
 }
 
-/// Build inverse SIP polynomial terms from AP and BP coefficients.
-///
-/// The inverse transformation is:
-/// - Output 1 (u): U + sum(AP_p_q * U^p * V^q)
-/// - Output 2 (v): V + sum(BP_p_q * U^p * V^q)
-///
-/// Same structure as forward but with AP/BP coefficients. The identity
-/// terms are added the same way (p=1, q=0 for output 1; p=0, q=1 for
-/// output 2).
+/// Forward SIP coefficient descriptions, from the `A` and `B` tables.
+fn build_sip_forward_terms(store: &FitsStore) -> Vec<PolyTerm> {
+    build_sip_terms([&store.sip_a, &store.sip_b])
+}
+
+/// Inverse SIP coefficient descriptions, from the `AP` and `BP` tables.
 fn build_sip_inverse_terms(store: &FitsStore) -> Vec<PolyTerm> {
-    // If no inverse coefficients are defined, return empty.
-    if store.sip_ap_order.is_none() && store.sip_bp_order.is_none() {
-        return Vec::new();
-    }
-
-    let mut terms = Vec::new();
-
-    // Output axis 1: u = U + sum(AP_p_q * U^p * V^q)
-    let ap_order = store.sip_ap_order.unwrap_or(0);
-    let ap_size = if store.sip_ap.is_empty() {
-        0
-    } else {
-        store.sip_ap.len()
-    };
-
-    for p in 0..=ap_order {
-        for q in 0..=ap_order {
-            if p + q > ap_order {
-                continue;
-            }
-            let mut coeff = if p < ap_size && q < store.sip_ap.get(p).map_or(0, |r| r.len()) {
-                store.sip_ap[p][q]
-            } else {
-                0.0
-            };
-
-            // Add identity: for output 1, p=1, q=0 gets +1.
-            if p == 1 && q == 0 {
-                coeff += 1.0;
-            }
-
-            if coeff != 0.0 {
-                terms.push(PolyTerm {
-                    coeff,
-                    powers: vec![p, q],
-                    out_axis: 1,
-                });
-            }
-        }
-    }
-
-    // If no AP coefficients, still need the identity for output 1.
-    if ap_order == 0 && !terms.iter().any(|t| t.out_axis == 1) {
-        terms.push(PolyTerm {
-            coeff: 1.0,
-            powers: vec![1, 0],
-            out_axis: 1,
-        });
-    }
-
-    // Output axis 2: v = V + sum(BP_p_q * U^p * V^q)
-    let bp_order = store.sip_bp_order.unwrap_or(0);
-    let bp_size = if store.sip_bp.is_empty() {
-        0
-    } else {
-        store.sip_bp.len()
-    };
-
-    for p in 0..=bp_order {
-        for q in 0..=bp_order {
-            if p + q > bp_order {
-                continue;
-            }
-            let mut coeff = if p < bp_size && q < store.sip_bp.get(p).map_or(0, |r| r.len()) {
-                store.sip_bp[p][q]
-            } else {
-                0.0
-            };
-
-            // Add identity: for output 2, p=0, q=1 gets +1.
-            if p == 0 && q == 1 {
-                coeff += 1.0;
-            }
-
-            if coeff != 0.0 {
-                terms.push(PolyTerm {
-                    coeff,
-                    powers: vec![p, q],
-                    out_axis: 2,
-                });
-            }
-        }
-    }
-
-    // If no BP coefficients, still need the identity for output 2.
-    if bp_order == 0 && !terms.iter().any(|t| t.out_axis == 2) {
-        terms.push(PolyTerm {
-            coeff: 1.0,
-            powers: vec![0, 1],
-            out_axis: 2,
-        });
-    }
-
-    terms
+    build_sip_terms([&store.sip_ap, &store.sip_bp])
 }
 
 // ---------------------------------------------------------------------------
@@ -820,11 +717,10 @@ mod tests {
         store.crpix[1] = Some(0.0);
         store.cdelt[0] = Some(1.0);
         store.cdelt[1] = Some(1.0);
-        store.sip_a_order = Some(2);
-        store.sip_a = vec![vec![0.0; 3]; 3];
+        store.sip = true;
+        store.sip_a = vec![vec![BAD_VALUE; 3]; 3];
         store.sip_a[2][0] = 1e-5; // A_2_0
-        store.sip_b_order = Some(0);
-        store.sip_b = vec![vec![0.0; 1]; 1];
+        store.sip_b = vec![vec![BAD_VALUE, 0.0]]; // B_0_1 = 0
 
         let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
