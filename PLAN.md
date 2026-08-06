@@ -65,12 +65,30 @@ regression corpus.
 
 | Area | Doc | Status |
 |---|---|---|
-| FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace ported (192/192 wcsconv); remaining: `-ZPX` distortion PolyMap, unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
+| FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace and `DistortMaps`/`ZPXMapping` ported (190/192 wcsconv native-read byte-exact); remaining: unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
 | `fset_to_store` port gaps | `docs/issues/fset_to_store-port-gaps.md` | MOSTLY DONE — SIPIntWorld + VELOSYS + Group 3/5 branches ported; only `-TAB` (IsMapTab1D/2D) remains, blocked on the un-ported FitsTable infrastructure |
 
 Cross-cutting blocker for the two rows above: the **FitsTable / `-TAB`
 algorithm** port is unported and gates the remaining FitsChan and
 `fset_to_store` `-TAB` branches.
+
+### Deferred C-oracle simplify fixtures
+
+Twenty-four fixtures from upstream `ast_tester/simplify_fixtures/` are staged in
+`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/`
+because they exercise classes the port has not implemented.
+They are counted and enforced by
+`crates/ast-core/tests/test_deferred_fixtures.rs`, which fails if a
+subdirectory is added without a matching `DEFERRED_CLASSES` row.
+
+| Subdirectory | Unported class | Files | Blocks |
+|---|---|---|---|
+| `intramap/` | `IntraMap` | 13 | 10 simplify cases (3 positive, 7 negative-control) |
+| `xphmap/` | `XphMap` | 9 | 6 simplify cases (3 positive, 3 negative-control) |
+| `stcresourceprofile/` | `StcResourceProfile` | 2 | 1 simplify case (`cap_timemap_02`) |
+
+No wcsconv case is blocked on any of these classes.
+The re-enabling procedure is in the directory's `README.md`.
 
 Closed (marked historical in-doc, removed as active work):
 `native-roundtrip-gaps.md` (24/24 + 139/139 byte-exact),
