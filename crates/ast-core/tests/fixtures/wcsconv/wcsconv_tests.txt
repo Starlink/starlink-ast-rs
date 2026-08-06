@@ -5,16 +5,32 @@
 #              numeric token. The default -- keep comparisons tight.
 #   astequal = relax numeric tokens to AST's astEQUAL tolerance (the Rust
 #              equivalent of the C oracle's astEqual). Use only for cases whose
-#              last bits are platform-libm dependent, e.g. cancellation-
-#              amplified geodetic altitude (OBSALT from OBSGEO-X/Y/Z).
+#              last bits are platform dependent, e.g. cancellation-amplified
+#              geodetic altitude (OBSALT from OBSGEO-X/Y/Z).
 # There is no mode that skips the comparison. A native case whose FITS-read
 # path is not yet byte-exact with C is named in the harness's
 # NATIVE_READ_EXCLUDED list, which records the reason per case.
+#
+# The .native reference files were captured from C AST on x86-64 Linux, and
+# some of them are not reproducible on another architecture by *any*
+# implementation: C AST built and run on arm64 macOS does not reproduce them
+# either. Two mechanisms drive that:
+#   - FMA contraction. clang contracts `a*b+c` to a single fused multiply-add
+#     on arm64, where baseline x86-64 has no FMA instruction to contract to.
+#     In ERFA's geocentric->geodetic solution the altitude is a difference of
+#     two ~6.4e6 m quantities, so one fused rounding lands ~900 ulp out in the
+#     ~4.1e3 m result (still 2e-13 relative).
+#   - libm. sin/cos/atan2 are not correctly rounded and differ by an ulp or so
+#     between Apple's libm and glibc, which shows up in rotation-matrix
+#     elements and in the near-zero residues left where they cancel.
+# Cases affected by either are marked astequal here. That mirrors the C
+# harness, which marks the same fixtures SKIP_STRING_COMPARE in its own
+# wcsconv_tests.txt and registers only the astEqual test for them.
 timj_fits-wcs       | timj.ast                       | timj.fits-wcs      | fits-wcs  | cdmatrix=1,FitsDigits=8          |
 timj_fits-iraf      | timj.ast                       | timj.fits-iraf     | fits-iraf | FitsDigits=8                     |
 timj_fits-aips      | timj.ast                       | timj.fits-aips     | fits-aips | FitsDigits=8                     |
 timj_fits-pc        | timj.ast                       | timj.fits-pc       | fits-pc   | fitsrounding=0,FitsDigits=8      |
-timj_native         | timj.ast                       | timj.native        | native    | FitsDigits=8                     |
+timj_native         | timj.ast                       | timj.native        | native    | FitsDigits=8                     | astequal
 a20070718_fits-wcs  | a20070718_00010_02_cube.ast     | a20070718_00010_02_cube.fits-wcs | fits-wcs | FitsDigits=8      |
 dss_fits-dss_ast    | dss.fits-dss                   | dss.ast            | ast       | FitsDigits=8                     |
 dss_ast_dss         | dss.ast                        | dss.dss            | dss       | FitsDigits=8                     |
@@ -73,7 +89,7 @@ vopt-wav_native     | vopt-wav.head                  | vopt-wav.native    | nati
 zopt-frq_native     | zopt-frq.head                  | zopt-frq.native    | native    |                                  |
 cname_native        | cname.head                     | cname.native       | native    |                                  |
 cname_fits-wcs      | cname.head                     | cname.fits-wcs     | fits-wcs  | cdmatrix=1,FitsDigits=8          |
-skyref_native       | skyref.head                    | skyref.native      | native    |                                  |
+skyref_native       | skyref.head                    | skyref.native      | native    |                                  | astequal
 fits-pc-unit_native | fits-pc-unit.head              | fits-pc-unit.native| native    |                                  |
 gls_native          | gls.head                       | gls.native         | native    |                                  |
 iraf-longpole_native| iraf-longpole.head             | iraf-longpole.native| native   |                                  |
@@ -99,19 +115,19 @@ zpn_fits-pc         | zpn.head                       | zpn.fits-pc        | fits
 projp_native        | projp.head                     | projp.native       | native    |                                  |
 fk5-noeq_native     | fk5-noeq.head                  | fk5-noeq.native    | native    |                                  |
 timesys-tt_native   | timesys-tt.head                | timesys-tt.native  | native    |                                  |
-skyref-alt_native   | skyref-alt.head                | skyref-alt.native  | native    |                                  |
+skyref-alt_native   | skyref-alt.head                | skyref-alt.native  | native    |                                  | astequal
 axref_native        | axref.head                     | axref.native       | native    |                                  |
 unknown-cel_native  | unknown-cel.head               | unknown-cel.native | native    |                                  |
 projp-pv_native     | projp-pv.head                  | projp-pv.native    | native    |                                  |
 cd-old_native       | cd-old.head                    | cd-old.native      | native    |                                  |
 fk4-noeq_native     | fk4-noeq.head                  | fk4-noeq.native    | native    |                                  |
 unknown-cel2_native | unknown-cel2.head              | unknown-cel2.native| native    |                                  |
-tidy-offsets_native | tidy-offsets.head              | tidy-offsets.native| native    |                                  |
-tidy-pole_native    | tidy-pole.head                 | tidy-pole.native   | native    |                                  |
+tidy-offsets_native | tidy-offsets.head              | tidy-offsets.native| native    |                                  | astequal
+tidy-pole_native    | tidy-pole.head                 | tidy-pole.native   | native    |                                  | astequal
 date-short_native   | date-short.head                | date-short.native  | native    |                                  |
 date-frac_native    | date-frac.head                 | date-frac.native   | native    |                                  |
 equinox-zero_native | equinox-zero.head              | equinox-zero.native| native    |                                  |
-ssysobs_native      | ssysobs.head                   | ssysobs.native     | native    |                                  |
+ssysobs_native      | ssysobs.head                   | ssysobs.native     | native    |                                  | astequal
 ener-vel_native     | ener-vel.head                  | ener-vel.native    | native    |                                  |
 beta-frq_native     | beta-frq.head                  | beta-frq.native    | native    |                                  |
 sip-alt_native      | sip-alt.head                   | sip-alt.native     | native    | sipreplace=0                     |
@@ -189,7 +205,7 @@ offset-sky_fits-wcs | offset-sky.head                | offset-sky.fits-wcs | fit
 offset-sky-pole_native   | offset-sky-pole.head      | offset-sky-pole.native  | native |                               |
 offset-sky-pole_fits-wcs | offset-sky-pole.head      | offset-sky-pole.fits-wcs | fits-wcs | cdmatrix=1,FitsDigits=8      |
 offset-sref_native  | offset-sref.head               | offset-sref.native | native    |                                  |
-azel_native         | azel.head                      | azel.native        | native    |                                  |
+azel_native         | azel.head                      | azel.native        | native    |                                  | astequal
 azel_fits-wcs       | azel.head                      | azel.fits-wcs      | fits-wcs  | cdmatrix=1,FitsDigits=8          |
 vopt-f2w_native     | vopt-f2w.head                  | vopt-f2w.native    | native    |                                  |
 vopt-f2w_fits-wcs   | vopt-f2w.head                  | vopt-f2w.fits-wcs  | fits-wcs  | cdmatrix=1,FitsDigits=8          |
