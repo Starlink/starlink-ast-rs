@@ -340,25 +340,51 @@ fn matrix_diagonal_fast_path_large() {
     }
 }
 
-/// Diagonal matrix: BAD_VALUE with zero diagonal element should produce 0.0
-/// (zero coeff masks BAD), non-zero diagonal with BAD should produce BAD.
+/// Diagonal matrix BAD propagation: a BAD input gives BAD output whatever the
+/// diagonal element, including a zero one.
 #[test]
 fn matrix_diagonal_bad_handling() {
-    // Diagonal [[0, 0], [0, 5]] — first diag is 0, second is 5
+    // Diagonal [[0, 0], [0, 5]] — first diag is 0, second is 5. The
+    // off-diagonal zeros mean this compresses to the diagonal storage form
+    // (matrixmap.c CompressMatrix, 686-800), so the diagonal branch of
+    // Transform applies: a zero diagonal is multiplied through normally
+    // rather than masking a bad input. Only a *BAD* diagonal short-circuits.
     let m = array![[0.0, 0.0], [0.0, 5.0]];
     let mm = MatrixMap::new(m).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 3.0]]);
     let out = mm.transform(&pts, true).unwrap();
-    // Row 0: diag=0 → output is 0.0 regardless of input
-    assert_eq!(out.point(0)[0], 0.0);
+    // Row 0: diag=0 is good but the input is BAD → BAD.
+    assert_eq!(out.point(0)[0], BAD_VALUE);
     // Row 1: diag=5, input=3.0 → 15.0
     assert_eq!(out.point(0)[1], 15.0);
 
     // Now BAD in the second input where diag is non-zero
     let pts2 = PointSet::from_rows([[2.0, BAD_VALUE]]);
     let out2 = mm.transform(&pts2, true).unwrap();
-    assert_eq!(out2.point(0)[0], 0.0); // diag=0 → 0
+    assert_eq!(out2.point(0)[0], 0.0); // diag=0, input=2.0 → 0.0
     assert_eq!(out2.point(0)[1], BAD_VALUE); // diag=5, input=BAD → BAD
+}
+
+/// Full matrix BAD handling: a BAD matrix element makes its output row BAD
+/// even for good input, while a zero element masks a BAD input on that row.
+#[test]
+fn matrix_full_bad_coefficient_and_masking() {
+    // Element [0][1] is BAD; row 1 is entirely good.
+    let m = array![[2.0, BAD_VALUE], [3.0, 4.0]];
+    let mm = MatrixMap::new(m).unwrap();
+    let pts = PointSet::from_rows([[1.0_f64, 1.0]]);
+    let out = mm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    assert_eq!(out.point(0)[1], 7.0);
+
+    // A zero coefficient keeps a BAD input off the rows independent of it.
+    // Off-diagonal [1][0] is non-zero, so the matrix stays in full form.
+    let m2 = array![[1.0, 0.0], [5.0, 1.0]];
+    let mm2 = MatrixMap::new(m2).unwrap();
+    let pts2 = PointSet::from_rows([[3.0_f64, BAD_VALUE]]);
+    let out2 = mm2.transform(&pts2, true).unwrap();
+    assert_eq!(out2.point(0)[0], 3.0); // BAD input has coefficient 0 → masked
+    assert_eq!(out2.point(0)[1], BAD_VALUE); // coefficient 1 → propagates
 }
 
 /// Non-diagonal MatrixMap should NOT merge with WinMap.

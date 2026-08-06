@@ -447,9 +447,12 @@ impl MatrixMap {
     /// Apply the matrix `m` (shape `nout × nin`) to each point in `pts`
     /// and write results into `out`.
     ///
-    /// Per-axis BAD handling: for each output row, only inputs with non-zero
-    /// coefficients matter. If an input is BAD but its coefficient is zero,
-    /// it is masked and does not propagate BAD.
+    /// BAD handling follows `matrixmap.c::Transform` (5170-5283). A BAD matrix
+    /// element always yields BAD output. A BAD input yields BAD output unless
+    /// its coefficient is zero, in which case it is masked and does not
+    /// propagate — this keeps a bad input axis out of output axes that do not
+    /// depend on it. A zero coefficient is otherwise multiplied through
+    /// normally; it is not a special case.
     ///
     /// The `form` parameter selects the fast path:
     /// - `Diagonal`: O(N) per-axis multiply (each output depends only on the
@@ -476,14 +479,17 @@ impl MatrixMap {
                     let inp = pts.point(i);
                     let outp = out.point_mut(i);
                     for j in 0..nax {
+                        // A BAD diagonal element makes the whole output axis
+                        // BAD; otherwise BAD input gives BAD output. C tests
+                        // the diagonal once per axis, outside the point loop
+                        // (matrixmap.c:5253); the loops are nested the other
+                        // way here because a PointSet is row-major over points.
                         let diag = m[[j, j]];
-                        if diag == 0.0 {
-                            outp[j] = 0.0;
-                        } else if is_bad(inp[j]) {
-                            outp[j] = BAD_VALUE;
+                        outp[j] = if is_bad(diag) || is_bad(inp[j]) {
+                            BAD_VALUE
                         } else {
-                            outp[j] = diag * inp[j];
-                        }
+                            diag * inp[j]
+                        };
                     }
                     for o in outp.iter_mut().take(nout).skip(nax) {
                         *o = 0.0;
@@ -501,11 +507,13 @@ impl MatrixMap {
                         let mut bad = false;
                         for col in 0..nin {
                             let coeff = m[[row, col]];
-                            if coeff != 0.0 {
-                                if is_bad(inp[col]) {
-                                    bad = true;
-                                    break;
-                                }
+                            if is_bad(coeff) || (is_bad(inp[col]) && coeff != 0.0) {
+                                bad = true;
+                                break;
+                            }
+                            // Reaching here with a BAD input means the
+                            // coefficient is zero, so the sum is unchanged.
+                            if !is_bad(inp[col]) {
                                 sum += coeff * inp[col];
                             }
                         }
