@@ -65,7 +65,7 @@ regression corpus.
 
 | Area | Doc | Status |
 |---|---|---|
-| FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace and `DistortMaps`/`ZPXMapping` ported (190/192 wcsconv native-read byte-exact); remaining: unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
+| FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace, `DistortMaps`/`ZPXMapping` and `SIPMapping`'s store-derived powers ported; **all 193 wcsconv cases now byte-compared with `NATIVE_READ_EXCLUDED` empty**; remaining: unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
 | `fset_to_store` port gaps | `docs/issues/fset_to_store-port-gaps.md` | MOSTLY DONE — SIPIntWorld + VELOSYS + Group 3/5 branches ported; only `-TAB` (IsMapTab1D/2D) remains, blocked on the un-ported FitsTable infrastructure |
 
 Cross-cutting blocker for the two rows above: the **FitsTable / `-TAB`

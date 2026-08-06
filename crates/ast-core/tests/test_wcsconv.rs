@@ -62,13 +62,19 @@ fn fixtures_dir() -> PathBuf {
 /// `native`-encoding wcsconv cases whose keyword-card output is not yet
 /// byte-exact with the C oracle.
 ///
-/// **The list is empty**: every native case is byte-compared against its
-/// C-generated reference. It stays here because it is also the mechanism that
-/// keeps that fact honest — an entry added to work around a regression is
-/// visible in the diff, carries a written reason, and is checked by
-/// [`native_read_excluded_entries_still_fail`], which fails as soon as a listed
-/// entry starts passing. With the list empty, a `WCSCONV_NO_EXCLUDE=1` run and
-/// a plain run report the same number of failures.
+/// **Empty, and intended to stay empty**: every wcsconv case is compared
+/// against its C-generated reference. `WCSCONV_NO_EXCLUDE=1` is therefore a
+/// no-op, and both runs report the same counts — which is what proves the list
+/// is empty rather than that the comparison was turned off.
+///
+/// A new entry is justified only by a difference that is *not* a port defect:
+/// a C artifact the port deliberately does not reproduce, and that the
+/// comparator cannot absorb. Aliasing-driven tag placement was the one such
+/// case, and it is handled by `common::is_aliasing_tag_card` in the comparator
+/// instead (see `docs/issues/c-library-quirks.md`), so a new entry needs a
+/// reason of that kind, recorded in that document, and not merely a diff
+/// nobody has diagnosed yet. A FITS-read gap is a bug to fix, not an entry to
+/// add.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Cases whose only difference from the C reference is where an `IsSimp` or
