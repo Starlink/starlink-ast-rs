@@ -109,4 +109,4 @@ Closed (marked historical in-doc, removed as active work):
 |---|---|---|
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
-| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | `#[ignore]` investigative harness (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; not a CI gate pending divergence fixes; `gen_transform_oracle` intentionally not ported |
+| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1606 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |

@@ -1399,6 +1399,159 @@ fn head_sections_match_oracle() {
     );
 }
 
+/// Simplify-corpus oracle sections not yet matching C, each with a one-line
+/// reason. Same discipline as `HEAD_ORACLE_EXCLUDED` and
+/// `SLAMAP_ORACLE_EXCLUDED`: identified by `(relpath, forward)`, only ever
+/// shrinks, and empty means parity is proven.
+///
+/// A `LoadFail` on a fixture staged under `simplify_fixtures_unsupported/`
+/// does not belong here — the gate licenses those structurally, since they
+/// name a class the port has not implemented (`PLAN.md` §4, enforced by
+/// `test_deferred_fixtures.rs`). Everything else is a defect to fix.
+const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
+
+/// Number of simplify-corpus oracle section-directions currently gated. The
+/// gate asserts it examined at least this many, so a rename or deletion of a
+/// fixture cannot make the gate pass vacuously.
+/// Of the 1606 sections, 259 are `.head` and 136 are SlaMap, leaving 1211
+/// here, of which 18 are the deferred-class load-fails licensed below.
+const SIMPLIFY_SECTION_FLOOR: usize = 1193;
+
+/// Is this oracle section part of the simplify corpus (a `simplify_fixtures/`
+/// relpath or a top-level `.ast`/`.map`/`.simp` fixture)? This is everything
+/// the `.head` and SlaMap gates do not already cover.
+fn is_simplify_section(relpath: &str) -> bool {
+    !is_head_section(relpath) && !is_slamap_section(relpath)
+}
+
+/// Does this section's fixture resolve to the deferred-class staging area?
+///
+/// Those fixtures are kept in the corpus so the coverage they represent stays
+/// visible, but they instantiate a class the port has not implemented, so they
+/// cannot load. A `LoadFail` on one is expected; any other failure, and any
+/// failure on a fixture outside that area, is a defect.
+fn is_deferred_class_fixture(relpath: &str) -> bool {
+    resolve_fixture(relpath).is_some_and(|p| {
+        p.components()
+            .any(|c| c.as_os_str() == "simplify_fixtures_unsupported")
+    })
+}
+
+/// Regression gate over every oracle section the `.head` and SlaMap gates do
+/// not cover — the simplify corpus, which is the bulk of the 1606 sections.
+///
+/// Without this the majority of the corpus was read only by
+/// `transform_oracle_report`, which is `#[ignore]` and does not assert, so a
+/// divergence there failed nothing.
+#[test]
+fn simplify_sections_match_oracle() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let ov = parse_overrides(
+        &std::fs::read_to_string(format!("{dir}/transform_oracle_overrides.txt"))
+            .expect("overrides file present"),
+    );
+    let mut reports = Vec::new();
+    for name in [
+        "simplify_fixtures.oracle",
+        "headers.oracle",
+        "framesets.oracle",
+    ] {
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        reports.extend(run_oracle(&text, &ov));
+    }
+
+    let excluded: std::collections::HashSet<(&str, bool)> = SIMPLIFY_ORACLE_EXCLUDED
+        .iter()
+        .map(|(rp, fwd, _)| (*rp, *fwd))
+        .collect();
+
+    // A section fails the gate when its transform outputs diverge from C, the
+    // fixture won't load, or its arity no longer matches. Pass /
+    // SkippedByOverride / Skipped are all acceptable ("not a divergence").
+    let is_fail = |o: &Outcome| {
+        matches!(
+            o,
+            Outcome::Mismatch(_) | Outcome::LoadFail(_) | Outcome::Arity(_)
+        )
+    };
+
+    let mut unexpected_failures: Vec<String> = Vec::new();
+    let mut stale_exclusions: std::collections::HashSet<(&str, bool)> = excluded.clone();
+    let mut checked = 0usize;
+
+    for r in &reports {
+        if !is_simplify_section(&r.relpath) {
+            continue;
+        }
+        // A deferred-class fixture may fail to load, and only that way.
+        if matches!(r.outcome, Outcome::LoadFail(_)) && is_deferred_class_fixture(&r.relpath) {
+            continue;
+        }
+        checked += 1;
+        let key = (r.relpath.as_str(), r.forward);
+        if excluded.contains(&key) {
+            if is_fail(&r.outcome) {
+                stale_exclusions.remove(&key);
+            }
+            // An excluded section that now passes stays in `stale_exclusions`.
+        } else if is_fail(&r.outcome) {
+            unexpected_failures.push(format!(
+                "{} (forward={}): {:?}",
+                r.relpath,
+                r.forward,
+                describe_outcome(&r.outcome),
+            ));
+        }
+    }
+
+    assert!(
+        unexpected_failures.is_empty(),
+        "simplify oracle sections diverged from C (not excluded):\n{}",
+        unexpected_failures.join("\n"),
+    );
+    assert!(
+        stale_exclusions.is_empty(),
+        "SIMPLIFY_ORACLE_EXCLUDED entries now pass — remove them:\n{:?}",
+        stale_exclusions,
+    );
+    assert!(
+        checked >= SIMPLIFY_SECTION_FLOOR,
+        "gate examined only {checked} simplify sections (expected >= \
+         {SIMPLIFY_SECTION_FLOOR}); fixtures may have been renamed or removed",
+    );
+}
+
+/// Every oracle section is covered by one of the three asserting gates, so a
+/// divergence anywhere in the corpus fails a test rather than only showing up
+/// in the `#[ignore]` report.
+#[test]
+fn every_oracle_section_is_gated() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let mut ungated = Vec::new();
+    let mut total = 0usize;
+    for name in [
+        "simplify_fixtures.oracle",
+        "headers.oracle",
+        "framesets.oracle",
+    ] {
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        for s in parse_oracle(&text).expect("oracle parses") {
+            total += 1;
+            if !is_head_section(&s.relpath)
+                && !is_slamap_section(&s.relpath)
+                && !is_simplify_section(&s.relpath)
+            {
+                ungated.push(s.relpath);
+            }
+        }
+    }
+    assert!(
+        ungated.is_empty(),
+        "oracle sections covered by no gate:\n{ungated:?}",
+    );
+    assert_eq!(total, 1606, "gates must span every section");
+}
+
 /// Investigative harness. Not part of the normal suite or CI: run with
 ///   cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
 /// It runs every oracle section, prints a summary, and writes a JSON report
