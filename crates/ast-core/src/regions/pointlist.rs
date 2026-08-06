@@ -393,8 +393,13 @@ impl Region for PointList {
         self.data.negated
     }
 
+    /// A PointList's Closed attribute is always the opposite of its Negated
+    /// attribute, whatever value was stored.
+    ///
+    /// Points have zero volume, so a PointList consists entirely of boundary
+    /// and is closed unless negated (`pointlist.c:400-421`).
     fn is_closed(&self) -> bool {
-        self.data.closed
+        !self.data.negated
     }
 
     fn set_closed(&mut self, closed: bool) {

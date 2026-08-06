@@ -380,9 +380,15 @@ fn region_attributes() {
     assert_eq!(pl.mesh_size(), 200);
     assert!((pl.fill_factor() - 1.0).abs() < 1e-10);
 
-    // Setters.
+    // A PointList's Closed attribute always reports the opposite of Negated,
+    // so setting it has no effect: points are all boundary, and are included
+    // unless the PointList is negated.
     pl.set_closed(false);
+    assert!(pl.is_closed());
+    pl.negate();
     assert!(!pl.is_closed());
+    pl.negate();
+    assert!(pl.is_closed());
 
     pl.set_mesh_size(500);
     assert_eq!(pl.mesh_size(), 500);
