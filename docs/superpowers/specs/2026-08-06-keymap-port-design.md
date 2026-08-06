@@ -43,6 +43,17 @@ The C table has no property we need that `HashMap` lacks:
 - **Observable order does not come from the table.** `SortBy` ordering is computed from `member` / `keymember` / `KeyCmp`, none of which involve bucket layout. C's `SORTBY_NONE` order *is* bucket order, and that is precisely Bug 1; see "Ordering".
 - **Nothing else reads `mapsize`.** `astMapSize` sums `nentry[itab]` (`keymap.c:7801`) — a count `HashMap` already has. `mapsize` reaches the outside world through exactly one path: the `MapSz` card.
 
+### Presizing the `HashMap`
+
+`HashMap` grows by reallocating and rehashing every entry when it passes its load factor, so bulk insertion into a default-constructed map does redundant work.
+We do not have to assume that is negligible, because on both paths where a KeyMap is filled in bulk the eventual entry count is known before the first insert:
+
+- **`SizeGuess`.** This is precisely C's presizing hook — "an estimate of the number of entries that will be stored", settable only while the map is empty (`keymap.c:9463`) — and C spends it on `NewTable(sizeguess/MAX_ENTRIES_PER_TABLE_ENTRY)`. Rust spends the same number on `HashMap::with_capacity(sizeguess)`, which is a closer reading of the attribute's documented meaning than C's own use of it: C divides by 10 because ten entries share a bucket, whereas `with_capacity` wants the entry count itself. Note the attribute's prose claims a default of 300 while `GetSizeGuess` returns `MIN_TABLE_SIZE*MAX_ENTRIES_PER_TABLE_ENTRY`; `astGetI` on a fresh KeyMap returns 160, so the prose is stale and 160 is the value to port.
+- **`from_node`.** The whole `Node` is in hand before the first insert, so the entry count is exact — count the `Key%d` items and `reserve` that. No estimate is involved, and this is the path that matters for reading a large serialised KeyMap.
+
+`SizeGuess` still round-trips and still seeds the `MapSz` computation below; it now additionally does the job its documentation describes.
+Where neither applies — a caller putting entries one at a time with no `SizeGuess` — the map grows amortised O(1), which is the same bargain C makes with `DoubleTableSize` and needs no special handling.
+
 ### `MapSz` is computed at dump time, exactly
 
 `Dump` writes `MapSz` unconditionally (`keymap.c:10510`) and `LoadKeyMap` feeds it to `NewTable` (`keymap.c:11026`), so the card must be emitted.
@@ -98,7 +109,7 @@ Every other card, `MemCnt` included, is compared byte-exactly.
 pub struct KeyMap {
     entries: HashMap<String, MapEntry>,  // key already normalised by ConvertKey
     member_count: u64,                   // source of both age counters
-    sizeguess: Option<usize>,            // seeds the dump-time MapSz loop
+    sizeguess: Option<usize>,            // presizes `entries`; seeds the MapSz loop
     key_case: Option<bool>,              // None = attribute unset
     key_error: Option<bool>,
     map_locked: Option<bool>,
@@ -401,7 +412,8 @@ Both halves are mirrored: we read `Mem%d` if present, and do not write it.
 The final `member_count = astReadInt(channel,"memcnt",0)` is ported.
 
 `MapSz` is read and discarded — it sizes a table we do not build, and re-emitting it verbatim would contradict the content-derived value the dump computes.
-`SzGss` is *not* discarded: it is a user-set attribute that C restores (`keymap.c:10996`), it round-trips, and it seeds the sizing loop.
+Nothing is lost by ignoring it: C's only use for it is presizing the table it is about to fill, and `from_node` presizes from the exact `Key%d` count instead (see "Presizing the `HashMap`").
+`SzGss` is *not* discarded: it is a user-set attribute that C restores (`keymap.c:10996`), it round-trips, and it both presizes the map and seeds the sizing loop.
 
 `AnyObject` gains `KeyMap(Box<KeyMap>)` — boxed because a KeyMap may contain KeyMaps — wired into both `any_object_from_node` (`serial/mod.rs:1672`) and `any_object_to_node`.
 
