@@ -33,14 +33,59 @@ It is a useful reference for API shape but not a basis for the port: it hand-rol
 
 ### Why not `std::collections::HashMap`
 
-The C table is ported as the primary storage structure, and `std::HashMap` is not used underneath it.
-This is a deliberate choice, not inertia:
+The C table is ported as the primary storage structure, and `std::collections::HashMap` is not used underneath it.
+That "C does it this way" is no justification at all — `HashMap` is a better hash map than `keymap.c`'s, written and tuned by people who do that for a living, and if lookup were the only requirement it would be the obvious choice.
+The reason it is not used is narrower and specific: **it cannot produce the `MapSz` value we are obliged to serialise, and the machinery needed to produce that value is the hash table.**
 
-- **The table size is part of the serialised format.** `Dump` writes `MapSz` unconditionally (`keymap.c:10510`) and `LoadKeyMap` reads it back. Byte-exact round-tripping requires modelling `mapsize` and its doubling rule, so the table exists whatever else we build.
-- **The C table is already an efficient hash map.** Buckets are capped at `MAX_ENTRIES_PER_TABLE_ENTRY = 10` (`keymap.c:236`) by `DoubleTableSize` (`keymap.c:2578`). `SearchTableEntry` (`keymap.c:9057`) is hash → bucket index → a `KeyCmp` scan of at most ~10 short strings. That is O(1) amortised.
-- **A `HashMap` alongside would be a redundant second index.** It would duplicate every key, and every put/remove/rename/`SetKeyCase`/`DoubleTableSize` would have to keep both structures consistent. Cost with no measurable win over a 10-element scan.
+Two things are *not* obstacles, and should not be mistaken for reasons:
 
-We write no hash algorithm of our own: `HashFun` (`keymap.c:3604`) is djb2 and is ported verbatim.
+- **Key equivalence.** `KeyCmp` (`keymap.c:3921`) ignores trailing spaces and `HashFun` (`keymap.c:3604`) ignores all spaces, which looks like it rules out a `String` key. It does not. C normalises the key *at insertion*: `ConvertKey` (`keymap.c:1573`) uppercases when `KeyCase=0`, and `MAKE_MAPPUT0` null-terminates away trailing spaces before hashing (`keymap.c:4706-4716`). Once the same normalisation is applied to the lookup key, equivalence is exact string equality — a perfectly good `HashMap` key.
+- **Lookup speed.** Both are O(1). `HashMap`'s constant factor is probably the better of the two.
+
+### The `MapSz` obligation
+
+`Dump` writes `MapSz` unconditionally (`keymap.c:10510`) and `LoadKeyMap` reads it back into `NewTable` (`keymap.c:11026`).
+It is a card in every serialised KeyMap, including both fixtures this repository holds, and this port's contract is byte-exact native output.
+
+**`MapSz` is not derivable from the entry set.** It is a function of collision history, and it never shrinks. Both halves verified against `reference/starlink-ast/build/libast.so`:
+
+```
+spread: nentry=11  MapSz=16      keys A..K, well distributed
+pile  : nentry=11  MapSz=32      keys K0 K79 K88 K97 K169 K178 K187 K196 K259 K268 K277
+                                 (chosen so djb2 & 15 == 0 for all of them)
+pile after removing down to 2 entries: MapSz=32
+```
+
+Two KeyMaps with the same number of entries have different `MapSz` because of how their keys collide; and a KeyMap holding two entries reports the table size its 11-entry past earned it, because `DoubleTableSize` (`keymap.c:2578`) is the only thing that ever changes `mapsize` after construction and there is no counterpart that halves it (`RemoveTableEntry` decrements `nentry[itab]` at `keymap.c:9036` and stops there).
+
+So `MapSz` cannot be recomputed at dump time from the keys, from the count, or from both. It is retained state.
+
+### What retaining it costs
+
+To emit the value C emits, a Rust `KeyMap` must carry:
+
+1. djb2 over each key — the *specific* function, since which bucket a key lands in decides when a bucket crosses the threshold, and therefore what `mapsize` becomes;
+2. the per-entry hash (C stores it in `AstMapEntry.hash`, `keymap.h:114`), because doubling rehashes without re-reading keys;
+3. per-bucket occupancy counts, since the doubling trigger is `nentry[itab] > MAX_ENTRIES_PER_TABLE_ENTRY` (`keymap.c:708`) on a single bucket, not a global load factor;
+4. `mapsize` itself, with the `2*mapsize` doubling and `hash & (newmapsize-1)` redistribution (`keymap.c:2626-2670`);
+5. `NewTable`'s power-of-two rounding and `MIN_TABLE_SIZE` clamp (`keymap.c:8760-8765`), and `SetSizeGuess`'s `sizeguess/MAX_ENTRIES_PER_TABLE_ENTRY` sizing (`keymap.c:9520`).
+
+That list is the hash table with the payload removed.
+Adding `HashMap<String, MapEntry>` for lookup therefore does not replace items 1-5 — it sits *alongside* them. Both structures then hold every key, and every put, remove, rename, `SetKeyCase` (which rehashes on case change) and `DoubleTableSize` has to update both and keep them agreeing. The `HashMap` is the redundant one in that pairing, not the table: delete the table and `MapSz` becomes unknowable; delete the `HashMap` and nothing is lost but a constant factor.
+
+Given that, the table stores the entries. `Vec<Vec<MapEntry>>` rather than C's pointer-chased linked list, so buckets are contiguous.
+
+### Rejected alternative: drop `MapSz` fidelity
+
+`HashMap` alone, with `MapSz` written as a plausible constant, is the clearly better structure — and is rejected because inventing the value is exactly the kind of heuristic this port does not use. It would break byte-exact round-tripping on the two fixtures we hold, and silently on any KeyMap large enough to have doubled. "Our fixtures never exceed 16" is not a reason to omit a C branch.
+
+### If the constant factor ever matters
+
+This decision is reversible in one direction only, which is the safe one.
+A `HashMap<String, usize>` index from normalised key to entry position can be added later as a pure lookup accelerator without touching the serialisation model, because the table would still own `mapsize`.
+That is worth doing if profiling shows bucket scans mattering, and not before: `DoubleTableSize` bounds every bucket to ~10 short strings, so `SearchTableEntry` (`keymap.c:9057`) scans a handful of contiguous entries with a cheap length check first.
+
+We write no hash algorithm of our own — `HashFun` is djb2 and is ported verbatim.
 
 ### The struct
 
