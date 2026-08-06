@@ -62,8 +62,8 @@ fn fixtures_dir() -> PathBuf {
 /// `native`-encoding wcsconv cases whose keyword-card output is not yet
 /// byte-exact with the C oracle.
 ///
-/// **Empty, and intended to stay empty**: every wcsconv case is compared
-/// against its C-generated reference. `WCSCONV_NO_EXCLUDE=1` is therefore a
+/// **Empty, and intended to stay empty**: all 194 wcsconv cases are compared
+/// against their C-generated reference. `WCSCONV_NO_EXCLUDE=1` is therefore a
 /// no-op, and both runs report the same counts — which is what proves the list
 /// is empty rather than that the comparison was turned off.
 ///
