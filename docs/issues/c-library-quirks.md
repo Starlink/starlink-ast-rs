@@ -1410,3 +1410,215 @@ sees. Pinned by `format::tests::exponent_zero_strip_preserves_length` and
 `card::tests::format_float_overwide_exponent_keeps_the_shift_space` (wide case,
 space survives) / `format_float_narrow_exponent_stays_right_justified` (narrow
 case, absorbed by padding).
+
+---
+
+## KeyMap dump order reverses within a hash bucket, so dumps never stabilise
+
+**Status:** Open, and the strongest upstream candidate of the three KeyMap
+entries. **Not mirrored in Rust** — this is a deliberate divergence, agreed
+during the KeyMap port design
+(`docs/superpowers/specs/2026-08-06-keymap-port-design.md`), on the grounds that
+a predictable key ordering on write is plainly better than one that depends on
+how many times the object has been written.
+
+`Dump` (`keymap.c:10480`) walks the hash table bucket by bucket and, within each
+bucket, follows the `next` chain from the head (`keymap.c:10516-10525`):
+
+```c
+for( i = 0; i < this->mapsize; i++ ) {
+   next = this->table[ i ];
+   while( next && astOK ) {
+      DumpEntry( next, channel, ++nentry, status );
+      next = next->next;
+```
+
+`Dump` ignores `SortBy` entirely — bucket order is the serialised order
+unconditionally. `LoadKeyMap` (`keymap.c:10844`) then re-`astMapPut`s the
+entries in the order it reads them (`keymap.c:11035` onwards), and every put
+head-inserts into its bucket (`AddTableEntry`, `keymap.c:675`):
+
+```c
+entry->next = this->table[ itab ];
+this->table[ itab ] = entry;
+```
+
+**Consequence.** Any two keys that hash into the same bucket swap places on
+every write/read round trip, and the dump never converges. Reproduced against
+`reference/starlink-ast/build/libast.so` with `SIZE` and `FRAME`, which djb2
+puts in bucket 0 of a 16-entry table:
+
+```
+put order: SIZE, FRAME
+dump 1:  Key1 = "FRAME"   Key2 = "SIZE"
+dump 2:  Key1 = "SIZE"    Key2 = "FRAME"
+dump 3:  Key1 = "FRAME"   Key2 = "SIZE"
+dump1 == dump2 ? NO
+dump1 == dump3 ? NO      (MemCnt also differs)
+```
+
+This is not hypothetical for the shipped fixtures:
+`reference/starlink-ast/ast_tester/stcschan-test1-doc3-props.ast` has `SIZE` and
+`FRAME` colliding in bucket 0, and `TIME` and `REFPOS` colliding in bucket 4.
+
+Byte-exact comparison of any KeyMap-bearing file is therefore
+order-of-operations dependent: whether two logically identical KeyMaps serialise
+identically depends on their insertion history and on how many times each has
+been round-tripped.
+
+**Upstream fix.** Emit entries from `Dump` in `KeyCmp` order rather than bucket
+order. Since `Dump` already ignores `SortBy`, this changes no documented
+behaviour, and alphabetical output is idempotent under any insertion order. The
+hash table itself, and the `MapSz` card that records its size, are unaffected.
+
+**Rust behaviour (divergence, not mirror):** `KeyMap` appends within a bucket
+rather than head-inserting, and `to_node`, `map_key` and `map_iterate` return
+keys in `KeyCmp` order when `SortBy` is `None`. Sorting happens at read-out, so
+puts stay O(1) and `SortBy = None` keeps the "no sorted list maintained"
+property C documents as its reason for being the default. Two round-trip
+property tests pin the intended invariant: dump idempotence, and identical
+output for the same entries inserted in different orders. Both fail against
+current C by construction. The two in-repo KeyMap fixtures
+(`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/stcresourceprofile/cap_timemap_02.{map,simp}`)
+are regenerated with alphabetically ordered keys.
+
+---
+
+## `LoadKeyMap` injects a spurious `KyCas = 1` because `KeyCase`'s unset sentinel is `-1`, not `-INT_MAX`
+
+**Status:** Open. One-character fix. **Not mirrored in Rust** — the Rust port
+represents unset attributes as `Option`, which makes the confusion
+unrepresentable.
+
+`LoadKeyMap` reads the `KyCas` card with a default of `-INT_MAX`
+(`keymap.c:11001`):
+
+```c
+new->keycase = astReadInt( channel, "kycas", -INT_MAX );
+if ( TestKeyCase( new, status ) ) SetKeyCase( new, new->keycase, status );
+```
+
+But `KeyCase` is the one KeyMap attribute whose unset sentinel is `-1`
+(`keymap.c:10160-10161`):
+
+```c
+astMAKE_GET(KeyMap,KeyCase,int,1,(this->keycase == -1 ? 1 : this->keycase))
+astMAKE_TEST(KeyMap,KeyCase,( this->keycase != -1 ))
+```
+
+The other three all use `-INT_MAX` and are self-consistent: `KeyError`
+(`keymap.c:10201`), `MapLocked` (`keymap.c:10242`), `SortBy`
+(`keymap.c:10306`).
+
+So when the file has no `KyCas` card, `keycase` is loaded as `-INT_MAX`, which
+is `!= -1`, so `TestKeyCase` reports the attribute as *set* — and the next dump
+writes it out.
+
+**Consequence.** No freshly written KeyMap matches its own re-dump. Reproduced
+on a single-entry map, where no bucket collision is possible and the previous
+entry cannot be the cause:
+
+```
+dump 1:  Begin KeyMap / MapSz = 16 / MemCnt = 2 / Key1 = "ONLY" ...
+dump 2:  Begin KeyMap / KyCas = 1 / MapSz = 16 / MemCnt = 2 / Key1 = "ONLY" ...
+```
+
+Unlike the bucket-order bug this one converges: once `KyCas` is present it is
+read as a genuine value and further round trips are stable. Its effect is
+confined to the first round trip, but it is visible in this repository's own
+fixtures — `cap_timemap_02.simp:218` carries `KyCas = 1` while
+`cap_timemap_02.map` does not, for the same logical KeyMap read from the same
+source.
+
+The `TestKeyCase` result is also consulted by `SetKeyCase`, which raises
+`AST__NOWRT` on a non-empty KeyMap (`keymap.c:9234`); the load path calls it
+while the map is still empty, so it does not error, it just records the
+attribute as explicitly set.
+
+**Upstream fix.** Change the default at `keymap.c:11001` from `-INT_MAX` to
+`-1`. Alternatively change the sentinel at `keymap.c:10160-10161` to `-INT_MAX`
+for consistency with the other three attributes — but that touches the
+public-facing default-value expression, so the load-path default is the smaller
+change.
+
+**Rust behaviour (divergence, not mirror):** `KeyMap::key_case` is
+`Option<bool>`; `from_node` sets it only when the card is present, so an absent
+`KyCas` cannot be mistaken for a set one, and `to_node` writes it only when
+`Some`.
+
+---
+
+## `astMapIterate` never terminates on a KeyMap with `SortBy` set
+
+**Status:** Open. Latent — `table.c:3747` is the only caller in the tree and
+never sets `SortBy`, which is why this has not been hit. **Not mirrored in
+Rust** — the Rust iterator is index-bounded and cannot express the failure.
+
+`AddToSortedList` (`keymap.c:802`) builds a **circular** doubly-linked list. The
+empty case links an entry to itself (`keymap.c:864-866`):
+
+```c
+if( !lo ) {
+   this->first = entry;
+   entry->sprev = entry;
+   entry->snext = entry;
+```
+
+and the insert-at-front and insert-at-back cases both wrap the ends together
+(`keymap.c:872-885`), so `snext` is never NULL for any entry in the list.
+
+`MapKey` knows this and guards for the wrap (`keymap.c:3526-3533`):
+
+```c
+entry = this->first;
+for( istep = 0; entry && istep < index; istep++ ) {
+   entry = entry->snext;
+   if( entry == this->first ) { entry = NULL; break; }
+}
+```
+
+`MapIterate`'s sorted branch does not (`keymap.c:8690-8706`):
+
+```c
+/* Now deal with sorted keys. */
+   } else {
+      if( reset ) {
+         entry = this->first;
+      } else {
+         entry = this->iter_entry;
+      }
+      if( entry ) {
+         key = entry->key;
+         this->iter_entry = entry->snext;
+      }
+   }
+```
+
+The function's only termination signal is `key == NULL`, and `key` is taken from
+an entry that is never NULL, so the caller's loop never ends.
+
+**Consequence.** `astMapIterate` on any KeyMap with a non-default `SortBy` loops
+forever, re-yielding the same keys in order. Reproduced with a three-entry
+KeyMap and `SortBy = KeyUp`:
+
+```
+A B C A B C A B ...      terminated = NO -- ran past the end
+```
+
+The `SORTBY_NONE` branch (`keymap.c:8660-8688`) terminates correctly, because it
+walks the per-bucket `next` chains where NULL really does mark the end. A probe
+with the default `SortBy` yields `A B C` and terminates.
+
+**Upstream fix.** Add the wrap guard `MapKey` already uses:
+
+```c
+      if( entry ) {
+         key = entry->key;
+         this->iter_entry = ( entry->snext == this->first ) ? NULL : entry->snext;
+      }
+```
+
+**Rust behaviour (divergence, not mirror):** ordered read-out is a computed
+`Vec` of entry positions rather than C's circular `first`/`snext`/`sprev` list,
+and `map_iterate` returns `Option<&str>` from a bounded index into it.
+Termination is structural.
