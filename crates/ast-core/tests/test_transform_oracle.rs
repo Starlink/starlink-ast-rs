@@ -182,11 +182,52 @@ impl Loaded {
     }
 }
 
+/// A loaded fixture, or the reason the corpus cannot transform it.
+enum LoadOutcome {
+    /// Boxed to keep the two variants a similar size: an `AnyObject` is
+    /// several hundred bytes, a reason is a fat pointer.
+    Transformable(Box<Loaded>),
+    /// Resolved and read, but has no transform to compare against the
+    /// oracle. The string is the reason, reported verbatim as the skip.
+    Untransformable(&'static str),
+}
+use LoadOutcome::{Transformable, Untransformable};
+
+impl LoadOutcome {
+    /// The loaded fixture, panicking with the recorded reason otherwise.
+    /// For tests that name a fixture known to be transformable.
+    fn expect_transformable(self) -> Loaded {
+        match self {
+            Transformable(l) => *l,
+            Untransformable(reason) => panic!("fixture is not transformable: {reason}"),
+        }
+    }
+}
+
 /// Load a fixture named by an oracle relpath. Dispatches by extension:
 /// `.head` through a `FitsChan`, everything else through
-/// `from_native_string`. Returns `Ok(None)` for a resolved-but-non-Mapping
-/// object (KeyMap, non-Region STC), `Err` for a resolved-but-unreadable one.
-fn load_fixture(relpath: &str) -> Result<Option<Loaded>, String> {
+/// `from_native_string`.
+///
+/// `Err` means resolved but unreadable. `Ok(Untransformable(reason))` means
+/// resolved to an object this corpus cannot transform, and names which case
+/// it is: a bare Frame, or an object that is not a Mapping in either
+/// library (KeyMap, non-Region STC).
+///
+/// A bare Frame is a Mapping in C, so C's `oracle_load_mapping`
+/// (`transform_oracle_util.c:136`) accepts one and the generator recorded
+/// real sections for it — `specflux.ast` is a CmpFrame whose recorded
+/// output columns equal its inputs. The Rust port makes `Frame` and
+/// `Mapping` sibling traits, so a Frame has no transform to call, and these
+/// sections are skipped rather than checked.
+///
+/// Nothing is lost: used as a Mapping, a Frame implements a unit transform
+/// in both directions (`frame.c:115-119`), so the recorded values are an
+/// identity by construction rather than a result worth re-deriving. The one
+/// Frame class that overrides `Transform` is CmpFrame, and it departs from
+/// the identity only when a component is a Region (`cmpframe.c:9920-9922`),
+/// which the port would load as a Region — a Mapping — and so transform
+/// normally.
+fn load_fixture(relpath: &str) -> Result<LoadOutcome, String> {
     let path = match resolve_fixture(relpath) {
         Some(p) => p,
         None => return Err(format!("fixture not found: {relpath}")),
@@ -206,9 +247,15 @@ fn load_fixture(relpath: &str) -> Result<Option<Loaded>, String> {
 
     let is_frameset = matches!(obj, AnyObject::FrameSet(_));
     if obj.as_mapping().is_none() {
-        return Ok(None); // resolved but not a Mapping — legitimately skipped
+        let reason = if obj.as_frame().is_some() {
+            "bare Frame: not a Mapping in the Rust port, and a Frame's C \
+             transform is a unit transform, so there is no math to check"
+        } else {
+            "not a Mapping in C either, so the oracle records no transform"
+        };
+        return Ok(Untransformable(reason));
     }
-    Ok(Some(Loaded { obj, is_frameset }))
+    Ok(Transformable(Box::new(Loaded { obj, is_frameset })))
 }
 
 /// Resolve an oracle relpath (rooted at the C `ast_tester/` dir) to the
@@ -390,7 +437,7 @@ mod loader_tests {
     fn loads_native_mapping() {
         let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
             .expect("no error")
-            .expect("is a mapping");
+            .expect_transformable();
         let m = l.mapping().expect("mapping");
         assert_eq!(m.nin(), 2);
         assert!(l.frame(true).is_none(), "bare mapping has no frame");
@@ -400,12 +447,29 @@ mod loader_tests {
     fn loads_head_frameset_with_frames() {
         let l = load_fixture("cobe.head")
             .expect("no error")
-            .expect("is a mapping");
+            .expect_transformable();
         assert!(l.is_frameset);
         let m = l.mapping().expect("mapping");
         assert_eq!(m.nin(), 2);
         assert!(l.frame(true).is_some(), "forward -> current frame");
         assert!(l.frame(false).is_some(), "inverse -> base frame");
+    }
+
+    /// A bare Frame loads but is untransformable, and says why. C checks
+    /// these sections because a Frame is a Mapping there; the reason is
+    /// carried into the report so the skip does not have to be re-derived.
+    #[test]
+    fn bare_frame_is_untransformable_and_says_why() {
+        match load_fixture("specflux.ast").expect("loads") {
+            Transformable(_) => panic!("a bare Frame has no transform in the Rust port"),
+            Untransformable(reason) => {
+                assert!(reason.contains("bare Frame"), "reason names the case");
+                assert!(
+                    reason.contains("unit transform"),
+                    "reason says why it is safe"
+                );
+            }
+        }
     }
 }
 
@@ -601,7 +665,7 @@ mod transform_tests {
 
     #[test]
     fn skyframe_longitude_is_cyclic_pixel_is_not() {
-        let l = load_fixture("cobe.head").unwrap().unwrap();
+        let l = load_fixture("cobe.head").unwrap().expect_transformable();
         let flags = angular_flags(
             &l,
             &Section {
@@ -623,7 +687,7 @@ mod transform_tests {
     fn bare_mapping_all_axes_angular() {
         let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
             .unwrap()
-            .unwrap();
+            .expect_transformable();
         let s = Section {
             relpath: "x.map".into(),
             nin: 2,
@@ -639,7 +703,7 @@ mod transform_tests {
     fn transform_reproduces_oracle_shape() {
         let l = load_fixture("simplify_fixtures/matrix_diagonal_to_zoom.map")
             .unwrap()
-            .unwrap();
+            .expect_transformable();
         let s = Section {
             relpath: "x.map".into(),
             nin: 2,
@@ -883,12 +947,12 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
 
     for s in sections {
         let loaded = match load_fixture(&s.relpath) {
-            Ok(Some(l)) => l,
-            Ok(None) => {
+            Ok(Transformable(l)) => *l,
+            Ok(Untransformable(reason)) => {
                 reports.push(SectionReport {
                     relpath: s.relpath.clone(),
                     forward: s.forward,
-                    outcome: Outcome::Skipped("not a mapping".into()),
+                    outcome: Outcome::Skipped(reason.into()),
                 });
                 continue;
             }
