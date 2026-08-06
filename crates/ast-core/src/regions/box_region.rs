@@ -670,7 +670,7 @@ impl RegionGeometry for BoxRegion {
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
         let (lbnd, ubnd) = self.bounds();
-        let closed = self.data.closed;
+        let closed = self.data.closed_for_base_inside();
 
         let mut result = vec![false; npoint];
 

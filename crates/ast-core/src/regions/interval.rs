@@ -466,7 +466,7 @@ impl RegionGeometry for Interval {
         let npoint = pts.npoint();
         let naxes = self.data.points[0].len();
         let (lbnd, ubnd) = self.effective_bounds();
-        let closed = self.data.closed;
+        let closed = self.data.closed_for_base_inside();
 
         let mut result = vec![false; npoint];
 

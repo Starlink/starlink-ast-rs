@@ -263,7 +263,7 @@ impl RegionGeometry for Circle {
         let base_frame = self.data.frameset.base();
         let centre = &self.data.points[0];
         let radius = self.radius()?;
-        let closed = self.data.closed;
+        let closed = self.data.closed_for_base_inside();
 
         if is_bad(radius) {
             return Ok(vec![false; npoint]);
@@ -358,7 +358,10 @@ impl RegionGeometry for Circle {
             // Extend the box to include the effect of any coordinate-system
             // singularities (e.g. a pole). The membership predicate mirrors
             // C's `reg` Mapping argument: it reports whether a point in the
-            // base Frame lies inside the un-negated Circle.
+            // base Frame lies inside the un-negated Circle. C builds that
+            // probe by copying the Circle and clearing Negated
+            // (circle.c:1095-1097), leaving Closed as it was, so the raw
+            // Closed value is the effective one here.
             let inside = |point: &[f64]| -> AstResult<bool> {
                 let dist = base_frame.distance(centre, point)?;
                 if is_bad(dist) {

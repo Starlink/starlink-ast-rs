@@ -616,12 +616,10 @@ fn reg_pins_semi_infinite_interval_boundary() {
         .build()
         .unwrap();
 
-    // The x==10 face is NOT reported on-boundary: axis 0 is unbounded, so the
-    // default uncertainty collapses to zero width on that axis (region.c
-    // GetDefUnc 3570-3573). With a zero band the closed narrowed Interval
-    // still contains x==10, so the negated-small transform rejects it.
+    // The x==10 face is on the boundary even though axis 0 is unbounded below:
+    // an upper limit is still a limit. C `astRegPins` returns 1 here.
     let on_x_face = PointSet::from_rows([[10.0_f64, 5.0]]);
-    assert!(!interval.reg_pins(&on_x_face, None).unwrap());
+    assert!(interval.reg_pins(&on_x_face, None).unwrap());
 
     // A point deep in the interior is likewise not on the boundary.
     let interior = PointSet::from_rows([[-100.0_f64, 5.0]]);
@@ -641,7 +639,8 @@ fn reg_pins_semi_infinite_boundary_mesh_when_bounded_axis() {
     let on_y_face = PointSet::from_rows([[5.0_f64, 0.0]]);
     assert!(interval.reg_pins(&on_y_face, None).unwrap());
 
-    // Mixed set: one on-boundary, one interior → whole set fails.
+    // `reg_pins` requires *every* point to be on the boundary, so a set mixing
+    // the on-boundary x-face with an interior point fails on the latter.
     let mixed = PointSet::from_rows([[10.0_f64, 5.0], [-100.0, 5.0]]);
     assert!(!interval.reg_pins(&mixed, None).unwrap());
 }

@@ -430,7 +430,7 @@ impl RegionGeometry for Ellipse {
         let npoint = pts.npoint();
         let (a, b, angle) = self.ellipse_params()?;
         let centre = &self.data.points[0];
-        let closed = self.data.closed;
+        let closed = self.data.closed_for_base_inside();
 
         // Pre-compute trigonometric and reciprocal values for efficiency.
         let cos_a = angle.cos();

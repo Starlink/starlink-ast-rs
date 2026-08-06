@@ -259,6 +259,31 @@ impl RegionData {
         *self.cached_base_mesh.borrow_mut() = None;
     }
 
+    /// The boundary-strictness that
+    /// [`RegionGeometry::reg_base_inside`](super::RegionGeometry::reg_base_inside)
+    /// must use, given that its caller applies the Negated attribute afterwards.
+    ///
+    /// In C, a point exactly on the boundary belongs to the region iff Closed,
+    /// *independent of Negated* — a region and its negation both contain their
+    /// shared boundary. Each class encodes that invariant differently:
+    /// `polygon.c:6423-6444` states it directly, assigning `in_region = closed`
+    /// for an `ON` point in both the negated and un-negated arms, while
+    /// `circle.c:2078-2092`, `ellipse.c:2196-2210`, `box.c:4225/4263` (via the
+    /// `astAxIn` strictness argument) and `interval.c:3666-3890` reach the same
+    /// result by pairing each arm with a complementary comparison.
+    ///
+    /// `reg_base_inside` reports membership of the *un-negated* region and
+    /// [`region_transform`] inverts it when Negated is set. Boolean inversion is
+    /// correct for the interior but would move the boundary to the wrong side,
+    /// so the boundary must be reported inverted here in order to come back out
+    /// the right way — hence Closed XOR Negated rather than Closed.
+    ///
+    /// This is only ever the right question for `reg_base_inside`; the Closed
+    /// attribute itself is [`RegionGeometry::is_closed`](super::RegionGeometry::is_closed).
+    pub(crate) fn closed_for_base_inside(&self) -> bool {
+        self.closed != self.negated
+    }
+
     /// Whether a closed-curve region (Circle, Ellipse, Box, …) is bounded.
     ///
     /// Faithful port of the base `Region::GetBounded` (region.c:3358): a

@@ -533,7 +533,7 @@ impl RegionGeometry for Polygon {
         // represented region, as it is in C. The caller applies negation, so
         // this returns the un-negated membership (C's `neg == 0` branch).
         let npoint = pts.npoint();
-        let closed = self.data.closed;
+        let closed = self.data.closed_for_base_inside();
         let bfrm = self.data.frameset.base();
 
         let (edges, in_point, _acw) = self.cache()?;
