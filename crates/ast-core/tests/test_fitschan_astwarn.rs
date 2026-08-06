@@ -164,3 +164,59 @@ fn badctype_warning_names_the_legal_ctype_and_precedes_naxis1() {
         "ASTWARN block must precede NAXIS1, got {kws:?}"
     );
 }
+
+/// The `tan-zeropv` fixture header: a `-TAN` projection carrying `PVi_m`
+/// distortion coefficients that are all zero on the longitude axis.
+fn tan_zeropv_header() -> String {
+    std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/tan-zeropv.head",
+    ))
+    .expect("tan-zeropv.head should be readable")
+}
+
+#[test]
+fn all_zero_longitude_pv_warns_and_demotes_to_plain_tan() {
+    // C `GetUsedPolyTan` (fitschan.c:14071-14080): the latitude axis has a
+    // non-zero coefficient (PV2_1 = 1.0) so it passes, and the longitude check
+    // in the `else` branch then finds every coefficient zero, which raises
+    // `badpv`, keeps the standard TAN convention and deletes the longitude PVs.
+    let mut fc = FitsChan::from_header(&tan_zeropv_header()).expect("header parses");
+    let _ = fc.read().expect("read succeeds").expect("an object");
+
+    let warns = astwarn_values(&fc);
+    assert!(
+        warns.iter().any(|w| w.contains("longitude axis are zero")),
+        "expected the longitude-axis badpv warning, got: {warns:#?}"
+    );
+    assert!(
+        !warns.iter().any(|w| w.contains("latitude axis are zero")),
+        "the latitude axis has PV2_1 = 1.0 and must not warn: {warns:#?}"
+    );
+}
+
+#[test]
+fn all_zero_latitude_pv_warns_about_the_latitude_axis() {
+    // The other side of the same branch: zero every latitude coefficient and C
+    // reports the latitude axis instead, never reaching the longitude check
+    // (fitschan.c:14030-14039). The header is edited in memory — the fixture on
+    // disk is C-generated ground truth.
+    let text = tan_zeropv_header()
+        .replace(
+            "PV2_1   =                  1.0",
+            "PV2_1   =                  0.0",
+        )
+        .replace(
+            "PV2_2   =            0.0001000",
+            "PV2_2   =            0.0000000",
+        );
+
+    let mut fc = FitsChan::from_header(&text).expect("header parses");
+    let _ = fc.read().expect("read succeeds").expect("an object");
+
+    let warns = astwarn_values(&fc);
+    assert!(
+        warns.iter().any(|w| w.contains("latitude axis are zero")),
+        "expected the latitude-axis badpv warning, got: {warns:#?}"
+    );
+}

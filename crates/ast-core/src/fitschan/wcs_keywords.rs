@@ -691,7 +691,12 @@ CTYPE1  = 'RA---TAN'           / Axis type
 CTYPE2  = 'DEC--TAN'           / Axis type
 END";
         let mut cards = cards_from(header);
-        super::super::spec_trans::spec_trans_inplace(&mut cards, crate::Encoding::FitsWcs, false);
+        super::super::spec_trans::spec_trans_inplace(
+            &mut cards,
+            crate::Encoding::FitsWcs,
+            false,
+            &mut Vec::new(),
+        );
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
         assert!(store.has_pc_matrix());
@@ -734,7 +739,12 @@ END";
         ))
         .unwrap();
         let mut cards = cards_from(&sip_header);
-        super::super::spec_trans::spec_trans_inplace(&mut cards, crate::Encoding::FitsWcs, false);
+        super::super::spec_trans::spec_trans_inplace(
+            &mut cards,
+            crate::Encoding::FitsWcs,
+            false,
+            &mut Vec::new(),
+        );
         let store = extract_wcs_keywords(&cards, ' ').unwrap();
 
         // Verify basic keywords.

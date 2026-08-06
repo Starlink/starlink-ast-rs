@@ -826,6 +826,7 @@ END";
             &cards,
             crate::fitschan::Encoding::FitsAips,
             false,
+            &mut Vec::new(),
         );
         let store = read_from_cards(&trans).unwrap();
 
@@ -1247,6 +1248,7 @@ END";
             &cards,
             crate::fitschan::Encoding::FitsAips,
             false,
+            &mut Vec::new(),
         );
         let store = read_from_cards(&trans).unwrap();
 

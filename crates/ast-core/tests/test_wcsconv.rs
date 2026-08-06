@@ -68,17 +68,12 @@ fn fixtures_dir() -> PathBuf {
 /// other native case is byte-compared. The goal is to empty this list by
 /// fixing the FITS reader. Each reason names the first differing keyword, so
 /// the entries group by cause: BEGAST/ENDAST = object-shape divergence;
-/// EQNOX = time-attribute set-ness; DOMAIN = Frame attribute defaulting;
-/// A_ORDER = alt-plane distortion cards; ASTWARN = an unported warning card.
+/// EQNOX = time-attribute set-ness; A_ORDER = alt-plane distortion cards.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
     ("origin_native", "EQNOX_A: equinox attribute set-ness"),
     (
         "sip-alt_native",
         "A_ORDER: alt-plane SIP cards keep the version character",
-    ),
-    (
-        "tan-zeropv_native",
-        "ASTWARN: GetUsedPolyTan's all-zero-coefficient warning",
     ),
     ("zpx_native", "BEGAST_I: ShiftMap vs MatrixMap object shape"),
 ];
