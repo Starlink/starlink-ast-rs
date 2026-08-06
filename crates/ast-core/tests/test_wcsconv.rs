@@ -69,13 +69,10 @@ fn fixtures_dir() -> PathBuf {
 /// fixing the FITS reader. Each reason names the first differing keyword, so
 /// the entries group by cause: BEGAST/ENDAST = object-shape divergence;
 /// EQNOX = time-attribute set-ness; A_ORDER = alt-plane distortion cards.
-const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
-    ("origin_native", "EQNOX_A: equinox attribute set-ness"),
-    (
-        "sip-alt_native",
-        "A_ORDER: alt-plane SIP cards keep the version character",
-    ),
-];
+const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[(
+    "sip-alt_native",
+    "A_ORDER: alt-plane SIP cards keep the version character",
+)];
 
 /// Cases whose only difference from the C reference is where an `IsSimp` or
 /// `Invert` tag sits inside a compound Mapping. Those lines are dropped from

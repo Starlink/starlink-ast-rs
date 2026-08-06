@@ -368,20 +368,6 @@ pub(crate) fn build_celestial_with_def_b1950(
             | SkySystem::Helioecliptic
     );
 
-    // Systems that actually *store* a mean Equinox attribute. ICRS and GAPPT
-    // are equinox-independent — AST does not dump an Equinox for them (the
-    // gappt.native fixture has no EQNOX card) — so they are excluded from the
-    // attribute set, even though an equinox *value* is still used to seed the
-    // epoch fallback below.
-    let stores_equinox = matches!(
-        system,
-        SkySystem::Fk4
-            | SkySystem::Fk4NoE
-            | SkySystem::Fk5
-            | SkySystem::Ecliptic
-            | SkySystem::Helioecliptic
-    );
-
     // Effective equinox year, mirroring C's defaulting (fitschan.c:39193-
     // 39256): a supplied EQUINOX is used as-is; otherwise the default comes
     // from the RADESYS keyword alone — FK4/FK4-NO-E give B1950, FK5 gives
@@ -407,10 +393,15 @@ pub(crate) fn build_celestial_with_def_b1950(
     };
 
     // Step 6: set the Equinox attribute. C restricts this to equatorial and
-    // ecliptic systems (fitschan.c:39371-39373), and AST does not dump an
-    // Equinox for the equinox-independent ICRS / GAPPT within that group.
+    // ecliptic systems (fitschan.c:39374) and applies no further system test:
+    // an ICRS or GAPPT header carrying an EQUINOX card gets the attribute set
+    // like any other "EQU" axis. `SkyFrame::Dump` then writes the value because
+    // an explicitly set attribute is dumped whatever its `helpful` flag says
+    // (skyframe.c:12005-12020) — `helpful` only governs whether an *unset*
+    // Equinox appears as a commented default, which is where ICRS and GAPPT
+    // differ from FK4/FK5/Ecliptic.
     let eq_year: Option<f64> = is_equ_or_ecl.then_some(equinox_year).flatten();
-    if stores_equinox && let Some(eq) = eq_year {
+    if let Some(eq) = eq_year {
         sky_frame.set_equinox_year(eq);
     }
 
