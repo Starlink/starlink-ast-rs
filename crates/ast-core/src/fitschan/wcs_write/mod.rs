@@ -980,7 +980,7 @@ pub(crate) fn date_str_to_mjd(s: &str) -> Option<f64> {
     // Legacy DD/MM/YY format.
     if let Some(parts) = parse_legacy_date(s) {
         let (year, month, day) = parts;
-        return gregorian_to_mjd(year, month, day, 0, 0, 0.0);
+        return gregorian_to_mjd(year, month, day, 0, 0, 0, "");
     }
     // ISO-8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS[.SSS][Z]
     let (date_part, time_part) = match s.split_once('T') {
@@ -995,7 +995,7 @@ pub(crate) fn date_str_to_mjd(s: &str) -> Option<f64> {
     let month: u32 = date_segs[1].parse().ok()?;
     let day: u32 = date_segs[2].parse().ok()?;
 
-    let (hour, min, sec_frac) = if let Some(tp) = time_part {
+    let (hour, min, sec, frac_digits) = if let Some(tp) = time_part {
         let tp = tp.trim_end_matches('Z');
         let time_segs: Vec<&str> = tp.split(':').collect();
         if time_segs.len() != 3 {
@@ -1003,13 +1003,21 @@ pub(crate) fn date_str_to_mjd(s: &str) -> Option<f64> {
         }
         let h: u32 = time_segs[0].parse().ok()?;
         let m: u32 = time_segs[1].parse().ok()?;
-        let s: f64 = time_segs[2].parse().ok()?;
-        (h, m, s)
+        // Keep the whole and fractional seconds apart. C scans them as a
+        // `%2d` and a separate `%d` whose field width comes from the
+        // bracketing `%n` markers, then recombines them arithmetically; see
+        // gregorian_to_mjd.
+        let (whole, frac) = match time_segs[2].split_once('.') {
+            Some((w, f)) => (w, f),
+            None => (time_segs[2], ""),
+        };
+        let s: u32 = whole.parse().ok()?;
+        (h, m, s, frac)
     } else {
-        (0, 0, 0.0)
+        (0, 0, 0, "")
     };
 
-    gregorian_to_mjd(year, month, day, hour, min, sec_frac)
+    gregorian_to_mjd(year, month, day, hour, min, sec, frac_digits)
 }
 
 fn parse_legacy_date(s: &str) -> Option<(i32, u32, u32)> {
@@ -1027,41 +1035,61 @@ fn parse_legacy_date(s: &str) -> Option<(i32, u32, u32)> {
     Some((year, month, day))
 }
 
-/// Convert (Gregorian Y/M/D + H/M/S) to MJD.
+/// Convert (Gregorian Y/M/D + H/M/S) to MJD, following the arithmetic of
+/// `fitschan.c::DateObs` (fitschan.c:8512-8539) exactly.
 ///
-/// Inverse of `mjd_to_gregorian`. Uses Meeus's algorithm.
+/// `frac_digits` is the run of digits after the decimal point in the seconds
+/// field, as written; its length is significant because it supplies the power
+/// of ten, so `"087"` gives 0.087 rather than 0.87.
+///
+/// Two details carry the precision, and departing from either costs about a
+/// ULP in the resulting MJD:
+///
+/// - The day number and the time of day are combined at MJD magnitude
+///   (~5e4), not Julian Date magnitude (~2.45e6). Adding the day fraction to
+///   a JD first and subtracting the 2400000.5 offset afterwards rounds the
+///   fraction onto a grid ~64x coarser than the MJD's own.
+/// - The seconds are rebuilt as `fsc / 10^width + sc`, which is not
+///   bit-identical to parsing `"SS.fff"` as one number: the two disagree for
+///   about 1.6% of second/fraction pairs.
 fn gregorian_to_mjd(
     year: i32,
     month: u32,
     day: u32,
     hour: u32,
     min: u32,
-    sec_frac: f64,
+    sec: u32,
+    frac_digits: &str,
 ) -> Option<f64> {
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+    // C rejects the date on palCaldj's status rather than range-checking the
+    // fields itself; palCldj is the same routine for a full year number (the
+    // only difference, palCaldj's 2-digit-year window, is applied by
+    // parse_legacy_date before we get here).
+    let (mjd0, j) = crate::pal::cldj(year, month as i32, day as i32);
+    if j != 0 {
         return None;
     }
-    let (y, m) = if month <= 2 {
-        (year - 1, month + 12)
-    } else {
-        (year, month)
-    };
-    let a = (y as f64 / 100.0).floor() as i64;
-    let b =
-        if year < 1582 || (year == 1582 && month < 10) || (year == 1582 && month == 10 && day < 15)
-        {
-            0
-        } else {
-            2 - a + a / 4
-        };
 
-    let jd = (365.25 * (y as f64 + 4716.0)).floor()
-        + (30.6001 * (m as f64 + 1.0)).floor()
-        + day as f64
-        + b as f64
-        - 1524.5;
-    let frac = (hour as f64 * 3600.0 + min as f64 * 60.0 + sec_frac) / 86400.0;
-    Some(jd + frac - 2_400_000.5)
+    // C: secs = fsc / pow( 10.0, width ); secs += sc.
+    let mut secs = 0.0;
+    if !frac_digits.is_empty() {
+        if !frac_digits.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        // C scans this with "%d" into an int, so anything past ~10 digits has
+        // already overflowed there; u64 covers every width C handles.
+        let fsc: u64 = frac_digits.parse().ok()?;
+        if fsc > 0 {
+            secs = fsc as f64 / 10.0_f64.powi(frac_digits.len() as i32);
+        }
+    }
+    secs += f64::from(sec);
+
+    let (days, j) = crate::pal::dtf2d(hour as i32, min as i32, secs);
+    if j != 0 {
+        return None;
+    }
+    Some(mjd0 + days)
 }
 
 /// Identify which frames in the FrameSet are eligible for FITS alt-plane
@@ -1325,6 +1353,40 @@ mod tests {
     fn date_str_to_mjd_iso_modern() {
         let mjd = date_str_to_mjd("2000-01-01T12:00:00.000").unwrap();
         assert!((mjd - 51544.5).abs() < 1e-6);
+    }
+
+    /// The MJD must be bit-identical to C's `DateObs`, which composes it as
+    /// `palCaldj` (whole days) + `palDtf2d` (day fraction) and builds the
+    /// seconds as `fsc / 10^width + sc`. These are the DATE-OBS strings from
+    /// the `azel`, `date-frac` and `serpens` wcsconv fixtures; the expected
+    /// values were taken from the C library on the same inputs.
+    #[test]
+    fn date_str_to_mjd_matches_c_bit_for_bit() {
+        for (text, want) in [
+            ("2017-07-21T08:38:39.087", 57955.36017461806_f64),
+            ("2020-06-15T10:30:00.123Z", 59015.437501423614_f64),
+            ("2007-04-30T15:13:53.717", 54220.63464950232_f64),
+        ] {
+            let got = date_str_to_mjd(text).expect("parses");
+            assert_eq!(
+                got.to_bits(),
+                want.to_bits(),
+                "{text}: got {got:.17}, want {want:.17}"
+            );
+        }
+    }
+
+    /// A fractional-seconds field keeps its leading zeros: the digit count is
+    /// the power of ten, so ".087" is 87 milliseconds, not 870.
+    #[test]
+    fn date_str_to_mjd_fraction_width_is_significant() {
+        // Differencing against the day number quantizes the residue to a few
+        // times 1e-7 s, so this checks the scale, not the last bits; the
+        // bit-exactness of the whole value is pinned by the test above.
+        let a = (date_str_to_mjd("2000-01-01T00:00:00.087").unwrap() - 51544.0) * 86400.0;
+        let b = (date_str_to_mjd("2000-01-01T00:00:00.87").unwrap() - 51544.0) * 86400.0;
+        assert!((a - 0.087).abs() < 1e-6, "{a}");
+        assert!((b - 0.87).abs() < 1e-6, "{b}");
     }
 
     #[test]
