@@ -1471,9 +1471,10 @@ order. Since `Dump` already ignores `SortBy`, this changes no documented
 behaviour, and alphabetical output is idempotent under any insertion order. The
 hash table itself, and the `MapSz` card that records its size, are unaffected.
 
-**Rust behaviour (divergence, not mirror):** `KeyMap` appends within a bucket
-rather than head-inserting, and `to_node`, `map_key` and `map_iterate` return
-keys in `KeyCmp` order when `SortBy` is `None`. Sorting happens at read-out, so
+**Rust behaviour (divergence, not mirror):** `KeyMap` stores entries in a
+`std::collections::HashMap`, so it has no bucket order to expose, and `to_node`,
+`map_key` and `map_iterate` return keys in `KeyCmp` order when `SortBy` is
+`None`. Sorting happens at read-out, so
 puts stay O(1) and `SortBy = None` keeps the "no sorted list maintained"
 property C documents as its reason for being the default. Two round-trip
 property tests pin the intended invariant: dump idempotence, and identical
@@ -1619,6 +1620,87 @@ with the default `SortBy` yields `A B C` and terminates.
 ```
 
 **Rust behaviour (divergence, not mirror):** ordered read-out is a computed
-`Vec` of entry positions rather than C's circular `first`/`snext`/`sprev` list,
-and `map_iterate` returns `Option<&str>` from a bounded index into it.
-Termination is structural.
+`Vec` of keys rather than C's circular `first`/`snext`/`sprev` list, and
+`map_iterate` returns `Option<&str>` from a bounded index into it. Termination is
+structural.
+
+---
+
+## KeyMap `MapSz` records collision history, so identical KeyMaps can serialise differently
+
+**Status:** Open. Not a defect with a clean upstream fix — it is inherent to
+serialising a live table size — but it is the reason the Rust port computes
+`MapSz` from content instead of retaining it, and the reason the card is excluded
+from oracle byte comparison.
+
+**C location:** `reference/starlink-ast/src/keymap.c`.
+
+`mapsize` changes exactly once after construction, in `DoubleTableSize`
+(`keymap.c:2578`), which `AddTableEntry` calls when a single bucket exceeds
+`MAX_ENTRIES_PER_TABLE_ENTRY` (`keymap.c:708`). Nothing ever reduces it:
+`RemoveTableEntry` decrements `nentry[itab]` (`keymap.c:9036`) and stops, and no
+halving routine exists. `Dump` then writes the current value unconditionally
+(`keymap.c:10510`).
+
+**Observed.** Two KeyMaps with identical contents disagree on `MapSz`:
+
+```
+grow to 11 keys that all hash to bucket 0, then remove 9:   MapSz = 32
+build those same 2 keys in a fresh KeyMap:                   MapSz = 16
+```
+
+The dumps are not byte-identical, and neither value is wrong — `MapSz` is a
+function of insertion and removal history, not of the entry set.
+
+**Consequence.** A KeyMap's serialised form depends on operations that left no
+other trace, so `MapSz` cannot be reproduced by any implementation that does not
+also retain C's collision history verbatim.
+
+**Reader tolerance (verified, and load-bearing for the Rust choice).**
+`LoadKeyMap` passes the value to `NewTable` (`keymap.c:11026`) and then re-puts
+each entry, so the doubling check runs during the load. Probing
+`reference/starlink-ast/build/libast.so` with `MapSz` set to −8, 0, 1, 3, 7, 17,
+100, 1024 and 1000000:
+
+- every value loaded with `status = 0`, the correct `astMapSize`, and all values
+  readable — there is no validation and no error path;
+- **undersized self-heals.** A 500-entry KeyMap whose C `MapSz` is 128 converges
+  to 128 whether the file says 1, 16, 32 or 128; the cost is a bounded number of
+  rehash passes (0 doublings at N=100, 3 at N=500, 5 at N=2000 when starting from
+  the minimum 16);
+- **oversized is retained.** `NewTable` rounds up to the next power of two and
+  keeps it (256/1024/65536 verbatim, 100→128, 17→32), and nothing later shrinks
+  the table, so an over-estimate inflates the table for the object's lifetime.
+
+So if the value ever has to be approximated, the safe direction is *low*, not
+high.
+
+**Upstream fix.** None proposed. Emitting a content-derived size would change
+`MapSz`'s meaning from "current table size" to "table size implied by these
+keys", which is a deliberate semantic change rather than a bug fix. It is offered
+only as an observation: since the reader rebuilds the table by re-inserting every
+entry, the written size is a hint, not state that must be preserved.
+
+**Rust behaviour (divergence, not mirror):** `KeyMap` stores entries in a
+`std::collections::HashMap` and has no table to size. `to_node` computes `MapSz`
+by replaying C's own sizing loop — `MIN_TABLE_SIZE`, or `next_pow2(SizeGuess/10)`
+when larger, then djb2 into per-bucket counts, doubling whenever a bucket passes
+10 — over the `KeyCmp`-ordered key sequence it is about to emit. `from_node`
+reads `MapSz` and discards it (`SzGss` is a user attribute and does round-trip).
+
+Because the port dumps in `KeyCmp` order and `LoadKeyMap` re-inserts in dump
+order, C's insertion sequence during a load is the one the loop simulated, so the
+computed value is exactly the size C builds: verified as C's own `MapSz` on 14
+key sets (the four fixture keys, spreads to 2000, all-colliding sets to 300,
+mixtures) and 12 `SizeGuess` combinations, and verified as a zero-doubling load
+on 10 hand-synthesised dumps fed to `astFromString`. The loop is order-sensitive
+in general — 105 of 4000 randomly generated adversarial key sets give different
+sizes under different insertion orders — which is why controlling the dump order
+is what makes the value exact rather than approximate.
+
+The `MapSz` card is dropped from both sides of any byte comparison against C
+output, following the `ISSIMP<xx>`/`INVERT<xx>` precedent
+(`common::is_aliasing_tag_card`, `ALIASING_TAG_LICENSED` in
+`crates/ast-core/tests/test_wcsconv.rs`). Every other card, `MemCnt` included, is
+compared byte-exactly, and the computed size is tested directly against the C
+oracle so a wrong value cannot hide behind the exclusion.

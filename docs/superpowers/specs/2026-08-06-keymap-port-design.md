@@ -16,7 +16,7 @@ It is a useful reference for API shape but not a basis for the port: it hand-rol
 
 ## Goals
 
-1. Port `keymap.c` to `crates/ast-core/src/keymap/` — hash table, `ConvertValue`, all supported type codes, `SortBy`, and a `Serializable` round-trip that is byte-exact against the C reference for the fixtures we hold.
+1. Port `keymap.c` to `crates/ast-core/src/keymap/` — entry storage, `ConvertValue`, all supported type codes, `SortBy`, and a `Serializable` round-trip that is byte-exact against the C reference for the fixtures we hold, `MapSz` excepted.
 2. Add `AnyObject::KeyMap` so KeyMaps deserialise from and serialise into `.ast` files.
 3. Port `ast_tester/testkeymap.c` and `ast_tester/testobjectkeymap.c`.
 4. Shape the struct so `Table` and `FitsTable` can embed it later without redesign.
@@ -31,90 +31,98 @@ It is a useful reference for API shape but not a basis for the port: it hand-rol
 
 ## Section A: Storage model
 
-### Why not `std::collections::HashMap`
+### Storage: `std::collections::HashMap` owns the entries
 
-The C table is ported as the primary storage structure, and `std::collections::HashMap` is not used underneath it.
-That "C does it this way" is no justification at all — `HashMap` is a better hash map than `keymap.c`'s, written and tuned by people who do that for a living, and if lookup were the only requirement it would be the obvious choice.
-The reason it is not used is narrower and specific: **it cannot produce the `MapSz` value we are obliged to serialise, and the machinery needed to produce that value is the hash table.**
+C's chained bucket table is **not** ported as a storage structure.
+`HashMap<String, MapEntry>` holds the entries, and the only piece of the C table that survives is the arithmetic needed to compute `MapSz` at dump time (below).
 
-Two things are *not* obstacles, and should not be mistaken for reasons:
+The C table has no property we need that `HashMap` lacks:
 
-- **Key equivalence.** `KeyCmp` (`keymap.c:3921`) ignores trailing spaces and `HashFun` (`keymap.c:3604`) ignores all spaces, which looks like it rules out a `String` key. It does not. C normalises the key *at insertion*: `ConvertKey` (`keymap.c:1573`) uppercases when `KeyCase=0`, and `MAKE_MAPPUT0` null-terminates away trailing spaces before hashing (`keymap.c:4706-4716`). Once the same normalisation is applied to the lookup key, equivalence is exact string equality — a perfectly good `HashMap` key.
-- **Lookup speed.** Both are O(1). `HashMap`'s constant factor is probably the better of the two.
+- **Key equivalence reduces to exact string equality.** `KeyCmp` (`keymap.c:3921`) ignores trailing spaces and `HashFun` (`keymap.c:3604`) ignores all spaces, which looks like it rules out a `String` key. It does not: C normalises the key at *insertion*, not at comparison. `ConvertKey` (`keymap.c:1573`) uppercases when `KeyCase=0`, and `MAKE_MAPPUT0` null-terminates away trailing spaces before hashing (`keymap.c:4706-4716`). Apply the same normalisation to the lookup key and `HashMap`'s `Eq` is the right predicate.
+- **Lookup is at least as fast.** Both are O(1), and `HashMap` is the better-tuned constant factor.
+- **Observable order does not come from the table.** `SortBy` ordering is computed from `member` / `keymember` / `KeyCmp`, none of which involve bucket layout. C's `SORTBY_NONE` order *is* bucket order, and that is precisely Bug 1; see "Ordering".
+- **Nothing else reads `mapsize`.** `astMapSize` sums `nentry[itab]` (`keymap.c:7801`) — a count `HashMap` already has. `mapsize` reaches the outside world through exactly one path: the `MapSz` card.
 
-### The `MapSz` obligation
+### `MapSz` is computed at dump time, exactly
 
-`Dump` writes `MapSz` unconditionally (`keymap.c:10510`) and `LoadKeyMap` reads it back into `NewTable` (`keymap.c:11026`).
-It is a card in every serialised KeyMap, including both fixtures this repository holds, and this port's contract is byte-exact native output.
-
-**`MapSz` is not derivable from the entry set.** It is a function of collision history, and it never shrinks. Both halves verified against `reference/starlink-ast/build/libast.so`:
+`Dump` writes `MapSz` unconditionally (`keymap.c:10510`) and `LoadKeyMap` feeds it to `NewTable` (`keymap.c:11026`), so the card must be emitted.
+`MapSz` cannot be read off a `HashMap`, but it does not have to be *retained* either — it can be reconstructed by replaying C's own sizing loop over the keys in the order we are about to dump them:
 
 ```
-spread: nentry=11  MapSz=16      keys A..K, well distributed
-pile  : nentry=11  MapSz=32      keys K0 K79 K88 K97 K169 K178 K187 K196 K259 K268 K277
-                                 (chosen so djb2 & 15 == 0 for all of them)
-pile after removing down to 2 entries: MapSz=32
+mapsize = 16                                  # MIN_TABLE_SIZE (keymap.c:232)
+if sizeguess set and sizeguess/10 > 16:       # SetSizeGuess (keymap.c:9520)
+    mapsize = next_pow2(sizeguess / 10)       # NewTable rounding (keymap.c:8760)
+for each key in dump order:
+    counts[ djb2(key) & (mapsize - 1) ] += 1
+    if that bucket's count > 10:              # MAX_ENTRIES_PER_TABLE_ENTRY (keymap.c:708)
+        mapsize *= 2                          # DoubleTableSize (keymap.c:2626)
+        recompute counts for the keys seen so far
 ```
 
-Two KeyMaps with the same number of entries have different `MapSz` because of how their keys collide; and a KeyMap holding two entries reports the table size its 11-entry past earned it, because `DoubleTableSize` (`keymap.c:2578`) is the only thing that ever changes `mapsize` after construction and there is no counterpart that halves it (`RemoveTableEntry` decrements `nentry[itab]` at `keymap.c:9036` and stops there).
+This is a faithful port of `AddTableEntry`'s doubling check and `DoubleTableSize`'s redistribution, not an estimate of them.
+`NewTable` writes its power-of-two rounding in floating point — `(int)(0.5 + pow(2.0, ceil(log(size)/log(2.0))))` (`keymap.c:8764`) — where an integer doubling loop is used instead; the two agree on every exact power from 2^4 to 2^24 and on every size from 17 to 200000, so this is an equivalent form rather than a substitution.
+It needs djb2 plus a scratch count array sized `mapsize`; no bucket table, no per-entry hash field, and nothing maintained across mutations.
+`SizeGuess` folds in because `SetSizeGuess` refuses to run on a non-empty map (`AST__NOWRT`, `keymap.c:9463`), so the seed is always fixed before any key arrives.
 
-So `MapSz` cannot be recomputed at dump time from the keys, from the count, or from both. It is retained state.
+Verified against `reference/starlink-ast/build/libast.so`:
 
-### What retaining it costs
+- The loop reproduces C's own `MapSz` on 14/14 key sets — the four fixture keys, spreads up to 2000 keys, up to 300 deliberately all-colliding keys, and mixtures — and on 12/12 `SizeGuess` combinations.
+- Feeding hand-synthesised dumps (alphabetical keys, `MapSz` from the loop) to `astFromString`, C ends at **exactly** the written value in 10/10 scenarios, with zero doublings during the load.
 
-To emit the value C emits, a Rust `KeyMap` must carry:
+The second result holds because we dump in `KeyCmp` order and `LoadKeyMap` re-inserts in dump order, so C's insertion sequence is ours.
+That matters: the doubling loop is order-sensitive in general (105 of 4000 randomly generated adversarial key sets gave different `mapsize` under different insertion orders), and fixing the dump order is what makes the computed value the one C will arrive at.
 
-1. djb2 over each key — the *specific* function, since which bucket a key lands in decides when a bucket crosses the threshold, and therefore what `mapsize` becomes;
-2. the per-entry hash (C stores it in `AstMapEntry.hash`, `keymap.h:114`), because doubling rehashes without re-reading keys;
-3. per-bucket occupancy counts, since the doubling trigger is `nentry[itab] > MAX_ENTRIES_PER_TABLE_ENTRY` (`keymap.c:708`) on a single bucket, not a global load factor;
-4. `mapsize` itself, with the `2*mapsize` doubling and `hash & (newmapsize-1)` redistribution (`keymap.c:2626-2670`);
-5. `NewTable`'s power-of-two rounding and `MIN_TABLE_SIZE` clamp (`keymap.c:8760-8765`), and `SetSizeGuess`'s `sizeguess/MAX_ENTRIES_PER_TABLE_ENTRY` sizing (`keymap.c:9520`).
+### Where this diverges from C, and why it is safe
 
-That list is the hash table with the payload removed.
-Adding `HashMap<String, MapEntry>` for lookup therefore does not replace items 1-5 — it sits *alongside* them. Both structures then hold every key, and every put, remove, rename, `SetKeyCase` (which rehashes on case change) and `DoubleTableSize` has to update both and keep them agreeing. The `HashMap` is the redundant one in that pairing, not the table: delete the table and `MapSz` becomes unknowable; delete the `HashMap` and nothing is lost but a constant factor.
+C's `MapSz` is *history*, not content: `DoubleTableSize` is the only thing that changes `mapsize` after construction and nothing halves it (`RemoveTableEntry` decrements `nentry[itab]` at `keymap.c:9036` and stops).
+Grow a map to 11 colliding keys and remove 9 and it still reports `MapSz = 32`; build those same 2 keys fresh and it reports `16`.
+So the value is not a function of the entry set, and two C KeyMaps with identical contents can disagree on it.
 
-Given that, the table stores the entries. `Vec<Vec<MapEntry>>` rather than C's pointer-chased linked list, so buckets are contiguous.
+Rust's value is a function of the entry set. The consequences:
 
-### Rejected alternative: drop `MapSz` fidelity
+- **A C dump carrying a history-inflated `MapSz` does not round-trip byte-exactly through Rust** — we re-emit the content-derived value. This is the one divergence, and it is unavoidable without retaining C's collision history verbatim.
+- **A C reader is unaffected.** Every `MapSz` accepted by `LoadKeyMap` loads with `status=0` and correct contents; probing −8, 0, 1, 3, 7, 17, 100, 1024 and 1000000 produced no errors. An undersized value self-heals during the load, because the doubling check runs on each re-put: a 500-entry map whose C `MapSz` is 128 converges to 128 whether the file says 1, 16, 32 or 128. Since our value is the one C's own loop reaches, the reader does zero extra work.
+- **If the value ever has to be approximated, err low.** Oversized values are *retained*: `NewTable` rounds up to the next power of two and keeps it (256/1024/65536 verbatim, 100→128, 17→32), and nothing later shrinks the table, so an over-estimate bloats the table for the object's lifetime in every downstream consumer. An under-estimate costs a bounded number of rehash passes during one load and then lands on the right size.
 
-`HashMap` alone, with `MapSz` written as a plausible constant, is the clearly better structure — and is rejected because inventing the value is exactly the kind of heuristic this port does not use. It would break byte-exact round-tripping on the two fixtures we hold, and silently on any KeyMap large enough to have doubled. "Our fixtures never exceed 16" is not a reason to omit a C branch.
+### Oracle comparison ignores the `MapSz` card
 
-### If the constant factor ever matters
+Because C's value is history-dependent and ours is content-dependent, byte comparison against C output excludes the `MapSz` card from both sides.
+This follows the established precedent for `ISSIMP<xx>` / `INVERT<xx>` — `common::is_aliasing_tag_card` and `ALIASING_TAG_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs` — and is licensed the same way: per-card, named, and documented, not a blanket tolerance.
+Every other card, `MemCnt` included, is compared byte-exactly.
 
-This decision is reversible in one direction only, which is the safe one.
-A `HashMap<String, usize>` index from normalised key to entry position can be added later as a pure lookup accelerator without touching the serialisation model, because the table would still own `mapsize`.
-That is worth doing if profiling shows bucket scans mattering, and not before: `DoubleTableSize` bounds every bucket to ~10 short strings, so `SearchTableEntry` (`keymap.c:9057`) scans a handful of contiguous entries with a cheap length check first.
-
-We write no hash algorithm of our own — `HashFun` is djb2 and is ported verbatim.
+`HashFun` is still ported verbatim; we write no hash algorithm of our own, and `MapSz` fidelity is not traded away.
 
 ### The struct
 
 ```rust
 pub struct KeyMap {
-    table: Vec<Vec<MapEntry>>,   // mapsize buckets; index = hash & (mapsize - 1)
-    nentry: usize,               // total entry count across all buckets
-    member_count: u64,           // source of both age counters
-    sizeguess: Option<usize>,
-    key_case: Option<bool>,      // None = attribute unset
+    entries: HashMap<String, MapEntry>,  // key already normalised by ConvertKey
+    member_count: u64,                   // source of both age counters
+    sizeguess: Option<usize>,            // seeds the dump-time MapSz loop
+    key_case: Option<bool>,              // None = attribute unset
     key_error: Option<bool>,
     map_locked: Option<bool>,
-    sort_by: Option<SortBy>,     // None = unset; default SortBy::None
+    sort_by: Option<SortBy>,             // None = unset; default SortBy::None
 }
 
 struct MapEntry {
-    key: String,
-    hash: u64,                   // C's field is `unsigned long` (keymap.h:114)
     comment: Option<String>,
-    member: u64,                 // bumped on every put of a value
-    keymember: u64,              // retained when an existing key is re-put
+    member: u64,                         // bumped on every put of a value
+    keymember: u64,                      // retained when an existing key is re-put
     value: EntryValue,
 }
 ```
 
-Rust's `Option<T>` replaces C's unset sentinels.
-C uses `-1` for `KeyCase` (`astMAKE_TEST` at `keymap.c:10161`) and `-INT_MAX` for `KeyError` (`10201`), `MapLocked` (`10242`) and `SortBy` (`10306`); the inconsistency is the cause of Bug 2 below, and `Option` makes it unrepresentable.
+The key lives in the `HashMap` key, not in `MapEntry`, and there is no retained `hash` field — C stores one (`AstMapEntry.hash`, `keymap.h:114`) only so `DoubleTableSize` can rehash without re-reading keys, and the dump-time loop recomputes hashes from the keys it is already walking.
+`astMapSize` reads `entries.len()`.
 
-Ported verbatim: `HashFun` (djb2, skipping **all** spaces), `KeyCmp` (`keymap.c:3921`, ignoring **trailing** spaces only), `ConvertKey` (`keymap.c:1573`, uppercasing when `KeyCase=0`), `MIN_TABLE_SIZE = 16` (`keymap.c:232`), `DoubleTableSize`'s `newmapsize = 2*mapsize` with rehash by `hash & bitmask` (`keymap.c:2626`), `NewTable`'s power-of-two rounding (`keymap.c:8720`), `SetSizeGuess`'s `sizeguess/MAX_ENTRIES_PER_TABLE_ENTRY` table sizing and its `AST__NOWRT` refusal on a non-empty map (`keymap.c:9463`), and the same refusal in `SetKeyCase` (`keymap.c:9234`).
+Rust's `Option<T>` replaces C's unset sentinels.
+C uses three different ones: `-1` for `KeyCase` (`astMAKE_TEST` at `keymap.c:10161`), `-INT_MAX` for `KeyError` (`10201`), `MapLocked` (`10242`) and `SortBy` (`10306`), and `INT_MAX` for `SizeGuess` (`keymap.c:3599`, whose getter defaults to `MIN_TABLE_SIZE*MAX_ENTRIES_PER_TABLE_ENTRY` = 160).
+The inconsistency is the cause of Bug 2 below, and `Option` makes it unrepresentable.
+`sizeguess: None` therefore behaves as 160, which divided by 10 is `MIN_TABLE_SIZE` — the seed the loop already starts from, so unset and default coincide.
+
+Ported verbatim: `HashFun` (djb2, skipping **all** spaces), `KeyCmp` (`keymap.c:3921`, ignoring **trailing** spaces only), `ConvertKey` (`keymap.c:1573`, uppercasing when `KeyCase=0`), `MIN_TABLE_SIZE = 16` (`keymap.c:232`), `MAX_ENTRIES_PER_TABLE_ENTRY = 10` (`keymap.c:236`), `DoubleTableSize`'s `newmapsize = 2*mapsize` redistribution rule (`keymap.c:2626`), `NewTable`'s power-of-two rounding (`keymap.c:8720`), `SetSizeGuess`'s `sizeguess/MAX_ENTRIES_PER_TABLE_ENTRY` sizing and its `AST__NOWRT` refusal on a non-empty map (`keymap.c:9463`), and the same refusal in `SetKeyCase` (`keymap.c:9234`).
+The four table constants and rules are consumed only by the dump-time `MapSz` loop; `HashFun` is additionally exercised by tier-1 tests that lock its values against the C oracle.
 
 `AST__MXKEYLEN = 200` is enforced with `ErrorCode::Bigkey` when `KeyCase=0`, as C does.
 
@@ -126,22 +134,18 @@ This port is `Send`-not-`Sync` and has no `astLock`, so the list has no reader a
 
 ### Ordering
 
-**Within a bucket, entries are appended, and `SortBy::None` read-out returns keys in `KeyCmp` order.**
+**`SortBy::None` read-out returns keys in `KeyCmp` order.**
 
 C head-inserts (`keymap.c:675`: `entry->next = this->table[itab]; this->table[itab] = entry;`) and treats the resulting bucket order as the observable order for `astMapKey`/`astMapIterate` under `SORTBY_NONE` and for `Dump` unconditionally.
 That makes the observable order a function of insertion history, which is the root of Bug 1.
 
-Rust instead:
-
-- appends within a bucket, so storage order matches insertion order rather than reversing it;
-- sorts by `KeyCmp` at read-out time in `map_key`, `map_iterate` and `to_node` when `SortBy` is `None`.
+Rust sorts by `KeyCmp` at read-out time in `map_key`, `map_iterate` and `to_node` when `SortBy` is `None`.
+`HashMap` iteration order is unspecified and randomised per process, so an ordered read-out is required rather than merely preferable — every path that exposes an order sorts, and none of them may iterate the map directly.
 
 Sorting happens at read-out, not on put.
 C's documented reason for `SORTBY_NONE` being the default is that it "avoids the need for a sorted list of keys to be maintained"; that property is preserved — puts stay O(1), and only the ordered-read paths pay.
 
-Consequences: dumps are idempotent, dumps are independent of insertion order, and Rust never reproduces C's bucket-reversal.
-
-`MapSz` is still written and honoured; the table is real. It just no longer determines output order.
+Consequences: dumps are idempotent, dumps are independent of insertion order, Rust never reproduces C's bucket-reversal, and the dump order is the order the `MapSz` loop simulates.
 
 ### SortBy
 
@@ -271,6 +275,7 @@ Only two files in this repository contain KeyMaps:
 
 Both hold the same four keys (`Size`, `Name`, `Resolution`, `Error`) which hash to buckets 0/6/9/15 — monotonic, no collision, so Bug 1 does not currently bite them.
 Under this design they are regenerated with keys in `KeyCmp` order (`Error`, `Name`, `Resolution`, `Size`) and the spurious `KyCas` reconciled.
+`MapSz` is unchanged: four non-colliding keys give 16 from the sizing loop, which is what both files already carry.
 Mechanical; four keys each.
 
 ## Section C: Types and conversion
@@ -385,7 +390,7 @@ Every code KeyMap needs is already generated from `ast_err.msg`: `Mpger`, `Mpker
 `to_node` mirrors `Dump` (`keymap.c:10480`):
 
 1. `SzGss`, `SortBy`, `KyCas`, `KyErr`, `MpLck` — written conditionally on their test predicates.
-2. `MapSz` and `MemCnt` — unconditional (`keymap.c:10510`, `10513`).
+2. `MapSz` and `MemCnt` — unconditional (`keymap.c:10510`, `10513`). `MapSz` comes from the dump-time sizing loop in Section A, run over the same `KeyCmp`-ordered key sequence that step 3 emits.
 3. Per entry, in `KeyCmp` order (the Bug 1 fix): `Key%d`; `Com%d` only when the comment is non-blank; `Typ%d` with C's per-type comment string; `Nel%d` only when `nel > 0`; then `Val%d` for a scalar or `V%d_%d` per element, with the comment `"Item values"` on the first element only (`keymap.c:2725-2935`).
 
 C omits the value line entirely for a double equal to `AST__BAD`; that is ported.
@@ -395,6 +400,9 @@ Both halves are mirrored: we read `Mem%d` if present, and do not write it.
 
 The final `member_count = astReadInt(channel,"memcnt",0)` is ported.
 
+`MapSz` is read and discarded — it sizes a table we do not build, and re-emitting it verbatim would contradict the content-derived value the dump computes.
+`SzGss` is *not* discarded: it is a user-set attribute that C restores (`keymap.c:10996`), it round-trips, and it seeds the sizing loop.
+
 `AnyObject` gains `KeyMap(Box<KeyMap>)` — boxed because a KeyMap may contain KeyMaps — wired into both `any_object_from_node` (`serial/mod.rs:1672`) and `any_object_to_node`.
 
 ## Section E: Module layout
@@ -403,8 +411,8 @@ The final `member_count = astReadInt(channel,"memcnt",0)` is ported.
 crates/ast-core/src/keymap/
 ├── mod.rs        # pub struct KeyMap, attributes, public typed methods
 ├── entry.rs      # MapEntry, EntryValue, Scalar1D, type codes
-├── table.rs      # HashFun, KeyCmp, ConvertKey, SearchTableEntry,
-│                 # AddTableEntry, RemoveTableEntry, DoubleTableSize, NewTable
+├── table.rs      # HashFun, KeyCmp, ConvertKey, and the dump-time
+│                 # MapSz sizing loop (NewTable / DoubleTableSize rules)
 ├── convert.rs    # ConvertValue
 ├── sort.rs       # SortBy, CompareEntries, ordered read-out
 └── serial.rs     # Serializable: to_node / from_node
@@ -425,7 +433,12 @@ Following the multi-file pattern already used by `regions/`.
   - **insertion-order independence** — two KeyMaps built from the same entries in different orders dump identically.
 
   Both fail against current C by construction, and are the regression guard for the ordering fix.
+- **`MapSz` sizing tests**, since the loop is the one piece of table arithmetic retained and has no other coverage:
+  - `HashFun` values locked against the C oracle for a fixed key list, so a djb2 typo cannot pass;
+  - computed `MapSz` locked against C's own value for the key sets the probes used — the four fixture keys, spreads at 100/500/2000, all-colliding sets at 11/40/300, a collide-plus-spread mixture, and the `SizeGuess` combinations;
+  - a growth-table test pinning the doubling boundaries (`MIN_TABLE_SIZE` until a bucket passes 10, then powers of two).
 - **Byte-exact `.ast` round trip** over the two regenerated fixtures, via the existing auto-discovering round-trip harness.
+- **`MapSz` excluded from oracle byte comparison**, implemented alongside `common::is_aliasing_tag_card` and listed in its licensed-exclusion table with the reason.
 
 Both simplify-fixture consumers must be run when the fixtures change: the manifest-driven simplify test and the auto-discovering byte-exact round-trip test.
 
@@ -462,10 +475,13 @@ Returning `&[String]` exposes the same information without the allocation.
 - **`ConvertValue` is large and centrally load-bearing.** A wrong cell in the matrix is a silent wrong value, not a compile error. Mitigated by porting it as one function against the C source and by `testkeymap.c`'s conversion assertions.
 - **The ordering divergence is intentional and must not be mistaken for a port defect** by a later reader. Mitigated by the quirks-doc entries and by the two property tests, which state the intended invariant in executable form.
 - **Fixture regeneration could mask an unrelated drift.** Only two files, four keys each; each changed line is accounted for by either the key reordering or the `KyCas` fix.
+- **The `MapSz` exclusion could grow into a habit.** It is licensed for one card on one class, for a stated reason, in the same table as the `ISSIMP`/`INVERT` exclusions. Any further card added to that table needs the same standard of evidence.
+- **A wrong `MapSz` would be invisible**, since the oracle comparison ignores it. Mitigated by testing the value directly against C rather than relying on the dump comparison.
 
 ## Success criteria
 
-- `KeyMap` ported to `crates/ast-core/src/keymap/`, with the table, `ConvertValue`, all ten supported types, and `SortBy`.
+- `KeyMap` ported to `crates/ast-core/src/keymap/`, storing entries in a `HashMap`, with `ConvertValue`, all ten supported types, and `SortBy`.
+- `MapSz` computed at dump time and matching C's value on the probed key sets and `SizeGuess` combinations; the card excluded from oracle byte comparison with its reason recorded.
 - `AnyObject::KeyMap` wired into both serialisation dispatch functions.
 - `testkeymap.c` and `testobjectkeymap.c` ported and green.
 - The two KeyMap fixtures regenerated; both simplify-fixture consumers green.
