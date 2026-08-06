@@ -79,9 +79,12 @@ pub fn format_significant_rounded(value: f64, digits: usize, fitsrnd: usize) -> 
         let mantissa_decimals = (digits - 1).max(1);
         let s = format!("{value:.mantissa_decimals$E}");
         let s = trim_trailing_zeros_exp(&s);
-        ensure_exponent_sign(&s)
+        c_style_exponent(&s)
     };
-    round_fstring(&initial, fitsrnd)
+    // C's order is sprintf -> CheckZero -> strip the exponent's leading zero
+    // (fitschan.c:9847, 9852, 9858), so the rounding runs on the two-digit
+    // exponent form and the strip comes last.
+    strip_exponent_leading_zero(&round_fstring(&initial, fitsrnd))
 }
 
 /// Round out long sequences of adjacent 0's or 9's in a formatted
@@ -302,19 +305,51 @@ fn trim_trailing_zeros_exp(s: &str) -> String {
     }
 }
 
-/// Ensure the exponent has an explicit sign character (E+N or E-N).
-/// C's %E always includes the sign; Rust's {:E} omits + for positive exponents.
-fn ensure_exponent_sign(s: &str) -> String {
-    if let Some(e_pos) = s.find('E').or_else(|| s.find('e')) {
-        let after_e = &s[e_pos + 1..];
-        if !after_e.starts_with('+') && !after_e.starts_with('-') {
-            format!("{}E+{}", &s[..e_pos], after_e)
-        } else {
-            s.to_string()
-        }
-    } else {
-        s.to_string()
+/// Give the exponent the shape C's `%E` produces: an explicit sign and at
+/// least two digits. Rust's `{:E}` omits `+` on positive exponents and never
+/// zero-pads, so both have to be applied here for the subsequent
+/// leading-zero strip to see the same text C's `EncodeFloat` does.
+fn c_style_exponent(s: &str) -> String {
+    let Some(e_pos) = s.find(['E', 'e']) else {
+        return s.to_string();
+    };
+    let after_e = &s[e_pos + 1..];
+    let (sign, digits) = match after_e.strip_prefix('-') {
+        Some(d) => ('-', d),
+        None => ('+', after_e.strip_prefix('+').unwrap_or(after_e)),
+    };
+    format!("{}E{sign}{digits:0>2}", &s[..e_pos])
+}
+
+/// Drop a redundant leading zero from a two-digit exponent the way C does.
+///
+/// `EncodeFloat` (fitschan.c:9858-9872) locates the zero, then shuffles
+/// everything to its left one place to the right and writes a space into the
+/// vacated first character. The string therefore keeps its original length
+/// rather than shrinking. Combined with the caller right-justifying into the
+/// 20-column value field, that gives two different outcomes:
+///
+/// - the two-digit form fits in 20 columns — the shift consumes one padding
+///   space and the value stays right-justified to column 30;
+/// - the two-digit form is wider than 20 columns — there is no padding to
+///   consume, so the leading space survives into the card and the value
+///   starts in column 12 instead of column 11.
+///
+/// The second case is why 195 float cards across the native fixtures carry an
+/// extra space; see `docs/issues/c-library-quirks.md`.
+fn strip_exponent_leading_zero(s: &str) -> String {
+    let Some(e_pos) = s.find(['E', 'e']) else {
+        return s.to_string();
+    };
+    let after_e = &s[e_pos + 1..];
+    let sign_len = usize::from(after_e.starts_with(['+', '-']));
+    let digits = &after_e[sign_len..];
+    if digits.len() != 2 || !digits.starts_with('0') {
+        return s.to_string();
     }
+    // Keep everything through the exponent sign, drop the zero, and pay for
+    // it with a leading space so the length is unchanged.
+    format!(" {}{}", &s[..e_pos + 1 + sign_len], &digits[1..])
 }
 
 // ---------------------------------------------------------------------------
@@ -413,12 +448,14 @@ mod tests {
     #[test]
     fn format_negative_special_case() {
         // Negative values between -0.001 and -0.0001 use scientific notation
-        // (matches C library's EncodeFloat special case).
+        // (matches C library's EncodeFloat special case). The leading space
+        // is the exponent-zero strip paying for itself; see
+        // strip_exponent_leading_zero.
         let s = format_significant(-0.00083332205, 8);
-        assert_eq!(s, "-8.3332205E-4");
+        assert_eq!(s, " -8.3332205E-4");
 
         let s = format_significant(-0.0002778, 4);
-        assert_eq!(s, "-2.778E-4");
+        assert_eq!(s, " -2.778E-4");
 
         // Positive value in same range stays fixed.
         let s = format_significant(0.00083332205, 8);
@@ -429,10 +466,26 @@ mod tests {
     fn format_explicit_exponent_sign() {
         // Positive exponents must have explicit + sign.
         let s = format_significant(2.3635893e8, 8);
-        assert_eq!(s, "2.3635893E+8");
+        assert_eq!(s, " 2.3635893E+8");
 
         let s = format_significant(1.5e10, 8);
         assert!(s.contains("E+"), "expected E+ in '{s}'");
+    }
+
+    /// Stripping the exponent's leading zero preserves the string length: the
+    /// text shifts right and a space fills the gap (fitschan.c:9858-9872).
+    /// A two-digit exponent has nothing to strip and is left alone.
+    #[test]
+    fn exponent_zero_strip_preserves_length() {
+        for (value, digits) in [(-1.7453292519943296E-4, 17), (-7.67E-9, 3), (2.5E-5, 8)] {
+            let s = format_significant(value, digits);
+            assert!(s.starts_with(' '), "expected shift space in '{s}'");
+            assert_eq!(s.len(), c_style_exponent(s.trim_start()).len());
+        }
+        for (value, digits) in [(1.534E-10, 4), (1.5E10, 8), (2.5E-100, 8)] {
+            let s = format_significant(value, digits);
+            assert!(!s.starts_with(' '), "unexpected shift space in '{s}'");
+        }
     }
 
     #[test]

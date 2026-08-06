@@ -1336,3 +1336,77 @@ submodule HEAD; the port itself needed no change.
 `azel` is the only fixture in the wcsconv corpus with a leading-zero `DATE-OBS`
 fraction, and it is the only one of the 108 native cases that did not regenerate
 byte-identical.
+
+---
+
+## `EncodeFloat` strips the exponent's leading zero by shifting right, injecting a stray space
+
+**Status:** Open, and a good upstream candidate — the fix is a one-line change
+with no effect on any value that fits the FITS value field.
+
+`EncodeFloat` (`fitschan.c:9754`) formats every floating value into a
+right-justified 20-column field with `%*.*E`/`%*.*G`
+(`fitschan.c:9847-9850`), so exponents always arrive with C's mandatory two
+digits. It then removes a redundant leading zero (`fitschan.c:9858-9872`):
+
+```c
+if( ( w = strstr( buf, "E-0" ) ) ) {
+   w += 2;
+} else if( ( w = strstr( buf, "E+0" ) ) ){
+   w += 2;
+} ...
+if( w ) {
+   r = w - 1 ;
+   while( w != buf ) *(w--) = *(r--);   /* shuffle the prefix one place right */
+   *w = ' ';                            /* backfill with a space */
+}
+```
+
+The loop is **length-preserving**: rather than closing the gap, it slides
+everything left of the zero one place to the right and writes a space into the
+vacated first character. The in-source comment says this "keeps the field right
+justified within the desired field width", which holds only while the value is
+narrow enough to have padding for the shift to consume.
+
+**Consequence.** Let *L* be the length of the two-digit-exponent form.
+
+- *L* ≤ 20 — the shift eats one padding space, the field stays 20 wide and the
+  value still ends in column 30. Correct, and indistinguishable from simply
+  shortening the string.
+- *L* > 20 — there is no padding left to absorb the shift, so the space
+  survives. The card is written with the value starting in column 12 instead of
+  column 11, one column further right than every other value in the header, and
+  the field runs one character past column 30.
+
+So `-1.7453292519943296E-04` (23 characters at `FitsDigits=17`) is emitted as:
+
+```
+SCL1_A  =  -1.7453292519943296E-4 / Scale factor for axis 1
+```
+
+with two spaces after the `=`, where a neighbouring value with a two-digit
+exponent gets one. This is cosmetic — the card re-reads to the same double, and
+the FITS standard does not require a fixed value column for free-format cards —
+but it makes the header ragged and is plainly unintended: the code is trying to
+right-justify and accidentally does the opposite in exactly the case where it
+cannot.
+
+Across the 107 native fixtures in the wcsconv corpus, 195 float cards in 70
+files carry the extra space; 65 further values have the zero stripped with the
+shift correctly absorbed by padding.
+
+**Upstream fix.** Close the gap instead of shifting — move the tail left over
+the redundant zero and let the string shorten, leaving the caller's field width
+to re-justify it. Values in the *L* ≤ 20 case are unaffected (they are
+right-justified to the same column either way), so only the malformed wide
+cards change.
+
+**Rust mirror:** `strip_exponent_leading_zero` in
+`crates/ast-core/src/fitschan/format.rs`, applied at the end of
+`format_significant_rounded` so it runs after the rounding pass exactly as C
+runs it after `CheckZero`. `c_style_exponent` in the same file first restores
+the two-digit exponent that Rust's `{:E}` omits, so the strip sees the text C
+sees. Pinned by `format::tests::exponent_zero_strip_preserves_length` and
+`card::tests::format_float_overwide_exponent_keeps_the_shift_space` (wide case,
+space survives) / `format_float_narrow_exponent_stays_right_justified` (narrow
+case, absorbed by padding).

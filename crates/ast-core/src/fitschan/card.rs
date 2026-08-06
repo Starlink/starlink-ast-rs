@@ -1056,6 +1056,42 @@ mod tests {
         assert!(formatted.contains("/ Reference value"));
     }
 
+    /// Stripping the exponent's leading zero shifts the value right rather
+    /// than shortening it (fitschan.c:9858-9872), so a value too wide for the
+    /// 20-column field gains a leading space and starts in column 12.
+    /// Reference card taken from `tidy-pole.native`.
+    #[test]
+    fn format_float_overwide_exponent_keeps_the_shift_space() {
+        let card = FitsCard {
+            keyword: "SCL1_A".to_string(),
+            value: FitsValue::Float(-1.7453292519943296E-4),
+            comment: Some("Scale factor for axis 1".to_string()),
+            used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
+        };
+        let formatted = card.format_with_digits(17);
+        assert_eq!(
+            formatted.trim_end(),
+            "SCL1_A  =  -1.7453292519943296E-4 / Scale factor for axis 1"
+        );
+    }
+
+    /// A value that fits the 20-column field absorbs the shift into its
+    /// padding, so it stays right-justified to column 30 and is unaffected.
+    #[test]
+    fn format_float_narrow_exponent_stays_right_justified() {
+        let card = FitsCard {
+            keyword: "SFT1_C".to_string(),
+            value: FitsValue::Float(-7.67E-9),
+            comment: None,
+            used: false,
+            flags: crate::fitschan::card::CardFlags::default(),
+        };
+        let formatted = card.format_with_digits(17);
+        assert_eq!(formatted.trim_end(), "SFT1_C  =             -7.67E-9");
+        assert_eq!(formatted.trim_end().len(), 30);
+    }
+
     #[test]
     fn format_undefined() {
         let card = FitsCard {
