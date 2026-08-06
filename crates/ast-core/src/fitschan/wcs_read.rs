@@ -63,8 +63,18 @@ pub(crate) fn decode_wcs_inner(
 ) -> AstResult<(AnyObject, Vec<String>)> {
     let naxis = store.naxis;
 
-    // Step 1: Build the pixel → IWC mapping.
-    let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(store)?;
+    // Step 1: Build the pixel → IWC mapping. `DistortMaps`, which C
+    // `WcsIntWorld` calls first, strips any Paper IV distortion code from the
+    // store's CTYPE values, and every later step reads the truncated form —
+    // so work on a local copy and pass that on rather than the caller's store.
+    let mut store = store.clone();
+    // C `WcsMapFrm` calls `WcsIntWorld` before `WcsCelestial` and `WcsSpectral`
+    // (fitschan.c:37760-37870), and `Warn` inserts each block in front of the
+    // same current card, so these warnings precede the ones the axis decoders
+    // raise below.
+    let mut matrix_warnings: Vec<String> = Vec::new();
+    let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut store, cards, &mut matrix_warnings)?;
+    let store = &store;
 
     // Step 2: Try to decode celestial axes.
     let rfval = read_rfval(cards, naxis, s);
@@ -77,11 +87,11 @@ pub(crate) fn decode_wcs_inner(
     // 36209-36223).
     let celestial_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
     // Collect warnings from the celestial decoder (e.g. badcel for unknown
-    // celestial systems).
-    let mut warnings: Vec<String> = celestial
-        .as_ref()
-        .map(|c| c.warnings.clone())
-        .unwrap_or_default();
+    // celestial systems), behind the pixel→IWC ones.
+    let mut warnings: Vec<String> = matrix_warnings;
+    if let Some(c) = celestial.as_ref() {
+        warnings.extend(c.warnings.iter().cloned());
+    }
 
     // Step 3: Try to decode spectral axis.
     let spectral = wcs_spectral::build_spectral(store);
@@ -525,7 +535,11 @@ pub(crate) fn decode_wcs_with_alts_inner(
 
     // Step 2: append one alt frame per (letter, alt_store).
     for (letter, alt_store) in alts {
-        let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(alt_store)?;
+        // As in `decode_wcs_inner`, `DistortMaps` rewrites the CTYPE values, so
+        // this plane's store is copied and the copy carries on downstream.
+        let mut alt_store = alt_store.clone();
+        let pixel_to_iwc = wcs_matrix::build_pixel_to_iwc(&mut alt_store, cards, &mut warnings)?;
+        let alt_store = &alt_store;
         let rfval = read_rfval(cards, alt_store.naxis, *letter);
         let celestial =
             wcs_celestial::build_celestial_with_def_b1950(alt_store, def_b1950, Some(&rfval));

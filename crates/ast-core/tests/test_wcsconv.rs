@@ -75,7 +75,6 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[
         "sip-alt_native",
         "A_ORDER: alt-plane SIP cards keep the version character",
     ),
-    ("zpx_native", "BEGAST_I: ShiftMap vs MatrixMap object shape"),
 ];
 
 /// Cases whose only difference from the C reference is where an `IsSimp` or

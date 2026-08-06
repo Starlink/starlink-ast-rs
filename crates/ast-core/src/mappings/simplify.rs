@@ -364,7 +364,16 @@ pub(crate) fn flatten(
     // it an Interval lets the exact `Interval + Interval` branch (raw
     // `astIntervalPoints`) fire first, preserving the defining bounds.
     let defer_region = crate::regions::as_region(mapping).is_some();
-    let mut cloned = if defer_winmap || defer_perm || defer_spec || defer_region {
+    // A MatrixMap leaf likewise stays a MatrixMap through the decomposition.
+    // `MatrixMap::simplified()` runs matrixmap.c's replace-with-simpler ladder,
+    // which narrows a diagonal matrix to a ZoomMap (equal diagonals) or a
+    // UnitMap; C reaches that ladder only from `MapMerge`, in context, after the
+    // nominate loop has had a chance to merge the matrix with a neighbour.
+    // Narrowing during the flatten changes which merge branch the neighbour
+    // takes — a ZoomMap is in WinMap's direct-merge list where a non-uniform
+    // diagonal MatrixMap is not — and so changes the normal form.
+    let defer_matrix = mapping.as_any().is::<super::matrix::MatrixMap>();
+    let mut cloned = if defer_winmap || defer_perm || defer_spec || defer_region || defer_matrix {
         mapping.clone_box()
     } else {
         mapping.simplified()?

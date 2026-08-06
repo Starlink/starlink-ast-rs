@@ -436,3 +436,87 @@ fn offdiagonal_cd_chain_fuses_deg2rad_into_the_matrixmap() {
         assert!(text.contains(token), "expected {token} in:\n{text}");
     }
 }
+
+#[test]
+fn nonuniform_cdelt_chain_keeps_deg2rad_in_the_winmap() {
+    // The FITS-WCS read path for the ZPX header
+    // (`fixtures/wcsconv/inputs/zpx.head`) builds
+    //
+    //   WinMap(-CRPIX, unit scale) ; MatrixMap(PC) ; MatrixMap(CDELT) ;
+    //   UnitMap ; MatrixMap(deg2rad, diagonal) ; WcsMap(ZPN)^-1
+    //
+    // where the UnitMap is the ZPX distortion correction (`DistortMaps`'
+    // fourth slot, which degenerates to a UnitMap because the header carries
+    // only `projp` terms and no correction surface). `SpecTrans` split the
+    // header's CD matrix by row norm, so the two CDELT values differ in
+    // magnitude and the CDELT matrix stays a non-uniform diagonal MatrixMap
+    // rather than narrowing to a ZoomMap.
+    //
+    // C's normal form for that chain keeps the degrees→radians factor in a
+    // WinMap's scales and leaves the fused PC·CDELT product in degrees, behind
+    // the WinMap in series order
+    // (`fixtures/wcsconv/expected/zpx.native:52-92`). The values below are the
+    // C oracle's.
+    use ast_core::mappings::{
+        CmpMap, Composition, DynMapping, Mapping, MatrixMap, UnitMap, WcsMap, WcsProjection, WinMap,
+    };
+    use ndarray::array;
+
+    let crpix = [-319.077_517_318_151_f64, 3_035.649_826_355_72];
+    let win = WinMap::new(&[-crpix[0], -crpix[1]], &[1.0, 1.0]).unwrap();
+    let pc = MatrixMap::new(array![
+        [0.017_123_380_684_552_016_f64, 0.999_853_384_168_865],
+        [-0.999_844_421_650_356_9, 0.017_638_948_230_076_08]
+    ])
+    .unwrap();
+    let cdelt = MatrixMap::new(array![
+        [-9.253_475_713_904_881e-5_f64, 0.0],
+        [0.0, 9.255_325_538_402_174e-5]
+    ])
+    .unwrap();
+    let d2r = std::f64::consts::PI / 180.0;
+    let deg2rad = MatrixMap::new(array![[d2r, 0.0], [0.0, d2r]]).unwrap();
+    let mut wcs = WcsMap::new(2, WcsProjection::Zpn, 1, 2).unwrap();
+    wcs.invert();
+
+    let c1 = CmpMap::new(Box::new(win), Box::new(pc), Composition::Series).unwrap();
+    let c2 = CmpMap::new(Box::new(c1), Box::new(cdelt), Composition::Series).unwrap();
+    let c3 = CmpMap::new(Box::new(c2), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+    let c4 = CmpMap::new(Box::new(c3), Box::new(deg2rad), Composition::Series).unwrap();
+    let chain: DynMapping =
+        Box::new(CmpMap::new(Box::new(c4), Box::new(wcs), Composition::Series).unwrap());
+
+    let simp = chain.simplify().unwrap();
+    let outer = simp
+        .as_any()
+        .downcast_ref::<CmpMap>()
+        .expect("simplified chain is a series CmpMap");
+    let text = to_native_string(&AnyObject::CmpMap(outer.clone())).unwrap();
+
+    // Three leaves: the fused PC·CDELT matrix first, then the WinMap carrying
+    // the CRPIX shift and the deg2rad scaling, then the projection. No
+    // ShiftMap: narrowing the WinMap would strand the deg2rad factor.
+    let classes: Vec<&str> = text
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("Begin "))
+        .map(|l| l.split_whitespace().next().unwrap_or(""))
+        .filter(|c| *c != "CmpMap")
+        .collect();
+    assert_eq!(classes, ["MatrixMap", "WinMap", "WcsMap"], "{text}");
+
+    // PC·CDELT reproduces the header's CD matrix, still in degrees, and the
+    // WinMap holds CD·(-CRPIX)·d2r as its shifts.
+    for token in [
+        "M0 = -1.5845078730445003e-06",
+        "M1 = -9.2521190078721999e-05",
+        "M2 = -9.2538856101294999e-05",
+        "M3 = 1.6325420802437699e-06",
+        "Form = \"Full\"",
+        "Sft1 = 0.0048931414519699694",
+        "Scl1 = 0.017453292519943295",
+        "Sft2 = -0.00060184004538763232",
+        "Scl2 = 0.017453292519943295",
+    ] {
+        assert!(text.contains(token), "expected {token} in:\n{text}");
+    }
+}

@@ -547,7 +547,10 @@ impl PrjParams {
     /// `p2`, used by the TPN projection). A `None` entry means the parameter
     /// was not supplied — C stores `AST__BAD` in that slot and later replaces
     /// it with a per-projection default (or zero).
-    pub(crate) fn init_prj_prm(&mut self, params: &[Vec<Option<f64>>]) {
+    ///
+    /// `tpn_tan` is the owning WcsMap's effective `TPNTan` value; it is only
+    /// consulted for a TPN projection.
+    pub(crate) fn init_prj_prm(&mut self, params: &[Vec<Option<f64>>], tpn_tan: bool) {
         let proj = self.proj;
 
         // Tell the wcslib "proj.c" routines to re-calculate intermediate
@@ -557,13 +560,11 @@ impl PrjParams {
 
         // If this is a TPN projection, indicate whether the transformation
         // should include the TAN projection or just the polynomial
-        // correction. The TPNTan attribute defaults to 1 (astGetTPNTan,
-        // wcsmap.c:4780) and cannot be cleared through this API, so the TAN
-        // part is always included. For every other projection type `n` is
+        // correction (wcsmap.c:2274). For every other projection type `n` is
         // left for the per-projection setup routine to fill (e.g. astHPXset
         // sets it from p[2]).
         if matches!(proj, WcsProjection::Tpn) {
-            self.inner.n = 1;
+            self.inner.n = tpn_tan as c_int;
         }
 
         // Initially set all parameters to the bad value.
@@ -1029,7 +1030,7 @@ mod tests {
         // After init, the projection is set up (flag holds the type code).
         assert_ne!(prj.inner.flag, 0);
         // Re-initialising with parameters leaves the projection callable.
-        prj.init_prj_prm(&[vec![Some(1.0)], Vec::new()]);
+        prj.init_prj_prm(&[vec![Some(1.0)], Vec::new()], true);
         assert_ne!(prj.inner.flag, 0);
         let result = prj.forward(0.0, 90.0);
         assert!(result.is_ok());
@@ -1044,7 +1045,7 @@ mod tests {
         assert!(prj.forward(0.0, 80.0).is_err());
         // Supplying the linear coefficient makes the polynomial well-defined;
         // init_prj_prm re-runs setup and installs the pointers.
-        prj.init_prj_prm(&[vec![None, Some(1.0)], Vec::new()]);
+        prj.init_prj_prm(&[vec![None, Some(1.0)], Vec::new()], true);
         assert!(prj.forward(0.0, 80.0).is_ok());
     }
 
@@ -1059,22 +1060,25 @@ mod tests {
     #[allow(clippy::approx_constant)] // -3.14 is opaque test parameter, not π
     fn init_prj_prm_copies_supplied_params() {
         let mut prj = PrjParams::new(WcsProjection::Tan).unwrap();
-        prj.init_prj_prm(&[
-            vec![None, None, None, None, None, Some(42.0)],
-            vec![
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(-3.14),
+        prj.init_prj_prm(
+            &[
+                vec![None, None, None, None, None, Some(42.0)],
+                vec![
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(-3.14),
+                ],
             ],
-        ]);
+            true,
+        );
         assert_eq!(prj.get_param(0, 5), Some(42.0));
         assert_eq!(prj.get_param(1, 10), Some(-3.14));
     }
@@ -1084,6 +1088,32 @@ mod tests {
         // TPN is handled by tpn.c, not proj.c.  Verify it initialises.
         let prj = PrjParams::new(WcsProjection::Tpn);
         assert!(prj.is_ok(), "TPN should initialise successfully");
+    }
+
+    #[test]
+    fn tpn_tan_selects_polynomial_only_form() {
+        // `astTPNfwd` branches on `prj->n` (tpn.c:87) to decide whether the
+        // TAN part is applied before the polynomial; `init_prj_prm` sets `n`
+        // from the owning WcsMap's TPNTan attribute (wcsmap.c:2274). With the
+        // default unit coefficients the polynomial is the identity, so
+        // clearing TPNTan makes the whole projection an identity while
+        // setting it applies the gnomonic projection.
+        let params = [Vec::new(), Vec::new()];
+        let mut with_tan = PrjParams::new(WcsProjection::Tpn).unwrap();
+        with_tan.init_prj_prm(&params, true);
+        let mut poly_only = PrjParams::new(WcsProjection::Tpn).unwrap();
+        poly_only.init_prj_prm(&params, false);
+
+        let (_, y_tan) = with_tan.forward(0.0, 60.0).unwrap();
+        let (x_poly, y_poly) = poly_only.forward(0.0, 60.0).unwrap();
+        assert!(
+            x_poly.abs() < 1e-10 && (y_poly - 60.0).abs() < 1e-10,
+            "polynomial-only TPN should pass its inputs through: ({x_poly}, {y_poly})"
+        );
+        assert!(
+            (y_tan - y_poly).abs() > 1.0,
+            "TPNTan should change the projection: {y_tan} vs {y_poly}"
+        );
     }
 
     #[test]

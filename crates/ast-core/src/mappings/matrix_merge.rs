@@ -149,6 +149,19 @@ fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option
     // `mm_first` is true when the nominated MatrixMap is the left operand
     // (i1 == where_): the matrix is applied first.
     let mm_first = i1 == where_;
+
+    // A UnitMap neighbour reaches C's final `else` (matrixmap.c:2029-2032),
+    // which has no merge builder: it clones the nominated MatrixMap *keeping
+    // its Invert flag* — unlike the MatMat / MatZoom / MatPerm / MatWin2
+    // branches, which all force `invert = 0` — writes it to `i1` and drops the
+    // other element. Removing the UnitMap leaves the MatrixMap at `i1` with its
+    // flags untouched, which is the same outcome for either neighbour side.
+    let neighbour = if mm_first { i2 } else { i1 };
+    if ctx.entry(neighbour).0.as_any().is::<UnitMap>() {
+        ctx.remove_at(neighbour);
+        return Some(i1);
+    }
+
     let (m1, inv1, _) = ctx.entry(i1);
     let (m2, inv2, _) = ctx.entry(i2);
     let merged = merge_matrix_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, mm_first)?;

@@ -16,6 +16,12 @@ use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
+/// Radians to degrees (C `AST__DR2D`).
+const DR2D: f64 = 180.0 / std::f64::consts::PI;
+
+/// Degrees to radians (C `AST__DD2R`).
+const DD2R: f64 = std::f64::consts::PI / 180.0;
+
 /// Prepare native spherical coordinates for a forward WCSLIB projection call.
 ///
 /// The WcsMap forward input is longitude and latitude in radians; WCSLIB
@@ -25,13 +31,11 @@ use super::{DynMapping, Mapping};
 /// wcsmap.c:2820-2839.
 ///
 /// `factor` scales the WcsMap input into radians. It is `1.0` whenever the
-/// `TPNTan` attribute is non-zero (the default and only reachable state via
-/// this API), and `AST__DD2R` when `TPNTan` has been reset to zero.
+/// `TPNTan` attribute is non-zero (the default), and `AST__DD2R` when `TPNTan`
+/// has been cleared, in which case the WcsMap works in degrees throughout.
 ///
 /// Returns `(longitude, latitude)` in degrees, ready for `WcsFwd`.
 fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
-    const DR2D: f64 = 180.0 / std::f64::consts::PI;
-
     let latitude = DR2D * pal::drange(factor * in1);
     if latitude > 90.0 {
         (
@@ -107,6 +111,18 @@ pub struct WcsMap {
     /// explicitly set value. Mirrors C's `loncheck` field, whose sentinel
     /// `-INT_MAX` means "not set" (astMAKE_TEST/GET at wcsmap.c:4818-4821).
     lon_check: Option<bool>,
+    /// Protected `FITSProj` attribute (wcsmap.c:4711). Marks this WcsMap as
+    /// the one that defines the FITS-WCS projection when a compound Mapping
+    /// is written out through a FitsChan. A WcsMap used only as a distortion
+    /// correction (e.g. the polynomial part of a `-ZPX` header) has it
+    /// cleared. `None` = unset (defaults to `true`), matching C's `-INT_MAX`
+    /// sentinel (wcsmap.c:4742-4746).
+    fits_proj: Option<bool>,
+    /// Protected `TPNTan` attribute (wcsmap.c:4750). When cleared, a TPN
+    /// projection applies only its polynomial correction and omits the TAN
+    /// projection itself. `None` = unset (defaults to `true`), matching C's
+    /// `-INT_MAX` sentinel (wcsmap.c:4780-4782).
+    tpn_tan: Option<bool>,
 }
 
 impl WcsMap {
@@ -171,6 +187,8 @@ impl WcsMap {
                     inverted: false,
                     has_been_simplified: false,
                     lon_check: None,
+                    fits_proj: None,
+                    tpn_tan: None,
                 });
             }
             other => other,
@@ -182,7 +200,7 @@ impl WcsMap {
         let params = vec![Vec::new(), Vec::new()];
 
         // Assign default projection parameters (C astInitWcsMap_ → InitPrjPrm).
-        prj.init_prj_prm(&params);
+        prj.init_prj_prm(&params, true);
 
         Ok(Self {
             proj,
@@ -194,6 +212,8 @@ impl WcsMap {
             inverted: false,
             has_been_simplified: false,
             lon_check: None,
+            fits_proj: None,
+            tpn_tan: None,
         })
     }
 
@@ -273,7 +293,9 @@ impl WcsMap {
 
         // Rebuild the wcslib parameter arrays with defaults reapplied and the
         // fwd/rev pointers reinstalled (C SetPV → InitPrjPrm, wcsmap.c:3939).
-        self.prj.borrow_mut().init_prj_prm(&self.params);
+        self.prj
+            .borrow_mut()
+            .init_prj_prm(&self.params, self.tpn_tan());
 
         Ok(())
     }
@@ -318,6 +340,50 @@ impl WcsMap {
     /// `astTestLonCheck` (wcsmap.c:4821).
     pub fn test_lon_check(&self) -> bool {
         self.lon_check.is_some()
+    }
+
+    /// Set the protected `FITSProj` attribute, mirroring C `astSetFITSProj`
+    /// (wcsmap.c:4744). Clear it on a WcsMap that only supplies a distortion
+    /// correction, so the FitsChan write path does not mistake it for the
+    /// header's FITS-WCS projection.
+    pub fn set_fits_proj(&mut self, value: bool) {
+        self.fits_proj = Some(value);
+    }
+
+    /// Return the effective `FITSProj` value (default `true` when unset),
+    /// mirroring C `astGetFITSProj` (wcsmap.c:4742).
+    pub fn fits_proj(&self) -> bool {
+        self.fits_proj.unwrap_or(true)
+    }
+
+    /// Whether `FITSProj` has been explicitly set, mirroring C
+    /// `astTestFITSProj` (wcsmap.c:4746).
+    pub fn test_fits_proj(&self) -> bool {
+        self.fits_proj.is_some()
+    }
+
+    /// Set the protected `TPNTan` attribute, mirroring C `astSetTPNTan`
+    /// (wcsmap.c:3942). Clearing it makes a TPN projection apply only its
+    /// polynomial correction, omitting the TAN projection itself. Like C, the
+    /// change re-initialises the wcslib parameter block, which is what tells
+    /// `astTPNfwd`/`astTPNrev` which form to use.
+    pub fn set_tpn_tan(&mut self, value: bool) {
+        self.tpn_tan = Some(value);
+        self.prj
+            .borrow_mut()
+            .init_prj_prm(&self.params, self.tpn_tan());
+    }
+
+    /// Return the effective `TPNTan` value (default `true` when unset),
+    /// mirroring C `astGetTPNTan` (wcsmap.c:4780).
+    pub fn tpn_tan(&self) -> bool {
+        self.tpn_tan.unwrap_or(true)
+    }
+
+    /// Whether `TPNTan` has been explicitly set, mirroring C `astTestTPNTan`
+    /// (wcsmap.c:4782).
+    pub fn test_tpn_tan(&self) -> bool {
+        self.tpn_tan.is_some()
     }
 
     /// Determine the acceptable longitude range and cyclicity for the
@@ -435,7 +501,7 @@ impl WcsMap {
             other => other,
         };
         let mut prj = PrjParams::new(underlying)?;
-        prj.init_prj_prm(&self.params);
+        prj.init_prj_prm(&self.params, self.tpn_tan());
         Ok(prj)
     }
 
@@ -464,6 +530,8 @@ impl WcsMap {
             inverted: self.inverted,
             has_been_simplified: self.has_been_simplified,
             lon_check: self.lon_check,
+            fits_proj: self.fits_proj,
+            tpn_tan: self.tpn_tan,
         })
     }
 
@@ -510,6 +578,8 @@ impl Clone for WcsMap {
             inverted: self.inverted,
             has_been_simplified: self.has_been_simplified,
             lon_check: self.lon_check,
+            fits_proj: self.fits_proj,
+            tpn_tan: self.tpn_tan,
         }
     }
 }
@@ -579,6 +649,12 @@ impl Mapping for WcsMap {
             (self.lon_check(), cyclic, longhi, longlo)
         };
 
+        // The WcsMap input and output values are normally in radians, but if
+        // TPNTan has been cleared they are in degrees; WCSLIB always works in
+        // degrees. `factor` scales the WcsMap input into radians
+        // (wcsmap.c:2808).
+        let factor = if self.tpn_tan() { 1.0 } else { DD2R };
+
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -596,13 +672,12 @@ impl Mapping for WcsMap {
             if fwd {
                 // Wrap the native longitude/latitude into the ranges WCSLIB
                 // requires, folding out-of-range latitudes onto the
-                // complementary meridian (wcsmap.c:2820-2839). `factor` is 1.0
-                // because `TPNTan` defaults to (and cannot be reset from) 1.
-                let (lon_deg, lat_deg) = forward_prep(v1, v2, 1.0);
+                // complementary meridian (wcsmap.c:2820-2839).
+                let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
                 match prj.forward(lon_deg, lat_deg) {
                     Ok((x, y)) => {
-                        outp[self.lonax] = x.to_radians();
-                        outp[self.latax] = y.to_radians();
+                        outp[self.lonax] = (DD2R / factor) * x;
+                        outp[self.latax] = (DD2R / factor) * y;
                     }
                     Err(_) => {
                         outp[self.lonax] = f64::NAN;
@@ -610,15 +685,15 @@ impl Mapping for WcsMap {
                     }
                 }
             } else {
-                let x_deg = v1.to_degrees();
-                let y_deg = v2.to_degrees();
+                let x_deg = (DR2D * factor) * v1;
+                let y_deg = (DR2D * factor) * v2;
                 match prj.reverse(x_deg, y_deg) {
                     Ok((longitude, latitude)) => {
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
                             && latitude.abs() <= 90.0
                         {
-                            outp[self.lonax] = longitude.to_radians();
-                            outp[self.latax] = latitude.to_radians();
+                            outp[self.lonax] = (DD2R / factor) * longitude;
+                            outp[self.latax] = (DD2R / factor) * latitude;
                         } else {
                             outp[self.lonax] = f64::NAN;
                             outp[self.latax] = f64::NAN;
@@ -658,6 +733,12 @@ impl Mapping for WcsMap {
             (self.lon_check(), cyclic, longhi, longlo)
         };
 
+        // The WcsMap input and output values are normally in radians, but if
+        // TPNTan has been cleared they are in degrees; WCSLIB always works in
+        // degrees. `factor` scales the WcsMap input into radians
+        // (wcsmap.c:2808).
+        let factor = if self.tpn_tan() { 1.0 } else { DD2R };
+
         for i in 0..pts.npoint() {
             let inp = pts.point(i);
             let outp = out.point_mut(i);
@@ -678,13 +759,12 @@ impl Mapping for WcsMap {
                 // Forward: native spherical (lon, lat in radians) -> projected (x, y).
                 // Wrap the native longitude/latitude into the ranges WCSLIB
                 // requires, folding out-of-range latitudes onto the
-                // complementary meridian (wcsmap.c:2820-2839). `factor` is 1.0
-                // because `TPNTan` defaults to (and cannot be reset from) 1.
-                let (lon_deg, lat_deg) = forward_prep(v1, v2, 1.0);
+                // complementary meridian (wcsmap.c:2820-2839).
+                let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
                 match prj.forward(lon_deg, lat_deg) {
                     Ok((x, y)) => {
-                        outp[self.lonax] = x.to_radians();
-                        outp[self.latax] = y.to_radians();
+                        outp[self.lonax] = (DD2R / factor) * x;
+                        outp[self.latax] = (DD2R / factor) * y;
                     }
                     Err(_) => {
                         outp[self.lonax] = BAD_VALUE;
@@ -693,8 +773,8 @@ impl Mapping for WcsMap {
                 }
             } else {
                 // Inverse: projected (x, y) -> native spherical (lon, lat in radians)
-                let x_deg = v1.to_degrees();
-                let y_deg = v2.to_degrees();
+                let x_deg = (DR2D * factor) * v1;
+                let y_deg = (DR2D * factor) * v2;
                 match prj.reverse(x_deg, y_deg) {
                     Ok((longitude, latitude)) => {
                         // Reject solutions outside the physical domain of the
@@ -705,8 +785,8 @@ impl Mapping for WcsMap {
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
                             && latitude.abs() <= 90.0
                         {
-                            outp[self.lonax] = longitude.to_radians();
-                            outp[self.latax] = latitude.to_radians();
+                            outp[self.lonax] = (DD2R / factor) * longitude;
+                            outp[self.latax] = (DD2R / factor) * latitude;
                         } else {
                             outp[self.lonax] = BAD_VALUE;
                             outp[self.latax] = BAD_VALUE;
@@ -965,6 +1045,18 @@ impl Serializable for WcsMap {
         }
         node.push_string("Type", self.proj.code(), Some(comment));
 
+        // FITSProj — written with `helpful = 0` (wcsmap.c:5333), so only an
+        // explicitly set value appears. The comment reflects the value.
+        if self.test_fits_proj() {
+            let val = self.fits_proj();
+            let comment = if val {
+                "Defines the FITS-WCS projection"
+            } else {
+                "Does not define the FITS-WCS projection"
+            };
+            node.push_int("FitsPrj", val as i64, Some(comment.to_string()));
+        }
+
         // LonCheck — written with `helpful = 0` (wcsmap.c:5341), so only an
         // explicitly set value appears (as an active card); an unset value is
         // suppressed. The comment reflects the value.
@@ -976,6 +1068,18 @@ impl Serializable for WcsMap {
                 "Do not check returned lon values"
             };
             node.push_int("LonChk", val as i64, Some(comment.to_string()));
+        }
+
+        // TPNTan — written with `helpful = 0` (wcsmap.c:5349), so only an
+        // explicitly set value appears. The comment reflects the value.
+        if self.test_tpn_tan() {
+            let val = self.tpn_tan();
+            let comment = if val {
+                "Include TAN projection in TPN mapping"
+            } else {
+                "Exclude TAN projection from TPN mapping"
+            };
+            node.push_int("TpnTan", val as i64, Some(comment.to_string()));
         }
 
         // PV parameters. C `WcsMap::Dump` (wcsmap.c:5355) loops over the
@@ -1039,6 +1143,20 @@ impl Serializable for WcsMap {
 
         let mut wcs = WcsMap::new(base.nin, proj, wcsax1, wcsax2)?;
 
+        // FITSProj / LonCheck / TPNTan — each is only present when explicitly
+        // set (helpful=0 in the dump). C reads all three (wcsmap.c:6016-6034)
+        // before InitPrjPrm and the PV values, so TPNTan is in place by the
+        // time the wcslib parameter block is built.
+        if node.get("FitsPrj").is_some() {
+            wcs.set_fits_proj(node.get_int("FitsPrj", 1) != 0);
+        }
+        if node.get("LonChk").is_some() {
+            wcs.set_lon_check(node.get_int("LonChk", 1) != 0);
+        }
+        if node.get("TpnTan").is_some() {
+            wcs.set_tpn_tan(node.get_int("TpnTan", 1) != 0);
+        }
+
         // Scan items for PV{i}_{m} keys.
         for item in &node.items {
             if let Some(rest) = item.key.strip_prefix("PV") {
@@ -1053,11 +1171,6 @@ impl Serializable for WcsMap {
                     }
                 }
             }
-        }
-
-        // LonCheck — only present when explicitly set (helpful=0 in the dump).
-        if node.get("LonChk").is_some() {
-            wcs.set_lon_check(node.get_int("LonChk", 1) != 0);
         }
 
         if base.inverted {

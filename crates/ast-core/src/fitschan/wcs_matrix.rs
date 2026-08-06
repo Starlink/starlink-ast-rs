@@ -5,69 +5,283 @@
 //! FITS-WCS Papers I and IV. The pipeline is:
 //!
 //! ```text
-//! pixel → subtract CRPIX → [SIP distortion] → PC rotation → CDELT scale → IWC
+//! pixel → [mapd1] → subtract CRPIX → [mapd2] → PC rotation → [mapd3]
+//!       → CDELT scale → [mapd4] → IWC
 //! ```
 //!
-//! This follows the C library's `WcsIntWorld` function (fitschan.c ~line 37488).
+//! The four optional `mapd` stages are the FITS-WCS Paper IV distortion
+//! corrections `DistortMaps` extracts from the CTYPE distortion codes.
+//!
+//! This follows the C library's `WcsIntWorld` function (fitschan.c:37555).
 
 use ndarray::Array2;
 
+use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::error::AstResult;
 use crate::mappings::{
-    CmpMap, Composition, DynMapping, MatrixMap, PolyMap, PolyTerm, UnitMap, WinMap,
+    CmpMap, Composition, DynMapping, Mapping, MatrixMap, PolyMap, PolyTerm, UnitMap, WcsMap, WinMap,
 };
+use crate::wcslib::WcsProjection;
 
 /// Build the pixel-to-Intermediate World Coordinate (IWC) mapping.
 ///
-/// Composes: CRPIX shift -> [SIP distortion] -> PC matrix -> CDELT scaling.
+/// Port of C `WcsIntWorld` (fitschan.c:37555). The chain is
+/// `[mapd1] → WcsShift → [mapd2] → WcsPCMatrix → [mapd3] → WcsCDeltMatrix
+/// → [mapd4]`, where the `mapd` stages come from [`distort_maps`].
 ///
-/// The pipeline follows the C library's `WcsIntWorld`:
-/// 1. A WinMap subtracts CRPIX from pixel coordinates.
-/// 2. If SIP distortion is present, a PolyMap is applied in pixel-offset space.
-/// 3. A MatrixMap applies the PC rotation matrix (identity if absent).
-/// 4. A diagonal MatrixMap applies CDELT scaling (unity if absent).
-///
-/// If CD matrix is present instead of PC+CDELT, the CD matrix is used
-/// directly as the rotation matrix and CDELT is set to unity. This mirrors
-/// the C library's `WcsDecomp` step which splits CD into PC and CDELT.
-pub(crate) fn build_pixel_to_iwc(store: &FitsStore) -> AstResult<DynMapping> {
+/// `store` is mutated: `DistortMaps` strips any distortion code from the
+/// CTYPE values so that later steps — `WcsCelestial` in particular — see a
+/// plain FITS-WCS projection code. `cards` is the FitsChan's own card list,
+/// which is where the IRAF `WAT` keywords live. Any warning text is appended
+/// to `warnings`.
+pub(crate) fn build_pixel_to_iwc(
+    store: &mut FitsStore,
+    cards: &CardList,
+    warnings: &mut Vec<String>,
+) -> AstResult<DynMapping> {
+    let naxes = store.naxis;
+
+    // Distortion corrections for each stage of the chain.
+    let dist = distort_maps(store, cards, naxes, warnings)?;
+
     // Step 1: CRPIX shift.
     // The C WcsShift creates a WinMap mapping pixel → (pixel - CRPIX).
     // Input corners: (0, 0, ...) → Output corners: (-crpix[0], -crpix[1], ...)
     // Input corners: (1, 1, ...) → Output corners: (1-crpix[0], 1-crpix[1], ...)
     let shift_map = build_crpix_shift(store)?;
 
-    // Step 2: SIP distortion (applied in pixel-offset space, before PC/CD).
-    let sip_map = if store.has_sip() {
-        Some(build_sip_mapping(store)?)
-    } else {
-        None
-    };
-
     // Steps 3 & 4: PC rotation and CDELT scaling.
     // If CD matrix is present, it replaces both PC and CDELT.
     let (pc_map, cdelt_map) = build_rotation_and_scale(store)?;
 
-    // Compose the pipeline: shift → [sip] → pc → cdelt.
-    let mut result: DynMapping = Box::new(shift_map);
-
-    // Add SIP if present.
-    if let Some(sip) = sip_map {
-        let cmp = CmpMap::new(result, sip, Composition::Series)?;
-        result = Box::new(cmp);
+    // A PC/CD matrix with a wholly zero row or column has no inverse, which
+    // makes the whole pixel→IWC chain uninvertible (fitschan.c:37669-37674).
+    if !pc_map.has_inverse() {
+        warnings.push(BADMAT_WARNING.to_string());
     }
 
-    // Add PC rotation.
-    let cmp = CmpMap::new(result, pc_map, Composition::Series)?;
-    result = Box::new(cmp);
+    let mut result: Option<DynMapping> = dist.map1;
+    result = Some(append(result, Box::new(shift_map))?);
+    if let Some(m) = dist.map2 {
+        result = Some(append(result, m)?);
+    }
+    result = Some(append(result, pc_map)?);
+    if let Some(m) = dist.map3 {
+        result = Some(append(result, m)?);
+    }
+    result = Some(append(result, cdelt_map)?);
+    if let Some(m) = dist.map4 {
+        result = Some(append(result, m)?);
+    }
 
-    // Add CDELT scaling.
-    let cmp = CmpMap::new(result, cdelt_map, Composition::Series)?;
-    result = Box::new(cmp);
-
-    Ok(result)
+    // `result` is set by the WcsShift append above.
+    Ok(result.expect("pixel→IWC chain always contains the CRPIX shift"))
 }
+
+/// The `badmat` warning text (fitschan.c:37670-37673). `badmat` is one of the
+/// conditions enabled by the default `Warnings` value (fitschan.c:43320), so
+/// it is always emitted.
+const BADMAT_WARNING: &str = "The pixel rotation matrix in the original FITS header (specified by CD or PC keywords) \
+     could not be inverted. This may be because the matrix contains rows or columns which \
+     are entirely zero.";
+
+/// Append `next` in series after `acc`, or return it unchanged when `acc` is
+/// empty. Mirrors C's repeated
+/// `if( ret ) ret = astCmpMap( ret, map1, 1, "" ); else ret = map1;`.
+fn append(acc: Option<DynMapping>, next: DynMapping) -> AstResult<DynMapping> {
+    match acc {
+        Some(prev) => Ok(Box::new(CmpMap::new(prev, next, Composition::Series)?)),
+        None => Ok(next),
+    }
+}
+
+/// The four distortion corrections a FITS-WCS Paper IV distortion code
+/// contributes to the pixel→IWC chain, in the positions C `WcsIntWorld`
+/// splices them into (fitschan.c:37624-37697).
+#[derive(Default)]
+struct DistortionMaps {
+    /// Applied to raw pixel coordinates, before the CRPIX translation.
+    map1: Option<DynMapping>,
+    /// Applied to translated pixel coordinates, before the PC matrix.
+    map2: Option<DynMapping>,
+    /// Applied to unscaled IWC coordinates, before the CDELT matrix.
+    map3: Option<DynMapping>,
+    /// Applied to scaled IWC coordinates, after the CDELT matrix.
+    map4: Option<DynMapping>,
+}
+
+/// Port of C `DistortMaps` (fitschan.c:8707).
+///
+/// Inspects the CTYPE values for a Paper IV distortion code and returns the
+/// Mappings that implement it. Every distortion code found — recognised or
+/// not — is stripped from the CTYPE value in `store`, so later steps never
+/// have to allow for one being present.
+///
+/// The three `distortion` warnings C raises here are omitted: `distortion` is
+/// not one of the conditions enabled by the default `Warnings` value
+/// (fitschan.c:43320), so C suppresses them unless the caller asks for them.
+fn distort_maps(
+    store: &mut FitsStore,
+    cards: &CardList,
+    naxes: usize,
+    warnings: &mut Vec<String>,
+) -> AstResult<DistortionMaps> {
+    let mut ret = DistortionMaps::default();
+
+    // "-SIP": Spitzer distortion, limited to axes 1 and 2.
+    //
+    // C strips the "-SIP" suffix from the first two CTYPE values here; in this
+    // reader `wcs_keywords::extract_sip` does that during keyword extraction,
+    // which is also where the coefficients are collected, so by this point the
+    // store records the distortion through `has_sip` rather than the CTYPE.
+    if store.has_sip() {
+        ret.map2 = Some(build_sip_mapping(store)?);
+    }
+
+    // "-SIP" on any axis beyond the first two is not supported; C warns and
+    // removes the code.
+    for i in 2..naxes {
+        if let Some(ct) = store.ctype.get_mut(i).and_then(|c| c.as_mut()) {
+            let trimmed = ct.trim_end();
+            if trimmed.len() >= 4 && trimmed.ends_with("-SIP") {
+                let nc = trimmed.len() - 4;
+                ct.truncate(nc);
+            }
+        }
+    }
+
+    // "-ZPX": IRAF distortion. `SpecTrans` has already rewritten the CTYPE
+    // values from "-ZPX" to "-ZPN-ZPX", so the basic ZPN projection is read in
+    // the normal way and only the distortion code is handled here.
+    let mut found_axes: Vec<usize> = Vec::new();
+    for i in 0..naxes {
+        let is_zpx = store
+            .ctype
+            .get(i)
+            .and_then(|c| c.as_deref())
+            .and_then(split_4_3_3)
+            .is_some_and(|(_, _, dist)| dist == "ZPX");
+        if is_zpx {
+            found_axes.push(i);
+            if let Some(ct) = store.ctype[i].as_mut() {
+                ct.truncate(8);
+            }
+        }
+    }
+
+    // More than two ZPX axes is meaningless; C warns and falls back to the
+    // plain ZPN projection, which the truncated CTYPE values already select.
+    if found_axes.len() == 2 {
+        let zpxaxes = [found_axes[0], found_axes[1]];
+        if let Some(m) = zpx_mapping(cards, naxes, zpxaxes, warnings)? {
+            ret.map4 = Some(match ret.map4.take() {
+                Some(prev) => Box::new(CmpMap::new(prev, m, Composition::Series)?),
+                None => m,
+            });
+        }
+    }
+
+    // There are currently no other supported distortion codes. Strip any
+    // remaining one, so later steps see a plain projection code; C warns about
+    // each such header once.
+    for i in 0..naxes {
+        let has_code = store
+            .ctype
+            .get(i)
+            .and_then(|c| c.as_deref())
+            .and_then(split_4_3_3)
+            .is_some();
+        if has_code {
+            if let Some(ct) = store.ctype[i].as_mut() {
+                ct.truncate(8);
+            }
+        }
+    }
+
+    Ok(ret)
+}
+
+/// Split a CTYPE value of the FITS-WCS Paper IV "4-3-3" form into its axis
+/// type, projection code and distortion code.
+///
+/// Mirrors C's `3 == astSscanf( ctype, "%4s-%3s-%3s", type, code, dist )`
+/// (fitschan.c:8886). `%s` stops at whitespace and each conversion is bounded
+/// by its field width, so the pattern matches exactly when the value opens
+/// with twelve non-blank characters carrying `-` in positions 4 and 8.
+fn split_4_3_3(ctype: &str) -> Option<(&str, &str, &str)> {
+    let b = ctype.as_bytes();
+    if b.len() < 12 || b[4] != b'-' || b[8] != b'-' {
+        return None;
+    }
+    if b[..12].iter().any(|c| c.is_ascii_whitespace()) {
+        return None;
+    }
+    Some((&ctype[..4], &ctype[5..8], &ctype[9..12]))
+}
+
+/// Port of C `ZPXMapping` (fitschan.c:41528).
+///
+/// Builds the Mapping implementing the `lngcor` / `latcor` corrections the
+/// IRAF `WAT` keywords describe for the two `-ZPX` axes (`zpxaxes`, 0-based).
+/// The basic ZPN projection is read in the normal way; this covers only the
+/// polynomial correction on top of it.
+///
+/// Returns `None` when the header uses IRAF features AST cannot express,
+/// having raised the `zpx` warning.
+fn zpx_mapping(
+    cards: &CardList,
+    naxes: usize,
+    zpxaxes: [usize; 2],
+    warnings: &mut Vec<String>,
+) -> AstResult<Option<DynMapping>> {
+    let mut coeffs: [Vec<(usize, f64)>; 2] = [Vec::new(), Vec::new()];
+    let mut ok = true;
+
+    for i in 0..2 {
+        // Concatenate all the IRAF "WAT" keywords for this axis, then read the
+        // polynomial coefficients out as a list of TPN PVi_m values.
+        let watstr = super::spec_trans::concat_wat(cards, zpxaxes[i] + 1);
+        let (c, axis_ok) = super::spec_trans::wat_coeffs(&watstr, i);
+        coeffs[i] = c;
+        ok = axis_ok;
+        if !ok {
+            break;
+        }
+    }
+
+    if !ok {
+        warnings.push(ZPX_WARNING.to_string());
+        return Ok(None);
+    }
+
+    // With no correction surface on either axis there is no distortion to
+    // apply (fitschan.c:41651).
+    if coeffs[0].is_empty() && coeffs[1].is_empty() {
+        return Ok(Some(Box::new(UnitMap::new(naxes))));
+    }
+
+    // Store the coefficients in an inverted TPN WcsMap. It corrects the ZPN
+    // WcsMap created later, so clear FITSProj to keep the FitsChan write path
+    // from mistaking it for the header's projection, and clear TPNTan so only
+    // the polynomial part of the TPN projection is applied.
+    let mut wcs = WcsMap::new(naxes, WcsProjection::Tpn, zpxaxes[0] + 1, zpxaxes[1] + 1)?;
+    wcs.invert();
+    wcs.set_fits_proj(false);
+    wcs.set_tpn_tan(false);
+    for (i, axis_coeffs) in coeffs.iter().enumerate() {
+        for &(m, value) in axis_coeffs {
+            wcs.set_pv(zpxaxes[i] + 1, m, value)?;
+        }
+    }
+    Ok(Some(Box::new(wcs)))
+}
+
+/// The `zpx` warning text (fitschan.c:41654-41657). `zpx` is one of the
+/// conditions enabled by the default `Warnings` value (fitschan.c:43320), so
+/// it is always emitted.
+const ZPX_WARNING: &str = "This FITS header includes, or was derived from, a ZPX projection which requires \
+     unsupported IRAF-specific corrections. The WCS information may therefore be incorrect.";
 
 /// Build a WinMap that subtracts CRPIX from pixel coordinates.
 ///
@@ -498,8 +712,8 @@ mod tests {
 
     #[test]
     fn cdelt_only_produces_diagonal() {
-        let store = simple_cdelt_store();
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mut store = simple_cdelt_store();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         // Reference pixel (128, 128) should map to IWC (0, 0).
         let pts = point2d(128.0, 128.0);
@@ -511,8 +725,8 @@ mod tests {
 
     #[test]
     fn cdelt_offset_pixel() {
-        let store = simple_cdelt_store();
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mut store = simple_cdelt_store();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         // Pixel (129, 129): offset (1, 1) from CRPIX, scaled by CDELT.
         // Expected IWC: (1 * -0.001, 1 * 0.001) = (-0.001, 0.001).
@@ -525,8 +739,8 @@ mod tests {
 
     #[test]
     fn cd_matrix_reference_to_zero() {
-        let store = cd_matrix_store();
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mut store = cd_matrix_store();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         // Reference pixel should map to IWC (0, 0).
         let pts = point2d(128.0, 128.0);
@@ -538,8 +752,8 @@ mod tests {
 
     #[test]
     fn cd_matrix_offset_pixel() {
-        let store = cd_matrix_store();
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mut store = cd_matrix_store();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         // Pixel (129, 128): offset (1, 0), so IWC = CD * (1, 0) = (CD[0][0], CD[1][0]).
         let pts = point2d(129.0, 128.0);
@@ -551,8 +765,8 @@ mod tests {
 
     #[test]
     fn nin_nout_correct() {
-        let store = simple_cdelt_store();
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mut store = simple_cdelt_store();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
         assert_eq!(mapping.nin(), 2);
         assert_eq!(mapping.nout(), 2);
     }
@@ -572,7 +786,7 @@ mod tests {
         store.pc[1][0] = Some(sin45);
         store.pc[1][1] = Some(cos45);
 
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         // Pixel (2, 1): offset (1, 0) from CRPIX.
         // After PC rotation: (cos45, sin45) ≈ (0.707, 0.707).
@@ -587,8 +801,8 @@ mod tests {
     #[test]
     fn identity_with_defaults() {
         // No CRPIX, no CDELT, no PC, no CD: should be identity.
-        let store = FitsStore::new(2);
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mut store = FitsStore::new(2);
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         let pts = point2d(5.0, 7.0);
         let out = mapping.transform(&pts, true).unwrap();
@@ -612,7 +826,7 @@ mod tests {
         store.sip_b_order = Some(0);
         store.sip_b = vec![vec![0.0; 1]; 1];
 
-        let mapping = build_pixel_to_iwc(&store).unwrap();
+        let mapping = build_pixel_to_iwc(&mut store, &CardList::new(), &mut Vec::new()).unwrap();
 
         // At pixel (100, 0) with CRPIX = 0:
         // offset = (100, 0)

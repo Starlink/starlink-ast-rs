@@ -409,6 +409,14 @@ pub(crate) fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMappin
         return split_map2_parallel(cmp);
     }
     if let Some(wm) = mapping.as_any().downcast_ref::<WcsMap>() {
+        // Only a WcsMap with FITSProj set defines the header's FITS-WCS
+        // projection (fitschan.c:33186). A WcsMap acting purely as a
+        // distortion correction — the polynomial TPN produced for a `-ZPX`
+        // header, say — has it cleared and must be treated as an ordinary
+        // component of the surrounding chain.
+        if !wm.fits_proj() {
+            return None;
+        }
         let nax = wm.nin();
         let pre: DynMapping = Box::new(UnitMap::new(nax));
         let post: DynMapping = Box::new(UnitMap::new(nax));

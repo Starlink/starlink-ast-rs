@@ -161,7 +161,7 @@ pub(crate) fn spec_trans_inplace(
     // of the WAT strings; if not exactly representable in FITS-WCS
     // an `ASTWARN` warning is issued. Per-version letter, no
     // encoding gate.
-    translate_iraf_tnx(cards);
+    translate_iraf_tnx(cards, warnings);
 
     // Translation 19 (fitschan.c:31541-31571): MSX CAR projection.
     // Some MSX images have CAR projections whose CRPIX puts the
@@ -840,11 +840,10 @@ fn translate_iraf_zpx(cards: &mut CardList) {
 /// strings into `PV<axis>_m` cards (mirrors fitschan.c:31488-31538).
 ///
 /// When the polynomial cannot be represented as a TPN (i.e. order
-/// greater than 7, asymmetric axis orders, or full cross-terms) C
-/// issues an `ASTWARN`; we silently leave the partially-translated
-/// CTYPE in place. The caller's downstream reader will reject the
-/// resulting broken TPN.
-fn translate_iraf_tnx(cards: &mut CardList) {
+/// greater than 7, asymmetric axis orders, or full cross-terms) the
+/// partially-translated CTYPE is left in place and a `tnx` warning is
+/// raised, as C does (fitschan.c:31996-32000).
+fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Vec<String>) {
     let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
         return;
     };
@@ -859,19 +858,26 @@ fn translate_iraf_tnx(cards: &mut CardList) {
         replace_projection_suffix(cards, &key, "TPN");
     }
     // Parse the polynomial coefficients out of the WAT strings.
-    // Mirrors fitschan.c:31508-31538.
+    // Mirrors fitschan.c:31971-32006.
     for (i, axis) in [(0_usize, axlon), (1_usize, axlat)].iter().copied() {
         let watmem = concat_wat(cards, axis);
-        if watmem.is_empty() {
-            continue;
-        }
-        if let Some(pvs) = wat_coeffs(&watmem, i) {
+        let (pvs, ok) = wat_coeffs(&watmem, i);
+        if ok {
             for (m, value) in pvs {
                 cards.set_float(&format!("PV{axis}_{m}"), value, "TAN projection parameter");
             }
+        } else {
+            warnings.push(TNX_WARNING.to_string());
         }
     }
 }
+
+/// The `tnx` warning text (fitschan.c:31997-32000). `tnx` is one of the
+/// conditions enabled by the default `Warnings` value (fitschan.c:43320), so
+/// it is always emitted.
+const TNX_WARNING: &str = "This FITS header includes, or was derived from, a TNX projection which \
+     requires unsupported IRAF-specific corrections. The WCS information may \
+     therefore be incorrect.";
 
 /// Port of fitschan.c::WATCoeffs (line 35102-35355). Extract
 /// polynomial coefficients from the IRAF WAT-string `lngcor` /
@@ -880,85 +886,120 @@ fn translate_iraf_tnx(cards: &mut CardList) {
 ///
 /// `iaxis` is 0 for longitude, 1 for latitude.
 ///
-/// Returns `None` when the polynomial cannot be represented as a
-/// TPN (corresponds to C `*ok = 0`).
-fn wat_coeffs(watstr: &str, iaxis: usize) -> Option<Vec<(usize, f64)>> {
-    // Look for `<axis>cor = "..."` and extract the quoted body.
-    // C uses regex `cor *= *"(.*)"`. We approximate by hunting for
-    // the first `cor = "` after either `lngcor` or `latcor`.
-    let body_start = watstr.find("cor")?;
-    let after_cor = &watstr[body_start + 3..];
-    let q1 = after_cor.find('"')?;
-    let after_q1 = &after_cor[q1 + 1..];
-    let q2 = after_q1.find('"')?;
-    let body = &after_q1[..q2];
-
-    // Split into whitespace-delimited words.
-    let words: Vec<&str> = body.split_ascii_whitespace().collect();
-    if words.len() < 8 {
-        return None;
-    }
-    let parsed: Vec<f64> = words
-        .iter()
-        .map(|w| w.parse::<f64>().unwrap_or(f64::NAN))
-        .collect();
-    if parsed.iter().any(|v| !v.is_finite()) {
-        return None;
-    }
-
-    // word 0: surface type. 1 = chebyshev, 3 = simple polynomial,
-    // 2 = legendre (unsupported).
-    let cheb = match parsed[0] as i64 {
-        1 => true,
-        3 => false,
-        _ => return None,
+/// Returns the coefficient list and C's `*ok` flag. The two outputs are
+/// independent: an empty list with `ok` still set means the WAT string
+/// carries no correction surface, which callers treat as "no distortion",
+/// whereas `ok == false` means a surface was found but uses features AST
+/// cannot express as a TPN projection.
+pub(crate) fn wat_coeffs(watstr: &str, iaxis: usize) -> (Vec<(usize, f64)>, bool) {
+    // C looks for the regex `cor *= *"(.*)"` (fitschan.c:35265). When it does
+    // not match, `WATCoeffs` returns zero coefficients with `*ok` left set.
+    let Some(body) = correction_surface(watstr) else {
+        return (Vec::new(), true);
     };
-    // words 1, 2: orders in xi/eta; must be equal, in 1..=7.
-    let order = parsed[1] as i64;
-    if !(1..=7).contains(&order) {
-        return None;
-    }
-    if parsed[2] as i64 != order {
-        return None;
-    }
-    let order = order as usize;
-    // word 3: cross-term type; 2 = half-cross terms (only one
-    // supported).
-    if parsed[3] as i64 != 2 {
-        return None;
-    }
-    // words 4-7: ximin, ximax, etamin, etamax.
-    let ximin = parsed[4];
-    let ximax = parsed[5];
-    let etamin = parsed[6];
-    let etamax = parsed[7];
 
-    // Number of half-cross-term coefficients per order. Indexed
-    // by porder = order - 1.
+    // Split into whitespace-delimited words and convert each to a double.
+    // C reports AST__BDFTS and abandons the read when `astChr2Double` fails
+    // (fitschan.c:35286-35291); this reader has no error channel at the point
+    // of use, so an unreadable word is reported as "not representable".
+    let words: Vec<&str> = body.split_ascii_whitespace().collect();
+    let mut parsed: Vec<f64> = Vec::with_capacity(words.len());
+    for w in &words {
+        match w.parse::<f64>() {
+            Ok(v) if v.is_finite() => parsed.push(v),
+            _ => return (Vec::new(), false),
+        }
+    }
+    let nword = parsed.len();
+
+    // Number of lngcor/latcor values needed for each order, indexed by
+    // porder = order - 1.
     const NAB: [usize; 8] = [1, 3, 6, 10, 15, 21, 28, 36];
-    let porder = order - 1;
-    if words.len() != 8 + NAB[porder] {
-        return None;
-    }
 
-    // Fill an order×order matrix as if full cross terms were given.
-    // Half-cross-term layout: xi power decreases from `order` down
-    // to zero as we move through the coefficients (eta increments
-    // when xi rolls under).
-    let mut coeff = vec![0.0_f64; order * order];
-    let mut xiorder = 0_usize;
-    let mut etaorder = 0_usize;
-    for &dval in parsed.iter().skip(8) {
-        if etaorder >= order {
+    let mut ok = true;
+    let mut cheb = false;
+    let mut order: i64 = 0;
+    let mut porder: i64 = -1;
+    let mut coeff: Vec<f64> = Vec::new();
+    let mut ximin = 0.0;
+    let mut ximax = 0.0;
+    let mut etamin = 0.0;
+    let mut etamax = 0.0;
+    let mut xiorder: i64 = 0;
+    let mut etaorder: i64 = 0;
+
+    for (iword, &dval) in parsed.iter().enumerate() {
+        if !ok {
             break;
         }
-        coeff[xiorder + order * etaorder] = dval;
-        xiorder += 1;
-        if xiorder == order - etaorder {
-            xiorder = 0;
-            etaorder += 1;
+        match iword {
+            // Surface type. Only type 2 (legendre) is rejected outright; C
+            // recognises type 1 as chebyshev and treats everything else as
+            // the simple-polynomial form (fitschan.c:35296-35301).
+            0 => {
+                if dval == 1.0 {
+                    cheb = true;
+                } else if dval == 2.0 {
+                    ok = false;
+                }
+            }
+            // Order of the polynomial in xi.
+            1 => {
+                order = dval as i64;
+                porder = order - 1;
+            }
+            // Order in eta; must match the xi order and lie in 0..=7.
+            2 => {
+                if dval as i64 - 1 != porder || !(0.0..=7.0).contains(&dval) {
+                    ok = false;
+                }
+            }
+            // Cross-term type; only 2 (half-cross terms) is supported. The
+            // coefficient array is sized here, holding the terms as if full
+            // cross terms had been supplied.
+            3 => {
+                if dval != 2.0 {
+                    ok = false;
+                } else if order > 0 {
+                    coeff = vec![0.0_f64; (order * order) as usize];
+                }
+            }
+            // Region of validity in IRAF's xi/eta space, used only for a
+            // chebyshev surface.
+            4 => ximin = dval,
+            5 => ximax = dval,
+            6 => etamin = dval,
+            7 => etamax = dval,
+            // The polynomial coefficients, stored so that the power of xi
+            // increases fastest. Half-cross terms mean the maximum power of
+            // xi decreases from `order` to zero through the list.
+            _ => {
+                if order > 0 && etaorder < order {
+                    coeff[(xiorder + order * etaorder) as usize] = dval;
+                    xiorder += 1;
+                    if xiorder == order - etaorder {
+                        xiorder = 0;
+                        etaorder += 1;
+                    }
+                }
+            }
         }
     }
+
+    // Check that all the required coefficients were found. The `porder`
+    // range test is not in C, which indexes `nab[porder]` unconditionally;
+    // it is reachable when the word list stops before the order check at
+    // word 2, so the bound is needed to keep the lookup in range.
+    if !(0..8).contains(&porder) || nword != 8 + NAB[porder as usize] {
+        ok = false;
+    }
+    if !ok || coeff.len() < 2 {
+        // C adds 1.0 to `coeff[iaxis ? order : 1]` without a bounds check, so
+        // a first-order (constant-only) surface indexes past the end of its
+        // 1x1 array. Reject it rather than reproducing the overrun.
+        return (Vec::new(), false);
+    }
+    let order = order as usize;
 
     // Convert from chebyshev to simple polynomial form if needed.
     if cheb {
@@ -988,7 +1029,28 @@ fn wat_coeffs(watstr: &str, iaxis: usize) -> Option<Vec<(usize, f64)>> {
             pc += 1;
         }
     }
-    Some(out)
+    (out, true)
+}
+
+/// Extract the body of the `cor = "..."` assignment in an IRAF WAT string,
+/// mirroring C's `astChrSplitRE( watstr, "cor *= *\"(.*)\"", ... )`
+/// (fitschan.c:35265). `.*` is greedy, so the body runs to the *last* quote
+/// in the string. Returns `None` when there is no correction surface.
+fn correction_surface(watstr: &str) -> Option<&str> {
+    let cor = watstr.find("cor")?;
+    let rest = &watstr[cor + 3..];
+    let mut it = rest.char_indices().skip_while(|&(_, c)| c == ' ');
+    let (eq, '=') = it.next()? else {
+        return None;
+    };
+    let after_eq = &rest[eq + 1..];
+    let open = after_eq.find(|c| c != ' ')?;
+    if after_eq.as_bytes()[open] != b'"' {
+        return None;
+    }
+    let body = &after_eq[open + 1..];
+    let close = body.rfind('"')?;
+    Some(&body[..close])
 }
 
 /// Convert a 2-D Chebyshev polynomial to standard polynomial form.
@@ -1099,7 +1161,7 @@ fn shpc1(xmin: f64, xmax: f64, d: &[f64], w: &mut [f64]) {
 /// Concatenate all `WAT{axis}_{nnn}` strings for the given 1-based
 /// axis. Mirrors C `ConcatWAT` (fitschan.c:7999-8090) — IRAF emits
 /// the WAT keys with 3-digit zero-padded indices.
-fn concat_wat(cards: &CardList, axis: usize) -> String {
+pub(crate) fn concat_wat(cards: &CardList, axis: usize) -> String {
     let mut out = String::new();
     for n in 1..=999 {
         let key = format!("WAT{axis}_{n:03}");
