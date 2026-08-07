@@ -9,8 +9,8 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::keymap::entry::MapEntry;
 use crate::keymap::table;
 
-/// The order [`crate::keymap::KeyMap::map_key`], `map_iterate` and the
-/// dump present keys.
+/// The order [`crate::keymap::KeyMap::map_key`] and `map_iterate` present
+/// keys.
 ///
 /// "Up" orders the newest entry first; "Down" orders the oldest first —
 /// this reads backwards from the names, but follows `CompareEntries`

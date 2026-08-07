@@ -221,8 +221,8 @@ impl KeyMap {
         self.map_locked.is_some()
     }
 
-    /// The order in which [`KeyMap::map_key`] and the dump present keys.
-    /// Default [`SortBy::None`].
+    /// The order in which [`KeyMap::map_key`] and `map_iterate` present
+    /// keys. Default [`SortBy::None`].
     pub fn sort_by(&self) -> SortBy {
         self.sort_by.unwrap_or_default()
     }
