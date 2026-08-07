@@ -1640,6 +1640,25 @@ mod tests {
     }
 
     #[test]
+    fn get_object_ref_honours_key_case() {
+        // get_object_ref folds its key through table::convert_key before
+        // looking the entry up, the same as every public MapXxx entry
+        // point. With KeyCase=0 a lookup in a different case from the
+        // key's own must still find the entry, not silently report it
+        // absent.
+        let mut km = KeyMap::new();
+        km.set_key_case(false).unwrap();
+        let mut inner = KeyMap::new();
+        inner.put_0i("X", 1, None).unwrap();
+        km.put_0a("NESTED", AnyObject::KeyMap(Box::new(inner)), None)
+            .unwrap();
+        assert!(matches!(
+            km.get_object_ref("nEsTeD"),
+            Some(AnyObject::KeyMap(_))
+        ));
+    }
+
+    #[test]
     fn sort_by_and_size_guess_do_not_recurse() {
         let mut inner = KeyMap::new();
         inner.put_0i("X", 1, None).unwrap();

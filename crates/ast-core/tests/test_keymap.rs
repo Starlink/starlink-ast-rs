@@ -207,6 +207,18 @@ fn vector_put_and_get_round_trip() {
 }
 
 #[test]
+fn map_length_honours_key_case() {
+    // astMapLength (keymap.c:8088) folds the key through ConvertKey before
+    // the table lookup, the same as every other MapXxx entry point. With
+    // KeyCase=0 a lookup in a different case from the key's own must
+    // still find the entry, not report length 0.
+    let mut km = KeyMap::new();
+    km.set_key_case(false).unwrap();
+    km.put_1i("FREDS", &[1, 2, 3], None).unwrap();
+    assert_eq!(km.map_length("fReDs"), 3);
+}
+
+#[test]
 fn get_1_converts_each_element() {
     let mut km = KeyMap::new();
     km.put_1c("V", &["1", "2.6", "3"], None).unwrap();
@@ -398,6 +410,18 @@ fn map_len_c_reports_the_longest_element() {
 
     km.put_1c("V", &["Hello", "", "Hello"], None).unwrap();
     assert_eq!(km.map_len_c("V").unwrap(), 5);
+}
+
+#[test]
+fn map_len_c_honours_key_case() {
+    // astMapLenC (keymap.c:7886) folds the key through ConvertKey before
+    // the table lookup, the same as astMapLength. With KeyCase=0 a
+    // lookup in a different case from the key's own must still find the
+    // entry, not silently report 0 as though the key were absent.
+    let mut km = KeyMap::new();
+    km.set_key_case(false).unwrap();
+    km.put_0i("FREDS", 1000, None).unwrap();
+    assert_eq!(km.map_len_c("fReDs").unwrap(), 4);
 }
 
 #[test]
