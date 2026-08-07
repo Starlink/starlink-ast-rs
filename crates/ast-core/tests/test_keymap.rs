@@ -712,3 +712,45 @@ fn map_iterate_terminates_with_sort_by_set() {
     }
     assert_eq!(count, 3);
 }
+
+#[test]
+fn sort_by_reorders_the_read_out() {
+    let mut km = KeyMap::new();
+    // Insert oldest-first, non-alphabetically.
+    km.put_0i("Zulu", 1, None).unwrap();
+    km.put_0i("Alpha", 2, None).unwrap();
+    km.put_0i("Mike", 3, None).unwrap();
+    // Re-put the oldest key: its value age advances, its key age does not.
+    km.put_0i("Zulu", 9, None).unwrap();
+
+    let read = |km: &KeyMap| -> Vec<String> {
+        (0..km.map_size()).map(|i| km.map_key(i).unwrap()).collect()
+    };
+
+    // KeyCase defaults to true (astMAKE_GET(KeyMap,KeyCase,int,1,...),
+    // keymap.c:10158), so keys are stored case-preserved, not upper-cased.
+    km.set_sort_by(SortBy::KeyUp);
+    assert_eq!(read(&km), vec!["Alpha", "Mike", "Zulu"]);
+
+    km.set_sort_by(SortBy::KeyDown);
+    assert_eq!(read(&km), vec!["Zulu", "Mike", "Alpha"]);
+
+    // AgeUp is newest-first, and Zulu's re-put made it newest by value.
+    km.set_sort_by(SortBy::AgeUp);
+    assert_eq!(read(&km), vec!["Zulu", "Mike", "Alpha"]);
+
+    km.set_sort_by(SortBy::AgeDown);
+    assert_eq!(read(&km), vec!["Alpha", "Mike", "Zulu"]);
+
+    // KeyAgeUp is blind to the re-put, so Zulu is still the oldest key and
+    // therefore sorts last.
+    km.set_sort_by(SortBy::KeyAgeUp);
+    assert_eq!(read(&km), vec!["Mike", "Alpha", "Zulu"]);
+
+    km.set_sort_by(SortBy::KeyAgeDown);
+    assert_eq!(read(&km), vec!["Zulu", "Alpha", "Mike"]);
+
+    // Clearing returns to the alphabetical default.
+    km.clear_sort_by();
+    assert_eq!(read(&km), vec!["Alpha", "Mike", "Zulu"]);
+}

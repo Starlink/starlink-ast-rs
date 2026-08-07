@@ -1459,17 +1459,21 @@ impl KeyMap {
         Ok(())
     }
 
-    /// The keys in read-out order.
+    /// The keys in read-out order, as set by `SortBy`.
     ///
-    /// For now this always sorts by [`table::key_cmp`], regardless of
-    /// `SortBy`; the ordering diverges from C's unsorted bucket order,
-    /// see `docs/issues/c-library-quirks.md`. [`KeyMap::sort_by`] will
-    /// pick this method's other six modes without any change to its
-    /// callers.
+    /// `SortBy::None` orders alphabetically. C leaves it unordered, reading
+    /// out in hash-bucket order; see `docs/issues/c-library-quirks.md`.
     pub(crate) fn sorted_keys(&self) -> Vec<String> {
-        let mut keys: Vec<String> = self.entries.keys().cloned().collect();
-        keys.sort_by(|a, b| table::key_cmp(a, b));
-        keys
+        let sort_by = self.sort_by();
+        let mut keys: Vec<&String> = self.entries.keys().collect();
+        keys.sort_by(|a, b| {
+            sort::compare_entries(
+                sort_by,
+                (a.as_str(), &self.entries[*a]),
+                (b.as_str(), &self.entries[*b]),
+            )
+        });
+        keys.into_iter().cloned().collect()
     }
 
     /// The key at `index` in read-out order. Mirrors `astMapKey`
