@@ -140,3 +140,175 @@ fn a_key_map_cannot_contain_itself() {
     let err = outer.check_circle(&self_copy, "astMapPut0A").unwrap_err();
     assert_eq!(err.code(), ErrorCode::Kycir);
 }
+
+#[test]
+fn vector_put_and_get_round_trip() {
+    let mut km = KeyMap::new();
+    km.put_1i("VI", &[1, 2, 3], None).unwrap();
+    km.put_1d("VD", &[1.5, -2.5], Some("two doubles")).unwrap();
+    km.put_1c("VC", &["Position", "Position", "Time", "Energy"], None)
+        .unwrap();
+
+    assert_eq!(km.get_1i("VI").unwrap(), Some(vec![1, 2, 3]));
+    assert_eq!(km.get_1d("VD").unwrap(), Some(vec![1.5, -2.5]));
+    assert_eq!(
+        km.get_1c("VC").unwrap(),
+        Some(vec![
+            "Position".to_string(),
+            "Position".to_string(),
+            "Time".to_string(),
+            "Energy".to_string()
+        ])
+    );
+
+    assert_eq!(km.map_length("VI"), 3);
+    assert_eq!(km.map_length("VC"), 4);
+    // A scalar has length 1 through astMapLength, even though its nel is 0.
+    km.put_0i("S", 1, None).unwrap();
+    assert_eq!(km.map_length("S"), 1);
+    // A missing key has length 0.
+    assert_eq!(km.map_length("NOPE"), 0);
+}
+
+#[test]
+fn get_1_converts_each_element() {
+    let mut km = KeyMap::new();
+    km.put_1c("V", &["1", "2.6", "3"], None).unwrap();
+    assert_eq!(km.get_1i("V").unwrap(), Some(vec![1, 3, 3]));
+
+    // A single unconvertible element fails the whole read, naming the
+    // element index. C's message uses a 1-based element number.
+    km.put_1c("BAD", &["1", "nope"], None).unwrap();
+    let err = km.get_1i("BAD").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpger);
+    assert!(
+        err.to_string().contains("element 2 of KeyMap key \"BAD\""),
+        "{err}"
+    );
+}
+
+#[test]
+fn get_1_reads_a_scalar_as_a_length_one_vector() {
+    let mut km = KeyMap::new();
+    km.put_0i("S", 7, None).unwrap();
+    assert_eq!(km.get_1i("S").unwrap(), Some(vec![7]));
+}
+
+#[test]
+fn put_elem_creates_and_appends() {
+    let mut km = KeyMap::new();
+
+    // Absent key: creates a length-1 vector.
+    km.put_elem_i("A", 0, 10).unwrap();
+    assert_eq!(km.map_length("A"), 1);
+    assert_eq!(km.get_1i("A").unwrap(), Some(vec![10]));
+
+    // In-range index: overwrites.
+    km.put_elem_i("A", 0, 11).unwrap();
+    assert_eq!(km.get_1i("A").unwrap(), Some(vec![11]));
+
+    // Out-of-range index: appends at the end, whatever the index was.
+    km.put_elem_i("A", 99, 12).unwrap();
+    assert_eq!(km.get_1i("A").unwrap(), Some(vec![11, 12]));
+
+    // A scalar is promoted to a vector.
+    km.put_0i("B", 1, None).unwrap();
+    km.put_elem_i("B", 1, 2).unwrap();
+    assert_eq!(km.get_1i("B").unwrap(), Some(vec![1, 2]));
+
+    // Comment retention/dropping on create-vs-promote is checked once
+    // `map_comment` and `put_u` land in Task 9.
+}
+
+#[test]
+fn put_elem_converts_or_reports_mpper() {
+    let mut km = KeyMap::new();
+    km.put_1i("V", &[1, 2], None).unwrap();
+    // The value is converted to the entry's existing type.
+    km.put_elem_d("V", 0, 2.6).unwrap();
+    assert_eq!(km.get_1i("V").unwrap(), Some(vec![3, 2]));
+
+    km.put_1a(
+        "OBJ",
+        vec![Some(AnyObject::KeyMap(Box::new(KeyMap::new())))],
+        None,
+    )
+    .unwrap();
+    let err = km.put_elem_i("OBJ", 0, 1).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpper);
+    assert!(
+        err.to_string().contains(
+            "The supplied value cannot be converted to the data type of \
+             KeyMap key \"OBJ\"."
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn get_elem_rejects_an_out_of_range_index() {
+    let mut km = KeyMap::new();
+    km.put_1i("V", &[1, 2, 3], None).unwrap();
+    assert_eq!(km.get_elem_i("V", 0).unwrap(), Some(1));
+    assert_eq!(km.get_elem_i("V", 2).unwrap(), Some(3));
+
+    // Unlike put, get does not tolerate an out-of-range index.
+    let err = km.get_elem_i("V", 3).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpvin);
+    assert!(
+        err.to_string().contains(
+            "Illegal zero-based vector index 3 supplied for KeyMap entry 'V' \
+             - the vector has 3 elements."
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn map_len_c_reports_the_longest_element() {
+    // testkeymap.c asserts 4, 0 and 5 for these three cases.
+    let mut km = KeyMap::new();
+    km.put_0i("I", 1000, None).unwrap();
+    assert_eq!(km.map_len_c("I").unwrap(), 4);
+
+    // A missing key has no elements, so no length.
+    assert_eq!(km.map_len_c("NOPE").unwrap(), 0);
+
+    km.put_1c("V", &["Hello", "", "Hello"], None).unwrap();
+    assert_eq!(km.map_len_c("V").unwrap(), 5);
+}
+
+#[test]
+fn map_get_c_joins_with_the_c_fixed_stride() {
+    // testkeymap.c (around line 837): a vector whose elements are
+    // "Hello", " " (the stored comment, not one of the elements — the
+    // comment plays no part in the read) and "  Hello", giving mxlen 7.
+    // C reads the elements into a buffer of mxlen+1 stride and walks that
+    // stride, so a short element's slot is padded with the null bytes
+    // left over from `astMalloc`'s buffer, which the fixed-stride walk
+    // reads back as spaces only when the slot actually held some —
+    // here the middle element (a single space) pads out to 7 characters,
+    // giving "(Hello, ,  Hello)", 17 characters.
+    let mut km = KeyMap::new();
+    km.put_1c("V", &["Hello", " ", "  Hello"], None).unwrap();
+    assert_eq!(km.map_len_c("V").unwrap(), 7);
+    let got = km.map_get_c("V").unwrap().unwrap();
+    assert_eq!(got, "(Hello, ,  Hello)");
+    assert_eq!(got.len(), 17);
+
+    // An empty element's slot is entirely null bytes, which the walk
+    // reads back as an empty string rather than as padding: C's join
+    // does not pad short elements out to mxlen at all, it just walks
+    // each fixed-size slot as a null-terminated C string. Verified
+    // against the repo's own built libast (see task-8-report.md).
+    km.put_1c("W", &["Hello", "", "Hello"], None).unwrap();
+    assert_eq!(km.map_len_c("W").unwrap(), 5);
+    assert_eq!(km.map_get_c("W").unwrap().unwrap(), "(Hello,,Hello)");
+
+    // A length-1 entry has no parentheses: C delegates to astMapGet0C.
+    km.put_0c("S", "Hello", None).unwrap();
+    assert_eq!(km.map_get_c("S").unwrap().as_deref(), Some("Hello"));
+
+    // A missing key fails.
+    assert_eq!(km.map_get_c("NOPE").unwrap(), None);
+}

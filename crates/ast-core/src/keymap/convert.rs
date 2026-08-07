@@ -378,6 +378,74 @@ pub(crate) fn element_at(value: &EntryValue, index: usize) -> Option<RawValue> {
     }
 }
 
+/// Unwrap a `RawValue` already known (by the caller having requested that
+/// exact `AstType`) to hold an `Int`. `convert_value` never returns a
+/// `RawValue` whose variant differs from the requested `out_type`, so a
+/// mismatch here is a programming error.
+pub(crate) fn unwrap_int(raw: RawValue) -> i32 {
+    match raw {
+        RawValue::Int(v) => v,
+        other => unreachable!("expected RawValue::Int, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`].
+pub(crate) fn unwrap_sint(raw: RawValue) -> i16 {
+    match raw {
+        RawValue::SInt(v) => v,
+        other => unreachable!("expected RawValue::SInt, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`].
+pub(crate) fn unwrap_kint(raw: RawValue) -> i64 {
+    match raw {
+        RawValue::KInt(v) => v,
+        other => unreachable!("expected RawValue::KInt, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`].
+pub(crate) fn unwrap_byte(raw: RawValue) -> u8 {
+    match raw {
+        RawValue::Byte(v) => v,
+        other => unreachable!("expected RawValue::Byte, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`].
+pub(crate) fn unwrap_float(raw: RawValue) -> f32 {
+    match raw {
+        RawValue::Float(v) => v,
+        other => unreachable!("expected RawValue::Float, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`].
+pub(crate) fn unwrap_double(raw: RawValue) -> f64 {
+    match raw {
+        RawValue::Double(v) => v,
+        other => unreachable!("expected RawValue::Double, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`].
+pub(crate) fn unwrap_string(raw: RawValue) -> String {
+    match raw {
+        RawValue::String(v) => v,
+        other => unreachable!("expected RawValue::String, got {other:?}"),
+    }
+}
+
+/// See [`unwrap_int`]. The inner `Option` is C's stored NULL Object
+/// pointer, not a conversion failure.
+pub(crate) fn unwrap_object(raw: RawValue) -> Option<AnyObject> {
+    match raw {
+        RawValue::Object(v) => v.map(|b| *b),
+        other => unreachable!("expected RawValue::Object, got {other:?}"),
+    }
+}
+
 #[cfg(test)]
 impl PartialEq for RawValue {
     /// Structural comparison, for tests only. Two `Object` payloads never

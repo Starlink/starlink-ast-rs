@@ -1,6 +1,7 @@
 //! Entry storage: the AST type codes, the scalar-or-vector payload, and
 //! the per-entry bookkeeping C keeps in `struct AstMapEntry`.
 
+use crate::keymap::convert::RawValue;
 use crate::serial::AnyObject;
 
 /// The AST data type of a KeyMap entry.
@@ -193,6 +194,101 @@ impl EntryValue {
     /// C's `Entry.defined`: false only for `AST__UNDEFTYPE`.
     pub(crate) fn defined(&self) -> bool {
         !matches!(self, EntryValue::Undef { .. })
+    }
+}
+
+/// Wrap a single value as a length-1 vector `EntryValue`, matching the
+/// `astMapPut1<X>( this, key, 1, &value, ... )` call `MAKE_MAPPUTELEM`
+/// makes to create an absent or undefined key (`keymap.c:8271`).
+///
+/// Panics if `raw` is `RawValue::Undef`: `astMapPutElem<X>` is only ever
+/// generated for the eight typed `X`, never for undefined values, so a
+/// caller reaching this with `Undef` is a programming error rather than
+/// a case C's macro family has to handle.
+pub(crate) fn single_element_vector(raw: &RawValue) -> EntryValue {
+    match raw {
+        RawValue::Int(v) => EntryValue::Int(Scalar1D::Vector(vec![*v])),
+        RawValue::SInt(v) => EntryValue::SInt(Scalar1D::Vector(vec![*v])),
+        RawValue::KInt(v) => EntryValue::KInt(Scalar1D::Vector(vec![*v])),
+        RawValue::Byte(v) => EntryValue::Byte(Scalar1D::Vector(vec![*v])),
+        RawValue::Float(v) => EntryValue::Float(Scalar1D::Vector(vec![*v])),
+        RawValue::Double(v) => EntryValue::Double(Scalar1D::Vector(vec![*v])),
+        RawValue::String(v) => EntryValue::String(Scalar1D::Vector(vec![v.clone()])),
+        RawValue::Object(v) => EntryValue::Object(Scalar1D::Vector(vec![v.clone()])),
+        RawValue::Undef => unreachable!("astMapPutElem<X> never puts an Undef value"),
+    }
+}
+
+/// Turn a scalar `EntryValue` into a length-1 vector in place, keeping
+/// its value. Mirrors the promotion `MAKE_MAPPUTELEM` performs on a
+/// scalar entry before extending it (`keymap.c:8286` onward): a new
+/// `Entry1<X>` is created with the scalar's own value and comment, which
+/// is the caller's job — this only reshapes the payload.
+///
+/// Panics on an `Undef` entry: the caller only promotes a *defined*
+/// scalar (`EntryValue::nel() == 0` guarded by `EntryValue::defined()`),
+/// matching C's `mapentry->type == AST__UNDEFTYPE` branch being handled
+/// separately by creating a fresh entry instead of promoting.
+pub(crate) fn promote_scalar_to_vector(value: &mut EntryValue) {
+    fn promote<T>(s: &mut Scalar1D<T>) {
+        if let Scalar1D::Scalar(_) = s {
+            let Scalar1D::Scalar(v) = std::mem::replace(s, Scalar1D::Vector(Vec::new())) else {
+                unreachable!()
+            };
+            *s = Scalar1D::Vector(vec![v]);
+        }
+    }
+    match value {
+        EntryValue::Int(s) => promote(s),
+        EntryValue::SInt(s) => promote(s),
+        EntryValue::KInt(s) => promote(s),
+        EntryValue::Byte(s) => promote(s),
+        EntryValue::Float(s) => promote(s),
+        EntryValue::Double(s) => promote(s),
+        EntryValue::String(s) => promote(s),
+        EntryValue::Object(s) => promote(s),
+        EntryValue::Undef { .. } => unreachable!("an Undef entry is never promoted"),
+    }
+}
+
+/// Write `raw` at zero-based `index` in `value`'s vector, writing in
+/// place when `index` is already in range and appending when
+/// `index == len`.
+///
+/// `raw` must already have been converted to `value`'s own type (by
+/// [`crate::keymap::convert::convert_value`]) and `index` must already
+/// be clamped to `0..=len` by the caller — `MAKE_MAPPUTELEM` only ever
+/// reaches this point after computing exactly such a target
+/// (`keymap.c:8397` onward, the `elem*raw_size` write). An index beyond
+/// `len` is a programming error, not a user error, so this panics rather
+/// than silently discarding the value.
+pub(crate) fn set_element(value: &mut EntryValue, index: usize, raw: RawValue) {
+    fn write<T>(s: &mut Scalar1D<T>, index: usize, v: T) {
+        let Scalar1D::Vector(vec) = s else {
+            unreachable!("set_element is only called on a vector entry")
+        };
+        match index.cmp(&vec.len()) {
+            std::cmp::Ordering::Less => vec[index] = v,
+            std::cmp::Ordering::Equal => vec.push(v),
+            std::cmp::Ordering::Greater => {
+                unreachable!("index {index} is out of range for length {}", vec.len())
+            }
+        }
+    }
+    match (value, raw) {
+        (EntryValue::Int(s), RawValue::Int(v)) => write(s, index, v),
+        (EntryValue::SInt(s), RawValue::SInt(v)) => write(s, index, v),
+        (EntryValue::KInt(s), RawValue::KInt(v)) => write(s, index, v),
+        (EntryValue::Byte(s), RawValue::Byte(v)) => write(s, index, v),
+        (EntryValue::Float(s), RawValue::Float(v)) => write(s, index, v),
+        (EntryValue::Double(s), RawValue::Double(v)) => write(s, index, v),
+        (EntryValue::String(s), RawValue::String(v)) => write(s, index, v),
+        (EntryValue::Object(s), RawValue::Object(v)) => write(s, index, v),
+        (value, raw) => unreachable!(
+            "set_element type mismatch: entry is {:?}, converted value is {:?}",
+            value.ast_type(),
+            raw.ast_type()
+        ),
     }
 }
 
