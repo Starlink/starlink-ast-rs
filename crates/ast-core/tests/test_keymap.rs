@@ -927,3 +927,25 @@ fn map_copy_merges_through_a_length_one_vector() {
     };
     assert_eq!(nested.map_size(), 2);
 }
+
+#[test]
+fn map_copy_entry_locked_destination_error_keeps_trailing_spaces() {
+    // C's astMapCopyEntry binds `key` once to ConvertKey's untrimmed
+    // output and reuses that same binding for the AST__BADKEY message
+    // (keymap.c:4349-4372); only the table lookups use a trimmed form.
+    // The stored key is always trimmed, so pass an untrimmed key in the
+    // call to exercise the divergence between lookup key and message key.
+    let mut src = KeyMap::new();
+    src.put_0i("FRESH", 1, None).unwrap();
+
+    let mut dest = KeyMap::new();
+    dest.set_map_locked(true);
+
+    let err = dest.map_copy_entry("FRESH   ", &src, false).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    assert!(
+        err.to_string()
+            .contains("Failed to copy item \"FRESH   \": \"FRESH   \" is not a known item."),
+        "{err}"
+    );
+}

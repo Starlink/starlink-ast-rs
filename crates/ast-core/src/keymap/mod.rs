@@ -488,7 +488,11 @@ impl KeyMap {
     /// exist is an error when `MapLocked` is set.
     pub fn map_copy(&mut self, source: &KeyMap) -> AstResult<()> {
         for key in source.sorted_keys() {
-            self.copy_one(&key, source, true, "astMapCopy")?;
+            // `sorted_keys` returns already-trimmed stored keys, so the
+            // trimmed and message forms coincide here — unlike
+            // `map_copy_entry`, which converts a caller-supplied key that
+            // may still carry trailing spaces.
+            self.copy_one(&key, &key, source, true, "astMapCopy")?;
         }
         Ok(())
     }
@@ -507,17 +511,33 @@ impl KeyMap {
     /// settings gets the destination lookup done with the source's
     /// casing. See `docs/issues/c-library-quirks.md`.
     pub fn map_copy_entry(&mut self, key: &str, source: &KeyMap, merge: bool) -> AstResult<()> {
+        // C binds `key` once to ConvertKey's output — folded, but not
+        // trimmed — and reuses that same binding for both the table
+        // lookups and the AST__BADKEY message (keymap.c:4349-4372). The
+        // lookups need the trimmed form to match how keys are stored
+        // (see `table::convert_key`'s doc comment); the message does not.
         let nkey = table::convert_key(key, source.key_case(), "astMapCopyEntry")?;
-        let nkey = nkey.trim_end_matches(' ').to_string();
-        if !source.entries.contains_key(&nkey) {
+        let trimmed = nkey.trim_end_matches(' ').to_string();
+        if !source.entries.contains_key(&trimmed) {
             return Ok(());
         }
-        self.copy_one(&nkey, source, merge, "astMapCopyEntry")
+        self.copy_one(&trimmed, &nkey, source, merge, "astMapCopyEntry")
     }
 
-    /// The body `map_copy` and `map_copy_entry` share. `key` is already
-    /// normalised and known to be present in `source`.
-    fn copy_one(&mut self, key: &str, source: &KeyMap, merge: bool, method: &str) -> AstResult<()> {
+    /// The body `map_copy` and `map_copy_entry` share. `key` is the
+    /// already-normalised, trimmed key used for both KeyMaps' table
+    /// lookups; `message_key` is what an `AST__BADKEY` message quotes,
+    /// which for `map_copy_entry` still carries the trailing spaces C's
+    /// `ConvertKey` output has (`key` and `message_key` are identical for
+    /// `map_copy`, whose keys are already-stored trimmed keys).
+    fn copy_one(
+        &mut self,
+        key: &str,
+        message_key: &str,
+        source: &KeyMap,
+        merge: bool,
+        method: &str,
+    ) -> AstResult<()> {
         let in_entry = source.entries.get(key).expect("caller checked presence");
 
         let Some(out_entry) = self.entries.get_mut(key) else {
@@ -525,8 +545,8 @@ impl KeyMap {
                 return Err(AstError::new(
                     ErrorCode::Badkey,
                     format!(
-                        "{method}(KeyMap): Failed to copy item \"{key}\": \
-                         \"{key}\" is not a known item."
+                        "{method}(KeyMap): Failed to copy item \"{message_key}\": \
+                         \"{message_key}\" is not a known item."
                     ),
                 ));
             }
