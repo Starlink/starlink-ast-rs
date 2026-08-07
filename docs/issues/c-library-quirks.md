@@ -1704,3 +1704,47 @@ output, following the `ISSIMP<xx>`/`INVERT<xx>` precedent
 `crates/ast-core/tests/test_wcsconv.rs`). Every other card, `MemCnt` included, is
 compared byte-exactly, and the computed size is tested directly against the C
 oracle so a wrong value cannot hide behind the exclusion.
+
+### Probe: MapSz as a function of contents
+
+`HashFun` is `static`, so it cannot be called directly from outside
+`keymap.c`; `MapSz` on a dumped KeyMap is the only observable available to
+check the Rust arithmetic above against. Produced by
+`tools/oracle_fixtures/keymap_hash.c`, built and run as:
+
+```
+cd tools/oracle_fixtures
+make keymap_hash
+LD_LIBRARY_PATH= ldd ./keymap_hash | grep -i ast   # confirms repo build, not conda's
+LD_LIBRARY_PATH= ./keymap_hash
+```
+
+```
+empty                        sizeguess=0        nkey=0      MapSz=16
+four keys                    sizeguess=0        nkey=4      MapSz=16
+cap_timemap_02 keys          sizeguess=0        nkey=4      MapSz=16
+100 keys                     sizeguess=0        nkey=100    MapSz=16
+500 keys                     sizeguess=0        nkey=500    MapSz=128
+1000 keys                    sizeguess=0        nkey=1000   MapSz=256
+500 keys, k%d                sizeguess=0        nkey=500    MapSz=128
+500 keys, ZZ%d_TAIL          sizeguess=0        nkey=500    MapSz=128
+10 colliding                 sizeguess=0        nkey=10     MapSz=16
+11 colliding                 sizeguess=0        nkey=11     MapSz=32
+40 colliding                 sizeguess=0        nkey=40     MapSz=128
+300 colliding                sizeguess=0        nkey=300    MapSz=2048
+40 colliding + 40 spread     sizeguess=0        nkey=80     MapSz=128
+guess 100                    sizeguess=100      nkey=0      MapSz=16
+guess 160                    sizeguess=160      nkey=0      MapSz=16
+guess 170                    sizeguess=170      nkey=0      MapSz=32
+guess 5000                   sizeguess=5000     nkey=0      MapSz=512
+guess 5000, 500 keys         sizeguess=5000     nkey=500    MapSz=512
+```
+
+All eighteen rows match `table.rs`'s `map_sz`, including the `10`/`11
+colliding` pair (confirming the doubling condition really is `>`, not `>=`,
+against `MAX_ENTRIES_PER_TABLE_ENTRY`) and the `guess 170` and `guess 5000,
+500 keys` boundary cases where the initial size and the doubling rule
+interact. This output is committed verbatim as
+`crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt`, the ground truth a
+later test parses to pin the Rust arithmetic to C's actual numbers rather
+than to a Rust-side restatement of djb2.

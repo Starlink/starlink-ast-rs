@@ -10,3 +10,4 @@ make_int_world
 sip_int_world
 head2ast
 ast2ast
+keymap_hash
