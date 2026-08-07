@@ -233,14 +233,11 @@ impl KeyMap {
     /// Every KeyMap held directly by this one, scalar or vector element.
     ///
     /// C walks every table entry, checks `type == AST__OBJECTTYPE`, and
-    /// tests each held Object with `astIsAKeyMap`
-    /// (`keymap.c:1250`-1268). `AnyObject` — the enum an Object entry's
-    /// payload is stored as — does not yet carry a `KeyMap` variant, so
-    /// no Object entry can presently hold a nested KeyMap and this
-    /// always returns empty. `set_key_error` and `set_map_locked` call
-    /// it unconditionally regardless, so recursion starts working the
-    /// moment that variant exists, with no change needed here.
-    fn nested_key_maps_mut(&mut self) -> Vec<&mut KeyMap> {
+    /// tests each held Object with `astIsAKeyMap` (`keymap.c:1250`-1268).
+    /// `AnyObject` — the enum an Object entry's payload is stored as —
+    /// has no `KeyMap` variant, so no Object entry can hold a nested
+    /// KeyMap and this always returns empty.
+    pub(crate) fn nested_key_maps_mut(&mut self) -> Vec<&mut KeyMap> {
         Vec::new()
     }
 }
@@ -346,7 +343,8 @@ mod tests {
     //     assert!(km.test_key_case());
     // }
 
-    // Enabled in Task 9 (sorted_keys, get_object_ref, and AnyObject::KeyMap land there).
+    // Enabled once `AnyObject` gains a `KeyMap` variant (`sorted_keys` and
+    // `get_object_ref` also used here).
     // #[test]
     // fn key_error_and_map_locked_recurse_into_nested_key_maps() {
     //     let mut inner = KeyMap::new();
@@ -371,7 +369,8 @@ mod tests {
     //     check(&outer, 0);
     // }
 
-    // Enabled in Task 9 (get_object_ref and AnyObject::KeyMap land there).
+    // Enabled once `AnyObject` gains a `KeyMap` variant (`get_object_ref`
+    // also used here).
     // #[test]
     // fn sort_by_and_size_guess_do_not_recurse() {
     //     let mut inner = KeyMap::new();
