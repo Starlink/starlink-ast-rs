@@ -1328,7 +1328,7 @@ impl Serializable for Prism {
 /// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping),
 /// and [`into_frame`](AnyObject::into_frame) provide trait-object access
 /// without requiring the caller to match on variants.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AnyObject {
     /// A [`UnitMap`] (identity mapping).
     UnitMap(UnitMap),

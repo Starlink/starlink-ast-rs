@@ -59,6 +59,32 @@ pub struct CmpFrame {
     domain_default: std::cell::OnceCell<String>,
 }
 
+impl Clone for CmpFrame {
+    fn clone(&self) -> Self {
+        CmpFrame {
+            frame1: self.frame1.snapshot(),
+            frame2: self.frame2.snapshot(),
+            perm: self.perm.clone(),
+            act_unt: self.act_unt,
+            ident: self.ident.clone(),
+            domain: self.domain.clone(),
+            title: self.title.clone(),
+            min_axes_opt: self.min_axes_opt,
+            max_axes_opt: self.max_axes_opt,
+            match_end_opt: self.match_end_opt,
+            preserve_axes_opt: self.preserve_axes_opt,
+            permute_opt: self.permute_opt,
+            epoch: self.epoch,
+            obs_lat: self.obs_lat,
+            obs_lon: self.obs_lon,
+            obs_alt: self.obs_alt,
+            dtai: self.dtai,
+            dut1: self.dut1,
+            domain_default: self.domain_default.clone(),
+        }
+    }
+}
+
 impl CmpFrame {
     /// Create a compound frame from two child frames.
     ///
@@ -3215,5 +3241,24 @@ mod tests {
         // the template, which crosses the partition boundary, so the
         // clean-partition path must abort and the fall-back path runs.
         apply_template_overlay(&template, &template_axes, result.as_mut()).unwrap();
+    }
+
+    #[test]
+    fn clone_is_a_deep_copy() {
+        let mut cmp = CmpFrame::new(
+            Box::new(SkyFrame::new(SkySystem::Fk5)),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        cmp.set_ident("ORIGINAL");
+        cmp.set_epoch_mjd(51544.5);
+
+        let mut copy = cmp.clone();
+        copy.set_ident("COPY");
+
+        assert_eq!(cmp.ident(), "ORIGINAL");
+        assert_eq!(copy.ident(), "COPY");
+        assert_eq!(Frame::naxes(&copy), Frame::naxes(&cmp));
+        assert_eq!(copy.epoch_mjd(), cmp.epoch_mjd());
+        assert_eq!(Frame::domain(&copy), Frame::domain(&cmp));
     }
 }
