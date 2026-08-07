@@ -17,8 +17,10 @@ pub(crate) mod sort;
 pub(crate) mod table;
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::keymap::entry::MapEntry;
+use crate::keymap::convert::RawValue;
+use crate::keymap::entry::{EntryValue, MapEntry, Scalar1D};
 use crate::keymap::table::{MAX_ENTRIES_PER_TABLE_ENTRY, MIN_TABLE_SIZE};
+use crate::serial::AnyObject;
 use std::collections::HashMap;
 
 pub use crate::keymap::entry::AstType;
@@ -232,13 +234,412 @@ impl KeyMap {
 
     /// Every KeyMap held directly by this one, scalar or vector element.
     ///
-    /// C walks every table entry, checks `type == AST__OBJECTTYPE`, and
-    /// tests each held Object with `astIsAKeyMap` (`keymap.c:1250`-1268).
-    /// `AnyObject` — the enum an Object entry's payload is stored as —
-    /// has no `KeyMap` variant, so no Object entry can hold a nested
-    /// KeyMap and this always returns empty.
+    /// Mirrors the walk C's `SetKeyError`/`SetMapLocked` and their `Clear`
+    /// twins run over every table entry: check `type == AST__OBJECTTYPE`,
+    /// then test each held Object with `astIsAKeyMap` (`keymap.c:1250`
+    /// onward).
     pub(crate) fn nested_key_maps_mut(&mut self) -> Vec<&mut KeyMap> {
-        Vec::new()
+        self.entries
+            .values_mut()
+            .filter_map(|entry| match &mut entry.value {
+                EntryValue::Object(objs) => Some(objs.as_mut_slice()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|obj| match obj.as_mut() {
+                Some(any) => match any.as_mut() {
+                    AnyObject::KeyMap(km) => Some(km.as_mut()),
+                    _ => None,
+                },
+                None => None,
+            })
+            .collect()
+    }
+
+    /// Store `value`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0I`. Fails with `AST__BADKEY` when `MapLocked` is set and
+    /// `key` is new.
+    pub fn put_0i(&mut self, key: &str, value: i32, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::Int(Scalar1D::Scalar(value)),
+            comment,
+            "astMapPut0I",
+        )
+    }
+
+    /// Store `value`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0S`. Fails with `AST__BADKEY` when `MapLocked` is set and
+    /// `key` is new.
+    pub fn put_0s(&mut self, key: &str, value: i16, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::SInt(Scalar1D::Scalar(value)),
+            comment,
+            "astMapPut0S",
+        )
+    }
+
+    /// Store `value`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0K`. Fails with `AST__BADKEY` when `MapLocked` is set and
+    /// `key` is new.
+    pub fn put_0k(&mut self, key: &str, value: i64, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::KInt(Scalar1D::Scalar(value)),
+            comment,
+            "astMapPut0K",
+        )
+    }
+
+    /// Store `value`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0B`. Fails with `AST__BADKEY` when `MapLocked` is set and
+    /// `key` is new.
+    pub fn put_0b(&mut self, key: &str, value: u8, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::Byte(Scalar1D::Scalar(value)),
+            comment,
+            "astMapPut0B",
+        )
+    }
+
+    /// Store `value`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0F`. Fails with `AST__BADKEY` when `MapLocked` is set and
+    /// `key` is new.
+    pub fn put_0f(&mut self, key: &str, value: f32, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::Float(Scalar1D::Scalar(value)),
+            comment,
+            "astMapPut0F",
+        )
+    }
+
+    /// Store `value`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0D`. Fails with `AST__BADKEY` when `MapLocked` is set and
+    /// `key` is new.
+    pub fn put_0d(&mut self, key: &str, value: f64, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::Double(Scalar1D::Scalar(value)),
+            comment,
+            "astMapPut0D",
+        )
+    }
+
+    /// Store a string, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0C`.
+    pub fn put_0c(&mut self, key: &str, value: &str, comment: Option<&str>) -> AstResult<()> {
+        self.put_scalar(
+            key,
+            EntryValue::String(Scalar1D::Scalar(value.to_string())),
+            comment,
+            "astMapPut0C",
+        )
+    }
+
+    /// Store an Object, replacing any existing entry at `key`.
+    ///
+    /// Mirrors `astMapPut0A`, including its `CheckCircle` guard: an Object
+    /// that would make the KeyMap contain itself is `AST__KYCIR`.
+    pub fn put_0a(&mut self, key: &str, value: AnyObject, comment: Option<&str>) -> AstResult<()> {
+        self.check_circle(&value, "astMapPut0A")?;
+        self.put_scalar(
+            key,
+            EntryValue::Object(Scalar1D::Scalar(Some(Box::new(value)))),
+            comment,
+            "astMapPut0A",
+        )
+    }
+
+    /// Normalise `key` and hand the value to [`KeyMap::insert_entry`].
+    fn put_scalar(
+        &mut self,
+        key: &str,
+        value: EntryValue,
+        comment: Option<&str>,
+        method: &str,
+    ) -> AstResult<()> {
+        let key = table::convert_key(key, self.key_case(), method)?;
+        self.insert_entry(key, value, comment, method)
+    }
+
+    /// Store an entry, applying C's key trimming, `MapLocked` check and age
+    /// counter rules. The key must already be normalised (see
+    /// [`table::convert_key`]).
+    ///
+    /// Mirrors the shared tail of every `MAKE_MAPPUT0` / `MAKE_MAPPUT1`
+    /// expansion (`keymap.c:4690` onward) plus `AddTableEntry`
+    /// (`keymap.c:622`): remove any existing entry at the key first,
+    /// keeping its `keymember` so a re-put does not reset the key's age,
+    /// then check `MapLocked`, then bump `member_count` — once for the
+    /// entry's own `member`, and a second time for a fresh key's
+    /// `keymember`.
+    pub(crate) fn insert_entry(
+        &mut self,
+        key: String,
+        value: EntryValue,
+        comment: Option<&str>,
+        method: &str,
+    ) -> AstResult<()> {
+        // The put macros strip trailing spaces from the stored key. Only
+        // spaces: unlike astChrLen, other white space is significant.
+        let key = key.trim_end_matches(' ').to_string();
+
+        // C removes any existing entry first, retaining its keymember so
+        // the key's age survives a re-put.
+        let previous = self.entries.remove(&key);
+
+        if previous.is_none() && self.map_locked() {
+            return Err(AstError::new(
+                ErrorCode::Badkey,
+                format!(
+                    "{method}(KeyMap): Failed to add item \"{key}\" to a KeyMap: \
+                     \"{key}\" is not a known item."
+                ),
+            ));
+        }
+
+        // AddTableEntry bumps member_count once for the entry's own
+        // `member`, and a second time for a fresh key's `keymember`.
+        self.member_count += 1;
+        let member = self.member_count;
+        let keymember = match &previous {
+            Some(old) => old.keymember,
+            None => {
+                self.member_count += 1;
+                self.member_count
+            }
+        };
+
+        self.entries.insert(
+            key,
+            MapEntry {
+                comment: comment.map(str::to_string),
+                member,
+                keymember,
+                value,
+            },
+        );
+        Ok(())
+    }
+
+    /// Read `key` as an `i32`. Mirrors `astMapGet0I`.
+    ///
+    /// `Ok(None)` means the key is absent (and `KeyError` is clear) or the
+    /// entry is undefined. A present but unconvertible value is
+    /// `AST__MPGER`; a missing key with `KeyError` set is `AST__MPKER`.
+    pub fn get_0i(&self, key: &str) -> AstResult<Option<i32>> {
+        match self.get_scalar(key, AstType::Int, "astMapGet0I")? {
+            Some(RawValue::Int(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as an `i16`. Mirrors `astMapGet0S`. See [`KeyMap::get_0i`]
+    /// for the meaning of `Ok(None)` versus the two error codes.
+    pub fn get_0s(&self, key: &str) -> AstResult<Option<i16>> {
+        match self.get_scalar(key, AstType::SInt, "astMapGet0S")? {
+            Some(RawValue::SInt(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as an `i64`. Mirrors `astMapGet0K`. See [`KeyMap::get_0i`]
+    /// for the meaning of `Ok(None)` versus the two error codes.
+    pub fn get_0k(&self, key: &str) -> AstResult<Option<i64>> {
+        match self.get_scalar(key, AstType::KInt, "astMapGet0K")? {
+            Some(RawValue::KInt(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as a `u8`. Mirrors `astMapGet0B`. See [`KeyMap::get_0i`]
+    /// for the meaning of `Ok(None)` versus the two error codes.
+    pub fn get_0b(&self, key: &str) -> AstResult<Option<u8>> {
+        match self.get_scalar(key, AstType::Byte, "astMapGet0B")? {
+            Some(RawValue::Byte(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as an `f32`. Mirrors `astMapGet0F`. See [`KeyMap::get_0i`]
+    /// for the meaning of `Ok(None)` versus the two error codes.
+    pub fn get_0f(&self, key: &str) -> AstResult<Option<f32>> {
+        match self.get_scalar(key, AstType::Float, "astMapGet0F")? {
+            Some(RawValue::Float(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as an `f64`. Mirrors `astMapGet0D`. See [`KeyMap::get_0i`]
+    /// for the meaning of `Ok(None)` versus the two error codes.
+    pub fn get_0d(&self, key: &str) -> AstResult<Option<f64>> {
+        match self.get_scalar(key, AstType::Double, "astMapGet0D")? {
+            Some(RawValue::Double(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as a `String`. Mirrors `astMapGet0C`. See
+    /// [`KeyMap::get_0i`] for the meaning of `Ok(None)` versus the two
+    /// error codes.
+    pub fn get_0c(&self, key: &str) -> AstResult<Option<String>> {
+        match self.get_scalar(key, AstType::String, "astMapGet0C")? {
+            Some(RawValue::String(v)) => Ok(Some(v)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read `key` as an Object. Mirrors `astMapGet0A`.
+    ///
+    /// The outer `Option` is "was there an entry" (C's returned flag); the
+    /// inner one is C's stored `NULL` Object pointer. `astMapGet0A` returns
+    /// 1 with `*value == NULL` for a stored NULL, which is a different
+    /// outcome from returning 0 — so `Ok(Some(None))` (present, NULL) and
+    /// `Ok(None)` (absent) are deliberately distinct, and this method does
+    /// not flatten them.
+    pub fn get_0a(&self, key: &str) -> AstResult<Option<Option<AnyObject>>> {
+        match self.get_scalar(key, AstType::Object, "astMapGet0A")? {
+            Some(RawValue::Object(v)) => Ok(Some(v.map(|b| *b))),
+            _ => Ok(None),
+        }
+    }
+
+    /// Read one value out of `key`, converting it to `want`.
+    ///
+    /// Mirrors the shared tail of every `MAKE_MAPGET0` expansion
+    /// (`keymap.c:5415` onward): look the key up, take element 0 of
+    /// whatever is stored there (a vector entry yields its first element,
+    /// because C takes `raw` as the vector's base pointer), and run it
+    /// through `ConvertValue`.
+    fn get_scalar(&self, key: &str, want: AstType, method: &str) -> AstResult<Option<RawValue>> {
+        let nkey = table::convert_key(key, self.key_case(), method)?;
+        let Some(entry) = self.entries.get(nkey.trim_end_matches(' ')) else {
+            if self.key_error() {
+                return Err(AstError::new(
+                    ErrorCode::Mpker,
+                    format!(
+                        "{method}(KeyMap): No value was found for {key} in the \
+                         supplied KeyMap."
+                    ),
+                ));
+            }
+            return Ok(None);
+        };
+
+        // An undefined entry gives C a NULL raw pointer, which returns
+        // failure without consulting KeyError: it is present, not missing.
+        let Some(raw) = convert::element_at(&entry.value, 0) else {
+            return Ok(None);
+        };
+        if matches!(raw, RawValue::Undef) && want != AstType::Undef {
+            return Ok(None);
+        }
+
+        match convert::convert_value(&raw, want)? {
+            Some(v) => Ok(Some(v)),
+            None => Err(AstError::new(
+                ErrorCode::Mpger,
+                format!(
+                    "{method}(KeyMap): The value of KeyMap key \"{key}\" cannot \
+                     be read using the requested data type."
+                ),
+            )),
+        }
+    }
+
+    /// Borrow an Object entry without copying it.
+    ///
+    /// Used by the attribute-recursion helpers and by [`KeyMap::check_circle`].
+    pub(crate) fn get_object_ref(&self, key: &str) -> Option<&AnyObject> {
+        let entry = self.entries.get(key.trim_end_matches(' '))?;
+        match &entry.value {
+            // A stored NULL Object element borrows to nothing, which is
+            // what C's `aval ? astClone( aval ) : NULL` amounts to for a
+            // borrow rather than a clone.
+            EntryValue::Object(objs) => objs.as_slice().first().and_then(|b| b.as_deref()),
+            _ => None,
+        }
+    }
+
+    /// Fail with `AST__KYCIR` if storing `candidate` in this KeyMap would
+    /// make the KeyMap contain itself, directly or transitively. Mirrors
+    /// `CheckCircle` (`keymap.c:951`).
+    ///
+    /// `candidate`'s own subtree is searched for a KeyMap matching `self`
+    /// (see [`KeyMap::same_entries`] for what "matching" means in an
+    /// owned-value API). This is the only case an owned-value API can
+    /// reach: `put_0a`/`put_1a`/`put_elem_a` move their `AnyObject`
+    /// argument, so a caller cannot pass this KeyMap into its own `put_0a`
+    /// to build the literal `keymap == this` case C detects by pointer.
+    ///
+    /// A candidate's held Objects are found by walking `EntryValue::Object`
+    /// entries directly here, not through [`KeyMap::nested_key_maps_mut`]:
+    /// that helper is `&mut` and this method only needs to read.
+    pub fn check_circle(&self, candidate: &AnyObject, method: &str) -> AstResult<()> {
+        fn contains(haystack: &KeyMap, needle: &KeyMap) -> bool {
+            if haystack.same_entries(needle) {
+                return true;
+            }
+            for entry in haystack.entries.values() {
+                if let EntryValue::Object(objs) = &entry.value {
+                    for obj in objs.as_slice().iter().flatten() {
+                        if let AnyObject::KeyMap(km) = obj.as_ref() {
+                            if contains(km, needle) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            false
+        }
+
+        if let AnyObject::KeyMap(km) = candidate {
+            if self.same_entries(km) {
+                return Err(AstError::new(
+                    ErrorCode::Kycir,
+                    format!(
+                        "{method}(KeyMap): Cannot add a KeyMap into another \
+                         KeyMap because they are same KeyMap."
+                    ),
+                ));
+            }
+            if contains(km, self) {
+                return Err(AstError::new(
+                    ErrorCode::Kycir,
+                    format!(
+                        "{method}(KeyMap): Cannot add a KeyMap into another \
+                         KeyMap because the first KeyMap contains the second \
+                         KeyMap."
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether `other` is structurally the same KeyMap as `self`: the same
+    /// key set, and for every key the same type and `keymember`.
+    ///
+    /// C's `CheckCircle` detects "are these the same KeyMap" with a pointer
+    /// comparison (`keymap == this`). Owned Rust values have no identity to
+    /// compare, so this is the structural stand-in: two KeyMaps built by
+    /// the same sequence of puts (and never diverging afterwards) compare
+    /// equal here, which is what `let self_copy = km.clone(); km.check_circle(&self_copy, ...)`
+    /// needs it to mean.
+    fn same_entries(&self, other: &KeyMap) -> bool {
+        if self.entries.len() != other.entries.len() {
+            return false;
+        }
+        self.entries.iter().all(|(key, entry)| {
+            other.entries.get(key).is_some_and(|other_entry| {
+                entry.value.ast_type() == other_entry.value.ast_type()
+                    && entry.keymember == other_entry.keymember
+            })
+        })
     }
 }
 
@@ -282,69 +683,62 @@ mod tests {
         assert_eq!(km.size_guess(), 160);
     }
 
-    // Enabled in Task 7 (put_0i lands there).
-    // #[test]
-    // fn size_guess_is_frozen_once_the_map_is_not_empty() {
-    //     let mut km = KeyMap::new();
-    //     km.put_0i("A", 1, None).unwrap();
-    //
-    //     let err = km.set_size_guess(1000).unwrap_err();
-    //     assert_eq!(err.code(), ErrorCode::Nowrt);
-    //     assert!(
-    //         err.to_string().contains(
-    //             "Illegal attempt to change the SizeGuess attribute of a non-empty KeyMap."
-    //         ),
-    //         "{err}"
-    //     );
-    //     // The failed set left the attribute alone.
-    //     assert!(!km.test_size_guess());
-    //
-    //     let err = km.clear_size_guess().unwrap_err();
-    //     assert_eq!(err.code(), ErrorCode::Nowrt);
-    //     assert!(
-    //         err.to_string().contains(
-    //             "Illegal attempt to clear the SizeGuess attribute of a non-empty KeyMap."
-    //         ),
-    //         "{err}"
-    //     );
-    // }
+    #[test]
+    fn size_guess_is_frozen_once_the_map_is_not_empty() {
+        let mut km = KeyMap::new();
+        km.put_0i("A", 1, None).unwrap();
 
-    // Enabled in Task 7 (put_0i lands there).
-    // #[test]
-    // fn key_case_is_frozen_only_when_the_value_would_change() {
-    //     let mut km = KeyMap::new();
-    //     km.put_0i("A", 1, None).unwrap();
-    //
-    //     // Setting it to the value it already reports is a no-op, because
-    //     // C's SetKeyCase guards the emptiness check on `newval != oldval`.
-    //     assert!(km.key_case());
-    //     km.set_key_case(true).unwrap();
-    //     assert!(km.test_key_case());
-    //
-    //     let err = km.set_key_case(false).unwrap_err();
-    //     assert_eq!(err.code(), ErrorCode::Nowrt);
-    //     assert!(
-    //         err.to_string().contains(
-    //             "Illegal attempt to change the KeyCase attribute of a non-empty KeyMap."
-    //         ),
-    //         "{err}"
-    //     );
-    //     // Still true: the failed set restored the old value.
-    //     assert!(km.key_case());
-    //
-    //     let err = km.clear_key_case().unwrap_err();
-    //     assert_eq!(err.code(), ErrorCode::Nowrt);
-    //     assert!(
-    //         err.to_string().contains(
-    //             "Illegal attempt to clear the KeyCase attribute of a non-empty KeyMap."
-    //         ),
-    //         "{err}"
-    //     );
-    //     assert!(km.test_key_case());
-    // }
+        let err = km.set_size_guess(1000).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Nowrt);
+        assert!(
+            err.to_string().contains(
+                "Illegal attempt to change the SizeGuess attribute of a non-empty KeyMap."
+            ),
+            "{err}"
+        );
+        // The failed set left the attribute alone.
+        assert!(!km.test_size_guess());
 
-    // Enabled once `AnyObject` gains a `KeyMap` variant (`sorted_keys` and
-    // `get_object_ref` also used here).
+        let err = km.clear_size_guess().unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Nowrt);
+        assert!(
+            err.to_string().contains(
+                "Illegal attempt to clear the SizeGuess attribute of a non-empty KeyMap."
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn key_case_is_frozen_only_when_the_value_would_change() {
+        let mut km = KeyMap::new();
+        km.put_0i("A", 1, None).unwrap();
+
+        // Setting it to the value it already reports is a no-op, because
+        // C's SetKeyCase guards the emptiness check on `newval != oldval`.
+        assert!(km.key_case());
+        km.set_key_case(true).unwrap();
+        assert!(km.test_key_case());
+
+        let err = km.set_key_case(false).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Nowrt);
+        assert!(
+            err.to_string()
+                .contains("Illegal attempt to change the KeyCase attribute of a non-empty KeyMap."),
+            "{err}"
+        );
+        // Still true: the failed set restored the old value.
+        assert!(km.key_case());
+
+        // Clearing is allowed here even though the map is non-empty: the
+        // stored value (true) already matches the default, so ClearKeyCase's
+        // own guard (`defval != oldval`) never triggers the emptiness check.
+        km.clear_key_case().unwrap();
+        assert!(!km.test_key_case());
+        assert!(km.key_case());
+    }
+
+    // Enabled once `sorted_keys` exists.
     // #[test]
     // fn key_error_and_map_locked_recurse_into_nested_key_maps() {
     //     let mut inner = KeyMap::new();
@@ -369,20 +763,20 @@ mod tests {
     //     check(&outer, 0);
     // }
 
-    // Enabled once `AnyObject` gains a `KeyMap` variant (`get_object_ref`
-    // also used here).
-    // #[test]
-    // fn sort_by_and_size_guess_do_not_recurse() {
-    //     let mut inner = KeyMap::new();
-    //     inner.put_0i("X", 1, None).unwrap();
-    //     let mut outer = KeyMap::new();
-    //     outer.put_0a("INNER", AnyObject::KeyMap(Box::new(inner)), None).unwrap();
-    //
-    //     outer.set_sort_by(SortBy::KeyUp);
-    //     let Some(AnyObject::KeyMap(nested)) = outer.get_object_ref("INNER") else {
-    //         panic!("nested KeyMap missing");
-    //     };
-    //     assert_eq!(nested.sort_by(), SortBy::None);
-    //     assert!(!nested.test_sort_by());
-    // }
+    #[test]
+    fn sort_by_and_size_guess_do_not_recurse() {
+        let mut inner = KeyMap::new();
+        inner.put_0i("X", 1, None).unwrap();
+        let mut outer = KeyMap::new();
+        outer
+            .put_0a("INNER", AnyObject::KeyMap(Box::new(inner)), None)
+            .unwrap();
+
+        outer.set_sort_by(SortBy::KeyUp);
+        let Some(AnyObject::KeyMap(nested)) = outer.get_object_ref("INNER") else {
+            panic!("nested KeyMap missing");
+        };
+        assert_eq!(nested.sort_by(), SortBy::None);
+        assert!(!nested.test_sort_by());
+    }
 }

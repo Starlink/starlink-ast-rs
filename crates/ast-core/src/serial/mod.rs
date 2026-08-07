@@ -1418,6 +1418,15 @@ pub enum AnyObject {
     PointList(PointList),
     /// A [`Prism`] (extruded region).
     Prism(Prism),
+    /// A [`crate::keymap::KeyMap`] (string-keyed heterogeneous map).
+    ///
+    /// Implements neither [`Mapping`] nor [`Frame`]; [`as_mapping`](AnyObject::as_mapping),
+    /// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping)
+    /// and [`into_frame`](AnyObject::into_frame) all give `None` for it.
+    /// Not reachable from [`any_object_from_node`] and not dispatched by
+    /// [`any_object_to_node`] — a KeyMap does not yet round-trip through a
+    /// `Channel`.
+    KeyMap(Box<crate::keymap::KeyMap>),
 }
 
 impl AnyObject {
@@ -1469,7 +1478,8 @@ impl AnyObject {
             | AnyObject::TimeFrame(_)
             | AnyObject::FluxFrame(_)
             | AnyObject::SpecFluxFrame(_)
-            | AnyObject::CmpFrame(_) => None,
+            | AnyObject::CmpFrame(_)
+            | AnyObject::KeyMap(_) => None,
         }
     }
 
@@ -1521,7 +1531,8 @@ impl AnyObject {
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_)
             | AnyObject::SelectorMap(_)
-            | AnyObject::SwitchMap(_) => None,
+            | AnyObject::SwitchMap(_)
+            | AnyObject::KeyMap(_) => None,
         }
     }
 
@@ -1573,7 +1584,8 @@ impl AnyObject {
             | AnyObject::TimeFrame(_)
             | AnyObject::FluxFrame(_)
             | AnyObject::SpecFluxFrame(_)
-            | AnyObject::CmpFrame(_) => None,
+            | AnyObject::CmpFrame(_)
+            | AnyObject::KeyMap(_) => None,
         }
     }
 
@@ -1625,7 +1637,8 @@ impl AnyObject {
             | AnyObject::DssMap(_)
             | AnyObject::NormMap(_)
             | AnyObject::SelectorMap(_)
-            | AnyObject::SwitchMap(_) => None,
+            | AnyObject::SwitchMap(_)
+            | AnyObject::KeyMap(_) => None,
         }
     }
 
@@ -1775,6 +1788,14 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::CmpRegion(r) => Serializable::to_node(r),
         AnyObject::PointList(r) => Serializable::to_node(r),
         AnyObject::Prism(r) => Serializable::to_node(r),
+        // KeyMap has no Serializable implementation yet, so it cannot be
+        // turned into a Node: this path is unreachable for a KeyMap held
+        // directly by a Channel, and a KeyMap nested inside another
+        // KeyMap's entry does not go through this function at all.
+        AnyObject::KeyMap(_) => Err(AstError::new(
+            ErrorCode::Lderr,
+            "KeyMap cannot be serialised yet",
+        )),
     }
 }
 
