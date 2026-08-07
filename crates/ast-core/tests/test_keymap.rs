@@ -195,6 +195,21 @@ fn get_1_reads_a_scalar_as_a_length_one_vector() {
 }
 
 #[test]
+fn get_0_on_a_vector_returns_the_first_element() {
+    // MAKE_MAPGET0 (keymap.c:5415 onward) takes the entry's storage base
+    // pointer as `raw` regardless of whether the entry is a scalar or a
+    // vector, so a scalar get on a vector entry legitimately reads the
+    // vector's first element rather than failing or reading the whole
+    // vector.
+    let mut km = KeyMap::new();
+    km.put_1i("V", &[10, 20, 30], None).unwrap();
+    assert_eq!(km.get_0i("V").unwrap(), Some(10));
+
+    km.put_1c("C", &["first", "second"], None).unwrap();
+    assert_eq!(km.get_0c("C").unwrap().as_deref(), Some("first"));
+}
+
+#[test]
 fn put_elem_creates_and_appends() {
     let mut km = KeyMap::new();
 
@@ -218,6 +233,39 @@ fn put_elem_creates_and_appends() {
 
     // Comment retention/dropping on create-vs-promote is checked once
     // `map_comment` and `put_u` land in Task 9.
+}
+
+#[test]
+fn put_elem_on_a_locked_map_reports_the_create_path_name() {
+    // MAKE_MAPPUTELEM's create-on-absent-key branch (keymap.c:8273-8274)
+    // literally calls astMapPut1<X>(this, key, 1, &value, NULL), and that
+    // function's own MapLocked check (keymap.c:4972) hardcodes its own
+    // name — astMapPut1I, not astMapPutElemI — into the AST__BADKEY
+    // message. A locked map's diagnostic for a brand new key must name
+    // the astMapPut1<X> call, whether reached via astMapPut1<X> directly
+    // or via astMapPutElem<X>'s create path.
+    let mut km = KeyMap::new();
+    km.set_map_locked(true);
+
+    let err = km.put_1i("NEW", &[1], None).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    assert!(
+        err.to_string().contains(
+            "astMapPut1I(KeyMap): Failed to add item \"NEW\" to a KeyMap: \
+             \"NEW\" is not a known item."
+        ),
+        "{err}"
+    );
+
+    let err = km.put_elem_i("NEW", 0, 1).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    assert!(
+        err.to_string().contains(
+            "astMapPut1I(KeyMap): Failed to add item \"NEW\" to a KeyMap: \
+             \"NEW\" is not a known item."
+        ),
+        "{err}"
+    );
 }
 
 #[test]
@@ -259,6 +307,26 @@ fn get_elem_rejects_an_out_of_range_index() {
         err.to_string().contains(
             "Illegal zero-based vector index 3 supplied for KeyMap entry 'V' \
              - the vector has 3 elements."
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn get_elem_conversion_failure_names_the_one_based_element() {
+    // MAKE_MAPGETELEM's AST__MPGER message (keymap.c:6916-6919) uses
+    // `elem + 1`, unlike its AST__MPVIN message a few lines above, which
+    // uses the raw zero-based `elem`.
+    let mut km = KeyMap::new();
+    km.put_1c("V", &["1", "nope", "3"], None).unwrap();
+    assert_eq!(km.get_elem_i("V", 0).unwrap(), Some(1));
+
+    let err = km.get_elem_i("V", 1).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpger);
+    assert!(
+        err.to_string().contains(
+            "astMapGetElemI(KeyMap): The value of element 2 of KeyMap key \
+             \"V\" cannot be read using the requested data type."
         ),
         "{err}"
     );

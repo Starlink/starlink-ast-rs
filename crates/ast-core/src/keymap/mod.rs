@@ -824,37 +824,73 @@ impl KeyMap {
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
     /// `astMapPutElemI`.
     pub fn put_elem_i(&mut self, key: &str, elem: usize, value: i32) -> AstResult<()> {
-        self.put_elem(key, elem, RawValue::Int(value), "astMapPutElemI")
+        self.put_elem(
+            key,
+            elem,
+            RawValue::Int(value),
+            "astMapPutElemI",
+            "astMapPut1I",
+        )
     }
 
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
     /// `astMapPutElemS`.
     pub fn put_elem_s(&mut self, key: &str, elem: usize, value: i16) -> AstResult<()> {
-        self.put_elem(key, elem, RawValue::SInt(value), "astMapPutElemS")
+        self.put_elem(
+            key,
+            elem,
+            RawValue::SInt(value),
+            "astMapPutElemS",
+            "astMapPut1S",
+        )
     }
 
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
     /// `astMapPutElemK`.
     pub fn put_elem_k(&mut self, key: &str, elem: usize, value: i64) -> AstResult<()> {
-        self.put_elem(key, elem, RawValue::KInt(value), "astMapPutElemK")
+        self.put_elem(
+            key,
+            elem,
+            RawValue::KInt(value),
+            "astMapPutElemK",
+            "astMapPut1K",
+        )
     }
 
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
     /// `astMapPutElemB`.
     pub fn put_elem_b(&mut self, key: &str, elem: usize, value: u8) -> AstResult<()> {
-        self.put_elem(key, elem, RawValue::Byte(value), "astMapPutElemB")
+        self.put_elem(
+            key,
+            elem,
+            RawValue::Byte(value),
+            "astMapPutElemB",
+            "astMapPut1B",
+        )
     }
 
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
     /// `astMapPutElemF`.
     pub fn put_elem_f(&mut self, key: &str, elem: usize, value: f32) -> AstResult<()> {
-        self.put_elem(key, elem, RawValue::Float(value), "astMapPutElemF")
+        self.put_elem(
+            key,
+            elem,
+            RawValue::Float(value),
+            "astMapPutElemF",
+            "astMapPut1F",
+        )
     }
 
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
     /// `astMapPutElemD`.
     pub fn put_elem_d(&mut self, key: &str, elem: usize, value: f64) -> AstResult<()> {
-        self.put_elem(key, elem, RawValue::Double(value), "astMapPutElemD")
+        self.put_elem(
+            key,
+            elem,
+            RawValue::Double(value),
+            "astMapPutElemD",
+            "astMapPut1D",
+        )
     }
 
     /// Store `value` at zero-based element `elem` of `key`. Mirrors
@@ -865,6 +901,7 @@ impl KeyMap {
             elem,
             RawValue::String(value.to_string()),
             "astMapPutElemC",
+            "astMapPut1C",
         )
     }
 
@@ -888,6 +925,7 @@ impl KeyMap {
             elem,
             RawValue::Object(value.map(Box::new)),
             "astMapPutElemA",
+            "astMapPut1A",
         )
     }
 
@@ -895,7 +933,21 @@ impl KeyMap {
     /// absent or undefined key as a length-1 vector, promoting a scalar
     /// key to a length-1 vector, and appending when `elem` is out of
     /// range. Mirrors `MAKE_MAPPUTELEM` (`keymap.c:8237`).
-    fn put_elem(&mut self, key: &str, elem: usize, value: RawValue, method: &str) -> AstResult<()> {
+    ///
+    /// `method` names this call for `ConvertKey` and for every diagnostic
+    /// raised once the key is known to exist (`AST__MPPER`); `create_method`
+    /// names the `astMapPut1<X>` call C literally makes on the create path
+    /// (`keymap.c:8274`), whose own `MapLocked` check
+    /// (`keymap.c:4972`) hardcodes that name — not `astMapPutElem<X>` —
+    /// into the `AST__BADKEY` message.
+    fn put_elem(
+        &mut self,
+        key: &str,
+        elem: usize,
+        value: RawValue,
+        method: &str,
+        create_method: &str,
+    ) -> AstResult<()> {
         let nkey = table::convert_key(key, self.key_case(), method)?;
         let nkey = nkey.trim_end_matches(' ').to_string();
 
@@ -908,7 +960,7 @@ impl KeyMap {
         };
         if needs_create {
             let vector = single_element_vector(&value);
-            return self.insert_entry(nkey, vector, None, method);
+            return self.insert_entry(nkey, vector, None, create_method);
         }
 
         // A scalar is promoted to a length-1 vector, keeping its comment:
@@ -1060,8 +1112,9 @@ impl KeyMap {
             None => Err(AstError::new(
                 ErrorCode::Mpger,
                 format!(
-                    "{method}(KeyMap): The value of KeyMap key \"{key}\" cannot be \
-                     read using the requested data type."
+                    "{method}(KeyMap): The value of element {} of KeyMap key \
+                     \"{key}\" cannot be read using the requested data type.",
+                    elem + 1
                 ),
             )),
         }
