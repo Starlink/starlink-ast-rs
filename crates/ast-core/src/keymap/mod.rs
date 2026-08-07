@@ -11,5 +11,6 @@
 // Removed in Task 14 when the public API lands.
 #![allow(dead_code)]
 
+pub(crate) mod convert;
 pub(crate) mod entry;
 pub(crate) mod table;
