@@ -31,14 +31,19 @@ pub(crate) fn chr_len(s: &str) -> usize {
 /// 64-bit register and masked down to the table size. Spaces are ignored
 /// so that trailing spaces used to pad F77 character variables will be
 /// ignored.
+///
+/// Each key byte is read as a signed `char` and widened to the
+/// accumulator's width, so a byte at or above `0x80` sign-extends to a
+/// large value rather than contributing its small unsigned magnitude.
+/// This makes the bucket a key derives to (and hence `MapSz`, which is
+/// dumped and must match byte-for-byte) depend on that sign extension
+/// for any key containing such a byte.
 pub(crate) fn hash_fun(key: &str, bitmask: u64) -> usize {
     let mut hash: u64 = 5381;
     for c in key.bytes() {
         if c != b' ' {
-            hash = hash
-                .wrapping_shl(5)
-                .wrapping_add(hash)
-                .wrapping_add(c as u64);
+            let c = c as i8 as i64 as u64;
+            hash = hash.wrapping_shl(5).wrapping_add(hash).wrapping_add(c);
         }
     }
     (hash & bitmask) as usize
@@ -46,6 +51,10 @@ pub(crate) fn hash_fun(key: &str, bitmask: u64) -> usize {
 
 /// Compare two keys, ignoring trailing spaces. Mirrors `KeyCmp`, whose
 /// `1` / `0` / `-1` become `Greater` / `Equal` / `Less`.
+///
+/// The first differing byte is compared as a signed `char`, so a byte at
+/// or above `0x80` orders as negative, below every printing ASCII
+/// character.
 pub(crate) fn key_cmp(key1: &str, key2: &str) -> Ordering {
     let (b1, b2) = (key1.as_bytes(), key2.as_bytes());
 
@@ -58,7 +67,7 @@ pub(crate) fn key_cmp(key1: &str, key2: &str) -> Ordering {
 
     match (i < b1.len(), i < b2.len()) {
         // Both still have characters, and they differ.
-        (true, true) => b1[i].cmp(&b2[i]),
+        (true, true) => (b1[i] as i8).cmp(&(b2[i] as i8)),
         // key2 ended: key1 matches if the rest of it is only spaces.
         (true, false) => {
             if b1[i..].iter().all(|&c| c == b' ') {
@@ -160,12 +169,20 @@ mod tests {
         // reference/starlink-ast/src/keymap.c HashFun: hash starts at 5381
         // and every non-space character contributes hash*33 + c. Spaces are
         // skipped so that trailing spaces padding an F77 CHARACTER variable
-        // do not change the bucket.
+        // do not change the bucket. This is a deliberate independent
+        // restatement of the algorithm, transcribed straight from C rather
+        // than calling `hash_fun`, so it fails if the two ever disagree.
+        // `key` is a C `const char *`, so each byte is read as a signed
+        // `char` (`c` is declared `int` and receives `*key++`), and that
+        // signed value is what gets added into the `unsigned long` hash —
+        // a byte >= 0x80 sign-extends to a large accumulator value rather
+        // than contributing its small unsigned magnitude.
         fn djb2(s: &str) -> u64 {
             let mut h: u64 = 5381;
             for b in s.bytes() {
                 if b != b' ' {
-                    h = h.wrapping_shl(5).wrapping_add(h).wrapping_add(b as u64);
+                    let c = b as i8 as i64 as u64;
+                    h = h.wrapping_shl(5).wrapping_add(h).wrapping_add(c);
                 }
             }
             h
@@ -178,6 +195,27 @@ mod tests {
         // Spaces anywhere are skipped, not just trailing ones.
         assert_eq!(hash_fun("AB", mask), hash_fun("A B  ", mask));
         assert_eq!(hash_fun("", mask), (5381u64 & mask) as usize);
+    }
+
+    #[test]
+    fn hash_fun_sign_extends_bytes_above_0x7f() {
+        // "KéY" is UTF-8 bytes 4B C3 A9 59; C3 and A9 are >= 0x80. C's
+        // HashFun reads `key` (a `const char *`) through a signed `char`,
+        // so those two bytes sign-extend to large values when added into
+        // the `unsigned long` hash, rather than contributing their small
+        // unsigned magnitude. Values below are from compiling C's HashFun
+        // body verbatim (see task-3-report.md) and running it on this key:
+        // full hash 6384066965, matching neither what an unsigned-byte
+        // reading would give (6384354197).
+        let key = "K\u{e9}Y";
+        let mask = 1023u64;
+        assert_eq!(hash_fun(key, mask), 405);
+
+        // At mask=15 the signed and unsigned readings happen to agree
+        // (both give bucket 5), so that mask alone would not catch this
+        // bug — mask=1023 is chosen because it discriminates: the
+        // unsigned reading gives bucket 917 there, not 405.
+        assert_eq!(hash_fun(key, 15), 5);
     }
 
     #[test]
@@ -194,6 +232,21 @@ mod tests {
         // Leading and interior spaces are significant: ' ' (0x20) sorts
         // below every printing character.
         assert_eq!(key_cmp(" FRED", "FRED"), Ordering::Less);
+    }
+
+    #[test]
+    fn key_cmp_sign_extends_bytes_above_0x7f() {
+        // C's KeyCmp compares differing bytes with `*k1 > *k2` on
+        // `const char *`, so the comparison is on signed chars: a byte
+        // >= 0x80 orders as negative, below every ASCII printing
+        // character. "KéY" (UTF-8: 4B C3 A9 59) differs from "K\x7FZ" at
+        // the second byte (0xC3 vs 0x7F); read as signed chars, 0xC3 is
+        // -61, so it is less than 0x7F. Verified by compiling C's KeyCmp
+        // body verbatim and running it on these two byte strings (see
+        // task-3-report.md): it returns -1.
+        let s1 = "K\u{e9}Y";
+        let s2 = "K\u{7f}Z";
+        assert_eq!(key_cmp(s1, s2), Ordering::Less);
     }
 
     #[test]
