@@ -2004,3 +2004,31 @@ it re-inserts the entry under its old key. A failed rename therefore
 leaves the KeyMap exactly as it was, rather than silently dropping an
 entry. Pinned by `map_rename_respects_map_locked` in
 `tests/test_keymap.rs`.
+
+---
+
+## `astMapCopyEntry` normalises the key with the source KeyMap's `KeyCase`
+
+**Status:** Confirmed against C source. Mirrored in Rust.
+
+`MapCopyEntry` (`keymap.c:4264`) converts the caller's key using the
+*source* KeyMap's `KeyCase`, not the destination's:
+
+```c
+key = ConvertKey( that, skey, keybuf, AST__MXKEYLEN + 1, "astMapCopyEntry",
+                  status );
+```
+
+(`keymap.c:4350`, where `that` is the source). The same converted
+string is then used for both the source lookup and the destination
+lookup. If the two KeyMaps have different `KeyCase` settings, the
+destination lookup runs with the source's casing rule rather than its
+own, which can miss a differently-cased key that would otherwise
+match under the destination's own `KeyCase`.
+
+**Rust behaviour (mirror, not divergence):** `KeyMap::map_copy_entry`
+folds `key` with `source.key_case()`, then uses the folded string to
+look up both `source.entries` and `self.entries`, reproducing this
+exactly. A caller mixing `KeyCase` settings between the two KeyMaps
+has left well-defined territory on the C side already; Rust does not
+try to make that case more sensible than C does.

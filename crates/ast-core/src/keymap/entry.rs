@@ -1,6 +1,7 @@
 //! Entry storage: the AST type codes, the scalar-or-vector payload, and
 //! the per-entry bookkeeping C keeps in `struct AstMapEntry`.
 
+use crate::keymap::KeyMap;
 use crate::keymap::convert::RawValue;
 use crate::serial::AnyObject;
 
@@ -311,6 +312,34 @@ pub(crate) struct MapEntry {
     pub(crate) member: u64,
     pub(crate) keymember: u64,
     pub(crate) value: EntryValue,
+}
+
+/// The KeyMap held by a scalar or length-1-vector Object entry, if it is
+/// one. Mirrors the merge test in `MapCopy` (`keymap.c:4217`), which
+/// accepts `nel == 0` or `nel == 1`.
+pub(crate) fn single_key_map(value: &EntryValue) -> Option<&KeyMap> {
+    let obj = match value {
+        EntryValue::Object(Scalar1D::Scalar(obj)) => obj.as_deref()?,
+        EntryValue::Object(Scalar1D::Vector(v)) if v.len() == 1 => v[0].as_deref()?,
+        _ => return None,
+    };
+    match obj {
+        AnyObject::KeyMap(km) => Some(km),
+        _ => None,
+    }
+}
+
+/// The mutable counterpart of [`single_key_map`].
+pub(crate) fn single_key_map_mut(value: &mut EntryValue) -> Option<&mut KeyMap> {
+    let obj = match value {
+        EntryValue::Object(Scalar1D::Scalar(obj)) => obj.as_deref_mut()?,
+        EntryValue::Object(Scalar1D::Vector(v)) if v.len() == 1 => v[0].as_deref_mut()?,
+        _ => return None,
+    };
+    match obj {
+        AnyObject::KeyMap(km) => Some(km),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

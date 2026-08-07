@@ -23,6 +23,7 @@ use crate::keymap::convert::{
 };
 use crate::keymap::entry::{
     EntryValue, MapEntry, Scalar1D, promote_scalar_to_vector, set_element, single_element_vector,
+    single_key_map, single_key_map_mut,
 };
 use crate::keymap::table::{MAX_ENTRIES_PER_TABLE_ENTRY, MIN_TABLE_SIZE};
 use crate::serial::AnyObject;
@@ -433,27 +434,124 @@ impl KeyMap {
             ));
         }
 
-        // AddTableEntry bumps member_count once for the entry's own
-        // `member`, and a second time for a fresh key's `keymember`.
-        self.member_count += 1;
-        let member = self.member_count;
-        let keymember = match &previous {
-            Some(old) => old.keymember,
-            None => {
-                self.member_count += 1;
-                self.member_count
-            }
+        let entry = MapEntry {
+            comment: comment.map(str::to_string),
+            member: 0,
+            keymember: 0,
+            value,
         };
 
-        self.entries.insert(
-            key,
-            MapEntry {
-                comment: comment.map(str::to_string),
-                member,
-                keymember,
-                value,
-            },
-        );
+        match previous {
+            // A re-put of an existing key keeps its `keymember` and only
+            // bumps `member_count` once, for the entry's own `member`.
+            Some(old) => {
+                self.member_count += 1;
+                self.entries.insert(
+                    key,
+                    MapEntry {
+                        member: self.member_count,
+                        keymember: old.keymember,
+                        ..entry
+                    },
+                );
+            }
+            None => self.insert_entry_raw(key, entry),
+        }
+        Ok(())
+    }
+
+    /// Store an already-built [`MapEntry`] under `key`, assigning it fresh
+    /// `member` and `keymember` counters.
+    ///
+    /// Mirrors `AddTableEntry` (`keymap.c:622`) called with `keymember ==
+    /// -1`: the case where the key is brand new to this KeyMap, so there
+    /// is no previous `keymember` to inherit. `key` must already be
+    /// normalised, trimmed, and absent from `self.entries`. Used by
+    /// [`KeyMap::insert_entry`] for a fresh key, and by
+    /// [`KeyMap::copy_one`] to install a cloned source entry without
+    /// re-deriving its value.
+    fn insert_entry_raw(&mut self, key: String, mut entry: MapEntry) {
+        self.member_count += 1;
+        entry.member = self.member_count;
+        self.member_count += 1;
+        entry.keymember = self.member_count;
+        self.entries.insert(key, entry);
+    }
+
+    /// Copy every entry from `source` into this KeyMap. Mirrors
+    /// `astMapCopy` (`keymap.c:4112`).
+    ///
+    /// An entry whose key already exists here is replaced, keeping this
+    /// KeyMap's record of when the key was first added. The exception is a
+    /// nested scalar KeyMap present on both sides, which is merged
+    /// recursively rather than replaced. A key that does not already
+    /// exist is an error when `MapLocked` is set.
+    pub fn map_copy(&mut self, source: &KeyMap) -> AstResult<()> {
+        for key in source.sorted_keys() {
+            self.copy_one(&key, source, true, "astMapCopy")?;
+        }
+        Ok(())
+    }
+
+    /// Copy the single entry `key` from `source` into this KeyMap.
+    /// Mirrors `astMapCopyEntry` (`keymap.c:4264`).
+    ///
+    /// `merge` selects whether a nested scalar KeyMap present on both
+    /// sides is merged recursively or replaced outright. A key absent
+    /// from `source` is silently ignored (`keymap.c:4356`, `if(
+    /// in_entry )`).
+    ///
+    /// C normalises `key` using the *source* KeyMap's `KeyCase`
+    /// (`keymap.c:4350`) and then looks that same string up in both
+    /// KeyMaps, so a caller whose two KeyMaps have different `KeyCase`
+    /// settings gets the destination lookup done with the source's
+    /// casing. See `docs/issues/c-library-quirks.md`.
+    pub fn map_copy_entry(&mut self, key: &str, source: &KeyMap, merge: bool) -> AstResult<()> {
+        let nkey = table::convert_key(key, source.key_case(), "astMapCopyEntry")?;
+        let nkey = nkey.trim_end_matches(' ').to_string();
+        if !source.entries.contains_key(&nkey) {
+            return Ok(());
+        }
+        self.copy_one(&nkey, source, merge, "astMapCopyEntry")
+    }
+
+    /// The body `map_copy` and `map_copy_entry` share. `key` is already
+    /// normalised and known to be present in `source`.
+    fn copy_one(&mut self, key: &str, source: &KeyMap, merge: bool, method: &str) -> AstResult<()> {
+        let in_entry = source.entries.get(key).expect("caller checked presence");
+
+        let Some(out_entry) = self.entries.get_mut(key) else {
+            if self.map_locked() {
+                return Err(AstError::new(
+                    ErrorCode::Badkey,
+                    format!(
+                        "{method}(KeyMap): Failed to copy item \"{key}\": \
+                         \"{key}\" is not a known item."
+                    ),
+                ));
+            }
+            let copied = in_entry.clone();
+            self.insert_entry_raw(key.to_string(), copied);
+            return Ok(());
+        };
+
+        // Two nested scalar KeyMaps merge rather than replace. C accepts
+        // nel 0 or 1 on both sides, so a length-1 vector merges through
+        // element 0.
+        if merge
+            && let Some(inner_src) = single_key_map(&in_entry.value)
+            && let Some(inner_dest) = single_key_map_mut(&mut out_entry.value)
+        {
+            return inner_dest.map_copy(inner_src);
+        }
+
+        // Otherwise replace the value while keeping the key's own age.
+        let keymember = out_entry.keymember;
+        let mut copied = in_entry.clone();
+        self.member_count += 1;
+        copied.member = self.member_count;
+        copied.keymember = keymember;
+        self.entries.insert(key.to_string(), copied);
         Ok(())
     }
 

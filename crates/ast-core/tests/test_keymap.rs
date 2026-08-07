@@ -754,3 +754,176 @@ fn sort_by_reorders_the_read_out() {
     km.clear_sort_by();
     assert_eq!(read(&km), vec!["Alpha", "Mike", "Zulu"]);
 }
+
+#[test]
+fn map_copy_adds_and_replaces() {
+    let mut src = KeyMap::new();
+    src.put_0i("NEW", 1, Some("from source")).unwrap();
+    src.put_0i("BOTH", 2, None).unwrap();
+
+    let mut dest = KeyMap::new();
+    dest.put_0c("BOTH", "old", None).unwrap();
+    dest.put_0i("ONLYDEST", 3, None).unwrap();
+
+    dest.map_copy(&src).unwrap();
+
+    assert_eq!(dest.map_size(), 3);
+    assert_eq!(dest.get_0i("NEW").unwrap(), Some(1));
+    assert_eq!(dest.map_comment("NEW").as_deref(), Some("from source"));
+    // The replaced entry takes the source's type too, not just its value.
+    assert_eq!(dest.map_type("BOTH").unwrap(), AstType::Int);
+    assert_eq!(dest.get_0i("BOTH").unwrap(), Some(2));
+    assert_eq!(dest.get_0i("ONLYDEST").unwrap(), Some(3));
+}
+
+#[test]
+fn map_copy_keeps_the_destination_key_age_for_a_replaced_key() {
+    let mut dest = KeyMap::new();
+    dest.put_0i("FIRST", 1, None).unwrap();
+    dest.put_0i("SECOND", 2, None).unwrap();
+
+    let mut src = KeyMap::new();
+    src.put_0i("FIRST", 9, None).unwrap();
+
+    dest.map_copy(&src).unwrap();
+
+    // FIRST is still the older key, so KeyAgeDown puts it first.
+    dest.set_sort_by(SortBy::KeyAgeDown);
+    let keys: Vec<String> = (0..dest.map_size())
+        .map(|i| dest.map_key(i).unwrap())
+        .collect();
+    assert_eq!(keys, vec!["FIRST", "SECOND"]);
+}
+
+#[test]
+fn map_copy_refuses_a_new_key_in_a_locked_destination() {
+    let mut src = KeyMap::new();
+    src.put_0i("EXISTS", 1, None).unwrap();
+    src.put_0i("FRESH", 2, None).unwrap();
+
+    let mut dest = KeyMap::new();
+    dest.put_0i("EXISTS", 0, None).unwrap();
+    dest.set_map_locked(true);
+
+    let err = dest.map_copy(&src).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    assert!(
+        err.to_string()
+            .contains("Failed to copy item \"FRESH\": \"FRESH\" is not a known item."),
+        "{err}"
+    );
+}
+
+#[test]
+fn map_copy_merges_nested_key_maps_instead_of_replacing_them() {
+    let mut inner_src = KeyMap::new();
+    inner_src.put_0i("FROMSRC", 1, None).unwrap();
+    let mut src = KeyMap::new();
+    src.put_0a("NESTED", AnyObject::KeyMap(Box::new(inner_src)), None)
+        .unwrap();
+
+    let mut inner_dest = KeyMap::new();
+    inner_dest.put_0i("FROMDEST", 2, None).unwrap();
+    let mut dest = KeyMap::new();
+    dest.put_0a("NESTED", AnyObject::KeyMap(Box::new(inner_dest)), None)
+        .unwrap();
+
+    dest.map_copy(&src).unwrap();
+
+    // The nested KeyMap was merged, so it holds both keys.
+    let Some(AnyObject::KeyMap(nested)) = dest.get_0a("NESTED").unwrap().unwrap() else {
+        panic!("expected a nested KeyMap");
+    };
+    assert_eq!(nested.map_size(), 2);
+    assert_eq!(nested.get_0i("FROMSRC").unwrap(), Some(1));
+    assert_eq!(nested.get_0i("FROMDEST").unwrap(), Some(2));
+}
+
+#[test]
+fn map_copy_replaces_a_nested_key_map_when_the_other_side_is_not_one() {
+    // A non-Object destination entry is replaced, not merged, even though
+    // the source is a KeyMap.
+    let mut inner = KeyMap::new();
+    inner.put_0i("A", 1, None).unwrap();
+    let mut src = KeyMap::new();
+    src.put_0a("K", AnyObject::KeyMap(Box::new(inner)), None)
+        .unwrap();
+
+    let mut dest = KeyMap::new();
+    dest.put_0i("K", 7, None).unwrap();
+    dest.map_copy(&src).unwrap();
+
+    assert_eq!(dest.map_type("K").unwrap(), AstType::Object);
+}
+
+#[test]
+fn map_copy_entry_copies_one_key_and_honours_merge() {
+    let mut src = KeyMap::new();
+    src.put_0i("WANTED", 1, None).unwrap();
+    src.put_0i("UNWANTED", 2, None).unwrap();
+
+    let mut dest = KeyMap::new();
+    dest.map_copy_entry("WANTED", &src, false).unwrap();
+    assert_eq!(dest.map_size(), 1);
+    assert_eq!(dest.get_0i("WANTED").unwrap(), Some(1));
+
+    // A key absent from the source is silently ignored.
+    dest.map_copy_entry("MISSING", &src, false).unwrap();
+    assert_eq!(dest.map_size(), 1);
+
+    // With merge false, a nested KeyMap is replaced rather than merged.
+    let mut inner_src = KeyMap::new();
+    inner_src.put_0i("FROMSRC", 1, None).unwrap();
+    let mut src2 = KeyMap::new();
+    src2.put_0a("N", AnyObject::KeyMap(Box::new(inner_src)), None)
+        .unwrap();
+
+    let mut inner_dest = KeyMap::new();
+    inner_dest.put_0i("FROMDEST", 2, None).unwrap();
+    let mut dest2 = KeyMap::new();
+    dest2
+        .put_0a("N", AnyObject::KeyMap(Box::new(inner_dest)), None)
+        .unwrap();
+
+    dest2.map_copy_entry("N", &src2, false).unwrap();
+    let Some(AnyObject::KeyMap(nested)) = dest2.get_0a("N").unwrap().unwrap() else {
+        panic!("expected a nested KeyMap");
+    };
+    assert_eq!(nested.map_size(), 1);
+    assert!(nested.map_has_key("FROMSRC").unwrap());
+    assert!(!nested.map_has_key("FROMDEST").unwrap());
+}
+
+#[test]
+fn map_copy_merges_through_a_length_one_vector() {
+    // C's merge test accepts nel == 0 or nel == 1, so a length-1 vector of
+    // KeyMaps merges through its element 0.
+    let mut inner_src = KeyMap::new();
+    inner_src.put_0i("FROMSRC", 1, None).unwrap();
+    let mut src = KeyMap::new();
+    src.put_1a(
+        "N",
+        vec![Some(AnyObject::KeyMap(Box::new(inner_src)))],
+        None,
+    )
+    .unwrap();
+
+    let mut inner_dest = KeyMap::new();
+    inner_dest.put_0i("FROMDEST", 2, None).unwrap();
+    let mut dest = KeyMap::new();
+    dest.put_1a(
+        "N",
+        vec![Some(AnyObject::KeyMap(Box::new(inner_dest)))],
+        None,
+    )
+    .unwrap();
+
+    dest.map_copy(&src).unwrap();
+
+    let nested = dest.get_1a("N").unwrap().unwrap();
+    assert_eq!(nested.len(), 1);
+    let Some(AnyObject::KeyMap(nested)) = &nested[0] else {
+        panic!("expected a nested KeyMap");
+    };
+    assert_eq!(nested.map_size(), 2);
+}
