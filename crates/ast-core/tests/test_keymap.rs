@@ -266,9 +266,27 @@ fn put_elem_creates_and_appends() {
     km.put_0i("B", 1, None).unwrap();
     km.put_elem_i("B", 1, 2).unwrap();
     assert_eq!(km.get_1i("B").unwrap(), Some(vec![1, 2]));
+}
 
-    // Comment retention/dropping on create-vs-promote is checked once
-    // `map_comment` and `put_u` land in Task 9.
+#[test]
+fn put_elem_comment_retention_differs_on_create_vs_promote() {
+    // MAKE_MAPPUTELEM (keymap.c:8270-8287): the create-on-absent-key
+    // branch calls astMapPut1<X> with a NULL comment, so an undefined
+    // entry's comment is dropped once put_elem gives it its first value.
+    // The promote-a-scalar branch instead calls astMapPut1<X> with
+    // `mapentry->comment`, so a scalar's own comment survives becoming a
+    // vector.
+    let mut km = KeyMap::new();
+    km.put_u("CREATED", Some("dropped on create")).unwrap();
+    km.put_elem_i("CREATED", 0, 1).unwrap();
+    assert_eq!(km.map_comment("CREATED"), None);
+
+    km.put_0i("PROMOTED", 1, Some("kept on promote")).unwrap();
+    km.put_elem_i("PROMOTED", 1, 2).unwrap();
+    assert_eq!(
+        km.map_comment("PROMOTED").as_deref(),
+        Some("kept on promote")
+    );
 }
 
 #[test]
@@ -469,6 +487,24 @@ fn map_defined_on_a_missing_key_consults_key_error() {
 }
 
 #[test]
+fn map_defined_missing_key_error_uses_the_case_folded_key() {
+    // astMapDefined's AST__MPKER message (keymap.c:7431-7433) quotes
+    // ConvertKey's own `key` local, which is the case-folded string when
+    // KeyCase=0 — not the caller's original, differently-cased argument.
+    let mut km = KeyMap::new();
+    km.set_key_case(false).unwrap();
+    km.set_key_error(true);
+
+    let err = km.map_defined("nope").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpker);
+    assert!(
+        err.to_string()
+            .contains("No value was found for NOPE in the supplied KeyMap."),
+        "{err}"
+    );
+}
+
+#[test]
 fn map_remove_is_silent_on_a_missing_key() {
     let mut km = KeyMap::new();
     km.put_0i("A", 1, None).unwrap();
@@ -585,6 +621,30 @@ fn map_key_walks_the_entries_in_order() {
             .contains("Cannot find element 4 (zero-based) of the KeyMap."),
         "{err}"
     );
+}
+
+#[test]
+fn map_key_on_an_empty_keymap_is_out_of_range() {
+    // GetKey (keymap.c:3430) finds no entry at index 0 in an empty
+    // KeyMap and falls straight through to the AST__MPIND error, the
+    // same branch an out-of-range index on a populated KeyMap takes.
+    let km = KeyMap::new();
+    let err = km.map_key(0).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpind);
+    assert!(
+        err.to_string()
+            .contains("Cannot find element 0 (zero-based) of the KeyMap."),
+        "{err}"
+    );
+}
+
+#[test]
+fn map_iterate_on_an_empty_keymap_returns_none() {
+    // astMapIterate (keymap.c:8599) has nothing to walk, so even the
+    // first call with reset=true returns immediately with no key.
+    let mut km = KeyMap::new();
+    assert_eq!(km.map_iterate(true), None);
+    assert_eq!(km.map_iterate(false), None);
 }
 
 #[test]

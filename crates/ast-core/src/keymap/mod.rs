@@ -407,6 +407,14 @@ impl KeyMap {
         comment: Option<&str>,
         method: &str,
     ) -> AstResult<()> {
+        // C's AST__BADKEY message below uses the converted key exactly as
+        // ConvertKey returned it — trailing spaces and all. Only the stored
+        // key, and the table lookup, are trimmed: C terminates its copy of
+        // the key string after storing it (keymap.c:4706), but the local
+        // `key` variable used in the astError call above that point still
+        // carries the untrimmed string.
+        let untrimmed = key.clone();
+
         // The put macros strip trailing spaces from the stored key. Only
         // spaces: unlike astChrLen, other white space is significant.
         let key = key.trim_end_matches(' ').to_string();
@@ -419,8 +427,8 @@ impl KeyMap {
             return Err(AstError::new(
                 ErrorCode::Badkey,
                 format!(
-                    "{method}(KeyMap): Failed to add item \"{key}\" to a KeyMap: \
-                     \"{key}\" is not a known item."
+                    "{method}(KeyMap): Failed to add item \"{untrimmed}\" to a KeyMap: \
+                     \"{untrimmed}\" is not a known item."
                 ),
             ));
         }
@@ -558,7 +566,7 @@ impl KeyMap {
                 return Err(AstError::new(
                     ErrorCode::Mpker,
                     format!(
-                        "{method}(KeyMap): No value was found for {key} in the \
+                        "{method}(KeyMap): No value was found for {nkey} in the \
                          supplied KeyMap."
                     ),
                 ));
@@ -580,7 +588,7 @@ impl KeyMap {
             None => Err(AstError::new(
                 ErrorCode::Mpger,
                 format!(
-                    "{method}(KeyMap): The value of KeyMap key \"{key}\" cannot \
+                    "{method}(KeyMap): The value of KeyMap key \"{nkey}\" cannot \
                      be read using the requested data type."
                 ),
             )),
@@ -805,7 +813,7 @@ impl KeyMap {
                 return Err(AstError::new(
                     ErrorCode::Mpker,
                     format!(
-                        "{method}(KeyMap): No value was found for {key} in the \
+                        "{method}(KeyMap): No value was found for {nkey} in the \
                          supplied KeyMap."
                     ),
                 ));
@@ -830,7 +838,7 @@ impl KeyMap {
                         ErrorCode::Mpger,
                         format!(
                             "{method}(KeyMap): The value of element {} of KeyMap key \
-                             \"{key}\" cannot be read using the requested data type.",
+                             \"{nkey}\" cannot be read using the requested data type.",
                             i + 1
                         ),
                     ));
@@ -967,8 +975,12 @@ impl KeyMap {
         method: &str,
         create_method: &str,
     ) -> AstResult<()> {
-        let nkey = table::convert_key(key, self.key_case(), method)?;
-        let nkey = nkey.trim_end_matches(' ').to_string();
+        // `converted` keeps ConvertKey's output untrimmed, which is what
+        // every diagnostic below quotes (C's own `key` variable never gets
+        // trimmed — only the stored copy does, keymap.c:4706). `nkey` is
+        // the trimmed form used for the table itself.
+        let converted = table::convert_key(key, self.key_case(), method)?;
+        let nkey = converted.trim_end_matches(' ').to_string();
 
         // An absent or undefined entry is created as a length-1 vector,
         // with no comment: C calls astMapPut1<X> with a NULL comment
@@ -979,7 +991,7 @@ impl KeyMap {
         };
         if needs_create {
             let vector = single_element_vector(&value);
-            return self.insert_entry(nkey, vector, None, create_method);
+            return self.insert_entry(converted, vector, None, create_method);
         }
 
         // A scalar is promoted to a length-1 vector, keeping its comment:
@@ -994,12 +1006,12 @@ impl KeyMap {
         }
 
         let want = entry.value.ast_type();
-        let Some(converted) = convert::convert_value(&value, want)? else {
+        let Some(value_converted) = convert::convert_value(&value, want)? else {
             return Err(AstError::new(
                 ErrorCode::Mpper,
                 format!(
                     "{method}(KeyMap): The supplied value cannot be converted to \
-                     the data type of KeyMap key \"{key}\"."
+                     the data type of KeyMap key \"{converted}\"."
                 ),
             ));
         };
@@ -1009,7 +1021,7 @@ impl KeyMap {
         // `usize` cannot go negative, so only the high side is reachable.
         let n = entry.value.len();
         let target = if elem >= n { n } else { elem };
-        set_element(&mut entry.value, target, converted);
+        set_element(&mut entry.value, target, value_converted);
 
         // The put counts as a value put (AddTableEntry's `member` bump),
         // but the key itself is not new, so `keymember` is untouched.
@@ -1104,7 +1116,7 @@ impl KeyMap {
                 return Err(AstError::new(
                     ErrorCode::Mpker,
                     format!(
-                        "{method}(KeyMap): No value was found for {key} in the \
+                        "{method}(KeyMap): No value was found for {nkey} in the \
                          supplied KeyMap."
                     ),
                 ));
@@ -1118,7 +1130,7 @@ impl KeyMap {
                 ErrorCode::Mpvin,
                 format!(
                     "{method}(KeyMap): Illegal zero-based vector index {elem} \
-                     supplied for KeyMap entry '{key}' - the vector has {n} elements."
+                     supplied for KeyMap entry '{nkey}' - the vector has {n} elements."
                 ),
             ));
         }
@@ -1132,7 +1144,7 @@ impl KeyMap {
                 ErrorCode::Mpger,
                 format!(
                     "{method}(KeyMap): The value of element {} of KeyMap key \
-                     \"{key}\" cannot be read using the requested data type.",
+                     \"{nkey}\" cannot be read using the requested data type.",
                     elem + 1
                 ),
             )),
@@ -1143,7 +1155,10 @@ impl KeyMap {
     /// a scalar, the vector length otherwise. Mirrors `astMapLength`,
     /// which has no `KeyError` branch.
     pub fn map_length(&self, key: &str) -> usize {
-        match self.lookup(key) {
+        let Ok(nkey) = table::convert_key(key, self.key_case(), "astMapLength") else {
+            return 0;
+        };
+        match self.lookup(&nkey) {
             Some(entry) => entry.value.len().max(1),
             None => 0,
         }
@@ -1157,7 +1172,8 @@ impl KeyMap {
     /// cannot be formatted as strings, matching C's own "no error, zero
     /// result" contract.
     pub fn map_len_c(&self, key: &str) -> AstResult<usize> {
-        let Some(entry) = self.lookup(key) else {
+        let nkey = table::convert_key(key, self.key_case(), "astMapLenC")?;
+        let Some(entry) = self.lookup(&nkey) else {
             return Ok(0);
         };
         if !entry.value.defined() {
@@ -1224,7 +1240,8 @@ impl KeyMap {
     ///
     /// Used by the attribute-recursion helpers and by [`KeyMap::check_circle`].
     pub(crate) fn get_object_ref(&self, key: &str) -> Option<&AnyObject> {
-        let entry = self.lookup(key)?;
+        let nkey = table::convert_key(key, self.key_case(), "get_object_ref").ok()?;
+        let entry = self.lookup(&nkey)?;
         match &entry.value {
             // A stored NULL Object element borrows to nothing, which is
             // what C's `aval ? astClone( aval ) : NULL` amounts to for a
@@ -1351,7 +1368,7 @@ impl KeyMap {
                     return Err(AstError::new(
                         ErrorCode::Mpker,
                         format!(
-                            "astMapDefined(KeyMap): No value was found for {key} in \
+                            "astMapDefined(KeyMap): No value was found for {nkey} in \
                              the supplied KeyMap."
                         ),
                     ));
