@@ -1951,3 +1951,56 @@ case), `scan_int` fails outright and `scan_double` parses it as
 (`2147483647`) rather than C's wrapped `-1`. Pinned by
 `string_to_int_overflow_disagrees_with_c_on_wrap` in `convert.rs`'s
 test module.
+
+---
+
+## `astMapRename` on a locked KeyMap loses the entry
+
+**Status:** Confirmed against C source. **Not mirrored in Rust** — a
+failed rename leaves the KeyMap unchanged instead.
+
+`MapRename` (`keymap.c:7608`) has already unlinked the old entry from
+the table before it checks `MapLocked`:
+
+```c
+entry = RemoveTableEntry( this, itab, oldkey, status );
+if( entry ) {
+   ...
+   oldent = RemoveTableEntry( this, itab, entry->key, status );
+   if( oldent ) {
+      keymember = oldent->keymember;
+      oldent = FreeMapEntry( oldent, status );
+      there = 1;
+   } else {
+      keymember = -1;
+      there = 0;
+   }
+
+   if( !there && astGetMapLocked( this ) ) {
+      astError( AST__BADKEY, "astMapRename(%s): Failed to rename item "
+                "\"%s\" in a KeyMap to \"%s\": \"%s\" is not a known "
+                "item.", status, astGetClass( this ), oldkey, newkey,
+                newkey );
+   }
+
+   if( astOK ) {
+      entry = AddTableEntry( this, itab, entry, keymember, status );
+   } else {
+      entry = FreeMapEntry( entry, status );
+   }
+}
+```
+
+`AddTableEntry` — the only call that would put `entry` back into the
+table — is reached only `if( astOK )`. The `AST__BADKEY` branch above
+it sets the error status, so on that path the renamed entry falls
+through to `FreeMapEntry` instead, and the KeyMap is left with neither
+the old key nor the new one: the entry, and the value it held, are
+gone.
+
+**Rust behaviour (divergence, not mirror):** `KeyMap::map_rename`
+removes the old entry the same way, but before returning `AST__BADKEY`
+it re-inserts the entry under its old key. A failed rename therefore
+leaves the KeyMap exactly as it was, rather than silently dropping an
+entry. Pinned by `map_rename_respects_map_locked` in
+`tests/test_keymap.rs`.

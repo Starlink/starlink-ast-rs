@@ -57,6 +57,11 @@ pub struct KeyMap {
     key_error: Option<bool>,
     map_locked: Option<bool>,
     sort_by: Option<SortBy>,
+    /// The cursor [`KeyMap::map_iterate`] resumes from. An index into
+    /// [`KeyMap::sorted_keys`] rather than C's saved hash-table/list
+    /// position, which is what keeps a walk bounded even when `SortBy`
+    /// is set to a mode whose C sorted list is circular.
+    iter_index: usize,
 }
 
 impl KeyMap {
@@ -356,6 +361,20 @@ impl KeyMap {
             comment,
             "astMapPut0A",
         )
+    }
+
+    /// Add `key` with no associated value. Mirrors `astMapPutU`
+    /// (`keymap.c:5147`).
+    ///
+    /// The entry is present for [`KeyMap::map_has_key`] but not for
+    /// [`KeyMap::map_defined`], and every getter reports failure for it
+    /// without consulting `KeyError` — the entry was found, it simply has
+    /// no value, which is a different outcome from the key being absent.
+    /// Subject to `MapLocked` exactly as a put is, and reuses the
+    /// previous `keymember` when it replaces an existing entry.
+    pub fn put_u(&mut self, key: &str, comment: Option<&str>) -> AstResult<()> {
+        let key = table::convert_key(key, self.key_case(), "astMapPutU")?;
+        self.insert_entry(key, EntryValue::Undef { nel: 0 }, comment, "astMapPutU")
     }
 
     /// Normalise `key` and hand the value to [`KeyMap::insert_entry`].
@@ -1292,6 +1311,192 @@ impl KeyMap {
             })
         })
     }
+
+    /// The data type of the value stored at `key`, or `AstType::BadType`
+    /// if `key` is not present. Mirrors `astMapType` (`keymap.c:8496`),
+    /// which reports no error for a missing key whatever `KeyError` is
+    /// set to.
+    pub fn map_type(&self, key: &str) -> AstResult<AstType> {
+        let nkey = table::convert_key(key, self.key_case(), "astMapType")?;
+        Ok(match self.lookup(&nkey) {
+            Some(entry) => entry.value.ast_type(),
+            None => AstType::BadType,
+        })
+    }
+
+    /// Whether `key` is present, whether or not it has a value. Mirrors
+    /// `astMapHasKey` (`keymap.c:7448`), which never consults `KeyError`.
+    pub fn map_has_key(&self, key: &str) -> AstResult<bool> {
+        let nkey = table::convert_key(key, self.key_case(), "astMapHasKey")?;
+        Ok(self.lookup(&nkey).is_some())
+    }
+
+    /// Whether `key` is present *and* has a value. Mirrors `astMapDefined`
+    /// (`keymap.c:7347`).
+    ///
+    /// Unlike [`KeyMap::map_has_key`], a genuinely absent key does consult
+    /// `KeyError`: C's `MapDefined` only skips the `KeyError` branch when
+    /// `SearchTableEntry` finds the entry, which happens for a
+    /// present-but-undefined key too (`mapentry->type == AST__UNDEFTYPE`
+    /// gives `result = 0` without going near the `else if` that reports
+    /// `AST__MPKER`). A key that is not in the table at all falls into
+    /// that `else if`, exactly as [`KeyMap::get_scalar`] does for a
+    /// missing key.
+    pub fn map_defined(&self, key: &str) -> AstResult<bool> {
+        let nkey = table::convert_key(key, self.key_case(), "astMapDefined")?;
+        match self.lookup(&nkey) {
+            Some(entry) => Ok(entry.value.defined()),
+            None => {
+                if self.key_error() {
+                    return Err(AstError::new(
+                        ErrorCode::Mpker,
+                        format!(
+                            "astMapDefined(KeyMap): No value was found for {key} in \
+                             the supplied KeyMap."
+                        ),
+                    ));
+                }
+                Ok(false)
+            }
+        }
+    }
+
+    /// Remove `key` if present. Removing an absent key is not an error.
+    /// Mirrors `astMapRemove` (`keymap.c:7545`): `RemoveTableEntry`
+    /// returns NULL for a missing key and `FreeMapEntry(NULL)` is a
+    /// no-op.
+    pub fn map_remove(&mut self, key: &str) -> AstResult<()> {
+        let nkey = table::convert_key(key, self.key_case(), "astMapRemove")?;
+        self.entries.remove(nkey.trim_end_matches(' '));
+        Ok(())
+    }
+
+    /// The comment stored with `key`, or `None` if the key is absent or
+    /// has no comment.
+    ///
+    /// This has no C counterpart: C exposes an entry's comment only
+    /// through the serialised form. Rust adds it because `to_node` needs
+    /// it and because a caller who can set a comment should be able to
+    /// read it back.
+    pub fn map_comment(&self, key: &str) -> Option<String> {
+        let nkey = table::convert_key(key, self.key_case(), "map_comment").ok()?;
+        self.lookup(&nkey).and_then(|e| e.comment.clone())
+    }
+
+    /// Move the entry at `old_key` to `new_key`, replacing any entry
+    /// already stored there. Mirrors `astMapRename` (`keymap.c:7608`).
+    ///
+    /// A no-op if the two normalised keys are equal (C's whole body is
+    /// guarded on `strcmp(oldkey, newkey)`), and silent if `old_key` is
+    /// absent (C's `RemoveTableEntry` returns NULL and the rest of the
+    /// body is skipped). Otherwise the destination's `keymember` is
+    /// inherited if it was already occupied, and a fresh one is
+    /// allocated if it was not — `AddTableEntry`'s usual rule.
+    pub fn map_rename(&mut self, old_key: &str, new_key: &str) -> AstResult<()> {
+        // `convert_key` case-folds per KeyCase but does not trim trailing
+        // spaces. C's error message below uses these converted-but-untrimmed
+        // strings; the table lookups use the trimmed versions, matching
+        // key_cmp's trailing-space-insensitive comparison.
+        let old_converted = table::convert_key(old_key, self.key_case(), "astMapRename")?;
+        let new_converted = table::convert_key(new_key, self.key_case(), "astMapRename")?;
+        let old = old_converted.trim_end_matches(' ').to_string();
+        let new = new_converted.trim_end_matches(' ').to_string();
+
+        if old == new {
+            return Ok(());
+        }
+
+        let Some(mut entry) = self.entries.remove(&old) else {
+            return Ok(());
+        };
+
+        let previous = self.entries.remove(&new);
+        let there = previous.is_some();
+
+        // C reports AST__BADKEY here and leaves the KeyMap with the old
+        // key gone and the new key never written, losing the entry (see
+        // docs/issues/c-library-quirks.md). Rust puts the entry back
+        // first, so a failed rename leaves the KeyMap unchanged.
+        if !there && self.map_locked() {
+            self.entries.insert(old, entry);
+            return Err(AstError::new(
+                ErrorCode::Badkey,
+                format!(
+                    "astMapRename(KeyMap): Failed to rename item \"{old_converted}\" in \
+                     a KeyMap to \"{new_converted}\": \"{new_converted}\" is not a known \
+                     item."
+                ),
+            ));
+        }
+
+        self.member_count += 1;
+        entry.member = self.member_count;
+        entry.keymember = match previous {
+            Some(old_dest) => old_dest.keymember,
+            None => {
+                self.member_count += 1;
+                self.member_count
+            }
+        };
+        self.entries.insert(new, entry);
+        Ok(())
+    }
+
+    /// The keys in read-out order.
+    ///
+    /// For now this always sorts by [`table::key_cmp`], regardless of
+    /// `SortBy`; the ordering diverges from C's unsorted bucket order,
+    /// see `docs/issues/c-library-quirks.md`. [`KeyMap::sort_by`] will
+    /// pick this method's other six modes without any change to its
+    /// callers.
+    pub(crate) fn sorted_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.entries.keys().cloned().collect();
+        keys.sort_by(|a, b| table::key_cmp(a, b));
+        keys
+    }
+
+    /// The key at `index` in read-out order. Mirrors `astMapKey`
+    /// (`keymap.c:4432`, via `GetKey` at `keymap.c:3430`), including its
+    /// error for an out-of-range index.
+    pub fn map_key(&self, index: usize) -> AstResult<String> {
+        let keys = self.sorted_keys();
+        keys.get(index).cloned().ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Mpind,
+                format!(
+                    "astMapKey(KeyMap): Cannot find element {index} (zero-based) \
+                     of the KeyMap."
+                ),
+            )
+        })
+    }
+
+    /// The next key in read-out order, or `None` once every key has been
+    /// returned. Pass `reset` to restart from the first key. Mirrors
+    /// `astMapIterate` (`keymap.c:8599`).
+    ///
+    /// The cursor is a plain index into [`KeyMap::sorted_keys`] rather
+    /// than C's saved hash-table/sorted-list position, so unlike C the
+    /// walk always terminates, even with `SortBy` set to a mode whose
+    /// sorted list is circular (see `docs/issues/c-library-quirks.md`).
+    /// As in C, once the walk is exhausted the cursor resets, so the next
+    /// call without `reset` starts again from the first key.
+    pub fn map_iterate(&mut self, reset: bool) -> Option<String> {
+        if reset {
+            self.iter_index = 0;
+        }
+        let keys = self.sorted_keys();
+        match keys.get(self.iter_index) {
+            Some(key) => {
+                self.iter_index += 1;
+                Some(key.clone())
+            }
+            None => {
+                self.iter_index = 0;
+                None
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1389,30 +1594,33 @@ mod tests {
         assert!(km.key_case());
     }
 
-    // Enabled once `sorted_keys` exists.
-    // #[test]
-    // fn key_error_and_map_locked_recurse_into_nested_key_maps() {
-    //     let mut inner = KeyMap::new();
-    //     inner.put_0i("X", 1, None).unwrap();
-    //     let mut middle = KeyMap::new();
-    //     middle.put_0a("INNER", AnyObject::KeyMap(Box::new(inner)), None).unwrap();
-    //     let mut outer = KeyMap::new();
-    //     outer.put_0a("MIDDLE", AnyObject::KeyMap(Box::new(middle)), None).unwrap();
-    //
-    //     outer.set_key_error(true);
-    //     outer.set_map_locked(true);
-    //
-    //     fn check(km: &KeyMap, depth: usize) {
-    //         assert!(km.key_error(), "depth {depth}");
-    //         assert!(km.map_locked(), "depth {depth}");
-    //         for key in km.sorted_keys() {
-    //             if let Some(AnyObject::KeyMap(nested)) = km.get_object_ref(&key) {
-    //                 check(nested, depth + 1);
-    //             }
-    //         }
-    //     }
-    //     check(&outer, 0);
-    // }
+    #[test]
+    fn key_error_and_map_locked_recurse_into_nested_key_maps() {
+        let mut inner = KeyMap::new();
+        inner.put_0i("X", 1, None).unwrap();
+        let mut middle = KeyMap::new();
+        middle
+            .put_0a("INNER", AnyObject::KeyMap(Box::new(inner)), None)
+            .unwrap();
+        let mut outer = KeyMap::new();
+        outer
+            .put_0a("MIDDLE", AnyObject::KeyMap(Box::new(middle)), None)
+            .unwrap();
+
+        outer.set_key_error(true);
+        outer.set_map_locked(true);
+
+        fn check(km: &KeyMap, depth: usize) {
+            assert!(km.key_error(), "depth {depth}");
+            assert!(km.map_locked(), "depth {depth}");
+            for key in km.sorted_keys() {
+                if let Some(AnyObject::KeyMap(nested)) = km.get_object_ref(&key) {
+                    check(nested, depth + 1);
+                }
+            }
+        }
+        check(&outer, 0);
+    }
 
     #[test]
     fn sort_by_and_size_guess_do_not_recurse() {

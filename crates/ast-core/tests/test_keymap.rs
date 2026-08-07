@@ -8,7 +8,7 @@
 //! `astMapPutP` / `astMapGetP` family has no Rust counterpart, because
 //! `AST__POINTERTYPE` holds a raw C pointer.
 
-use ast_core::keymap::KeyMap;
+use ast_core::keymap::{AstType, KeyMap, SortBy};
 use ast_core::{AnyObject, error::ErrorCode};
 
 #[test]
@@ -139,6 +139,42 @@ fn a_key_map_cannot_contain_itself() {
     let self_copy = AnyObject::KeyMap(Box::new(outer.clone()));
     let err = outer.check_circle(&self_copy, "astMapPut0A").unwrap_err();
     assert_eq!(err.code(), ErrorCode::Kycir);
+}
+
+#[test]
+fn a_key_map_cannot_contain_itself_transitively() {
+    // The direct check above catches a candidate that IS a copy of the
+    // receiver, at check_circle's own same_entries test — it never
+    // reaches the recursive walk over the candidate's nested KeyMaps.
+    // This test puts the matching KeyMap two Object-entry levels below
+    // the candidate, inside wrappers that do not themselves match the
+    // receiver, so only the recursive branch (keymap.c:951's transitive
+    // CheckCircle, walking the candidate's own contents) can find it.
+    let mut victim = KeyMap::new();
+    victim.put_0i("X", 1, None).unwrap();
+
+    // A structural copy of the receiver, buried inside a chain of
+    // wrappers whose own key sets differ from the receiver's.
+    let mut level2 = KeyMap::new();
+    level2
+        .put_0a("MATCH", AnyObject::KeyMap(Box::new(victim.clone())), None)
+        .unwrap();
+    let mut candidate = KeyMap::new();
+    candidate.put_0i("EXTRA", 99, None).unwrap();
+    candidate
+        .put_0a("NESTED", AnyObject::KeyMap(Box::new(level2)), None)
+        .unwrap();
+
+    let candidate_obj = AnyObject::KeyMap(Box::new(candidate));
+    let err = victim
+        .check_circle(&candidate_obj, "astMapPut0A")
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Kycir);
+    assert!(
+        err.to_string()
+            .contains("the first KeyMap contains the second KeyMap"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -379,4 +415,216 @@ fn map_get_c_joins_with_the_c_fixed_stride() {
 
     // A missing key fails.
     assert_eq!(km.map_get_c("NOPE").unwrap(), None);
+}
+
+#[test]
+fn put_u_creates_an_undefined_entry() {
+    let mut km = KeyMap::new();
+    km.put_u("U", Some("no value yet")).unwrap();
+
+    // The key is there, but has no value.
+    assert!(km.map_has_key("U").unwrap());
+    assert!(!km.map_defined("U").unwrap());
+    assert_eq!(km.map_type("U").unwrap(), AstType::Undef);
+    assert_eq!(km.map_size(), 1);
+    assert_eq!(km.map_comment("U").as_deref(), Some("no value yet"));
+
+    // Reading it returns failure, not an error, even with KeyError set.
+    km.set_key_error(true);
+    assert_eq!(km.get_0i("U").unwrap(), None);
+
+    // Putting a value over it makes it defined.
+    km.put_0i("U", 3, None).unwrap();
+    assert!(km.map_defined("U").unwrap());
+    assert_eq!(km.get_0i("U").unwrap(), Some(3));
+}
+
+#[test]
+fn map_type_and_has_key_on_a_missing_key() {
+    let km = KeyMap::new();
+    // Neither reports an error, and neither consults KeyError.
+    assert_eq!(km.map_type("NOPE").unwrap(), AstType::BadType);
+    assert!(!km.map_has_key("NOPE").unwrap());
+    assert!(!km.map_defined("NOPE").unwrap());
+}
+
+#[test]
+fn map_defined_on_a_missing_key_consults_key_error() {
+    // Unlike map_type and map_has_key, astMapDefined's KeyError branch
+    // fires for a genuinely absent key (SearchTableEntry returns NULL),
+    // but not for a present-but-undefined one (keymap.c:7347-7434).
+    let mut km = KeyMap::new();
+    km.set_key_error(true);
+
+    let err = km.map_defined("NOPE").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpker);
+    assert!(
+        err.to_string()
+            .contains("No value was found for NOPE in the supplied KeyMap."),
+        "{err}"
+    );
+
+    km.put_u("U", None).unwrap();
+    assert!(!km.map_defined("U").unwrap());
+}
+
+#[test]
+fn map_remove_is_silent_on_a_missing_key() {
+    let mut km = KeyMap::new();
+    km.put_0i("A", 1, None).unwrap();
+    km.map_remove("NOPE").unwrap();
+    assert_eq!(km.map_size(), 1);
+    km.map_remove("A").unwrap();
+    assert_eq!(km.map_size(), 0);
+    assert!(!km.map_has_key("A").unwrap());
+}
+
+#[test]
+fn map_rename_moves_the_value_and_the_comment() {
+    let mut km = KeyMap::new();
+    km.put_0i("OLD", 42, Some("a comment")).unwrap();
+    km.map_rename("OLD", "NEW").unwrap();
+
+    assert!(!km.map_has_key("OLD").unwrap());
+    assert_eq!(km.get_0i("NEW").unwrap(), Some(42));
+    assert_eq!(km.map_comment("NEW").as_deref(), Some("a comment"));
+    assert_eq!(km.map_size(), 1);
+
+    // Renaming a key to itself does nothing at all.
+    km.map_rename("NEW", "NEW").unwrap();
+    assert_eq!(km.get_0i("NEW").unwrap(), Some(42));
+
+    // Renaming a missing key does nothing, and is not an error.
+    km.map_rename("GONE", "SOMETHING").unwrap();
+    assert_eq!(km.map_size(), 1);
+
+    // Renaming onto an occupied key overwrites it.
+    km.put_0i("OTHER", 7, None).unwrap();
+    km.map_rename("NEW", "OTHER").unwrap();
+    assert_eq!(km.map_size(), 1);
+    assert_eq!(km.get_0i("OTHER").unwrap(), Some(42));
+}
+
+#[test]
+fn map_rename_respects_map_locked() {
+    let mut km = KeyMap::new();
+    km.put_0i("A", 1, None).unwrap();
+    km.put_0i("B", 2, None).unwrap();
+    km.set_map_locked(true);
+
+    // Renaming onto an existing key is allowed: no new key appears.
+    km.map_rename("A", "B").unwrap();
+    assert_eq!(km.get_0i("B").unwrap(), Some(1));
+
+    // Renaming onto a new key is not.
+    let err = km.map_rename("B", "C").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    assert!(
+        err.to_string().contains(
+            "Failed to rename item \"B\" in a KeyMap to \"C\": \"C\" is not a \
+             known item."
+        ),
+        "{err}"
+    );
+
+    // A failed rename leaves the KeyMap unchanged: unlike C, which loses
+    // the entry, Rust puts it back.
+    assert!(km.map_has_key("B").unwrap());
+    assert_eq!(km.get_0i("B").unwrap(), Some(1));
+    assert_eq!(km.map_size(), 1);
+}
+
+#[test]
+fn map_rename_locked_error_uses_the_case_folded_keys() {
+    // astMapRename's AST__BADKEY message reports the keys after ConvertKey's
+    // case folding, not the caller's original strings — confirmed against a
+    // C oracle build: astMapRename(km, "a", "new key  ") with KeyCase=0
+    // reports "A" and "NEW KEY  " (folded, but not trimmed of trailing
+    // spaces), not "a" and "new key  ".
+    let mut km = KeyMap::new();
+    km.set_key_case(false).unwrap();
+    km.put_0i("a", 1, None).unwrap();
+    km.set_map_locked(true);
+
+    let err = km.map_rename("a", "new key  ").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    assert!(
+        err.to_string().contains(
+            "Failed to rename item \"A\" in a KeyMap to \"NEW KEY  \": \"NEW KEY  \" \
+             is not a known item."
+        ),
+        "{err}"
+    );
+
+    // The failed rename left the KeyMap unchanged.
+    assert!(km.map_has_key("a").unwrap());
+    assert_eq!(km.get_0i("a").unwrap(), Some(1));
+}
+
+#[test]
+fn map_key_walks_the_entries_in_order() {
+    let mut km = KeyMap::new();
+    // Insert deliberately out of alphabetical order.
+    km.put_0i("Size", 1, None).unwrap();
+    km.put_0i("Error", 2, None).unwrap();
+    km.put_0i("Name", 3, None).unwrap();
+    km.put_0i("Resolution", 4, None).unwrap();
+
+    assert_eq!(km.map_size(), 4);
+    let keys: Vec<String> = (0..km.map_size()).map(|i| km.map_key(i).unwrap()).collect();
+    // KeyCmp order, not insertion order and not bucket order. KeyCase
+    // defaults to case-sensitive, so the keys keep the case they were
+    // put with.
+    assert_eq!(keys, vec!["Error", "Name", "Resolution", "Size"]);
+
+    // An out-of-range index is an error, not a None.
+    let err = km.map_key(4).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpind);
+    assert!(
+        err.to_string()
+            .contains("Cannot find element 4 (zero-based) of the KeyMap."),
+        "{err}"
+    );
+}
+
+#[test]
+fn map_iterate_visits_every_key_once_and_then_stops() {
+    let mut km = KeyMap::new();
+    for k in ["Size", "Error", "Name"] {
+        km.put_0c(k, "x", None).unwrap();
+    }
+
+    let mut seen = Vec::new();
+    let mut key = km.map_iterate(true);
+    while let Some(k) = key {
+        seen.push(k);
+        // A runaway iteration would hang the test, so bound it.
+        assert!(seen.len() <= 3, "iteration did not terminate: {seen:?}");
+        key = km.map_iterate(false);
+    }
+    // KeyCase defaults to case-sensitive, so the keys keep the case they
+    // were put with.
+    assert_eq!(seen, vec!["Error", "Name", "Size"]);
+
+    // Once exhausted, the cursor has reset, so a fresh walk works.
+    assert_eq!(km.map_iterate(false).as_deref(), Some("Error"));
+}
+
+#[test]
+fn map_iterate_terminates_with_sort_by_set() {
+    // C's astMapIterate loops forever here; see docs/issues/c-library-quirks.md.
+    let mut km = KeyMap::new();
+    for k in ["A", "B", "C"] {
+        km.put_0i(k, 1, None).unwrap();
+    }
+    km.set_sort_by(SortBy::KeyUp);
+
+    let mut count = 0;
+    let mut key = km.map_iterate(true);
+    while key.is_some() {
+        count += 1;
+        assert!(count <= 3, "iteration did not terminate");
+        key = km.map_iterate(false);
+    }
+    assert_eq!(count, 3);
 }

@@ -306,6 +306,9 @@ pub(crate) fn convert_value(raw: &RawValue, out_type: AstType) -> AstResult<Opti
                 .or_else(|| scan_double(s).map(|d| round_c(d) as u8))
                 .map(RawValue::Byte),
             AstType::Object | AstType::Undef => None,
+            AstType::BadType => {
+                unreachable!("no getter ever requests conversion to BadType")
+            }
         });
     }
 
@@ -348,7 +351,7 @@ pub(crate) fn convert_value(raw: &RawValue, out_type: AstType) -> AstResult<Opti
             RawValue::Double(v) => double_to_string(*v),
             _ => unreachable!(),
         }),
-        AstType::Object | AstType::Undef => unreachable!(),
+        AstType::Object | AstType::Undef | AstType::BadType => unreachable!(),
     }))
 }
 

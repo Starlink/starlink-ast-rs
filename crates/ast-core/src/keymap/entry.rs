@@ -7,11 +7,15 @@ use crate::serial::AnyObject;
 /// The AST data type of a KeyMap entry.
 ///
 /// The discriminants are C's `AST__*TYPE` constants from `ast.h`.
-/// `AST__BADTYPE` (0) is C's "no type" marker and has no variant;
 /// `AST__POINTERTYPE` (6) holds a raw C pointer and is not representable
 /// in the Rust API, so its code is reserved but unhandled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AstType {
+    /// `AST__BADTYPE`: C's "no type" marker, reported by `astMapType` for
+    /// a key that is not present. No entry is ever stored with this type,
+    /// so it is not part of [`AstType::ALL`] and does not round-trip
+    /// through [`AstType::from_code`].
+    BadType = 0,
     /// `AST__INTTYPE`: `int`.
     Int = 1,
     /// `AST__DOUBLETYPE`: `double`.
@@ -59,6 +63,9 @@ impl AstType {
 
     /// The comment written alongside the `Typ%d` card, matching
     /// `DumpEntry` in `keymap.c`.
+    ///
+    /// Panics on `BadType`: no entry is ever stored with that type, so
+    /// there is nothing for `DumpEntry` to write a comment for.
     pub fn type_comment(self) -> &'static str {
         match self {
             AstType::String => "Item data type (string)",
@@ -70,6 +77,7 @@ impl AstType {
             AstType::Double => "Item data type (double)",
             AstType::Float => "Item data type (float)",
             AstType::Undef => "Item data type (undefined)",
+            AstType::BadType => unreachable!("no KeyMap entry is ever stored as BadType"),
         }
     }
 }
