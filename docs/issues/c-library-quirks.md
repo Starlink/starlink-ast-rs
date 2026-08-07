@@ -1748,3 +1748,178 @@ interact. This output is committed verbatim as
 `crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt`, the ground truth a
 later test parses to pin the Rust arithmetic to C's actual numbers rather
 than to a Rust-side restatement of djb2.
+
+---
+
+## `ConvertValue`: out-of-range double-to-int cast is undefined behaviour
+
+**Status:** Open. Not mirrored in Rust — the Rust port uses a well-defined
+conversion and produces a different (also well-defined) result for
+out-of-range inputs.
+
+**C location:** `reference/starlink-ast/src/keymap.c:1952-1965`, the
+`Double`-to-narrow-integer arms of `ConvertValue`:
+
+```c
+} else if( out_type == AST__INTTYPE ) {
+   if( out ) *( (int *) out ) = (int)( dval + 0.5 );
+} else if( out_type == AST__SINTTYPE ) {
+   if( out ) *( (short int *) out ) = (int)( dval + 0.5 );
+} else if( out_type == AST__KINTTYPE ) {
+   if( out ) *( (int64_t *) out ) = (int64_t)( dval + 0.5 );
+} else if( out_type == AST__BYTETYPE ) {
+   if( out ) *( (unsigned char *) out ) = (int)( dval + 0.5 );
+```
+
+(The `Float`-to-narrow-integer arms at `keymap.c:2011-2024` cast the same
+way and have the same problem.)
+
+**Why this is undefined behaviour.** C11 6.3.1.4p1: converting a
+floating value to an integer type whose range cannot represent the
+(truncated) value is undefined behaviour — not implementation-defined,
+not a wraparound guarantee. `(int)( dval + 0.5 )` for `dval = 5000000100.0`
+truncates to `5000000100`, which does not fit in `int`; the `int64_t`
+arm truncates to the same value, which does fit in `int64_t`, so only
+the narrow arms are affected.
+
+**Observed** (x86-64, glibc, both `-O0` and `-O2`, `libast.so` built by
+this repo's cmake build): for `dval = 5000000100.0`,
+
+```
+int    = -2147483648   (INT_MIN)
+short  = 0
+byte   = 0
+int64  = 5000000100    (correct — in range for int64_t)
+```
+
+The `int`/`short`/`byte` results are exactly `INT_MIN`'s bit pattern
+reinterpreted at each width: this specific x86-64/glibc/SSE2 combination
+converts the double to `int` first (the `cvttsd2si` instruction, whose
+documented behaviour on overflow is to produce `INT_MIN`) and then
+narrows that `int`, regardless of the nominal cast target width. A
+different compiler, architecture, or optimisation level is free to
+produce a different value — this is what "undefined" means; the
+observed determinism is a property of this one toolchain, not of the C
+standard.
+
+**Consequence.** `astMapGet0I`/`0S`/`0B` (and the vector/element forms)
+on a KeyMap `Double` or `Float` entry whose value is out of range for
+the requested integer type return `INT_MIN`-derived garbage rather than
+a diagnostic or a saturated value, and nothing about the call signals
+that this happened.
+
+**Upstream fix.** Range-check before the cast, saturating (or erroring)
+on overflow instead of relying on the cast's undefined result:
+
+```c
+} else if( out_type == AST__INTTYPE ) {
+   double rounded = dval + 0.5;
+   if( out ) *( (int *) out ) = ( rounded >= INT_MAX ) ? INT_MAX :
+                                 ( rounded <  INT_MIN ) ? INT_MIN :
+                                 (int) rounded;
+```
+
+with the analogous range check (against `SHRT_MIN`/`MAX`, `0`/`UCHAR_MAX`)
+in the `SInt`/`Byte` arms. This changes behaviour only for inputs that
+are already undefined — every in-range `dval` casts to the same `int`
+it does today.
+
+**Rust behaviour (divergence, not mirror):** `convert_value` in
+`crates/ast-core/src/keymap/convert.rs` computes `round_c(as_f64) as i64`
+and then narrows with `as i32`/`as i16`/`as u8`. Rust's `as` between
+numeric types is a well-defined truncating/wrapping conversion at every
+step (unlike C's float-to-int cast), so `5000000100.0` narrows to
+`705032804` (`i32`), `-3484` (`i16`), `100` (`u8`) — the low bits of the
+*true* value `5000000100`, not of `INT_MIN`. Pinned by
+`double_to_narrow_int_disagrees_with_c_on_overflow` in `convert.rs`'s
+test module.
+
+---
+
+## `ConvertValue`: numeric-string overflow into `%d` is undefined behaviour, and glibc wraps rather than failing
+
+**Status:** Open. Not mirrored in Rust — the Rust port fails the parse
+and falls through to the `%lf` fallback, which C's own two-scan chain
+also has, but reaches with a different value because glibc's `%d` does
+not fail here.
+
+**C location:** `reference/starlink-ast/src/keymap.c:2060-2073`, the
+`String`-to-`Int` arm of `ConvertValue` (the `SInt`/`Byte`/`KInt` arms at
+2076-2121 share the shape):
+
+```c
+nc = 0;
+nval = astSscanf( cval, " %d %n", &ival, &nc );
+if( ( nval == 1 ) && ( nc >= (int) strlen( cval ) ) ) {
+   if( out ) *( (int *) out ) = ival;
+} else {
+   nc = 0;
+   nval = astSscanf( cval, " %lf %n", &dval, &nc );
+   ...
+```
+
+**Why this is undefined behaviour.** C11 7.21.6.2p10 (`fscanf`/`sscanf`
+conversions): if the value of a numeric conversion is outside the range
+of representable values, the behaviour is undefined. `%d` reads into an
+`int`; a digit string with more magnitude than `INT_MAX` triggers this
+clause. (Contrast `strtol`, which C11 7.22.1.4 requires to return
+`ERANGE` via `errno` on the same condition — `sscanf`'s numeric
+conversions have no such guaranteed diagnostic.)
+
+**Observed** (same toolchain as above), `astSscanf( cval, " %d %n", ... )`:
+
+```
+"9999999999"                            (10 digits) -> nval=1 ival=1410065407  nc=10  (claims success)
+"99999999999999999999999999999999999999" (38 nines) -> nval=1 ival=-1          nc=38  (claims success)
+```
+
+Both calls report `nval == 1` and `nc == strlen(cval)` — glibc's `%d`
+conversion does not fail on overflow, it silently wraps the accumulated
+value modulo `2^32` and reinterprets as signed `int`. Because the
+"consumed the whole string" test in `ConvertValue` only checks `nval`
+and `nc`, the primary `%d` scan is taken as successful and the `%lf`
+fallback is never reached — the wrapped value is what
+`astMapGet0I("9999999999")` returns.
+
+**Consequence.** A KeyMap `String` entry holding a digit string too
+large for `int` converts to a wrapped, effectively arbitrary `int`
+rather than either the (rounded) numeric value or a conversion failure.
+
+**Upstream fix.** AST already uses `errno` for range detection in six
+other source files (`axis.c`, `channel.c`, `fitschan.c`, `mathmap.c`,
+`memory.c`, `object.c`), so replacing the `%d` scan with `strtol` plus an
+`ERANGE` check is idiomatic for this codebase, not a foreign import:
+
+```c
+char *end;
+errno = 0;
+long lval = strtol( cval, &end, 10 );
+while( isspace( (int) *end ) ) end++;
+if( errno != ERANGE && end != cval && *end == '\0' &&
+    lval >= INT_MIN && lval <= INT_MAX ) {
+   if( out ) *( (int *) out ) = (int) lval;
+} else {
+   /* fall through to the "%lf" attempt, as today */
+```
+
+This changes behaviour only for digit strings whose magnitude does not
+fit in `int` — every digit string that fits continues to convert to the
+same `int` it does today, and the fallback to `%lf` (which already
+exists) takes over exactly where a range failure is detected.
+
+**Rust behaviour (divergence, not mirror):** `scan_int` in
+`crates/ast-core/src/keymap/convert.rs` uses `str::parse::<i64>`, which
+returns `Err` on overflow rather than wrapping. `convert_value`'s
+`String`-to-`Int` arm then falls through to the `%lf`-equivalent
+`scan_double` path exactly as C's own two-scan chain does, but because
+glibc's `%d` did not fail in the first place, the two land on different
+values: for `"9999999999"`, C returns the wrapped `1410065407`; Rust's
+`scan_int` fails (`i64` can hold `9999999999` but `... as i32` would
+still need to run — here `KInt`'s target is `i64`, which *does* hold
+the value, so this specific string only diverges for the narrower
+targets), while for a magnitude too large even for `i64` (the 38-nines
+case), `scan_int` fails outright and `scan_double` parses it as
+`1e38`, which `round_c` and the narrowing cast saturate to `i32::MAX`
+(`2147483647`) rather than C's wrapped `-1`. Pinned by
+`string_to_int_overflow_disagrees_with_c_on_wrap` in `convert.rs`'s
+test module.

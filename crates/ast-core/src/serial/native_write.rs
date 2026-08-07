@@ -15,11 +15,14 @@ const DBL_DIG: usize = 17;
 // Double formatting — faithful reproduction of C's `sprintf(buf, "%.*g", prec, value)`
 // ---------------------------------------------------------------------------
 
-/// Format a double using C's `%.*g` conventions.
+/// Format a double using C's `%.*g` conventions, the way `WriteDouble`
+/// does it (`channel.c:4323-4468`): both `0.0` and `-0.0` produce `"0"`,
+/// via `WriteDouble`'s own explicit `if(!strcmp(buff,"-0"))` fixup.
 ///
-/// The output is identical to `sprintf(buf, "%.*g", precision, value)` with
-/// the following AST-specific override: both `0.0` and `-0.0` produce `"0"`
-/// (the C library normalises negative zero).
+/// Every current caller of this function writes attribute values that
+/// went through `WriteDouble` in C, so the fixup belongs here. A caller
+/// that instead needs `%.*g` without the negative-zero fixup — as
+/// `ConvertValue` does — should use [`format_double_g_signed`].
 ///
 /// Rules (from the C standard):
 ///
@@ -30,11 +33,21 @@ const DBL_DIG: usize = 17;
 /// - Scientific-notation exponent: `e+NN` or `e-NN` (at least 2 digits,
 ///   always signed).
 pub(crate) fn format_double_g(value: f64, precision: usize) -> String {
-    // AST normalises both +0 and -0 to "0".
+    // WriteDouble normalises both +0 and -0 to "0".
     if value == 0.0 {
         return "0".to_string();
     }
+    format_double_g_signed(value, precision)
+}
 
+/// Format a double using C's `%.*g` conventions, with no negative-zero
+/// fixup: `sprintf(buf, "%.*g", precision, value)` verbatim, so `-0.0`
+/// formats as `"-0"`.
+///
+/// This is the formatter `ConvertValue`'s Double/Float-to-String arms use
+/// (`keymap.c:1975-1988`, `keymap.c:2036`) — unlike `WriteDouble`, neither
+/// arm has a negative-zero fixup.
+pub(crate) fn format_double_g_signed(value: f64, precision: usize) -> String {
     // NaN / Inf — should not appear in valid AST data, but handle
     // gracefully.
     if value.is_nan() {
