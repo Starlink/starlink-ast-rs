@@ -1894,17 +1894,45 @@ other source files (`axis.c`, `channel.c`, `fitschan.c`, `mathmap.c`,
 char *end;
 errno = 0;
 long lval = strtol( cval, &end, 10 );
+int consumed = ( end != cval );   /* capture before skipping trailing space */
 while( isspace( (int) *end ) ) end++;
-if( errno != ERANGE && end != cval && *end == '\0' &&
+if( consumed && errno != ERANGE && *end == '\0' &&
     lval >= INT_MIN && lval <= INT_MAX ) {
    if( out ) *( (int *) out ) = (int) lval;
 } else {
    /* fall through to the "%lf" attempt, as today */
 ```
 
-This changes behaviour only for digit strings whose magnitude does not
-fit in `int` — every digit string that fits continues to convert to the
-same `int` it does today, and the fallback to `%lf` (which already
+The `consumed` flag has to be captured immediately after the `strtol`
+call, before the trailing-whitespace skip. An earlier draft of this fix
+tested `end != cval` only after the `while( isspace(...) ) end++;` loop
+had already run; for an all-whitespace input such as `"   "`, `strtol`
+consumes no digits and leaves `end == cval`, but the loop then walks
+`end` past every space to the string's `'\0'` before the `end != cval`
+test runs — so the test spuriously passes and the patched code returns
+`0` for an input the *current* code refuses outright (`" %d %n"` gives
+`nval=-1`). Capturing `consumed` first closes that hole.
+
+**Measured, corrected patch** (compiled and run standalone, `-O0`,
+compared against the current `sscanf`-based behaviour):
+
+| Input | Current C (`" %d %n"`) | Corrected patch |
+|---|---|---|
+| `""` | refused | refused |
+| `"   "` | refused | refused |
+| `"42"` | `42` | `42` |
+| `" 42 "` | `42` | `42` |
+| `"12abc"` | refused | refused |
+| `"1 2"` | refused | refused |
+| `"9999999999"` | `1410065407` (wrapped) | refused (falls through to `%lf`) |
+| 38-nines | `-1` (wrapped) | refused (falls through to `%lf`) |
+
+So the patch changes behaviour only for the two magnitude-overflow
+cases (`"9999999999"` and the 38-nines string) — every other input
+above, including the all-whitespace and empty cases that the earlier
+draft got wrong, keeps its current result. Digit strings that fit in
+`int`, with or without surrounding whitespace, continue to convert to
+the same `int` they do today, and the fallback to `%lf` (which already
 exists) takes over exactly where a range failure is detected.
 
 **Rust behaviour (divergence, not mirror):** `scan_int` in

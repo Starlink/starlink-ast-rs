@@ -134,17 +134,14 @@ fn scan_double(s: &str) -> Option<f64> {
 /// since the trailing marker is unconsumed) — this backtracking mirrors
 /// how `strtod` handles an exponent marker it cannot complete.
 ///
-/// One glibc-specific `sscanf("%lf")` quirk is not reproduced: glibc
-/// refuses to attach a `p` exponent to a mantissa that is a bare `.`
-/// with no digits on either side, so `"0x.p9"` scans only `"0x."` (value
-/// `0`) and leaves `"p9"` unconsumed, which fails this function's
-/// whole-string test; a mantissa with at least one digit does take the
-/// exponent (`"0x1.p9"`, `"0x.5p9"`), and both scanners agree on those.
-/// This parser always attaches the exponent, so `"0x.p9"` parses here
-/// where C's `astSscanf` rejects it as not consuming the whole string.
-/// The value is `0` either way (the exponent of a zero mantissa is
-/// irrelevant), and this input does not occur in AST's numeric data —
-/// it is a pathological literal, not a value anything writes.
+/// glibc's `sscanf("%lf")` additionally refuses to attach a `p` exponent
+/// to a mantissa that has no hex digits at all (a bare `.` with nothing
+/// on either side): `"0x.p9"` scans only `"0x."` (value `0`) and leaves
+/// `"p9"` unconsumed, so the whole-string test fails and the conversion
+/// is rejected. A mantissa with at least one hex digit does take the
+/// exponent (`"0x1.p9"`, `"0x.5p9"`). This function reproduces that by
+/// only attempting to consume a `p` exponent when the mantissa contained
+/// at least one hex digit.
 fn parse_hex_float(s: &str) -> Option<f64> {
     let b = s.as_bytes();
     let mut i = 0;
@@ -200,9 +197,13 @@ fn parse_hex_float(s: &str) -> Option<f64> {
 
     // Optional binary exponent. A "p"/"P" that turns out not to be
     // followed by any exponent digits is not consumed, matching
-    // `strtod`'s backtracking.
+    // `strtod`'s backtracking. glibc's `sscanf("%lf")` additionally
+    // never attaches the exponent to a mantissa with no hex digits at
+    // all (bare "0x." has no digits before or after the dot), so gate
+    // the attempt on the mantissa having contributed at least one digit.
+    let has_mantissa_digit = int_end > int_start || frac_end > frac_start;
     let mut exp: i64 = 0;
-    if i < b.len() && (b[i] == b'p' || b[i] == b'P') {
+    if has_mantissa_digit && i < b.len() && (b[i] == b'p' || b[i] == b'P') {
         let mut j = i + 1;
         let exp_neg = match b.get(j) {
             Some(b'+') => {
@@ -585,6 +586,28 @@ mod tests {
         assert_eq!(
             conv(RawValue::String("0x1p4".into()), AstType::Float),
             Some(RawValue::Float(16.0))
+        );
+    }
+
+    #[test]
+    fn string_to_double_rejects_hex_exponent_on_bare_dot_mantissa() {
+        // glibc's `sscanf("%lf")` never attaches a "p" exponent to a
+        // mantissa with no hex digits at all: "0x.p9" scans only "0x."
+        // (value 0) and leaves "p9" unconsumed, so the whole-string test
+        // fails and the conversion is refused. A mantissa with at least
+        // one hex digit, on either side of the dot, does take the
+        // exponent.
+        assert_eq!(
+            conv(RawValue::String("0x.p9".into()), AstType::Double),
+            None
+        );
+        assert_eq!(
+            conv(RawValue::String("0x1.p9".into()), AstType::Double),
+            Some(RawValue::Double(512.0))
+        );
+        assert_eq!(
+            conv(RawValue::String("0x.5p9".into()), AstType::Double),
+            Some(RawValue::Double(160.0))
         );
     }
 
