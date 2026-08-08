@@ -135,26 +135,50 @@ fn build(puts: &[Put]) -> KeyMap {
     km
 }
 
+/// The comment to attach to `key`'s entry, derived from the key text alone
+/// so it stays fixed across a reshuffle — the whole point of these tests is
+/// that content cannot depend on insertion order, and a comment tied to the
+/// generation index or to `Rng` state would violate that for a reason that
+/// has nothing to do with the property under test.
+///
+/// One case in four omits the comment, exercising the path where C's
+/// `Dump` writes no `Com%d` card at all. The other three include a space,
+/// and one embeds a literal double quote — the entry's comment round-trips
+/// as the *value* of a `Com%d` string card, so it goes through the same
+/// quoting as any other string value and a quote character inside it must
+/// survive doubling on write and undoubling on read.
+fn comment_for(key: &str) -> Option<String> {
+    let sum: u32 = key.bytes().map(u32::from).sum();
+    match sum % 4 {
+        0 => None,
+        1 => Some(format!("note for {key}")),
+        2 => Some(format!("{key} needs a \"quoted\" aside")),
+        _ => Some(format!("{key}: trailing detail")),
+    }
+}
+
 fn apply(km: &mut KeyMap, puts: &[Put]) {
     for put in puts {
+        let comment = key_of(put).and_then(|k| comment_for(&k));
+        let comment = comment.as_deref();
         match put {
-            Put::Int(k, v) => km.put_0i(k, *v, None).unwrap(),
-            Put::Short(k, v) => km.put_0s(k, *v, None).unwrap(),
-            Put::Long(k, v) => km.put_0k(k, *v, None).unwrap(),
-            Put::Byte(k, v) => km.put_0b(k, *v, None).unwrap(),
-            Put::Double(k, v) => km.put_0d(k, *v, None).unwrap(),
-            Put::Float(k, v) => km.put_0f(k, *v, None).unwrap(),
-            Put::Str(k, v) => km.put_0c(k, v, None).unwrap(),
-            Put::IntVec(k, v) => km.put_1i(k, v, None).unwrap(),
+            Put::Int(k, v) => km.put_0i(k, *v, comment).unwrap(),
+            Put::Short(k, v) => km.put_0s(k, *v, comment).unwrap(),
+            Put::Long(k, v) => km.put_0k(k, *v, comment).unwrap(),
+            Put::Byte(k, v) => km.put_0b(k, *v, comment).unwrap(),
+            Put::Double(k, v) => km.put_0d(k, *v, comment).unwrap(),
+            Put::Float(k, v) => km.put_0f(k, *v, comment).unwrap(),
+            Put::Str(k, v) => km.put_0c(k, v, comment).unwrap(),
+            Put::IntVec(k, v) => km.put_1i(k, v, comment).unwrap(),
             Put::StrVec(k, v) => {
                 let refs: Vec<&str> = v.iter().map(String::as_str).collect();
-                km.put_1c(k, &refs, None).unwrap()
+                km.put_1c(k, &refs, comment).unwrap()
             }
-            Put::DoubleVec(k, v) => km.put_1d(k, v, None).unwrap(),
-            Put::Undef(k) => km.put_u(k, None).unwrap(),
+            Put::DoubleVec(k, v) => km.put_1d(k, v, comment).unwrap(),
+            Put::Undef(k) => km.put_u(k, comment).unwrap(),
             Put::Nested(k, inner) => {
                 let obj = AnyObject::KeyMap(Box::new(build(inner)));
-                km.put_0a(k, obj, None).unwrap()
+                km.put_0a(k, obj, comment).unwrap()
             }
         }
     }
@@ -306,6 +330,11 @@ fn a_dump_load_cycle_preserves_every_value() {
                 back.map_defined(&key).unwrap(),
                 km.map_defined(&key).unwrap(),
                 "seed {seed}: definedness of {key}"
+            );
+            assert_eq!(
+                back.map_comment(&key),
+                km.map_comment(&key),
+                "seed {seed}: comment of {key}"
             );
             match ty {
                 AstType::Int
