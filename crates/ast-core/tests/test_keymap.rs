@@ -36,9 +36,9 @@
 //!   as message strings: the test name and the assertion line locate a
 //!   Rust failure.
 
-use ast_core::frames::{SkyFrame, SkySystem};
+use ast_core::frames::{SkyFrame, SkySystem, SpecFrame, SpecSystem};
 use ast_core::keymap::{AstType, KeyMap, SortBy};
-use ast_core::{AnyObject, error::ErrorCode};
+use ast_core::{AnyObject, error::ErrorCode, from_native_string, to_native_string};
 
 #[test]
 fn scalar_put_and_get_round_trip_every_type() {
@@ -932,6 +932,42 @@ fn map_copy_entry_locked_destination_error_keeps_trailing_spaces() {
 // its own order: its two static helper functions first, then `main`.
 // ---------------------------------------------------------------------------
 
+/// Serialise, read back, and compare entry by entry. Ported from
+/// `checkdump` (`testkeymap.c:64`), which compares sizes, then per key the
+/// type and either the Object class name or the string rendering.
+fn check_dump(km: &KeyMap) {
+    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    let AnyObject::KeyMap(result) = from_native_string(&text).unwrap() else {
+        panic!("round trip did not give a KeyMap");
+    };
+
+    // checkDump 1.
+    assert_eq!(result.map_size(), km.map_size());
+    for i in 0..result.map_size() {
+        let key = result.map_key(i).unwrap();
+        let ty = result.map_type(&key).unwrap();
+        // checkDump 4.
+        assert_eq!(ty, km.map_type(&key).unwrap(), "key {key}");
+        if ty == AstType::Object {
+            // checkDump 5 / 6 / 7. C compares astGetC(obj, "class"); the
+            // AnyObject variant is the Rust equivalent, and comparing it is
+            // strictly stronger than comparing class-name strings.
+            let a = result.get_0a(&key).unwrap().expect("entry is present");
+            let b = km.get_0a(&key).unwrap().expect("entry is present");
+            assert_eq!(
+                a.as_ref().map(std::mem::discriminant),
+                b.as_ref().map(std::mem::discriminant),
+                "key {key}"
+            );
+        } else {
+            // checkDump 8 / 9 / 10.
+            let a = result.get_0c(&key).unwrap().expect("entry is present");
+            let b = km.get_0c(&key).unwrap().expect("entry is present");
+            assert_eq!(a, b, "key {key}");
+        }
+    }
+}
+
 #[test]
 fn case_insensitive_keys() {
     // testcasesens (testkeymap.c:278).
@@ -1193,4 +1229,149 @@ fn a_scalar_reads_as_a_length_one_vector() {
     let avec = map2.get_1a("Freda").unwrap().expect("Freda is present");
     assert_eq!(avec.len(), 1);
     assert!(matches!(avec[0], Some(AnyObject::SkyFrame(_))));
+}
+
+/// [`seven_key_map`] with five of its scalars replaced by vectors, as
+/// `main` does at `testkeymap.c:638-677`. `Fredk` and `Fredr` stay scalar.
+/// C's `astSpecFrame( " " )` leaves System at its WAVELEN default
+/// (`specframe.c:1952`).
+fn vector_key_map() -> KeyMap {
+    let mut map = seven_key_map();
+    map.put_1i("Fredi", &[1999, 0], Some("com 1")).unwrap();
+    // Error 29b.
+    assert_eq!(map.map_length("Fredi"), 2);
+    map.put_1s("Freds", &[1999, 0], Some("com 1")).unwrap();
+    // Error 29c.
+    assert_eq!(map.map_length("Freds"), 2);
+    map.put_1d("Fredd", &[1999.9, -0.01], Some("com2")).unwrap();
+    map.put_1c("Fredc", &["Hello", " ", "  Hello"], Some(" "))
+        .unwrap();
+    map.put_1a(
+        "Freda",
+        vec![
+            Some(AnyObject::SkyFrame(SkyFrame::new(SkySystem::Icrs))),
+            None,
+            Some(AnyObject::SpecFrame(SpecFrame::new(SpecSystem::Wavelen))),
+            None,
+        ],
+        Some(" "),
+    )
+    .unwrap();
+    map
+}
+
+#[test]
+fn vector_puts_replace_scalars() {
+    // main (testkeymap.c:638-763). A scalar read of a vector entry gives
+    // the entry's first element, because C's MAKE_MAPGET0 takes the
+    // storage base pointer as `raw` either way.
+    let map2 = vector_key_map().clone();
+
+    // Error A1 / A2, A1k / A2k, A3 / A4.
+    assert_eq!(map2.get_0i("Fredi").unwrap(), Some(1999));
+    assert_eq!(map2.get_0k("Fredk").unwrap(), Some(1999));
+    assert_eq!(map2.get_0d("Fredd").unwrap(), Some(1999.9));
+
+    // Error A5 / A6 / A7: MapLenC reports the longest stored element,
+    // "  Hello" at 7, while MapGet0C still gives element 0.
+    let cval = map2.get_0c("Fredc").unwrap().expect("Fredc is present");
+    assert_eq!(map2.map_len_c("Fredc").unwrap(), 7);
+    assert_eq!(cval, "Hello");
+
+    // Error A8 / A9.
+    let aval = map2.get_0a("Freda").unwrap().expect("Freda is present");
+    assert!(matches!(aval, Some(AnyObject::SkyFrame(_))));
+
+    // Error A10 / A11, A12 / A13a / A13.
+    assert_eq!(map2.get_0d("Fredi").unwrap(), Some(1999.0));
+    let cval = map2.get_0c("Fredi").unwrap().expect("Fredi is present");
+    assert_eq!(cval.len(), 4);
+    assert_eq!(cval, "1999");
+
+    // Error A14 / A15, A14k / A15k.
+    assert_eq!(map2.get_0i("Fredd").unwrap(), Some(2000));
+    assert_eq!(map2.get_0k("Fredd").unwrap(), Some(2000));
+
+    // Error A16 / A17a / A17.
+    let cval = map2.get_0c("Fredd").unwrap().expect("Fredd is present");
+    assert_eq!(cval.len(), 6);
+    assert_eq!(cval, "1999.9");
+}
+
+#[test]
+fn vector_reads() {
+    // main (testkeymap.c:765-835).
+    let map2 = vector_key_map().clone();
+
+    // Error B1 / B2a / B2b / B2c.
+    assert_eq!(map2.get_1i("Fredi").unwrap(), Some(vec![1999, 0]));
+    // Error B3 / B4a / B4b / B4c.
+    assert_eq!(map2.get_1d("Fredd").unwrap(), Some(vec![1999.9, -0.01]));
+
+    // Error B5 / B6a / B6b / B6c / B6d / B6e: elements 1 and 3 were put as
+    // NULL and read back as NULL (astMapPut1A's `value[i] ? astClone(...)
+    // : NULL`, keymap.c:5012).
+    let avec = map2.get_1a("Freda").unwrap().expect("Freda is present");
+    assert_eq!(avec.len(), 4);
+    assert!(matches!(avec[0], Some(AnyObject::SkyFrame(_))));
+    assert!(avec[1].is_none());
+    assert!(matches!(avec[2], Some(AnyObject::SpecFrame(_))));
+    assert!(avec[3].is_none());
+
+    // Error B7 / B8a / B8b / B8c / B8d. C reads into a flat buffer of
+    // 11-byte slots and checks the first bytes of slots 0, 1 and 2; the
+    // Rust read is unpadded, so the same facts are the values.
+    assert_eq!(
+        map2.get_1c("Fredc").unwrap(),
+        Some(vec![
+            "Hello".to_string(),
+            " ".to_string(),
+            "  Hello".to_string()
+        ])
+    );
+}
+
+// testkeymap.c:837-847 (Error BB1 / BB2 / BB3) reads the same "Fredc"
+// vector back through astMapGetC and asserts the 17-character
+// "(Hello, ,  Hello)"; `map_get_c_joins_with_the_c_fixed_stride` above
+// already covers exactly that, including the length.
+
+#[test]
+fn element_reads() {
+    // main (testkeymap.c:849-877).
+    let map2 = vector_key_map().clone();
+
+    // Error B1z / B2bz.
+    assert_eq!(map2.get_elem_i("Fredi", 0).unwrap(), Some(1999));
+    // Error B3z / B4cz.
+    assert_eq!(map2.get_elem_d("Fredd", 1).unwrap(), Some(-0.01));
+    // Error B5z / B6dz.
+    let aval = map2.get_elem_a("Freda", 2).unwrap().expect("element 2");
+    assert!(matches!(aval, Some(AnyObject::SpecFrame(_))));
+    // Error B7z / B8dz.
+    assert_eq!(
+        map2.get_elem_c("Fredc", 2).unwrap().as_deref(),
+        Some("  Hello")
+    );
+}
+
+#[test]
+fn remove_then_read_fails() {
+    // main (testkeymap.c:879-883).
+    let mut map2 = vector_key_map().clone();
+
+    // Removing an absent key is silent.
+    map2.map_remove("Bert").unwrap();
+    map2.map_remove("Fredc").unwrap();
+    // Error C1: the read now reports "no such key", not an error.
+    assert_eq!(map2.get_1c("Fredc").unwrap(), None);
+}
+
+#[test]
+fn check_dump_round_trip() {
+    // main (testkeymap.c:885), on the KeyMap left by remove_then_read_fails.
+    let mut map2 = vector_key_map().clone();
+    map2.map_remove("Bert").unwrap();
+    map2.map_remove("Fredc").unwrap();
+    check_dump(&map2);
 }
