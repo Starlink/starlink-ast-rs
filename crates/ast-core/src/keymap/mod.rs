@@ -6,7 +6,7 @@
 //!
 //! Keys are stored in a [`std::collections::HashMap`] rather than C's
 //! chained bucket table. C's table arithmetic survives only in
-//! [`table`], which reconstructs the `MapSz` card at dump time.
+//! `table`, which reconstructs the `MapSz` card at dump time.
 
 pub(crate) mod convert;
 pub(crate) mod entry;
@@ -1382,7 +1382,7 @@ impl KeyMap {
     /// present-but-undefined key too (`mapentry->type == AST__UNDEFTYPE`
     /// gives `result = 0` without going near the `else if` that reports
     /// `AST__MPKER`). A key that is not in the table at all falls into
-    /// that `else if`, exactly as [`KeyMap::get_scalar`] does for a
+    /// that `else if`, exactly as `KeyMap::get_scalar` does for a
     /// missing key.
     pub fn map_defined(&self, key: &str) -> AstResult<bool> {
         let nkey = table::convert_key(key, self.key_case(), "astMapDefined")?;
@@ -1521,7 +1521,7 @@ impl KeyMap {
     /// returned. Pass `reset` to restart from the first key. Mirrors
     /// `astMapIterate` (`keymap.c:8599`).
     ///
-    /// The cursor is a plain index into [`KeyMap::sorted_keys`] rather
+    /// The cursor is a plain index into `KeyMap::sorted_keys` rather
     /// than C's saved hash-table/sorted-list position, so unlike C the
     /// walk always terminates, even with `SortBy` set to a mode whose
     /// sorted list is circular (see `docs/issues/c-library-quirks.md`).

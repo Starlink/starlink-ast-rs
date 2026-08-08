@@ -2183,8 +2183,8 @@ if( vec[ j ] == (AstObject *) this ) {
 }
 ```
 
-for the transitive case, walking a candidate Object's own nested KeyMaps (`keymap.c:1031`).
-`astMapPut0A`, `astMapPut1A` and `astMapPutElemA` all call `CheckCircle` on every Object they are about to store, before storing it (`keymap.c:4757`, `:4989`, `:8461`).
+for the transitive case, walking a candidate Object's own nested KeyMaps (`keymap.c:1032`).
+`astMapPut0A`, `astMapPut1A` and `astMapPutElemA` all call `CheckCircle` on every Object they are about to store, before storing it (`keymap.c:4757`, `:4994`, `:8461`).
 
 `KeyMap::put_0a`, `KeyMap::put_1a` and `KeyMap::put_elem_a` take their `AnyObject` argument by value, and `self` is borrowed mutably for the duration of the call.
 There is no way for a caller to hand one of these methods a value that is also `self`: doing so requires either moving `self` into itself, which the borrow checker rejects, or passing a clone, and a clone is a distinct value, not `this`.
