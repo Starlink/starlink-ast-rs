@@ -19,7 +19,7 @@
 //! - A NULL element of an Object vector is `Option::None`; `astMapPut1A`
 //!   stores NULL rather than rejecting it (`keymap.c:5012`).
 //! - `astMapPutElem*`'s negative index is not a distinct sentinel: C's
-//!   `MAKE_MAPPUTELEM` (`keymap.c:8397`) computes
+//!   `MAKE_MAPPUTELEM` (`keymap.c:8392`) computes
 //!   `new = ( elem >= nel || elem < 0 )`, so *any* out-of-range index
 //!   appends and `-1` is one spelling of it. `put_elem_*` takes a `usize`,
 //!   so the C call sites that pass `-1` pass an index at or past the
@@ -1144,7 +1144,8 @@ fn scalar_puts_and_types() {
 #[test]
 fn clone_preserves_every_entry() {
     // main (testkeymap.c:433-532). C's astCopy is Rust's Clone.
-    let map2 = seven_key_map().clone();
+    let map = seven_key_map();
+    let mut map2 = map.clone();
 
     // Error 0.
     assert_eq!(map2.map_size(), 7);
@@ -1183,6 +1184,26 @@ fn clone_preserves_every_entry() {
 
     // Error 8 / 9.
     let aval = map2.get_0a("Freda").unwrap().expect("Freda is present");
+    assert!(matches!(aval, Some(AnyObject::SkyFrame(_))));
+
+    // Clone is the deep copy, so the two KeyMaps are independent. C reads
+    // only the copy here, but for entries holding an AnyObject the property
+    // is not free. The stored object is only reachable through get_0a,
+    // which itself clones, so replacing the whole entry is the strongest
+    // mutation the public API allows.
+    map2.put_0i("Fredi", -7, Some("com 1")).unwrap();
+    map2.put_0a(
+        "Freda",
+        AnyObject::SpecFrame(SpecFrame::new(SpecSystem::Wavelen)),
+        Some(" "),
+    )
+    .unwrap();
+    map2.map_remove("Fredc").unwrap();
+
+    assert_eq!(map.map_size(), 7);
+    assert_eq!(map.get_0i("Fredi").unwrap(), Some(1999));
+    assert_eq!(map.get_0c("Fredc").unwrap().as_deref(), Some("Hello"));
+    let aval = map.get_0a("Freda").unwrap().expect("Freda is present");
     assert!(matches!(aval, Some(AnyObject::SkyFrame(_))));
 }
 
@@ -1234,7 +1255,7 @@ fn a_scalar_reads_as_a_length_one_vector() {
 /// [`seven_key_map`] with five of its scalars replaced by vectors, as
 /// `main` does at `testkeymap.c:638-677`. `Fredk` and `Fredr` stay scalar.
 /// C's `astSpecFrame( " " )` leaves System at its WAVELEN default
-/// (`specframe.c:1952`).
+/// (`GetSystem`, `specframe.c:2014`).
 fn vector_key_map() -> KeyMap {
     let mut map = seven_key_map();
     map.put_1i("Fredi", &[1999, 0], Some("com 1")).unwrap();
@@ -1425,7 +1446,7 @@ fn put_elem_grows_the_vector() {
 
     // Error GETELEM_5 / GETELEM_6. C spells this index -1, which
     // MAKE_MAPPUTELEM's `new = ( elem >= nel || elem < 0 )`
-    // (keymap.c:8397) treats identically to any index at or past the
+    // (keymap.c:8392) treats identically to any index at or past the
     // length; put_elem_i takes a usize, so pass the length itself.
     let n = map.map_length("Fredi");
     map.put_elem_i("Fredi", n, -3).unwrap();
@@ -1641,7 +1662,9 @@ fn map_copy_replaces_a_nested_key_map() {
     // main (testkeymap.c:1152-1206). Every source key is already in the
     // destination, so nothing is added. The scalar entries are replaced,
     // but the nested KeyMaps under the shared "aa3" key hit MapCopy's one
-    // exception (keymap.c:4148) and are merged instead.
+    // exception (MapCopy opens at keymap.c:4112; the pair of
+    // astIsAKeyMap tests that select the merge is at :4235) and are
+    // merged instead.
     let mut map = map_copy_dest(false);
 
     let mut map3 = KeyMap::new();
@@ -1789,7 +1812,7 @@ fn map_copy_entry() {
 #[test]
 fn put_elem_d_appends_five_times() {
     // main (testkeymap.c:1352-1362). C passes -1 each time; any index at
-    // or past the length appends (keymap.c:8397), and put_elem_d takes a
+    // or past the length appends (keymap.c:8392), and put_elem_d takes a
     // usize, so pass the length. The first call creates the entry.
     let mut map = KeyMap::new();
     for value in [1.0, 2.0, 3.0, 4.0, 15.0] {
