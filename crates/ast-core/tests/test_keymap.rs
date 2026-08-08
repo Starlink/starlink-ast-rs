@@ -1375,3 +1375,185 @@ fn check_dump_round_trip() {
     map2.map_remove("Fredc").unwrap();
     check_dump(&map2);
 }
+
+#[test]
+fn five_hundred_entries() {
+    // main (testkeymap.c:890-931). 200 int keys, 299 int64 keys and one
+    // int64 key holding a value no int could.
+    let mut map = KeyMap::new();
+    for i in 1..=200 {
+        map.put_0i(&format!("Fred{i}"), i, Some(" ")).unwrap();
+    }
+    for i in 201..=499 {
+        map.put_0k(&format!("Fred{i}"), i64::from(i), Some(" "))
+            .unwrap();
+    }
+    map.put_0k("Fred500", i64::from(i32::MAX) * 100, Some(" "))
+        .unwrap();
+
+    // Error d1.
+    assert_eq!(map.map_size(), 500);
+    // Error d2 / d3.
+    assert_eq!(map.map_type("Fred123").unwrap(), AstType::Int);
+    assert_eq!(map.map_type("Fred234").unwrap(), AstType::KInt);
+    // Error d4 / d5.
+    assert_eq!(map.get_0c("Fred489").unwrap().as_deref(), Some("489"));
+    // Error d6 / d7.
+    assert_eq!(
+        map.get_0k("Fred500").unwrap().map(|k| k / 100),
+        Some(i64::from(i32::MAX))
+    );
+
+    // checkDump 2: the largest round trip in the file.
+    check_dump(&map);
+}
+
+#[test]
+fn put_elem_grows_the_vector() {
+    // main (testkeymap.c:933-986).
+    let mut map = KeyMap::new();
+    map.put_1i("Fredi", &[1, 2], Some("com 1")).unwrap();
+
+    // Error GETELEM_1 / GETELEM_2: an in-range index overwrites.
+    map.put_elem_i("Fredi", 0, -1).unwrap();
+    assert_eq!(map.get_elem_i("Fredi", 0).unwrap(), Some(-1));
+
+    // Error GETELEM_3 / GETELEM_4: index 9 is past the length 2, so the
+    // value lands at index 2.
+    map.put_elem_i("Fredi", 9, -2).unwrap();
+    assert_eq!(map.get_elem_i("Fredi", 2).unwrap(), Some(-2));
+
+    // Error GETELEM_5 / GETELEM_6. C spells this index -1, which
+    // MAKE_MAPPUTELEM's `new = ( elem >= nel || elem < 0 )`
+    // (keymap.c:8397) treats identically to any index at or past the
+    // length; put_elem_i takes a usize, so pass the length itself.
+    let n = map.map_length("Fredi");
+    map.put_elem_i("Fredi", n, -3).unwrap();
+    assert_eq!(map.get_elem_i("Fredi", 3).unwrap(), Some(-3));
+
+    // Error GETELEM_7.
+    assert_eq!(map.map_length("Fredi"), 4);
+
+    // Error GETELEM_8: put_elem_a on an absent key creates a length-1
+    // vector, whatever the index.
+    let mut map2 = KeyMap::new();
+    map2.put_elem_a("A A", 0, Some(AnyObject::KeyMap(Box::new(map))))
+        .unwrap();
+    assert_eq!(map2.map_length("A A"), 1);
+
+    // Error GETELEM_9 / GETELEM_10 / GETELEM_11: the nested KeyMap still
+    // holds the four-element vector.
+    let aval = map2.get_elem_a("A A", 0).unwrap().expect("A A is present");
+    let Some(AnyObject::KeyMap(nested)) = aval else {
+        panic!("expected a nested KeyMap");
+    };
+    assert_eq!(nested.get_elem_i("Fredi", 3).unwrap(), Some(-3));
+
+    // testkeymap.c:988-1000 then puts map2 into itself and expects
+    // AST__KYCIR. put_elem_a moves its value in while `self` is already
+    // borrowed mutably, so a caller cannot pass a KeyMap to its own
+    // put_elem_a: C's CheckCircle guard (keymap.c:8461) has no Rust
+    // counterpart. See docs/issues/c-library-quirks.md.
+}
+
+#[test]
+fn map_locked_rejects_new_keys() {
+    // main (testkeymap.c:1002-1041). C keeps writing to the nested KeyMap
+    // through its own km2 handle, which AST reference-counts so that the
+    // handle and the stored Object are the same object. put_0a takes its
+    // value by value, so no such alias survives the insert; the nested map
+    // is read back out as a get_0a clone and the inherited flag checked
+    // and exercised on that.
+    let mut map = KeyMap::new();
+    map.put_0c(" B", "Hello", Some(" ")).unwrap();
+
+    // Error GETELEM_12B: a new key in a locked map is AST__BADKEY.
+    map.set_map_locked(true);
+    let err = map.put_0c(" BZZ", "Bye Bye", Some(" ")).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+    map.clear_map_locked();
+
+    // Unlocked, the same put succeeds.
+    map.put_0c(" BZZ", "Bye Bye", Some(" ")).unwrap();
+
+    let mut km2 = KeyMap::new();
+    km2.put_0c(" BZZ", "Bye Bye", Some(" ")).unwrap();
+    map.put_0a(" BZY", AnyObject::KeyMap(Box::new(km2)), Some(" "))
+        .unwrap();
+
+    // Error GETELEM_12C: MapLocked set on the outer map is inherited by
+    // every nested KeyMap, where it blocks a new key but not a replacement.
+    map.set_map_locked(true);
+    map.put_0c(" BZZ", "You Bye", Some(" ")).unwrap();
+
+    let mut nested = nested_key_map(&map, " BZY");
+    assert!(nested.map_locked());
+    nested.put_0c(" BZZ", "You Bye", Some(" ")).unwrap();
+    let err = nested.put_0c(" BZA", "No Bye", Some(" ")).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+
+    // Clearing on the outer map clears the nested one too.
+    map.clear_map_locked();
+    let mut nested = nested_key_map(&map, " BZY");
+    assert!(!nested.map_locked());
+    nested.put_0c(" BZA", "No Bye", Some(" ")).unwrap();
+}
+
+#[test]
+fn key_error_is_inherited_by_nested_maps() {
+    // main (testkeymap.c:1043-1068), restructured the same way as
+    // map_locked_rejects_new_keys and for the same reason.
+    let mut map = KeyMap::new();
+    map.put_0a(
+        " BZY",
+        AnyObject::KeyMap(Box::new(KeyMap::new())),
+        Some(" "),
+    )
+    .unwrap();
+
+    // Error GETELEM_12D.
+    assert!(!nested_key_map(&map, " BZY").key_error());
+
+    // Error GETELEM_12E.
+    map.set_key_error(true);
+    let nested = nested_key_map(&map, " BZY");
+    assert!(nested.key_error());
+
+    // Error GETELEM_12F: with KeyError inherited, a missing key in the
+    // nested map is AST__MPKER rather than a silent failure.
+    let err = nested.get_0c("FRED").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpker);
+
+    map.clear_key_error();
+    let nested = nested_key_map(&map, " BZY");
+    assert!(!nested.key_error());
+    assert_eq!(nested.get_0c("FRED").unwrap(), None);
+}
+
+/// The nested KeyMap stored at `key`, as a clone.
+fn nested_key_map(km: &KeyMap, key: &str) -> KeyMap {
+    let Some(Some(AnyObject::KeyMap(nested))) = km.get_0a(key).unwrap() else {
+        panic!("expected a nested KeyMap at {key}");
+    };
+    *nested
+}
+
+#[test]
+fn put_elem_c_appends() {
+    // main (testkeymap.c:1070-1081). KeyCmp ignores trailing spaces, so
+    // " B " and " B" are the same key — but the leading space is
+    // significant in both.
+    let mut map = KeyMap::new();
+    map.put_0c(" B", "Hello", Some(" ")).unwrap();
+
+    map.put_elem_c(" B ", 2, "YES YES").unwrap();
+
+    // Error GETELEM_13: the scalar was promoted to a vector, and index 2
+    // being past its length appended at index 1.
+    assert_eq!(map.map_length(" B"), 2);
+    // Error GETELEM_14 / GETELEM_15.
+    assert_eq!(
+        map.get_elem_c(" B ", 1).unwrap().as_deref(),
+        Some("YES YES")
+    );
+}
