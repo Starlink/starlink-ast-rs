@@ -190,24 +190,6 @@ fn push_comment(buf: &mut String, options: &RenderOptions, comment: Option<&str>
     }
 }
 
-/// Like [`push_comment`], but without the leading space before `\t#`.
-///
-/// `WriteObject` (`channel.c:5110`) appends `" \t# "` after `name = ` (no
-/// value token in between, since the value is the nested object that
-/// follows on subsequent lines) — same non-empty guard as
-/// [`push_comment`], but the caller has already written the trailing
-/// space itself as part of `" = "`.
-fn push_comment_no_leading_space(buf: &mut String, options: &RenderOptions, comment: Option<&str>) {
-    if options.comment {
-        if let Some(comment) = comment {
-            if !comment.is_empty() {
-                buf.push_str("\t# ");
-                buf.push_str(comment);
-            }
-        }
-    }
-}
-
 /// Recursively write an object (Begin…End block) at the given base indent.
 ///
 /// `base_indent` is the number of spaces before the `" "` that prefixes
@@ -285,10 +267,15 @@ fn write_object_with_options(
 
             // Nested object.
             NodeValue::Object(child) => {
+                // C's `WriteObject` (`channel.c:5106-5107`) appends the name
+                // followed by `" ="` — no trailing space, since there is no
+                // value token; the nested object's definition follows on
+                // subsequent lines. The trailing space only appears if a
+                // comment is written after it (`channel.c:5110-5112`).
                 buf.push_str(&attr_indent);
                 buf.push_str(&item.key);
-                buf.push_str(" = ");
-                push_comment_no_leading_space(buf, options, item.comment.as_deref());
+                buf.push_str(" =");
+                push_comment(buf, options, item.comment.as_deref());
                 buf.push('\n');
                 write_object_with_options(buf, child, base_indent + 2 * indent, options);
                 items_written = true;

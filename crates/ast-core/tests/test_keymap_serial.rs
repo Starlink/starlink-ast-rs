@@ -39,7 +39,7 @@ fn normalise(line: &str) -> Card {
 /// The column at which a card's content starts, treating a commented-out
 /// card's `#` as occupying a column of its own.
 ///
-/// `native_write.rs`'s `write_object_with_options` (`native_write.rs:190-193`)
+/// `native_write.rs`'s `write_object_with_options` (`native_write.rs:205-214`)
 /// gives a set card `base_indent + indent + 1` leading spaces, and an unset
 /// card `"#"` followed by `base_indent + indent` spaces. Counting the `#`
 /// itself as one column makes both forms land on the same total: at the
@@ -369,8 +369,9 @@ fn key_map_for(row: &OracleRow) -> Option<KeyMap> {
     let mut km = KeyMap::new();
     if row.sizeguess > 0 {
         // The probe sets SizeGuess before its put loop (`keymap_hash.c:75`),
-        // which matters: C's SetSizeGuess (`keymap.c:9520`) refuses to run
-        // on a non-empty map, so the order has to match here too.
+        // which matters: C's SetSizeGuess (`keymap.c:9463`) refuses to run
+        // on a non-empty map, reporting AST__NOWRT at `keymap.c:9512-9514`,
+        // so the order has to match here too.
         km.set_size_guess(row.sizeguess as usize).unwrap();
     }
     let keys: Vec<String> = match row.label.as_str() {
@@ -576,6 +577,45 @@ fn a_null_object_entry_round_trips() {
     assert_eq!(got.len(), 2);
     assert!(got[0].is_some());
     assert!(got[1].is_none());
+}
+
+#[test]
+fn a_non_first_object_vector_element_has_no_trailing_space() {
+    // `DumpEntry` (`keymap.c:2796-2801`) gives every element after the
+    // first an empty comment, and `WriteObject` (`channel.c:5106-5112`)
+    // appends `" ="` with no trailing space, only adding `" \t# "` when
+    // `astGetComment(this) && *comment` is true. With an empty comment
+    // that condition is false, so the card for a non-first element of an
+    // Object vector must end exactly at `=`, never `= ` — this is what
+    // `native_write.rs`'s Object arm got wrong before it routed through
+    // the same non-empty-comment guard as every other card kind.
+    let mut km = KeyMap::new();
+    km.put_1a(
+        "objects",
+        vec![
+            Some(AnyObject::UnitMap(ast_core::mappings::UnitMap::new(1))),
+            Some(AnyObject::UnitMap(ast_core::mappings::UnitMap::new(2))),
+        ],
+        None,
+    )
+    .unwrap();
+
+    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    // `normalise()` only trims leading whitespace, so check the raw line.
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("V1_2 ="))
+        .unwrap_or_else(|| panic!("no V1_2 card found in:\n{text}"));
+    assert!(
+        line.ends_with('='),
+        "V1_2 card must end at '=' with no trailing space or comment, got {line:?}"
+    );
+
+    let back = assert_double_round_trip(&km, "object vector, no trailing space");
+    let got = back.get_1a("objects").unwrap().unwrap();
+    assert_eq!(got.len(), 2);
+    assert!(got[0].is_some());
+    assert!(got[1].is_some());
 }
 
 #[test]
