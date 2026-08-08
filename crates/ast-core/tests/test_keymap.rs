@@ -1758,6 +1758,27 @@ fn undefined_entries() {
 }
 
 #[test]
+fn get_elem_on_an_undefined_entry_returns_none_not_error() {
+    // astMapGetElem<X> (keymap.c:6773) sets result = 1 as soon as the key
+    // is found and never clears it for AST__UNDEFTYPE: the "} else if(
+    // raw )" guard (keymap.c:6910) just skips the conversion, so C reports
+    // success without writing to its own output parameter. There is no
+    // value for an Option to carry in that case, so every in-range index
+    // reads back as Ok(None) here instead, matching get_0i and get_1i.
+    let mut map = KeyMap::new();
+    map.put_u("GG", Some("A comment")).unwrap();
+
+    assert_eq!(map.get_elem_i("GG", 0).unwrap(), None);
+    assert_eq!(map.get_elem_c("GG", 0).unwrap(), None);
+    assert!(map.get_elem_a("GG", 0).unwrap().is_none());
+
+    // The out-of-range check (keymap.c:6901) runs before the raw-pointer
+    // guard, so it still fires for an undefined entry.
+    let err = map.get_elem_i("GG", 1).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpvin);
+}
+
+#[test]
 fn rename_round_trip() {
     // main (testkeymap.c:1285-1302).
     let mut map = KeyMap::new();

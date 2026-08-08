@@ -2194,3 +2194,25 @@ An earlier draft of this port kept a `check_circle`/`same_entries` pair that tri
 That comparison produced false positives with no C analogue: two freshly constructed empty KeyMaps compared equal, because `.all()` over an empty key set is vacuously true, and so did two KeyMaps holding different values at the same keys, since the comparison never looked at the value itself.
 Both were confirmed by direct construction.
 The pair was removed rather than fixed, because there is no case for it to correctly detect.
+
+---
+
+## `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`
+
+**Status:** Confirmed against C source.
+**Not mirrored in Rust** — the C return code cannot be reproduced faithfully, because the case it reports success for leaves the caller's output buffer untouched.
+
+`MAKE_MAPGETELEM` (`keymap.c:6773`) sets `result = 1` as soon as `SearchTableEntry` finds the entry (`keymap.c:6808`).
+The `AST__UNDEFTYPE` arm of the raw-value lookup sets `raw = NULL` and touches nothing else (`keymap.c:6886`).
+The bounds check that follows fires before the raw-pointer check — `if( elem >= nel || elem < 0 )` (`keymap.c:6901`) still reports `AST__MPVIN` for an out-of-range index on an undefined entry — but once `elem` is in range, the conversion step is guarded by `} else if( raw )` (`keymap.c:6910`), so a `NULL` raw pointer skips `ConvertValue` entirely.
+Nothing after that point touches `result`, so the function returns `1` without having written anything to the caller's `value` output parameter.
+`MapGetElemC` (`keymap.c:6953`) has the identical shape: `result = 1` at `keymap.c:7015`, `raw = NULL` for `AST__UNDEFTYPE` at `keymap.c:7093-7094`, and the same `} else if( raw )` guard at `keymap.c:7116` before the `strncpy` that would otherwise write the caller's buffer.
+
+A C caller who trusts the non-zero return and reads its own `value` buffer afterward reads whatever was already there — uninitialised stack memory, or a stale value from a previous call — not a value the KeyMap produced.
+
+This is inconsistent with the rest of the family: `MAKE_MAPGET0` (`keymap.c:5415`) has the equivalent `if( !raw ) { result = 0; }` guard (`keymap.c:5525`), so `astMapGet0<X>` reports failure for the same entry, and `MAKE_MAPGET1` (`keymap.c:5874`) has the same guard at `keymap.c:6014`.
+Three functions that exist to answer the same question — "does this key hold a readable value?" — give two different answers depending on which one is asked.
+
+**Rust behaviour (divergence, not mirror):** `KeyMap::get_elem` (the private tail shared by `get_elem_i`/`get_elem_s`/etc.) returns `Ok(None)` for every in-range index of an undefined entry, matching `get_scalar` and `get_vector` rather than C's `MAKE_MAPGETELEM`.
+`Ok(None)` is the value-carrying equivalent of C's "success with nothing written": no conversion ran, so there is no value for the `Option` to hold, and inventing one would misrepresent an entry that has none.
+An out-of-range index still returns `Err` with `ErrorCode::Mpvin`, matching C's bounds check running first.

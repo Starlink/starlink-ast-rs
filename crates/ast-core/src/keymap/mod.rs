@@ -1221,6 +1221,16 @@ impl KeyMap {
     /// negative `elem` with `AST__MPVIN`, then run the element through
     /// `ConvertValue`. Unlike put, an out-of-range index here is a user
     /// error, not something to append past.
+    ///
+    /// An in-range index of an undefined entry is `Ok(None)` rather than
+    /// an error, for every index: C's range check runs first and still
+    /// reports `AST__MPVIN` when it fails, but once `elem` is in range,
+    /// the raw pointer for an `AST__UNDEFTYPE` entry is `NULL`, and the
+    /// `} else if( raw )` guard (`keymap.c:6910`) skips `ConvertValue`
+    /// entirely, leaving the macro's `result` at the `1` it was set to as
+    /// soon as the key was found — success, with nothing written to the
+    /// caller's output buffer. `Ok(None)` is the value-carrying equivalent
+    /// of that: no conversion ran, so there is nothing to return.
     fn get_elem(
         &self,
         key: &str,
@@ -1251,6 +1261,10 @@ impl KeyMap {
                      supplied for KeyMap entry '{nkey}' - the vector has {n} elements."
                 ),
             ));
+        }
+
+        if !entry.value.defined() {
+            return Ok(None);
         }
 
         let Some(raw) = convert::element_at(&entry.value, elem) else {
