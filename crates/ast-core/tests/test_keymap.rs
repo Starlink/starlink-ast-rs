@@ -36,6 +36,7 @@
 //!   as message strings: the test name and the assertion line locate a
 //!   Rust failure.
 
+use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::keymap::{AstType, KeyMap, SortBy};
 use ast_core::{AnyObject, error::ErrorCode};
 
@@ -1055,4 +1056,141 @@ fn sort_key_alphabetical() {
     let mut reversed = SKEYS;
     reversed.reverse();
     assert_eq!(read_keys(&km), reversed);
+}
+
+/// The seven scalar entries `main` puts at `testkeymap.c:374-380`, one per
+/// scalar type. C's `astSkyFrame( " " )` leaves System at its ICRS default.
+fn seven_key_map() -> KeyMap {
+    let mut map = KeyMap::new();
+    map.put_0s("Freds", 1999, Some("com 1")).unwrap();
+    map.put_0i("Fredi", 1999, Some("com 1")).unwrap();
+    map.put_0k("Fredk", 1999, Some("com 1")).unwrap();
+    map.put_0d("Fredd", 1999.9, Some("com2 ")).unwrap();
+    map.put_0f("Fredr", 1999.9, Some("com2 ")).unwrap();
+    map.put_0c("Fredc", "Hello", Some(" ")).unwrap();
+    map.put_0a(
+        "Freda",
+        AnyObject::SkyFrame(SkyFrame::new(SkySystem::Icrs)),
+        Some(" "),
+    )
+    .unwrap();
+    map
+}
+
+#[test]
+fn scalar_puts_and_types() {
+    // main (testkeymap.c:372-431).
+    let map = seven_key_map();
+
+    // Error -12.
+    assert!(map.map_defined("Freda").unwrap());
+
+    // Error -11 / -10 / -9: an Object has no string rendering, so its
+    // MapLenC is 0, not an error.
+    assert_eq!(map.map_len_c("Fredi").unwrap(), 4);
+    assert_eq!(map.map_len_c("Freda").unwrap(), 0);
+    assert_eq!(map.map_len_c("Fredc").unwrap(), 5);
+
+    // Error -8: KeyCase defaults to case-sensitive, so "freda" is absent.
+    assert_eq!(map.map_type("freda").unwrap(), AstType::BadType);
+    // Error -7 / -6 / -5 / -5b / -4.
+    assert_eq!(map.map_type("Freda").unwrap(), AstType::Object);
+    assert_eq!(map.map_type("Fredc").unwrap(), AstType::String);
+    assert_eq!(map.map_type("Fredd").unwrap(), AstType::Double);
+    assert_eq!(map.map_type("Fredr").unwrap(), AstType::Float);
+    assert_eq!(map.map_type("Fredi").unwrap(), AstType::Int);
+
+    // Error -3 / -2.
+    assert!(!map.map_has_key("fredi").unwrap());
+    assert!(map.map_has_key("Fredi").unwrap());
+}
+
+#[test]
+fn clone_preserves_every_entry() {
+    // main (testkeymap.c:433-532). C's astCopy is Rust's Clone.
+    let map2 = seven_key_map().clone();
+
+    // Error 0.
+    assert_eq!(map2.map_size(), 7);
+
+    // Error badkey / nokey: every put key is present exactly once, and
+    // nothing else is.
+    let mut keys = read_keys(&map2);
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "Freda", "Fredc", "Fredd", "Fredi", "Fredk", "Fredr", "Freds"
+        ]
+    );
+
+    // Error -1: a scalar has length 1 through astMapLength.
+    assert_eq!(map2.map_length("Fredi"), 1);
+
+    // Error 1 / 2, 1k / 2k, 1 / 2B, 3 / 4, 3b / 4b.
+    assert_eq!(map2.get_0i("Fredi").unwrap(), Some(1999));
+    assert_eq!(map2.get_0k("Fredk").unwrap(), Some(1999));
+    assert_eq!(map2.get_0s("Freds").unwrap(), Some(1999));
+    assert_eq!(map2.get_0d("Fredd").unwrap(), Some(1999.9));
+    assert_eq!(map2.get_0f("Fredr").unwrap(), Some(1999.9));
+
+    // Error 5 / 6 / 7.
+    let cval = map2.get_0c("Fredc").unwrap().expect("Fredc is present");
+    assert_eq!(cval.len(), 5);
+    assert_eq!(cval, "Hello");
+
+    // Error 5b / 6b / 7b: astMapGetC on a length-1 entry delegates to
+    // astMapGet0C, so there are no parentheses.
+    let cval = map2.map_get_c("Fredc").unwrap().expect("Fredc is present");
+    assert_eq!(cval.len(), 5);
+    assert_eq!(cval, "Hello");
+
+    // Error 8 / 9.
+    let aval = map2.get_0a("Freda").unwrap().expect("Freda is present");
+    assert!(matches!(aval, Some(AnyObject::SkyFrame(_))));
+}
+
+#[test]
+fn scalar_cross_type_reads() {
+    // main (testkeymap.c:534-590).
+    let map2 = seven_key_map();
+
+    // Error 10 / 11, 10b / 11b: an int reads as double and as float.
+    assert_eq!(map2.get_0d("Fredi").unwrap(), Some(1999.0));
+    assert_eq!(map2.get_0f("Fredi").unwrap(), Some(1999.0));
+
+    // Error 12 / 13a / 13.
+    let cval = map2.get_0c("Fredi").unwrap().expect("Fredi is present");
+    assert_eq!(cval.len(), 4);
+    assert_eq!(cval, "1999");
+
+    // Error 14 / 15, 14k / 15k, 14b / 15b: ConvertValue rounds 1999.9 up
+    // by adding a half and truncating, in all three integer widths.
+    assert_eq!(map2.get_0i("Fredd").unwrap(), Some(2000));
+    assert_eq!(map2.get_0k("Fredd").unwrap(), Some(2000));
+    assert_eq!(map2.get_0s("Fredd").unwrap(), Some(2000));
+
+    // Error 16 / 17a / 17.
+    let cval = map2.get_0c("Fredd").unwrap().expect("Fredd is present");
+    assert_eq!(cval.len(), 6);
+    assert_eq!(cval, "1999.9");
+}
+
+#[test]
+fn a_scalar_reads_as_a_length_one_vector() {
+    // main (testkeymap.c:592-636). C pre-fills a two-element buffer with a
+    // sentinel and checks that element 1 is untouched, which is a
+    // statement about C's caller-supplied buffer; get_1* returns a Vec
+    // sized to the entry's own length, so the same fact is the length.
+    let map2 = seven_key_map();
+
+    // Error 18 / 19 / 20 / 21.
+    assert_eq!(map2.get_1i("Fredi").unwrap(), Some(vec![1999]));
+    // Error 22 / 23 / 24 / 25.
+    assert_eq!(map2.get_1d("Fredd").unwrap(), Some(vec![1999.9]));
+
+    // Error 26 / 27 / 28 / 29.
+    let avec = map2.get_1a("Freda").unwrap().expect("Freda is present");
+    assert_eq!(avec.len(), 1);
+    assert!(matches!(avec[0], Some(AnyObject::SkyFrame(_))));
 }
