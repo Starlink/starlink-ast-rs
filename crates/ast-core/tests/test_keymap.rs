@@ -6,7 +6,35 @@
 //!
 //! Divergences from the C original are noted at each site. The
 //! `astMapPutP` / `astMapGetP` family has no Rust counterpart, because
-//! `AST__POINTERTYPE` holds a raw C pointer.
+//! `AST__POINTERTYPE` holds a raw C pointer. The rest of the whole-file
+//! divergences:
+//!
+//! - `astMapGet1C` and `astMapGetElemC` take a buffer width and pad each
+//!   string out to it in a flat buffer. `get_1c` returns `Vec<String>` and
+//!   `get_elem_c` returns `String`, both unpadded, so the C checks on the
+//!   padding become checks on the values. The fixed stride inside
+//!   `astMapGetC`'s *returned* string is a different thing and is
+//!   preserved: `map_get_c` still yields `"(Hello, ,  Hello)"`.
+//! - `astCopy` becomes `Clone`, the documented deep copy for this port.
+//! - A NULL element of an Object vector is `Option::None`; `astMapPut1A`
+//!   stores NULL rather than rejecting it (`keymap.c:5012`).
+//! - `astMapPutElem*`'s negative index is not a distinct sentinel: C's
+//!   `MAKE_MAPPUTELEM` (`keymap.c:8397`) computes
+//!   `new = ( elem >= nel || elem < 0 )`, so *any* out-of-range index
+//!   appends and `-1` is one spelling of it. `put_elem_*` takes a `usize`,
+//!   so the C call sites that pass `-1` pass an index at or past the
+//!   current length here.
+//! - `astGetC( obj, "class" )` becomes a comparison of `AnyObject`
+//!   variants, which is strictly stronger than comparing class-name
+//!   strings.
+//! - `put_0a` takes its value by value, so no caller-side alias survives
+//!   the insert. C's `MapLocked` / `KeyError` inheritance blocks keep
+//!   mutating and reading a nested KeyMap through the caller's own
+//!   reference-counted handle, which is unrepresentable here; those blocks
+//!   read the nested map back out as a `get_0a` clone instead.
+//! - The C `stopit()` labels ("Error A6") are kept as comments rather than
+//!   as message strings: the test name and the assertion line locate a
+//!   Rust failure.
 
 use ast_core::keymap::{AstType, KeyMap, SortBy};
 use ast_core::{AnyObject, error::ErrorCode};
@@ -896,4 +924,135 @@ fn map_copy_entry_locked_destination_error_keeps_trailing_spaces() {
             .contains("Failed to copy item \"FRESH   \": \"FRESH   \" is not a known item."),
         "{err}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// The blocks below follow reference/starlink-ast/ast_tester/testkeymap.c in
+// its own order: its two static helper functions first, then `main`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn case_insensitive_keys() {
+    // testcasesens (testkeymap.c:278).
+    let mut map = KeyMap::new();
+    map.set_key_case(false).unwrap();
+    map.put_0i("Freds", 1999, Some("com 1")).unwrap();
+
+    // Error case 1.
+    assert!(map.map_has_key("fReDs").unwrap());
+    // Error case 2: the stored key is upper-cased.
+    assert_eq!(map.map_key(0).unwrap(), "FREDS");
+    // Error case 3 / 4 / 4b: an int reads as the string "1999".
+    let sval = map.get_0c("freds").unwrap().expect("Freds is present");
+    assert_eq!(sval, "1999");
+    assert_eq!(sval.len(), 4);
+
+    // Error case 5. Setting KeyCase to the value it already reports is
+    // allowed however full the KeyMap is (keymap.c:9279 only walks the
+    // table when the value would change), which is why C does the astSetL
+    // first; clearing it on a non-empty map would change the reported
+    // value, so it is AST__NOWRT.
+    map.set_key_case(false).unwrap();
+    let err = map.clear_key_case().unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Nowrt);
+
+    // Error case 6 / 7.
+    assert_eq!(map.map_size(), 1);
+    map.map_remove("freDs").unwrap();
+    assert_eq!(map.map_size(), 0);
+
+    // Error case 8: now that the map is empty the clear succeeds, and with
+    // KeyCase back at its default a leading space is significant.
+    map.clear_key_case().unwrap();
+    map.put_0i("Freds", 1999, Some("com 1")).unwrap();
+    assert!(!map.map_has_key(" fReDs").unwrap());
+}
+
+/// The five keys `testsorting` (`testkeymap.c:133`) puts, in put order.
+const SORT_KEYS: [&str; 5] = ["ABC", "zzzzzzzzzzz", "this_is_a_key", "HE-HE", "A"];
+
+/// The keys read back in `map_key` order.
+fn read_keys(km: &KeyMap) -> Vec<String> {
+    (0..km.map_size()).map(|i| km.map_key(i).unwrap()).collect()
+}
+
+/// A KeyMap holding `SORT_KEYS` put in order with values 1..=5, under the
+/// given `SortBy`.
+fn sort_fixture(sort_by: SortBy) -> KeyMap {
+    let mut km = KeyMap::new();
+    km.set_sort_by(sort_by);
+    for (i, key) in SORT_KEYS.iter().enumerate() {
+        km.put_0i(key, i as i32 + 1, Some(" ")).unwrap();
+    }
+    km
+}
+
+#[test]
+fn sort_age_down_and_up() {
+    // testsorting, first block (testkeymap.c:145).
+    let mut km = sort_fixture(SortBy::AgeDown);
+
+    // Error Sort 1: AgeDown gives put order, even for entries added to an
+    // already-sorted KeyMap.
+    assert_eq!(read_keys(&km), SORT_KEYS);
+
+    // Error Sort 2: AgeUp reverses it, sorting entries already present.
+    km.set_sort_by(SortBy::AgeUp);
+    let mut reversed = SORT_KEYS;
+    reversed.reverse();
+    assert_eq!(read_keys(&km), reversed);
+
+    // Error Sort 2b / 2c: re-putting an existing key makes it the newest by
+    // value, so under AgeDown it moves to the end.
+    km.put_0i(SORT_KEYS[0], 10, Some(" ")).unwrap();
+    km.set_sort_by(SortBy::AgeDown);
+    assert_eq!(
+        read_keys(&km),
+        [
+            SORT_KEYS[1],
+            SORT_KEYS[2],
+            SORT_KEYS[3],
+            SORT_KEYS[4],
+            SORT_KEYS[0]
+        ]
+    );
+}
+
+#[test]
+fn sort_key_age() {
+    // testsorting, second block (testkeymap.c:199).
+    let mut km = sort_fixture(SortBy::KeyAgeDown);
+
+    // Error Sort 0.
+    assert_eq!(read_keys(&km), SORT_KEYS);
+
+    // Error Sort -1.
+    km.set_sort_by(SortBy::KeyAgeUp);
+    let mut reversed = SORT_KEYS;
+    reversed.reverse();
+    assert_eq!(read_keys(&km), reversed);
+
+    // Error Sort -2: re-putting an existing key does NOT change its key
+    // age, which is why the keymember counter is separate from member.
+    km.put_0i(SORT_KEYS[0], 10, Some(" ")).unwrap();
+    km.set_sort_by(SortBy::KeyAgeDown);
+    assert_eq!(read_keys(&km), SORT_KEYS);
+}
+
+#[test]
+fn sort_key_alphabetical() {
+    // testsorting, third block (testkeymap.c:246).
+    const SKEYS: [&str; 5] = ["A", "ABC", "HE-HE", "this_is_a_key", "zzzzzzzzzzz"];
+
+    let mut km = sort_fixture(SortBy::KeyUp);
+
+    // Error Sort 3. Note "HE-HE" before "this_is_a_key": KeyCmp folds
+    // case, so this is not a plain byte ordering.
+    assert_eq!(read_keys(&km), SKEYS);
+
+    // Error Sort 4.
+    km.set_sort_by(SortBy::KeyDown);
+    let mut reversed = SKEYS;
+    reversed.reverse();
+    assert_eq!(read_keys(&km), reversed);
 }
