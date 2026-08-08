@@ -8,6 +8,7 @@ use ast_core::coords::PointSet;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SkyRefIs, SkySystem,
 };
+use ast_core::keymap::KeyMap;
 use ast_core::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PermMap, ShiftMap, UnitMap, ZoomMap,
 };
@@ -1639,4 +1640,73 @@ fn round_trip_negated_circle() {
     assert!(!region.point_in_region(&[0.0, 0.0]).unwrap());
     // Far point is now INSIDE.
     assert!(region.point_in_region(&[100.0, 100.0]).unwrap());
+}
+
+// ===========================================================================
+// 17. KeyMap round-trip
+// ===========================================================================
+
+#[test]
+fn keymap_round_trips_through_native_text() {
+    let mut inner = KeyMap::new();
+    inner.put_0d("Scale", 2.5, Some("a scale factor")).unwrap();
+
+    let mut km = KeyMap::new();
+    km.put_0c("Name", "example", None).unwrap();
+    km.put_1i("Counts", &[1, 2, 3], Some("three counts"))
+        .unwrap();
+    km.put_0a("Inner", AnyObject::KeyMap(Box::new(inner)), None)
+        .unwrap();
+    km.put_0a(
+        "Zoom",
+        AnyObject::ZoomMap(ZoomMap::new(2, 3.0).unwrap()),
+        None,
+    )
+    .unwrap();
+
+    let text = to_native_string(&AnyObject::KeyMap(Box::new(km.clone()))).unwrap();
+    assert!(text.contains("Begin KeyMap"));
+    assert!(text.contains("Map of key/value pairs"));
+    // A nested Object entry nests its own Begin/End block.
+    assert!(text.contains("Begin ZoomMap"));
+
+    let back = from_native_string(&text).unwrap();
+    let AnyObject::KeyMap(back) = back else {
+        panic!("expected a KeyMap");
+    };
+    assert_eq!(back.map_size(), 4);
+    assert_eq!(back.get_0c("Name").unwrap().as_deref(), Some("example"));
+    assert_eq!(back.get_1i("Counts").unwrap(), Some(vec![1, 2, 3]));
+    assert_eq!(back.map_comment("Counts").as_deref(), Some("three counts"));
+
+    let Some(AnyObject::KeyMap(inner)) = back.get_0a("Inner").unwrap().unwrap() else {
+        panic!("expected a nested KeyMap");
+    };
+    assert_eq!(inner.get_0d("Scale").unwrap(), Some(2.5));
+    assert_eq!(
+        inner.map_comment("Scale").as_deref(),
+        Some("a scale factor")
+    );
+
+    let Some(AnyObject::ZoomMap(zm)) = back.get_0a("Zoom").unwrap().unwrap() else {
+        panic!("expected a ZoomMap");
+    };
+    assert_eq!(zm.rate(&[0.0, 0.0], 1, 1).unwrap(), 3.0);
+
+    // Re-serialising the reloaded object gives identical text.
+    assert_eq!(to_native_string(&AnyObject::KeyMap(back)).unwrap(), text);
+}
+
+#[test]
+fn a_keymap_is_neither_a_mapping_nor_a_frame_nor_a_region() {
+    let obj = AnyObject::KeyMap(Box::new(KeyMap::new()));
+    assert!(obj.as_mapping().is_none());
+    assert!(obj.as_frame().is_none());
+    assert!(obj.as_region().is_none());
+    let obj = AnyObject::KeyMap(Box::new(KeyMap::new()));
+    assert!(obj.into_mapping().is_none());
+    let obj = AnyObject::KeyMap(Box::new(KeyMap::new()));
+    assert!(obj.into_frame().is_none());
+    let obj = AnyObject::KeyMap(Box::new(KeyMap::new()));
+    assert!(obj.into_region().is_none());
 }
