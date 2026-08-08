@@ -2032,3 +2032,76 @@ look up both `source.entries` and `self.entries`, reproducing this
 exactly. A caller mixing `KeyCase` settings between the two KeyMaps
 has left well-defined territory on the C side already; Rust does not
 try to make that case more sensible than C does.
+
+---
+
+## LoadKeyMap reads a Mem%d card that DumpEntry never writes
+
+**Status:** Confirmed against C source. Not mirrored in Rust — there is
+nothing to mirror; the card is simply never present.
+
+`astLoadKeyMap_` reads a per-entry `mem%d` card and uses it to seed the
+KeyMap's member counter before the next put:
+
+```c
+(void) sprintf( buff, "mem%d", nentry );
+new->member_count = astReadInt( channel, buff, 0 );
+```
+
+(`keymap.c:11067-11068`). No such card exists on the write side:
+`DumpEntry` (`keymap.c:2700-2930`) writes `Key%d`, `Com%d`, `Typ%d`,
+`Nel%d` and `Val%d`/`V%d_%d`, and nothing named `Mem%d`. `astReadInt`'s
+default of `0` therefore fires on every load, so this read is a no-op
+against any dump `DumpEntry` itself produced — the per-entry member
+number is not preserved across a dump/load round trip, and only the
+final `MemCnt` total (read once, after the entry loop) survives.
+
+**Rust behaviour (mirror by omission):** `KeyMap::from_node` does not
+read a `Mem%d` card at all, and `KeyMap::to_node` does not write one.
+The final `member_count` is read from `MemCnt` exactly as C reads
+`memcnt`, so the round-tripped totals agree; the per-key age counters
+that determine `SortBy=AgeUp`/`AgeDown` ordering do not survive a
+dump/load round trip in either library.
+
+---
+
+## `astLoadKeyMap` applies `MpLck` before loading any entry, so a locked non-empty KeyMap can never be reloaded
+
+**Status:** Confirmed against the reference library itself (not just
+the source): `astRead` on such a dump fails in C too. Mirrored in
+Rust.
+
+`astLoadKeyMap_` reads and applies every attribute — including
+`MapLocked` — before the entry-reading loop starts:
+
+```c
+new->maplocked = astReadInt( channel, "mplck", -INT_MAX );
+if ( TestMapLocked( new, status ) ) SetMapLocked( new, new->maplocked, status );
+...
+/* Entries... */
+nentry = 0;
+while( astOK ) {
+   nentry++;
+   ...
+}
+```
+
+(`keymap.c:11008-11036`). Every `MapPut0<X>`/`MapPut1<X>` the entry
+loop then calls reports `AST__BADKEY` for a key not already present
+when `MapLocked` is set (the `MAKE_MAPPUT0`/`MAKE_MAPPUT1` macros'
+shared `if( !there && astGetMapLocked( this ) )` guard, `keymap.c:4736`
+and `keymap.c:4971`). A KeyMap is empty immediately after
+`astLoadObject` returns, so the first entry a locked dump tries to
+load always fails: dumping a locked, non-empty KeyMap and reading the
+result back is not possible in C, regardless of what the entries
+contain. A probe against the repo's own reference `libast` confirms
+this: `astWrite` on such a KeyMap succeeds and produces a `MpLck = 1`
+card, but the matching `astRead` fails with `AST__BADKEY` and returns
+a null object.
+
+**Rust behaviour (mirror, not divergence):** `KeyMap::from_node`
+applies `MpLck` via `set_map_locked` before the entry-reading loop,
+in the same order as C, so `KeyMap::from_node` on a dump of a locked,
+non-empty KeyMap fails with the same `AST__BADKEY`. Pinned by
+`reloading_a_locked_non_empty_keymap_fails_like_c` in
+`crates/ast-core/src/keymap/serial.rs`.

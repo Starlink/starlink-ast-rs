@@ -233,6 +233,27 @@ impl Node {
             _ => None,
         }
     }
+
+    /// Look up an integer attribute, returning `None` if absent or `Unset`.
+    ///
+    /// Unlike [`Node::get_int_any`], a commented-out default does not count
+    /// as present — this is for callers that must tell "the card was
+    /// written" apart from "the card was written but commented out".
+    pub fn get_int_any_if_set(&self, key: &str) -> Option<i64> {
+        match self.get(key) {
+            Some(NodeValue::Int(v)) => Some(*v),
+            Some(NodeValue::Double(v)) => Some(*v as i64),
+            _ => None,
+        }
+    }
+
+    /// Look up a string attribute, returning `None` if absent or `Unset`.
+    pub fn get_string_if_set(&self, key: &str) -> Option<String> {
+        match self.get(key) {
+            Some(NodeValue::String(v)) => Some(v.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Node {

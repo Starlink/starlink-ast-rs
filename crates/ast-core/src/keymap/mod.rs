@@ -13,6 +13,7 @@
 
 pub(crate) mod convert;
 pub(crate) mod entry;
+pub(crate) mod serial;
 pub(crate) mod sort;
 pub(crate) mod table;
 
