@@ -2105,3 +2105,56 @@ in the same order as C, so `KeyMap::from_node` on a dump of a locked,
 non-empty KeyMap fails with the same `AST__BADKEY`. Pinned by
 `reloading_a_locked_non_empty_keymap_fails_like_c` in
 `crates/ast-core/src/keymap/serial.rs`.
+
+---
+
+## `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value
+
+**Status:** Confirmed by reading the source and by probing the
+reference library directly. Not mirrored in Rust — the fix is at the
+`put_1<X>` boundary instead (see below), because C's own behaviour is
+undefined and, for one type, crashing.
+
+`AstMapEntry.nel` is documented as "0 => scalar, >0 => array with
+"nel" elements" (`keymap.h:116`) — C has no encoding for a vector of
+length zero; `nel == 0` always means scalar. `MAKE_MAPPUT1`
+(`keymap.c:4894`) applies no check to the `size` parameter (`CHECK_I`
+and its numeric-type siblings are empty macros), so
+`astMapPut1I(key, 0, ...)` calls `InitMapEntry(mapentry, Itype, 0,
+status)`, storing `nel = 0`, and then
+`entry->value = astMalloc(sizeof(Xtype)*(size_t)0)`, which
+`astMalloc_`'s `if ( size > (size_t) 0 )` gate (`memory.c:2931`) turns
+into a `NULL` pointer without error.
+
+`DumpEntry` (`keymap.c:2792-2801`) then reads `entry->nel` (still 0)
+and takes the *scalar* branch, aliasing the `Entry1<X>` structure as
+an `Entry0<X>` and writing `((Entry0<X> *)entry)->value` — which is
+really the `Entry1<X>`'s `NULL` pointer field, reinterpreted as the
+scalar payload type. On the platform this was probed on, `NULL` is an
+all-zero bit pattern, so every numeric type reads back as a zero
+value (confirmed against the reference library for `Int`, `Double`,
+`Float`, `SInt`, `KInt`, `Byte`: each dumps `Val%d = 0` / `0.0`), and
+the Object type's `if( ((Entry0A *)entry)->value )` guard sees the
+same `NULL` and correctly omits the card. The String type has no such
+guard: `((Entry0C *)entry)->value` is handed straight to
+`astWriteString` as a `const char *`, which dereferences the `NULL`
+and **segfaults** — reproduced directly against the reference
+library's `astWrite`. `astMapLength` (`keymap.c:8102-8105`) reports
+1 for any such entry (`if( result == 0 ) result = 1`), consistent
+with treating it as the scalar C's representation says it is.
+
+**Rust behaviour (not a mirror):** Rust cannot reproduce a
+pointer-aliasing read, and must not reproduce the String crash, so
+the fix lives at the `put_1<X>`/`put_vector` boundary
+(`KeyMap::put_vector`, `crates/ast-core/src/keymap/mod.rs`) rather
+than in the dump path: a zero-length vector is degraded to a scalar
+before it is ever stored, via `entry::degrade_empty_vector`
+(`crates/ast-core/src/keymap/entry.rs`). This stores the same
+well-defined value C's degradation happens to produce for every type
+it does not crash on (a numeric zero, a `false`/absent Object), and
+an empty string in place of the `NULL` C cannot safely dump for
+String. `dump_entry`/`push_element` in
+`crates/ast-core/src/keymap/serial.rs` are unaffected: they never see
+a zero-length vector, because none can exist. Pinned by
+`putting_a_zero_length_vector_degrades_to_a_scalar` in
+`crates/ast-core/src/keymap/serial.rs`.

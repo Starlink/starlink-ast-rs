@@ -301,6 +301,52 @@ pub(crate) fn set_element(value: &mut EntryValue, index: usize, raw: RawValue) {
     }
 }
 
+/// Degrade a zero-length vector to a scalar, matching C's `nel == 0`
+/// meaning "scalar" (`keymap.h:116`) rather than "empty vector" — C has no
+/// representation for the latter.
+///
+/// `astMapPut1<X>(key, 0, ...)` stores `nel = 0` (`InitMapEntry`,
+/// `keymap.c:3900`) with `entry->value = astMalloc(sizeof(Xtype)*0)`,
+/// which is `NULL` (`memory.c:2931` only allocates when `size > 0`).
+/// `DumpEntry` (`keymap.c:2792`) then reads `nel == 0` and takes the
+/// scalar branch, aliasing the `Entry1<X>` as an `Entry0<X>` and reading
+/// the `NULL` pointer's own bytes as the element value — undefined
+/// behaviour in C, but on every platform this runs on, `NULL` is an
+/// all-zero bit pattern, so a numeric type reads back as a zero value
+/// (confirmed against the reference library: an `astMapPut1I`/`D`/`F`/`S`
+/// /`K`/`B` of size 0 round-trips as `Val%d = 0` / `0.0`) and an Object
+/// reads back as a null pointer, which `DumpEntry`'s `if( ... ->value )`
+/// guard already omits rather than dereferences. For the String type, the
+/// same `NULL` read *is* dereferenced (`astWriteString` is handed a
+/// `NULL` `const char *`), which segfaults in the reference library — see
+/// `docs/issues/c-library-quirks.md`.
+///
+/// Rust cannot and must not reproduce a pointer-aliasing read or a crash,
+/// so this stores the same well-defined value C's degradation happens to
+/// produce for every type it does not crash on, and an empty string in
+/// place of the `NULL` C cannot safely dump for String. A non-empty
+/// vector, an already-scalar value, and an `Undef` entry pass through
+/// unchanged.
+pub(crate) fn degrade_empty_vector(value: EntryValue) -> EntryValue {
+    fn degrade<T: Default>(s: Scalar1D<T>) -> Scalar1D<T> {
+        match s {
+            Scalar1D::Vector(v) if v.is_empty() => Scalar1D::Scalar(T::default()),
+            other => other,
+        }
+    }
+    match value {
+        EntryValue::Int(s) => EntryValue::Int(degrade(s)),
+        EntryValue::SInt(s) => EntryValue::SInt(degrade(s)),
+        EntryValue::KInt(s) => EntryValue::KInt(degrade(s)),
+        EntryValue::Byte(s) => EntryValue::Byte(degrade(s)),
+        EntryValue::Float(s) => EntryValue::Float(degrade(s)),
+        EntryValue::Double(s) => EntryValue::Double(degrade(s)),
+        EntryValue::String(s) => EntryValue::String(degrade(s)),
+        EntryValue::Object(s) => EntryValue::Object(degrade(s)),
+        EntryValue::Undef { nel } => EntryValue::Undef { nel },
+    }
+}
+
 /// One key's worth of state.
 ///
 /// `member` is bumped on every put of a value; `keymember` is retained

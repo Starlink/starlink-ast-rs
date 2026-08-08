@@ -23,8 +23,8 @@ use crate::keymap::convert::{
     unwrap_sint, unwrap_string,
 };
 use crate::keymap::entry::{
-    EntryValue, MapEntry, Scalar1D, promote_scalar_to_vector, set_element, single_element_vector,
-    single_key_map, single_key_map_mut,
+    EntryValue, MapEntry, Scalar1D, degrade_empty_vector, promote_scalar_to_vector, set_element,
+    single_element_vector, single_key_map, single_key_map_mut,
 };
 use crate::keymap::table::{MAX_ENTRIES_PER_TABLE_ENTRY, MIN_TABLE_SIZE};
 use crate::serial::AnyObject;
@@ -826,6 +826,12 @@ impl KeyMap {
     }
 
     /// Normalise `key` and hand the vector value to [`KeyMap::insert_entry`].
+    ///
+    /// A zero-length vector is degraded to a scalar first: C's `nel == 0`
+    /// (`InitMapEntry`, `keymap.c:3900`) means scalar unconditionally, so
+    /// `astMapPut1<X>(key, 0, ...)` produces a scalar-shaped entry rather
+    /// than an empty vector, which C has no representation for. See
+    /// [`entry::degrade_empty_vector`].
     fn put_vector(
         &mut self,
         key: &str,
@@ -834,7 +840,7 @@ impl KeyMap {
         method: &str,
     ) -> AstResult<()> {
         let key = table::convert_key(key, self.key_case(), method)?;
-        self.insert_entry(key, value, comment, method)
+        self.insert_entry(key, degrade_empty_vector(value), comment, method)
     }
 
     /// Read `key` as a `Vec<i32>`. Mirrors `astMapGet1I`. See

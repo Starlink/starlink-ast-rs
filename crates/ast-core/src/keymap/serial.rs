@@ -8,7 +8,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::keymap::entry::{AstType, EntryValue, MapEntry, Scalar1D};
 use crate::keymap::sort::SortBy;
 use crate::keymap::{KeyMap, table};
-use crate::serial::node::{Node, NodeValue};
+use crate::serial::node::Node;
 use crate::serial::{Serializable, any_object_from_node, any_object_to_node};
 
 impl Serializable for KeyMap {
@@ -20,7 +20,7 @@ impl Serializable for KeyMap {
         let mut node = Node::new("KeyMap");
         node.class_comment = Some("Map of key/value pairs".to_string());
 
-        // The five attributes, each commented out when unset.
+        // The five attributes, each omitted entirely when unset.
         push_int_attr(
             &mut node,
             "SzGss",
@@ -83,7 +83,15 @@ impl Serializable for KeyMap {
         // its own setter. SizeGuess and KeyCase refuse on a non-empty map,
         // which is why the read has to happen first.
         if let Some(v) = node.get_int_any_if_set("SzGss") {
-            km.set_size_guess(v as usize)?;
+            // A negative card would wrap to an enormous `usize` and blow
+            // up the `HashMap::reserve` inside `set_size_guess`. C's own
+            // `SetSizeGuess`/`NewTable` (`keymap.c:9463`, `keymap.c:8720`)
+            // clamps any size at or below `MIN_TABLE_SIZE` -- which
+            // includes zero, negative, and any small positive quotient --
+            // down to the same minimum table without erroring, so
+            // treating a negative guess as 0 here has the same "smallest
+            // table" effect C's own clamp would produce.
+            km.set_size_guess(v.max(0) as usize)?;
         }
         if let Some(v) = node.get_string_if_set("SortBy") {
             km.set_sort_by(SortBy::parse(&v, "astRead")?);
@@ -102,14 +110,25 @@ impl Serializable for KeyMap {
         // so it is read and discarded. The written value is recomputed from
         // the contents at dump time.
 
-        // Presize from the number of Key%d cards present.
+        // Presize from the number of Key%d cards present. C has no presize
+        // step at all -- this is purely a Rust-side allocation optimisation
+        // -- so there is no C behaviour to mirror here, only the
+        // requirement that it never panics. A node key can contain
+        // non-ASCII characters (the native reader's key-boundary predicate
+        // is `char::is_alphanumeric`, which is Unicode-aware), so this must
+        // not byte-slice the key by a fixed offset: `str::get` returns
+        // `None` for an out-of-range or non-boundary index instead of
+        // panicking, unlike `Index`.
         let n_entries = node
             .items
             .iter()
             .filter(|i| {
-                i.key.len() > 3
-                    && i.key[..3].eq_ignore_ascii_case("key")
-                    && i.key[3..].chars().all(|c| c.is_ascii_digit())
+                i.key
+                    .get(..3)
+                    .is_some_and(|p| p.eq_ignore_ascii_case("key"))
+                    && i.key.get(3..).is_some_and(|rest| {
+                        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                    })
             })
             .count();
         km.entries.reserve(n_entries);
@@ -262,14 +281,28 @@ fn load_entry(
     key: &str,
     comment: Option<&str>,
 ) -> AstResult<()> {
-    let code = node.get_int_any(&format!("Typ{n}")).ok_or_else(|| {
-        AstError::new(
+    // `astReadInt` (channel.c:3092) returns its default -- AST__BADTYPE, 0
+    // -- both when the card is absent and when it is a commented-out
+    // default, so `get_int_any_if_set` (which treats Unset like absent) is
+    // the right lookup here: a real C dump's `# Typ%d = ...` comment line
+    // is never re-read on load.
+    //
+    // C's own check is value-based, not presence-based
+    // (`if( type == AST__BADTYPE && astOK )`, keymap.c:11054): an
+    // explicit `Typ%d = 0` card produces exactly the same "no data type
+    // code found" error as a missing one, never "unknown data type code
+    // (0)".
+    let code = node
+        .get_int_any_if_set(&format!("Typ{n}"))
+        .unwrap_or(AstType::BadType.code());
+    if code == AstType::BadType.code() {
+        return Err(AstError::new(
             ErrorCode::Bdfts,
             "astLoadKeyMap(KeyMap): No data type code found whilst reading a \
              KeyMap."
                 .to_string(),
-        )
-    })?;
+        ));
+    }
     let ast_type = AstType::from_code(code).ok_or_else(|| {
         AstError::new(
             ErrorCode::Bdfts,
@@ -280,7 +313,17 @@ fn load_entry(
         )
     })?;
 
-    let nel = node.get_int(&format!("Nel{n}"), 0) as usize;
+    // C's own read loop (`for( index = 0; astOK && index < nel; index++
+    // )`, `keymap.c:11087` onward) with a negative `nel` never executes --
+    // `index < nel` is false from the start -- so C ends up with an empty
+    // allocation and no elements read, but does not error: confirmed
+    // against the reference library, which loads such a dump with
+    // `astMapLength` reporting the raw negative value back afterward
+    // (see the c-library-quirks entry this fix logs). Clamping to 0 here
+    // reproduces the same "no elements read" outcome without the
+    // `usize` wraparound that would otherwise blow up the unbounded
+    // `.collect()` below.
+    let nel = node.get_int(&format!("Nel{n}"), 0).max(0) as usize;
     let names: Vec<String> = if nel == 0 {
         vec![format!("Val{n}")]
     } else {
@@ -380,25 +423,24 @@ fn load_entry(
     Ok(())
 }
 
-/// Write an integer attribute, commented out when `set` is false.
+/// Write an integer attribute, omitted entirely when `set` is false.
+///
+/// C passes `helpful = 0` for all five KeyMap attribute cards
+/// (`SzGss`/`KyCas`/`KyErr`/`MpLck`/`SortBy`), so `Use` (`channel.c:4141`)
+/// returns false for an unset one at the default `Full`: the card is
+/// absent, not written as `# Key = Value`. See `write_region_base`
+/// (`crates/ast-core/src/serial/mod.rs`) for the same pattern.
 fn push_int_attr(node: &mut Node, key: &str, value: i64, set: bool, comment: &str) {
     if set {
         node.push_int(key, value, Some(comment.to_string()));
-    } else {
-        node.push_unset(key, NodeValue::Int(value), Some(comment.to_string()));
     }
 }
 
-/// Write a string attribute, commented out when `set` is false.
+/// Write a string attribute, omitted entirely when `set` is false. See
+/// [`push_int_attr`].
 fn push_string_attr(node: &mut Node, key: &str, value: &str, set: bool, comment: &str) {
     if set {
         node.push_string(key, value, Some(comment.to_string()));
-    } else {
-        node.push_unset(
-            key,
-            NodeValue::String(value.to_string()),
-            Some(comment.to_string()),
-        );
     }
 }
 
@@ -407,6 +449,7 @@ mod tests {
     use super::*;
     use crate::serial::AnyObject;
     use crate::serial::native_write::render_native;
+    use crate::serial::node::NodeValue;
 
     #[test]
     fn dump_card_order_matches_c() {
@@ -422,13 +465,16 @@ mod tests {
         );
 
         let keys: Vec<&str> = node.items.iter().map(|i| i.key.as_str()).collect();
-        // MapSz and MemCnt come first, then the entries in KeyCmp order.
+        // The five attribute cards are all unset here, so `Use` (C's
+        // channel.c:4141, `helpful = 0` for every one of them) omits them
+        // entirely rather than writing a commented-out default -- see
+        // `push_int_attr`/`push_string_attr`. MapSz and MemCnt are
+        // unconditional and come first, then the entries in KeyCmp order.
         // NAME sorts before SIZE, so the vector entry is entry 1.
         assert_eq!(
             keys,
             vec![
-                "SzGss", "SortBy", "KyCas", "KyErr", "MpLck", "MapSz", "MemCnt", "Key1", "Typ1",
-                "Nel1", "V1_1", "V1_2", "Key2", "Typ2", "Val2",
+                "MapSz", "MemCnt", "Key1", "Typ1", "Nel1", "V1_1", "V1_2", "Key2", "Typ2", "Val2",
             ]
         );
 
@@ -451,17 +497,18 @@ mod tests {
     }
 
     #[test]
-    fn unset_attributes_are_commented_out_and_set_ones_are_not() {
+    fn unset_attributes_are_omitted_and_set_ones_are_not() {
+        // C passes helpful=0 for all five, so `Use` (channel.c:4141) omits
+        // an unset one entirely at the default Full -- there is no
+        // commented-out `# Key = Value` line to find, unlike a Region
+        // attribute dumped through astWriteInt/astWriteDouble with a
+        // non-zero default.
         let mut km = KeyMap::new();
         km.put_0i("A", 1, None).unwrap();
 
         let node = km.to_node().unwrap();
-        // Nothing has been set, so all five are Unset.
         for key in ["SzGss", "SortBy", "KyCas", "KyErr", "MpLck"] {
-            assert!(
-                matches!(node.get_raw(key), Some(NodeValue::Unset(_))),
-                "{key} should be unset"
-            );
+            assert!(node.get_raw(key).is_none(), "{key} should be absent");
         }
         // MapSz and MemCnt are unconditional.
         assert!(matches!(node.get_raw("MapSz"), Some(NodeValue::Int(_))));
@@ -506,6 +553,64 @@ mod tests {
         let back = KeyMap::from_node(&node).unwrap();
         assert_eq!(back.get_0d("S").unwrap(), Some(BAD_VALUE));
         assert_eq!(back.get_1d("V").unwrap(), Some(vec![BAD_VALUE, 1.5]));
+    }
+
+    #[test]
+    fn putting_a_zero_length_vector_degrades_to_a_scalar() {
+        // C has no representation for nel == 0 other than "scalar"
+        // (keymap.h:116); DumpEntry's own handling of a genuine
+        // zero-length put is undefined behaviour (and, for String,
+        // crashes) -- see the "DumpEntry reads an Entry1X as an Entry0X
+        // for a zero-length vector" entry in
+        // docs/issues/c-library-quirks.md. `KeyMap::put_vector` degrades
+        // the value to a scalar before it is ever stored, so `to_node`
+        // never sees a zero-length vector and cannot panic on one.
+        let mut km = KeyMap::new();
+        km.put_1i("I", &[], None).unwrap();
+        km.put_1d("D", &[], None).unwrap();
+        km.put_1c("C", &[], None).unwrap();
+
+        assert_eq!(km.map_type("I").unwrap(), AstType::Int);
+        assert_eq!(km.map_length("I"), 1);
+        assert_eq!(km.get_0i("I").unwrap(), Some(0));
+        assert_eq!(km.get_0d("D").unwrap(), Some(0.0));
+        assert_eq!(km.get_0c("C").unwrap().as_deref(), Some(""));
+
+        // Dumps as a scalar Val%d card, exactly as C's own degraded
+        // zero-length put does for every numeric type (confirmed against
+        // the reference library): no Nel%d card, and a Val%d rather than
+        // a V%d_1.
+        let node = km.to_node().unwrap();
+        let n = node
+            .items
+            .iter()
+            .find(|item| item.key.starts_with("Key") && node.get_string(&item.key, "") == "I")
+            .map(|item| item.key.trim_start_matches("Key").to_string())
+            .expect("Key%d card for \"I\" not found");
+        assert!(node.get_raw(&format!("Nel{n}")).is_none());
+        assert_eq!(node.get_int(&format!("Val{n}"), -1), 0);
+
+        let back = KeyMap::from_node(&node).unwrap();
+        assert_eq!(back.get_0i("I").unwrap(), Some(0));
+    }
+
+    #[test]
+    fn a_non_ascii_key_does_not_panic_the_presize_filter() {
+        // The presize filter in `from_node` used to byte-slice a node
+        // key by a fixed offset (`&key[..3]`), which panics on a
+        // non-ASCII key whose byte 3 falls inside a multi-byte
+        // character rather than on a UTF-8 boundary. The native
+        // reader's key-boundary predicate (`char::is_alphanumeric`) is
+        // Unicode-aware, so such a key is reachable from a real dump,
+        // not just a hand-built Node.
+        let mut node = Node::new("KeyMap");
+        node.push_string("Kaéx1", "v", None);
+
+        // Must not panic; the malformed key is simply not recognised as
+        // a Key%d card; the fixture itself is not a legal KeyMap dump
+        // (no Key1/Typ1/Val1), so from_node still errors, just not by
+        // panicking.
+        let _ = KeyMap::from_node(&node);
     }
 
     #[test]
@@ -576,6 +681,15 @@ mod tests {
         let node = km.to_node().unwrap();
         let err = KeyMap::from_node(&node).unwrap_err();
         assert_eq!(err.code(), ErrorCode::Badkey);
+        // The message names the entry-loading put (astMapPut0I, from
+        // load_entry's AstType::Int branch), not astMapPut0I via any
+        // other path, and quotes the key exactly as insert_entry's own
+        // AST__BADKEY message does (keymap.c:4370-ish).
+        assert_eq!(
+            err.message(),
+            "astMapPut0I(KeyMap): Failed to add item \"A\" to a KeyMap: \
+             \"A\" is not a known item."
+        );
     }
 
     #[test]
