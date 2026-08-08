@@ -135,3 +135,22 @@ pub fn ulp_close(a: f64, b: f64, max_ulps: u64) -> bool {
     }
     a.to_bits().abs_diff(b.to_bits()) <= max_ulps
 }
+
+/// True for a KeyMap `MapSz` card line.
+///
+/// `MapSz` records the size C's chained hash table had grown to when the
+/// KeyMap was dumped, which depends on the insertion order and on which keys
+/// collided (`keymap.c:10510`, `keymap.c:2578`). Entries here live in a
+/// `HashMap`, so there is no bucket table to record and the card is
+/// reconstructed at dump time from the key set alone. The two values agree
+/// for every population the oracle probe measured, but the card is excluded
+/// from byte-exact comparisons against C-generated references because the
+/// agreement is arithmetic rather than structural.
+/// See `docs/issues/c-library-quirks.md`, under "KeyMap `MapSz` records
+/// collision history, so identical KeyMaps can serialise differently".
+pub fn is_map_sz_card(line: &str) -> bool {
+    line.trim_start()
+        .trim_start_matches('#')
+        .trim_start()
+        .starts_with("MapSz =")
+}
