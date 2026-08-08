@@ -169,6 +169,45 @@ pub(crate) fn render_native_with_options(
     Ok(buf)
 }
 
+/// Append " \t# <comment>" when comments are enabled and `comment` is
+/// present *and non-empty*.
+///
+/// Every C `Write*` function (`WriteBegin`, `WriteInt`, `WriteObject`, …)
+/// gates the comment on `astGetComment(this) && *comment`
+/// (`channel.c:4306`, `channel.c:4703`, `channel.c:5110`, etc.) — testing
+/// the first character, not just the pointer. A `KeyMap` vector entry's
+/// non-first elements carry an explicit empty-string comment
+/// (`keymap.c:2796-2801`: `com = ""` after the first `astWriteInt`), which
+/// must therefore write no `\t#` at all, matching C exactly.
+fn push_comment(buf: &mut String, options: &RenderOptions, comment: Option<&str>) {
+    if options.comment {
+        if let Some(comment) = comment {
+            if !comment.is_empty() {
+                buf.push_str(" \t# ");
+                buf.push_str(comment);
+            }
+        }
+    }
+}
+
+/// Like [`push_comment`], but without the leading space before `\t#`.
+///
+/// `WriteObject` (`channel.c:5110`) appends `" \t# "` after `name = ` (no
+/// value token in between, since the value is the nested object that
+/// follows on subsequent lines) — same non-empty guard as
+/// [`push_comment`], but the caller has already written the trailing
+/// space itself as part of `" = "`.
+fn push_comment_no_leading_space(buf: &mut String, options: &RenderOptions, comment: Option<&str>) {
+    if options.comment {
+        if let Some(comment) = comment {
+            if !comment.is_empty() {
+                buf.push_str("\t# ");
+                buf.push_str(comment);
+            }
+        }
+    }
+}
+
 /// Recursively write an object (Begin…End block) at the given base indent.
 ///
 /// `base_indent` is the number of spaces before the `" "` that prefixes
@@ -196,12 +235,7 @@ fn write_object_with_options(
     buf.push_str(&begin_indent);
     buf.push_str("Begin ");
     buf.push_str(&node.class);
-    if options.comment {
-        if let Some(ref comment) = node.class_comment {
-            buf.push_str(" \t# ");
-            buf.push_str(comment);
-        }
-    }
+    push_comment(buf, options, node.class_comment.as_deref());
     buf.push('\n');
 
     // Items. C's `astWriteIsA` (channel.c:4955) writes an `IsA` marker
@@ -221,12 +255,7 @@ fn write_object_with_options(
                 buf.push_str(&begin_indent);
                 buf.push_str("IsA ");
                 buf.push_str(class);
-                if options.comment {
-                    if let Some(ref comment) = item.comment {
-                        buf.push_str(" \t# ");
-                        buf.push_str(comment);
-                    }
-                }
+                push_comment(buf, options, item.comment.as_deref());
                 buf.push('\n');
             }
             // Reset the per-class counter, matching C's WriteIsA.
@@ -245,12 +274,7 @@ fn write_object_with_options(
                 buf.push_str(&item.key);
                 buf.push_str(" = ");
                 write_scalar_value(buf, inner);
-                if options.comment {
-                    if let Some(ref comment) = item.comment {
-                        buf.push_str(" \t# ");
-                        buf.push_str(comment);
-                    }
-                }
+                push_comment(buf, options, item.comment.as_deref());
                 buf.push('\n');
                 // A commented value that is actually emitted (full >= 0)
                 // still goes through C's OutputTextItem and increments
@@ -264,12 +288,7 @@ fn write_object_with_options(
                 buf.push_str(&attr_indent);
                 buf.push_str(&item.key);
                 buf.push_str(" = ");
-                if options.comment {
-                    if let Some(ref comment) = item.comment {
-                        buf.push_str("\t# ");
-                        buf.push_str(comment);
-                    }
-                }
+                push_comment_no_leading_space(buf, options, item.comment.as_deref());
                 buf.push('\n');
                 write_object_with_options(buf, child, base_indent + 2 * indent, options);
                 items_written = true;
@@ -281,12 +300,7 @@ fn write_object_with_options(
                 buf.push_str(&item.key);
                 buf.push_str(" = ");
                 write_scalar_value(buf, &item.value);
-                if options.comment {
-                    if let Some(ref comment) = item.comment {
-                        buf.push_str(" \t# ");
-                        buf.push_str(comment);
-                    }
-                }
+                push_comment(buf, options, item.comment.as_deref());
                 buf.push('\n');
                 items_written = true;
             }
