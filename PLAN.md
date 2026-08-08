@@ -50,7 +50,14 @@ Closed (marked historical in-doc, removed as active work): `mapping-gaps-audit.m
 (superseded by `frame-mapping-c-port-gaps.md`), `wcsmap-naxis-refactor.md`
 (landed), `timeframe-unformat-findings.md` (resolved 2026-06-25).
 
-## 3. Simplifier
+## 3. Containers
+
+| Area | Doc | Status |
+|---|---|---|
+| KeyMap port | `docs/superpowers/specs/2026-08-06-keymap-port-design.md` | DONE — `crates/ast-core/src/keymap/`; entries in a `HashMap` with `MapSz` reconstructed at dump time; `testkeymap.c` green; C-ABI shim deferred with the rest of `ast-capi` |
+| Table / FitsTable | — | UNPORTED — gates the `-TAB` branches in the two section-5 rows; `KeyMap` is shaped to be embedded by both |
+
+## 4. Simplifier
 
 All four simplifier docs are now **historical** (rebuild complete, bugs fixed —
 each carries an in-doc note): `simplifier-mapmerge-rebuild-plan.md` (nominate
@@ -61,12 +68,14 @@ active regression), `simplify-serialization-gaps.md` (0 failures, 719/719),
 simplifier work remains here; ongoing simplify parity is tracked by the
 regression corpus.
 
-## 4. Serialization / FITS / round-trip
+## 5. Serialization / FITS / round-trip
 
 | Area | Doc | Status |
 |---|---|---|
 | FitsChan C-port gaps | `docs/issues/fitschan-c-port-gaps.md` | PARTIALLY DONE — DSS/SAO/DSBSetUp/SipReplace, `DistortMaps`/`ZPXMapping` and `SIPMapping`'s store-derived powers ported; **all 194 wcsconv cases now byte-compared with `NATIVE_READ_EXCLUDED` empty**; remaining: unported attr quartets, `-TAB` family, public-API helpers, Warn cards |
 | `fset_to_store` port gaps | `docs/issues/fset_to_store-port-gaps.md` | MOSTLY DONE — SIPIntWorld + VELOSYS + Group 3/5 branches ported; only `-TAB` (IsMapTab1D/2D) remains, blocked on the un-ported FitsTable infrastructure |
+| Comment-less nested-object card wrote a trailing space C never writes | — | FIXED (`1d2aa8f`, `86810ce`, `crates/ast-core/src/serial/native_write.rs`) — C's `WriteObject` (`channel.c:5106-5112`) appends `" ="` then only `" \t# "` when the comment is non-empty; the Rust Object arm pushed `" = "` unconditionally and gated on `Some(_)` rather than non-empty, diverging only in the comment-less case (the with-comment case was byte-identical by coincidence) |
+| Round-trip harness misses trailing-whitespace divergences and the corpus has no comment-less nested-object card | `crates/ast-core/tests/test_serialisation.rs:1097,1129` | OPEN — `native_round_trip_fixture`'s `trim()`/`split_whitespace()` comparison discards trailing whitespace, so `"Frm1 = "` and `"Frm1 ="` compare equal; separately, `grep -rhcE " =$"` is 0 across all of `simplify_fixtures/`, `frameset_fixtures/` and `generated/` — the four fixtures that do have a comment-less object card (`lsst.ast`, `lsst.simp`, `rigby.simp`, `simplify_fixtures_unsupported/intramap/intramap_inverse_cancel.map`) sit outside every scanned directory; needs the fallback comparison tightened to make trailing whitespace significant and a comment-less-object-card fixture moved into a scanned directory |
 
 Cross-cutting blocker for the two rows above: the **FitsTable / `-TAB`
 algorithm** port is unported and gates the remaining FitsChan and
@@ -95,11 +104,12 @@ Closed (marked historical in-doc, removed as active work):
 `native-roundtrip-simplify-gaps.md` (719/719 byte-exact),
 `wcsconv-residual-classification.md` (wcsconv 192/192, all buckets cleared).
 
-## 5. Cross-cutting
+## 6. Cross-cutting
 
 | Area | Doc | Status |
 |---|---|---|
 | C-library quirks mirrored in the port | `docs/issues/c-library-quirks.md` | running list — discuss with upstream |
+| Whether `XmlChan` / `YamlChan` / `StcsChan` carry a `KeyMap` or a `Node` | `docs/superpowers/specs/2026-08-06-keymap-port-design.md` (Deferred decisions) | OPEN — decide per subclass when the first one is ported; `yamlchan.c` relies on `SortBy` ordering as algorithm state (`:9814`, `:11391`, `:11531`, `:12191`), which `Node` cannot express |
 
 ---
 
@@ -110,3 +120,5 @@ Closed (marked historical in-doc, removed as active work):
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
 | check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1606 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
+| testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08 |
+| testobjectkeymap.c | (deferred) | tests the Object-associated retained KeyMap (`object.c:1736`, `:2480`), `astGetObjSize` and `astSame`; those calls (`astMapPut0I`, `astMapGet0I`, `astMapSize`) are only reachable through the protected `astGetKeyMap`/`astHasKeyMap` machinery, an explicit spec Non-goal of the owned-value port |
