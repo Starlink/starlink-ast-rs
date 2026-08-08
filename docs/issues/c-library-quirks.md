@@ -2158,3 +2158,39 @@ String. `dump_entry`/`push_element` in
 a zero-length vector, because none can exist. Pinned by
 `putting_a_zero_length_vector_degrades_to_a_scalar` in
 `crates/ast-core/src/keymap/serial.rs`.
+
+---
+
+## `CheckCircle`'s `AST__KYCIR` guard has no Rust counterpart
+
+**Status:** Confirmed against C source.
+**Not mirrored in Rust** — the case the guard exists to catch cannot be constructed through the owned Rust API, so there is nothing for a guard to check.
+
+`CheckCircle` (`keymap.c:951`) stops a KeyMap being stored inside itself, directly or transitively, and reports `AST__KYCIR` when it finds either case.
+Both checks are pointer comparisons:
+
+```c
+if( keymap == this ) {
+   astError( AST__KYCIR, ... );
+}
+```
+
+for the direct case (`keymap.c:1003`), and
+
+```c
+if( vec[ j ] == (AstObject *) this ) {
+   astError( AST__KYCIR, ... );
+}
+```
+
+for the transitive case, walking a candidate Object's own nested KeyMaps (`keymap.c:1031`).
+`astMapPut0A`, `astMapPut1A` and `astMapPutElemA` all call `CheckCircle` on every Object they are about to store, before storing it (`keymap.c:4757`, `:4989`, `:8461`).
+
+`KeyMap::put_0a`, `KeyMap::put_1a` and `KeyMap::put_elem_a` take their `AnyObject` argument by value, and `self` is borrowed mutably for the duration of the call.
+There is no way for a caller to hand one of these methods a value that is also `self`: doing so requires either moving `self` into itself, which the borrow checker rejects, or passing a clone, and a clone is a distinct value, not `this`.
+C's guard exists only to reject the literal pointer-identity case, and that case is unconstructible in an owned-value API, so `AST__KYCIR` never occurs in the Rust port.
+
+An earlier draft of this port kept a `check_circle`/`same_entries` pair that tried to approximate the pointer check structurally, by comparing key sets and each key's `ast_type()` and `keymember` instead of identity.
+That comparison produced false positives with no C analogue: two freshly constructed empty KeyMaps compared equal, because `.all()` over an empty key set is vacuously true, and so did two KeyMaps holding different values at the same keys, since the comparison never looked at the value itself.
+Both were confirmed by direct construction.
+The pair was removed rather than fixed, because there is no case for it to correctly detect.

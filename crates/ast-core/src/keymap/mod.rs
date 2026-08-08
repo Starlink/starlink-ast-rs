@@ -8,9 +8,6 @@
 //! chained bucket table. C's table arithmetic survives only in
 //! [`table`], which reconstructs the `MapSz` card at dump time.
 
-// Removed in Task 14 when the public API lands.
-#![allow(dead_code)]
-
 pub(crate) mod convert;
 pub(crate) mod entry;
 pub(crate) mod serial;
@@ -351,12 +348,16 @@ impl KeyMap {
         )
     }
 
-    /// Store an Object, replacing any existing entry at `key`.
+    /// Store an Object, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut0A`.
     ///
-    /// Mirrors `astMapPut0A`, including its `CheckCircle` guard: an Object
-    /// that would make the KeyMap contain itself is `AST__KYCIR`.
+    /// C's `astMapPut0A` runs a `CheckCircle` guard here that fails with
+    /// `AST__KYCIR` when the stored Object would make the KeyMap contain
+    /// itself. `put_0a` moves `value` in while `self` is already borrowed
+    /// mutably, so a caller cannot pass this same KeyMap to its own
+    /// `put_0a` — the guard's case is unconstructible in an owned-value
+    /// API and has no Rust counterpart. See `docs/issues/c-library-quirks.md`.
     pub fn put_0a(&mut self, key: &str, value: AnyObject, comment: Option<&str>) -> AstResult<()> {
-        self.check_circle(&value, "astMapPut0A")?;
         self.put_scalar(
             key,
             EntryValue::Object(Scalar1D::Scalar(Some(Box::new(value)))),
@@ -800,21 +801,17 @@ impl KeyMap {
         )
     }
 
-    /// Store `values`, replacing any existing entry at `key`.
+    /// Store `values`, replacing any existing entry at `key`. Mirrors
+    /// `astMapPut1A`.
     ///
-    /// Mirrors `astMapPut1A`, including its `CHECK_A` guard: `CheckCircle`
-    /// is run on every element before anything is stored, matching C's
-    /// `for( i = 0; i < size; i++ ) CheckCircle( this, value[i], ... )`
-    /// (`keymap.c:4989`) — a single circular element fails the whole put.
+    /// See [`KeyMap::put_0a`] for why C's `CHECK_A`/`CheckCircle` guard
+    /// (`keymap.c:4989`) has no Rust counterpart here.
     pub fn put_1a(
         &mut self,
         key: &str,
         values: Vec<Option<AnyObject>>,
         comment: Option<&str>,
     ) -> AstResult<()> {
-        for v in values.iter().flatten() {
-            self.check_circle(v, "astMapPut1A")?;
-        }
         self.put_vector(
             key,
             EntryValue::Object(Scalar1D::Vector(
@@ -1057,21 +1054,17 @@ impl KeyMap {
         )
     }
 
-    /// Store `value` at zero-based element `elem` of `key`.
+    /// Store `value` at zero-based element `elem` of `key`. Mirrors
+    /// `astMapPutElemA`.
     ///
-    /// Mirrors `astMapPutElemA`, including its `CHECK_A` guard
-    /// (`CheckCircle( this, value, "astMapPutElemA", status )`,
-    /// `keymap.c:8461`), which runs before the create/promote/append
-    /// logic and before any conversion is attempted.
+    /// See [`KeyMap::put_0a`] for why C's `CHECK_A`/`CheckCircle` guard
+    /// (`keymap.c:8461`) has no Rust counterpart here.
     pub fn put_elem_a(
         &mut self,
         key: &str,
         elem: usize,
         value: Option<AnyObject>,
     ) -> AstResult<()> {
-        if let Some(v) = &value {
-            self.check_circle(v, "astMapPutElemA")?;
-        }
         self.put_elem(
             key,
             elem,
@@ -1359,99 +1352,6 @@ impl KeyMap {
         }
         out.push(')');
         Ok(Some(out))
-    }
-
-    /// Borrow an Object entry without copying it.
-    ///
-    /// Used by the attribute-recursion helpers and by [`KeyMap::check_circle`].
-    pub(crate) fn get_object_ref(&self, key: &str) -> Option<&AnyObject> {
-        let nkey = table::convert_key(key, self.key_case(), "get_object_ref").ok()?;
-        let entry = self.lookup(&nkey)?;
-        match &entry.value {
-            // A stored NULL Object element borrows to nothing, which is
-            // what C's `aval ? astClone( aval ) : NULL` amounts to for a
-            // borrow rather than a clone.
-            EntryValue::Object(objs) => objs.as_slice().first().and_then(|b| b.as_deref()),
-            _ => None,
-        }
-    }
-
-    /// Fail with `AST__KYCIR` if storing `candidate` in this KeyMap would
-    /// make the KeyMap contain itself, directly or transitively. Mirrors
-    /// `CheckCircle` (`keymap.c:951`).
-    ///
-    /// `candidate`'s own subtree is searched for a KeyMap matching `self`
-    /// (see [`KeyMap::same_entries`] for what "matching" means in an
-    /// owned-value API). This is the only case an owned-value API can
-    /// reach: `put_0a`/`put_1a`/`put_elem_a` move their `AnyObject`
-    /// argument, so a caller cannot pass this KeyMap into its own `put_0a`
-    /// to build the literal `keymap == this` case C detects by pointer.
-    ///
-    /// A candidate's held Objects are found by walking `EntryValue::Object`
-    /// entries directly here, not through [`KeyMap::nested_key_maps_mut`]:
-    /// that helper is `&mut` and this method only needs to read.
-    pub fn check_circle(&self, candidate: &AnyObject, method: &str) -> AstResult<()> {
-        fn contains(haystack: &KeyMap, needle: &KeyMap) -> bool {
-            if haystack.same_entries(needle) {
-                return true;
-            }
-            for entry in haystack.entries.values() {
-                if let EntryValue::Object(objs) = &entry.value {
-                    for obj in objs.as_slice().iter().flatten() {
-                        if let AnyObject::KeyMap(km) = obj.as_ref() {
-                            if contains(km, needle) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-            false
-        }
-
-        if let AnyObject::KeyMap(km) = candidate {
-            if self.same_entries(km) {
-                return Err(AstError::new(
-                    ErrorCode::Kycir,
-                    format!(
-                        "{method}(KeyMap): Cannot add a KeyMap into another \
-                         KeyMap because they are same KeyMap."
-                    ),
-                ));
-            }
-            if contains(km, self) {
-                return Err(AstError::new(
-                    ErrorCode::Kycir,
-                    format!(
-                        "{method}(KeyMap): Cannot add a KeyMap into another \
-                         KeyMap because the first KeyMap contains the second \
-                         KeyMap."
-                    ),
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    /// Whether `other` is structurally the same KeyMap as `self`: the same
-    /// key set, and for every key the same type and `keymember`.
-    ///
-    /// C's `CheckCircle` detects "are these the same KeyMap" with a pointer
-    /// comparison (`keymap == this`). Owned Rust values have no identity to
-    /// compare, so this is the structural stand-in: two KeyMaps built by
-    /// the same sequence of puts (and never diverging afterwards) compare
-    /// equal here, which is what `let self_copy = km.clone(); km.check_circle(&self_copy, ...)`
-    /// needs it to mean.
-    fn same_entries(&self, other: &KeyMap) -> bool {
-        if self.entries.len() != other.entries.len() {
-            return false;
-        }
-        self.entries.iter().all(|(key, entry)| {
-            other.entries.get(key).is_some_and(|other_entry| {
-                entry.value.ast_type() == other_entry.value.ast_type()
-                    && entry.keymember == other_entry.keymember
-            })
-        })
     }
 
     /// The data type of the value stored at `key`, or `AstType::BadType`
@@ -1760,31 +1660,12 @@ mod tests {
             assert!(km.key_error(), "depth {depth}");
             assert!(km.map_locked(), "depth {depth}");
             for key in km.sorted_keys() {
-                if let Some(AnyObject::KeyMap(nested)) = km.get_object_ref(&key) {
-                    check(nested, depth + 1);
+                if let Ok(Some(Some(AnyObject::KeyMap(nested)))) = km.get_0a(&key) {
+                    check(&nested, depth + 1);
                 }
             }
         }
         check(&outer, 0);
-    }
-
-    #[test]
-    fn get_object_ref_honours_key_case() {
-        // get_object_ref folds its key through table::convert_key before
-        // looking the entry up, the same as every public MapXxx entry
-        // point. With KeyCase=0 a lookup in a different case from the
-        // key's own must still find the entry, not silently report it
-        // absent.
-        let mut km = KeyMap::new();
-        km.set_key_case(false).unwrap();
-        let mut inner = KeyMap::new();
-        inner.put_0i("X", 1, None).unwrap();
-        km.put_0a("NESTED", AnyObject::KeyMap(Box::new(inner)), None)
-            .unwrap();
-        assert!(matches!(
-            km.get_object_ref("nEsTeD"),
-            Some(AnyObject::KeyMap(_))
-        ));
     }
 
     #[test]
@@ -1797,7 +1678,7 @@ mod tests {
             .unwrap();
 
         outer.set_sort_by(SortBy::KeyUp);
-        let Some(AnyObject::KeyMap(nested)) = outer.get_object_ref("INNER") else {
+        let Some(Some(AnyObject::KeyMap(nested))) = outer.get_0a("INNER").unwrap() else {
             panic!("nested KeyMap missing");
         };
         assert_eq!(nested.sort_by(), SortBy::None);

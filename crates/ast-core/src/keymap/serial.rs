@@ -404,9 +404,6 @@ fn load_entry(
                 .collect::<AstResult<Vec<_>>>()?;
             if nel == 0 {
                 let obj = v.into_iter().next().flatten();
-                if let Some(o) = &obj {
-                    km.check_circle(o, "astMapPut0A")?;
-                }
                 km.put_scalar(
                     key,
                     EntryValue::Object(Scalar1D::Scalar(obj.map(Box::new))),

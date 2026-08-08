@@ -126,58 +126,6 @@ fn map_locked_blocks_new_keys_but_not_replacements() {
 }
 
 #[test]
-fn a_key_map_cannot_contain_itself() {
-    // testkeymap.c checks AST__KYCIR for both the direct and the
-    // transitive case.
-    let mut inner = KeyMap::new();
-    inner.put_0i("X", 1, None).unwrap();
-    let mut outer = KeyMap::new();
-    outer
-        .put_0a("INNER", AnyObject::KeyMap(Box::new(inner)), None)
-        .unwrap();
-
-    let self_copy = AnyObject::KeyMap(Box::new(outer.clone()));
-    let err = outer.check_circle(&self_copy, "astMapPut0A").unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Kycir);
-}
-
-#[test]
-fn a_key_map_cannot_contain_itself_transitively() {
-    // The direct check above catches a candidate that IS a copy of the
-    // receiver, at check_circle's own same_entries test — it never
-    // reaches the recursive walk over the candidate's nested KeyMaps.
-    // This test puts the matching KeyMap two Object-entry levels below
-    // the candidate, inside wrappers that do not themselves match the
-    // receiver, so only the recursive branch (keymap.c:951's transitive
-    // CheckCircle, walking the candidate's own contents) can find it.
-    let mut victim = KeyMap::new();
-    victim.put_0i("X", 1, None).unwrap();
-
-    // A structural copy of the receiver, buried inside a chain of
-    // wrappers whose own key sets differ from the receiver's.
-    let mut level2 = KeyMap::new();
-    level2
-        .put_0a("MATCH", AnyObject::KeyMap(Box::new(victim.clone())), None)
-        .unwrap();
-    let mut candidate = KeyMap::new();
-    candidate.put_0i("EXTRA", 99, None).unwrap();
-    candidate
-        .put_0a("NESTED", AnyObject::KeyMap(Box::new(level2)), None)
-        .unwrap();
-
-    let candidate_obj = AnyObject::KeyMap(Box::new(candidate));
-    let err = victim
-        .check_circle(&candidate_obj, "astMapPut0A")
-        .unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Kycir);
-    assert!(
-        err.to_string()
-            .contains("the first KeyMap contains the second KeyMap"),
-        "{err}"
-    );
-}
-
-#[test]
 fn vector_put_and_get_round_trip() {
     let mut km = KeyMap::new();
     km.put_1i("VI", &[1, 2, 3], None).unwrap();
