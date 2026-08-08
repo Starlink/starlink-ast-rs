@@ -2524,9 +2524,6 @@ EOF
 
 ### Task 6.4: Walk wcsconv residuals, classify
 
-**Files:**
-- Modify: `docs/issues/c-library-quirks.md` (when new quirks are surfaced)
-
 - [ ] **Step 1: Capture the residual list**
 
 ```bash
@@ -2543,33 +2540,6 @@ For every line in `/tmp/wcsconv_residuals.txt`, classify into:
 - **B. Structural failure (out of scope)** (e.g. `dss_*`, `multi-wcs-dup_fits-wcs` if RADESYSA card ordering, `degen1_fits-wcs` WCSAXES feature) → leave red, document.
 - **C. Formatting only (out of scope)** (e.g. `tan-pv0_fits-wcs` `-0.001` vs `-1.0E-3`) → leave red, document.
 - **D. Comment text differs (out of scope)** (e.g. `vopt-geo_fits-aips` line 15 `Channel width (m/s)` vs `Pixel size`) → leave red, document.
-
-- [ ] **Step 3: Update `docs/issues/c-library-quirks.md`**
-
-Add a section dated `2026-06-01: alternate-WCS landing residuals` with a table:
-
-```markdown
-| Fixture | Encoding | Bucket | Reason |
-|---------|----------|--------|--------|
-| dss_*   | dss      | B      | DSS encoding selection — out of scope for this design |
-| ...     | ...      | ...    | ... |
-```
-
-One row per residual fixture.
-
-- [ ] **Step 4: Commit the classification**
-
-```bash
-git add docs/issues/c-library-quirks.md
-git commit -m "$(cat <<'EOF'
-docs/issues: classify post-alt-WCS wcsconv residuals
-
-Generated with AI
-
-Co-Authored-By: SLAC AI
-EOF
-)"
-```
 
 ### Task 6.5: Fix bucket-A residuals one at a time
 
