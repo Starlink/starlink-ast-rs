@@ -1423,9 +1423,6 @@ pub enum AnyObject {
     /// Implements neither [`Mapping`] nor [`Frame`]; [`as_mapping`](AnyObject::as_mapping),
     /// [`as_frame`](AnyObject::as_frame), [`into_mapping`](AnyObject::into_mapping)
     /// and [`into_frame`](AnyObject::into_frame) all give `None` for it.
-    /// Not reachable from [`any_object_from_node`] and not dispatched by
-    /// [`any_object_to_node`] — a KeyMap does not yet round-trip through a
-    /// `Channel`.
     KeyMap(Box<crate::keymap::KeyMap>),
 }
 
@@ -1729,6 +1726,9 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         "CmpRegion" => Ok(AnyObject::CmpRegion(CmpRegion::from_node(node)?)),
         "PointList" => Ok(AnyObject::PointList(PointList::from_node(node)?)),
         "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
+        "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
+            crate::keymap::KeyMap::from_node(node)?,
+        ))),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown AST class: {other}"),
@@ -1788,14 +1788,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::CmpRegion(r) => Serializable::to_node(r),
         AnyObject::PointList(r) => Serializable::to_node(r),
         AnyObject::Prism(r) => Serializable::to_node(r),
-        // KeyMap has no Serializable implementation yet, so it cannot be
-        // turned into a Node: this path is unreachable for a KeyMap held
-        // directly by a Channel, and a KeyMap nested inside another
-        // KeyMap's entry does not go through this function at all.
-        AnyObject::KeyMap(_) => Err(AstError::new(
-            ErrorCode::Lderr,
-            "KeyMap cannot be serialised yet",
-        )),
+        AnyObject::KeyMap(m) => Serializable::to_node(m.as_ref()),
     }
 }
 
