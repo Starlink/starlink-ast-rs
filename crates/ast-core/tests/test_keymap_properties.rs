@@ -524,3 +524,117 @@ fn key_of_mut(put: &mut Put) -> &mut String {
         | Put::Nested(k, _) => k,
     }
 }
+
+/// A re-put changes `MemCnt` differently from a fresh put: `insert_entry`
+/// bumps `member_count` once for a key already present, versus twice for a
+/// key that is new. Every test above builds from a set of distinct keys, so
+/// every put in it is a fresh insert and this distinction never fires: the
+/// count the load path recomputes by replaying puts happens to equal the
+/// count the dump carried regardless of whether the carried total is used.
+/// This test applies a second, deterministic pass of puts that reuse keys
+/// already in the map, so at least one put in the overall sequence is a
+/// genuine re-put, and checks that the dump/load cycle is still a fixed
+/// point and still preserves every value and comment.
+#[test]
+fn a_dump_load_cycle_is_a_fixed_point_after_a_reput() {
+    for &seed in SEEDS {
+        let mut rng = Rng::new(seed);
+        let count = 4 + rng.below(12);
+        let puts = gen_puts(&mut rng, count, 1);
+        let mut km = build(&puts);
+        assert_eq!(
+            km.map_size(),
+            puts.len(),
+            "seed {seed}: generator produced a duplicate key"
+        );
+
+        // A second, fixed-order batch that retargets each generated put
+        // onto a key already in the map, so every one of these is a
+        // re-put rather than an insert. Not shuffled: the point is a
+        // single deterministic order of re-puts, not order-independence.
+        let reput_count = 1 + rng.below(6);
+        let mut reputs = gen_puts(&mut rng, reput_count, 0);
+        for (i, put) in reputs.iter_mut().enumerate() {
+            *key_of_mut(put) = key_of(&puts[i % puts.len()]).unwrap();
+        }
+        apply(&mut km, &reputs);
+        assert_eq!(
+            km.map_size(),
+            puts.len(),
+            "seed {seed}: a re-put changed the key count"
+        );
+
+        let once = dump(&km);
+        let back = load(&once);
+        let twice = dump(&back);
+        assert_eq!(
+            twice, once,
+            "seed {seed}: dump/load is not a fixed point after a re-put"
+        );
+
+        for i in 0..km.map_size() {
+            let key = km.map_key(i).unwrap();
+            let ty = km.map_type(&key).unwrap();
+            assert_eq!(
+                back.map_type(&key).unwrap(),
+                ty,
+                "seed {seed}: type of {key}"
+            );
+            assert_eq!(
+                back.map_comment(&key),
+                km.map_comment(&key),
+                "seed {seed}: comment of {key}"
+            );
+            match ty {
+                AstType::Int
+                | AstType::SInt
+                | AstType::KInt
+                | AstType::Byte
+                | AstType::Double
+                | AstType::Float => {
+                    assert_eq!(
+                        back.get_1d(&key).unwrap(),
+                        km.get_1d(&key).unwrap(),
+                        "seed {seed}: numeric value of {key}"
+                    );
+                }
+                AstType::String => {
+                    assert_eq!(
+                        back.get_1c(&key).unwrap(),
+                        km.get_1c(&key).unwrap(),
+                        "seed {seed}: text value of {key}"
+                    );
+                }
+                AstType::Object => {
+                    let original = km.get_0a(&key).unwrap();
+                    let round_tripped = back.get_0a(&key).unwrap();
+                    assert_eq!(
+                        round_tripped.is_some(),
+                        original.is_some(),
+                        "seed {seed}: object presence of {key}"
+                    );
+                    if let (Some(original), Some(round_tripped)) = (original, round_tripped) {
+                        assert_eq!(
+                            dump_object(&round_tripped),
+                            dump_object(&original),
+                            "seed {seed}: nested object value of {key}"
+                        );
+                    }
+                }
+                AstType::Undef => {
+                    assert!(
+                        !km.map_defined(&key).unwrap(),
+                        "seed {seed}: {key} should be undefined"
+                    );
+                    assert!(
+                        !back.map_defined(&key).unwrap(),
+                        "seed {seed}: round-tripped {key} should be undefined"
+                    );
+                }
+                AstType::BadType => {
+                    unreachable!("no entry is ever stored with BadType");
+                }
+            }
+        }
+    }
+}
