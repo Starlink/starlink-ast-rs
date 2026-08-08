@@ -1557,3 +1557,284 @@ fn put_elem_c_appends() {
         Some("YES YES")
     );
 }
+
+/// `map1`, holding the three "a" keys `main` puts into it at
+/// `testkeymap.c:1091` / `:1163` / `:1219`. The first block's third key is
+/// an int64; the other two blocks make it an int.
+fn map_copy_source_a(a3_is_int64: bool) -> KeyMap {
+    let mut map1 = KeyMap::new();
+    map1.put_0i("a1", 1, Some(" ")).unwrap();
+    map1.put_0i("a2", 2, Some(" ")).unwrap();
+    if a3_is_int64 {
+        map1.put_0k("a3", 3, Some(" ")).unwrap();
+    } else {
+        map1.put_0i("a3", 3, Some(" ")).unwrap();
+    }
+    map1
+}
+
+/// `map`, the mapcopy destination: two scalars plus a nested `map1`.
+fn map_copy_dest(a3_is_int64: bool) -> KeyMap {
+    let mut map = KeyMap::new();
+    map.put_0c("aa1", "Yes", Some(" ")).unwrap();
+    map.put_0i("aa2", 2, Some(" ")).unwrap();
+    map.put_0a(
+        "aa3",
+        AnyObject::KeyMap(Box::new(map_copy_source_a(a3_is_int64))),
+        Some(" "),
+    )
+    .unwrap();
+    map
+}
+
+/// `map2`, the nested KeyMap the mapcopy source holds.
+fn map_copy_nested_b() -> KeyMap {
+    let mut map2 = KeyMap::new();
+    map2.put_0i("b1", 10, Some(" ")).unwrap();
+    map2.put_0i("b2", 20, Some(" ")).unwrap();
+    map2.put_0i("b3", 30, Some(" ")).unwrap();
+    map2
+}
+
+#[test]
+fn map_copy_merges_nested_key_maps() {
+    // main (testkeymap.c:1085-1150). The source's nested KeyMap sits under
+    // "bb3", a key the destination does not have, so it is added whole;
+    // MapCopy's merge exception needs the same key on both sides.
+    let mut map = map_copy_dest(true);
+
+    let mut map3 = KeyMap::new();
+    map3.put_0c("bb1", "No", Some(" ")).unwrap();
+    map3.put_0i("aa2", 20, Some(" ")).unwrap();
+    map3.put_0a(
+        "bb3",
+        AnyObject::KeyMap(Box::new(map_copy_nested_b())),
+        Some(" "),
+    )
+    .unwrap();
+
+    map.map_copy(&map3).unwrap();
+
+    // Error MAPCOPY_0: three destination keys plus the two new source keys.
+    assert_eq!(map.map_size(), 5);
+
+    // Error MAPCOPY_1 / MAPCOPY_2: a key only the destination had survives.
+    assert_eq!(map.get_0c("aa1").unwrap().as_deref(), Some("Yes"));
+    // Error MAPCOPY_3 / MAPCOPY_4: a key both had takes the source's value.
+    assert_eq!(map.get_0i("aa2").unwrap(), Some(20));
+    // Error MAPCOPY_5 / MAPCOPY_6.
+    let aval = map.get_0a("aa3").unwrap().expect("aa3 is present");
+    assert!(matches!(aval, Some(AnyObject::KeyMap(_))));
+    // MAPCOPY_7..12 are dead code in the Fortran ancestor, kept dead in C
+    // (testkeymap.c:1134-1135), so there is nothing to port.
+
+    // Error MAPCOPY_13 / MAPCOPY_14.
+    assert_eq!(map.get_0c("bb1").unwrap().as_deref(), Some("No"));
+    // Error MAPCOPY_15 / MAPCOPY_16.
+    let aval = map.get_0a("bb3").unwrap().expect("bb3 is present");
+    assert!(matches!(aval, Some(AnyObject::KeyMap(_))));
+    // MAPCOPY_17..22 dead for the same reason as MAPCOPY_7..12.
+}
+
+#[test]
+fn map_copy_replaces_a_nested_key_map() {
+    // main (testkeymap.c:1152-1206). Every source key is already in the
+    // destination, so nothing is added. The scalar entries are replaced,
+    // but the nested KeyMaps under the shared "aa3" key hit MapCopy's one
+    // exception (keymap.c:4148) and are merged instead.
+    let mut map = map_copy_dest(false);
+
+    let mut map3 = KeyMap::new();
+    map3.put_0i("aa1", 0, Some(" ")).unwrap();
+    map3.put_0i("aa2", 20, Some(" ")).unwrap();
+    map3.put_0a(
+        "aa3",
+        AnyObject::KeyMap(Box::new(map_copy_nested_b())),
+        Some(" "),
+    )
+    .unwrap();
+
+    map.map_copy(&map3).unwrap();
+
+    // Error MAPCOPY_23: every source key was already present.
+    assert_eq!(map.map_size(), 3);
+
+    // Error MAPCOPY_24 / MAPCOPY_25: the string entry was replaced by an
+    // int one, so a type change as well as a value change.
+    assert_eq!(map.get_0i("aa1").unwrap(), Some(0));
+    // Error MAPCOPY_26 / MAPCOPY_27.
+    assert_eq!(map.get_0i("aa2").unwrap(), Some(20));
+    // Error MAPCOPY_28 / MAPCOPY_29.
+    let aval = map.get_0a("aa3").unwrap().expect("aa3 is present");
+    let Some(AnyObject::KeyMap(nested)) = aval else {
+        panic!("expected a nested KeyMap");
+    };
+    // MAPCOPY_30..41 are dead code in the ancestor, like MAPCOPY_7..12.
+    // The merge is what distinguishes this block from the one above, so
+    // check it directly: the nested map holds both sides' keys.
+    assert_eq!(nested.map_size(), 6);
+    assert_eq!(nested.get_0i("a1").unwrap(), Some(1));
+    assert_eq!(nested.get_0i("b3").unwrap(), Some(30));
+}
+
+#[test]
+fn map_copy_into_a_locked_map_fails() {
+    // main (testkeymap.c:1208-1247). The source and destination hold the
+    // same three top-level keys, so what fails is the recursive merge of
+    // the nested "aa3" KeyMaps: SetMapLocked propagates into nested
+    // KeyMaps (keymap.c:9423), and the source's nested b1/b2/b3 are keys
+    // the destination's nested a1/a2/a3 does not have.
+    let mut map = map_copy_dest(false);
+
+    let mut map3 = KeyMap::new();
+    map3.put_0i("aa1", 0, Some(" ")).unwrap();
+    map3.put_0i("aa2", 20, Some(" ")).unwrap();
+    map3.put_0a(
+        "aa3",
+        AnyObject::KeyMap(Box::new(map_copy_nested_b())),
+        Some(" "),
+    )
+    .unwrap();
+
+    map.set_map_locked(true);
+
+    // Error MAPCOPY_42.
+    let err = map.map_copy(&map3).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Badkey);
+}
+
+#[test]
+fn undefined_entries() {
+    // main (testkeymap.c:1249-1283).
+    let mut map = KeyMap::new();
+    map.put_u("GG", Some("A comment")).unwrap();
+
+    // Error UNDEF_0.
+    assert!(!map.map_defined("GG").unwrap());
+    // Error UNDEF_1 / UNDEF_1B / UNDEF_2 / UNDEF_3 / UNDEF_4: every getter
+    // reports failure, not an error — the entry is present, it has no value.
+    assert_eq!(map.get_0i("GG").unwrap(), None);
+    assert_eq!(map.get_0s("GG").unwrap(), None);
+    assert_eq!(map.get_0c("GG").unwrap(), None);
+    assert!(map.get_0a("GG").unwrap().is_none());
+    assert_eq!(map.get_1i("GG").unwrap(), None);
+    // Error UNDEF_5: KeyCase defaults to case-sensitive, so "gg" is a
+    // missing key rather than the undefined one; with KeyError clear that
+    // is also a plain failure rather than an error.
+    assert_eq!(map.get_elem_c("gg", 0).unwrap(), None);
+    // Error UNDEF_6.
+    assert!(map.map_has_key("GG").unwrap());
+
+    // Error UNDEF_7 / UNDEF_8.
+    assert_eq!(map.map_type("GG").unwrap(), AstType::Undef);
+    assert_eq!(map.map_size(), 1);
+
+    // Error UNDEF_9 / UNDEF_10: a put over the undefined entry defines it.
+    map.put_0i("GG", 0, Some(" ")).unwrap();
+    assert_eq!(map.get_0i("GG").unwrap(), Some(0));
+}
+
+#[test]
+fn rename_round_trip() {
+    // main (testkeymap.c:1285-1302).
+    let mut map = KeyMap::new();
+    map.put_0i("GG", 0, Some(" ")).unwrap();
+
+    map.map_rename("GG", "GGNEW").unwrap();
+    // Error RENAME_1 / RENAME_2 / RENAME_3.
+    assert!(!map.map_has_key("GG").unwrap());
+    assert_eq!(map.get_0i("GGNEW").unwrap(), Some(0));
+
+    map.map_rename("GGNEW", "GG").unwrap();
+    // Error RENAME_4 / RENAME_5 / RENAME_6.
+    assert!(!map.map_has_key("GGNEW").unwrap());
+    assert_eq!(map.get_0i("GG").unwrap(), Some(0));
+}
+
+#[test]
+fn map_copy_entry() {
+    // main (testkeymap.c:1304-1350), with merge false.
+    let mut map = map_copy_dest(false);
+
+    let mut map3 = KeyMap::new();
+    map3.put_0c("bb1", "No", Some(" ")).unwrap();
+    map3.put_0i("aa2", 20, Some(" ")).unwrap();
+    map3.put_0a(
+        "aa3",
+        AnyObject::KeyMap(Box::new(map_copy_nested_b())),
+        Some(" "),
+    )
+    .unwrap();
+
+    map.map_copy_entry("bb1", &map3, false).unwrap();
+    // Error MAPCOPYENTRY_1: one key added, and only that one.
+    assert_eq!(map.map_size(), 4);
+    // Error MAPCOPYENTRY_2 / MAPCOPYENTRY_3.
+    assert_eq!(map.get_0c("bb1").unwrap().as_deref(), Some("No"));
+
+    map.map_copy_entry("aa3", &map3, false).unwrap();
+    // Error MAPCOPYENTRY_4.
+    let aval = map.get_0a("aa3").unwrap().expect("aa3 is present");
+    let Some(AnyObject::KeyMap(nested)) = aval else {
+        panic!("expected a nested KeyMap");
+    };
+    // Error MAPCOPYENTRY_5 / MAPCOPYENTRY_6: the source's nested map is
+    // there in full.
+    assert_eq!(nested.get_0i("b3").unwrap(), Some(30));
+    // Error MAPCOPYENTRY_7: with merge false the destination's own nested
+    // map was replaced, not merged, so its keys are gone.
+    assert_eq!(nested.get_0i("a1").unwrap(), None);
+}
+
+#[test]
+fn put_elem_d_appends_five_times() {
+    // main (testkeymap.c:1352-1362). C passes -1 each time; any index at
+    // or past the length appends (keymap.c:8397), and put_elem_d takes a
+    // usize, so pass the length. The first call creates the entry.
+    let mut map = KeyMap::new();
+    for value in [1.0, 2.0, 3.0, 4.0, 15.0] {
+        let n = map.map_length("HHH");
+        map.put_elem_d("HHH", n, value).unwrap();
+    }
+    // Error MAPPUTELEM_7.
+    assert_eq!(map.map_length("HHH"), 5);
+    assert_eq!(
+        map.get_1d("HHH").unwrap(),
+        Some(vec![1.0, 2.0, 3.0, 4.0, 15.0])
+    );
+}
+
+#[test]
+fn int64_edge_values() {
+    // main (testkeymap.c:1364-1407). The two seed values are outside the
+    // int range, so a KInt entry is the only one that can hold them.
+    let mut map = KeyMap::new();
+    map.put_0d("asa", 0.0, Some(" ")).unwrap();
+    map.put_0f("asar", 1.0, Some(" ")).unwrap();
+    map.put_0i("dfdfd", 1, Some(" ")).unwrap();
+
+    let kvec = [-i64::from(i32::MAX), 10 * i64::from(i32::MIN)];
+    map.put_1k("AAA", &kvec, Some("com 1")).unwrap();
+    // C appends with index -1; put_elem_* takes a usize, so pass the
+    // length. Both appends convert to the entry's own KInt type.
+    let n = map.map_length("AAA");
+    map.put_elem_i("AAA", n, 1).unwrap();
+    let n = map.map_length("AAA");
+    map.put_elem_k("AAA", n, 1).unwrap();
+    // Error I8_1.
+    assert_eq!(map.map_length("AAA"), 4);
+
+    map.put_0c("bb1", "No", Some(" ")).unwrap();
+
+    // Error I8_2 / I8_3.
+    assert_eq!(
+        map.get_elem_k("AAA", 1).unwrap(),
+        Some(10 * i64::from(i32::MIN))
+    );
+
+    // Error I8_4 / I8_5 / I8_6.
+    assert_eq!(
+        map.get_1k("AAA").unwrap(),
+        Some(vec![-i64::from(i32::MAX), 10 * i64::from(i32::MIN), 1, 1])
+    );
+}
