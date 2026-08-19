@@ -54,7 +54,7 @@ the review was worth its cost.
 | `then` / `alongside` verbs, no operator sugar | Exact — 38 call sites, `Composition` enum as specified, no `Mul`/`BitOr` impls |
 | `snapshot` / `map_from` as the integrity primitives on `Frame` | Exact, and implemented per class across every Frame *and* every Region |
 | `frame_mut()` as the documented integrity escape hatch | Present on both `FrameSet` and `Region` |
-| `ErrorCode` generated from `ast_err.msg` by `build.rs`, with an `Unknown(i32)` variant | Exact — ~179 variants generated |
+| `ErrorCode` generated from `ast_err.msg` by `build.rs` | Generated as specified, ~179 variants — but **without** the spec's `Unknown(i32)` variant; see §4.8 |
 | `Serializable` as a *private* `to_node` / `from_node` trait | Exact |
 | No public `Object` trait | Held in the literal sense; see §3.2 for the qualification |
 
@@ -277,6 +277,35 @@ The spec shows `pub code`, `pub message`, `pub context`, `pub source_location`.
 All four are private with accessors.
 This is the right call and needs only a spec correction.
 
+### 4.8 `ErrorCode` has no `Unknown(i32)` fallback
+
+Spec:
+
+```rust
+pub enum ErrorCode {
+    BadAttribute,        // AST__BADAT
+    // ... one variant per AST__XXXX code from ast_err.msg
+    Unknown(i32),
+}
+```
+
+The generated enum has the per-code variants and is `#[non_exhaustive]`, but
+there is no `Unknown` variant.
+Unrecognised values are handled by `from_raw(value: u32) -> Option<Self>`
+returning `None` instead.
+
+For `ast-core` this is arguably tidier.
+It matters for `ast-capi`, which is not yet written: `astStatus` can hand back a
+value that is not in `ast_err.msg` (a caller's own code set via `astSetPutErr`,
+or a code from a newer C release), and with no `Unknown` variant there is no
+lossless way to carry it through the Rust error type and back out.
+Worth settling before the shim is built rather than after.
+
+*(This entry corrects an error in the first draft of this review, which listed
+the `Unknown(i32)` variant as present. The check that produced it matched the
+word "Unknown" inside an error description string — `Tunam`, "Unknown AST tuning
+parameter name supplied" — rather than a variant name.)*
+
 ---
 
 ## 5. Delivery order: behind plan, not diverged from it
@@ -335,12 +364,19 @@ this document.
 
 Split by whether the spec or the code is the thing that is wrong.
 
-**Fix the code (small, well-scoped):**
+**Fix the code (small, well-scoped) — all three now done:**
 
-1. Implement the `tracing` feature, or delete the `CLAUDE.md` line that promises
-   it. §4.1.
-2. Move `Channel::warnings` to `Option<&KeyMap>` now that `KeyMap` exists. §4.3.
-3. Add `tran1` / `tran2`. §4.5.
+1. ~~Implement the `tracing` feature, or delete the `CLAUDE.md` line that
+   promises it.~~ §4.1 — implemented in `1ffe825`.
+2. ~~Move `Channel::warnings` to a `KeyMap` now that `KeyMap` exists.~~ §4.3 —
+   done in `69f1ec0`, as an owned `Option<KeyMap>` rather than the spec's
+   borrow, because C's `astWarnings` builds a fresh KeyMap per call and caches
+   nothing. Implementing it surfaced a latent defect: `FitsChan` wrote ASTWARN
+   cards without recording the texts, so its warnings accessor had always
+   returned empty.
+3. ~~Add `tran1` / `tran2`.~~ §4.5 — done in `156cf68`, with C's
+   `ValidateMapping` checks. That exposed a further gap, now tracked in
+   `PLAN.md` §2: the general `transform` path raises `AST__TRNND` nowhere.
 
 **Amend the spec (it is named authoritative, so stale text is load-bearing):**
 
