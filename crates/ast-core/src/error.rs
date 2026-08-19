@@ -17,23 +17,51 @@ pub struct AstError {
 impl AstError {
     /// Create a new AST error with the given code and message.
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self {
+        let err = Self {
             code,
             message: message.into(),
             context: Vec::new(),
             source_location: None,
-        }
+        };
+        err.trace();
+        err
     }
 
     /// Create a new AST error, capturing the caller's source location.
     #[track_caller]
     pub fn new_tracked(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self {
+        let err = Self {
             code,
             message: message.into(),
             context: Vec::new(),
             source_location: Some(Location::caller()),
-        }
+        };
+        err.trace();
+        err
+    }
+
+    /// Emit this error as a `tracing::error!` event.
+    ///
+    /// Called once per constructed error, from `new` and `new_tracked`.
+    /// [`AstError::with_context`] does not re-emit: it decorates an error that
+    /// has already been reported, and emitting again would log one failure
+    /// once per frame it propagates through.
+    ///
+    /// Compiles to nothing without the `tracing` feature.
+    #[inline]
+    fn trace(&self) {
+        #[cfg(feature = "tracing")]
+        tracing::error!(
+            code = ?self.code,
+            code.raw = self.code.as_raw(),
+            code.description = %self.code,
+            location = self
+                .source_location
+                .map(|l| l.to_string())
+                .unwrap_or_default(),
+            "{}",
+            self.message,
+        );
     }
 
     /// Return the error code.

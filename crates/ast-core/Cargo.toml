@@ -14,12 +14,19 @@ levenberg-marquardt.workspace = true
 nalgebra.workspace = true
 ndarray.workspace = true
 wide = { version = "0.7", optional = true }
+tracing = { workspace = true, optional = true }
 
 [features]
 # Opt-in prototypes used for measurement (cross-lane SIMD eval, etc.). Off by
 # default. Production code never depends on this — it exposes `pub fn` entry
 # points so that `cargo bench` / examples can compare paths.
 simd-eval = ["dep:wide"]
+
+# Emit every constructed `AstError` as a `tracing::error!` event. Off by
+# default so the library has no logging dependency in the common case; the
+# spec (docs/superpower/specs/2026-04-20-rust-port-design.md, "Error model")
+# calls for it as an opt-in debugging aid.
+tracing = ["dep:tracing"]
 
 [[example]]
 name = "bench_polymap_simd"
