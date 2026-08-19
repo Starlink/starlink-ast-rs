@@ -2,6 +2,36 @@
 
 ## Revision history
 
+- **2026-08-19 (rev 6)**: reconciled against the implementation after four
+  months and 1,087 commits. Conformance was assessed in
+  [`docs/reports/2026-08-19-spec-conformance-review.md`](../../reports/2026-08-19-spec-conformance-review.md),
+  which this revision acts on. No architectural decision changed — every
+  load-bearing choice from revs 1-5 held — so this is a correction pass, not
+  a redesign:
+  - **Trait sketches marked illustrative, and the extension points named.**
+    The `Mapping` / `Frame` / `Region` sketches were read as complete method
+    surfaces and are not: they omitted every per-class method that a generic
+    driver dispatches to. `Mapping` grew from 13 sketched methods to 28,
+    `Frame` from ~10 to ~90, `Region` from 3 to ~50, and the omission of
+    `MapMerge` cost a 47-commit simplifier rebuild. The sketches now say what
+    they are, and the extension-point list is given explicitly.
+  - **`AsAny` recorded.** A public downcasting supertrait was needed two days
+    into implementation; the "no public `Object`" position is qualified rather
+    than reversed.
+  - `Frame::convert` is `convert_to`, taking `&[&str]` rather than a
+    comma-separated string.
+  - `FrameRef::Name` was never implemented and `AllFrames` was added; the
+    `Ident`-vs-`Domain` decision is retained as reasoning, marked unbuilt.
+  - `Channel::warnings` returns an owned `Option<KeyMap>`, not a borrow,
+    because C's `astWarnings` builds a fresh KeyMap per call.
+    `WritableToChannel` was never needed — the `AnyObject` enum subsumed it.
+  - Builders are not on every class; the rule actually followed is recorded.
+  - `ErrorCode` has no `Unknown(i32)`; `thiserror` is unused; `AstError`'s
+    fields are private; `PointSet::axis` is `axis_iter`.
+  - The `tracing` feature, `tran1` / `tran2` and the KeyMap warnings view were
+    unimplemented commitments and have since been built (`1ffe825`,
+    `156cf68`, `69f1ec0`).
+
 - **2026-04-27 (rev 5)**: tighten test-coverage scope after the
   upstream sync of `Starlink/starlink-ast` (which added batch 13 and
   more fixture coverage):
@@ -293,7 +323,18 @@ the source repos.
 
 The v1 trait hierarchy (`Object → Mapping → Frame → FrameSet`) is
 abandoned. Instead, each public capability is its own trait, at the same
-level:
+level.
+
+> **The sketches below are illustrative, not the method surface.** *(rev 6)*
+> They fix the *shape* of each trait — what it is for, what it returns, how the
+> three relate — and deliberately defer per-class methods to the implementation
+> plan. They were nonetheless read as complete surfaces, and the omission that
+> cost most was `MapMerge`: the sketch lists `simplified()` and nothing else
+> about simplification, which invited a single central simplifier and cost a
+> 47-commit rebuild to undo. As built, `Mapping` has 28 methods, `Frame` ~90 and
+> `Region` ~50. Before implementing any class, read
+> ["Before porting a class"](../../porting-hazards.md#h1--collapsing-cs-per-class-extension-points-into-one-central-function)
+> and the extension-point list below.
 
 ```rust
 pub trait Mapping {
@@ -317,7 +358,7 @@ pub trait Frame {
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64>;
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>>;
     fn norm(&self, coords: &mut [f64]) -> AstResult<()>;
-    fn convert(&self, to: &dyn Frame, domains: &str) -> AstResult<Option<FrameSet>>;
+    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;  // rev 6: was `convert(.., &str)`
     // resolve, intersect, axnorm, matchaxes, axdistance, axoffset ...
 
     // Self-identifying metadata used by FrameSet / Region integrity:
@@ -353,6 +394,45 @@ Notes:
   `Object` methods). A private `Object` super-trait may exist inside
   `ast-core` as an implementation detail for shared bookkeeping (class
   name, ID, Ident), but it is not part of the public API.
+- **Rev 6 — one public supertrait was needed after all: `AsAny`.** Two days
+  into implementation it became clear there was no way to ask "is this Mapping
+  a `UnitMap`?", which the simplifier, `map_merge` and `Region::overlap` all
+  need constantly. `pub trait AsAny: Any` is a supertrait of both `Mapping`
+  and `Frame`, giving `as_any()` / `as_any_mut()` for downcasting — the Rust
+  equivalent of C's `astIsAFoo` checks. The position above is qualified, not
+  reversed: there is still no `Object`, and `AsAny` carries no bookkeeping.
+  But it is public and every Mapping and Frame implements it, so *count of
+  runtime type interrogations* is a live review metric — the prototype's
+  central simplifier had 51 where the C file had 10.
+
+**Extension points that must be trait methods** *(rev 6)*. C's per-class
+`vtab` entries divide into two kinds, and the division is load-bearing:
+
+- **Ceremony** — `astGetAttrib` / `astSetAttrib` string dispatch,
+  per-attribute dump/load, loader glue. Collapsing these is the point of the
+  port.
+- **Architecture** — a method that a *generic algorithm in another file*
+  dispatches to per class. Collapsing one of these into a central `match`
+  makes the generic driver's control flow unportable, and the resulting
+  engine passes most fixtures while diverging on any case that depends on
+  the order and interaction of steps.
+
+The test is mechanical: **does a generic driver in another file call this
+through the vtab?** If yes, the Rust port needs the same seam at the same
+granularity. The architecture set is small and stable:
+
+`MapMerge`, `Transform`, `Simplify`, `Equal`, `MapSplit`, `Match`,
+`SubFrame`, `Overlay`, `RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`.
+
+Two corollaries, both learned the expensive way:
+
+- **Match C's construction shape, not just its arithmetic.** A chain that is
+  mathematically equivalent but structurally different diverges in whatever
+  *consumes* the structure — the simplifier, the serialiser, `MapSplit` — and
+  it surfaces far from the change.
+- **Write down how a C mutable-state convention maps onto owned values**
+  (`Invert`, `Frozen`, reference-counted sharing) before the first call site
+  depends on it. Without that, every call site re-derives it differently.
 
 ### Concrete classes
 
@@ -407,20 +487,33 @@ aliases.
 
 ```rust
 pub trait Channel {
-    fn read(&mut self) -> AstResult<Option<DynAnyObject>>;   // discriminated by class
-    fn write(&mut self, obj: &dyn WritableToChannel) -> AstResult<usize>;
-    fn warnings(&self) -> Option<&KeyMap>;
-    fn encoding(&self) -> Encoding;
-    fn register_intra(&mut self, t: Arc<dyn IntraTransform>);
+    fn read(&mut self) -> AstResult<Option<AnyObject>>;      // discriminated by class
+    fn write(&mut self, obj: &AnyObject) -> AstResult<()>;   // rev 6: was `&dyn WritableToChannel -> AstResult<usize>`
+    fn warnings(&self) -> Option<KeyMap>;                    // rev 6: owned, not a borrow
+    fn warning_texts(&self) -> &[String];                    // rev 6: added
+    fn config(&self) -> &ChannelConfig;                      // rev 6: replaced `encoding()`
+    fn config_mut(&mut self) -> &mut ChannelConfig;
+    fn register_intra(&mut self, t: Arc<dyn IntraTransform>); // rev 6: absent; IntraMap unported
 }
+
+**Rev 6 — why `warnings` returns an owned KeyMap.** C's `astWarnings`
+(`channel.c:1582`) allocates a fresh KeyMap on every call from the channel's
+internal string list, keyed `Warning_1`, `Warning_2`, …, and returns NULL when
+none were issued. It caches nothing, so a `&KeyMap` would oblige every channel
+to hold one in lockstep with that list — state C does not keep. The
+string-slice view is kept alongside as `warning_texts()`; it is the more useful
+Rust accessor and C has no counterpart to it.
 ```
 
-`DynAnyObject` is an enum of all concrete AST classes that can
-round-trip through a Channel — enumeration is possible because the
-set is closed (no extension classes). `WritableToChannel` is a private
-trait implemented by every class and used only to dispatch writes;
-this is the "enumerate concrete types" pattern @TallJimbo flagged as
-unavoidable.
+`AnyObject` (`DynAnyObject` in rev 1-5) is an enum of all concrete AST
+classes that can round-trip through a Channel — enumeration is possible
+because the set is closed (no extension classes). This is the "enumerate
+concrete types" pattern @TallJimbo flagged as unavoidable.
+
+**Rev 6.** `WritableToChannel` was specified as a parallel private trait,
+implemented per class, to dispatch writes. It was never needed and does not
+exist: the `AnyObject` enum already enumerates the concrete classes, so writes
+dispatch on it directly and the port enumerates them once instead of twice.
 
 ## Ownership, construction, and mutation
 
@@ -461,9 +554,15 @@ let frame = SkyFrame::builder()
     .build()?;
 ```
 
-Each concrete class provides `builder()`. The builder is consumed by
-`build()` which returns the owned concrete value (or `AstResult<Self>`
-when construction can fail — e.g. invalid attribute combinations).
+**Rev 6 — the rule as built.** Builders went to the classes whose
+construction takes several interdependent optional parameters: the nine
+Region classes, plus `BasicFrame` and `SelectorMap`. Classes taking one or
+two required arguments have a plain `new` and typed setters —
+`SkyFrame::new(system)`, `ZoomMap::new(ncoord, factor)`,
+`ShiftMap::new(shifts)`. The example above is therefore *not* how `SkyFrame`
+is built; it illustrates the builder shape only. Where a builder exists it is
+consumed by `build()`, returning the owned value (or `AstResult<Self>` when
+construction can fail).
 
 ### No `edit()`, no `with_*`
 
@@ -507,10 +606,12 @@ pub type AstResult<T> = Result<T, AstError>;
 
 #[derive(Debug, Clone)]
 pub struct AstError {
-    pub code: ErrorCode,
-    pub message: String,
-    pub context: Vec<String>,
-    pub source_location: Option<&'static Location<'static>>,
+    // rev 6: all four are private, with accessors (`code()`, `message()`,
+    // `context()`, `source_location()`), so the representation can change.
+    code: ErrorCode,
+    message: String,
+    context: Vec<String>,
+    source_location: Option<&'static Location<'static>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -519,7 +620,12 @@ pub enum ErrorCode {
     BadAttribute,        // AST__BADAT
     BadBox,              // AST__BADBX
     // ... one variant per AST__XXXX code from ast_err.msg
-    Unknown(i32),
+    // rev 6: NOT implemented. The generated enum is `#[non_exhaustive]` and
+    // unrecognised values are handled by `from_raw(u32) -> Option<Self>`
+    // returning None. Settle before `ast-capi` is written: `astStatus` can
+    // return a code absent from ast_err.msg (a caller's own, set through
+    // `astSetPutErr`, or one from a newer C release), and without a fallback
+    // variant there is no lossless way to carry it through and back out.
 }
 ```
 
@@ -527,7 +633,10 @@ Rules (unchanged):
 
 - No global state in `ast-core`. `astOK` / `astStatus` / `astWatch` etc.
   exist only in the CFFI shim.
-- `thiserror` provides boilerplate; `anyhow` is not used in public APIs.
+- `anyhow` is not used in public APIs. (`thiserror` was specified for the
+  boilerplate; rev 6: it is not a dependency — `Display` and `Error` are
+  hand-written, which suits a type carrying a context stack and a
+  `#[track_caller]` location.)
 - `ErrorCode` is generated from `ast_err.msg` by `build.rs`, keeping
   Rust and C codes in lockstep.
 - Panics never cross FFI: `ast-capi` wraps each entry point with
@@ -563,7 +672,7 @@ impl PointSet {
 
     pub fn point(&self, i: usize) -> &[f64];
     pub fn point_mut(&mut self, i: usize) -> &mut [f64];
-    pub fn axis(&self, j: usize) -> impl Iterator<Item = f64> + '_;
+    pub fn axis_iter(&self, j: usize) -> impl Iterator<Item = f64> + '_;  // rev 6: was `axis`
 }
 
 /// Frame-aware point collection. Implements Region (inherits from it in
@@ -590,7 +699,9 @@ impl Region for PointList { .. }
   `fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>`,
   with `transform_into(..., out: &mut PointSet)` for buffer reuse.
 - **Single-axis / two-axis convenience** `Mapping::tran1` / `tran2` stay
-  (avoid forcing users to allocate a `PointSet` for 1-D data).
+  (avoid forcing users to allocate a `PointSet` for 1-D data). *(rev 6: built
+  in `156cf68` as default trait methods, validating as C's `ValidateMapping`
+  does — `AST__TRNND` / `AST__NCPIN` / `AST__NPTIN`.)*
 - **Grid transforms**
   `fn transform_grid(&self, lbnd: &[i64], ubnd: &[i64], tol: f64,
   maxpix: usize, forward: bool) -> AstResult<PointSet>`.
@@ -731,7 +842,8 @@ pub enum FrameRef<'a> {
     Base,
     Current,
     Index(usize),         // 1-based, matching AST docs and the C API
-    Name(&'a str),         // by Ident attribute (see open question below)
+    AllFrames,             // rev 6: mirrors C AST__ALLFRAMES; `Name(&'a str)`
+                           // was specified but never built (see below)
 }
 
 impl FrameSet {
@@ -840,6 +952,14 @@ and is typically **not** unique within a FrameSet.
 `Ident`. Rationale: identity of a single frame is the useful semantic
 for lookup; `Domain` is for template-matching via `find_frame`, which
 already exists. This also matches astshim's considered choice.
+
+**Rev 6 — decided but never built.** `FrameRef` as implemented is
+`Base | Current | Index(usize) | AllFrames`; no variant looks up by name, and
+nothing has needed one in four months. A side effect is that `FrameRef` has no
+lifetime parameter and is cheaper to pass around than specified. The decision
+above stands as the answer *if* the variant is added — it is retained here so
+the `Ident`-vs-`Domain` reasoning is not re-litigated — but it is not a
+description of the current API.
 
 ## Region
 

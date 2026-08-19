@@ -35,9 +35,14 @@ starlink-astrs/
 ├── reference/
 │   └── starlink-ast/          # git submodule, OPTIONAL, used by tier-3/4 tests
 ├── docs/
-│   ├── specs/                 # design specs (the file above lives here)
-│   └── ...
-└── PLAN.md                    # implementation order + test-migration tracker
+│   ├── superpowers/specs/     # design specs — the overarching port design
+│   │                          #   is 2026-04-20-rust-port-design.md
+│   ├── superpowers/plans/     # per-step implementation plans
+│   ├── audits/                # structured gap sweeps
+│   ├── issues/                # per-subsystem port-gap catalogues
+│   ├── reports/               # point-in-time assessments of the whole port
+│   └── porting-hazards.md     # failure modes, indexed by trigger
+└── PLAN.md                    # index of outstanding work + test-migration tracker
 ```
 
 Two principles:
@@ -392,8 +397,24 @@ The C ABI is **frozen**. Existing applications must keep linking.
   entries the port *mirrors* rather than merely records — a quirk fixed
   upstream turns a faithful mirror into a bug. Regenerate all affected
   corpora in one commit range. `PLAN.md` §8 tracks the pending sync.
-- **Design spec** (authoritative):
-  `docs/specs/2026-04-20-rust-port-design.md`.
+- **Design spec** (authoritative for API shape and the reasoning behind it):
+  [`docs/superpowers/specs/2026-04-20-rust-port-design.md`](docs/superpowers/specs/2026-04-20-rust-port-design.md).
+  This is *the* overarching port design — the one document that fixes the
+  object model, ownership rules, error model, serialisation architecture and
+  FFI strategy. Everything else under `docs/superpowers/specs/` is a per-step
+  or per-class design that sits underneath it. Read it before any non-trivial
+  change to a public trait, an attribute surface, or the FFI boundary, and
+  read its revision history first: rev 6 marks the trait sketches as
+  illustrative and records where the implementation diverged.
+  When the spec and this file disagree, the spec wins on *what the API should
+  be*; this file wins on *how to work* (the checks in "Before porting a class"
+  and "Stop signals"). If the spec turns out to be wrong about the code, amend
+  the spec in the same change — it has a revision history for exactly that, and
+  a spec nobody trusts is worse than no spec.
+- **Conformance status**: the most recent check of the code against the spec is
+  [`docs/reports/2026-08-19-spec-conformance-review.md`](docs/reports/2026-08-19-spec-conformance-review.md),
+  with a companion progress report beside it. Consult it before concluding that
+  a divergence you have found is new.
 - **Test-migration tracker**: `PLAN.md` — every C test program in
   the upstream `ast_tester/` directory must end up with a green
   Rust counterpart by step 11 of the delivery order.
@@ -422,8 +443,9 @@ The C ABI is **frozen**. Existing applications must keep linking.
   Each delivery step in `PLAN.md` lists the tests it newly enables.
 - When in doubt about API shape, the design spec wins. When the spec
   is silent or contradictory, ask before guessing. The design has
-  been through five revisions of stakeholder feedback; resist the
-  urge to redesign on the fly.
+  been through six revisions — five of stakeholder feedback, then one
+  reconciliation against the implementation; resist the urge to
+  redesign on the fly.
 - Prefer small, focused PRs that land one class or one batch of tests
   at a time. The implementation plan (forthcoming) will decompose
   the delivery order into PR-sized chunks.
