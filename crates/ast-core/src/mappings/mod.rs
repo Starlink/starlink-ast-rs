@@ -70,7 +70,7 @@ use std::any::Any;
 use std::fmt;
 
 use crate::coords::PointSet;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 
 /// An owned, dynamically-dispatched Mapping.
 pub type DynMapping = Box<dyn Mapping>;
@@ -137,6 +137,44 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// `out` must have shape `(pts.npoint(), self.nout())` for forward or
     /// `(pts.npoint(), self.nin())` for inverse transforms.
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()>;
+
+    /// Transform a set of 1-dimensional coordinates.
+    ///
+    /// Mirrors C `astTran1` (`mapping.c:89`): the Mapping must have `Nin` and
+    /// `Nout` both equal to 1, and the requested direction must be defined.
+    /// Saves the caller building a one-column [`PointSet`] for scalar data.
+    ///
+    /// The returned vector has the same length as `xin`.
+    fn tran1(&self, xin: &[f64], forward: bool) -> AstResult<Vec<f64>> {
+        validate_tran(self, forward, xin.len(), 1, "tran1")?;
+        let pts = PointSet::from_columns(&[xin])?;
+        let out = self.transform(&pts, forward)?;
+        Ok(out.axis_iter(0).collect())
+    }
+
+    /// Transform a set of 2-dimensional coordinates.
+    ///
+    /// Mirrors C `astTran2` (`mapping.c:~150`): the Mapping must have `Nin` and
+    /// `Nout` both equal to 2, and the requested direction must be defined.
+    ///
+    /// `xin` and `yin` must be the same length; C cannot express that mismatch
+    /// because it takes a single `npoint` argument for both arrays.
+    fn tran2(&self, xin: &[f64], yin: &[f64], forward: bool) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        if xin.len() != yin.len() {
+            return Err(AstError::new(
+                ErrorCode::Nptin,
+                format!(
+                    "tran2: xin has {} points but yin has {}",
+                    xin.len(),
+                    yin.len()
+                ),
+            ));
+        }
+        validate_tran(self, forward, xin.len(), 2, "tran2")?;
+        let pts = PointSet::from_columns(&[xin, yin])?;
+        let out = self.transform(&pts, forward)?;
+        Ok((out.axis_iter(0).collect(), out.axis_iter(1).collect()))
+    }
 
     /// Transform points using the "NaN-as-bad" internal protocol.
     ///
@@ -620,4 +658,56 @@ fn substitute_nan_to_bad_in_place(pts: &mut PointSet) {
             *v = BAD_VALUE;
         }
     }
+}
+
+/// Shared argument validation for [`Mapping::tran1`] and [`Mapping::tran2`].
+///
+/// Port of the relevant arms of C's `ValidateMapping` (`mapping.c`), which
+/// `astTran1` / `astTran2` call before building their PointSets:
+///
+/// - `AST__TRNND` when the requested direction is not defined,
+/// - `AST__NCPIN` when `Nin` or `Nout` is not the arity the entry point
+///   requires,
+/// - `AST__NPTIN` when fewer than one point is supplied.
+///
+/// Note the definedness check lives here because that is where C puts it.
+/// The general [`Mapping::transform`] path does not yet raise `AST__TRNND`
+/// for an undefined direction; that gap is tracked in `PLAN.md` §2.
+fn validate_tran<M: Mapping + ?Sized>(
+    map: &M,
+    forward: bool,
+    npoint: usize,
+    arity: usize,
+    method: &str,
+) -> AstResult<()> {
+    let defined = if forward {
+        map.has_forward()
+    } else {
+        map.has_inverse()
+    };
+    if !defined {
+        let dir = if forward { "forward" } else { "inverse" };
+        return Err(AstError::new(
+            ErrorCode::Trnnd,
+            format!("{method}: the {dir} coordinate transformation is not defined"),
+        ));
+    }
+    if map.nin() != arity || map.nout() != arity {
+        return Err(AstError::new(
+            ErrorCode::Ncpin,
+            format!(
+                "{method}: requires a Mapping with Nin = Nout = {arity}, but this \
+                 Mapping has Nin = {} and Nout = {}",
+                map.nin(),
+                map.nout()
+            ),
+        ));
+    }
+    if npoint < 1 {
+        return Err(AstError::new(
+            ErrorCode::Nptin,
+            format!("{method}: number of points to transform must be at least 1"),
+        ));
+    }
+    Ok(())
 }
