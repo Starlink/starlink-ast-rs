@@ -1,7 +1,7 @@
 # Design-spec conformance review
 
 **Reviewed:** 2026-08-19 · **Tree:** `tickets/DM-54793` @ `cc981c8`
-**Spec:** `docs/superpower/specs/2026-04-20-rust-port-design.md` (rev 5, 2026-04-27)
+**Spec:** `docs/superpowers/specs/2026-04-20-rust-port-design.md` (rev 5, 2026-04-27)
 
 Assesses the *implemented* parts of the port against the design spec that
 `CLAUDE.md` names as authoritative.

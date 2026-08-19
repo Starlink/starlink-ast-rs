@@ -8,7 +8,7 @@ blocker with `fitschan-c-port-gaps.md`).
 This document tracks every C branch in `fitschan.c` that is referenced
 by the `fset_to_store` pipeline but is **not yet ported** to the
 Rust side. Earlier commits in Groups 3–5 of the
-[MakeIntWorld port plan](../superpower/plans/2026-05-25-makeintworld-port.md)
+[MakeIntWorld port plan](../superpowers/plans/2026-05-25-makeintworld-port.md)
 labelled some of these as "deferred because the existing wcsconv
 fixtures don't exercise them" — that's the wrong rationale. **Lack
 of fixture coverage means the fixture set is insufficient, not that

@@ -1,7 +1,7 @@
 //! The `tracing` feature emits every constructed `AstError` as a
 //! `tracing::error!` event.
 //!
-//! Design commitment: `docs/superpower/specs/2026-04-20-rust-port-design.md`,
+//! Design commitment: `docs/superpowers/specs/2026-04-20-rust-port-design.md`,
 //! "Error model" — *"Optional `tracing` feature emits every constructed
 //! `AstError` as a `tracing::error!` event; off by default."*
 //!

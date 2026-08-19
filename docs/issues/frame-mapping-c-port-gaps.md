@@ -124,7 +124,7 @@ Key entries a fix agent must not regress: MatrixMap MapSplit zero-init (C has UB
 ## 4. Prior mapping audit — re-verify before fixing
 
 `docs/mapping-gaps-audit.md` (2026-05-08) is a detailed Rust-vs-C audit of the mapping classes: per-axis BAD-value handling, equality bugs (CmpMap/MatrixMap/PermMap/WinMap/WcsMap), ~28 missing simplification rules (SlaMap/TimeMap/SphMap/MatrixMap/WinMap/WcsMap/LutMap/PermMap/PolyMap/SpecMap/ZoomMap/ChebyMap), CmpMap recursion-guard/PatternCheck gaps, and missing analytic `rate()` overrides.
-A fix plan (`docs/superpower/plans/2026-05-08-mapping-gaps-fix.md`) followed it, so an unknown subset is already fixed.
+A fix plan (`docs/superpowers/plans/2026-05-08-mapping-gaps-fix.md`) followed it, so an unknown subset is already fixed.
 First task for the fix agent: re-test each numbered item in that audit against current code and strike the resolved ones, then fold the survivors into section 1 ordering.
 
 ## 5. Audit work queue (not yet compared against C)

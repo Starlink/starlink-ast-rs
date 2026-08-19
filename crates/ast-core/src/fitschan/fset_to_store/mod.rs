@@ -7,7 +7,7 @@
 //! via a least-squares fit. Mirrors `fitschan.c` (function references
 //! on each item).
 //!
-//! See `docs/superpower/specs/2026-05-25-makeintworld-port-design.md`
+//! See `docs/superpowers/specs/2026-05-25-makeintworld-port-design.md`
 //! for the design.
 //!
 //! Naming note: the upstream-equivalent module name `wcs_keywords/`

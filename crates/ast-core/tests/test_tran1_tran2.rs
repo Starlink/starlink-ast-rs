@@ -4,7 +4,7 @@
 //! C ancestors: `astTran1` (`reference/starlink-ast/src/mapping.c:89`) and
 //! `astTran2`, together with the arms of `ValidateMapping` they invoke.
 //!
-//! Design commitment: `docs/superpower/specs/2026-04-20-rust-port-design.md`,
+//! Design commitment: `docs/superpowers/specs/2026-04-20-rust-port-design.md`,
 //! "Coordinate data" — *"Single-axis / two-axis convenience `Mapping::tran1` /
 //! `tran2` stay (avoid forcing users to allocate a `PointSet` for 1-D data)."*
 //!

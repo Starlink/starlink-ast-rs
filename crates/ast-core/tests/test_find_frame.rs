@@ -73,7 +73,7 @@ fn find_frame_basic_domain_list_miss() {
 
 // ---------------------------------------------------------------------
 // CmpFrame integration tests (Task 8 from
-// docs/superpower/plans/2026-06-05-find-frame-resume.md).
+// docs/superpowers/plans/2026-06-05-find-frame-resume.md).
 // ---------------------------------------------------------------------
 
 use ast_core::frames::{CmpFrame, SkyFrame, SkySystem, SpecFrame, SpecSystem, StdOfRest};
