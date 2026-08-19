@@ -220,3 +220,46 @@ fn all_zero_latitude_pv_warns_about_the_latitude_axis() {
         "expected the latitude-axis badpv warning, got: {warns:#?}"
     );
 }
+
+// ===========================================================================
+// The astWarnings KeyMap view
+// ===========================================================================
+
+#[test]
+fn warnings_keymap_mirrors_c_astwarnings() {
+    // C `astWarnings` (channel.c:1582) builds a fresh KeyMap keyed
+    // `Warning_1`, `Warning_2`, … in issue order, one string entry per
+    // warning, and returns NULL when none were issued.
+    use ast_core::AstType;
+
+    let mut fc = FitsChan::from_header(&tan_zeropv_header()).expect("header parses");
+    let _ = fc.read().expect("read succeeds").expect("an object");
+
+    let texts = fc.warning_texts().to_vec();
+    assert!(
+        !texts.is_empty(),
+        "tan-zeropv.head must raise at least one warning"
+    );
+
+    let map = fc.warnings().expect("warnings were issued, so not None");
+    assert_eq!(map.map_size(), texts.len(), "one entry per warning");
+
+    for (i, text) in texts.iter().enumerate() {
+        let key = format!("Warning_{}", i + 1);
+        assert_eq!(
+            map.map_type(&key).expect("key present"),
+            AstType::String,
+            "{key} must be a string entry"
+        );
+        assert_eq!(
+            map.get_0c(&key).expect("readable").as_deref(),
+            Some(text.as_str()),
+            "{key} must carry the warning text in issue order"
+        );
+    }
+
+    // Keys are 1-based, so there is no Warning_0 and no entry past the count.
+    assert_eq!(map.get_0c("Warning_0").expect("readable"), None);
+    let past_end = format!("Warning_{}", texts.len() + 1);
+    assert_eq!(map.get_0c(&past_end).expect("readable"), None);
+}

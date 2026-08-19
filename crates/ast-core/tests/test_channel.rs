@@ -516,5 +516,8 @@ fn config_mut_is_honoured() {
 #[test]
 fn warnings_initially_empty() {
     let ch = NativeChannel::new();
-    assert!(ch.warnings().is_empty());
+    assert!(ch.warning_texts().is_empty());
+    // C's astWarnings returns NULL rather than an empty KeyMap when the
+    // channel issued no warnings (channel.c:1698 guards on `this->nwarn`).
+    assert!(ch.warnings().is_none());
 }

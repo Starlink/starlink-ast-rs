@@ -177,7 +177,7 @@ impl Channel for NativeChannel {
         Ok(())
     }
 
-    fn warnings(&self) -> &[String] {
+    fn warning_texts(&self) -> &[String] {
         &self.warnings
     }
 

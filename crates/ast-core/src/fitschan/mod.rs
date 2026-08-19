@@ -691,15 +691,22 @@ impl FitsChan {
         read_warnings: Vec<String>,
         naxes: usize,
     ) {
+        // Each warning goes two places, as in C: `Warn` (fitschan.c:35052)
+        // calls `astAddWarning`, which appends the text to the parent
+        // Channel's warning list (channel.c:151) for `astWarnings` to report,
+        // and separately inserts the ASTWARN card. Recording only the card
+        // would leave `warning_texts` / `warnings` permanently empty.
         if !trans_warnings.is_empty() {
             self.cards.set_position(self.cards.len());
             for w in trans_warnings {
                 self.cards.push_astwarn(&w);
+                self.warnings.push(w);
             }
         }
         move_cursor_to_last_naxis(&mut self.cards, naxes);
         for w in read_warnings {
             self.cards.push_astwarn(&w);
+            self.warnings.push(w);
         }
     }
 }
@@ -970,7 +977,7 @@ impl Channel for FitsChan {
         }
     }
 
-    fn warnings(&self) -> &[String] {
+    fn warning_texts(&self) -> &[String] {
         &self.warnings
     }
 

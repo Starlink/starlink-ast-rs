@@ -10,6 +10,7 @@ pub mod native;
 pub mod source_sink;
 
 use crate::error::AstResult;
+use crate::keymap::KeyMap;
 use crate::serial::AnyObject;
 
 pub use native::NativeChannel;
@@ -67,8 +68,40 @@ pub trait Channel {
     /// Write an object to the sink.
     fn write(&mut self, obj: &AnyObject) -> AstResult<()>;
 
-    /// Return accumulated warnings from the most recent I/O operation.
-    fn warnings(&self) -> &[String];
+    /// Return the accumulated warning texts from the most recent I/O
+    /// operation, in the order they were issued.
+    ///
+    /// This is the idiomatic Rust accessor and has no direct C counterpart —
+    /// C exposes only the [`Channel::warnings`] KeyMap view.
+    fn warning_texts(&self) -> &[String];
+
+    /// Return the warnings from the most recent read or write as a [`KeyMap`],
+    /// mirroring C's `astWarnings` (`channel.c:1582`).
+    ///
+    /// Keys are `Warning_1`, `Warning_2`, … in issue order, each a string
+    /// entry. Returns `None` when no warnings were issued, matching C's
+    /// `NULL` return for `nwarn == 0`.
+    ///
+    /// The KeyMap is built on demand and returned owned, because that is what
+    /// C does: `astWarnings` allocates a fresh KeyMap per call from the
+    /// channel's internal string list rather than caching one. Returning a
+    /// borrow would oblige every channel to hold a KeyMap in lockstep with
+    /// that list.
+    fn warnings(&self) -> Option<KeyMap> {
+        let texts = self.warning_texts();
+        if texts.is_empty() {
+            return None;
+        }
+        let mut map = KeyMap::with_size_guess(texts.len());
+        for (i, text) in texts.iter().enumerate() {
+            // C passes a single-space comment (`astMapPut0C(result, key,
+            // (this->warnings)[i], " ")`), which its dump layer then treats as
+            // absent; pass None so the Rust dump matches.
+            map.put_0c(&format!("Warning_{}", i + 1), text, None)
+                .expect("Warning_<n> keys are valid and distinct");
+        }
+        Some(map)
+    }
 
     /// Return a shared reference to the channel configuration.
     fn config(&self) -> &ChannelConfig;
