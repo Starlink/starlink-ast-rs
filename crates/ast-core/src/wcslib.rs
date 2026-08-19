@@ -591,6 +591,14 @@ impl PrjParams {
         // do not default to zero.
         let p = &mut self.p_storage;
         let p2 = &mut self.p2_storage;
+        // One arm per projection, each testing its own parameters for
+        // BAD_VALUE, mirroring the `switch` in wcslib's `prjset` / AST's
+        // `InitPrjPrm`. Clippy would fold the single-test arms into match
+        // guards, which cannot be done for the arms that supply two defaults
+        // (Cyp, Tpn) — the result would be a block where structurally
+        // identical projections are written two different ways, and no longer
+        // line up against the C source.
+        #[allow(clippy::collapsible_match)]
         match proj {
             WcsProjection::Szp => {
                 if p[3] == BAD_VALUE {
