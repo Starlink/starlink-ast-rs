@@ -120,8 +120,17 @@ The SCUBA-2 / SMURF pipeline mutates `SkyFrame::Epoch` and
 
 If you find yourself adding a `Mutex`, `RwLock`, allocation, or
 non-trivial work into any `SkyFrame::set_*` method, stop and
-reconsider — you're regressing the hot path. Tier-5 oracle benches
-fail CI if Rust is >10% slower than C on these.
+reconsider — you're regressing the hot path.
+
+**There is currently no automated performance gate.**
+`ast-oracle-bench` is a placeholder and CI runs no benchmark, so a
+hot-path regression will not be caught for you. Until it is wired up,
+re-run `cargo run --release --example bench_per_class -p ast-core`
+against the C oracle by hand when you touch a transform path, and
+compare with `docs/issues/mapping-perf-vs-c-oracle.md` (snapshot
+2026-05-19). Note that snapshot already records several cheap mappings
+5–42× slower than C at bulk N; the SCUBA-2 / LSST path (PolyMap,
+MatrixMap) is not among them.
 
 ## Bulk-transform optimisation (per-mapping evaluation)
 
@@ -182,6 +191,68 @@ on those grounds; do not re-prototype it without new motivation.
   needed: `BasicFrame` (vs trait `Frame`), `BoxRegion` (vs
   `std::boxed::Box`).
 
+## Before porting a class — find C's extension points
+
+C's per-class `vtab` methods are not uniformly boilerplate. Some are
+the extension mechanism a *generic driver in another file* calls back
+into per class, and collapsing those into one central function makes
+the driver's control flow unportable. This is the most expensive
+mistake this project has made, twice — see H1 in
+[`docs/porting-hazards.md`](docs/porting-hazards.md).
+
+Before writing Rust for a class, list its `vtab` entries in the C
+source and classify each:
+
+- **Ceremony** — `astGetAttrib` / `astSetAttrib` string dispatch,
+  per-attribute dump/load, loader glue. Collapse freely; that is the
+  point of the port.
+- **Architecture** — a method a generic algorithm dispatches to per
+  class. Port it as a trait method at the *same granularity as C*,
+  even when one central `match` would pass today's fixtures.
+
+The test is mechanical: **does a generic driver in another file call
+this through the vtab?** If yes, the Rust port needs the same seam.
+
+Known architecture, not boilerplate: `MapMerge`, `Transform`,
+`Simplify`, `Equal`, `MapSplit`, `Match`, `SubFrame`, `Overlay`,
+`RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`.
+
+Two related rules:
+
+- **Match C's construction shape, not just its arithmetic.** A chain
+  that is mathematically equivalent but structurally different will
+  diverge in whatever consumes the structure — the simplifier, the
+  serialiser, `MapSplit` — and it surfaces far from the change (H2).
+- **If the C source has two names, keep two fields** until a fixture
+  proves they cannot diverge. Cheap to split early, expensive late (H3).
+- **Write down how a C mutable-state convention maps onto owned
+  values** before the first call site that depends on it (`Invert`,
+  `Frozen`, reference-counted sharing). A paragraph in the module doc
+  is enough; without it, every call site re-derives it differently (H4).
+
+## Stop signals
+
+Three signals mean *stop patching and go read the C source*. Each is
+cheap to check and each has been ignored here at measurable cost
+(H5–H7 in [`docs/porting-hazards.md`](docs/porting-hazards.md)).
+
+1. **A threshold, tolerance or iteration count with no analogue in the
+   C source.** Grep the C source for the constant. If C gets the right
+   answer without it, C is doing something structurally different —
+   find out what. If you must ship the heuristic to unblock something,
+   do what `5d9aaa6` did: name it, say what it costs, schedule the port.
+2. **Your fix makes the target case pass and breaks a negative
+   control.** Negative-control fixtures encode "C does *not*
+   simplify/merge/convert this". Breaking one means your rule is not
+   C's rule. Two or three in a row is an architectural mismatch, not a
+   missing rule. Never loosen a negative control to pass a positive case.
+3. **The error shrinks monotonically across successive fixes and never
+   reaches zero.** You are curve-fitting. Stop at the second round and
+   look two layers away from the symptom.
+
+Corollary: at the *second* one-off unit / epoch / time-scale conversion
+added at a call site, stop and port C's conversion function instead (H8).
+
 ## Adding a new Mapping / Frame / Region
 
 The pattern is identical regardless of which trait it implements.
@@ -208,6 +279,23 @@ it lands).
 8. Mark the test ported in `PLAN.md`'s "C → Rust test migration"
    tracker.
 
+### Landing several classes in one pass
+
+Breadth sweeps are legitimate — they unblock fixtures and surface shape
+problems early. They are also how both this port and the prototype
+accumulated their largest debts, because a sweep that passes the
+existing tests looks finished (H9). If you sweep, record the debt in the
+same commit range:
+
+- Name the C algorithm you did *not* port, per class, in the module doc,
+  with the C file and line. `polygon.rs`'s planar-mesh note citing
+  `polygon.c:4329` is the model — not a bare `TODO`.
+- Add a `PLAN.md` row per gap stating **what would expose it**, not just
+  what is missing. "Latent; needs a sky-polygon fixture" names the
+  missing test.
+- Prefer `todo!()` or an error to a plausible return value. The
+  prototype's `BoxRegion::overlap()` returned a hardcoded `4` for weeks.
+
 ## Porting a test from `ast_tester/`
 
 1. Read `reference/starlink-ast/ast_tester/<test>.c` to understand
@@ -227,6 +315,28 @@ it lands).
    `crates/ast-core/tests/` and drive with the same fixture set as
    the C harness.
 6. Update `PLAN.md`.
+
+### Comparators and skip modes
+
+A harness that can pass without comparing is not a gate. Three in this
+repo could, and the one that survived longest hid a real defect (H10–H11).
+
+- **No skip mode.** A case that cannot be compared yet goes in a named
+  exclusion list with a per-case reason string, plus a companion test
+  that fails when an excluded case starts passing.
+  `NATIVE_READ_EXCLUDED` in `test_wcsconv.rs` is the pattern.
+- **Data-driven harnesses hard-fail.** Printing a failure count and
+  returning `Ok` is not a test.
+- **Relaxations are per case, named in source, justified in a comment.**
+  Never widen a global tolerance to make one case pass. Every relaxation
+  is counted in `PLAN.md` §6 so the total cannot drift.
+- **Whatever a comparator normalises becomes unfalsifiable.** `trim()`
+  and `split_whitespace()` in a byte-exactness comparator make trailing
+  whitespace invisible — which is exactly the defect fixed in `86810ce`.
+  If the comparator normalises anything, the corpus needs a fixture that
+  exercises what was normalised.
+- **Before documenting a gate, run it.** A declared gate that does not
+  hold is worse than no gate, because it stops anyone looking (H12).
 
 ## Modifying `ast-capi` (CFFI shim) — extra care
 
@@ -263,10 +373,25 @@ The C ABI is **frozen**. Existing applications must keep linking.
 | Rewriting `vendor/wcslib/` in C | The Rust port is step 6a; keep the C source unchanged until then |
 | Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/ast-core/tests/fixtures/` so tier-1 works without the submodule |
 | Hand-editing `ast_err.h` | Generated from `ast_err.msg` by `build.rs` |
+| Collapsing a per-class `MapMerge` / `RegPins` / `SubFrame` into one central `match` | These are C's extension points, not boilerplate — see "Before porting a class" |
+| Adding a tolerance or iteration count that has no analogue in the C source | Stop signal 1; the CRPIX ladder cost a week |
+| Loosening a negative-control fixture to make a positive case pass | Stop signal 2; inverts what the fixture exists to prove |
+| A skip mode in a data-driven harness | A gate that can pass without comparing is not a gate |
 | Creating `Object::copy()` or `with_*` methods | Removed in design — `Clone` is the deep copy, mutation is direct |
 
 ## Important pointers
 
+- **Porting hazards** (read the entry matching what you're about to do):
+  [`docs/porting-hazards.md`](docs/porting-hazards.md). Failure modes
+  that have already cost this project time, indexed by trigger, with the
+  commits that prove the cost. The checks above are its summary; the file
+  carries the evidence.
+- **Upstream sync protocol**: before moving the
+  `reference/starlink-ast` pin, diff the incoming range for
+  serialisation changes and grep `docs/issues/c-library-quirks.md` for
+  entries the port *mirrors* rather than merely records — a quirk fixed
+  upstream turns a faithful mirror into a bug. Regenerate all affected
+  corpora in one commit range. `PLAN.md` §8 tracks the pending sync.
 - **Design spec** (authoritative):
   `docs/specs/2026-04-20-rust-port-design.md`.
 - **Test-migration tracker**: `PLAN.md` — every C test program in
