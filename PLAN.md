@@ -138,11 +138,51 @@ were previously indexed nowhere. The first row is the design's stated purpose.
 | Area | State | Blocks |
 |---|---|---|
 | `ast-capi` C-ABI shim | UNSTARTED — `crates/ast-capi/src/lib.rs` is a one-line comment; 0 exported symbols, no `ast.h`, no `astClone`/`astAnnul` refcounting, no `astBegin`/`astEnd` handle stack, no thread-local status, no variadic `astSet` parsing, no `catch_unwind` boundary, and neither of the two CI header-drift checks exists | tiers 3 and 4 below; the drop-in-replacement goal (pyast / Starlink / DS9 linking unchanged) |
+| `ast-capi` immutability enforcement (`AST__IMMUT`) | OPEN, design decision — see the note below | `ast-capi`; drop-in compatibility for callers that mutate a shared Mapping |
 | Tier 3 — `ast-ffi-tests` | UNSTARTED — crate body is `#![allow(missing_docs)]`. Would run the real C `ast_tester` programs against the Rust `libast` | blocked on `ast-capi` |
 | Tier 4 — `ast-oracle-tests` | UNSTARTED — same. Would link `ast-core` + reference `libast.a` for live bit/ULP comparison. **No test in the repo currently executes C code and compares live**; all C comparison is against frozen committed corpora | blocked on `ast-capi` |
 | Tier 5 — `ast-oracle-bench` | UNSTARTED — 6-line criterion placeholder; see the perf row in §2 | — |
 | `ast-plugins` (Grf / Grf3d backends) | UNSTARTED — one-line stub | `Plot` / `Plot3D`, and the `RegTrace` / `RegSplit` region deferrals in §1 |
 | wcslib Rust port (step 6a) | UNSTARTED — `vendor/wcslib` (3,327 code lines) still compiled and linked, alongside ERFA (16,626) and PAL (1,386 + a 234-line `palwrap.c`) | — |
+
+### `AST__IMMUT` at the shim boundary
+
+C enforces, in every class as of the pending `u/timj/misc-bugs` merge, that a
+Mapping which has been cloned or included in another Object may not have its
+attributes changed — `Invert` excepted. `ast.news` files this under "may break
+existing code": callers that previously changed `PolyMap.IterInverse`,
+`MathMap.Seed` or `SplineMap.InvTol` through a shared pointer succeeded
+silently and now get `AST__IMMUT`.
+
+**None of this can arise in `ast-core`**, for three independent reasons: `Clone`
+on `Box<dyn Mapping>` is a deep copy that recurses through compound classes;
+`DynMapping` is single-owner and compound constructors consume their arguments;
+and component accessors are `pub(crate)`, so a component is unreachable from
+outside the crate. `ErrorCode::Immut` is generated from `ast_err.msg` and is
+correctly unused. The rationale is recorded in `crates/ast-core/src/error.rs`'s
+module docs so the unused variant is not mistaken for an omission.
+
+**`ast-capi` restores the hazard by design** and has to decide how to police it.
+The spec commits to `astClone` = `Arc::clone` sharing one `RefCell<AnyObject>`
+across handles (design spec, "Handle registry in the owned-value world"), and
+says nothing about immutability — so this is a gap in the shim design, not
+deferred work.
+
+The two halves are not equally hard:
+
+- **"has been cloned"** is tractable: `Arc::strong_count() > 1` is a natural
+  test at the point of mutation.
+- **"included in another Object"** has no Rust equivalent, because inclusion
+  *consumes* the object. When a C caller runs `astCmpMap(a, b)`, none of the
+  three obvious options is right: deep-copying into the CmpMap leaves the
+  caller's handles valid and independently mutable, which is what C forbids;
+  moving makes the handles dangle, breaking the ABI; and doing nothing loses
+  the error C now raises. The shim therefore needs to keep the `Arc`s alive and
+  shared *and* carry an immutability flag per slot — state `ast-core` has no
+  concept of, which means it belongs in the registry rather than in the object.
+
+Deciding this before the shim is written is much cheaper than retrofitting it,
+because it constrains the registry's slot representation.
 
 Absent classes, for completeness (52,168 code lines of C, 28% of the library by
 code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`, `YamlChan`,
@@ -159,11 +199,15 @@ routine: the unmerged `u/timj/misc-bugs` branch (40 commits, 25 `src/` files,
 +872/−235) carries nineteen defect fixes, **four of which change serialized
 output**. Task 15 on that branch alone regenerated 69 `.native` fixtures.
 
+The table below covers those four plus one behaviour change that needs no
+Rust-side work — listed so nobody spends the sync looking for the fix.
+
 | C change | Port's current position | Action required when the pin moves |
 |---|---|---|
 | `IsSimp` placement becomes deterministic | Quirk documented; 5 wcsconv cases licensed via `ALIASING_TAG_LICENSED` | Port the deterministic placement rule; retire the licence; byte-exactness becomes achievable on those 5 |
 | `WcsNative` no longer inverts the encapsulated PermMap | Deliberately not mirrored (`docs/issues/c-library-quirks.md`); same 5 licensed cases | Retire the licence — the port's shape becomes the correct one with no code change |
 | `EncodeFloat` justification fixed | **Mirrored** in `bfacdfe` (length-preserving exponent-zero strip) | Remove the mirror. A faithful mirror of a fixed bug is a bug |
+| Mapping immutability enforced in every class (`AST__IMMUT`) | Not applicable to `ast-core` — the condition cannot be constructed (deep `Clone`, single-owner `Box`, `pub(crate)` component accessors) | **No action in `ast-core`.** Do not go looking for a fix: the work lands in `ast-capi`, which restores sharing at the handle boundary. See the §7 note |
 | KeyMap dumps emitted in key order | Port already dumps in a stable key order by design | Verify convergence; regenerate KeyMap fixtures |
 
 Sequence: land the C merge, regenerate the affected corpora
