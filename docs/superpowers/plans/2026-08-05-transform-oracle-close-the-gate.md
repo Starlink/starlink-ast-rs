@@ -319,5 +319,5 @@ Defining the third selector as a complement rather than as its own path predicat
 
 - The 18 `XphMap` / `StcResourceProfile` load-fails — they need those classes ported, tracked in `PLAN.md` §4.
 - The two live entries in `transform_oracle_overrides.txt` (`tnx-cheb.head off`, `neg_unitnormmap_inv_fwd_diffcentre.map golden-inv off`).
-- `ALIASING_TAG_LICENSED` in `test_wcsconv.rs` — five diagnosed C aliasing artifacts, documented in `docs/issues/c-library-quirks.md`.
+- `ALIASING_TAG_LICENSED` in `test_wcsconv.rs` — five diagnosed C aliasing artifacts, documented in `docs/issues/c-library-quirks.md`. (Superseded at the `f6762005` sync by `ISSIMP_PLACEMENT_LICENSED`, once upstream `e40e71b4` made the C side deterministic; see PLAN.md §8.)
 - The seven `skip_string_compare` rows in the simplify manifest — they relax serialization comparison only; `equal()` and the transform still assert.

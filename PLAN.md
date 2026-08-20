@@ -325,10 +325,23 @@ silently. Adding a row here is a deliberate act; the numbers are the claim.
 | Gate | Cases | Relaxed | What the relaxation is |
 |---|---:|---:|---|
 | wcsconv (`test_wcsconv.rs`) | 193 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
-| wcsconv | 193 | 5 | `ALIASING_TAG_LICENSED` — drops `IsSimp` / `Invert` tag lines both sides; both are C quirks being fixed upstream (see §8) |
+| wcsconv | 193 | 20 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so the licence covers one diagnosed extra card per simplified plane and nothing else. A port gap, not a C artifact — see §8 |
 | wcsconv | 193 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 427 | 7 | `skip_string_compare` in the manifest (`lsst`, `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_matrixmap_03`, `cap_specmap_02`, `cap_winmap_03`) |
+| simplify regression | 427 | 5 | `skip_string_compare` in the manifest (`lsst`, `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`) |
+| simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` in `test_simplify_regression.rs` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 427 | 132 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
+
+Movement at the `f6762005` sync: the wcsconv tag licence went from 5 cases to
+20, but narrowed from "drop every `IsSimp` and `Invert` line, unpaired" to "drop
+the `IsSimp` lines with both counts pinned" — `Invert` is byte-compared again,
+and the residue is one diagnosed card per plane rather than an undiagnosed
+count mismatch. `skip_string_compare` went from 7 cases to 5:
+`cap_matrixmap_03` became byte-exact outright, and `cap_cmpmap_03` /
+`cap_specmap_02` moved to the counted licence. The `ignore_is_simp_line` row is
+newly *listed* rather than newly added — it predates the sync and was the
+"hack" the sync was meant to examine; it is structural, not a port gap, and it
+gained the at-least-one-tag assertion here.
 
 Known hole, not a relaxation: `native_round_trip_fixture`'s `trim()` /
 `split_whitespace()` comparison — see the open row in §5.
@@ -397,33 +410,50 @@ code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`, `YamlChan`,
 `Table` / `FitsTable` (§3, §5) and `IntraMap` / `XphMap` (§5 deferred fixtures)
 currently gate active work.
 
-## 8. Pending upstream sync
+## 8. Upstream sync at `f6762005` — done
 
-The pin is `50c2b21b`, which is still C master's head. The next sync will not be
-routine: the unmerged `u/timj/misc-bugs` branch (40 commits, 25 `src/` files,
-+872/−235) carries nineteen defect fixes, **four of which change serialized
-output**. Task 15 on that branch alone regenerated 69 `.native` fixtures.
+The pin moved from `50c2b21b` to `f6762005`: 41 commits, 25 `src/` files,
++872/−235, nineteen defect fixes, and 103 changed files under `ast_tester/`.
+Every fix in the range had an entry in `docs/issues/c-library-quirks.md`, which
+is what drove the sync — for each entry, either the port mirrored the bug and
+the mirror had to go, or the port already did the right thing and needed a test
+pinning the agreement.
 
-The table below covers those four plus one behaviour change that needs no
-Rust-side work — listed so nobody spends the sync looking for the fix.
+Landed in `2efde3a`, `e0cb246`, `e029927` and `3a0a9d9`. 97 fixtures were
+copied across byte-identical.
 
-| C change | Port's current position | Action required when the pin moves |
-|---|---|---|
-| `IsSimp` placement becomes deterministic | Quirk documented; 5 wcsconv cases licensed via `ALIASING_TAG_LICENSED` | Port the deterministic placement rule; retire the licence; byte-exactness becomes achievable on those 5 |
-| `WcsNative` no longer inverts the encapsulated PermMap | Deliberately not mirrored (`docs/issues/c-library-quirks.md`); same 5 licensed cases | Retire the licence — the port's shape becomes the correct one with no code change |
-| `EncodeFloat` justification fixed | **Mirrored** in `bfacdfe` (length-preserving exponent-zero strip) | Remove the mirror. A faithful mirror of a fixed bug is a bug |
-| Mapping immutability enforced in every class (`AST__IMMUT`) | Not applicable to `ast-core` — the condition cannot be constructed (deep `Clone`, single-owner `Box`, `pub(crate)` component accessors) | **No action in `ast-core`.** Do not go looking for a fix: the work lands in `ast-capi`, which restores sharing at the handle boundary. See the §7 note |
-| KeyMap dumps emitted in key order | Port already dumps in a stable key order by design | Verify convergence; regenerate KeyMap fixtures |
+| C change | What the port did |
+|---|---|
+| `IsSimp` placement becomes deterministic (`e40e71b4`) | Ported: per-class `has_been_simplified` became a two-orientation `SimplifiedRecord`, and all six tag-clearing routines that emulated the old behaviour were deleted. `ALIASING_TAG_LICENSED` retired |
+| `WcsNative` no longer inverts the encapsulated PermMap (`f54ff1b7`) | No code change — the port's shape was already the corrected one. `serpens_native` is now byte-exact and the `Invert` half of the old licence is gone |
+| `EncodeFloat` justification fixed (`68bcb7db`) | Mirror removed |
+| Duplicate-keyword consumption (`6301311f`) | Mirror removed; the write-side sweep gained the matching rule so the newly-surviving MJD-OBS reaches the output |
+| `CDjjjiii` consumption (`fd92f9d2`) | Mirror removed |
+| Mapping immutability (`AST__IMMUT`) | Not applicable to `ast-core`; the work belongs to `ast-capi`. `testimmutable.c` is deferred with that reason |
+| Discard the simplified record on mutation (`6a4bc292`, `b2de3a33`) | Ported for the six classes with a settable attribute here; the other five have no `&mut self` setter, so the stale record cannot be constructed |
+| KeyMap dumps in key order (`890707a8`) | Already the port's design; now gated |
+| KeyMap: four mirrored defects (`6d114495`, `a76964c7`, `b7135abc`, `f444583f`, `d8edc072`) | All un-mirrored — see the commit and the quirk entries |
+| `round()` rounding sweep (`e4e6376d`, `1199880a`, `e447556a`, `7b084bbf`) | Ported at the four sites the port has: the grism interference order, PermMap axis indices, the global-bounds threshold, and WCSAXES |
 
-Sequence: land the C merge, regenerate the affected corpora
-(`.native` wcsconv expectations, KeyMap fixtures, any `.simp` carrying an
-`IsSimp` tag) in one commit range, then remove the two mirrors and the aliasing
-licence. Do not move the pin piecemeal — four output changes arriving separately
-would make each fixture regeneration ambiguous.
+**What is still open.** Twenty wcsconv cases emit one extra `IsSimp` card per
+simplified WCS plane. The extra one sits on an interior `CmpMap` — the node C's
+closing fold *builds* out of its component list rather than one it nominates, so
+C never hands it to `astSimplify`. This is a port gap, not a C artifact, and it
+is licensed per case with both card counts pinned (§6). What would close it:
+making the nominate loop's stamp land only on the components C nominates, which
+means finding where this engine's decomposition admits a node C's `map_list`
+does not. `cap_cmpmap_03` and `cap_specmap_02` are the same symptom on the
+simplify corpus and are the smallest reproductions.
 
-General rule this instantiates: before moving the pin, diff the incoming range
-for serialization changes and check `docs/issues/c-library-quirks.md` for
-entries the port *mirrors*.
+**Not in this range, still open:** the `CmpMap` `InvA`/`InvB` quirk. It is why
+`cap_cmpmap_01` and `cap_cmpmap_04` keep their `skip_string_compare`; the
+`IsSimp` reason they used to share is gone.
+
+General rule this instantiated, and it held: before moving the pin, diff the
+incoming range for serialization changes and check
+`docs/issues/c-library-quirks.md` for entries the port *mirrors*. Four of the
+five mirrors found this way were invisible to every existing test, because the
+fixtures had been generated by the buggy C.
 
 ---
 
@@ -434,5 +464,8 @@ entries the port *mirrors*.
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
 | check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1606 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
-| testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08 |
+| testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08; the nine functions added upstream at `f6762005` ported 2026-08-20 |
+| testmapping.c | crates/ast-core/tests/test_mapping.rs | partially ported 2026-08-20 — the four `IsSimple` functions added upstream at `f6762005`. `testselfsimplifyafterset` is unconstructible here (ZoomMap's `Zoom` and PcdMap's `Disco` have no `&mut self` setter). The file's original PolyMap / LinearApprox body, converted from `testmapping.f`, is covered by `test_polymap.rs` and `test_polytran.rs` |
+| testfitschan.c | crates/ast-core/tests/test_fitschan*.rs | partially ported — `testgrismorder`, added upstream at `f6762005`, is in `test_fitschan_wcs_write.rs` (2026-08-20); the rest of the file is spread across the seven `test_fitschan_*` files |
+| testimmutable.c | (deferred) | tests `AST__IMMUT`, which guards a change made to a Mapping whose reference count exceeds one. Owned values, deep `Clone` and single-owner `Box` make that condition unconstructible in `ast-core`; the guard belongs to `ast-capi`, which restores sharing at the handle boundary and is unstarted (§7) |
 | testobjectkeymap.c | (deferred) | tests the Object-associated retained KeyMap (`object.c:1736`, `:2480`), `astGetObjSize` and `astSame`; those calls (`astMapPut0I`, `astMapGet0I`, `astMapSize`) are only reachable through the protected `astGetKeyMap`/`astHasKeyMap` machinery, an explicit spec Non-goal of the owned-value port |

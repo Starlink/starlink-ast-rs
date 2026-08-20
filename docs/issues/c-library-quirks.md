@@ -1761,9 +1761,8 @@ sizes under different insertion orders — which is why controlling the dump ord
 is what makes the value exact rather than approximate.
 
 The `MapSz` card is dropped from both sides of any byte comparison against C
-output, following the `ISSIMP<xx>`/`INVERT<xx>` precedent
-(`common::is_aliasing_tag_card`, `ALIASING_TAG_LICENSED` in
-`crates/ast-core/tests/test_wcsconv.rs`). Every other card, `MemCnt` included, is
+output, following the `ISSIMP<xx>` precedent (`common::is_issimp_tag_card`,
+`ISSIMP_PLACEMENT_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs`). Every other card, `MemCnt` included, is
 compared byte-exactly, and the computed size is tested directly against the C
 oracle so a wrong value cannot hide behind the exclusion.
 

@@ -85,7 +85,7 @@ The three C bugs the spec specifies are **already written up** in `docs/issues/c
 | `MapSz` records collision history (the Rust divergence rationale, probe evidence, and "**Upstream fix.** None proposed") | `:1629` |
 
 No task in this plan re-creates them.
-Task 17's `is_map_sz_card` helper points its doc comment at the `:1629` section, the way `common::is_aliasing_tag_card` points at `docs/issues/c-library-quirks.md`.
+Task 17's `is_map_sz_card` helper points its doc comment at the `:1629` section, the way `common::is_issimp_tag_card` (then named `is_aliasing_tag_card`) points at `docs/issues/c-library-quirks.md`.
 
 ## File Structure
 

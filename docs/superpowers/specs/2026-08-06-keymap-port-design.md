@@ -98,7 +98,7 @@ Rust's value is a function of the entry set. The consequences:
 ### Oracle comparison ignores the `MapSz` card
 
 Because C's value is history-dependent and ours is content-dependent, byte comparison against C output excludes the `MapSz` card from both sides.
-This follows the established precedent for `ISSIMP<xx>` / `INVERT<xx>` — `common::is_aliasing_tag_card` and `ALIASING_TAG_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs` — and is licensed the same way: per-card, named, and documented, not a blanket tolerance.
+This follows the established precedent for `ISSIMP<xx>` — `common::is_issimp_tag_card` and `ISSIMP_PLACEMENT_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs` — and is licensed the same way: per-card, named, and documented, not a blanket tolerance. (That helper covered `INVERT<xx>` too until the `f6762005` sync, where the upstream `WcsNative` fix made the port's `Invert` shape the correct one.)
 Every other card, `MemCnt` included, is compared byte-exactly.
 
 `HashFun` is still ported verbatim; we write no hash algorithm of our own, and `MapSz` fidelity is not traded away.
@@ -450,7 +450,7 @@ Following the multi-file pattern already used by `regions/`.
   - computed `MapSz` locked against C's own value for the key sets the probes used — the four fixture keys, spreads at 100/500/2000, all-colliding sets at 11/40/300, a collide-plus-spread mixture, and the `SizeGuess` combinations;
   - a growth-table test pinning the doubling boundaries (`MIN_TABLE_SIZE` until a bucket passes 10, then powers of two).
 - **Byte-exact `.ast` round trip** over the two regenerated fixtures, via the existing auto-discovering round-trip harness.
-- **`MapSz` excluded from oracle byte comparison**, implemented alongside `common::is_aliasing_tag_card` and listed in its licensed-exclusion table with the reason.
+- **`MapSz` excluded from oracle byte comparison**, implemented alongside `common::is_issimp_tag_card` (then named `is_aliasing_tag_card`) and listed in its licensed-exclusion table with the reason.
 
 Both simplify-fixture consumers must be run when the fixtures change: the manifest-driven simplify test and the auto-discovering byte-exact round-trip test.
 
