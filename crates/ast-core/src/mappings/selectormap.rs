@@ -14,6 +14,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::helpers::{ast_equal, is_bad};
 use super::{DynMapping, Mapping, UnitMap};
+use crate::mappings::SimplifiedRecord;
 use crate::regions::{
     BoxRegion, Circle, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList, Polygon,
     Prism,
@@ -29,7 +30,7 @@ pub struct SelectorMap {
     regions: Vec<DynRegion>,
     badval: f64,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 /// Builder for [`SelectorMap`].
@@ -81,7 +82,7 @@ impl SelectorMapBuilder {
             regions: self.regions,
             badval: self.badval,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 }
@@ -120,7 +121,7 @@ impl Clone for SelectorMap {
             regions: self.regions.clone(),
             badval: self.badval,
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
         }
     }
 }
@@ -148,9 +149,6 @@ impl Mapping for SelectorMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn has_forward(&self) -> bool {
@@ -171,11 +169,11 @@ impl Mapping for SelectorMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -245,7 +243,7 @@ impl Mapping for SelectorMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -292,7 +290,7 @@ impl Mapping for SelectorMap {
                 regions: simplified_regions,
                 badval: self.badval,
                 inverted: self.inverted,
-                has_been_simplified: false,
+                simplified: SimplifiedRecord::default(),
             }))
         } else {
             Ok(Box::new(self.clone()))

@@ -15,6 +15,7 @@ use super::perm::PermMap;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// Radians to degrees (C `AST__DR2D`).
 const DR2D: f64 = 180.0 / std::f64::consts::PI;
@@ -104,7 +105,7 @@ pub struct WcsMap {
     /// Whether the mapping is inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
     /// inverse projection clips returned longitude values to the projection's
     /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
@@ -185,7 +186,7 @@ impl WcsMap {
                     params,
                     prj: RefCell::new(prj),
                     inverted: false,
-                    has_been_simplified: false,
+                    simplified: SimplifiedRecord::default(),
                     lon_check: None,
                     fits_proj: None,
                     tpn_tan: None,
@@ -210,7 +211,7 @@ impl WcsMap {
             params,
             prj: RefCell::new(prj),
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             lon_check: None,
             fits_proj: None,
             tpn_tan: None,
@@ -528,7 +529,7 @@ impl WcsMap {
             params: self.params.clone(),
             prj: RefCell::new(prj),
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -576,7 +577,7 @@ impl Clone for WcsMap {
             params: self.params.clone(),
             prj: RefCell::new(prj),
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -599,9 +600,6 @@ impl Mapping for WcsMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -803,7 +801,7 @@ impl Mapping for WcsMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -965,11 +963,11 @@ impl Mapping for WcsMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {

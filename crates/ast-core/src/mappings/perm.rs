@@ -16,6 +16,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// Axis permutation and constant-injection mapping.
 ///
@@ -43,7 +44,7 @@ pub struct PermMap {
     /// Whether the mapping is currently inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Serialize outperm as `OutCpy=1` (identity shorthand).
     out_is_copy: bool,
     /// Serialize inperm as `InCpy=1` (identity shorthand).
@@ -75,7 +76,7 @@ impl PermMap {
             inperm: inperm.to_vec(),
             constants: constants.to_vec(),
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             out_is_copy: false,
             in_is_copy: false,
             perm_split: false,
@@ -174,7 +175,7 @@ impl PermMap {
             inperm: in_norm,
             constants: new_consts,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             out_is_copy,
             in_is_copy,
             perm_split: self.perm_split,
@@ -446,9 +447,6 @@ impl Mapping for PermMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -535,7 +533,7 @@ impl Mapping for PermMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -562,7 +560,7 @@ impl Mapping for PermMap {
                 inperm: in_norm,
                 constants,
                 inverted: false,
-                has_been_simplified: false,
+                simplified: SimplifiedRecord::default(),
                 out_is_copy: self.in_is_copy,
                 in_is_copy: self.out_is_copy,
                 perm_split: self.perm_split,
@@ -579,7 +577,7 @@ impl Mapping for PermMap {
                     inperm: in_norm,
                     constants,
                     inverted: false,
-                    has_been_simplified: false,
+                    simplified: SimplifiedRecord::default(),
                     out_is_copy: self.out_is_copy,
                     in_is_copy: self.in_is_copy,
                     perm_split: self.perm_split,
@@ -1202,11 +1200,11 @@ impl Mapping for PermMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {

@@ -108,6 +108,69 @@ impl<T: Any> AsAny for T {
     }
 }
 
+/// Which orientations of a Mapping have already been simplified.
+///
+/// C keeps two bits — `AST__ISSIMPLE_FLAG` and `AST__ISSIMPLEINV_FLAG`
+/// (mapping.h:414-419) — and picks between them on the current `Invert` value.
+/// Simplifying a Mapping produces something equivalent to the orientation the
+/// original had at the time, and the inverse may simplify differently, so the
+/// two are recorded separately.
+///
+/// The consequence that matters is what does *not* happen: setting `Invert`
+/// selects the other record instead of discarding one, so the many routines
+/// that invert a Mapping only to line it up for inspection and then invert it
+/// back leave it reporting exactly what it reported before. That is what makes
+/// the placement of an `IsSimp` card in a dump a property of the Mapping tree
+/// alone, rather than of which nodes some earlier probe happened to touch.
+///
+/// Neither record is cleared as a side effect of anything else. A class
+/// discards both, via [`SimplifiedRecord::clear`], only when it lets something
+/// change that feeds its own simplification.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct SimplifiedRecord {
+    forward: bool,
+    inverse: bool,
+}
+
+impl SimplifiedRecord {
+    /// The record a Mapping loaded from a dump starts with: the `IsSimp` card
+    /// describes the orientation the Mapping was written out in, which is the
+    /// orientation its `Invert` card sets up (mapping.c:24135).
+    pub(crate) fn for_orientation(inverted: bool, flag: bool) -> Self {
+        let mut record = Self::default();
+        record.set(inverted, flag);
+        record
+    }
+
+    /// Whether the given orientation has been simplified.
+    pub(crate) fn get(self, inverted: bool) -> bool {
+        if inverted { self.inverse } else { self.forward }
+    }
+
+    /// Record (or un-record) the given orientation, leaving the other alone.
+    pub(crate) fn set(&mut self, inverted: bool, flag: bool) {
+        if inverted {
+            self.inverse = flag;
+        } else {
+            self.forward = flag;
+        }
+    }
+
+    /// Discard both records (C `astClearIsSimple`, mapping.h:440).
+    ///
+    /// A class needs this when it lets something change that feeds its own
+    /// simplification — an input to the part of its merge that runs "without
+    /// reference to the neighbouring Mappings in the list". Nothing else reads
+    /// the records: a Mapping is offered to its neighbours' merge whatever
+    /// they hold, so a change that only affects whether this Mapping merges
+    /// with a neighbour need not discard them. Discarding anyway is safe, since
+    /// the records can only ever suppress a simplification and never make one
+    /// wrong, so err towards it when in doubt.
+    pub(crate) fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
 /// A coordinate transformation.
 ///
 /// All concrete mapping classes implement this trait. Mappings are `Send`
@@ -428,36 +491,60 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
         (true, true)
     }
 
-    /// Whether this mapping has already been simplified.
+    /// Whether this mapping has already been simplified **in its current
+    /// orientation**.
     ///
     /// Mirrors C's `IsSimple` attribute (mapping.c): `Mapping::simplify`
     /// sets it on its result so a later `simplify` of the same object is a
     /// fast no-op (`simplified()` returns self unchanged and the merge loop
-    /// skips it). It is therefore an optimisation flag, not a permanent
-    /// "never simplify" lock — `invert()` clears it (C `astSetInvert` clears
-    /// `IsSimple`, mapping.c:23229), since the inverse may simplify further.
-    /// Serialised as the `IsSimp` token.
+    /// skips it). It is an optimisation flag, not a permanent "never simplify"
+    /// lock.
+    ///
+    /// Simplifying a Mapping produces something equivalent to the orientation
+    /// it had at the time, and the inverse may simplify differently, so each
+    /// orientation carries its own record — see [`SimplifiedRecord`].
+    /// `invert()` therefore changes which record applies rather than
+    /// discarding one, and inverting and inverting back leaves the Mapping
+    /// reporting exactly what it reported before. Serialised as the `IsSimp`
+    /// token.
     fn has_been_simplified(&self) -> bool {
         false
     }
 
-    /// Set (or clear) the "already simplified" flag (C `IsSimple`).
+    /// Set (or clear) the "already simplified" record for the current
+    /// orientation (C `astSetIsSimple`, mapping.h:428).
     ///
-    /// `Mapping::simplify` sets it `true` on its result; `invert()` clears it.
+    /// `Mapping::simplify` sets it `true` on its result. Discarding the record
+    /// is a class-level decision — see [`SimplifiedRecord::clear`].
     fn set_has_been_simplified(&mut self, _flag: bool) {}
 
-    /// Serialisation-only view of the `IsSimp` token.
+    /// Whether the `IsSimp` token is written for this Mapping.
     ///
-    /// C's `IsSimple` both blocks a redundant `astSimplify` recursion and is
-    /// dumped as `IsSimp`. In this port the first role is
-    /// [`Mapping::has_been_simplified`], which also gates the merge/decompose
-    /// machinery. The two roles diverge for a compound component C tags via
-    /// `astSimplify` (mapping.c:24759) but that our engine must still be free to
-    /// decompose during a parent's `flatten`. By default this mirrors
-    /// `has_been_simplified`; [`CmpMap`] overrides it to add an independent
-    /// dump-only tag.
+    /// C reads one record for both this and the `astSimplify` short-circuit.
+    /// [`CmpMap`] splits them — see `CmpMap::dump_simplified` for why — so it
+    /// overrides this; for every other class the two are the same thing.
     fn dump_is_simple(&self) -> bool {
         self.has_been_simplified()
+    }
+
+    /// Record `flag` for the named orientation, whatever orientation this
+    /// Mapping is currently in.
+    ///
+    /// This is C's idiom for tagging a Mapping the caller is holding at the
+    /// wrong orientation — set `Invert`, set the flag, set `Invert` back — and
+    /// it works only because setting `Invert` no longer discards the record
+    /// (mapping.c:23272). The engine needs it because it normalises a
+    /// simplified component to the forward orientation while the tree still
+    /// serialises that component inverted.
+    fn set_simplified_in(&mut self, inverted: bool, flag: bool) {
+        let restore = self.is_inverted();
+        if restore != inverted {
+            self.invert();
+        }
+        self.set_has_been_simplified(flag);
+        if restore != inverted {
+            self.invert();
+        }
     }
 
     /// Whether this mapping carries the `AllowSimplify` flag (C `AlSimp`,

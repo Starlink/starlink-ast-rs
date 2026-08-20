@@ -12,29 +12,45 @@ the quirk so reviewers can find both sides.
 
 ---
 
-## CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification
+## RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification
 
-**Status:** Open. Not reproducible in the Rust port by any structural
-rule; the three affected simplify fixtures (`cap_cmpmap_01`,
-`cap_cmpmap_04`, `cap_specmap_02`) are compared by `astequal` only
-(the byte-exact string diff is skipped — see
-`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`).
-The five affected wcsconv cases — `serpens`, `wave-f2w`, `vopt-f2w`,
-`cd-cross` and `axes-swap` — are compared with every
-`ISSIMP<xx>`/`INVERT<xx>` card dropped from both the Rust output and the
-C reference (`common::is_aliasing_tag_card`, applied by
-`ALIASING_TAG_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs`);
-every other card is still byte-compared. `cd-cross` and `axes-swap` look
-at first glance like the mapping-invert shape divergence below (their
-first diffs are `ISA_K = 'Mapping '` and `ISA_I = 'Mapping '` where the
-reference has `INVERT_B= 1`), but dropping the tag cards from both sides
-leaves no diff at all — they belong here, not there. The tag *count*
-also differs between the two sides (Rust emits 4 tag cards where C emits
-5 for `cd-cross` and for `axes-swap`, 3 vs 4 for `serpens`), which is why
-the harness drops the lines rather than pairing them up positionally.
-The transforms and tree structure match C exactly; the sole divergence
-is *which interior `CmpMap` node carries the serialised `IsSimp = 1`
-tag*.
+**Status:** Fixed upstream at commit e40e71b4, which is the proposal this entry's
+companion report made (`docs/issues/2026-08-09-issimple-tag-placement.md`): C now
+records the simplified state of each orientation separately, in
+`AST__ISSIMPLE_FLAG` and `AST__ISSIMPLEINV_FLAG`, and selects between them on the
+current `Invert` value. Setting `Invert` no longer clears anything, so the probe
+routines that invert a component to line it up and then invert it back leave the
+Mapping reporting exactly what it reported before. Where an `IsSimp` card lands is
+now a property of the Mapping tree alone.
+
+**Port position after the sync.** The emulation is gone: the port's per-class
+`has_been_simplified` became a two-orientation `SimplifiedRecord`
+(`crates/ast-core/src/mappings/mod.rs`), `invert()` no longer clears it, and every
+routine that existed to reproduce C's clears — `clear_element_simple_tags`,
+`clear_component_simple_tag`, `clear_child_simple_tag`, `reconstruct_simplified`
+and the recursion-guard clear — was deleted. Tagging was extended to the
+`astSimplify` call sites C reaches for TranMap and RateMap components, for the two
+halves of a distributed branch recombination, and for the WinMap/MatrixMap swap
+results.
+
+The corpus moved with it. The simplify gate is byte-exact on 425 of 427 fixtures
+with no blanket skip left for a tag: `cap_matrixmap_03` retired its
+`skip_string_compare` outright, and `cap_cmpmap_03` and `cap_specmap_02` carry a
+counted per-case licence instead (`ISSIMP_PLACEMENT_LICENSED` in
+`test_simplify_regression.rs`). `cap_cmpmap_01` and `cap_cmpmap_04` keep theirs for
+an unrelated reason — the `InvA`/`InvB` quirk below, still open.
+
+**What is left, and it is a port gap not a C artifact.** Twenty wcsconv cases
+carry exactly one extra `IsSimp` card per simplified WCS plane. The extra one sits
+on an interior `CmpMap` — the node C's closing fold *builds* out of its component
+list rather than one it nominates, so C never hands it to `astSimplify` and never
+stamps it, while this engine reaches it through the nominate loop and does. Those
+cases are licensed per case with both card counts pinned
+(`ISSIMP_PLACEMENT_LICENSED` in `test_wcsconv.rs`); every other card, `Invert`
+included, is byte-compared. Closing it means making the nominate loop's stamp land
+only on components C nominates.
+
+**The C behaviour this entry described, for the record:**
 
 **C location:**
 

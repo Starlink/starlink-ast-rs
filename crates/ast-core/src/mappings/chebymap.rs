@@ -16,6 +16,7 @@ use super::polymap::{PolyMap, PolyTerm};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A Chebyshev polynomial transformation mapping.
 ///
@@ -50,7 +51,7 @@ pub struct ChebyMap {
     /// Whether the mapping is currently inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl ChebyMap {
@@ -182,7 +183,7 @@ impl ChebyMap {
             scale_i: scale_i_v,
             offset_i: offset_i_v,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         })
     }
 
@@ -354,8 +355,6 @@ impl Mapping for ChebyMap {
         self.inverted = !self.inverted;
         // Keep the inner PolyMap in sync.
         self.poly.invert();
-        // Inversion invalidates the "already simplified" flag (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -453,7 +452,7 @@ impl Mapping for ChebyMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -577,11 +576,11 @@ impl Mapping for ChebyMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     // The inner PolyMap's Invert state is kept in sync by
@@ -1012,7 +1011,7 @@ impl Serializable for ChebyMap {
             scale_i,
             offset_i,
             inverted: false,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
         };
         if base.inverted {
             m.invert();

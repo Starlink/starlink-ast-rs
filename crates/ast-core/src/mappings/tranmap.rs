@@ -21,6 +21,7 @@ use crate::serial::{
 use super::cmpmap::{CmpMap, Composition};
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that combines the forward transformation of one Mapping
 /// with the inverse transformation of another.
@@ -35,7 +36,7 @@ pub struct TranMap {
     map1: DynMapping,
     map2: DynMapping,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Whether the forward transform is defined.
     tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -93,7 +94,7 @@ impl TranMap {
             map1,
             map2,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             tran_forward,
             tran_inverse,
             inv_a,
@@ -165,7 +166,7 @@ impl Clone for TranMap {
             map1: self.map1.clone(),
             map2: self.map2.clone(),
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -197,9 +198,6 @@ impl Mapping for TranMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -256,7 +254,7 @@ impl Mapping for TranMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -271,9 +269,13 @@ impl Mapping for TranMap {
             return normalized.simplified();
         }
 
-        // Step 2: Simplify each component independently.
-        let simp1 = self.map1.simplified()?;
-        let simp2 = self.map2.simplified()?;
+        // Step 2: Simplify each component independently. C reaches both through
+        // `astSimplify` (tranmap.c:853-854), which records the result as
+        // simplified; `simplified()` is the untagged virtual, so record it here.
+        let mut simp1 = self.map1.simplified()?;
+        let mut simp2 = self.map2.simplified()?;
+        simp1.set_has_been_simplified(true);
+        simp2.set_has_been_simplified(true);
 
         // Detect whether simplification changed either component. We check
         // both structural equality AND whether the inverted state differs,
@@ -366,11 +368,16 @@ impl Mapping for TranMap {
 
         // Combine forward mappings: self_fwd ; other_fwd
         let cmp_fwd = CmpMap::new(self_fwd, other_fwd, Composition::Series).ok()?;
-        let simp_fwd = cmp_fwd.simplified().ok()?;
+        let mut simp_fwd = cmp_fwd.simplified().ok()?;
 
         // Combine inverse mappings: other_inv ; self_inv (reverse order for inverse)
         let cmp_inv = CmpMap::new(other_inv_map, self_inv_map, Composition::Series).ok()?;
-        let simp_inv = cmp_inv.simplified().ok()?;
+        let mut simp_inv = cmp_inv.simplified().ok()?;
+
+        // C reaches both through `astSimplify` (tranmap.c:951, 955), which
+        // records the result as simplified.
+        simp_fwd.set_has_been_simplified(true);
+        simp_inv.set_has_been_simplified(true);
 
         // Check if any simplification happened (pointer comparison analog).
         let fwd_simplified = !simp_fwd.equal(&cmp_fwd as &dyn Mapping);
@@ -432,11 +439,11 @@ impl Mapping for TranMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -597,7 +604,7 @@ impl Serializable for TranMap {
             map1: map_a,
             map2: map_b,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             tran_forward,
             tran_inverse,
             inv_a,

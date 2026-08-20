@@ -6,13 +6,14 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// The identity mapping: every output coordinate equals the corresponding input.
 #[derive(Debug, Clone)]
 pub struct UnitMap {
     ncoord: usize,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl UnitMap {
@@ -21,7 +22,7 @@ impl UnitMap {
         Self {
             ncoord,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 
@@ -48,8 +49,6 @@ impl Mapping for UnitMap {
     }
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, _forward: bool) -> AstResult<PointSet> {
@@ -71,7 +70,7 @@ impl Mapping for UnitMap {
         Ok(Box::new(UnitMap {
             ncoord: self.ncoord,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }))
     }
 
@@ -154,11 +153,11 @@ impl Mapping for UnitMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -183,7 +182,7 @@ impl Serializable for UnitMap {
         Ok(UnitMap {
             ncoord: base.nin,
             inverted: base.inverted,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
         })
     }
 }

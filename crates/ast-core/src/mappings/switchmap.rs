@@ -8,6 +8,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::is_bad;
 
 use super::{DynMapping, Mapping, UnitMap};
+use crate::mappings::SimplifiedRecord;
 
 /// Set a Mapping's Invert flag to `want` (invert it iff its current state
 /// differs). Mirrors C `astSetInvert`.
@@ -62,7 +63,7 @@ pub struct SwitchMap {
     isinv: bool,
     route_inv: Vec<bool>,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     intrinsic_nin: usize,
     intrinsic_nout: usize,
 }
@@ -178,7 +179,7 @@ impl SwitchMap {
             isinv,
             route_inv,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -210,7 +211,7 @@ impl SwitchMap {
             isinv,
             route_inv,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -341,7 +342,7 @@ impl Clone for SwitchMap {
             isinv: self.isinv,
             route_inv: self.route_inv.clone(),
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
             intrinsic_nin: self.intrinsic_nin,
             intrinsic_nout: self.intrinsic_nout,
         }
@@ -371,9 +372,6 @@ impl Mapping for SwitchMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn has_forward(&self) -> bool {
@@ -391,11 +389,11 @@ impl Mapping for SwitchMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -564,7 +562,7 @@ impl Mapping for SwitchMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 

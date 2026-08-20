@@ -19,6 +19,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// Maximum spline order (order 4 = cubic).
 const MAX_K: usize = 6;
@@ -68,7 +69,7 @@ pub struct SplineMap {
     /// Whether the mapping is inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl SplineMap {
@@ -120,7 +121,7 @@ impl SplineMap {
             inv_tol: None,
             out_unit: false,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 
@@ -711,9 +712,6 @@ impl Mapping for SplineMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -771,7 +769,7 @@ impl Mapping for SplineMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
         Ok(Box::new(self.clone()))
@@ -884,11 +882,11 @@ impl Mapping for SplineMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -1053,13 +1051,13 @@ impl Serializable for SplineMap {
             inv_tol,
             out_unit,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         };
 
         if base.inverted {
             m.invert();
         }
-        m.has_been_simplified = base.has_been_simplified;
+        m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
         Ok(m)
     }
 }

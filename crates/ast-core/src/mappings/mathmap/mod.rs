@@ -21,6 +21,7 @@ use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
+use crate::mappings::SimplifiedRecord;
 use opcode::CompiledExpr;
 use rng::MathMapRng;
 
@@ -50,7 +51,7 @@ pub struct MathMap {
     /// Inverse-forward pairs simplify?
     simp_if: Option<bool>,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Whether the forward transform is defined.
     has_forward: bool,
     /// Whether the inverse transform is defined.
@@ -88,7 +89,7 @@ impl Clone for MathMap {
             simp_fi: self.simp_fi,
             simp_if: self.simp_if,
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
             has_forward: self.has_forward,
             has_inverse: self.has_inverse,
         }
@@ -163,7 +164,7 @@ impl MathMap {
             simp_fi: None,
             simp_if: None,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             has_forward,
             has_inverse,
         })
@@ -498,11 +499,11 @@ impl Mapping for MathMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -682,7 +683,7 @@ impl Serializable for MathMap {
             simp_fi,
             simp_if,
             inverted: base.inverted,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             has_forward,
             has_inverse,
         })

@@ -25,6 +25,7 @@ use crate::serial::{
 use super::helpers::is_bad;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that normalises coordinates using the `norm()` method of
 /// a stored Frame.
@@ -42,7 +43,7 @@ pub struct NormMap {
     /// Whether this NormMap is inverted.
     inverted: bool,
     /// Whether simplification is inhibited.
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl NormMap {
@@ -54,7 +55,7 @@ impl NormMap {
         Self {
             frame,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 
@@ -84,7 +85,7 @@ impl Clone for NormMap {
         NormMap {
             frame: self.frame.snapshot(),
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
         }
     }
 }
@@ -106,9 +107,6 @@ impl Mapping for NormMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -188,7 +186,7 @@ impl Mapping for NormMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -269,11 +267,11 @@ impl Mapping for NormMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -336,13 +334,13 @@ impl Serializable for NormMap {
         let mut nm = Self {
             frame,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         };
 
         if base.inverted {
             nm.invert();
         }
-        nm.has_been_simplified = base.has_been_simplified;
+        nm.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
         Ok(nm)
     }
 }

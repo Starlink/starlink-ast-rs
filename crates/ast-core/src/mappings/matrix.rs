@@ -19,6 +19,7 @@ use super::unit::UnitMap;
 use super::winmap::WinMap;
 use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// Tolerance used to identify identity matrices.
 const IDENTITY_TOL: f64 = 1e-15;
@@ -52,7 +53,7 @@ pub struct MatrixMap {
     /// Whether the mapping is currently inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Cached form of the forward matrix (Full or Diagonal).
     form: MatrixForm,
     /// Cached form of the inverse matrix (Full or Diagonal).
@@ -126,7 +127,7 @@ impl MatrixMap {
             matrix,
             inverse,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             form,
             inv_form,
         })
@@ -167,7 +168,7 @@ impl MatrixMap {
             matrix,
             inverse: Some(inverse),
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             form,
             inv_form: form,
         })
@@ -558,9 +559,6 @@ impl Mapping for MatrixMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -673,7 +671,7 @@ impl Mapping for MatrixMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -1019,11 +1017,11 @@ impl Mapping for MatrixMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     // Mirrors C matrixmap.c `GetTranForward` (4892) / `GetTranInverse` (4973).
@@ -1263,7 +1261,7 @@ impl Serializable for MatrixMap {
             matrix,
             inverse,
             inverted: base.inverted,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             form,
             inv_form,
         })

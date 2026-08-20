@@ -11,13 +11,14 @@ use super::unit::UnitMap;
 use super::unitnormmap::try_merge_into_unitnormmap;
 use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that adds a constant shift vector to all input coordinates.
 #[derive(Debug, Clone)]
 pub struct ShiftMap {
     shift: Vec<f64>,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl ShiftMap {
@@ -28,7 +29,7 @@ impl ShiftMap {
         Self {
             shift: shift.into(),
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 
@@ -64,9 +65,6 @@ impl Mapping for ShiftMap {
     }
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -112,7 +110,7 @@ impl Mapping for ShiftMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
         if self.shift.iter().all(|&s| s == 0.0) {
@@ -122,7 +120,7 @@ impl Mapping for ShiftMap {
             Ok(Box::new(ShiftMap {
                 shift: normalized,
                 inverted: false,
-                has_been_simplified: false,
+                simplified: SimplifiedRecord::default(),
             }))
         } else {
             Ok(Box::new(self.clone()))
@@ -225,7 +223,7 @@ impl Mapping for ShiftMap {
             let restored = ShiftMap {
                 shift: fwd_shifts,
                 inverted: false,
-                has_been_simplified: false,
+                simplified: SimplifiedRecord::default(),
             };
             ctx.set_pair_single(where_, (Box::new(restored), false, false));
             return if eff_inv { Some(where_) } else { None };
@@ -303,11 +301,11 @@ impl Mapping for ShiftMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -345,7 +343,7 @@ impl Serializable for ShiftMap {
         Ok(ShiftMap {
             shift: shifts,
             inverted: base.inverted,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
         })
     }
 }

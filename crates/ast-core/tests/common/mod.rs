@@ -38,20 +38,26 @@ pub fn strip_is_simp(s: &str) -> String {
         .join("\n")
 }
 
-/// True for a keyword-card line holding a `IsSimp` or `Invert` tag
-/// (`ISSIMP<xx>=` / `INVERT<xx>=`, where `<xx>` is a two-character sequence
-/// number).
+/// True for a keyword-card line holding an `IsSimp` tag (`ISSIMP<xx>=`, where
+/// `<xx>` is a two-character sequence number).
 ///
-/// Where these tags land inside a compound Mapping is decided in C by which
-/// nodes were aliased into a simplification probe, because `astSetInvert`
-/// clears a shared node's `IsSimple` bit as a side effect
-/// (`mapping.c:23256`). The port holds components by value, so the asymmetry
-/// has no analogue here. Callers that compare a serialised object against a
-/// C-generated reference use this to drop the tags from both sides.
+/// Where the tag lands inside a compound Mapping became a property of the
+/// Mapping tree alone at upstream `e40e71b4`, so a difference here is a port
+/// gap and not a C artifact. Callers comparing a serialised object against a
+/// C-generated reference use this to drop the tag cards from both sides while
+/// pinning how many each side carries.
+///
+/// `INVERT<xx>` used to be dropped alongside it, for the `WcsNative` shared
+/// PermMap quirk. Upstream `f54ff1b7` fixed that, and the port's shape was
+/// already the corrected one, so `Invert` cards are compared like any other.
 /// See `docs/issues/c-library-quirks.md`.
-pub fn is_aliasing_tag_card(line: &str) -> bool {
+pub fn is_issimp_tag_card(line: &str) -> bool {
+    // The `.ast` text dump writes the same tag as an indented `IsSimp = 1`.
+    if line.trim_start().starts_with("IsSimp =") {
+        return true;
+    }
     let key = line.split(['=', ' ']).next().unwrap_or("");
-    (key.starts_with("ISSIMP") && key.len() == 8) || (key.starts_with("INVERT") && key.len() == 8)
+    key.starts_with("ISSIMP") && key.len() == 8
 }
 
 /// Compare two whitespace-tokenised lines for equivalence: tokens must be

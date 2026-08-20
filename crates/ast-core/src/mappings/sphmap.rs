@@ -11,6 +11,7 @@ use super::helpers::{ast_equal, is_bad, point_has_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that converts between 3-D Cartesian coordinates and
 /// 2-D spherical coordinates (longitude, latitude).
@@ -41,7 +42,7 @@ pub struct SphMap {
     /// (uncommented in dump)".
     polar_long_set: bool,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl SphMap {
@@ -54,7 +55,7 @@ impl SphMap {
             polar_long: 0.0,
             polar_long_set: false,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 
@@ -115,9 +116,6 @@ impl Mapping for SphMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -251,7 +249,7 @@ impl Mapping for SphMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -339,11 +337,11 @@ impl Mapping for SphMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -363,7 +361,7 @@ impl Serializable for SphMap {
         // regardless of invert state. The Invert flag is separate.
         node.push_int("Nin", 3, Some("Number of input coordinates".to_string()));
         node.push_int("Nout", 2, Some("Number of output coordinates".to_string()));
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             node.push_int("IsSimp", 1, Some("Mapping has been simplified".to_string()));
         }
         if self.inverted {
@@ -419,7 +417,7 @@ impl Serializable for SphMap {
             polar_long,
             polar_long_set,
             inverted: false,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
         };
         if base.inverted {
             m.invert();

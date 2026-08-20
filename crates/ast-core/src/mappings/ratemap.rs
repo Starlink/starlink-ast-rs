@@ -27,6 +27,7 @@ use crate::serial::{
 
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that computes a single element of the Jacobian matrix
 /// of an encapsulated Mapping.
@@ -52,7 +53,7 @@ pub struct RateMap {
     /// Whether this RateMap is inverted.
     inverted: bool,
     /// Whether simplification is inhibited.
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Snapshot of the encapsulated mapping's Invert flag at construction
     /// time. Used for serialization compatibility with the C library.
     invert_snapshot: bool,
@@ -98,7 +99,7 @@ impl RateMap {
             ax1,
             ax2,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             invert_snapshot,
         })
     }
@@ -152,7 +153,7 @@ impl Clone for RateMap {
             ax1: self.ax1,
             ax2: self.ax2,
             inverted: self.inverted,
-            has_been_simplified: self.has_been_simplified,
+            simplified: self.simplified,
             invert_snapshot: self.invert_snapshot,
         }
     }
@@ -181,9 +182,6 @@ impl Mapping for RateMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -262,12 +260,15 @@ impl Mapping for RateMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
-        // Step 1: Simplify the encapsulated mapping.
-        let simp_map = self.map.simplified()?;
+        // Step 1: Simplify the encapsulated mapping. C reaches it through
+        // `astSimplify` (ratemap.c:719), which records the result as simplified;
+        // `simplified()` is the untagged virtual, so record it here.
+        let mut simp_map = self.map.simplified()?;
+        simp_map.set_has_been_simplified(true);
 
         // Check if simplification changed the encapsulated mapping.
         let changed =
@@ -426,11 +427,11 @@ impl Mapping for RateMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -566,7 +567,7 @@ impl Serializable for RateMap {
             ax1,
             ax2,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             invert_snapshot: inv_snapshot,
         };
 

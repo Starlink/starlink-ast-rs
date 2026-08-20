@@ -11,6 +11,7 @@ use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// Interpolation method for [`LutMap`] table lookups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +45,7 @@ pub struct LutMap {
     /// Whether the mapping is inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Whether the inverse transform is defined.
     tran_inverse: bool,
 }
@@ -77,7 +78,7 @@ impl LutMap {
             interp: LutInterp::Linear,
             monotonic,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             tran_inverse: monotonic != 0,
         })
     }
@@ -491,9 +492,6 @@ impl Mapping for LutMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -544,7 +542,7 @@ impl Mapping for LutMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
 
@@ -695,11 +693,11 @@ impl Mapping for LutMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -800,7 +798,7 @@ impl Serializable for LutMap {
             interp,
             monotonic,
             inverted: false,
-            has_been_simplified: base.has_been_simplified,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             tran_inverse: base.has_inverse,
         };
         if base.inverted {

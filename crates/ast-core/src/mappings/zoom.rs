@@ -11,6 +11,7 @@ use super::matrix::MatrixMap;
 use super::unit::UnitMap;
 use super::winmap::{compose_linear, extract_linear_params};
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that scales all input coordinates by a constant factor.
 #[derive(Debug, Clone)]
@@ -18,7 +19,7 @@ pub struct ZoomMap {
     ncoord: usize,
     factor: f64,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     allow_simplify: bool,
 }
 
@@ -37,7 +38,7 @@ impl ZoomMap {
             ncoord,
             factor,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             allow_simplify: false,
         })
     }
@@ -74,9 +75,6 @@ impl Mapping for ZoomMap {
     }
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -123,7 +121,7 @@ impl Mapping for ZoomMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
         let effective_factor = if self.inverted {
@@ -138,7 +136,7 @@ impl Mapping for ZoomMap {
                 ncoord: self.ncoord,
                 factor: effective_factor,
                 inverted: false,
-                has_been_simplified: false,
+                simplified: SimplifiedRecord::default(),
                 allow_simplify: false,
             }))
         }
@@ -274,11 +272,11 @@ impl Mapping for ZoomMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn allow_simplify(&self) -> bool {

@@ -394,24 +394,13 @@ fn is_swappable_class(m: &dyn Mapping) -> bool {
 }
 
 /// `CanSwap` on the adjacent pair `(i1, i1 + 1)` of the working list.
-///
-/// C's `CanSwap` (matrixmap.c:416-421) forces the `Invert` attribute of both
-/// candidates to the orientations recorded in `invert_list`, then restores the
-/// original values on exit (matrixmap.c:582-583). `astSetInvert` has no
-/// unchanged-value guard, so all four calls clear `IsSimple` on the live
-/// Mappings — the predicate itself is side-effect-free, but running it is not.
-/// Reproduce that clear here; the tag governs both the `IsSimp` token and
-/// whether a later `simplify` re-dispatches on the component.
-fn can_swap_at(ctx: &mut MergeCtx, i1: usize) -> (bool, bool) {
-    let ret = can_swap(
+fn can_swap_at(ctx: &MergeCtx, i1: usize) -> (bool, bool) {
+    can_swap(
         ctx.entry(i1).0.as_ref(),
         ctx.entry(i1).1,
         ctx.entry(i1 + 1).0.as_ref(),
         ctx.entry(i1 + 1).1,
-    );
-    ctx.clear_component_simple_tag(i1);
-    ctx.clear_component_simple_tag(i1 + 1);
-    ret
+    )
 }
 
 /// C `matrixmap.c::CanSwap` (331): can the MatrixMap and its neighbour swap,
@@ -876,12 +865,14 @@ fn mat_perm_swap(
     if sp_inv {
         sp_fwd.invert();
     }
+    sp_fwd.set_has_been_simplified(true);
     let sm = mmnew.simplified().ok()?;
     let sm_inv = sm.is_inverted();
     let mut sm_fwd = sm;
     if sm_inv {
         sm_fwd.invert();
     }
+    sm_fwd.set_has_been_simplified(true);
 
     let mut out: [Option<(DynMapping, bool, bool)>; 2] = [None, None];
     out[imm] = Some((sp_fwd, sp_inv, false));

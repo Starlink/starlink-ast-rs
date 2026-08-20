@@ -24,6 +24,7 @@ use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A mapping that decomposes a vector into unit vector and norm.
 ///
@@ -42,7 +43,7 @@ use super::{DynMapping, Mapping};
 pub struct UnitNormMap {
     centre: Vec<f64>,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
 }
 
 impl UnitNormMap {
@@ -54,7 +55,7 @@ impl UnitNormMap {
         Self {
             centre: centre.into(),
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
         }
     }
 
@@ -106,9 +107,6 @@ impl Mapping for UnitNormMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -251,7 +249,7 @@ impl Mapping for UnitNormMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
         // UnitNormMap cannot simplify itself alone — merging happens via try_merge.
@@ -450,11 +448,11 @@ impl Mapping for UnitNormMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -617,7 +615,7 @@ impl Serializable for UnitNormMap {
         if base.inverted {
             m.invert();
         }
-        m.has_been_simplified = base.has_been_simplified;
+        m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
         Ok(m)
     }
 }

@@ -79,24 +79,13 @@ fn is_swappable_class(m: &dyn Mapping) -> bool {
 }
 
 /// `CanSwap` on the adjacent pair `(i1, i1 + 1)` of the working list.
-///
-/// C's `CanSwap` (winmap.c:102-106) forces the `Invert` attribute of both
-/// candidates to the orientations recorded in `invert_list`, then restores the
-/// original values on exit (winmap.c:201-202). `astSetInvert` has no
-/// unchanged-value guard, so all four calls clear `IsSimple` on the live
-/// Mappings — the predicate itself is side-effect-free, but running it is not.
-/// Reproduce that clear here; the tag governs both the `IsSimp` token and
-/// whether a later `simplify` re-dispatches on the component.
-fn can_swap_at(ctx: &mut MergeCtx, i1: usize) -> (bool, bool) {
-    let ret = can_swap(
+fn can_swap_at(ctx: &MergeCtx, i1: usize) -> (bool, bool) {
+    can_swap(
         ctx.entry(i1).0.as_ref(),
         ctx.entry(i1).1,
         ctx.entry(i1 + 1).0.as_ref(),
         ctx.entry(i1 + 1).1,
-    );
-    ctx.clear_component_simple_tag(i1);
-    ctx.clear_component_simple_tag(i1 + 1);
-    ret
+    )
 }
 
 /// C `winmap.c::CanSwap` (258): can the WinMap and its neighbour swap, and
@@ -265,6 +254,7 @@ pub(crate) fn win_mat(
     if sw1_inv {
         sw1_fwd.invert();
     }
+    sw1_fwd.set_has_been_simplified(true);
 
     let sm2 = m2_map.simplified().ok()?;
     let sm2_inv = sm2.is_inverted();
@@ -272,6 +262,7 @@ pub(crate) fn win_mat(
     if sm2_inv {
         sm2_fwd.invert();
     }
+    sm2_fwd.set_has_been_simplified(true);
 
     // The order is now swapped: the MatrixMap takes the WinMap's slot
     // (iwm) and the WinMap takes the matrix slot (1 - iwm).
@@ -319,12 +310,14 @@ fn win_perm(
     if sp1_inv {
         sp1_fwd.invert();
     }
+    sp1_fwd.set_has_been_simplified(true);
     let sw1 = new_lin.simplified().ok()?;
     let sw1_inv = sw1.is_inverted();
     let mut sw1_fwd = sw1;
     if sw1_inv {
         sw1_fwd.invert();
     }
+    sw1_fwd.set_has_been_simplified(true);
 
     let mut out: [Option<(DynMapping, bool, bool)>; 2] = [None, None];
     out[iwm] = Some((sp1_fwd, sp1_inv, false));

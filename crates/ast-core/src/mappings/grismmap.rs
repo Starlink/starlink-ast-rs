@@ -21,6 +21,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
+use crate::mappings::SimplifiedRecord;
 
 /// A 1-D spectral dispersion mapping for grisms, gratings and prisms.
 ///
@@ -54,7 +55,7 @@ pub struct GrismMap {
     /// Derived constant k3.
     k3: f64,
     inverted: bool,
-    has_been_simplified: bool,
+    simplified: SimplifiedRecord,
     /// Per-attribute "was this set by the user / source" flags, mirroring
     /// the C library's `Test*` predicates so we can choose commented vs
     /// uncommented dump output to match byte-exact.
@@ -113,7 +114,7 @@ impl GrismMap {
             k2: 0.0,
             k3: 0.0,
             inverted: false,
-            has_been_simplified: false,
+            simplified: SimplifiedRecord::default(),
             set_flags: GrismSetFlags {
                 nr: true,
                 nrp: true,
@@ -255,8 +256,9 @@ impl GrismMap {
         if invert_result {
             result.invert();
         }
-        // Strip simplification-protection bit if the source had it.
-        result.has_been_simplified = false;
+        // This is a new GrismMap built from the source's attributes, so it
+        // inherits neither of the source's simplified records.
+        result.simplified.clear();
 
         Some(Box::new(result))
     }
@@ -277,9 +279,6 @@ impl Mapping for GrismMap {
 
     fn invert(&mut self) {
         self.inverted = !self.inverted;
-        // Inversion invalidates the "already simplified" flag, since the
-        // inverse may simplify further (C astSetInvert clears IsSimple).
-        self.has_been_simplified = false;
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -379,7 +378,7 @@ impl Mapping for GrismMap {
     }
 
     fn simplified(&self) -> AstResult<DynMapping> {
-        if self.has_been_simplified {
+        if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
         Ok(Box::new(self.clone()))
@@ -458,11 +457,11 @@ impl Mapping for GrismMap {
     }
 
     fn has_been_simplified(&self) -> bool {
-        self.has_been_simplified
+        self.simplified.get(self.inverted)
     }
 
     fn set_has_been_simplified(&mut self, flag: bool) {
-        self.has_been_simplified = flag;
+        self.simplified.set(self.inverted, flag);
     }
 
     fn clone_box(&self) -> DynMapping {
@@ -595,7 +594,7 @@ impl Serializable for GrismMap {
         if base.inverted {
             map.invert();
         }
-        map.has_been_simplified = base.has_been_simplified;
+        map.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
         Ok(map)
     }
 }
