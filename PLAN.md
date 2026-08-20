@@ -436,16 +436,16 @@ copied across byte-identical.
 | `round()` rounding sweep (`e4e6376d`, `1199880a`, `e447556a`, `7b084bbf`) | Ported at the four sites the port has: the grism interference order, PermMap axis indices, the global-bounds threshold, and WCSAXES |
 
 **What is still open.** Twenty wcsconv cases emit one extra `IsSimp` card per
-simplified WCS plane, on an interior `CmpMap`. It is *not* a stamping-rule
-difference: probed against the C library, C emits the same card whenever its
-nominate loop actually runs — rebuild the tree from its own components so the
-root's record is clear and `astSimplify` produces exactly the port's cards.
-What differs is whether the loop runs. `astSimplify_` (mapping.c:24764)
-short-circuits on a Mapping that already carries the record, and C's FITS reader
-reaches its closing `astSimplify` (`WcsMapFrm`, fitschan.c:37810) holding an
-object that already has it, so the call is a no-op. This port's
-`build_pixel_to_world` composes a fresh root, so the loop runs. Closing it means
-matching where C's reader leaves the record. Full probe and table in
+simplified WCS plane, on an interior `CmpMap`. It is *not* a simplifier
+difference: hand C the composed pixel→world Mapping this port builds *before* it
+simplifies, and C produces exactly this port's four tags on exactly the same
+nodes. C's own reference has three, so C's reader does not hand its closing
+`astSimplify` the tree this port hands it — `fitschan.c` reduces in about ten
+places while assembling, so its closing call starts from an already-reduced,
+already-tagged tree, where this port composes the whole chain unreduced (28
+nodes against the 11-node result) and simplifies once. Closing it is a change to
+the construction shape of `build_pixel_to_world`, which is hazard H2, so it
+wants doing deliberately rather than inside a sync. Probe and measurements in
 `docs/issues/c-library-quirks.md`.
 
 `cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are the *opposite*

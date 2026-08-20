@@ -80,20 +80,19 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 /// Cases whose only difference from the C reference is one extra `IsSimp` card
 /// per simplified WCS plane.
 ///
-/// **Not a stamping-rule difference.** Probing the C library directly
-/// (`docs/issues/c-library-quirks.md`, the `IsSimp` entry) shows C emits the
-/// *same* extra card when its nominate loop actually runs: rebuild the tree
-/// from its own components, so the root's record is clear, and
-/// `astSimplify` produces exactly the cards this port produces. What differs
-/// is whether the loop runs at all. C's `astSimplify` short-circuits on a
-/// Mapping that already carries the record (`astSimplify_`, mapping.c:24764),
-/// and C's FITS reader hands the final `astSimplify` an object that already
-/// has it — so the call is a no-op and the tag pattern the read left behind
-/// survives. This port composes a fresh root in `build_pixel_to_world`, so the
-/// loop runs and stamps what C would have stamped on a first pass.
+/// **Not a simplifier difference.** Given the same input, this port's
+/// simplifier and C's produce identical output, tags included: hand C the
+/// composed pixel→world Mapping `build_pixel_to_world` produces *before* the
+/// `simplify()` call and C emits exactly these cards, on exactly these nodes.
+/// C's own reference has one fewer, so C's reader does not hand its closing
+/// `astSimplify` the tree this port hands it — `fitschan.c` reduces in about
+/// ten places while assembling, so its closing call starts from an
+/// already-reduced tree, where this port composes the whole chain unreduced and
+/// simplifies once at the end.
 ///
-/// Closing it means matching where C's reader leaves the record, not changing
-/// which nodes get stamped. Every other card, `Invert` included, is
+/// Closing it is a change to the construction shape of `build_pixel_to_world`,
+/// not to the stamping rule. Probe and measurements in
+/// `docs/issues/c-library-quirks.md`. Every other card, `Invert` included, is
 /// byte-compared.
 ///
 /// The licence is per case and pins the card count on each side, so it cannot

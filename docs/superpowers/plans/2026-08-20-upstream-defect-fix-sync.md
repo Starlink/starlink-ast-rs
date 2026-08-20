@@ -156,19 +156,31 @@ nominate loop stamps a node C's closing fold builds rather than nominates — di
 not survive contact with the C oracle.
 
 What settled it was a probe, prompted by the observation that the `.simp` and
-`.ast` fixtures were extracted from these same FITS reads: read a `.native`
-reference back, take base→current, and simplify it twice — once as loaded, once
-rebuilt from its own components so the root's record is clear. As loaded, 3
-cards in and 3 out; rebuilt, 2 in and **4** out, which is exactly what this port
-emits. So the two simplifiers agree on what to stamp. `astSimplify_`
-short-circuits on a Mapping that already carries the record, and C's reader
-reaches its closing `astSimplify` holding one that does; ours composes a fresh
-root, so the loop runs.
+`.ast` fixtures were extracted from these same FITS reads — so if the trees
+agreed, the simplifier could not be the difference. It took two attempts:
 
-The lesson is the one CLAUDE.md already states as a stop signal: the error
-shrank across successive fixes and never reached zero, which meant the model was
-wrong, not incomplete. Probing should have come at the second failed fix rather
-than the fifth.
+1. Read a `.native` reference back and simplify it twice, once as loaded and
+   once with the root's record cleared. As loaded, 3 cards in and 3 out;
+   cleared, 2 in and 4 out — which is what this port emits. That looked
+   conclusive and was not: re-simplifying an already-folded tree is not the
+   same experiment as a first pass, because the fold's own products become
+   list elements the second time round. Both explanations fit those numbers.
+
+2. Dump the composed Mapping this port hands to `simplify()` — 28 nodes, no
+   tags — and give *that* to C. C returns four tags on exactly the nodes this
+   port tags. That is the same input, so it isolates the simplifier, and the
+   simplifiers agree.
+
+The difference is therefore the input: C's reader reduces as it assembles
+(`fitschan.c` calls `astSimplify` in about ten places), so its closing call
+starts from the 11-node reduced form; this port composes the whole chain
+unreduced and simplifies once.
+
+Two lessons, both already written down. The error shrank across successive fixes
+and never reached zero, which is stop signal 3 — the model was wrong, not
+incomplete, and probing should have come at the second failed fix rather than
+the fifth. And the first probe answered a question adjacent to the one that
+mattered; a probe is only worth what its input models.
 
 **The KeyMap work found more than the plan listed.** The plan named one mirror
 to retire (`astMapCopyEntry`'s KeyCase). Writing the nine C tests found four

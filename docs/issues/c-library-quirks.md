@@ -42,39 +42,54 @@ an unrelated reason — the `InvA`/`InvB` quirk below, still open.
 
 **What is left, and what it is not.** Twenty wcsconv cases carry exactly one
 extra `IsSimp` card per simplified WCS plane, on an interior `CmpMap`. It is
-**not** a difference in which nodes get stamped — the port's simplifier and C's
-agree on that. Probed directly (recipe below), C emits the same extra card
-whenever its nominate loop actually runs.
+**not** a simplifier difference. Given the same input, this port's simplifier
+and C's produce identical output, tags included.
 
-The probe reads a `.native` reference back, takes the base→current Mapping, and
-compares two runs:
+The probe that shows it: dump the composed pixel→world Mapping this port builds
+*before* it simplifies — `build_pixel_to_world`'s result, which carries no tags
+at all — and hand that text to C to simplify. C produces four tags, on exactly
+the nodes this port tags, including the interior parallel `CmpMap`:
 
-| | `IsSimple` on entry | cards before | cards after |
-|---|---:|---:|---:|
-| the tree as loaded | 1 | 3 | 3 |
-| the same tree rebuilt from its own components | 0 | 2 | 4 |
+```
+CmpMap [series]              <== IsSimp
+  WinMap
+  CmpMap [series]
+    WcsMap
+      CmpMap [parallel]      <== IsSimp   (the card the licence covers)
+        ShiftMap             <== IsSimp
+        CmpMap [series]      <== IsSimp
+```
 
-Four cards is what this port emits. `astSimplify_` (mapping.c:24764)
-short-circuits on a Mapping that already carries the record, so on the loaded
-tree the loop never runs and the tag pattern is preserved untouched; on the
-rebuilt one — identical in every other respect, only the root's record cleared
-— the loop runs and stamps the interior `CmpMap`. Measured the same way on
-`class-arc`, `ssysobs`, `cube-reorder`, `degen-wcsaxes` and `zpx`.
+C's own reference for the same header has three. So C's reader does not hand its
+closing `astSimplify` (`WcsMapFrm`, fitschan.c:37810) the tree this port hands
+it. `fitschan.c` calls `astSimplify` in about ten places while assembling the
+Mapping, so by the time the closing call runs, C's tree is already reduced and
+already tagged; this port composes the entire chain unreduced — a 28-node tree,
+against the 11-node result — and simplifies once at the end. A first pass over
+the longer chain stamps a node that a first pass over the already-reduced one
+never nominates.
 
-So C's FITS reader arrives at its single closing `astSimplify` (`WcsMapFrm`,
-fitschan.c:37810) holding an object whose record is *already* set, and the call
-does nothing. This port's `build_pixel_to_world` composes a fresh `CmpMap` for
-the root, whose record is clear, so the same call runs the loop and stamps what
-C would have stamped on a first pass. Closing it is a question of matching where
-C's reader leaves the record, not of changing the stamping rule — which is the
-opposite of what the first pass at this concluded, and is why the probe was
-worth running.
+Two supporting measurements. `astSimplify_` (mapping.c:24764) short-circuits on
+a Mapping that already carries the record, so re-simplifying C's loaded
+reference leaves its three tags untouched; and clearing just the root's record
+on that same reference and re-simplifying gives four. Both are consistent with
+the reader, not the simplifier, being where the trees diverge.
 
-The cases are licensed with both card counts pinned
+Closing it means matching where C's reader reduces, which is a change to the
+construction shape of `build_pixel_to_world` — hazard H2 territory
+(`docs/porting-hazards.md`), and worth doing deliberately rather than as part of
+a sync. The cases are licensed with both card counts pinned
 (`ISSIMP_PLACEMENT_LICENSED` in `test_wcsconv.rs`); every other card, `Invert`
 included, is byte-compared. The two simplify-corpus cases under the same name
 are a *different* symptom — the port emitting one card too few — and are noted
 separately there.
+
+**Probe recipe.** Instrument `wcs_read.rs` to render `composed.to_node()` before
+the `simplify()` call, run one wcsconv case, and feed the captured text to
+`docs/issues/c-oracle-probe-issimp-shortcircuit.c`'s sibling — any probe that
+`astRead`s a native text file, calls `astSimplify` and dumps the result. The
+instrumentation is deliberately not committed; it is four lines and belongs to
+whoever is investigating.
 
 The `.ast` FrameSet corpus (`frameset_fixtures/`, 139 captures taken from every
 wcsconv input) cannot see any of this: it is a read → write round trip and
