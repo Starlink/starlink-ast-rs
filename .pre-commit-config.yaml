@@ -44,6 +44,7 @@ repos:
   # rust-toolchain.toml, matching what CI runs:
   #   - cargo fmt --all -- --check       (CI: Format check)
   #   - cargo clippy --workspace          (CI: Clippy, via [lints])
+  #   - cargo doc --workspace --no-deps   (CI: Docs, via [lints])
   #
   # `language: system` keeps the toolchain consistent with CI; we
   # don't want pre-commit's own Rust install path picking a different
@@ -85,6 +86,21 @@ repos:
       - id: cargo-clippy
         name: cargo clippy
         entry: cargo clippy --workspace --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # Rustdoc, for the same reason as clippy: doc comments are source, and
+      # broken intra-doc links are invisible to rustc, clippy and the test
+      # suite. `[workspace.lints.rustdoc] all = deny` in Cargo.toml means a
+      # plain `cargo doc` fails, so no RUSTDOCFLAGS is needed here.
+      #
+      # `types: [rust]` is right even though this is "documentation": doc
+      # comments live in .rs files, so a commit touching only .md needs no
+      # rustdoc run.
+      - id: cargo-doc
+        name: cargo doc
+        entry: cargo doc --workspace --no-deps
         language: system
         types: [rust]
         pass_filenames: false

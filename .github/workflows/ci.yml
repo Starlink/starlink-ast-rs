@@ -42,3 +42,10 @@ jobs:
 
       - name: Format check
         run: cargo fmt --all -- --check
+
+      # Catches broken intra-doc links, public docs pointing at private
+      # items, and malformed doc markup. `[workspace.lints.rustdoc]` already
+      # denies the group, so this needs no RUSTDOCFLAGS; the step exists so
+      # rustdoc actually runs somewhere.
+      - name: Docs
+        run: cargo doc --workspace --no-deps

@@ -39,3 +39,17 @@ warnings = "deny"
 # choices (e.g. range-based loops where iterator chains read worse).
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+
+# Rustdoc's own lint group, denied for the same reason as clippy's: so that a
+# plain `cargo doc` fails locally rather than only under
+# `RUSTDOCFLAGS=-D warnings` in CI. Denying the whole group (rather than the
+# three lints that had actually drifted — broken_intra_doc_links,
+# private_intra_doc_links, invalid_html_tags) also covers the allow-by-default
+# members, so a new class of doc breakage is caught the first time it appears
+# instead of accumulating until someone runs `cargo doc` by hand.
+#
+# This is enforced because it had already drifted twice: aa8ff4c fixed one
+# batch of broken links, and 20 more had accumulated by 2026-08-19 because
+# nothing ran rustdoc.
+[workspace.lints.rustdoc]
+all = { level = "deny", priority = -1 }
