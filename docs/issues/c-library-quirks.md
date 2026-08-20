@@ -40,15 +40,45 @@ counted per-case licence instead (`ISSIMP_PLACEMENT_LICENSED` in
 `test_simplify_regression.rs`). `cap_cmpmap_01` and `cap_cmpmap_04` keep theirs for
 an unrelated reason — the `InvA`/`InvB` quirk below, still open.
 
-**What is left, and it is a port gap not a C artifact.** Twenty wcsconv cases
-carry exactly one extra `IsSimp` card per simplified WCS plane. The extra one sits
-on an interior `CmpMap` — the node C's closing fold *builds* out of its component
-list rather than one it nominates, so C never hands it to `astSimplify` and never
-stamps it, while this engine reaches it through the nominate loop and does. Those
-cases are licensed per case with both card counts pinned
+**What is left, and what it is not.** Twenty wcsconv cases carry exactly one
+extra `IsSimp` card per simplified WCS plane, on an interior `CmpMap`. It is
+**not** a difference in which nodes get stamped — the port's simplifier and C's
+agree on that. Probed directly (recipe below), C emits the same extra card
+whenever its nominate loop actually runs.
+
+The probe reads a `.native` reference back, takes the base→current Mapping, and
+compares two runs:
+
+| | `IsSimple` on entry | cards before | cards after |
+|---|---:|---:|---:|
+| the tree as loaded | 1 | 3 | 3 |
+| the same tree rebuilt from its own components | 0 | 2 | 4 |
+
+Four cards is what this port emits. `astSimplify_` (mapping.c:24764)
+short-circuits on a Mapping that already carries the record, so on the loaded
+tree the loop never runs and the tag pattern is preserved untouched; on the
+rebuilt one — identical in every other respect, only the root's record cleared
+— the loop runs and stamps the interior `CmpMap`. Measured the same way on
+`class-arc`, `ssysobs`, `cube-reorder`, `degen-wcsaxes` and `zpx`.
+
+So C's FITS reader arrives at its single closing `astSimplify` (`WcsMapFrm`,
+fitschan.c:37810) holding an object whose record is *already* set, and the call
+does nothing. This port's `build_pixel_to_world` composes a fresh `CmpMap` for
+the root, whose record is clear, so the same call runs the loop and stamps what
+C would have stamped on a first pass. Closing it is a question of matching where
+C's reader leaves the record, not of changing the stamping rule — which is the
+opposite of what the first pass at this concluded, and is why the probe was
+worth running.
+
+The cases are licensed with both card counts pinned
 (`ISSIMP_PLACEMENT_LICENSED` in `test_wcsconv.rs`); every other card, `Invert`
-included, is byte-compared. Closing it means making the nominate loop's stamp land
-only on components C nominates.
+included, is byte-compared. The two simplify-corpus cases under the same name
+are a *different* symptom — the port emitting one card too few — and are noted
+separately there.
+
+The `.ast` FrameSet corpus (`frameset_fixtures/`, 139 captures taken from every
+wcsconv input) cannot see any of this: it is a read → write round trip and
+never re-simplifies, so it holds C's tags and reproduces them exactly.
 
 **The C behaviour this entry described, for the record:**
 

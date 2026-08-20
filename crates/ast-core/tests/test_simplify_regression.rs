@@ -65,13 +65,15 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// Cases whose only remaining difference from the C reference is where an
 /// `IsSimp` card sits, with the exact card count on each side.
 ///
-/// C's placement became a property of the Mapping tree alone at upstream
-/// `e40e71b4`, so these are port gaps, not C artifacts: somewhere in the merge
-/// engine a Mapping that C reached through `astSimplify` is reached here
-/// through the untagged `simplified()`, or the reverse. The licence is per
-/// case, drops only the `IsSimp` lines, and pins both counts — so it cannot
-/// absorb a new difference, and the moment the port emits the missing card the
-/// count check fails, which is the signal to delete the row.
+/// Both cases are the port emitting *fewer* cards than C, which is the
+/// opposite of the wcsconv residue and a separate problem: somewhere in the
+/// merge engine a Mapping that C reaches through `astSimplify` is reached here
+/// through the untagged `simplified()`. `cap_cmpmap_03`'s missing card is on a
+/// 3-axis ShiftMap that a UnitMap merge widened; `cap_specmap_02`'s is on the
+/// CmpMap wrapping a SpecMap/ZoomMap pair. The licence is per case, drops only
+/// the `IsSimp` lines, and pins both counts — so it cannot absorb a new
+/// difference, and the moment the port emits the missing card the count check
+/// fails, which is the signal to delete the row.
 ///
 /// Fields: name, cards this port emits, cards C emits, what differs.
 const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[

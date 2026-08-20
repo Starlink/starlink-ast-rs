@@ -78,18 +78,28 @@ fn fixtures_dir() -> PathBuf {
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Cases whose only difference from the C reference is one extra `IsSimp` card
-/// per simplified WCS plane, and where that card sits.
+/// per simplified WCS plane.
 ///
-/// C's placement became a property of the Mapping tree alone at upstream
-/// `e40e71b4`, so this is a port gap: the nominate loop stamps one interior
-/// `CmpMap` per plane that C leaves untagged — the node C's closing fold
-/// *builds* rather than nominates. Every other card, including `Invert`, is
-/// still byte-compared.
+/// **Not a stamping-rule difference.** Probing the C library directly
+/// (`docs/issues/c-library-quirks.md`, the `IsSimp` entry) shows C emits the
+/// *same* extra card when its nominate loop actually runs: rebuild the tree
+/// from its own components, so the root's record is clear, and
+/// `astSimplify` produces exactly the cards this port produces. What differs
+/// is whether the loop runs at all. C's `astSimplify` short-circuits on a
+/// Mapping that already carries the record (`astSimplify_`, mapping.c:24764),
+/// and C's FITS reader hands the final `astSimplify` an object that already
+/// has it — so the call is a no-op and the tag pattern the read left behind
+/// survives. This port composes a fresh root in `build_pixel_to_world`, so the
+/// loop runs and stamps what C would have stamped on a first pass.
+///
+/// Closing it means matching where C's reader leaves the record, not changing
+/// which nodes get stamped. Every other card, `Invert` included, is
+/// byte-compared.
 ///
 /// The licence is per case and pins the card count on each side, so it cannot
-/// absorb a second difference, and it fails the moment the port stops emitting
-/// the extra card — which is the signal to delete the row. The multi-plane
-/// headers carry two extra cards because they run the simplify twice.
+/// absorb a second difference, and it fails the moment the counts change —
+/// which is the signal to delete the row. The multi-plane headers carry two
+/// extra cards because they run the read twice.
 ///
 /// Fields: case name, cards this port emits, cards C emits.
 const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize)] = &[

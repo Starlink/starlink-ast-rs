@@ -436,14 +436,24 @@ copied across byte-identical.
 | `round()` rounding sweep (`e4e6376d`, `1199880a`, `e447556a`, `7b084bbf`) | Ported at the four sites the port has: the grism interference order, PermMap axis indices, the global-bounds threshold, and WCSAXES |
 
 **What is still open.** Twenty wcsconv cases emit one extra `IsSimp` card per
-simplified WCS plane. The extra one sits on an interior `CmpMap` — the node C's
-closing fold *builds* out of its component list rather than one it nominates, so
-C never hands it to `astSimplify`. This is a port gap, not a C artifact, and it
-is licensed per case with both card counts pinned (§6). What would close it:
-making the nominate loop's stamp land only on the components C nominates, which
-means finding where this engine's decomposition admits a node C's `map_list`
-does not. `cap_cmpmap_03` and `cap_specmap_02` are the same symptom on the
-simplify corpus and are the smallest reproductions.
+simplified WCS plane, on an interior `CmpMap`. It is *not* a stamping-rule
+difference: probed against the C library, C emits the same card whenever its
+nominate loop actually runs — rebuild the tree from its own components so the
+root's record is clear and `astSimplify` produces exactly the port's cards.
+What differs is whether the loop runs. `astSimplify_` (mapping.c:24764)
+short-circuits on a Mapping that already carries the record, and C's FITS reader
+reaches its closing `astSimplify` (`WcsMapFrm`, fitschan.c:37810) holding an
+object that already has it, so the call is a no-op. This port's
+`build_pixel_to_world` composes a fresh root, so the loop runs. Closing it means
+matching where C's reader leaves the record. Full probe and table in
+`docs/issues/c-library-quirks.md`.
+
+`cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are the *opposite*
+symptom — one card too few — and are a separate, smaller problem.
+
+The `.ast` FrameSet corpus (`frameset_fixtures/`) is byte-exact throughout and
+could not have caught either: it round-trips read → write and never
+re-simplifies.
 
 **Not in this range, still open:** the `CmpMap` `InvA`/`InvB` quirk. It is why
 `cap_cmpmap_01` and `cap_cmpmap_04` keep their `skip_string_compare`; the

@@ -148,12 +148,27 @@ freely. The field survives, per orientation, renamed `dump_simplified` and
 documented with the real reason. Backing off cost one round trip through the
 corpus; the negative control is what stopped it going further.
 
-**One extra `IsSimp` per plane remains.** Diagnosed to a single site — the
-nominate loop stamps an interior `CmpMap` that C's closing fold builds rather
-than nominates — but not closed. Four candidate fixes were tried against the
-corpus and none moved it; each was reverted rather than left in as an
-unevidenced change. It is licensed with both card counts pinned, which is a
-narrower licence than the one it replaced.
+**One extra `IsSimp` per plane remains, and the first diagnosis of it was
+wrong.** Four candidate fixes were tried against the corpus by reasoning about
+which nodes get stamped; none moved it, and each was reverted rather than left
+in as an unevidenced change. The conclusion recorded at that point — that the
+nominate loop stamps a node C's closing fold builds rather than nominates — did
+not survive contact with the C oracle.
+
+What settled it was a probe, prompted by the observation that the `.simp` and
+`.ast` fixtures were extracted from these same FITS reads: read a `.native`
+reference back, take base→current, and simplify it twice — once as loaded, once
+rebuilt from its own components so the root's record is clear. As loaded, 3
+cards in and 3 out; rebuilt, 2 in and **4** out, which is exactly what this port
+emits. So the two simplifiers agree on what to stamp. `astSimplify_`
+short-circuits on a Mapping that already carries the record, and C's reader
+reaches its closing `astSimplify` holding one that does; ours composes a fresh
+root, so the loop runs.
+
+The lesson is the one CLAUDE.md already states as a stop signal: the error
+shrank across successive fixes and never reached zero, which meant the model was
+wrong, not incomplete. Probing should have come at the second failed fix rather
+than the fifth.
 
 **The KeyMap work found more than the plan listed.** The plan named one mirror
 to retire (`astMapCopyEntry`'s KeyCase). Writing the nine C tests found four
