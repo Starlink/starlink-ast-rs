@@ -1,5 +1,9 @@
 # Simplify regression tests -- pipe-delimited
-# Fields: name | input | reference | skip_string_compare
+# Fields: name | input | reference | skip_string_compare | render_options
+# render_options: blank = C's Channel defaults (comments on, indent 3).
+#                 `comment=0,indent=0` reproduces a reference captured with
+#                 those Channel attributes turned off. An unknown key is a hard
+#                 error, so a typo cannot quietly widen the comparison.
 # skip_string_compare: blank = compare the simplified dump byte-for-byte
 #                             against the reference (numeric tokens to 4 ulp)
 #                             as well as by astequal
@@ -22,16 +26,28 @@
 spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec_cel_invert.simp |
 
 # Scenario fixtures (integration regressions, stay in ast_tester/).
-# lsst/rigby: astequal-only because their .simp references were captured from a
-# C run that emitted NO inline `\t#` comments (0 comment lines in both files),
-# whereas our Channel serializer always emits them. The object content matches
-# byte-for-byte once comments are ignored; the byte-exact diff would trip on the
-# comment text alone, so we compare by astequal. (rigby also exercises the
-# celestial WinMat Scl->1.0 path — see project_rigby_winmat_trace.)
+#
+# lsst.simp and rigby.simp were captured from a C run with the Channel's
+# Comment and Indent attributes off — no inline `\t#` comments, and no nesting
+# indentation. That was diagnosed as "our serializer always emits comments" and
+# handled by skipping the byte comparison. It is not a port limitation: the
+# renderer has always had both options, so the fix is to render the way the
+# reference was captured, which is what the render_options field now says.
+#
+# lsst is byte-exact under those options and needs no skip at all.
+#
+# rigby keeps one, for two reasons neither of which is formatting. It emits
+# three IsSimp cards C does not (8 against 5) -- pinned by the
+# ISSIMP_DISAGREEMENTS assertion, so that part is visible without the skip --
+# and one inverse-matrix element comes out as -5.9658198263111446e-17 where C
+# has -5.8980598183211441e-17. Both are noise around zero, but they differ by
+# about 1% relatively, far outside the 4-ulp token tolerance. rigby exercises
+# the celestial WinMat Scl->1.0 path (see project_rigby_winmat_trace), which is
+# where that residue comes from.
 brad  | brad.map  | brad.simp  |
 lsst1 | lsst1.map | lsst1.simp |
-lsst  | lsst.ast  | lsst.simp  | yes
-rigby | rigby.map | rigby.simp | yes
+lsst  | lsst.ast  | lsst.simp  | | comment=0,indent=0
+rigby | rigby.map | rigby.simp | yes | comment=0,indent=0
 
 # Focused rule fixtures (in simplify_fixtures/ subdirectory).
 unit_series_elision     | simplify_fixtures/unit_series_elision.map     | simplify_fixtures/unit_series_elision.simp     |

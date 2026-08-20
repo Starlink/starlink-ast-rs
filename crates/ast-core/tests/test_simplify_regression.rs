@@ -115,8 +115,7 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[
     ),
 ];
 
-fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
-    use ast_core::AnyObject;
+fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
     use ast_core::mappings::{
         CmpMap, GrismMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap, ShiftMap, SlaMap, SpecMap,
         SphMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
@@ -160,7 +159,73 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
         let x = m.as_any().downcast_ref::<NormMap>()?;
         AnyObject::NormMap(x.clone())
     };
-    to_native_string(&obj).ok()
+    Some(obj)
+}
+
+/// Render `m` with the default options (comments on, indent 3).
+fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
+    to_native_string(&mapping_to_any_object(m)?).ok()
+}
+
+/// The serialisation options a manifest row asks for.
+///
+/// C's `Channel` exposes `Comment` and `Indent`, and some references were
+/// captured with them off. Reproducing a reference then needs the same
+/// settings, not a licence to ignore the difference. See
+/// `docs/issues/c-library-quirks.md`, "Two simplify references were captured
+/// with Comment and Indent off".
+#[derive(Debug, Clone, Copy)]
+struct RenderOpts {
+    comment: bool,
+    indent: usize,
+}
+
+impl Default for RenderOpts {
+    fn default() -> Self {
+        Self {
+            comment: true,
+            indent: 3,
+        }
+    }
+}
+
+impl RenderOpts {
+    /// Parse a manifest field like `comment=0,indent=0`. An unknown key is a
+    /// hard error rather than a silent default: a typo must not quietly widen
+    /// the comparison.
+    fn parse(spec: &str, name: &str) -> Self {
+        let mut opts = Self::default();
+        for kv in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            let (k, v) = kv
+                .split_once('=')
+                .unwrap_or_else(|| panic!("{name}: bad render option {kv:?}, want key=value"));
+            match k.trim() {
+                "comment" => opts.comment = v.trim() != "0",
+                "indent" => {
+                    opts.indent = v
+                        .trim()
+                        .parse()
+                        .unwrap_or_else(|_| panic!("{name}: bad indent {v:?}"))
+                }
+                other => panic!("{name}: unknown render option {other:?}"),
+            }
+        }
+        opts
+    }
+}
+
+/// [`mapping_to_native_string`] honouring `opts`.
+fn mapping_to_native_string_with(m: &dyn Mapping, opts: RenderOpts) -> Option<String> {
+    if opts.comment && opts.indent == 3 {
+        return mapping_to_native_string(m);
+    }
+    use ast_core::channel::{Channel, NativeChannel};
+    let obj = mapping_to_any_object(m)?;
+    let mut ch = NativeChannel::with_string_sink();
+    ch.config_mut().comment = opts.comment;
+    ch.config_mut().indent = opts.indent;
+    ch.write(&obj).ok()?;
+    Some(ch.into_string())
 }
 
 #[test]
@@ -201,6 +266,9 @@ fn simplify_regression() {
         let input_path = fixture_dir.join(fields[1]);
         let reference_path = fixture_dir.join(fields[2]);
         let skip_string_compare = fields.get(3).map(|s| s.trim()) == Some("yes");
+        // Field 5: the Channel settings the reference was captured with, as
+        // `comment=0,indent=0`. Blank means C's defaults.
+        let render_opts = RenderOpts::parse(fields.get(4).copied().unwrap_or(""), name);
         // A negative fixture names the same file as both input and reference:
         // the assertion is that `simplify` leaves the Mapping alone. C's
         // `astSimplify` still stamps `IsSimple` on whatever it returns
@@ -324,7 +392,7 @@ fn simplify_regression() {
         // construction — its reference *is* its input, which was never
         // simplified — so those are excluded: they are not a disagreement
         // about placement.
-        if let Some(s) = mapping_to_native_string(simplified.as_ref()) {
+        if let Some(s) = mapping_to_native_string_with(simplified.as_ref(), render_opts) {
             let count = |text: &str| {
                 text.lines()
                     .filter(|l| l.trim_start().starts_with("IsSimp ="))
@@ -339,14 +407,15 @@ fn simplify_regression() {
         // Diagnostic only: `SIMPLIFY_DUMP=<name>` prints both sides of one
         // case, whatever its manifest flags say. Never changes the verdict.
         if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name)
-            && let Some(s) = mapping_to_native_string(simplified.as_ref())
+            && let Some(s) = mapping_to_native_string_with(simplified.as_ref(), render_opts)
         {
             eprintln!("--- got {name} ---\n{s}\n--- want ---\n{ref_text}");
         }
 
         // === Check 3: Serialization comparison ===
         if !skip_string_compare {
-            if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
+            if let Some(simp_str) = mapping_to_native_string_with(simplified.as_ref(), render_opts)
+            {
                 let licence = ISSIMP_PLACEMENT_LICENSED
                     .iter()
                     .find(|(n, _, _, _)| *n == name);

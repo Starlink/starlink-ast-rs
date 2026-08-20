@@ -212,6 +212,41 @@ implementation-independent.
 
 ---
 
+## Two simplify references were captured with `Comment` and `Indent` off
+
+**Status:** Open, and a fixture-provenance issue rather than a library defect —
+but worth raising, because it cost this port a masked comparison for months.
+
+**What was captured.** `ast_tester/lsst.simp` and `ast_tester/rigby.simp` carry
+no inline `\t#` comment text and no nesting indentation: every line is prefixed
+with a single space, whatever its depth. Every other `.simp` in the corpus has
+both. The Channel that wrote them evidently had `Comment = 0` and `Indent = 0`
+set, where `gen_simplify_fixtures.c` uses `astChannel( NULL, NULL, "SinkFile=%s" )`
+with the defaults.
+
+**Consequence for a consumer.** A reference that is not in the format its
+generator produces cannot be compared against a generator-format dump. This port
+diagnosed that as "our serializer always emits comments" and skipped the byte
+comparison for both fixtures, which then hid everything else they had to say. It
+turned out `lsst` was byte-exact all along, and `rigby` had two real differences
+nobody could see: three `IsSimp` cards this port emits and C does not, and an
+inverse-matrix element of `-5.9658198263111446e-17` against C's
+`-5.8980598183211441e-17`.
+
+**How the port handles it now.** `simplify_tests.txt` gained a `render_options`
+field naming the Channel settings a reference was captured with, and the harness
+renders that way — `comment=0,indent=0` for these two. `lsst` needs no skip at
+all as a result. This is the better answer for a consumer regardless of what
+upstream does: it makes the capture settings part of the fixture's metadata
+instead of a property a reader has to infer.
+
+**Upstream discussion.** Regenerating both with the default Channel settings
+would make them ordinary members of the corpus and let any consumer compare them
+without special handling. If they were deliberately captured that way — to keep
+two large files small, say — recording that alongside them would serve the same
+purpose. Either is cheap; the cost of neither is that a reader has to discover
+it by diffing.
+
 ## `IsSimp` placement in a FITS-WCS read records the order the reader simplified in
 
 **Status:** Open, and deliberately *not* mirrored in the Rust port. Twenty

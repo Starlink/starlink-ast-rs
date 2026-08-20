@@ -123,9 +123,12 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
         (
             "simplify manifest: skip_string_compare",
             skip_string_compare,
-            "lsst and rigby (comment-free C captures), cap_cmpmap_01 and \
-             cap_cmpmap_04 (the open InvA/InvB quirk), cap_winmap_03 (a \
-             sub-ulp shift residue C emits and we compute as zero)",
+            "rigby (an IsSimp count difference plus a near-zero inverse-matrix \
+             element differing by ~1%), cap_cmpmap_01 and cap_cmpmap_04 (the \
+             open InvA/InvB quirk), cap_winmap_03 (a sub-ulp shift residue C \
+             emits and we compute as zero). lsst retired its skip once the \
+             manifest could name the Channel settings its reference was \
+             captured with",
         ),
         (
             "simplify manifest: negative fixtures stripping IsSimp",
@@ -202,7 +205,7 @@ fn every_relaxation_is_the_size_the_ledger_says() {
     }
     for (what, got, _reason) in manifest_relaxations() {
         let want = match what {
-            "simplify manifest: skip_string_compare" => 5,
+            "simplify manifest: skip_string_compare" => 4,
             "simplify manifest: negative fixtures stripping IsSimp" => 131,
             "wcsconv manifest: astequal compare mode" => 8,
             other => panic!("unledgered manifest relaxation: {other}"),
