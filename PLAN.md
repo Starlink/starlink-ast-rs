@@ -162,17 +162,60 @@ the artifact means touching all 16 transform sites. Under encoding B it means
 deleting one field and two lines. So B is both simpler now *and* the thing that
 makes the eventual collapse trivial — it does not depend on C changing.
 
-**Risks to work through before attempting it.**
+**Status: attempted; the decode step landed, the encoding change is blocked.**
+
+`63782ac` did the part that stands alone: the sixteen inline decodes across
+eleven functions are now two functions, `CmpMap::first_dir` / `second_dir`.
+Behaviour-preserving, verified against every byte-exact corpus with no fixture
+regeneration. That reduces the encoding change from a sixteen-site sweep to a
+two-function edit.
+
+**The blocker, found by attempting it.** Encoding B needs the child stored in
+its *effective* orientation, so load must flip a child whose serialised
+orientation disagrees. The only way to flip is `Mapping::invert`, and every
+implementation deliberately clears the simplification tags:
+
+```rust
+fn invert(&mut self) {
+    self.inverted = !self.inverted;
+    // C astSetInvert clears IsSimple
+    self.has_been_simplified = false;
+}
+```
+
+So normalising at load would clear each child's `IsSimp` and change the dump —
+byte-exactness lost. Avoiding that needs a tag-preserving flag setter, which
+means a new method on `Mapping` implemented by **37 classes**, whose entire
+purpose is to bypass a clear that exists to mirror `astSetInvert`.
+
+**That is the real finding: the two artifacts are coupled.** The `InvA`/`InvB`
+cleanup cannot land before the `IsSimp` artifact is resolved, because the
+mechanism it needs is a hole in `IsSimp`'s own emulation. It is not a
+coincidence that these two clusters were the port's most expensive area — each
+one's workaround is load-bearing for the other's.
+
+**Revised sequencing.** Do not attempt encoding B in isolation. Either:
+
+1. Resolve `IsSimp` first — if upstream's deterministic-placement fix removes the
+   need for the dual-flag split, `invert()` no longer has a tag to clear, the
+   37-class method is unnecessary, and encoding B becomes a local change; or
+2. Do both together, after the §8 pin move, as one behaviour-preserving refactor
+   gated on the regenerated corpora.
+
+The remaining risks, unchanged and still to work through when it is attempted:
 
 - Patching the child's `Invert` in the emitted node must honour C's
   write-when-set convention (`Dump` writes `InvA` only when non-zero), or
   byte-exactness breaks on the "flag absent" cases.
 - Nested CmpMaps: patching a child node's `Invert` must not disturb that
   child's own `InvA`/`InvB`.
-- `equal()` and the simplifier's fingerprint currently read `inv_a`; both need
-  review against the derived value.
-- The load-side normalisation adds an inversion at parse time; check that this
-  does not perturb `IsSimp`, which C clears on `astSetInvert`.
+- `equal()` and the simplifier's fingerprint read `inv_a`; both need review
+  against the derived value. There are ~24 external readers of `inv_a()` /
+  `inv_b()` across `simplify.rs`, `winmap_merge.rs`, `regions/mod.rs` and
+  `fitschan/fset_to_store/`; most compute the drift expression and would
+  simplify, but each needs checking.
+- `TranMap` carries the same `inv_a`/`inv_b` pattern and would need the same
+  treatment for the cleanup to be complete.
 
 **Sequencing.** Do it as a behaviour-preserving refactor with the byte-exact
 corpus as the gate — wcsconv 194, the 427 simplify fixtures and the 1,606
