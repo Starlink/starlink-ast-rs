@@ -500,13 +500,17 @@ fn simplify_regression() {
     // principle. These are the fixtures that do not yet hit it. Four of the six
     // are masked by `skip_string_compare` for an unrelated reason and two by the
     // counted licence, so without this list the number would be invisible.
+    // Every row here is a real gap: the pinned C oracle and the committed
+    // `.simp` agree, and the port emits fewer `IsSimp` cards than both. The
+    // corpus was regenerated against the pin at f6762005, so a stale fixture
+    // is no longer a possible explanation for a row appearing in this list.
+    // See PLAN.md §6.
     const ISSIMP_DISAGREEMENTS: &[&str] = &[
-        "rigby (8 vs C's 5)",
+        "rigby (8 vs C's 9)",
         "cap_cmpmap_01 (16 vs C's 18)",
         "cap_cmpmap_03 (6 vs C's 7)",
         "cap_cmpmap_04 (15 vs C's 18)",
         "cap_specmap_02 (7 vs C's 8)",
-        "cap_winmap_03 (2 vs C's 1)",
     ];
     issimp_disagreements.sort();
     let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();

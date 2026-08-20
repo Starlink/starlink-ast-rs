@@ -51,7 +51,6 @@
           Map2 = 	# Mapping between nodes 1 and 2
              Begin MathMap 	# Transformation using mathematical functions
                 Nin = 2 	# Number of input coordinates
-                IsSimp = 1 	# Mapping has been simplified
              IsA Mapping 	# Mapping between coordinate systems
                 Fwd1 = "u=x+0.1*y*y" 	# Forward function 1
                 Fwd2 = "v=y" 	# Forward function 2

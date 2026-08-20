@@ -220,11 +220,16 @@ impl Mapping for ShiftMap {
             // Restore a forward ShiftMap. If the original was applied
             // inverted, the returned forward ShiftMap holds the negated
             // shifts and we report a change (index); otherwise no change.
-            let restored = ShiftMap {
-                shift: fwd_shifts,
-                inverted: false,
-                simplified: SimplifiedRecord::default(),
-            };
+            // C reverts with `astClone( this )` when the ShiftMap was applied
+            // forward, and with `astCopy( this )` plus negated shift terms when
+            // it was applied inverted (shiftmap.c:721-741). Both carry the
+            // object's `flags`, so a ShiftMap that reached the list already
+            // recorded as simplified stays recorded across the WinMap round
+            // trip; building a fresh ShiftMap here would drop the record and
+            // suppress the `IsSimp` card C writes for it.
+            let mut restored = self.clone();
+            restored.shift = fwd_shifts;
+            restored.inverted = false;
             ctx.set_pair_single(where_, (Box::new(restored), false, false));
             return if eff_inv { Some(where_) } else { None };
         }

@@ -27,17 +27,21 @@ spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec
 
 # Scenario fixtures (integration regressions, stay in ast_tester/).
 #
-# lsst.simp and rigby.simp were captured from a C run with the Channel's
-# Comment and Indent attributes off — no inline `\t#` comments, and no nesting
-# indentation. That was diagnosed as "our serializer always emits comments" and
-# handled by skipping the byte comparison. It is not a port limitation: the
-# renderer has always had both options, so the fix is to render the way the
-# reference was captured, which is what the render_options field now says.
+# lsst.simp was captured from a C run with the Channel's Comment and Indent
+# attributes off -- no inline `\t#` comments, and no nesting indentation. That
+# was diagnosed as "our serializer always emits comments" and handled by
+# skipping the byte comparison. It is not a port limitation: the renderer has
+# always had both options, so the fix is to render the way the reference was
+# captured, which is what the render_options field says. lsst is byte-exact
+# under those options and needs no skip at all.
 #
-# lsst is byte-exact under those options and needs no skip at all.
+# rigby.simp was captured the same way, and was also stale: the pinned C at
+# f6762005 reproduces neither its formatting nor its IsSimp placement. It has
+# been regenerated from that C with the Channel defaults, so it now needs no
+# render_options.
 #
-# rigby keeps one, for two reasons neither of which is formatting. It emits
-# three IsSimp cards C does not (8 against 5) -- pinned by the
+# rigby keeps its skip for two reasons, neither of them formatting. It emits
+# one IsSimp card fewer than C (8 against 9) -- pinned by the
 # ISSIMP_DISAGREEMENTS assertion, so that part is visible without the skip --
 # and one inverse-matrix element comes out as -5.9658198263111446e-17 where C
 # has -5.8980598183211441e-17. Both are noise around zero, but they differ by
@@ -47,7 +51,7 @@ spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec
 brad  | brad.map  | brad.simp  |
 lsst1 | lsst1.map | lsst1.simp |
 lsst  | lsst.ast  | lsst.simp  | | comment=0,indent=0
-rigby | rigby.map | rigby.simp | yes | comment=0,indent=0
+rigby | rigby.map | rigby.simp | yes |
 
 # Focused rule fixtures (in simplify_fixtures/ subdirectory).
 unit_series_elision     | simplify_fixtures/unit_series_elision.map     | simplify_fixtures/unit_series_elision.simp     |
