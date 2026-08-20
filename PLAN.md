@@ -104,16 +104,41 @@ CmpMap, because `flatten` decomposes the tree into a flat `(mapping, invert)`
 list first and merging happens there. `set_*_orientation` runs during
 `reconstruct`, after every simplification decision is made.
 
-Scope: this covers the drift-creating path only. `invert_into_structure`,
-`canonicalize_inverted_cmpmaps` and `normalize_unitmap_children` flip the child
-*and* the snapshot in step (no drift) and genuinely restructure the tree; they
-are a separate mechanism, untested here, and expected to be load-bearing for
-the parallel-inversion push-down. This is the
+`invert_into_structure` was expected to be the load-bearing half, and measurement
+says otherwise. Forcing the simplifier's `apply_effective` to always take the
+cheap `m.invert()` flag toggle — never the structural rewrite — leaves the entire
+suite green: 3294 passed, 0 failed, including all 194 wcsconv byte comparisons,
+427 simplify fixtures at 0 serialisation failures, and 1,606 transform-oracle
+sections. Instrumenting the branch instead shows it is reached **once** in the
+whole suite, from one simplify fixture, in the `kind=Series, series=false` case.
+Its `Parallel` arm — which the eleven-line comment above it is entirely about,
+describing how C descends to the deepest parallel CmpMap wrapping leaves — is
+never reached at all.
+
+That is "unexercised", which is not the same as "wrong to have": the corpus
+largely co-evolved with this port, so it may simply lack the shape the branch
+defends against (the H10/H11 concern). But combined with the C-side reading it
+is hard to see what the branch buys, and it should be either deleted or given
+the fixture that justifies it.
+
+`canonicalize_inverted_cmpmaps` and `normalize_unitmap_children` are untested
+here and remain out of scope. This is the
 `IsSimp` situation exactly (see H3 in `docs/porting-hazards.md`): one field
 serving both a semantic role and a serialisation role. `IsSimp` was split into
 `is_simple_serial` and `has_been_simplified`; Invert has not been split.
 
-**Why it is deferred, and the test that settles it.** Both halves are currently
+**Where the state comes from in C.** `CombineMaps` (`cmpmap.c:527`) clones
+rather than copies the components, temporarily sets each child's `Invert` to the
+effective direction, lets the constructor snapshot it into the CmpMap's own
+`invert1`/`invert2`, and then *restores the child's own flag* so the caller does
+not find its Mapping altered. Because the child is shared, that restoration is
+visible through the parent: the CmpMap's snapshot holds the effective direction
+while the child's own flag holds the original. `Dump` writes both. The
+disagreement the port must honour is therefore a courtesy to a caller holding a
+shared pointer — a requirement that cannot arise under exclusive ownership.
+Written up for upstream in `docs/issues/c-library-quirks.md`.
+
+**Why it is deferred, and the test that settles it.** The read path is currently
 required for byte-exactness, so nothing can be simplified today. But upstream is
 removing sources of this state: `f54ff1b7` ("fitschan: do not invert an
 encapsulated PermMap in `WcsNative`") and the deterministic-`IsSimp` change on

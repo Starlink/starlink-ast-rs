@@ -200,6 +200,73 @@ implementation-independent.
 
 ---
 
+## `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
+
+**Status:** Open. The port mirrors it, because reading C dumps requires it — 539
+loads across the reference corpus carry the disagreement. Same family as the two
+entries below: a serialised value determined by C's memory model rather than by
+the Mapping.
+
+**C location:** `cmpmap.c:527` (`CombineMaps`), with the dump at `Dump`'s
+`InvA`/`InvB` writes.
+
+`CombineMaps` builds a CmpMap in five steps:
+
+```c
+inv1 = astGetInvert( mapping1 );          /* remember the caller's flag   */
+map1 = astClone( mapping1 );              /* share, not copy              */
+if ( invert1 != inv1 ) astSetInvert( map1, invert1 );   /* set effective  */
+result = astCmpMap( map1, map2, series, "", status );    /* snapshots it   */
+if ( invert1 != inv1 ) astSetInvert( map1, inv1 );       /* put it back    */
+```
+
+The constructor snapshots the child's flag into the CmpMap's own `invert1`, and
+`CombineMaps` then **restores the child's flag to what the caller had**. Because
+`astClone` shares rather than copies, that restoration is visible through the
+CmpMap: afterwards the parent's `invert1` holds the *effective* direction while
+the shared child's own `Invert` holds the *original* one. `Dump` writes both —
+`InvA = this->invert1` alongside the child's own `Invert` — so the dump records
+two independent bits.
+
+**Why it is an artifact rather than information.** The child's stored `Invert`
+has no effect on the transform: `Transform` forces the parent's recorded value
+onto the child before transforming (`cmpmap.c:3073` and the equivalent at
+`:3862`). Measured on the Rust port, which reproduces the same structures:
+disabling the machinery that recreates the disagreement leaves 427 simplify
+fixtures at **0 `equal()` failures and 0 transform failures**, with differences
+confined to the serialised text. The bit is dump-only.
+
+The courtesy restoration is the whole cause. It exists so a caller who passes a
+Mapping into `astCmpMap` does not find its `Invert` altered afterwards — a
+requirement that only arises because the object is shared. An implementation
+with exclusive ownership cannot produce the state at all.
+
+**Consequence.** Two CmpMaps that `astEqual` reports as equal, and that
+transform identically, can serialise differently depending on the orientation
+the components happened to be in when the tree was first built. Anything
+comparing dumps byte for byte, or reproducing AST output from another
+implementation, has to reproduce C's construction history rather than the
+Mapping.
+
+**Upstream discussion.** The fix already applied to `WcsNative` (`f54ff1b7`,
+"do not invert an encapsulated PermMap") is the same shape: stop leaving a flag
+set after encapsulation. Here the options are for `CombineMaps` to `astCopy`
+the component when it has to change the flag (it already copies in the
+`mapping1 == mapping2` case, so the mechanism exists), or to skip the
+restoration and let the child carry the effective value. Either makes the dump
+reflect the Mapping. It is a serialisation change, so it belongs with the other
+four in the same release.
+
+**What it costs the port** (recorded in `PLAN.md` §2, deferred until oracle
+compliance is settled): `inv_a`/`inv_b` fields, a `fwd XOR drift` expression at
+15 call sites, 6 `set_*_orientation` calls whose only effect is the dump, and an
+`invert_into_structure` branch in the simplifier's `apply_effective` that the
+entire 3294-test suite reaches **once** — its `Parallel` arm, which its
+eleven-line comment is entirely about, is never reached at all, and removing the
+branch changes no test.
+
+---
+
 ## `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages
 
 **Status:** Open, and deliberately *not* mirrored in the Rust port.
