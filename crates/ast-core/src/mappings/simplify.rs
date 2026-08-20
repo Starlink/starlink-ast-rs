@@ -302,10 +302,23 @@ pub(crate) fn flatten(
 
     // Leaf: clone via simplified(), then normalise the invert flag.
     //
-    // C `cmpmap.c::MapList` does *not* simplify atomic component Mappings as
-    // it decomposes the tree — leaves enter the nominate loop in their stored
-    // form, and each class's own `astMapMerge` performs any reduction in
-    // context (where it can see its neighbours). `WinMap` in particular only
+    // **This diverges from C and is a known wart.** C `cmpmap.c::MapList` does
+    // *not* simplify atomic component Mappings as it decomposes the tree —
+    // leaves enter the nominate loop in their stored form, and each class's own
+    // `astMapMerge` performs any reduction in context (where it can see its
+    // neighbours). Reducing here instead is why five classes below have to opt
+    // back out (`defer_winmap` and friends, each added because reducing early
+    // changed the result), and why the orientation-only-normalisation probe
+    // further down exists at all: it undoes the side effect of having used
+    // `simplified()` as the decomposition step.
+    //
+    // Removing it is worth doing on its own merits and is not free: measured,
+    // deferring every leaf breaks `lsst`, `neg_unitnormmap_nonunit_scale`,
+    // `cap_lutmap_01`, `cap_wcsmap_01` and `cap_zoommap_03` — three of those
+    // purely on `InvA`/`InvB` placement, one on a merge that then picks a
+    // MatrixMap where C keeps a WinMap. `LutMap` has no `map_merge` at all, so
+    // it depends on this call for any reduction. It does *not* explain the two
+    // licensed `IsSimp` fixtures; that was measured too. `WinMap` in particular only
     // narrows to a `ShiftMap` as the *final* step of its `MapMerge`, after the
     // swap-and-seek that may absorb its scales into an adjacent MatrixMap
     // (`WinMat`, winmap.c:2793).

@@ -71,22 +71,28 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// a UnitMap merge widened; `cap_specmap_02`'s is on the CmpMap wrapping a
 /// SpecMap/ZoomMap pair.
 ///
-/// The cause is architectural, and no stamping rule reaches it. C's
-/// `astMapList` does not simplify a component as it decomposes; each leaf is
-/// reduced later, inside the nominate loop, and picks up its record when a
-/// collapsing list is returned through `astSimplify`. This engine's `flatten`
-/// reduces leaves as it decomposes, so the same reduction produces a different
-/// object at a different point and there is nothing holding the record when the
-/// tree is folded. Five classes already opt out of the early reduction
-/// (`defer_winmap` and friends) precisely because it changes the result;
-/// deferring *all* of them, which is C's shape, breaks nine other fixtures. The
-/// fix is to move leaf reduction into the nominate loop, not to add a stamp.
+/// No stamping rule reaches either, and the cause is not where the code makes
+/// it look. The surviving ShiftMap in `cap_cmpmap_03` is built by
+/// `shift_map_merge`'s revert path from a list entry that holds no record, and
+/// nothing upstream of it holds one either. Tagging *every* `simplify_mapping`
+/// result — which is `astSimplify_`'s literal contract — does not produce the
+/// card, which says this engine never has that ShiftMap as the whole result of
+/// a simplify, whereas C does.
 ///
-/// Five stamping fixes were tried and reverted: tagging the reduced leaf in
-/// `flatten`, carrying the record through `ShiftMap`'s merge-revert, tagging the
-/// reconstructed parallel, tagging every `simplify_mapping` result, and tagging
-/// at construction. Each either changed nothing here or over-tagged elsewhere
-/// (`cap_lutmap_01`, `cap_matrixmap_03`, `cap_zoommap_01`).
+/// That is what `IsSimp` records: the set of sub-Mappings that were, at some
+/// instant, the entire result of a simplification. Two engines that reach the
+/// same Mapping by different internal routes disagree on that set, and the
+/// Mapping here *is* the same — `equal()` and the transform check both pass,
+/// and the byte diff is one line. Aligning the routes, not adding a stamp, is
+/// what would close it.
+///
+/// Measured dead ends, so they are not retried: tagging the reduced leaf in
+/// `flatten`; carrying the record through `ShiftMap`'s merge-revert (its source
+/// has none to carry); tagging the reconstructed parallel; tagging every
+/// `simplify_mapping` result; tagging at `ShiftMap`'s constructor; and
+/// deferring leaf reduction entirely. The first four either changed nothing
+/// here or over-tagged `cap_lutmap_01` / `cap_matrixmap_03` / `cap_zoommap_01`;
+/// the last changed nothing here and broke four unrelated cases.
 ///
 /// The licence is per case, drops only the `IsSimp` lines, and pins both counts
 /// — so it cannot absorb a new difference, and the moment the port emits the

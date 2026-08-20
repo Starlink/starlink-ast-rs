@@ -451,18 +451,16 @@ quirk (`docs/issues/c-library-quirks.md`, "`IsSimp` placement in a FITS-WCS read
 records the order the reader simplified in") and licensed with both card counts
 pinned (§6), so a *shape* difference could never hide behind it.
 
-`cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are a different
-matter — one card too few, from the same input on both sides, so a genuine gap.
-It is architectural rather than a missing stamp: C's `astMapList` does not
-reduce a component as it decomposes, leaving each leaf to be reduced inside the
-nominate loop where a collapsing list carries the record out through
-`astSimplify`; this engine's `flatten` reduces leaves as it decomposes. Five
-classes already opt out of that early reduction because it changes the result
-(`defer_winmap` and friends), and deferring all of them — C's actual shape —
-breaks nine other fixtures. So the fix is to move leaf reduction into the
-nominate loop, which is simplifier work in its own right and is not attempted
-here; five stamping fixes were tried against the corpus first and all were
-reverted.
+`cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are one card too
+few, from the same input on both sides. Six fixes were tried and measured, and
+all were reverted — including tagging every `simplify_mapping` result, which is
+`astSimplify_`'s literal contract, and deferring leaf reduction entirely. The
+finding is that this engine never has the missing node as the whole result of a
+simplify, where C does: `IsSimp` records the set of sub-Mappings that were at
+some instant the entire result of a simplification, and two engines reaching the
+same Mapping by different internal routes disagree on that set. The Mapping is
+identical — `equal()`, the transform check and every other byte all match. The
+dead ends are listed in `test_simplify_regression.rs` so they are not retried.
 
 The `.ast` FrameSet corpus (`frameset_fixtures/`) is byte-exact throughout and
 could not have caught either: it round-trips read → write and never
