@@ -460,21 +460,33 @@ impl CmpMap {
         clear_child_simple_tag(&mut self.second);
     }
 
-    /// Whether the first child's current Invert differs from the recorded
-    /// snapshot — if so, the effective transform direction must flip.
-    fn first_invert_changed(&self) -> bool {
-        self.inv_a != self.first.is_inverted()
+    /// The direction to apply the **first** child in, when this CmpMap is
+    /// applied in direction `fwd`.
+    ///
+    /// This and [`Self::second_dir`] are the only two places that decode the
+    /// `InvA`/`InvB` encoding, and every transform, arity and split path goes
+    /// through them. The child is stored in its serialised orientation
+    /// (`child.is_inverted()`) while `inv_a` records the effective direction,
+    /// so recovering the direction to call the child in needs both:
+    /// `fwd XOR (inv_a XOR stored)`. Applying the child in that direction
+    /// yields a net direction of `fwd XOR inv_a`, which is what `InvA` means.
+    ///
+    /// Concentrating the decode here is what makes the alternative encoding in
+    /// `PLAN.md` §2 a local change: if children were instead stored in their
+    /// *effective* orientation, `inv_a == child.is_inverted()` would hold as an
+    /// invariant and both functions would collapse to `fwd`.
+    fn first_dir(&self, fwd: bool) -> bool {
+        fwd != (self.inv_a != self.first.is_inverted())
     }
 
-    /// Whether the second child's current Invert differs from the recorded
-    /// snapshot.
-    fn second_invert_changed(&self) -> bool {
-        self.inv_b != self.second.is_inverted()
+    /// The direction to apply the **second** child in. See [`Self::first_dir`].
+    fn second_dir(&self, fwd: bool) -> bool {
+        fwd != (self.inv_b != self.second.is_inverted())
     }
 
     /// Effective Nin of first child when the CmpMap is used in direction `fwd`.
     fn effective_first_nin(&self, fwd: bool) -> usize {
-        let fwd1 = fwd != self.first_invert_changed();
+        let fwd1 = self.first_dir(fwd);
         if fwd1 {
             self.first.nin()
         } else {
@@ -484,7 +496,7 @@ impl CmpMap {
 
     /// Effective Nout of first child when the CmpMap is used in direction `fwd`.
     fn effective_first_nout(&self, fwd: bool) -> usize {
-        let fwd1 = fwd != self.first_invert_changed();
+        let fwd1 = self.first_dir(fwd);
         if fwd1 {
             self.first.nout()
         } else {
@@ -494,7 +506,7 @@ impl CmpMap {
 
     /// Effective Nin of second child when the CmpMap is used in direction `fwd`.
     fn effective_second_nin(&self, fwd: bool) -> usize {
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd2 = self.second_dir(fwd);
         if fwd2 {
             self.second.nin()
         } else {
@@ -504,7 +516,7 @@ impl CmpMap {
 
     /// Effective Nout of second child when the CmpMap is used in direction `fwd`.
     fn effective_second_nout(&self, fwd: bool) -> usize {
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd2 = self.second_dir(fwd);
         if fwd2 {
             self.second.nout()
         } else {
@@ -531,8 +543,8 @@ impl CmpMap {
     /// then falls back to [`Self::map_split2`].
     fn map_split_forward(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
         let fwd = !self.inverted;
-        let fwd1 = fwd != self.first_invert_changed();
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd1 = self.first_dir(fwd);
+        let fwd2 = self.second_dir(fwd);
 
         match self.kind {
             Composition::Series => {
@@ -699,8 +711,8 @@ impl CmpMap {
     // ------------------------------------------------------------------ //
 
     fn series_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
-        let fwd1 = fwd != self.first_invert_changed();
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd1 = self.first_dir(fwd);
+        let fwd2 = self.second_dir(fwd);
         if fwd {
             let mid = self.first.transform(pts, fwd1)?;
             self.second.transform(&mid, fwd2)
@@ -716,8 +728,8 @@ impl CmpMap {
         fwd: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        let fwd1 = fwd != self.first_invert_changed();
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd1 = self.first_dir(fwd);
+        let fwd2 = self.second_dir(fwd);
         if fwd {
             let mid = self.first.transform(pts, fwd1)?;
             self.second.transform_into(&mid, fwd2, out)
@@ -739,8 +751,8 @@ impl CmpMap {
         fwd: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        let fwd1 = fwd != self.first_invert_changed();
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd1 = self.first_dir(fwd);
+        let fwd2 = self.second_dir(fwd);
         let mid_n = if fwd {
             self.effective_first_nout(true)
         } else {
@@ -761,8 +773,8 @@ impl CmpMap {
     // ------------------------------------------------------------------ //
 
     fn parallel_transform(&self, pts: &PointSet, fwd: bool) -> AstResult<PointSet> {
-        let fwd1 = fwd != self.first_invert_changed();
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd1 = self.first_dir(fwd);
+        let fwd2 = self.second_dir(fwd);
 
         let npoint = pts.npoint();
         let split = self.effective_first_nin(fwd);
@@ -796,8 +808,8 @@ impl CmpMap {
         fwd: bool,
         out: &mut PointSet,
     ) -> AstResult<()> {
-        let fwd1 = fwd != self.first_invert_changed();
-        let fwd2 = fwd != self.second_invert_changed();
+        let fwd1 = self.first_dir(fwd);
+        let fwd2 = self.second_dir(fwd);
 
         let npoint = pts.npoint();
         let split = self.effective_first_nin(fwd);
@@ -1138,7 +1150,7 @@ impl Serializable for CmpMap {
         // Children keep their native Invert state as serialized.
         // inv_a/inv_b record the expected child state; the effective
         // transform direction is computed at runtime via
-        // first_invert_changed() / second_invert_changed().
+        // first_dir() / second_dir().
         let mut cmp = Self {
             first: map_a,
             second: map_b,
