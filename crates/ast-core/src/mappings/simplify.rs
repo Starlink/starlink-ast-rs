@@ -300,164 +300,27 @@ pub(crate) fn flatten(
         return Ok(result);
     }
 
-    // Leaf: clone via simplified(), then normalise the invert flag.
+    // Leaf: clone it, unreduced.
     //
-    // **This diverges from C and is a known wart.** C `cmpmap.c::MapList` does
-    // *not* simplify atomic component Mappings as it decomposes the tree —
-    // leaves enter the nominate loop in their stored form, and each class's own
-    // `astMapMerge` performs any reduction in context (where it can see its
-    // neighbours). Reducing here instead is why five classes below have to opt
-    // back out (`defer_winmap` and friends, each added because reducing early
-    // changed the result), and why the orientation-only-normalisation probe
-    // further down exists at all: it undoes the side effect of having used
-    // `simplified()` as the decomposition step.
-    //
-    // Removing it is half a change, and the other half is the work list.
-    // Deleting this call alone leaves five fixtures failing — `lsst`,
-    // `neg_unitnormmap_nonunit_scale`, `cap_lutmap_01`, `cap_wcsmap_01`,
-    // `cap_zoommap_03` — and each names a reduction C performs inside
-    // `MapMerge` that this port performs only here:
-    //
-    //   * `LutMap` has no `map_merge` at all. C `lutmap.c:1152` replaces a
-    //     linear LUT with an equivalent `WinMap` there, and C:1215 collapses a
-    //     LutMap beside its own inverse to a `UnitMap`. `LutMap::simplified`
-    //     already implements the first of those, faithfully and with the C line
-    //     numbers — in the wrong method.
-    //   * `cap_wcsmap_01` and `cap_zoommap_03` differ only in whether an
-    //     inverted `MatrixMap` is materialised forward or left stored inverted
-    //     with the parent recording `InvB`. That is the still-open `InvA`/`InvB`
-    //     quirk, which this port mirrors deliberately, so those two want
-    //     settling after that quirk is, not before.
-    //
-    // Doing both halves should hold or improve oracle agreement; doing only
-    // this half does not. It does *not* explain the two licensed `IsSimp`
-    // fixtures — deferring every leaf leaves both exactly as they were. `WinMap` in particular only
-    // narrows to a `ShiftMap` as the *final* step of its `MapMerge`, after the
-    // swap-and-seek that may absorb its scales into an adjacent MatrixMap
-    // (`WinMat`, winmap.c:2793).
-    //
-    // `WinMap::simplified()` narrows an all-unit-scale WinMap to a `ShiftMap`,
-    // which would collapse it here before the nominate loop ever sees it
-    // adjacent to a MatrixMap — destroying the residual scale `WinMat` folds
-    // into the matrix. So any WinMap whose scales are all unit (to `astEQUAL`
-    // tolerance, the same test `win_map_merge`'s final narrowing applies) is
-    // left atomic for the nominate loop, where `win_map_merge` narrows it after
-    // the swap-and-seek. Genuinely non-unit WinMaps keep the normal leaf
-    // reduction.
-    let defer_winmap = mapping
-        .as_any()
-        .downcast_ref::<WinMap>()
-        .and_then(|w| super::winmap::extract_linear_params(w, false))
-        .is_some_and(|(_, scales)| scales.iter().all(|&s| ast_equal(s, 1.0)));
-    // A PermMap whose canonical stored form drops a now-redundant permutation
-    // array (→ `OutCpy`/`InCpy`) must be canonicalised inside the nominate
-    // loop, not here: C keeps each leaf atomic through `astMapList` and only
-    // rebuilds a PermMap via its `astMapMerge` (which reports the rebuild as a
-    // simplification, permmap.c:1362-1373). Reducing it here instead would let
-    // the "no pairwise change" fast path in `simplify_mapping` discard the
-    // rebuilt leaf and return the original tree. We defer only when the
-    // canonical form actually differs from the stored one; a PermMap already
-    // in canonical form takes the normal leaf reduction.
-    let defer_perm = mapping
-        .as_any()
-        .downcast_ref::<super::PermMap>()
-        .is_some_and(|p| p.canonical_null_form().is_some());
-    // A stored-inverted SpecMap is kept atomic in its stored orientation, so
-    // the reconstructed tree serialises it with `Invert=1` and its original
-    // step order — matching C's `astMapList`, which appends each leaf at the
-    // orientation it is stored in (objInvert) and records the *effective*
-    // direction separately in the parent's `InvA`/`InvB` (invert_list). C's
-    // `SpecMap::MapMerge` only rewrites a lone SpecMap forward when it is
-    // *applied* inverted (invert_list set); a stored-inverted SpecMap applied
-    // forward is left untouched. `SpecMap::simplified()` instead materialises
-    // the inverse step list, which would lose the stored orientation and
-    // change the emitted form. `spec_map_merge` still normalises the leaf when
-    // it is effectively applied inverted.
-    let defer_spec = mapping
-        .as_any()
-        .downcast_ref::<super::SpecMap>()
-        .is_some_and(|s| s.is_inverted());
-    // A Region leaf is kept atomic through the decomposition, exactly as C
-    // `cmpmap.c::MapList` does: it never simplifies component Mappings as it
-    // flattens the tree. Region reduction happens in-context in the nominate
-    // loop via `region_map_merge`'s self-simplify head, but only *after* the
-    // loop has had a chance to merge the Region with a neighbour. This
-    // ordering is load-bearing: a bounded `Interval` self-simplifies to a
-    // `Box` (interval.c::Cache), and recovering bounds from a Box's
-    // centre/corner storage rounds them (`2*centre - corner`). If we
-    // reclassified the leaf here, an adjacent Interval could only absorb it
-    // through the lossy `Interval + Box` branch of `MergeInterval`; keeping
-    // it an Interval lets the exact `Interval + Interval` branch (raw
-    // `astIntervalPoints`) fire first, preserving the defining bounds.
-    let defer_region = crate::regions::as_region(mapping).is_some();
-    // A MatrixMap leaf likewise stays a MatrixMap through the decomposition.
-    // `MatrixMap::simplified()` runs matrixmap.c's replace-with-simpler ladder,
-    // which narrows a diagonal matrix to a ZoomMap (equal diagonals) or a
-    // UnitMap; C reaches that ladder only from `MapMerge`, in context, after the
-    // nominate loop has had a chance to merge the matrix with a neighbour.
-    // Narrowing during the flatten changes which merge branch the neighbour
-    // takes — a ZoomMap is in WinMap's direct-merge list where a non-uniform
-    // diagonal MatrixMap is not — and so changes the normal form.
-    let defer_matrix = mapping.as_any().is::<super::matrix::MatrixMap>();
-    let mut cloned = if defer_winmap || defer_perm || defer_spec || defer_region || defer_matrix {
-        mapping.clone_box()
-    } else {
-        mapping.simplified()?
-    };
-    // Preserve the AllowSimplify flag (C `AlSimp`) across the leaf's own
-    // simplification: `astMapList` keeps each component's flags, and a
-    // restricted parent CmpMap relies on it to decide which leaves may be
-    // nominated. A class's `simplified()` returns a fresh object without the
-    // flag, so carry it over explicitly.
-    if mapping.allow_simplify() {
-        cloned.set_allow_simplify(true);
-    }
-    // Likewise the `IsSimple` dump tag (C `IsSimp`). C `astMapList` appends the
-    // component pointer itself, so every flag already on the component travels
-    // with it into the list and on to the reconstructed tree; only a class's
-    // `simplified()` (called here in place of that pass-through) returns a fresh
-    // object without them. Carry the serialisation-only tag, not the merge
-    // guard: the guard would stop a parent `flatten` from decomposing this
-    // component, which C's `MapList` does regardless of `IsSimple`.
-    if mapping
-        .as_any()
-        .downcast_ref::<CmpMap>()
-        .is_some_and(|c| c.dump_is_simple())
-        && let Some(cm) = cloned.as_any_mut().downcast_mut::<CmpMap>()
-    {
-        let inv = cm.is_inverted();
-        cm.set_dump_simplified_in(inv, true);
-    }
+    // C `cmpmap.c::MapList` decomposes structurally and does not simplify the
+    // components it collects. Each leaf enters the nominate loop in its stored
+    // form and its own `astMapMerge` reduces it there, in context, where it can
+    // see its neighbours — which is what lets `WinMat` fold a WinMap's residual
+    // scale into an adjacent MatrixMap, and what makes "replace with simpler"
+    // the *last* step of a class's merge rather than the first thing that
+    // happens to it.
+    let mut cloned = mapping.clone_box();
+    // `AllowSimplify` (C `AlSimp`) and the `IsSimp` dump tag used to be copied
+    // across by hand here, because `simplified()` returned a fresh object
+    // without them. `Clone` carries both, which is what `astMapList` appending
+    // the component pointer itself amounts to.
     // The leaf's own (intrinsic) Invert state, independent of any inversion
-    // imposed by a parent CmpMap. This is preserved as the element's
-    // `orig_inv` so `reconstruct` can serialise the child in the same
-    // orientation C does (C keeps each component's original Invert and
-    // records the effective direction separately in InvA/InvB).
-    //
-    // C `astMapList` appends a leaf at the orientation it is *stored* in the
-    // tree — it does not simplify leaves (per-leaf reduction happens later in
-    // the nominate loop). Some classes' `simplified()` normalise the Invert
-    // flag away (e.g. `PermMap::simplified` returns the swapped forward form
-    // of an inverted PermMap). When that happens for a leaf whose transform
-    // is otherwise unchanged by simplification, honour the *original*
-    // orientation so the reconstructed child serialises with the same Invert
-    // flag C emits. We detect "orientation-only normalisation" by comparing
-    // the simplified clone (re-inverted to the original orientation) against
-    // the original mapping.
+    // imposed by a parent CmpMap. Preserved as the element's `orig_inv` so
+    // `reconstruct` serialises the child in the orientation C does: C keeps each
+    // component's stored Invert and records the effective direction separately
+    // in the parent's `InvA`/`InvB`. The clone is the leaf untouched, so its
+    // orientation *is* the stored one and there is nothing to un-normalise.
     let mut orig_inv = cloned.is_inverted();
-    let original_inverted = mapping.is_inverted();
-    if orig_inv != original_inverted {
-        // The clone's Invert differs from the original. If flipping the clone
-        // back to the original orientation yields a mapping equal to the
-        // original, the only change was orientation normalisation — keep the
-        // original orientation (matching C's stored-orientation leaf).
-        let mut probe = cloned.clone_box();
-        probe.invert();
-        if probe.equal(mapping) {
-            cloned = probe;
-            orig_inv = original_inverted;
-        }
-    }
     let mut effective_inv = inv != orig_inv;
     // Reset the clone to forward state; the bool carries inversion.
     if cloned.is_inverted() {
@@ -1201,11 +1064,20 @@ pub(crate) fn perm_map_merge(
 /// WCSBAD →`UnitMap` case is handled by `simplified`). On success the first
 /// modified index is returned.
 pub(crate) fn wcs_map_merge(
-    _wcs: &WcsMap,
+    wcs: &WcsMap,
     ctx: &mut MergeCtx,
     where_: usize,
     series: bool,
 ) -> Option<usize> {
+    // Replace-with-simpler, "without reference to the neighbouring Mappings in
+    // the list": a WcsMap of type `AST__WCSBAD` is equivalent to a UnitMap
+    // (wcsmap.c:3187-3199). C does this first, before any neighbour is
+    // considered.
+    if wcs.projection() == crate::mappings::WcsProjection::Unknown {
+        ctx.set_pair_single(where_, (Box::new(UnitMap::new(wcs.nin())), false, false));
+        return Some(where_);
+    }
+
     if series && ctx.len() > 1 {
         // Direct inverse-pair cancellation, lower neighbour first
         // (C wcsmap.c:3116-3131). Both elements must be WcsMaps (CanMerge);
@@ -1325,7 +1197,18 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
         }
     }
 
-    list[i] = (m, false, false);
+    // Normalise exactly as [`MergeCtx::replace_pair_with`] does: a merge may
+    // return its result in the inverted orientation — `MatrixMap::mtr_zoom`
+    // keeps an inverted MatrixMap inverted so it serialises `Invert = 1` like C
+    // — and that intrinsic orientation is what `reconstruct` needs in
+    // `orig_inv`. Storing `(m, false, false)` threw it away, materialising the
+    // inversion into the stored values and dropping the card.
+    let mut m = m;
+    let orig_inv = m.is_inverted();
+    if orig_inv {
+        m.invert();
+    }
+    list[i] = (m, orig_inv, orig_inv);
     list.remove(i + 1);
     ctx.resync_frozen();
     Some(i)
@@ -3758,24 +3641,27 @@ mod tests {
         let mut z = ZoomMap::new(1, 5.0).unwrap();
         z.invert();
         assert!(z.is_inverted());
-        // ZoomMap::simplified() normalizes inversion into the factor:
-        // ZoomMap(5, inverted) → ZoomMap(0.2, forward)
-        // So effective_inv = external(false) XOR simplified.is_inverted()(false) = false
+        // The leaf is not reduced, so its stored inversion survives as
+        // `orig_inv` and combines with the external direction rather than being
+        // absorbed into the factor. C keeps each leaf at the orientation it is
+        // stored in and records the effective direction separately.
         let list = flatten(&z, false, true).unwrap();
         assert_eq!(list.len(), 1);
-        assert!(!list[0].1); // inversion absorbed into factor
-        assert!(!list[0].0.is_inverted()); // normalised
+        assert!(list[0].1); // stored inverted, applied forward → effectively inverted
+        assert!(list[0].2); // and it serialises inverted
+        assert!(!list[0].0.is_inverted()); // the entry itself is held forward
     }
 
     #[test]
     fn flatten_non_cmpmap_double_inversion_cancels() {
         let mut z = ZoomMap::new(1, 5.0).unwrap();
         z.invert();
-        // ZoomMap::simplified() normalizes: ZoomMap(5, inv) → ZoomMap(0.2, fwd)
-        // effective_inv = external(true) XOR simplified.is_inverted()(false) = true
+        // Stored inverted and applied inverted cancel, which is the whole point
+        // of carrying the two separately.
         let list = flatten(&z, true, true).unwrap();
         assert_eq!(list.len(), 1);
-        assert!(list[0].1); // external inversion not cancelled (already absorbed)
+        assert!(!list[0].1); // effectively forward
+        assert!(list[0].2); // still serialises inverted
     }
 
     #[test]

@@ -127,7 +127,12 @@ pub(crate) fn sip_int_world(
 
     // Step 2: simplify and flatten the celestial-axis sub-mapping
     // into a list of series mappings.
-    let smap = tmap1.simplified()?;
+    //
+    // The full `simplify()`, not the raw `simplified()` virtual: C reaches this
+    // through `astSimplify` before `astMapList`, and the reduction that matters
+    // here — consolidating a PolyMap's duplicate terms so the SIP identity term
+    // is folded into one coefficient — happens in the merge loop.
+    let smap = tmap1.simplify()?;
     let chain = crate::mappings::simplify::flatten(smap.as_ref(), false, true)?;
 
     // Step 3: locate the first 2-in/2-out PolyMap in the chain.

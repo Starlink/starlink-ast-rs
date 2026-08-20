@@ -760,27 +760,33 @@ impl Mapping for MatrixMap {
 
         // MatrixMap + ZoomMap → MatrixMap (scaled).
         // ZoomMap commutes with MatrixMap: f*(M*x) = M*(f*x) = (f*M)*x.
+        //
+        // Scale through [`MatrixMap::mtr_zoom`], which keeps an inverted
+        // MatrixMap inverted with its stored values scaled, rather than
+        // materialising the inverse into a fresh forward matrix. C does the
+        // same, so the serialised orientation matches — and it avoids
+        // recomputing an inverse, which would perturb the last ULP. This is the
+        // generic-merge twin of the nominate-loop path in
+        // `matrix_merge::try_direct_merge`; the two produced different
+        // orientations until they were made to share this helper.
         if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
             let f = if other_inv {
                 1.0 / zm.factor()
             } else {
                 zm.factor()
             };
-            let a = if self_inv {
-                self.inverse.as_ref()?.clone()
-            } else {
-                self.matrix.clone()
-            };
-            if a.ncols() != zm.nin() && a.nrows() != zm.nin() {
+            let n = if self_inv { self.nin() } else { self.nout() };
+            if zm.nin() != n {
                 return None;
             }
-            let scaled = &a * f;
-            if is_identity_matrix(&scaled) {
-                return Some(Box::new(UnitMap::new(scaled.nrows())));
+            let scaled = self.mtr_zoom(f, self_inv);
+            // Collapse to a UnitMap only when the whole Mapping is the
+            // identity: an inverted result has to survive so its orientation
+            // reaches serialisation.
+            if !scaled.is_inverted() && is_identity_matrix(scaled.forward_matrix()) {
+                return Some(Box::new(UnitMap::new(scaled.forward_matrix().nrows())));
             }
-            return MatrixMap::new(scaled)
-                .ok()
-                .map(|m| Box::new(m) as DynMapping);
+            return Some(Box::new(scaled) as DynMapping);
         }
 
         // MatrixMap + PermMap → MatrixMap (permuted).

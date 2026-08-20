@@ -1356,6 +1356,45 @@ impl Mapping for PolyMap {
         Ok(())
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // C `polymap.c:340-461`: replace-with-simpler, "without reference to
+        // the neighbouring Mappings in the list". A PolyMap whose terms are all
+        // constant or first-order is rebuilt as `astCmpMap(MatrixMap, ShiftMap)`
+        // and simplified, which yields a WinMap in the diagonal case.
+        //
+        // C builds it from the transformation as *constructed*, before any
+        // inversion, and leaves `invert_list` untouched (polymap.c:452-455) —
+        // so the replacement inherits the entry's applied direction rather than
+        // absorbing it. [`PolyMap::simplified`] works from the stored
+        // orientation for the same reason, so the entry's flags carry over.
+        // "Did any transformation change?" is C's `mod` flag (polymap.c:225,
+        // :328). A structural fingerprint is not enough: consolidating the
+        // *inverse* coefficients leaves the forward transformation, and so the
+        // fingerprint, untouched.
+        let changed = |simp: &DynMapping| match simp.as_any().downcast_ref::<PolyMap>() {
+            Some(other) => {
+                other.inverted != self.inverted
+                    || other.forward != self.forward
+                    || other.inverse != self.inverse
+            }
+            None => true,
+        };
+        if let Ok(simp) = self.simplified()
+            && changed(&simp)
+        {
+            let eff_inv = ctx.entry(where_).1;
+            ctx.set_pair_single(where_, (simp, eff_inv, false));
+            return Some(where_);
+        }
+
+        super::simplify::default_map_merge(ctx, where_, series)
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
@@ -1371,22 +1410,36 @@ impl Mapping for PolyMap {
             (self.forward.as_slice(), self.inverse.as_deref())
         };
 
-        // Consolidate forward terms: merge duplicates with same (powers, out_axis).
-        let mut consolidated: Vec<PolyTerm> = Vec::new();
-        for term in fwd_terms {
-            if let Some(existing) = consolidated
-                .iter_mut()
-                .find(|t| t.out_axis == term.out_axis && t.powers == term.powers)
-            {
-                existing.coeff += term.coeff;
-            } else {
-                consolidated.push(term.clone());
+        // Combine coefficients referring to the same combination of input
+        // powers — two constant terms for one output become one constant term.
+        // C does this for the forward transformation and then the inverse
+        // (polymap.c:219-225, `for( check_fwd = 0; check_fwd < 2; check_fwd++ )`),
+        // so both directions are consolidated here too. Doing only the current
+        // one leaves a SIP inverse polynomial holding its identity term and its
+        // linear correction as two separate coefficients, which the SIP
+        // extractor then reads one of.
+        let consolidate = |terms: &[PolyTerm]| -> Vec<PolyTerm> {
+            let mut out: Vec<PolyTerm> = Vec::new();
+            for term in terms {
+                if let Some(existing) = out
+                    .iter_mut()
+                    .find(|t| t.out_axis == term.out_axis && t.powers == term.powers)
+                {
+                    existing.coeff += term.coeff;
+                } else {
+                    out.push(term.clone());
+                }
             }
-        }
-        // Remove zero-coefficient terms. C uses an exact `!= 0.0` test when
-        // shuffling merged coefficients (polymap.c:3681), so mirror it rather
-        // than a threshold — a legitimately tiny coefficient survives in C.
-        consolidated.retain(|t| t.coeff != 0.0);
+            // Remove zero-coefficient terms. C uses an exact `!= 0.0` test when
+            // shuffling merged coefficients (polymap.c:3681), so mirror it
+            // rather than a threshold — a legitimately tiny coefficient
+            // survives in C.
+            out.retain(|t| t.coeff != 0.0);
+            out
+        };
+
+        let consolidated = consolidate(fwd_terms);
+        let consolidated_inv = inv_terms.map(consolidate);
 
         // Check if all remaining terms are affine (constant or linear).
         // A term is constant if sum of powers == 0, linear if sum == 1 with
@@ -1461,17 +1514,25 @@ impl Mapping for PolyMap {
             }
         }
 
-        // If nothing changed, return self unchanged.
-        if consolidated.len() == fwd_terms.len() {
+        // If neither direction changed, return self unchanged.
+        let inv_changed = match (inv_terms, consolidated_inv.as_ref()) {
+            (Some(orig), Some(new)) => new.len() != orig.len(),
+            _ => false,
+        };
+        if consolidated.len() == fwd_terms.len() && !inv_changed {
             return Ok(Box::new(self.clone()));
         }
 
         // Build a new PolyMap with the consolidated terms.
         // We need to map back to the non-inverted representation for the constructor.
+        let consolidated_inv_slice = consolidated_inv.as_deref();
         let (new_fwd, new_inv) = if self.inverted {
-            (inv_terms.unwrap_or(&[]), Some(consolidated.as_slice()))
+            (
+                consolidated_inv_slice.unwrap_or(&[]),
+                Some(consolidated.as_slice()),
+            )
         } else {
-            (consolidated.as_slice(), inv_terms)
+            (consolidated.as_slice(), consolidated_inv_slice)
         };
 
         let mut pm = PolyMap::new(self.nin, self.nout, new_fwd, new_inv)?;

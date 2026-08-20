@@ -80,9 +80,28 @@ pub(crate) fn matrix_map_merge(
         return Some(result);
     }
 
-    // Anything the swap-and-seek declined (e.g. a PermMap-adjacent swap not
-    // yet ported) falls through to the shared pairwise merge / legacy global
-    // swap helpers, preserving current behaviour.
+    // C's merge only ever considers a neighbour of a class it names:
+    // MatrixMap, ZoomMap, UnitMap, an invertable PermMap, or — when this
+    // MatrixMap is diagonal — a WinMap (matrixmap.c:1622-1660). Anything else
+    // takes the `else` branch at matrixmap.c:1709, which keeps the MatrixMap
+    // and its invert flag untouched and merges nothing.
+    //
+    // That is load-bearing rather than an optimisation. A `ShiftMap` neighbour
+    // is not on the list: C waits for the ShiftMap's own merge to turn it into
+    // a WinMap first. Folding the pair here instead composes through the
+    // MatrixMap's *effective* direction and materialises the inverse into the
+    // stored values, so the Mapping serialises with the inverse matrix stored
+    // forward where C stores the matrix and records `InvB` on the parent.
+    //
+    // The fallback stays for a neighbour C would accept, covering the swap
+    // cases not yet ported.
+    let mm_diagonal = matrix_is_diagonal(mm, eff_inv);
+    let mergeable = |idx: usize| is_mergeable(ctx.entry(idx).0.as_ref(), mm_diagonal);
+    let has_mergeable_neighbour =
+        (where_ > 0 && mergeable(where_ - 1)) || (where_ + 1 < ctx.len() && mergeable(where_ + 1));
+    if !has_mergeable_neighbour {
+        return None;
+    }
     default_map_merge(ctx, where_, series)
 }
 

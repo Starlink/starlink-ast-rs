@@ -318,6 +318,14 @@ fn simplify_regression() {
             transform_failures.push(name.to_string());
         }
 
+        // Diagnostic only: `SIMPLIFY_DUMP=<name>` prints both sides of one
+        // case, whatever its manifest flags say. Never changes the verdict.
+        if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name)
+            && let Some(s) = mapping_to_native_string(simplified.as_ref())
+        {
+            eprintln!("--- got {name} ---\n{s}\n--- want ---\n{ref_text}");
+        }
+
         // === Check 3: Serialization comparison ===
         if !skip_string_compare {
             if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
@@ -354,11 +362,6 @@ fn simplify_regression() {
                 // result that is untagged altogether.
                 if ignore_is_simp_line && !simp_str.contains("IsSimp") {
                     other_failures.push(format!("{name}: simplify() produced no IsSimp card"));
-                }
-                // Diagnostic only: `SIMPLIFY_DUMP=<name>` prints both sides of
-                // one case, licensed or not. Never changes the verdict.
-                if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name) {
-                    eprintln!("--- got {name} ---\n{simp_str}\n--- want ---\n{ref_text}");
                 }
                 if !common::native_strings_equivalent(&got, &want, 4) {
                     serial_failures.push(name.to_string());

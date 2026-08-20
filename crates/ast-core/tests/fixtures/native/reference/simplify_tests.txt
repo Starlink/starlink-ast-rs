@@ -260,7 +260,18 @@ neg_wcs_nonperm_between | simplify_fixtures/neg_wcs_nonperm_between.map | simpli
 neg_sph_parallel        | simplify_fixtures/neg_sph_parallel.map        | simplify_fixtures/neg_sph_parallel.map        |
 neg_sph_sandwich_full_matrix | simplify_fixtures/neg_sph_sandwich_full_matrix.map | simplify_fixtures/neg_sph_sandwich_full_matrix.map |
 neg_normmap_nonnorm_neighbour | simplify_fixtures/neg_normmap_nonnorm_neighbour.map | simplify_fixtures/neg_normmap_nonnorm_neighbour.map |
-neg_unitnormmap_nonunit_scale | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | simplify_fixtures/neg_unitnormmap_nonunit_scale.map |
+# unitnormmap_nonunit_scale was written as a negative fixture -- input named as
+# its own reference, asserting simplify leaves it alone. It is not one. The
+# WinMap's shift terms are all zero, and C `winmap.c::MapMerge` replaces such a
+# WinMap with a diagonal MatrixMap as its first step, "without reference to the
+# neighbouring Mappings in the list" (winmap.c:210-250). Probed against the
+# reference library: C returns CmpMap{MatrixMap, UnitNormMap}, not the input.
+# The port passed the old assertion by accident -- it reduced the leaf during
+# decomposition, then the no-pairwise-change fast path discarded the reduced
+# leaf and re-emitted the original tree. Given a real reference, generated the
+# way ast_tester/gen_simplify_fixtures.c generates them, it is an ordinary
+# positive case.
+unitnormmap_nonunit_scale | simplify_fixtures/unitnormmap_nonunit_scale.map | simplify_fixtures/unitnormmap_nonunit_scale.simp |
 neg_unitnormmap_nonmergeable | simplify_fixtures/neg_unitnormmap_nonmergeable.map | simplify_fixtures/neg_unitnormmap_nonmergeable.map |
 neg_grism_zoom_before_fwd | simplify_fixtures/neg_grism_zoom_before_fwd.map | simplify_fixtures/neg_grism_zoom_before_fwd.map |
 neg_grism_nonzoom_before_inv | simplify_fixtures/neg_grism_nonzoom_before_inv.map | simplify_fixtures/neg_grism_nonzoom_before_inv.map |

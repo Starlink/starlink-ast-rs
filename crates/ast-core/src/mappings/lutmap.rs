@@ -103,6 +103,52 @@ impl LutMap {
     }
 
     /// Return the input coordinate at the first entry.
+    /// The equivalent `WinMap` when the lookup table is linear, applied in the
+    /// given direction — C `lutmap.c:1142-1174`.
+    ///
+    /// `None` when the table is not linear, is shorter than two entries, or has
+    /// equal first and last values: C guards on `b1 != b2` (`:1155`), because a
+    /// constant table would give a WinMap with a zero scale.
+    ///
+    /// The corner-point construction is C's, rather than computing shift and
+    /// scale directly and inverting, so the arithmetic matches and the result
+    /// is always a *forward* WinMap.
+    pub(crate) fn linear_equivalent(&self, inverted: bool) -> Option<WinMap> {
+        let n = self.lut.len();
+        if n < 2 {
+            return None;
+        }
+        let a = self.lut[0];
+        let b = (self.lut[n - 1] - a) / (n - 1) as f64;
+        let tol = (a.abs() + (a + b * (n - 1) as f64).abs()) * 1e-10 + 1e-20;
+        let is_linear = (1..n - 1).all(|i| (self.lut[i] - (a + b * i as f64)).abs() <= tol);
+        if !is_linear || self.lut[0] == self.lut[n - 1] {
+            return None;
+        }
+
+        let a1 = self.start;
+        let a2 = self.start + self.inc * (n - 1) as f64;
+        let b1 = self.lut[0];
+        let b2 = self.lut[n - 1];
+        if !inverted {
+            WinMap::from_corners(&[a1], &[a2], &[b1], &[b2]).ok()
+        } else {
+            WinMap::from_corners(&[b1], &[b2], &[a1], &[a2]).ok()
+        }
+    }
+
+    /// Whether this LutMap, applied in direction `eff_inv`, is the same Mapping
+    /// as `other` in its own stored direction. `equal` compares stored
+    /// orientation, so the applied one has to be folded in first.
+    fn applied_equal(&self, other: &LutMap, eff_inv: bool) -> bool {
+        let mut probe = self.clone();
+        if probe.inverted != eff_inv {
+            probe.invert();
+        }
+        probe.equal(other)
+    }
+
+    /// Return the input value corresponding to the first table entry.
     pub fn start(&self) -> f64 {
         self.start
     }
@@ -549,64 +595,68 @@ impl Mapping for LutMap {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
+        // A lone LutMap reaches C's replacement through the base `Simplify`,
+        // which decomposes to a one-element list and hands it to `MapMerge`
+        // (mapping.c:17016). Same conversion, same guard — see
+        // [`LutMap::linear_equivalent`].
+        Ok(match self.linear_equivalent(self.inverted) {
+            Some(wm) => Box::new(wm),
+            None => Box::new(self.clone()),
+        })
+    }
 
-        // Check if the LUT is effectively linear: lut[i] = a + b*i for all i.
-        // If so, replace with a WinMap for downstream merging with other linear
-        // mappings. Matches C lutmap.c GetLinear() logic.
-        if self.lut.len() < 2 {
-            return Ok(Box::new(self.clone()));
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        let eff_inv = ctx.entry(where_).1;
+
+        // C `lutmap.c:1142-1174`: a linear LutMap is replaced by an equivalent
+        // WinMap, stored forward with its invert flag cleared.
+        if let Some(wm) = self.linear_equivalent(eff_inv) {
+            ctx.set_pair_single(where_, (Box::new(wm), false, false));
+            return Some(where_);
         }
 
-        let n = self.lut.len();
-        let a = self.lut[0];
-        let b = (self.lut[n - 1] - a) / (n - 1) as f64;
+        // C `lutmap.c:1177-1236`: in series, a LutMap adjacent to an equal
+        // LutMap applied in the opposite direction collapses to a UnitMap. C
+        // looks at the higher neighbour first, then the lower, and replaces the
+        // *lower* of the two.
+        if series {
+            let neighbour =
+                if where_ + 1 < ctx.len() && ctx.entry(where_ + 1).0.as_any().is::<LutMap>() {
+                    Some((where_ + 1, where_))
+                } else if where_ > 0 && ctx.entry(where_ - 1).0.as_any().is::<LutMap>() {
+                    Some((where_ - 1, where_ - 1))
+                } else {
+                    None
+                };
 
-        // Check all intermediate points lie on the line within tolerance.
-        let tol = (a.abs() + (a + b * (n - 1) as f64).abs()) * 1e-10 + 1e-20;
-        let is_linear = (1..n - 1).all(|i| {
-            let expected = a + b * i as f64;
-            (self.lut[i] - expected).abs() <= tol
-        });
-
-        if !is_linear {
-            return Ok(Box::new(self.clone()));
+            if let Some((ineb, ilo)) = neighbour {
+                let (neb_map, neb_inv, _) = ctx.entry(ineb);
+                let neb = neb_map
+                    .as_any()
+                    .downcast_ref::<LutMap>()
+                    .expect("checked immediately above");
+                // C sets the neighbour's Invert to its list value and then
+                // inverts it before comparing, so the two are equal-but-opposite
+                // exactly when the applied directions differ and the tables
+                // agree. Owned values make that a comparison, not a mutation.
+                let mut probe = neb.clone();
+                if probe.inverted != *neb_inv {
+                    probe.invert();
+                }
+                probe.invert();
+                if self.applied_equal(&probe, eff_inv) {
+                    ctx.replace_pair_with(ilo, Box::new(UnitMap::new(1)), false);
+                    return Some(where_.min(ilo));
+                }
+            }
         }
 
-        // C `lutmap.c:1149` only converts to a WinMap when the first and
-        // last LUT values differ (`b1 != b2`). A constant LUT (every value
-        // equal, so `b == 0`) is left as a LutMap — converting it would
-        // produce a degenerate WinMap with a zero scale factor.
-        if self.lut[0] == self.lut[n - 1] {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Linear LUT detected. C `lutmap.c:1152` builds an equivalent WinMap
-        // from corner points, always producing a *forward* WinMap (it clears
-        // the invert flag). The corner points are the input range
-        // (a1 = start, a2 = start + inc*(nlut-1)) and the output range
-        // (b1 = lut[0], b2 = lut[nlut-1]). When the LutMap is applied
-        // inverted, the input/output corner pairs are swapped so the forward
-        // WinMap directly implements the inverse transform:
-        //   not inverted: astWinMap(1, &a1, &a2, &b1, &b2)
-        //   inverted:     astWinMap(1, &b1, &b2, &a1, &a2)
-        // Reproducing this corner-point construction (rather than computing
-        // shift/scale directly and inverting) matches C's arithmetic and its
-        // forward, invert-cleared serialised form.
-        let a1 = self.start;
-        let a2 = self.start + self.inc * (n - 1) as f64;
-        let b1 = self.lut[0];
-        let b2 = self.lut[n - 1];
-
-        let wm = if !self.inverted {
-            WinMap::from_corners(&[a1], &[a2], &[b1], &[b2])
-        } else {
-            WinMap::from_corners(&[b1], &[b2], &[a1], &[a2])
-        };
-
-        match wm {
-            Ok(wm) => Ok(Box::new(wm)),
-            Err(_) => Ok(Box::new(self.clone())),
-        }
+        super::simplify::default_map_merge(ctx, where_, series)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

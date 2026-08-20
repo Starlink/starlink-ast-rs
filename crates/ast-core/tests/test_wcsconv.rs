@@ -104,8 +104,8 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 /// Fields: case name, cards this port emits, cards C emits.
 const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize)] = &[
     ("alt-spectral_native", 8, 6),
-    ("axes-swap_native", 3, 2),
-    ("cd-cross_native", 3, 2),
+    ("axes-swap_native", 2, 2),
+    ("cd-cross_native", 2, 2),
     ("class-arc_native", 4, 3),
     ("class-noproj_native", 4, 3),
     ("class-sin_native", 4, 3),
