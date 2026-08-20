@@ -365,6 +365,25 @@ impl CardList {
         }
     }
 
+    /// Mark *every* non-`Used`, non-protected card matching `keyword` as
+    /// `Provisional`, mirroring C `MarkAllCards` (fitschan.c:23105).
+    ///
+    /// This is the consumption rule for the `GetValue2` path that `SpecTrans`
+    /// and `ClassTrans` read through. The value a translation uses is still
+    /// the first match, but a header that concatenates several HDUs' worth of
+    /// WCS cards under one keyword must not keep its later copies: leaving
+    /// them behind produces a partial, self-inconsistent WCS description.
+    pub(crate) fn mark_all_cards(&mut self, keyword: &str) {
+        for card in self.cards.iter_mut() {
+            if card.keyword.eq_ignore_ascii_case(keyword)
+                && card.flags.consumption != Consumption::Used
+                && !card.flags.protected
+            {
+                card.flags.consumption = Consumption::Provisional;
+            }
+        }
+    }
+
     /// Mark the card at `index` as provisionally consumed, mirroring C
     /// `MarkCard` (fitschan.c:23012): a card carrying the `PROTECTED` flag is
     /// exempt, and a card already `Used` is left alone.
@@ -594,17 +613,23 @@ impl CardList {
             .unwrap_or(self.cards.len());
     }
 
-    /// Delete every WCS-keyword card whose `used` flag is false.
+    /// Delete every stale WCS-keyword card left over from the input header.
     ///
-    /// Used after a FitsChan write pass: the encoder marked any card it
-    /// re-wrote as `used = true` via [`put_or_append`]. WCS cards that
-    /// remain unused are leftovers from the input header for keywords the
-    /// new encoding does not emit (e.g. CDELT/CROTA when switching to a CD
-    /// matrix encoding) and must be deleted to avoid stale WCS in the output.
-    /// Non-WCS cards (SIMPLE, NAXIS, COMMENT, etc.) are always preserved.
+    /// Used after a FitsChan write pass. A card is stale when all three hold:
+    /// it names a WCS keyword, the read consumed it (so it described the old
+    /// WCS), and the encoder did not re-write it during this pass (marked
+    /// `used = true` via [`put_or_append`]). Switching to a CD-matrix encoding
+    /// leaves the input's CDELT/CROTA cards in exactly that state.
+    ///
+    /// A card the read never consumed is not stale — nothing claimed it, and C
+    /// leaves it in the header (`FixUsed`, fitschan.c:16431, removes only the
+    /// cards the read marked). That is what keeps the observation-detail
+    /// keywords `WcsFcRead` reads with `mark = 0` — MJD-OBS, MJD-AVG, TIMESYS,
+    /// DUT1, OBSGEO-* — in the output. Non-WCS cards (SIMPLE, NAXIS, COMMENT,
+    /// etc.) are always preserved.
     pub(crate) fn sweep_unused_wcs(&mut self) {
         self.cards
-            .retain(|card| card.used || !is_wcs_keyword(&card.keyword));
+            .retain(|card| card.used || !card.is_consumed() || !is_wcs_keyword(&card.keyword));
         self.position = self.position.min(self.cards.len());
     }
 

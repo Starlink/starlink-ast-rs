@@ -1691,12 +1691,14 @@ fn replace_projection_suffix(cards: &mut CardList, key: &str, new_prj: &str) {
     cards.set_string(key, &new_ctype, &comment);
 }
 
-/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31703-31721).
+/// Translation #9 helper: DATE-OBS → MJD-OBS (fitschan.c:31824-31846).
 ///
 /// DATE-OBS is read unconditionally, and only then is MJD-OBS consulted: a
 /// header carrying both keeps its MJD-OBS, but its DATE-OBS is consumed either
-/// way. MJD-OBS is consumed too when it was reached — a `GetValue2` read marks
-/// the source card, overriding the `mark = 0` its own `WcsFcRead` branch sets.
+/// way. MJD-OBS is read here purely as a test for its presence, so it is *not*
+/// consumed — `WcsFcRead`'s own MJD-OBS branch deliberately leaves the card
+/// unmarked so it survives a read, and whether it does must not depend on
+/// whether DATE-OBS happens to sit alongside it.
 ///
 /// The DATE-OBS card is left in the working list rather than deleted; MJD-OBS
 /// takes priority in `read_time_keywords`, so the translated value is the one
@@ -1705,7 +1707,7 @@ fn translate_date_obs(cards: &mut CardList) {
     let Some(date) = cards.get_string_marked("DATE-OBS") else {
         return;
     };
-    if cards.get_float_marked("MJD-OBS").is_some() {
+    if cards.get_float("MJD-OBS").is_some() {
         return;
     }
     let Some(mjd) = crate::fitschan::wcs_write::date_str_to_mjd(&date) else {
@@ -1986,10 +1988,11 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
     }
     let mut gotpcij = false;
 
-    // CDjjjiii (fitschan.c:31274-31300). Primary plane only, and the matrix is
-    // only stored under FITS-IRAF — other encodings read the cards (consuming
-    // them) but discard the values.
-    if s == ' ' {
+    // CDjjjiii (fitschan.c:31300-31336). Primary plane only, and FITS-IRAF
+    // only: that is the sole encoding which translates the legacy matrix into
+    // PCj_i, so under any other encoding the scan is skipped entirely and the
+    // cards stay unread — and therefore still reach the output.
+    if encoding == Encoding::FitsIraf && s == ' ' {
         let (nmatch, ubnd) = key_fields(cards, "CD%3d%3d", 1);
         if nmatch > 0 {
             let naxis = ubnd[0].max(0) as usize;
@@ -2000,13 +2003,11 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
                         continue;
                     };
                     cards.delete_consumed(&key);
-                    if encoding == Encoding::FitsIraf {
-                        cards.set_float(&format!("PC{j}_{i}"), dval, "PC matrix element");
-                        // The CD matrix carries the pixel scale, so CDELT
-                        // reverts to its default of 1.0.
-                        cards.set_float(&format!("CDELT{j}{}", suffix(s)), 1.0, "Pixel scale");
-                        gotpcij = true;
-                    }
+                    cards.set_float(&format!("PC{j}_{i}"), dval, "PC matrix element");
+                    // The CD matrix carries the pixel scale, so CDELT reverts
+                    // to its default of 1.0.
+                    cards.set_float(&format!("CDELT{j}{}", suffix(s)), 1.0, "Pixel scale");
+                    gotpcij = true;
                 }
             }
         }
@@ -2305,11 +2306,11 @@ mod tests {
     }
 
     #[test]
-    fn cdjjjiii_consumed_without_translation_for_non_iraf_encoding() {
-        // Only FITS-IRAF turns CDjjjiii into a PC matrix, but the read of each
-        // legacy card sits outside that encoding test (fitschan.c:31285), so the
-        // cards are consumed under every encoding — their values are simply
-        // discarded.
+    fn cdjjjiii_survives_an_encoding_that_does_not_translate_it() {
+        // Only FITS-IRAF turns CDjjjiii into a PC matrix, and the scan sits
+        // inside that encoding test (fitschan.c:31307), so under any other
+        // encoding the cards are neither read nor consumed and stay available
+        // to the output rather than having their rotation silently dropped.
         let mut cards = CardList::from_header(
             "CD001001=                  1.0\n\
              CD002002=                  1.0\n\
@@ -2317,9 +2318,27 @@ mod tests {
         )
         .unwrap();
         spec_trans_inplace(&mut cards, Encoding::FitsPc, false, &mut Vec::new());
+        assert!(cards.find("CD001001").is_some());
+        assert!(cards.find("CD002002").is_some());
+        assert!(cards.find("PC1_1").is_none());
+    }
+
+    #[test]
+    fn cdjjjiii_translated_and_consumed_under_fits_iraf() {
+        // The positive control for the case above: FITS-IRAF is the encoding
+        // that uses the values, so there the cards are read, translated into a
+        // PC matrix, and consumed.
+        let mut cards = CardList::from_header(
+            "CD001001=                  1.0\n\
+             CD002002=                  1.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans_inplace(&mut cards, Encoding::FitsIraf, false, &mut Vec::new());
         assert!(cards.find("CD001001").is_none());
         assert!(cards.find("CD002002").is_none());
-        assert!(cards.find("PC1_1").is_none());
+        assert_eq!(cards.get_float("PC1_1"), Some(1.0));
+        assert_eq!(cards.get_float("PC2_2"), Some(1.0));
     }
 
     #[test]

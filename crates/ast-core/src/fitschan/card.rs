@@ -1056,12 +1056,12 @@ mod tests {
         assert!(formatted.contains("/ Reference value"));
     }
 
-    /// Stripping the exponent's leading zero shifts the value right rather
-    /// than shortening it (fitschan.c:9858-9872), so a value too wide for the
-    /// 20-column field gains a leading space and starts in column 12.
+    /// A value too wide for the 20-column field has no padding to absorb the
+    /// exponent-zero strip, so C closes the gap (fitschan.c:9885-9893) and the
+    /// value still starts in column 11 like every other value in the header.
     /// Reference card taken from `tidy-pole.native`.
     #[test]
-    fn format_float_overwide_exponent_keeps_the_shift_space() {
+    fn format_float_overwide_exponent_stays_left_of_the_field() {
         let card = FitsCard {
             keyword: "SCL1_A".to_string(),
             value: FitsValue::Float(-1.7453292519943296E-4),
@@ -1072,12 +1072,12 @@ mod tests {
         let formatted = card.format_with_digits(17);
         assert_eq!(
             formatted.trim_end(),
-            "SCL1_A  =  -1.7453292519943296E-4 / Scale factor for axis 1"
+            "SCL1_A  = -1.7453292519943296E-4 / Scale factor for axis 1"
         );
     }
 
-    /// A value that fits the 20-column field absorbs the shift into its
-    /// padding, so it stays right-justified to column 30 and is unaffected.
+    /// A value that fits the 20-column field is right-justified to column 30,
+    /// which the exponent-zero strip does not disturb.
     #[test]
     fn format_float_narrow_exponent_stays_right_justified() {
         let card = FitsCard {

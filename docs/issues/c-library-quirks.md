@@ -267,13 +267,14 @@ branch changes no test.
 
 ---
 
-## `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages
+## RESOLVED (upstream f54ff1b7): `WcsNative` dumps a vestigial `Invert` on a PermMap shared between two stages
 
-**Status:** Open, and deliberately *not* mirrored in the Rust port.
-`serpens_native` compares under `ALIASING_TAG_LICENSED`
-(`crates/ast-core/tests/test_wcsconv.rs`), which drops the `INVERT_B` card
-this quirk produces from both sides, alongside the `IsSimp` tag-placement
-quirk above.
+**Status:** Fixed upstream at commit f54ff1b7, which uses a copy of the PermMap
+for the stage-3 axis rearrangement so the encapsulated one never acquires an
+Invert flag afterwards — the change proposed under "Upstream discussion" below.
+The Rust port was deliberately never mirrored, so its shape is now the correct
+one and no code changed; the affected `.native` fixtures lost their vestigial
+`INVERT_` cards when the corpus was regenerated at the `f6762005` pin.
 
 **C location:** `fitschan.c:38391-38412` (`WcsNative`, stages 1 and 3).
 When the celestial axes are not already at slots 0 and 1, C builds
@@ -1278,9 +1279,20 @@ Revisit if a consumer needs Frame-level variants. Tests:
 
 ---
 
-## Duplicate-keyword consumption is inconsistent between `WcsFcRead` and `SpecTrans`
+## RESOLVED (upstream 6301311f): duplicate-keyword consumption is inconsistent between `WcsFcRead` and `SpecTrans`
 
-**C behaviour:** reading a FITS-WCS header consumes cards — flags them used so
+**Status:** Fixed upstream at commit 6301311f. `GetValue2` now calls a new
+`MarkAllCards` (fitschan.c:23105) so the `SpecTrans` path consumes every copy
+of a repeated keyword, and the MJD-OBS presence test is made through an
+unmarking read so that card's survival no longer depends on whether DATE-OBS
+sits alongside it. The port mirrored both halves of the old behaviour, so both
+mirrors were removed: `finish_read_consumption` now calls
+`CardList::mark_all_cards`, and `spec_trans::translate_date_obs` reads MJD-OBS
+with the unmarked `get_float`. `sweep_unused_wcs` gained the matching write-side
+rule — a card the read never consumed is not stale and stays in the header —
+without which the newly-surviving MJD-OBS was dropped again on the way out.
+
+**C behaviour (before the fix):** reading a FITS-WCS header consumes cards — flags them used so
 they are excluded from any subsequent write — via two paths that treat repeated
 keywords differently.
 
@@ -1312,15 +1324,24 @@ present, `SpecTrans`'s translation-9 block (`fitschan.c:31703`) reaches MJD-OBS
 through `GetValue2` with `mark = 1`, consuming it after all. Whether MJD-OBS
 survives thus depends on whether an unrelated keyword sits alongside it.
 
-**Rust mirror:** `crates/ast-core/src/fitschan/wcs_mark.rs` reproduces the
-sweep (with the template list and the `mark = 0` exceptions annotated against
-their C line numbers), `CardList::mark_card` keeps the first-match semantics for
-the `GetValue` path, and `spec_trans::translate_date_obs` reads DATE-OBS before
-consulting MJD-OBS so the ordering-dependent mark matches.
+**Former Rust mirror:** `crates/ast-core/src/fitschan/wcs_mark.rs` reproduces
+the sweep (with the template list and the `mark = 0` exceptions annotated
+against their C line numbers); `CardList::mark_card` used to keep the
+first-match semantics for the `GetValue2` path and `translate_date_obs` used to
+consume MJD-OBS. `mark_card` survives for the `GetValue` path, which C did not
+change.
 
-## `CDjjjiii` cards are consumed under encodings that discard their values
+## RESOLVED (upstream fd92f9d2): `CDjjjiii` cards are consumed under encodings that discard their values
 
-`SpecTrans`'s translation of the legacy 6-digit `CDjjjiii` matrix
+**Status:** Fixed upstream at commit fd92f9d2, which moved the scan inside the
+encoding test — the change described as "would keep the cards under the other
+encodings" below, judged worth the read-side behaviour change. The port
+mirrored the bug and no longer does: `translate_pc_family`'s first branch is
+gated on `Encoding::FitsIraf`. The unit test that pinned the mirror is now
+`cdjjjiii_survives_an_encoding_that_does_not_translate_it`, with
+`cdjjjiii_translated_and_consumed_under_fits_iraf` as its positive control.
+
+**C behaviour (before the fix):** `SpecTrans`'s translation of the legacy 6-digit `CDjjjiii` matrix
 (`fitschan.c:31274-31300`) reads each card with `GetValue2` unconditionally,
 but stores the result — as `PCj_i` plus `CDELTj = 1.0` — only when
 `encoding == FITSIRAF_ENCODING`.
@@ -1335,11 +1356,9 @@ Moving the read inside the encoding test would keep the cards under the other
 encodings, but would change which cards `astRead` strips from a production
 header, so the behaviour is mirrored rather than corrected.
 
-**Rust mirror:** `spec_trans::translate_pc_family`'s first branch in
-`crates/ast-core/src/fitschan/spec_trans.rs` calls `delete_consumed` on each
-`CD%.3d%.3d` card outside its `Encoding::FitsIraf` guard, matching C's marking;
-the unit test `cdjjjiii_consumed_without_translation_for_non_iraf_encoding`
-pins it.
+**Former Rust mirror:** `spec_trans::translate_pc_family`'s first branch called
+`delete_consumed` on each `CD%.3d%.3d` card outside its `Encoding::FitsIraf`
+guard, matching C's marking.
 
 ## `azel.native` regenerated after the C `DateObs` fractional-seconds fix
 
@@ -1360,12 +1379,15 @@ byte-identical.
 
 ---
 
-## `EncodeFloat` strips the exponent's leading zero by shifting right, injecting a stray space
+## RESOLVED (upstream 68bcb7db): `EncodeFloat` strips the exponent's leading zero by shifting right, injecting a stray space
 
-**Status:** Open, and a good upstream candidate — the fix is a one-line change
-with no effect on any value that fits the FITS value field.
+**Status:** Fixed upstream at commit 68bcb7db, exactly as proposed under
+"Upstream fix" below: the shift is kept when there is a leading pad space to
+absorb it, and the gap is closed otherwise. The port mirrored the bug and no
+longer does — post-fix C is "remove the redundant zero, then right-justify",
+which is what `strip_exponent_leading_zero` now implements.
 
-`EncodeFloat` (`fitschan.c:9754`) formats every floating value into a
+`EncodeFloat` (`fitschan.c:9754`) formatted every floating value into a
 right-justified 20-column field with `%*.*E`/`%*.*G`
 (`fitschan.c:9847-9850`), so exponents always arrive with C's mandatory two
 digits. It then removes a redundant leading zero (`fitschan.c:9858-9872`):
@@ -1422,15 +1444,16 @@ to re-justify it. Values in the *L* ≤ 20 case are unaffected (they are
 right-justified to the same column either way), so only the malformed wide
 cards change.
 
-**Rust mirror:** `strip_exponent_leading_zero` in
+**Rust position:** `strip_exponent_leading_zero` in
 `crates/ast-core/src/fitschan/format.rs`, applied at the end of
 `format_significant_rounded` so it runs after the rounding pass exactly as C
 runs it after `CheckZero`. `c_style_exponent` in the same file first restores
 the two-digit exponent that Rust's `{:E}` omits, so the strip sees the text C
-sees. Pinned by `format::tests::exponent_zero_strip_preserves_length` and
-`card::tests::format_float_overwide_exponent_keeps_the_shift_space` (wide case,
-space survives) / `format_float_narrow_exponent_stays_right_justified` (narrow
-case, absorbed by padding).
+sees. Pinned by `format::tests::exponent_zero_strip_leaves_no_padding` and
+`card::tests::format_float_overwide_exponent_stays_left_of_the_field` (wide
+case, no compensating space) /
+`format_float_narrow_exponent_stays_right_justified` (narrow case, padding
+untouched).
 
 ---
 

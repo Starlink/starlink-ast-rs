@@ -661,13 +661,15 @@ impl FitsChan {
     ///    (fitschan.c:36233) does — so every copy of a repeated WCS keyword is
     ///    consumed, not merely the first.
     ///  * names recorded on the SpecTrans-derived `trans` list (by the
-    ///    `*_marked` getters and `record_consumed`) mark their first matching
-    ///    card, as C `GetValue` / `GetValue2` do. Names with no matching card —
-    ///    keywords SpecTrans synthesised — are silently ignored.
+    ///    `*_marked` getters and `record_consumed`) mark *every* matching card,
+    ///    as C `GetValue2` → `MarkAllCards` (fitschan.c:23105) does. The value
+    ///    a translation used is still the first match; the marking is what has
+    ///    to cover them all. Names with no matching card — keywords SpecTrans
+    ///    synthesised — are silently ignored.
     fn finish_read_consumption(&mut self, trans: &CardList) -> AstResult<()> {
         wcs_mark::mark_wcs_cards(&mut self.cards)?;
         for name in trans.take_consumed_names() {
-            self.cards.mark_card(&name);
+            self.cards.mark_all_cards(&name);
         }
         self.cards.fix_used(true, false);
         Ok(())
