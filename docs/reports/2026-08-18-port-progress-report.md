@@ -46,10 +46,10 @@ Everything verified so far is verified through the Rust API; no C program has ev
 | Measure | Value |
 |---|---|
 | Commits | 1,087 (2026-04-27 → 2026-08-08, 53 active days) |
-| `ast-core` source | **82,025 code lines** across 144 files (120,466 total; 27,334 comment, 22.7%) |
+| `ast-core` source | **67,277 code lines** of production code across 144 files (82,025 including inline `#[cfg(test)]` tests; 120,466 total lines) |
 | C reference `src/` | **184,817 code lines** across 163 `.c` files (499,874 total; 263,063 comment, 52.6%) |
-| Port vs C, whole library | 44% by code volume |
-| Port vs C, subsystems with a Rust counterpart | 70% by code volume (82,025 vs 116,845) |
+| Port vs C, whole library | 36% by production code volume |
+| Port vs C, subsystems with a Rust counterpart | 57% by production code volume (66,432 vs 116,845) |
 | Tests | 3,280 passing, 0 failing, 1 ignored (investigative only) |
 | wcsconv round-trip cases | 194 compared, 0 excluded |
 | Simplify fixtures byte-exact | 427 |
@@ -63,24 +63,55 @@ The ratio column is the interesting one, and it is not uniform.
 
 | Subsystem | Rust code | C code | Ratio | C files counted |
 |---|---:|---:|---:|---|
-| `fitschan/` | 20,294 | 18,093 | **1.12×** | `fitschan.c` |
-| `units/` | 2,581 | 2,495 | **1.03×** | `unit.c` |
-| `serial/` + `channel/` | 3,049 | 3,224 | 0.95× | `channel.c` |
-| `mappings/` | 26,601 | 42,602 | 0.62× | 27 mapping classes + `mapping.c` |
-| `keymap/` | 3,019 | 4,958 | 0.61× | `keymap.c` |
-| `frames/` | 16,236 | 27,315 | 0.59× | 11 frame/axis classes |
-| `regions/` | 8,420 | 18,158 | 0.46× | region base + 9 subclasses |
+| `units/` | 2,350 | 2,495 | 0.94× | `unit.c` |
+| `fitschan/` | 13,287 | 18,093 | 0.73× | `fitschan.c` |
+| `serial/` + `channel/` | 2,238 | 3,224 | 0.69× | `channel.c` |
+| `mappings/` | 24,341 | 42,602 | 0.57× | 27 mapping classes + `mapping.c` |
+| `frames/` | 13,464 | 27,315 | 0.49× | 11 frame/axis classes |
+| `regions/` | 8,379 | 18,158 | 0.46× | region base + 9 subclasses |
+| `keymap/` | 2,013 | 4,958 | 0.41× | `keymap.c` |
 
-The 0.46–0.62× band is what a faithful port of a C OO system should look like once `astGetAttrib` string dispatch, per-attribute dump/load boilerplate and loader glue are gone.
-Two subsystems sit outside it, and both are worth noting.
+**Corrected 2026-08-19.** The first version of this table counted Rust's inline `#[cfg(test)]` unit-test modules as production code, while the C column counted only `src/` — C's tests live in `ast_tester/`.
+Stripping the test modules removes 18,998 lines across the crate, 8,582 of them in `fitschan/` alone.
+That moved `fitschan/` from a reported **1.12×** to **0.73×** and invalidated the paragraph calling it the one subsystem larger than its C original.
+Whole-crate production code is **67,277** lines, not 82,025.
 
-`fitschan/` is **larger in code than the C file it replaces** — 20,294 against 18,093.
-That is the same metric that condemned the prototype's `cmp_map.rs` (139% of `cmpmap.c`),
-appearing now in the subsystem that absorbed 285 of the port's 1,087 commits and where functionality was accreted fixture-by-fixture before the `fset_to_store` port imposed structure.
-It is not evidence of a defect — FitsChan is byte-exact on all 194 cases — but it is the one place where the port has not achieved a density win, and it is the natural first candidate for a consolidation pass.
+Every subsystem is below 1.0×, in a 0.41–0.94× band.
+That is what a faithful port of a C OO system should look like once `astGetAttrib` string dispatch, per-attribute dump/load boilerplate and loader glue are gone, and no subsystem has failed to achieve a density win — the earlier claim to the contrary was a measurement artifact.
+
+The spread within the band is informative.
+`keymap/` at 0.41× is the newest and most systematically ported subsystem, done from a written spec in three days.
+`units/` at 0.94× is the tightest, which fits: `unit.c` is itself a dense expression parser, and the Rust port adds a typed AST and enum layer over the same algorithm rather than replacing C ceremony with nothing.
 
 The comparison has a known upward bias in the port's favour: the C column counts whole files, several of which contain algorithms the port has not implemented — `astResample`, `astRebin` and `astRebinSeq` inside `mapping.c` (10,826 code lines for that file alone), and the `-TAB` family inside `fitschan.c`.
 So 70% is an upper bound on coverage-by-volume within these subsystems, not a completion figure.
+
+### Is Rust inherently spread over more lines?
+
+Yes, by roughly 1.8× per statement — and it still wins on total lines because it needs far fewer statements.
+
+| | Rust `fitschan/` | C `fitschan.c` |
+|---|---:|---:|
+| Code lines | 13,287 | 18,093 |
+| Semicolons (≈ statements) | 4,742 | 11,785 |
+| **Statements per code line** | **0.36** | **0.65** |
+
+Rust spends **2,727 of its 13,118** non-comment lines — 21% — on purely structural lines: a lone `}`, `)`, `};` or `} else {`.
+`rustfmt` puts every closing delimiter on its own line and splits match arms, method chains and long signatures at the 100-column limit.
+C's brace style absorbs most of that: `} else {` on one line, `if ( x ) return;` as a one-liner, and the opening brace on the statement line.
+
+Against that, Rust needs only **40%** as many statements, from three sources:
+
+- **Status threading.** C carries `int *status` through 456 signatures, passes `, status )` 1,989 times, and opens functions with 291 `!astOK` guards.
+  Rust replaces all of it with 377 `?` operators — one token, no parameter, no guard line.
+  This is the single largest saving.
+- **Declaration preambles.** 2,049 lines of `fitschan.c` — 11% of its code — are pure local-variable declarations, C89-style at the top of each of ~200 function bodies under a `Local Variables:` banner.
+  Rust binds at point of use and folds many bindings into the expression that consumes them.
+- **Fewer runtime checks.** 113 `astError(` calls in C against 25 `AstError::new(` in Rust, partly because typed enums and slices make whole classes of validity check unrepresentable rather than checked.
+
+So the two effects run in opposite directions and nearly cancel.
+Rust is materially more verbose per statement and materially more compact per unit of function.
+Any future density comparison has to control for both — and, as the correction above shows, for inline tests first.
 
 ---
 
@@ -302,8 +333,8 @@ Two were not, and one strength was lost.
 | Simplifier architecture (prototype finding 2) | `cmp_map.rs` at 139% of the C file it replaced, 51 runtime type interrogations against C's 10, growing 21% in the final two days under commit messages reading *"Flailing with simplification"*. | Repeated, then fixed properly: per-class `map_merge` on every Mapping, C's nominate loop, C's `PatternCheck`. The three dedicated simplifier files are 4,563 code lines; C's equivalent logic is distributed across `cmpmap.c`'s `Simplify` driver (1,703 code lines for the whole file) plus a `MapMerge` in 32 class files (~2,236 code lines) plus per-class helpers that cannot be cleanly isolated, so no single ratio is meaningful. What is meaningful: structurally aligned, and byte-exact on 427 fixtures. | **Repeated first** |
 | Error model | 11 `AstError` variants against C's 155 message codes. | ~179 `ErrorCode` variants generated from `ast_err.msg` by `build.rs`; hand-editing designed out. | **Answered** |
 | Coordinate formatting | `Frame::format_axis` was literally `format!("{value}")`. `astFormat` could not produce sexagesimal output at all. | C's `%G` formatter core, `ParseAxisFormat` flag parsing, `Digits` and `Direction`, HMS/DMS, ISO dates, per-system `UsedUnits`, the `GetTitle`/`GetLabel` default tables. | **Answered** |
-| FitsChan | Read only, 3,247 lines, no `astWrite`. Required exactly one longitude and one latitude axis, so spectral-only, time-only and linear-only headers failed. | 20,294 code lines. Read and write across eight encodings, 24 `SpecTrans` translations, alternate-WCS planes, SIP, TPN, ZPX, DSS, grism, `-LOG`, card consumption tracking, ASTWARN emission. | **Answered** |
-| Regions | Stubs. 605 Rust lines against ~44,000 C. No base class, no uncertainty regions, no `astMapRegion`; `BoxRegion::overlap()` returned a hardcoded `4`. | Nine classes, 8,420 code lines. Mesh-based and geometric overlap, uncertainty machinery, great-circle sky geometry, `astRegPins`, masking. One geodesic-mesh gap remains open. | **Answered** |
+| FitsChan | Read only, 3,247 lines, no `astWrite`. Required exactly one longitude and one latitude axis, so spectral-only, time-only and linear-only headers failed. | 13,287 code lines of production code. Read and write across eight encodings, 24 `SpecTrans` translations, alternate-WCS planes, SIP, TPN, ZPX, DSS, grism, `-LOG`, card consumption tracking, ASTWARN emission. | **Answered** |
+| Regions | Stubs. 605 Rust lines against ~44,000 C. No base class, no uncertainty regions, no `astMapRegion`; `BoxRegion::overlap()` returned a hardcoded `4`. | Nine classes, 8,379 code lines of production code. Mesh-based and geometric overlap, uncertainty machinery, great-circle sky geometry, `astRegPins`, masking. One geodesic-mesh gap remains open. | **Answered** |
 | Declared quality gates | `#![deny(clippy::all)]` declared and red: 87 findings, ~49 genuine. A gate that does not hold. | `-D warnings` workspace-wide, clippy and fmt enforced in CI on both Linux and macOS, green. | **Answered** |
 | Test posture | 369 tests; a plain `cargo test` ran exactly one live-oracle comparison; simplify parity tests gated behind 16 minutes of C recompilation; one harness compared the Rust reader against the Rust writer and so could not falsify either. | 3,280 tests, all running by default, all reading frozen C output. No gated-because-slow tier. Every relaxation is a named entry in a source list with a recorded reason. | **Answered** |
 | The C ABI | 454 `astrs_*` entry points over `u64` handles. Not `ast.h`-compatible and no reference counting — the assessment called it "a test harness, not an ABI" — but it existed and worked. | `ast-capi/src/lib.rs` is one comment line. No exported symbols, no header, no `astClone`/`astAnnul`, no `catch_unwind` boundary. `ast-plugins`, `ast-ffi-tests` and `ast-oracle-tests` are likewise empty. | **Lost** |

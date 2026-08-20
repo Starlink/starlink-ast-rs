@@ -246,12 +246,22 @@ The `CmpMap` `InvA`/`InvB` cluster is the worked example: `cmpmap.rs`'s module d
 
 ### H14 — A Rust subsystem larger in code than the C it replaces
 
-**Hazard.** Not a defect by itself, but a reliable indicator that functionality was accreted rather than ported, and therefore that H1 or H2 may be present.
+**Hazard.** Not a defect by itself, but an indicator that functionality was accreted rather than ported, and therefore that H1 or H2 may be present.
 
-**Evidence.** The metric that condemned the prototype's `cmp_map.rs` (139% of `cmpmap.c` while covering fewer classes).
-Measured on the current tree with `scc`, the audit-first subsystems sit where a faithful port should — `regions/` 0.46×, `frames/` 0.59×, `keymap/` 0.61×, `mappings/` 0.62× of the C code they replace — while `fitschan/` is **1.12×** (20,294 code lines against `fitschan.c`'s 18,093) and `units/` is 1.03×.
-FitsChan absorbed 285 of 1,087 commits and was built fixture-by-fixture before the `fset_to_store` port imposed structure.
-It is byte-exact on all 194 wcsconv cases, so this is a consolidation candidate rather than a bug.
+**Evidence.** The metric that condemned the prototype's `cmp_map.rs`: 139% of `cmpmap.c` while covering fewer classes, with 51 runtime type interrogations against C's 10.
+
+**Measure it correctly, or it produces false positives.** The first application of this check in this repo reported `fitschan/` at 1.12× of `fitschan.c` and named it the one subsystem that had failed to achieve a density win.
+That was wrong. The Rust figure included 8,582 lines of inline `#[cfg(test)]` unit tests, while the C figure counted only `src/` — C's tests live in `ast_tester/`.
+Stripping test modules puts `fitschan/` at **0.73×**, and every subsystem in a 0.41–0.94× band.
+
+Two controls are therefore mandatory before the signal means anything:
+
+- **Strip `#[cfg(test)]` modules from the Rust side.** They are 18,998 lines across `ast-core`, unevenly distributed — 8,582 in `fitschan/`, 65 in `regions/`. Comparing with them included is not a like-for-like measure.
+- **Count code lines, not total lines.** The AST C sources are 52.6% comment; a `wc -l` comparison flatters C by about a factor of two.
+
+**Expect Rust to use ~1.8× the lines per statement.** Measured on `fitschan`: 0.36 semicolons per code line against C's 0.65, because `rustfmt` gives every closing delimiter its own line (21% of Rust's lines are structural only).
+Rust wins on totals anyway because it needs ~40% as many statements — no `int *status` threading (456 signatures, 1,989 call sites, 291 `!astOK` guards in C, replaced by 377 `?` operators), and no C89 declaration preambles (2,049 lines, 11% of `fitschan.c`).
+So a ratio near 1.0× is the thing to investigate, and a ratio *below* 0.5× is unremarkable rather than impressive.
 
 **Check.** `scc` the subsystem against the C files it replaces, in code lines (the C sources are 52.6% comment, so total-line comparisons are meaningless).
 Above ~1.0×, look for a collapsed extension point or a reshaped structure before concluding the subsystem is merely verbose.
