@@ -3342,6 +3342,10 @@ fn reconstruct_inner(
 
     // Apply the effective inversion to a component about to be composed.
     //
+    // `C-ARTIFACT` (see cmpmap.rs's module docs): the branch below shapes the
+    // dump to match what C emits and does not affect the transform. Measured:
+    // always taking the `m.invert()` path instead leaves the whole suite green.
+    //
     // When the component is a *parallel* CmpMap, push the inversion into its
     // structure (`(A ‖ B)^-1 = A^-1 ‖ B^-1`, recursively descending to the
     // deepest parallel CmpMap that wraps leaves). The C reference always

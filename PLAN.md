@@ -127,6 +127,59 @@ here and remain out of scope. This is the
 serving both a semantic role and a serialisation role. `IsSimp` was split into
 `is_simple_serial` and `has_been_simplified`; Invert has not been split.
 
+**A unification pathway (proposal).** The 30-odd touch points are a consequence
+of *which* of two equivalent encodings the port chose, not of the format's
+complexity. The format carries two bits per child:
+
+- **E** — the effective direction, written as `InvA`/`InvB` on the parent.
+- **S** — the orientation the child is serialised in, written as the child's own
+  `Invert`.
+
+*Encoding A (current).* Store the child in orientation **S**; keep **E** in
+`inv_a`. Every transform then needs the effective direction recovered as
+`fwd XOR (inv_a != child.is_inverted())` — which is exactly the shape all 16
+call sites have. The artifact is threaded through the transform path, and six
+further functions mutate children to keep S right for the dump.
+
+*Encoding B (proposed).* Store the child in orientation **E**, so
+`inv_a == child.is_inverted()` holds as an invariant and drift is structurally
+impossible. Keep **S** in a dump-only field, e.g.
+`dump_child_inverted: (bool, bool)`. Then:
+
+| | Encoding A | Encoding B |
+|---|---|---|
+| Transform | `fwd != drift` at 16 sites | plain `fwd`; the two `*_invert_changed` helpers disappear |
+| Semantic state | `inv_a`/`inv_b` fields | derived from the child; no separate field |
+| Load | read `InvA`; leave child as-is | read `InvA`; invert the child to match; record S |
+| Dump | write `inv_a`; child dumps itself | write `child.is_inverted()`; patch the child's node `Invert` to S |
+| Dump shaping | 6 functions mutating children | set one field |
+
+The whole artifact then lives in one field plus one line each in `to_node` and
+`from_node`, instead of being spread across the transform path.
+
+**Why this is worth doing regardless of upstream.** Under encoding A, retiring
+the artifact means touching all 16 transform sites. Under encoding B it means
+deleting one field and two lines. So B is both simpler now *and* the thing that
+makes the eventual collapse trivial — it does not depend on C changing.
+
+**Risks to work through before attempting it.**
+
+- Patching the child's `Invert` in the emitted node must honour C's
+  write-when-set convention (`Dump` writes `InvA` only when non-zero), or
+  byte-exactness breaks on the "flag absent" cases.
+- Nested CmpMaps: patching a child node's `Invert` must not disturb that
+  child's own `InvA`/`InvB`.
+- `equal()` and the simplifier's fingerprint currently read `inv_a`; both need
+  review against the derived value.
+- The load-side normalisation adds an inversion at parse time; check that this
+  does not perturb `IsSimp`, which C clears on `astSetInvert`.
+
+**Sequencing.** Do it as a behaviour-preserving refactor with the byte-exact
+corpus as the gate — wcsconv 194, the 427 simplify fixtures and the 1,606
+oracle sections should all stay green with no fixture regeneration, because
+encoding B emits the same bytes. That makes it independently verifiable, unlike
+the collapse, which needs the pin to move first.
+
 **Where the state comes from in C.** `CombineMaps` (`cmpmap.c:527`) clones
 rather than copies the components, temporarily sets each child's `Invert` to the
 effective direction, lets the constructor snapshot it into the CmpMap's own

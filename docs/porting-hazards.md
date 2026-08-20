@@ -235,6 +235,11 @@ Both are being fixed on C's `u/timj/misc-bugs` branch, along with two more outpu
 **Check.** Before moving the pin: diff the incoming range for serialization changes, and grep `docs/issues/c-library-quirks.md` for entries the port *mirrors* rather than merely records.
 Regenerate all affected corpora in one commit range — piecemeal pin moves make each regeneration ambiguous.
 
+**Marker convention.** Code that exists *only* to reproduce such a value carries a **`C-ARTIFACT`** tag in its doc comment, so `grep -rn C-ARTIFACT` enumerates the removable emulation surface.
+That is a much narrower claim than the ~1,500 "mirrors C" comments elsewhere, which mostly record a faithful algorithm port and are not removable.
+Tag the item, say whether the dump-only property is measured or assumed, and point at the quirks entry.
+The `CmpMap` `InvA`/`InvB` cluster is the worked example: `cmpmap.rs`'s module docs define the marker, and `PLAN.md` §2 carries the measurements and a proposed unification.
+
 ---
 
 ## F. Review signals worth measuring

@@ -604,6 +604,8 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
         // stored in, as C's `astSetInvert( mc[ i ], inc[ i + 2 ] )` restore
         // (winmap.c:1379-1380) does through the pointer the branch shares.
         if cmlow {
+            // `C-ARTIFACT` (see cmpmap.rs's module docs): restores the
+            // component's stored orientation for the dump only.
             series_branch.set_first_orientation(*comp_orig);
         } else {
             series_branch.set_second_orientation(*comp_orig);

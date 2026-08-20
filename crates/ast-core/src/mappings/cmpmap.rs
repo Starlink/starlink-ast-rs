@@ -6,6 +6,26 @@
 //!   second.nin()`.
 //! - **Parallel**: apply `first` and `second` side-by-side to disjoint
 //!   coordinate ranges, then concatenate their outputs.
+//!
+//! # `C-ARTIFACT` marker
+//!
+//! Items in this module tagged **`C-ARTIFACT`** exist only to reproduce a
+//! serialised value that C emits as a side effect of its memory model, not
+//! because the Mapping requires it. They are candidates for deletion once
+//! upstream stops emitting the value; the transform is unaffected either way.
+//! `grep -rn C-ARTIFACT` enumerates the set.
+//!
+//! The value in question is `InvA`/`InvB`. C's `CombineMaps` (`cmpmap.c:527`)
+//! clones rather than copies a component, temporarily sets its `Invert` to the
+//! effective direction, lets the constructor snapshot that into the CmpMap's
+//! own `invert1`, then *restores the component's own flag* so the caller does
+//! not find their Mapping altered. Because the component is shared, the
+//! restoration is visible through the parent, and `Dump` writes both values.
+//! The disagreement is a courtesy to a caller holding a shared pointer — which
+//! cannot arise under exclusive ownership.
+//!
+//! See `docs/issues/c-library-quirks.md` for the upstream write-up and
+//! `PLAN.md` §2 for the measurements and the go/no-go test.
 
 use std::fmt;
 
@@ -88,8 +108,11 @@ pub struct CmpMap {
     /// `RestrictedSimplify` flag (C `ReSimp`): when set, `simplify`
     /// nominates only component Mappings whose `AllowSimplify` flag is set.
     restricted_simplify: bool,
-    /// Serialisation-only `IsSimple` tag (C `IsSimp`), independent of the
-    /// merge-guard `has_been_simplified`. Raised when this CmpMap is the
+    /// **`C-ARTIFACT`.** Serialisation-only `IsSimple` tag (C `IsSimp`),
+    /// independent of the merge-guard `has_been_simplified`. The split exists
+    /// because C carries one flag whose value at dump time depends on which
+    /// nodes happened to be aliased during simplification — the sibling quirk
+    /// to `InvA`/`InvB`, and being fixed upstream the same way. Raised when this CmpMap is the
     /// (changed) result of an `astSimplify` on a component the outer merge
     /// keeps opaque; cleared by any inversion (`invert` /
     /// `invert_into_structure`), mirroring C `astSetInvert` → `astClearIsSimple`.
@@ -199,6 +222,8 @@ impl CmpMap {
         self.inv_b
     }
 
+    /// **`C-ARTIFACT`** (dump-only; not independently measured).
+    ///
     /// Recursively clear redundant `InvA` / `InvB` flags on a parallel
     /// CmpMap whose corresponding child is a `UnitMap`. The C reference
     /// produces this canonical form: since `UnitMap` is its own inverse,
@@ -304,6 +329,13 @@ impl CmpMap {
         }
     }
 
+    /// **`C-ARTIFACT`** (dump-shaping; measured to have no effect). Forcing the
+    /// simplifier's `apply_effective` to use the plain `invert()` flag toggle
+    /// instead of this rewrite leaves the whole suite green — 3294 passed,
+    /// including all 194 wcsconv byte comparisons and 427 simplify fixtures at
+    /// 0 serialisation failures. Instrumented, this path is reached **once** in
+    /// the suite, and its `Parallel` arm never.
+    ///
     /// Push the inversion semantics of "this CmpMap, used in its inverse
     /// direction" into the recorded structure, leaving `inverted` flag
     /// unchanged. For parallel CmpMaps this flips `inv_a` / `inv_b`. For
@@ -363,6 +395,10 @@ impl CmpMap {
         *inv = !*inv;
     }
 
+    /// **`C-ARTIFACT`** (dump-only; measured). Disabling the flip in this and
+    /// its sibling leaves 427 simplify fixtures at 0 `equal()` failures and
+    /// 0 transform failures, with 8 serialisation differences.
+    ///
     /// Set the *stored* Invert orientation of the first child to `orig`,
     /// leaving `inv_a` untouched. The CmpMap's transform is unchanged: the
     /// child's effective direction is `inv_a != first.is_inverted()`, and the
@@ -379,6 +415,8 @@ impl CmpMap {
         }
     }
 
+    /// **`C-ARTIFACT`** (dump-only; measured). See [`Self::set_first_orientation`].
+    ///
     /// Set the stored Invert orientation of the second child to `orig`,
     /// leaving `inv_b` untouched. See [`Self::set_first_orientation`].
     pub(crate) fn set_second_orientation(&mut self, orig: bool) {
