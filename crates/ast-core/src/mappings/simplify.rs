@@ -1117,6 +1117,41 @@ pub(crate) fn wcs_map_merge(
     default_map_merge(ctx, where_, series)
 }
 
+/// The `MapMerge` shape shared by classes whose C counterpart opens with
+/// "see if this Mapping can be replaced by a simpler Mapping, without
+/// reference to the neighbouring Mappings in the list" and then falls through
+/// to the neighbour steps.
+///
+/// The class's own reduction lives in its `simplified()`. C reaches it through
+/// `astSimplify`, which returns the object it was given when it cannot reduce
+/// it and records *that* object (mapping.c:24763) — so the reduction is
+/// reported as a change only when it actually reduced, while the record lands
+/// either way. With owned values that record has to be installed rather than
+/// left on a shared pointer, so the entry is replaced unconditionally and only
+/// the return value distinguishes the two cases.
+///
+/// Before leaf reduction moved out of `flatten`, these classes got their
+/// reduction as a side effect of being decomposed. They no longer do, and
+/// without this they would never self-reduce inside the nominate loop at all.
+pub(crate) fn self_reduce_map_merge(
+    this: &dyn Mapping,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if let Ok(simp) = this.simplified()
+        && (simp.is_inverted() != this.is_inverted() || !simp.equal(this))
+    {
+        let (eff, orig) = {
+            let e = ctx.entry(where_);
+            (e.1, e.2)
+        };
+        ctx.set_pair_single(where_, (simp, eff, orig));
+        return Some(where_);
+    }
+    default_map_merge(ctx, where_, series)
+}
+
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
     let i = where_;
     let list = &mut ctx.list;

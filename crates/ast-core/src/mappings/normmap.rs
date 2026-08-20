@@ -185,6 +185,15 @@ impl Mapping for NormMap {
         Ok(())
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));

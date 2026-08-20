@@ -265,8 +265,10 @@ impl Mapping for RateMap {
         }
 
         // Step 1: Simplify the encapsulated mapping. C reaches it through
-        // `astSimplify` (ratemap.c:719), which records the result as simplified;
-        // `simplified()` is the untagged virtual, so record it here.
+        // `astSimplify` (ratemap.c:719), which records the result;
+        // `simplified()` is the untagged virtual, so record it here. The public
+        // `simplify()` would also canonicalise, which restructures a component
+        // C leaves alone.
         let mut simp_map = self.map.simplified()?;
         simp_map.set_has_been_simplified(true);
 
@@ -286,6 +288,14 @@ impl Mapping for RateMap {
         // No simplification was possible.
         Ok(Box::new(self.clone()))
     }
+
+    // C `ratemap.c:1094-1107` opens its MapMerge by simplifying the
+    // encapsulated Mapping, and there is deliberately no `map_merge` here to
+    // match it. Adding one — in either the `simplified()` or the `simplify()`
+    // form — gains an `IsSimp` card on `cap_cmpmap_01` and `cap_cmpmap_04` and
+    // costs their structural equality with C, which is the assertion that
+    // actually matters. Whatever the reduction perturbs downstream has to be
+    // understood first.
 
     fn try_merge(
         &self,

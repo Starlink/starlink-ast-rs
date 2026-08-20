@@ -481,6 +481,17 @@ fn simplify_regression() {
         passed += 1;
     }
 
+    // Report results
+    println!(
+        "\nSimplify regression: {passed} passed, {skipped_missing} skipped (file absent), \
+         {} skipped (parse — unported class or gap), {} equal() failures, \
+         {} transform failures, {} serialization failures, {} other failures",
+        parse_skipped.len(),
+        equal_failures.len(),
+        transform_failures.len(),
+        serial_failures.len(),
+        other_failures.len(),
+    );
     // The `IsSimp` card records which sub-Mappings were, at some instant, the
     // whole result of a simplification. Upstream `e40e71b4` made C's answer
     // deterministic — a property of the Mapping tree, not of which nodes some
@@ -507,17 +518,6 @@ fn simplify_regression() {
          update this list and PLAN.md §6 together."
     );
 
-    // Report results
-    println!(
-        "\nSimplify regression: {passed} passed, {skipped_missing} skipped (file absent), \
-         {} skipped (parse — unported class or gap), {} equal() failures, \
-         {} transform failures, {} serialization failures, {} other failures",
-        parse_skipped.len(),
-        equal_failures.len(),
-        transform_failures.len(),
-        serial_failures.len(),
-        other_failures.len(),
-    );
     if !parse_skipped.is_empty() {
         eprintln!(
             "  parse-skipped (fixture present but not parseable — a parser \

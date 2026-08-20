@@ -418,6 +418,15 @@ impl Mapping for MathMap {
         Ok(())
     }
 
+    fn map_merge(
+        &self,
+        ctx: &mut crate::mappings::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        crate::mappings::simplify::self_reduce_map_merge(self, ctx, where_, series)
+    }
+
     fn simplified(&self) -> AstResult<DynMapping> {
         Ok(Box::new(self.clone()))
     }

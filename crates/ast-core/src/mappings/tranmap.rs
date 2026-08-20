@@ -270,8 +270,10 @@ impl Mapping for TranMap {
         }
 
         // Step 2: Simplify each component independently. C reaches both through
-        // `astSimplify` (tranmap.c:853-854), which records the result as
-        // simplified; `simplified()` is the untagged virtual, so record it here.
+        // `astSimplify` (tranmap.c:853-854), which records the result;
+        // `simplified()` is the untagged virtual, so record it here. Calling
+        // the public `simplify()` instead would also canonicalise the result,
+        // which restructures a component C leaves alone.
         let mut simp1 = self.map1.simplified()?;
         let mut simp2 = self.map2.simplified()?;
         simp1.set_has_been_simplified(true);
@@ -319,6 +321,43 @@ impl Mapping for TranMap {
 
         // No simplification possible.
         Ok(Box::new(self.clone()))
+    }
+
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // C `tranmap.c:853-897`: simplify both encapsulated Mappings, replace
+        // the TranMap when either reduced, and otherwise check whether the two
+        // are inverses of one another. `astSimplify` returns the object it was
+        // given when it cannot reduce it, recording *that* object
+        // (mapping.c:24763), so both components end up recorded either way and
+        // only a real reduction is reported as a change. Owned values make the
+        // record an explicit rebuild rather than a side effect on a shared
+        // pointer.
+        let simp1 = self.map1.simplify().ok()?;
+        let simp2 = self.map2.simplify().ok()?;
+        let reduced = simp1.is_inverted() != self.map1.is_inverted()
+            || !simp1.equal(self.map1.as_ref())
+            || simp2.is_inverted() != self.map2.is_inverted()
+            || !simp2.equal(self.map2.as_ref());
+
+        if reduced {
+            let mut tm = TranMap::new(simp1, simp2).ok()?;
+            if self.inverted {
+                tm.invert();
+            }
+            let (eff, orig) = {
+                let e = ctx.entry(where_);
+                (e.1, e.2)
+            };
+            ctx.set_pair_single(where_, (Box::new(tm), eff, orig));
+            return Some(where_);
+        }
+
+        super::simplify::default_map_merge(ctx, where_, series)
     }
 
     fn try_merge(
