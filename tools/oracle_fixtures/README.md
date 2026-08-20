@@ -45,3 +45,29 @@ Two probes generate / cross-check the `.ast` FrameSet round-trip corpus
 When a fixture's expected value changes (e.g., a captured number drifts
 across reference rebuilds), regenerate ALL fixtures in the same module
 and re-run the affected tests. Don't update one number by hand.
+
+## `build_issimp_instrumented.sh` — watching C stamp `IsSimp`
+
+The `IsSimp` card records that a Mapping was, at some instant, the entire
+result of a simplification. When the port and C disagree about one, reasoning
+about which call site stamped it has been wrong more often than right; the
+script builds a copy of the pinned reference library that logs every
+`astSetIsSimple` with a resolved backtrace, plus a `gen_simp` driver that reads
+a native `.map`, simplifies it, and writes the result the way
+`gen_simplify_fixtures.c` does.
+
+```shell
+./tools/oracle_fixtures/build_issimp_instrumented.sh /tmp/ast-instr
+AST_LOG_ISSIMPLE=1 /tmp/ast-instr/gen_simp in.map out.simp 2> stamps.txt
+```
+
+`STAMP` lines carry the object address, class, shape and call stack, so a frame
+reading `MapMerge + 216` inside `Simplify` identifies `cmpmap.c`'s self-simplify
+head without guessing. `DUMPTAG` lines name the objects still carrying the flag
+when the Channel writes them, which is how a stamp is matched to the card it
+produces.
+
+The submodule is never modified — the script copies the tracked files out and
+patches the copy. Dropping the two instrumentation patches reproduces the stock
+library, which is the build to use when generating oracle data: both produce
+identical output over the whole `simplify_fixtures` corpus.
