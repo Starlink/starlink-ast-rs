@@ -389,11 +389,12 @@ sla_run_partial          | simplify_fixtures/sla_run_partial.map          | simp
 # by value and has no such history to record. Compared by astequal only until
 # that quirk is settled upstream.
 #
-# The `IsSimp` placement these two also used to differ on is no longer a reason
-# for anything: upstream e40e71b4 made C record the simplified state per
-# orientation, so setting Invert no longer clears it and placement follows from
-# the Mapping tree alone. Cases still differing on a tag carry a counted,
-# per-case licence in test_simplify_regression.rs instead of a blanket skip.
+# Measured 2026-08-20, after leaf reduction moved out of the decomposition:
+# apart from that one Invert line, cap_cmpmap_01 differs by two IsSimp cards
+# (16 against C's 18) and cap_cmpmap_04 by three (15 against 18). So both would
+# still need the counted IsSimp licence even once the Invert quirk is settled;
+# the blanket skip is not covering only the tag. Everything else in both files
+# matches, including the Invert cards on every other node.
 
 # --- Supported classes ---
 cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtures/cap_cmpmap_01.simp | yes
