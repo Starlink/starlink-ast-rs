@@ -333,11 +333,21 @@ places, and finding one by accident is no longer possible.
 | wcsconv | 193 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 427 | 5 | `skip_string_compare` in the manifest (`lsst`, `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`) |
 | simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 427 | 6 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`, `cap_winmap_03`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow |
 | simplify regression | 427 | 131 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
 | deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
+
+What the upstream `IsSimp` fix did and did not do, since the two get conflated:
+`e40e71b4` made **C's** placement deterministic — a property of the Mapping tree
+rather than of which nodes some earlier probe happened to invert. Before it, no
+structural rule could reproduce C's answer, so the differences were unfixable in
+principle and were licensed as such. After it, the answer is a well-defined
+target the port can be held to, and the six fixtures above are ordinary port
+bugs against that target rather than C artifacts. The fix changed them from
+"cannot be matched" to "not yet matched"; it did not match them.
 
 Movement at the `f6762005` sync: the wcsconv tag licence went from 5 cases to
 20, but narrowed from "drop every `IsSimp` and `Invert` line, unpaired" to "drop

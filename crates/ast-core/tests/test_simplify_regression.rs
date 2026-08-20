@@ -184,6 +184,7 @@ fn simplify_regression() {
     let mut transform_failures: Vec<String> = Vec::new();
     let mut serial_failures: Vec<String> = Vec::new();
     let mut other_failures: Vec<String> = Vec::new();
+    let mut issimp_disagreements: Vec<String> = Vec::new();
 
     for line in contents.lines() {
         let line = line.trim();
@@ -318,6 +319,23 @@ fn simplify_regression() {
             transform_failures.push(name.to_string());
         }
 
+        // Every fixture whose `IsSimp` card count differs from C's, collected
+        // for the assertion after the loop. A negative fixture differs by
+        // construction — its reference *is* its input, which was never
+        // simplified — so those are excluded: they are not a disagreement
+        // about placement.
+        if let Some(s) = mapping_to_native_string(simplified.as_ref()) {
+            let count = |text: &str| {
+                text.lines()
+                    .filter(|l| l.trim_start().starts_with("IsSimp ="))
+                    .count()
+            };
+            let (g, w) = (count(&s), count(&ref_text));
+            if g != w && !ignore_is_simp_line {
+                issimp_disagreements.push(format!("{name} ({g} vs C's {w})"));
+            }
+        }
+
         // Diagnostic only: `SIMPLIFY_DUMP=<name>` prints both sides of one
         // case, whatever its manifest flags say. Never changes the verdict.
         if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name)
@@ -393,6 +411,32 @@ fn simplify_regression() {
 
         passed += 1;
     }
+
+    // The `IsSimp` card records which sub-Mappings were, at some instant, the
+    // whole result of a simplification. Upstream `e40e71b4` made C's answer
+    // deterministic — a property of the Mapping tree, not of which nodes some
+    // probe happened to touch — so it is now a well-defined target this engine
+    // can be held to, where before it could not be reproduced even in
+    // principle. These are the fixtures that do not yet hit it. Four of the six
+    // are masked by `skip_string_compare` for an unrelated reason and two by the
+    // counted licence, so without this list the number would be invisible.
+    const ISSIMP_DISAGREEMENTS: &[&str] = &[
+        "rigby (8 vs C's 5)",
+        "cap_cmpmap_01 (16 vs C's 18)",
+        "cap_cmpmap_03 (6 vs C's 7)",
+        "cap_cmpmap_04 (15 vs C's 18)",
+        "cap_specmap_02 (7 vs C's 8)",
+        "cap_winmap_03 (2 vs C's 1)",
+    ];
+    issimp_disagreements.sort();
+    let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();
+    expected.sort();
+    assert_eq!(
+        issimp_disagreements, expected,
+        "the set of fixtures whose IsSimp count differs from C has changed. \
+         Fewer is progress — delete the row. More is a regression. Either way \
+         update this list and PLAN.md §6 together."
+    );
 
     // Report results
     println!(
