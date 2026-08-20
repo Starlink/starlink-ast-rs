@@ -45,7 +45,65 @@ Detail and C↔Rust locations in `docs/audits/region-class-coverage-audit.md`.
 | Frame + Mapping class C-port gaps (function-by-function) | `docs/issues/frame-mapping-c-port-gaps.md` | OPEN — audit COMPLETE; remaining items are deferred delivery-step work only (Rebin/Resample/TranGrid/QuadApprox, JSON/XML/YAML renderers, absent classes, wcslib port 6a, Plot-support Frame methods + NormalPoints, SkyAxis Format precision) |
 | Per-class Mapping performance vs C oracle | `docs/issues/mapping-perf-vs-c-oracle.md` | OPEN — **no automated perf gate exists**; `ast-oracle-bench` is a placeholder and CI runs no benchmark, so the >10% hot-path gate CLAUDE.md describes is not enforced. Snapshot (2026-05-19) records cheap mappings 5–42× slower than C at N=100k (permmap-fwd 42×, winmap 6.6–7.6×, shiftmap 5.7–7.6×, diag matrixmap 5.5×, slamap 3.9×, wcsmap-tan-fwd 4.2×); PolyMap/MatrixMap — the SCUBA-2 / LSST path — remain at or ahead of parity. Untested hypothesis worth measuring before per-class work: `PointSet` is row-major `(npoint, ncoord)` where C keeps one contiguous array per axis, which would explain the whole cheap-mapping cluster at once |
 | `astTran*` definedness validation | — | OPEN — `Mapping::tran1`/`tran2` raise `AST__TRNND` for an undefined direction (C `ValidateMapping`, mapping.c:179), but the general `transform` / `transform_into` path raises it nowhere: `Trnnd` appeared in no source file before `156cf68`. Deciding which classes should report it needs a C-oracle probe per class, since C validates in the public `astTran*` entry points rather than in `astTransform` |
+| CmpMap `inv_a`/`inv_b`: split the load contract from the dump-shaping emulation | — | DEFERRED to post-oracle-compliance — measured, with a falsifiable go/no-go test; see the note below |
 | TimeFrame port + Epoch/Equinox API | `docs/issues/timeframe-and-epoch-api-port.md` | OPEN (residual) — Issue A (DATE-OBS/TDB drift) RESOLVED; only Issue-B doc/hygiene items remain (Equinox=UTC note; `_year` setter public/private decision) |
+
+### CmpMap orientation snapshots (`inv_a` / `inv_b`) — deferred cleanup
+
+`CmpMap` stores each child's Invert flag at construction/load time and computes
+each child's effective transform direction as `fwd XOR (inv_a != child.is_inverted())`,
+through `first_invert_changed()` / `second_invert_changed()` at 15 call sites.
+This mirrors C, where `CombineMaps` snapshots `invert1`/`invert2` and `Transform`
+forces the child back to the recorded state before transforming — a defence
+against another owner having inverted the shared child in the meantime.
+
+The natural question is whether the whole mechanism is vestigial in an
+owned-value port, since nothing outside the `CmpMap` can reach a child. It is
+not, and the measurement matters more than the argument. Instrumenting the two
+predicates and running the full suite with `--nocapture`:
+
+| Probe | Result |
+|---|---|
+| Drift observed at transform time | 190,831 (first child) + 621,383 (second) |
+| Test binaries exercising it | wcsconv 106,847; simplify regression 30,465; transform oracle 2,928; bench_lsst 2,852; serialisation 1,316; cmpmap 76 |
+| **Loads that create drift** | **539** — dumps whose `InvA`/`InvB` disagrees with the child's own serialised `Invert` |
+
+So the field is load-bearing, for a reason that survives the ownership change: a
+C dump records **two independent bits** — the parent's snapshot and the child's
+own flag — and 539 loads in the reference corpus carry them disagreeing. A
+loaded `CmpMap` can therefore be in a state the port's own constructor cannot
+produce (`CmpMap::new` always sets `inv_a = first.is_inverted()`, so drift is
+false for anything the port builds itself). Reading those dumps correctly needs
+both fields and the XOR.
+
+What *is* separable is a second, distinct use of the same field. The simplifier
+calls `set_first_orientation` / `set_second_orientation` (6 sites in
+`simplify.rs` and `winmap_merge.rs`) to flip a child's stored Invert while
+deliberately leaving `inv_a` untouched. Those calls are **transform-neutral by
+construction** — the doc comment on the setter says so, and the XOR is what
+makes it true. Their only effect is to shape the dump so it matches what C
+emits, which is C's aliasing bookkeeping reproduced on purpose. This is the
+`IsSimp` situation exactly (see H3 in `docs/porting-hazards.md`): one field
+serving both a semantic role and a serialisation role. `IsSimp` was split into
+`is_simple_serial` and `has_been_simplified`; Invert has not been split.
+
+**Why it is deferred, and the test that settles it.** Both halves are currently
+required for byte-exactness, so nothing can be simplified today. But upstream is
+removing sources of this state: `f54ff1b7` ("fitschan: do not invert an
+encapsulated PermMap in `WcsNative`") and the deterministic-`IsSimp` change on
+`u/timj/misc-bugs` both eliminate cases where C's dump records a flag the
+Mapping itself does not justify — the two quirks in
+`docs/issues/c-library-quirks.md` the port declined to mirror.
+
+The go/no-go test is mechanical: **after the §8 pin move and corpus
+regeneration, re-run the load-drift probe.** If the 539 goes to zero, then no
+dump in the corpus carries disagreeing bits any more, and the mechanism can
+collapse — maintain `inv_a == child.is_inverted()` as an invariant, drop the XOR
+from all 15 sites, and replace the 6 dump-shaping calls with an ordinary
+child inversion. If it stays non-zero, the mechanism is permanent and the doc
+comments should say so rather than reading as scaffolding. Do not attempt either
+before wcsconv, the simplify corpus and the transform oracle are all green
+against the regenerated fixtures.
 
 Closed (marked historical in-doc, removed as active work): `mapping-gaps-audit.md`
 (superseded by `frame-mapping-c-port-gaps.md`), `wcsmap-naxis-refactor.md`

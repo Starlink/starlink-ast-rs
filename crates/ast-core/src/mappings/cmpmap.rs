@@ -56,6 +56,21 @@ pub enum Composition {
 /// was constructed or loaded.  Children are stored with their native Invert
 /// state; the effective transform direction for each child is computed at
 /// runtime as `forward XOR (inv_a != child.is_inverted())`.
+///
+/// The snapshot is not vestigial C bookkeeping, even though nothing outside
+/// this struct can reach a child.  A serialised CmpMap records **two
+/// independent bits** — the parent's snapshot and the child's own flag — and
+/// they legitimately disagree: 539 loads across the reference corpus produce a
+/// CmpMap whose `InvA`/`InvB` differs from the child's serialised `Invert`.
+/// So a loaded CmpMap can be in a state [`CmpMap::new`] cannot construct
+/// (`new` always sets `inv_a = first.is_inverted()`), and reading those dumps
+/// correctly needs both fields.
+///
+/// A second, separable use of the same field is the simplifier's
+/// `set_first_orientation` / `set_second_orientation`,
+/// which shape the dump without changing the transform.  Whether that half can
+/// be retired depends on whether upstream stops emitting the disagreeing state;
+/// `PLAN.md` §2 records the measurement and the go/no-go test.
 pub struct CmpMap {
     first: DynMapping,
     second: DynMapping,
