@@ -80,20 +80,21 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 /// Cases whose only difference from the C reference is one extra `IsSimp` card
 /// per simplified WCS plane.
 ///
-/// **Not a simplifier difference.** Given the same input, this port's
+/// A deliberate divergence, not a gap. Given the same input this port's
 /// simplifier and C's produce identical output, tags included: hand C the
 /// composed pixel→world Mapping `build_pixel_to_world` produces *before* the
 /// `simplify()` call and C emits exactly these cards, on exactly these nodes.
-/// C's own reference has one fewer, so C's reader does not hand its closing
-/// `astSimplify` the tree this port hands it — `fitschan.c` reduces in about
-/// ten places while assembling, so its closing call starts from an
-/// already-reduced tree, where this port composes the whole chain unreduced and
-/// simplifies once at the end.
+/// What differs is that `fitschan.c` simplifies in about ten places while
+/// assembling, so its closing `astSimplify` starts from an already-reduced tree
+/// and never nominates the node in question; this port composes the whole chain
+/// and simplifies once. The card records C's division of labour inside its own
+/// reader, so the port does not reproduce it — see
+/// `docs/issues/c-library-quirks.md`, "`IsSimp` placement in a FITS-WCS read
+/// records the order the reader simplified in".
 ///
-/// Closing it is a change to the construction shape of `build_pixel_to_world`,
-/// not to the stamping rule. Probe and measurements in
-/// `docs/issues/c-library-quirks.md`. Every other card, `Invert` included, is
-/// byte-compared.
+/// Every other card, `Invert` included, is byte-compared, which is what makes
+/// this safe to leave: a difference in the Mapping's *shape* could not hide
+/// behind a licence that only drops tag lines and pins their count.
 ///
 /// The licence is per case and pins the card count on each side, so it cannot
 /// absorb a second difference, and it fails the moment the counts change —

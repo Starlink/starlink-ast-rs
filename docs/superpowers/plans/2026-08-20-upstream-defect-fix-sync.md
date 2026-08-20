@@ -148,8 +148,8 @@ freely. The field survives, per orientation, renamed `dump_simplified` and
 documented with the real reason. Backing off cost one round trip through the
 corpus; the negative control is what stopped it going further.
 
-**One extra `IsSimp` per plane remains, and the first diagnosis of it was
-wrong.** Four candidate fixes were tried against the corpus by reasoning about
+**One extra `IsSimp` per plane remains — a deliberate divergence, and the first
+two diagnoses of it were wrong.** Four candidate fixes were tried against the corpus by reasoning about
 which nodes get stamped; none moved it, and each was reverted rather than left
 in as an unevidenced change. The conclusion recorded at that point — that the
 nominate loop stamps a node C's closing fold builds rather than nominates — did
@@ -175,6 +175,13 @@ The difference is therefore the input: C's reader reduces as it assembles
 (`fitschan.c` calls `astSimplify` in about ten places), so its closing call
 starts from the 11-node reduced form; this port composes the whole chain
 unreduced and simplifies once.
+
+That settled the disposition too. The card records C's division of labour inside
+its own reader, not anything about the Mapping — which is identical on both
+sides, structure, attributes and transforms alike. So it is logged as a quirk
+the port deliberately does not mirror rather than as work to do, and the licence
+that covers it pins both card counts and byte-compares everything else, so a
+shape difference could never hide behind it.
 
 Two lessons, both already written down. The error shrank across successive fixes
 and never reached zero, which is stop signal 3 — the model was wrong, not

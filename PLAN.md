@@ -325,7 +325,7 @@ silently. Adding a row here is a deliberate act; the numbers are the claim.
 | Gate | Cases | Relaxed | What the relaxation is |
 |---|---:|---:|---|
 | wcsconv (`test_wcsconv.rs`) | 193 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
-| wcsconv | 193 | 20 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so the licence covers one diagnosed extra card per simplified plane and nothing else. A port gap, not a C artifact — see §8 |
+| wcsconv | 193 | 20 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers one card per simplified plane and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8) |
 | wcsconv | 193 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 427 | 5 | `skip_string_compare` in the manifest (`lsst`, `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`) |
 | simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` in `test_simplify_regression.rs` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
@@ -435,21 +435,25 @@ copied across byte-identical.
 | KeyMap: four mirrored defects (`6d114495`, `a76964c7`, `b7135abc`, `f444583f`, `d8edc072`) | All un-mirrored — see the commit and the quirk entries |
 | `round()` rounding sweep (`e4e6376d`, `1199880a`, `e447556a`, `7b084bbf`) | Ported at the four sites the port has: the grism interference order, PermMap axis indices, the global-bounds threshold, and WCSAXES |
 
-**What is still open.** Twenty wcsconv cases emit one extra `IsSimp` card per
-simplified WCS plane, on an interior `CmpMap`. It is *not* a simplifier
-difference: hand C the composed pixel→world Mapping this port builds *before* it
-simplifies, and C produces exactly this port's four tags on exactly the same
-nodes. C's own reference has three, so C's reader does not hand its closing
-`astSimplify` the tree this port hands it — `fitschan.c` reduces in about ten
-places while assembling, so its closing call starts from an already-reduced,
-already-tagged tree, where this port composes the whole chain unreduced (28
-nodes against the 11-node result) and simplifies once. Closing it is a change to
-the construction shape of `build_pixel_to_world`, which is hazard H2, so it
-wants doing deliberately rather than inside a sync. Probe and measurements in
-`docs/issues/c-library-quirks.md`.
+**One divergence, recorded rather than closed.** Twenty wcsconv cases emit one
+extra `IsSimp` card per simplified WCS plane. It is not a simplifier difference:
+hand C the composed pixel→world Mapping this port builds *before* it simplifies
+and C produces exactly this port's tags on exactly the same nodes. What differs
+is that `fitschan.c` simplifies in about ten places while assembling, so its
+closing `astSimplify` starts from an already-reduced tree, while this port
+composes the whole chain and simplifies once. The extra card is a record of C's
+own division of labour inside its reader.
 
-`cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are the *opposite*
-symptom — one card too few — and are a separate, smaller problem.
+Not worth mirroring: the Mapping, its structure and its transforms are
+identical, and reproducing the card means shaping `build_pixel_to_world` around
+C's internal call sequence rather than around the WCS it assembles. Logged as a
+quirk (`docs/issues/c-library-quirks.md`, "`IsSimp` placement in a FITS-WCS read
+records the order the reader simplified in") and licensed with both card counts
+pinned (§6), so a *shape* difference could never hide behind it.
+
+`cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are a different
+matter — one card too few, from the same input on both sides, so a genuine
+simplifier gap and still open work.
 
 The `.ast` FrameSet corpus (`frameset_fixtures/`) is byte-exact throughout and
 could not have caught either: it round-trips read → write and never

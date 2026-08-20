@@ -40,60 +40,11 @@ counted per-case licence instead (`ISSIMP_PLACEMENT_LICENSED` in
 `test_simplify_regression.rs`). `cap_cmpmap_01` and `cap_cmpmap_04` keep theirs for
 an unrelated reason — the `InvA`/`InvB` quirk below, still open.
 
-**What is left, and what it is not.** Twenty wcsconv cases carry exactly one
-extra `IsSimp` card per simplified WCS plane, on an interior `CmpMap`. It is
-**not** a simplifier difference. Given the same input, this port's simplifier
-and C's produce identical output, tags included.
-
-The probe that shows it: dump the composed pixel→world Mapping this port builds
-*before* it simplifies — `build_pixel_to_world`'s result, which carries no tags
-at all — and hand that text to C to simplify. C produces four tags, on exactly
-the nodes this port tags, including the interior parallel `CmpMap`:
-
-```
-CmpMap [series]              <== IsSimp
-  WinMap
-  CmpMap [series]
-    WcsMap
-      CmpMap [parallel]      <== IsSimp   (the card the licence covers)
-        ShiftMap             <== IsSimp
-        CmpMap [series]      <== IsSimp
-```
-
-C's own reference for the same header has three. So C's reader does not hand its
-closing `astSimplify` (`WcsMapFrm`, fitschan.c:37810) the tree this port hands
-it. `fitschan.c` calls `astSimplify` in about ten places while assembling the
-Mapping, so by the time the closing call runs, C's tree is already reduced and
-already tagged; this port composes the entire chain unreduced — a 28-node tree,
-against the 11-node result — and simplifies once at the end. A first pass over
-the longer chain stamps a node that a first pass over the already-reduced one
-never nominates.
-
-Two supporting measurements. `astSimplify_` (mapping.c:24764) short-circuits on
-a Mapping that already carries the record, so re-simplifying C's loaded
-reference leaves its three tags untouched; and clearing just the root's record
-on that same reference and re-simplifying gives four. Both are consistent with
-the reader, not the simplifier, being where the trees diverge.
-
-Closing it means matching where C's reader reduces, which is a change to the
-construction shape of `build_pixel_to_world` — hazard H2 territory
-(`docs/porting-hazards.md`), and worth doing deliberately rather than as part of
-a sync. The cases are licensed with both card counts pinned
-(`ISSIMP_PLACEMENT_LICENSED` in `test_wcsconv.rs`); every other card, `Invert`
-included, is byte-compared. The two simplify-corpus cases under the same name
-are a *different* symptom — the port emitting one card too few — and are noted
-separately there.
-
-**Probe recipe.** Instrument `wcs_read.rs` to render `composed.to_node()` before
-the `simplify()` call, run one wcsconv case, and feed the captured text to
-`docs/issues/c-oracle-probe-issimp-shortcircuit.c`'s sibling — any probe that
-`astRead`s a native text file, calls `astSimplify` and dumps the result. The
-instrumentation is deliberately not committed; it is four lines and belongs to
-whoever is investigating.
-
-The `.ast` FrameSet corpus (`frameset_fixtures/`, 139 captures taken from every
-wcsconv input) cannot see any of this: it is a read → write round trip and
-never re-simplifies, so it holds C's tags and reproduces them exactly.
+**A residue, tracked separately.** Twenty wcsconv cases still differ by one
+`IsSimp` card. That turned out not to be a consequence of this fix at all — the
+simplifiers agree — but of the order in which C's FITS reader simplifies. It has
+its own entry below: "`IsSimp` placement in a FITS-WCS read records the order the
+reader simplified in".
 
 **The C behaviour this entry described, for the record:**
 
@@ -260,6 +211,70 @@ alongside `Invert`) would make the output deterministic and
 implementation-independent.
 
 ---
+
+## `IsSimp` placement in a FITS-WCS read records the order the reader simplified in
+
+**Status:** Open, and deliberately *not* mirrored in the Rust port. Twenty
+wcsconv cases are compared with the `IsSimp` cards dropped from both sides and
+both card counts pinned (`ISSIMP_PLACEMENT_LICENSED` in
+`crates/ast-core/tests/test_wcsconv.rs`); every other card, `Invert` included,
+is byte-compared, and it matches. The Mapping tree, its structure, its
+attributes and its transforms are identical — the sole difference is that C
+emits one fewer `IsSimp` card, on one interior `CmpMap` per simplified WCS
+plane.
+
+**This is not a simplifier difference.** Given the same input the two
+simplifiers produce identical output, tags included. The probe: dump the
+composed pixel→world Mapping the port hands to `simplify()` —
+`build_pixel_to_world`'s result, 28 nodes, no tags — and give that text to C to
+simplify. C returns four tags, on exactly the nodes the port tags:
+
+```
+CmpMap [series]              <== IsSimp
+  WinMap
+  CmpMap [series]
+    WcsMap
+      CmpMap [parallel]      <== IsSimp   (the card that differs)
+        ShiftMap             <== IsSimp
+        CmpMap [series]      <== IsSimp
+```
+
+**C location.** `fitschan.c` calls `astSimplify` in about ten places while
+assembling the Mapping — `:4623`, `:5157`, `:5659`, `:21411`, `:21969`,
+`:24598`, `:28891`, `:30684`, `:31006`, `:33989` — before `WcsMapFrm`'s closing
+`astSimplify` at `:37810`. By the time that closing call runs, C's tree is
+already in its reduced 11-node form, so the call has almost nothing to do. The
+port composes the whole chain unreduced and simplifies once at the end. A first
+pass over the long chain nominates, and therefore stamps, an interior node that
+a first pass over the already-reduced chain never sees.
+
+**Consequence:** cosmetic. `astSimplify_` (mapping.c:24763) stamps whatever it
+returns, so which nodes carry the card is a record of how many times, and at
+what granularity, the reader ran the simplifier. Upstream `e40e71b4` removed the
+*aliasing* dependency in tag placement; this is the remaining history
+dependence, and a much milder one — it reflects the reader's own decomposition
+of its work rather than which objects happened to be aliased into a probe.
+
+**Why the Rust port does not mirror it:** reproducing it means simplifying
+incrementally at the same ten points C does, purely so that the closing simplify
+has nothing left to nominate. That is C's internal division of labour inside one
+function, not a property of the Mapping being built, and matching it would mean
+shaping `build_pixel_to_world` around C's call sequence rather than around the
+WCS it is assembling — the H2 hazard in `docs/porting-hazards.md`, taken on for
+a tag that carries no information about the result. The port simplifies once,
+which is the simpler contract and produces the same Mapping.
+
+The gate is what makes this safe to leave: the licence pins both card counts and
+byte-compares everything else, so a *shape* difference could never hide behind
+it. If the tree itself ever diverged, the comparison would fail on the structure
+long before the tags.
+
+**Upstream discussion:** worth raising only as an observation. Nothing in the
+library reads the card except `astSimplify`'s own short-circuit, and a Mapping
+that reports "not simplified" when it is merely costs one redundant pass. If C
+wanted placement to be a property of the Mapping rather than of the reader, the
+closing `astSimplify` would need to run over an unreduced tree, which would be a
+performance regression for no gain.
 
 ## `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 
