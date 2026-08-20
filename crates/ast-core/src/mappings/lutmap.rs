@@ -85,6 +85,10 @@ impl LutMap {
 
     /// Set the interpolation method.
     pub fn set_interp(&mut self, interp: LutInterp) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, lutmap.c:1855).
+        self.simplified.clear();
         self.interp = interp;
     }
 

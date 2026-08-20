@@ -164,9 +164,12 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
 ///   C `GetItem`'s primary-fallback rule).
 pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char) -> AstResult<FitsStore> {
     // Determine the number of axes.
+    // C reads WCSAXES as a double and rounds (fitschan.c:37047, fixed
+    // upstream at e447556a): a value stored as a FITS float marginally below
+    // an integer must not truncate to the integer below.
     let wcsaxes = cards
-        .get_int(&key_for("WCSAXES", None, s))
-        .map(|v| v as usize);
+        .get_float(&key_for("WCSAXES", None, s))
+        .map(|v| v.round() as usize);
     let naxis_val = cards.get_int("NAXIS").map(|v| v as usize);
 
     let naxis = match (wcsaxes, naxis_val) {

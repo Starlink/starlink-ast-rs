@@ -32,7 +32,8 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// - CDi_j matrix is also read (for AIPS++ headers)
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     // Determine the number of axes from WCSAXES or NAXIS.
-    let wcsaxes = cards.get_int("WCSAXES").map(|v| v as usize);
+    // Rounded, not truncated — see the note in `wcs_keywords.rs`.
+    let wcsaxes = cards.get_float("WCSAXES").map(|v| v.round() as usize);
     let naxis_val = cards.get_int("NAXIS").map(|v| v as usize);
 
     let naxis = match (wcsaxes, naxis_val) {

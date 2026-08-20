@@ -66,6 +66,10 @@ impl SphMap {
 
     /// Set whether input Cartesian vectors are assumed to have unit length.
     pub fn set_unit_radius(&mut self, unit_radius: bool) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, sphmap.c:1229).
+        self.simplified.clear();
         self.unit_radius = unit_radius;
     }
 
@@ -76,6 +80,10 @@ impl SphMap {
 
     /// Set the longitude value returned at either pole (radians).
     pub fn set_polar_long(&mut self, polar_long: f64) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, sphmap.c:1229).
+        self.simplified.clear();
         self.polar_long = polar_long;
         self.polar_long_set = true;
     }

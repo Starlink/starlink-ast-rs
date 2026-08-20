@@ -328,6 +328,10 @@ impl WcsMap {
     /// projection's primary range instead of setting them bad. Mirrors C
     /// `astSetLonCheck`, whose `astMAKE_SET` stores `value != 0`.
     pub fn set_lon_check(&mut self, value: bool) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, wcsmap.c:4356).
+        self.simplified.clear();
         self.lon_check = Some(value);
     }
 
@@ -348,6 +352,10 @@ impl WcsMap {
     /// correction, so the FitsChan write path does not mistake it for the
     /// header's FITS-WCS projection.
     pub fn set_fits_proj(&mut self, value: bool) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, wcsmap.c:4356).
+        self.simplified.clear();
         self.fits_proj = Some(value);
     }
 

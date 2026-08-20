@@ -578,7 +578,7 @@ fn perm_get(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
                     *slot = -((nc + 1) as i64);
                     nc += 1;
                 } else {
-                    *slot = (op + 0.5).floor() as i64;
+                    *slot = op.round() as i64;
                 }
             }
         }
@@ -599,7 +599,7 @@ fn perm_get(pm: &PermMap, inv: bool) -> (Vec<i64>, Vec<i64>, Vec<f64>) {
                     *slot = -((nc + 1) as i64);
                     nc += 1;
                 } else {
-                    *slot = (ip + 0.5).floor() as i64;
+                    *slot = ip.round() as i64;
                 }
             }
         }

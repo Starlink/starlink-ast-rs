@@ -761,8 +761,7 @@ fn global_bounds(
                         nsame_min += 1;
                     }
 
-                    if nsame_min >= MINSAME && nsame_min >= (0.3_f32 * nmin as f32 + 0.5_f32) as i32
-                    {
+                    if nsame_min >= MINSAME && nsame_min >= (0.3_f32 * nmin as f32).round() as i32 {
                         done_min = true;
                     }
                 }
@@ -835,9 +834,7 @@ fn global_bounds(
                         nsame_max += 1;
                     }
 
-                    // C uses 0.5 (f64) for the maximum branch, vs 0.5f
-                    // (f32) for the minimum branch, so port them as written.
-                    if nsame_max >= MINSAME && nsame_max >= (0.3_f32 * nmax as f32 + 0.5) as i32 {
+                    if nsame_max >= MINSAME && nsame_max >= (0.3_f32 * nmax as f32).round() as i32 {
                         done_max = true;
                     }
                 }

@@ -227,6 +227,10 @@ impl PolyMap {
 
     /// Enable or disable the iterative inverse.
     pub fn set_iter_inverse(&mut self, v: bool) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, polymap.c:5885).
+        self.simplified.clear();
         self.iter_inverse = Some(v);
         if v && self.nin == self.nout && self.jacobian_terms.is_none() {
             self.jacobian_terms = Some(self.compute_jacobian_terms());
@@ -244,6 +248,10 @@ impl PolyMap {
     /// Clear IterInverse back to its default. Mirrors C
     /// `astClearIterInverse`.
     pub fn clear_iter_inverse(&mut self) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, polymap.c:5885).
+        self.simplified.clear();
         self.iter_inverse = None;
         if self.nin == self.nout && self.iter_inverse() {
             if self.jacobian_terms.is_none() {
@@ -261,6 +269,10 @@ impl PolyMap {
 
     /// Set the maximum number of iterations for the iterative inverse.
     pub fn set_niter_inverse(&mut self, v: usize) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, polymap.c:5885).
+        self.simplified.clear();
         self.niter_inverse = v;
     }
 
@@ -271,6 +283,10 @@ impl PolyMap {
 
     /// Set the target relative error for the iterative inverse.
     pub fn set_tol_inverse(&mut self, v: f64) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, polymap.c:5885).
+        self.simplified.clear();
         self.tol_inverse = v;
     }
 
@@ -388,10 +404,12 @@ impl PolyMap {
         };
 
         // Carry over attributes as astCopy would, except IterInverse,
-        // which C clears so the new fit takes priority.
+        // which C clears so the new fit takes priority. The simplified record
+        // is not carried over either: one of the transformations has been
+        // replaced, so whatever was true of the original is not true of this
+        // (C `astClearIsSimple( result )`, polymap.c:5352).
         pm.niter_inverse = self.niter_inverse;
         pm.tol_inverse = self.tol_inverse;
-        pm.simplified = self.simplified;
         if self.inverted {
             pm.invert();
         }

@@ -276,3 +276,45 @@ fn write_spectral_round_trip() {
         "CRPIX=1 should map to ~1.42 GHz, got {f1}"
     );
 }
+
+// ===========================================================================
+// Grism interference order
+//
+// Ancestor: `reference/starlink-ast/ast_tester/testfitschan.c`, `testgrismorder`.
+// ===========================================================================
+
+/// A FITS grism header must preserve its interference order through a
+/// read/write round trip. `PVi_1` holds the order, which is commonly negative.
+///
+/// The positive case is a control: it confirms the chosen grating parameters
+/// are physically usable, so a failure in the negative cases cannot be blamed
+/// on the parameter choice.
+#[test]
+fn grism_interference_order_survives_a_round_trip() {
+    for morder in [1.0_f64, -1.0, -2.0] {
+        let header = format!(
+            "CTYPE1  = 'WAVE-GRI'\n\
+             CRVAL1  =            5.0E-7\n\
+             CRPIX1  =                1.0\n\
+             CDELT1  =            1.0E-9\n\
+             CUNIT1  = 'm       '\n\
+             PV1_0   =            9.0E5\n\
+             PV1_1   = {morder:20.1}\n\
+             PV1_2   =                0.0\n\
+             PV1_3   =                1.0\n\
+             PV1_4   =                0.0\n\
+             PV1_5   =                0.0\n\
+             PV1_6   =                0.0\n\
+             END"
+        );
+        let obj = read_frameset(&header);
+        let out = write_to_fitschan(&obj);
+        let back = out
+            .get_fits_f("PV1_1")
+            .unwrap_or_else(|| panic!("no PV1_1 written back for order {morder}"));
+        assert_eq!(
+            back, morder,
+            "grism interference order not preserved: in {morder}, out {back}"
+        );
+    }
+}

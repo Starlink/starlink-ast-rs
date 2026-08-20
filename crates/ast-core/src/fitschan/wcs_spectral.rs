@@ -436,9 +436,12 @@ fn grism_spec_wcs(
         |m: usize| -> Option<f64> { store.pv.get(axis).and_then(|v| v.get(m)).copied().flatten() };
 
     // Build a GrismMap with parameters from PVi_0..6 and WaveR = wcrv.
-    // Defaults and degrees→radians conversions mirror C:14319-14336.
+    // Defaults and degrees→radians conversions mirror C:14323-14340.
     let g = pv(0).unwrap_or(0.0);
-    let m_order = pv(1).map(|v| (v + 0.5) as i32).unwrap_or(0);
+    // Round to nearest, not toward zero: a grism interference order is
+    // commonly negative, and `(v + 0.5) as i32` turns -1 into 0
+    // (fitschan.c:14326, fixed upstream at 1199880a).
+    let m_order = pv(1).map(|v| v.round() as i32).unwrap_or(0);
     let alpha = pv(2).map(|v| v * DD2R).unwrap_or(0.0);
     let nr = pv(3).unwrap_or(1.0);
     let nrp = pv(4).unwrap_or(0.0);

@@ -177,6 +177,10 @@ impl MathMap {
 
     /// Set the SimpFI attribute.
     pub fn set_simp_fi(&mut self, val: bool) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, mathmap.c:4744).
+        self.simplified.clear();
         self.simp_fi = Some(val);
     }
 
@@ -187,6 +191,10 @@ impl MathMap {
 
     /// Set the SimpIF attribute.
     pub fn set_simp_if(&mut self, val: bool) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, mathmap.c:4744).
+        self.simplified.clear();
         self.simp_if = Some(val);
     }
 
@@ -198,6 +206,10 @@ impl MathMap {
 
     /// Set the Seed attribute.
     pub fn set_seed(&mut self, seed: i32) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, mathmap.c:4744).
+        self.simplified.clear();
         self.rng.get_mut().set_seed(seed);
     }
 
@@ -209,6 +221,10 @@ impl MathMap {
 
     /// Clear the Seed attribute back to its default.
     pub fn clear_seed(&mut self) {
+        // Changing this feeds this class's own simplification, so both
+        // orientations' simplified records are discarded (C
+        // `astClearIsSimple`, mathmap.c:4744).
+        self.simplified.clear();
         self.rng.get_mut().clear_seed();
     }
 }
