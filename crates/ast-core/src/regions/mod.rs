@@ -529,7 +529,7 @@ pub trait Region: Frame + Mapping {
     /// and outside a Region narrowed by it.
     ///
     /// This is a *boundary* test, distinct from the interior membership test
-    /// in [`RegionGeometry::reg_base_inside`](data::RegionGeometry::reg_base_inside).
+    /// in `RegionGeometry::reg_base_inside`.
     /// The abstract default reports [`ErrorCode::Inter`]; every concrete class
     /// used by Simplify/Overlap overrides it.
     ///
@@ -619,7 +619,7 @@ pub trait Region: Frame + Mapping {
     /// when both component Regions are re-centreable.
     ///
     /// This is distinct from the geometric-centroid
-    /// [`RegionGeometry::reg_centre`](data::RegionGeometry::reg_centre), which
+    /// `RegionGeometry::reg_centre`, which
     /// always returns a value.
     fn reg_centre_query(&self, _ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
         Ok(None)

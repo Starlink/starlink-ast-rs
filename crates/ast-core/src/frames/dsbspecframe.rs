@@ -151,7 +151,7 @@ impl DSBSpecFrame {
     ///
     /// Mirrors C `astGetAttrib(this, "DSBCentre")` (dsbspecframe.c:459-483):
     /// the internal topocentric-frequency value is transformed through the
-    /// inverse of [`Self::to_topo_mapping`] (i.e. topocentric Hz → current
+    /// inverse of `to_topo_mapping` (i.e. topocentric Hz → current
     /// system). This is the value the C string-attribute layer formats; the
     /// ast-capi shim should call this for `astGetC` parity.
     pub fn dsb_centre_cur(&self) -> AstResult<f64> {
@@ -167,7 +167,7 @@ impl DSBSpecFrame {
     /// spectral System and units**, converting to internal topocentric Hz.
     ///
     /// Mirrors C `astSetAttrib(this, "DSBCentre=...")` (dsbspecframe.c:1355-1370):
-    /// the supplied value is transformed through [`Self::to_topo_mapping`]
+    /// the supplied value is transformed through `to_topo_mapping`
     /// (current system → topocentric Hz) before storage. The ast-capi shim
     /// should call this for `astSetC` parity.
     pub fn set_dsb_centre_cur(&mut self, value: f64) -> AstResult<()> {

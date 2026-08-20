@@ -214,9 +214,9 @@ impl CardList {
         Some(value)
     }
 
-    /// Like [`find_next`], but skips cards consumed by a read (mirrors C
+    /// Like [`Self::find_next`], but skips cards consumed by a read (mirrors C
     /// `CARDUSED` / `ignore_used` in the public card-search path). Used by the
-    /// public `find_fits`; internal callers use [`find_next`] so they still
+    /// public `find_fits`; internal callers use [`Self::find_next`] so they still
     /// see consumed cards (e.g. for write-position bookkeeping).
     pub fn find_next_visible(&mut self, keyword: &str) -> Option<&FitsCard> {
         let start = self.position;

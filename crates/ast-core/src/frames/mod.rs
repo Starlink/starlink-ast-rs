@@ -102,7 +102,7 @@ pub trait Frame: AsAny + Send + fmt::Debug {
     /// The default mirrors C base `astFormat` → `AxisFormat` (axis.c): the
     /// `<bad>` token for the bad value, otherwise the effective per-axis
     /// Format string (set value, else the default `"%1.<Digits>G"` with the
-    /// per-axis Digits) rendered by [`axis_format::format_value`]. Leaf Frame
+    /// per-axis Digits) rendered by `axis_format::format_value`. Leaf Frame
     /// classes that do not override Format in C (SpecFrame, FluxFrame,
     /// DSBSpecFrame) inherit this; CmpFrame, TimeFrame and SkyFrame override.
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
@@ -927,7 +927,7 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         Ok((point4, d1, d2))
     }
 
-    /// Batch form of `resolve`: resolve every vector point1->in[i] into
+    /// Batch form of `resolve`: resolve every vector `point1->in[i]` into
     /// `(parallel, perpendicular)` components, returned as a 2-coord
     /// PointSet. For 2-D Frames the perpendicular component is signed
     /// (positive when basis->vector rotation matches axis1->axis2). The

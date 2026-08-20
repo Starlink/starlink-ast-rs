@@ -105,7 +105,7 @@ impl FluxSystem {
         }
     }
 
-    /// The spectral [`SpecSystem`] describing this flux system's density
+    /// The spectral [`SpecSystem`](crate::frames::SpecSystem) describing this flux system's density
     /// axis: frequency for "per Hz" systems, wavelength for "per Angstrom"
     /// systems. Mirrors C `DensitySystem` (fluxframe.c:537).
     pub fn density_spec_system(&self) -> super::specframe::SpecSystem {

@@ -241,7 +241,7 @@ impl FrameSet {
     ///
     /// As a special case, when `anchor` is [`FrameRef::AllFrames`] the `map`
     /// argument is **ignored** and the supplied frame's axes are appended to
-    /// *every* frame in the set (see [`FrameSet::append_axes`]); this mirrors
+    /// *every* frame in the set (see `append_axes`); this mirrors
     /// C `astAddFrame` with `iframe == AST__ALLFRAMES` (frameset.c:1336).
     pub fn add_frame(
         &mut self,
@@ -386,7 +386,7 @@ impl FrameSet {
     /// into new-frame coords. The old node retains its position in the
     /// graph; a new node is created associated with the named frame
     /// (so subsequent mappings touch the new node), with `map` as the
-    /// link from old to new. Then [`tidy_nodes`](Self::tidy_nodes) is
+    /// link from old to new. Then `tidy_nodes` is
     /// run to collapse any redundant nodes left in the graph.
     pub fn remap_frame(&mut self, which: FrameRef, map: DynMapping) -> AstResult<()> {
         let idx = self.resolve(which)?;

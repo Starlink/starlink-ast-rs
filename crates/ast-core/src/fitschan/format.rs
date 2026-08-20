@@ -34,7 +34,7 @@ pub fn format_fits_double(value: f64, digits: usize) -> String {
 
 /// Format a double with the specified number of significant figures.
 ///
-/// Applies the C library's [`round_fstring`] post-processing with the
+/// Applies the C library's `round_fstring` post-processing with the
 /// default `fitsrnd = 10` (10 leading significant digits protected
 /// from rounding) — long sequences of trailing 0's or 9's beyond that
 /// limit get rounded out. Use [`format_significant_rounded`] to specify

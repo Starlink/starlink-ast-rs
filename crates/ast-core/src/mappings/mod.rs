@@ -178,7 +178,7 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
 
     /// Transform points using the "NaN-as-bad" internal protocol.
     ///
-    /// This variant of [`transform_into`] is the low-level entry that
+    /// This variant of [`Mapping::transform_into`] is the low-level entry that
     /// compositional mappings (e.g. [`CmpMap`]) use to call sub-mappings
     /// without re-running the boundary BAD↔NaN substitution at each stage.
     /// Implementers should assume:
@@ -192,7 +192,7 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// - The output is allowed to contain `f64::NAN` for bad points; the
     ///   top-level entry converts NaN → `BAD_VALUE` once at the bottom.
     ///
-    /// The default implementation delegates to [`transform_into`], which
+    /// The default implementation delegates to [`Mapping::transform_into`], which
     /// preserves the original BAD-checking semantics. Classes that opt in to
     /// the protocol override this method to drop the per-point checks.
     ///

@@ -603,7 +603,7 @@ impl Mapping for MatrixMap {
     }
 
     /// NaN-as-bad fast path. The "zero coefficient masks BAD" semantic of
-    /// [`apply_matrix`] is preserved by keeping the `coeff != 0.0` guard:
+    /// `apply_matrix` is preserved by keeping the `coeff != 0.0` guard:
     /// a NaN input in a column whose row has zero coefficient never
     /// participates in the dot product, so the row's output stays valid
     /// (matching the BAD-checked path). When the coefficient is non-zero,

@@ -54,7 +54,7 @@ pub struct CmpFrame {
     obs_alt: Option<f64>,
     dtai: Option<f64>,
     dut1: Option<f64>,
-    /// Cache for the computed default Domain ("<dom1>-<dom2>" / "CMP"),
+    /// Cache for the computed default Domain (`"<dom1>-<dom2>"` / `"CMP"`),
     /// invalidated whenever a component becomes reachable mutably.
     domain_default: std::cell::OnceCell<String>,
 }
@@ -115,7 +115,7 @@ impl CmpFrame {
     }
 
     /// Frame Title. When unset, returns the empty string;
-    /// serialisation defaults are computed in [`Serializable::to_node`].
+    /// serialisation defaults are computed in `Serializable::to_node`.
     /// Mirrors `astGetTitle`.
     pub fn title(&self) -> &str {
         self.title.as_deref().unwrap_or("")

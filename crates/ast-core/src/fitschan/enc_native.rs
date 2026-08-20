@@ -1,6 +1,6 @@
 //! Keyword-card NATIVE encoding decoder.
 //!
-//! Translates BEGAST_xx / ENDAST_xx / ISA_xx / <NAME>_xx FITS keyword cards
+//! Translates `BEGAST_xx` / `ENDAST_xx` / `ISA_xx` / `<NAME>_xx` FITS keyword cards
 //! into the line-oriented text format consumed by
 //! [`crate::serial::native_read::parse_native`].
 //!
