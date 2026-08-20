@@ -312,13 +312,26 @@ pub(crate) fn flatten(
     // further down exists at all: it undoes the side effect of having used
     // `simplified()` as the decomposition step.
     //
-    // Removing it is worth doing on its own merits and is not free: measured,
-    // deferring every leaf breaks `lsst`, `neg_unitnormmap_nonunit_scale`,
-    // `cap_lutmap_01`, `cap_wcsmap_01` and `cap_zoommap_03` — three of those
-    // purely on `InvA`/`InvB` placement, one on a merge that then picks a
-    // MatrixMap where C keeps a WinMap. `LutMap` has no `map_merge` at all, so
-    // it depends on this call for any reduction. It does *not* explain the two
-    // licensed `IsSimp` fixtures; that was measured too. `WinMap` in particular only
+    // Removing it is half a change, and the other half is the work list.
+    // Deleting this call alone leaves five fixtures failing — `lsst`,
+    // `neg_unitnormmap_nonunit_scale`, `cap_lutmap_01`, `cap_wcsmap_01`,
+    // `cap_zoommap_03` — and each names a reduction C performs inside
+    // `MapMerge` that this port performs only here:
+    //
+    //   * `LutMap` has no `map_merge` at all. C `lutmap.c:1152` replaces a
+    //     linear LUT with an equivalent `WinMap` there, and C:1215 collapses a
+    //     LutMap beside its own inverse to a `UnitMap`. `LutMap::simplified`
+    //     already implements the first of those, faithfully and with the C line
+    //     numbers — in the wrong method.
+    //   * `cap_wcsmap_01` and `cap_zoommap_03` differ only in whether an
+    //     inverted `MatrixMap` is materialised forward or left stored inverted
+    //     with the parent recording `InvB`. That is the still-open `InvA`/`InvB`
+    //     quirk, which this port mirrors deliberately, so those two want
+    //     settling after that quirk is, not before.
+    //
+    // Doing both halves should hold or improve oracle agreement; doing only
+    // this half does not. It does *not* explain the two licensed `IsSimp`
+    // fixtures — deferring every leaf leaves both exactly as they were. `WinMap` in particular only
     // narrows to a `ShiftMap` as the *final* step of its `MapMerge`, after the
     // swap-and-seek that may absorb its scales into an adjacent MatrixMap
     // (`WinMat`, winmap.c:2793).

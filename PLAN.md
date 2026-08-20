@@ -319,8 +319,12 @@ Closed (marked historical in-doc, removed as active work):
 
 ### Verification-posture ledger
 
-Every relaxation in the C-comparison gates, counted so the total cannot grow
-silently. Adding a row here is a deliberate act; the numbers are the claim.
+Every way a gate in `ast-core` can be relaxed, counted so the total cannot grow
+silently. **This table is mirrored by `crates/ast-core/tests/test_verification_ledger.rs`,
+which is the executable copy**: it asserts each count and fails on any
+`const *_EXCLUDED` / `_LICENSED` / `_SKIPPED` in the test tree that is not in
+its table. Adding a relaxation therefore means writing its reason down in two
+places, and finding one by accident is no longer possible.
 
 | Gate | Cases | Relaxed | What the relaxation is |
 |---|---:|---:|---|
@@ -328,9 +332,12 @@ silently. Adding a row here is a deliberate act; the numbers are the claim.
 | wcsconv | 193 | 20 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers one card per simplified plane and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8) |
 | wcsconv | 193 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 427 | 5 | `skip_string_compare` in the manifest (`lsst`, `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`) |
-| simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` in `test_simplify_regression.rs` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
 | simplify regression | 427 | 132 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result |
+| transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
+| frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
+| deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
 
 Movement at the `f6762005` sync: the wcsconv tag licence went from 5 cases to
 20, but narrowed from "drop every `IsSimp` and `Invert` line, unpaired" to "drop
@@ -338,10 +345,10 @@ the `IsSimp` lines with both counts pinned" — `Invert` is byte-compared again,
 and the residue is one diagnosed card per plane rather than an undiagnosed
 count mismatch. `skip_string_compare` went from 7 cases to 5:
 `cap_matrixmap_03` became byte-exact outright, and `cap_cmpmap_03` /
-`cap_specmap_02` moved to the counted licence. The `ignore_is_simp_line` row is
-newly *listed* rather than newly added — it predates the sync and was the
-"hack" the sync was meant to examine; it is structural, not a port gap, and it
-gained the at-least-one-tag assertion here.
+`cap_specmap_02` moved to the counted licence. The `ignore_is_simp_line` row and
+the empty rows are newly *listed* rather than newly added — they predate the
+sync and were simply not written down, which is what the executable ledger now
+prevents.
 
 Known hole, not a relaxation: `native_round_trip_fixture`'s `trim()` /
 `split_whitespace()` comparison — see the open row in §5.
