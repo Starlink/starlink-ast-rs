@@ -79,10 +79,36 @@ both fields and the XOR.
 What *is* separable is a second, distinct use of the same field. The simplifier
 calls `set_first_orientation` / `set_second_orientation` (6 sites in
 `simplify.rs` and `winmap_merge.rs`) to flip a child's stored Invert while
-deliberately leaving `inv_a` untouched. Those calls are **transform-neutral by
-construction** — the doc comment on the setter says so, and the XOR is what
-makes it true. Their only effect is to shape the dump so it matches what C
-emits, which is C's aliasing bookkeeping reproduced on purpose. This is the
+deliberately leaving `inv_a` untouched. Their only effect is to shape the dump
+so it matches what C emits, which is C's aliasing bookkeeping reproduced on
+purpose.
+
+**No simplification rule depends on them — measured, not assumed.** Disabling
+just the flip in both setters (keeping their `IsSimp` clear, so the two effects
+stay separate) leaves the simplify regression harness reporting, over 427
+fixtures:
+
+```
+0 equal() failures, 0 transform failures, 8 serialization failures
+```
+
+The harness checks structural equality against C's `.simp`, numerical transform
+equivalence, and byte-exact dump independently, so the merges produce the same
+mapping and only the serialised form drifts. Across the whole suite the damage
+is 7 tests of 3294, every one a dump comparison: 5 wcsconv native byte diffs
+(missing `INVERT_A= 1` cards), the simplify harness's 8 fixtures, and
+`test_cmpmap`'s `parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation`.
+
+That follows from where the calls sit: merge rules never see a child inside a
+CmpMap, because `flatten` decomposes the tree into a flat `(mapping, invert)`
+list first and merging happens there. `set_*_orientation` runs during
+`reconstruct`, after every simplification decision is made.
+
+Scope: this covers the drift-creating path only. `invert_into_structure`,
+`canonicalize_inverted_cmpmaps` and `normalize_unitmap_children` flip the child
+*and* the snapshot in step (no drift) and genuinely restructure the tree; they
+are a separate mechanism, untested here, and expected to be load-bearing for
+the parallel-inversion push-down. This is the
 `IsSimp` situation exactly (see H3 in `docs/porting-hazards.md`): one field
 serving both a semantic role and a serialisation role. `IsSimp` was split into
 `is_simple_serial` and `has_been_simplified`; Invert has not been split.
