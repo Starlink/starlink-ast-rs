@@ -1473,10 +1473,10 @@ untouched).
 
 ---
 
-## KeyMap dump order reverses within a hash bucket, so dumps never stabilise
+## RESOLVED (upstream 890707a8): KeyMap dump order reverses within a hash bucket, so dumps never stabilise
 
-**Status:** Open, and the strongest upstream candidate of the three KeyMap
-entries. **Not mirrored in Rust** — this is a deliberate divergence, agreed
+**Status:** Fixed upstream at commit 890707a8, which dumps entries in key
+order — the divergence this port had already chosen. **Never mirrored in Rust** — this is a deliberate divergence, agreed
 during the KeyMap port design
 (`docs/superpowers/specs/2026-08-06-keymap-port-design.md`), on the grounds that
 a predictable key ordering on write is plainly better than one that depends on
@@ -1545,9 +1545,10 @@ are regenerated with alphabetically ordered keys.
 
 ---
 
-## `LoadKeyMap` injects a spurious `KyCas = 1` because `KeyCase`'s unset sentinel is `-1`, not `-INT_MAX`
+## RESOLVED (upstream eec1e53d): `LoadKeyMap` injects a spurious `KyCas = 1` because `KeyCase`'s unset sentinel is `-1`, not `-INT_MAX`
 
-**Status:** Open. One-character fix. **Not mirrored in Rust** — the Rust port
+**Status:** Fixed upstream at commit eec1e53d, the one-character fix below.
+**Never mirrored in Rust** — the Rust port
 represents unset attributes as `Option`, which makes the confusion
 unrepresentable.
 
@@ -1609,10 +1610,11 @@ change.
 
 ---
 
-## `astMapIterate` never terminates on a KeyMap with `SortBy` set
+## RESOLVED (upstream 83a772cc): `astMapIterate` never terminates on a KeyMap with `SortBy` set
 
-**Status:** Open. Latent — `table.c:3747` is the only caller in the tree and
-never sets `SortBy`, which is why this has not been hit. **Not mirrored in
+**Status:** Fixed upstream at commit 83a772cc. It was latent — `table.c:3747`
+is the only caller in the tree and never sets `SortBy`, which is why it was
+never hit. **Never mirrored in
 Rust** — the Rust iterator is index-bounded and cannot express the failure.
 
 `AddToSortedList` (`keymap.c:802`) builds a **circular** doubly-linked list. The
@@ -1811,9 +1813,14 @@ than to a Rust-side restatement of djb2.
 
 ---
 
-## `ConvertValue`: out-of-range double-to-int cast is undefined behaviour
+## RESOLVED (upstream 6d114495): `ConvertValue`: out-of-range double-to-int cast is undefined behaviour
 
-**Status:** Open. Not mirrored in Rust — the Rust port uses a well-defined
+**Status:** Fixed upstream at commit 6d114495, which added the `DtoI` / `DtoS`
+/ `DtoK` / `DtoB` range checks; 4e5c33dc gave a NaN a defined zero, and 7b084bbf
+moved the rounding to `round()` so a negative value goes to the nearest integer
+rather than toward zero. The port had a well-defined but *different* answer —
+it narrowed the true rounded value's low bits — and now saturates as C does
+(`d_to_i32` and friends in `keymap/convert.rs`). Formerly not mirrored in Rust — the Rust port uses a well-defined
 conversion and produces a different (also well-defined) result for
 out-of-range inputs.
 
@@ -1896,9 +1903,12 @@ test module.
 
 ---
 
-## `ConvertValue`: numeric-string overflow into `%d` is undefined behaviour, and glibc wraps rather than failing
+## RESOLVED (upstream a76964c7): `ConvertValue`: numeric-string overflow into `%d` is undefined behaviour, and glibc wraps rather than failing
 
-**Status:** Open. Not mirrored in Rust — the Rust port fails the parse
+**Status:** Fixed upstream at commit a76964c7: the `%d` scan's overflow is
+detected and the `%lf` fallback's result saturates. The port reached the same
+answer for a magnitude too large for `i64` but wrapped for one that fit; it now
+saturates in both cases. Formerly not mirrored in Rust — the Rust port fails the parse
 and falls through to the `%lf` fallback, which C's own two-scan chain
 also has, but reaches with a different value because glibc's `%d` does
 not fail here.
@@ -2014,9 +2024,9 @@ test module.
 
 ---
 
-## `astMapRename` on a locked KeyMap loses the entry
+## RESOLVED (upstream 89d0edfa): `astMapRename` on a locked KeyMap loses the entry
 
-**Status:** Confirmed against C source. **Not mirrored in Rust** — a
+**Status:** Fixed upstream at commit 89d0edfa. **Never mirrored in Rust** — a
 failed rename leaves the KeyMap unchanged instead.
 
 `MapRename` (`keymap.c:7608`) has already unlinked the old entry from
@@ -2067,9 +2077,15 @@ entry. Pinned by `map_rename_respects_map_locked` in
 
 ---
 
-## `astMapCopyEntry` normalises the key with the source KeyMap's `KeyCase`
+## RESOLVED (upstream d8edc072): `astMapCopyEntry` normalises the key with the source KeyMap's `KeyCase`
 
-**Status:** Confirmed against C source. Mirrored in Rust.
+**Status:** Fixed upstream at commit d8edc072, which converts the key with
+each KeyMap's own `KeyCase` — the source's for the source lookup, the
+destination's for the destination lookup and for the key the entry is stored
+under — and re-keys the entry on the way in. The port mirrored the bug and no
+longer does: `map_copy_entry` and `map_copy` both take two converted keys, and
+`a_copied_key_takes_the_destinations_key_case` in `test_keymap.rs` pins it.
+Formerly mirrored in Rust.
 
 `MapCopyEntry` (`keymap.c:4264`) converts the caller's key using the
 *source* KeyMap's `KeyCase`, not the destination's:
@@ -2095,9 +2111,10 @@ try to make that case more sensible than C does.
 
 ---
 
-## LoadKeyMap reads a Mem%d card that DumpEntry never writes
+## RESOLVED (upstream ab08de4e): LoadKeyMap reads a Mem%d card that DumpEntry never writes
 
-**Status:** Confirmed against C source. Not mirrored in Rust — there is
+**Status:** Fixed upstream at commit ab08de4e, which removed the read.
+Never mirrored in Rust — there is
 nothing to mirror; the card is simply never present.
 
 `astLoadKeyMap_` reads a per-entry `mem%d` card and uses it to seed the
@@ -2125,9 +2142,14 @@ dump/load round trip in either library.
 
 ---
 
-## `astLoadKeyMap` applies `MpLck` before loading any entry, so a locked non-empty KeyMap can never be reloaded
+## RESOLVED (upstream f444583f): `astLoadKeyMap` applies `MpLck` before loading any entry, so a locked non-empty KeyMap can never be reloaded
 
-**Status:** Confirmed against the reference library itself (not just
+**Status:** Fixed upstream at commit f444583f, which applies the card after
+the entries — which also propagates the flag into nested KeyMaps read as
+entries. The port mirrored the bug and no longer does; the unit test that
+pinned the mirror is now `a_locked_non_empty_keymap_reloads`, with
+`a_locked_keymap_survives_a_round_trip` in `test_keymap.rs` covering the nested
+case. Originally confirmed against the reference library itself (not just
 the source): `astRead` on such a dump fails in C too. Mirrored in
 Rust.
 
@@ -2168,10 +2190,14 @@ non-empty KeyMap fails with the same `AST__BADKEY`. Pinned by
 
 ---
 
-## `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value
+## RESOLVED (upstream b7135abc): `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value
 
-**Status:** Confirmed by reading the source and by probing the
-reference library directly. Not mirrored in Rust — the fix is at the
+**Status:** Fixed upstream at commit b7135abc (and 9e763e45 for the Object
+variant), which rejects the put with `AST__NELIN` rather than creating an entry
+with no representation. The port degraded such a put to a scalar; it now
+refuses it, as `a_zero_length_vector_is_refused` pins. Originally confirmed by
+reading the source and by probing the reference library directly. Formerly not
+mirrored in Rust — the fix is at the
 `put_1<X>` boundary instead (see below), because C's own behaviour is
 undefined and, for one type, crashing.
 
@@ -2223,8 +2249,8 @@ a zero-length vector, because none can exist. Pinned by
 
 ## `CheckCircle`'s `AST__KYCIR` guard has no Rust counterpart
 
-**Status:** Confirmed against C source.
-**Not mirrored in Rust** — the case the guard exists to catch cannot be constructed through the owned Rust API, so there is nothing for a guard to check.
+**Status:** Fixed upstream at commit 367a6a6b (and f1b76a12 for the Object
+variant). **Never mirrored in Rust** — the case the guard exists to catch cannot be constructed through the owned Rust API, so there is nothing for a guard to check.
 
 `CheckCircle` (`keymap.c:951`) stops a KeyMap being stored inside itself, directly or transitively, and reports `AST__KYCIR` when it finds either case.
 Both checks are pointer comparisons:
@@ -2257,7 +2283,7 @@ The pair was removed rather than fixed, because there is no case for it to corre
 
 ---
 
-## `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`
+## RESOLVED (upstream 367a6a6b): `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`
 
 **Status:** Confirmed against C source.
 **Not mirrored in Rust** — the C return code cannot be reproduced faithfully, because the case it reports success for leaves the caller's output buffer untouched.

@@ -243,10 +243,81 @@ fn parse_hex_float(s: &str) -> Option<f64> {
     Some(if neg { -result } else { result })
 }
 
-/// C's `(int)( x + 0.5 )`: add a half, then truncate toward zero. This is
-/// not `round()` — the two disagree for negative half-integers.
-fn round_c(x: f64) -> f64 {
-    (x + 0.5).trunc()
+/// Convert a double to an integer type, saturating rather than wrapping and
+/// giving a NaN a defined value.
+///
+/// Mirrors C's `DtoI` / `DtoS` / `DtoK` / `DtoB` (keymap.c:1732-1770). C moved
+/// to `round()` from `(int)(x + 0.5)` so that negative values go to the nearest
+/// integer rather than toward zero, and added the range check because an
+/// out-of-range floating-point-to-integer cast is undefined (C11 6.3.1.4p1).
+/// A NaN has no integer value, so it yields zero: arbitrary, but defined.
+///
+/// `Bounds` carries the target's limits as doubles. `i64::MAX` is not exactly
+/// representable as a double, so the caller compares against 2^63 directly.
+struct Bounds {
+    min: f64,
+    max: f64,
+}
+
+fn d_to_int(dval: f64, b: &Bounds) -> f64 {
+    if dval.is_nan() {
+        return 0.0;
+    }
+    let r = dval.round();
+    if r >= b.max {
+        b.max
+    } else if r <= b.min {
+        b.min
+    } else {
+        r
+    }
+}
+
+fn d_to_i32(dval: f64) -> i32 {
+    d_to_int(
+        dval,
+        &Bounds {
+            min: f64::from(i32::MIN),
+            max: f64::from(i32::MAX),
+        },
+    ) as i32
+}
+
+fn d_to_i16(dval: f64) -> i16 {
+    d_to_int(
+        dval,
+        &Bounds {
+            min: f64::from(i16::MIN),
+            max: f64::from(i16::MAX),
+        },
+    ) as i16
+}
+
+fn d_to_u8(dval: f64) -> u8 {
+    d_to_int(
+        dval,
+        &Bounds {
+            min: 0.0,
+            max: f64::from(u8::MAX),
+        },
+    ) as u8
+}
+
+fn d_to_i64(dval: f64) -> i64 {
+    // 2^63 exactly; `i64::MAX as f64` rounds up to it, so comparing against
+    // the power of two is what C does and what is correct here.
+    const TWO_POW_63: f64 = 9_223_372_036_854_775_808.0;
+    if dval.is_nan() {
+        return 0;
+    }
+    let r = dval.round();
+    if r >= TWO_POW_63 {
+        i64::MAX
+    } else if r <= -TWO_POW_63 {
+        i64::MIN
+    } else {
+        r as i64
+    }
 }
 
 /// Convert `raw` to `out_type`.
@@ -290,21 +361,24 @@ pub(crate) fn convert_value(raw: &RawValue, out_type: AstType) -> AstResult<Opti
             // The float path scans "%f" only: no integer-first attempt,
             // and no BAD_STRING check (keymap.c:2138-2146).
             AstType::Float => scan_double(s).map(|d| RawValue::Float(d as f32)),
+            // C scans "%d" first and falls back to "%lf" when that
+            // overflows (keymap.c:2160-2179); `scan_int` parses the widest
+            // integer, so the fallback is folded into the saturating narrow.
             AstType::Int => scan_int(s)
-                .map(|i| i as i32)
-                .or_else(|| scan_double(s).map(|d| round_c(d) as i32))
-                .map(RawValue::Int),
+                .map(|i| i as f64)
+                .or_else(|| scan_double(s))
+                .map(|d| RawValue::Int(d_to_i32(d))),
             AstType::SInt => scan_int(s)
-                .map(|i| i as i16)
-                .or_else(|| scan_double(s).map(|d| round_c(d) as i16))
-                .map(RawValue::SInt),
+                .map(|i| i as f64)
+                .or_else(|| scan_double(s))
+                .map(|d| RawValue::SInt(d_to_i16(d))),
             AstType::KInt => scan_int(s)
-                .or_else(|| scan_double(s).map(|d| round_c(d) as i64))
+                .or_else(|| scan_double(s).map(d_to_i64))
                 .map(RawValue::KInt),
             AstType::Byte => scan_int(s)
-                .map(|i| i as u8)
-                .or_else(|| scan_double(s).map(|d| round_c(d) as u8))
-                .map(RawValue::Byte),
+                .map(|i| i as f64)
+                .or_else(|| scan_double(s))
+                .map(|d| RawValue::Byte(d_to_u8(d))),
             AstType::Object | AstType::Undef => None,
             AstType::BadType => {
                 unreachable!("no getter ever requests conversion to BadType")
@@ -312,10 +386,10 @@ pub(crate) fn convert_value(raw: &RawValue, out_type: AstType) -> AstResult<Opti
         });
     }
 
-    // Everything left is numeric to numeric or numeric to string. C uses
-    // a plain cast in every numeric case, including the narrowing ones,
-    // and rounds by adding a half when the source is floating point
-    // (keymap.c:1751-2053).
+    // Everything left is numeric to numeric or numeric to string. A
+    // floating-point source is rounded to nearest and saturated at the
+    // target's limits (keymap.c:1732-1770); an integer source is narrowed
+    // through the same saturating path so the two agree.
     let (as_i64, as_f64, is_float) = match raw {
         RawValue::Int(v) => (i64::from(*v), f64::from(*v), false),
         RawValue::SInt(v) => (i64::from(*v), f64::from(*v), false),
@@ -325,21 +399,13 @@ pub(crate) fn convert_value(raw: &RawValue, out_type: AstType) -> AstResult<Opti
         RawValue::Double(v) => (0, *v, true),
         RawValue::String(_) | RawValue::Object(_) | RawValue::Undef => unreachable!(),
     };
-    let int_src = if is_float {
-        round_c(as_f64) as i64
-    } else {
-        as_i64
-    };
+    let int_src = if is_float { as_f64 } else { as_i64 as f64 };
 
-    // C's cast here (`(int)(dval + 0.5)` etc.) is undefined for a value
-    // out of range for the target width; this narrows through a
-    // well-defined `as` chain instead, see
-    // docs/issues/c-library-quirks.md.
     Ok(Some(match out_type {
-        AstType::Int => RawValue::Int(int_src as i32),
-        AstType::SInt => RawValue::SInt(int_src as i16),
-        AstType::KInt => RawValue::KInt(int_src),
-        AstType::Byte => RawValue::Byte(int_src as u8),
+        AstType::Int => RawValue::Int(d_to_i32(int_src)),
+        AstType::SInt => RawValue::SInt(d_to_i16(int_src)),
+        AstType::KInt => RawValue::KInt(if is_float { d_to_i64(as_f64) } else { as_i64 }),
+        AstType::Byte => RawValue::Byte(d_to_u8(int_src)),
         AstType::Float => RawValue::Float(as_f64 as f32),
         AstType::Double => RawValue::Double(as_f64),
         AstType::String => RawValue::String(match raw {
@@ -487,20 +553,24 @@ mod tests {
     }
 
     #[test]
-    fn numeric_narrowing_wraps_like_a_c_cast() {
-        // C: *( (unsigned char *) out ) = ival; — a plain truncating cast,
-        // not a range check.
+    fn numeric_narrowing_saturates() {
+        // C narrows through DtoI / DtoS / DtoB / DtoK (keymap.c:1732-1770),
+        // which clamp at the target's limits rather than wrapping.
         assert_eq!(
             conv(RawValue::Int(1000), AstType::Byte),
-            Some(RawValue::Byte(232))
+            Some(RawValue::Byte(u8::MAX))
+        );
+        assert_eq!(
+            conv(RawValue::Int(-1), AstType::Byte),
+            Some(RawValue::Byte(0))
         );
         assert_eq!(
             conv(RawValue::Int(70000), AstType::SInt),
-            Some(RawValue::SInt(4464))
+            Some(RawValue::SInt(i16::MAX))
         );
         assert_eq!(
             conv(RawValue::KInt(i64::from(i32::MAX) + 1), AstType::Int),
-            Some(RawValue::Int(i32::MIN))
+            Some(RawValue::Int(i32::MAX))
         );
         // Widening is exact.
         assert_eq!(
@@ -514,8 +584,10 @@ mod tests {
     }
 
     #[test]
-    fn float_to_integer_adds_a_half_then_truncates() {
-        // C: (int)( dval + 0.5 ). This differs from round() below zero.
+    fn float_to_integer_rounds_to_nearest() {
+        // C rounds with round(), which goes to the nearest integer in both
+        // directions — half away from zero (keymap.c:1735, upstream
+        // 7b084bbf). `(int)(dval + 0.5)` used to round -2.5 toward zero.
         assert_eq!(
             conv(RawValue::Double(2.5), AstType::Int),
             Some(RawValue::Int(3))
@@ -526,11 +598,11 @@ mod tests {
         );
         assert_eq!(
             conv(RawValue::Double(-2.5), AstType::Int),
-            Some(RawValue::Int(-2))
+            Some(RawValue::Int(-3))
         );
         assert_eq!(
             conv(RawValue::Double(-2.6), AstType::Int),
-            Some(RawValue::Int(-2))
+            Some(RawValue::Int(-3))
         );
         assert_eq!(
             conv(RawValue::Float(2.5), AstType::KInt),
@@ -701,7 +773,7 @@ mod tests {
         );
         assert_eq!(
             conv(RawValue::String("-2.5".into()), AstType::Int),
-            Some(RawValue::Int(-2))
+            Some(RawValue::Int(-3))
         );
         assert_eq!(
             conv(RawValue::String(" 42 ".into()), AstType::Int),
@@ -813,36 +885,58 @@ mod tests {
     }
 
     #[test]
-    fn double_to_narrow_int_disagrees_with_c_on_overflow() {
-        // C's `(int)(dval + 0.5)` is undefined for a value out of range
-        // for the target width; measured on x86-64/glibc, C returns
-        // INT_MIN's bit pattern reinterpreted at each width (-2147483648,
-        // 0, 0 for int/short/byte). Rust's `as` chain is well-defined and
-        // narrows the *true* rounded value's low bits instead. See
-        // docs/issues/c-library-quirks.md for both sides.
+    fn double_to_narrow_int_saturates_and_defines_nan() {
+        // An out-of-range floating-point-to-integer cast is undefined in C
+        // (C11 6.3.1.4p1), so the range check saturates instead
+        // (keymap.c:1732-1770, upstream 6d114495). A NaN has no integer
+        // value at all and yields a defined zero (4e5c33dc).
         let d = RawValue::Double(5_000_000_100.0);
+        assert_eq!(conv(d.clone(), AstType::Int), Some(RawValue::Int(i32::MAX)));
         assert_eq!(
-            conv(d.clone(), AstType::Int),
-            Some(RawValue::Int(705_032_804))
+            conv(d.clone(), AstType::SInt),
+            Some(RawValue::SInt(i16::MAX))
         );
-        assert_eq!(conv(d.clone(), AstType::SInt), Some(RawValue::SInt(-3484)));
-        assert_eq!(conv(d.clone(), AstType::Byte), Some(RawValue::Byte(100)));
-        // The wide target is in range and both C and Rust agree.
+        assert_eq!(
+            conv(d.clone(), AstType::Byte),
+            Some(RawValue::Byte(u8::MAX))
+        );
+        // The wide target is in range, so no clamp applies.
         assert_eq!(conv(d, AstType::KInt), Some(RawValue::KInt(5_000_000_100)));
+
+        let neg = RawValue::Double(-5_000_000_100.0);
+        assert_eq!(
+            conv(neg.clone(), AstType::Int),
+            Some(RawValue::Int(i32::MIN))
+        );
+        assert_eq!(conv(neg, AstType::Byte), Some(RawValue::Byte(0)));
+
+        // 2^63 is not representable as an i64, so the KInt clamp is the one
+        // that needs the power-of-two comparison rather than `i64::MAX as f64`.
+        assert_eq!(
+            conv(RawValue::Double(1.0e30), AstType::KInt),
+            Some(RawValue::KInt(i64::MAX))
+        );
+        assert_eq!(
+            conv(RawValue::Double(-1.0e30), AstType::KInt),
+            Some(RawValue::KInt(i64::MIN))
+        );
+
+        let nan = RawValue::Double(f64::NAN);
+        assert_eq!(conv(nan.clone(), AstType::Int), Some(RawValue::Int(0)));
+        assert_eq!(conv(nan.clone(), AstType::SInt), Some(RawValue::SInt(0)));
+        assert_eq!(conv(nan.clone(), AstType::KInt), Some(RawValue::KInt(0)));
+        assert_eq!(conv(nan, AstType::Byte), Some(RawValue::Byte(0)));
     }
 
     #[test]
-    fn string_to_int_overflow_disagrees_with_c_on_wrap() {
-        // C's "%d" scan of a digit string too large for `int` is
-        // undefined; glibc wraps modulo 2^32 rather than failing, so
-        // "9999999999" -> 1410065407 and a 38-nines string -> -1. Rust's
-        // `i64::parse` fails on overflow and falls through to the
-        // "%lf"-equivalent double scan, which for a magnitude too large
-        // even for `i64` saturates through `f64` to `i32::MAX` on
-        // narrowing. See docs/issues/c-library-quirks.md.
+    fn string_to_int_overflow_saturates() {
+        // C detects the "%d" scan overflowing and falls back to the "%lf"
+        // scan, whose result then saturates (keymap.c:2160-2179, upstream
+        // a76964c7). glibc used to wrap modulo 2^32 instead, giving
+        // 1410065407 for the first of these and -1 for the second.
         assert_eq!(
             conv(RawValue::String("9999999999".into()), AstType::Int),
-            Some(RawValue::Int(1_410_065_407))
+            Some(RawValue::Int(i32::MAX))
         );
         let nines38 = "9".repeat(38);
         assert_eq!(

@@ -20,7 +20,7 @@ use crate::keymap::convert::{
     unwrap_sint, unwrap_string,
 };
 use crate::keymap::entry::{
-    EntryValue, MapEntry, Scalar1D, degrade_empty_vector, promote_scalar_to_vector, set_element,
+    EntryValue, MapEntry, Scalar1D, is_empty_vector, promote_scalar_to_vector, set_element,
     single_element_vector, single_key_map, single_key_map_mut,
 };
 use crate::keymap::table::{MAX_ENTRIES_PER_TABLE_ENTRY, MIN_TABLE_SIZE};
@@ -493,8 +493,13 @@ impl KeyMap {
             // `sorted_keys` returns already-trimmed stored keys, so the
             // trimmed and message forms coincide here — unlike
             // `map_copy_entry`, which converts a caller-supplied key that
-            // may still carry trailing spaces.
-            self.copy_one(&key, &key, source, true, "astMapCopy")?;
+            // may still carry trailing spaces. The destination may fold
+            // differently, so the key it is stored under is converted with
+            // *this* KeyMap's KeyCase (C `ConvertKey( this, ... )`,
+            // keymap.c:4200).
+            let out_key = table::convert_key(&key, self.key_case(), "astMapCopy")?;
+            let out_key = out_key.trim_end_matches(' ').to_string();
+            self.copy_one(&key, &out_key, &out_key, source, true, "astMapCopy")?;
         }
         Ok(())
     }
@@ -507,42 +512,53 @@ impl KeyMap {
     /// from `source` is silently ignored (`keymap.c:4356`, `if(
     /// in_entry )`).
     ///
-    /// C normalises `key` using the *source* KeyMap's `KeyCase`
-    /// (`keymap.c:4350`) and then looks that same string up in both
-    /// KeyMaps, so a caller whose two KeyMaps have different `KeyCase`
-    /// settings gets the destination lookup done with the source's
-    /// casing. See `docs/issues/c-library-quirks.md`.
+    /// Each KeyMap's own `KeyCase` normalises the key it is searched with,
+    /// and the entry is stored under the destination's form: `KeyCase` can
+    /// only be changed while a KeyMap is empty, so every key a KeyMap holds
+    /// should be in that KeyMap's own casing (C `ConvertKey( that, ... )` and
+    /// `ConvertKey( this, ... )`, keymap.c:4436-4441).
     pub fn map_copy_entry(&mut self, key: &str, source: &KeyMap, merge: bool) -> AstResult<()> {
-        // C binds `key` once to ConvertKey's output — folded, but not
-        // trimmed — and reuses that same binding for both the table
-        // lookups and the AST__BADKEY message (keymap.c:4349-4372). The
-        // lookups need the trimmed form to match how keys are stored
-        // (see `table::convert_key`'s doc comment); the message does not.
-        let nkey = table::convert_key(key, source.key_case(), "astMapCopyEntry")?;
-        let trimmed = nkey.trim_end_matches(' ').to_string();
-        if !source.entries.contains_key(&trimmed) {
+        // C binds each converted key once — folded, but not trimmed — and
+        // reuses it for both the table lookup and the AST__BADKEY message
+        // (keymap.c:4436-4470). The lookups need the trimmed form to match
+        // how keys are stored (see `table::convert_key`'s doc comment); the
+        // message does not.
+        let in_key = table::convert_key(key, source.key_case(), "astMapCopyEntry")?;
+        let in_key = in_key.trim_end_matches(' ').to_string();
+        let out_key = table::convert_key(key, self.key_case(), "astMapCopyEntry")?;
+        let out_trimmed = out_key.trim_end_matches(' ').to_string();
+        if !source.entries.contains_key(&in_key) {
             return Ok(());
         }
-        self.copy_one(&trimmed, &nkey, source, merge, "astMapCopyEntry")
+        self.copy_one(
+            &in_key,
+            &out_trimmed,
+            &out_key,
+            source,
+            merge,
+            "astMapCopyEntry",
+        )
     }
 
-    /// The body `map_copy` and `map_copy_entry` share. `key` is the
-    /// already-normalised, trimmed key used for both KeyMaps' table
-    /// lookups; `message_key` is what an `AST__BADKEY` message quotes,
-    /// which for `map_copy_entry` still carries the trailing spaces C's
-    /// `ConvertKey` output has (`key` and `message_key` are identical for
-    /// `map_copy`, whose keys are already-stored trimmed keys).
+    /// The body `map_copy` and `map_copy_entry` share.
+    ///
+    /// `in_key` searches the source and `out_key` the destination, each in its
+    /// own KeyMap's `KeyCase`; the entry is stored under `out_key`.
+    /// `message_key` is what an `AST__BADKEY` message quotes, which for
+    /// `map_copy_entry` still carries the trailing spaces C's `ConvertKey`
+    /// output has.
     fn copy_one(
         &mut self,
-        key: &str,
+        in_key: &str,
+        out_key: &str,
         message_key: &str,
         source: &KeyMap,
         merge: bool,
         method: &str,
     ) -> AstResult<()> {
-        let in_entry = source.entries.get(key).expect("caller checked presence");
+        let in_entry = source.entries.get(in_key).expect("caller checked presence");
 
-        let Some(out_entry) = self.entries.get_mut(key) else {
+        let Some(out_entry) = self.entries.get_mut(out_key) else {
             if self.map_locked() {
                 return Err(AstError::new(
                     ErrorCode::Badkey,
@@ -553,7 +569,7 @@ impl KeyMap {
                 ));
             }
             let copied = in_entry.clone();
-            self.insert_entry_raw(key.to_string(), copied);
+            self.insert_entry_raw(out_key.to_string(), copied);
             return Ok(());
         };
 
@@ -573,7 +589,7 @@ impl KeyMap {
         self.member_count += 1;
         copied.member = self.member_count;
         copied.keymember = keymember;
-        self.entries.insert(key.to_string(), copied);
+        self.entries.insert(out_key.to_string(), copied);
         Ok(())
     }
 
@@ -824,11 +840,7 @@ impl KeyMap {
 
     /// Normalise `key` and hand the vector value to [`KeyMap::insert_entry`].
     ///
-    /// A zero-length vector is degraded to a scalar first: C's `nel == 0`
-    /// (`InitMapEntry`, `keymap.c:3900`) means scalar unconditionally, so
-    /// `astMapPut1<X>(key, 0, ...)` produces a scalar-shaped entry rather
-    /// than an empty vector, which C has no representation for. See
-    /// [`entry::degrade_empty_vector`].
+    /// A zero-length vector is refused — see [`entry::is_empty_vector`].
     fn put_vector(
         &mut self,
         key: &str,
@@ -836,8 +848,17 @@ impl KeyMap {
         comment: Option<&str>,
         method: &str,
     ) -> AstResult<()> {
+        if is_empty_vector(&value) {
+            return Err(AstError::new(
+                ErrorCode::Nelin,
+                format!(
+                    "{method}(KeyMap): Illegal vector length 0 supplied for \
+                     KeyMap entry \"{key}\" - must be at least one."
+                ),
+            ));
+        }
         let key = table::convert_key(key, self.key_case(), method)?;
-        self.insert_entry(key, degrade_empty_vector(value), comment, method)
+        self.insert_entry(key, value, comment, method)
     }
 
     /// Read `key` as a `Vec<i32>`. Mirrors `astMapGet1I`. See

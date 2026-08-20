@@ -1882,3 +1882,252 @@ fn int64_edge_values() {
         Some(vec![-i64::from(i32::MAX), 10 * i64::from(i32::MIN), 1, 1])
     );
 }
+
+// ===========================================================================
+// Tests added upstream alongside the KeyMap defect fixes in the `f6762005`
+// sync. Each is named for the C function it comes from.
+// ===========================================================================
+
+/// `testdumpstable` — a dump must be byte stable, both across a write / read /
+/// write cycle and against the order the entries were added.
+///
+/// C's keys are chosen to collide in the default-sized hash table, since only
+/// a chained set can expose an add-order dependency. This port keys off a
+/// `HashMap` and sorts at dump time, so no key set can expose one — the case
+/// is kept because it is the property that matters, not because the mechanism
+/// is shared.
+#[test]
+fn dump_is_stable_against_insertion_order() {
+    let keys = ["DELTA", "EPSILON", "ETA", "ALPHA", "BETA", "GAMMA"];
+    let order = [4usize, 2, 5, 0, 3, 1];
+
+    let mut km1 = KeyMap::new();
+    for (i, k) in keys.iter().enumerate() {
+        km1.put_0i(k, i as i32 + 1, Some(" ")).unwrap();
+    }
+    let dump1 = to_native_string(&AnyObject::KeyMap(Box::new(km1))).unwrap();
+
+    // Error dumpstable-2.
+    let reload = from_native_string(&dump1).unwrap();
+    let dump2 = to_native_string(&reload).unwrap();
+    assert_eq!(dump1, dump2, "dump changed on a write, read, write cycle");
+
+    // Error dumpstable-3.
+    let mut km2 = KeyMap::new();
+    for &i in &order {
+        km2.put_0i(keys[i], i as i32 + 1, Some(" ")).unwrap();
+    }
+    let dump3 = to_native_string(&AnyObject::KeyMap(Box::new(km2))).unwrap();
+    assert_eq!(
+        dump1, dump3,
+        "dump depends on the order the entries were added"
+    );
+}
+
+/// `testiterate` — iteration must terminate on a KeyMap with `SortBy` set.
+/// C's sorted list is circular, so a walk that does not detect the wrap runs
+/// forever. The bound below makes a regression a failure rather than a hang.
+#[test]
+fn iteration_terminates_with_sortby_set() {
+    let mut km = KeyMap::new();
+    km.set_sort_by(SortBy::KeyUp);
+    km.put_0i("AAA", 1, Some(" ")).unwrap();
+    km.put_0i("BBB", 2, Some(" ")).unwrap();
+    km.put_0i("CCC", 3, Some(" ")).unwrap();
+
+    let mut seen = Vec::new();
+    let mut key = km.map_iterate(true);
+    while let Some(k) = key {
+        seen.push(k);
+        if seen.len() >= 100 {
+            break;
+        }
+        key = km.map_iterate(false);
+    }
+    assert_eq!(seen, ["AAA", "BBB", "CCC"], "iteration did not terminate");
+}
+
+/// `testrenamelocked` — a rename refused because the KeyMap is locked must
+/// leave it unchanged, not consume the entry.
+#[test]
+fn a_refused_rename_keeps_the_entry() {
+    let mut km = KeyMap::new();
+    km.put_0i("KEEP", 42, Some(" ")).unwrap();
+    km.set_map_locked(true);
+
+    // Error rename-locked-noerr: NEWKEY is not already a known key.
+    assert!(km.map_rename("KEEP", "NEWKEY").is_err());
+
+    // Errors rename-locked-lost / -unreadable / -value / -newkey.
+    assert!(km.map_has_key("KEEP").unwrap());
+    assert_eq!(km.get_0i("KEEP").unwrap(), Some(42));
+    assert!(!km.map_has_key("NEWKEY").unwrap());
+}
+
+/// `testconvrange` — converting an out-of-range double to a narrow integer
+/// must saturate at the type's limit, and a NaN must give a defined zero,
+/// rather than performing an undefined cast.
+#[test]
+fn numeric_conversion_saturates_and_defines_nan() {
+    let mut km = KeyMap::new();
+    km.put_0d("BIG", 5_000_000_100.0, Some(" ")).unwrap();
+    km.put_0d("NEG", -5_000_000_100.0, Some(" ")).unwrap();
+    km.put_0d("NAN", f64::NAN, Some(" ")).unwrap();
+
+    // Errors range-int-max / range-int-min / range-short-max / range-byte-max.
+    assert_eq!(km.get_0i("BIG").unwrap(), Some(i32::MAX));
+    assert_eq!(km.get_0i("NEG").unwrap(), Some(i32::MIN));
+    assert_eq!(km.get_0s("BIG").unwrap(), Some(i16::MAX));
+    assert_eq!(km.get_0b("BIG").unwrap(), Some(u8::MAX));
+
+    // Error range-byte-min: a negative value saturates at zero for an
+    // unsigned type rather than becoming a large positive one.
+    assert_eq!(km.get_0b("NEG").unwrap(), Some(0));
+
+    // Errors range-nan-int / -short / -int64 / -byte.
+    assert_eq!(km.get_0i("NAN").unwrap(), Some(0));
+    assert_eq!(km.get_0s("NAN").unwrap(), Some(0));
+    assert_eq!(km.get_0k("NAN").unwrap(), Some(0));
+    assert_eq!(km.get_0b("NAN").unwrap(), Some(0));
+}
+
+/// `testconvstring` — a numeric string too large for the target type must
+/// saturate rather than wrap, and a string that is not a number at all is
+/// still refused.
+#[test]
+fn numeric_string_conversion_saturates() {
+    let mut km = KeyMap::new();
+    km.put_0c("OVER", "9999999999", Some(" ")).unwrap();
+    km.put_0c("HUGE", "99999999999999999999999999999999999999", Some(" "))
+        .unwrap();
+    km.put_0c("OK", "42", Some(" ")).unwrap();
+    km.put_0c("OKSPACE", " 42 ", Some(" ")).unwrap();
+    km.put_0c("BLANK", "   ", Some(" ")).unwrap();
+    km.put_0c("TRAIL", "12abc", Some(" ")).unwrap();
+
+    // Errors convstr-ok / convstr-okspace.
+    assert_eq!(km.get_0i("OK").unwrap(), Some(42));
+    assert_eq!(km.get_0i("OKSPACE").unwrap(), Some(42));
+
+    // Errors convstr-blank / convstr-trail: not a number, so refused.
+    assert!(km.get_0i("BLANK").is_err());
+    assert!(km.get_0i("TRAIL").is_err());
+
+    // Errors convstr-over / convstr-huge: magnitude overflow saturates.
+    assert_eq!(km.get_0i("OVER").unwrap(), Some(i32::MAX));
+    assert_eq!(km.get_0i("HUGE").unwrap(), Some(i32::MAX));
+}
+
+/// `testemptyvector` — a zero-length vector has no representation in an entry,
+/// where a length of zero means "scalar". The put must be refused rather than
+/// creating an entry that cannot be dumped.
+#[test]
+fn a_zero_length_vector_is_refused() {
+    let mut km = KeyMap::new();
+
+    // Errors emptyvec-int-noerr / -str-noerr / -obj-noerr.
+    assert!(km.put_1i("EMPTYI", &[], Some(" ")).is_err());
+    assert!(km.put_1c("EMPTYC", &[], Some(" ")).is_err());
+    assert!(km.put_1a("EMPTYA", Vec::new(), Some(" ")).is_err());
+
+    // Errors emptyvec-int-present / -str-present / -obj-present.
+    assert!(!km.map_has_key("EMPTYI").unwrap());
+    assert!(!km.map_has_key("EMPTYC").unwrap());
+    assert!(!km.map_has_key("EMPTYA").unwrap());
+
+    // Error emptyvec-dump: the KeyMap must still dump.
+    km.put_0i("REAL", 7, Some(" ")).unwrap();
+    to_native_string(&AnyObject::KeyMap(Box::new(km))).unwrap();
+}
+
+/// `testundefelem` — the element accessors must report failure for an
+/// undefined entry, as the scalar and vector accessors already do, and an
+/// out-of-range index must still be reported as a bad index.
+#[test]
+fn element_accessors_report_an_undefined_entry() {
+    let mut km = KeyMap::new();
+    km.put_u("UNDEF", Some(" ")).unwrap();
+
+    // Error undef-get0: the scalar accessor already reports it.
+    assert_eq!(km.get_0i("UNDEF").unwrap(), None);
+
+    // Errors undef-getelem-i / -c / -a.
+    assert_eq!(km.get_elem_i("UNDEF", 0).unwrap(), None);
+    assert_eq!(km.get_elem_c("UNDEF", 0).unwrap(), None);
+    assert!(km.get_elem_a("UNDEF", 0).unwrap().is_none());
+
+    // Error undef-getelem-i-oob: an out-of-range index on an undefined entry
+    // is a bad index, not silently folded into the "no value" case.
+    let err = km.get_elem_i("UNDEF", 5).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Mpvin);
+}
+
+/// `testlockedroundtrip` — a locked, non-empty KeyMap must survive a dump and
+/// reload. The lock has to be applied after the entries are read, or every put
+/// during the load is refused.
+#[test]
+fn a_locked_keymap_survives_a_round_trip() {
+    let mut km = KeyMap::new();
+    km.put_0i("AAA", 1, Some(" ")).unwrap();
+    km.put_0i("BBB", 2, Some(" ")).unwrap();
+
+    let mut nested = KeyMap::new();
+    nested.put_0i("INNER", 3, Some(" ")).unwrap();
+    km.put_0a("NEST", AnyObject::KeyMap(Box::new(nested)), Some(" "))
+        .unwrap();
+
+    km.set_map_locked(true);
+    let dump = to_native_string(&AnyObject::KeyMap(Box::new(km))).unwrap();
+
+    // Error locked-reload.
+    let reloaded = from_native_string(&dump).unwrap();
+    let AnyObject::KeyMap(km2) = reloaded else {
+        panic!("reload did not produce a KeyMap");
+    };
+
+    // Errors locked-reload-aaa / -flag.
+    assert_eq!(km2.get_0i("AAA").unwrap(), Some(1));
+    assert!(km2.map_locked(), "MapLocked was lost over the round trip");
+
+    // Error locked-reload-nestflag: the flag must reach nested KeyMaps too.
+    let nested = km2.get_0a("NEST").unwrap().flatten();
+    let Some(AnyObject::KeyMap(inner)) = nested else {
+        panic!("the nested KeyMap did not survive the round trip");
+    };
+    assert!(
+        inner.map_locked(),
+        "MapLocked did not reach the nested KeyMap"
+    );
+}
+
+/// `testcopyentrycase` — a copy must express the copied key in the
+/// *destination's* `KeyCase`, both when searching the destination and when
+/// storing into it. `KeyCase` can only be changed while a KeyMap is empty, so
+/// every key a KeyMap holds should be in that KeyMap's own casing.
+#[test]
+fn a_copied_key_takes_the_destinations_key_case() {
+    let mut src = KeyMap::new();
+    src.set_key_case(true).unwrap();
+    let mut dst = KeyMap::new();
+    dst.set_key_case(false).unwrap();
+
+    src.put_0i("MixedKey", 11, Some(" ")).unwrap();
+    // The destination already holds the key under its own folded form.
+    dst.put_0i("MIXEDKEY", 99, Some(" ")).unwrap();
+
+    dst.map_copy_entry("MixedKey", &src, false).unwrap();
+
+    // Error copyentry-dup: no second, differently cased copy of one key.
+    assert_eq!(dst.map_size(), 1);
+    // The copied value is retrievable under the destination's own casing.
+    assert_eq!(dst.get_0i("MIXEDKEY").unwrap(), Some(11));
+    // And the key as stored is the destination's folded form.
+    assert_eq!(dst.map_key(0).unwrap(), "MIXEDKEY");
+
+    // The bulk copy path shares the same helper and has to agree.
+    let mut bulk = KeyMap::new();
+    bulk.set_key_case(false).unwrap();
+    bulk.map_copy(&src).unwrap();
+    assert_eq!(bulk.map_key(0).unwrap(), "MIXEDKEY");
+    assert_eq!(bulk.get_0i("MIXEDKEY").unwrap(), Some(11));
+}

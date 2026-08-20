@@ -102,10 +102,6 @@ impl Serializable for KeyMap {
         if let Some(v) = node.get_int_any_if_set("KyErr") {
             km.set_key_error(v != 0);
         }
-        if let Some(v) = node.get_int_any_if_set("MpLck") {
-            km.set_map_locked(v != 0);
-        }
-
         // MapSz is C's bucket-count history and has no HashMap counterpart,
         // so it is read and discarded. The written value is recomputed from
         // the contents at dump time.
@@ -143,6 +139,15 @@ impl Serializable for KeyMap {
             };
             let comment = node.get_string_if_set(&format!("Com{n}"));
             load_entry(&mut km, node, n, &key, comment.as_deref())?;
+        }
+
+        // MapLocked is applied *after* the entries: applying it beforehand
+        // would refuse every put the loop above makes, since the KeyMap is
+        // empty at that point and every key is a new key. Applying it here
+        // also propagates the flag into any nested KeyMaps read as entries
+        // (keymap.c:11079, upstream f444583f).
+        if let Some(v) = node.get_int_any_if_set("MpLck") {
+            km.set_map_locked(v != 0);
         }
 
         // The final total, which C reads after the entries so it overrides
@@ -553,42 +558,32 @@ mod tests {
     }
 
     #[test]
-    fn putting_a_zero_length_vector_degrades_to_a_scalar() {
-        // C has no representation for nel == 0 other than "scalar"
-        // (keymap.h:116); DumpEntry's own handling of a genuine
-        // zero-length put is undefined behaviour (and, for String,
-        // crashes) -- see the "DumpEntry reads an Entry1X as an Entry0X
-        // for a zero-length vector" entry in
-        // docs/issues/c-library-quirks.md. `KeyMap::put_vector` degrades
-        // the value to a scalar before it is ever stored, so `to_node`
-        // never sees a zero-length vector and cannot panic on one.
+    fn putting_a_zero_length_vector_is_refused() {
+        // A KeyMap entry has no representation for nel == 0 other than
+        // "scalar" (keymap.h:116), so C rejects the put with AST__NELIN
+        // rather than creating an entry that cannot be read back or dumped
+        // (keymap.c:5044, upstream b7135abc). Before that fix the entry was
+        // created and read out of an all-zero bit pattern, which for a
+        // String entry handed astWriteString a NULL and crashed.
         let mut km = KeyMap::new();
-        km.put_1i("I", &[], None).unwrap();
-        km.put_1d("D", &[], None).unwrap();
-        km.put_1c("C", &[], None).unwrap();
+        for err in [
+            km.put_1i("I", &[], None).unwrap_err(),
+            km.put_1d("D", &[], None).unwrap_err(),
+            km.put_1c("C", &[], None).unwrap_err(),
+        ] {
+            assert_eq!(err.code(), ErrorCode::Nelin);
+        }
 
-        assert_eq!(km.map_type("I").unwrap(), AstType::Int);
-        assert_eq!(km.map_length("I"), 1);
-        assert_eq!(km.get_0i("I").unwrap(), Some(0));
-        assert_eq!(km.get_0d("D").unwrap(), Some(0.0));
-        assert_eq!(km.get_0c("C").unwrap().as_deref(), Some(""));
-
-        // Dumps as a scalar Val%d card, exactly as C's own degraded
-        // zero-length put does for every numeric type (confirmed against
-        // the reference library): no Nel%d card, and a Val%d rather than
-        // a V%d_1.
+        // No key was created, and the KeyMap still dumps.
+        assert!(!km.map_has_key("I").unwrap());
+        assert!(!km.map_has_key("D").unwrap());
+        assert!(!km.map_has_key("C").unwrap());
+        km.put_0i("REAL", 7, None).unwrap();
         let node = km.to_node().unwrap();
-        let n = node
-            .items
-            .iter()
-            .find(|item| item.key.starts_with("Key") && node.get_string(&item.key, "") == "I")
-            .map(|item| item.key.trim_start_matches("Key").to_string())
-            .expect("Key%d card for \"I\" not found");
-        assert!(node.get_raw(&format!("Nel{n}")).is_none());
-        assert_eq!(node.get_int(&format!("Val{n}"), -1), 0);
-
-        let back = KeyMap::from_node(&node).unwrap();
-        assert_eq!(back.get_0i("I").unwrap(), Some(0));
+        assert_eq!(
+            KeyMap::from_node(&node).unwrap().get_0i("REAL").unwrap(),
+            Some(7)
+        );
     }
 
     #[test]
@@ -665,28 +660,47 @@ mod tests {
     }
 
     #[test]
-    fn reloading_a_locked_non_empty_keymap_fails_like_c() {
-        // astLoadKeyMap applies MpLck (keymap.c:11011) before loading any
-        // entry, so a dump of a locked, non-empty KeyMap can never be
-        // reloaded through the public put path — confirmed against the
-        // reference library itself, not just the source: astRead on such a
-        // dump also fails with AST__BADKEY in C.
+    fn an_absent_kycas_card_leaves_key_case_unset() {
+        // C read the card with an unset sentinel of -INT_MAX where KeyCase's
+        // own unset value is -1, so an absent card was recorded as an
+        // explicitly set attribute and reappeared in the next dump
+        // (keymap.c:11026, upstream eec1e53d). Nothing to mirror here — an
+        // absent card leaves the option `None` — but the round trip is worth
+        // a gate.
+        let mut km = KeyMap::new();
+        km.put_0i("A", 1, None).unwrap();
+        assert!(!km.test_key_case());
+
+        let node = km.to_node().unwrap();
+        assert!(node.get_raw("KyCas").is_none());
+        assert!(!KeyMap::from_node(&node).unwrap().test_key_case());
+
+        // A card that *is* present still reloads as a set attribute.
+        let mut set = KeyMap::new();
+        set.set_key_case(true).unwrap();
+        set.put_0i("A", 1, None).unwrap();
+        let node = set.to_node().unwrap();
+        assert!(node.get_raw("KyCas").is_some());
+        let back = KeyMap::from_node(&node).unwrap();
+        assert!(back.test_key_case());
+        assert!(back.key_case());
+    }
+
+    #[test]
+    fn a_locked_non_empty_keymap_reloads() {
+        // astLoadKeyMap applies MpLck after reading the entries
+        // (keymap.c:11079, upstream f444583f). Applying it first refused
+        // every put the entry loop made, so a dump of a locked, non-empty
+        // KeyMap could never be reloaded; applying it last also propagates
+        // the flag into nested KeyMaps read as entries.
         let mut km = KeyMap::new();
         km.put_0i("A", 1, None).unwrap();
         km.set_map_locked(true);
 
         let node = km.to_node().unwrap();
-        let err = KeyMap::from_node(&node).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::Badkey);
-        // The message names the entry-loading put (astMapPut0I, from
-        // load_entry's AstType::Int branch), not astMapPut0I via any
-        // other path, and quotes the key exactly as insert_entry's own
-        // AST__BADKEY message does (keymap.c:4370-ish).
-        assert_eq!(
-            err.message(),
-            "astMapPut0I(KeyMap): Failed to add item \"A\" to a KeyMap: \
-             \"A\" is not a known item."
-        );
+        let back = KeyMap::from_node(&node).unwrap();
+        assert_eq!(back.get_0i("A").unwrap(), Some(1));
+        assert!(back.map_locked());
     }
 
     #[test]
