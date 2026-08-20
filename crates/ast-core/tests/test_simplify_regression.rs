@@ -65,15 +65,32 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// Cases whose only remaining difference from the C reference is where an
 /// `IsSimp` card sits, with the exact card count on each side.
 ///
-/// Both cases are the port emitting *fewer* cards than C, which is the
-/// opposite of the wcsconv residue and a separate problem: somewhere in the
-/// merge engine a Mapping that C reaches through `astSimplify` is reached here
-/// through the untagged `simplified()`. `cap_cmpmap_03`'s missing card is on a
-/// 3-axis ShiftMap that a UnitMap merge widened; `cap_specmap_02`'s is on the
-/// CmpMap wrapping a SpecMap/ZoomMap pair. The licence is per case, drops only
-/// the `IsSimp` lines, and pins both counts — so it cannot absorb a new
-/// difference, and the moment the port emits the missing card the count check
-/// fails, which is the signal to delete the row.
+/// Both cases are the port emitting *fewer* cards than C — the opposite of the
+/// wcsconv residue, and unlike it a real difference: the input is the same
+/// `.map` on both sides. `cap_cmpmap_03`'s missing card is on a 3-axis ShiftMap
+/// a UnitMap merge widened; `cap_specmap_02`'s is on the CmpMap wrapping a
+/// SpecMap/ZoomMap pair.
+///
+/// The cause is architectural, and no stamping rule reaches it. C's
+/// `astMapList` does not simplify a component as it decomposes; each leaf is
+/// reduced later, inside the nominate loop, and picks up its record when a
+/// collapsing list is returned through `astSimplify`. This engine's `flatten`
+/// reduces leaves as it decomposes, so the same reduction produces a different
+/// object at a different point and there is nothing holding the record when the
+/// tree is folded. Five classes already opt out of the early reduction
+/// (`defer_winmap` and friends) precisely because it changes the result;
+/// deferring *all* of them, which is C's shape, breaks nine other fixtures. The
+/// fix is to move leaf reduction into the nominate loop, not to add a stamp.
+///
+/// Five stamping fixes were tried and reverted: tagging the reduced leaf in
+/// `flatten`, carrying the record through `ShiftMap`'s merge-revert, tagging the
+/// reconstructed parallel, tagging every `simplify_mapping` result, and tagging
+/// at construction. Each either changed nothing here or over-tagged elsewhere
+/// (`cap_lutmap_01`, `cap_matrixmap_03`, `cap_zoommap_01`).
+///
+/// The licence is per case, drops only the `IsSimp` lines, and pins both counts
+/// — so it cannot absorb a new difference, and the moment the port emits the
+/// missing card the count check fails, which is the signal to delete the row.
 ///
 /// Fields: name, cards this port emits, cards C emits, what differs.
 const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[
@@ -332,14 +349,16 @@ fn simplify_regression() {
                 if ignore_is_simp_line && !simp_str.contains("IsSimp") {
                     other_failures.push(format!("{name}: simplify() produced no IsSimp card"));
                 }
+                // Diagnostic only: `SIMPLIFY_DUMP=<name>` prints both sides of
+                // one case, licensed or not. Never changes the verdict.
+                if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name) {
+                    eprintln!("--- got {name} ---\n{simp_str}\n--- want ---\n{ref_text}");
+                }
                 if !common::native_strings_equivalent(&got, &want, 4) {
                     serial_failures.push(name.to_string());
                     // Diagnostic only: `SIMPLIFY_DIFF=1` prints the first few
                     // differing lines per failing case. Off by default so the
                     // failure list stays readable; it never changes the verdict.
-                    if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name) {
-                        eprintln!("--- got {name} ---\n{got}\n--- want ---\n{want}");
-                    }
                     if std::env::var("SIMPLIFY_DIFF").is_ok_and(|v| !v.is_empty()) {
                         let (g, w): (Vec<&str>, Vec<&str>) =
                             (got.lines().collect(), want.lines().collect());

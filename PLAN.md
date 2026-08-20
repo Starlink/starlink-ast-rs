@@ -452,8 +452,17 @@ records the order the reader simplified in") and licensed with both card counts
 pinned (§6), so a *shape* difference could never hide behind it.
 
 `cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are a different
-matter — one card too few, from the same input on both sides, so a genuine
-simplifier gap and still open work.
+matter — one card too few, from the same input on both sides, so a genuine gap.
+It is architectural rather than a missing stamp: C's `astMapList` does not
+reduce a component as it decomposes, leaving each leaf to be reduced inside the
+nominate loop where a collapsing list carries the record out through
+`astSimplify`; this engine's `flatten` reduces leaves as it decomposes. Five
+classes already opt out of that early reduction because it changes the result
+(`defer_winmap` and friends), and deferring all of them — C's actual shape —
+breaks nine other fixtures. So the fix is to move leaf reduction into the
+nominate loop, which is simplifier work in its own right and is not attempted
+here; five stamping fixes were tried against the corpus first and all were
+reverted.
 
 The `.ast` FrameSet corpus (`frameset_fixtures/`) is byte-exact throughout and
 could not have caught either: it round-trips read → write and never
