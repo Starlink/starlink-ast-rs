@@ -1427,6 +1427,129 @@ pub enum AnyObject {
 }
 
 impl AnyObject {
+    /// Wrap a `&dyn Mapping` in its matching variant — the inverse of
+    /// [`as_mapping`](AnyObject::as_mapping).
+    ///
+    /// `None` means the concrete class has no variant here. Callers that
+    /// serialise arbitrary Mappings must treat that as a failure rather than
+    /// skip the object: a test that renders through this and ignores `None`
+    /// stops checking whole classes without saying so.
+    ///
+    /// Every variant for which `as_mapping` yields `Some` appears below, and
+    /// `any_object_from_mapping_covers_as_mapping` in `serial`'s tests asserts
+    /// the two lists stay the same length.
+    pub fn from_mapping(m: &dyn Mapping) -> Option<Self> {
+        if let Some(x) = m.as_any().downcast_ref::<UnitMap>() {
+            return Some(AnyObject::UnitMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<ZoomMap>() {
+            return Some(AnyObject::ZoomMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<ShiftMap>() {
+            return Some(AnyObject::ShiftMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<MatrixMap>() {
+            return Some(AnyObject::MatrixMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<PermMap>() {
+            return Some(AnyObject::PermMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<WinMap>() {
+            return Some(AnyObject::WinMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<LutMap>() {
+            return Some(AnyObject::LutMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<PolyMap>() {
+            return Some(AnyObject::PolyMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<ChebyMap>() {
+            return Some(AnyObject::ChebyMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<CmpMap>() {
+            return Some(AnyObject::CmpMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<WcsMap>() {
+            return Some(AnyObject::WcsMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<SlaMap>() {
+            return Some(AnyObject::SlaMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<SpecMap>() {
+            return Some(AnyObject::SpecMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<TimeMap>() {
+            return Some(AnyObject::TimeMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<PcdMap>() {
+            return Some(AnyObject::PcdMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<GrismMap>() {
+            return Some(AnyObject::GrismMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<SphMap>() {
+            return Some(AnyObject::SphMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<UnitNormMap>() {
+            return Some(AnyObject::UnitNormMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<TranMap>() {
+            return Some(AnyObject::TranMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<RateMap>() {
+            return Some(AnyObject::RateMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<MathMap>() {
+            return Some(AnyObject::MathMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<SplineMap>() {
+            return Some(AnyObject::SplineMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<DssMap>() {
+            return Some(AnyObject::DssMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<NormMap>() {
+            return Some(AnyObject::NormMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<SelectorMap>() {
+            return Some(AnyObject::SelectorMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<SwitchMap>() {
+            return Some(AnyObject::SwitchMap(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<FrameSet>() {
+            return Some(AnyObject::FrameSet(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<Circle>() {
+            return Some(AnyObject::Circle(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<BoxRegion>() {
+            return Some(AnyObject::BoxRegion(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<Ellipse>() {
+            return Some(AnyObject::Ellipse(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<Polygon>() {
+            return Some(AnyObject::Polygon(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<Interval>() {
+            return Some(AnyObject::Interval(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<NullRegion>() {
+            return Some(AnyObject::NullRegion(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<CmpRegion>() {
+            return Some(AnyObject::CmpRegion(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<PointList>() {
+            return Some(AnyObject::PointList(x.clone()));
+        }
+        if let Some(x) = m.as_any().downcast_ref::<Prism>() {
+            return Some(AnyObject::Prism(x.clone()));
+        }
+        None
+    }
+
     /// Return a reference to the contained object as a `&dyn Mapping`,
     /// or `None` if the variant does not implement [`Mapping`].
     pub fn as_mapping(&self) -> Option<&dyn Mapping> {

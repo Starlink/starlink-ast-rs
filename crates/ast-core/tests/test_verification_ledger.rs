@@ -35,7 +35,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_wcsconv.rs",
         "ISSIMP_PLACEMENT_LICENSED",
-        20,
+        24,
         "one IsSimp card per simplified plane; C's reader reduces as it \
          assembles and this port simplifies once, so the card records C's \
          internal order. Counts pinned on both sides; every other card, \
@@ -166,6 +166,14 @@ fn count_entries(src: &str, name: &str) -> Option<usize> {
                 }
                 prev_escape = false;
             }
+        } else if c == '/' && bytes.get(i + 1) == Some(&b'/') {
+            // A `//` comment runs to end of line. Without this, a parenthesis
+            // in a per-entry justification counts as an entry — the reason
+            // strings above are exactly where parentheses belong.
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
         } else {
             match c {
                 '"' => in_str = true,

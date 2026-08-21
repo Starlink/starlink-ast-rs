@@ -116,50 +116,7 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[
 ];
 
 fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
-    use ast_core::mappings::{
-        CmpMap, GrismMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap, ShiftMap, SlaMap, SpecMap,
-        SphMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, ZoomMap,
-    };
-
-    let obj = if let Some(x) = m.as_any().downcast_ref::<UnitMap>() {
-        AnyObject::UnitMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<ZoomMap>() {
-        AnyObject::ZoomMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<ShiftMap>() {
-        AnyObject::ShiftMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<MatrixMap>() {
-        AnyObject::MatrixMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<PermMap>() {
-        AnyObject::PermMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<WinMap>() {
-        AnyObject::WinMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<CmpMap>() {
-        AnyObject::CmpMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<WcsMap>() {
-        AnyObject::WcsMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<SlaMap>() {
-        AnyObject::SlaMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<SpecMap>() {
-        AnyObject::SpecMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<TimeMap>() {
-        AnyObject::TimeMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<PcdMap>() {
-        AnyObject::PcdMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<GrismMap>() {
-        AnyObject::GrismMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<SphMap>() {
-        AnyObject::SphMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<UnitNormMap>() {
-        AnyObject::UnitNormMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<TranMap>() {
-        AnyObject::TranMap(x.clone())
-    } else if let Some(x) = m.as_any().downcast_ref::<RateMap>() {
-        AnyObject::RateMap(x.clone())
-    } else {
-        let x = m.as_any().downcast_ref::<NormMap>()?;
-        AnyObject::NormMap(x.clone())
-    };
-    Some(obj)
+    AnyObject::from_mapping(m)
 }
 
 /// Render `m` with the default options (comments on, indent 3).
@@ -392,7 +349,20 @@ fn simplify_regression() {
         // construction — its reference *is* its input, which was never
         // simplified — so those are excluded: they are not a disagreement
         // about placement.
-        if let Some(s) = mapping_to_native_string_with(simplified.as_ref(), render_opts) {
+        let rendered = mapping_to_native_string_with(simplified.as_ref(), render_opts);
+        if rendered.is_none() {
+            // Not a skip. `AnyObject::from_mapping` has no variant for this
+            // class, so neither the card count nor the byte comparison below
+            // can run — which is precisely the state that has to be loud.
+            other_failures.push(format!(
+                "{name}: simplify() produced a {}->{} Mapping that \
+                 AnyObject::from_mapping cannot render -- the serialisation \
+                 and IsSimp checks did not run for it",
+                simplified.nin(),
+                simplified.nout()
+            ));
+        }
+        if let Some(s) = rendered {
             let count = |text: &str| {
                 text.lines()
                     .filter(|l| l.trim_start().starts_with("IsSimp ="))
@@ -500,27 +470,6 @@ fn simplify_regression() {
     // principle. These are the fixtures that do not yet hit it. Four of the six
     // are masked by `skip_string_compare` for an unrelated reason and two by the
     // counted licence, so without this list the number would be invisible.
-    // Every row here is a real gap: the pinned C oracle and the committed
-    // `.simp` agree, and the port emits fewer `IsSimp` cards than both. The
-    // corpus was regenerated against the pin at f6762005, so a stale fixture
-    // is no longer a possible explanation for a row appearing in this list.
-    // See PLAN.md §6.
-    const ISSIMP_DISAGREEMENTS: &[&str] = &[
-        "rigby (8 vs C's 9)",
-        "cap_cmpmap_01 (16 vs C's 18)",
-        "cap_cmpmap_03 (6 vs C's 7)",
-        "cap_cmpmap_04 (15 vs C's 18)",
-        "cap_specmap_02 (7 vs C's 8)",
-    ];
-    issimp_disagreements.sort();
-    let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();
-    expected.sort();
-    assert_eq!(
-        issimp_disagreements, expected,
-        "the set of fixtures whose IsSimp count differs from C has changed. \
-         Fewer is progress — delete the row. More is a regression. Either way \
-         update this list and PLAN.md §6 together."
-    );
 
     if !parse_skipped.is_empty() {
         eprintln!(
@@ -562,6 +511,137 @@ fn simplify_regression() {
     // difference has been diagnosed as a C-side artefact (see
     // `docs/issues/c-library-quirks.md`) opts out per-fixture via the manifest's
     // `skip_string_compare` flag, with the reason recorded there.
+    // Byte comparisons that were never running until `AnyObject::from_mapping`
+    // replaced this file's hand-rolled dispatch. The old dispatch covered 18
+    // Mapping classes and no Region, FrameSet or SwitchMap, and an unhandled
+    // class returned `None` from inside an `if let Some(..)` — so every fixture
+    // whose simplified result was one of those classes skipped both the byte
+    // comparison and the `IsSimp` count check without saying anything.
+    //
+    // None of these is a regression and none is a stale fixture: the pinned C
+    // reproduces all eleven `.simp` files byte-exactly. They are pre-existing
+    // defects that had no gate. Each row names the diagnosed cause, and the set
+    // is asserted exactly, so fixing one forces the row out.
+    //
+    // Note what `equal()` did here: it passed all eleven, including a Prism
+    // where C has a Box. Structural equality is far weaker than the byte
+    // comparison, which is why losing the byte comparison cost this much.
+    const SERIAL_UNGATED: &[(&str, &str)] = &[
+        // (A) SwitchMap under-tags: C stamps the FSMap / ISMap sub-Mappings,
+        // we leave them bare.
+        (
+            "switchmap_invert_normalize",
+            "IsSimp missing on selector sub-Mappings",
+        ),
+        (
+            "switchmap_internal_simplify",
+            "IsSimp missing on selector sub-Mappings",
+        ),
+        (
+            "switchmap_fwdonly_simplify",
+            "IsSimp missing on selector sub-Mappings",
+        ),
+        (
+            "switchmap_inv_invonly",
+            "IsSimp missing on selector sub-Mappings",
+        ),
+        // (B) Region simplify tags a Mapping inside the encapsulated FrameSet
+        // that C leaves bare. See PLAN.md §9.1.
+        (
+            "cefit_circle_conformal",
+            "IsSimp on the FrameSet's ZoomMap; C emits none",
+        ),
+        (
+            "cefit_circle_nonconformal_keep",
+            "IsSimp on the FrameSet's MathMap; C emits none",
+        ),
+        // (C) The uncertainty Region does not collapse Prism -> Box.
+        ("box_unc_fillfactor_merge", "emits Prism where C emits Box"),
+        (
+            "nullregion_unc_fillfactor_merge",
+            "emits Prism where C emits Box",
+        ),
+        // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
+        // where C has collapsed to bare Points.
+        (
+            "cap_zoommap_04",
+            "emits FrmSet/FrameSet where C emits Points/PointSet",
+        ),
+        // (E) Serialisation default: C omits Closed when it holds the default.
+        ("cap_interval_01", "emits Closed = 1 where C omits it"),
+        // (F) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
+        // 4-ulp token tolerance, so real arithmetic divergence.
+        (
+            "cap_pointlist_01",
+            "two mesh coordinates diverge past 4 ulp",
+        ),
+    ];
+    // `simplify` must stamp whatever it returns (mapping.c:24763). It does not
+    // for a Region, which is the same defect as (B) seen from the other side.
+    const NO_ISSIMP_CARD_UNGATED: &[&str] = &["neg_box_asymmetric_2d"];
+
+    let ungated: Vec<&str> = SERIAL_UNGATED.iter().map(|(n, _)| *n).collect();
+    let (licensed, unlicensed): (Vec<String>, Vec<String>) = serial_failures
+        .iter()
+        .cloned()
+        .partition(|n| ungated.contains(&n.as_str()));
+    let mut licensed_sorted = licensed.clone();
+    licensed_sorted.sort();
+    let mut expected_licensed: Vec<String> = ungated.iter().map(|s| s.to_string()).collect();
+    expected_licensed.sort();
+    assert_eq!(
+        licensed_sorted, expected_licensed,
+        "the set of ungated serialisation failures has changed. Fewer is \
+         progress — delete the row. More means a real regression, because \
+         every row here was verified against the pinned C oracle."
+    );
+    let (no_card_licensed, no_card_other): (Vec<String>, Vec<String>) =
+        other_failures.iter().cloned().partition(|m| {
+            NO_ISSIMP_CARD_UNGATED
+                .iter()
+                .any(|n| m.starts_with(&format!("{n}:")))
+        });
+    assert_eq!(
+        no_card_licensed.len(),
+        NO_ISSIMP_CARD_UNGATED.len(),
+        "the untagged-result licence no longer matches: {no_card_licensed:?}"
+    );
+    let serial_failures = unlicensed;
+    let other_failures = no_card_other;
+
+    // Every row here is a real gap: the pinned C oracle and the committed
+    // `.simp` agree, and the port emits fewer `IsSimp` cards than both. The
+    // corpus was regenerated against the pin at f6762005, so a stale fixture
+    // is no longer a possible explanation for a row appearing in this list.
+    // See PLAN.md §6.
+    const ISSIMP_DISAGREEMENTS: &[&str] = &[
+        // Under-tagging, gated all along.
+        "rigby (8 vs C's 9)",
+        "cap_cmpmap_01 (16 vs C's 18)",
+        "cap_cmpmap_03 (6 vs C's 7)",
+        "cap_cmpmap_04 (15 vs C's 18)",
+        "cap_specmap_02 (7 vs C's 8)",
+        // Newly visible: these seven fixtures render to a Region or a
+        // SwitchMap, so the old hand-rolled dispatch returned `None` and the
+        // count was never taken. Causes (A), (B) and (D) in SERIAL_UNGATED.
+        "switchmap_fwdonly_simplify (1 vs C's 3)",
+        "switchmap_internal_simplify (1 vs C's 4)",
+        "switchmap_inv_invonly (1 vs C's 3)",
+        "switchmap_invert_normalize (1 vs C's 4)",
+        "cefit_circle_conformal (1 vs C's 0)",
+        "cefit_circle_nonconformal_keep (1 vs C's 0)",
+        "cap_zoommap_04 (3 vs C's 0)",
+    ];
+    issimp_disagreements.sort();
+    let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();
+    expected.sort();
+    assert_eq!(
+        issimp_disagreements, expected,
+        "the set of fixtures whose IsSimp count differs from C has changed. \
+         Fewer is progress — delete the row. More is a regression. Either way \
+         update this list and PLAN.md §6 together."
+    );
+
     let total = equal_failures.len()
         + transform_failures.len()
         + serial_failures.len()
