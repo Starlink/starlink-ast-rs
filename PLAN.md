@@ -539,20 +539,44 @@ are enumerated with causes in `SERIAL_UNGATED`, which groups them into six:
 |---|---|---|
 | A | 4 SwitchMap cases | `IsSimp` missing on the FSMap / ISMap sub-Mappings |
 | B | 2 `cefit_circle_*`, `neg_box_asymmetric_2d` | Region simplify tags a Mapping inside the encapsulated FrameSet that C leaves bare, and does not tag the returned Region at all |
-| C | 2 `*_unc_fillfactor_merge` | emits a `Prism` where C emits a `Box` |
+| C | 2 `*_unc_fillfactor_merge` | emits a `Prism` uncertainty where C emits a `Box` |
 | D | `cap_zoommap_04` | emits `FrmSet`/FrameSet where C emits `Points`/PointSet |
 | E | `cap_interval_01` | emits `Closed = 1` where C omits it |
 | F | `cap_pointlist_01` | two mesh coordinates diverge past 4 ulp |
 
-Note what `equal()` did with all eleven: it passed them, including C and D.
-Structural equality does not distinguish a Prism from a Box. That is the
-measure of what the byte comparison was worth while it was switched off.
+`equal()` passed all eleven, but that is not an `equal()` defect. C's
+`region.c::Equal` compares class name, `points`, base Frame, current Frame, the
+base->current Mapping, and `Negated`/`Closed` — and deliberately not the
+uncertainty. Causes C and D both differ inside `Unc`, so C's `astEqual` returns
+1 for them too, and ours agrees. Both languages *do* distinguish Box from Prism
+at any compared position: `region.c::Equal` opens with `strcmp` on the class
+names, and our `equal` downcasts.
 
-### 9.3 36 of the 107 native wcsconv references are stale
+What this establishes is narrower but still worth the gate: the byte comparison
+covers fields `astEqual` is designed to ignore, so it is the only check that
+will ever see a wrong uncertainty class.
 
-Same cause as the `.simp` corpus: captured before the pin moved to `f6762005`.
+### 9.3 17 of the 107 native wcsconv references are stale
+
 Verified by building `ast_tester/wcsconverter.c` against the pinned C and
-re-running every `native` row of the manifest — 71 reproduce, 36 do not.
+replaying every `native` manifest row *with its `attrs` field* — omitting the
+attributes produces false structural differences.
+75 of the 107 rows reproduce byte-exactly.
+
+**No keyword sequence differs in any of the 107.**
+Nothing about core WCS structure changed upstream; every difference is either
+an `IsSimp` card or a last-bits value.
+
+| bucket | count | disposition |
+|---|---|---|
+| `IsSimp` cards only | 17 | genuinely stale; regenerate anywhere; belongs upstream |
+| last-bits values *and* stale `IsSimp` | 6 | regenerate, keep only the card hunks |
+| last-bits values only, `IsSimp` correct | 9 | not stale — Linux captures; document, do not touch |
+| structural | 0 | — |
+
+Mixed: `scp`, `tnx`, `tnx-cheb`, `ssysobs`, `skyspec3d-class`, `wave-f2w`.
+Platform-only: `timj`, `multi-wcs`, `skyref`, `iraf-longpole`, `skyref-alt`,
+`tidy-offsets`, `tidy-pole`, `offset-sref`, `azel`.
 
 This is why the ShiftMap merge-revert fix looked like a six-case regression.
 Measured against the pinned C rather than the committed reference:
@@ -563,13 +587,13 @@ Measured against the pinned C rather than the committed reference:
 | crota-3d | 5 | 3 | **5** |
 | cd-cross | 3 | 2 | 4 |
 
-Five of the six now match C exactly; `cd-cross` is one card closer. The six
-licence rows in `ISSIMP_PLACEMENT_LICENSED` are pinned against the stale
-reference and should be deleted, not adjusted, when the corpus is regenerated.
+Five of the six now match C exactly; `cd-cross` is one card closer.
+The six licence rows in `ISSIMP_PLACEMENT_LICENSED` are pinned against stale
+references and should be deleted, not adjusted, once the corpus is regenerated.
 
-Before regenerating: `scp.native` has two non-`IsSimp` differing lines as well.
-Diagnose those first — the rest of the stale set differs only in card
-placement. These are upstream files too, so the fix belongs upstream.
+Scheduled in
+[`docs/superpowers/specs/2026-08-21-simplify-mapmerge-audit-design.md`](superpowers/specs/2026-08-21-simplify-mapmerge-audit-design.md)
+as W3.
 
 ### 9.1 `cefit_circle_*` — the two dump paths disagree with each other
 
