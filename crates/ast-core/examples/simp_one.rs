@@ -54,8 +54,8 @@ fn as_any_object(m: &dyn Mapping) -> Option<AnyObject> {
 #[cfg(feature = "tracing")]
 fn install_tracing() {
     use tracing_subscriber::EnvFilter;
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("ast::simplify=debug"));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("ast::simplify=debug"));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .without_time()

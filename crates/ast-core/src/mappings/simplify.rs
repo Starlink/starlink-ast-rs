@@ -264,8 +264,24 @@ pub(crate) mod trace {
             };
         }
         name!(
-            UnitMap, ZoomMap, WinMap, ShiftMap, MatrixMap, PermMap, PcdMap, LutMap, SpecMap,
-            SlaMap, TimeMap, SphMap, WcsMap, GrismMap, NormMap, UnitNormMap, RateMap, TranMap,
+            UnitMap,
+            ZoomMap,
+            WinMap,
+            ShiftMap,
+            MatrixMap,
+            PermMap,
+            PcdMap,
+            LutMap,
+            SpecMap,
+            SlaMap,
+            TimeMap,
+            SphMap,
+            WcsMap,
+            GrismMap,
+            NormMap,
+            UnitNormMap,
+            RateMap,
+            TranMap,
             SwitchMap,
         );
         "?"
