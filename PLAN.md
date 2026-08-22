@@ -657,3 +657,117 @@ Several of these attributes have no setter in the port yet, so the gap is
 latent rather than active. What would expose it: a fixture that sets one of
 these attributes on an already-simplified Mapping and then re-simplifies —
 none exists today.
+
+## 10. Gaps named by the `MapMerge` / `Simplify` audit
+
+Each entry is cited by a `gap` verdict in a checklist under
+`docs/audits/mapmerge/`, and `test_mapmerge_audit.rs` fails if a cited entry
+does not exist here.
+
+### 10.1 RateMap's self-reduction is unreachable from the nominate loop
+
+`ratemap.c:717-727` opens `MapMerge` by simplifying the encapsulated Mapping
+and, if that reduced anything, rebuilding the RateMap around the result. The
+Rust class has the logic, in `simplified()` at `ratemap.rs:262-289`, and
+reconstructs with the same axis convention. It has no `map_merge` at all, so
+inside the nominate loop it takes the trait default and only ever tries its
+neighbours. C's reduction runs on a RateMap nominated from within a list; the
+port's runs only when a RateMap is simplified on its own.
+
+`simplify.rs:1137`'s `self_reduce_map_merge` is the shape that would close it.
+Five classes use it; RateMap does not, and the comment at `ratemap.rs:292`
+records that adding it gains an `IsSimp` card on `cap_cmpmap_01` and
+`cap_cmpmap_04` while costing their structural equality with C. That trade is
+the thing to understand, not to re-attempt blind.
+
+What would expose it: a simplify fixture with a RateMap in series next to a
+Mapping whose own simplification changes it — a RateMap wrapping an unsimplified
+CmpMap, say — so the reduction has to happen mid-list to be seen. No fixture in
+the corpus puts a RateMap anywhere but at the top level, which is why the gap
+has been invisible.
+
+Separately, no fixture puts two RateMaps next to each other, so the
+cancel-with-inverse path (`ratemap.c:791-802`, `ratemap.rs:387-389`) is
+unexercised on both sides. C rewrites two list slots with a `UnitMap` each and
+picks the width from `astGetNout`/`astGetNin` of the nominated RateMap; the port
+returns one Mapping for the pair and derives the width from the merge
+direction.
+
+### 10.2 ChebyMap does not inherit PolyMap's `MapMerge`
+
+In C, `chebymap.c` defines no `MapMerge`; only `polymap.c:2439` fills the slot,
+so a ChebyMap's `MapMerge` is PolyMap's whole body at `polymap.c:3597-3961`. In
+the port, `ChebyMap` is its own struct with no `map_merge`, so it takes the trait
+default and reaches none of PolyMap's replace-with-simpler half. Its
+`simplified()` (`chebymap.rs:454-460`) returns an unchanged clone.
+
+Two halves are missing, and they are not equally safe to port.
+
+The coefficient consolidation (`polymap.c:3624-3745`) combines coefficients that
+use the same set of input powers. That is basis-independent — two `T_2` terms for
+one output add exactly as two `x^2` terms do — so it ports as it stands.
+
+The linear replacement (`polymap.c:3747-3875`) is the open question. C reads the
+coefficient arrays with nothing that distinguishes a Chebyshev basis from a power
+basis, and accumulates a matrix and offset from them directly. A first-order
+Chebyshev term is affine in the input, but only after the domain scaling the
+ChebyMap's `lbnd`/`ubnd` define, and that scaling takes no part in what C
+accumulates. So either C folds the scaling in somewhere this audit has not
+found, or a linear ChebyMap simplifies to a MatrixMap that has lost it.
+
+What would expose it: a ChebyMap whose forward transformation holds only `T_0`
+and `T_1` terms, over bounds that are not the identity interval, transformed
+through both the ChebyMap and its simplification. Build it against the C oracle
+first, per `docs/issues/c-oracle-probe-recipe.md`. If C loses the scaling, the
+port must not mirror it, and the finding belongs in
+`docs/issues/c-library-quirks.md` and upstream. If C keeps it, the port needs the
+same delegation.
+
+No corpus fixture holds a linear ChebyMap, which is why neither answer has been
+needed yet.
+
+### 10.3 CmpMap under-tags four fixtures
+
+`cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04` and `cap_specmap_02` each emit
+fewer `IsSimp` cards than C. The instrumented C shows the surviving sub-Mapping
+is stamped inside `CmpMap::MapMerge`'s self-simplify head
+(`cmpmap.c:1416-1471`), reached from `Simplify`'s nominate loop.
+
+Every step of that head is ported (`docs/audits/mapmerge/cmpmap.md` rows 3 to
+9), so this is not a missing step. `astSimplify_` stamps whatever it returns
+(`mapping.c:24763`), so the card records which objects were, at some instant, the
+entire result of a simplification — and this engine never has the missing node
+as a whole result where C does.
+
+What would expose it: already exposed, by the four fixtures named above, whose
+counts are pinned in `test_simplify_regression.rs`.
+
+Six approaches to `cap_cmpmap_03` were measured and reverted, including tagging
+every `simplify_mapping` result — which is `astSimplify_`'s literal contract —
+and deferring leaf reduction entirely. They are recorded in
+`test_simplify_regression.rs` and must not be retried without a new reason.
+
+### 10.4 Only the PermMap side of the CmpMap/PermMap swap is ported
+
+C implements the swap of a series CmpMap past an adjacent PermMap twice, once
+per nominee: `cmpmap.c:1816-2119` runs when the CmpMap is nominated and the
+PermMap is its lower neighbour, and `permmap.c::MapMerge` at line 741 runs when
+the PermMap is nominated. The two are mirror halves of one rule, because
+`MapMerge` is only ever called on the nominated element.
+
+The port has the second only, as `perm_map_merge` (`simplify.rs:1010-1030`),
+which examines the `(where_, where_ + 1)` pair. It does borrow this section's
+constant-transform arithmetic, cited at `simplify.rs:1002`.
+
+The reduction is still reachable: the nominate loop offers every element in
+turn, so a `[PermMap, CmpMap]` pair is swapped when the PermMap's turn comes.
+What differs is the index the merge reports, and therefore where the loop
+resumes — which is the H2 hazard, a structurally different route to the same
+Mapping, surfacing wherever something consumes the structure.
+
+What would expose it: a series list holding `[A, PermMap, parallel CmpMap, B]`
+where `A` and `B` can each merge with what the swap brings next to them, so the
+resume point decides which merge happens first. Replay it through the C oracle
+and compare the `IsSimp` cards and the tree shape, not just `astEqual`.
+
+This entry replaces the plan's §10.4, which duplicated §9.2.

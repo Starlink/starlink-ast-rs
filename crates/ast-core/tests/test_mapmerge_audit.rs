@@ -155,6 +155,35 @@ fn every_checklist_row_has_a_verdict() {
     );
 }
 
+/// Every `gap` verdict must name a `PLAN.md` section that exists. A gap citing
+/// a section nobody wrote is a gap nobody has to answer for.
+#[test]
+fn every_gap_verdict_names_a_real_plan_section() {
+    let plan = std::fs::read_to_string(repo_root().join("PLAN.md")).expect("PLAN.md readable");
+    let mut dangling = Vec::new();
+    for stem in audit_universe() {
+        let Ok(text) = std::fs::read_to_string(checklist_path(&stem)) else {
+            continue; // reported by every_audited_class_has_a_checklist
+        };
+        for (i, v) in verdicts(&text).iter().enumerate() {
+            let Some(section) = v.strip_prefix("gap: PLAN.md ") else {
+                continue;
+            };
+            let section = section.trim();
+            // A section is cited as `§10.1` and written as `### 10.1 …`.
+            let number = section.trim_start_matches('§');
+            if !plan.contains(&format!("### {number} ")) {
+                dangling.push(format!("{stem} row {}: PLAN.md has no {section:?}", i + 1));
+            }
+        }
+    }
+    assert!(
+        dangling.is_empty(),
+        "a `gap` verdict must cite a PLAN.md section that exists and says what \
+         would expose the gap: {dangling:#?}"
+    );
+}
+
 /// No checklist may sit in the directory without a class in the universe that
 /// claims it. A stale file is a checklist nothing audits any more.
 #[test]

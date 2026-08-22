@@ -1,0 +1,62 @@
+# `MapMerge` audit — RateMap
+
+C source: reference/starlink-ast/src/ratemap.c
+Rust: crates/ast-core/src/mappings/ratemap.rs
+Audited: 2026-08-21 against pin 3cf4bc5c
+
+C's body runs `ratemap.c:678-817`. Rows cover its executable
+comment-delimited steps; the declaration blocks at 678-693 and 700-701 are not
+steps.
+
+The Rust class has no `map_merge`, so inside the nominate loop it takes the
+trait default (`simplify.rs:369-376` → `default_map_merge`), which only tries
+the neighbours. C's own reduction of the encapsulated Mapping therefore never
+runs on a RateMap that is an element of a list being merged, which is the one
+place C runs it.
+
+| # | C step | C site | Rust site | verdict |
+|---|---|---|---|---|
+| 1 | Initialise the returned index to -1 | ratemap.c:694-695 | -- | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the inherited status and bail out | ratemap.c:697-698 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | Get a pointer to this RateMap | ratemap.c:703-704 | -- | n/a: the Rust method already has `&self`; C is downcasting from `AstMapping *` |
+| 4 | Temporarily set the RateMap's Invert flag to the value the list requests | ratemap.c:706-708 | -- | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
+| 5 | Get the encapsulated Mapping and temporarily restore the Invert value it had at construction | ratemap.c:710-715 | -- | n/a: `self.map` is owned and holds its construction orientation already, so there is nothing to save and restore |
+| 6 | First try to simplify the RateMap by simplifying its encapsulated Mapping | ratemap.c:717-719 | ratemap.rs:272-273 | gap: PLAN.md §10.1 |
+| 7 | If that simplified anything, build a new RateMap around the simplified Mapping and report a change | ratemap.c:721-727 | ratemap.rs:275-286 | gap: PLAN.md §10.1 |
+| 8 | Otherwise, in series only, try to cancel this RateMap with its own inverse | ratemap.c:728-730 | ratemap.rs:306-309 | ported |
+| 9 | Start with nothing to cancel against | ratemap.c:732-733 | -- | n/a: the port's pairwise hook is asked about one neighbour at a time, so there is no candidate index to initialise |
+| 10 | Consider the lower neighbour, if it is a RateMap | ratemap.c:735-737 | ratemap.rs:312 | ported |
+| 11 | Require the two Invert flags to be opposite | ratemap.c:738-741 | ratemap.rs:314-317 | ported |
+| 12 | Require the input and output axis indices to be equal | ratemap.c:743-745 | ratemap.rs:319-322 | ported |
+| 13 | Require the encapsulated Mappings to be equal, comparing them at their construction orientations | ratemap.c:747-762 | ratemap.rs:324-328 | ported |
+| 14 | Likewise consider the upper neighbour | ratemap.c:765-789 | ratemap.rs:312 | ported |
+| 15 | On a cancel, replace both list entries with a UnitMap and report the lower index | ratemap.c:791-802 | ratemap.rs:387-389 | ported |
+| 16 | Free resources | ratemap.c:803-805 | -- | n/a: owned values are dropped |
+| 17 | Re-instate the encapsulated Mapping's original Invert attribute | ratemap.c:806-808 | -- | n/a: nothing was mutated, so nothing is restored |
+| 18 | Re-instate the RateMap's original Invert attribute | ratemap.c:809-811 | -- | n/a: nothing was mutated, so nothing is restored |
+| 19 | Clear the result value if an error occurred | ratemap.c:812-814 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
+| 20 | Return the result | ratemap.c:815-816 | ratemap.rs:389 | ported |
+
+## Rows 6 and 7 — where the reduction does and does not happen
+
+The logic exists, in `simplified()` at `ratemap.rs:262-289`, and it reconstructs
+correctly: C's `astRateMap( smap, map->iout, map->iin, … )` maps `ax1` to `iout`
+and `ax2` to `iin` (`ratemap.c:1830-1831`), and the Rust `ax1` is the output axis
+and `ax2` the input, so `RateMap::new(simp_map, self.ax1, self.ax2)` is the same
+call.
+
+What is missing is the seam. C performs it inside `MapMerge`, so it runs on a
+RateMap nominated from within a list. The port's `simplified()` is reached when
+a RateMap is simplified on its own, and `self_reduce_map_merge`
+(`simplify.rs:1137`) is the shape that would reach it from the nominate loop —
+five classes use it and RateMap does not.
+
+## Row 15 — the same cancellation, a different result shape
+
+C rewrites two list slots, putting a `UnitMap(nax)` in each, and picks `nax`
+from `astGetNout` of the nominated RateMap for the lower neighbour and
+`astGetNin` for the upper. The port's `try_merge` returns one Mapping that
+replaces the pair, and derives its width from the merge direction instead. Both
+reduce to the same Mapping once the surrounding CmpMap drops UnitMaps, but no
+corpus fixture puts two RateMaps next to each other, so neither form is
+exercised.
