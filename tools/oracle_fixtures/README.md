@@ -100,3 +100,30 @@ by a platform difference in the same file:
 
 Run this whenever the submodule pin moves. It belongs in the upstream-sync
 protocol in `CLAUDE.md`.
+
+## `build_simplify_trace.sh` — watch C simplify
+
+When a question is "does C reach this node, and in what state?", reasoning about
+the call graph has been wrong more often than right. Three dispatchers in
+`mapping.c` cover every class, so one instrumented build answers it for any
+Mapping:
+
+```shell
+./tools/oracle_fixtures/build_simplify_trace.sh /tmp/ast-trace
+AST_TRACE=1 /tmp/ast-trace/gen_simp in.map out.simp 2> trace.txt
+```
+
+- `SIMPLIFY-ENTER <class> issimp= dns= inv= nin= nout=` — every `astSimplify_`,
+  with the state it was entered in. A following `SIMPLIFY-WALLED` means the
+  `IsSimple` bit short-circuited it.
+- `MAPMERGE <class> where= series= nmap= issimp= inv=` — every nomination, so
+  which class was offered to `MapMerge`, at which index and in which mode.
+- `MAPLIST <class> series= invert= nmap_in=` — every decomposition.
+
+Output is indented by simplify depth, so a subtree's whole route reads as a
+block. This settled PLAN.md §10.14 after three wrong diagnoses from reading
+dumps: the trace showed C nominating the node everyone assumed it skipped, and
+entering it at a different orientation, which was the real difference.
+
+The submodule is never modified — the script copies the tracked files out and
+patches the copy.

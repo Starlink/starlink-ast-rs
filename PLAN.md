@@ -664,109 +664,71 @@ Each entry is cited by a `gap` verdict in a checklist under
 `docs/audits/mapmerge/`, and `test_mapmerge_audit.rs` fails if a cited entry
 does not exist here.
 
-### 10.1 RateMap's self-reduction is unreachable from the nominate loop — OPEN, blocked on §10.14
+### 10.1 RateMap's self-reduction is unreachable from the nominate loop — FIXED
 
 `ratemap.c:717-727` opens `MapMerge` by simplifying the encapsulated Mapping and
-rebuilding the RateMap around the result. The port has the logic in
-`simplified()` (`ratemap.rs:262-289`) and no `map_merge`, so it never runs on a
-RateMap nominated from within a list.
+rebuilding the RateMap around the result. The port had the logic in
+`simplified()` and no `map_merge`, so it never ran on a RateMap nominated from
+within a list. `RateMap::map_merge` now uses `self_reduce_map_merge`, which is
+C's order: reduce first, then cancel against an inverse neighbour in series.
 
-`rate_inner_reduce_series` is the fixture: a RateMap over a series ZoomMap pair
+`rate_inner_reduce_series` is the fixture — a RateMap over a series ZoomMap pair
 that fuses to one, inside a CmpMap so the RateMap is a list element. The pinned C
-reduces it to `RateMap(ZoomMap(6))` and the port leaves the pair.
-`rate_inner_reduce_lone` is the same RateMap alone and passes, which identifies
-the seam rather than the arithmetic as the gap. Both are committed; only the lone
-one is wired, because the series one cannot pass yet.
+reduces it to `RateMap(ZoomMap(6))`. `rate_inner_reduce_lone` is the same RateMap
+alone and passed from the start, which identified the seam rather than the
+arithmetic as the gap.
 
-**Why the obvious fix does not land.** Giving `RateMap::map_merge` the
-`self_reduce_map_merge` shape makes `rate_inner_reduce_series` pass and makes
-`cap_cmpmap_01` and `cap_cmpmap_04` diverge structurally from C. Those two hold a
-RateMap over an inverted `[SpecMap, ZoomMap]` pair which C leaves entirely
-untouched — its dump carries `Invert = 1` and, decisively, **no `IsSimp` card**,
-so `astSimplify` never returned it and C's RateMap `MapMerge` never ran on that
-RateMap at all. The port with the seam does reduce it, and folds the inversion in
-correctly, producing a Mapping C agrees with mathematically and not byte for byte.
+**The second half of the fix, and why two earlier attempts failed.** Adding the
+seam alone made `cap_cmpmap_01` and `cap_cmpmap_04` diverge structurally. C sets
+the encapsulated Mapping's Invert to `map->invert` — the value it held when the
+RateMap was built, which the `Inv` card carries — simplifies at *that*
+orientation, and restores the stored value afterwards (`ratemap.c:710-715`,
+`:806-808`). The port simplified at whatever the child currently stored.
 
-So the seam is right and the port's *reach* is wrong: it nominates a RateMap C
-never nominates. That is §10.14, and this entry waits on it.
+In those two fixtures the encapsulated CmpMap stores `Invert = 1` while the
+snapshot is 0, so C reduces the forward form and finds nothing, while the port
+reduced the inverted form and folded the inversion into the component order.
+`RateMap::simplified` now orients to `invert_snapshot` first — the field the port
+already had for the `Inv` card and was using only for serialisation. That is the
+H3 hazard: two C names kept as two fields, with only one of them wired up.
 
-A workaround was measured and reverted: reducing the encapsulated Mapping's
-forward form and re-applying the direction as a flag turns the whole suite green,
-because for these two fixtures it happens to reproduce "no change at all". It
-also contradicts what C does whenever it *does* reduce an inverted CmpMap
-(`cmpmap_inverted_lone`), so it passes the corpus by coincidence. Not shipped.
+An earlier attempt reduced the *forward* form unconditionally. That is right only
+when the snapshot is 0, which is true of every fixture in the corpus, so it went
+green for the wrong reason and was reverted before this.
 
-### 10.14 The parallel-pair expansion helpers nominate where C only composes
+### 10.14 Whether the port over-reaches C's nominate loop — RETRACTED
 
-**Third and final version of this entry.** The first two were wrong: the engine
-does *not* absorb an inverted CmpMap's direction where C keeps it as a flag
-(`cmpmap_inverted_lone` and `cmpmap_inverted_nested` show C folding it in exactly
-as the port does), and "the port reaches deeper than C" was true but did not say
-what stops C. Both dead ends are recorded because each was reached by inferring a
-rule from a fixture instead of reading the C loop.
+Three versions of this entry claimed a reach or structure divergence, and a trace
+of the C library disproved all of them.
 
-**C has two separate gates, and they are not the same gate.**
+`tools/oracle_fixtures/build_simplify_trace.sh` instruments the three dispatchers
+in `mapping.c` — `astSimplify_`, `astMapMerge_` and `astMapList_` — so one build
+reports every nomination, decomposition and short-circuit, for every class. Run
+on `cap_cmpmap_01` it prints, at depth:
 
-1. `astSimplify_` runs its body only when `IsSimple` is clear
-   (`mapping.c:24740`) and otherwise returns an unchanged clone. Since
-   `CmpMap::MapMerge`'s self-simplify head reaches a nominated sub-tree only
-   through `astSimplify` (`cmpmap.c:1436-1439`), a set bit walls off that head.
-2. `astMapList` ignores `IsSimple` entirely. Decomposition is never blocked, so a
-   parent freely expands a component whose bit is set.
+```
+MAPMERGE RateMap where=1 series=0 nmap=3 issimp=0 inv=0
+SIMPLIFY-ENTER CmpMap issimp=0 dns=0 inv=0 nin=1 nout=1
+```
 
-`cap_cmpmap_01` needs both. Its input carries an `IsSimp` card
-(`cap_cmpmap_01.map:106`) on a **parallel** CmpMap holding `UnitMap ‖ RateMap`,
-which is `MapA` of a series parent. The series `astMapList` will not cross the
-kind boundary, so the node enters the list as an opaque leaf; when nominated, its
-set bit short-circuits `astSimplify`. The RateMap inside is never offered to
-`MapMerge`, which is why its encapsulated pair keeps its `Invert` flag and carries
-no `IsSimp` card.
+So C **does** nominate that RateMap, its `MapMerge` **does** run, and it **does**
+call `astSimplify` on the encapsulated CmpMap, unwalled. Nothing about reach
+differs. What differs is the orientation: C enters with `inv=0` on a CmpMap whose
+dump says `Invert = 1`, because `astSetInvert( emap, map->invert )` put it at the
+construction-time orientation first. That is §10.1's second half, and fixing it
+there closed this.
 
-**What is ruled out.** `flatten` gets the kind boundary right — it decomposes
-only a CmpMap of the requested kind, as C does. The parallel-pair expansion
-helper was suspected next and is also correct:
-`compute_merge_parallel_pair_in_series` (`simplify.rs:2043-2264`) reconstructs
-each aligned sub-list as a parallel submap, composes the two **in series**, and
-calls `simplify_mapping` on the composition — which is exactly
-`cmpmap.c:1717`. Its `flatten(…, true)` calls at `:2087` and `:2095` feed a
-length heuristic and nominate nothing. An earlier version of this entry blamed
-those lines; that was wrong.
+What the three wrong versions had in common: each inferred a rule from a
+fixture's output instead of watching the library run. The trace script exists so
+the next question of this shape costs one command.
 
-Three fixtures now pin the rule from the oracle rather than from reading:
-`parpair_aligned_reduces` (both aligned pairs reduce, C collapses the whole thing
-to `diag(10,21)`), `parpair_one_side_reduces` (one reduces, which is C's "at least
-one sub-pair simplified" condition, and the irreducible half survives as a series
-pair), and `neg_parpair_aligned_irreducible` (neither reduces, no change). All
-three pass, so the port implements C's rule here. They exist to keep it that way
-while the rest of this is chased.
-
-Guarding `CmpMap::simplified` and the self-simplify head on the loaded bit was
-also tried, and is not sufficient. Reverted.
-
-**What is left.** With the §10.1 seam applied, `RateMap::map_merge` is entered as
-`where=1 series=false len=2` — a *parallel* nominate loop over
-`[UnitMap, RateMap]`, the contents of the walled-off node. So some path calls
-`simplify_mapping` on that parallel CmpMap, or flattens it in parallel mode,
-without consulting either the live or the loaded bit. The candidates not yet
-eliminated are the direct `simplify_mapping` calls at `simplify.rs:2121`, `:2179`,
-`:3153` and `:3154`, and the fact that `reconstruct` builds fresh CmpMaps which do
-not carry a loaded bit forward — C keeps it because it clones the object.
-
-**Next step.** Instrument which of those call sites reaches the node, with the
-seam applied. That is a single trace away; the fixtures above make it safe to
-change the answer once it is known.
-
-Blocked on that: §10.1, and probably the four under-tagging fixtures in §10.3,
-whose counts are short by one or two — what "C stopped sooner" looks like from
-outside.
-
-**Also found, latent.** No Region class checks the `IsSimple` bit at all
-(`box_region`, `circle`, `cmpregion`, `ellipse`, `interval`, `nullregion`,
-`pointlist`, `polygon`, `prism`, `regions/mod.rs`), so the port re-simplifies a
-Region C returns untouched. Adding the guard to `Circle` changed no fixture:
-Region re-simplification is idempotent across the corpus, and the two
-`cefit_circle_*` failures carry no input `IsSimp` card for it to fire on. Not
-shipped, since no fixture demands it, and it is not the cause of cause B.
+Two by-products are kept. `parpair_aligned_reduces`, `parpair_one_side_reduces`
+and `neg_parpair_aligned_irreducible` pin C's parallel-pair expansion rule, which
+the port already implements correctly. And one latent finding stands: no Region
+class checks the `IsSimple` bit (`box_region`, `circle`, `cmpregion`, `ellipse`,
+`interval`, `nullregion`, `pointlist`, `polygon`, `prism`, `regions/mod.rs`), so
+the port re-simplifies a Region C returns untouched — measured as unobservable on
+this corpus, and not shipped.
 
 ### 10.2 ChebyMap does not inherit PolyMap's `MapMerge`
 
