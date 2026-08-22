@@ -696,53 +696,68 @@ because for these two fixtures it happens to reproduce "no change at all". It
 also contradicts what C does whenever it *does* reduce an inverted CmpMap
 (`cmpmap_inverted_lone`), so it passes the corpus by coincidence. Not shipped.
 
-### 10.14 What bounds C's reach — mechanism established, port audited
+### 10.14 The parallel-pair expansion helpers nominate where C only composes
 
-**This replaces two earlier wrong versions of §10.14.** The first claimed the
-engine absorbs an inverted CmpMap's direction where C keeps it as a flag; the
-oracle refuted that (`cmpmap_inverted_lone`, `cmpmap_inverted_nested`: C folds it
-in, exactly as the port does). The second said only that the port "nominates
-sub-Mappings C never reaches", without saying what stops C. That is now known.
+**Third and final version of this entry.** The first two were wrong: the engine
+does *not* absorb an inverted CmpMap's direction where C keeps it as a flag
+(`cmpmap_inverted_lone` and `cmpmap_inverted_nested` show C folding it in exactly
+as the port does), and "the port reaches deeper than C" was true but did not say
+what stops C. Both dead ends are recorded because each was reached by inferring a
+rule from a fixture instead of reading the C loop.
 
-**C's barrier is the `IsSimple` bit on an input node.** `astSimplify_` runs its
-body only `if( !astGetIsSimple( this ) && !astDoNotSimplify( this ) )`
-(`mapping.c:24740`) and otherwise returns an unchanged clone. `CmpMap::MapMerge`
-reaches a nominated sub-tree exclusively through `astSimplify`
-(`cmpmap.c:1436-1439`), so a component whose bit is already set is a wall the
-nominate loop does not cross. The bit therefore means both "dump `IsSimp = 1`"
-and "do not descend here again" — the inseparability already recorded in
-`docs/issues/c-library-quirks.md`.
+**C has two separate gates, and they are not the same gate.**
 
-`cap_cmpmap_01` is that wall in action. Its *input* carries three `IsSimp` cards,
-and one of them (`cap_cmpmap_01.map:106`) sits on a **parallel** CmpMap that is
-`MapA` of a series parent and holds `UnitMap ‖ RateMap(...)`. Two things stop C
-there: `astMapList` does not descend into a CmpMap of the opposite kind, so the
-node enters the series list as an opaque leaf; and when it is nominated,
-`astSimplify` short-circuits on the set bit. The RateMap inside is never offered
-to `MapMerge`, which is why its encapsulated `[SpecMap, ZoomMap]` pair keeps its
-`Invert` flag and carries no `IsSimp` card of its own.
+1. `astSimplify_` runs its body only when `IsSimple` is clear
+   (`mapping.c:24740`) and otherwise returns an unchanged clone. Since
+   `CmpMap::MapMerge`'s self-simplify head reaches a nominated sub-tree only
+   through `astSimplify` (`cmpmap.c:1436-1439`), a set bit walls off that head.
+2. `astMapList` ignores `IsSimple` entirely. Decomposition is never blocked, so a
+   parent freely expands a component whose bit is set.
 
-**Port audit against that mechanism.** Every descent in `simplify.rs` goes
-through some class's `simplified()`, and every Mapping class opens it with
-`if self.has_been_simplified() { return … }` — so the barrier is honoured, with
-two exceptions:
+`cap_cmpmap_01` needs both. Its input carries an `IsSimp` card
+(`cap_cmpmap_01.map:106`) on a **parallel** CmpMap holding `UnitMap ‖ RateMap`,
+which is `MapA` of a series parent. The series `astMapList` will not cross the
+kind boundary, so the node enters the list as an opaque leaf; when nominated, its
+set bit short-circuits `astSimplify`. The RateMap inside is never offered to
+`MapMerge`, which is why its encapsulated pair keeps its `Invert` flag and carries
+no `IsSimp` card.
 
-- **No Region class checks the bit at all** (`box_region`, `circle`, `cmpregion`,
-  `ellipse`, `interval`, `nullregion`, `pointlist`, `prism`, and
-  `regions/mod.rs`). The port re-simplifies a Region whose bit is set where C
-  returns it untouched. Measured as latent: adding the guard to `Circle` changed
-  no fixture, because Region re-simplification is idempotent on everything in the
-  corpus, and the two `cefit_circle_*` failures carry no input `IsSimp` card so
-  the guard never fires for them. Not shipped, since no fixture demands it.
-- `UnitMap::simplified` does not check it either, which cannot matter: a UnitMap
-  is already minimal.
+**Where the port diverges.** `flatten` gets the kind boundary right — it
+decomposes only a CmpMap of the requested kind, as C does. The divergence is in
+the parallel-pair expansion helpers, `simplify.rs:2071`, `:2074` and `:2363`,
+which call `flatten(…, false)` on a neighbouring CmpMap directly and then run a
+nominate loop over the expanded members. Instrumenting `RateMap::map_merge` with
+the §10.1 seam applied shows it entered as `where=1 series=false len=2` — the
+`[UnitMap, RateMap]` parallel list, expanded out of the walled-off node.
 
-**What is still open.** Giving RateMap the seam C has (§10.1) still perturbs
-`cap_cmpmap_01`, even though the port appears to honour the same barrier. The
-remaining candidate is that `has_been_simplified` is recorded *per orientation*
-(`SimplifiedRecord`), so a node flagged in one orientation can be queried in the
-other and the guard miss. Confirming that needs the seam re-applied and the guard
-traced on that node, which is the next step and has not been done.
+C expands the same pair (`cmpmap.c:1631`, "Expand each of the two adjacent
+CmpMaps into a list of Mappings") but does something narrower with the result:
+`cmpmap.c:1717` combines each aligned sub-pair **in series** and calls
+`astSimplify` on that composition. It never offers an expanded member to its own
+`MapMerge`. So C's expansion cannot reach a class's per-class merge, and the
+port's can.
+
+Guarding `CmpMap::simplified` and the self-simplify head on the loaded bit was
+tried and is not sufficient, exactly because these helpers bypass both. Reverted.
+
+**Next step.** Change the parallel-pair helpers to compose each aligned sub-pair
+and simplify the composition, rather than running a nominate loop over the
+expanded members. That is a change to the merge core, so it wants its own fixture
+first: a parallel pair whose members would merge individually but whose aligned
+series compositions do not, generated from the oracle, which separates the two
+behaviours directly instead of through §10.1.
+
+Blocked on that: §10.1, and probably the four under-tagging fixtures in §10.3,
+whose counts are short by one or two — what "C stopped sooner" looks like from
+outside.
+
+**Also found, latent.** No Region class checks the `IsSimple` bit at all
+(`box_region`, `circle`, `cmpregion`, `ellipse`, `interval`, `nullregion`,
+`pointlist`, `polygon`, `prism`, `regions/mod.rs`), so the port re-simplifies a
+Region C returns untouched. Adding the guard to `Circle` changed no fixture:
+Region re-simplification is idempotent across the corpus, and the two
+`cefit_circle_*` failures carry no input `IsSimp` card for it to fire on. Not
+shipped, since no fixture demands it, and it is not the cause of cause B.
 
 ### 10.2 ChebyMap does not inherit PolyMap's `MapMerge`
 
