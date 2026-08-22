@@ -599,3 +599,12 @@ interval_halfinf_simplify      | simplify_fixtures/interval_halfinf_simplify.map
 time_mjdtojd_noop | simplify_fixtures/time_mjdtojd_noop.map | simplify_fixtures/time_mjdtojd_noop.simp |
 time_jdtomjd_noop | simplify_fixtures/time_jdtomjd_noop.map | simplify_fixtures/time_jdtomjd_noop.simp |
 neg_time_mjdtojd_real | simplify_fixtures/neg_time_mjdtojd_real.map | simplify_fixtures/neg_time_mjdtojd_real.map |
+
+# An inverted UnitMap in parallel with a Mapping that cannot absorb it: C
+# clears the list's invert flag for it and reports a change
+# (unitmap.c:579-587), which surfaces as the parent CmpMap dropping its InvA.
+# The neighbour is a PcdMap because it combines with nothing in parallel
+# (pcdmap.c:1729); unit_parallel_invert_clear covers the same rule with a
+# MathMap neighbour and one fewer axis.
+unit_parallel_invert_pcd | simplify_fixtures/unit_parallel_invert_pcd.map | simplify_fixtures/unit_parallel_invert_pcd.simp |
+neg_unit_parallel_forward | simplify_fixtures/neg_unit_parallel_forward.map | simplify_fixtures/neg_unit_parallel_forward.map |

@@ -23,7 +23,7 @@ parallel is coalesced with adjacent UnitMaps.
 | 11 | Extend the run's start index and accumulate its coordinate count | unitmap.c:557-562 | unit.rs:146-148 | ported |
 | 12 | Repeat for later Mappings in the sequence | unitmap.c:563-571 | simplify.rs:1155-1250 | ported |
 | 13 | Compute the net reduction and check whether it is zero, meaning no adjacent UnitMaps | unitmap.c:572-578 | -- | n/a: a pairwise hook that finds no UnitMap neighbour returns `None`, which is the same answer without a count |
-| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 | -- | gap: PLAN.md §10.6 |
+| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 | simplify.rs:3204-3212 | ported |
 | 15 | If UnitMaps can be merged, create the replacement UnitMap | unitmap.c:588-592 | unit.rs:147-148 | ported |
 | 16 | Annul the pointers to all the UnitMaps being replaced | unitmap.c:593-597 | -- | n/a: owned values are dropped |
 | 17 | Insert the new pointer and its Invert flag, close the gap, and clear the vacated slots | unitmap.c:598-614 | simplify.rs:1155-1250 | ported |
@@ -45,3 +45,16 @@ port reaches the same result through `UnitMap::try_merge` in parallel mode
 (`unit.rs:145-148`), called repeatedly by `default_map_merge`, so a run of three
 coalesces in two passes rather than one. The rows about bracketing the run are
 `n/a` for that reason, not because the reduction is missing.
+
+## Row 14 — the flag C clears is the list's, not the object's
+
+`invert_list[ where ]` is the direction the enclosing CmpMap will apply, so
+clearing it surfaces in the dump as the parent dropping its `InvA` or `InvB`, and
+not as a change to the UnitMap's own `Invert` card. The port keeps that direction
+as a separate value in `MergeCtx` and folds it into the leaf when the tree is
+rebuilt, which reaches the same dump — `unit_parallel_invert_clear` and
+`unit_parallel_invert_pcd` are byte-exact against the pinned C on two different
+neighbour classes.
+
+`UnitMap::map_merge` does not itself clear anything here, which is why this row
+was first read as a gap. See PLAN.md §10.6 for the retraction.

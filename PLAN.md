@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 430 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 430 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
-| simplify regression | 430 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 430 | 132 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 132 with `neg_time_mjdtojd_real`, the control for §10.9 |
+| simplify regression | 432 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 432 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 432 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 432 | 133 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 133 with `neg_time_mjdtojd_real` (§10.9) and `neg_unit_parallel_forward` (§10.6) |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -779,23 +779,29 @@ and compare the `IsSimp` cards and the tree shape, not just `astEqual`.
 
 This entry replaces the plan's §10.4, which duplicated §9.2.
 
-### 10.6 A parallel UnitMap with no UnitMap neighbour keeps its Invert flag
+### 10.6 A parallel UnitMap's Invert flag — NOT A GAP, retracted
 
-`unitmap.c:579-587`: when a nominated UnitMap is in parallel and has no adjacent
-UnitMap to coalesce with, C still clears its Invert flag if it is set, and
-reports that as a change. The port's `UnitMap::map_merge` handles the lone-UnitMap
-case (`unit.rs:108-118`) and the series case, and otherwise falls through to
-`default_map_merge`, whose pairwise hook returns `None` when there is no UnitMap
-neighbour. Nothing clears the flag.
+Recorded as a gap on the strength of reading `UnitMap::map_merge` alone, which
+handles the lone-UnitMap case and the series case and otherwise falls through to
+`default_map_merge`, where a nominee with no UnitMap neighbour returns `None`.
+Nothing there clears the flag, so `unitmap.c:579-587` looked unported.
 
-An inverted UnitMap is still the identity, so no transform is affected. What is
-affected is the dump: the port writes `Invert = 1` on a UnitMap where C, having
-cleared it during the merge, writes nothing.
+It is ported, elsewhere. C clears `invert_list[ where ]` — the *list's* applied
+direction, not the object's own attribute — and that surfaces in the dump as the
+parent CmpMap dropping its `InvA` or `InvB`. The port carries the applied
+direction as a separate value in `MergeCtx` and folds it into the leaf when the
+tree is rebuilt (`simplify.rs:3204-3212`), reaching the same dump.
 
-What would expose it: a parallel CmpMap whose components are an inverted UnitMap
-and something that is not a UnitMap, simplified and serialised. The corpus has
-parallel UnitMaps only next to each other, where the coalescing path clears the
-flag as a side effect of building the replacement, so the case has never arisen.
+Two fixtures prove it, on independent configurations: `unit_parallel_invert_clear`
+(a MathMap neighbour, 2 axes), which predates this audit, and
+`unit_parallel_invert_pcd` (a PcdMap neighbour, 3 axes), added to check the first
+was not passing by accident. `neg_unit_parallel_forward` is the control. All
+three are byte-exact against the pinned C.
+
+One residual difference is not observable in any fixture: C reports the clearing
+as a change and so restarts its nominate loop, where the port reports `None`. If
+that ever matters it will show as a resume-point difference of the kind §10.4
+describes, not as a wrong Mapping.
 
 ### 10.7 PcdMap's zero-distortion reduction is unreachable from the nominate loop
 
