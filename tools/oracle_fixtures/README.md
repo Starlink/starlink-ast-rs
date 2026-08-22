@@ -71,3 +71,32 @@ The submodule is never modified — the script copies the tracked files out and
 patches the copy. Dropping the two instrumentation patches reproduces the stock
 library, which is the build to use when generating oracle data: both produce
 identical output over the whole `simplify_fixtures` corpus.
+
+## `check_corpus_fresh.sh` — is the native corpus still what C produces?
+
+Moving the `reference/starlink-ast` pin can invalidate committed references
+without anything in this repo changing, and upstream will not notice because
+their suite compares with `astEqual` rather than byte for byte.
+
+```shell
+./tools/oracle_fixtures/check_corpus_fresh.sh
+```
+
+Each drifting case prints as `<name> <verdict> <keyword-diffs> <value-diffs>`.
+Cards and values are classified independently, so a stale card is never hidden
+by a platform difference in the same file:
+
+- `CARD-ONLY` — differs only in `IsSimp` cards. The reference predates a
+  library change and must be regenerated. Exits non-zero.
+- `MIXED` — `IsSimp` cards differ *and* values differ. Both causes are present:
+  the cards are stale, and the reference was captured on another platform.
+  Take the cards from a fresh capture and keep the committed values, which is
+  what `merge_card_hunks.py` does. Exits non-zero.
+- `NUMERIC` — identical keywords and identical `IsSimp` cards, last-bits value
+  differences only. The reference was captured on another platform. Reported,
+  tolerated.
+- `STRUCTURAL` — the keyword sequence itself differs. Should never happen from
+  an `IsSimp` or KeyMap change; investigate before regenerating anything.
+
+Run this whenever the submodule pin moves. It belongs in the upstream-sync
+protocol in `CLAUDE.md`.

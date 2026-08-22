@@ -1,0 +1,130 @@
+"""Classify every native wcsconv reference against the pinned C oracle.
+
+A reference can differ from the oracle for two unrelated reasons, and they need
+opposite responses. An `IsSimp` card difference means the reference predates a
+library change and must be regenerated. A last-bits value difference means the
+reference was captured on a different platform and must be left alone. This
+tells them apart so neither gets mistaken for the other.
+
+The two reasons can coexist in one file, so cards and values are compared
+independently. A reference whose cards are stale is reported as such even when
+its values also differ, because otherwise the platform difference would hide the
+staleness and this check would pass on a reference that needs regenerating.
+"""
+
+import pathlib
+import subprocess
+import sys
+
+VERDICT_OK = "OK"
+VERDICT_CARD = "CARD-ONLY"
+VERDICT_MIXED = "MIXED"
+VERDICT_NUMERIC = "NUMERIC"
+VERDICT_STRUCTURAL = "STRUCTURAL"
+
+
+def _rows(manifest):
+    """Yield (name, input, expected, encoding, attrs) for each manifest row."""
+    for line in manifest.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        fields = [f.strip() for f in line.split("|")]
+        if len(fields) < 4:
+            continue
+        attrs = fields[4] if len(fields) > 4 else ""
+        yield fields[0], fields[1], fields[2], fields[3], attrs
+
+
+def _keywords(text):
+    """FITS keyword sequence, ignoring values and every IsSimp card."""
+    out = []
+    for line in text.splitlines():
+        key = line[:8].strip()
+        if not key or key.startswith("ISSIMP"):
+            continue
+        out.append(key)
+    return out
+
+
+def _without_issimp(text):
+    return [l for l in text.splitlines() if not l[:8].strip().startswith("ISSIMP")]
+
+
+def _issimp(text):
+    return [l for l in text.splitlines() if l[:8].strip().startswith("ISSIMP")]
+
+
+def classify(fixtures_dir, wcsconverter, workdir):
+    """Return {case_name: (verdict, keyword_diffs, value_diffs)}."""
+    fixtures_dir = pathlib.Path(fixtures_dir)
+    workdir = pathlib.Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    out_path = workdir / "corpus_check.out"
+    results = {}
+
+    for name, inp, exp, encoding, attrs in _rows(fixtures_dir / "wcsconv_tests.txt"):
+        if encoding != "native":
+            continue
+        if out_path.exists():
+            out_path.unlink()
+        cmd = [str(wcsconverter), str(fixtures_dir / "inputs" / inp), "native", str(out_path)]
+        if attrs:
+            cmd.append(attrs)
+        subprocess.run(cmd, capture_output=True)
+        if not out_path.exists():
+            results[name] = (VERDICT_STRUCTURAL, -1, -1)
+            continue
+
+        got = out_path.read_text()
+        want = (fixtures_dir / "expected" / exp).read_text()
+        if got == want:
+            results[name] = (VERDICT_OK, 0, 0)
+            continue
+
+        got_kw, want_kw = _keywords(got), _keywords(want)
+        got_lines, want_lines = _without_issimp(got), _without_issimp(want)
+        value_diffs = sum(1 for a, b in zip(got_lines, want_lines) if a != b)
+        value_diffs += abs(len(got_lines) - len(want_lines))
+        cards_differ = _issimp(got) != _issimp(want)
+
+        if got_kw != want_kw:
+            keyword_diffs = sum(1 for a, b in zip(got_kw, want_kw) if a != b)
+            keyword_diffs += abs(len(got_kw) - len(want_kw))
+            results[name] = (VERDICT_STRUCTURAL, keyword_diffs, value_diffs)
+        elif cards_differ and value_diffs:
+            results[name] = (VERDICT_MIXED, 0, value_diffs)
+        elif cards_differ:
+            results[name] = (VERDICT_CARD, 0, 0)
+        else:
+            results[name] = (VERDICT_NUMERIC, 0, value_diffs)
+
+    return results
+
+
+def main(argv):
+    if len(argv) != 4:
+        print("usage: check_corpus_fresh.py <fixtures_dir> <wcsconverter> <workdir>",
+              file=sys.stderr)
+        return 2
+    results = classify(argv[1], argv[2], argv[3])
+    bad = 0
+    for name in sorted(results):
+        verdict, kw, val = results[name]
+        if verdict == VERDICT_OK:
+            continue
+        print(f"{name} {verdict} {kw} {val}")
+        if verdict in (VERDICT_CARD, VERDICT_MIXED, VERDICT_STRUCTURAL):
+            bad += 1
+    counts = {}
+    for verdict, _, _ in results.values():
+        counts[verdict] = counts.get(verdict, 0) + 1
+    print(f"reproduced={counts.get(VERDICT_OK, 0)} "
+          f"card-only={counts.get(VERDICT_CARD, 0)} "
+          f"mixed={counts.get(VERDICT_MIXED, 0)} "
+          f"numeric={counts.get(VERDICT_NUMERIC, 0)} "
+          f"structural={counts.get(VERDICT_STRUCTURAL, 0)}", file=sys.stderr)
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
