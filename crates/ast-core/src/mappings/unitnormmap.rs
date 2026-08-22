@@ -425,8 +425,8 @@ impl Mapping for UnitNormMap {
             return None;
         }
 
-        // C scans both pairs the nominated map takes part in, starting at
-        // `i1 = MAX( where - 1, 0 )`, so a merge is found whether the
+        // C walks every pair from `i1 = MAX( where - 1, 0 )` to the end of the
+        // list, taking the first that merges, so a merge is found whether the
         // UnitNormMap is the second member of the pair (the
         // `<linear> ; UnitNormMap(forward)` absorptions) or the first (the
         // `UnitNormMap(inverted) ; <linear>` ones). Neither `default_map_merge`

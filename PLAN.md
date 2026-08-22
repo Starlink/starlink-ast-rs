@@ -847,3 +847,30 @@ What would expose it: a LutMap whose table departs from linear by between
 function, which is what a real spectral LUT looks like. Serialise the simplified
 result and compare the class, not the transform: the two agree to well inside any
 transform tolerance and differ in whether a LutMap or a WinMap is written.
+
+### 10.9 TimeMap drops one no-effect conversion where C drops three
+
+`timemap.c:2260-2266` eliminates a change-of-system step whose derived net offset
+is zero, and applies it to `AST__MJDTOMJD`, `AST__MJDTOJD` and `AST__JDTOMJD`
+alike, testing `cvtargs[ istep ][ 2 ]`. That third argument is derived at
+`timemap.c:503,507,511`:
+
+- `MJDTOMJD`: `args[0] - args[1]`
+- `MJDTOJD`: `args[0] - args[1] + 2400000.5`
+- `JDTOMJD`: `args[0] - args[1] - 2400000.5`
+
+`time_step_is_no_effect` (`timemap.rs:1163-1174`) tests `args[0] == args[1]` and
+only for `MjdToMjd`. For that type the two tests are the same condition. For the
+other two they are not: a `MjdToJd` whose JD offset absorbs the 2400000.5
+constant is a genuine no-op that C removes and the port keeps, leaving an extra
+conversion step in the rebuilt TimeMap.
+
+The port already derives `args[2]` identically (`timemap.rs:492-501`), so closing
+this is a matter of testing that value for all three types instead of comparing
+the first two arguments of one.
+
+What would expose it: a TimeMap holding `MjdToJd(off, off + 2400000.5)`,
+simplified and serialised. C writes a TimeMap with that step gone — a UnitMap if
+it was the only step — and the port writes it with the step present. The
+transform agrees either way, so only a byte comparison of the dump shows it. No
+corpus fixture builds an MJD-to-JD conversion with a cancelling offset.
