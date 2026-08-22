@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 432 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 432 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
-| simplify regression | 432 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 432 | 133 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 133 with `neg_time_mjdtojd_real` (§10.9) and `neg_unit_parallel_forward` (§10.6) |
+| simplify regression | 440 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 440 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 440 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 440 | 134 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) and `neg_parpair_aligned_irreducible` (§10.14) |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -722,30 +722,39 @@ set bit short-circuits `astSimplify`. The RateMap inside is never offered to
 `MapMerge`, which is why its encapsulated pair keeps its `Invert` flag and carries
 no `IsSimp` card.
 
-**Where the port diverges.** `flatten` gets the kind boundary right — it
-decomposes only a CmpMap of the requested kind, as C does. The divergence is in
-the parallel-pair expansion helpers, `simplify.rs:2071`, `:2074` and `:2363`,
-which call `flatten(…, false)` on a neighbouring CmpMap directly and then run a
-nominate loop over the expanded members. Instrumenting `RateMap::map_merge` with
-the §10.1 seam applied shows it entered as `where=1 series=false len=2` — the
-`[UnitMap, RateMap]` parallel list, expanded out of the walled-off node.
+**What is ruled out.** `flatten` gets the kind boundary right — it decomposes
+only a CmpMap of the requested kind, as C does. The parallel-pair expansion
+helper was suspected next and is also correct:
+`compute_merge_parallel_pair_in_series` (`simplify.rs:2043-2264`) reconstructs
+each aligned sub-list as a parallel submap, composes the two **in series**, and
+calls `simplify_mapping` on the composition — which is exactly
+`cmpmap.c:1717`. Its `flatten(…, true)` calls at `:2087` and `:2095` feed a
+length heuristic and nominate nothing. An earlier version of this entry blamed
+those lines; that was wrong.
 
-C expands the same pair (`cmpmap.c:1631`, "Expand each of the two adjacent
-CmpMaps into a list of Mappings") but does something narrower with the result:
-`cmpmap.c:1717` combines each aligned sub-pair **in series** and calls
-`astSimplify` on that composition. It never offers an expanded member to its own
-`MapMerge`. So C's expansion cannot reach a class's per-class merge, and the
-port's can.
+Three fixtures now pin the rule from the oracle rather than from reading:
+`parpair_aligned_reduces` (both aligned pairs reduce, C collapses the whole thing
+to `diag(10,21)`), `parpair_one_side_reduces` (one reduces, which is C's "at least
+one sub-pair simplified" condition, and the irreducible half survives as a series
+pair), and `neg_parpair_aligned_irreducible` (neither reduces, no change). All
+three pass, so the port implements C's rule here. They exist to keep it that way
+while the rest of this is chased.
 
 Guarding `CmpMap::simplified` and the self-simplify head on the loaded bit was
-tried and is not sufficient, exactly because these helpers bypass both. Reverted.
+also tried, and is not sufficient. Reverted.
 
-**Next step.** Change the parallel-pair helpers to compose each aligned sub-pair
-and simplify the composition, rather than running a nominate loop over the
-expanded members. That is a change to the merge core, so it wants its own fixture
-first: a parallel pair whose members would merge individually but whose aligned
-series compositions do not, generated from the oracle, which separates the two
-behaviours directly instead of through §10.1.
+**What is left.** With the §10.1 seam applied, `RateMap::map_merge` is entered as
+`where=1 series=false len=2` — a *parallel* nominate loop over
+`[UnitMap, RateMap]`, the contents of the walled-off node. So some path calls
+`simplify_mapping` on that parallel CmpMap, or flattens it in parallel mode,
+without consulting either the live or the loaded bit. The candidates not yet
+eliminated are the direct `simplify_mapping` calls at `simplify.rs:2121`, `:2179`,
+`:3153` and `:3154`, and the fact that `reconstruct` builds fresh CmpMaps which do
+not carry a loaded bit forward — C keeps it because it clones the object.
+
+**Next step.** Instrument which of those call sites reaches the node, with the
+seam applied. That is a single trace away; the fixtures above make it safe to
+change the answer once it is known.
 
 Blocked on that: §10.1, and probably the four under-tagging fixtures in §10.3,
 whose counts are short by one or two — what "C stopped sooner" looks like from

@@ -637,3 +637,15 @@ rate_inner_reduce_lone | simplify_fixtures/rate_inner_reduce_lone.map | simplify
 # read that as the general rule; there it is untouched rather than simplified.
 cmpmap_inverted_lone | simplify_fixtures/cmpmap_inverted_lone.map | simplify_fixtures/cmpmap_inverted_lone.simp |
 cmpmap_inverted_nested | simplify_fixtures/cmpmap_inverted_nested.map | simplify_fixtures/cmpmap_inverted_nested.simp |
+
+# Two adjacent parallel CmpMaps in series: C's "Parallel CmpMaps in series"
+# branch (cmpmap.c:1624-1783) expands both, divides them into aligned
+# sub-lists, composes each aligned pair *in series*, and simplifies the
+# composition. It never offers an expanded member to that member's own
+# MapMerge. These three bracket the rule so a change to the expansion helpers
+# cannot move it: both aligned pairs reduce; one reduces and one does not,
+# which is C's "at least one sub-pair simplified" condition; and neither
+# reduces, so C makes no change. See PLAN.md §10.14.
+parpair_aligned_reduces | simplify_fixtures/parpair_aligned_reduces.map | simplify_fixtures/parpair_aligned_reduces.simp |
+parpair_one_side_reduces | simplify_fixtures/parpair_one_side_reduces.map | simplify_fixtures/parpair_one_side_reduces.simp |
+neg_parpair_aligned_irreducible | simplify_fixtures/neg_parpair_aligned_irreducible.map | simplify_fixtures/neg_parpair_aligned_irreducible.map |
