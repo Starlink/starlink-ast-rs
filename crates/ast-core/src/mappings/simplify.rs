@@ -1146,6 +1146,19 @@ pub(crate) fn self_reduce_map_merge(
     where_: usize,
     series: bool,
 ) -> Option<usize> {
+    if let Some(modified) = try_self_reduce(this, ctx, where_) {
+        return Some(modified);
+    }
+    default_map_merge(ctx, where_, series)
+}
+
+/// The replace-with-simpler head on its own, for a class whose C body puts
+/// other steps between it and the plain neighbour merge.
+pub(crate) fn try_self_reduce(
+    this: &dyn Mapping,
+    ctx: &mut MergeCtx,
+    where_: usize,
+) -> Option<usize> {
     if let Ok(simp) = this.simplified()
         && (simp.is_inverted() != this.is_inverted() || !simp.equal(this))
     {
@@ -1156,7 +1169,7 @@ pub(crate) fn self_reduce_map_merge(
         ctx.set_pair_single(where_, (simp, eff, orig));
         return Some(where_);
     }
-    default_map_merge(ctx, where_, series)
+    None
 }
 
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
@@ -2717,11 +2730,18 @@ pub(crate) fn grism_map_merge(
 /// later nomination. The swap is attempted around the nominated index (C's
 /// `where`); on success the index of the first modified element is returned.
 pub(crate) fn pcd_map_merge(
-    _pcd: &PcdMap,
+    pcd: &PcdMap,
     ctx: &mut MergeCtx,
     where_: usize,
     series: bool,
 ) -> Option<usize> {
+    // C's opening move, before any neighbour is considered: a PcdMap whose
+    // distortion coefficient is zero is a UnitMap (pcdmap.c:1417-1433).
+    if let Some(modified) = try_self_reduce(pcd, ctx, where_) {
+        ctx.resync_frozen();
+        return Some(modified);
+    }
+
     if series {
         if let Some(modified) = pcd_swap_at(&mut ctx.list, where_) {
             ctx.resync_frozen();

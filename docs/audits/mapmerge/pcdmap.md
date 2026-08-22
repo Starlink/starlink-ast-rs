@@ -15,9 +15,9 @@ merge partner; swap speculatively; and decline everything in parallel.
 |---|---|---|---|---|
 | 1 | Initialise the returned result to -1 | pcdmap.c:1406-1407 | -- | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | pcdmap.c:1409-1410 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | See if the PcdMap can be replaced by something simpler, without reference to its neighbours | pcdmap.c:1417-1419 | pcdmap.rs:225-236 | gap: PLAN.md §10.7 |
-| 4 | A zero distortion coefficient means the PcdMap is a UnitMap | pcdmap.c:1420-1423 | pcdmap.rs:230-232 | gap: PLAN.md §10.7 |
-| 5 | Replace it in the list with a forward UnitMap and return the index | pcdmap.c:1424-1433 | -- | gap: PLAN.md §10.7 |
+| 3 | See if the PcdMap can be replaced by something simpler, without reference to its neighbours | pcdmap.c:1417-1419 | pcdmap.rs:225-236 | ported |
+| 4 | A zero distortion coefficient means the PcdMap is a UnitMap | pcdmap.c:1420-1423 | pcdmap.rs:230-232 | ported |
+| 5 | Replace it in the list with a forward UnitMap and return the index | pcdmap.c:1424-1433 | simplify.rs:2725-2729 | ported |
 | 6 | Otherwise store the neighbouring Mappings' classes | pcdmap.c:1434-1441 | simplify.rs:1155-1250 | ported |
 | 7 | In series, look for a neighbour the PcdMap can merge with | pcdmap.c:1442-1469 | simplify.rs:2732 | ported |
 | 8 | Create the merged Mapping | pcdmap.c:1470-1473 | pcdmap.rs:264-320 | ported |
@@ -37,14 +37,16 @@ merge partner; swap speculatively; and decline everything in parallel.
 | 22 | In parallel, a PcdMap combines with nothing | pcdmap.c:1729-1734 | pcdmap.rs:271-273 | ported |
 | 23 | Return the result | pcdmap.c:1735-1736 | simplify.rs:2732 | ported |
 
-## Rows 3 to 5 — the same unreachable self-reduction as RateMap
+## Rows 3 to 5 — the reduction, and the ordering around it
 
-`PcdMap::simplified` turns a zero-distortion PcdMap into a UnitMap, and that is
-C's first step. But `pcd_map_merge` goes straight to the swap and then to
-`default_map_merge`, neither of which consults `simplified()`, so the
-replacement never happens to a PcdMap nominated from inside a list.
-`self_reduce_map_merge` (`simplify.rs:1137`) is the shape that would reach it.
-See PLAN.md §10.7.
+`PcdMap::simplified` turns a zero-distortion PcdMap into a UnitMap, and
+`pcd_map_merge` performs it before the swap, matching C. It cannot use
+`self_reduce_map_merge`, because C puts the swap *between* the reduction and the
+plain neighbour merge; `try_self_reduce` is the head on its own for that reason.
+
+`pcd_zero_disc_series` and `pcd_zero_disc_lone` are the fixtures. The lone case
+passed before the fix and the series case did not, which is what identified the
+seam rather than the arithmetic as what was missing.
 
 ## Row 22 — declining in parallel is a step, not an omission
 

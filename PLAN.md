@@ -803,7 +803,7 @@ as a change and so restarts its nominate loop, where the port reports `None`. If
 that ever matters it will show as a resume-point difference of the kind §10.4
 describes, not as a wrong Mapping.
 
-### 10.7 PcdMap's zero-distortion reduction is unreachable from the nominate loop
+### 10.7 PcdMap's zero-distortion reduction is unreachable from the nominate loop — FIXED
 
 `pcdmap.c:1417-1433` opens `MapMerge` by replacing a PcdMap whose distortion
 coefficient is zero with a UnitMap, before any neighbour is considered. The port
@@ -817,12 +817,17 @@ would reach it from the nominate loop does not. `self_reduce_map_merge`
 (`simplify.rs:1137`) is that seam; five classes use it, and PcdMap and RateMap
 do not.
 
-What would expose it: a series list holding a zero-distortion PcdMap next to a
-Mapping that only becomes mergeable once the PcdMap has become a UnitMap — a
-`[MatrixMap, PcdMap(disc=0), MatrixMap]` run, where C reduces to a single
-MatrixMap and the port leaves three elements. No corpus fixture builds a PcdMap
-with a zero coefficient, since a zero-distortion PcdMap is not a thing a real
-header produces.
+Exposed and closed. `pcd_zero_disc_series` is
+`[MatrixMap(2,3), PcdMap(disc=0), MatrixMap(5,7)]`, which the pinned C collapses
+to a single diagonal `MatrixMap(10,21)`. `pcd_zero_disc_lone` is the same PcdMap
+on its own, and it passed from the start — the logic was in `simplified()` all
+along and only the seam was missing, which is exactly what the pair
+discriminates.
+
+`pcd_map_merge` now performs C's opening move before the swap, through a new
+`try_self_reduce` helper factored out of `self_reduce_map_merge` so the ordering
+can differ per class: C puts the swap between the reduction and the plain
+neighbour merge, which `self_reduce_map_merge` alone cannot express.
 
 ### 10.8 LutMap's linearity test uses a hardcoded tolerance where C reads an attribute
 
