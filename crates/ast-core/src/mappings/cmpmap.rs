@@ -109,21 +109,6 @@ pub struct CmpMap {
     /// `RestrictedSimplify` flag (C `ReSimp`): when set, `simplify`
     /// nominates only component Mappings whose `AllowSimplify` flag is set.
     restricted_simplify: bool,
-    /// The `IsSimp` token for a CmpMap that `astSimplify` returned but that
-    /// this engine must still be free to decompose.
-    ///
-    /// C carries one record and reads it in two places: `astSimplify_`'s
-    /// short-circuit and `Dump`. Decomposition is not one of them — `astMapList`
-    /// walks a CmpMap's structure whatever the record holds. This engine has no
-    /// separate decomposition entry point: `flatten` reaches a component through
-    /// its `simplified()`, so letting [`Self::simplified`] short-circuit on the
-    /// record would stop a parent from decomposing a component C decomposes
-    /// freely. So the two readers are split, and this is the `Dump` half.
-    ///
-    /// It is per orientation for the same reason the merge-guard record is
-    /// (see [`SimplifiedRecord`]), and like that record it is never cleared as
-    /// a side effect of an inversion.
-    dump_simplified: SimplifiedRecord,
 }
 
 impl CmpMap {
@@ -161,7 +146,6 @@ impl CmpMap {
             inv_a,
             inv_b,
             restricted_simplify: false,
-            dump_simplified: SimplifiedRecord::default(),
         })
     }
 
@@ -176,9 +160,16 @@ impl CmpMap {
     }
 
     /// Record, for the named orientation, that `astSimplify` returned this
-    /// CmpMap — without raising the merge guard. See [`Self::dump_simplified`].
+    /// CmpMap.
+    ///
+    /// C keeps one bit and reads it in two places, `astSimplify_`'s
+    /// short-circuit and `Dump`, so this is the same record the merge guard
+    /// reads. Decomposition is not one of C's readers, and it is not one here
+    /// either: `flatten` walks a CmpMap's `first`/`second` structurally rather
+    /// than through `simplified`, so raising this cannot stop a parent
+    /// decomposing a component C decomposes freely.
     pub(crate) fn set_dump_simplified_in(&mut self, inverted: bool, flag: bool) {
-        self.dump_simplified.set(inverted, flag);
+        self.simplified.set(inverted, flag);
     }
 
     /// The first component mapping.
@@ -832,7 +823,6 @@ impl Clone for CmpMap {
             inv_a: self.inv_a,
             inv_b: self.inv_b,
             restricted_simplify: self.restricted_simplify,
-            dump_simplified: self.dump_simplified,
         }
     }
 }
@@ -997,7 +987,7 @@ impl Mapping for CmpMap {
     }
 
     fn dump_is_simple(&self) -> bool {
-        self.has_been_simplified() || self.dump_simplified.get(self.inverted)
+        self.has_been_simplified()
     }
 
     fn has_forward(&self) -> bool {
@@ -1107,7 +1097,6 @@ impl Serializable for CmpMap {
             inv_a,
             inv_b,
             restricted_simplify: false,
-            dump_simplified: SimplifiedRecord::default(),
         };
         cmp.tran_forward = base.has_forward;
         cmp.tran_inverse = base.has_inverse;
@@ -1116,10 +1105,10 @@ impl Serializable for CmpMap {
         }
 
         // The `IsSimp` card describes the orientation the CmpMap was written
-        // out in, which is the one set up just above (mapping.c:24135). It
-        // lands on the dump half of the record: C's loaded bit blocks a later
-        // `astSimplify` but never `astMapList`, so raising the merge guard here
-        // would stop a parent decomposing a component C decomposes freely.
+        // out in, which is the one set up just above (mapping.c:24135). C's
+        // loaded bit blocks a later `astSimplify` and never blocks
+        // `astMapList`, and the same holds here: `flatten` decomposes
+        // structurally, so this record gates only re-simplification.
         let inv = cmp.is_inverted();
         cmp.set_dump_simplified_in(inv, base.has_been_simplified);
         cmp.set_restricted_simplify(base.restricted_simplify);

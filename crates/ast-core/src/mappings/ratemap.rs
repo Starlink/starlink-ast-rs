@@ -54,8 +54,13 @@ pub struct RateMap {
     inverted: bool,
     /// Whether simplification is inhibited.
     simplified: SimplifiedRecord,
-    /// Snapshot of the encapsulated mapping's Invert flag at construction
-    /// time. Used for serialization compatibility with the C library.
+    /// The encapsulated Mapping's Invert flag as it stood when this RateMap was
+    /// built — C's `RateMap.invert` (`ratemap.h:152`), written as the `Inv`
+    /// card.
+    ///
+    /// Distinct from the child's own current flag, and load-bearing in both
+    /// directions: `MapMerge` reduces the child at *this* orientation
+    /// (`ratemap.c:710-715`), and the dump reports it.
     invert_snapshot: bool,
 }
 
