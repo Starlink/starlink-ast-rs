@@ -821,26 +821,39 @@ same delegation.
 No corpus fixture holds a linear ChebyMap, which is why neither answer has been
 needed yet.
 
-### 10.3 CmpMap under-tags four fixtures
+### 10.3 CmpMap under-tags four fixtures — narrowed
 
-`cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04` and `cap_specmap_02` each emit
-fewer `IsSimp` cards than C. The instrumented C shows the surviving sub-Mapping
-is stamped inside `CmpMap::MapMerge`'s self-simplify head
-(`cmpmap.c:1416-1471`), reached from `Simplify`'s nominate loop.
+`cap_cmpmap_01` (16 vs C's 18), `cap_cmpmap_03` (6 vs 7), `cap_cmpmap_04`
+(15 vs 18) and `cap_specmap_02` (7 vs 8) each emit fewer `IsSimp` cards than C.
 
-Every step of that head is ported (`docs/audits/mapmerge/cmpmap.md` rows 3 to
-9), so this is not a missing step. `astSimplify_` stamps whatever it returns
-(`mapping.c:24763`), so the card records which objects were, at some instant, the
-entire result of a simplification — and this engine never has the missing node
-as a whole result where C does.
+**The card is on an interior node C returned from a nested `astSimplify`.** For
+`cap_specmap_02` the diff is a single line: C tags the interior series CmpMap that
+holds the 4-step SpecMap (`cap_specmap_02.simp:99`) and the port leaves it bare.
+Tracing C shows why — that node is entered at `SIMPLIFY-ENTER CmpMap issimp=0
+nin=1`, returned, and re-entered later as `issimp=1` and walled. `astSimplify_`
+stamps whatever `Simplify` returns (`mapping.c:24763`), so a nested reduction
+tags its own result.
 
-What would expose it: already exposed, by the four fixtures named above, whose
-counts are pinned in `test_simplify_regression.rs`.
+**Blanket stamping is not the fix.** Making `CmpMap::simplified` stamp its result
+moves `cap_cmpmap_04` one card closer (15 → 16) and gives `cap_zoommap_01` a card
+C does not emit (1 vs 0), taking simplify serialisation failures from 7 to 8.
+Measured and reverted.
 
-Six approaches to `cap_cmpmap_03` were measured and reverted, including tagging
-every `simplify_mapping` result — which is `astSimplify_`'s literal contract —
-and deferring leaf reduction entirely. They are recorded in
-`test_simplify_regression.rs` and must not be retried without a new reason.
+What that establishes: **the port's `simplified()` is not one-to-one with C's
+`astSimplify`.** It is called from places C reaches by other means, so stamping it
+unconditionally over-tags. The SwitchMap fix (§10.10) worked because the specific
+child-simplify sites there *do* correspond to C `astSimplify` calls, which the
+trace showed directly.
+
+Closing this means establishing the correspondence rather than guessing at it:
+run `build_simplify_trace.sh` beside an equivalently instrumented port, and match
+C's `SIMPLIFY-ENTER` sequence against the port's `simplified()` calls for one
+fixture. `cap_specmap_02` is the one to use — a single missing card, and the node
+is identified.
+
+Six approaches to `cap_cmpmap_03` were measured and reverted before this; they are
+recorded in `test_simplify_regression.rs` and must not be retried without a new
+reason. The blanket-stamp measurement above is the seventh.
 
 ### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
 
