@@ -269,7 +269,22 @@ impl Mapping for RateMap {
         // `simplified()` is the untagged virtual, so record it here. The public
         // `simplify()` would also canonicalise, which restructures a component
         // C leaves alone.
-        let mut simp_map = self.map.simplified()?;
+        // C restores the encapsulated Mapping's construction-time Invert value
+        // and simplifies it in place (ratemap.c:710-719), so the applied
+        // direction survives as a flag on the result. This engine's `simplified`
+        // absorbs an inverted CmpMap's direction into its component order
+        // instead, which would replace C's `[SpecMap, ZoomMap]` plus `Invert`
+        // with the inverted `[ZoomMap, SpecMap]`. Reduce the forward form and
+        // re-apply the direction to keep C's shape.
+        let stored_inv = self.map.is_inverted();
+        let mut forward = self.map.clone_box();
+        if stored_inv {
+            forward.invert();
+        }
+        let mut simp_map = forward.simplified()?;
+        if stored_inv {
+            simp_map.invert();
+        }
         simp_map.set_has_been_simplified(true);
 
         // Check if simplification changed the encapsulated mapping.
@@ -289,13 +304,18 @@ impl Mapping for RateMap {
         Ok(Box::new(self.clone()))
     }
 
-    // C `ratemap.c:1094-1107` opens its MapMerge by simplifying the
-    // encapsulated Mapping, and there is deliberately no `map_merge` here to
-    // match it. Adding one — in either the `simplified()` or the `simplify()`
-    // form — gains an `IsSimp` card on `cap_cmpmap_01` and `cap_cmpmap_04` and
-    // costs their structural equality with C, which is the assertion that
-    // actually matters. Whatever the reduction perturbs downstream has to be
-    // understood first.
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // C opens its MapMerge by simplifying the encapsulated Mapping and
+        // rebuilding the RateMap around the result (ratemap.c:717-727), then
+        // falls through to cancelling against an inverse neighbour in series
+        // (ratemap.c:728-802). `self_reduce_map_merge` is that shape.
+        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
+    }
 
     fn try_merge(
         &self,

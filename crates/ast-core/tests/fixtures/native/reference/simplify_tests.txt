@@ -616,3 +616,12 @@ neg_unit_parallel_forward | simplify_fixtures/neg_unit_parallel_forward.map | si
 # reaches the same replacement through the base Simplify.
 pcd_zero_disc_series | simplify_fixtures/pcd_zero_disc_series.map | simplify_fixtures/pcd_zero_disc_series.simp |
 pcd_zero_disc_lone | simplify_fixtures/pcd_zero_disc_lone.map | simplify_fixtures/pcd_zero_disc_lone.simp |
+
+# C's RateMap MapMerge opens by simplifying the encapsulated Mapping and
+# rebuilding the RateMap around the result (ratemap.c:717-727). The encapsulated
+# Mapping here is a series ZoomMap pair that fuses to one, so the rebuild is
+# observable. rate_inner_reduce_series nominates the RateMap from inside a list,
+# which is the only place C runs that step; rate_inner_reduce_lone reaches the
+# same rebuild through the base Simplify.
+rate_inner_reduce_series | simplify_fixtures/rate_inner_reduce_series.map | simplify_fixtures/rate_inner_reduce_series.simp |
+rate_inner_reduce_lone | simplify_fixtures/rate_inner_reduce_lone.map | simplify_fixtures/rate_inner_reduce_lone.simp |

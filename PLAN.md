@@ -664,7 +664,7 @@ Each entry is cited by a `gap` verdict in a checklist under
 `docs/audits/mapmerge/`, and `test_mapmerge_audit.rs` fails if a cited entry
 does not exist here.
 
-### 10.1 RateMap's self-reduction is unreachable from the nominate loop
+### 10.1 RateMap's self-reduction is unreachable from the nominate loop — FIXED
 
 `ratemap.c:717-727` opens `MapMerge` by simplifying the encapsulated Mapping
 and, if that reduced anything, rebuilding the RateMap around the result. The
@@ -680,18 +680,53 @@ records that adding it gains an `IsSimp` card on `cap_cmpmap_01` and
 `cap_cmpmap_04` while costing their structural equality with C. That trade is
 the thing to understand, not to re-attempt blind.
 
-What would expose it: a simplify fixture with a RateMap in series next to a
-Mapping whose own simplification changes it — a RateMap wrapping an unsimplified
-CmpMap, say — so the reduction has to happen mid-list to be seen. No fixture in
-the corpus puts a RateMap anywhere but at the top level, which is why the gap
-has been invisible.
+Exposed and closed. `rate_inner_reduce_series` wraps a RateMap over a series
+ZoomMap pair that fuses to one, inside a CmpMap so the RateMap is nominated from
+within a list; the pinned C reduces the whole thing to `RateMap(ZoomMap(6))`.
+`rate_inner_reduce_lone` is the same RateMap alone and passed from the start,
+which is what identified the seam rather than the arithmetic as the gap.
 
-Separately, no fixture puts two RateMaps next to each other, so the
-cancel-with-inverse path (`ratemap.c:791-802`, `ratemap.rs:387-389`) is
-unexercised on both sides. C rewrites two list slots with a `UnitMap` each and
-picks the width from `astGetNout`/`astGetNin` of the nominated RateMap; the port
-returns one Mapping for the pair and derives the width from the merge
-direction.
+`RateMap::map_merge` now uses `self_reduce_map_merge`, matching C's order:
+reduce the encapsulated Mapping first, then fall through to cancelling against
+an inverse neighbour in series.
+
+**The warning in the old comment was real, and its cause is now known.** Routing
+the reduction through `simplified()` unchanged broke structural equality on
+`cap_cmpmap_01` and `cap_cmpmap_04`. The reason is §10.14: this engine's
+`simplified` absorbs an inverted CmpMap's direction into its component order,
+where C leaves it as an `Invert` flag. Both fixtures hold a RateMap over an
+inverted `[SpecMap, ZoomMap]` pair, so the moment the port reduced it the pair
+came back as the inverted `[ZoomMap, SpecMap]`.
+
+`RateMap::simplified` therefore reduces the *forward* form of the encapsulated
+Mapping and re-applies the direction as a flag, which is what C's
+`astSetInvert( emap, map->invert )` plus `astSimplify` produces. That is a local
+workaround for §10.14, not a fix for it.
+
+### 10.14 `simplified` absorbs an inverted CmpMap's direction into its structure
+
+C's `astSimplify` on an inverted CmpMap returns a Mapping that still carries the
+inversion as an `Invert` flag, with its components in their constructed order.
+This engine's `simplified` folds the inversion into the structure instead:
+`[SpecMap(FRTOWV), ZoomMap(1e10)]` with `Invert = 1` becomes the equivalent
+`[ZoomMap(1e-10), SpecMap(WVTOFR)]` forward.
+
+The two describe the same transform, so nothing numeric diverges. What diverges
+is everything that consumes the structure — the serialised form, `MapSplit`, and
+which sub-Mapping a later merge nominates. This is the H2 hazard in
+`docs/porting-hazards.md` at its purest.
+
+Found while closing §10.1: giving RateMap the reduction seam C has made the
+divergence observable on `cap_cmpmap_01` and `cap_cmpmap_04`, which had been
+passing only because the port never reduced that sub-Mapping at all.
+`RateMap::simplified` now works around it by reducing the forward form and
+re-applying the direction.
+
+What would expose it directly: a lone inverted CmpMap whose components simplify,
+serialised. Generate one from the oracle and compare the component order and the
+`Invert` card. Every class that reduces an encapsulated Mapping needs the same
+workaround until this is fixed at the engine level, so each one is a place the
+divergence can reappear.
 
 ### 10.2 ChebyMap does not inherit PolyMap's `MapMerge`
 
