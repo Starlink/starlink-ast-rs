@@ -941,3 +941,62 @@ list, which C replaces with `m` and the port leaves as a TranMap.
 
 Closing it means routing `map_merge` through `simplified()` with C's either/or
 ordering, the same change §10.10 needs for SwitchMap.
+
+### 10.12 `GetDefUnc`'s unbounded-axis guard misses the upper bound
+
+`region.c:3560-3573` builds the default uncertainty as a Box covering 1.0E-6 of
+the Region's base-Frame bounding box, and skips any axis whose bound is
+`±DBL_MAX`, setting both output bounds to zero for it.
+
+The port's guard (`regions/mod.rs:466`) is
+`!is_bad(ubnd[i]) && !is_bad(lbnd[i])`, and `is_bad(v)` is
+`v == BAD_VALUE || !v.is_finite()` (`mappings/helpers/mod.rs:11-13`) with
+`BAD_VALUE == -f64::MAX`.
+
+That catches an unbounded *lower* bound, which is `-f64::MAX` and therefore
+`BAD_VALUE`. It does not catch an unbounded *upper* bound: `f64::MAX` is finite
+and is not `BAD_VALUE`, so the axis takes the bounded branch and receives a
+half-width of roughly `0.5e-6 * f64::MAX`, about 9e301, where C gives it zero.
+
+The correct test is against `f64::MAX` in magnitude, as `Interval` already does
+for its own bounds (`interval.rs:160-163`).
+
+Reachability today is limited: `default_bounding_box_unc` is the base-class rule,
+and Interval, NullRegion, Prism and CmpRegion — the Regions that can be unbounded
+— all override `get_def_unc`. The Regions that use the base rule (Box, Circle,
+Ellipse, Polygon, PointList) have finite bounds. So the defect is latent rather
+than active.
+
+What would expose it: a Region using the base rule whose `reg_base_box2` returns
+`f64::MAX` on an axis, or a direct unit test on `default_bounding_box_unc` with
+such a box. The second is the cheaper gate and is worth adding regardless of
+whether the first is currently reachable, because the guard is wrong on its own
+terms.
+
+### 10.13 Box's PermMap simplification branch is unported
+
+`box.c:3719-3882` is an explicit branch for the case where a Box's base-to-current
+Mapping is a PermMap. It reads the PermMap's permutation arrays and constants
+directly and builds the current-Frame Region axis by axis:
+
+- an output fed a constant gets that constant as both its limits;
+- an output fed `AST__BAD` is unbounded, so the result is an Interval, not a Box;
+- an output fed an input takes that input's limits;
+- a missing bound likewise makes the result an Interval;
+- when base axes are absent from the current Frame, the slice the PermMap selects
+  is checked for intersecting the Box, which can make the result a NullRegion.
+
+`crates/ast-core/src/regions/box_region.rs` contains no reference to `PermMap`.
+Its simplification goes straight to the generic best-fitting-Box path
+(`box_region.rs:1539-1566`), then the Polygon and Prism paths.
+
+A plain axis permutation is handled anyway, because it is exact and the mesh
+comparison succeeds. What the generic path cannot produce is a constant-valued
+axis, an unbounded axis, or a result that is an Interval or a NullRegion rather
+than a Box.
+
+What would expose it: a Box whose FrameSet holds a PermMap with a constant
+output — a 3-D Box sliced to 2-D with the third axis pinned — simplified and
+serialised. C writes an Interval or a Box with equal limits on that axis; the port
+writes whatever the mesh fit produced, or fails to simplify at all. No corpus
+fixture builds a Box over a PermMap with constants.
