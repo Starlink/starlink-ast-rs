@@ -696,7 +696,7 @@ An earlier attempt reduced the *forward* form unconditionally. That is right onl
 when the snapshot is 0, which is true of every fixture in the corpus, so it went
 green for the wrong reason and was reverted before this.
 
-### 10.15 The `C-ARTIFACT` set had three redundant layers — RESOLVED
+### 10.15 The `C-ARTIFACT` set: three layers redundant, the rest load-bearing — RESOLVED
 
 `cmpmap.rs`'s module doc defined a `C-ARTIFACT` marker for items that "exist only
 to reproduce a serialised value that C emits as a side effect of its memory
@@ -730,6 +730,23 @@ generated for it — an inverted parallel CmpMap that must be re-emitted while t
 tree is rebuilt around it, since the trailing ZoomMaps merge and the parallel
 component merges with nothing. C's output pushes the inversion down: no CmpMap
 carries `Invert`, and the flags appear as `InvA` on the components.
+
+**The rest of the set, measured.** `set_first_orientation` and
+`set_second_orientation`, with their `winmap_merge.rs` caller, are strongly
+load-bearing: disabling the flip costs 12 further simplify serialisation failures
+*and 5 `wcsconv` byte comparisons* — `grism`, `skyref`, `skyref-alt`,
+`tidy-offsets` and `tidy-pole`, all native. Their note claimed "8 serialisation
+differences", which understated it and evidently never covered `wcsconv`, the
+strict gate. `equal()` and transform comparisons stay clean either way, so the
+"dump-only" label is accurate; "removable" was not.
+
+Both `parcomp_*` fixtures are among the 12, so these setters are the second of
+the two layers that produce C's inversion push-down, alongside
+`normalize_unitmap_children`.
+
+Every surviving note now names the fixtures that demand it, and the module doc
+records that the set has been audited rather than leaving "candidates for
+deletion" to be read as "safe to delete".
 
 **Why this mattered beyond tidiness.** Every layer here existed to make a dump
 match, and the dump is the contract, so a redundant layer is a place where a

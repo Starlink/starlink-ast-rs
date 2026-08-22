@@ -15,6 +15,12 @@
 //! upstream stops emitting the value; the transform is unaffected either way.
 //! `grep -rn C-ARTIFACT` enumerates the set.
 //!
+//! The set was audited by disabling each item and measuring
+//! (PLAN.md §10.15). Three layers that pushed an inverted CmpMap's inversion
+//! into its structure were redundant — individually and together — and are
+//! deleted. What remains is measured load-bearing, and each note names the
+//! fixtures that demand it, so "dump-only" no longer reads as "removable".
+//!
 //! The value in question is `InvA`/`InvB`. C's `CombineMaps` (`cmpmap.c:527`)
 //! clones rather than copies a component, temporarily sets its `Invert` to the
 //! effective direction, lets the constructor snapshot that into the CmpMap's
@@ -273,9 +279,16 @@ impl CmpMap {
         *child = Box::new(shift);
     }
 
-    /// **`C-ARTIFACT`** (dump-only; measured). Disabling the flip in this and
-    /// its sibling leaves 427 simplify fixtures at 0 `equal()` failures and
-    /// 0 transform failures, with 8 serialisation differences.
+    /// **`C-ARTIFACT`** (dump-only; measured, and load-bearing).
+    ///
+    /// Disabling the flip in this and its sibling costs 12 further simplify
+    /// serialisation failures and **5 `wcsconv` byte comparisons** —
+    /// `grism`, `skyref`, `skyref-alt`, `tidy-offsets` and `tidy-pole`, all
+    /// native. Among the simplify fixtures are `parcomp_inverted_reemitted` and
+    /// `parcomp_inverted_nested_reemitted`, which exist to demand C's
+    /// inversion push-down shape, so this is one of the two layers that produce
+    /// it. `equal()` and transform comparisons stay clean either way, as the
+    /// dump-only label says. See PLAN.md §10.15.
     ///
     /// Set the *stored* Invert orientation of the first child to `orig`,
     /// leaving `inv_a` untouched. The CmpMap's transform is unchanged: the
