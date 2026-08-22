@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 427 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
-| simplify regression | 427 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 427 | 131 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result |
+| simplify regression | 430 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 430 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 430 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 430 | 132 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 132 with `neg_time_mjdtojd_real`, the control for §10.9 |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -848,7 +848,7 @@ function, which is what a real spectral LUT looks like. Serialise the simplified
 result and compare the class, not the transform: the two agree to well inside any
 transform tolerance and differ in whether a LutMap or a WinMap is written.
 
-### 10.9 TimeMap drops one no-effect conversion where C drops three
+### 10.9 TimeMap drops one no-effect conversion where C drops three — FIXED
 
 `timemap.c:2260-2266` eliminates a change-of-system step whose derived net offset
 is zero, and applies it to `AST__MJDTOMJD`, `AST__MJDTOJD` and `AST__JDTOMJD`
@@ -869,11 +869,16 @@ The port already derives `args[2]` identically (`timemap.rs:492-501`), so closin
 this is a matter of testing that value for all three types instead of comparing
 the first two arguments of one.
 
-What would expose it: a TimeMap holding `MjdToJd(off, off + 2400000.5)`,
-simplified and serialised. C writes a TimeMap with that step gone — a UnitMap if
-it was the only step — and the port writes it with the step present. The
-transform agrees either way, so only a byte comparison of the dump shows it. No
-corpus fixture builds an MJD-to-JD conversion with a cancelling offset.
+Exposed and closed. `time_mjdtojd_noop` and `time_jdtomjd_noop` are lone steps
+whose offsets absorb the constant; the pinned C simplifies each to a UnitMap and
+the port did not. `neg_time_mjdtojd_real` is the control, an MJDTOJD whose
+offsets do not absorb the constant and which must survive.
+
+Why the existing corpus missed it: `time_2arg_swapped_cancel` holds
+`MJDTOJD {0.0, 2400000.5}` followed by `JDTOMJD {2400000.5, 0.0}`. Both steps
+have a zero derived offset, so C drops them by this rule — but the port drops
+them by the inverse-pair rule, reaching the same UnitMap for a different reason.
+A lone step is what separates the two.
 
 ### 10.10 SwitchMap's inversion normalisation is fused with its child simplification
 

@@ -1161,10 +1161,17 @@ fn time_steps_cancel(a: &TimeConversion, b: &TimeConversion) -> bool {
 ///
 /// Currently recognizes: MjdToMjd where args[0] == args[1] (zero net offset).
 fn time_step_is_no_effect(cvt: &TimeConversion) -> bool {
-    if cvt.cvt_type == TimeCvtType::MjdToMjd && cvt.args.len() >= 2 {
-        return ast_equal(cvt.args[0], cvt.args[1]);
-    }
-    false
+    // C tests the derived net offset in `args[2]` rather than the two supplied
+    // offsets, and applies the rule to all three change-of-system conversions
+    // (timemap.c:2260-2266). For MjdToMjd that third value is
+    // `args[0] - args[1]`, so the two tests agree; for the other two it carries
+    // the ±2400000.5 constant, so an offset pair that absorbs the constant is a
+    // no-op only `args[2]` can see.
+    matches!(
+        cvt.cvt_type,
+        TimeCvtType::MjdToMjd | TimeCvtType::MjdToJd | TimeCvtType::JdToMjd
+    ) && cvt.args.len() >= 3
+        && ast_equal(cvt.args[2], 0.0)
 }
 
 /// Simplify a step list by cancelling adjacent inverse pairs and removing

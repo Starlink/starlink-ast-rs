@@ -589,3 +589,13 @@ interval_halfinf_simplify      | simplify_fixtures/interval_halfinf_simplify.map
 # --- both the simplify regression and the byte-exact round-trip corpus.
 # --- Move them back into simplify_fixtures/ and add manifest entries here
 # --- when those classes land. See simplify_fixtures_unsupported/README.md.
+
+# A lone MJDTOJD or JDTOMJD step whose offsets absorb the 2400000.5 constant is
+# a change of system with no effect, and C's MapMerge drops it
+# (timemap.c:2260-2266), leaving a UnitMap. time_2arg_swapped_cancel also
+# reaches a UnitMap, but by cancelling an inverse pair, so it does not exercise
+# this rule. The negative control keeps a conversion whose offsets do not
+# absorb the constant.
+time_mjdtojd_noop | simplify_fixtures/time_mjdtojd_noop.map | simplify_fixtures/time_mjdtojd_noop.simp |
+time_jdtomjd_noop | simplify_fixtures/time_jdtomjd_noop.map | simplify_fixtures/time_jdtomjd_noop.simp |
+neg_time_mjdtojd_real | simplify_fixtures/neg_time_mjdtojd_real.map | simplify_fixtures/neg_time_mjdtojd_real.map |
