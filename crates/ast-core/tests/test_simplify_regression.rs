@@ -527,24 +527,6 @@ fn simplify_regression() {
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // (A) SwitchMap under-tags: C stamps the FSMap / ISMap sub-Mappings,
-        // we leave them bare.
-        (
-            "switchmap_invert_normalize",
-            "IsSimp missing on selector sub-Mappings",
-        ),
-        (
-            "switchmap_internal_simplify",
-            "IsSimp missing on selector sub-Mappings",
-        ),
-        (
-            "switchmap_fwdonly_simplify",
-            "IsSimp missing on selector sub-Mappings",
-        ),
-        (
-            "switchmap_inv_invonly",
-            "IsSimp missing on selector sub-Mappings",
-        ),
         // (B) Region simplify tags a Mapping inside the encapsulated FrameSet
         // that C leaves bare. See PLAN.md §9.1.
         (
@@ -621,13 +603,11 @@ fn simplify_regression() {
         "cap_cmpmap_03 (6 vs C's 7)",
         "cap_cmpmap_04 (15 vs C's 18)",
         "cap_specmap_02 (7 vs C's 8)",
-        // Newly visible: these seven fixtures render to a Region or a
-        // SwitchMap, so the old hand-rolled dispatch returned `None` and the
-        // count was never taken. Causes (A), (B) and (D) in SERIAL_UNGATED.
-        "switchmap_fwdonly_simplify (1 vs C's 3)",
-        "switchmap_internal_simplify (1 vs C's 4)",
-        "switchmap_inv_invonly (1 vs C's 3)",
-        "switchmap_invert_normalize (1 vs C's 4)",
+        // These render to a Region, so the old hand-rolled dispatch returned
+        // `None` and the count was never taken. Causes (B) and (D) in
+        // SERIAL_UNGATED. Cause (A), the four SwitchMap fixtures, is closed:
+        // C reaches each encapsulated Mapping through `astSimplify`, which
+        // records what it returns, and `SwitchMap::simplified` now stamps them.
         "cefit_circle_conformal (1 vs C's 0)",
         "cefit_circle_nonconformal_keep (1 vs C's 0)",
         "cap_zoommap_04 (3 vs C's 0)",

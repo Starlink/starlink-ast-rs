@@ -986,44 +986,34 @@ have a zero derived offset, so C drops them by this rule — but the port drops
 them by the inverse-pair rule, reaching the same UnitMap for a different reason.
 A lone step is what separates the two.
 
-### 10.10 SwitchMap's inversion normalisation is fused with its child simplification
+### 10.10 SwitchMap left its simplified children untagged — FIXED
 
-`switchmap.c:1052-1100` makes two things alternatives of one nomination:
+This entry originally blamed the fused either/or: C's
+`if( invert_list[where] ) { normalise; } else { simplify children; }`
+(`switchmap.c:1052-1100`) makes those alternative outcomes of one nomination,
+where the port did both in one call. Tracing C confirmed the shape — the same
+SwitchMap is nominated at `inv=1`, then again at `inv=0`, then a third time once
+the children were reduced — but that was not the cause.
 
-```c
-if( ( *invert_list )[ where ] ) {
-   /* swap the selectors, invert the route Mappings, replace, return where */
-} else {
-   /* simplify each encapsulated Mapping */
-}
-```
+Giving `map_merge` C's either/or was implemented and reverted twice: once in the
+wrong order, which broke `switchmap_inverse_cancel` on both `equal()` and
+*transform* comparisons because C attempts the neighbour cancellation first
+(`switchmap.c:992`) and gates the self-simplify half on "no change made above"
+(`:1054`); and once in the right order, which changed no fixture at all.
 
-The normalisation returns `where`, so the nominate loop comes back and simplifies
-the children on a later pass, over a different object.
+The cause was the tags. C reaches each encapsulated Mapping through
+`astSimplify`, which records whatever it returns (`mapping.c:24763`), and the
+port used `simplified()` — the untagged virtual — for the selectors and the route
+Mappings. So C emitted 4 cards on `switchmap_invert_normalize` and the port
+emitted 1. The trace made this readable directly: three `SIMPLIFY-ENTER ZoomMap`
+entries plus the top-level SwitchMap is exactly C's 4.
 
-The port fuses them. `normalize_inverted` (`switchmap.rs:228-247`) performs C's
-swap-and-invert faithfully, but it is called from the public `simplify()` entry
-point (`mappings/mod.rs:607-613`) and the very next line calls `simplified()` on
-the result. `SwitchMap::simplified` keeps `self.inverted`
-(`switchmap.rs:621-623`) and only recurses into the children.
-
-Two consequences:
-
-1. The intermediate normalised SwitchMap is never the whole result of a
-   simplification, so it never carries the record `astSimplify_` stamps on
-   whatever it returns. This is the SwitchMap half of the `IsSimp` under-tagging.
-2. The normalisation is only reachable from the public entry point, not from
-   `map_merge`. An inverted SwitchMap nominated from inside a list keeps its
-   inversion, where C replaces it with the equal forward form.
-
-What would expose it: consequence 2 is exposed by any series list holding an
-inverted SwitchMap that is not the whole Mapping — compare the serialised tree,
-which in C holds a forward SwitchMap with swapped selectors and in the port an
-inverted one. Consequence 1 is exposed by the `IsSimp` card count on the same
-fixture.
-
-Closing it means giving `map_merge` C's either/or shape: normalise and return on
-an inverted nominee, recurse into the children only on a forward one.
+`SwitchMap::simplified` now stamps each child, as `RateMap` and `TranMap` already
+did. All four fixtures — `switchmap_invert_normalize`,
+`switchmap_internal_simplify`, `switchmap_fwdonly_simplify`,
+`switchmap_inv_invonly` — pass byte-exact, and cause (A) is retired from both
+pinned lists in `test_simplify_regression.rs`. Simplify serialisation failures
+drop from 11 to 7.
 
 ### 10.11 TranMap's `map_merge` reaches one of C's four self-simplification cases
 

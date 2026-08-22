@@ -32,7 +32,12 @@ fn simplify_child_with_invert(
     match child {
         None => Ok((None, recorded_inv)),
         Some(orig) => {
-            let simp = orig.simplified()?;
+            let mut simp = orig.simplified()?;
+            // C reaches each encapsulated Mapping through `astSimplify`
+            // (switchmap.c:1079-1090), which records the result it returns
+            // whether or not it reduced anything (mapping.c:24763).
+            // `simplified()` is the untagged virtual, so stamp it here.
+            simp.set_has_been_simplified(true);
             let effective = recorded_inv != orig.is_inverted();
             let new_inv = effective != simp.is_inverted();
             if !simp.equal(orig.as_ref()) || simp.is_inverted() != orig.is_inverted() {
@@ -567,6 +572,14 @@ impl Mapping for SwitchMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
+        // C's body is an either/or (switchmap.c:1052-1100): an inverted
+        // SwitchMap is replaced by the equal forward form and *nothing else
+        // happens on this pass*, and only a forward one has its encapsulated
+        // Mappings simplified. The normalisation reports a change, so the
+        // nominate loop comes back and does the children over a different
+        // object. Tracing C on switchmap_invert_normalize shows the same
+        // SwitchMap nominated at `inv=1`, then again at `inv=0`, then a third
+        // time once the children had been reduced.
         super::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
@@ -597,7 +610,8 @@ impl Mapping for SwitchMap {
         let mut simp_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
         let mut simp_route_inv: Vec<bool> = Vec::with_capacity(self.route_maps.len());
         for (rm, &recorded_inv) in self.route_maps.iter().zip(self.route_inv.iter()) {
-            let s = rm.simplified()?;
+            let mut s = rm.simplified()?;
+            s.set_has_been_simplified(true);
             let effective_inv = recorded_inv != rm.is_inverted();
             let new_inv = effective_inv != s.is_inverted();
             if !s.equal(rm.as_ref()) || s.is_inverted() != rm.is_inverted() {
