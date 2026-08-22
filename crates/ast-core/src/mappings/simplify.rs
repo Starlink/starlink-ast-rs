@@ -228,6 +228,106 @@ impl Drop for SimplifyGuard {
     }
 }
 
+/// Trace the simplify machinery, mirroring
+/// `tools/oracle_fixtures/build_simplify_trace.sh`'s instrumentation of the C
+/// library, so the two routes through a Mapping can be diffed line for line.
+///
+/// Enabled by setting `AST_TRACE`; the flag is read once, so a disabled build
+/// costs one relaxed atomic load per call and nothing else.
+pub(crate) mod trace {
+    use super::Mapping;
+    use std::sync::OnceLock;
+
+    /// Class name for a trace line. `Serializable::class_name` is private to
+    /// the serial module, so the classes the traces mention are matched here and
+    /// anything else prints as its parallel/series shape or `?`.
+    fn class_of(m: &dyn Mapping) -> &'static str {
+        use crate::mappings::{
+            CmpMap, Composition, GrismMap, LutMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap,
+            ShiftMap, SlaMap, SpecMap, SphMap, SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap,
+            WcsMap, WinMap, ZoomMap,
+        };
+        if let Some(c) = m.as_any().downcast_ref::<CmpMap>() {
+            return if c.composition() == Composition::Series {
+                "CmpMap[series]"
+            } else {
+                "CmpMap[parallel]"
+            };
+        }
+        macro_rules! name {
+            ($($cls:ident),+ $(,)?) => {
+                $( if m.as_any().is::<$cls>() { return stringify!($cls); } )+
+            };
+        }
+        name!(
+            UnitMap,
+            ZoomMap,
+            WinMap,
+            ShiftMap,
+            MatrixMap,
+            PermMap,
+            PcdMap,
+            LutMap,
+            SpecMap,
+            SlaMap,
+            TimeMap,
+            SphMap,
+            WcsMap,
+            GrismMap,
+            NormMap,
+            UnitNormMap,
+            RateMap,
+            TranMap,
+            SwitchMap,
+        );
+        "?"
+    }
+
+    fn on() -> bool {
+        static ON: OnceLock<bool> = OnceLock::new();
+        *ON.get_or_init(|| std::env::var_os("AST_TRACE").is_some())
+    }
+
+    /// `SIMPLIFY-ENTER`: a per-class reduction is about to run.
+    pub(crate) fn simplify_enter(site: &str, m: &dyn Mapping) {
+        if on() {
+            eprintln!(
+                "PORT SIMPLIFY-ENTER {} issimp={} inv={} nin={} nout={} site={site}",
+                class_of(m),
+                u8::from(m.has_been_simplified()),
+                u8::from(m.is_inverted()),
+                m.nin(),
+                m.nout(),
+            );
+        }
+    }
+
+    /// `MAPMERGE`: a class is being nominated.
+    pub(crate) fn map_merge(m: &dyn Mapping, where_: usize, series: bool, len: usize) {
+        if on() {
+            eprintln!(
+                "PORT MAPMERGE {} where={where_} series={} nmap={len} issimp={} inv={}",
+                class_of(m),
+                u8::from(series),
+                u8::from(m.has_been_simplified()),
+                u8::from(m.is_inverted()),
+            );
+        }
+    }
+
+    /// `MAPLIST`: a decomposition is being requested.
+    pub(crate) fn map_list(m: &dyn Mapping, series: bool, inv: bool) {
+        if on() {
+            eprintln!(
+                "PORT MAPLIST {} series={} invert={}",
+                class_of(m),
+                u8::from(series),
+                u8::from(inv),
+            );
+        }
+    }
+}
+
 /// Recursively decompose a mapping into a flat list of leaf mappings.
 ///
 /// Each element is `(mapping, effective_inv)` where:
@@ -253,6 +353,8 @@ pub(crate) fn flatten(
     } else {
         Composition::Parallel
     };
+
+    trace::map_list(mapping, series, inv);
 
     // Try to decompose if this is a CmpMap of the matching kind.
     if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
@@ -339,6 +441,7 @@ pub(crate) fn flatten(
     // the reconstructed parent records no `InvA`/`InvB` for it.
     if effective_inv && cloned.as_any().is::<super::PermMap>() {
         cloned.invert();
+        trace::simplify_enter("flatten-leaf-reduce", cloned.as_ref());
         cloned = cloned.simplified()?;
         effective_inv = false;
         orig_inv = cloned.is_inverted();
@@ -469,6 +572,7 @@ fn opaque_leaf_reduction(mapping: &dyn Mapping, inv: bool, series: bool) -> Opaq
         if inv {
             oriented.invert();
         }
+        trace::simplify_enter("cmp-tag-transfer", oriented.as_ref());
         if let Ok(simplified) = oriented.simplified()
             && !simplified.equal(oriented.as_ref())
         {
@@ -674,6 +778,7 @@ impl MergeCtx {
         let suffix: Vec<_> = self.list.split_off(start);
         let mut sub = MergeCtx::new(suffix);
         let nominee = sub.list[sub_index].0.clone_box();
+        trace::map_merge(nominee.as_ref(), sub_index, series, sub.len());
         let modified = nominee.map_merge(&mut sub, sub_index, series);
         self.list.extend(sub.list);
         self.resync_frozen();
@@ -734,6 +839,7 @@ pub(crate) fn cmp_map_merge(
         let fp_before = mapping_fingerprint(oriented.as_ref());
 
         SIMPLIFY_REBUILT.set(false);
+        trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
         if let Ok(simplified) = oriented.simplify() {
             // C's test is `simpler = ( new != map ) || ( new_invert !=
             // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
@@ -1159,6 +1265,7 @@ pub(crate) fn try_self_reduce(
     ctx: &mut MergeCtx,
     where_: usize,
 ) -> Option<usize> {
+    trace::simplify_enter("self-reduce-head", this);
     if let Ok(simp) = this.simplified()
         && (simp.is_inverted() != this.is_inverted() || !simp.equal(this))
     {
@@ -1443,6 +1550,7 @@ fn run_nominate_loop(
             // Clone the nominated mapping and attempt to merge it with its
             // neighbours (C clones map_list[nominated] before astMapMerge).
             let nominee = ctx.list[nominated].0.clone_box();
+            trace::map_merge(nominee.as_ref(), nominated, series, ctx.len());
             let modified = nominee.map_merge(ctx, nominated, series);
 
             // Move on to nominate the next mapping (C `nominated++`).
@@ -2573,6 +2681,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
     let new_a: DynMapping = if aconstants {
         Box::new(UnitMap::new(nout_a))
     } else {
+        trace::simplify_enter("par-branch-a", par_list[0].0.as_ref());
         let Ok(mut a) = par_list[0].0.simplified() else {
             return false;
         };
@@ -2584,6 +2693,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
     let new_b: DynMapping = if bconstants {
         Box::new(UnitMap::new(nout_b))
     } else {
+        trace::simplify_enter("par-branch-b", par_list[1].0.as_ref());
         let Ok(mut b) = par_list[1].0.simplified() else {
             return false;
         };

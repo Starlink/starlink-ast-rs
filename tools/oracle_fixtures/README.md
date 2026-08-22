@@ -127,3 +127,22 @@ entering it at a different orientation, which was the real difference.
 
 The submodule is never modified — the script copies the tracked files out and
 patches the copy.
+
+## Diffing the port against C
+
+`build_simplify_trace.sh` instruments the C library; `simplify::trace` in
+`crates/ast-core/src/mappings/simplify.rs` does the same for the port, gated on
+the same `AST_TRACE` variable and reading it once so a normal build pays nothing.
+
+```shell
+AST_TRACE=1 /tmp/ast-trace/gen_simp in.map /dev/null 2> c.txt
+AST_TRACE=1 cargo run -q --example simp_one -- in.map 2> port.txt >/dev/null
+grep MAPMERGE c.txt    | awk '{print $2, $3, $4, $5}' > c_mm.txt
+grep MAPMERGE port.txt | awk '{print $3, $4, $5, $6}' > p_mm.txt
+diff c_mm.txt p_mm.txt
+```
+
+The port prefixes its lines `PORT ` and tags `SIMPLIFY-ENTER` with the call site,
+so a divergence names the function to look at. This is how PLAN.md §10.3 was
+narrowed from "CmpMap under-tags" to "the port makes 149 nominations where C
+makes 96".

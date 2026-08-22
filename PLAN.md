@@ -821,39 +821,54 @@ same delegation.
 No corpus fixture holds a linear ChebyMap, which is why neither answer has been
 needed yet.
 
-### 10.3 CmpMap under-tags four fixtures — narrowed
+### 10.3 CmpMap under-tags four fixtures — the port runs more reductions than C
 
 `cap_cmpmap_01` (16 vs C's 18), `cap_cmpmap_03` (6 vs 7), `cap_cmpmap_04`
 (15 vs 18) and `cap_specmap_02` (7 vs 8) each emit fewer `IsSimp` cards than C.
 
-**The card is on an interior node C returned from a nested `astSimplify`.** For
-`cap_specmap_02` the diff is a single line: C tags the interior series CmpMap that
-holds the 4-step SpecMap (`cap_specmap_02.simp:99`) and the port leaves it bare.
-Tracing C shows why — that node is entered at `SIMPLIFY-ENTER CmpMap issimp=0
-nin=1`, returned, and re-entered later as `issimp=1` and walled. `astSimplify_`
-stamps whatever `Simplify` returns (`mapping.c:24763`), so a nested reduction
-tags its own result.
+**The missing card is on an interior node C returned from a nested
+`astSimplify`.** For `cap_specmap_02` the diff is one line: C tags the interior
+series CmpMap holding the 4-step SpecMap (`cap_specmap_02.simp:99`) and the port
+leaves it bare. The C trace shows that node entered at `issimp=0`, returned, then
+re-entered `issimp=1` and walled — `astSimplify_` stamps whatever `Simplify`
+returns (`mapping.c:24763`).
 
 **Blanket stamping is not the fix.** Making `CmpMap::simplified` stamp its result
 moves `cap_cmpmap_04` one card closer (15 → 16) and gives `cap_zoommap_01` a card
-C does not emit (1 vs 0), taking simplify serialisation failures from 7 to 8.
-Measured and reverted.
+C does not emit, taking simplify serialisation failures from 7 to 8. Measured and
+reverted.
 
-What that establishes: **the port's `simplified()` is not one-to-one with C's
-`astSimplify`.** It is called from places C reaches by other means, so stamping it
-unconditionally over-tags. The SwitchMap fix (§10.10) worked because the specific
-child-simplify sites there *do* correspond to C `astSimplify` calls, which the
-trace showed directly.
+**Why, now measured on both sides.** `simplify::trace` instruments the port to
+mirror `build_simplify_trace.sh`'s instrumentation of the C library, so the two
+routes through one Mapping diff line for line. On `cap_specmap_02`:
 
-Closing this means establishing the correspondence rather than guessing at it:
-run `build_simplify_trace.sh` beside an equivalently instrumented port, and match
-C's `SIMPLIFY-ENTER` sequence against the port's `simplified()` calls for one
-fixture. `cap_specmap_02` is the one to use — a single missing card, and the node
-is identified.
+| | nominations |
+|---|---:|
+| C | 96 |
+| port | 149 |
 
-Six approaches to `cap_cmpmap_03` were measured and reverted before this; they are
-recorded in `test_simplify_regression.rs` and must not be retried without a new
-reason. The blanket-stamp measurement above is the seventh.
+Whole sub-sequences repeat. The pair `SpecMap where=0 series=1 nmap=2` /
+`ZoomMap where=1 series=1 nmap=2` is nominated **16 times each** in the port; C's
+busiest nomination on the same fixture happens 7 times, and C nominates that
+SpecMap/ZoomMap pair at `nmap=3` only 4 times.
+
+So the port is not under-tagging a reduction it performs; it performs *more*
+reductions than C and tags a different set of intermediate results. That is why
+stamping more nodes over-tags in one place while under-tagging in another — the
+two engines do not agree on how many times a subtree is reduced, so no stamping
+rule can align the counts.
+
+**Next step.** Find why the port re-nominates. The candidates are the merge
+loop's termination condition and the fact that a rebuilt CmpMap does not carry
+the `IsSimp` bit C's clone would, so a subtree already reduced is offered again.
+The traces for a single fixture are small enough to walk: run
+`build_simplify_trace.sh` for C, `AST_TRACE=1 cargo run --example simp_one` for
+the port, and align on the first divergence — C's
+`WinMap where=0 series=1 nmap=4`, which the port never nominates.
+
+Seven approaches to `cap_cmpmap_03` have now been measured and reverted, six
+recorded in `test_simplify_regression.rs` plus the blanket stamp above. Stop
+signal 3 applies: no eighth without the re-nomination question answered.
 
 ### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
 
