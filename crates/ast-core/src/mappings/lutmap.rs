@@ -44,6 +44,13 @@ pub struct LutMap {
     monotonic: i8,
     /// Whether the mapping is inverted.
     inverted: bool,
+    /// The stated relative error of the table values — C's `LutEpsilon`
+    /// attribute, written as the `LutEps` card (`lutmap.c:2012`), defaulting to
+    /// `DBL_EPSILON`.
+    ///
+    /// It scales the linearity tolerance in [`Self::table_is_linear`], so it
+    /// decides whether a nearly-linear table is replaced by a WinMap.
+    lut_epsilon: f64,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     /// Whether the inverse transform is defined.
@@ -80,6 +87,7 @@ impl LutMap {
             inverted: false,
             simplified: SimplifiedRecord::default(),
             tran_inverse: monotonic != 0,
+            lut_epsilon: f64::EPSILON,
         })
     }
 
@@ -113,16 +121,54 @@ impl LutMap {
     /// The corner-point construction is C's, rather than computing shift and
     /// scale directly and inverting, so the arithmetic matches and the result
     /// is always a *forward* WinMap.
+    /// Whether the lookup table is linear, as C's `GetLinear`
+    /// (`lutmap.c:598-627`) decides it.
+    ///
+    /// The tolerance is scaled by the `LutEpsilon` attribute — the stated
+    /// relative error of the table values, `f64::EPSILON` by default — and taken
+    /// as the larger of two estimates: one from the table's full range and one
+    /// from the interpolated value at the element under test, the second so that
+    /// values near zero do not get an unusably tight bound. Linearity is
+    /// accepted within twice that.
+    fn table_is_linear(&self) -> bool {
+        let n = self.lut.len();
+        if n < 2 {
+            return false;
+        }
+        let (mut lo, mut hi) = (self.lut[0], self.lut[0]);
+        for &v in &self.lut {
+            if v < lo {
+                lo = v;
+            }
+            if v > hi {
+                hi = v;
+            }
+        }
+        // A constant table is linear by inspection, and the loop below would
+        // divide the tolerance down to nothing (lutmap.c:595).
+        if hi == lo {
+            return true;
+        }
+        let eps = self.lut_epsilon;
+        let tol1 = (hi - lo).abs() * eps;
+        let last = n - 1;
+        for ilut in 1..last {
+            let fract = ilut as f64 / last as f64;
+            let interp = self.lut[0] * (1.0 - fract) + self.lut[last] * fract;
+            let tol = tol1.max(interp.abs() * eps);
+            if (self.lut[ilut] - interp).abs() > 2.0 * tol {
+                return false;
+            }
+        }
+        true
+    }
+
     pub(crate) fn linear_equivalent(&self, inverted: bool) -> Option<WinMap> {
         let n = self.lut.len();
         if n < 2 {
             return None;
         }
-        let a = self.lut[0];
-        let b = (self.lut[n - 1] - a) / (n - 1) as f64;
-        let tol = (a.abs() + (a + b * (n - 1) as f64).abs()) * 1e-10 + 1e-20;
-        let is_linear = (1..n - 1).all(|i| (self.lut[i] - (a + b * i as f64)).abs() <= tol);
-        if !is_linear || self.lut[0] == self.lut[n - 1] {
+        if !self.table_is_linear() || self.lut[0] == self.lut[n - 1] {
             return None;
         }
 
@@ -851,6 +897,7 @@ impl Serializable for LutMap {
             inc,
             interp,
             monotonic,
+            lut_epsilon: node.get_double("LutEps", f64::EPSILON),
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             tran_inverse: base.has_inverse,

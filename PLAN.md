@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 443 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 443 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
-| simplify regression | 443 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 443 | 134 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) and `neg_parpair_aligned_irreducible` (§10.14) |
+| simplify regression | 445 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 445 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 445 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 445 | 135 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14) and `neg_lut_near_linear` (§10.8) |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -924,35 +924,34 @@ discriminates.
 can differ per class: C puts the swap between the reduction and the plain
 neighbour merge, which `self_reduce_map_merge` alone cannot express.
 
-### 10.8 LutMap's linearity test uses a hardcoded tolerance where C reads an attribute
+### 10.8 LutMap's linearity test used a hardcoded tolerance — FIXED
 
-`lutmap.c:516-633`'s `GetLinear` decides whether a lookup table is linear, and
-`MapMerge` replaces a linear LutMap with an equivalent WinMap
-(`lutmap.c:1140-1175`). C's test is:
+C's `GetLinear` (`lutmap.c:598-627`) decides whether a lookup table is linear,
+and `MapMerge` replaces a linear LutMap with an equivalent WinMap. Its tolerance
+is scaled by the `LutEpsilon` attribute — the stated relative error of the table
+values, `DBL_EPSILON` by default — and taken as the larger of two estimates, one
+from the table's full range and one from the interpolated value at the element
+under test, with linearity accepted within twice that.
 
-- `eps = astGetLutEpsilon( this )`, an attribute defaulting to `DBL_EPSILON`;
-- `tol1 = |hi - lo| * eps`, over the table's actual largest and smallest values;
-- `tol2 = |interp| * eps` at each interior element;
-- accept when `|lut[i] - interp| <= 2 * max(tol1, tol2)`.
-
-The port's `linear_equivalent` (`lutmap.rs:116-125`) uses a hardcoded `1e-10`,
-adds a `1e-20` floor that has no analogue in C, and forms one tolerance from
-`|lut[0]| + |lut[n-1]|` instead of the table's extremes and the interpolated
-value. It has no `LutEpsilon` attribute at all.
-
-`1e-10` against `DBL_EPSILON` is roughly six orders of magnitude looser, so the
-port declares tables linear that C does not and replaces them with WinMaps where
-C keeps the LutMap. That is a shape difference in the simplified tree, not a
+The port used a hardcoded `1e-10`, a `1e-20` floor with no analogue in C, and one
+estimate formed from the end values rather than the table's extremes. Roughly six
+orders of magnitude looser, so it replaced nearly-linear LutMaps with WinMaps
+where C keeps the LutMap — a shape difference in the simplified tree, not a
 numeric one.
 
-Closing it means porting `GetLinear` as it stands and adding the `LutEpsilon`
-attribute, whose setter is also one of the eleven clear-on-set sites (§9.2).
+`GetLinear` is now ported as it stands, including the `hi == lo` constant-table
+case, and `LutMap` carries a `lut_epsilon` field defaulting to `f64::EPSILON` and
+read from the `LutEps` card (`lutmap.c:2012`) so a dump round-trips.
 
-What would expose it: a LutMap whose table departs from linear by between
-`DBL_EPSILON` and `1e-10` relative — a table computed from a nearly-linear
-function, which is what a real spectral LUT looks like. Serialise the simplified
-result and compare the class, not the transform: the two agree to well inside any
-transform tolerance and differ in whether a LutMap or a WinMap is written.
+Two fixtures. `neg_lut_near_linear` departs from linear by about 3e-13 relative —
+above `DBL_EPSILON`, far below `1e-10` — and C keeps it a LutMap; the port
+converted it. `lut_exactly_linear` is the control C does replace with a WinMap,
+without which the negative case would pass for a port that never converts a
+LutMap at all.
+
+No public setter was added. C's `LutEpsilon` setter is one of the eleven
+clear-on-set sites (§9.2), so adding one means adding the clear; the attribute is
+read from the dump and otherwise fixed at construction.
 
 ### 10.9 TimeMap drops one no-effect conversion where C drops three — FIXED
 

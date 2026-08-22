@@ -654,3 +654,12 @@ neg_parpair_aligned_irreducible | simplify_fixtures/neg_parpair_aligned_irreduci
 # These two demand it; before them the whole corpus was indifferent to it.
 parcomp_inverted_reemitted | simplify_fixtures/parcomp_inverted_reemitted.map | simplify_fixtures/parcomp_inverted_reemitted.simp |
 parcomp_inverted_nested_reemitted | simplify_fixtures/parcomp_inverted_nested_reemitted.map | simplify_fixtures/parcomp_inverted_nested_reemitted.simp |
+
+# C's GetLinear scales its linearity tolerance by the LutEpsilon attribute,
+# which defaults to DBL_EPSILON (lutmap.c:598-627). neg_lut_near_linear departs
+# from linear by ~3e-13 relative -- above DBL_EPSILON, far below a fixed 1e-10 --
+# so C keeps it a LutMap. lut_exactly_linear is the control C does replace with
+# a WinMap, without which the negative case would pass for a port that never
+# converts a LutMap at all. See PLAN.md §10.8.
+neg_lut_near_linear | simplify_fixtures/neg_lut_near_linear.map | simplify_fixtures/neg_lut_near_linear.map |
+lut_exactly_linear | simplify_fixtures/lut_exactly_linear.map | simplify_fixtures/lut_exactly_linear.simp |
