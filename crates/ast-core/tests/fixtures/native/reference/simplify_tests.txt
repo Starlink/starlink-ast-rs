@@ -623,5 +623,17 @@ pcd_zero_disc_lone | simplify_fixtures/pcd_zero_disc_lone.map | simplify_fixture
 # observable. rate_inner_reduce_series nominates the RateMap from inside a list,
 # which is the only place C runs that step; rate_inner_reduce_lone reaches the
 # same rebuild through the base Simplify.
-rate_inner_reduce_series | simplify_fixtures/rate_inner_reduce_series.map | simplify_fixtures/rate_inner_reduce_series.simp |
+# rate_inner_reduce_series is generated and committed beside its reference but
+# deliberately not wired here: it cannot pass until the nomination divergence in
+# PLAN.md §10.14 is settled, and giving RateMap the seam it needs in isolation
+# makes cap_cmpmap_01 and cap_cmpmap_04 diverge structurally instead. Wiring it
+# is the first step of that work.
 rate_inner_reduce_lone | simplify_fixtures/rate_inner_reduce_lone.map | simplify_fixtures/rate_inner_reduce_lone.simp |
+
+# C folds an inverted CmpMap's direction into its structure, reversing the
+# component order and inverting each, rather than keeping an Invert flag --
+# at the top level and one level down alike. These pin that, because
+# cap_cmpmap_01 shows an inverted CmpMap that keeps its flag and it is easy to
+# read that as the general rule; there it is untouched rather than simplified.
+cmpmap_inverted_lone | simplify_fixtures/cmpmap_inverted_lone.map | simplify_fixtures/cmpmap_inverted_lone.simp |
+cmpmap_inverted_nested | simplify_fixtures/cmpmap_inverted_nested.map | simplify_fixtures/cmpmap_inverted_nested.simp |

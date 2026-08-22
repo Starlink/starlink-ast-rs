@@ -21,8 +21,8 @@ place C runs it.
 | 3 | Get a pointer to this RateMap | ratemap.c:703-704 | -- | n/a: the Rust method already has `&self`; C is downcasting from `AstMapping *` |
 | 4 | Temporarily set the RateMap's Invert flag to the value the list requests | ratemap.c:706-708 | -- | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
 | 5 | Get the encapsulated Mapping and temporarily restore the Invert value it had at construction | ratemap.c:710-715 | -- | n/a: `self.map` is owned and holds its construction orientation already, so there is nothing to save and restore |
-| 6 | First try to simplify the RateMap by simplifying its encapsulated Mapping | ratemap.c:717-719 | ratemap.rs:272-286 | ported |
-| 7 | If that simplified anything, build a new RateMap around the simplified Mapping and report a change | ratemap.c:721-727 | ratemap.rs:288-299 | ported |
+| 6 | First try to simplify the RateMap by simplifying its encapsulated Mapping | ratemap.c:717-719 | ratemap.rs:272-273 | gap: PLAN.md §10.1 |
+| 7 | If that simplified anything, build a new RateMap around the simplified Mapping and report a change | ratemap.c:721-727 | ratemap.rs:275-286 | gap: PLAN.md §10.1 |
 | 8 | Otherwise, in series only, try to cancel this RateMap with its own inverse | ratemap.c:728-730 | ratemap.rs:306-309 | ported |
 | 9 | Start with nothing to cancel against | ratemap.c:732-733 | -- | n/a: the port's pairwise hook is asked about one neighbour at a time, so there is no candidate index to initialise |
 | 10 | Consider the lower neighbour, if it is a RateMap | ratemap.c:735-737 | ratemap.rs:312 | ported |
@@ -37,20 +37,22 @@ place C runs it.
 | 19 | Clear the result value if an error occurred | ratemap.c:812-814 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 20 | Return the result | ratemap.c:815-816 | ratemap.rs:389 | ported |
 
-## Rows 6 and 7 — the reduction, and the orientation it must preserve
+## Rows 6 and 7 — the seam is missing, and adding it needs §10.14 first
 
-`RateMap::map_merge` uses `self_reduce_map_merge`, so the reduction now runs on a
-RateMap nominated from within a list, which is where C runs it. The
-reconstruction was already right: C's `astRateMap( smap, map->iout, map->iin, … )`
-maps `ax1` to `iout` and `ax2` to `iin` (`ratemap.c:1830-1831`), and the Rust
-`ax1` is the output axis and `ax2` the input.
+The logic exists in `simplified()` and reconstructs correctly: C's
+`astRateMap( smap, map->iout, map->iin, … )` maps `ax1` to `iout` and `ax2` to
+`iin` (`ratemap.c:1830-1831`), and the Rust `ax1` is the output axis and `ax2` the
+input.
 
-`simplified` reduces the *forward* form of the encapsulated Mapping and
-re-applies the stored direction as a flag. C reaches that by restoring the
-construction-time Invert value and simplifying in place
-(`ratemap.c:710-719`); this engine's `simplified` would otherwise absorb an
-inverted CmpMap's direction into its component order. See PLAN.md §10.14 — the
-underlying divergence is not RateMap's, and this is a local workaround for it.
+What is missing is the seam. C performs the reduction inside `MapMerge`, so it
+runs on a RateMap nominated from within a list; the port's `simplified()` is
+reached only when a RateMap is simplified on its own.
+`rate_inner_reduce_series` and `rate_inner_reduce_lone` are the pair that shows
+this: the lone case passes and the series case does not.
+
+Adding `self_reduce_map_merge` here closes it and breaks `cap_cmpmap_01` and
+`cap_cmpmap_04`, because the port's nominate loop reaches a RateMap C's never
+does. See PLAN.md §10.1 and §10.14.
 
 ## Row 15 — the same cancellation, a different result shape
 
