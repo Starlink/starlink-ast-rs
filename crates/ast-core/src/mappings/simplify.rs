@@ -3206,28 +3206,15 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
 
     // Apply the effective inversion to a component about to be composed.
     //
-    // `C-ARTIFACT` (see cmpmap.rs's module docs): the branch below shapes the
-    // dump to match what C emits and does not affect the transform. Measured:
-    // always taking the `m.invert()` path instead leaves the whole suite green.
+    // Apply the effective inversion to a component about to be composed.
     //
-    // When the component is a *parallel* CmpMap, push the inversion into its
-    // structure (`(A ‖ B)^-1 = A^-1 ‖ B^-1`, recursively descending to the
-    // deepest parallel CmpMap that wraps leaves). The C reference always
-    // emits an inverted parallel component this way — the intermediate
-    // parallel CmpMaps stay forward and the innermost one carries the
-    // `InvA`/`InvB` flags — regardless of whether the enclosing composition
-    // is series or parallel. A series CmpMap child of a *parallel*
-    // reconstruct is likewise absorbed via `invert_into_structure` (swap +
-    // flip). Otherwise (a leaf, or a series CmpMap child of a series
-    // reconstruct) simply set the Invert flag so the parent records the
-    // effective direction in its InvA/InvB.
+    // A plain flag toggle. `CmpMap::normalize_unitmap_children`, run once on the
+    // fully simplified top-level result, is what produces C's canonical
+    // `InvA`/`InvB` shape; three further layers that also pushed an inversion
+    // into a component's structure were measured redundant against the whole
+    // corpus, including `parcomp_inverted_reemitted` and its nested sibling,
+    // which exist to demand that shape. See PLAN.md §10.15.
     let apply_effective = |m: &mut DynMapping| {
-        if let Some(cm) = m.as_any_mut().downcast_mut::<CmpMap>() {
-            if cm.composition() == Composition::Parallel || !series {
-                cm.invert_into_structure();
-                return;
-            }
-        }
         m.invert();
     };
 

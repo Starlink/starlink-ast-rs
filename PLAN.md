@@ -696,51 +696,45 @@ An earlier attempt reduced the *forward* form unconditionally. That is right onl
 when the snapshot is 0, which is true of every fixture in the corpus, so it went
 green for the wrong reason and was reverted before this.
 
-### 10.15 The `C-ARTIFACT` set has redundant layers
+### 10.15 The `C-ARTIFACT` set had three redundant layers — RESOLVED
 
-`cmpmap.rs`'s module doc defines a `C-ARTIFACT` marker for items that "exist only
+`cmpmap.rs`'s module doc defined a `C-ARTIFACT` marker for items that "exist only
 to reproduce a serialised value that C emits as a side effect of its memory
-model", with `grep -rn C-ARTIFACT` as the index. Nine sites, six distinct items,
-all about `InvA`/`InvB`.
+model". Nine sites, all about `InvA`/`InvB`. Auditing them the way
+`dump_simplified` was audited — disable, measure — found **four** mechanisms
+pushing an inverted CmpMap's inversion into its structure, of which three were
+redundant.
 
-Auditing them the way `dump_simplified` was audited — disable, measure — found
-the same shape of problem one layer up. **At least three mechanisms fold an
-inverted CmpMap's inversion into its structure, and two of them are provably
-redundant against the whole corpus:**
+Measured individually and then all together, against the full suite including all
+194 `wcsconv` byte comparisons:
 
-- `apply_effective`'s structural branch in `reconstruct`
-  (`simplify.rs:3209-3232`). Forcing the plain `m.invert()` toggle leaves every
-  test green, including all 194 `wcsconv` byte comparisons.
-- the canonicalisation in `CmpMap`'s recorded-orientation fixup
-  (`cmpmap.rs:300-304`). Skipping it entirely also leaves everything green.
+| layer | verdict |
+|---|---|
+| `apply_effective`'s structural branch in `reconstruct` | redundant |
+| the canonicalisation in `CmpMap`'s recorded-orientation fixup | redundant |
+| `canonicalize_inverted_cmpmaps`, the tree-wide pass | redundant |
+| `normalize_unitmap_children` | **load-bearing** |
 
-The load-bearing layer is elsewhere, most likely the tree-wide canonicalisation
-at `mappings/mod.rs:614`, and was not isolated.
+All three redundant layers are deleted, along with `invert_into_structure` and
+`invert_parallel_child`, which had no other callers. `normalize_unitmap_children`
+survives and its doc now records what demands it: removing it costs four
+`equal()` failures — `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_wcsmap_01` and
+`parcomp_inverted_nested_reemitted` — plus two serialisation failures.
 
-**This was measured against a corpus that now demands the behaviour**, which the
-original "measured to have no effect" notes could not claim.
-`parcomp_inverted_reemitted` and `parcomp_inverted_nested_reemitted` were built
-for it: an inverted parallel CmpMap that must be re-emitted while the tree is
-rebuilt around it, because the trailing ZoomMaps merge and the parallel component
-merges with nothing. C's output pushes the inversion down — no CmpMap in the
-result carries `Invert`, and the flags appear as `InvA` on the components — so the
-behaviour is real, and something in the port reproduces it. Just not those two.
+**Two things are worth keeping from how this went.** The three deleted layers
+each carried a note saying they were dump-shaping and measured; the one that
+turned out to matter was the one marked "not independently measured". And the
+measurement only became meaningful once the corpus demanded the behaviour:
+`parcomp_inverted_reemitted` and `parcomp_inverted_nested_reemitted` were
+generated for it — an inverted parallel CmpMap that must be re-emitted while the
+tree is rebuilt around it, since the trailing ZoomMaps merge and the parallel
+component merges with nothing. C's output pushes the inversion down: no CmpMap
+carries `Invert`, and the flags appear as `InvA` on the components.
 
-Nothing was deleted. Removing a layer without knowing which one carries the
-behaviour would leave the remaining ones unexplained, and each of these was
-presumably added to fix a real dump mismatch. What the audit establishes is that
-the set is over-provisioned and that the notes attached to it understate the
-coverage: `cmpmap.rs:200`'s item is still marked "not independently measured".
-
-Next step: isolate the load-bearing layer by disabling
-`mappings/mod.rs:614` against the two `parcomp_*` fixtures, then delete the
-redundant two and re-point the `C-ARTIFACT` notes at the fixtures that demand
-what survives.
-
-**Why this matters beyond tidiness.** Every layer here was added to make a dump
-match, and the dump is the contract. A redundant layer is a place where a future
-correct change looks like a regression, which is how §10.1 cost three attempts:
-`RateMap::invert_snapshot` was described as existing "for serialization
+**Why this mattered beyond tidiness.** Every layer here existed to make a dump
+match, and the dump is the contract, so a redundant layer is a place where a
+correct change looks like a regression. That is how §10.1 cost three attempts:
+`RateMap::invert_snapshot` was documented as existing "for serialization
 compatibility" and was therefore ignored by the simplify path that needed it.
 
 ### 10.14 Whether the port over-reaches C's nominate loop — RETRACTED

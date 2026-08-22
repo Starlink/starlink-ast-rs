@@ -197,7 +197,14 @@ impl CmpMap {
         self.inv_b
     }
 
-    /// **`C-ARTIFACT`** (dump-only; not independently measured).
+    /// **`C-ARTIFACT`** (dump-only; measured, and load-bearing).
+    ///
+    /// Removing this call costs four `equal()` failures — `cap_cmpmap_01`,
+    /// `cap_cmpmap_04`, `cap_wcsmap_01` and `parcomp_inverted_nested_reemitted` —
+    /// and two further serialisation failures. It is the only surviving
+    /// mechanism that produces C's canonical `InvA`/`InvB` shape: three others
+    /// that also pushed an inversion into a component's structure were measured
+    /// redundant, individually and together, and deleted. See PLAN.md §10.15.
     ///
     /// Recursively clear redundant `InvA` / `InvB` flags on a parallel
     /// CmpMap whose corresponding child is a `UnitMap`. The C reference
@@ -264,106 +271,6 @@ impl CmpMap {
             shift.invert();
         }
         *child = Box::new(shift);
-    }
-
-    /// Recursively canonicalise CmpMaps so no nested CmpMap carries
-    /// `inverted=true`. For each CmpMap with `inverted=true`, push the
-    /// inversion into its recorded structure (`invert_into_structure`)
-    /// and clear the flag. After this pass, every CmpMap in the tree
-    /// has `inverted=false`. The parent's `inv_a` / `inv_b` snapshots
-    /// are updated to maintain the runtime invariant
-    /// `effective_inversion = inv_a XOR child.is_inverted()`. This is a
-    /// serialisation-canonicalisation pass — runtime behaviour is
-    /// unchanged. Mirrors the C reference's emission of a parallel
-    /// CmpMap with an `InvA=1` CmpMap child as: outer parallel with
-    /// no `InvA`, inner CmpMap with `inv_a`/`inv_b` flipped (and
-    /// children swapped for series).
-    pub(crate) fn canonicalize_inverted_cmpmaps(&mut self) {
-        // Recurse first; children's is_inverted() may flip during the
-        // call, requiring our inv_a/inv_b snapshots to flip in step.
-        let first_was_inverted = self.first.is_inverted();
-        if let Some(cm) = self.first.as_any_mut().downcast_mut::<CmpMap>() {
-            cm.canonicalize_inverted_cmpmaps();
-        }
-        if first_was_inverted != self.first.is_inverted() {
-            self.inv_a = !self.inv_a;
-        }
-
-        let second_was_inverted = self.second.is_inverted();
-        if let Some(cm) = self.second.as_any_mut().downcast_mut::<CmpMap>() {
-            cm.canonicalize_inverted_cmpmaps();
-        }
-        if second_was_inverted != self.second.is_inverted() {
-            self.inv_b = !self.inv_b;
-        }
-
-        // Now canonicalise self.
-        if self.inverted {
-            self.invert_into_structure();
-            self.inverted = false;
-        }
-    }
-
-    /// **`C-ARTIFACT`** (dump-shaping; measured to have no effect). Forcing the
-    /// simplifier's `apply_effective` to use the plain `invert()` flag toggle
-    /// instead of this rewrite leaves the whole suite green — 3294 passed,
-    /// including all 194 wcsconv byte comparisons and 427 simplify fixtures at
-    /// 0 serialisation failures. Instrumented, this path is reached **once** in
-    /// the suite, and its `Parallel` arm never.
-    ///
-    /// Push the inversion semantics of "this CmpMap, used in its inverse
-    /// direction" into the recorded structure, leaving `inverted` flag
-    /// unchanged. For parallel CmpMaps this flips `inv_a` / `inv_b`. For
-    /// series CmpMaps it additionally swaps `first` / `second` (since
-    /// `(A;B)^-1 = B^-1; A^-1`). Mathematically equivalent to invert(),
-    /// but produces the canonical serialised form the C reference emits
-    /// when an inverted CmpMap appears as a child of a parallel
-    /// reconstruct.
-    pub(crate) fn invert_into_structure(&mut self) {
-        match self.kind {
-            Composition::Parallel => {
-                // `(A ‖ B)^-1 = A^-1 ‖ B^-1`: the inversion distributes to the
-                // two children. The C reference pushes it all the way down to
-                // the deepest parallel CmpMap that directly wraps leaf
-                // Mappings — intermediate parallel CmpMaps stay forward and
-                // the innermost one carries the `InvA`/`InvB` flags. Mirror
-                // that by recursing into a parallel-CmpMap child (so the
-                // inversion keeps descending) and only recording the flag flip
-                // at the level whose child is not itself a parallel CmpMap.
-                Self::invert_parallel_child(&mut self.first, &mut self.inv_a);
-                Self::invert_parallel_child(&mut self.second, &mut self.inv_b);
-            }
-            Composition::Series => {
-                std::mem::swap(&mut self.first, &mut self.second);
-                let (new_inv_a, new_inv_b) = (!self.inv_b, !self.inv_a);
-                self.inv_a = new_inv_a;
-                self.inv_b = new_inv_b;
-            }
-        }
-        // Inverting swaps the forward and inverse transform directions, so the
-        // cached definedness flags must swap too. Unlike `invert()` (which sets
-        // the `inverted` bit and lets `has_forward`/`has_inverse` consult it),
-        // this method rewrites the structure to the canonical forward form, so
-        // the definedness has to be baked into the fields directly. Without
-        // this a component whose forward and inverse definedness differ (e.g.
-        // a parallel wrapping a forward-only RateMap or MathMap) would report
-        // the wrong `Fwd`/`Inv` after being absorbed inverted during
-        // reconstruct.
-        std::mem::swap(&mut self.tran_forward, &mut self.tran_inverse);
-    }
-
-    /// Apply the inversion of one parallel child. If the child is itself a
-    /// parallel CmpMap, recurse (pushing the inversion further down its
-    /// structure) and leave this level's recorded flag unchanged. Otherwise
-    /// record the inversion in this level's flag (`inv` is toggled).
-    fn invert_parallel_child(child: &mut DynMapping, inv: &mut bool) {
-        if let Some(cm) = child.as_any_mut().downcast_mut::<CmpMap>() {
-            if cm.kind == Composition::Parallel {
-                cm.invert_into_structure();
-                return;
-            }
-        }
-        *inv = !*inv;
     }
 
     /// **`C-ARTIFACT`** (dump-only; measured). Disabling the flip in this and
