@@ -645,3 +645,12 @@ cmpmap_inverted_nested | simplify_fixtures/cmpmap_inverted_nested.map | simplify
 parpair_aligned_reduces | simplify_fixtures/parpair_aligned_reduces.map | simplify_fixtures/parpair_aligned_reduces.simp |
 parpair_one_side_reduces | simplify_fixtures/parpair_one_side_reduces.map | simplify_fixtures/parpair_one_side_reduces.simp |
 neg_parpair_aligned_irreducible | simplify_fixtures/neg_parpair_aligned_irreducible.map | simplify_fixtures/neg_parpair_aligned_irreducible.map |
+
+# An inverted parallel CmpMap that must be re-emitted while the tree is rebuilt
+# around it: the trailing ZoomMaps merge so reconstruction runs, but the
+# parallel component merges with nothing. C pushes the inversion down -- no
+# CmpMap in the result carries Invert, and the flags appear as InvA on the
+# components -- which is what cmpmap.rs's invert_into_structure reproduces.
+# These two demand it; before them the whole corpus was indifferent to it.
+parcomp_inverted_reemitted | simplify_fixtures/parcomp_inverted_reemitted.map | simplify_fixtures/parcomp_inverted_reemitted.simp |
+parcomp_inverted_nested_reemitted | simplify_fixtures/parcomp_inverted_nested_reemitted.map | simplify_fixtures/parcomp_inverted_nested_reemitted.simp |

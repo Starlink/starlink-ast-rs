@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 440 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 440 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
-| simplify regression | 440 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 440 | 134 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) and `neg_parpair_aligned_irreducible` (§10.14) |
+| simplify regression | 443 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 443 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
+| simplify regression | 443 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 443 | 134 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) and `neg_parpair_aligned_irreducible` (§10.14) |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -695,6 +695,53 @@ H3 hazard: two C names kept as two fields, with only one of them wired up.
 An earlier attempt reduced the *forward* form unconditionally. That is right only
 when the snapshot is 0, which is true of every fixture in the corpus, so it went
 green for the wrong reason and was reverted before this.
+
+### 10.15 The `C-ARTIFACT` set has redundant layers
+
+`cmpmap.rs`'s module doc defines a `C-ARTIFACT` marker for items that "exist only
+to reproduce a serialised value that C emits as a side effect of its memory
+model", with `grep -rn C-ARTIFACT` as the index. Nine sites, six distinct items,
+all about `InvA`/`InvB`.
+
+Auditing them the way `dump_simplified` was audited — disable, measure — found
+the same shape of problem one layer up. **At least three mechanisms fold an
+inverted CmpMap's inversion into its structure, and two of them are provably
+redundant against the whole corpus:**
+
+- `apply_effective`'s structural branch in `reconstruct`
+  (`simplify.rs:3209-3232`). Forcing the plain `m.invert()` toggle leaves every
+  test green, including all 194 `wcsconv` byte comparisons.
+- the canonicalisation in `CmpMap`'s recorded-orientation fixup
+  (`cmpmap.rs:300-304`). Skipping it entirely also leaves everything green.
+
+The load-bearing layer is elsewhere, most likely the tree-wide canonicalisation
+at `mappings/mod.rs:614`, and was not isolated.
+
+**This was measured against a corpus that now demands the behaviour**, which the
+original "measured to have no effect" notes could not claim.
+`parcomp_inverted_reemitted` and `parcomp_inverted_nested_reemitted` were built
+for it: an inverted parallel CmpMap that must be re-emitted while the tree is
+rebuilt around it, because the trailing ZoomMaps merge and the parallel component
+merges with nothing. C's output pushes the inversion down — no CmpMap in the
+result carries `Invert`, and the flags appear as `InvA` on the components — so the
+behaviour is real, and something in the port reproduces it. Just not those two.
+
+Nothing was deleted. Removing a layer without knowing which one carries the
+behaviour would leave the remaining ones unexplained, and each of these was
+presumably added to fix a real dump mismatch. What the audit establishes is that
+the set is over-provisioned and that the notes attached to it understate the
+coverage: `cmpmap.rs:200`'s item is still marked "not independently measured".
+
+Next step: isolate the load-bearing layer by disabling
+`mappings/mod.rs:614` against the two `parcomp_*` fixtures, then delete the
+redundant two and re-point the `C-ARTIFACT` notes at the fixtures that demand
+what survives.
+
+**Why this matters beyond tidiness.** Every layer here was added to make a dump
+match, and the dump is the contract. A redundant layer is a place where a future
+correct change looks like a regression, which is how §10.1 cost three attempts:
+`RateMap::invert_snapshot` was described as existing "for serialization
+compatibility" and was therefore ignored by the simplify path that needed it.
 
 ### 10.14 Whether the port over-reaches C's nominate loop — RETRACTED
 
