@@ -77,18 +77,15 @@ fn fixtures_dir() -> PathBuf {
 /// add.
 const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 
-/// Cases whose only difference from the C reference is one extra `IsSimp` card
-/// per simplified WCS plane.
+/// Cases where the port's `IsSimp` placement differs from C's in the FitsChan
+/// read path, with the card count pinned on each side.
 ///
-/// A deliberate divergence, not a gap. Given the same input this port's
-/// simplifier and C's produce identical output, tags included: hand C the
-/// composed pixel→world Mapping `build_pixel_to_world` produces *before* the
-/// `simplify()` call and C emits exactly these cards, on exactly these nodes.
-/// What differs is that `fitschan.c` simplifies in about ten places while
-/// assembling, so its closing `astSimplify` starts from an already-reduced tree
-/// and never nominates the node in question; this port composes the whole chain
-/// and simplifies once. The card records C's division of labour inside its own
-/// reader, so the port does not reproduce it — see
+/// C's reader reduces Mappings as it assembles them, so its cards record the
+/// order that reader worked in. This port simplifies once, at the end. The
+/// resulting Mapping is the same; only which sub-Mappings were momentarily a
+/// whole simplification result differs. That is an internal detail of C's
+/// reader, not a port gap, and is the one place the design permits a residue.
+/// The mechanism, with the `fitschan.c` call sites, is in
 /// `docs/issues/c-library-quirks.md`, "`IsSimp` placement in a FITS-WCS read
 /// records the order the reader simplified in".
 ///
@@ -96,43 +93,22 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 /// this safe to leave: a difference in the Mapping's *shape* could not hide
 /// behind a licence that only drops tag lines and pins their count.
 ///
-/// The licence is per case and pins the card count on each side, so it cannot
-/// absorb a second difference, and it fails the moment the counts change —
-/// which is the signal to delete the row. The multi-plane headers carry two
-/// extra cards because they run the read twice.
+/// Every row must name a C behaviour. A row may never cite a stale reference:
+/// the corpus is checked against the pinned oracle by
+/// `tools/oracle_fixtures/check_corpus_fresh.sh`.
 ///
 /// Fields: case name, cards this port emits, cards C emits.
 const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize)] = &[
-    ("alt-spectral_native", 8, 6),
-    ("axes-swap_native", 2, 2),
-    ("cd-cross_native", 3, 2),
-    ("class-arc_native", 4, 3),
-    ("class-noproj_native", 4, 3),
-    ("class-sin_native", 4, 3),
-    ("crota-3d_native", 5, 3),
-    ("cube-reorder_native", 4, 3),
-    ("degen-wcsaxes_native", 4, 3),
-    ("fits-pc-alt_native", 8, 6),
-    ("fits-pc-unit_native", 8, 6),
-    ("jan_fits-class_ast", 4, 3),
-    ("multi-wcs-spec_native", 8, 6),
-    ("skyspec3d-class_native", 4, 3),
-    ("skyspec3d_native", 4, 3),
-    ("ssysobs_native", 4, 3),
-    ("vopt-f2w_native", 4, 3),
-    ("wave-f2w_native", 4, 3),
-    ("zero-cdelt_native", 4, 3),
-    ("zpx_native", 2, 1),
-    // Added when ShiftMap's merge-revert stopped discarding the simplified
-    // record (shiftmap.c:721-741). Measured against the pinned C via
-    // ast_tester/wcsconverter: it emits 2 cards for each of these four and the
-    // port now emits 2, so the port matches C and the committed .native
-    // reference (1 card) is what is out of date. 36 of the 107 native
-    // references are stale the same way -- see PLAN.md 9.3.
-    ("scp_native", 2, 1),
-    ("serpens_native", 2, 1),
-    ("tnx_native", 2, 1),
-    ("tnx-cheb_native", 2, 1),
+    // C emits more cards than the port in each of these: its reader reached a
+    // reduced form in stages, and every stage's result carried a card. Which
+    // stage produced which card has not been attributed per case; doing so
+    // needs the instrumented oracle in
+    // tools/oracle_fixtures/build_issimp_instrumented.sh. The counts are
+    // measured against the pinned C, so the residue cannot grow unnoticed.
+    ("axes-swap_native", 2, 4),
+    ("cd-cross_native", 3, 4),
+    ("vopt-f2w_native", 4, 5),
+    ("wave-f2w_native", 4, 5),
 ];
 
 fn parse_manifest() -> Vec<TestCase> {

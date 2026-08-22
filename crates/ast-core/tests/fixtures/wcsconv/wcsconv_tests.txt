@@ -26,6 +26,21 @@
 # Cases affected by either are marked astequal here. That mirrors the C
 # harness, which marks the same fixtures SKIP_STRING_COMPARE in its own
 # wcsconv_tests.txt and registers only the astEqual test for them.
+#
+# timj, multi-wcs, skyref, iraf-longpole, skyref-alt, tidy-offsets, tidy-pole,
+# offset-sref and azel were captured on Linux. Replaying them through the
+# pinned C on macOS reproduces every keyword and every IsSimp card, and differs
+# only in the last one or two digits of trig and matrix values -- tidy-pole's
+# M0_A reads 0.086291786736833131 here against ...173 there. That is platform
+# arithmetic, not staleness, so these references are correct and must not be
+# regenerated.
+# tools/oracle_fixtures/check_corpus_fresh.sh reports them as NUMERIC and
+# tolerates them.
+#
+# scp, tnx, tnx-cheb, ssysobs, skyspec3d-class and wave-f2w are Linux captures
+# too, and were additionally stale in their IsSimp cards. Their cards come from
+# the pinned C and their values remain the Linux ones, which is what
+# tools/oracle_fixtures/merge_card_hunks.py reconstructs.
 timj_fits-wcs       | timj.ast                       | timj.fits-wcs      | fits-wcs  | cdmatrix=1,FitsDigits=8          |
 timj_fits-iraf      | timj.ast                       | timj.fits-iraf     | fits-iraf | FitsDigits=8                     |
 timj_fits-aips      | timj.ast                       | timj.fits-aips     | fits-aips | FitsDigits=8                     |

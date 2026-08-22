@@ -40,8 +40,8 @@ counted per-case licence instead (`ISSIMP_PLACEMENT_LICENSED` in
 `test_simplify_regression.rs`). `cap_cmpmap_01` and `cap_cmpmap_04` keep theirs for
 an unrelated reason — the `InvA`/`InvB` quirk below, still open.
 
-**A residue, tracked separately.** Twenty wcsconv cases still differ by one
-`IsSimp` card. That turned out not to be a consequence of this fix at all — the
+**A residue, tracked separately.** Four wcsconv cases still differ in `IsSimp`
+card placement. That turned out not to be a consequence of this fix at all — the
 simplifiers agree — but of the order in which C's FITS reader simplifies. It has
 its own entry below: "`IsSimp` placement in a FITS-WCS read records the order the
 reader simplified in".
@@ -249,14 +249,20 @@ it by diffing.
 
 ## `IsSimp` placement in a FITS-WCS read records the order the reader simplified in
 
-**Status:** Open, and deliberately *not* mirrored in the Rust port. Twenty
-wcsconv cases are compared with the `IsSimp` cards dropped from both sides and
-both card counts pinned (`ISSIMP_PLACEMENT_LICENSED` in
+**Status:** Open, and deliberately *not* mirrored in the Rust port. Four wcsconv
+cases are compared with the `IsSimp` cards dropped from both sides and both card
+counts pinned (`ISSIMP_PLACEMENT_LICENSED` in
 `crates/ast-core/tests/test_wcsconv.rs`); every other card, `Invert` included,
 is byte-compared, and it matches. The Mapping tree, its structure, its
-attributes and its transforms are identical — the sole difference is that C
-emits one fewer `IsSimp` card, on one interior `CmpMap` per simplified WCS
-plane.
+attributes and its transforms are identical — the sole difference is which
+interior nodes carry the card, and C emits more of them: `axes-swap` 4 against
+the port's 2, `cd-cross` 4 against 3, `vopt-f2w` and `wave-f2w` 5 against 4.
+
+Twenty further cases were licensed here until the native corpus was refreshed
+against the pinned oracle. Their references predated upstream's per-orientation
+`astSetIsSimple` change, and once regenerated the port matched C on all twenty.
+`tools/oracle_fixtures/check_corpus_fresh.sh` is what keeps that from recurring
+unseen.
 
 **This is not a simplifier difference.** Given the same input the two
 simplifiers produce identical output, tags included. The probe: dump the

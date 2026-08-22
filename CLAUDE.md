@@ -397,6 +397,13 @@ The C ABI is **frozen**. Existing applications must keep linking.
   entries the port *mirrors* rather than merely records — a quirk fixed
   upstream turns a faithful mirror into a bug. Regenerate all affected
   corpora in one commit range. `PLAN.md` §8 tracks the pending sync.
+  After moving the pin, run `tools/oracle_fixtures/check_corpus_fresh.sh`.
+  Card-only drift means references predate the new pin and must be regenerated
+  from the oracle; numeric drift means they were captured on another platform
+  and must be left alone. A case reported as both is stale in its cards and
+  platform-drifted in its values: take the cards from a fresh capture and keep
+  the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
+  Regenerate in the same commit range as the pin move.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
   [`docs/superpowers/specs/2026-04-20-rust-port-design.md`](docs/superpowers/specs/2026-04-20-rust-port-design.md).
   This is *the* overarching port design — the one document that fixes the

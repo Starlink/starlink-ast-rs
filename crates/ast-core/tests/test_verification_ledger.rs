@@ -35,11 +35,13 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_wcsconv.rs",
         "ISSIMP_PLACEMENT_LICENSED",
-        24,
-        "one IsSimp card per simplified plane; C's reader reduces as it \
-         assembles and this port simplifies once, so the card records C's \
-         internal order. Counts pinned on both sides; every other card, \
-         Invert included, is byte-compared",
+        4,
+        "C's reader reduces Mappings as it assembles them, so its cards record \
+         the order that reader worked in; this port simplifies once, at the \
+         end. The Mapping is the same and only which sub-Mappings were \
+         momentarily a whole simplification result differs. Counts pinned on \
+         both sides against the pinned oracle; every other card, Invert \
+         included, is byte-compared",
     ),
     (
         "test_wcsconv.rs",

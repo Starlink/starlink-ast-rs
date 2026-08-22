@@ -328,9 +328,9 @@ places, and finding one by accident is no longer possible.
 
 | Gate | Cases | Relaxed | What the relaxation is |
 |---|---:|---:|---|
-| wcsconv (`test_wcsconv.rs`) | 193 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
-| wcsconv | 193 | 20 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers one card per simplified plane and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8) |
-| wcsconv | 193 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
+| wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
+| wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
+| wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 427 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
 | simplify regression | 427 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
 | simplify regression | 427 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
@@ -353,7 +353,11 @@ Movement at the `f6762005` sync: the wcsconv tag licence went from 5 cases to
 20, but narrowed from "drop every `IsSimp` and `Invert` line, unpaired" to "drop
 the `IsSimp` lines with both counts pinned" — `Invert` is byte-compared again,
 and the residue is one diagnosed card per plane rather than an undiagnosed
-count mismatch. `skip_string_compare` went from 7 cases to 5:
+count mismatch. Refreshing the corpus against that same pin then took the
+licence from 24 rows to 4: 20 of the 24 were pinned against references the
+pinned C no longer reproduced, and the port already matched C on them. Only the
+placement residue itself remains. The table row read 20 while the
+test-enforced ledger read 24; the ledger was right. `skip_string_compare` went from 7 cases to 5:
 `cap_matrixmap_03` became byte-exact outright, and `cap_cmpmap_03` /
 `cap_specmap_02` moved to the counted licence. The negative-fixture row went from 132 to
 131 when `neg_unitnormmap_nonunit_scale` was found to assert something C does not do —
@@ -455,14 +459,15 @@ copied across byte-identical.
 | KeyMap: four mirrored defects (`6d114495`, `a76964c7`, `b7135abc`, `f444583f`, `d8edc072`) | All un-mirrored — see the commit and the quirk entries |
 | `round()` rounding sweep (`e4e6376d`, `1199880a`, `e447556a`, `7b084bbf`) | Ported at the four sites the port has: the grism interference order, PermMap axis indices, the global-bounds threshold, and WCSAXES |
 
-**One divergence, recorded rather than closed.** Twenty wcsconv cases emit one
-extra `IsSimp` card per simplified WCS plane. It is not a simplifier difference:
+**One divergence, recorded rather than closed.** Four wcsconv cases differ from
+C in `IsSimp` card placement, C emitting more cards than the port in each. It is
+not a simplifier difference:
 hand C the composed pixel→world Mapping this port builds *before* it simplifies
 and C produces exactly this port's tags on exactly the same nodes. What differs
 is that `fitschan.c` simplifies in about ten places while assembling, so its
 closing `astSimplify` starts from an already-reduced tree, while this port
-composes the whole chain and simplifies once. The extra card is a record of C's
-own division of labour inside its reader.
+composes the whole chain and simplifies once. The extra cards are a record of
+C's own division of labour inside its reader.
 
 Not worth mirroring: the Mapping, its structure and its transforms are
 identical, and reproducing the card means shaping `build_pixel_to_world` around
@@ -556,22 +561,22 @@ What this establishes is narrower but still worth the gate: the byte comparison
 covers fields `astEqual` is designed to ignore, so it is the only check that
 will ever see a wrong uncertainty class.
 
-### 9.3 17 of the 107 native wcsconv references are stale
+### 9.3 24 of the 109 NATIVE-family wcsconv references were stale — DONE
 
 Verified by building `ast_tester/wcsconverter.c` against the pinned C and
-replaying every `native` manifest row *with its `attrs` field* — omitting the
-attributes produces false structural differences.
-75 of the 107 rows reproduce byte-exactly.
+replaying every NATIVE-family manifest row *with its `attrs` field* — omitting
+the attributes produces false structural differences.
+94 of the 109 rows now reproduce byte-exactly and the rest are Linux captures.
 
-**No keyword sequence differs in any of the 107.**
-Nothing about core WCS structure changed upstream; every difference is either
+**No keyword sequence differed in any of the 109.**
+Nothing about core WCS structure changed upstream; every difference was either
 an `IsSimp` card or a last-bits value.
 
 | bucket | count | disposition |
 |---|---|---|
-| `IsSimp` cards only | 17 | genuinely stale; regenerate anywhere; belongs upstream |
-| last-bits values *and* stale `IsSimp` | 6 | regenerate, keep only the card hunks |
-| last-bits values only, `IsSimp` correct | 9 | not stale — Linux captures; document, do not touch |
+| `IsSimp` cards only | 17 native + `jan.ast` | regenerated from the pinned oracle; written into the submodule tree for upstream |
+| last-bits values *and* stale `IsSimp` | 6 | cards taken from a fresh capture, values kept, via `tools/oracle_fixtures/merge_card_hunks.py` |
+| last-bits values only, `IsSimp` correct | 9 | not stale — Linux captures; documented in the manifest header, untouched |
 | structural | 0 | — |
 
 Mixed: `scp`, `tnx`, `tnx-cheb`, `ssysobs`, `skyspec3d-class`, `wave-f2w`.
@@ -587,11 +592,22 @@ Measured against the pinned C rather than the committed reference:
 | crota-3d | 5 | 3 | **5** |
 | cd-cross | 3 | 2 | 4 |
 
-Five of the six now match C exactly; `cd-cross` is one card closer.
-The six licence rows in `ISSIMP_PLACEMENT_LICENSED` are pinned against stale
-references and should be deleted, not adjusted, once the corpus is regenerated.
+**Outcome.** With the corpus refreshed, 20 of the 24 `ISSIMP_PLACEMENT_LICENSED`
+rows were pinned against references the pinned C no longer reproduced. They were
+deleted rather than adjusted, and the port matches C on all of them. Four
+survive — `axes-swap` (2 vs 4), `cd-cross` (3 vs 4), `vopt-f2w` (4 vs 5),
+`wave-f2w` (4 vs 5) — all in the FitsChan read path, all with C emitting more
+cards than the port. Which of C's ten mid-assembly `astSimplify` calls produced
+which card is not attributed per case; that needs
+`tools/oracle_fixtures/build_issimp_instrumented.sh`.
 
-Scheduled in
+`tools/oracle_fixtures/check_corpus_fresh.sh` is the standing gate. It scans
+every `native` and `ast` row, classifies cards and values independently so a
+stale card cannot hide behind platform drift, and is part of the upstream-sync
+protocol in `CLAUDE.md`. The FITS encodings carry no `IsSimp` record and are
+left to the byte comparison in `test_wcsconv.rs`.
+
+Specified in
 [`docs/superpowers/specs/2026-08-21-simplify-mapmerge-audit-design.md`](superpowers/specs/2026-08-21-simplify-mapmerge-audit-design.md)
 as W3.
 
