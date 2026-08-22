@@ -817,3 +817,33 @@ Mapping that only becomes mergeable once the PcdMap has become a UnitMap — a
 MatrixMap and the port leaves three elements. No corpus fixture builds a PcdMap
 with a zero coefficient, since a zero-distortion PcdMap is not a thing a real
 header produces.
+
+### 10.8 LutMap's linearity test uses a hardcoded tolerance where C reads an attribute
+
+`lutmap.c:516-633`'s `GetLinear` decides whether a lookup table is linear, and
+`MapMerge` replaces a linear LutMap with an equivalent WinMap
+(`lutmap.c:1140-1175`). C's test is:
+
+- `eps = astGetLutEpsilon( this )`, an attribute defaulting to `DBL_EPSILON`;
+- `tol1 = |hi - lo| * eps`, over the table's actual largest and smallest values;
+- `tol2 = |interp| * eps` at each interior element;
+- accept when `|lut[i] - interp| <= 2 * max(tol1, tol2)`.
+
+The port's `linear_equivalent` (`lutmap.rs:116-125`) uses a hardcoded `1e-10`,
+adds a `1e-20` floor that has no analogue in C, and forms one tolerance from
+`|lut[0]| + |lut[n-1]|` instead of the table's extremes and the interpolated
+value. It has no `LutEpsilon` attribute at all.
+
+`1e-10` against `DBL_EPSILON` is roughly six orders of magnitude looser, so the
+port declares tables linear that C does not and replaces them with WinMaps where
+C keeps the LutMap. That is a shape difference in the simplified tree, not a
+numeric one.
+
+Closing it means porting `GetLinear` as it stands and adding the `LutEpsilon`
+attribute, whose setter is also one of the eleven clear-on-set sites (§9.2).
+
+What would expose it: a LutMap whose table departs from linear by between
+`DBL_EPSILON` and `1e-10` relative — a table computed from a nearly-linear
+function, which is what a real spectral LUT looks like. Serialise the simplified
+result and compare the class, not the transform: the two agree to well inside any
+transform tolerance and differ in whether a LutMap or a WinMap is written.
