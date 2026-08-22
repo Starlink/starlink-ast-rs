@@ -1,0 +1,184 @@
+//! Enforce that every class in the audit universe has a `MapMerge` /
+//! `Simplify` checklist, and that no row in one is left without a verdict.
+//!
+//! A prose audit cannot say whether it is finished. This one can: a class with
+//! no checklist fails, and so does a row whose verdict is outside the closed
+//! set. See `docs/audits/mapmerge/README.md` for the format.
+
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+/// Modules under `src/mappings/` that are helpers, not Mapping classes.
+const MAPPING_HELPERS: &[&str] = &[
+    "mod",
+    "simplify",
+    "helpers",
+    "matrix_merge",
+    "winmap_merge",
+    "linear_approx",
+    "map_box",
+    "polymap_simd",
+    "rate",
+];
+
+/// The Region trait methods this audit covers. A region module that overrides
+/// any of them takes part in `MapMerge` or `Simplify` and needs a checklist;
+/// `RegPins` and `RegBaseMesh` are extension points too, but they answer a
+/// different question and are audited elsewhere.
+const REGION_SEAMS: &[&str] = &["fn map_merge", "fn simplify_remapped", "fn get_def_unc"];
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("crates/ast-core has two ancestors")
+        .to_path_buf()
+}
+
+fn audit_dir() -> PathBuf {
+    repo_root().join("docs/audits/mapmerge")
+}
+
+/// Module stems in a source directory, in sorted order.
+fn module_stems(dir: &Path) -> Vec<String> {
+    let mut stems = Vec::new();
+    for entry in std::fs::read_dir(dir).expect("source dir readable") {
+        let path = entry.expect("readable entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .expect("utf-8 stem");
+        stems.push(stem.to_string());
+    }
+    stems.sort();
+    stems
+}
+
+/// Every module that must carry a checklist, as checklist file stems.
+///
+/// Derived from the source tree rather than listed, so a class cannot be added
+/// without its checklist being demanded.
+fn audit_universe() -> BTreeSet<String> {
+    let mut universe = BTreeSet::new();
+
+    let mappings = repo_root().join("crates/ast-core/src/mappings");
+    for stem in module_stems(&mappings) {
+        if MAPPING_HELPERS.contains(&stem.as_str()) {
+            continue;
+        }
+        universe.insert(stem);
+    }
+
+    // `regions/mod.rs` carries the generic `Region::Simplify` driver, so it is
+    // in the universe whatever it overrides.
+    let regions = repo_root().join("crates/ast-core/src/regions");
+    for stem in module_stems(&regions) {
+        let source = std::fs::read_to_string(regions.join(format!("{stem}.rs")))
+            .expect("region module readable");
+        if stem == "mod" || REGION_SEAMS.iter().any(|seam| source.contains(seam)) {
+            universe.insert(format!("region_{stem}"));
+        }
+    }
+
+    universe
+}
+
+fn checklist_path(stem: &str) -> PathBuf {
+    audit_dir().join(format!("{stem}.md"))
+}
+
+/// The verdict cell of every table row in a checklist.
+fn verdicts(text: &str) -> Vec<String> {
+    text.lines()
+        .filter(|l| l.trim_start().starts_with('|'))
+        .filter_map(|l| {
+            let cells: Vec<&str> = l.trim().trim_matches('|').split('|').collect();
+            if cells.len() < 5 {
+                return None;
+            }
+            let first = cells[0].trim();
+            // Skip the header row and the `|---|` separator.
+            if first.parse::<u32>().is_err() {
+                return None;
+            }
+            Some(cells[4].trim().to_string())
+        })
+        .collect()
+}
+
+fn verdict_is_valid(v: &str) -> bool {
+    v == "ported"
+        || (v.starts_with("n/a:") && v.len() > "n/a:".len() + 1)
+        || (v.starts_with("gap: PLAN.md ") && v.len() > "gap: PLAN.md ".len() + 1)
+}
+
+#[test]
+fn every_audited_class_has_a_checklist() {
+    let missing: Vec<String> = audit_universe()
+        .into_iter()
+        .filter(|stem| !checklist_path(stem).is_file())
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "these classes have no MapMerge/Simplify checklist under \
+         docs/audits/mapmerge/. Write one per docs/audits/mapmerge/README.md, \
+         or add the module to the helper list if it is not a class: {missing:?}"
+    );
+}
+
+#[test]
+fn every_checklist_row_has_a_verdict() {
+    let mut bad = Vec::new();
+    for stem in audit_universe() {
+        let path = checklist_path(&stem);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue; // reported by the other test
+        };
+        let rows = verdicts(&text);
+        if rows.is_empty() {
+            bad.push(format!("{stem}: checklist has no table rows"));
+            continue;
+        }
+        for (i, v) in rows.iter().enumerate() {
+            if !verdict_is_valid(v) {
+                bad.push(format!("{stem} row {}: invalid verdict {v:?}", i + 1));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "a verdict must be `ported`, `n/a: <reason>`, or \
+         `gap: PLAN.md <section>`: {bad:#?}"
+    );
+}
+
+/// No checklist may sit in the directory without a class in the universe that
+/// claims it. A stale file is a checklist nothing audits any more.
+#[test]
+fn no_checklist_is_orphaned() {
+    let universe = audit_universe();
+    let orphans: Vec<String> = module_stems(&audit_dir())
+        .into_iter()
+        .chain(
+            std::fs::read_dir(audit_dir())
+                .expect("audit dir readable")
+                .filter_map(|e| {
+                    let path = e.expect("readable entry").path();
+                    if path.extension().and_then(|x| x.to_str()) != Some("md") {
+                        return None;
+                    }
+                    let stem = path.file_stem()?.to_str()?.to_string();
+                    (stem != "README").then_some(stem)
+                }),
+        )
+        .filter(|stem| !universe.contains(stem))
+        .collect();
+    assert!(
+        orphans.is_empty(),
+        "these checklists name no module in the audit universe; the class was \
+         renamed or removed and the checklist was left behind: {orphans:?}"
+    );
+}
