@@ -874,3 +874,70 @@ simplified and serialised. C writes a TimeMap with that step gone — a UnitMap 
 it was the only step — and the port writes it with the step present. The
 transform agrees either way, so only a byte comparison of the dump shows it. No
 corpus fixture builds an MJD-to-JD conversion with a cancelling offset.
+
+### 10.10 SwitchMap's inversion normalisation is fused with its child simplification
+
+`switchmap.c:1052-1100` makes two things alternatives of one nomination:
+
+```c
+if( ( *invert_list )[ where ] ) {
+   /* swap the selectors, invert the route Mappings, replace, return where */
+} else {
+   /* simplify each encapsulated Mapping */
+}
+```
+
+The normalisation returns `where`, so the nominate loop comes back and simplifies
+the children on a later pass, over a different object.
+
+The port fuses them. `normalize_inverted` (`switchmap.rs:228-247`) performs C's
+swap-and-invert faithfully, but it is called from the public `simplify()` entry
+point (`mappings/mod.rs:607-613`) and the very next line calls `simplified()` on
+the result. `SwitchMap::simplified` keeps `self.inverted`
+(`switchmap.rs:621-623`) and only recurses into the children.
+
+Two consequences:
+
+1. The intermediate normalised SwitchMap is never the whole result of a
+   simplification, so it never carries the record `astSimplify_` stamps on
+   whatever it returns. This is the SwitchMap half of the `IsSimp` under-tagging.
+2. The normalisation is only reachable from the public entry point, not from
+   `map_merge`. An inverted SwitchMap nominated from inside a list keeps its
+   inversion, where C replaces it with the equal forward form.
+
+What would expose it: consequence 2 is exposed by any series list holding an
+inverted SwitchMap that is not the whole Mapping — compare the serialised tree,
+which in C holds a forward SwitchMap with swapped selectors and in the port an
+inverted one. Consequence 1 is exposed by the `IsSimp` card count on the same
+fixture.
+
+Closing it means giving `map_merge` C's either/or shape: normalise and return on
+an inverted nominee, recurse into the children only on a forward one.
+
+### 10.11 TranMap's `map_merge` reaches one of C's four self-simplification cases
+
+`tranmap.c:834-897` gives a nominated TranMap four outcomes: normalise an
+inverted TranMap to the equal forward form and stop; simplify the two component
+Mappings; collapse a TranMap whose components are inverses of each other to one
+of them; or fall through to the neighbour merge.
+
+All four are implemented in `TranMap::simplified` (`tranmap.rs:256-324`). But
+`TranMap::map_merge` (`tranmap.rs:326-361`) implements only the component
+simplification, inline, and never calls `simplified()`. It also preserves
+`self.inverted` on the rebuild (`tranmap.rs:349-351`).
+
+A TranMap nominated from inside a list therefore keeps its inversion where C
+replaces it, and is not collapsed when its two components are inverses.
+
+The inversion case additionally has the fused shape of §10.10: `tranmap.rs:269`
+returns `normalized.simplified()`, so the normalised TranMap is never the whole
+result of a simplification on its own and never carries the record C stamps on
+it.
+
+What would expose it: a series list holding an inverted TranMap that is not the
+whole Mapping. C's serialised tree holds a forward TranMap with the components
+swapped; the port's holds an inverted one. Separately, a `TranMap(m, m)` inside a
+list, which C replaces with `m` and the port leaves as a TranMap.
+
+Closing it means routing `map_merge` through `simplified()` with C's either/or
+ordering, the same change §10.10 needs for SwitchMap.
