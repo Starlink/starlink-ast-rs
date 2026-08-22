@@ -54,15 +54,14 @@ time a CmpMap is nominated the list is already flat. The reduction is the same;
 what differs is that C's version reports a change and restarts the loop, while
 the port's happens once up front.
 
-## Rows 18 to 27 — only the PermMap side of the swap exists
+## Rows 18 to 27 — the swap exists, on the other nominee
 
-C implements this swap twice, once for each nominee: here, when the CmpMap is
-nominated and the PermMap is its lower neighbour, and again in
-`permmap.c::MapMerge` when the PermMap is nominated. The port has only the
-second, as `perm_map_merge` (`simplify.rs:1010-1030`), which looks at the
-`(where_, where_ + 1)` pair alone. Row 22 is marked ported because the port
-borrows exactly this section's constant-transform arithmetic, cited at
-`simplify.rs:1002`.
+C has this swap only here, on the CmpMap side: `permmap.c` contains no reference
+to `CmpMap`, so a nominated PermMap never attempts it. The port is the mirror
+image — no swap branch in `CmpMap::map_merge`, and the swap in `perm_map_merge`
+(`simplify.rs:1010-1030`) firing when a PermMap is nominated. Row 22 is marked
+ported because the port borrows exactly this section's constant-transform
+arithmetic, cited at `simplify.rs:1002`.
 
 Because the nominate loop offers every element in turn, a `[PermMap, CmpMap]`
 pair does get swapped — when the PermMap's turn comes, not the CmpMap's. What

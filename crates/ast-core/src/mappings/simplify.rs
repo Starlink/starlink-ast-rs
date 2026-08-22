@@ -990,8 +990,15 @@ pub(crate) fn zoom_map_merge(
     Some(imap1)
 }
 
-/// `map_merge` for a nominated `PermMap`, mirroring the PermMap-past-parallel
-/// -CmpMap swap branch of C `permmap.c::MapMerge` (741).
+/// `map_merge` for a nominated `PermMap`, performing the CmpMap-past-PermMap
+/// swap of C `cmpmap.c::MapMerge` (1816-2119).
+///
+/// C runs that swap on the other element: it fires when the *CmpMap* is
+/// nominated and the PermMap is its lower neighbour, and `permmap.c` never
+/// mentions `CmpMap` at all. Here it fires when the PermMap is nominated and
+/// the CmpMap is its upper neighbour. Those are the same pair, so the nominate
+/// loop reaches the swap either way, but the index reported differs and so does
+/// where the loop resumes -- see PLAN.md §10.4.
 ///
 /// When a nominated PermMap immediately precedes a parallel CmpMap in a series
 /// sequence and has a "block-swap" structure that aligns with the CmpMap's

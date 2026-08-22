@@ -747,23 +747,30 @@ every `simplify_mapping` result — which is `astSimplify_`'s literal contract �
 and deferring leaf reduction entirely. They are recorded in
 `test_simplify_regression.rs` and must not be retried without a new reason.
 
-### 10.4 Only the PermMap side of the CmpMap/PermMap swap is ported
+### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
 
-C implements the swap of a series CmpMap past an adjacent PermMap twice, once
-per nominee: `cmpmap.c:1816-2119` runs when the CmpMap is nominated and the
-PermMap is its lower neighbour, and `permmap.c::MapMerge` at line 741 runs when
-the PermMap is nominated. The two are mirror halves of one rule, because
-`MapMerge` is only ever called on the nominated element.
+`cmpmap.c:1816-2119` swaps a series CmpMap in front of an adjacent PermMap. It
+runs when the **CmpMap** is nominated and the PermMap is its lower neighbour.
+There is no counterpart on the PermMap side: `permmap.c` contains no reference to
+`CmpMap` at all, so a nominated PermMap never attempts this.
 
-The port has the second only, as `perm_map_merge` (`simplify.rs:1010-1030`),
-which examines the `(where_, where_ + 1)` pair. It does borrow this section's
-constant-transform arithmetic, cited at `simplify.rs:1002`.
+The port has it the other way round. `CmpMap::map_merge` has no swap branch, and
+the swap lives in `perm_map_merge` (`simplify.rs:1010-1030`), which fires when a
+**PermMap** is nominated and looks at the `(where_, where_ + 1)` pair. The
+arithmetic is C's — the constant-transform maths is cited to `cmpmap.c:1929-2041`
+at `simplify.rs:1002` — but the trigger is the opposite element.
 
-The reduction is still reachable: the nominate loop offers every element in
-turn, so a `[PermMap, CmpMap]` pair is swapped when the PermMap's turn comes.
-What differs is the index the merge reports, and therefore where the loop
-resumes — which is the H2 hazard, a structurally different route to the same
-Mapping, surfacing wherever something consumes the structure.
+Both find the swap, because the nominate loop offers every element in turn. What
+differs is which nomination performs it, hence the index reported and where the
+loop resumes. That is the H2 hazard: a structurally different route to the same
+Mapping, surfacing wherever something consumes the structure rather than the
+Mapping.
+
+It also means the two sides disagree about *which pair*. C looks behind the
+nominated CmpMap; the port looks ahead of the nominated PermMap. Those are the
+same pair, so a `[PermMap, CmpMap]` run is covered either way — but a nominated
+CmpMap whose PermMap neighbour has already been passed by the cursor is reached
+in C and not here.
 
 What would expose it: a series list holding `[A, PermMap, parallel CmpMap, B]`
 where `A` and `B` can each merge with what the swap brings next to them, so the
@@ -771,3 +778,42 @@ resume point decides which merge happens first. Replay it through the C oracle
 and compare the `IsSimp` cards and the tree shape, not just `astEqual`.
 
 This entry replaces the plan's §10.4, which duplicated §9.2.
+
+### 10.6 A parallel UnitMap with no UnitMap neighbour keeps its Invert flag
+
+`unitmap.c:579-587`: when a nominated UnitMap is in parallel and has no adjacent
+UnitMap to coalesce with, C still clears its Invert flag if it is set, and
+reports that as a change. The port's `UnitMap::map_merge` handles the lone-UnitMap
+case (`unit.rs:108-118`) and the series case, and otherwise falls through to
+`default_map_merge`, whose pairwise hook returns `None` when there is no UnitMap
+neighbour. Nothing clears the flag.
+
+An inverted UnitMap is still the identity, so no transform is affected. What is
+affected is the dump: the port writes `Invert = 1` on a UnitMap where C, having
+cleared it during the merge, writes nothing.
+
+What would expose it: a parallel CmpMap whose components are an inverted UnitMap
+and something that is not a UnitMap, simplified and serialised. The corpus has
+parallel UnitMaps only next to each other, where the coalescing path clears the
+flag as a side effect of building the replacement, so the case has never arisen.
+
+### 10.7 PcdMap's zero-distortion reduction is unreachable from the nominate loop
+
+`pcdmap.c:1417-1433` opens `MapMerge` by replacing a PcdMap whose distortion
+coefficient is zero with a UnitMap, before any neighbour is considered. The port
+has that logic, in `PcdMap::simplified` (`pcdmap.rs:225-236`), but
+`pcd_map_merge` (`simplify.rs:2719-2733`) tries the swap and then
+`default_map_merge`, and neither consults `simplified()`. A zero-distortion
+PcdMap nominated from inside a list therefore stays a PcdMap.
+
+This is the same shape as §10.1: the class reduction exists, and the seam that
+would reach it from the nominate loop does not. `self_reduce_map_merge`
+(`simplify.rs:1137`) is that seam; five classes use it, and PcdMap and RateMap
+do not.
+
+What would expose it: a series list holding a zero-distortion PcdMap next to a
+Mapping that only becomes mergeable once the PcdMap has become a UnitMap — a
+`[MatrixMap, PcdMap(disc=0), MatrixMap]` run, where C reduces to a single
+MatrixMap and the port leaves three elements. No corpus fixture builds a PcdMap
+with a zero coefficient, since a zero-distortion PcdMap is not a thing a real
+header produces.
