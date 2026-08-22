@@ -228,19 +228,23 @@ impl Drop for SimplifyGuard {
     }
 }
 
-/// Trace the simplify machinery, mirroring
+/// Trace the simplify machinery as `tracing` events, mirroring
 /// `tools/oracle_fixtures/build_simplify_trace.sh`'s instrumentation of the C
-/// library, so the two routes through a Mapping can be diffed line for line.
+/// library so the two routes through a Mapping can be diffed line for line.
 ///
-/// Enabled by setting `AST_TRACE`; the flag is read once, so a disabled build
-/// costs one relaxed atomic load per call and nothing else.
+/// Everything here compiles to nothing without the `tracing` feature, following
+/// [`crate::AstError`]'s pattern. The field names match the C trace's, so the
+/// same `awk` recipe reads both — see `tools/oracle_fixtures/README.md`.
+///
+/// These sit in the decomposition and merge machinery, not in any `transform`
+/// path, so the hot-path constraint in `CLAUDE.md` is unaffected.
 pub(crate) mod trace {
     use super::Mapping;
-    use std::sync::OnceLock;
 
     /// Class name for a trace line. `Serializable::class_name` is private to
     /// the serial module, so the classes the traces mention are matched here and
-    /// anything else prints as its parallel/series shape or `?`.
+    /// anything else prints as `?`.
+    #[cfg(feature = "tracing")]
     fn class_of(m: &dyn Mapping) -> &'static str {
         use crate::mappings::{
             CmpMap, Composition, GrismMap, LutMap, MatrixMap, NormMap, PcdMap, PermMap, RateMap,
@@ -260,71 +264,60 @@ pub(crate) mod trace {
             };
         }
         name!(
-            UnitMap,
-            ZoomMap,
-            WinMap,
-            ShiftMap,
-            MatrixMap,
-            PermMap,
-            PcdMap,
-            LutMap,
-            SpecMap,
-            SlaMap,
-            TimeMap,
-            SphMap,
-            WcsMap,
-            GrismMap,
-            NormMap,
-            UnitNormMap,
-            RateMap,
-            TranMap,
+            UnitMap, ZoomMap, WinMap, ShiftMap, MatrixMap, PermMap, PcdMap, LutMap, SpecMap,
+            SlaMap, TimeMap, SphMap, WcsMap, GrismMap, NormMap, UnitNormMap, RateMap, TranMap,
             SwitchMap,
         );
         "?"
     }
 
-    fn on() -> bool {
-        static ON: OnceLock<bool> = OnceLock::new();
-        *ON.get_or_init(|| std::env::var_os("AST_TRACE").is_some())
-    }
-
-    /// `SIMPLIFY-ENTER`: a per-class reduction is about to run.
+    /// A per-class reduction is about to run. C's `SIMPLIFY-ENTER`.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
     pub(crate) fn simplify_enter(site: &str, m: &dyn Mapping) {
-        if on() {
-            eprintln!(
-                "PORT SIMPLIFY-ENTER {} issimp={} inv={} nin={} nout={} site={site}",
-                class_of(m),
-                u8::from(m.has_been_simplified()),
-                u8::from(m.is_inverted()),
-                m.nin(),
-                m.nout(),
-            );
-        }
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            class = class_of(m),
+            issimp = u8::from(m.has_been_simplified()),
+            inv = u8::from(m.is_inverted()),
+            nin = m.nin(),
+            nout = m.nout(),
+            site,
+            "SIMPLIFY-ENTER",
+        );
     }
 
-    /// `MAPMERGE`: a class is being nominated.
+    /// A class is being nominated. C's `MAPMERGE`.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
     pub(crate) fn map_merge(m: &dyn Mapping, where_: usize, series: bool, len: usize) {
-        if on() {
-            eprintln!(
-                "PORT MAPMERGE {} where={where_} series={} nmap={len} issimp={} inv={}",
-                class_of(m),
-                u8::from(series),
-                u8::from(m.has_been_simplified()),
-                u8::from(m.is_inverted()),
-            );
-        }
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            class = class_of(m),
+            where_,
+            series = u8::from(series),
+            nmap = len,
+            issimp = u8::from(m.has_been_simplified()),
+            inv = u8::from(m.is_inverted()),
+            "MAPMERGE",
+        );
     }
 
-    /// `MAPLIST`: a decomposition is being requested.
+    /// A decomposition is being requested. C's `MAPLIST`, the highest-volume of
+    /// the three, so it sits a level lower.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
     pub(crate) fn map_list(m: &dyn Mapping, series: bool, inv: bool) {
-        if on() {
-            eprintln!(
-                "PORT MAPLIST {} series={} invert={}",
-                class_of(m),
-                u8::from(series),
-                u8::from(inv),
-            );
-        }
+        #[cfg(feature = "tracing")]
+        tracing::trace!(
+            target: "ast::simplify",
+            class = class_of(m),
+            series = u8::from(series),
+            invert = u8::from(inv),
+            "MAPLIST",
+        );
     }
 }
 

@@ -45,7 +45,29 @@ fn as_any_object(m: &dyn Mapping) -> Option<AnyObject> {
     None
 }
 
+/// Print the `ast::simplify` events the `tracing` feature emits, filtered by
+/// `RUST_LOG` (default `ast::simplify=debug`, which gives the nomination and
+/// per-class-reduction lines without the higher-volume decomposition ones).
+///
+/// A library never installs a subscriber, so an example that wants the events
+/// has to do it.
+#[cfg(feature = "tracing")]
+fn install_tracing() {
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("ast::simplify=debug"));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .without_time()
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .init();
+}
+
 fn main() {
+    #[cfg(feature = "tracing")]
+    install_tracing();
+
     let path = std::env::args().nth(1).expect("usage: simp_one <file.map>");
     let text = std::fs::read_to_string(&path).expect("read fixture");
     let obj = from_native_string(&text).expect("parse fixture");

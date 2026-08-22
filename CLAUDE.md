@@ -71,7 +71,8 @@ cargo bench -p ast-oracle-bench              # tier 5: Rust-vs-C performance
 Useful flags during development:
 
 ```shell
-cargo test -p ast-core --features tracing    # emit AstError as tracing events
+cargo test -p ast-core --features tracing    # emit AstError and simplify
+                                             # events as tracing events
 cargo +nightly miri test -p ast-core         # ub check on hot paths
 ```
 

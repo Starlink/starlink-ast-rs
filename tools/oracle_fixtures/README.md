@@ -130,19 +130,29 @@ patches the copy.
 
 ## Diffing the port against C
 
-`build_simplify_trace.sh` instruments the C library; `simplify::trace` in
-`crates/ast-core/src/mappings/simplify.rs` does the same for the port, gated on
-the same `AST_TRACE` variable and reading it once so a normal build pays nothing.
+`build_simplify_trace.sh` instruments the C library. The port emits the same
+three events as `tracing` events under its `tracing` feature, from
+`simplify::trace` in `crates/ast-core/src/mappings/simplify.rs`, on the target
+`ast::simplify`. The field names match the C trace's, so one `awk` recipe reads
+both.
 
 ```shell
 AST_TRACE=1 /tmp/ast-trace/gen_simp in.map /dev/null 2> c.txt
-AST_TRACE=1 cargo run -q --example simp_one -- in.map 2> port.txt >/dev/null
-grep MAPMERGE c.txt    | awk '{print $2, $3, $4, $5}' > c_mm.txt
-grep MAPMERGE port.txt | awk '{print $3, $4, $5, $6}' > p_mm.txt
+cargo run -q --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
+
+grep MAPMERGE c.txt    | awk '{print $2, $3, $4, $5}'          > c_mm.txt
+grep MAPMERGE port.txt | sed 's/.*class="\([^"]*\)".*where_=\([0-9]*\) series=\([0-9]*\) nmap=\([0-9]*\).*/\1 where=\2 series=\3 nmap=\4/' > p_mm.txt
 diff c_mm.txt p_mm.txt
 ```
 
-The port prefixes its lines `PORT ` and tags `SIMPLIFY-ENTER` with the call site,
-so a divergence names the function to look at. This is how PLAN.md §10.3 was
-narrowed from "CmpMap under-tags" to "the port makes 149 nominations where C
-makes 96".
+`RUST_LOG` selects the level: `ast::simplify=debug` (the default the example
+installs) gives nominations and per-class reductions; `ast::simplify=trace` adds
+the higher-volume decomposition lines, matching C's `MAPLIST`.
+`SIMPLIFY-ENTER` carries a `site` field naming the call site, so a divergence
+names the function to look at.
+
+This is how PLAN.md §10.3 was narrowed from "CmpMap under-tags" to "the port
+makes 149 nominations where C makes 96".
+
+Both sides are permanent. Re-adding instrumentation each time a question of this
+shape came up is what let three wrong diagnoses of §10.14 stand.
