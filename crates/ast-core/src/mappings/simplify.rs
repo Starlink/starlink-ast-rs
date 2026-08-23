@@ -321,6 +321,21 @@ pub(crate) mod trace {
         );
     }
 
+    /// What a nomination returned: the index it modified, or nothing. C's
+    /// `MAPMERGE-RESULT`. Distinguishes a productive nomination from one that
+    /// declined, which is the difference between churn and progress.
+    #[inline]
+    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+    pub(crate) fn map_merge_result(m: &dyn Mapping, result: Option<usize>) {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(
+            target: "ast::simplify",
+            class = class_of(m),
+            result = result.map_or(-1i64, |i| i as i64),
+            "MAPMERGE-RESULT",
+        );
+    }
+
     /// A decomposition is being requested. C's `MAPLIST`, the highest-volume of
     /// the three, so it sits a level lower.
     #[inline]
@@ -789,6 +804,7 @@ impl MergeCtx {
         let nominee = sub.list[sub_index].0.clone_box();
         trace::map_merge(nominee.as_ref(), sub_index, series, sub.len());
         let modified = nominee.map_merge(&mut sub, sub_index, series);
+        trace::map_merge_result(nominee.as_ref(), modified);
         self.list.extend(sub.list);
         self.resync_frozen();
         modified
@@ -1561,6 +1577,7 @@ fn run_nominate_loop(
             let nominee = ctx.list[nominated].0.clone_box();
             trace::map_merge(nominee.as_ref(), nominated, series, ctx.len());
             let modified = nominee.map_merge(ctx, nominated, series);
+            trace::map_merge_result(nominee.as_ref(), modified);
 
             // Move on to nominate the next mapping (C `nominated++`).
             nominated += 1;

@@ -821,54 +821,53 @@ same delegation.
 No corpus fixture holds a linear ChebyMap, which is why neither answer has been
 needed yet.
 
-### 10.3 CmpMap under-tags four fixtures — the port runs more reductions than C
+### 10.3 The four under-tagged fixtures are under-*merged* — it is WinMap
 
 `cap_cmpmap_01` (16 vs C's 18), `cap_cmpmap_03` (6 vs 7), `cap_cmpmap_04`
-(15 vs 18) and `cap_specmap_02` (7 vs 8) each emit fewer `IsSimp` cards than C.
+(15 vs 18) and `cap_specmap_02` (7 vs 8) emit fewer `IsSimp` cards than C. The
+title of this entry was wrong for a long time: the cards are missing because the
+*reductions* are missing, not the stamps.
 
-**The missing card is on an interior node C returned from a nested
-`astSimplify`.** For `cap_specmap_02` the diff is one line: C tags the interior
-series CmpMap holding the 4-step SpecMap (`cap_specmap_02.simp:99`) and the port
-leaves it bare. The C trace shows that node entered at `issimp=0`, returned, then
-re-entered `issimp=1` and walled — `astSimplify_` stamps whatever `Simplify`
-returns (`mapping.c:24763`).
+Both engines are instrumented — `build_simplify_trace.sh` for C,
+`simplify::trace` behind the `tracing` feature for the port — and log each
+nomination and what it returned. On `cap_specmap_02`:
 
-**Blanket stamping is not the fix.** Making `CmpMap::simplified` stamp its result
-moves `cap_cmpmap_04` one card closer (15 → 16) and gives `cap_zoommap_01` a card
-C does not emit, taking simplify serialisation failures from 7 to 8. Measured and
-reverted.
+| | C | port |
+|---|---:|---:|
+| nominations | 96 | 149 |
+| **productive** | **23** | **15** |
+| declined | 73 | 134 |
 
-**Why, now measured on both sides.** `simplify::trace` instruments the port to
-mirror `build_simplify_trace.sh`'s instrumentation of the C library, so the two
-routes through one Mapping diff line for line. On `cap_specmap_02`:
+C's nominations succeed 24% of the time, the port's 10%. The port nominates 53
+more times and merges 8 fewer. Broken down by the class nominated:
 
-| | nominations |
-|---|---:|
-| C | 96 |
-| port | 149 |
+| class | C productive | port productive |
+|---|---:|---:|
+| **WinMap** | **10** | **2** |
+| CmpMap | 5 | 5 |
+| UnitMap | 3 | 3 |
+| ShiftMap | 3 | 3 |
+| ZoomMap | 1 | 1 |
+| SpecMap | 1 | 1 |
 
-Whole sub-sequences repeat. The pair `SpecMap where=0 series=1 nmap=2` /
-`ZoomMap where=1 series=1 nmap=2` is nominated **16 times each** in the port; C's
-busiest nomination on the same fixture happens 7 times, and C nominates that
-SpecMap/ZoomMap pair at `nmap=3` only 4 times.
+**The whole deficit is WinMap.** Every other class agrees exactly. C's
+`WinMap::MapMerge` is productive ten times on this fixture and the port's twice.
 
-So the port is not under-tagging a reduction it performs; it performs *more*
-reductions than C and tags a different set of intermediate results. That is why
-stamping more nodes over-tags in one place while under-tagging in another — the
-two engines do not agree on how many times a subtree is reduced, so no stamping
-rule can align the counts.
+That also explains why stamping harder cannot work: blanket-stamping
+`CmpMap::simplified` moved `cap_cmpmap_04` one card closer *and* gave
+`cap_zoommap_01` a card C does not emit. It stamps nodes the port produced and C
+did not, while still missing the ones C produced and the port did not.
 
-**Next step.** Find why the port re-nominates. The candidates are the merge
-loop's termination condition and the fact that a rebuilt CmpMap does not carry
-the `IsSimp` bit C's clone would, so a subtree already reduced is offered again.
-The traces for a single fixture are small enough to walk: run
-`build_simplify_trace.sh` for C, `AST_TRACE=1 cargo run --example simp_one` for
-the port, and align on the first divergence — C's
-`WinMap where=0 series=1 nmap=4`, which the port never nominates.
+**Next step: WinMap.** `winmap.c:1070-1865` is the longest `MapMerge` in the
+library and `docs/audits/mapmerge/winmap.md` marks all 36 of its rows `ported`.
+One of those verdicts is wrong, or the port's WinMap declines where C accepts.
+The traces name the pairs: filter both for `MAPMERGE WinMap` with its
+`MAPMERGE-RESULT`, and the eight nominations C accepts and the port declines are
+listed directly. That is a diff, not an investigation.
 
-Seven approaches to `cap_cmpmap_03` have now been measured and reverted, six
-recorded in `test_simplify_regression.rs` plus the blanket stamp above. Stop
-signal 3 applies: no eighth without the re-nomination question answered.
+Seven approaches to `cap_cmpmap_03` have been measured and reverted, six recorded
+in `test_simplify_regression.rs` plus the blanket stamp above. None touched
+WinMap.
 
 ### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
 

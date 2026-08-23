@@ -63,10 +63,19 @@ i = t.index(a2)
 j = t.index("int result = -1;", i)
 end = t.index("\n", j) + 1
 t = (t[:end]
-     + '   ast__trace( "MAPMERGE %s where=%d series=%d nmap=%d issimp=%d inv=%d",\n'
-       '               astGetClass( this ), where, series, *nmap,\n'
+     + '   const char *ast__cls = astGetClass( this );\n'
+       '   ast__trace( "MAPMERGE %s where=%d series=%d nmap=%d issimp=%d inv=%d",\n'
+       '               ast__cls, where, series, *nmap,\n'
        '               astGetIsSimple( this ), astGetInvert( this ) );\n'
      + t[end:])
+
+# astMapMerge_: also log what the nomination returned, so a productive
+# nomination can be told from one that declined.
+i = t.index(a2)
+j = t.index("   return result;", i)
+t = (t[:j]
+     + '   ast__trace( "MAPMERGE-RESULT %s result=%d", ast__cls, result );\n'
+     + t[j:])
 
 # astSimplify_: log entry, and say whether the IsSimple bit short-circuited it.
 a3 = "AstMapping *astSimplify_( AstMapping *this, int *status ) {"

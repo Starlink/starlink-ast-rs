@@ -576,6 +576,9 @@ impl dyn Mapping {
     /// `simplified()` is the internal virtual dispatch used during the
     /// merge loop and does NOT set the flag.
     pub fn simplify(&self) -> AstResult<DynMapping> {
+        // The closest analogue of C's `astSimplify`, so the trace counts here
+        // line up with the C library's `SIMPLIFY-ENTER`.
+        simplify::trace::simplify_enter("public-simplify", self);
         // Track re-entrancy so the WinMap→ShiftMap narrowing below runs only
         // at the outermost public call (internal simplify steps recurse
         // through this entry point).

@@ -145,6 +145,11 @@ grep MAPMERGE port.txt | sed 's/.*class="\([^"]*\)".*where_=\([0-9]*\) series=\(
 diff c_mm.txt p_mm.txt
 ```
 
+`MAPMERGE-RESULT` says what each nomination returned, so a productive one can be
+told from one that declined. Counting those two on each side is what identified
+PLAN.md §10.3: C's nominations succeed 23 times in 96, the port's 15 in 149, and
+the whole difference is WinMap.
+
 `RUST_LOG` selects the level: `ast::simplify=debug` (the default the example
 installs) gives nominations and per-class reductions; `ast::simplify=trace` adds
 the higher-volume decomposition lines, matching C's `MAPLIST`.
