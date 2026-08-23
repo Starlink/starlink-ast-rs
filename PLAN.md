@@ -858,12 +858,24 @@ That also explains why stamping harder cannot work: blanket-stamping
 `cap_zoommap_01` a card C does not emit. It stamps nodes the port produced and C
 did not, while still missing the ones C produced and the port did not.
 
-**Next step: WinMap.** `winmap.c:1070-1865` is the longest `MapMerge` in the
-library and `docs/audits/mapmerge/winmap.md` marks all 36 of its rows `ported`.
-One of those verdicts is wrong, or the port's WinMap declines where C accepts.
-The traces name the pairs: filter both for `MAPMERGE WinMap` with its
-`MAPMERGE-RESULT`, and the eight nominations C accepts and the port declines are
-listed directly. That is a diff, not an investigation.
+**Narrowed to one nomination.** Filtering both traces for WinMap and ShiftMap
+with their outcomes:
+
+- ShiftMap agrees exactly, all eight nominations, outcome for outcome.
+- Both merge `ShiftMap where=0 series=1 nmap=4` and both report `result=0`.
+- C's *next* nomination is `WinMap where=0 series=1 nmap=4` and it succeeds. The
+  port's next is `WinMap where=0 series=1 nmap=3`.
+
+Same class, same index, same reported result — and afterwards **C's list still
+holds 4 elements and the port's holds 3.** The port's ShiftMap nomination
+shortened the list where C's did not, so the WinMap opportunity C exploits never
+arises, and the remaining WinMap deficit follows from that one step.
+
+`ShiftMap::map_merge` converts to a WinMap, delegates to `win_map_merge`, and
+reverts when that produced nothing (`shift.rs:168-238`, C `shiftmap.c:671-745`).
+C's revert guard is `result == where && *nmap == old_nmap && astEqual(...)`. Both
+report `result == where`; the lengths say the delegated merge did different things.
+That single delegation is the whole of §10.3's remaining distance.
 
 Seven approaches to `cap_cmpmap_03` have been measured and reverted, six recorded
 in `test_simplify_regression.rs` plus the blanket stamp above. None touched
