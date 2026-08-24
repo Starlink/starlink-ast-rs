@@ -9,9 +9,9 @@ run of adjacent SlaMaps into one list, normalising each SlaMap's steps for its
 applied direction, then simplifies that list until no further improvement is
 possible, then rebuilds one SlaMap (or a UnitMap) from what remains.
 
-`SlaMap::map_merge` (`slamap.rs:1265-1272`) delegates to `sla_map_merge`
-(`slamap.rs:577-660`); the step list is normalised by `sla_normalized_steps`
-(`slamap.rs:467-493`) and reduced by `sla_simplify_steps` (`slamap.rs:494-575`).
+`SlaMap::map_merge` (`slamap.rs:1238-1245`) delegates to `sla_map_merge`
+(`slamap.rs:577-629`); the step list is normalised by `sla_normalized_steps`
+(`slamap.rs:467-497`) and reduced by `sla_simplify_steps` (`slamap.rs:499-575`).
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
@@ -86,3 +86,12 @@ eliminated here — no such family exists in `slamap.c` today.
 C treats a nominated SlaMap applied inverted as simplified even when nothing else
 changed, because the replacement is stored forward. `slamap.rs:613` includes
 `where_inv` in the `simpler` disjunction for that reason.
+
+## A lone SlaMap reaches the same body
+
+C gives SlaMap no `Simplify` vtab slot, so a SlaMap nominated on its own arrives
+here with `imap1 == imap2 == where_`: the run is one element, `ngone` is zero, and
+the `simpler` disjunction reduces to "the step list shortened, emptied, or the
+SlaMap is applied inverted". That is every reduction a lone SlaMap has — cancelling
+adjacent inverse steps, combining precessions, dropping identity precessions, and
+rebuilding forward — so there is nothing it can do that the run case does not.

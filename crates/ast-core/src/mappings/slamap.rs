@@ -10,7 +10,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 // ---------------------------------------------------------------------------
@@ -1229,33 +1229,6 @@ impl Mapping for SlaMap {
         }
 
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Normalize steps (accounting for the inverted flag) and simplify
-        // (cancel adjacent inverse pairs, combine precessions, remove identity
-        // precessions).
-        let mut steps = sla_normalized_steps(self, self.inverted);
-        let changed = sla_simplify_steps(&mut steps);
-
-        if !changed && !self.inverted {
-            // No simplification possible — return self unchanged.
-            return Ok(Box::new(self.clone()));
-        }
-
-        if steps.is_empty() {
-            Ok(Box::new(UnitMap::new(2)))
-        } else {
-            let mut sla = SlaMap::new();
-            for step in &steps {
-                sla.add(step.cvt_type, &step.args);
-            }
-            Ok(Box::new(sla))
-        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
