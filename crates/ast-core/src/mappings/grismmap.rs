@@ -20,7 +20,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A 1-D spectral dispersion mapping for grisms, gratings and prisms.
@@ -377,13 +377,6 @@ impl Mapping for GrismMap {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-        Ok(Box::new(self.clone()))
-    }
-
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         numeric_rate(self, at, ax1, ax2)
     }
@@ -449,7 +442,7 @@ impl Mapping for GrismMap {
         }
 
         // GrismMap + ZoomMap merges are handled by the simplify engine's
-        // special-case code (try_merge_grism_zoom) because the try_merge
+        // special-case code (`grism_zoom_merge_at`) because the try_merge
         // API cannot distinguish forward from reverse calls, and the merge
         // is only valid in specific orderings.
 
