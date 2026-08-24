@@ -5,7 +5,7 @@ use crate::error::AstResult;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// The identity mapping: every output coordinate equals the corresponding input.
@@ -65,14 +65,6 @@ impl Mapping for UnitMap {
     // no per-point `is_bad` check or value-dependent branching. NaN inputs
     // pass through to NaN outputs naturally, so the trait default already
     // satisfies the NaN-as-bad protocol.
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        Ok(Box::new(UnitMap {
-            ncoord: self.ncoord,
-            inverted: false,
-            simplified: SimplifiedRecord::default(),
-        }))
-    }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         Ok(if ax1 == ax2 { 1.0 } else { 0.0 })
