@@ -313,7 +313,13 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Override this only if the matching C class overrides the slot: `CmpMap`,
     /// `FrameSet` and the nine Region classes do, and the other 25 keep every
     /// reduction in [`Mapping::map_merge`].
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping>;
+    ///
+    /// The default is C's base `Simplify` (`mapping.c:16752`), which nominates
+    /// this Mapping in a list of one and calls its own [`Mapping::map_merge`]
+    /// until nothing further changes.
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+        simplify::base_simplify(self.as_dyn_mapping())
+    }
 
     /// Rate of change of a specified output with respect to a specified input.
     ///

@@ -1304,6 +1304,57 @@ pub(crate) fn try_self_reduce(
     None
 }
 
+/// C's base `Simplify` (`mapping.c:16752`), inherited by every class whose C
+/// counterpart does not override the slot.
+///
+/// Builds a one-element Mapping list and hands it to the class's own
+/// [`Mapping::map_merge`] repeatedly, stopping when the merge reports no change
+/// or the list grows past one element (`mapping.c:16871-16883`). Returns a clone
+/// when nothing reduced, as C does.
+///
+/// C's entry guard on `RestrictedSimplify` (`mapping.c:16853`) has no analogue
+/// here: the attribute lives on `CmpMap` alone in this port, and `CmpMap`
+/// overrides the slot, so no Mapping reaching this driver can carry it. The
+/// per-component half of the same rule — only `AllowSimplify` components may be
+/// nominated — belongs to the enclosing `CmpMap`'s loop and lives in
+/// [`MergeCtx`].
+pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping> {
+    // C `astMapList( this, 1, astGetInvert( this ), … )`: for a class with no
+    // `MapList` override this appends the Mapping itself and records its own
+    // Invert as the effective direction, which is what `flatten` produces for a
+    // leaf given no externally imposed inversion.
+    let mut ctx = MergeCtx::new(flatten(this, false, true)?);
+    let mut simpler = false;
+
+    // C loops while the nominated element is unfrozen. Only the oscillation
+    // break inside a merge freezes an element, so in practice the break below is
+    // what ends the loop.
+    while !ctx.is_frozen(0) {
+        let nominee = ctx.entry(0).0.clone_box();
+        trace::map_merge(nominee.as_ref(), 0, true, ctx.len());
+        let modified = nominee.map_merge(&mut ctx, 0, true);
+        trace::map_merge_result(nominee.as_ref(), modified);
+
+        if ctx.len() > 1 || modified.is_none() {
+            break;
+        }
+        simpler = true;
+    }
+
+    // `nmap > 1` is a reduction that produced more than one Mapping, which this
+    // driver has nowhere to put: C returns the original even though the loop
+    // reported a change (`mapping.c:16891`).
+    if !simpler || ctx.len() > 1 {
+        return Ok(this.clone_box());
+    }
+
+    // The one remaining element, brought to the orientation the list asks for.
+    // C copies it and sets or clears `Invert` when `invert_list[ 0 ]` disagrees
+    // with the Mapping's own flag (`mapping.c:16899-16911`); for a one-element
+    // list that is exactly what `reconstruct` does to its seed.
+    reconstruct(std::mem::take(&mut ctx.list), true)
+}
+
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
     let i = where_;
     let list = &mut ctx.list;
@@ -5320,5 +5371,35 @@ mod tests {
             );
         }
         assert!((after.point(0)[2] - 11.5).abs() < 1e-12);
+    }
+
+    /// C's base `Simplify` builds a one-element list and calls `astMapMerge`
+    /// until nothing changes or the list grows past one
+    /// (`mapping.c:16871-16883`). A unit-factor ZoomMap is a UnitMap and
+    /// `zoom_map_merge` says so, so the driver must reach that with no
+    /// per-class `simplified()` in the way.
+    #[test]
+    fn base_simplify_reaches_a_classes_own_map_merge() {
+        let zoom = ZoomMap::new(2, 1.0).expect("unit-factor ZoomMap constructs");
+        let out = base_simplify(&zoom).expect("base_simplify succeeds");
+        assert!(
+            out.as_any().is::<UnitMap>(),
+            "expected a UnitMap from a unit-factor ZoomMap"
+        );
+    }
+
+    /// A Mapping its own `map_merge` cannot reduce comes back unchanged rather
+    /// than erroring, which is C returning a clone.
+    #[test]
+    fn base_simplify_returns_a_clone_when_nothing_reduces() {
+        let z = ZoomMap::new(1, 3.0).expect("ZoomMap constructs");
+        let out = base_simplify(&z).expect("base_simplify succeeds");
+        assert_eq!(
+            out.as_any()
+                .downcast_ref::<ZoomMap>()
+                .expect("still a ZoomMap")
+                .factor(),
+            3.0
+        );
     }
 }
