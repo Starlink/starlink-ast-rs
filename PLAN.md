@@ -718,9 +718,10 @@ orientation, and restores the stored value afterwards (`ratemap.c:710-715`,
 In those two fixtures the encapsulated CmpMap stores `Invert = 1` while the
 snapshot is 0, so C reduces the forward form and finds nothing, while the port
 reduced the inverted form and folded the inversion into the component order.
-`RateMap::simplified` now orients to `invert_snapshot` first — the field the port
-already had for the `Inv` card and was using only for serialisation. That is the
-H3 hazard: two C names kept as two fields, with only one of them wired up.
+`RateMap::reduced_child` — the step `map_merge` opens with — now orients to
+`invert_snapshot` first, the field the port already had for the `Inv` card and was
+using only for serialisation. That is the H3 hazard: two C names kept as two
+fields, with only one of them wired up.
 
 An earlier attempt reduced the *forward* form unconditionally. That is right only
 when the snapshot is 0, which is true of every fixture in the corpus, so it went
@@ -857,7 +858,7 @@ body that skips the linear branch. What would expose it: a ChebyMap with two
 forward terms that use the same input powers for one output, nominated inside a
 list, whose `.simp` C writes with the terms combined.
 
-### 10.16 The port has a per-class `simplified()` seam that C does not
+### 10.16 The port has a per-class `simplified()` seam that C does not — FIXED
 
 C has **two** per-class seams in the simplify machinery:
 
@@ -871,13 +872,13 @@ C has **two** per-class seams in the simplify machinery:
 So for a class outside that 11, every reduction C performs lives in `MapMerge`,
 and `astSimplify` reaches it only by nominating the Mapping in a list of one.
 
-The port has **three**: the public `simplify()`, a per-class `simplified()`, and a
-per-class `map_merge()`. `simplified()` has no C counterpart for the other 25
+The port had **three**: the public `simplify()`, a per-class `simplified()`, and a
+per-class `map_merge()`. `simplified()` had no C counterpart for the other 25
 classes, and the port put per-class reductions there.
 `grep -l 'static AstMapping \*Simplify' reference/starlink-ast/src/*.c` is the
-authority: the split is exactly right for 11 classes and exactly wrong for 25.
+authority: the split was exactly right for 11 classes and exactly wrong for 25.
 
-**This is the H1 hazard, and it has produced three of this session's bugs.**
+**This is the H1 hazard, and it produced three bugs.**
 RateMap's encapsulated-Mapping reduction (§10.1) and PcdMap's zero-distortion
 replacement (§10.7) both lived in `simplified()` with no `map_merge` to reach
 them, so neither ran on a nominee inside a list — C's only route. Both fixes were
@@ -895,6 +896,32 @@ with the task breakdown in
 [`docs/superpowers/plans/2026-08-23-simplify-seam-realignment.md`](superpowers/plans/2026-08-23-simplify-seam-realignment.md):
 six tasks, fixtures first, one class per commit, and a test that holds the keeper
 list so the seam cannot drift back.
+
+**Done.** Twenty-five class bodies moved out of `simplified()` into `map_merge`,
+one commit each, and `simplified()` now survives only in the eleven classes whose
+C counterpart overrides the `Simplify` vtab slot. The plan's count was 24; the
+sweep found a twenty-fifth, `ChebyMap`, which had inherited a body nobody listed.
+
+Two things the entry above did not anticipate:
+
+- **The single-caller half is a compile error, not a test.**
+  `Mapping::simplified` takes a `ViaSimplify`, a zero-sized token only
+  `mappings::simplify_entry` can construct, so the seam has exactly one possible
+  caller — C's `mapping.c:24772` — and reaching it any other way does not build.
+  `test_simplify_seams.rs` is left holding the keeper list, which a type cannot
+  express.
+- **The gate is now unconditional.** Every reduction passes through
+  `simplify_entry`, so every one short-circuits on `IsSimple` and stamps its
+  result at `mapping.c:24763`'s equivalent. Serialisation failures in the simplify
+  harness went 12 to 9, and `cap_cmpmap_01` and `cap_cmpmap_04` reached C's card
+  count (§10.3).
+
+What it did not fix: the WinMap under-merge of §10.3, which the entry above
+implied was downstream of the seam and is not. Cause (G) in §9.2 named the
+`simplified()` gate as the source of five fixtures' extra cards and predicted they
+would close here. They did not; the real source was two `.simplify()` calls in
+CmpMap's parallel handling with no C counterpart, one of which is now removed
+(§10.3).
 
 ### 10.3 Two of the four under-tagged fixtures closed; the remaining deficit is WinMap
 
@@ -1071,15 +1098,12 @@ describes, not as a wrong Mapping.
 
 `pcdmap.c:1417-1433` opens `MapMerge` by replacing a PcdMap whose distortion
 coefficient is zero with a UnitMap, before any neighbour is considered. The port
-has that logic, in `PcdMap::simplified` (`pcdmap.rs:225-236`), but
-`pcd_map_merge` (`simplify.rs:2719-2733`) tries the swap and then
-`default_map_merge`, and neither consults `simplified()`. A zero-distortion
-PcdMap nominated from inside a list therefore stays a PcdMap.
+had that logic in `PcdMap::simplified`, while `pcd_map_merge` tried the swap and
+then `default_map_merge` and consulted neither. A zero-distortion PcdMap
+nominated from inside a list therefore stayed a PcdMap.
 
 This is the same shape as §10.1: the class reduction exists, and the seam that
-would reach it from the nominate loop does not. `self_reduce_map_merge`
-(`simplify.rs:1137`) is that seam; five classes use it, and PcdMap and RateMap
-do not.
+would reach it from the nominate loop does not.
 
 Exposed and closed. `pcd_zero_disc_series` is
 `[MatrixMap(2,3), PcdMap(disc=0), MatrixMap(5,7)]`, which the pinned C collapses
@@ -1088,10 +1112,11 @@ on its own, and it passed from the start — the logic was in `simplified()` all
 along and only the seam was missing, which is exactly what the pair
 discriminates.
 
-`pcd_map_merge` now performs C's opening move before the swap, through a new
-`try_self_reduce` helper factored out of `self_reduce_map_merge` so the ordering
-can differ per class: C puts the swap between the reduction and the plain
-neighbour merge, which `self_reduce_map_merge` alone cannot express.
+`pcd_map_merge` now performs C's opening move itself, before the swap
+(`simplify.rs:2903-2911`), and returns immediately: C makes the reduction the `if`
+of an if/else whose `else` holds the whole neighbour search, so a reduced PcdMap
+never looks at a neighbour in the same pass. `self_reduce_map_merge` cannot
+express that ordering, which is why the reduction is inline rather than delegated.
 
 ### 10.8 LutMap's linearity test used a hardcoded tolerance — FIXED
 
@@ -1278,3 +1303,39 @@ output — a 3-D Box sliced to 2-D with the third axis pinned — simplified and
 serialised. C writes an Interval or a Box with equal limits on that axis; the port
 writes whatever the mesh fit produced, or fails to simplify at all. No corpus
 fixture builds a Box over a PermMap with constants.
+
+### 10.17 NormMap does not simplify its encapsulated Frame
+
+`normmap.c:619-631` is the *first* thing C's `MapMerge` does: `astSimplify` the
+encapsulated Frame, and if that returns a different object, replace the NormMap
+with a new one wrapping the simplified Frame and report a change. Only if the
+Frame did not simplify does C reach the basic-Frame test that turns the NormMap
+into a UnitMap (`:632-640`), and only after that does it consider neighbours.
+
+`NormMap::map_merge` (`normmap.rs:188-205`) performs the basic-Frame test and
+nothing else, so the port never rebuilds a NormMap around a reduced Frame. The
+audit recorded both halves as ported on the strength of the one downcast; the
+module comment cites `normmap.c:632-640` alone, which is what the Rust code does.
+
+The branch is reachable because `Simplify` is a real Frame-level seam: CmpFrame
+overrides it to simplify each component and rebuild
+(`cmpframe.c:9018-9034`), and every Region class overrides it too, so a Frame *can*
+simplify to a different Frame.
+
+**A fixture was written for it and does not reach it.**
+`gen_simplify_fixtures.c:2612-2632` builds `normmap_frame_simplifies` as a NormMap
+over a Box whose FrameSet holds `CmpMap(ZoomMap(2), ZoomMap(3))` in series,
+expecting the Box to reduce. It does not: `astBox` resolves the FrameSet to its
+current Frame at construction, so the dumped `.map` already holds a Box over a
+plain `ZOOMED` Frame with the bounds transformed. Both `.map` and `.simp` carry the
+same Box, and the port passes the fixture by declining a branch it has not ported.
+The harness compares correctly; the fixture cannot discriminate, because the
+reduction it was built around happened before `astSimplify` was ever called. That
+is why the mis-verdict survived.
+
+What would expose it: an encapsulated Frame whose reduction is *not* absorbed by
+its own constructor. A CmpFrame is the direct route — `cmpframe.c:9019-9034`
+rebuilds only when a component Frame simplifies, so a CmpFrame holding a Region
+that reduces gives `astSimplify` something to return. Compare the `.simp` on the
+NormMap's `Frame` value, not just the card count: C writes the reduced Frame and
+the port writes the original.

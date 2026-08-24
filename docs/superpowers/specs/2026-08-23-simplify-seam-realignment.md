@@ -1,6 +1,6 @@
 # Realigning the simplify seams with C
 
-**Status:** proposed, not started.
+**Status:** implemented, 2026-08-24.
 **Supersedes nothing.** Sits under
 [`2026-04-20-rust-port-design.md`](2026-04-20-rust-port-design.md), which does not
 address this.
@@ -215,6 +215,45 @@ stamps, because there is nowhere else left to do it.
 - **Two classes' reductions are orientation-sensitive** (§10.1's
   `invert_snapshot`). Moving a body without carrying the orientation reproduces
   the bug the move is meant to fix.
+
+## What the work found
+
+Two of this document's claims were the load-bearing ones, and both held.
+
+**The caller count was the right measurement.** Framing the defect as 155 sites
+against 36 — rather than as a mismatch between the port's three seams and C's two —
+is what made the work mechanical. The vtab-structure framing had been tried twice
+before and produced a judgement call per class; the caller count produces a list
+the compiler writes.
+
+**The single-caller rule is compiler-enforceable, which two earlier drafts of the
+plan denied.** `ViaSimplify` works exactly as sketched: a `pub` struct with a
+private field, in a leaf module holding the entry point, gives `simplified()` one
+possible caller and turns every other route into a build failure. The drafts had
+concluded the rule could only be a convention plus a grep, because `simplified()`
+is a method on a public trait and cannot be made crate-private. That is true and
+irrelevant — the *argument* can be.
+
+Three things this document got wrong:
+
+- **Step 5's claim that "§10.3's stamping question answers itself" is false.** The
+  gate is now unconditional and §10.3 did not close. The port stamps only where
+  `astSimplify_` stamps, and it still over-tags, because it *calls* `astSimplify`
+  in two places C does not: `try_swap_permmap_parallel_at` simplified the
+  components C hands on as they stand, and `dimension_match_parallel_lists`
+  simplifies each member of a matched sublist where C simplifies only the pair it
+  combines from them. Both are inside the merge core, so both are gate-compliant.
+  The gate constrains *where* a reduction is recorded; it says nothing about
+  whether the port reduces the same things C does.
+- **Cause (G) in `PLAN.md` §9.2 was mis-diagnosed, and this document repeated it.**
+  Five fixtures' extra cards were attributed to `try_self_reduce` firing through
+  the `simplified()` gate and predicted to close here. They did not move. Removing
+  the first of the two calls above closed three of them.
+- **The stray count was 25, not 24.** `ChebyMap`'s `simplified()` returned an
+  unchanged clone in both branches, so it held no reduction to move and the sweep
+  that enumerated bodies-with-reductions did not list it. Deleting it drops the
+  class onto the default, which reaches the shared direct merge where its one
+  reduction already lived.
 
 ## What to read first
 

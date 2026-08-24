@@ -10,7 +10,9 @@ identical NormMaps to one, since `astNorm` is idempotent.
 
 `NormMap::map_merge` (`normmap.rs:188-205`) holds the replace-with-simpler step
 itself, as C's body does, and hands the neighbour work to
-`NormMap::try_merge` through `self_reduce_map_merge`.
+`NormMap::try_merge` through `self_reduce_map_merge`. It performs only the second
+half of that step — the basic-Frame test of row 6 — and not the Frame
+simplification of row 5, which is PLAN.md §10.17.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
@@ -18,7 +20,7 @@ itself, as C's body does, and hands the neighbour work to
 | 2 | Check the inherited status and bail out | normmap.c:606-607 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a typed pointer to this NormMap | normmap.c:612-614 | -- | n/a: the Rust method already has `&self` |
 | 4 | Temporarily set its Invert flag to the requested value | normmap.c:615-618 | -- | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
-| 5 | Try to simplify the NormMap by simplifying its encapsulated Frame, taking that Frame's class | normmap.c:619-631 | normmap.rs:194-204 | ported |
+| 5 | Try to simplify the NormMap by simplifying its encapsulated Frame, taking that Frame's class | normmap.c:619-631 | -- | gap: PLAN.md §10.17 |
 | 6 | A basic Frame's `astNorm` does nothing, so the NormMap becomes a UnitMap | normmap.c:632-640 | normmap.rs:198-202 | ported |
 | 7 | Otherwise: cancel with its own inverse in series, or drop duplicates | normmap.c:641-645 | normmap.rs:207-240 | ported |
 | 8 | Start with nothing to cancel against | normmap.c:646-648 | -- | n/a: the port's pairwise hook is asked about one neighbour at a time, so there is no candidate index to initialise |

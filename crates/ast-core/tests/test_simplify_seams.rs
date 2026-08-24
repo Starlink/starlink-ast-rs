@@ -37,8 +37,6 @@ fn src_root() -> PathBuf {
 }
 
 #[test]
-#[ignore = "fails until the 25 stray bodies have moved; see \
-            docs/superpowers/plans/2026-08-23-simplify-seam-realignment.md"]
 fn only_c_simplify_classes_implement_simplified() {
     let root = src_root();
     let mut stray = Vec::new();

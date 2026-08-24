@@ -195,6 +195,10 @@ impl Mapping for NormMap {
         // (normmap.c:632-640): a basic Frame's astNorm does nothing, so a
         // NormMap over one is a UnitMap. Anything else falls through to the
         // neighbour steps, which `NormMap::try_merge` performs.
+        //
+        // C tries one thing first: simplify the encapsulated Frame and rebuild
+        // the NormMap around the result if it reduced (normmap.c:619-631). That
+        // is unported; see PLAN.md §10.17 for what would expose it.
         let reduced: Option<DynMapping> = self
             .frame
             .as_any()
