@@ -1173,19 +1173,18 @@ pub(crate) fn perm_map_merge(
 }
 
 /// Per-class `map_merge` for a nominated `WcsMap`, mirroring the merge and
-/// swap logic of C `wcsmap.c::MapMerge` (2914). A WcsMap can only merge
-/// directly with its own inverse (`CanMerge`, wcsmap.c:812): C checks the
+/// swap logic of C `wcsmap.c::MapMerge` (2922). A WcsMap can only merge
+/// directly with its own inverse (`CanMerge`, wcsmap.c:820): C checks the
 /// lower pair `(where_-1, where_)` first, then the upper pair
 /// `(where_, where_+1)`, replacing a cancelling pair with a UnitMap
-/// (wcsmap.c:3116-3161). Doing the lower check at this nomination — rather
+/// (wcsmap.c:3124-3170). Doing the lower check at this nomination — rather
 /// than waiting for the lower WcsMap's own nomination — matters: the
 /// returned `modified` index cascades the nominate loop back through the
 /// cancelled pair, which determines the association order of later linear
 /// folds. When no direct merge is available, the WcsMap tries to swap past
 /// an adjacent PermMap — either to move it next to a cancelling WcsMap on
-/// the far side, or because the swap itself yields a simpler pair (the
-/// WCSBAD →`UnitMap` case is handled by `simplified`). On success the first
-/// modified index is returned.
+/// the far side, or because the swap itself yields a simpler pair. On success
+/// the first modified index is returned.
 pub(crate) fn wcs_map_merge(
     wcs: &WcsMap,
     ctx: &mut MergeCtx,
@@ -1194,8 +1193,10 @@ pub(crate) fn wcs_map_merge(
 ) -> Option<usize> {
     // Replace-with-simpler, "without reference to the neighbouring Mappings in
     // the list": a WcsMap of type `AST__WCSBAD` is equivalent to a UnitMap
-    // (wcsmap.c:3187-3199). C does this first, before any neighbour is
-    // considered.
+    // (wcsmap.c:3095-3107). C makes this the `if` of an if/else whose `else`
+    // holds the whole neighbour search, so a reduced WcsMap never looks at a
+    // neighbour in the same pass. The replacement carries a cleared Invert flag
+    // (wcsmap.c:3104).
     if wcs.projection() == crate::mappings::WcsProjection::Unknown {
         ctx.set_pair_single(where_, (Box::new(UnitMap::new(wcs.nin())), false, false));
         return Some(where_);

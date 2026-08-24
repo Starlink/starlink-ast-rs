@@ -14,7 +14,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::perm::PermMap;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// Radians to degrees (C `AST__DR2D`).
@@ -806,19 +806,6 @@ impl Mapping for WcsMap {
             }
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Unknown/blank projection simplifies to identity.
-        if self.proj == WcsProjection::Unknown {
-            Ok(Box::new(UnitMap::new(self.ncoord)))
-        } else {
-            Ok(Box::new(self.clone()))
-        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
