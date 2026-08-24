@@ -821,6 +821,45 @@ same delegation.
 No corpus fixture holds a linear ChebyMap, which is why neither answer has been
 needed yet.
 
+### 10.16 The port has a per-class `simplified()` seam that C does not
+
+C has **two** per-class seams in the simplify machinery:
+
+- `Simplify`, overridden by `CmpMap`, `FrameSet` and the nine Region classes and
+  by nobody else. For every other class the base implementation
+  (`mapping.c:16752`) builds a one-element list and calls
+  `astMapMerge( map, 0, 1, &nmap, … )` **repeatedly** until nothing changes or
+  the list grows past one (`mapping.c:16871-16883`).
+- `MapMerge`, overridden per class.
+
+So for a class outside that 11, every reduction C performs lives in `MapMerge`,
+and `astSimplify` reaches it only by nominating the Mapping in a list of one.
+
+The port has **three**: the public `simplify()`, a per-class `simplified()`, and a
+per-class `map_merge()`. `simplified()` has no C counterpart for the other 25
+classes, and the port put per-class reductions there.
+`grep -l 'static AstMapping \*Simplify' reference/starlink-ast/src/*.c` is the
+authority: the split is exactly right for 11 classes and exactly wrong for 25.
+
+**This is the H1 hazard, and it has produced three of this session's bugs.**
+RateMap's encapsulated-Mapping reduction (§10.1) and PcdMap's zero-distortion
+replacement (§10.7) both lived in `simplified()` with no `map_merge` to reach
+them, so neither ran on a nominee inside a list — C's only route. Both fixes were
+the same shape: give `map_merge` the reduction C keeps there. §10.3's
+blanket-stamp failure is the third: stamping `simplified()` over-tags precisely
+because it is not `astSimplify`.
+
+H1 warns about *collapsing* C's seams into one central `match`; here a seam was
+*added*. The failure mode is identical, because what H1 is really about is the set
+of seams differing from C's.
+
+Planned in
+[`docs/superpowers/specs/2026-08-23-simplify-seam-realignment.md`](superpowers/specs/2026-08-23-simplify-seam-realignment.md),
+with the task breakdown in
+[`docs/superpowers/plans/2026-08-23-simplify-seam-realignment.md`](superpowers/plans/2026-08-23-simplify-seam-realignment.md):
+six tasks, fixtures first, one class per commit, and a test that holds the keeper
+list so the seam cannot drift back.
+
 ### 10.3 The four under-tagged fixtures are under-*merged* — it is WinMap
 
 `cap_cmpmap_01` (16 vs C's 18), `cap_cmpmap_03` (6 vs 7), `cap_cmpmap_04`
