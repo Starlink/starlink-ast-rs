@@ -10,7 +10,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::unit::UnitMap;
 use super::unitnormmap::try_merge_into_unitnormmap;
 use super::winmap::{compose_linear, extract_linear_params};
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that adds a constant shift vector to all input coordinates.
@@ -107,24 +107,6 @@ impl Mapping for ShiftMap {
             }
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-        if self.shift.iter().all(|&s| s == 0.0) {
-            Ok(Box::new(UnitMap::new(self.shift.len())))
-        } else if self.inverted {
-            let normalized: Vec<f64> = self.shift.iter().map(|&s| -s).collect();
-            Ok(Box::new(ShiftMap {
-                shift: normalized,
-                inverted: false,
-                simplified: SimplifiedRecord::default(),
-            }))
-        } else {
-            Ok(Box::new(self.clone()))
-        }
     }
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
