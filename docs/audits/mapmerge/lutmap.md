@@ -18,17 +18,17 @@ it is audited here too.
 | 5 | Take the input range spanned by the first and last table elements | lutmap.c:1145-1149 | lutmap.rs:129-130 | ported |
 | 6 | Take the matching output range and require the two ends to differ | lutmap.c:1150-1155 | lutmap.rs:125,131-132 | ported |
 | 7 | Build a WinMap for that linear mapping, swapping the ranges when the invert flag is set | lutmap.c:1156-1163 | lutmap.rs:133-138 | ported |
-| 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1164-1170 | lutmap.rs:618-620 | ported |
-| 9 | Assign the result value | lutmap.c:1171-1175 | lutmap.rs:620 | ported |
-| 10 | Otherwise, in series, look for an adjacent LutMap to cancel against | lutmap.c:1176-1179 | lutmap.rs:623-627 | ported |
-| 11 | Check the higher neighbour first, noting the lower index of the pair | lutmap.c:1180-1187 | lutmap.rs:627-650 | ported |
-| 12 | Failing that, check the lower neighbour the same way | lutmap.c:1188-1199 | lutmap.rs:627-650 | ported |
+| 8 | Replace the LutMap with it and clear the associated invert flag | lutmap.c:1164-1170 | lutmap.rs:650-652 | ported |
+| 9 | Assign the result value | lutmap.c:1171-1175 | lutmap.rs:652 | ported |
+| 10 | Otherwise, in series, look for an adjacent LutMap to cancel against | lutmap.c:1176-1179 | lutmap.rs:655-659 | ported |
+| 11 | Check the higher neighbour first, noting the lower index of the pair | lutmap.c:1180-1187 | lutmap.rs:659-689 | ported |
+| 12 | Failing that, check the lower neighbour the same way | lutmap.c:1188-1199 | lutmap.rs:659-689 | ported |
 | 13 | Cancel the pair only if the two LutMaps are equal with opposite invert flags | lutmap.c:1200-1210 | lutmap.rs:140-160 | ported |
-| 14 | Replace the first of the pair with a UnitMap and set its invert flag | lutmap.c:1211-1218 | lutmap.rs:627-650 | ported |
-| 15 | Annul the second and shuffle the rest down, clearing the vacated slot | lutmap.c:1219-1230 | lutmap.rs:627-650 | ported |
-| 16 | Decrement the Mapping count and return the lower of the two indices | lutmap.c:1231-1238 | lutmap.rs:654 | ported |
+| 14 | Replace the first of the pair with a UnitMap and set its invert flag | lutmap.c:1211-1218 | lutmap.rs:659-689 | ported |
+| 15 | Annul the second and shuffle the rest down, clearing the vacated slot | lutmap.c:1219-1230 | lutmap.rs:659-689 | ported |
+| 16 | Decrement the Mapping count and return the lower of the two indices | lutmap.c:1231-1238 | lutmap.rs:686 | ported |
 | 17 | Clear the returned result if an error occurred | lutmap.c:1239-1241 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 18 | Return the result | lutmap.c:1242-1243 | lutmap.rs:659 | ported |
+| 18 | Return the result | lutmap.c:1242-1243 | lutmap.rs:691 | ported |
 | 19 | `GetLinear`: take the relative error of the table values from the LutEpsilon attribute | lutmap.c:598-600 | lutmap.rs:116-160 | ported |
 | 20 | Form a tolerance from the overall range of table values times that error | lutmap.c:601-604 | lutmap.rs:140-146 | ported |
 | 21 | For each interior element, interpolate linearly between the first and last values by fractional position | lutmap.c:606-616 | lutmap.rs:124 | ported |
@@ -63,5 +63,12 @@ setter exists. See PLAN.md §9.2.
 ## Row 11 — the higher neighbour first, but the lower index reported
 
 C checks the upper neighbour before the lower, yet in both cases replaces the
-*lower* of the two entries and reports its index. `lutmap.rs:654` returns
+*lower* of the two entries and reports its index. `lutmap.rs:686` returns
 `where_.min(ilo)` for that reason.
+
+## Rows 4 to 9 — a lone LutMap has only the WinMap conversion
+
+C gives LutMap no `Simplify` vtab slot, so a LutMap nominated on its own reaches
+this same body. The linear-table replacement (rows 4 to 9) needs no neighbour and
+therefore fires for a lone LutMap too, keyed on the list's invert flag; the
+cancellation against an adjacent LutMap (rows 10 to 16) simply finds no neighbour.

@@ -10,7 +10,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// Interpolation method for [`LutMap`] table lookups.
@@ -635,20 +635,6 @@ impl Mapping for LutMap {
             out.point_mut(i)[0] = result;
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-        // A lone LutMap reaches C's replacement through the base `Simplify`,
-        // which decomposes to a one-element list and hands it to `MapMerge`
-        // (mapping.c:17016). Same conversion, same guard — see
-        // [`LutMap::linear_equivalent`].
-        Ok(match self.linear_equivalent(self.inverted) {
-            Some(wm) => Box::new(wm),
-            None => Box::new(self.clone()),
-        })
     }
 
     fn map_merge(
