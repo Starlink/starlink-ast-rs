@@ -103,6 +103,14 @@ fn null_overlap(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
 ///
 /// Parameters follow the C signature `OverlapX(that, this)`. The returned
 /// code is in the public `astOverlap(this, that)` convention.
+// `result` is declared without an initialiser and assigned from four nested
+// branches that mirror C's control flow (`region.c:7204-7409`). That is
+// deliberate: it makes "every path assigns a result" a compile-time
+// requirement. Giving it a placeholder to satisfy the lint would let a path
+// that missed its assignment return a value outside this function's 1..=6
+// domain silently, and hoisting the four assignments into expression position
+// would restructure a direct port of C's branch structure.
+#[allow(clippy::needless_late_init)]
 fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     // Return 5 if the two Regions are equal, or 6 if they are equal after
     // temporarily negating the first (region.c:7072-7083).
