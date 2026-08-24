@@ -50,6 +50,15 @@ impl dyn Mapping {
             .downcast_ref::<CmpMap>()
             .is_some_and(|c| c.restricted_simplify());
 
+        // C short-circuits an already-simplified Mapping here, returning a
+        // clone without reaching the vtab slot at all (mapping.c:24763). This
+        // is the gate: a class whose reduction lives in `map_merge` never has
+        // to repeat the test, because nothing can reach a reduction except
+        // through this function.
+        if self.has_been_simplified() {
+            return Ok(self.clone_box());
+        }
+
         let mut result = self.simplified(ViaSimplify(()))?;
         // `as_any` cannot be called on the `Box<dyn Mapping>` directly: it
         // would resolve via auto-deref but the resulting `&dyn Any` points at
