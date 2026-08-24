@@ -26,7 +26,7 @@ use crate::serial::{
 };
 
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that computes a single element of the Jacobian matrix
@@ -135,6 +135,43 @@ impl RateMap {
     /// Intrinsic nout (before considering self.inverted) — always 1.
     fn intrinsic_nout(&self) -> usize {
         1
+    }
+
+    /// C's replace-with-simpler step: simplify the encapsulated Mapping and
+    /// rebuild the RateMap around the result (`ratemap.c:710-745`). `None` when
+    /// the child does not reduce, which is C's "no simplification took place".
+    ///
+    /// C sets the encapsulated Mapping's Invert to `map->invert` — the value it
+    /// held when the RateMap was built, which the `Inv` card carries — before
+    /// simplifying it, and restores the stored value afterwards
+    /// (`ratemap.c:710-715`, `:806-808`). So the reduction runs at the
+    /// construction-time orientation, not at whatever the child happens to
+    /// store now. Tracing C on `cap_cmpmap_01` shows this directly: the
+    /// encapsulated CmpMap dumps `Invert = 1` and C enters `astSimplify` on it
+    /// with `inv=0`.
+    fn reduced_child(&self) -> Option<DynMapping> {
+        let mut oriented = self.map.clone_box();
+        if oriented.is_inverted() != self.invert_snapshot {
+            oriented.invert();
+        }
+        let mut simp_map = oriented.simplify().ok()?;
+        // Restore the stored orientation, as C's closing `astSetInvert` does.
+        if simp_map.is_inverted() != self.map.is_inverted() {
+            simp_map.invert();
+        }
+        simp_map.set_has_been_simplified(true);
+
+        let changed =
+            simp_map.is_inverted() != self.map.is_inverted() || !simp_map.equal(self.map.as_ref());
+        if !changed {
+            return None;
+        }
+
+        let mut new_rm = RateMap::new(simp_map, self.ax1, self.ax2).ok()?;
+        if self.inverted {
+            new_rm.invert();
+        }
+        Some(Box::new(new_rm))
     }
 }
 
@@ -264,55 +301,6 @@ impl Mapping for RateMap {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // C sets the encapsulated Mapping's Invert to `map->invert` -- the value
-        // it held when the RateMap was built, which the `Inv` card carries --
-        // before simplifying it, and restores the stored value afterwards
-        // (ratemap.c:710-715, :806-808). So the reduction runs at the
-        // construction-time orientation, not at whatever the child happens to
-        // store now. Tracing C on cap_cmpmap_01 shows this directly: the
-        // encapsulated CmpMap dumps `Invert = 1` and C enters `astSimplify` on it
-        // with `inv=0`.
-        let mut oriented = self.map.clone_box();
-        if oriented.is_inverted() != self.invert_snapshot {
-            oriented.invert();
-        }
-        let mut simp_map = oriented.simplify()?;
-        // Restore the stored orientation, as C's closing `astSetInvert` does.
-        if simp_map.is_inverted() != self.map.is_inverted() {
-            simp_map.invert();
-        }
-        simp_map.set_has_been_simplified(true);
-
-        // Check if simplification changed the encapsulated mapping.
-        let changed =
-            simp_map.is_inverted() != self.map.is_inverted() || !simp_map.equal(self.map.as_ref());
-
-        if changed {
-            // Construct a new RateMap around the simplified mapping.
-            let mut new_rm = RateMap::new(simp_map, self.ax1, self.ax2)?;
-            if self.inverted {
-                new_rm.invert();
-            }
-            return Ok(Box::new(new_rm));
-        }
-
-        // No simplification was possible.
-        Ok(Box::new(self.clone()))
-    }
-
-    // C `ratemap.c:1094-1107` opens its MapMerge by simplifying the
-    // encapsulated Mapping, and there is deliberately no `map_merge` here to
-    // match it. Adding one — in either the `simplified()` or the `simplify()`
-    // form — gains an `IsSimp` card on `cap_cmpmap_01` and `cap_cmpmap_04` and
-    // costs their structural equality with C, which is the assertion that
-    // actually matters. Whatever the reduction perturbs downstream has to be
-    // understood first.
-
     fn map_merge(
         &self,
         ctx: &mut super::simplify::MergeCtx,
@@ -322,8 +310,7 @@ impl Mapping for RateMap {
         // C opens its MapMerge by simplifying the encapsulated Mapping and
         // rebuilding the RateMap around the result (ratemap.c:717-727), then
         // falls through to cancelling against an inverse neighbour in series.
-        let reduced = (self as &dyn Mapping).simplify().ok();
-        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
+        super::simplify::self_reduce_map_merge(self, self.reduced_child(), ctx, where_, series)
     }
 
     fn try_merge(
