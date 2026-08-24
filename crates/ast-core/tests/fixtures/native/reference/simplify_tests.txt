@@ -671,3 +671,13 @@ parcomp_inverted_nested_reemitted | simplify_fixtures/parcomp_inverted_nested_re
 # converts a LutMap at all. See PLAN.md §10.8.
 neg_lut_near_linear | simplify_fixtures/neg_lut_near_linear.map | simplify_fixtures/neg_lut_near_linear.map |
 lut_exactly_linear | simplify_fixtures/lut_exactly_linear.map | simplify_fixtures/lut_exactly_linear.simp |
+
+# A WcsMap whose projection is AST__WCSBAD is replaced by a UnitMap without
+# reference to its neighbours (wcsmap.c:3095-3105), which is MapMerge's
+# replace-with-simpler half rather than a Simplify override -- wcsmap.c has no
+# Simplify. astWcsMap rejects AST__WCSBAD (wcsmap.c:5824), so the only way to
+# hold one is the way the fixture generator does: read a native description
+# carrying no Type value, which the loader turns into AST__WCSBAD
+# (wcsmap.c:6052). neg_wcs_tan_no_reduce is a genuine projection and survives.
+wcs_unknown_lone_reduce | simplify_fixtures/wcs_unknown_lone_reduce.map | simplify_fixtures/wcs_unknown_lone_reduce.simp |
+neg_wcs_tan_no_reduce | simplify_fixtures/neg_wcs_tan_no_reduce.map | simplify_fixtures/neg_wcs_tan_no_reduce.map |
