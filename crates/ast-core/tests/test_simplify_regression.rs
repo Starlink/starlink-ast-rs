@@ -565,14 +565,14 @@ fn simplify_regression() {
         // on the tracing oracle: no `SIMPLIFY-ENTER` for the leaf class in any
         // of these), so C emits no card there. The extra cards are the only
         // difference in every one of these — nothing else in the tree moves.
-        // Closed by moving the 25 reductions into `map_merge`, PLAN.md §10.16.
+        // Closed by moving the 25 reductions into `map_merge`, PLAN.md §10.16;
+        // `cap_slamap_03` and `cap_wcsmap_01` closed when the PermMap rebuild
+        // moved there.
         ("lsst", OVER_STAMP),
         ("cmpmap_perm_parallel_swap", OVER_STAMP),
         ("cmpmap_perm_swap_aconstants", OVER_STAMP),
         ("cmpmap_perm_swap_bconstants", OVER_STAMP),
         ("parpair_one_side_reduces", OVER_STAMP),
-        ("cap_slamap_03", OVER_STAMP),
-        ("cap_wcsmap_01", OVER_STAMP),
         // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
         // where C has collapsed to bare Points.
         (
@@ -633,15 +633,12 @@ fn simplify_regression() {
         // Over-tagging, cause (G) in SERIAL_UNGATED: `try_self_reduce` reaches a
         // leaf's reduction through the gate, so it stamps a leaf C reaches only
         // through `astMapMerge` and therefore never stamps. Closed by moving the
-        // 25 reductions into `map_merge`, PLAN.md §10.16. The three CmpMap rows
-        // and cap_specmap_02 were under-tagging before that; the leaf stamps now
-        // push them past C, and §10.16 has to land before the residual
-        // under-tagging underneath is measurable again.
-        "cap_cmpmap_01 (20 vs C's 18)",
-        "cap_cmpmap_04 (20 vs C's 18)",
+        // 25 reductions into `map_merge`, PLAN.md §10.16 — `cap_cmpmap_01`,
+        // `cap_cmpmap_04`, `cap_slamap_03` and `cap_wcsmap_01` closed there when
+        // the PermMap rebuild moved. cap_specmap_02 was under-tagging before the
+        // leaf stamps pushed it past C, so the residual under-tagging underneath
+        // it is only measurable once the rest of §10.16 has landed.
         "cap_specmap_02 (10 vs C's 8)",
-        "cap_slamap_03 (2 vs C's 1)",
-        "cap_wcsmap_01 (5 vs C's 4)",
         "cmpmap_perm_parallel_swap (4 vs C's 2)",
         "cmpmap_perm_swap_aconstants (3 vs C's 2)",
         "cmpmap_perm_swap_bconstants (3 vs C's 2)",

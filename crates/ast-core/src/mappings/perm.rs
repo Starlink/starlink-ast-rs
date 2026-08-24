@@ -15,7 +15,7 @@ use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapp
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// Axis permutation and constant-injection mapping.
@@ -103,12 +103,17 @@ impl PermMap {
     ///
     /// Returns `Some(canonical)` when such a simplification is available, or
     /// `None` when the PermMap is already in its canonical stored form.
-    pub(crate) fn canonical_null_form(&self) -> Option<DynMapping> {
-        // Resolve the current Invert flag to the effective forward
+    ///
+    /// `eff_inv` is the direction the PermMap is applied in within the Mapping
+    /// list — C's `(*invert_list)[where]`, which is what clause (c) of C's
+    /// `simpler` test reads. The list element itself is always stored forward,
+    /// so the object's own flag is not that direction.
+    pub(crate) fn canonical_null_form(&self, eff_inv: bool) -> Option<DynMapping> {
+        // Resolve the applied direction to the effective forward
         // (`outperm`) and inverse (`inperm`) arrays; C MapMerge always rebuilds
         // in the forward orientation with the Invert flag cleared
         // (permmap.c:1420 `invert_list[imap1] = 0`).
-        let (eff_out, eff_in) = if self.inverted {
+        let (eff_out, eff_in) = if eff_inv {
             (&self.inperm, &self.outperm)
         } else {
             (&self.outperm, &self.inperm)
@@ -143,8 +148,8 @@ impl PermMap {
         // is already null to it and dropping it is not a new simplification,
         // whereas an array carrying dangling constant/bad references that only
         // *accumulates* to null is. Both tests pair with the same (forward)
-        // transform, so resolve NullPerm through the original Invert flag too.
-        let (nullperm_out, nullperm_in) = if self.inverted {
+        // transform, so resolve NullPerm through the applied direction too.
+        let (nullperm_out, nullperm_in) = if eff_inv {
             (
                 strict_null_perm(&self.inperm),
                 strict_null_perm(&self.outperm),
@@ -160,7 +165,7 @@ impl PermMap {
         // needed, compare it element-wise against the rebuilt one — any
         // difference (a re-routed bad reference or a renumbered constant) is
         // itself a simplification.
-        let simpler = self.inverted
+        let simpler = eff_inv
             || (out_is_copy && !nullperm_out)
             || (in_is_copy && !nullperm_in)
             || (!in_is_copy && in_norm != *eff_in)
@@ -538,60 +543,6 @@ impl Mapping for PermMap {
         series: bool,
     ) -> Option<usize> {
         super::simplify::perm_map_merge(self, ctx, where_, series)
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        let n = self.outperm.len();
-        let outperm_is_identity = n == self.inperm.len()
-            && self
-                .outperm
-                .iter()
-                .enumerate()
-                .all(|(i, &p)| p == (i as i64 + 1));
-        let inperm_is_identity = self
-            .inperm
-            .iter()
-            .enumerate()
-            .all(|(i, &p)| p == (i as i64 + 1));
-        if outperm_is_identity && inperm_is_identity {
-            Ok(Box::new(UnitMap::new(n)))
-        } else if self.inverted {
-            // The effective inverse array is the stored `outperm` and vice
-            // versa; the rebuild resolves the Invert flag into the arrays.
-            let (in_norm, out_norm, constants) = self.rebuild_perms(&self.outperm, &self.inperm);
-            Ok(Box::new(PermMap {
-                outperm: out_norm,
-                inperm: in_norm,
-                constants,
-                inverted: false,
-                simplified: SimplifiedRecord::default(),
-                out_is_copy: self.in_is_copy,
-                in_is_copy: self.out_is_copy,
-                perm_split: self.perm_split,
-            }))
-        } else {
-            // Rebuild the arrays and a compacted constants pool, mirroring
-            // C MapMerge's rebuild (permmap.c:1065-1094).
-            let (in_norm, out_norm, constants) = self.rebuild_perms(&self.inperm, &self.outperm);
-            if out_norm == self.outperm && in_norm == self.inperm {
-                Ok(Box::new(self.clone()))
-            } else {
-                Ok(Box::new(PermMap {
-                    outperm: out_norm,
-                    inperm: in_norm,
-                    constants,
-                    inverted: false,
-                    simplified: SimplifiedRecord::default(),
-                    out_is_copy: self.out_is_copy,
-                    in_is_copy: self.in_is_copy,
-                    perm_split: self.perm_split,
-                }))
-            }
-        }
     }
 
     fn map_split_zero_based(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
