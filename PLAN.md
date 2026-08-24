@@ -331,12 +331,12 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 451 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 451 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, one card short of C; `cap_specmap_02`, two over) |
-| simplify regression | 451 | 10 | fixtures whose `IsSimp` card count still differs from C. Two under-tag (`rigby`, `cap_cmpmap_03`); five over-tag by one or two cards on a leaf `try_self_reduce` reduced through the gate, which C reaches only through `astMapMerge` and so never stamps (`cap_specmap_02`, `cmpmap_perm_parallel_swap`, `cmpmap_perm_swap_aconstants`, `cmpmap_perm_swap_bconstants`, `parpair_one_side_reduces`) and close with §10.16; three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 451 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
-| transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
-| transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
+| simplify regression | 453 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 453 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, one card short of C; `cap_specmap_02`, two over) |
+| simplify regression | 453 | 10 | fixtures whose `IsSimp` card count still differs from C. Two under-tag (`rigby`, `cap_cmpmap_03`); five over-tag by one or two cards on a leaf `try_self_reduce` reduced through the gate, which C reaches only through `astMapMerge` and so never stamps (`cap_specmap_02`, `cmpmap_perm_parallel_swap`, `cmpmap_perm_swap_aconstants`, `cmpmap_perm_swap_bconstants`, `parpair_one_side_reduces`) and close with §10.16; three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 453 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
+| transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
+| transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
 | deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
 
@@ -509,7 +509,7 @@ fixtures had been generated by the buggy C.
 |---|---|---|
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
-| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1606 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
+| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1614 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
 | testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08; the nine functions added upstream at `f6762005` ported 2026-08-20 |
 | testmapping.c | crates/ast-core/tests/test_mapping.rs | partially ported 2026-08-20 — the four `IsSimple` functions added upstream at `f6762005`. `testselfsimplifyafterset` is unconstructible here (ZoomMap's `Zoom` and PcdMap's `Disco` have no `&mut self` setter). The file's original PolyMap / LinearApprox body, converted from `testmapping.f`, is covered by `test_polymap.rs` and `test_polytran.rs` |
 | testfitschan.c | crates/ast-core/tests/test_fitschan*.rs | partially ported — `testgrismorder`, added upstream at `f6762005`, is in `test_fitschan_wcs_write.rs` (2026-08-20); the rest of the file is spread across the seven `test_fitschan_*` files |
@@ -658,6 +658,35 @@ Several of these attributes have no setter in the port yet, so the gap is
 latent rather than active. What would expose it: a fixture that sets one of
 these attributes on an already-simplified Mapping and then re-simplifies —
 none exists today.
+
+### 9.4 42 simplify fixtures have no transform-oracle section
+
+`simplify_fixtures.oracle` predates 25 fixtures added since it was captured, and
+holds only the `.map` half of two more, so 42 of the `.map` / `.simp` files in
+`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/` carry no
+oracle section: `cmpmap_inverted_lone`, `cmpmap_inverted_nested`,
+`lut_exactly_linear`, `parcomp_inverted_reemitted`,
+`parcomp_inverted_nested_reemitted`, `parpair_aligned_reduces`,
+`parpair_one_side_reduces`, `pcd_zero_disc_lone`, `pcd_zero_disc_series`,
+`rate_inner_reduce_lone`, `rate_inner_reduce_series`, `time_jdtomjd_noop`,
+`time_mjdtojd_noop`, `unit_parallel_invert_pcd`, `wcs_unknown_lone_reduce`, the
+`.simp` halves of `switchmap_inv_fwdonly` and `switchmap_inv_invonly`, and ten
+negatives.
+
+This is not a hole in the transform-oracle gates: `resolves_every_oracle_relpath`
+asserts every oracle *section* resolves to a fixture, and all 1614 that exist are
+gated with empty exclusion lists. Each of these fixtures is compared for
+serialisation byte-exactness and `IsSimp` placement by
+`test_simplify_regression.rs`; what is missing is the independent check that the
+simplified Mapping *transforms* points the way C's does.
+
+Closing it means capturing the missing sections from the oracle rather than
+regenerating the file: a full regeneration also imports
+`cheby_linear_lone_reduce` and `neg_cheby_quadratic_no_reduce`, which reproduce
+the C defect recorded in `docs/issues/c-library-quirks.md` and are deliberately
+out of the port's corpus (§10.2), and rewrites every value in `headers.oracle`
+and `framesets.oracle` in the last digit or two — platform drift, which the
+corpus-freshness protocol says to leave alone.
 
 ## 10. Gaps named by the `MapMerge` / `Simplify` audit
 
@@ -1125,33 +1154,34 @@ forward and carries the inversion in the merge list, so the selector is
 and the top-level SwitchMap normalisation the public entry point used to perform
 is now dead code and removed.
 
-### 10.11 TranMap's `map_merge` reaches one of C's four self-simplification cases
+### 10.11 TranMap's `map_merge` reached one of C's self-simplification cases — FIXED
 
 `tranmap.c:834-897` gives a nominated TranMap four outcomes: normalise an
 inverted TranMap to the equal forward form and stop; simplify the two component
 Mappings; collapse a TranMap whose components are inverses of each other to one
 of them; or fall through to the neighbour merge.
 
-All four are implemented in `TranMap::simplified` (`tranmap.rs:256-324`). But
-`TranMap::map_merge` (`tranmap.rs:326-361`) implements only the component
-simplification, inline, and never calls `simplified()`. It also preserves
-`self.inverted` on the rebuild (`tranmap.rs:349-351`).
+All four used to live in `TranMap::simplified`, and `TranMap::map_merge`
+implemented only the component simplification, inline. A TranMap nominated from
+inside a list therefore kept its inversion where C replaces it, and was not
+collapsed when its two components are inverses.
 
-A TranMap nominated from inside a list therefore keeps its inversion where C
-replaces it, and is not collapsed when its two components are inverses.
+§10.16 moved the whole body into `TranMap::map_merge`
+(`mappings/tranmap.rs:256-333`), where C keeps it, with C's three exclusive cases
+selected on `ctx.entry(where_).1` — `flatten` resets every leaf to forward and
+carries the inversion in the merge list, so the requested orientation is the
+merge entry's flag rather than the object's own. Case 3 stores the surviving
+component normalised to forward with its intrinsic flag beside it, so the
+replacement takes part in further merging exactly as C's does.
 
-The inversion case additionally has the fused shape of §10.10: `tranmap.rs:269`
-returns `normalized.simplified()`, so the normalised TranMap is never the whole
-result of a simplification on its own and never carries the record C stamps on
-it.
-
-What would expose it: a series list holding an inverted TranMap that is not the
-whole Mapping. C's serialised tree holds a forward TranMap with the components
-swapped; the port's holds an inverted one. Separately, a `TranMap(m, m)` inside a
-list, which C replaces with `m` and the port leaves as a TranMap.
-
-Closing it means routing `map_merge` through `simplified()` with C's either/or
-ordering, the same change §10.10 needs for SwitchMap.
+Two fixtures gate the cases the corpus could not reach before, because both need
+the TranMap to be nominated from inside a list rather than as the whole Mapping:
+`tranmap_invert_in_list` for `tranmap.c:837-850` and
+`tranmap_equal_components_in_list` for `tranmap.c:864-887`. Both come out of C as
+predicted — the first serialises a forward TranMap with the components swapped
+and inverted, the second collapses to a single `ZoomMap` with `Zoom = 10` once
+the exposed component merges with its neighbour — and both are byte-exact in the
+port.
 
 ### 10.12 `GetDefUnc`'s unbounded-axis guard misses the upper bound
 

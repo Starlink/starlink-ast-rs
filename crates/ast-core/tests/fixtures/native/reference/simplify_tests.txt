@@ -175,6 +175,8 @@ pcd_zoom_swap_cancel    | simplify_fixtures/pcd_zoom_swap_cancel.map    | simpli
 switchmap_invert_normalize | simplify_fixtures/switchmap_invert_normalize.map | simplify_fixtures/switchmap_invert_normalize.simp |
 switchmap_internal_simplify | simplify_fixtures/switchmap_internal_simplify.map | simplify_fixtures/switchmap_internal_simplify.simp |
 tranmap_adjacent_merge  | simplify_fixtures/tranmap_adjacent_merge.map  | simplify_fixtures/tranmap_adjacent_merge.simp  |
+tranmap_invert_in_list  | simplify_fixtures/tranmap_invert_in_list.map  | simplify_fixtures/tranmap_invert_in_list.simp  |
+tranmap_equal_components_in_list | simplify_fixtures/tranmap_equal_components_in_list.map | simplify_fixtures/tranmap_equal_components_in_list.simp |
 matrix_swap_past_win    | simplify_fixtures/matrix_swap_past_win.map    | simplify_fixtures/matrix_swap_past_win.simp    |
 matrix_swap_past_perm   | simplify_fixtures/matrix_swap_past_perm.map   | simplify_fixtures/matrix_swap_past_perm.simp   |
 sla_helioecl_cancel     | simplify_fixtures/sla_helioecl_cancel.map     | simplify_fixtures/sla_helioecl_cancel.simp     |
