@@ -3,7 +3,8 @@
 One file per class, named for its Rust module: `shift.md` audits
 `crates/ast-core/src/mappings/shift.rs`.
 Region modules take a `region_` prefix, so `region_interval.md` audits
-`crates/ast-core/src/regions/interval.rs`.
+`crates/ast-core/src/regions/interval.rs`; Frame modules take a `frame_` prefix,
+so `frame_frameset.md` audits `crates/ast-core/src/frames/frameset.rs`.
 
 Each row is one of C's own comment-delimited steps in that class's `MapMerge`
 or `Simplify` body.
@@ -51,8 +52,17 @@ cannot arrive without one.
 - Every module under `crates/ast-core/src/mappings/` that is not in the test's
   helper list.
 - Every module under `crates/ast-core/src/regions/` that overrides one of this
-  audit's Region seams — `map_merge`, `simplify_remapped` or `get_def_unc` —
-  plus `mod`, which carries the generic `Region::Simplify` driver.
+  audit's Region seams — `map_merge`, `simplify_remapped`, `get_def_unc` or
+  `simplified` — plus `mod`, which carries the generic `Region::Simplify` driver.
+- Every module under `crates/ast-core/src/frames/` that overrides `simplified`.
+  A Frame class may also implement `Mapping`; `FrameSet` does, and C gives it a
+  `Simplify` body of its own (`frameset.c:10111`).
+
+`simplified` is in that list because C's per-class `Simplify` vtab slot is an
+extension point on the same footing as `MapMerge`: `astSimplify_`
+(`mapping.c:24772`) is its only caller, and a class that overrides it owns a
+whole simplification algorithm. Such a body belongs in this audit whichever
+directory the class lives in.
 
 `test_mapmerge_audit.rs` enforces all of this.
 A class in the audit universe with no checklist fails, and so does a row whose

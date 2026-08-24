@@ -1140,8 +1140,8 @@ impl Mapping for Polygon {
         let mut data = RegionData::new(frameset, new_points);
         data.uncertainty = this.data.uncertainty.clone();
         // Remapping the vertices into the current Frame can change their
-        // winding order, so restore the bounded-when-unnegated convention as
-        // C astLoadPolygon (polygon.c:7325) does after loading vertices.
+        // winding order, so restore the bounded-when-unnegated convention that
+        // C's constructor applies (EnsureInside, polygon.c:7160).
         let mut polygon = Polygon { data };
         polygon.ensure_inside()?;
         let mut result: DynRegion = Box::new(polygon);

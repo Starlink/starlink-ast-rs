@@ -26,7 +26,21 @@ const MAPPING_HELPERS: &[&str] = &[
 /// any of them takes part in `MapMerge` or `Simplify` and needs a checklist;
 /// `RegPins` and `RegBaseMesh` are extension points too, but they answer a
 /// different question and are audited elsewhere.
-const REGION_SEAMS: &[&str] = &["fn map_merge", "fn simplify_remapped", "fn get_def_unc"];
+const REGION_SEAMS: &[&str] = &[
+    "fn map_merge",
+    "fn simplify_remapped",
+    "fn get_def_unc",
+    "fn simplified",
+];
+
+/// The marker for a class that overrides C's per-class `Simplify` vtab slot.
+///
+/// C's `astSimplify_` (`mapping.c:24772`) is the only caller of that slot, and a
+/// class that overrides it owns a whole simplification algorithm of its own —
+/// `cmpmap.c:3396`, `polygon.c:5291`, `circle.c:1769`, `ellipse.c:1879`,
+/// `frameset.c:10111`. Those bodies are as much C's extension mechanism as
+/// `MapMerge` is, so they belong in this audit whatever directory they live in.
+const SIMPLIFY_SEAM: &str = "fn simplified";
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -94,6 +108,24 @@ fn audit_universe() -> BTreeSet<String> {
         let source = std::fs::read_to_string(&file).expect("region module readable");
         if stem == "mod" || REGION_SEAMS.iter().any(|seam| source.contains(seam)) {
             universe.insert(format!("region_{stem}"));
+        }
+    }
+
+    // A Frame class may also implement `Mapping` and override `Simplify`;
+    // `FrameSet` does, and C gives it a `Simplify` body of its own. Scanning
+    // `frames/` for the seam keeps such a class from staying outside the audit
+    // simply because it is not filed under `mappings/`.
+    let frames = repo_root().join("crates/ast-core/src/frames");
+    for stem in module_stems(&frames) {
+        let file = frames.join(format!("{stem}.rs"));
+        let file = if file.is_file() {
+            file
+        } else {
+            frames.join(&stem).join("mod.rs")
+        };
+        let source = std::fs::read_to_string(&file).expect("frame module readable");
+        if source.contains(SIMPLIFY_SEAM) {
+            universe.insert(format!("frame_{stem}"));
         }
     }
 
