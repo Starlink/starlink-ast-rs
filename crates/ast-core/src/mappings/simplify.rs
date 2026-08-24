@@ -2904,11 +2904,14 @@ pub(crate) fn pcd_map_merge(
     series: bool,
 ) -> Option<usize> {
     // C's opening move, before any neighbour is considered: a PcdMap whose
-    // distortion coefficient is zero is a UnitMap (pcdmap.c:1417-1433).
-    let reduced = (pcd as &dyn Mapping).simplify().ok();
-    if let Some(modified) = try_self_reduce(pcd, reduced, ctx, where_) {
+    // distortion coefficient is zero is a UnitMap (pcdmap.c:1420-1432). The
+    // replacement carries a cleared Invert flag (pcdmap.c:1429). C makes this
+    // the `if` of an if/else whose `else` holds the whole neighbour search, so
+    // a reduced PcdMap never looks at a neighbour in the same pass.
+    if ast_equal(pcd.disc(), 0.0) {
+        ctx.set_pair_single(where_, (Box::new(UnitMap::new(2)), false, false));
         ctx.resync_frozen();
-        return Some(modified);
+        return Some(where_);
     }
 
     if series {

@@ -20,7 +20,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::perm::PermMap;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A 2-D pincushion/barrel distortion mapping.
@@ -220,20 +220,6 @@ impl Mapping for PcdMap {
             }
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // If disc == 0, the PcdMap is identity.
-        if ast_equal(self.disc, 0.0) {
-            return Ok(Box::new(UnitMap::new(2)));
-        }
-
-        // Otherwise just return a clone (no further self-simplification).
-        Ok(Box::new(self.clone()))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
