@@ -35,7 +35,7 @@ nothing more goes, then rebuild one TimeMap or a UnitMap.
 | 16 | Count the accumulated steps | timemap.c:2243-2247 | timemap.rs:1255 | ported |
 | 17 | Loop, simplifying the step sequence until no further improvement is possible | timemap.c:2248-2252 | timemap.rs:1175-1221 | ported |
 | 18 | Examine each remaining step in turn, assuming at first it will be kept | timemap.c:2253-2259 | timemap.rs:1175-1221 | ported |
-| 19 | Eliminate a change of system that has no effect, for MJDTOMJD, MJDTOJD or JDTOMJD with a zero net offset | timemap.c:2260-2266 | timemap.rs:1163-1174 | gap: PLAN.md §10.9 |
+| 19 | Eliminate a change of system that has no effect, for MJDTOMJD, MJDTOJD or JDTOMJD with a zero net offset | timemap.c:2260-2266 | timemap.rs:1163-1174 | ported |
 | 20 | Every other simplification combines adjacent steps, so apply them only while two remain | timemap.c:2267-2283 | timemap.rs:1175-1221 | ported |
 | 21 | Eliminate a correction followed by its inverse when the user-supplied arguments are unchanged | timemap.c:2284-2298 | timemap.rs:1121-1160 | ported |
 | 22 | Apply that test to conversions with two arguments that inversion swaps | timemap.c:2299-2311 | timemap.rs:1131-1145 | ported |
@@ -55,19 +55,16 @@ nothing more goes, then rebuild one TimeMap or a UnitMap.
 | 36 | Clear the returned value if an error occurred | timemap.c:2462-2464 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 37 | Return the result | timemap.c:2465-2466 | timemap.rs:1300 | ported |
 
-## Row 19 — two of C's three no-effect cases are missing
+## Row 19 — the test is on the derived offset, not the supplied pair
 
 C drops a step whose derived net offset is zero, and applies that to all three of
 `AST__MJDTOMJD`, `AST__MJDTOJD` and `AST__JDTOMJD`, testing `cvtargs[istep][2]`.
-The port tests `args[0] == args[1]` on `MjdToMjd` alone.
+`time_step_is_no_effect` tests the same three types against the same `args[2]`.
 
-For `MjdToMjd` the two tests agree, because `args[2] = args[0] - args[1]`. For
-the other two they do not: `args[2]` carries the 2400000.5 constant
-(`timemap.c:507,511`), so an `MjdToJd` whose output offset exactly absorbs that
-constant is a no-op C removes and the port keeps.
-
-The port already derives `args[2]` the same way (`timemap.rs:492-501`) — it just
-does not use it here. See PLAN.md §10.9.
+Testing the supplied pair instead would agree only for `MjdToMjd`, where
+`args[2] = args[0] - args[1]`. For the other two, `args[2]` carries the 2400000.5
+constant (`timemap.c:507,511`), so an `MjdToJd` whose output offset exactly
+absorbs that constant is a no-op only the derived value can see.
 
 ## Rows 22 to 25 — the swap set is what distinguishes the argument counts
 
