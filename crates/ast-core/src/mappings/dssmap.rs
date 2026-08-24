@@ -20,7 +20,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::winmap::WinMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// Radians per degree, as used *inside* the SAOimage `platepos` / `platepix`
@@ -522,15 +522,12 @@ impl Mapping for DssMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-        // DssMap has no self-simplification; return a clone.
-        Ok(Box::new(self.clone()))
+        // C `dssmap.c::MapMerge` (1003) has one step and it is a neighbour
+        // absorption: a WinMap mapping pixel coordinates ahead of an un-inverted
+        // DssMap folds into the plate solution. There is no
+        // replace-with-simpler step, so a nominated DssMap goes straight to the
+        // pairwise merge, which `DssMap::try_merge` performs.
+        super::simplify::default_map_merge(ctx, where_, series)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
