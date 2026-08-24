@@ -15,7 +15,7 @@ use super::rate::numeric_rate;
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// A single polynomial term: `coeff * x0^p0 * x1^p1 * ... * xN^pN`.
@@ -1384,7 +1384,7 @@ impl Mapping for PolyMap {
             }
             None => true,
         };
-        if let Ok(simp) = self.simplified()
+        if let Ok(simp) = <dyn Mapping>::simplify(self)
             && changed(&simp)
         {
             let eff_inv = ctx.entry(where_).1;
@@ -1395,7 +1395,7 @@ impl Mapping for PolyMap {
         super::simplify::default_map_merge(ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

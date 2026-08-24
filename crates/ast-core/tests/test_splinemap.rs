@@ -307,7 +307,7 @@ fn test_inverse_cancellation_simplify() {
     let cmp = CmpMap::new(Box::new(m1), Box::new(m2), Composition::Series).unwrap();
 
     // Simplify should produce a UnitMap
-    let simp = cmp.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         simp.as_any().is::<UnitMap>(),
         "expected UnitMap after simplification, got {:?}",
@@ -325,7 +325,7 @@ fn test_no_cancellation_same_direction() {
     // Both in the same direction -- should NOT simplify to UnitMap
     let cmp = CmpMap::new(Box::new(m1), Box::new(m2), Composition::Series).unwrap();
 
-    let simp = cmp.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         !simp.as_any().is::<UnitMap>(),
         "should not simplify same-direction splines to UnitMap"
@@ -342,7 +342,7 @@ fn test_no_cancellation_different_coeffs() {
 
     let cmp = CmpMap::new(Box::new(m1), Box::new(m2), Composition::Series).unwrap();
 
-    let simp = cmp.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         !simp.as_any().is::<UnitMap>(),
         "should not simplify different splines to UnitMap"

@@ -53,7 +53,7 @@ fn zoom_map_inverted_flag() {
 #[test]
 fn zoom_map_simplified_identity() {
     let m = ZoomMap::new(2, 1.0).unwrap();
-    let s = m.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&m).unwrap();
     let pts = PointSet::from_rows([[7.0, 8.0]]);
     let out = s.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[7.0, 8.0]);

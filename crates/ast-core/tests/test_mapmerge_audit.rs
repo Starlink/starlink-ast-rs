@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 const MAPPING_HELPERS: &[&str] = &[
     "mod",
     "simplify",
+    "simplify_entry",
     "helpers",
     "matrix_merge",
     "winmap_merge",

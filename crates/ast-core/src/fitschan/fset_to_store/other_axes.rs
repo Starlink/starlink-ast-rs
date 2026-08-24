@@ -174,7 +174,7 @@ pub(crate) fn other_axes(args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     // Simplify a non-trivial result; otherwise return a UnitMap.
     // Mirrors C:24411-24417.
     match ret {
-        Some(m) => m.simplified(),
+        Some(m) => m.simplify(),
         None => Ok(Box::new(UnitMap::new(nwcs))),
     }
 }

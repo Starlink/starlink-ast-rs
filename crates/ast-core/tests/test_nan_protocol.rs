@@ -24,7 +24,7 @@ fn load_lsst() -> Box<dyn Mapping> {
         .unwrap()
         .into_mapping()
         .unwrap()
-        .simplified()
+        .simplify()
         .unwrap()
 }
 

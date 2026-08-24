@@ -102,7 +102,7 @@ fn main() {
         .expect("parse")
         .into_mapping()
         .expect("not a Mapping");
-    let simplified = fset.simplified().expect("simplify");
+    let simplified = fset.simplify().expect("simplify");
     let map = find_polymap(simplified.as_ref())
         .expect("no PolyMap in simplified LSST FrameSet")
         .clone();

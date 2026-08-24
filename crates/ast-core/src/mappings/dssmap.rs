@@ -20,7 +20,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::winmap::WinMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// Radians per degree, as used *inside* the SAOimage `platepos` / `platepix`
@@ -525,7 +525,7 @@ impl Mapping for DssMap {
         super::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
@@ -1153,7 +1153,7 @@ mod tests {
     #[test]
     fn dssmap_simplified_returns_clone() {
         let dm = make_test_dssmap();
-        let simp = dm.simplified().unwrap();
+        let simp = <dyn Mapping>::simplify(&dm).unwrap();
         // DssMap has no self-simplification, so simplified() returns itself.
         assert!(simp.as_any().downcast_ref::<DssMap>().is_some());
         assert!(simp.equal(&dm));
@@ -1200,8 +1200,7 @@ mod tests {
         // (a unit scale would degrade to a ShiftMap, a zero shift to a ZoomMap —
         // neither of which C's `MapMerge` matches either).
         assert!(
-            wm.clone()
-                .simplified()
+            <dyn Mapping>::simplify(&wm)
                 .unwrap()
                 .as_any()
                 .downcast_ref::<WinMap>()
@@ -1210,7 +1209,7 @@ mod tests {
         );
 
         let chain = CmpMap::new(Box::new(wm), Box::new(dm.clone()), Composition::Series).unwrap();
-        let simp = chain.simplified().unwrap();
+        let simp = <dyn Mapping>::simplify(&chain).unwrap();
 
         // The pair collapses to a single DssMap (CmpMap is gone).
         assert!(
@@ -1242,7 +1241,7 @@ mod tests {
         let wm = WinMap::new(&[-0.5, -0.5], &[2.0, 2.0]).unwrap();
 
         let chain = CmpMap::new(Box::new(dm.clone()), Box::new(wm), Composition::Series).unwrap();
-        let simp = chain.simplified().unwrap();
+        let simp = <dyn Mapping>::simplify(&chain).unwrap();
 
         assert!(
             simp.as_any().downcast_ref::<DssMap>().is_some(),
@@ -1278,7 +1277,7 @@ mod tests {
 
         // End-to-end: the chain stays a CmpMap.
         let chain = CmpMap::new(Box::new(zoom), Box::new(dm), Composition::Series).unwrap();
-        let simp = chain.simplified().unwrap();
+        let simp = <dyn Mapping>::simplify(&chain).unwrap();
         assert!(
             simp.as_any().downcast_ref::<DssMap>().is_none(),
             "DssMap + ZoomMap must not collapse to a DssMap"

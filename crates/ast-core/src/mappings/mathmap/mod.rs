@@ -19,7 +19,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 
 use crate::mappings::SimplifiedRecord;
 use opcode::CompiledExpr;
@@ -427,7 +427,7 @@ impl Mapping for MathMap {
         crate::mappings::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         Ok(Box::new(self.clone()))
     }
 

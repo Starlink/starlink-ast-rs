@@ -307,7 +307,7 @@ fn winmap_simplifies_to_shiftmap() {
 
     // All scales = 1.0 → should simplify to ShiftMap
     let wm = WinMap::new(&[3.0, 5.0], &[1.0, 1.0]).unwrap();
-    let s = wm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&wm).unwrap();
     assert!(s.as_any().is::<ShiftMap>());
     assert_eq!(s.nin(), 2);
 }
@@ -318,7 +318,7 @@ fn winmap_simplifies_to_zoommap() {
 
     // All shifts = 0.0, uniform scale → should simplify to ZoomMap
     let wm = WinMap::new(&[0.0, 0.0], &[4.0, 4.0]).unwrap();
-    let s = wm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&wm).unwrap();
     assert!(s.as_any().is::<ZoomMap>());
 }
 
@@ -328,7 +328,7 @@ fn winmap_simplifies_to_unitmap() {
 
     // Identity: all shifts=0, all scales=1
     let wm = WinMap::new(&[0.0, 0.0], &[1.0, 1.0]).unwrap();
-    let s = wm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&wm).unwrap();
     assert!(s.as_any().is::<UnitMap>());
 }
 
@@ -338,7 +338,7 @@ fn winmap_non_uniform_stays_winmap() {
 
     // Non-uniform scales → stays WinMap
     let wm = WinMap::new(&[1.0, 2.0], &[3.0, 4.0]).unwrap();
-    let s = wm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&wm).unwrap();
     assert!(s.as_any().is::<WinMap>());
 }
 

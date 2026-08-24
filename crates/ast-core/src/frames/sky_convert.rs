@@ -327,7 +327,7 @@ pub(crate) fn make_sky_mapping(
     } else {
         Box::new(sla)
     };
-    result.simplified()
+    result.simplify()
 }
 
 // ---------------------------------------------------------------------------

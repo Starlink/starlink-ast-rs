@@ -577,7 +577,7 @@ fn make_sf_mapping(
     let tmap4 = CmpMap::new(Box::new(tmap3), Box::new(map5), Composition::Series)?;
 
     // Simplify the result, mirroring C astSimplify.
-    Ok(Some(tmap4.simplified()?))
+    Ok(Some(<dyn Mapping>::simplify(&tmap4)?))
 }
 
 /// Build the SpecFluxFrame conversion in *external* axis order, bracketing
@@ -609,7 +609,7 @@ fn build_sf_conversion(
         // Core yields (spec, flux); swap to external (flux, spec).
         map = Box::new(CmpMap::new(map, Box::new(swap()?), Composition::Series)?);
     }
-    Ok(Some(map.simplified()?))
+    Ok(Some(map.simplify()?))
 }
 
 // ---------------------------------------------------------------------------

@@ -127,7 +127,7 @@ fn benchmark_lsst_frameset() {
     }
 
     println!("--- Simplified mapping ---");
-    let simplified = mapping.simplified().unwrap();
+    let simplified = mapping.simplify().unwrap();
     println!(
         "Simplified: nin={}, nout={}\n",
         simplified.nin(),

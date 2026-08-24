@@ -421,7 +421,7 @@ fn simplified_returns_base_to_current_mapping() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 4.0).unwrap());
     fs.add_frame(FrameRef::Base, z, make_frame(2)).unwrap();
 
-    let m = fs.simplified().unwrap();
+    let m = <dyn Mapping>::simplify(&fs).unwrap();
     let pts = PointSet::from_rows([[2.0, 3.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[8.0, 12.0]);

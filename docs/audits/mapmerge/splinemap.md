@@ -44,7 +44,8 @@ is how many passes it takes.
 
 ## The self-reduction seam is present, and empty
 
-`self_reduce_map_merge` consults `simplified()`, which returns an unchanged clone
+`self_reduce_map_merge` consults `simplify()`, and behind it `simplified()`,
+which returns an unchanged clone
 because C gives SplineMap no replace-with-simpler step either. The seam being
 present is the point: unlike RateMap (PLAN.md §10.1) and PcdMap (§10.7), a
 reduction added here would be reached from the nominate loop.

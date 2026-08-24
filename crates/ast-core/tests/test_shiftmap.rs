@@ -39,7 +39,7 @@ fn shift_map_bad_value() {
 #[test]
 fn shift_map_simplified_zero() {
     let m = ShiftMap::new([0.0, 0.0]);
-    let s = m.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&m).unwrap();
     let pts = PointSet::from_rows([[5.0, 6.0]]);
     let out = s.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[5.0, 6.0]);

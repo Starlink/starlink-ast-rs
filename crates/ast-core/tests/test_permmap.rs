@@ -83,7 +83,7 @@ fn perm_bad_per_axis() {
 #[test]
 fn perm_map_identity_simplifies() {
     let pm = PermMap::new(&[1, 2], &[1, 2], &[]).unwrap();
-    let simplified = pm.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&pm).unwrap();
     let pts = PointSet::from_rows([[4.0, 8.0]]);
     let out = simplified.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[4.0, 8.0]);
@@ -93,7 +93,7 @@ fn perm_map_identity_simplifies() {
 #[test]
 fn perm_map_non_identity_not_simplified() {
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let simplified = pm.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&pm).unwrap();
     let pts = PointSet::from_rows([[1.0, 2.0]]);
     let out = simplified.transform(&pts, true).unwrap();
     // Should still swap.
@@ -156,12 +156,12 @@ fn perm_parallel_merge() {
 fn perm_simplified_checks_both_perms() {
     // Identity outperm but non-identity inperm -> NOT a UnitMap.
     let pm = PermMap::new(&[2, 1], &[1, 2], &[]).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(!s.as_any().is::<UnitMap>());
 
     // Both identity -> IS a UnitMap.
     let pm2 = PermMap::new(&[1, 2], &[1, 2], &[]).unwrap();
-    let s2 = pm2.simplified().unwrap();
+    let s2 = <dyn Mapping>::simplify(&pm2).unwrap();
     assert!(s2.as_any().is::<UnitMap>());
 }
 
@@ -307,7 +307,7 @@ fn perm_dimension_changing_merge_preserves_invertibility() {
         .unwrap()
     };
     let chain = CmpMap::new(Box::new(perm), Box::new(scale), Composition::Series).unwrap();
-    let simp = chain.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&chain).unwrap();
 
     // Forward then inverse must round-trip (the inverse must exist).
     let pts = PointSet::from_rows([[5.0, 7.0]]);

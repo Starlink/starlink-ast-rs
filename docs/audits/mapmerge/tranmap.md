@@ -60,7 +60,7 @@ form, and a TranMap whose two components are inverses of each other is not
 collapsed to one of them.
 
 The inversion case has the same fused shape as SwitchMap's besides:
-`tranmap.rs:269` returns `normalized.simplified()`, so the normalised TranMap is
+`tranmap.rs:269` returns `<dyn Mapping>::simplify(&normalized)`, so the normalised TranMap is
 never the whole result of a simplification on its own. See PLAN.md §10.11.
 
 ## Row 17 — which component is forward depends on the applied direction

@@ -878,14 +878,14 @@ fn mat_perm_swap(
     // Simplify both, recording their resulting Invert flags (C stores each in
     // its forward direction with the simplified Invert). The PermMap takes the
     // MatrixMap's slot (imm) and the MatrixMap takes the PermMap's slot.
-    let sp = pmnew.simplified().ok()?;
+    let sp = <dyn Mapping>::simplify(&pmnew).ok()?;
     let sp_inv = sp.is_inverted();
     let mut sp_fwd = sp;
     if sp_inv {
         sp_fwd.invert();
     }
     sp_fwd.set_has_been_simplified(true);
-    let sm = mmnew.simplified().ok()?;
+    let sm = <dyn Mapping>::simplify(&mmnew).ok()?;
     let sm_inv = sm.is_inverted();
     let mut sm_fwd = sm;
     if sm_inv {
@@ -932,7 +932,7 @@ fn try_speculative_swap(
         let worthwhile = swapped.iter().any(|entry| {
             entry
                 .0
-                .simplified()
+                .simplify()
                 .ok()
                 .is_some_and(|s| s.as_any().type_id() != entry.0.as_any().type_id())
         });

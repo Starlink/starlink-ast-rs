@@ -18,7 +18,7 @@ use super::perm::PermMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
 use super::zoom::ZoomMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// Tolerance used to identify identity matrices.
@@ -670,7 +670,7 @@ impl Mapping for MatrixMap {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

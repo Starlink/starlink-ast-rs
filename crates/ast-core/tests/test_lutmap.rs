@@ -572,7 +572,7 @@ fn lutmap_linear_simplifies_to_winmap() {
     let lut = vec![1.0, 3.0, 5.0, 7.0, 9.0];
     let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
 
-    let s = lm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(
         s.as_any().is::<WinMap>(),
         "Linear LUT should simplify to WinMap"
@@ -601,7 +601,7 @@ fn lutmap_linear_with_start_and_inc_simplifies() {
     let lut = vec![100.0, 200.0, 300.0];
     let lm = LutMap::new(&lut, 10.0, 5.0).unwrap();
 
-    let s = lm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(
         s.as_any().is::<WinMap>(),
         "Linear LUT with non-trivial start/inc should simplify to WinMap"
@@ -630,7 +630,7 @@ fn lutmap_linear_inverted_simplifies() {
     let mut lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
     lm.invert();
 
-    let s = lm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(
         s.as_any().is::<WinMap>(),
         "Inverted linear LUT should simplify to WinMap"
@@ -658,7 +658,7 @@ fn lutmap_nonlinear_stays_lutmap() {
     let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
     let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
 
-    let s = lm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(s.as_any().is::<LutMap>());
 }
 
@@ -669,7 +669,7 @@ fn lutmap_has_been_simplified_respected() {
     let mut lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
     lm.set_has_been_simplified(true);
 
-    let s = lm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(s.as_any().is::<LutMap>());
 }
 
@@ -677,7 +677,7 @@ fn lutmap_has_been_simplified_respected() {
 fn lutmap_single_element_no_simplify() {
     // Single-element table cannot determine linearity
     let lm = LutMap::new(&[42.0], 0.0, 1.0).unwrap();
-    let s = lm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
     assert!(s.as_any().is::<LutMap>());
 }
 

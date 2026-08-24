@@ -12,7 +12,7 @@ use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::unitnormmap::try_merge_into_unitnormmap;
 use super::zoom::ZoomMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that applies a per-axis linear transformation:
@@ -252,7 +252,7 @@ impl Mapping for WinMap {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

@@ -15,7 +15,7 @@ fn main() {
         .expect("parse lsst.ast")
         .into_mapping()
         .expect("not a Mapping")
-        .simplified()
+        .simplify()
         .expect("simplify");
 
     // Build 10k input points.

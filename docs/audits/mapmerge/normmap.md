@@ -10,7 +10,7 @@ identical NormMaps to one, since `astNorm` is idempotent.
 
 `NormMap::map_merge` (`normmap.rs:188-195`) routes through
 `self_reduce_map_merge`, so the reduction in `simplified()` is reached from the
-nominate loop and the neighbour work falls to `NormMap::try_merge`.
+nominate loop through `simplify()` and the neighbour work falls to `NormMap::try_merge`.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|

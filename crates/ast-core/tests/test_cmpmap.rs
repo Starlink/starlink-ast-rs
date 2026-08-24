@@ -102,7 +102,7 @@ fn cmpmap_simplified_two_unitmaps_series() {
     let a: Box<dyn Mapping> = Box::new(UnitMap::new(2));
     let b: Box<dyn Mapping> = Box::new(UnitMap::new(2));
     let cm = CmpMap::new(a, b, Composition::Series).unwrap();
-    let simp = cm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cm).unwrap();
     let pts = PointSet::from_rows([[3.0, 7.0]]);
     let out = simp.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[3.0, 7.0]);
@@ -114,7 +114,7 @@ fn cmpmap_simplified_two_unitmaps_parallel() {
     let a: Box<dyn Mapping> = Box::new(UnitMap::new(1));
     let b: Box<dyn Mapping> = Box::new(UnitMap::new(2));
     let cm = CmpMap::new(a, b, Composition::Parallel).unwrap();
-    let simp = cm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cm).unwrap();
     assert_eq!(simp.nin(), 3);
     let pts = PointSet::from_rows([[1.0, 2.0, 3.0]]);
     let out = simp.transform(&pts, true).unwrap();
@@ -170,7 +170,7 @@ fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
     )
     .unwrap();
 
-    let simp = cmp.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         simp.as_any().is::<UnitMap>(),
         "expected UnitMap after simplify (got nin={}, nout={})",

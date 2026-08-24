@@ -3,7 +3,7 @@
 use ast_core::coords::PointSet;
 use ast_core::error::{AstError, AstResult, ErrorCode};
 use ast_core::frames::{DynFrame, Frame};
-use ast_core::mappings::{DynMapping, Mapping};
+use ast_core::mappings::{DynMapping, Mapping, ViaSimplify};
 use ast_core::regions::{DynRegion, Overlap, Region};
 
 /// A dummy type that implements all three traits, proving they're coherent.
@@ -32,7 +32,7 @@ impl Mapping for DummyRegion {
     ) -> AstResult<()> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
     fn rate(&self, _at: &[f64], _ax1: usize, _ax2: usize) -> AstResult<f64> {

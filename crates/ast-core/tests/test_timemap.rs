@@ -632,7 +632,7 @@ fn timemap_merge_eliminates_no_effect() {
     let mut tm1 = TimeMap::new();
     tm1.add(TimeCvtType::MjdToMjd, &[0.0, 0.0]);
 
-    let s = tm1.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&tm1).unwrap();
     assert!(
         s.as_any().is::<UnitMap>(),
         "MjdToMjd(0,0) should simplify to UnitMap"
@@ -665,7 +665,7 @@ fn timemap_merge_mjd_to_mjd_equal_offsets() {
     let mut tm1 = TimeMap::new();
     tm1.add(TimeCvtType::MjdToMjd, &[51544.5, 51544.5]);
 
-    let s = tm1.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&tm1).unwrap();
     assert!(
         s.as_any().is::<UnitMap>(),
         "MjdToMjd with equal offsets should simplify to UnitMap"
@@ -687,7 +687,7 @@ fn timemap_simplified_chain() {
         &[51544.0, ast_core::constants::BAD_VALUE],
     );
 
-    let s = tm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&tm).unwrap();
     assert!(
         s.as_any().is::<UnitMap>(),
         "TaiToUtc + UtcToTai should simplify to UnitMap"

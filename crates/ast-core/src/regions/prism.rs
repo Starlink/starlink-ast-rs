@@ -19,7 +19,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{CmpFrame, DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping};
+use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
@@ -835,7 +835,7 @@ impl Mapping for Prism {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         // Faithful port of prism.c::Simplify (prism.c:3204). Attempts to
         // express the Prism's two component Regions within the parent
         // Region's current Frame, collapsing the Prism to a single Region
@@ -864,7 +864,7 @@ impl Mapping for Prism {
             reg2.clone_region(),
             Composition::Parallel,
         )?;
-        let smap = Mapping::simplified(&cmpmap)?;
+        let smap = <dyn Mapping>::simplify(&cmpmap)?;
 
         // Initially assume we cannot form a new Region from the simplified
         // CmpMap.
@@ -897,7 +897,7 @@ impl Mapping for Prism {
         // Frame of the parent and simplify it (prism.c:3342).
         if let Some(region) = new.take() {
             let mapped = region.map_region(bcmap.as_ref(), cfrm.as_ref())?;
-            let simplified = Mapping::simplified(mapped.as_ref())?;
+            let simplified = <dyn Mapping>::simplify(mapped.as_ref())?;
             // astSimplify of a Region always yields a Region; if the concrete
             // simplified form is not a plain Region class, keep the mapped
             // Region unchanged.
@@ -943,9 +943,10 @@ impl Mapping for Prism {
                 let target: Vec<i32> = axout1.iter().map(|&a| a as i32).collect();
                 let newfrm1 = cfrm.pick_axes_snapshot(&target)?;
                 let newreg1 = reg1.map_region(nmap1.as_ref(), newfrm1.as_ref())?;
-                let mut simplified =
-                    super::merge_util::mapping_into_region(Mapping::simplified(newreg1.as_ref())?)
-                        .unwrap_or(newreg1);
+                let mut simplified = super::merge_util::mapping_into_region(
+                    <dyn Mapping>::simplify(newreg1.as_ref())?,
+                )
+                .unwrap_or(newreg1);
                 if neg {
                     simplified.negate();
                 }
@@ -961,9 +962,10 @@ impl Mapping for Prism {
                 let target: Vec<i32> = axout2.iter().map(|&a| a as i32).collect();
                 let newfrm2 = cfrm.pick_axes_snapshot(&target)?;
                 let newreg2 = reg2.map_region(nmap2.as_ref(), newfrm2.as_ref())?;
-                let mut simplified =
-                    super::merge_util::mapping_into_region(Mapping::simplified(newreg2.as_ref())?)
-                        .unwrap_or(newreg2);
+                let mut simplified = super::merge_util::mapping_into_region(
+                    <dyn Mapping>::simplify(newreg2.as_ref())?,
+                )
+                .unwrap_or(newreg2);
                 if neg {
                     simplified.negate();
                 }
@@ -977,12 +979,12 @@ impl Mapping for Prism {
                 let target1: Vec<i32> = axout1.iter().map(|&a| a as i32).collect();
                 let newfrm1 = cfrm.pick_axes_snapshot(&target1)?;
                 let newreg1 = reg1.map_region(nmap1.as_ref(), newfrm1.as_ref())?;
-                let snewreg1_map = Mapping::simplified(newreg1.as_ref())?;
+                let snewreg1_map = <dyn Mapping>::simplify(newreg1.as_ref())?;
 
                 let target2: Vec<i32> = axout2.iter().map(|&a| a as i32).collect();
                 let newfrm2 = cfrm.pick_axes_snapshot(&target2)?;
                 let newreg2 = reg2.map_region(nmap2.as_ref(), newfrm2.as_ref())?;
-                let snewreg2_map = Mapping::simplified(newreg2.as_ref())?;
+                let snewreg2_map = <dyn Mapping>::simplify(newreg2.as_ref())?;
 
                 // Detect whether either component actually simplified by
                 // structural comparison, mirroring C's pointer inequality

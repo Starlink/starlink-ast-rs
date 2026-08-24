@@ -111,7 +111,7 @@ pub(super) fn full_set_split<M: Mapping + ?Sized>(
         let outperm: Vec<i64> = outperm_zb.iter().map(|&v| (v as i64) + 1).collect();
         let pm = PermMap::new(&inperm, &outperm, &[]).ok()?;
         let cmp = CmpMap::new(Box::new(pm), this.clone_box(), Composition::Series).ok()?;
-        cmp.simplified().ok()?
+        <dyn Mapping>::simplify(&cmp).ok()?
     };
 
     Some((out_axes, sub))

@@ -106,7 +106,7 @@ fn matrix_bad_all_inputs_bad() {
 fn matrix_map_simplified_identity() {
     let m = array![[1.0_f64, 0.0], [0.0, 1.0]];
     let mm = MatrixMap::new(m).unwrap();
-    let simplified = mm.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&mm).unwrap();
     // UnitMap pass-through
     let pts = PointSet::from_rows([[5.0, 9.0]]);
     let out = simplified.transform(&pts, true).unwrap();
@@ -118,7 +118,7 @@ fn matrix_map_simplified_identity() {
 fn matrix_map_simplified_non_identity_preserved() {
     let m = array![[2.0_f64, 0.0], [0.0, 3.0]];
     let mm = MatrixMap::new(m).unwrap();
-    let simplified = mm.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&mm).unwrap();
     let pts = PointSet::from_rows([[1.0, 1.0]]);
     let out = simplified.transform(&pts, true).unwrap();
     assert!((out.point(0)[0] - 2.0).abs() < 1e-12);
@@ -198,7 +198,7 @@ fn matrix_merge_with_permmap_before() {
         Composition::Series,
     )
     .unwrap();
-    let simplified = cmp.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&cmp).unwrap();
 
     // Should simplify to a single MatrixMap.
     assert!(
@@ -449,7 +449,7 @@ fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
 "#;
     let obj = from_native_string(src).unwrap();
     let map = obj.into_mapping().unwrap();
-    let simp = map.simplified().unwrap();
+    let simp = map.simplify().unwrap();
     let mm = simp
         .as_any()
         .downcast_ref::<MatrixMap>()

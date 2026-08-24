@@ -15,7 +15,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap};
+use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::merge_util::{MergedRegion, finish_region_merge};
@@ -328,7 +328,7 @@ impl Interval {
         };
         let current_frame = self.data.frameset.current().snapshot();
         let box2 = box_reg.map_region(map, current_frame.as_ref())?;
-        let sreg = (box2.as_ref() as &dyn Mapping).simplified()?;
+        let sreg = (box2.as_ref() as &dyn Mapping).simplify()?;
 
         // The Box only simplifies (changes concrete geometry) when the
         // mapping preserves a 1-to-1 axis correspondence. Detect this: our
@@ -1368,7 +1368,7 @@ impl Mapping for Interval {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         // Box-reclassification: an Interval whose bounds are all finite
         // (no BAD on either side) and well-ordered (lbnd[i] <= ubnd[i])
         // is mathematically a BoxRegion. The C reference's interval.c
@@ -1428,7 +1428,7 @@ impl Mapping for Interval {
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplified()?;
+        let simple_map = map.simplify()?;
         if simple_map.as_ref().as_any().is::<UnitMap>() {
             return if simpler {
                 let mut result = this.clone_region();

@@ -23,7 +23,7 @@ fn load_lsst_polymap() -> PolyMap {
         .expect("parse")
         .into_mapping()
         .expect("not a Mapping");
-    let simp = fset.simplified().expect("simplify");
+    let simp = fset.simplify().expect("simplify");
     find_polymap(simp.as_ref())
         .expect("PolyMap not found in simplified LSST FrameSet")
         .clone()

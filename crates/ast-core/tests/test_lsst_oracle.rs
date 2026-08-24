@@ -107,7 +107,7 @@ fn lsst_original_inverse_matches_c() {
 
 #[test]
 fn lsst_simplified_forward_matches_c() {
-    let mapping = load_lsst().simplified().unwrap();
+    let mapping = load_lsst().simplify().unwrap();
     let out = mapping.transform(&input_points(), true).unwrap();
     // Simplified path collapses Win/Perm/etc; floating-point reordering
     // may shift the last bit or two, so allow a hair more slack.
@@ -116,7 +116,7 @@ fn lsst_simplified_forward_matches_c() {
 
 #[test]
 fn lsst_simplified_inverse_matches_c() {
-    let mapping = load_lsst().simplified().unwrap();
+    let mapping = load_lsst().simplify().unwrap();
     let fwd_pts = PointSet::from_rows(
         C_FORWARD
             .iter()

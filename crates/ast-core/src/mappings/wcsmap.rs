@@ -14,7 +14,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::perm::PermMap;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// Radians to degrees (C `AST__DR2D`).
@@ -808,7 +808,7 @@ impl Mapping for WcsMap {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

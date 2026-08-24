@@ -75,7 +75,7 @@ fn variant_lifecycle_matches_c() {
     p2fmap_inv.invert();
     let fp2: DynMapping =
         Box::new(CmpMap::new(p2fmap_inv, Box::new(p2fmap2), Composition::Series).unwrap());
-    let fp2 = Mapping::simplified(fp2.as_ref()).unwrap();
+    let fp2 = <dyn Mapping>::simplify(fp2.as_ref()).unwrap();
     fs.add_variant(Some(fp2), "FP2").unwrap();
 
     // Errors 10-12.
@@ -109,7 +109,7 @@ fn variant_lifecycle_matches_c() {
     let cur_to_base = fs.mapping(FrameRef::Current, FrameRef::Base).unwrap();
     let fp3: DynMapping =
         Box::new(CmpMap::new(cur_to_base, Box::new(p2fmap3), Composition::Series).unwrap());
-    let fp3 = Mapping::simplified(fp3.as_ref()).unwrap();
+    let fp3 = <dyn Mapping>::simplify(fp3.as_ref()).unwrap();
     fs.add_variant(Some(fp3), "FP3").unwrap();
 
     // Errors 15-17.
@@ -195,7 +195,7 @@ fn three_variant_fs() -> FrameSet {
     let mut inv: DynMapping = Box::new(p2fmap);
     inv.invert();
     let cmp2 = CmpMap::new(inv, Box::new(p2fmap2), Composition::Series).unwrap();
-    let fp2 = Mapping::simplified(&cmp2).unwrap();
+    let fp2 = <dyn Mapping>::simplify(&cmp2).unwrap();
     fs.add_variant(Some(fp2), "FP2").unwrap();
     let p2fmap3 = WinMap::from_corners(
         &[1.0, 1.0],
@@ -206,7 +206,7 @@ fn three_variant_fs() -> FrameSet {
     .unwrap();
     let cb = fs.mapping(FrameRef::Current, FrameRef::Base).unwrap();
     let cmp3 = CmpMap::new(cb, Box::new(p2fmap3), Composition::Series).unwrap();
-    let fp3 = Mapping::simplified(&cmp3).unwrap();
+    let fp3 = <dyn Mapping>::simplify(&cmp3).unwrap();
     fs.add_variant(Some(fp3), "FP3").unwrap();
     fs.set_variant("FP2").unwrap();
     fs

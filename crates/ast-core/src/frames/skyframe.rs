@@ -3401,7 +3401,7 @@ mod tests {
         let map = fs
             .mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()
-            .simplified()
+            .simplify()
             .unwrap();
         assert!(
             map.as_any().is::<crate::mappings::UnitMap>(),
@@ -3416,7 +3416,7 @@ mod tests {
         let map2 = fs2
             .mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()
-            .simplified()
+            .simplify()
             .unwrap();
         assert!(
             !map2.as_any().is::<crate::mappings::UnitMap>(),

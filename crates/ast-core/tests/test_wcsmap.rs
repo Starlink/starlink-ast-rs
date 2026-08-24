@@ -343,7 +343,7 @@ fn clone_independence() {
 #[test]
 fn simplified_produces_working_clone() {
     let wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-    let s = wcs.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&wcs).unwrap();
 
     let lon = 0.1_f64;
     let lat = 1.4_f64;
@@ -656,7 +656,7 @@ fn wcsmap_perm_swap_cancel_simplify() {
     let ref_obj = from_native_string(&ref_text).unwrap();
     let ref_mapping = ref_obj.into_mapping().unwrap();
 
-    let simplified = mapping.simplified().unwrap();
+    let simplified = mapping.simplify().unwrap();
 
     // The result should be a PermMap.
     assert!(
@@ -691,7 +691,7 @@ fn wcsmap_perm_swap_simplify_constants() {
     let input_obj = from_native_string(&input_text).unwrap();
     let mapping = input_obj.into_mapping().unwrap();
 
-    let simplified = mapping.simplified().unwrap();
+    let simplified = mapping.simplify().unwrap();
 
     // The result should be a PermMap.
     assert!(
@@ -720,7 +720,7 @@ fn wcsmap_absorbs_adjacent_permmap() {
     let inner = CmpMap::new(Box::new(pm), Box::new(wcs_inv), Composition::Series).unwrap();
     let full = CmpMap::new(Box::new(wcs_fwd), Box::new(inner), Composition::Series).unwrap();
 
-    let simplified = full.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&full).unwrap();
 
     // Should simplify to just a PermMap(swap).
     assert!(
@@ -770,7 +770,7 @@ fn unknown_projection_is_identity() {
     assert_eq!(wm.nat_lat(), 0.0);
 
     // Simplifies to a UnitMap (wcsmap.c:3087).
-    let simp = wm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&wm).unwrap();
     assert!(
         simp.as_any().is::<ast_core::mappings::UnitMap>(),
         "Unknown WcsMap should simplify to a UnitMap"

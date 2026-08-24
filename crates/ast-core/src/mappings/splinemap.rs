@@ -18,7 +18,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// Maximum spline order (order 4 = cubic).
@@ -789,7 +789,7 @@ impl Mapping for SplineMap {
         super::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

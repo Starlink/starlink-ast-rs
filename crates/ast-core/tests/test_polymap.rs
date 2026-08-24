@@ -840,7 +840,7 @@ fn polymap_removes_zero_terms() {
         },
     ];
     let pm = PolyMap::new(1, 1, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
 
     // The result should produce 0 for any input.
     let pts = PointSet::from_rows(vec![vec![7.0]]);
@@ -864,7 +864,7 @@ fn polymap_consolidates_duplicate_terms() {
         },
     ];
     let pm = PolyMap::new(1, 1, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
 
     let pts = PointSet::from_rows(vec![vec![3.0]]);
     let out = s.transform(&pts, true).unwrap();
@@ -893,7 +893,7 @@ fn polymap_simplified_no_change_when_no_duplicates() {
         },
     ];
     let pm = PolyMap::new(1, 1, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
 
     // f(2) = 2*4 + 3*2 + 1 = 15
     let pts = PointSet::from_rows(vec![vec![2.0]]);
@@ -924,7 +924,7 @@ fn polymap_simplified_consolidates_multi_output() {
         },
     ];
     let pm = PolyMap::new(2, 2, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
 
     // (3, 2) -> out1 = 5*3 = 15, out2 = 4*2 = 8
     let pts = PointSet::from_rows(vec![vec![3.0, 2.0]]);
@@ -965,7 +965,7 @@ fn polymap_linear_decomposes_to_matrixmap() {
         },
     ];
     let pm = PolyMap::new(2, 2, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(
         s.as_any().is::<MatrixMap>(),
         "Expected MatrixMap, got {:?}",
@@ -1005,7 +1005,7 @@ fn polymap_affine_decomposes() {
         },
     ];
     let pm = PolyMap::new(2, 2, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
     // Should NOT be a PolyMap anymore
     assert!(!s.as_any().is::<PolyMap>(), "Should decompose from PolyMap");
 
@@ -1044,7 +1044,7 @@ fn polymap_affine_diagonal_decomposes_to_winmap() {
         },
     ];
     let pm = PolyMap::new(2, 2, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(
         s.as_any().is::<WinMap>(),
         "Expected WinMap for diagonal affine, got {:?}",
@@ -1090,7 +1090,7 @@ fn polymap_affine_general_decomposes_to_cmpmap() {
         },
     ];
     let pm = PolyMap::new(2, 2, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(
         s.as_any().is::<CmpMap>(),
         "Expected CmpMap for general affine, got {:?}",
@@ -1113,7 +1113,7 @@ fn polymap_nonlinear_stays_polymap() {
         out_axis: 1,
     }];
     let pm = PolyMap::new(1, 1, &terms, None).unwrap();
-    let s = pm.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(s.as_any().is::<PolyMap>());
 }
 

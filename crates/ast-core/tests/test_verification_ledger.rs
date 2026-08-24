@@ -53,8 +53,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_simplify_regression.rs",
         "ISSIMP_PLACEMENT_LICENSED",
         2,
-        "cap_cmpmap_03 and cap_specmap_02 emit one IsSimp card too few; the \
-         Mapping is identical and six fixes were measured and reverted",
+        "cap_cmpmap_03 emits one IsSimp card too few and cap_specmap_02 two \
+         too many; the Mapping is identical in both. Six fixes for the \
+         shortfall were measured and reverted; the surplus is the leaf stamp \
+         try_self_reduce adds, which PLAN.md §10.16 removes",
     ),
     (
         "test_serialisation.rs",

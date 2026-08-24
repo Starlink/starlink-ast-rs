@@ -356,7 +356,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // Mark done and return.
     args.axis_done[spec_iax] = true;
 
-    let nd = axmap.simplified()?;
+    let nd = axmap.simplify()?;
     Ok(nd)
 }
 
@@ -554,7 +554,7 @@ fn try_grism_cascade(
 
         // Simplify the chain — GrismMap usually shows up after
         // ZoomMap simplification. Mirrors C:30496 (astSimplify).
-        let simplified = pixel_to_wave.simplified()?;
+        let simplified = pixel_to_wave.simplify()?;
 
         // Try to extract a GrismMap producing output spec_iax.
         let (grism, sans_grism) =

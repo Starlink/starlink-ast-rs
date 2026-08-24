@@ -113,7 +113,7 @@ fn normmap_basic_frame_simplifies_to_unit() {
     let frame = BasicFrameBuilder::new(3).build().unwrap();
     let nm = NormMap::new(Box::new(frame));
 
-    let simplified = nm.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&nm).unwrap();
     assert!(
         simplified.as_any().downcast_ref::<UnitMap>().is_some(),
         "expected UnitMap, got {:?}",
@@ -133,7 +133,7 @@ fn normmap_inverse_cancel() {
 
     // Compose in series.
     let cmp = CmpMap::new(Box::new(nm1), Box::new(nm2), Composition::Series).unwrap();
-    let simplified = cmp.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         simplified.as_any().downcast_ref::<UnitMap>().is_some(),
         "expected UnitMap, got {:?}",
@@ -150,7 +150,7 @@ fn normmap_duplicate_elimination() {
     let nm2 = NormMap::new(Box::new(sky));
 
     let cmp = CmpMap::new(Box::new(nm1), Box::new(nm2), Composition::Series).unwrap();
-    let simplified = cmp.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&cmp).unwrap();
 
     // The result should be a single NormMap (one was replaced by UnitMap,
     // then NormMap + UnitMap collapses to just NormMap).

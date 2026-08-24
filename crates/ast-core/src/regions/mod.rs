@@ -227,7 +227,7 @@ pub trait Region: Frame + Mapping {
         let (lbndb, ubndb) = self.reg_base_box2()?;
         let fs = self.get_region_frameset();
         let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
-        let smap = map.simplified()?;
+        let smap = map.simplify()?;
         let ncur = fs.current().naxes();
         if smap.as_any().is::<UnitMap>() {
             return Ok((lbndb, ubndb));
@@ -411,7 +411,7 @@ pub trait Region: Frame + Mapping {
         if let Ok(m2) = new_unc
             .get_region_frameset()
             .mapping(FrameRef::Base, FrameRef::Current)
-            && let Ok(smap) = m2.simplified()
+            && let Ok(smap) = m2.simplify()
             && smap.as_any().is::<UnitMap>()
         {
             new_unc.set_region_fs_flag(false);
@@ -897,7 +897,7 @@ pub trait Region: Frame + Mapping {
         // (region.c:11135-11143). FrameSet::simplified simplifies each internal
         // edge Mapping and returns a FrameSet.
         let fs = new.get_region_frameset();
-        let simplified_map = Mapping::simplified(&fs)?;
+        let simplified_map = <dyn Mapping>::simplify(&fs)?;
         if let Some(new_fs) = simplified_map.as_any().downcast_ref::<FrameSet>()
             && !Mapping::equal(&fs, new_fs)
         {
@@ -935,7 +935,7 @@ pub trait Region: Frame + Mapping {
 
             // Try simplifying the uncertainty. Only proceed if it changed
             // (region.c:11193-11196).
-            let sunc_map = Mapping::simplified(unc.as_ref())?;
+            let sunc_map = <dyn Mapping>::simplify(unc.as_ref())?;
             let unc_changed = !Mapping::equal(unc.as_ref(), sunc_map.as_ref());
             if unc_changed && let Some(mut sunc) = merge_util::mapping_into_region(sunc_map) {
                 // The stability check (region.c:11213-11306): re-centre the

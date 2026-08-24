@@ -170,7 +170,7 @@ fn frameset_simplified_returns_frameset() {
     fs.add_frame(FrameRef::Base, Box::new(cmp), frame_with_domain(1, "B"))
         .unwrap();
 
-    let simp = Mapping::simplified(&fs).unwrap();
+    let simp = <dyn Mapping>::simplify(&fs).unwrap();
     let sfs = simp
         .as_any()
         .downcast_ref::<FrameSet>()

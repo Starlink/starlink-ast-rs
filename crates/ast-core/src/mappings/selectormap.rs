@@ -13,7 +13,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::helpers::{ast_equal, is_bad};
-use super::{DynMapping, Mapping, UnitMap};
+use super::{DynMapping, Mapping, UnitMap, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 use crate::regions::{
     BoxRegion, Circle, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList, Polygon,
@@ -251,7 +251,7 @@ impl Mapping for SelectorMap {
         super::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
@@ -262,7 +262,7 @@ impl Mapping for SelectorMap {
         let mut changed = false;
         let mut simplified_regions: Vec<DynRegion> = Vec::with_capacity(self.regions.len());
         for reg in &self.regions {
-            let simp: DynMapping = (reg.as_ref() as &dyn Mapping).simplified()?;
+            let simp: DynMapping = (reg.as_ref() as &dyn Mapping).simplify()?;
             let was_changed = !simp.equal(reg.as_ref() as &dyn Mapping)
                 || simp.is_inverted() != reg.is_inverted();
             let new_reg: DynRegion = if let Some(r) = simp.as_any().downcast_ref::<Circle>() {

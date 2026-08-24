@@ -18,7 +18,7 @@ fn load_lsst_polymap() -> PolyMap {
     ))
     .expect("lsst.ast");
     let fset = from_native_string(&text).unwrap().into_mapping().unwrap();
-    let simp = fset.simplified().unwrap();
+    let simp = fset.simplify().unwrap();
     find_polymap(simp.as_ref()).unwrap().clone()
 }
 

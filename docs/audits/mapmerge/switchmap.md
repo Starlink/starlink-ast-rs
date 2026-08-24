@@ -50,7 +50,8 @@ the wrong order, which cost `switchmap_inverse_cancel` its transform equality
 because C tries the neighbour cancellation first, and once in the right order,
 which changed no fixture. What the four SwitchMap fixtures actually wanted was
 the tags: C reaches each encapsulated Mapping through `astSimplify`, which
-records what it returns, and `simplified()` is the untagged virtual. Both child
+records what it returns, and the `simplified()` seam records nothing itself —
+the stamp belongs to `simplify()`, its one caller. Both child
 paths now stamp. See PLAN.md §10.10.
 
 ## Row 4 — why C restores the Invert flags rather than inverting

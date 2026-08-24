@@ -76,7 +76,7 @@ fn normmap_pair_over_cosmetically_different_frames_cancels() {
     nm2.invert();
 
     let cmp = CmpMap::new(Box::new(nm1), Box::new(nm2), Composition::Series).unwrap();
-    let simplified = cmp.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         simplified.as_any().is::<UnitMap>(),
         "expected UnitMap, got {simplified:?}"

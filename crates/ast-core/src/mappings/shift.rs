@@ -10,7 +10,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::unit::UnitMap;
 use super::unitnormmap::try_merge_into_unitnormmap;
 use super::winmap::{compose_linear, extract_linear_params};
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that adds a constant shift vector to all input coordinates.
@@ -109,7 +109,7 @@ impl Mapping for ShiftMap {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

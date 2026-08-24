@@ -8,7 +8,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
-use crate::mappings::{DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
@@ -497,7 +497,7 @@ impl Mapping for NullRegion {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         // Invoke the parent Region simplify first (nullregion.c:1376); it
         // simplifies the encapsulated FrameSet and any explicit uncertainty.
         // All further work is done on the returned copy.

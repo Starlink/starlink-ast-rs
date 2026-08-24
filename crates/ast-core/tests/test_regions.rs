@@ -2634,7 +2634,7 @@ fn system_change_circle_simplify() {
     let gal_centre = centre_gal.point(0);
 
     // Simplify the circle (as a Mapping).
-    let simplified = circle.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&circle).unwrap();
 
     // The simplified mapping should still pass the Galactic centre through
     // (it is inside the region).
@@ -2785,7 +2785,7 @@ fn system_change_simplified_transform_consistent() {
     let orig_result = circle.transform(&test_gal, true).unwrap();
 
     // Simplify and transform.
-    let simplified = circle.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&circle).unwrap();
     let simp_result = simplified.transform(&test_gal, true).unwrap();
 
     // Both should agree on which points are inside/outside.
@@ -3457,7 +3457,7 @@ fn prism_simplify_carries_explicit_uncertainty() {
         .build()
         .unwrap();
 
-    let simplified = Mapping::simplified(&prism).unwrap();
+    let simplified = <dyn Mapping>::simplify(&prism).unwrap();
 
     // The two bounded 1-D Intervals merge and reclassify to a single 2-D
     // Region (a BoxRegion, since both are bounded and closed — not a Prism).
@@ -3969,7 +3969,7 @@ fn parallel_merge_scales_mesh_size() {
 
     // Parallel merge -> 2-D Box.
     let cm = CmpMap::new(Box::new(b1), Box::new(b2), Composition::Parallel).unwrap();
-    let simp = cm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cm).unwrap();
     let region = simp
         .as_any()
         .downcast_ref::<BoxRegion>()
@@ -3999,7 +3999,7 @@ fn parallel_merge_scales_fill_factor() {
     b2.set_fill_factor(0.8);
 
     let cm = CmpMap::new(Box::new(b1), Box::new(b2), Composition::Parallel).unwrap();
-    let simp = cm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&cm).unwrap();
     let region = simp
         .as_any()
         .downcast_ref::<BoxRegion>()

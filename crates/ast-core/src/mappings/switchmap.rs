@@ -7,7 +7,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::is_bad;
 
-use super::{DynMapping, Mapping, UnitMap};
+use super::{DynMapping, Mapping, UnitMap, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// Set a Mapping's Invert flag to `want` (invert it iff its current state
@@ -32,11 +32,12 @@ fn simplify_child_with_invert(
     match child {
         None => Ok((None, recorded_inv)),
         Some(orig) => {
-            let mut simp = orig.simplified()?;
+            let mut simp = orig.simplify()?;
             // C reaches each encapsulated Mapping through `astSimplify`
             // (switchmap.c:1079-1090), which records the result it returns
-            // whether or not it reduced anything (mapping.c:24763).
-            // `simplified()` is the untagged virtual, so stamp it here.
+            // whether or not it reduced anything (mapping.c:24763). `simplify`
+            // records it too, except for a restricted CmpMap, which this
+            // covers.
             simp.set_has_been_simplified(true);
             let effective = recorded_inv != orig.is_inverted();
             let new_inv = effective != simp.is_inverted();
@@ -583,7 +584,7 @@ impl Mapping for SwitchMap {
         super::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
@@ -610,7 +611,7 @@ impl Mapping for SwitchMap {
         let mut simp_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
         let mut simp_route_inv: Vec<bool> = Vec::with_capacity(self.route_maps.len());
         for (rm, &recorded_inv) in self.route_maps.iter().zip(self.route_inv.iter()) {
-            let mut s = rm.simplified()?;
+            let mut s = rm.simplify()?;
             s.set_has_been_simplified(true);
             let effective_inv = recorded_inv != rm.is_inverted();
             let new_inv = effective_inv != s.is_inverted();

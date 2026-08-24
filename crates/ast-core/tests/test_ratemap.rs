@@ -253,7 +253,7 @@ fn test_ratemap_simplify_interior() {
     let cmp_dyn: DynMapping = Box::new(cmp);
 
     let rm = RateMap::new(cmp_dyn, 1, 1).unwrap();
-    let simp = rm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&rm).unwrap();
 
     // The simplified version should still be a RateMap (not a CmpMap or UnitMap).
     assert!(

@@ -75,7 +75,7 @@ pub(crate) fn make_int_world(
     }
 
     // Step 1: simplify the supplied mapping. Mirrors C:21858.
-    let mut map = cmap.simplified()?;
+    let mut map = cmap.simplify()?;
 
     // Step 2: find lonax / latax — the nout-axis indices of the
     // celestial pair (if any). Mirrors C:21863-21875.

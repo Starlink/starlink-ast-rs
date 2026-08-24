@@ -47,7 +47,7 @@ checks the same two conditions before touching anything.
 
 `DssMap::map_merge` (`dssmap.rs:519-526`) routes through
 `self_reduce_map_merge`, so a nominated DssMap does get its `simplified()`
-consulted — it just has nothing to say, since C gives DssMap no
+consulted through `simplify()` — it just has nothing to say, since C gives DssMap no
 replace-with-simpler step either. The seam being present is what matters: unlike
 RateMap (PLAN.md §10.1) and PcdMap (§10.7), adding a reduction here would be
 reached.

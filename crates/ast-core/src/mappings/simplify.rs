@@ -466,7 +466,7 @@ pub(crate) fn flatten(
     if effective_inv && cloned.as_any().is::<super::PermMap>() {
         cloned.invert();
         trace::simplify_enter("flatten-leaf-reduce", cloned.as_ref());
-        cloned = cloned.simplified()?;
+        cloned = cloned.simplify()?;
         effective_inv = false;
         orig_inv = cloned.is_inverted();
     }
@@ -597,7 +597,7 @@ fn opaque_leaf_reduction(mapping: &dyn Mapping, inv: bool, series: bool) -> Opaq
             oriented.invert();
         }
         trace::simplify_enter("cmp-tag-transfer", oriented.as_ref());
-        if let Ok(simplified) = oriented.simplified()
+        if let Ok(simplified) = oriented.simplify()
             && !simplified.equal(oriented.as_ref())
         {
             return OpaqueLeafReduction::Converged;
@@ -1291,7 +1291,7 @@ pub(crate) fn try_self_reduce(
     where_: usize,
 ) -> Option<usize> {
     trace::simplify_enter("self-reduce-head", this);
-    if let Ok(simp) = this.simplified()
+    if let Ok(simp) = this.simplify()
         && (simp.is_inverted() != this.is_inverted() || !simp.equal(this))
     {
         let (eff, orig) = {
@@ -1438,7 +1438,7 @@ pub(crate) fn region_map_merge(
     // C compares object pointers (`new != oldint`); the Rust analogue is a
     // structural inequality test via `Mapping::equal`, since Region simplify
     // returns a clone of `this` when nothing changed.
-    if let Ok(simplified) = Mapping::simplified(this) {
+    if let Ok(simplified) = <dyn Mapping>::simplify(this) {
         if !simplified.equal(this as &dyn Mapping) {
             ctx.set_pair_single(where_, (simplified, false, false));
             return Some(where_);
@@ -2353,7 +2353,7 @@ fn dimension_match_parallel_lists(
                 .iter()
                 .map(|(m, inv, orig)| {
                     (
-                        m.simplified().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
+                        m.simplify().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
                         *inv,
                         *orig,
                     )
@@ -2363,7 +2363,7 @@ fn dimension_match_parallel_lists(
                 .iter()
                 .map(|(m, inv, orig)| {
                     (
-                        m.simplified().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
+                        m.simplify().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
                         *inv,
                         *orig,
                     )
@@ -2708,7 +2708,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
         Box::new(UnitMap::new(nout_a))
     } else {
         trace::simplify_enter("par-branch-a", par_list[0].0.as_ref());
-        let Ok(mut a) = par_list[0].0.simplified() else {
+        let Ok(mut a) = par_list[0].0.simplify() else {
             return false;
         };
         if par_list[0].1 {
@@ -2720,7 +2720,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
         Box::new(UnitMap::new(nout_b))
     } else {
         trace::simplify_enter("par-branch-b", par_list[1].0.as_ref());
-        let Ok(mut b) = par_list[1].0.simplified() else {
+        let Ok(mut b) = par_list[1].0.simplify() else {
             return false;
         };
         if par_list[1].1 {
@@ -3523,7 +3523,7 @@ fn mirror_simple_tags(src: &dyn Mapping, dst: &mut DynMapping) {
 
 pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
-        return mapping.simplified();
+        return mapping.simplify();
     };
 
     // Guard against infinite recursion.  The fingerprint-based guard
@@ -3665,7 +3665,7 @@ mod tests {
         let chain12: DynMapping = Box::new(CmpMap::new(pair1, pair2, Composition::Series).unwrap());
         let full: DynMapping = Box::new(CmpMap::new(chain12, pair3, Composition::Series).unwrap());
 
-        let s = full.simplified().unwrap();
+        let s = full.simplify().unwrap();
         let flat = flatten(s.as_ref(), false, true).unwrap();
         eprintln!("simplified.len = {}", flat.len());
         for (i, (m, inv, _)) in flat.iter().enumerate() {
@@ -4821,7 +4821,7 @@ mod tests {
 
         let m = array![[1.0_f64, 0.0], [0.0, 1.0]];
         let mm = MatrixMap::new(m).unwrap();
-        let result = mm.simplified().unwrap();
+        let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<UnitMap>());
         assert_eq!(result.nin(), 2);
     }
@@ -4834,7 +4834,7 @@ mod tests {
 
         let m = array![[3.0_f64, 0.0], [0.0, 3.0]];
         let mm = MatrixMap::new(m).unwrap();
-        let result = mm.simplified().unwrap();
+        let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<ZoomMap>());
         assert_eq!(result.nin(), 2);
 
@@ -4852,7 +4852,7 @@ mod tests {
         // Non-uniform diagonal: different scale per axis → stays MatrixMap.
         let m = array![[2.0_f64, 0.0], [0.0, 5.0]];
         let mm = MatrixMap::new(m).unwrap();
-        let result = mm.simplified().unwrap();
+        let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<MatrixMap>());
     }
 
@@ -4864,7 +4864,7 @@ mod tests {
         // Non-square matrix can't reduce.
         let m = array![[1.0_f64, 0.0, 0.0], [0.0, 1.0, 0.0]];
         let mm = MatrixMap::new(m).unwrap();
-        let result = mm.simplified().unwrap();
+        let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<MatrixMap>());
     }
 
@@ -4878,7 +4878,7 @@ mod tests {
         let m = array![[4.0_f64, 0.0], [0.0, 4.0]];
         let mut mm = MatrixMap::new(m).unwrap();
         mm.invert();
-        let result = mm.simplified().unwrap();
+        let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<ZoomMap>());
         assert!(result.is_inverted());
 

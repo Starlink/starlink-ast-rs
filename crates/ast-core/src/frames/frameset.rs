@@ -5,7 +5,9 @@ use std::fmt;
 
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{AsAny, CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap};
+use crate::mappings::{
+    AsAny, CmpMap, Composition, DynMapping, Mapping, PermMap, UnitMap, ViaSimplify,
+};
 use crate::serial::{
     FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
@@ -305,7 +307,7 @@ impl FrameSet {
                 Box::new(UnitMap::new(nextra)),
                 Composition::Parallel,
             )?;
-            let mapping = Mapping::simplified(&cmp)?;
+            let mapping = <dyn Mapping>::simplify(&cmp)?;
             new_edges.push(Edge {
                 from: edge.from,
                 to: edge.to,
@@ -624,7 +626,7 @@ impl FrameSet {
         let snap = self.frames[self.current_idx].snapshot();
         f(self.frames[self.current_idx].as_mut())?;
         let delta = self.frames[self.current_idx].map_from(snap.as_ref())?;
-        let delta = delta.simplified()?;
+        let delta = delta.simplify()?;
         if delta.as_any().is::<UnitMap>() {
             return Ok(());
         }
@@ -746,7 +748,7 @@ impl FrameSet {
 
                 // current(vfs) → new variant frame mapping.
                 let map3 = Box::new(CmpMap::new(map1, map, Composition::Series)?);
-                let map3 = Mapping::simplified(map3.as_ref())?;
+                let map3 = <dyn Mapping>::simplify(map3.as_ref())?;
 
                 // The new variant frame is a copy of the parent frame with its
                 // own variants cleared and Domain set to the variant name.
@@ -836,7 +838,7 @@ impl FrameSet {
             map3,
             Composition::Series,
         )?;
-        let correction = Mapping::simplified(&map45)?;
+        let correction = <dyn Mapping>::simplify(&map45)?;
 
         // Apply the correction to the current frame's node and mark the new
         // variant current within the Variants FrameSet.
@@ -1381,7 +1383,7 @@ fn frameset_find_frame(
             let prefix = target.mapping(FrameRef::Base, FrameRef::Index(target_idx_1based))?;
             let combined: DynMapping =
                 Box::new(CmpMap::new(prefix, map_inner, Composition::Series)?);
-            let simplified = crate::mappings::Mapping::simplified(combined.as_ref())?;
+            let simplified = <dyn Mapping>::simplify(combined.as_ref())?;
 
             // Build the result 2-frame FrameSet.
             let mut result_fs = FrameSet::new(target.base().snapshot());
@@ -1522,7 +1524,7 @@ fn frameset_convert_to(
                     map = Box::new(CmpMap::new(map, post, Composition::Series)?);
                 }
 
-                let map = Mapping::simplified(map.as_ref())?;
+                let map = <dyn Mapping>::simplify(map.as_ref())?;
 
                 let score: i32 =
                     if map.has_forward() { 2 } else { 0 } + if map.has_inverse() { 1 } else { 0 };
@@ -1593,13 +1595,13 @@ impl Mapping for FrameSet {
         map.transform_into(pts, true, out)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         // C FrameSet::Simplify (frameset.c:10111) returns a *copy of
         // the FrameSet* with each internal edge mapping individually
         // simplified — not the composed base→current mapping.
         let mut copy = self.clone();
         for edge in &mut copy.edges {
-            edge.mapping = edge.mapping.simplified()?;
+            edge.mapping = edge.mapping.simplify()?;
         }
         Ok(Box::new(copy))
     }

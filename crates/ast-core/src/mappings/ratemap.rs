@@ -26,7 +26,7 @@ use crate::serial::{
 };
 
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that computes a single element of the Jacobian matrix
@@ -264,7 +264,7 @@ impl Mapping for RateMap {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
@@ -281,7 +281,7 @@ impl Mapping for RateMap {
         if oriented.is_inverted() != self.invert_snapshot {
             oriented.invert();
         }
-        let mut simp_map = oriented.simplified()?;
+        let mut simp_map = oriented.simplify()?;
         // Restore the stored orientation, as C's closing `astSetInvert` does.
         if simp_map.is_inverted() != self.map.is_inverted() {
             simp_map.invert();

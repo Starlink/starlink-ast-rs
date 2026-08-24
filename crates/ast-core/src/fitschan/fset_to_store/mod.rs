@@ -596,7 +596,7 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
     }
 
     let remap = match remap {
-        Some(m) => m.simplified()?,
+        Some(m) => m.simplify()?,
         None => return Ok(fs.clone()),
     };
     if remap.as_any().is::<UnitMap>() {

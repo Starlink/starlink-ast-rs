@@ -168,7 +168,7 @@ pub(crate) fn convert_frames(
             // (frame.c:3195-3198).
             to_map.invert();
             let composed = CmpMap::new(from_map, to_map, Composition::Series)?;
-            let map = Mapping::simplified(&composed)?;
+            let map = <dyn Mapping>::simplify(&composed)?;
 
             // Score: 2*forward + inverse; keep the best
             // (frame.c:3204-3221).
@@ -248,7 +248,7 @@ pub(crate) fn default_find_frame(
     }
 
     // Simplify the mapping (frame.c:4157-4159).
-    let map = crate::mappings::Mapping::simplified(m.map.as_ref())?;
+    let map = <dyn Mapping>::simplify(m.map.as_ref())?;
 
     // Build the 2-frame result FrameSet (base = target, current = result).
     let mut fs = FrameSet::new(target);
@@ -701,7 +701,7 @@ pub(crate) fn frames_equal(this: &dyn Frame, that: &dyn Frame) -> bool {
     let Ok(map) = fs.mapping(FrameRef::Base, FrameRef::Current) else {
         return false;
     };
-    let Ok(simplified) = Mapping::simplified(map.as_ref()) else {
+    let Ok(simplified) = <dyn Mapping>::simplify(map.as_ref()) else {
         return false;
     };
     is_unit_map(simplified.as_ref())

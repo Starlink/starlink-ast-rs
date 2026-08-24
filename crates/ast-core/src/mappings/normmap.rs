@@ -24,7 +24,7 @@ use crate::serial::{
 
 use super::helpers::is_bad;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that normalises coordinates using the `norm()` method of
@@ -194,7 +194,7 @@ impl Mapping for NormMap {
         super::simplify::self_reduce_map_merge(self, ctx, where_, series)
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }

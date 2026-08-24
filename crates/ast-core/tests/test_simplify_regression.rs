@@ -109,9 +109,11 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[
     ),
     (
         "cap_specmap_02",
-        7,
+        10,
         8,
-        "C tags the CmpMap wrapping the SpecMap/ZoomMap pair; the port does not",
+        "C tags the CmpMap wrapping the SpecMap/ZoomMap pair; the port does not, \
+         and instead tags three leaves reduced by `try_self_reduce`, which C \
+         reaches only through `astMapMerge` (PLAN.md §10.16)",
     ),
 ];
 
@@ -526,6 +528,10 @@ fn simplify_regression() {
     // Note what `equal()` did here: it passed all eleven, including a Prism
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
+    // Shared reason for cause (G) below, where the whole difference is one or
+    // two extra `IsSimp` cards on a leaf.
+    const OVER_STAMP: &str = "IsSimp on a leaf reduced by try_self_reduce; awaiting the \
+                              simplified()-to-map_merge move, PLAN.md §10.16";
     const SERIAL_UNGATED: &[(&str, &str)] = &[
         // (B) Region simplify tags a Mapping inside the encapsulated FrameSet
         // that C leaves bare. See PLAN.md §9.1.
@@ -547,11 +553,26 @@ fn simplify_regression() {
         // §10.3 is narrowed to. cmpmap.c:4f2fc0ed fixed the
         // parallel-CmpMaps-in-series case, which annulled the pointer under test
         // before testing it, so the pair was rebuilt even when nothing reduced.
-        // The regenerated reference carries two cards this port does not emit.
+        // The card count now matches C; the two cards land on the leaves rather
+        // than on the intermediate CmpMaps C stamps.
         (
             "cmpmap_parallel_series_dim_mismatch",
-            "two IsSimp cards short in the parallel-CmpMaps-in-series branch",
+            "two IsSimp cards on the leaves where C has them on the CmpMaps",
         ),
+        // (G) `try_self_reduce` stands in for the reduction C keeps inside
+        // `MapMerge`, and it now reaches it through the gate, so it stamps the
+        // leaf it reduced. C reaches a leaf only through `astMapMerge` (verified
+        // on the tracing oracle: no `SIMPLIFY-ENTER` for the leaf class in any
+        // of these), so C emits no card there. The extra cards are the only
+        // difference in every one of these — nothing else in the tree moves.
+        // Closed by moving the 25 reductions into `map_merge`, PLAN.md §10.16.
+        ("lsst", OVER_STAMP),
+        ("cmpmap_perm_parallel_swap", OVER_STAMP),
+        ("cmpmap_perm_swap_aconstants", OVER_STAMP),
+        ("cmpmap_perm_swap_bconstants", OVER_STAMP),
+        ("parpair_one_side_reduces", OVER_STAMP),
+        ("cap_slamap_03", OVER_STAMP),
+        ("cap_wcsmap_01", OVER_STAMP),
         // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
         // where C has collapsed to bare Points.
         (
@@ -601,22 +622,31 @@ fn simplify_regression() {
     let other_failures = no_card_other;
 
     // Every row here is a real gap: the pinned C oracle and the committed
-    // `.simp` agree, and the port emits fewer `IsSimp` cards than both. The
+    // `.simp` agree, and the port's `IsSimp` count differs from both. The
     // corpus was regenerated against the pin at f6762005, so a stale fixture
     // is no longer a possible explanation for a row appearing in this list.
     // See PLAN.md §6.
     const ISSIMP_DISAGREEMENTS: &[&str] = &[
         // Under-tagging, gated all along.
         "rigby (8 vs C's 9)",
-        "cap_cmpmap_01 (16 vs C's 18)",
         "cap_cmpmap_03 (6 vs C's 7)",
-        "cap_cmpmap_04 (15 vs C's 18)",
-        "cap_specmap_02 (7 vs C's 8)",
-        // Newly visible at upstream 8d4f526f. cmpmap.c:4f2fc0ed fixed MapMerge's
-        // parallel-CmpMaps-in-series branch, which annulled the pointer under
-        // test before testing it, and the regenerated reference carries two more
-        // cards than the stale one did. Same branch as §10.3.
-        "cmpmap_parallel_series_dim_mismatch (1 vs C's 3)",
+        // Over-tagging, cause (G) in SERIAL_UNGATED: `try_self_reduce` reaches a
+        // leaf's reduction through the gate, so it stamps a leaf C reaches only
+        // through `astMapMerge` and therefore never stamps. Closed by moving the
+        // 25 reductions into `map_merge`, PLAN.md §10.16. The three CmpMap rows
+        // and cap_specmap_02 were under-tagging before that; the leaf stamps now
+        // push them past C, and §10.16 has to land before the residual
+        // under-tagging underneath is measurable again.
+        "cap_cmpmap_01 (20 vs C's 18)",
+        "cap_cmpmap_04 (20 vs C's 18)",
+        "cap_specmap_02 (10 vs C's 8)",
+        "cap_slamap_03 (2 vs C's 1)",
+        "cap_wcsmap_01 (5 vs C's 4)",
+        "cmpmap_perm_parallel_swap (4 vs C's 2)",
+        "cmpmap_perm_swap_aconstants (3 vs C's 2)",
+        "cmpmap_perm_swap_bconstants (3 vs C's 2)",
+        "lsst (2 vs C's 1)",
+        "parpair_one_side_reduces (5 vs C's 3)",
         // These render to a Region, so the old hand-rolled dispatch returned
         // `None` and the count was never taken. Causes (B) and (D) in
         // SERIAL_UNGATED. Cause (A), the four SwitchMap fixtures, is closed:
@@ -664,7 +694,7 @@ fn cmpmap_re_expands_after_merge() {
     let ab = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
     let abc = CmpMap::new(Box::new(ab), Box::new(c), Composition::Series).unwrap();
 
-    let s = abc.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&abc).unwrap();
     // Should reduce to a single WinMap: shift = 2*1 + 3 = 5, scale = 2.
     assert!(s.as_any().is::<WinMap>(), "Expected WinMap but got {:?}", s);
 }
@@ -691,7 +721,7 @@ fn cmpmap_re_expands_merged_cmpmap() {
     let chain1 = CmpMap::new(Box::new(z1), Box::new(inner), Composition::Series).unwrap();
     let chain = CmpMap::new(Box::new(chain1), Box::new(z2), Composition::Series).unwrap();
 
-    let s = chain.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&chain).unwrap();
     // The result should be simpler than the original 4-mapping chain.
     // At minimum it should not be a 4-element series CmpMap.
     assert_eq!(s.nin(), 2);
@@ -711,7 +741,7 @@ fn has_been_simplified_does_not_prevent_merge() {
     // `Frozen` barrier stops merges). Oracle-verified: this simplifies to a
     // single ZoomMap of factor 6.
     let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
-    let s = cmp.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(
         s.as_any().is::<ZoomMap>(),
         "IsSimple must not block the ZoomMap merge (oracle: single ZoomMap)"
@@ -740,7 +770,7 @@ fn has_been_simplified_preserves_identity_zoom() {
     // A ZoomMap with factor 1.0 normally simplifies to UnitMap.
     let mut z = ZoomMap::new(2, 1.0).unwrap();
     z.set_has_been_simplified(true);
-    let s = z.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&z).unwrap();
     // With the flag set, it should stay as ZoomMap.
     assert!(s.as_any().is::<ZoomMap>());
 }
@@ -756,7 +786,7 @@ fn has_been_simplified_second_mapping_does_not_prevent_merge() {
     // An IsSimple flag on the second mapping also does not block merging.
     // Oracle-verified: single ZoomMap.
     let cmp = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Series).unwrap();
-    let s = cmp.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&cmp).unwrap();
     assert!(s.as_any().is::<ZoomMap>());
 }
 
@@ -776,7 +806,7 @@ fn simplify_recursion_guard_terminates() {
         m = Box::new(CmpMap::new(m, Box::new(z), Composition::Series).unwrap());
     }
     // Should simplify without infinite recursion or excessive time.
-    let s = m.simplified().unwrap();
+    let s = m.simplify().unwrap();
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
 }
@@ -801,7 +831,7 @@ fn simplify_recursion_guard_identical_subtrees() {
     let doubled = CmpMap::new(Box::new(par.clone()), Box::new(par), Composition::Series).unwrap();
 
     // Must terminate (no infinite recursion).
-    let s = doubled.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&doubled).unwrap();
     // The result's dimensions must be preserved.
     assert_eq!(s.nin(), 4);
     assert_eq!(s.nout(), 4);
@@ -860,7 +890,7 @@ fn sphmap_three_mapping_pattern_simplifies() {
     let pts = PointSet::from_rows([[lon, lat]]);
     let out_orig = full.transform(&pts, true).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     // Should simplify — the trio should be replaced by something simpler.
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
@@ -911,7 +941,7 @@ fn sphmap_three_mapping_matrixmap_pattern() {
     let step1 = CmpMap::new(Box::new(inv_sph), Box::new(mm), Composition::Series).unwrap();
     let full = CmpMap::new(Box::new(step1), Box::new(fwd_sph), Composition::Series).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
 
@@ -957,7 +987,7 @@ fn winmap_pure_scale_before_matrix_simplifies() {
         Composition::Series,
     )
     .unwrap();
-    let s = c.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&c).unwrap();
 
     // Should reduce to a single MatrixMap (WinMap absorbed).
     assert!(
@@ -1003,7 +1033,7 @@ fn winmap_with_shifts_before_matrix_simplifies() {
         Composition::Series,
     )
     .unwrap();
-    let s = c.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&c).unwrap();
 
     // The result should NOT be a single WinMap or MatrixMap (it needs a shift).
     // It should be either a CmpMap(MatrixMap, ShiftMap) or possibly further
@@ -1057,7 +1087,7 @@ fn winmap_swap_enables_chain_simplification() {
     let step2 = mm.transform(&step1, true).unwrap();
     let expected = s2.transform(&step2, true).unwrap();
 
-    let s = abc.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&abc).unwrap();
     let actual = s.transform(&pts, true).unwrap();
     for i in 0..pts.npoint() {
         for j in 0..2 {
@@ -1088,7 +1118,7 @@ fn winmap_swaps_past_permmap() {
     let c1 = CmpMap::new(Box::new(s1), Box::new(pm), Composition::Series).unwrap();
     let full = CmpMap::new(Box::new(c1), Box::new(s2), Composition::Series).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
 
     // Verify transform: input [5,7] -> shift [6,9] -> permute [9,6] -> shift [12,10]
     let pts = PointSet::from_rows([[5.0, 7.0]]);
@@ -1131,7 +1161,7 @@ fn winmap_distributes_into_parallel_cmpmap() {
     let par = CmpMap::new(Box::new(z1), Box::new(z2), Composition::Parallel).unwrap();
 
     let full = CmpMap::new(Box::new(wm), Box::new(par), Composition::Series).unwrap();
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
 
     // Verify transform: [5,6,7,8] → shift [6,8,10,12] → zoom [12,16,30,36]
     let pts = PointSet::from_rows([[5.0, 6.0, 7.0, 8.0]]);
@@ -1177,7 +1207,7 @@ fn merge_loop_terminates_with_oscillation_guard() {
         m = Box::new(CmpMap::new(m, next, Composition::Series).unwrap());
     }
     // Should terminate in reasonable time without hitting MAX_MERGE_PASSES.
-    let s = m.simplified().unwrap();
+    let s = m.simplify().unwrap();
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
 }
@@ -1207,7 +1237,7 @@ fn sphmap_three_mapping_unequal_magnitudes_no_simplify() {
     let lat = 0.3_f64;
     let pts = PointSet::from_rows([[lon, lat]]);
     let out_before = full.transform(&pts, true).unwrap();
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     let out_after = s.transform(&pts, true).unwrap();
 
     // The outputs should match — simplification must preserve semantics
@@ -1247,7 +1277,7 @@ fn series_in_parallel_different_lengths() {
     let pts = PointSet::from_rows([[1.0, 2.0, 3.0]]);
     let out_before = par.transform(&pts, true).unwrap();
 
-    let s = par.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&par).unwrap();
 
     // Dimensions must be preserved.
     assert_eq!(s.nin(), 3);
@@ -1295,7 +1325,7 @@ fn matrixmap_seek_through_winmap() {
     .unwrap();
     let full = CmpMap::new(Box::new(c1), Box::new(mm2.clone()), Composition::Series).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
 
     // Verify transform equivalence.
     let pts = PointSet::from_rows([[5.0, 7.0]]);
@@ -1350,7 +1380,7 @@ fn matrixmap_seek_through_shiftmap() {
     .unwrap();
     let full = CmpMap::new(Box::new(c1), Box::new(mm2.clone()), Composition::Series).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
 
     // Verify transform equivalence.
     let pts = PointSet::from_rows([[5.0, 7.0]]);
@@ -1413,7 +1443,7 @@ fn permmap_swap_transforms_constants() {
     assert!((expected.point(0)[2] - 21.0).abs() < 1e-10);
 
     // After simplification, the result should still produce the same output.
-    let s = chain.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&chain).unwrap();
     let actual = s.transform(&pts, true).unwrap();
 
     for j in 0..3 {
@@ -1489,7 +1519,7 @@ fn winmap_does_not_distribute_when_branches_dont_simplify() {
     let pts = PointSet::from_rows([[1.0e6, 2.0e6], [-3.0e6, 7.5e5]]);
     let expected = full.transform(&pts, true).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     let actual = s.transform(&pts, true).unwrap();
     for i in 0..pts.npoint() {
         for j in 0..2 {
@@ -1541,7 +1571,7 @@ fn winmap_swaps_past_permmap_with_constants() {
     let pts = PointSet::from_rows([[7.0, 11.0], [-1.0, 0.5]]);
     let expected = full.transform(&pts, true).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     let actual = s.transform(&pts, true).unwrap();
 
     for i in 0..pts.npoint() {
@@ -1626,7 +1656,7 @@ fn permmap_with_constants_followed_by_winmap_swaps_back() {
     let pts_3d = PointSet::from_rows([[1.0, 2.0, 3.0], [-1.0, 0.0, 5.5]]);
     let expected_fwd = full.transform(&pts_3d, true).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     let actual_fwd = s.transform(&pts_3d, true).unwrap();
 
     assert_eq!(actual_fwd.npoint(), expected_fwd.npoint());
@@ -1730,7 +1760,7 @@ fn winmap_swaps_past_permmap_inverse_constants() {
     let pts_3d = PointSet::from_rows([[1.0, 2.0, 3.0], [0.0, -1.0, 4.0]]);
     let expected_fwd = full.transform(&pts_3d, true).unwrap();
 
-    let s = full.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&full).unwrap();
     let actual_fwd = s.transform(&pts_3d, true).unwrap();
     for i in 0..pts_3d.npoint() {
         for j in 0..2 {

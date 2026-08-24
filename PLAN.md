@@ -332,8 +332,8 @@ places, and finding one by accident is no longer possible.
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 449 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 449 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, `cap_specmap_02`) |
-| simplify regression | 449 | 5 | fixtures whose `IsSimp` card count still differs from C — `rigby`, `cap_cmpmap_01`, `cap_cmpmap_03`, `cap_cmpmap_04`, `cap_specmap_02`. Not a separate mask: four are already inside `skip_string_compare` and two inside the counted licence above. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 449 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, one card short of C; `cap_specmap_02`, two over) |
+| simplify regression | 449 | 15 | fixtures whose `IsSimp` card count still differs from C. Two under-tag (`rigby`, `cap_cmpmap_03`); ten over-tag by one or two cards on a leaf `try_self_reduce` reduced through the gate, which C reaches only through `astMapMerge` and so never stamps (`cap_cmpmap_01`, `cap_cmpmap_04`, `cap_specmap_02`, `cap_slamap_03`, `cap_wcsmap_01`, `cmpmap_perm_parallel_swap`, `cmpmap_perm_swap_aconstants`, `cmpmap_perm_swap_bconstants`, `lsst`, `parpair_one_side_reduces`) and close with §10.16; three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
 | simplify regression | 449 | 140 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
 | transform oracle | 1606 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1606 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
@@ -538,7 +538,7 @@ counted failure in the harness and a panic in the region test. Never a skip.
 Turning the gate on exposed eleven pre-existing byte-comparison failures and
 seven `IsSimp` count disagreements. The pinned C reproduces all eleven `.simp`
 files byte-exactly, so every one is a port defect, not a stale fixture. They
-are enumerated with causes in `SERIAL_UNGATED`, which groups them into six:
+are enumerated with causes in `SERIAL_UNGATED`, which groups them into seven:
 
 | cause | fixtures | what is wrong |
 |---|---|---|
@@ -546,8 +546,9 @@ are enumerated with causes in `SERIAL_UNGATED`, which groups them into six:
 | B | 2 `cefit_circle_*`, `neg_box_asymmetric_2d` | Region simplify tags a Mapping inside the encapsulated FrameSet that C leaves bare, and does not tag the returned Region at all |
 | C | 2 `*_unc_fillfactor_merge` | emits a `Prism` uncertainty where C emits a `Box` |
 | D | `cap_zoommap_04` | emits `FrmSet`/FrameSet where C emits `Points`/PointSet |
-| E | `cap_interval_01` | emits `Closed = 1` where C omits it |
+| E | `cap_interval_01`, `cmpmap_parallel_series_dim_mismatch` | `Closed = 1` where C omits it; two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps |
 | F | `cap_pointlist_01` | two mesh coordinates diverge past 4 ulp |
+| G | `lsst`, `cap_slamap_03`, `cap_wcsmap_01`, `parpair_one_side_reduces`, `cmpmap_perm_parallel_swap`, `cmpmap_perm_swap_{a,b}constants` | one or two extra `IsSimp` cards, and nothing else in the tree, on a leaf `try_self_reduce` reduced through the gate. C reaches a leaf only through `astMapMerge` — verified on the tracing oracle, which emits no `SIMPLIFY-ENTER` for the leaf class in any of these — so C stamps no card there. Closed by §10.16 |
 
 `equal()` passed all eleven, but that is not an `equal()` defect. C's
 `region.c::Equal` compares class name, `points`, base Frame, current Frame, the

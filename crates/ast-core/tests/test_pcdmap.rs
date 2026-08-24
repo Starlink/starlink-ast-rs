@@ -185,7 +185,7 @@ fn pcdmap_not_equal_to_unitmap() {
 #[test]
 fn pcdmap_disc_zero_simplifies_to_unitmap() {
     let pm = PcdMap::new(0.0, [5.0, 3.0]);
-    let simp = pm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(simp.as_any().downcast_ref::<UnitMap>().is_some());
     assert_eq!(simp.nin(), 2);
 }
@@ -193,7 +193,7 @@ fn pcdmap_disc_zero_simplifies_to_unitmap() {
 #[test]
 fn pcdmap_nonzero_disc_stays_pcdmap() {
     let pm = PcdMap::new(0.001, [0.0, 0.0]);
-    let simp = pm.simplified().unwrap();
+    let simp = <dyn Mapping>::simplify(&pm).unwrap();
     assert!(simp.as_any().downcast_ref::<PcdMap>().is_some());
 }
 

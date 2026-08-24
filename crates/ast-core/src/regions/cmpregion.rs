@@ -15,7 +15,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping};
+use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{CmpOperator, DynRegion, NullRegion, NullRegionBuilder, Overlap, Region};
@@ -1083,7 +1083,7 @@ impl Mapping for CmpRegion {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         // Faithful port of cmpregion.c::Simplify (cmpregion.c:3517). The two
         // component Regions live in a Frame equivalent to the parent's base
         // Frame; simplification is performed there and the result mapped into
@@ -1122,9 +1122,9 @@ impl Mapping for CmpRegion {
         }
 
         // Simplify each of the two components (cmpregion.c:3634).
-        let sreg1 = mapping_into_region(Mapping::simplified(reg1.as_ref())?)
+        let sreg1 = mapping_into_region(<dyn Mapping>::simplify(reg1.as_ref())?)
             .unwrap_or_else(|| reg1.clone_region());
-        let sreg2 = mapping_into_region(Mapping::simplified(reg2.as_ref())?)
+        let sreg2 = mapping_into_region(<dyn Mapping>::simplify(reg2.as_ref())?)
             .unwrap_or_else(|| reg2.clone_region());
 
         // Note whether either component simplified, OR-ing into the value
@@ -1244,7 +1244,7 @@ impl Mapping for CmpRegion {
         let result: DynRegion = if simpler {
             if let Some(nb) = newb {
                 let mapped = nb.map_region(bcmap.as_ref(), cfrm.as_ref())?;
-                mapping_into_region(Mapping::simplified(mapped.as_ref())?).unwrap_or(mapped)
+                mapping_into_region(<dyn Mapping>::simplify(mapped.as_ref())?).unwrap_or(mapped)
             } else {
                 // No base-Frame result: use the parent-simplified copy
                 // (cmpregion.c:3767 `result = astClone( newc )`).

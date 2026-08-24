@@ -665,7 +665,7 @@ fn simplified_returns_clone() {
     let mut sla = SlaMap::new();
     sla.add(SlaCvtType::Eqgal, &[]);
 
-    let simplified = sla.simplified().unwrap();
+    let simplified = <dyn Mapping>::simplify(&sla).unwrap();
     assert_eq!(simplified.nin(), 2);
     assert_eq!(simplified.nout(), 2);
 

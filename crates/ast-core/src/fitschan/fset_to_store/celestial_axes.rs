@@ -142,7 +142,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
 
     // Step 2: pixel→wcs mapping, simplified. Mirrors C:5092-5094.
     let map_unsimp = args.fs.mapping(FrameRef::Base, FrameRef::Current)?;
-    let map = map_unsimp.simplified()?;
+    let map = map_unsimp.simplify()?;
 
     // Step 3: split the chain around its first WcsMap. Mirrors
     // C:5109-5111 (`SplitMap`). For the WcsMap-less case we fall
@@ -341,7 +341,7 @@ pub(crate) fn celestial_axes(args: CelestialAxesArgs<'_>) -> AstResult<DynMappin
     }
 
     // Step 9: simplify and return. Mirrors C:5591-5595.
-    ret.simplified()
+    ret.simplify()
 }
 
 /// Default `FitsTol` value (matches the C library's FitsChan default).

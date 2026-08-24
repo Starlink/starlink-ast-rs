@@ -974,7 +974,7 @@ impl TimeFrame {
 
         let chain = CmpMap::new(umap1, timemap, Composition::Series)?;
         let chain = CmpMap::new(Box::new(chain), umap2, Composition::Series)?;
-        chain.simplified()
+        <dyn Mapping>::simplify(&chain)
     }
 
     /// Append the System/TimeScale conversion steps to `timemap` for the

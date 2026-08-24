@@ -39,7 +39,8 @@ two are in C's order.
 
 C simplifies the encapsulated Regions first and only then considers the
 neighbour. `self_reduce_map_merge` has that shape by construction: it consults
-`simplified()` and returns on a change, reaching `default_map_merge` only when
+`simplify()` — and behind it `simplified()` — and returns on a change, reaching
+`default_map_merge` only when
 nothing reduced. SwitchMap's C body is the other way round, and takes the
 neighbour first — which is why the two classes use different Rust entry points
 despite looking alike.

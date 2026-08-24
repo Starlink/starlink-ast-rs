@@ -115,7 +115,7 @@ pub(super) fn finish_region_merge(
             let merged = Interval { data };
             // A fully-bounded Interval reclassifies to a Box (interval.c
             // Cache / Simplify); an unbounded one stays an Interval.
-            Mapping::simplified(&merged).ok()
+            <dyn Mapping>::simplify(&merged).ok()
         }
         MergedRegion::Box(centre, corner) => {
             let mut data = RegionData::new(frameset, vec![centre, corner]);
@@ -242,7 +242,7 @@ pub(super) fn combine_uncertainties(
     // uncertainty Regions, simplified. If the two same-class boxes merge,
     // the result is a single Region of the combined dimensionality.
     if let Ok(cmp) = CmpMap::new(r1.clone_region(), r2.clone_region(), Composition::Parallel)
-        && let Ok(simp) = Mapping::simplified(&cmp)
+        && let Ok(simp) = <dyn Mapping>::simplify(&cmp)
         && let Some(region) = mapping_into_region(simp)
     {
         return Some(region);

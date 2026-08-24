@@ -48,7 +48,7 @@ fn unit_map_invert_is_noop() {
 #[test]
 fn unit_map_simplified_returns_self() {
     let m = UnitMap::new(2);
-    let s = m.simplified().unwrap();
+    let s = <dyn Mapping>::simplify(&m).unwrap();
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
 }

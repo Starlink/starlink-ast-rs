@@ -20,7 +20,7 @@ use crate::serial::{
 
 use super::cmpmap::{CmpMap, Composition};
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping};
+use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that combines the forward transformation of one Mapping
@@ -253,7 +253,7 @@ impl Mapping for TranMap {
         }
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         if self.has_been_simplified() {
             return Ok(Box::new(self.clone()));
         }
@@ -266,16 +266,15 @@ impl Mapping for TranMap {
             new_map1.invert();
             new_map2.invert();
             let normalized = TranMap::new(new_map1, new_map2)?;
-            return normalized.simplified();
+            return <dyn Mapping>::simplify(&normalized);
         }
 
         // Step 2: Simplify each component independently. C reaches both through
         // `astSimplify` (tranmap.c:853-854), which records the result;
-        // `simplified()` is the untagged virtual, so record it here. Calling
-        // the public `simplify()` instead would also canonicalise the result,
-        // which restructures a component C leaves alone.
-        let mut simp1 = self.map1.simplified()?;
-        let mut simp2 = self.map2.simplified()?;
+        // `simplify` records it too, except for a restricted CmpMap, which the
+        // explicit stamps below cover.
+        let mut simp1 = self.map1.simplify()?;
+        let mut simp2 = self.map2.simplify()?;
         simp1.set_has_been_simplified(true);
         simp2.set_has_been_simplified(true);
 
@@ -312,7 +311,7 @@ impl Mapping for TranMap {
             let mut map2_inv = self.map2.clone();
             map2_inv.invert();
             let cmp = CmpMap::new(self.map1.clone(), map2_inv, Composition::Series)?;
-            let simp_cmp = cmp.simplified()?;
+            let simp_cmp = <dyn Mapping>::simplify(&cmp)?;
             if simp_cmp.as_any().is::<UnitMap>() {
                 // Components are effectively equal — replace with map1.
                 return Ok(self.map1.clone());
@@ -407,11 +406,11 @@ impl Mapping for TranMap {
 
         // Combine forward mappings: self_fwd ; other_fwd
         let cmp_fwd = CmpMap::new(self_fwd, other_fwd, Composition::Series).ok()?;
-        let mut simp_fwd = cmp_fwd.simplified().ok()?;
+        let mut simp_fwd = <dyn Mapping>::simplify(&cmp_fwd).ok()?;
 
         // Combine inverse mappings: other_inv ; self_inv (reverse order for inverse)
         let cmp_inv = CmpMap::new(other_inv_map, self_inv_map, Composition::Series).ok()?;
-        let mut simp_inv = cmp_inv.simplified().ok()?;
+        let mut simp_inv = <dyn Mapping>::simplify(&cmp_inv).ok()?;
 
         // C reaches both through `astSimplify` (tranmap.c:951, 955), which
         // records the result as simplified.

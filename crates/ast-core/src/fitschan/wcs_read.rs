@@ -125,10 +125,9 @@ pub(crate) fn decode_wcs_inner(
     // results). C `WcsMapFrm` (fitschan.c:37768-37810) returns
     // `astSimplify(map8)` — the pixel→WCS Mapping is simplified before it is
     // added to the FrameSet, so the stored edge (and any later native dump
-    // of it) is in reduced form. Use `simplify()` (not `simplified()`) so the
-    // returned Mapping carries `has_been_simplified` (→ `IsSimp = 1` in the
-    // native dump), mirroring C `astSimplify` which sets the IsSimple flag on
-    // its result.
+    // of it) is in reduced form. The returned Mapping carries
+    // `has_been_simplified` (→ `IsSimp = 1` in the native dump), mirroring C
+    // `astSimplify` which sets the IsSimple flag on its result.
     let composed: DynMapping = build_pixel_to_world(store, pixel_to_iwc, celestial, spectral)?;
     let full_mapping: DynMapping = composed.simplify()?;
 

@@ -248,7 +248,7 @@ pub(crate) fn win_mat(
     // C simplifies both the returned WinMap and MatrixMap, and records each
     // one's resulting Invert flag. We do the same: simplify() may turn the
     // unit-scale WinMap into a ShiftMap, and the matrix into a ZoomMap etc.
-    let sw1 = w1.simplified().ok()?;
+    let sw1 = <dyn Mapping>::simplify(&w1).ok()?;
     let sw1_inv = sw1.is_inverted();
     let mut sw1_fwd = sw1;
     if sw1_inv {
@@ -256,7 +256,7 @@ pub(crate) fn win_mat(
     }
     sw1_fwd.set_has_been_simplified(true);
 
-    let sm2 = m2_map.simplified().ok()?;
+    let sm2 = <dyn Mapping>::simplify(&m2_map).ok()?;
     let sm2_inv = sm2.is_inverted();
     let mut sm2_fwd = sm2;
     if sm2_inv {
@@ -304,14 +304,14 @@ fn win_perm(
 
     // After the swap the PermMap occupies the WinMap's slot and vice-versa.
     // C simplifies both and records the resulting Invert flags.
-    let sp1 = new_pm.simplified().ok()?;
+    let sp1 = <dyn Mapping>::simplify(&new_pm).ok()?;
     let sp1_inv = sp1.is_inverted();
     let mut sp1_fwd = sp1;
     if sp1_inv {
         sp1_fwd.invert();
     }
     sp1_fwd.set_has_been_simplified(true);
-    let sw1 = new_lin.simplified().ok()?;
+    let sw1 = new_lin.simplify().ok()?;
     let sw1_inv = sw1.is_inverted();
     let mut sw1_fwd = sw1;
     if sw1_inv {
@@ -858,7 +858,7 @@ fn swap_is_worthwhile(
 
     // Otherwise, does either swapped map simplify to a different class?
     for entry in swapped.iter() {
-        if let Ok(simp) = entry.0.simplified() {
+        if let Ok(simp) = entry.0.simplify() {
             if simplifies_to_different(entry.0.as_ref(), simp.as_ref()) {
                 return true;
             }

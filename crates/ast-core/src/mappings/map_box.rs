@@ -933,7 +933,7 @@ fn map_box_dyn_inner<M: Mapping + ?Sized>(
     }
 
     // Simplify the Mapping (mapping is queried many times below).
-    let simplified: crate::mappings::DynMapping = mapping.simplified()?;
+    let simplified: crate::mappings::DynMapping = mapping.as_dyn_mapping().simplify()?;
 
     // Build MapData. Swap lbnd/ubnd into ascending order if the caller
     // passed them the other way around.

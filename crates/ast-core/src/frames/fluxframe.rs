@@ -422,7 +422,7 @@ impl FluxFrame {
             // smap: standardised result system → standardised target system
             // (fluxframe.c:2163, astConvert(sfout2, sfin2)).
             let smap = sfout2.make_spec_mapping(&sfin2)?;
-            let smap = smap.simplified()?;
+            let smap = smap.simplify()?;
 
             // Standardise both SpecVals into the result density system and
             // require them equal (fluxframe.c:2172-2206).
@@ -494,7 +494,7 @@ impl FluxFrame {
         // Compose map1 ∘ map2 ∘ map3 in series and simplify.
         let chain = CmpMap::new(map1, map2, Composition::Series)?;
         let chain = CmpMap::new(Box::new(chain), map3, Composition::Series)?;
-        Ok(Some(chain.simplified()?))
+        Ok(Some(<dyn Mapping>::simplify(&chain)?))
     }
 
     /// Convert from `self`'s flux system to `result`'s, applying the

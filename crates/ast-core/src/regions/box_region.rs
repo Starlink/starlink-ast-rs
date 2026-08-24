@@ -14,7 +14,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping, UnitMap};
+use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::merge_util::MergedRegion;
@@ -253,8 +253,8 @@ impl BoxRegion {
             };
 
             // See if either picked Region can be simplified.
-            let sp1_map = Mapping::simplified(pickfrm1.as_ref())?;
-            let sp2_map = Mapping::simplified(pickfrm2.as_ref())?;
+            let sp1_map = <dyn Mapping>::simplify(pickfrm1.as_ref())?;
+            let sp2_map = <dyn Mapping>::simplify(pickfrm2.as_ref())?;
             let changed1 = !sp1_map.equal(pickfrm1.as_ref() as &dyn Mapping);
             let changed2 = !sp2_map.equal(pickfrm2.as_ref() as &dyn Mapping);
             if !(changed1 || changed2) {
@@ -294,7 +294,7 @@ impl BoxRegion {
             let frm = self.data.frameset.current().snapshot();
             let um = UnitMap::new(nout);
             let newprism = prism.map_region(&um, frm.as_ref())?;
-            let simplified = Mapping::simplified(newprism.as_ref())?;
+            let simplified = <dyn Mapping>::simplify(newprism.as_ref())?;
             let result = super::merge_util::mapping_into_region(simplified).unwrap_or(newprism);
             return Ok(Some(result));
         }
@@ -1468,7 +1468,7 @@ impl Mapping for BoxRegion {
         Ok(())
     }
 
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         // Invoke the parent Region simplify first (box.c:3705); it simplifies
         // the encapsulated FrameSet and any explicit uncertainty Region. All
         // subsequent work is done on the returned copy. `simpler` tracks
@@ -1493,7 +1493,7 @@ impl Mapping for BoxRegion {
             .data
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
-        let simple_map = map.simplified()?;
+        let simple_map = map.simplify()?;
 
         // `new` holds the simplified Region (initially the parent-simplified
         // copy). Any of the re-fit branches below replaces it and sets
