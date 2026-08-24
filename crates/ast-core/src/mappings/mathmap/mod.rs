@@ -19,7 +19,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 
 use crate::mappings::SimplifiedRecord;
 use opcode::CompiledExpr;
@@ -424,12 +424,11 @@ impl Mapping for MathMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        let reduced = (self as &dyn Mapping).simplify().ok();
-        crate::mappings::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        Ok(Box::new(self.clone()))
+        // A MathMap has no replace-with-simpler step. C's `MapMerge` merges it
+        // only with the Mapping that follows it in series, only when that one is
+        // also a MathMap, and only when both permit it via SimpFI / SimpIF
+        // (`mathmap.c:4047-4083`).
+        crate::mappings::simplify::default_map_merge(ctx, where_, series)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

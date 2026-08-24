@@ -41,17 +41,25 @@ fn audit_dir() -> PathBuf {
 }
 
 /// Module stems in a source directory, in sorted order.
+///
+/// A module may be held either as `<stem>.rs` or as `<stem>/mod.rs`; both name
+/// the same class, so both count.
 fn module_stems(dir: &Path) -> Vec<String> {
     let mut stems = Vec::new();
     for entry in std::fs::read_dir(dir).expect("source dir readable") {
         let path = entry.expect("readable entry").path();
-        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .expect("utf-8 stem");
+        let stem = if path.is_dir() {
+            if !path.join("mod.rs").is_file() {
+                continue;
+            }
+            path.file_name()
+        } else {
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            path.file_stem()
+        };
+        let stem = stem.and_then(|s| s.to_str()).expect("utf-8 stem");
         stems.push(stem.to_string());
     }
     stems.sort();
@@ -77,8 +85,13 @@ fn audit_universe() -> BTreeSet<String> {
     // in the universe whatever it overrides.
     let regions = repo_root().join("crates/ast-core/src/regions");
     for stem in module_stems(&regions) {
-        let source = std::fs::read_to_string(regions.join(format!("{stem}.rs")))
-            .expect("region module readable");
+        let file = regions.join(format!("{stem}.rs"));
+        let file = if file.is_file() {
+            file
+        } else {
+            regions.join(&stem).join("mod.rs")
+        };
+        let source = std::fs::read_to_string(&file).expect("region module readable");
         if stem == "mod" || REGION_SEAMS.iter().any(|seam| source.contains(seam)) {
             universe.insert(format!("region_{stem}"));
         }
