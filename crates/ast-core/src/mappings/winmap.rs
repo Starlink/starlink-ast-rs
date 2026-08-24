@@ -12,7 +12,7 @@ use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::unitnormmap::try_merge_into_unitnormmap;
 use super::zoom::ZoomMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that applies a per-axis linear transformation:
@@ -250,54 +250,6 @@ impl Mapping for WinMap {
             }
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        let n = self.shifts.len();
-        let all_shifts_zero = self.shifts.iter().all(|&s| ast_equal(s, 0.0));
-        let all_scales_one = self.scales.iter().all(|&s| ast_equal(s, 1.0));
-
-        // Identity: out = 0 + 1*x = x
-        if all_shifts_zero && all_scales_one {
-            return Ok(Box::new(UnitMap::new(n)));
-        }
-        // Pure shift: out = shift + 1*x = shift + x
-        if all_scales_one {
-            let shifts: Vec<f64> = if self.inverted {
-                self.shifts.iter().map(|&s| -s).collect()
-            } else {
-                self.shifts.clone()
-            };
-            return Ok(Box::new(ShiftMap::new(shifts)));
-        }
-        // Pure uniform zoom: out = 0 + f*x = f*x (same factor on all axes)
-        if all_shifts_zero {
-            let first = self.scales[0];
-            if (1..n).all(|i| ast_equal(self.scales[i], first)) {
-                let f = if self.inverted { 1.0 / first } else { first };
-                if let Ok(zm) = ZoomMap::new(n, f) {
-                    return Ok(Box::new(zm));
-                }
-            }
-            // Non-uniform scales with zero shifts → diagonal MatrixMap
-            let scales: Vec<f64> = if self.inverted {
-                self.scales.iter().map(|&s| 1.0 / s).collect()
-            } else {
-                self.scales.clone()
-            };
-            let mut diag = ndarray::Array2::<f64>::zeros((n, n));
-            for i in 0..n {
-                diag[[i, i]] = scales[i];
-            }
-            if let Ok(mm) = MatrixMap::new(diag) {
-                return Ok(Box::new(mm));
-            }
-        }
-        Ok(Box::new(self.clone()))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

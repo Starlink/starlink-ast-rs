@@ -10,7 +10,7 @@ a neighbour in series; distribute the WinMap into a neighbouring parallel CmpMap
 swap toward the nearest mergeable Mapping; merge with a neighbour in parallel;
 and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 
-`WinMap::map_merge` (`winmap.rs:415`) delegates to
+`WinMap::map_merge` (`winmap.rs:367`) delegates to
 `winmap_merge::win_map_merge` (`winmap_merge.rs:372-439`), so Rust sites are in
 `winmap_merge.rs` unless stated.
 
@@ -52,6 +52,17 @@ and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 | 34 | Take the effective shift terms and construct the equivalent ShiftMap | winmap.c:1835-1851 | winmap_merge.rs:420-422 | ported |
 | 35 | Replace the WinMap with it, mark it forward, and return the index | winmap.c:1852-1860 | winmap_merge.rs:422-424 | ported |
 | 36 | Return the result | winmap.c:1864-1865 | winmap_merge.rs:438 | ported |
+
+## The lone WinMap has no reduction of its own
+
+C gives WinMap no `Simplify` vtab slot, so a WinMap nominated on its own reaches
+the same body as one in a run, and both reductions it can undergo are rows in the
+table above. A zero-shift WinMap becomes a diagonal MatrixMap built from the
+effective scale terms (row 4, `winmap_merge.rs:381-395`), which then reduces on
+through `matrixmap.c`'s own merge — to a ZoomMap when the scales are uniform, and
+from there to a UnitMap when they are all 1.0. An all-unit-scale WinMap becomes a
+ShiftMap holding the effective shifts (rows 33 to 35). Between them those two
+cover every WinMap that reduces at all.
 
 ## Row 9 — the deferral is C's own design, not a port workaround
 
