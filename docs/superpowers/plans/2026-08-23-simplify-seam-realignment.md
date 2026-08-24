@@ -140,7 +140,7 @@ it the one C's vtab gives it.
 - Consumes: nothing.
 - Produces: `pub struct ViaSimplify(())` in `mappings::simplify_entry`, re-exported from `mappings`; `Mapping::simplified(&self, _: ViaSimplify) -> AstResult<DynMapping>`; `<dyn Mapping>::simplify(&self) -> AstResult<DynMapping>` unchanged in signature and moved to `simplify_entry`.
 
-- [ ] **Step 1: Record the baseline**
+- [x] **Step 1: Record the baseline**
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
@@ -153,7 +153,7 @@ rg -n --color never '\.simplified\(\)' crates/ast-core | grep -cv 'fn simplified
 Paste all three. Every later comparison is against them, and the last is the size
 of the error list to expect.
 
-- [ ] **Step 2: Create the leaf module with the token**
+- [x] **Step 2: Create the leaf module with the token**
 
 Create `crates/ast-core/src/mappings/simplify_entry.rs`:
 
@@ -213,7 +213,7 @@ mod simplify_entry;
 pub use simplify_entry::ViaSimplify;
 ```
 
-- [ ] **Step 3: Give the trait method the parameter**
+- [x] **Step 3: Give the trait method the parameter**
 
 In `crates/ast-core/src/mappings/mod.rs`, change line 282's declaration to:
 
@@ -234,7 +234,7 @@ In `crates/ast-core/src/mappings/mod.rs`, change line 282's declaration to:
 
 Leave it a required method for now; Task 5 gives it a default.
 
-- [ ] **Step 4: Build, and read the error list**
+- [x] **Step 4: Build, and read the error list**
 
 ```bash
 cargo build -p ast-core 2>&1 | grep -E "^error" | sort | uniq -c | sort -rn | head
@@ -248,7 +248,7 @@ every `impl`. The file list is the work.
 This error list **is** the audit. Every entry is a place that was reducing a
 Mapping without the gate, which is exactly what needs looking at.
 
-- [ ] **Step 5: Fix the 36 implementations**
+- [x] **Step 5: Fix the 36 implementations**
 
 Each of the 36 `impl Mapping for X` blocks needs its signature updated:
 
@@ -262,7 +262,7 @@ component — `CmpMap`, `RateMap`, `TranMap`, `SwitchMap`, `SelectorMap`,
 and it becomes `Mapping::simplify(child.as_ref())?`. **That is the behavioural
 change this task exists for**, so expect the corpus to move at step 7.
 
-- [ ] **Step 6: Fix the call sites**
+- [x] **Step 6: Fix the call sites**
 
 Every remaining error is a site that must become `simplify()`:
 
@@ -282,7 +282,7 @@ unrecorded reduction is asserting on something C never produces, so converting i
 is a correction, not an accommodation — but if a test *deliberately* checks the
 ungated path, it can no longer do so, and that is worth a note in the commit.
 
-- [ ] **Step 7: Compare against the baseline**
+- [x] **Step 7: Compare against the baseline**
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
@@ -317,13 +317,13 @@ call that set it, not at the class that read it.
 - **Nothing moved** — implausible with 155 sites converted. Check the build
   actually recompiled the tested code.
 
-- [ ] **Step 8: Update the ledger, PLAN.md and the checklists**
+- [x] **Step 8: Update the ledger, PLAN.md and the checklists**
 
 Run `cargo test -p ast-core --test test_verification_ledger`, set every count its
 failure names, and update `PLAN.md` §6 in the same edit. In
 `docs/audits/mapmerge/`, repoint any row whose Rust site was a converted call.
 
-- [ ] **Step 9: Verify and commit**
+- [x] **Step 9: Verify and commit**
 
 ```bash
 cargo clippy -p ast-core --all-targets -- -D warnings
@@ -365,7 +365,7 @@ Expected: `0` failures, no warnings either way, `0` doc errors.
 - Consumes: Task 1 complete.
 - Produces: `only_c_simplify_classes_implement_simplified`, `#[ignore]`d until Task 6. The single-caller rule needs no test — Task 1 made it a compile error.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `crates/ast-core/tests/test_simplify_seams.rs`:
 
@@ -453,7 +453,7 @@ fn only_c_simplify_classes_implement_simplified() {
 }
 ```
 
-- [ ] **Step 2: Run it to verify it fails and names the right set**
+- [x] **Step 2: Run it to verify it fails and names the right set**
 
 Run: `cargo test -p ast-core --test test_simplify_seams -- --ignored --nocapture`
 
@@ -465,7 +465,7 @@ relative to `crates/ast-core/src` and `box_region.rs` keeps its suffix. If the
 list is empty, the `text.contains` pattern does not match Task 1's actual
 signature — print one impl and align the string.
 
-- [ ] **Step 3: Document the rule where the checklists are read**
+- [x] **Step 3: Document the rule where the checklists are read**
 
 Append to `docs/audits/mapmerge/README.md`:
 
@@ -487,7 +487,7 @@ by the compiler, not by a checklist: `simplified()` takes a `ViaSimplify` and
 only `mappings::simplify_entry` can construct one.
 ```
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
@@ -520,7 +520,7 @@ Five classes keep a reduction in `simplified()` that no fixture reaches, because
 - Consumes: Task 1, so the counts are the post-gate ones.
 - Produces: one `<class>_lone_reduce` positive and one `neg_<class>_no_reduce` control per class needing them.
 
-- [ ] **Step 1: Confirm which classes still need one**
+- [x] **Step 1: Confirm which classes still need one**
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
@@ -535,7 +535,7 @@ done
 Expected: every line `reaches_simplified=0`. Task 1 may have changed this for a
 class; drop any that now reads non-zero and say so in the commit.
 
-- [ ] **Step 2: Read what each `simplified()` reduces**
+- [x] **Step 2: Read what each `simplified()` reduces**
 
 ```bash
 for c in chebymap mathmap sphmap unitnormmap wcsmap; do
@@ -548,7 +548,14 @@ Write down the condition under which each body returns something other than
 `self`. That condition is what the fixture must satisfy. A body that only ever
 returns a clone has no reduction: record it and skip steps 3 to 6 for it.
 
-- [ ] **Step 3: Add the generator cases**
+- [x] **Step 3: Add the generator cases**
+
+**Outcome:** two pairs, not five.
+Step 2 found `mathmap`, `sphmap` and `unitnormmap` return an unchanged clone, so
+there was nothing to characterise; the ChebyMap pair was generated and then
+dropped at Task 4 step 7.
+`wcs_unknown_lone_reduce` and `neg_wcs_tan_no_reduce` are the pair that landed
+(`a7a1509`).
 
 Append to `gen_audit_gap_fixtures` in
 `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`, before its closing
@@ -583,7 +590,7 @@ step 2's condition.
     }
 ```
 
-- [ ] **Step 4: Generate, and read what C did**
+- [x] **Step 4: Generate, and read what C did**
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs/reference/starlink-ast
@@ -599,7 +606,7 @@ If a `.simp` differs only in `IsSimp`, C does **not** perform that reduction. Th
 is a finding: the port's `simplified()` does something C does not, so the class
 belongs in Task 5's delete-outright bucket. Record it and drop the pair.
 
-- [ ] **Step 5: Copy into both trees and wire the manifest**
+- [x] **Step 5: Copy into both trees and wire the manifest**
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
@@ -619,7 +626,7 @@ cheby_linear_lone_reduce | simplify_fixtures/cheby_linear_lone_reduce.map | simp
 neg_cheby_quadratic_no_reduce | simplify_fixtures/neg_cheby_quadratic_no_reduce.map | simplify_fixtures/neg_cheby_quadratic_no_reduce.map |
 ```
 
-- [ ] **Step 6: Run, and license the expected failures**
+- [x] **Step 6: Run, and license the expected failures**
 
 Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)" -A 4`
 
@@ -628,7 +635,7 @@ each, add a `SERIAL_UNGATED` entry with the reason
 `"awaiting the simplified()-to-map_merge move, PLAN.md §10.16"`. Task 5 deletes
 it.
 
-- [ ] **Step 7: Ledger, PLAN.md, verify, commit**
+- [x] **Step 7: Ledger, PLAN.md, verify, commit**
 
 ```bash
 cargo test -p ast-core --test test_verification_ledger   # read the new count
@@ -659,7 +666,7 @@ Expected: `0` failures, `194 passed`.
 - Consumes: Task 3's ChebyMap pair.
 - Produces: `ChebyMap::map_merge`. No new public API.
 
-- [ ] **Step 1: Confirm C's vtab claim before relying on it**
+- [x] **Step 1: Confirm C's vtab claim before relying on it**
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
@@ -670,14 +677,14 @@ grep -c 'static int MapMerge' reference/starlink-ast/src/chebymap.c
 Expected: one hit, in `polymap.c`, and `0` for `chebymap.c`. If `chebymap.c`
 defines its own, port that instead of delegating and say so.
 
-- [ ] **Step 2: Read PolyMap's `map_merge`**
+- [x] **Step 2: Read PolyMap's `map_merge`**
 
 Run: `rg -n --color never 'fn map_merge' -A 40 crates/ast-core/src/mappings/polymap.rs | head -44`
 
 Note whether the body reads `PolyMap`-only fields. If it does, step 5 needs a
 `PolyMap` view; if it only uses `&dyn Mapping` methods, it can take `self`.
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 Add inside `chebymap.rs`'s existing `#[cfg(test)] mod tests`:
 
@@ -716,13 +723,13 @@ Add inside `chebymap.rs`'s existing `#[cfg(test)] mod tests`:
 Adjust the `ChebyMap::new` call to the real signature, which step 2 shows. The
 assertion is the part that matters.
 
-- [ ] **Step 4: Run to verify it fails**
+- [x] **Step 4: Run to verify it fails**
 
 Run: `cargo test -p ast-core --lib linear_chebymap_reduces -- --nocapture`
 Expected: FAIL — still a `ChebyMap`, because it has no `map_merge` and takes the
 trait default, which only tries the neighbours.
 
-- [ ] **Step 5: Add the delegation**
+- [x] **Step 5: Add the delegation**
 
 Insert into `impl Mapping for ChebyMap`, before `fn simplified`:
 
@@ -754,12 +761,21 @@ If step 2 showed the body reads `PolyMap` fields, add instead:
 
 and call `self.as_polymap_view().map_merge(ctx, where_, series)`.
 
-- [ ] **Step 6: Run to verify it passes**
+- [x] **Step 6: Run to verify it passes**
 
 Run: `cargo test -p ast-core --lib linear_chebymap_reduces -- --nocapture`
 Expected: PASS.
 
-- [ ] **Step 7: Run the corpus**
+- [x] **Step 7: Run the corpus**
+
+**Outcome:** step 7's escape hatch fired.
+C reads a ChebyMap's coefficients with nothing that distinguishes the Chebyshev
+basis from the power basis, so its linear replacement returns a different
+function; the two-point probe settled it against the oracle.
+The delegation added at step 5 was reverted, the finding recorded in
+`docs/issues/c-library-quirks.md` and `PLAN.md` §10.2, and the fixture pair
+dropped (`85519b4`).
+ChebyMap therefore has no `map_merge`, and Task 5B left it on the trait default.
 
 Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)|left:"`
 
@@ -774,7 +790,13 @@ simplified ChebyMap and the port's, and compare. If C loses the scaling, do not
 mirror it — revert, record the finding in `docs/issues/c-library-quirks.md` and
 `PLAN.md` §10.2, and raise it upstream.
 
-- [ ] **Step 8: Update the checklist and PLAN.md, verify, commit**
+- [x] **Step 8: Update the checklist and PLAN.md, verify, commit**
+
+**Outcome:** rows 9 to 11 became `divergence:` rather than `ported`, and rows 4
+to 8 and 12 keep `gap: PLAN.md §10.2` — the coefficient consolidation, which is
+basis-independent and still owed.
+It is item B1 of
+[`2026-08-24-simplify-parity-closeout-design.md`](../specs/2026-08-24-simplify-parity-closeout-design.md).
 
 Change `chebymap.md` rows 4 to 12 from `gap: PLAN.md §10.2` to `ported` with the
 `chebymap.rs` site, and replace the closing note with step 7's finding. Mark
@@ -810,7 +832,7 @@ Expected: `0` failures, `194 passed`.
 
 ### Part A — the driver
 
-- [ ] **Step A1: Read C's loop**
+- [x] **Step A1: Read C's loop**
 
 Run: `sed -n '16860,16900p' reference/starlink-ast/src/mapping.c`
 
@@ -819,7 +841,7 @@ Three things it does: calls
 `nmap > 1` **or** `modified < 0`; treats no simplification as returning a clone.
 The port's version must do all three.
 
-- [ ] **Step A2: Write the failing tests**
+- [x] **Step A2: Write the failing tests**
 
 Append to `simplify.rs`'s `#[cfg(test)] mod tests`:
 
@@ -855,12 +877,12 @@ Append to `simplify.rs`'s `#[cfg(test)] mod tests`:
     }
 ```
 
-- [ ] **Step A3: Run to verify it fails**
+- [x] **Step A3: Run to verify it fails**
 
 Run: `cargo test -p ast-core --lib base_simplify -- --nocapture`
 Expected: FAIL to compile, `cannot find function base_simplify`.
 
-- [ ] **Step A4: Write the driver**
+- [x] **Step A4: Write the driver**
 
 Add to `simplify.rs` next to `default_map_merge`:
 
@@ -902,12 +924,12 @@ If `MergeCtx` has no `from_single` or `is_frozen(usize)`, read its impl
 what it has. The shape — one element, loop, break on growth or no change — must
 not change.
 
-- [ ] **Step A5: Run to verify it passes**
+- [x] **Step A5: Run to verify it passes**
 
 Run: `cargo test -p ast-core --lib base_simplify -- --nocapture`
 Expected: PASS, both.
 
-- [ ] **Step A6: Give the trait method a default**
+- [x] **Step A6: Give the trait method a default**
 
 In `crates/ast-core/src/mappings/mod.rs`, add a body to the declaration Task 1
 step 3 wrote:
@@ -927,7 +949,7 @@ class as the compiler demands:
     fn as_dyn_mapping(&self) -> &dyn Mapping;
 ```
 
-- [ ] **Step A7: Verify nothing moved, then commit**
+- [x] **Step A7: Verify nothing moved, then commit**
 
 ```bash
 cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
@@ -1013,7 +1035,7 @@ through `self_reduce_map_merge`, and `simplified()` orients the child to
 
 #### Steps, per class
 
-- [ ] **Step B1: Read the class's two methods**
+- [x] **Step B1: Read the class's two methods**
 
 ```bash
 c=zoom   # the class being moved
@@ -1025,7 +1047,7 @@ rg -n --color never 'fn map_merge' -A 12 $f | head -16
 Decide the archetype. If `map_merge` delegates to a `simplify.rs` helper, the
 reduction goes at the top of that helper; if inline, at the top of the body.
 
-- [ ] **Step B2: Record the baseline**
+- [x] **Step B2: Record the baseline**
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
@@ -1035,14 +1057,14 @@ cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
 Copy the summary line and the `left:` list. Any movement after B3 is this class's
 doing and must be explained.
 
-- [ ] **Step B3: Move the body**
+- [x] **Step B3: Move the body**
 
 Archetype 1: insert the reduction at the top of `map_merge` or its helper, then
 delete the `simplified()` impl. Archetype 2: delete the impl only, after
 confirming `map_merge` reaches the same logic through `self_reduce_map_merge` or
 `try_self_reduce`.
 
-- [ ] **Step B4: Compare against the baseline**
+- [x] **Step B4: Compare against the baseline**
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
@@ -1074,13 +1096,13 @@ diff /tmp/cm.txt /tmp/pm.txt | head -20
 
 The first differing line names the nomination that went wrong.
 
-- [ ] **Step B5: Update the checklist**
+- [x] **Step B5: Update the checklist**
 
 In `docs/audits/mapmerge/<class>.md`, repoint every row whose Rust site was in
 `simplified()` to its new `map_merge` location. A row whose verdict was `gap`
 because the reduction was unreachable becomes `ported`.
 
-- [ ] **Step B6: Commit**
+- [x] **Step B6: Commit**
 
 ```bash
 cargo clippy -p ast-core --all-targets -- -D warnings
@@ -1108,7 +1130,7 @@ Repeat B1 to B6 for each of the 24, in group order.
 - Consumes: Tasks 1 to 5 complete.
 - Produces: `only_c_simplify_classes_implement_simplified` passing without `#[ignore]`.
 
-- [ ] **Step 1: Remove the ignore and run**
+- [x] **Step 1: Remove the ignore and run**
 
 ```bash
 # delete the #[ignore = …] attribute, then:
@@ -1121,7 +1143,12 @@ If it still lists classes, Task 5 has not reached them — finish them rather th
 adding them to the keeper list, which is derived from C and is not a place to
 record incomplete work.
 
-- [ ] **Step 2: Re-measure §10.3 against the current pin**
+- [x] **Step 2: Re-measure §10.3 against the current pin**
+
+**Outcome:** the counts do not agree — 87/14 genuine nominations for C against
+153/15 for the port at pin `8d4f526f`, so §10.3 is **not** closed by this work.
+Its two remaining divergences are item A1 of the closeout spec, and its
+`ISSIMP_PLACEMENT_LICENSED` entry survives for `cap_specmap_02`.
 
 §10.3's counts were taken before upstream fixed `cmpmap.c` (`4f2fc0ed`) and
 before Task 1, so both sides have moved.
@@ -1142,13 +1169,13 @@ Rewrite §10.3's table with the new numbers and the pin they were taken at. If t
 counts now agree, §10.3 is closed by this work — say so and delete its
 `SERIAL_UNGATED` and `ISSIMP_DISAGREEMENTS` entries.
 
-- [ ] **Step 3: Close the PLAN.md entries**
+- [x] **Step 3: Close the PLAN.md entries**
 
 Mark §10.16 `FIXED` with what the work established. Re-check §10.1 and §10.7,
 which both cited the seam, and §10.11, whose four unreached `TranMap` cases may
 now be reachable.
 
-- [ ] **Step 4: Mark the spec done**
+- [x] **Step 4: Mark the spec done**
 
 Change `**Status:** proposed, not started.` to
 `**Status:** implemented, <date>.` and add a closing section on what the work
@@ -1157,7 +1184,7 @@ asymmetry, 155 against 36, which is what the spec was pointing at; and that the
 single-caller rule turned out to be enforceable by the compiler through a
 capability token, which two earlier drafts of the plan said it was not.
 
-- [ ] **Step 5: Full verification and commit**
+- [x] **Step 5: Full verification and commit**
 
 ```bash
 cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
@@ -1224,3 +1251,36 @@ position throughout, matching the inherent method that Task 1 moves to
 movement in advance, because measuring it is the task. Step B2's baseline capture
 is the substitute: the numbers are recorded before the file is touched, so
 "identical to the baseline" is checkable without my knowing what the baseline is.
+
+---
+
+## Outcome
+
+Implemented across `84cd3ba..25a5094`, one class per commit through Task 5B.
+
+The goal holds: `Mapping::simplified` takes a `ViaSimplify` constructible only in
+`mappings::simplify_entry`, which contains nothing but the entry point, so the
+per-class seam has exactly one possible caller and no reduction can happen
+unrecorded.
+Eleven classes implement that seam — the eleven whose C counterpart fills the
+`Simplify` vtab slot — and `test_simplify_seams` fails if a twelfth appears.
+
+Four things the plan did not predict:
+
+- **25 stray bodies, not 24.** `ChebyMap`'s `simplified()` held no reduction to
+  move, so it was invisible to the count, which was taken from bodies that
+  reduced something.
+- **`chebymap` ended without a `map_merge`.** Task 4 set out to give it PolyMap's,
+  and PolyMap's linear replacement turned out to be unsound on a Chebyshev basis.
+  The half that is sound is still owed.
+- **§10.3 did not close.** Making every reduction pass the gate was necessary for
+  the counts to be comparable at all, and it left the port nominating 153 times to
+  C's 87.
+  The remaining cause is a leaf-count threshold standing in for C's identity test,
+  which is a separate port.
+- **The audit universe grew.** Task 2's keeper list is derived from
+  `grep -l 'static AstMapping \*Simplify'`, and that grep names classes the
+  `MapMerge` audit had never covered, which is what `69ad0cc` extended.
+
+What is left is specified in
+[`2026-08-24-simplify-parity-closeout-design.md`](../specs/2026-08-24-simplify-parity-closeout-design.md).
