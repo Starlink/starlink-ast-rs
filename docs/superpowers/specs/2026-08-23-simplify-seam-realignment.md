@@ -46,6 +46,29 @@ Three seams:
 virtual", which is accurate about what it does and silent about what it
 corresponds to — because it corresponds to nothing.
 
+**The decisive measurement is the caller count, not the vtab structure.** C's
+`Simplify` slot *is* a per-class dispatch, so it can be made to look like
+`simplified()`'s counterpart. It is not one, because it has exactly one caller in
+the entire library:
+
+```
+$ grep -rn ',Mapping,Simplify)' reference/starlink-ast/src/*.c
+mapping.c:24772:      result = (**astMEMBER(this,Mapping,Simplify))( this, status );
+```
+
+That call sits inside `astSimplify_`, after the `IsSimple` short-circuit and
+before the stamp. Nothing else in C can reach a per-class `Simplify` body, so
+every reduction in the library is short-circuited and recorded.
+
+The port's `simplified()` has **65 call sites against `simplify()`'s 8**, across
+`frames/`, `regions/`, `fitschan/` and the merge core. The raw virtual is the
+default choice and the real entry point is the exception, so 65 sites each decide
+for themselves whether a reduction is recorded.
+
+That is the confusion this document is about, and it is worse than a naming
+problem: it is why the port emits a different set of `IsSimp` cards from C, and
+why no stamping rule has ever aligned them (`PLAN.md` §10.3).
+
 ## How this happened
 
 Two commits, 196 apart.
