@@ -248,7 +248,8 @@ impl Mapping for SelectorMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
+        let reduced = (self as &dyn Mapping).simplify().ok();
+        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
     }
 
     fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {

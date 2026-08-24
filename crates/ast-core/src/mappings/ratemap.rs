@@ -322,7 +322,8 @@ impl Mapping for RateMap {
         // C opens its MapMerge by simplifying the encapsulated Mapping and
         // rebuilding the RateMap around the result (ratemap.c:717-727), then
         // falls through to cancelling against an inverse neighbour in series.
-        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
+        let reduced = (self as &dyn Mapping).simplify().ok();
+        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
     }
 
     fn try_merge(

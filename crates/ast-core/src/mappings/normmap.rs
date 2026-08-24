@@ -24,7 +24,7 @@ use crate::serial::{
 
 use super::helpers::is_bad;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that normalises coordinates using the `norm()` method of
@@ -191,22 +191,17 @@ impl Mapping for NormMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
-    }
+        // C opens its MapMerge with the replace-with-simpler step
+        // (normmap.c:632-640): a basic Frame's astNorm does nothing, so a
+        // NormMap over one is a UnitMap. Anything else falls through to the
+        // neighbour steps, which `NormMap::try_merge` performs.
+        let reduced: Option<DynMapping> = self
+            .frame
+            .as_any()
+            .downcast_ref::<BasicFrame>()
+            .map(|_| Box::new(UnitMap::new(self.naxes())) as DynMapping);
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // If the encapsulated Frame is a basic Frame, its norm() is identity,
-        // so we can replace the NormMap with a UnitMap.
-        if self.frame.as_any().downcast_ref::<BasicFrame>().is_some() {
-            return Ok(Box::new(UnitMap::new(self.naxes())));
-        }
-
-        // No self-simplification possible for other frame types.
-        Ok(Box::new(self.clone()))
+        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
     }
 
     fn try_merge(

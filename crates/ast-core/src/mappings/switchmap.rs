@@ -581,7 +581,8 @@ impl Mapping for SwitchMap {
         // object. Tracing C on switchmap_invert_normalize shows the same
         // SwitchMap nominated at `inv=1`, then again at `inv=0`, then a third
         // time once the children had been reduced.
-        super::simplify::self_reduce_map_merge(self, ctx, where_, series)
+        let reduced = (self as &dyn Mapping).simplify().ok();
+        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
     }
 
     fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {

@@ -1260,24 +1260,19 @@ pub(crate) fn wcs_map_merge(
 /// reference to the neighbouring Mappings in the list" and then falls through
 /// to the neighbour steps.
 ///
-/// The class's own reduction lives in its `simplified()`. C reaches it through
-/// `astSimplify`, which returns the object it was given when it cannot reduce
-/// it and records *that* object (mapping.c:24763) — so the reduction is
-/// reported as a change only when it actually reduced, while the record lands
-/// either way. With owned values that record has to be installed rather than
-/// left on a shared pointer, so the entry is replaced unconditionally and only
-/// the return value distinguishes the two cases.
-///
-/// Before leaf reduction moved out of `flatten`, these classes got their
-/// reduction as a side effect of being decomposed. They no longer do, and
-/// without this they would never self-reduce inside the nominate loop at all.
+/// `reduced` is the replacement the class arrived at, or `None` when it has
+/// none. The class computes it in its own `map_merge`, which is where C's body
+/// computes it, and the entry is replaced only when the candidate differs from
+/// the Mapping it replaces — a candidate equal to the original is C's
+/// "no simplification took place".
 pub(crate) fn self_reduce_map_merge(
     this: &dyn Mapping,
+    reduced: Option<DynMapping>,
     ctx: &mut MergeCtx,
     where_: usize,
     series: bool,
 ) -> Option<usize> {
-    if let Some(modified) = try_self_reduce(this, ctx, where_) {
+    if let Some(modified) = try_self_reduce(this, reduced, ctx, where_) {
         return Some(modified);
     }
     default_map_merge(ctx, where_, series)
@@ -1287,11 +1282,12 @@ pub(crate) fn self_reduce_map_merge(
 /// other steps between it and the plain neighbour merge.
 pub(crate) fn try_self_reduce(
     this: &dyn Mapping,
+    reduced: Option<DynMapping>,
     ctx: &mut MergeCtx,
     where_: usize,
 ) -> Option<usize> {
     trace::simplify_enter("self-reduce-head", this);
-    if let Ok(simp) = this.simplify()
+    if let Some(simp) = reduced
         && (simp.is_inverted() != this.is_inverted() || !simp.equal(this))
     {
         let (eff, orig) = {
@@ -2924,7 +2920,8 @@ pub(crate) fn pcd_map_merge(
 ) -> Option<usize> {
     // C's opening move, before any neighbour is considered: a PcdMap whose
     // distortion coefficient is zero is a UnitMap (pcdmap.c:1417-1433).
-    if let Some(modified) = try_self_reduce(pcd, ctx, where_) {
+    let reduced = (pcd as &dyn Mapping).simplify().ok();
+    if let Some(modified) = try_self_reduce(pcd, reduced, ctx, where_) {
         ctx.resync_frozen();
         return Some(modified);
     }
