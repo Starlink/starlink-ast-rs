@@ -543,6 +543,15 @@ fn simplify_regression() {
             "nullregion_unc_fillfactor_merge",
             "emits Prism where C emits Box",
         ),
+        // (E) Newly visible at upstream 8d4f526f, and the same MapMerge branch
+        // §10.3 is narrowed to. cmpmap.c:4f2fc0ed fixed the
+        // parallel-CmpMaps-in-series case, which annulled the pointer under test
+        // before testing it, so the pair was rebuilt even when nothing reduced.
+        // The regenerated reference carries two cards this port does not emit.
+        (
+            "cmpmap_parallel_series_dim_mismatch",
+            "two IsSimp cards short in the parallel-CmpMaps-in-series branch",
+        ),
         // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
         // where C has collapsed to bare Points.
         (
@@ -603,6 +612,11 @@ fn simplify_regression() {
         "cap_cmpmap_03 (6 vs C's 7)",
         "cap_cmpmap_04 (15 vs C's 18)",
         "cap_specmap_02 (7 vs C's 8)",
+        // Newly visible at upstream 8d4f526f. cmpmap.c:4f2fc0ed fixed MapMerge's
+        // parallel-CmpMaps-in-series branch, which annulled the pointer under
+        // test before testing it, and the regenerated reference carries two more
+        // cards than the stale one did. Same branch as §10.3.
+        "cmpmap_parallel_series_dim_mismatch (1 vs C's 3)",
         // These render to a Region, so the old hand-rolled dispatch returned
         // `None` and the count was never taken. Causes (B) and (D) in
         // SERIAL_UNGATED. Cause (A), the four SwitchMap fixtures, is closed:

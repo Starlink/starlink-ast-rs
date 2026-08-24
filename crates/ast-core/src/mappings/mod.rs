@@ -502,7 +502,8 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     ///
     /// Simplifying a Mapping produces something equivalent to the orientation
     /// it had at the time, and the inverse may simplify differently, so each
-    /// orientation carries its own record — see [`SimplifiedRecord`].
+    /// orientation carries its own record, held in the crate-private
+    /// `SimplifiedRecord`.
     /// `invert()` therefore changes which record applies rather than
     /// discarding one, and inverting and inverting back leaves the Mapping
     /// reporting exactly what it reported before. Serialised as the `IsSimp`
@@ -515,7 +516,7 @@ pub trait Mapping: AsAny + Send + fmt::Debug {
     /// orientation (C `astSetIsSimple`, mapping.h:428).
     ///
     /// `Mapping::simplify` sets it `true` on its result. Discarding the record
-    /// is a class-level decision — see [`SimplifiedRecord::clear`].
+    /// is a class-level decision, made through `SimplifiedRecord::clear`.
     fn set_has_been_simplified(&mut self, _flag: bool) {}
 
     /// Whether the `IsSimp` token is written for this Mapping.

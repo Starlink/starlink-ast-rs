@@ -285,13 +285,21 @@ neg_normmap_nonnorm_neighbour | simplify_fixtures/neg_normmap_nonnorm_neighbour.
 # WinMap's shift terms are all zero, and C `winmap.c::MapMerge` replaces such a
 # WinMap with a diagonal MatrixMap as its first step, "without reference to the
 # neighbouring Mappings in the list" (winmap.c:210-250). Probed against the
-# reference library: C returns CmpMap{MatrixMap, UnitNormMap}, not the input.
-# The port passed the old assertion by accident -- it reduced the leaf during
-# decomposition, then the no-pairwise-change fast path discarded the reduced
-# leaf and re-emitted the original tree. Given a real reference, generated the
-# way ast_tester/gen_simplify_fixtures.c generates them, it is an ordinary
-# positive case.
-unitnormmap_nonunit_scale | simplify_fixtures/unitnormmap_nonunit_scale.map | simplify_fixtures/unitnormmap_nonunit_scale.simp |
+# reference library: C returns CmpMap{MatrixMap, UnitNormMap}, not the input, so
+# the fixture as first written asserted something C does not do and this repo
+# converted it to a positive case. Upstream has since repaired the generator so
+# the fixture is a genuine negative control again, and renamed it with the neg_
+# prefix; this is upstream's version.
+neg_unitnormmap_nonunit_scale | simplify_fixtures/neg_unitnormmap_nonunit_scale.map | simplify_fixtures/neg_unitnormmap_nonunit_scale.map |
+
+# Four negative controls upstream repaired in the same pass. Their files were
+# already here but unwired: the generator had been failing to emit them, so
+# nothing had ever compared them. neg_time_2arg_mismatch additionally had a
+# bystander rule firing on it, which upstream fixed by changing the arguments.
+neg_cmpmap_mode_mismatch | simplify_fixtures/neg_cmpmap_mode_mismatch.map | simplify_fixtures/neg_cmpmap_mode_mismatch.map |
+neg_poly_different_coeffs | simplify_fixtures/neg_poly_different_coeffs.map | simplify_fixtures/neg_poly_different_coeffs.map |
+neg_time_2arg_mismatch | simplify_fixtures/neg_time_2arg_mismatch.map | simplify_fixtures/neg_time_2arg_mismatch.map |
+neg_win_cmpmap_split_no_simplify | simplify_fixtures/neg_win_cmpmap_split_no_simplify.map | simplify_fixtures/neg_win_cmpmap_split_no_simplify.map |
 neg_unitnormmap_nonmergeable | simplify_fixtures/neg_unitnormmap_nonmergeable.map | simplify_fixtures/neg_unitnormmap_nonmergeable.map |
 neg_grism_zoom_before_fwd | simplify_fixtures/neg_grism_zoom_before_fwd.map | simplify_fixtures/neg_grism_zoom_before_fwd.map |
 neg_grism_nonzoom_before_inv | simplify_fixtures/neg_grism_nonzoom_before_inv.map | simplify_fixtures/neg_grism_nonzoom_before_inv.map |

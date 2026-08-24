@@ -3,11 +3,11 @@
  IsA Mapping 	# Mapping between coordinate systems
     Ntime = 2 	# Number of conversion steps
     Time1 = "MJDTOJD" 	# Convert MJD to JD
-    Time1a = 0 	# MJD offset
-    Time1b = 2400000.5 	# JD offset
-    Time1c = 0 	# Combined offset
+    Time1a = 1 	# MJD offset
+    Time1b = 0 	# JD offset
+    Time1c = 2400001.5 	# Combined offset
     Time2 = "JDTOMJD" 	# Convert JD to MJD
-    Time2a = 2400001 	# JD offset
-    Time2b = 0 	# MJD offset
-    Time2c = 0.5 	# Combined offset
+    Time2a = 0 	# JD offset
+    Time2b = 2 	# MJD offset
+    Time2c = -2400002.5 	# Combined offset
  End TimeMap
