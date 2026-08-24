@@ -2730,20 +2730,19 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
     // `aconstants` (resp. `bconstants`) is true, component A's (resp.
     // B's) inputs were absorbed into the new PermMap as transformed
     // constants. The component is no longer in the chain and must be
-    // replaced by a UnitMap of its output dimension. Mirrors C
-    // permmap.c MapMerge "Swapped CmpMap" branch, where each consumed
-    // component is reduced to a UnitMap before assembling the new
-    // parallel CmpMap.
+    // replaced by a UnitMap of its output dimension, which is C's `unit`
+    // (`cmpmap.c:1961-1971`, consumed at `:2053-2070`).
+    //
+    // The surviving components go in as they are: C assembles the new CmpMap
+    // from `cmpmap2->map1` / `map2` directly and never simplifies them. The
+    // nominate loop reaches them afterwards, through the rebuilt CmpMap.
     let nout_a = effective_nout(par_list[0].0.as_ref(), par_list[0].1);
     let nout_b = effective_nout(par_list[1].0.as_ref(), par_list[1].1);
 
     let new_a: DynMapping = if aconstants {
         Box::new(UnitMap::new(nout_a))
     } else {
-        trace::simplify_enter("par-branch-a", par_list[0].0.as_ref());
-        let Ok(mut a) = par_list[0].0.simplify() else {
-            return false;
-        };
+        let mut a = par_list[0].0.clone_box();
         if par_list[0].1 {
             a.invert();
         }
@@ -2752,10 +2751,7 @@ fn try_swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usi
     let new_b: DynMapping = if bconstants {
         Box::new(UnitMap::new(nout_b))
     } else {
-        trace::simplify_enter("par-branch-b", par_list[1].0.as_ref());
-        let Ok(mut b) = par_list[1].0.simplify() else {
-            return false;
-        };
+        let mut b = par_list[1].0.clone_box();
         if par_list[1].1 {
             b.invert();
         }

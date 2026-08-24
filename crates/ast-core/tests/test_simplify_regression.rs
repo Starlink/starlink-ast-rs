@@ -111,9 +111,10 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[
         "cap_specmap_02",
         10,
         8,
-        "C tags the CmpMap wrapping the SpecMap/ZoomMap pair; the port does not, \
-         and instead tags three leaves reduced by `try_self_reduce`, which C \
-         reaches only through `astMapMerge` (PLAN.md §10.16)",
+        "C tags the CmpMap wrapping the SpecMap/ZoomMap pair, which the port \
+         never forms (the WinMap under-merge of PLAN.md §10.3), and the port \
+         tags three leaves that `dimension_match_parallel_lists` simplifies \
+         individually where C simplifies only the combined pair (§10.3)",
     ),
 ];
 
@@ -528,10 +529,6 @@ fn simplify_regression() {
     // Note what `equal()` did here: it passed all eleven, including a Prism
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
-    // Shared reason for cause (G) below, where the whole difference is one or
-    // two extra `IsSimp` cards on a leaf.
-    const OVER_STAMP: &str = "IsSimp on a leaf reduced by try_self_reduce; awaiting the \
-                              simplified()-to-map_merge move, PLAN.md §10.16";
     const SERIAL_UNGATED: &[(&str, &str)] = &[
         // (B) Region simplify tags a Mapping inside the encapsulated FrameSet
         // that C leaves bare. See PLAN.md §9.1.
@@ -559,20 +556,6 @@ fn simplify_regression() {
             "cmpmap_parallel_series_dim_mismatch",
             "two IsSimp cards on the leaves where C has them on the CmpMaps",
         ),
-        // (G) `try_self_reduce` stands in for the reduction C keeps inside
-        // `MapMerge`, and it now reaches it through the gate, so it stamps the
-        // leaf it reduced. C reaches a leaf only through `astMapMerge` (verified
-        // on the tracing oracle: no `SIMPLIFY-ENTER` for the leaf class in any
-        // of these), so C emits no card there. The extra cards are the only
-        // difference in every one of these — nothing else in the tree moves.
-        // Closed by moving the 25 reductions into `map_merge`, PLAN.md §10.16;
-        // `cap_slamap_03` and `cap_wcsmap_01` closed when the PermMap rebuild
-        // moved there, and `lsst` when the PolyMap coefficient consolidation
-        // and affine rebuild moved there.
-        ("cmpmap_perm_parallel_swap", OVER_STAMP),
-        ("cmpmap_perm_swap_aconstants", OVER_STAMP),
-        ("cmpmap_perm_swap_bconstants", OVER_STAMP),
-        ("parpair_one_side_reduces", OVER_STAMP),
         // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
         // where C has collapsed to bare Points.
         (
@@ -586,6 +569,14 @@ fn simplify_regression() {
         (
             "cap_pointlist_01",
             "two mesh coordinates diverge past 4 ulp",
+        ),
+        // (G) `dimension_match_parallel_lists` simplifies each member of a
+        // matched sublist; C simplifies only the pair it combines from them
+        // (cmpmap.c:1728), so extra IsSimp cards land on the leaves.
+        // PLAN.md §10.3.
+        (
+            "parpair_one_side_reduces",
+            "two extra IsSimp cards on the sublist members",
         ),
     ];
     // `simplify` must stamp whatever it returns (mapping.c:24763). It does not
@@ -630,20 +621,12 @@ fn simplify_regression() {
         // Under-tagging, gated all along.
         "rigby (8 vs C's 9)",
         "cap_cmpmap_03 (6 vs C's 7)",
-        // Over-tagging, cause (G) in SERIAL_UNGATED: `try_self_reduce` reaches a
-        // leaf's reduction through the gate, so it stamps a leaf C reaches only
-        // through `astMapMerge` and therefore never stamps. Closed by moving the
-        // 25 reductions into `map_merge`, PLAN.md §10.16 — `cap_cmpmap_01`,
-        // `cap_cmpmap_04`, `cap_slamap_03` and `cap_wcsmap_01` closed there when
-        // the PermMap rebuild moved, and `lsst` when the PolyMap coefficient
-        // consolidation and affine rebuild moved. cap_specmap_02 was
-        // under-tagging before the
-        // leaf stamps pushed it past C, so the residual under-tagging underneath
-        // it is only measurable once the rest of §10.16 has landed.
+        // Over-tagging: `dimension_match_parallel_lists` simplifies each member
+        // of a matched sublist, where C simplifies only the pair it combines
+        // from them (`cmpmap.c:1728`), so the port stamps leaves C does not.
+        // Dropping that call moves both of these but does not close either --
+        // the measured trade-off is in PLAN.md §10.3.
         "cap_specmap_02 (10 vs C's 8)",
-        "cmpmap_perm_parallel_swap (4 vs C's 2)",
-        "cmpmap_perm_swap_aconstants (3 vs C's 2)",
-        "cmpmap_perm_swap_bconstants (3 vs C's 2)",
         "parpair_one_side_reduces (5 vs C's 3)",
         // These render to a Region, so the old hand-rolled dispatch returned
         // `None` and the count was never taken. Causes (B) and (D) in
