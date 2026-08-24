@@ -695,6 +695,10 @@ Each entry is cited by a `gap` verdict in a checklist under
 `docs/audits/mapmerge/`, and `test_mapmerge_audit.rs` fails if a cited entry
 does not exist here.
 
+[`docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md`](docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md)
+orders these entries into waves and gives each one a design, a gate and a record
+obligation.
+
 ### 10.1 RateMap's self-reduction is unreachable from the nominate loop — FIXED
 
 `ratemap.c:717-727` opens `MapMerge` by simplifying the encapsulated Mapping and
@@ -1526,3 +1530,63 @@ route into the mode today — in C the flags are produced by `YamlChan`
 the rad/deg ZoomMaps it flags with `AllowSimplify`), which is not ported, and in
 the port they are produced only by deserialisation (`cmpmap.rs:1034`,
 `serial/mod.rs:160`). Porting `YamlChan` would exercise the mode for real.
+
+### 10.21 `astDoNotSimplify` is unported, and the port has no Mapping-level `Ident`
+
+C gates simplification on a per-class protected method with two callers, both in
+generic drivers.
+`astSimplify_` refuses to reach the `Simplify` slot when it returns non-zero
+(`mapping.c:24764`), and `astMapList` refuses to decompose a CmpMap when it does
+(`cmpmap.c:1154`), so a flagged Mapping is neither simplified nor taken apart.
+The base rule is "the `Ident` attribute is set" (`mapping.c:1107-1152`), on the
+reasoning that a user who named a Mapping wants it to survive intact.
+`Frame` overrides it to return zero always, so Frames are simplified despite a set
+`Ident` (`frame.c:3511-3554`).
+
+The port has neither the seam nor the attribute it reads.
+`crates/ast-core/src/mappings/mod.rs` has no `ident` accessor, `serial/mod.rs:774`
+lists `Ident` among the cards the Mapping reader skips, and `ast-capi` never sets
+it, so nothing in the port can put a Mapping into the state C checks for.
+The gap is therefore latent and, as with `SimpVertices` in §10.18, currently
+inexpressible rather than merely untested.
+
+Closing it means two things in order: private `Ident` bookkeeping on Mappings,
+which the design spec already anticipates as a private `Object` super-trait
+concern (`2026-04-20-rust-port-design.md:390-396`), and then a
+`do_not_simplify()` seam consulted at both of C's call sites — the
+`simplify_entry` gate and `flatten`, the port of `astMapList`.
+
+What would expose it: a native fixture holding a series CmpMap of two ZoomMaps
+where the inner CmpMap carries `Ident`.
+C leaves the CmpMap whole; the port collapses it to one ZoomMap.
+The same fixture with `Ident` on a Frame inside a FrameSet checks the Frame
+override, which must keep simplifying.
+
+### 10.22 The public entry performs two tree rewrites C's `astSimplify_` does not
+
+`mapping.c:24755-24808` adds no algorithm: an `IsSimple` short-circuit, the
+`Simplify` call, the stamp, and the two flag clears of §10.20.
+`<dyn Mapping>::simplify` (`simplify_entry.rs:36-102`) also rewrites the result
+tree twice before returning it.
+
+- `normalize_unitmap_children` (`cmpmap.rs:223`, called at
+  `simplify_entry.rs:74`) drops redundant `InvA`/`InvB` flags on a parallel
+  CmpMap whose corresponding child is a UnitMap. It is load-bearing and measured:
+  §10.15 records four `equal()` failures and two serialisation failures without
+  it, and it is one of the two layers that reproduce C's inversion push-down.
+- `narrow_unit_scale_winmap_children` (`simplify_entry.rs:90`), gated on
+  `PublicSimplifyGuard::is_outermost()`, converts an all-unit-scale WinMap child
+  to a ShiftMap at the top level, standing in for C's final `winmap.c:1819` step
+  for a WinMap the nominate loop never nominated productively.
+
+Measured at pin `07fbe2dc`, with the second call disabled: the whole `ast-core`
+suite is green — 98 test binaries, including the 453-fixture simplify corpus, all
+194 `wcsconv` byte comparisons and the native round-trip. Nothing in the corpus
+demands it any more, which is consistent with the narrowing having moved into
+`win_map_merge`'s final pass via `flatten`'s `defer_winmap`.
+
+Two ways to close this, and the choice is a measurement, not a preference: delete
+the call, or find the fixture that demands it and record it in the doc comment the
+way §10.15 requires of every surviving dump-shaping layer. Deleting it is
+preferred, because a layer nothing demands is a place where a correct change looks
+like a regression.
