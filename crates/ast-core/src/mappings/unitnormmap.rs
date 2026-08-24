@@ -23,7 +23,7 @@ use super::rate::numeric_rate;
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that decomposes a vector into unit vector and norm.
@@ -246,14 +246,6 @@ impl Mapping for UnitNormMap {
         }
 
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-        // UnitNormMap cannot simplify itself alone — merging happens via try_merge.
-        Ok(Box::new(self.clone()))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
