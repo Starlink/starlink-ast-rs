@@ -103,7 +103,14 @@ print("instrumented", dest)
 PY
 
 cmake -S "$DEST" -B "$DEST/build" > "$DEST/cmake.log" 2>&1
-cmake --build "$DEST/build" --target ast -j8 > "$DEST/build.log" 2>&1 || { tail -25 "$DEST/build.log"; exit 1; }
+# libast references the Grf and error-handler entry points without defining
+# them; the satellite archives supply the no-op implementations, exactly as
+# ast_tester/CMakeLists.txt's TEST_LIBS does for every C test program.
+SATELLITES="ast ast_err ast_grf_2.0 ast_grf_3.2 ast_grf_5.6 ast_grf3d"
+for t in $SATELLITES; do
+   cmake --build "$DEST/build" --target "$t" -j8 >> "$DEST/build.log" 2>&1 \
+      || { tail -25 "$DEST/build.log"; exit 1; }
+done
 
 cat > "$DEST/gen_simp.c" <<'EOF'
 #include "ast.h"
@@ -137,7 +144,8 @@ int main(int argc, char **argv) {
 EOF
 
 YAML=$(ls -d /opt/homebrew/opt/libyaml/lib /usr/local/opt/libyaml/lib 2>/dev/null | head -1)
+GRF="-last_err -last_grf_2.0 -last_grf_3.2 -last_grf_5.6 -last_grf3d"
 cc "$DEST/gen_simp.c" -o "$DEST/gen_simp" -I "$DEST/build" -L "$DEST/build" \
    ${YAML:+-L "$YAML"} -Wl,-rpath,"$DEST/build" ${YAML:+-Wl,-rpath,"$YAML"} \
-   -last -lyaml -lm
+   -last $GRF -lyaml -lm
 echo "built $DEST/gen_simp against the tracing libast"
