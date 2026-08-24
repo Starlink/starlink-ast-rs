@@ -332,8 +332,8 @@ places, and finding one by accident is no longer possible.
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 453 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 453 | 2 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_cmpmap_03`, one card short of C; `cap_specmap_02`, two over) |
-| simplify regression | 453 | 7 | fixtures whose `IsSimp` card count still differs from C. Two under-tag (`rigby`, `cap_cmpmap_03`); two over-tag on the sublist members `dimension_match_parallel_lists` simplifies where C simplifies only the pair it combines from them (`cap_specmap_02`, `parpair_one_side_reduces`, §10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Ten rows preceded these: `cap_cmpmap_01` and `cap_cmpmap_04` closed with §10.16, and the three `cmpmap_perm_swap*` fixtures closed when the swap branch stopped simplifying the components C hands on as they stand (§10.3). Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 453 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, two cards over C and one short, both sides of §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3) |
+| simplify regression | 453 | 6 | fixtures whose `IsSimp` card count still differs from C. One under-tags (`rigby`); two over-tag on the sublist members `dimension_match_parallel_lists` simplifies where C simplifies only the pair it combines from them (`cap_specmap_02`, `parpair_one_side_reduces`, §10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Eleven rows preceded these: `cap_cmpmap_01` and `cap_cmpmap_04` closed with §10.16, the three `cmpmap_perm_swap*` fixtures closed when the swap branch stopped simplifying the components C hands on as they stand (§10.3), and `cap_cmpmap_03` closed when the same branch stopped simplifying the parallel CmpMap it reassembles (§10.3). Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
 | simplify regression | 453 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
 | transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
@@ -359,7 +359,8 @@ pinned C no longer reproduced, and the port already matched C on them. Only the
 placement residue itself remains. The table row read 20 while the
 test-enforced ledger read 24; the ledger was right. `skip_string_compare` went from 7 cases to 5:
 `cap_matrixmap_03` became byte-exact outright, and `cap_cmpmap_03` /
-`cap_specmap_02` moved to the counted licence. The negative-fixture row went from 132 to
+`cap_specmap_02` moved to the counted licence (`cap_cmpmap_03` has since left it
+altogether — §10.3). The negative-fixture row went from 132 to
 131 when `neg_unitnormmap_nonunit_scale` was found to assert something C does not do —
 C replaces its zero-shift WinMap with a diagonal MatrixMap — and was given a real
 oracle reference instead of naming its own input. The `ignore_is_simp_line` row and
@@ -476,10 +477,10 @@ quirk (`docs/issues/c-library-quirks.md`, "`IsSimp` placement in a FITS-WCS read
 records the order the reader simplified in") and licensed with both card counts
 pinned (§6), so a *shape* difference could never hide behind it.
 
-`cap_cmpmap_03` and `cap_specmap_02` on the simplify corpus are one card too
-few, from the same input on both sides. Six fixes were tried and measured, and
-all were reverted — including tagging every `simplify_mapping` result, which is
-`astSimplify_`'s literal contract, and deferring leaf reduction entirely. The
+`cap_specmap_02` on the simplify corpus is one card too few, from the same input
+on both sides. Six fixes were tried and measured, and all were reverted —
+including tagging every `simplify_mapping` result, which is `astSimplify_`'s
+literal contract, and deferring leaf reduction entirely. The
 finding is that this engine never has the missing node as the whole result of a
 simplify, where C does: `IsSimp` records the set of sub-Mappings that were at
 some instant the entire result of a simplification, and two engines reaching the
@@ -928,10 +929,11 @@ CmpMap's parallel handling with no C counterpart, one of which is now removed
 `cap_cmpmap_01` and `cap_cmpmap_04` now emit 18 `IsSimp` cards, matching C: they
 closed when the 25 stray reductions moved from `simplified()` into `map_merge`
 (§10.16), because C reaches those reductions from the nominate loop and the port
-now does too. `cap_cmpmap_03` (6 vs C's 7) and `cap_specmap_02` (10 vs 8) remain,
-and they are two different problems. The title of this entry was wrong for a long
-time: the missing cards are missing because the *reductions* are missing, not the
-stamps.
+now does too. `cap_cmpmap_03` closed the same way, by removing divergence 3 below:
+the port was simplifying the parallel CmpMap it reassembles, which C hands to the
+list as built. `cap_specmap_02` (10 vs 8) remains. The title of this entry was
+wrong for a long time: the missing cards are missing because the *reductions* are
+missing, not the stamps.
 
 Both engines are instrumented — `build_simplify_trace.sh` for C,
 `simplify::trace` behind the `tracing` feature for the port — and log each
@@ -1024,25 +1026,26 @@ the two parallel lists into aligned sublists, `CombineMaps` each pair in series
 pair (`:1728`), set `simpler` from the identity test `tmap != tmap2 ||
 astGetInvert( tmap ) != astGetInvert( tmap2 )` (`:1731-1733`), and assemble the
 survivors into one parallel CmpMap with no further simplification. The port
-diverges in three places, each with no C counterpart:
+diverged in three places, each with no C counterpart; the third is closed:
 
 1. **Per-member simplify** — `dimension_match_parallel_lists` calls `.simplify()`
-   on every member of both sublists (`simplify.rs:2389,2399`). C passes the
+   on every member of both sublists (`simplify.rs:2313,2323`). C passes the
    members to `CombineMaps(..., 0, ...)` as they stand.
-2. **The `simpler` test** — `simplify.rs:2288-2306` substitutes a three-branch
+2. **The `simpler` test** — `simplify.rs:2215-2233` substitutes a three-branch
    structural test for C's identity test, ending in a comparison of flat leaf
    counts (`flat.len() < pre_len`). A length comparison is not "the pointer or
    the Invert flag changed", and C makes no such comparison anywhere in this
-   branch. The source comment at `simplify.rs:2297` claims it mirrors C; it does
+   branch. The source comment at `simplify.rs:2223` claims it mirrors C; it does
    not.
-3. **Trailing simplify of the rebuilt CmpMap** — `simplify.rs:2341` simplifies the
-   reassembled parallel CmpMap before returning it. C returns the index and lets
-   the nominate loop reach the rebuilt CmpMap on a later pass.
+3. **Trailing simplify of the rebuilt CmpMap** — CLOSED. The port simplified the
+   reassembled parallel CmpMap before returning it; C returns the index and lets
+   the nominate loop reach the rebuilt CmpMap on a later pass, and the port now
+   does the same (`simplify.rs:2260-2266`).
 
-The per-pair `astSimplify` of `:1728` **is** ported, at `simplify.rs:2283`; the
+The per-pair `astSimplify` of `:1728` **is** ported, at `simplify.rs:2211`; the
 recursion is present. Divergences 1 and 3 are extra simplification passes, and
 each pass runs its own merge loop, which is a direct mechanism for the
-over-nomination measured above. Divergence 2 is a heuristic threshold with no
+over-nomination measured above — closing 3 removed one of them. Divergence 2 is a heuristic threshold with no
 analogue in the C source — stop signal 1 — and it decides whether the whole
 restructure fires.
 
@@ -1074,32 +1077,34 @@ committed, because on its own it trades one gap for another:
 The earlier reading of this table was that the three fixtures which lose cards
 lose ones C gets from a recursion inside `astSimplify( tmap )` that the port does
 not perform. That reading was wrong: the `:1728` recursion **is** ported, at
-`simplify.rs:2283`. What the per-member call is standing in for is not a missing
+`simplify.rs:2211`. What the per-member call is standing in for is not a missing
 recursion but the two other divergences in the same function — removing one extra
 simplification while the others remain moves the fixtures that depend on the
-combination. Measuring the three in isolation is not informative; they have to be
-removed together, against C's `simpler` test.
+combination. Divergence 3 has since been removed on its own, so the middle column
+above is no longer the current measurement; divergences 1 and 2 still have to go
+together, against C's `simpler` test.
 
-**Divergence 3 — the trailing simplify — measured on its own is a clean win.**
-Deleting `simplify.rs:2341` moves `cap_cmpmap_03` from six `IsSimp` cards to
-**seven, which is C's count**, and nothing else moves: 453 fixtures pass, 9
-serialization mismatches (the same nine, same list), and the only other counted
-failure is the pre-existing licensed `neg_box_asymmetric_2d`. The harness then
-fails only because the licence row still reads `(6, 7)`; closing this means
-deleting that row. Not landed here — this entry is a record correction — but it is
-the first measured, cost-free step on §10.3.
+**Divergence 3 — the trailing simplify — CLOSED.** The trailing
+`simplify_mapping` on the reassembled parallel CmpMap is gone; C hands `new` to
+the list as built (`cmpmap.c:1738-1746`) and lets the nominate loop reduce it when
+it is nominated in its own right. `cap_cmpmap_03` moved from six `IsSimp` cards to
+**seven, which is C's count**, and nothing else moved: 453 fixtures pass, the same
+nine serialization mismatches in the same order, and the only other counted
+failure is the pre-existing licensed `neg_box_asymmetric_2d`. Its
+`ISSIMP_PLACEMENT_LICENSED` row is deleted, so the licence is down to one case.
 
 **What would expose the rest.** Divergence 2 is the load-bearing one: it decides
 whether the restructure fires at all, and `flat.len() < pre_len` is a threshold
 with no analogue in `cmpmap.c` (stop signal 1). Porting C's identity test needs
 `Mapping::equal` on the pre- and post-simplify pair plus a comparison of their
 Invert flags, which the port has; the fixtures that would expose a wrong answer
-are the five in the table above plus `cap_cmpmap_03`. Divergence 1 should be
-removed in the same change, not before it.
+are the five in the table above. Divergence 1 should be removed in the same
+change, not before it.
 
-Seven approaches to `cap_cmpmap_03` have been measured and reverted, six recorded
-in `test_simplify_regression.rs` plus the blanket stamp above. None touched
-WinMap, and none of them was divergence 3.
+Seven approaches to `cap_cmpmap_03` were measured and reverted before this, six
+recorded in `test_simplify_regression.rs` plus the blanket stamp above. Every one
+of them tried to add a stamp; what closed it was removing a simplification C does
+not perform.
 
 ### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
 
@@ -1447,7 +1452,7 @@ the `ok` guard. The uncertainty-Frame divergence needs a Polygon with an
 explicit uncertainty and a non-UnitMap base-to-current Mapping: compare the
 `Unc` value written under the simplified Polygon.
 
-### 10.19 Two pieces of the simplify engine have no counterpart in C
+### 10.19 Two pieces of the simplify engine had no counterpart in C — one closed
 
 Both sit in `mappings/simplify.rs`, in the port of `cmpmap.c::Simplify`, and
 neither is reachable from any fixture in the corpus — which is why they have gone
@@ -1473,28 +1478,26 @@ also interacts with the fingerprint guard beside it, which stands in for C's
 `simplify.rs:93`); a hash collision there declines a simplification C performs,
 where C's equality test cannot.
 
-**A UnitMap strip that duplicates `UnitMap::map_merge`.** `merge_loop_restricted`
-strips `UnitMap` entries from a series list twice: inside a fixpoint loop that
-re-runs the whole nominate loop after each strip (`simplify.rs:1731-1743`), and
-again after it (`simplify.rs:1748-1758`). C strips a series UnitMap in
-`UnitMap::MapMerge` when the UnitMap is nominated, and the port ports that too
-(`unit.rs:112-115`, `unit.md` rows 5-7), so the two outer strips are a third
-mechanism for the same reduction.
+**A UnitMap strip that duplicated `UnitMap::map_merge` — CLOSED.**
+`merge_loop_restricted` stripped `UnitMap` entries from a series list twice — inside
+a fixpoint loop that re-ran the whole nominate loop after each strip, and again
+after it — where C strips a series UnitMap in `UnitMap::MapMerge`, when the UnitMap
+is nominated (`unit.rs:112-115`, `unit.md` rows 5-7). Both outer strips are gone;
+`merge_loop_restricted` is now the nominate loop and nothing else.
 
-Measured: removing the in-loop strip and its `continue` leaves the simplify
-corpus, the seams tests and the native round-trip green; removing the post-loop
-strip as well leaves them green too. Both are redundant on this corpus. They are
-not free — the `continue` re-runs the nominate loop over the whole list, which is
-one of the ways the port can nominate more often than C (§10.3).
+The strip itself still happens, from the nominate loop, which is where C does it:
+the whole tier-1/2 suite is green, including the two unit tests written against the
+outer strips (`merge_loop_strips_unitmaps_from_series`,
+`merge_loop_all_unitmaps_preserves_one`). Removing them also removes a source of
+extra nominations, since the in-loop `continue` re-ran the loop over the whole
+list after every strip (§10.3).
 
-What would expose a behavioural difference rather than just redundancy: a
-restricted simplify (`RestrictedSimplify`) over a list containing a UnitMap that
-does *not* carry `AllowSimplify`. C cannot strip it, because it is never
-nominated; the two outer strips do not consult `AllowSimplify` at all and strip it
-regardless. Nothing in `ast-core` sets `RestrictedSimplify` except reading a
-`ReSimp` card (`cmpmap.rs:1034`), and nothing sets `AllowSimplify` except reading
-an `AlSimp` card (`serial/mod.rs:160`), so a native fixture carrying both cards is
-what would exercise it — see §10.20.
+What they would have got wrong: under a restricted simplify a UnitMap that does
+not carry `AllowSimplify` is never nominated, so C cannot strip it, while neither
+outer strip consulted the flag. Nothing in `ast-core` sets `RestrictedSimplify`
+except reading a `ReSimp` card (`cmpmap.rs:1034`), and nothing sets
+`AllowSimplify` except reading an `AlSimp` card (`serial/mod.rs:160`), so that
+case was untested in both directions — see §10.20.
 
 ### 10.20 The restricted-simplify path drops two of C's steps
 

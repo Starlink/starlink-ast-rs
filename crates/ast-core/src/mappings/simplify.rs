@@ -1655,17 +1655,11 @@ fn run_nominate_loop(
 
 /// Simplify a flattened series/parallel component list in place.
 ///
-/// This is the Rust port of C `cmpmap.c::Simplify`'s simplification engine
-/// (the nominate loop driving per-class `astMapMerge`). It runs
-/// [`run_nominate_loop`] to exhaust all direct/per-class merges, then — as
-/// temporary scaffolding for phases of the rebuild still to come — falls
-/// back to the legacy global swap helpers when the per-class methods stall.
-/// Each helper is the cross-class swap/restructure logic that C keeps
-/// inside a specific class's `MapMerge`; they are tried in the original
-/// order and retired into their owning class's `map_merge` in later phases.
-///
-/// After stabilising, `UnitMap` entries are stripped from series lists
-/// (they are identity and do not contribute).
+/// This is the Rust port of C `cmpmap.c::Simplify`'s simplification engine:
+/// the nominate loop that drives each component's per-class `map_merge` to a
+/// fixpoint (`cmpmap.c:3553-3629`). Every cross-class swap or restructure
+/// lives in the owning class's `map_merge`, reached only from here, exactly as
+/// C reaches `astMapMerge`.
 ///
 /// Returns `true` if the list was modified.
 #[cfg(test)]
@@ -1674,88 +1668,22 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
 }
 
 /// Simplify a flattened component list in place. When `restricted` is true,
-/// only components carrying `AllowSimplify` may be nominated, and the legacy
-/// global swap helpers (not part of C's restricted engine) are skipped.
+/// only components carrying `AllowSimplify` may be nominated
+/// (`cmpmap.c:3563-3573`).
 fn merge_loop_restricted(
     list: &mut Vec<(DynMapping, bool, bool)>,
     series: bool,
     restricted: bool,
 ) -> bool {
-    // Capture the original axis count so the empty-list fallback below
-    // produces a UnitMap of the right size. For a series list, every
-    // map has the same external nin/nout (after the upstream merging
-    // makes them dimension-compatible). For a parallel list, the
-    // composite is `nin = sum of nin`, but the empty-fallback case for
-    // parallel doesn't fire in the strip block (we only strip in
-    // series), so series is what we need to preserve.
-    let original_nin: usize = if list.is_empty() {
-        1
-    } else if series {
-        let (m, inv, _) = &list[0];
-        if *inv { m.nout() } else { m.nin() }
-    } else {
-        list.iter()
-            .map(|(m, inv, _)| if *inv { m.nout() } else { m.nin() })
-            .sum()
-    };
-
     let mut ctx = MergeCtx::new(std::mem::take(list));
     ctx.set_restricted(restricted);
-    let mut changed = false;
 
     // `modified`/`nmap` history for `pattern_check`, persisting across the
     // whole simplification (C allocates these once before the loop).
     let mut mlist: Vec<i64> = Vec::new();
     let mut nlist: Vec<i64> = Vec::new();
 
-    // The engine is now purely C's nominate loop: nominate each unfrozen
-    // component in turn and call its per-class `map_merge`, to fixpoint. Every
-    // cross-class swap/restructure that the old global helpers performed now
-    // lives in the owning class's `map_merge` (WinMap/CmpMap/PermMap/WcsMap/
-    // PcdMap/GrismMap/SphMap), driven by the nominate loop exactly as C's
-    // `cmpmap.c::Simplify` drives `astMapMerge`.
-    //
-    // The one piece not owned by a nominated class is the in-loop UnitMap
-    // strip: C's `UnitMap::MapMerge` (unitmap.c) removes a UnitMap from a
-    // series sequence when the UnitMap itself is nominated. We fold that into
-    // the same fixpoint: run the nominate loop, strip series UnitMaps, and
-    // repeat until neither changes. Stripping only after the nominate loop
-    // stabilises lets other classes react to a UnitMap neighbour first (e.g.
-    // PermMap's OutCpy form, or folding SphMap/UnitMap into a MatrixMap)
-    // before it vanishes.
-    loop {
-        if run_nominate_loop(&mut ctx, series, &mut mlist, &mut nlist) {
-            changed = true;
-        }
-
-        if series && ctx.list.len() > 1 {
-            let orig_len = ctx.list.len();
-            ctx.list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
-            if ctx.list.is_empty() {
-                ctx.list
-                    .push((Box::new(UnitMap::new(original_nin)), false, false));
-            }
-            ctx.resync_frozen();
-            if ctx.list.len() != orig_len {
-                changed = true;
-                continue;
-            }
-        }
-        break;
-    }
-
-    // Post-loop: strip UnitMaps from series lists.
-    if series && ctx.list.len() > 1 {
-        let orig_len = ctx.list.len();
-        ctx.list.retain(|(m, _, _)| !m.as_any().is::<UnitMap>());
-        if ctx.list.len() != orig_len {
-            changed = true;
-        }
-        if ctx.list.is_empty() {
-            ctx.list
-                .push((Box::new(UnitMap::new(original_nin)), false, false));
-        }
-    }
+    let changed = run_nominate_loop(&mut ctx, series, &mut mlist, &mut nlist);
 
     *list = ctx.list;
     changed
@@ -2333,12 +2261,9 @@ fn compute_merge_parallel_pair_in_series(
     let Ok(result) = reconstruct(simplified_pairs, false) else {
         return None;
     };
-    // Recursively simplify the reconstructed parallel CmpMap so that
-    // e.g. parallel(UnitMap, UnitMap) collapses to a single UnitMap of
-    // the combined dimension via UnitMap::try_merge in parallel mode.
-    // reconstruct() is purely structural; without a follow-up simplify
-    // the merge_loop would not see the parallel children adjacent.
-    let result = simplify_mapping(result.as_ref()).unwrap_or(result);
+    // C hands the assembled parallel CmpMap straight to the list and never
+    // simplifies it (`new` at cmpmap.c:1738-1746); the nominate loop is what
+    // reduces it further, once it is nominated in its own right.
     Some(result)
 }
 

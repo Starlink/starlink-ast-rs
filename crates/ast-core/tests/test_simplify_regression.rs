@@ -65,58 +65,38 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// Cases whose only remaining difference from the C reference is where an
 /// `IsSimp` card sits, with the exact card count on each side.
 ///
-/// Both cases are the port emitting *fewer* cards than C — the opposite of the
-/// wcsconv residue, and unlike it a real difference: the input is the same
-/// `.map` on both sides. `cap_cmpmap_03`'s missing card is on a 3-axis ShiftMap
-/// a UnitMap merge widened; `cap_specmap_02`'s is on the CmpMap wrapping a
-/// SpecMap/ZoomMap pair.
+/// `IsSimp` records the set of sub-Mappings that were, at some instant, the
+/// entire result of a simplification. Two engines that reach the same Mapping by
+/// different internal routes disagree on that set, and the Mapping here *is* the
+/// same — `equal()` and the transform check both pass. Aligning the routes, not
+/// adding a stamp, is what closes a row: `cap_cmpmap_03` closed when the
+/// port stopped simplifying the reassembled parallel CmpMap that C hands to the
+/// list as built.
 ///
-/// No stamping rule reaches either, and the cause is not where the code makes
-/// it look. The surviving ShiftMap in `cap_cmpmap_03` is built by
-/// `shift_map_merge`'s revert path from a list entry that holds no record, and
-/// nothing upstream of it holds one either. Tagging *every* `simplify_mapping`
-/// result — which is `astSimplify_`'s literal contract — does not produce the
-/// card, which says this engine never has that ShiftMap as the whole result of
-/// a simplify, whereas C does.
-///
-/// That is what `IsSimp` records: the set of sub-Mappings that were, at some
-/// instant, the entire result of a simplification. Two engines that reach the
-/// same Mapping by different internal routes disagree on that set, and the
-/// Mapping here *is* the same — `equal()` and the transform check both pass,
-/// and the byte diff is one line. Aligning the routes, not adding a stamp, is
-/// what would close it.
+/// `cap_specmap_02` differs in both directions at once. C tags a CmpMap the port
+/// never forms, and the port tags leaves C never simplifies on their own — both
+/// sides of PLAN.md §10.3.
 ///
 /// Measured dead ends, so they are not retried: tagging the reduced leaf in
-/// `flatten`; carrying the record through `ShiftMap`'s merge-revert (its source
-/// has none to carry); tagging the reconstructed parallel; tagging every
-/// `simplify_mapping` result; tagging at `ShiftMap`'s constructor; and
-/// deferring leaf reduction entirely. The first four either changed nothing
-/// here or over-tagged `cap_lutmap_01` / `cap_matrixmap_03` / `cap_zoommap_01`;
-/// the last changed nothing here and broke four unrelated cases.
+/// `flatten`; tagging the reconstructed parallel; tagging every
+/// `simplify_mapping` result; and deferring leaf reduction entirely. The first
+/// three over-tagged `cap_lutmap_01` / `cap_matrixmap_03` / `cap_zoommap_01`;
+/// the last broke four unrelated cases.
 ///
 /// The licence is per case, drops only the `IsSimp` lines, and pins both counts
 /// — so it cannot absorb a new difference, and the moment the port emits the
 /// missing card the count check fails, which is the signal to delete the row.
 ///
 /// Fields: name, cards this port emits, cards C emits, what differs.
-const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[
-    (
-        "cap_cmpmap_03",
-        6,
-        7,
-        "C tags the widened 3-axis ShiftMap that a UnitMap merge produced; the \
-         port does not",
-    ),
-    (
-        "cap_specmap_02",
-        10,
-        8,
-        "C tags the CmpMap wrapping the SpecMap/ZoomMap pair, which the port \
+const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[(
+    "cap_specmap_02",
+    10,
+    8,
+    "C tags the CmpMap wrapping the SpecMap/ZoomMap pair, which the port \
          never forms (the WinMap under-merge of PLAN.md §10.3), and the port \
          tags three leaves that `dimension_match_parallel_lists` simplifies \
          individually where C simplifies only the combined pair (§10.3)",
-    ),
-];
+)];
 
 fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
     AnyObject::from_mapping(m)
@@ -620,7 +600,6 @@ fn simplify_regression() {
     const ISSIMP_DISAGREEMENTS: &[&str] = &[
         // Under-tagging, gated all along.
         "rigby (8 vs C's 9)",
-        "cap_cmpmap_03 (6 vs C's 7)",
         // Over-tagging: `dimension_match_parallel_lists` simplifies each member
         // of a matched sublist, where C simplifies only the pair it combines
         // from them (`cmpmap.c:1728`), so the port stamps leaves C does not.

@@ -37,15 +37,15 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:922-928`) delegates to
 | 19 | Assume at first that nothing will simplify | cmpmap.c:1653-1659 | simplify.rs:2245 | ported |
 | 20 | Initialise the two list indices and the two empty sub-lists | cmpmap.c:1661-1668 | simplify.rs:2355-2361 | ported |
 | 21 | Walk both lists, swapping Nin and Nout for a component applied inverted | cmpmap.c:1670-1691 | simplify.rs:2368-2381 | ported |
-| 22 | Sub-list 1 has too few outputs: combine the next component into it, unsimplified | cmpmap.c:1693-1702 | simplify.rs:2370-2373 | gap: PLAN.md §10.3 |
-| 23 | Sub-list 2 has too few inputs: combine the next component into it, unsimplified | cmpmap.c:1704-1713 | simplify.rs:2374-2377 | gap: PLAN.md §10.3 |
+| 22 | Sub-list 1 has too few outputs: combine the next component into it, unsimplified | cmpmap.c:1693-1702 | simplify.rs:2310-2318 | gap: PLAN.md §10.3 |
+| 23 | Sub-list 2 has too few inputs: combine the next component into it, unsimplified | cmpmap.c:1704-1713 | simplify.rs:2320-2328 | gap: PLAN.md §10.3 |
 | 24 | Skip the pair on the first pass, when neither sub-list exists yet | cmpmap.c:1715-1721 | -- | n/a: the port advances one list before testing the boundary, so a pair is never formed empty |
-| 25 | Combine the aligned pair in series and simplify the combination | cmpmap.c:1723-1729 | simplify.rs:2277-2285 | ported |
-| 26 | Note that something simplified, if the pointer or the Invert flag changed | cmpmap.c:1730-1734 | simplify.rs:2288-2306 | gap: PLAN.md §10.3 |
-| 27 | Add the simplified pair into the replacement parallel CmpMap | cmpmap.c:1736-1747 | simplify.rs:2325,2333-2335 | ported |
+| 25 | Combine the aligned pair in series and simplify the combination | cmpmap.c:1723-1729 | simplify.rs:2204-2213 | ported |
+| 26 | Note that something simplified, if the pointer or the Invert flag changed | cmpmap.c:1730-1734 | simplify.rs:2215-2233 | gap: PLAN.md §10.3 |
+| 27 | Add the simplified pair into the replacement parallel CmpMap | cmpmap.c:1736-1747 | simplify.rs:2252-2253,2260-2265 | ported |
 | 28 | Reset both sub-lists for the next pair, or stop when either list runs out | cmpmap.c:1749-1767 | simplify.rs:2406-2415 | ported |
 | 29 | Free the two component lists and their invert flags | cmpmap.c:1770-1783 | -- | n/a: owned values are dropped |
-| 30 | Update the list: annul the pair, insert the replacement, close the gap and return the first modified index | cmpmap.c:1784-1815 | simplify.rs:795-797 | gap: PLAN.md §10.3 |
+| 30 | Update the list: annul the pair, insert the replacement, close the gap and return the first modified index | cmpmap.c:1784-1815 | simplify.rs:906-908 (via `replace_pair_with`, simplify.rs:714) | ported |
 | 31 | If merging in series and the previous Mapping is a PermMap, try swapping the CmpMap in front of it | cmpmap.c:1816-1845 | -- | gap: PLAN.md §10.4 |
 | 32 | Read both Mappings' Invert attributes and set them to the requested values | cmpmap.c:1846-1858 | -- | gap: PLAN.md §10.4 |
 | 33 | Read the shapes of the PermMap and of the CmpMap's two components | cmpmap.c:1855-1871 | -- | gap: PLAN.md §10.4 |
@@ -82,37 +82,39 @@ pair does get swapped — when the PermMap's turn comes, not the CmpMap's. What
 differs is which index the merge reports, and therefore where the loop resumes.
 See PLAN.md §10.4.
 
-## The four under-tagging fixtures
+## The under-tagging fixtures
 
 Rows 3 to 9 are the section the instrumented C shows stamping the surviving
 sub-Mapping, and they are the ones `cap_cmpmap_01`, `cap_cmpmap_03`,
 `cap_cmpmap_04` and `cap_specmap_02` turn on. They are marked `ported` because
 the port performs each step; the disagreement is over which object ends up
-being a whole simplification result, not over a missing step. See PLAN.md §10.3.
+being a whole simplification result, not over a missing step. Three of the four
+now agree with C; `cap_specmap_02` is the one left. See PLAN.md §10.3.
 
-## Rows 22 to 26 and row 30 — three extra simplifications in one branch
+## Rows 22, 23 and 26 — two extra simplifications in one branch
 
 C's parallel-CmpMaps-in-series branch simplifies in exactly one place: the pair it
 has just combined (`tmap2 = astSimplify( tmap )`, `cmpmap.c:1728`, ported at
-`simplify.rs:2283`). It accumulates sub-list members with
+`simplify.rs:2211`). It accumulates sub-list members with
 `CombineMaps( ..., 0, status )` and never simplifies them, sets `simpler` from an
 identity test on the pointer and the Invert flag (`cmpmap.c:1731-1733`), and hands
 the assembled parallel CmpMap to the list as built.
 
-The port adds a simplification at each of the other three points:
+The port simplifies at two of the other three points:
 
-- every member of both aligned sub-lists, at `simplify.rs:2389` and `:2399`;
-- the reassembled parallel CmpMap, at `simplify.rs:2341`;
+- every member of both aligned sub-lists, at `simplify.rs:2313` and `:2323`;
 - and in place of C's identity test, a three-branch structural test whose last
-  branch compares flat leaf counts (`simplify.rs:2300-2304`). A leaf-count
+  branch compares flat leaf counts (`simplify.rs:2226-2231`). A leaf-count
   threshold has no analogue anywhere in `cmpmap.c`, and it decides whether the
-  whole restructure fires. The comment at `simplify.rs:2297` claims it mirrors C;
+  whole restructure fires. The comment at `simplify.rs:2223` claims it mirrors C;
   it does not.
 
 Each extra pass runs its own merge loop, which is the mechanism behind the
 nomination counts in PLAN.md §10.3 (153 against C's 87 on `cap_specmap_02`).
-Removing the `simplify.rs:2341` pass alone moves `cap_cmpmap_03` from six `IsSimp`
-cards to seven, which is C's count, with no other fixture moving.
+The third point, a simplify of the reassembled parallel CmpMap before it went into
+the list, is gone: C hands `new` on as built (`cmpmap.c:1738-1746`), and removing
+it moved `cap_cmpmap_03` from six `IsSimp` cards to seven, which is C's count, with
+no other fixture moving (row 30, and PLAN.md §10.3).
 
 ## `Simplify` — cmpmap.c:3396-3762
 
@@ -210,18 +212,19 @@ ported, so under a restricted simplify the port rebuilds trees C clones, and an
 `AlSimp` card survives into the output. PLAN.md §10.20 records what would exercise
 the mode: today nothing in the port sets either flag except deserialisation.
 
-## No C row — two extra UnitMap strips around the nominate loop
+## No C row — where the series UnitMap strip lives
 
 C removes a UnitMap from a series sequence in `UnitMap::MapMerge`
 (`unitmap.c:516-538`), when the UnitMap is nominated, and the port ports that
-(`unit.rs:112-115`, `unit.md` rows 5-7). It then strips series UnitMaps twice
-more, at neither of which C strips anything: once inside a fixpoint loop whose
-`continue` re-runs the whole nominate loop (`simplify.rs:1731-1743`), and once
-after it (`simplify.rs:1748-1758`).
+(`unit.rs:112-115`, `unit.md` rows 5-7). That is now the only place the port
+strips one: `merge_loop_restricted` is the nominate loop and nothing else.
 
-Both are redundant on this corpus — removing either, or both, leaves
-`test_simplify_regression`, `test_simplify_seams` and `test_native_roundtrip_all`
-green — and the re-run is one of the ways the port nominates more often than C
-(PLAN.md §10.3). They are not redundant in principle: a UnitMap without
-`AllowSimplify` is never nominated under a restricted simplify, so C cannot strip
-it, while neither outer strip consults the flag. PLAN.md §10.19.
+It used to strip series UnitMaps twice more, at neither of which C strips
+anything — inside a fixpoint loop whose `continue` re-ran the whole nominate loop,
+and again after it. Both are removed. The whole tier-1/2 suite stays green,
+including the two unit tests written against them
+(`merge_loop_strips_unitmaps_from_series`,
+`merge_loop_all_unitmaps_preserves_one`), which now exercise the strip through
+`UnitMap::map_merge`. What the outer strips could not have got right: a UnitMap
+without `AllowSimplify` is never nominated under a restricted simplify, so C cannot
+strip it, while neither outer strip consulted the flag. PLAN.md §10.19.

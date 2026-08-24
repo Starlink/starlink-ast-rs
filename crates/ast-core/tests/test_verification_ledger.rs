@@ -52,11 +52,11 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "ISSIMP_PLACEMENT_LICENSED",
-        2,
-        "cap_cmpmap_03 emits one IsSimp card too few and cap_specmap_02 two \
-         too many; the Mapping is identical in both. Six fixes for the \
-         shortfall were measured and reverted; the surplus is the leaf stamp \
-         try_self_reduce adds, which PLAN.md §10.16 removes",
+        1,
+        "cap_specmap_02 emits two IsSimp cards too many and misses one C \
+         emits; the Mapping is identical. Both sides are PLAN.md §10.3: the \
+         WinMap under-merge that stops the port forming the CmpMap C tags, and \
+         the sublist members the port simplifies on their own",
     ),
     (
         "test_serialisation.rs",
