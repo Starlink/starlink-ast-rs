@@ -10,7 +10,7 @@ use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 // ---------------------------------------------------------------------------
@@ -1330,33 +1330,6 @@ impl Mapping for SpecMap {
         }
 
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Normalize steps (accounting for the inverted flag) and cancel
-        // adjacent inverse pairs within this single SpecMap.
-        let mut steps = normalized_steps(self, self.inverted);
-        let changed = simplify_steps(&mut steps);
-        if !changed && !self.inverted {
-            // No simplification possible — return self unchanged.
-            return Ok(Box::new(self.clone()));
-        }
-        if steps.is_empty() {
-            Ok(Box::new(UnitMap::new(1)))
-        } else {
-            // C's lone-SpecMap simplify runs through MapMerge → AddSpecCvt,
-            // which blanks the cached argument slots on the rebuilt steps.
-            reset_cached_args(&mut steps);
-            Ok(Box::new(SpecMap {
-                conversions: steps,
-                inverted: false,
-                simplified: SimplifiedRecord::default(),
-            }))
-        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

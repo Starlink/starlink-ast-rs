@@ -9,8 +9,8 @@ conversion steps of a run of adjacent SpecMaps, normalise each for its applied
 direction, cancel adjacent inverse pairs until nothing more goes, and rebuild one
 SpecMap or a UnitMap.
 
-`SpecMap::map_merge` (`specmap.rs:1390-1397`) delegates to `spec_map_merge`
-(`specmap.rs:1168-1235`); the helpers are `normalized_steps`
+`SpecMap::map_merge` (`specmap.rs:1363-1370`) delegates to `spec_map_merge`
+(`specmap.rs:1168-1228`); the helpers are `normalized_steps`
 (`specmap.rs:1086-1121`), `steps_cancel` (`specmap.rs:1063-1077`) and
 `simplify_steps` (`specmap.rs:1135-1167`).
 
@@ -81,3 +81,11 @@ the comparison, which is C's "we do not need to test values stored internally".
 `reset_cached_args` (`specmap.rs:1122-1130`) then clears those slots on the
 rebuilt SpecMap, so a cached correction factor from before the merge cannot leak
 into the replacement.
+
+## A lone SpecMap reaches the same body
+
+C gives SpecMap no `Simplify` vtab slot, so a SpecMap nominated on its own arrives
+here as a run of one: `ngone` is zero and the `simpler` test reduces to "the step
+list shortened, emptied, or the SpecMap is applied inverted". Cancelling adjacent
+inverse steps and rebuilding forward — with the cached argument slots blanked by
+the rebuild, as C's `AddSpecCvt` does — is every reduction a lone SpecMap has.
