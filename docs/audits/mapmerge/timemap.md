@@ -9,11 +9,11 @@ gather the conversion steps of a run of adjacent TimeMaps, normalise each for it
 applied direction, drop no-effect steps and cancel adjacent inverse pairs until
 nothing more goes, then rebuild one TimeMap or a UnitMap.
 
-`TimeMap::map_merge` (`timemap.rs:1386-1393`) delegates to `time_map_merge`
-(`timemap.rs:1222-1300`); the helpers are `time_normalized_steps`
-(`timemap.rs:1079-1120`), `time_steps_cancel` (`timemap.rs:1121-1160`),
-`time_step_is_no_effect` (`timemap.rs:1163-1174`) and `time_simplify_steps`
-(`timemap.rs:1175-1221`).
+`TimeMap::map_merge` (`timemap.rs:1369-1376`) delegates to `time_map_merge`
+(`timemap.rs:1229-1279`); the helpers are `time_normalized_steps`
+(`timemap.rs:1079-1119`), `time_steps_cancel` (`timemap.rs:1121-1161`),
+`time_step_is_no_effect` (`timemap.rs:1163-1180`) and `time_simplify_steps`
+(`timemap.rs:1182-1227`).
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
@@ -76,3 +76,11 @@ not, and then handles three and five arguments. `time_steps_cancel`
 (`timemap.rs:1121-1160`) carries the swapping set explicitly
 (`timemap.rs:1131-1145`) and otherwise compares `nargs()` arguments in order,
 which covers the rest without enumerating counts.
+
+## A lone TimeMap reaches the same body
+
+C gives TimeMap no `Simplify` vtab slot, so a TimeMap nominated on its own arrives
+here as a run of one: `ngone` is zero and the `simpler` test reduces to "the step
+list shortened, emptied, or the TimeMap is applied inverted". Dropping no-effect
+steps, cancelling adjacent inverse pairs and rebuilding forward is every reduction
+a lone TimeMap has.
