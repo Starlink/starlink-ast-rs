@@ -2911,7 +2911,6 @@ pub(crate) fn pcd_map_merge(
     // a reduced PcdMap never looks at a neighbour in the same pass.
     if ast_equal(pcd.disc(), 0.0) {
         ctx.set_pair_single(where_, (Box::new(UnitMap::new(2)), false, false));
-        ctx.resync_frozen();
         return Some(where_);
     }
 
