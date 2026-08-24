@@ -2402,3 +2402,45 @@ Three functions that exist to answer the same question — "does this key hold a
 **Rust behaviour (divergence, not mirror):** `KeyMap::get_elem` (the private tail shared by `get_elem_i`/`get_elem_s`/etc.) returns `Ok(None)` for every in-range index of an undefined entry, matching `get_scalar` and `get_vector` rather than C's `MAKE_MAPGETELEM`.
 `Ok(None)` is the value-carrying equivalent of C's "success with nothing written": no conversion ran, so there is no value for the `Option` to hold, and inventing one would misrepresent an entry that has none.
 An out-of-range index still returns `Err` with `ErrorCode::Mpvin`, matching C's bounds check running first.
+
+---
+
+## PolyMap's linear `MapMerge` reduction changes a ChebyMap's transformation
+
+**Status:** Confirmed against the C source and against the pinned oracle by numeric probe.
+**Not mirrored in Rust** — mirroring it would mean returning a Mapping that does not agree with the ChebyMap it replaces.
+
+`chebymap.c` fills neither the `Simplify` nor the `MapMerge` vtab slot, and `polymap.c:2439` is the only place `MapMerge` is filled, so a ChebyMap's `MapMerge` is PolyMap's.
+Its replace-with-simpler half tests whether the forward transformation is linear and, if it is, rebuilds it as a MatrixMap and a ShiftMap (`polymap.c:3757-3850`).
+The test and the rebuild both read `pmap0->coeff_f` and `pmap0->power_f` directly, and nothing in that branch consults `scale_f`/`offset_f` — the per-input scale and offset a ChebyMap uses to map its input onto the interval the Chebyshev functions are defined over (`chebymap.c:2120-2126`).
+
+For a PolyMap those two arrays are the whole transformation, so the branch is correct.
+For a ChebyMap they are the coefficients of a Chebyshev series in the *normalised* input, and dropping the normalisation drops a scale and an offset.
+The two agree only when the bounds are exactly `[-1,1]`, which makes the normalisation the identity.
+
+A one-input ChebyMap over bounds `[0,10]` with the single term `2 * T_1` therefore computes `2 * (0.2x - 1)`, and `astSimplify` returns a `ZoomMap` with `Zoom = 2`:
+
+```
+ Begin ChebyMap                          Begin ZoomMap
+    Nin = 1                                 Nin = 1
+    MPF1 = 1                                IsSimp = 1
+    NCF1 = 1                                Zoom = 2
+    CF1 = 2                              End ZoomMap
+    PF1 = 1
+ IsA PolyMap
+    FSCL1 = 0.20000000000000001
+    FOFF1 = -1
+ End ChebyMap
+```
+
+Transforming `x = 0, 1, 10` through both gives `-2, -1.6, 2` before the simplification and `0, 2, 20` after it.
+`astSimplify` is documented to return a Mapping equivalent to the one supplied, so this is a defect rather than a convention: the reduction is only sound for the identity interval, and the branch has no ChebyMap guard.
+
+**Rust behaviour (divergence, not mirror):** `ChebyMap` has no `map_merge`, so a linear ChebyMap is not reduced at all, whatever its bounds.
+The port therefore keeps a ChebyMap where C returns a ZoomMap, and keeps the transformation the ChebyMap defines.
+`PLAN.md` §10.2 records the gap this leaves: the reduction is correct for bounds of `[-1,1]` and the port does not perform it there either.
+
+The reproduction is committed as two cases in `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` — `cheby_linear_lone_reduce` and its non-linear control `neg_cheby_quadratic_no_reduce` — which write into the upstream fixture directory only.
+They are deliberately absent from `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, because a positive fixture there is an assertion that the port reproduces the `.simp` file byte for byte, which for this pair means reproducing the wrong Mapping.
+
+To be raised upstream.

@@ -803,24 +803,30 @@ The coefficient consolidation (`polymap.c:3624-3745`) combines coefficients that
 use the same set of input powers. That is basis-independent — two `T_2` terms for
 one output add exactly as two `x^2` terms do — so it ports as it stands.
 
-The linear replacement (`polymap.c:3747-3875`) is the open question. C reads the
+The linear replacement (`polymap.c:3747-3875`) will not be ported. C reads the
 coefficient arrays with nothing that distinguishes a Chebyshev basis from a power
 basis, and accumulates a matrix and offset from them directly. A first-order
 Chebyshev term is affine in the input, but only after the domain scaling the
 ChebyMap's `lbnd`/`ubnd` define, and that scaling takes no part in what C
-accumulates. So either C folds the scaling in somewhere this audit has not
-found, or a linear ChebyMap simplifies to a MatrixMap that has lost it.
+accumulates.
 
-What would expose it: a ChebyMap whose forward transformation holds only `T_0`
-and `T_1` terms, over bounds that are not the identity interval, transformed
-through both the ChebyMap and its simplification. Build it against the C oracle
-first, per `docs/issues/c-oracle-probe-recipe.md`. If C loses the scaling, the
-port must not mirror it, and the finding belongs in
-`docs/issues/c-library-quirks.md` and upstream. If C keeps it, the port needs the
-same delegation.
+Settled on the oracle: C loses the scaling. A one-input ChebyMap over bounds
+`[0,10]` holding the single term `2 * T_1` computes `2 * (0.2x - 1)`, and
+`astSimplify` returns a ZoomMap with `Zoom = 2` — `x = 0, 1, 10` gives `0, 2, 20`
+where the ChebyMap gives `-2, -1.6, 2`. The reduction is sound only for bounds of
+`[-1,1]`, and the branch has no ChebyMap guard, so it is a defect rather than a
+convention. It is recorded in `docs/issues/c-library-quirks.md` for upstream, and
+the port does not mirror it: a linear ChebyMap is left alone whatever its bounds.
+The reproduction lives in `ast_tester/gen_simplify_fixtures.c` as
+`cheby_linear_lone_reduce` and its non-linear control, which stay out of the
+port's simplify corpus because a positive fixture there asserts the port
+reproduces the `.simp` byte for byte, which for this pair means reproducing the
+wrong Mapping.
 
-No corpus fixture holds a linear ChebyMap, which is why neither answer has been
-needed yet.
+What remains open is the consolidation half, and it needs a way into PolyMap's
+body that skips the linear branch. What would expose it: a ChebyMap with two
+forward terms that use the same input powers for one output, nominated inside a
+list, whose `.simp` C writes with the terms combined.
 
 ### 10.16 The port has a per-class `simplified()` seam that C does not
 

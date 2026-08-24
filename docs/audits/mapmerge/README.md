@@ -26,7 +26,7 @@ Audited: YYYY-MM-DD against pin <sha>
 | `C step` | C's own wording for the step |
 | `C site` | `file.c:start-end` |
 | `Rust site` | `path.rs:start-end`, or `--` when the verdict is `n/a` |
-| `verdict` | exactly one of the three below |
+| `verdict` | exactly one of the four below |
 
 ## Verdicts
 
@@ -37,6 +37,11 @@ Audited: YYYY-MM-DD against pin <sha>
 - `gap: PLAN.md <section>` — not ported.
   The named `PLAN.md` section must exist and must say what would expose the
   gap, not merely what is missing.
+- `divergence: <reason>` — the step applies, and the port deliberately does not
+  perform it, because performing it would reproduce a defect in the C step.
+  The reason must cite `docs/issues/c-library-quirks.md`, where the finding and
+  the evidence for it live, and the verdict is invalid without that citation.
+  This is not a softer `gap`: a gap is work owed, a divergence is work refused.
 
 ## Which classes need a checklist
 

@@ -114,6 +114,10 @@ fn verdict_is_valid(v: &str) -> bool {
     v == "ported"
         || (v.starts_with("n/a:") && v.len() > "n/a:".len() + 1)
         || (v.starts_with("gap: PLAN.md ") && v.len() > "gap: PLAN.md ".len() + 1)
+        // A divergence is a step the port refuses because performing it would
+        // reproduce a defect in C's own. The citation is what makes it a
+        // finding rather than an opinion, so it is part of the verdict.
+        || (v.starts_with("divergence:") && v.contains("docs/issues/c-library-quirks.md"))
 }
 
 #[test]
@@ -151,8 +155,9 @@ fn every_checklist_row_has_a_verdict() {
     }
     assert!(
         bad.is_empty(),
-        "a verdict must be `ported`, `n/a: <reason>`, or \
-         `gap: PLAN.md <section>`: {bad:#?}"
+        "a verdict must be `ported`, `n/a: <reason>`, `gap: PLAN.md <section>`, \
+         or `divergence: <reason citing docs/issues/c-library-quirks.md>`: \
+         {bad:#?}"
     );
 }
 
