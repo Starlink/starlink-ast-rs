@@ -13,7 +13,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::helpers::{ast_equal, is_bad};
-use super::{DynMapping, Mapping, UnitMap, ViaSimplify};
+use super::{DynMapping, Mapping, UnitMap};
 use crate::mappings::SimplifiedRecord;
 use crate::regions::{
     BoxRegion, Circle, CmpRegion, DynRegion, Ellipse, Interval, NullRegion, PointList, Polygon,
@@ -101,6 +101,62 @@ impl SelectorMap {
     /// The intrinsic number of axes (the regions' shared `naxes()`).
     fn intrinsic_nin(&self) -> usize {
         self.regions[0].naxes()
+    }
+
+    /// C's "attempt to simplify the SelectorMap on its own"
+    /// (`selectormap.c:693-714`): simplify each encapsulated Region and, if any
+    /// of them reduced, build a new SelectorMap from the results. `None` when
+    /// none of them did, which is C's `simp == 0`.
+    ///
+    /// A simplified Mapping that is still a known concrete Region type is
+    /// retained; otherwise the original Region is kept for that slot, since a
+    /// SelectorMap holds Regions and not Mappings.
+    fn reduced_children(&self) -> Option<DynMapping> {
+        let mut changed = false;
+        let mut simplified_regions: Vec<DynRegion> = Vec::with_capacity(self.regions.len());
+        for reg in &self.regions {
+            let simp: DynMapping = (reg.as_ref() as &dyn Mapping).simplify().ok()?;
+            let was_changed = !simp.equal(reg.as_ref() as &dyn Mapping)
+                || simp.is_inverted() != reg.is_inverted();
+            let new_reg: DynRegion = if let Some(r) = simp.as_any().downcast_ref::<Circle>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<BoxRegion>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<Ellipse>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<Polygon>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<Interval>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<NullRegion>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<CmpRegion>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<PointList>() {
+                Box::new(r.clone())
+            } else if let Some(r) = simp.as_any().downcast_ref::<Prism>() {
+                Box::new(r.clone())
+            } else {
+                // Simplification produced a non-Region — keep original.
+                simplified_regions.push(reg.clone());
+                continue;
+            };
+            if was_changed {
+                changed = true;
+            }
+            simplified_regions.push(new_reg);
+        }
+
+        if !changed {
+            return None;
+        }
+
+        Some(Box::new(SelectorMap {
+            regions: simplified_regions,
+            badval: self.badval,
+            inverted: self.inverted,
+            simplified: SimplifiedRecord::default(),
+        }))
     }
 }
 
@@ -248,63 +304,10 @@ impl Mapping for SelectorMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        let reduced = (self as &dyn Mapping).simplify().ok();
-        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Try to simplify each child region. A simplified Mapping that is
-        // still a known concrete Region type is retained; otherwise we fall
-        // back to the original region for that slot.
-        let mut changed = false;
-        let mut simplified_regions: Vec<DynRegion> = Vec::with_capacity(self.regions.len());
-        for reg in &self.regions {
-            let simp: DynMapping = (reg.as_ref() as &dyn Mapping).simplify()?;
-            let was_changed = !simp.equal(reg.as_ref() as &dyn Mapping)
-                || simp.is_inverted() != reg.is_inverted();
-            let new_reg: DynRegion = if let Some(r) = simp.as_any().downcast_ref::<Circle>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<BoxRegion>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<Ellipse>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<Polygon>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<Interval>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<NullRegion>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<CmpRegion>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<PointList>() {
-                Box::new(r.clone())
-            } else if let Some(r) = simp.as_any().downcast_ref::<Prism>() {
-                Box::new(r.clone())
-            } else {
-                // Simplification produced a non-Region — keep original.
-                simplified_regions.push(reg.clone());
-                continue;
-            };
-            if was_changed {
-                changed = true;
-            }
-            simplified_regions.push(new_reg);
-        }
-
-        if changed {
-            Ok(Box::new(SelectorMap {
-                regions: simplified_regions,
-                badval: self.badval,
-                inverted: self.inverted,
-                simplified: SimplifiedRecord::default(),
-            }))
-        } else {
-            Ok(Box::new(self.clone()))
-        }
+        // C opens its MapMerge by simplifying the encapsulated Regions and
+        // rebuilding the SelectorMap around them (selectormap.c:693-714), and
+        // only considers a neighbour when that made no change (:725-727).
+        super::simplify::self_reduce_map_merge(self, self.reduced_children(), ctx, where_, series)
     }
 
     fn try_merge(
