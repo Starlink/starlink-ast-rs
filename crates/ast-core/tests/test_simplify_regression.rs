@@ -567,8 +567,8 @@ fn simplify_regression() {
         // difference in every one of these — nothing else in the tree moves.
         // Closed by moving the 25 reductions into `map_merge`, PLAN.md §10.16;
         // `cap_slamap_03` and `cap_wcsmap_01` closed when the PermMap rebuild
-        // moved there.
-        ("lsst", OVER_STAMP),
+        // moved there, and `lsst` when the PolyMap coefficient consolidation
+        // and affine rebuild moved there.
         ("cmpmap_perm_parallel_swap", OVER_STAMP),
         ("cmpmap_perm_swap_aconstants", OVER_STAMP),
         ("cmpmap_perm_swap_bconstants", OVER_STAMP),
@@ -635,14 +635,15 @@ fn simplify_regression() {
         // through `astMapMerge` and therefore never stamps. Closed by moving the
         // 25 reductions into `map_merge`, PLAN.md §10.16 — `cap_cmpmap_01`,
         // `cap_cmpmap_04`, `cap_slamap_03` and `cap_wcsmap_01` closed there when
-        // the PermMap rebuild moved. cap_specmap_02 was under-tagging before the
+        // the PermMap rebuild moved, and `lsst` when the PolyMap coefficient
+        // consolidation and affine rebuild moved. cap_specmap_02 was
+        // under-tagging before the
         // leaf stamps pushed it past C, so the residual under-tagging underneath
         // it is only measurable once the rest of §10.16 has landed.
         "cap_specmap_02 (10 vs C's 8)",
         "cmpmap_perm_parallel_swap (4 vs C's 2)",
         "cmpmap_perm_swap_aconstants (3 vs C's 2)",
         "cmpmap_perm_swap_bconstants (3 vs C's 2)",
-        "lsst (2 vs C's 1)",
         "parpair_one_side_reduces (5 vs C's 3)",
         // These render to a Region, so the old hand-rolled dispatch returned
         // `None` and the count was never taken. Causes (B) and (D) in

@@ -15,7 +15,7 @@ use super::rate::numeric_rate;
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A single polynomial term: `coeff * x0^p0 * x1^p1 * ... * xN^pN`.
@@ -814,6 +814,163 @@ impl PolyMap {
 
         Ok(())
     }
+
+    /// The two "replace with simpler" steps C runs at the head of
+    /// `polymap.c::MapMerge` (`polymap.c:3606-3871`), before it looks at any
+    /// neighbour: coefficients over the same combination of input powers are
+    /// combined, and a PolyMap whose remaining terms are all constant or
+    /// first-order is rebuilt out of a `MatrixMap` and a `ShiftMap`.
+    ///
+    /// Returns the replacement, or `None` when neither transformation changed.
+    ///
+    /// Everything here reads the transformation as *constructed*: C uses
+    /// `coeff_f` / `coeff_i` directly and takes the coordinate counts from
+    /// before any inversion (`polymap.c:3610-3618`, `:3757`), so the stored
+    /// `Invert` flag selects nothing and the caller keeps the list entry's
+    /// direction flag rather than folding it in.
+    fn replace_with_simpler(&self) -> Option<DynMapping> {
+        // Combine coefficients referring to the same combination of input
+        // powers — two constant terms for one output become one constant term.
+        // C does this for the forward transformation and then the inverse
+        // (`polymap.c:3630`, `for( check_fwd = 0; check_fwd < 2; check_fwd++ )`),
+        // so both directions are consolidated here too. Doing only one leaves a
+        // SIP inverse polynomial holding its identity term and its linear
+        // correction as two separate coefficients, which the SIP extractor then
+        // reads one of.
+        let consolidate = |terms: &[PolyTerm]| -> Vec<PolyTerm> {
+            let mut out: Vec<PolyTerm> = Vec::new();
+            for term in terms {
+                if let Some(existing) = out
+                    .iter_mut()
+                    .find(|t| t.out_axis == term.out_axis && t.powers == term.powers)
+                {
+                    existing.coeff += term.coeff;
+                } else {
+                    out.push(term.clone());
+                }
+            }
+            // Remove zero-coefficient terms. C uses an exact `!= 0.0` test when
+            // shuffling merged coefficients (`polymap.c:3704`), so mirror it
+            // rather than a threshold — a legitimately tiny coefficient
+            // survives in C.
+            out.retain(|t| t.coeff != 0.0);
+            out
+        };
+
+        let fwd_terms = self.forward.as_slice();
+        let inv_terms = self.inverse.as_deref();
+        let consolidated = consolidate(fwd_terms);
+        let consolidated_inv = inv_terms.map(consolidate);
+
+        // Check if all remaining terms are affine (constant or linear).
+        // A term is constant if sum of powers == 0, linear if sum == 1 with
+        // exactly one power == 1. C tests only the constructed forward
+        // transformation, and only when nin == nout (`polymap.c:3757`).
+        let nin = self.nin;
+        let nout = self.nout;
+        let is_affine = nin == nout
+            && !consolidated.is_empty()
+            && nin > 0
+            && consolidated.iter().all(|t| {
+                let power_sum: usize = t.powers.iter().sum();
+                power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
+            });
+
+        if is_affine {
+            let mut shifts = vec![0.0; nout];
+            let mut matrix = vec![0.0; nout * nin];
+
+            for term in &consolidated {
+                let out_idx = term.out_axis - 1;
+                let power_sum: usize = term.powers.iter().sum();
+                if power_sum == 0 {
+                    shifts[out_idx] += term.coeff;
+                } else {
+                    let in_idx = term.powers.iter().position(|&p| p == 1).unwrap();
+                    matrix[out_idx * nin + in_idx] += term.coeff;
+                }
+            }
+
+            let all_shifts_zero = shifts.iter().all(|&s| s.abs() < 1e-30);
+
+            if all_shifts_zero {
+                // Pure linear: just MatrixMap.
+                if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
+                    if let Ok(mm) = MatrixMap::new(m) {
+                        return Some(Box::new(mm));
+                    }
+                }
+            } else {
+                // Affine: check if it can be a WinMap (diagonal matrix,
+                // square case).
+                let is_diagonal = nin == nout
+                    && (0..nout).all(|i| {
+                        (0..nin).all(|j| {
+                            if i == j {
+                                true
+                            } else {
+                                matrix[i * nin + j].abs() < 1e-30
+                            }
+                        })
+                    });
+
+                if is_diagonal {
+                    let scales: Vec<f64> = (0..nout).map(|i| matrix[i * nin + i]).collect();
+                    if let Ok(wm) = WinMap::new(&shifts, &scales) {
+                        return Some(Box::new(wm));
+                    }
+                } else {
+                    // General affine: MatrixMap then ShiftMap in series.
+                    if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
+                        if let Ok(mm) = MatrixMap::new(m) {
+                            let sm = ShiftMap::new(shifts);
+                            if let Ok(cmp) =
+                                CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series)
+                            {
+                                return Some(Box::new(cmp));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If neither transformation changed there is nothing to replace: C's
+        // `mod` flag (`polymap.c:3629`, set at `:3726`, read at `:3734`). A
+        // structural fingerprint of the forward terms is not enough, because
+        // consolidating the *inverse* coefficients leaves the forward
+        // transformation, and so the fingerprint, untouched.
+        let inv_changed = match (inv_terms, consolidated_inv.as_ref()) {
+            (Some(orig), Some(new)) => new.len() != orig.len(),
+            _ => false,
+        };
+        if consolidated.len() == fwd_terms.len() && !inv_changed {
+            return None;
+        }
+
+        // Build a new PolyMap with the consolidated terms. C makes a deep copy
+        // of the original and edits the copy's coefficient arrays in place
+        // (`polymap.c:3620-3622`), so the replacement keeps every other
+        // attribute, the stored `Invert` flag included.
+        let mut pm = PolyMap::new(
+            self.nin,
+            self.nout,
+            &consolidated,
+            consolidated_inv.as_deref(),
+        )
+        .ok()?;
+
+        if let Some(v) = self.iter_inverse {
+            pm.set_iter_inverse(v);
+        }
+        pm.set_niter_inverse(self.niter_inverse);
+        pm.set_tol_inverse(self.tol_inverse);
+        if self.inverted {
+            pm.invert();
+        }
+
+        Some(Box::new(pm))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1362,192 +1519,22 @@ impl Mapping for PolyMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C `polymap.c:340-461`: replace-with-simpler, "without reference to
-        // the neighbouring Mappings in the list". A PolyMap whose terms are all
-        // constant or first-order is rebuilt as `astCmpMap(MatrixMap, ShiftMap)`
-        // and simplified, which yields a WinMap in the diagonal case.
+        // C's two replace-with-simpler steps, "without reference to the
+        // neighbouring Mappings in the list" (`polymap.c:3606-3871`), taken
+        // before any neighbour is considered. See
+        // [`PolyMap::replace_with_simpler`].
         //
-        // C builds it from the transformation as *constructed*, before any
-        // inversion, and leaves `invert_list` untouched (polymap.c:452-455) —
-        // so the replacement inherits the entry's applied direction rather than
-        // absorbing it. [`PolyMap::simplified`] works from the stored
-        // orientation for the same reason, so the entry's flags carry over.
-        // "Did any transformation change?" is C's `mod` flag (polymap.c:225,
-        // :328). A structural fingerprint is not enough: consolidating the
-        // *inverse* coefficients leaves the forward transformation, and so the
-        // fingerprint, untouched.
-        let changed = |simp: &DynMapping| match simp.as_any().downcast_ref::<PolyMap>() {
-            Some(other) => {
-                other.inverted != self.inverted
-                    || other.forward != self.forward
-                    || other.inverse != self.inverse
-            }
-            None => true,
-        };
-        if let Ok(simp) = <dyn Mapping>::simplify(self)
-            && changed(&simp)
-        {
+        // C works from the transformation as *constructed*, before any
+        // inversion, and leaves `invert_list` untouched
+        // (`polymap.c:3856-3859`) — so the replacement inherits the entry's
+        // applied direction rather than absorbing it.
+        if let Some(simp) = self.replace_with_simpler() {
             let eff_inv = ctx.entry(where_).1;
             ctx.set_pair_single(where_, (simp, eff_inv, false));
             return Some(where_);
         }
 
         super::simplify::default_map_merge(ctx, where_, series)
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Determine which terms are the "forward" set in the current orientation.
-        let (fwd_terms, inv_terms) = if self.inverted {
-            (
-                self.inverse.as_deref().unwrap_or(&[]),
-                Some(self.forward.as_slice()),
-            )
-        } else {
-            (self.forward.as_slice(), self.inverse.as_deref())
-        };
-
-        // Combine coefficients referring to the same combination of input
-        // powers — two constant terms for one output become one constant term.
-        // C does this for the forward transformation and then the inverse
-        // (polymap.c:219-225, `for( check_fwd = 0; check_fwd < 2; check_fwd++ )`),
-        // so both directions are consolidated here too. Doing only the current
-        // one leaves a SIP inverse polynomial holding its identity term and its
-        // linear correction as two separate coefficients, which the SIP
-        // extractor then reads one of.
-        let consolidate = |terms: &[PolyTerm]| -> Vec<PolyTerm> {
-            let mut out: Vec<PolyTerm> = Vec::new();
-            for term in terms {
-                if let Some(existing) = out
-                    .iter_mut()
-                    .find(|t| t.out_axis == term.out_axis && t.powers == term.powers)
-                {
-                    existing.coeff += term.coeff;
-                } else {
-                    out.push(term.clone());
-                }
-            }
-            // Remove zero-coefficient terms. C uses an exact `!= 0.0` test when
-            // shuffling merged coefficients (polymap.c:3681), so mirror it
-            // rather than a threshold — a legitimately tiny coefficient
-            // survives in C.
-            out.retain(|t| t.coeff != 0.0);
-            out
-        };
-
-        let consolidated = consolidate(fwd_terms);
-        let consolidated_inv = inv_terms.map(consolidate);
-
-        // Check if all remaining terms are affine (constant or linear).
-        // A term is constant if sum of powers == 0, linear if sum == 1 with
-        // exactly one power == 1.
-        // C only does this when nin == nout (polymap.c line 3734).
-        let nin = self.nin();
-        let nout = self.nout();
-        let is_affine = nin == nout
-            && !consolidated.is_empty()
-            && nin > 0
-            && consolidated.iter().all(|t| {
-                let power_sum: usize = t.powers.iter().sum();
-                power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
-            });
-
-        if is_affine {
-            let mut shifts = vec![0.0; nout];
-            let mut matrix = vec![0.0; nout * nin];
-
-            for term in &consolidated {
-                let out_idx = term.out_axis - 1;
-                let power_sum: usize = term.powers.iter().sum();
-                if power_sum == 0 {
-                    shifts[out_idx] += term.coeff;
-                } else {
-                    let in_idx = term.powers.iter().position(|&p| p == 1).unwrap();
-                    matrix[out_idx * nin + in_idx] += term.coeff;
-                }
-            }
-
-            let all_shifts_zero = shifts.iter().all(|&s| s.abs() < 1e-30);
-
-            if all_shifts_zero {
-                // Pure linear: just MatrixMap.
-                if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
-                    if let Ok(mm) = MatrixMap::new(m) {
-                        return Ok(Box::new(mm));
-                    }
-                }
-            } else {
-                // Affine: check if it can be a WinMap (diagonal matrix,
-                // square case).
-                let is_diagonal = nin == nout
-                    && (0..nout).all(|i| {
-                        (0..nin).all(|j| {
-                            if i == j {
-                                true
-                            } else {
-                                matrix[i * nin + j].abs() < 1e-30
-                            }
-                        })
-                    });
-
-                if is_diagonal {
-                    let scales: Vec<f64> = (0..nout).map(|i| matrix[i * nin + i]).collect();
-                    if let Ok(wm) = WinMap::new(&shifts, &scales) {
-                        return Ok(Box::new(wm));
-                    }
-                } else {
-                    // General affine: MatrixMap then ShiftMap in series.
-                    if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
-                        if let Ok(mm) = MatrixMap::new(m) {
-                            let sm = ShiftMap::new(shifts);
-                            if let Ok(cmp) =
-                                CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series)
-                            {
-                                return Ok(Box::new(cmp));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // If neither direction changed, return self unchanged.
-        let inv_changed = match (inv_terms, consolidated_inv.as_ref()) {
-            (Some(orig), Some(new)) => new.len() != orig.len(),
-            _ => false,
-        };
-        if consolidated.len() == fwd_terms.len() && !inv_changed {
-            return Ok(Box::new(self.clone()));
-        }
-
-        // Build a new PolyMap with the consolidated terms.
-        // We need to map back to the non-inverted representation for the constructor.
-        let consolidated_inv_slice = consolidated_inv.as_deref();
-        let (new_fwd, new_inv) = if self.inverted {
-            (
-                consolidated_inv_slice.unwrap_or(&[]),
-                Some(consolidated.as_slice()),
-            )
-        } else {
-            (consolidated.as_slice(), consolidated_inv_slice)
-        };
-
-        let mut pm = PolyMap::new(self.nin, self.nout, new_fwd, new_inv)?;
-
-        // Preserve attributes.
-        if let Some(v) = self.iter_inverse {
-            pm.set_iter_inverse(v);
-        }
-        pm.set_niter_inverse(self.niter_inverse);
-        pm.set_tol_inverse(self.tol_inverse);
-        if self.inverted {
-            pm.invert();
-        }
-
-        Ok(Box::new(pm))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
