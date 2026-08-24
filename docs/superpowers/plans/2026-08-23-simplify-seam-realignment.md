@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Leave one way to simplify a Mapping, as C has, so the `IsSimple` short-circuit and the record apply to every reduction instead of to the eighth of them that happen to go through the front door.
+**Goal:** Make it impossible to simplify a Mapping without passing the `IsSimple` gate, so every reduction is short-circuited and recorded exactly as C's is.
 
-**Architecture:** C's `Simplify` vtab slot has exactly **one** caller in the whole library — `mapping.c:24772`, inside `astSimplify_`. It is a private dispatch behind the short-circuit and the stamp, not an API. The port's `simplified()` is a public trait method with **65 call sites against `simplify()`'s 8**, each bypassing both. This plan converts those 65 call sites to `simplify()`, moves the 25 per-class `simplified()` bodies that correspond to nothing in C into their class's `map_merge`, and leaves `simplified()` with one caller and eleven implementations — the eleven whose C counterpart overrides the slot.
+**Architecture:** The port's two-level structure already matches C's. `simplify()`, an inherent method on `dyn Mapping` at `mappings/mod.rs:568`, is `astSimplify_`; the trait method `simplified()` is the `Simplify` vtab slot; `map_merge()` is `MapMerge`. The defect is not the shape, it is that **155 call sites call `simplified()` directly** where C's slot has exactly one caller. Each bypasses the gate in both directions: it can fail to record a reduction, and it can re-reduce something C returns untouched. This plan makes the bypass a **compile error** by giving `simplified()` a parameter only `simplify()` can construct, works the resulting error list, then moves the 25 per-class `simplified()` bodies that correspond to nothing in C into their class's `map_merge`.
 
 **Tech Stack:** Rust 2024 (`ast-core`), C99 (`reference/starlink-ast` at pin `8d4f526f`, built with cmake), the `tracing` feature for the port-side simplify trace.
 
@@ -23,39 +23,73 @@
 - Every relaxation count is mirrored in `crates/ast-core/tests/test_verification_ledger.rs` and `PLAN.md` §6, updated together.
 - Commit with `git commit --fixup` when amending earlier work in this plan.
 
-## What the two seams actually are
+## The problem, stated once
 
-Establish this before touching anything, because an earlier draft of this plan got it wrong.
+C has one public function, `astSimplify_` (`mapping.c:24755`). It does three
+things: short-circuits if the Mapping's `IsSimple` bit is already set, calls the
+per-class `Simplify` vtab slot, and stamps the result. The slot is per-class —
+`CmpMap`, `FrameSet` and the nine Region classes override it; the other 25
+inherit the base implementation (`mapping.c:16752`), which builds a one-element
+Mapping list and loops on `MapMerge`.
 
-```bash
-cd /Users/timj/work/lsst/starlink-astrs
-# C: every caller of the Simplify vtab slot.
-grep -rn ',Mapping,Simplify)' reference/starlink-ast/src/*.c
-# Port: every caller of the trait method, and of the public entry point.
-rg -n --color never '\.simplified\(\)' crates/ast-core/src/ | grep -cv 'fn simplified'
-rg -c --color never '\.simplify\(\)' crates/ast-core/src/ | awk -F: '{s+=$2} END {print s}'
+**Only `astSimplify_` ever calls the slot.** One caller, `mapping.c:24772`. So
+every reduction anywhere in C passes the gate.
+
+The port mirrors that structure: `simplify()` on `dyn Mapping` is `astSimplify_`,
+the trait method `simplified()` is the slot, `map_merge()` is `MapMerge`. What it
+does not mirror is the discipline.
+
+```
+                        simplified()   simplify()
+crates/ast-core/src           65            8
+crates/ast-core/tests         88           28
+crates/ast-core/examples       2            0
 ```
 
-Expected: **one** C caller, **65** port callers of `simplified()`, **8** of `simplify()`.
+Every one of those 155 `simplified()` calls skips the gate, and it matters in both
+directions:
 
-That asymmetry is the defect. In C there is one way to simplify a Mapping and it
-always applies the short-circuit and the record. In the port the raw virtual is
-the default choice and the real entry point is the exception, so 65 sites each
-decide for themselves whether a reduction is recorded — which is why the port
-emits a different set of `IsSimp` cards from C and why no stamping rule has ever
-aligned them (`PLAN.md` §10.3).
+- **The record is not set**, so a reduction the port performs carries no `IsSimp`
+  card where C's would.
+- **The short-circuit does not fire**, so the port re-reduces a Mapping C returns
+  untouched — which is why it makes 149 nominations to C's 96 on `cap_specmap_02`
+  (`PLAN.md` §10.3) while performing *fewer* productive merges.
 
-`simplified()` is not C's `Simplify` slot ported. C's slot is private with a
-single caller; this is a public trait method with 65. There is no C equivalent.
+No stamping rule can reconcile the card counts while both of those are true,
+which is what seven measured-and-reverted attempts at §10.3 have established the
+hard way.
+
+## The gate, enforced by the compiler
+
+`simplified()` is a method on the public `Mapping` trait, so it cannot be made
+crate-private. It can be made *uncallable* by giving it a parameter whose type
+only one module can construct:
+
+```rust
+// crates/ast-core/src/mappings/simplify_entry.rs
+pub struct ViaSimplify(());
+```
+
+A `pub` struct with a private field is nameable everywhere and constructible only
+inside its defining module **and that module's descendants**. Put it in a leaf
+module with no children, put `simplify()` in the same module, and the arithmetic
+is exact: `simplify()` can build one, nothing else can, and
+`fn simplified(&self, _: ViaSimplify)` therefore has exactly one possible caller —
+the compile-time equivalent of `mapping.c:24772`.
+
+The 11 legitimate overrides are unaffected: they *implement* the method, which
+needs only to name the type, not construct it.
+
+This is the enforcement an earlier draft of this plan said Rust could not provide.
+It can.
 
 ## The classification, derived from C
 
 `grep -l 'static AstMapping \*Simplify' reference/starlink-ast/src/*.c` returns
 `box circle cmpframe cmpmap cmpregion ellipse frameset interval mapping nullregion pointlist polygon prism region stc`.
-`mapping` is the base every other class inherits; `cmpframe` and `stc` have no
-port counterpart yet.
+`mapping` is the base; `cmpframe` and `stc` have no port counterpart yet.
 
-**Keeps a `simplified()` body — 11 classes** (C overrides the slot):
+**Keeps a `simplified()` body — 11 classes:**
 
 | port file | C file |
 |---|---|
@@ -71,189 +105,420 @@ port counterpart yet.
 | `regions/polygon.rs` | `polygon.c` |
 | `regions/prism.rs` | `prism.c` |
 
-**Loses it — 25 classes** (C has no slot override; all reduction is in `MapMerge`):
+**Loses it — 25 classes**, whose C counterpart has no slot override so all their
+reduction lives in `MapMerge`: `chebymap`, `dssmap`, `grismmap`, `lutmap`,
+`mathmap`, `matrix`, `normmap`, `pcdmap`, `perm`, `polymap`, `ratemap`,
+`selectormap`, `shift`, `slamap`, `specmap`, `sphmap`, `splinemap`, `switchmap`,
+`timemap`, `tranmap`, `unit`, `unitnormmap`, `wcsmap`, `winmap`, `zoom`.
 
-`chebymap`, `dssmap`, `grismmap`, `lutmap`, `mathmap`, `matrix`, `normmap`,
-`pcdmap`, `perm`, `polymap`, `ratemap`, `selectormap`, `shift`, `slamap`,
-`specmap`, `sphmap`, `splinemap`, `switchmap`, `timemap`, `tranmap`, `unit`,
-`unitnormmap`, `wcsmap`, `winmap`, `zoom`.
-
-`chebymap` has no `map_merge` at all, so it has nowhere to move to. Task 4
-handles it.
-
-**On enforcing the single caller.** Rust cannot make a trait method less public
-than its trait, and `Mapping` is public, so `simplified()` cannot be made
-crate-private. The single-caller rule is therefore enforced by a source-reading
-test, the same technique `test_mapmerge_audit` already uses for the checklists.
-That is weaker than a compiler error and it is what the language allows.
+`chebymap` has no `map_merge` at all, so it has nowhere to move to. Task 4 gives
+it the one C's vtab gives it.
 
 ## File Structure
 
 | file | responsibility after this plan |
 |---|---|
-| `crates/ast-core/src/mappings/simplify.rs` | adds `base_simplify`, C's base `Simplify` (one-element list, `map_merge` to fixpoint). Merge core otherwise unchanged. |
-| `crates/ast-core/src/mappings/mod.rs` | `simplified()` gains C's base body as its default and a doc saying it has one legitimate caller; `simplify()` is unchanged. |
-| `crates/ast-core/src/{frames,regions,fitschan}/**` | 57 call sites move from `simplified()` to `simplify()`. |
+| `crates/ast-core/src/mappings/simplify_entry.rs` | new leaf module. Holds `ViaSimplify` and the `impl dyn Mapping` block containing `simplify()`. Nothing else may live here, or the token stops being exclusive. |
+| `crates/ast-core/src/mappings/mod.rs` | `simplified()` takes `ViaSimplify` and gains C's base body as its default. The `simplify()` block moves out to `simplify_entry`. |
+| `crates/ast-core/src/mappings/simplify.rs` | adds `base_simplify`, C's base `Simplify`. Merge core otherwise unchanged. |
+| `crates/ast-core/src/{frames,regions,fitschan}/**` and the merge core | 65 call sites resolved, each to `simplify()` or to a justified `simplified(ViaSimplify)` — but only 11 files can even write the latter, so in practice all become `simplify()`. |
+| `crates/ast-core/tests/**`, `examples/**` | 90 call sites become `simplify()`. |
 | `crates/ast-core/src/mappings/<class>.rs` × 25 | `simplified()` deleted, body folded into that class's `map_merge`. |
-| `crates/ast-core/src/mappings/chebymap.rs` | gains a `map_merge` delegating to PolyMap's, which is what C's vtab does. |
-| `crates/ast-core/tests/test_simplify_seams.rs` | new. Holds the keeper list and the single-caller rule, both derived from the C source. |
-| `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` | gains the characterisation fixtures Task 2 needs. Goes upstream. |
-| `docs/audits/mapmerge/<class>.md` | each moved class's checklist gains the row for the moved reduction. |
+| `crates/ast-core/tests/test_simplify_seams.rs` | new. Holds the keeper list, derived from the C source. The single-caller rule needs no test — it is a compile error. |
+| `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` | gains the characterisation fixtures Task 3 needs. Goes upstream. |
 
 ---
 
-## Task 1: Convert the 65 call sites
-
-This is first because it is the substantive behavioural change and the one most likely to move `IsSimp` counts. Everything after it is structural.
-
-Split into two commits: the 57 sites outside the merge core, then the 8 inside it. The merge core's sites are the ones where the short-circuit genuinely must not fire, so they need reading rather than replacing.
+## Task 1: Make bypassing the gate a compile error
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/{skyframe,timeframe,fluxframe,specfluxframe,frameset,sky_convert}.rs`
-- Modify: `crates/ast-core/src/regions/{mod,interval,box_region}.rs`
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/{mod,celestial_axes,spectral_axes,other_axes,make_int_world}.rs`
-- Modify: `crates/ast-core/src/mappings/{helpers/mod,matrix_merge,winmap_merge,map_box,polymap,dssmap,ratemap,selectormap,switchmap,tranmap}.rs`
+- Create: `crates/ast-core/src/mappings/simplify_entry.rs`
+- Modify: `crates/ast-core/src/mappings/mod.rs`
+- Modify: every file the compiler names — expect ~40 across `src`, `tests` and `examples`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: no signature changes. `Mapping::simplify(&self) -> AstResult<DynMapping>` is the inherent method on `dyn Mapping` at `mappings/mod.rs:578`; call it as `Mapping::simplify(x)` where method syntax is ambiguous.
+- Produces: `pub struct ViaSimplify(())` in `mappings::simplify_entry`, re-exported from `mappings`; `Mapping::simplified(&self, _: ViaSimplify) -> AstResult<DynMapping>`; `<dyn Mapping>::simplify(&self) -> AstResult<DynMapping>` unchanged in signature and moved to `simplify_entry`.
 
-- [ ] **Step 1: Enumerate the sites, grouped**
+- [ ] **Step 1: Record the baseline**
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
-rg -n --color never '\.simplified\(\)' crates/ast-core/src/ \
-  | grep -v 'fn simplified' > /tmp/sites.txt
-wc -l /tmp/sites.txt
-awk -F: '{print $1}' /tmp/sites.txt | sed 's|crates/ast-core/src/||' | sort | uniq -c | sort -rn
-```
-
-Record the total and the per-file counts. Step 6 checks the total fell to the
-merge core's own.
-
-- [ ] **Step 2: Record the baseline**
-
-```bash
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|left:"
 cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+rg -n --color never '\.simplified\(\)' crates/ast-core | grep -cv 'fn simplified'
 ```
 
-Paste both somewhere. Every later comparison is against these numbers.
+Paste all three. Every later comparison is against them, and the last is the size
+of the error list to expect.
 
-- [ ] **Step 3: Convert the sites outside `mappings/`**
+- [ ] **Step 2: Create the leaf module with the token**
 
-For each site in `frames/`, `regions/` and `fitschan/`, replace
-`x.simplified()?` with `Mapping::simplify(x.as_ref())?` — or
-`Mapping::simplify(&x)?` where `x` is not boxed. The receiver differs per site;
-the transformation does not.
+Create `crates/ast-core/src/mappings/simplify_entry.rs`:
 
-Do not batch-edit with `sed`. Each site needs one judgement: **does C call
-`astSimplify` here?** The answer is yes for every site in these three
-directories, because C has no other way to reduce a Mapping, but confirm it
-against the surrounding C reference that the file's comments already cite. A site
-whose comment cites no C function is one to read before changing.
+```rust
+//! The one way into a per-class simplification.
+//!
+//! C has a single public entry, `astSimplify_` (`mapping.c:24755`), which
+//! short-circuits on the `IsSimple` bit, calls the per-class `Simplify` vtab
+//! slot, and records the result. That slot has exactly one caller in the whole
+//! library, `mapping.c:24772`, so every reduction anywhere in C passes the gate.
+//!
+//! [`ViaSimplify`] makes that arithmetic hold here too. It is nameable
+//! everywhere and constructible only in this module, and this module contains
+//! nothing but the entry point, so [`Mapping::simplified`] has exactly one
+//! possible caller.
+//!
+//! **Do not add anything else to this file.** A second function here could
+//! construct a token, and the guarantee is that nothing but `simplify()` can.
 
-- [ ] **Step 4: Build and run**
+use super::{CmpMap, DynMapping, Mapping};
+use crate::AstResult;
+
+/// Proof that a per-class reduction was reached through
+/// [`Mapping::simplify`], and therefore through the `IsSimple` gate.
+///
+/// Constructible only in this module. Implementations of
+/// [`Mapping::simplified`] receive one and never build one.
+pub struct ViaSimplify(());
+
+impl dyn Mapping {
+    /// Simplify this Mapping, C's `astSimplify` (`mapping.c:24755`).
+    ///
+    /// Returns an unchanged clone when the `IsSimple` record is already set, and
+    /// otherwise records the result, which is the whole of what `astSimplify_`
+    /// adds to the per-class [`Mapping::simplified`] it dispatches to.
+    ///
+    /// This is the only way to reach a per-class reduction. Anything that wants
+    /// one calls this.
+    pub fn simplify(&self) -> AstResult<DynMapping> {
+        super::simplify::trace::simplify_enter("public-simplify", self);
+        // ... the existing body from mappings/mod.rs, with its single
+        // `self.simplified()` call becoming `self.simplified(ViaSimplify(()))`
+    }
+}
+```
+
+Move the whole existing `impl dyn Mapping { … }` block from
+`crates/ast-core/src/mappings/mod.rs:568` into this file verbatim, then change
+its one `self.simplified()` call to `self.simplified(ViaSimplify(()))`. If that
+block holds methods other than `simplify()`, leave those behind in `mod.rs` in
+their own `impl dyn Mapping` block — this file must contain only the entry point.
+
+Register the module and re-export the token in `mappings/mod.rs`:
+
+```rust
+mod simplify_entry;
+pub use simplify_entry::ViaSimplify;
+```
+
+- [ ] **Step 3: Give the trait method the parameter**
+
+In `crates/ast-core/src/mappings/mod.rs`, change line 282's declaration to:
+
+```rust
+    /// Reduce this Mapping without the `IsSimple` gate — C's `Simplify` vtab
+    /// slot.
+    ///
+    /// Reachable only from [`Mapping::simplify`], which is what supplies the
+    /// [`ViaSimplify`]. That mirrors C, where `mapping.c:24772` is the slot's
+    /// only caller, so no reduction can happen without being short-circuited
+    /// and recorded.
+    ///
+    /// Override this only if the matching C class overrides the slot: `CmpMap`,
+    /// `FrameSet` and the nine Region classes do, and the other 25 keep every
+    /// reduction in [`Mapping::map_merge`].
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping>;
+```
+
+Leave it a required method for now; Task 5 gives it a default.
+
+- [ ] **Step 4: Build, and read the error list**
 
 ```bash
-cargo build -p ast-core 2>&1 | grep -E "^error" -A 4 | head -20
+cargo build -p ast-core 2>&1 | grep -E "^error" | sort | uniq -c | sort -rn | head
+cargo build -p ast-core 2>&1 | grep -E '^\s+--> ' | awk '{print $2}' | cut -d: -f1 | sort | uniq -c | sort -rn
+```
+
+Expected: two error kinds — "this method takes 1 argument but 0 were supplied"
+at every call site, and "missing argument" or a mismatched-signature error at
+every `impl`. The file list is the work.
+
+This error list **is** the audit. Every entry is a place that was reducing a
+Mapping without the gate, which is exactly what needs looking at.
+
+- [ ] **Step 5: Fix the 36 implementations**
+
+Each of the 36 `impl Mapping for X` blocks needs its signature updated:
+
+```rust
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+```
+
+Nothing inside the bodies changes yet. Where a body recursively reduces a
+component — `CmpMap`, `RateMap`, `TranMap`, `SwitchMap`, `SelectorMap`,
+`NormMap`, and the Region classes — that inner call is now a compile error too,
+and it becomes `Mapping::simplify(child.as_ref())?`. **That is the behavioural
+change this task exists for**, so expect the corpus to move at step 7.
+
+- [ ] **Step 6: Fix the call sites**
+
+Every remaining error is a site that must become `simplify()`:
+
+```rust
+// before
+let smap = map.simplified()?;
+// after
+let smap = Mapping::simplify(map.as_ref())?;
+```
+
+The receiver differs — `map.as_ref()`, `&*boxed`, `&concrete` — and the compiler
+says which. Do not reach for `ViaSimplify(())`: outside `simplify_entry` it will
+not compile, which is the point.
+
+Work `src` first, then `tests`, then `examples`. A test asserting on an
+unrecorded reduction is asserting on something C never produces, so converting it
+is a correction, not an accommodation — but if a test *deliberately* checks the
+ungated path, it can no longer do so, and that is worth a note in the commit.
+
+- [ ] **Step 7: Compare against the baseline**
+
+```bash
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|equal\(\)|left:|right:"
 cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
 ```
 
-Three outcomes:
+The corpus **will** move, and that is the task working. Three cases:
 
-- **Fixtures that failed now pass** — the expected result. Each reduction now
-  carries the record C gives it. Delete the corresponding `SERIAL_UNGATED` or
-  `ISSIMP_DISAGREEMENTS` entries in this commit and name the gap each closes.
-- **Counts unchanged** — suspicious rather than good. It means none of the 57
-  sites was reached by any fixture, which contradicts `wcsconv` exercising the
-  FitsChan path. Check the conversion actually compiled into the tested code
-  before believing it.
-- **A fixture that passed now fails** — a site where C does *not* call
-  `astSimplify`, or where the short-circuit now fires on a Mapping that had been
-  re-reduced. Diff the traces per Task 5 step 4 to find which site.
-
-- [ ] **Step 5: Commit the 57**
+- **Fixtures that failed now pass** — a reduction now carries the record C gives
+  it, or a re-reduction C never performs is now short-circuited away. Delete the
+  matching `SERIAL_UNGATED` or `ISSIMP_DISAGREEMENTS` entries in this commit and
+  name the gap each closes.
+- **Fixtures that passed now fail** — a short-circuit is firing where C's does
+  not, meaning a record is being set earlier than C sets it. Diff the traces to
+  find where:
 
 ```bash
-cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core/src/frames crates/ast-core/src/regions crates/ast-core/src/fitschan crates/ast-core/tests
-git commit -m "simplify: reduce through simplify(), not the raw virtual
-
-C's Simplify vtab slot has one caller, mapping.c:24772 inside astSimplify_,
-which applies the IsSimple short-circuit and records the result. Every reduction
-in the library goes through it.
-
-These 57 sites called the port's per-class virtual directly, so each decided for
-itself whether a reduction was recorded. They are the frames, regions and
-FitsChan paths, where C calls astSimplify."
+D=${TMPDIR:-/tmp}/ast-trace3
+FIX=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/<name>.map
+AST_TRACE=1 $D/gen_simp $FIX /dev/null 2> /tmp/c.txt
+cargo run -q --features tracing --example simp_one -- $FIX 2> /tmp/p.txt >/dev/null
+grep -E 'SIMPLIFY-ENTER|SIMPLIFY-WALLED' /tmp/c.txt | sed 's/^ *//' | head -30
+sed 's/\x1b\[[0-9;]*m//g' /tmp/p.txt | grep SIMPLIFY-ENTER | head -30
 ```
 
-- [ ] **Step 6: Read the 8 sites inside the merge core**
+C's `SIMPLIFY-WALLED` lines are where its short-circuit fires. If the port walls
+somewhere C does not, the record is being set too early — look at the `simplify()`
+call that set it, not at the class that read it.
 
-```bash
-rg -n --color never '\.simplified\(\)' crates/ast-core/src/mappings/ | grep -v 'fn simplified'
-```
-
-These are different. `cmp_map_merge`'s self-simplify head, `try_self_reduce`, and
-the parallel-branch helpers are inside a `Simplify` implementation, so calling
-`simplify()` there would re-enter the short-circuit at a point C does not. For
-each, decide from the C source it cites:
-
-- Inside a `Simplify` body, where C calls `astSimplify` on a *component* — becomes
-  `simplify()`.
-- Inside a `Simplify` body, where C reaches the component another way — stays,
-  with a comment naming the C line and why.
-
-`cmp_map_merge`'s head is the first kind: `cmpmap.c:1437` is a literal
-`astSimplify( map )`.
-
-- [ ] **Step 7: Convert what step 6 found, and run**
-
-Same commands as step 4. Expected: the corpus moves again, in the same direction.
+- **Nothing moved** — implausible with 155 sites converted. Check the build
+  actually recompiled the tested code.
 
 - [ ] **Step 8: Update the ledger, PLAN.md and the checklists**
 
-Run `cargo test -p ast-core --test test_verification_ledger` and set every count
-its failure names, updating `PLAN.md` §6 in the same edit. In
-`docs/audits/mapmerge/`, any row whose Rust site was one of the converted call
-sites keeps its site and gains nothing — the row is about the step, not the entry
-point.
+Run `cargo test -p ast-core --test test_verification_ledger`, set every count its
+failure names, and update `PLAN.md` §6 in the same edit. In
+`docs/audits/mapmerge/`, repoint any row whose Rust site was a converted call.
 
-- [ ] **Step 9: Commit the 8**
+- [ ] **Step 9: Verify and commit**
+
+```bash
+cargo clippy -p ast-core --all-targets -- -D warnings
+cargo clippy -p ast-core --all-targets --features tracing -- -D warnings
+cargo doc -p ast-core --no-deps 2>&1 | grep -cE "^error"
+git add crates/ast-core PLAN.md docs
+git commit -m "simplify: make bypassing the IsSimple gate a compile error
+
+C has one public entry, astSimplify_, which short-circuits on the IsSimple bit,
+calls the per-class Simplify vtab slot and records the result. That slot has
+exactly one caller in the library, mapping.c:24772, so every reduction anywhere
+in C passes the gate.
+
+The port had 155 calls to the equivalent trait method against 36 to the entry
+point, each skipping the gate in both directions: a reduction could go
+unrecorded, and a Mapping C returns untouched could be reduced again -- which is
+why the port made 149 nominations to C's 96 on cap_specmap_02 while performing
+fewer productive merges.
+
+simplified() now takes a ViaSimplify, a token constructible only in the leaf
+module that holds simplify(), so the trait method has exactly one possible
+caller. The bypass is no longer a convention to be tested for; it does not
+compile.
+
+Corpus movement: <list each fixture that changed state and why>."
+```
+
+Expected: `0` failures, no warnings either way, `0` doc errors.
+
+---
+
+## Task 2: The keeper-list gate
+
+**Files:**
+- Create: `crates/ast-core/tests/test_simplify_seams.rs`
+- Modify: `docs/audits/mapmerge/README.md`
+
+**Interfaces:**
+- Consumes: Task 1 complete.
+- Produces: `only_c_simplify_classes_implement_simplified`, `#[ignore]`d until Task 6. The single-caller rule needs no test — Task 1 made it a compile error.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `crates/ast-core/tests/test_simplify_seams.rs`:
+
+```rust
+//! Which classes may implement the per-class simplify seam.
+//!
+//! C overrides the `Simplify` vtab slot in 11 of this port's classes. For every
+//! other class all reduction lives in `MapMerge`, and the base `Simplify`
+//! (`mapping.c:16752`) reaches it by nominating the Mapping in a list of one
+//! (`mapping.c:16871-16883`).
+//!
+//! The companion rule — that the seam has one caller — is a compile error rather
+//! than a test: `Mapping::simplified` takes a `ViaSimplify`, which only
+//! `mappings::simplify_entry` can construct.
+
+use std::path::{Path, PathBuf};
+
+/// Port files whose C counterpart overrides the `Simplify` vtab slot.
+///
+/// Derived, not chosen:
+/// `grep -l 'static AstMapping \*Simplify' reference/starlink-ast/src/*.c`
+/// returns `box circle cmpframe cmpmap cmpregion ellipse frameset interval
+/// mapping nullregion pointlist polygon prism region stc`. `mapping` is the base
+/// every other class inherits, and `cmpframe` and `stc` have no port counterpart.
+const C_SIMPLIFY_CLASSES: &[&str] = &[
+    "mappings/cmpmap.rs",
+    "frames/frameset.rs",
+    "regions/box_region.rs",
+    "regions/circle.rs",
+    "regions/cmpregion.rs",
+    "regions/ellipse.rs",
+    "regions/interval.rs",
+    "regions/nullregion.rs",
+    "regions/pointlist.rs",
+    "regions/polygon.rs",
+    "regions/prism.rs",
+];
+
+fn src_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+}
+
+#[test]
+#[ignore = "fails until the 25 stray bodies have moved; see \
+            docs/superpowers/plans/2026-08-23-simplify-seam-realignment.md"]
+fn only_c_simplify_classes_implement_simplified() {
+    let root = src_root();
+    let mut stray = Vec::new();
+    let mut stack = vec![root.clone()];
+
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("source dir readable") {
+            let path = entry.expect("readable entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("source readable");
+            if !text.contains("fn simplified(&self, _gate: ViaSimplify)") {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(&root)
+                .expect("under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            // `mappings/mod.rs` declares the method; it does not implement it.
+            if rel == "mappings/mod.rs" || C_SIMPLIFY_CLASSES.contains(&rel.as_str()) {
+                continue;
+            }
+            stray.push(rel);
+        }
+    }
+
+    stray.sort();
+    assert!(
+        stray.is_empty(),
+        "these classes implement `simplified()` and their C counterpart does not \
+         override the `Simplify` slot, so the reduction belongs in `map_merge` \
+         where the base `Simplify` can reach it: {stray:#?}"
+    );
+}
+```
+
+- [ ] **Step 2: Run it to verify it fails and names the right set**
+
+Run: `cargo test -p ast-core --test test_simplify_seams -- --ignored --nocapture`
+
+Expected: FAIL listing 25 paths from `mappings/chebymap.rs` to
+`mappings/zoom.rs`, and nothing under `regions/` or `frames/`.
+
+If a Region or `frames/frameset.rs` appears, the keeper list has a typo: paths are
+relative to `crates/ast-core/src` and `box_region.rs` keeps its suffix. If the
+list is empty, the `text.contains` pattern does not match Task 1's actual
+signature — print one impl and align the string.
+
+- [ ] **Step 3: Document the rule where the checklists are read**
+
+Append to `docs/audits/mapmerge/README.md`:
+
+```markdown
+## Which seam a reduction belongs in
+
+C has one public entry, `astSimplify`, and one private dispatch behind it — the
+`Simplify` vtab slot, whose only caller is `mapping.c:24772`. Eleven classes
+override that slot. For every other class **all** reduction lives in `MapMerge`,
+and the base `Simplify` reaches it by nominating the Mapping in a list of one
+(`mapping.c:16871-16883`).
+
+So a row whose Rust site is a `simplified()` body, in a class whose C counterpart
+does not override the slot, is not `ported`: it is in a seam C does not have.
+`crates/ast-core/tests/test_simplify_seams.rs` holds the list of 11.
+
+The companion rule — that nothing but `simplify()` reaches the seam — is enforced
+by the compiler, not by a checklist: `simplified()` takes a `ViaSimplify` and
+only `mappings::simplify_entry` can construct one.
+```
+
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
 cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core PLAN.md docs
-git commit -m "simplify: route the merge core's component reductions through simplify()
+git add crates/ast-core/tests/test_simplify_seams.rs docs/audits/mapmerge/README.md
+git commit -m "test: hold the list of classes that may implement the simplify seam
 
-The remaining raw-virtual calls are inside Simplify implementations. Those where
-C calls astSimplify on a component -- cmp_map_merge's self-simplify head is
-cmpmap.c:1437, a literal astSimplify( map ) -- now do the same. The rest keep the
-raw call with the C line that justifies it."
+C overrides the Simplify vtab slot in 11 of this port's classes and in none of
+the other 25, where every reduction lives in MapMerge. The list is derived by
+grepping the C source rather than chosen.
+
+Ignored until the 25 stray bodies have moved. The companion rule -- one caller --
+needs no test: it is a compile error since ViaSimplify."
 ```
 
-Expected: `0` failures.
+Expected: `0` failures, one ignored.
 
 ---
 
-## Task 2: Characterisation fixtures for the reductions nothing demands
+## Task 3: Characterisation fixtures for the reductions nothing demands
 
 Five classes keep a reduction in `simplified()` that no fixture reaches, because their `map_merge` never consults it. Moving such a reduction is unobservable, and an unobservable move can silently drop it.
 
 **Files:**
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
 - Create: fixture pairs under both `simplify_fixtures/` trees
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs`, `PLAN.md`
+- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, `test_verification_ledger.rs`, `PLAN.md`
 
 **Interfaces:**
-- Consumes: Task 1 complete, so the counts these fixtures are measured against are the post-conversion ones.
-- Produces: one `<class>_lone_reduce` positive and one `neg_<class>_no_reduce` control per class that needs them. Later tasks rely on these failing the moment a moved reduction is lost.
+- Consumes: Task 1, so the counts are the post-gate ones.
+- Produces: one `<class>_lone_reduce` positive and one `neg_<class>_no_reduce` control per class needing them.
 
 - [ ] **Step 1: Confirm which classes still need one**
 
@@ -267,8 +532,8 @@ for c in chebymap mathmap sphmap unitnormmap wcsmap; do
 done
 ```
 
-Expected: every line reads `reaches_simplified=0`. Task 1 may have changed this
-for some class; drop any that now reads non-zero and say so in the commit.
+Expected: every line `reaches_simplified=0`. Task 1 may have changed this for a
+class; drop any that now reads non-zero and say so in the commit.
 
 - [ ] **Step 2: Read what each `simplified()` reduces**
 
@@ -281,8 +546,7 @@ done
 
 Write down the condition under which each body returns something other than
 `self`. That condition is what the fixture must satisfy. A body that only ever
-returns `Ok(Box::new(self.clone()))` has no reduction: record it as needing no
-fixture and skip steps 3 to 6 for it.
+returns a clone has no reduction: record it and skip steps 3 to 6 for it.
 
 - [ ] **Step 3: Add the generator cases**
 
@@ -329,13 +593,11 @@ diff ast_tester/simplify_fixtures/cheby_linear_lone_reduce.map \
      ast_tester/simplify_fixtures/cheby_linear_lone_reduce.simp
 ```
 
-Expected: the generator names every fixture, and the diff shows more than the
-`IsSimp` line.
+Expected: every fixture named, and the diff showing more than the `IsSimp` line.
 
-If a `.simp` differs from its `.map` only in `IsSimp`, C does **not** perform that
-reduction. That is a finding: the port's `simplified()` does something C does
-not, so the class belongs in Task 5's delete-outright bucket rather than its move
-bucket. Record it in the commit and drop the pair.
+If a `.simp` differs only in `IsSimp`, C does **not** perform that reduction. That
+is a finding: the port's `simplified()` does something C does not, so the class
+belongs in Task 5's delete-outright bucket. Record it and drop the pair.
 
 - [ ] **Step 5: Copy into both trees and wire the manifest**
 
@@ -361,10 +623,10 @@ neg_cheby_quadratic_no_reduce | simplify_fixtures/neg_cheby_quadratic_no_reduce.
 
 Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)" -A 4`
 
-New positives may fail — that is the task's point, and each failure is a gap
-Task 5 closes. For each, add a `SERIAL_UNGATED` entry with the reason
-`"awaiting the simplified()-to-map_merge move, PLAN.md §10.16"`, so the suite is
-green and the debt is named. Task 5 deletes the entry.
+New positives may fail — that is the point, and each is a gap Task 5 closes. For
+each, add a `SERIAL_UNGATED` entry with the reason
+`"awaiting the simplified()-to-map_merge move, PLAN.md §10.16"`. Task 5 deletes
+it.
 
 - [ ] **Step 7: Ledger, PLAN.md, verify, commit**
 
@@ -383,218 +645,18 @@ pinned C reduces and a control it leaves alone, generated by
 ast_tester/gen_simplify_fixtures.c so the upstream copies are byte-identical."
 ```
 
-Expected: `0` failures, `194 passed`, no warnings.
-
----
-
-## Task 3: Write the seam tests
-
-**Files:**
-- Create: `crates/ast-core/tests/test_simplify_seams.rs`
-- Modify: `docs/audits/mapmerge/README.md`
-
-**Interfaces:**
-- Consumes: nothing.
-- Produces: `only_c_simplify_classes_implement_simplified` and `simplified_has_one_caller`, both `#[ignore]`d until Task 6. Both read the source tree, as `test_mapmerge_audit` does.
-
-- [ ] **Step 1: Write both failing tests**
-
-Create `crates/ast-core/tests/test_simplify_seams.rs`:
-
-```rust
-//! The simplify seams must match C's.
-//!
-//! C has one public entry, `astSimplify`, and one private dispatch behind it:
-//! the `Simplify` vtab slot, whose only caller in the whole library is
-//! `mapping.c:24772`. Eleven of this port's classes have a C counterpart that
-//! overrides that slot; the other 25 keep every reduction in `MapMerge`, where
-//! `astSimplify` reaches it by nominating the Mapping in a list of one
-//! (`mapping.c:16871-16883`).
-//!
-//! Rust cannot make a trait method less public than its trait, so neither rule
-//! can be a compiler error. These tests read the source instead.
-
-use std::path::{Path, PathBuf};
-
-/// Port files whose C counterpart overrides the `Simplify` vtab slot.
-///
-/// Derived, not chosen:
-/// `grep -l 'static AstMapping \*Simplify' reference/starlink-ast/src/*.c`
-/// returns `box circle cmpframe cmpmap cmpregion ellipse frameset interval
-/// mapping nullregion pointlist polygon prism region stc`. `mapping` is the base
-/// every other class inherits, and `cmpframe` and `stc` have no port counterpart.
-const C_SIMPLIFY_CLASSES: &[&str] = &[
-    "mappings/cmpmap.rs",
-    "frames/frameset.rs",
-    "regions/box_region.rs",
-    "regions/circle.rs",
-    "regions/cmpregion.rs",
-    "regions/ellipse.rs",
-    "regions/interval.rs",
-    "regions/nullregion.rs",
-    "regions/pointlist.rs",
-    "regions/polygon.rs",
-    "regions/prism.rs",
-];
-
-/// Files allowed to call `simplified()`.
-///
-/// C's slot has one caller. The port's equivalent is the public `simplify()` in
-/// `mappings/mod.rs`. `mappings/simplify.rs` is the `CmpMap` `Simplify` body
-/// itself, where C calls `astSimplify` on components (`cmpmap.c:1437`), so it
-/// reaches the virtual through `simplify()` and needs no exception — if it
-/// appears here, that conversion was missed.
-const SIMPLIFIED_CALLERS: &[&str] = &["mappings/mod.rs"];
-
-fn src_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
-}
-
-/// Every `.rs` file under `src`, as a path relative to it.
-fn rust_files() -> Vec<(String, String)> {
-    let root = src_root();
-    let mut out = Vec::new();
-    let mut stack = vec![root.clone()];
-    while let Some(d) = stack.pop() {
-        for entry in std::fs::read_dir(&d).expect("source dir readable") {
-            let path = entry.expect("readable entry").path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(&root)
-                .expect("under src")
-                .to_string_lossy()
-                .replace('\\', "/");
-            let text = std::fs::read_to_string(&path).expect("source readable");
-            out.push((rel, text));
-        }
-    }
-    out.sort();
-    out
-}
-
-#[test]
-#[ignore = "fails until the 25 stray bodies have moved; see \
-            docs/superpowers/plans/2026-08-23-simplify-seam-realignment.md"]
-fn only_c_simplify_classes_implement_simplified() {
-    let stray: Vec<String> = rust_files()
-        .into_iter()
-        .filter(|(_, text)| text.contains("fn simplified(&self) -> AstResult<DynMapping> {"))
-        .map(|(rel, _)| rel)
-        .filter(|rel| !C_SIMPLIFY_CLASSES.contains(&rel.as_str()))
-        .collect();
-    assert!(
-        stray.is_empty(),
-        "these classes implement `simplified()` and their C counterpart does not \
-         override the `Simplify` slot, so the reduction belongs in `map_merge` \
-         where the nominate loop can reach it: {stray:#?}"
-    );
-}
-
-#[test]
-#[ignore = "fails until the 65 call sites have moved; see \
-            docs/superpowers/plans/2026-08-23-simplify-seam-realignment.md"]
-fn simplified_has_one_caller() {
-    let mut offenders = Vec::new();
-    for (rel, text) in rust_files() {
-        if SIMPLIFIED_CALLERS.contains(&rel.as_str()) {
-            continue;
-        }
-        let calls = text
-            .lines()
-            .filter(|l| l.contains(".simplified()"))
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .count();
-        if calls > 0 {
-            offenders.push(format!("{rel}: {calls}"));
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "`simplified()` is the per-class dispatch behind `simplify()`, and C's \
-         equivalent has exactly one caller (mapping.c:24772). Calling it \
-         directly skips the `IsSimple` short-circuit and the record: {offenders:#?}"
-    );
-}
-```
-
-- [ ] **Step 2: Run both to verify they fail, and name the right sets**
-
-```bash
-cargo test -p ast-core --test test_simplify_seams -- --ignored --nocapture
-```
-
-Expected: `only_c_simplify_classes_implement_simplified` lists 25 paths from
-`mappings/chebymap.rs` to `mappings/zoom.rs` and nothing under `regions/` or
-`frames/`. `simplified_has_one_caller` lists the files Task 1 has not yet
-converted — if Task 1 is done, it lists only `mappings/simplify.rs` and whichever
-merge-core files kept a justified raw call, and `SIMPLIFIED_CALLERS` must grow to
-name each with the C line that justifies it.
-
-If a Region or `frames/frameset.rs` appears in the first list, the keeper list has
-a typo: paths are relative to `crates/ast-core/src` and `box_region.rs` keeps its
-suffix.
-
-- [ ] **Step 3: Document the rule where the checklists are read**
-
-Append to `docs/audits/mapmerge/README.md`:
-
-```markdown
-## Which seam a reduction belongs in
-
-C has one public entry, `astSimplify`, and one private dispatch behind it — the
-`Simplify` vtab slot, whose only caller in the library is `mapping.c:24772`.
-Eleven classes override that slot. For every other class **all** reduction lives
-in `MapMerge`, and `astSimplify` reaches it by nominating the Mapping in a list of
-one (`mapping.c:16871-16883`).
-
-Two things follow, and `crates/ast-core/tests/test_simplify_seams.rs` holds both:
-
-- A row whose Rust site is a `simplified()` body, in a class whose C counterpart
-  does not override the slot, is not `ported`: it is in a seam C does not have and
-  the nominate loop cannot reach it.
-- A row whose Rust site calls `simplified()` rather than `simplify()` is skipping
-  the `IsSimple` short-circuit and the record, so its `IsSimp` behaviour is not
-  C's whatever the reduction does.
-```
-
-- [ ] **Step 4: Verify and commit**
-
-```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_simplify_seams 2>&1 | grep "test result"
-cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core/tests/test_simplify_seams.rs docs/audits/mapmerge/README.md
-git commit -m "test: hold the simplify seam rules, derived from the C source
-
-Two rules. Only the 11 classes whose C counterpart overrides the Simplify vtab
-slot may implement simplified(). And that slot has exactly one caller in C
-(mapping.c:24772), so the port's equivalent should too -- calling it directly
-skips the IsSimple short-circuit and the record.
-
-Rust cannot make a trait method less public than its trait, so neither can be a
-compiler error; both read the source. Ignored until the work lands."
-```
-
-Expected: `0` failures, two ignored.
+Expected: `0` failures, `194 passed`.
 
 ---
 
 ## Task 4: Give ChebyMap the `map_merge` C gives it
-
-`chebymap` is the one class with a `simplified()` and no `map_merge`, so it has nowhere to move to. In C it has neither: `polymap.c:2439` is the only place the slot is filled, so a ChebyMap's `MapMerge` *is* PolyMap's.
 
 **Files:**
 - Modify: `crates/ast-core/src/mappings/chebymap.rs`
 - Modify: `docs/audits/mapmerge/chebymap.md`, `PLAN.md`
 
 **Interfaces:**
-- Consumes: `cheby_linear_lone_reduce` and `neg_cheby_quadratic_no_reduce` from Task 2.
+- Consumes: Task 3's ChebyMap pair.
 - Produces: `ChebyMap::map_merge`. No new public API.
 
 - [ ] **Step 1: Confirm C's vtab claim before relying on it**
@@ -605,16 +667,15 @@ grep -n 'MapMerge = MapMerge' reference/starlink-ast/src/chebymap.c reference/st
 grep -c 'static int MapMerge' reference/starlink-ast/src/chebymap.c
 ```
 
-Expected: one hit, in `polymap.c`, and `0` for `chebymap.c`.
-If `chebymap.c` defines its own, port that instead of delegating and say so.
+Expected: one hit, in `polymap.c`, and `0` for `chebymap.c`. If `chebymap.c`
+defines its own, port that instead of delegating and say so.
 
 - [ ] **Step 2: Read PolyMap's `map_merge`**
 
 Run: `rg -n --color never 'fn map_merge' -A 40 crates/ast-core/src/mappings/polymap.rs | head -44`
 
 Note whether the body reads `PolyMap`-only fields. If it does, step 5 needs a
-`PolyMap` view of the ChebyMap; if it only uses `&dyn Mapping` methods, it can
-take `self` directly.
+`PolyMap` view; if it only uses `&dyn Mapping` methods, it can take `self`.
 
 - [ ] **Step 3: Write the failing test**
 
@@ -652,14 +713,14 @@ Add inside `chebymap.rs`'s existing `#[cfg(test)] mod tests`:
     }
 ```
 
-Adjust the `ChebyMap::new` call to the constructor's real signature, which step 2
-shows. The assertion is the part that matters.
+Adjust the `ChebyMap::new` call to the real signature, which step 2 shows. The
+assertion is the part that matters.
 
 - [ ] **Step 4: Run to verify it fails**
 
 Run: `cargo test -p ast-core --lib linear_chebymap_reduces -- --nocapture`
-Expected: FAIL — still a `ChebyMap`, because `ChebyMap` has no `map_merge` and
-takes the trait default, which only tries the neighbours.
+Expected: FAIL — still a `ChebyMap`, because it has no `map_merge` and takes the
+trait default, which only tries the neighbours.
 
 - [ ] **Step 5: Add the delegation**
 
@@ -702,22 +763,22 @@ Expected: PASS.
 
 Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)|left:"`
 
-Expected: `cheby_linear_lone_reduce` passes, its Task 2 `SERIAL_UNGATED` entry can
-go, and `neg_cheby_quadratic_no_reduce` still passes.
+Expected: `cheby_linear_lone_reduce` passes, its Task 3 `SERIAL_UNGATED` entry
+goes, and the control still passes.
 
 **If the linear replacement loses the ChebyMap's domain scaling** — the open
 question in `PLAN.md` §10.2 — one of the pair will disagree with C on values
 rather than class. Stop and settle it: build a two-point probe per
 `docs/issues/c-oracle-probe-recipe.md`, transform the same position through C's
 simplified ChebyMap and the port's, and compare. If C loses the scaling, do not
-mirror it — revert this task, record the finding in
-`docs/issues/c-library-quirks.md` and `PLAN.md` §10.2, and raise it upstream.
+mirror it — revert, record the finding in `docs/issues/c-library-quirks.md` and
+`PLAN.md` §10.2, and raise it upstream.
 
 - [ ] **Step 8: Update the checklist and PLAN.md, verify, commit**
 
-Change the `gap: PLAN.md §10.2` verdicts on `chebymap.md` rows 4 to 12 to
-`ported` with the `chebymap.rs` site, and replace the closing note with what
-step 7 established. Mark `PLAN.md` §10.2 accordingly.
+Change `chebymap.md` rows 4 to 12 from `gap: PLAN.md §10.2` to `ported` with the
+`chebymap.rs` site, and replace the closing note with step 7's finding. Mark
+`PLAN.md` §10.2 accordingly.
 
 ```bash
 cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
@@ -739,13 +800,13 @@ Expected: `0` failures, `194 passed`.
 ## Task 5: Add C's base `Simplify`, then move the 24 bodies
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`, `crates/ast-core/src/mappings/mod.rs:282`
+- Modify: `crates/ast-core/src/mappings/simplify.rs`, `crates/ast-core/src/mappings/mod.rs`
 - Modify: `crates/ast-core/src/mappings/<class>.rs` × 24, one per commit
 - Modify: `docs/audits/mapmerge/<class>.md` × 24
 
 **Interfaces:**
-- Consumes: Task 4's ChebyMap `map_merge`; Task 2's fixtures.
-- Produces: `pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping>` in `simplify.rs`; `Mapping::simplified()` becomes a provided method calling it. Each moved class ends with no `simplified()`.
+- Consumes: Task 4's ChebyMap `map_merge`; Task 3's fixtures.
+- Produces: `pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping>`; `Mapping::simplified` becomes a provided method calling it. Each moved class ends with no `simplified()`.
 
 ### Part A — the driver
 
@@ -755,7 +816,7 @@ Run: `sed -n '16860,16900p' reference/starlink-ast/src/mapping.c`
 
 Three things it does: calls
 `astMapMerge( map, 0, 1, &nmap, &map_list, &invert_list )`; breaks when
-`nmap > 1` **or** `modified < 0`; treats "no simplification" as returning a clone.
+`nmap > 1` **or** `modified < 0`; treats no simplification as returning a clone.
 The port's version must do all three.
 
 - [ ] **Step A2: Write the failing tests**
@@ -765,8 +826,8 @@ Append to `simplify.rs`'s `#[cfg(test)] mod tests`:
 ```rust
     /// C's base `Simplify` builds a one-element list and calls `astMapMerge`
     /// until nothing changes or the list grows past one
-    /// (`mapping.c:16871-16883`). A unit-factor ZoomMap is a UnitMap, and
-    /// `zoom_map_merge` says so, so the driver must reach that without any
+    /// (`mapping.c:16871-16883`). A unit-factor ZoomMap is a UnitMap and
+    /// `zoom_map_merge` says so, so the driver must reach that with no
     /// per-class `simplified()` in the way.
     #[test]
     fn base_simplify_reaches_a_classes_own_map_merge() {
@@ -811,9 +872,6 @@ Add to `simplify.rs` next to `default_map_merge`:
 /// `map_merge` repeatedly, stopping when the merge reports no change or the list
 /// grows past one element (`mapping.c:16871-16883`). Returns a clone when
 /// nothing reduced, as C does.
-///
-/// This is C's only route to such a class's reduction, so it is the only route
-/// this port should have.
 pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping> {
     let mut ctx = MergeCtx::from_single(this.clone_box());
     let mut simpler = false;
@@ -847,29 +905,15 @@ not change.
 - [ ] **Step A5: Run to verify it passes**
 
 Run: `cargo test -p ast-core --lib base_simplify -- --nocapture`
-Expected: PASS, both tests.
+Expected: PASS, both.
 
-- [ ] **Step A6: Make `simplified()` a provided method**
+- [ ] **Step A6: Give the trait method a default**
 
-Replace `mappings/mod.rs:282`'s `fn simplified(&self) -> AstResult<DynMapping>;`
-with:
+In `crates/ast-core/src/mappings/mod.rs`, add a body to the declaration Task 1
+step 3 wrote:
 
 ```rust
-    /// Reduce this Mapping without recording the result — C's `Simplify` vtab
-    /// slot.
-    ///
-    /// **Call [`Mapping::simplify`] instead.** That is C's `astSimplify`, and it
-    /// adds the two things this omits: the `IsSimple` short-circuit and the
-    /// record on the result (`mapping.c:24755`). C's slot has exactly one caller
-    /// in the entire library (`mapping.c:24772`), and so should this.
-    ///
-    /// The default is C's base implementation: build a one-element Mapping list
-    /// and hand it to this class's own [`Mapping::map_merge`] until nothing
-    /// changes (`mapping.c:16871-16883`). Override it only if the matching C
-    /// class overrides the slot — `CmpMap`, `FrameSet` and the nine Region
-    /// classes do, and the other 25 do not.
-    /// `crates/ast-core/tests/test_simplify_seams.rs` holds both rules.
-    fn simplified(&self) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
         simplify::base_simplify(self.as_dyn_mapping())
     }
 ```
@@ -894,8 +938,8 @@ cargo clippy -p ast-core --all-targets -- -D warnings
 
 Expected: `0`, the same counts as before this part, `194 passed`. Every class
 still overrides `simplified()`, so the default is unreachable and behaviour must
-be unchanged. **A change means the default is being reached, so some class was
-already missing an override.** Find it before continuing.
+be unchanged. **A change means some class was already missing an override.** Find
+it before continuing.
 
 ```bash
 git add crates/ast-core/src
@@ -903,35 +947,32 @@ git commit -m "simplify: add C's base Simplify as the simplified() default
 
 C's base Simplify (mapping.c:16752) builds a one-element Mapping list and calls
 astMapMerge until nothing changes or the list grows past one. Every class whose C
-counterpart does not override the slot inherits it, and it is C's only route to
-such a class's reduction.
+counterpart does not override the slot inherits it.
 
 No override is removed yet, so nothing is reached differently."
 ```
 
 ### Part B — the 24 moves
 
-Order by fixture coverage. **Group A** — `map_merge` already routes through a
-self-reduce helper, so the reduction is reached and deleting `simplified()` is a
-no-op the default absorbs: `dssmap`, `normmap`, `ratemap`, `selectormap`,
-`splinemap`, `switchmap`.
+Order by fixture coverage. **Group A**, whose `map_merge` already routes through a
+self-reduce helper so the move is a deletion the default absorbs: `dssmap`,
+`normmap`, `ratemap`, `selectormap`, `splinemap`, `switchmap`.
 
-**Group B** — small and heavily covered, `map_merge` present but not consulting
-`simplified()`: `unit`, `zoom`, `shift`, `perm`, `matrix`, `winmap`.
+**Group B**, small and heavily covered: `unit`, `zoom`, `shift`, `perm`, `matrix`,
+`winmap`.
 
-**Group C** — the conversion classes, larger bodies: `slamap`, `specmap`,
+**Group C**, the conversion classes with larger bodies: `slamap`, `specmap`,
 `timemap`, `lutmap`, `polymap`, `pcdmap`, `grismmap`, `sphmap`, `wcsmap`,
 `unitnormmap`, `mathmap`.
 
-**Group D** — recurses into encapsulated Mappings and is orientation-sensitive:
-`tranmap`.
+**Group D**, orientation-sensitive: `tranmap`.
 
 #### Archetype 1 — a reduction with no encapsulated Mapping (Groups B and C)
 
-`ZoomMap` is the worked example. Its `simplified()` today returns a `UnitMap` for
-a unit effective factor and a forward `ZoomMap` with the reciprocal otherwise.
-That is C's replace-with-simpler half of `zoommap.c`'s `MapMerge`, so it goes at
-the top of `zoom_map_merge`, before the run condensing:
+`ZoomMap` is the worked example. Its `simplified()` returns a `UnitMap` for a unit
+effective factor and a forward `ZoomMap` with the reciprocal otherwise. That is
+C's replace-with-simpler half of `zoommap.c`'s `MapMerge`, so it goes at the top
+of `zoom_map_merge`, before the run condensing:
 
 ```rust
 pub(crate) fn zoom_map_merge(
@@ -959,17 +1000,16 @@ pub(crate) fn zoom_map_merge(
 ```
 
 `8.0 * f64::EPSILON` is the comparison this function already uses for its run
-condensing. Reuse whatever the file already does rather than introducing a
-tolerance.
+condensing. Reuse what the file already does rather than introducing a tolerance.
 
 #### Archetype 2 — a reduction over an encapsulated Mapping (Groups A and D)
 
 `RateMap` is the worked example and is already in this shape: `map_merge` routes
 through `self_reduce_map_merge`, and `simplified()` orients the child to
-`invert_snapshot` before reducing it (`ratemap.c:710-715`). For these classes the
-move is a **deletion**: the default absorbs the call and the reduction is already
-reached. **The orientation handling must move with the body, not be left behind** —
-dropping it reproduces the §10.1 bug.
+`invert_snapshot` before reducing it (`ratemap.c:710-715`). The move is a
+**deletion**: the default absorbs the call and the reduction is already reached.
+**The orientation handling must move with the body** — dropping it reproduces the
+§10.1 bug.
 
 #### Steps, per class
 
@@ -998,9 +1038,9 @@ doing and must be explained.
 - [ ] **Step B3: Move the body**
 
 Archetype 1: insert the reduction at the top of `map_merge` or its helper, then
-delete the `simplified()` impl. Archetype 2: delete the `simplified()` impl only,
-after confirming `map_merge` reaches the same logic through
-`self_reduce_map_merge` or `try_self_reduce`.
+delete the `simplified()` impl. Archetype 2: delete the impl only, after
+confirming `map_merge` reaches the same logic through `self_reduce_map_merge` or
+`try_self_reduce`.
 
 - [ ] **Step B4: Compare against the baseline**
 
@@ -1048,9 +1088,8 @@ git add crates/ast-core/src/mappings/$c.rs docs/audits/mapmerge/$c.md
 git commit -m "simplify($c): move the reduction into map_merge
 
 C keeps every reduction for this class in MapMerge -- $c.c has no Simplify
-override -- and astSimplify reaches it only by nominating the Mapping in a list
-of one. The port had it in a simplified() override the nominate loop never
-consulted.
+override -- and the base Simplify reaches it by nominating the Mapping in a list
+of one. The port had it in a simplified() override.
 
 Corpus unchanged: <paste the summary line>."
 ```
@@ -1059,7 +1098,7 @@ Repeat B1 to B6 for each of the 24, in group order.
 
 ---
 
-## Task 6: Turn both gates on
+## Task 6: Turn the gate on and close the entries
 
 **Files:**
 - Modify: `crates/ast-core/tests/test_simplify_seams.rs`
@@ -1067,30 +1106,25 @@ Repeat B1 to B6 for each of the 24, in group order.
 
 **Interfaces:**
 - Consumes: Tasks 1 to 5 complete.
-- Produces: both seam tests passing without `#[ignore]`.
+- Produces: `only_c_simplify_classes_implement_simplified` passing without `#[ignore]`.
 
-- [ ] **Step 1: Remove both ignores and run**
+- [ ] **Step 1: Remove the ignore and run**
 
 ```bash
-# delete the two #[ignore = …] attributes, then:
+# delete the #[ignore = …] attribute, then:
 cargo test -p ast-core --test test_simplify_seams -- --nocapture
 ```
 
-Expected: PASS, both.
+Expected: PASS.
 
-If `only_c_simplify_classes_implement_simplified` still lists classes, Task 5 has
-not reached them — finish them rather than adding them to the keeper list, which
-is derived from C and is not a place to record incomplete work.
-
-If `simplified_has_one_caller` still lists files, each is either a Task 1
-conversion that was missed or a justified exception. An exception goes in
-`SIMPLIFIED_CALLERS` **with the C line that justifies it in the comment**; a
-missed conversion gets converted.
+If it still lists classes, Task 5 has not reached them — finish them rather than
+adding them to the keeper list, which is derived from C and is not a place to
+record incomplete work.
 
 - [ ] **Step 2: Re-measure §10.3 against the current pin**
 
-`PLAN.md` §10.3's nomination counts were taken before upstream fixed
-`cmpmap.c` (`4f2fc0ed`) and before Task 1, so both sides have moved.
+§10.3's counts were taken before upstream fixed `cmpmap.c` (`4f2fc0ed`) and
+before Task 1, so both sides have moved.
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
@@ -1104,23 +1138,24 @@ for f in /tmp/c.txt /tmp/p.txt; do
 done
 ```
 
-Rewrite §10.3's table with the new numbers and say which pin they were taken at.
-If the counts now agree, §10.3 is closed by this work — say so and delete its
+Rewrite §10.3's table with the new numbers and the pin they were taken at. If the
+counts now agree, §10.3 is closed by this work — say so and delete its
 `SERIAL_UNGATED` and `ISSIMP_DISAGREEMENTS` entries.
 
 - [ ] **Step 3: Close the PLAN.md entries**
 
 Mark §10.16 `FIXED` with what the work established. Re-check §10.1 and §10.7,
-which both cited the seam as their cause, and §10.11, whose four unreached
-`TranMap` cases may now be reachable.
+which both cited the seam, and §10.11, whose four unreached `TranMap` cases may
+now be reachable.
 
 - [ ] **Step 4: Mark the spec done**
 
 Change `**Status:** proposed, not started.` to
 `**Status:** implemented, <date>.` and add a closing section on what the work
-found that the spec did not predict — starting with the call-site asymmetry, 65
-against 8, which is the finding the spec was pointing at and an earlier draft of
-this plan mis-stated as a vtab-structure question.
+found that the spec did not predict. Two things belong there: the call-site
+asymmetry, 155 against 36, which is what the spec was pointing at; and that the
+single-caller rule turned out to be enforceable by the compiler through a
+capability token, which two earlier drafts of the plan said it was not.
 
 - [ ] **Step 5: Full verification and commit**
 
@@ -1134,12 +1169,11 @@ cargo doc -p ast-core --no-deps 2>&1 | grep -cE "^error"
 git add crates/ast-core PLAN.md docs
 git commit -m "test: require the simplify seams to match C's
 
-One way to simplify a Mapping, as C has. simplified() has one legitimate caller
-and eleven implementations -- the eleven whose C counterpart overrides the
-Simplify vtab slot -- and every other class keeps its reduction in map_merge,
-where astSimplify reaches it by nominating the Mapping in a list of one.
-
-Both rules are enforced from the C source, so the seams cannot drift back."
+One way to simplify a Mapping, as C has, and the compiler enforces it: the
+per-class seam takes a token only the entry point can build. Eleven classes
+implement that seam -- the eleven whose C counterpart overrides the Simplify vtab
+slot -- and every other class keeps its reduction in map_merge, where the base
+Simplify reaches it by nominating the Mapping in a list of one."
 ```
 
 Expected: `0` failures, `194 passed`, no clippy warnings either way, `0` doc
@@ -1149,41 +1183,44 @@ errors.
 
 ## Self-review
 
-**Spec coverage.** The spec's five steps map to Tasks 2 (fixtures first), 3 (the
+**Spec coverage.** The spec's five steps map to Tasks 3 (fixtures first), 2 (the
 sweep, as an enforced classification), 5A (the driver), 5B (the moves), and 6 (the
-deletion). Task 1 is new and is the spec's actual point: it says the three seams
-"lead to confusion", and the confusion is that 65 sites call the raw virtual and 8
-call the entry point. An earlier draft of this plan read the spec as a
-vtab-structure question and put Task 1 nowhere; that was wrong, and the correction
-is recorded in the spec's closing section per Task 6 step 4. Task 4 is also new:
-`chebymap` has no `map_merge`, so it cannot participate in Task 5 until it does.
+deletion). Task 1 is the spec's actual point — it says the three seams "lead to
+confusion", and the confusion is that 155 sites call the raw virtual against 36
+that call the entry point. Task 4 exists because `chebymap` has no `map_merge` and
+so cannot participate in Task 5 until it does.
 
-All four spec risks appear: blast radius (Task 1 step 2 and Task 5 step B2's
+All four spec risks appear: blast radius (Task 1 step 1 and Task 5 step B2's
 baselines, plus one class per commit), `IsSimp` counts moving both ways (a Global
 Constraint and every comparison step), Region `Simplify` being real (the keeper
-table and Task 3's gate), and the orientation-sensitive classes (Group D and
-Archetype 2's warning).
+table and Task 2), and the orientation-sensitive classes (Group D and Archetype 2).
 
-**Placeholder scan.** Task 1 step 3 gives the transformation and the judgement to
-apply rather than 57 diffs; the judgement is the content. Task 2 steps 3 and 5
-give one worked class because steps 1 and 2 determine which classes need one at
-all. Task 5B gives two archetypes with full code and assigns every class to one.
-Task 4 steps 5 carries two branches because step 2 reads which applies; both are
-written out.
+**Two corrections carried from earlier drafts.** The first draft argued from vtab
+shape and had no call-site task at all. The second added one but claimed Rust
+could not enforce the single-caller rule, so it proposed converting 65 sites by
+hand and testing for regressions with a grep. Both are wrong: the count is 155 not
+65, and a capability token makes the bypass a compile error, which turns the
+conversion from a careful sweep into a compiler-generated worklist. Task 6 step 4
+records both corrections in the spec.
 
-**Type consistency.** `base_simplify(this: &dyn Mapping) -> AstResult<DynMapping>`
-is used with that signature in Task 5 steps A2, A4 and A6. `MergeCtx::from_single`,
-`is_frozen`, `entry`, `len`, `set_pair_single` appear in A4 and Archetype 1, with
-A4 instructing substitution if the real API differs. `trace::map_merge` and
-`trace::map_merge_result` are the signatures already in `simplify.rs`.
-`Mapping::simplify(x)` is used in call position throughout, matching the inherent
-method at `mappings/mod.rs:578`. `C_SIMPLIFY_CLASSES` and `SIMPLIFIED_CALLERS`
-both hold paths relative to `crates/ast-core/src`, which is what `rust_files()`
-computes.
+**Placeholder scan.** Task 1 steps 5 and 6 give the transformation and the
+judgement rather than 155 diffs; the compiler enumerates the sites, so the list is
+generated rather than deferred. Task 3 steps 3 and 5 give one worked class because
+steps 1 and 2 determine which classes need one. Task 5B gives two archetypes with
+full code and assigns every class to one. Task 4 step 5 carries two branches
+because step 2 reads which applies; both are written out.
 
-**Two things I could not close.** Task 5B cannot state each class's expected
-corpus movement in advance, because measuring it is the task; step B2's baseline
-capture is the substitute. And `simplified()` cannot be made crate-private —
-Rust has no way to make a trait method less public than its trait — so the
-single-caller rule is a source-reading test rather than a compiler error, which
-is weaker than it should be and is the best the language allows.
+**Type consistency.** `ViaSimplify` is introduced in Task 1 step 2, used in the
+signature in step 3, in the 36 impls in step 5, and named in Task 2's `contains`
+pattern and Task 6's commit message — all as `fn simplified(&self, _gate: ViaSimplify)`.
+`base_simplify(this: &dyn Mapping) -> AstResult<DynMapping>` is consistent across
+Task 5 steps A2, A4 and A6. `MergeCtx::from_single`, `is_frozen`, `entry`, `len`
+and `set_pair_single` appear in A4 and Archetype 1, with A4 instructing
+substitution if the real API differs. `Mapping::simplify(x)` is used in call
+position throughout, matching the inherent method that Task 1 moves to
+`simplify_entry`.
+
+**One thing I could not close.** Task 5B cannot state each class's expected corpus
+movement in advance, because measuring it is the task. Step B2's baseline capture
+is the substitute: the numbers are recorded before the file is touched, so
+"identical to the baseline" is checkable without my knowing what the baseline is.

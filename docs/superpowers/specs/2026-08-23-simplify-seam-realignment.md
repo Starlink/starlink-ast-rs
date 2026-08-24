@@ -65,9 +65,35 @@ The port's `simplified()` has **65 call sites against `simplify()`'s 8**, across
 default choice and the real entry point is the exception, so 65 sites each decide
 for themselves whether a reduction is recorded.
 
+Counting the tests and examples too, it is **155 against 36**.
+
 That is the confusion this document is about, and it is worse than a naming
-problem: it is why the port emits a different set of `IsSimp` cards from C, and
-why no stamping rule has ever aligned them (`PLAN.md` §10.3).
+problem. Bypassing the gate costs both of the things `astSimplify_` adds:
+
+- **the record is not set**, so a reduction the port performs carries no `IsSimp`
+  card where C's would;
+- **the short-circuit does not fire**, so the port reduces a Mapping C returns
+  untouched — which is why it makes 149 nominations to C's 96 on `cap_specmap_02`
+  while performing *fewer* productive merges.
+
+Both show up in the card counts, in opposite directions, which is why no stamping
+rule has ever aligned them (`PLAN.md` §10.3) and why seven attempts at that entry
+have been measured and reverted.
+
+**And the rule is enforceable by the compiler.** `simplified()` cannot be made
+crate-private — it is a method on a public trait — but it can be made uncallable
+by giving it a parameter only one module can construct:
+
+```rust
+pub struct ViaSimplify(());
+```
+
+A `pub` struct with a private field is nameable everywhere and constructible only
+in its defining module and that module's descendants. Put it in a leaf module
+holding nothing but `simplify()`, and `simplified()` has exactly one possible
+caller — the compile-time equivalent of `mapping.c:24772`. The 11 legitimate
+overrides are unaffected: they implement the method, which needs only to name the
+type.
 
 ## How this happened
 
