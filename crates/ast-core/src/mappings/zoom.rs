@@ -10,7 +10,7 @@ use super::helpers::{ast_equal, is_bad};
 use super::matrix::MatrixMap;
 use super::unit::UnitMap;
 use super::winmap::{compose_linear, extract_linear_params};
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
 /// A mapping that scales all input coordinates by a constant factor.
@@ -118,28 +118,6 @@ impl Mapping for ZoomMap {
             }
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-        let effective_factor = if self.inverted {
-            1.0 / self.factor
-        } else {
-            self.factor
-        };
-        if effective_factor == 1.0 {
-            Ok(Box::new(UnitMap::new(self.ncoord)))
-        } else {
-            Ok(Box::new(ZoomMap {
-                ncoord: self.ncoord,
-                factor: effective_factor,
-                inverted: false,
-                simplified: SimplifiedRecord::default(),
-                allow_simplify: false,
-            }))
-        }
     }
 
     fn map_merge(
