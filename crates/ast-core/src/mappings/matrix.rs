@@ -18,11 +18,8 @@ use super::perm::PermMap;
 use super::unit::UnitMap;
 use super::winmap::WinMap;
 use super::zoom::ZoomMap;
-use super::{DynMapping, Mapping, ViaSimplify};
+use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
-
-/// Tolerance used to identify identity matrices.
-const IDENTITY_TOL: f64 = 1e-15;
 
 /// Storage form of a matrix, used to select optimized transform paths.
 ///
@@ -428,23 +425,6 @@ impl MatrixMap {
         forward != self.inverted
     }
 
-    /// Returns `true` if this matrix is the identity (within tolerance).
-    fn is_identity(&self) -> bool {
-        let n = self.matrix.nrows();
-        if n != self.matrix.ncols() {
-            return false;
-        }
-        for i in 0..n {
-            for j in 0..n {
-                let expected = if i == j { 1.0 } else { 0.0 };
-                if (self.matrix[[i, j]] - expected).abs() > IDENTITY_TOL {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
     /// Apply the matrix `m` (shape `nout × nin`) to each point in `pts`
     /// and write results into `out`.
     ///
@@ -668,52 +648,6 @@ impl Mapping for MatrixMap {
             }
         }
         Ok(())
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
-        }
-
-        let nrows = self.matrix.nrows();
-        let ncols = self.matrix.ncols();
-
-        // Only square matrices can reduce to simpler types.
-        if nrows == ncols {
-            if self.is_identity() {
-                return Ok(Box::new(UnitMap::new(nrows)));
-            }
-            // Check for diagonal matrix with uniform scale → ZoomMap.
-            if is_diagonal(&self.matrix) {
-                let first = self.matrix[[0, 0]];
-                if (1..nrows).all(|i| ast_equal(self.matrix[[i, i]], first)) {
-                    if ast_equal(first, 1.0) {
-                        return Ok(Box::new(UnitMap::new(nrows)));
-                    }
-                    if let Ok(mut zm) = ZoomMap::new(nrows, first) {
-                        if self.inverted {
-                            zm.invert();
-                        }
-                        return Ok(Box::new(zm));
-                    }
-                }
-            }
-        }
-
-        // Full-form matrix whose off-diagonals are all zero re-stores as
-        // Diagonal. The numeric matrix is unchanged; only `form` / `inv_form`
-        // flip. Mirrors C matrixmap.c MapMerge "compress storage" pass.
-        if matches!(self.form, MatrixForm::Full) && nrows == ncols && is_diagonal(&self.matrix) {
-            let inv_is_diagonal = self.inverse.as_ref().is_none_or(is_diagonal);
-            if inv_is_diagonal {
-                let mut out = self.clone();
-                out.form = MatrixForm::Diagonal;
-                out.inv_form = MatrixForm::Diagonal;
-                return Ok(Box::new(out));
-            }
-        }
-
-        Ok(Box::new(self.clone()))
     }
 
     fn try_merge(

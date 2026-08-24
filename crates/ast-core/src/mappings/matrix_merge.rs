@@ -7,7 +7,9 @@
 //! 1. **Replace-with-simpler** — a square UNIT matrix becomes a `UnitMap`; a
 //!    square DIAGONAL matrix with equal diagonal terms becomes a `ZoomMap`; a
 //!    FULL square matrix whose off-diagonal terms are all exactly zero becomes
-//!    a DIAGONAL `MatrixMap` (C matrixmap.c:1846-1906).
+//!    a DIAGONAL `MatrixMap` (C matrixmap.c:1857-1929). This is the only
+//!    reduction a lone MatrixMap can undergo; C gives MatrixMap no `Simplify`
+//!    vtab slot, so a MatrixMap nominated on its own arrives here too.
 //! 2. **Direct merge** with a mergeable neighbour: another MatrixMap
 //!    (`MatMat`), a ZoomMap (`MatZoom`), an invertible PermMap (`MatPerm`), a
 //!    UnitMap, or — when the MatrixMap is diagonal — a WinMap (`MatWin2`).
@@ -952,7 +954,7 @@ fn clone_pair(ctx: &MergeCtx, i1: usize) -> [(DynMapping, bool, bool); 2] {
     [(a.0.clone_box(), a.1, a.2), (b.0.clone_box(), b.1, b.2)]
 }
 
-/// Step 1: C matrixmap.c:1846-1906 — try to replace the MatrixMap with a
+/// Step 1: C matrixmap.c:1857-1929 — try to replace the MatrixMap with a
 /// simpler Mapping without reference to its neighbours. Returns the
 /// replacement (in forward state) or `None`.
 fn replace_with_simpler(
@@ -996,7 +998,7 @@ fn replace_with_simpler(
     // FULL square matrix whose off-diagonal terms are all *exactly* zero →
     // DIAGONAL MatrixMap built from the forward diagonal. C uses an exact
     // `!= 0.0` test (not `astEQUAL`) and constructs the new MatrixMap from
-    // `mm->f_matrix` with Invert=0 (matrixmap.c:1885-1905).
+    // `mm->f_matrix` with Invert=0 (matrixmap.c:1896-1918).
     if mm.is_full_form() && nin == nout {
         let n = fwd.nrows();
         let mut off_diag_zero = true;

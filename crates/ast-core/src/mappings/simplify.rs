@@ -4907,15 +4907,18 @@ mod tests {
         use crate::mappings::MatrixMap;
         use ndarray::array;
 
-        // An inverted uniform diagonal should reduce to an inverted ZoomMap.
+        // An inverted uniform diagonal reduces to a forward ZoomMap whose
+        // factor is read off the inverse matrix (`matrixmap.c:1885-1892`,
+        // which clears the invert flag on the replacement at :1925).
         let m = array![[4.0_f64, 0.0], [0.0, 4.0]];
         let mut mm = MatrixMap::new(m).unwrap();
         mm.invert();
         let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<ZoomMap>());
-        assert!(result.is_inverted());
+        assert!(!result.is_inverted());
+        assert!((result.as_any().downcast_ref::<ZoomMap>().unwrap().factor() - 0.25).abs() < 1e-12);
 
-        // Forward transform of inverted ZoomMap(4) = divide by 4.
+        // Either way the forward transform divides by 4.
         let pts = PointSet::from_rows([[8.0, 12.0]]);
         let out = result.transform(&pts, true).unwrap();
         assert!((out.point(0)[0] - 2.0).abs() < 1e-12);
