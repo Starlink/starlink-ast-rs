@@ -52,3 +52,19 @@ cannot arrive without one.
 `test_mapmerge_audit.rs` enforces all of this.
 A class in the audit universe with no checklist fails, and so does a row whose
 verdict is outside the set.
+
+## Which seam a reduction belongs in
+
+C has one public entry, `astSimplify`, and one private dispatch behind it — the
+`Simplify` vtab slot, whose only caller is `mapping.c:24772`. Eleven classes
+override that slot. For every other class **all** reduction lives in `MapMerge`,
+and the base `Simplify` reaches it by nominating the Mapping in a list of one
+(`mapping.c:16871-16883`).
+
+So a row whose Rust site is a `simplified()` body, in a class whose C counterpart
+does not override the slot, is not `ported`: it is in a seam C does not have.
+`crates/ast-core/tests/test_simplify_seams.rs` holds the list of 11.
+
+The companion rule — that nothing but `simplify()` reaches the seam — is enforced
+by the compiler, not by a checklist: `simplified()` takes a `ViaSimplify` and
+only `mappings::simplify_entry` can construct one.
