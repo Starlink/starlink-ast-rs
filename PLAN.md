@@ -1110,12 +1110,20 @@ Mappings. So C emitted 4 cards on `switchmap_invert_normalize` and the port
 emitted 1. The trace made this readable directly: three `SIMPLIFY-ENTER ZoomMap`
 entries plus the top-level SwitchMap is exactly C's 4.
 
-`SwitchMap::simplified` now stamps each child, as `RateMap` and `TranMap` already
+Both child paths now stamp what they get back, as `RateMap` and `TranMap` already
 did. All four fixtures — `switchmap_invert_normalize`,
 `switchmap_internal_simplify`, `switchmap_fwdonly_simplify`,
 `switchmap_inv_invonly` — pass byte-exact, and cause (A) is retired from both
 pinned lists in `test_simplify_regression.rs`. Simplify serialisation failures
 drop from 11 to 7.
+
+§10.16 then moved the whole self-simplification into `SwitchMap::map_merge`, where
+C keeps it, and gave it C's either/or after all: the third revert had selected the
+arms on the SwitchMap's own `Invert` flag, but `flatten` resets every leaf to
+forward and carries the inversion in the merge list, so the selector is
+`ctx.entry(where_).1 != self.is_inverted()`. The corpus is unchanged by that move,
+and the top-level SwitchMap normalisation the public entry point used to perform
+is now dead code and removed.
 
 ### 10.11 TranMap's `map_merge` reaches one of C's four self-simplification cases
 

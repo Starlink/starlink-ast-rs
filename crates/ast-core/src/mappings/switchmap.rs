@@ -7,7 +7,7 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::is_bad;
 
-use super::{DynMapping, Mapping, UnitMap, ViaSimplify};
+use super::{DynMapping, Mapping, UnitMap};
 use crate::mappings::SimplifiedRecord;
 
 /// Set a Mapping's Invert flag to `want` (invert it iff its current state
@@ -228,9 +228,9 @@ impl SwitchMap {
     /// each route Mapping.
     ///
     /// Returns `None` if `self` is not inverted (no normalisation needed).
-    /// This corresponds to the inversion-fold path in the C library's
-    /// `SwitchMap` `MapMerge` function and is used by the public
-    /// `simplify()` entry point as a final top-level cleanup.
+    /// This is the inversion-fold path of C `switchmap.c::MapMerge`
+    /// (`switchmap.c:1057-1076`), reached from [`SwitchMap::map_merge`] when the
+    /// SwitchMap is applied in the inverse direction.
     pub(crate) fn normalize_inverted(&self) -> AstResult<Option<Self>> {
         if !self.inverted {
             return Ok(None);
@@ -324,6 +324,64 @@ impl SwitchMap {
             m.invert();
         }
         m
+    }
+
+    /// Simplify each encapsulated Mapping and rebuild the SwitchMap around the
+    /// results (`switchmap.c:1077-1100`). The returned flag is C's `simp`: it
+    /// reports whether any child's simplification returned a different Mapping,
+    /// and is false alongside a clone of `self` when none did.
+    ///
+    /// The flag is what decides a rebuild, rather than a comparison of the two
+    /// SwitchMaps, because C compares child pointers (`sfsmap != map->fsmap`)
+    /// and a rebuilt SwitchMap can be behaviourally equal to the original: an
+    /// inverted child replaced by its forward equal transforms identically.
+    ///
+    /// When a child's simplification changes its `is_inverted()` flag (e.g.
+    /// `ZoomMap(2, inverted)` → `ZoomMap(0.5, forward)`), the recorded
+    /// `fsinv` / `isinv` / `route_inv` is re-derived so that the effective
+    /// application direction (`recorded_inv != is_inverted`) is preserved.
+    /// Otherwise the SwitchMap would silently flip the child's direction.
+    fn reduced_children(&self) -> AstResult<(SwitchMap, bool)> {
+        let mut changed = false;
+
+        let (simp_fs, new_fsinv) =
+            simplify_child_with_invert(self.fsmap.as_ref(), self.fsinv, &mut changed)?;
+
+        let (simp_is, new_isinv) =
+            simplify_child_with_invert(self.ismap.as_ref(), self.isinv, &mut changed)?;
+
+        let mut simp_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
+        let mut simp_route_inv: Vec<bool> = Vec::with_capacity(self.route_maps.len());
+        for (rm, &recorded_inv) in self.route_maps.iter().zip(self.route_inv.iter()) {
+            let mut s = rm.simplify()?;
+            s.set_has_been_simplified(true);
+            let effective_inv = recorded_inv != rm.is_inverted();
+            let new_inv = effective_inv != s.is_inverted();
+            if !s.equal(rm.as_ref()) || s.is_inverted() != rm.is_inverted() {
+                changed = true;
+            }
+            simp_routes.push(s);
+            simp_route_inv.push(new_inv);
+        }
+
+        if !changed {
+            return Ok((self.clone(), false));
+        }
+
+        let new_fs = simp_fs.or_else(|| self.fsmap.clone());
+        let new_is = simp_is.or_else(|| self.ismap.clone());
+        let mut new_sw = SwitchMap::from_parts(
+            new_fs,
+            new_is,
+            simp_routes,
+            new_fsinv,
+            new_isinv,
+            simp_route_inv,
+        )?;
+        if self.inverted {
+            new_sw.invert();
+        }
+        Ok((new_sw, true))
     }
 }
 
@@ -573,74 +631,44 @@ impl Mapping for SwitchMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C's body is an either/or (switchmap.c:1052-1100): an inverted
-        // SwitchMap is replaced by the equal forward form and *nothing else
-        // happens on this pass*, and only a forward one has its encapsulated
-        // Mappings simplified. The normalisation reports a change, so the
-        // nominate loop comes back and does the children over a different
-        // object. Tracing C on switchmap_invert_normalize shows the same
-        // SwitchMap nominated at `inv=1`, then again at `inv=0`, then a third
-        // time once the children had been reduced.
-        let reduced = (self as &dyn Mapping).simplify().ok();
-        super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
-    }
-
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
-        if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
+        // C cancels the SwitchMap against a neighbour first
+        // (switchmap.c:992-1051) and attempts the self-reduction only when that
+        // made no change (:1052-1056). The order matters: an effectively
+        // inverted SwitchMap normalised first would no longer carry the opposite
+        // invert flag its partner cancels against.
+        if let Some(modified) = super::simplify::default_map_merge(ctx, where_, series) {
+            return Some(modified);
         }
 
-        // Recursively simplify each child Mapping. Inversion is preserved
-        // in self.inverted: the merge loop's flatten step extracts the
-        // invert flag into its bool tracker, and a top-level inverted
-        // SwitchMap is normalised by the simplify driver after merge_loop.
-        //
-        // When a child's simplification changes its is_inverted() flag
-        // (e.g. ZoomMap(2, inverted) → ZoomMap(0.5, forward)), the
-        // recorded fsinv/isinv/route_inv must be re-derived so that the
-        // effective application direction (`recorded_inv != is_inverted`)
-        // is preserved. Otherwise the SwitchMap would silently flip the
-        // child's effective direction.
-        let mut changed = false;
-
-        let (simp_fs, new_fsinv) =
-            simplify_child_with_invert(self.fsmap.as_ref(), self.fsinv, &mut changed)?;
-
-        let (simp_is, new_isinv) =
-            simplify_child_with_invert(self.ismap.as_ref(), self.isinv, &mut changed)?;
-
-        let mut simp_routes: Vec<DynMapping> = Vec::with_capacity(self.route_maps.len());
-        let mut simp_route_inv: Vec<bool> = Vec::with_capacity(self.route_maps.len());
-        for (rm, &recorded_inv) in self.route_maps.iter().zip(self.route_inv.iter()) {
-            let mut s = rm.simplify()?;
-            s.set_has_been_simplified(true);
-            let effective_inv = recorded_inv != rm.is_inverted();
-            let new_inv = effective_inv != s.is_inverted();
-            if !s.equal(rm.as_ref()) || s.is_inverted() != rm.is_inverted() {
-                changed = true;
+        // The self-reduction is an either/or keyed on the *list's* invert flag
+        // rather than the SwitchMap's own (:1057-1100): an effectively inverted
+        // SwitchMap is replaced by the equal forward form, applied forward, and
+        // nothing else happens on this pass; only a forward one has its
+        // encapsulated Mappings simplified. Reporting the change brings the
+        // nominate loop back to do the children over the new object. Tracing C
+        // on switchmap_invert_normalize shows exactly that: the same SwitchMap
+        // nominated at `inv=1`, then again at `inv=0`, then a third time once
+        // the children had been reduced.
+        if ctx.entry(where_).1 != self.is_inverted() {
+            let mut inverted = self.clone();
+            if !inverted.is_inverted() {
+                inverted.invert();
             }
-            simp_routes.push(s);
-            simp_route_inv.push(new_inv);
+            let normalized = inverted.normalize_inverted().ok()??;
+            ctx.set_pair_single(where_, (Box::new(normalized), false, false));
+            return Some(where_);
         }
 
+        let (reduced, changed) = self.reduced_children().ok()?;
         if changed {
-            let new_fs = simp_fs.or_else(|| self.fsmap.clone());
-            let new_is = simp_is.or_else(|| self.ismap.clone());
-            let mut new_sw = SwitchMap::from_parts(
-                new_fs,
-                new_is,
-                simp_routes,
-                new_fsinv,
-                new_isinv,
-                simp_route_inv,
-            )?;
-            if self.inverted {
-                new_sw.invert();
-            }
-            Ok(Box::new(new_sw))
-        } else {
-            Ok(Box::new(self.clone()))
+            let (eff, orig) = {
+                let e = ctx.entry(where_);
+                (e.1, e.2)
+            };
+            ctx.set_pair_single(where_, (Box::new(reduced), eff, orig));
+            return Some(where_);
         }
+        None
     }
 
     fn try_merge(

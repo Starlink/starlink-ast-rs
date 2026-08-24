@@ -13,7 +13,7 @@
 //! **Do not add anything else to this file.** A second function here could
 //! construct a token, and the guarantee is that nothing but `simplify()` can.
 
-use super::{AstResult, CmpMap, DynMapping, Mapping, SwitchMap, simplify};
+use super::{AstResult, CmpMap, DynMapping, Mapping, simplify};
 
 /// Proof that a per-class reduction was reached through
 /// `<dyn Mapping>::simplify`, and therefore through the `IsSimple` gate.
@@ -51,29 +51,11 @@ impl dyn Mapping {
             .is_some_and(|c| c.restricted_simplify());
 
         let mut result = self.simplified(ViaSimplify(()))?;
-        // Top-level cleanup: an inverted SwitchMap is canonicalised by
-        // folding its inversion into the children (swapping fwd/inv
-        // selectors and inverting each route). This matches the C
-        // library's MapMerge inversion-fold path and is intentionally
-        // not done by SwitchMap::simplified(), so that flatten() inside
-        // a CmpMap can extract inversion via its bool tracker (which is
-        // what enables the inverse-cancel pattern between two paired
-        // SwitchMaps to merge).
-        // Explicit `result.as_ref()` (rather than `result.as_any()`) is
-        // needed: calling `as_any` directly on a `Box<dyn Mapping>`
-        // would resolve via auto-deref but the resulting `&dyn Any`
-        // points at the Box itself, not the inner mapping. `as_ref`
-        // gives us `&dyn Mapping`, on which `as_any` returns the inner
-        // type-erased reference that downcast_ref can match.
-        let r: &dyn Mapping = result.as_ref();
-        if let Some(sw) = r.as_any().downcast_ref::<SwitchMap>() {
-            if let Some(normalized) = sw.normalize_inverted()? {
-                result = Box::new(normalized);
-                result = result.simplified(ViaSimplify(()))?;
-            }
-        }
-        // Same as_any caveat as the SwitchMap block above: must go
-        // through `as_mut` on the Box first to reach the inner dyn.
+        // `as_any` cannot be called on the `Box<dyn Mapping>` directly: it
+        // would resolve via auto-deref but the resulting `&dyn Any` points at
+        // the Box, not the inner mapping. Going through `as_mut` first gives a
+        // `&mut dyn Mapping`, on which `as_any_mut` returns the inner
+        // type-erased reference that `downcast_mut` can match.
         let rm: &mut dyn Mapping = result.as_mut();
         if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
             // Drop redundant InvA/InvB flags on a parallel CmpMap whose
