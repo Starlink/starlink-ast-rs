@@ -140,7 +140,7 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 |---|---|---|---|---|
 | 43 | Check the inherited status and bail out | cmpmap.c:3466 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3471-3491 | simplify.rs:126-131,3372-3380 | ported |
-| 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3493-3499 | simplify.rs:131-132 | ported: the stack's own length is the depth, so there is no separate counter |
+| 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3493-3499 | simplify.rs:131-132 | ported |
 | 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3501-3502 | simplify.rs:3557-3559 | ported |
 | 47 | Initialise the Mapping-pointer and Invert-flag arrays | cmpmap.c:3504-3508 | -- | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialise |
 | 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3510-3516 | simplify.rs:3579,3598 | ported |
