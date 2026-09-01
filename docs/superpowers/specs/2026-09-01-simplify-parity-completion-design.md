@@ -106,9 +106,11 @@ Scope: the residual citation rot of `PLAN.md` §9.5 for every class no earlier c
 
 Last by necessity: it records the state the other clusters leave behind.
 
-### 2.7 Cluster 4 — CmpFrame as a Mapping
+### 2.7 Cluster 4 — a bare Frame where a Mapping is expected
 
 Scope: one failing fixture, and a decision.
+
+`PLAN.md` §9.6 is re-framed by this cluster: it reads as a Frame-wide gap and is in fact a bare-Frame-in-a-`Map<n>`-slot gap.
 
 This cluster is deliberately last and is gated on a question to the AST maintainers, because unlike every other cluster it is not driven by an existing fixture.
 Its content is set out in §4.
@@ -163,27 +165,53 @@ In C, every Frame is a Mapping.
 C's own documentation for that function states the purpose: the result "will normally be a UnitMap but may not be if the CmpFrame contains any Regions".
 
 The useful half of Frame-as-Mapping is therefore Region-as-Mapping, and the port already has it.
-`Region: Frame + Mapping`, so a Region is accepted anywhere a Mapping is expected, and `serial/mod.rs:220-228` already reads all nine Region classes from a `Map<n>` slot.
-The useful case round-trips today.
 
 The design position is consequently that **Region is the only Frame that is a Mapping in this port**, which is what the design spec's sibling-trait separation already says.
-`PLAN.md` §9.6 is re-framed: it reads as a Frame-wide gap and is in fact a bare-Frame-in-a-`Map<n>`-slot gap, for which no use case is known.
 No reversal of the sibling-trait decision is proposed, and the earlier proposal to implement `Mapping` for seven Frame classes is withdrawn.
 
-### 4.1 What cluster 4 delivers
+### 4.1 A Region is already accepted as both, and that is settled
 
-One case is not hypothetical: a `CmpFrame` containing a Region, placed in a `Map<n>` slot.
-That is the useful thing wrapped in a class the reader turns away, and a C program can write such a dump today — verified with an oracle probe, which produced a FrameSet whose `Map2` slot holds `Begin CmpFrame`, accepted by `astAddFrame` and dumped without error, while the Rust reader rejects it with `unknown Mapping class: CmpFrame`.
+A Region is a Frame and a Mapping in this port, so it is accepted as a component of a `CmpFrame` and as a component of a `CmpMap`.
+That is not a proposal and not open: both nestings are read, written and byte-compared today.
+`frame_from_node` carries all nine Region arms and `mapping_from_node_inner` carries the same nine, and the corpus exercises both — fifteen fixtures nest a Region inside a `CmpFrame`, and thirty-five nest one inside a `CmpMap`.
+Nothing in this plan changes that, and cluster 4 cannot regress it, because those fifty fixtures are ordinary members of the byte-compared corpus.
 
-Cluster 4 therefore delivers a committed failing fixture built from that dump, and nothing else, so that the maintainers have a concrete artifact when asked whether any legitimate workflow produces such a FrameSet.
+### 4.2 The open question is a bare Frame, in one direction only
 
-If the answer is that one does, the work is `impl Mapping for CmpFrame` alone: `Transform` per `cmpframe.c:9975-10018`, using each Region component directly and `UnitMap::new(naxes)` for a non-Region component, and `Simplify` per `cmpframe.c:8963`.
-Substituting a `UnitMap` is faithful rather than a shortcut, because it is the same object C constructs at `frame.c:11806`, and the downcast needed to distinguish the cases is already in the tree — `regions::any_as_region` (`regions/mod.rs:1183`) operates on a `&dyn Any`, and `regions/data.rs:145` already applies it to a Frame.
-One further both-traits class alongside `FrameSet` and the nine Regions sits inside the existing design rather than against it, so even that outcome needs no spec amendment.
+Two symmetrical-looking questions exist, and only one of them is open.
 
-If the answer is that no workflow produces one, the fixture stays as a documented, named exclusion with its reason, and `PLAN.md` §9.6 closes on that basis.
+| Construct | Components | C | This port |
+|---|---|---|---|
+| `CmpFrame` holding Frames | Frames | accepted | accepted |
+| `CmpFrame` holding a Region | Frames — a Region is a Frame | accepted | accepted, 15 fixtures |
+| `CmpMap` holding a Region | Mappings — a Region is a Mapping | accepted | accepted, 35 fixtures |
+| `CmpFrame` holding a general Mapping | — | **rejected** | rejected |
+| `CmpMap` holding a bare Frame | Mappings — a bare Frame is a Mapping in C only | accepted | **rejected — the one gap** |
 
-### 4.2 One fact recorded for fairness
+**A CmpFrame holding a general Mapping is not a gap**, because C refuses it too.
+`AstCmpFrame`'s fields are `AstFrame *frame1` and `AstFrame *frame2` (`cmpframe.h:301-302`), and `astCmpFrame_` calls `astCheckFrame` on both arguments before use (`cmpframe.c:10634-10635`), so a Mapping is rejected there in C exactly as the port's `DynFrame` components reject it.
+The apparent asymmetry with `CmpMap` is real but it is C's asymmetry, faithfully reproduced, and there is nothing to decide.
+
+**A CmpMap holding a bare Frame is the one gap**, and it is the same thing as a bare Frame in a FrameSet's `Map<n>` slot.
+It exists because in C a bare Frame is a Mapping and here it is not.
+The Region content of such a Frame is irrelevant to the failure: a `CmpFrame` in a `Map<n>` slot fails identically whether or not it holds a Region, and a plain `Frame` fails the same way.
+So the question for the maintainers is narrow — is there a legitimate workflow that puts a bare Frame where a Mapping belongs, given that the Region case, which is the one with obvious meaning, already works?
+
+### 4.3 What cluster 4 delivers
+
+A C program can write such a dump today.
+An oracle probe produced a FrameSet whose `Map2` slot holds `Begin CmpFrame`: `astAddFrame` accepted it, `astTran2` transformed through it, and the Channel dumped it without error, while the Rust reader rejects the result with `unknown Mapping class: CmpFrame`.
+
+Cluster 4 therefore delivers that dump as a committed failing fixture and nothing else, so the maintainers have a concrete artifact to judge rather than a description.
+
+If they identify a real workflow, the work is `impl Mapping for CmpFrame` — one class, not seven.
+`Transform` follows `cmpframe.c:9975-10018`, using each Region component directly and `UnitMap::new(naxes)` for a non-Region component, and `Simplify` follows `cmpframe.c:8963`.
+Substituting a `UnitMap` is faithful rather than a shortcut, because it is the same object C constructs at `frame.c:11806`, and the downcast that distinguishes the cases is already in the tree — `regions::any_as_region` (`regions/mod.rs:1183`) operates on a `&dyn Any`, and `regions/data.rs:145` already applies it to a Frame.
+One further both-traits class alongside `FrameSet` and the nine Regions sits inside the existing design rather than against it, so even that outcome needs no amendment to the port design spec.
+
+If they identify none, the fixture stays as a documented, named exclusion carrying that answer as its reason, and `PLAN.md` §9.6 closes on that basis.
+
+### 4.4 One fact recorded for fairness
 
 C accommodated Frame-as-Mapping deliberately.
 `frame.c:6233` installs a `DoNotSimplify` override returning zero, so that a Frame with `Ident` set remains simplifiable as a Mapping where the base rule at `mapping.c:1150` would have blocked it.
@@ -287,4 +315,4 @@ It answers directly whether the simplifier has validated parity with C, and stat
 
 | Rev | Date | Change |
 |---|---|---|
-| 1 | 2026-09-01 | Initial design. Section 4 revised during review from "implement `Mapping` for seven Frame classes, reversing the sibling-trait decision" to "Region is the only Frame that is a Mapping", after establishing that the reader already accepts all nine Region classes in a `Map<n>` slot and that no use case is known for a bare Frame there. The sectionless-fixture cluster dropped as maintainer-owned, leaving seven clusters. Cluster 4 moved last and gated. |
+| 1 | 2026-09-01 | Initial design. Section 4 revised during review from "implement `Mapping` for seven Frame classes, reversing the sibling-trait decision" to "Region is the only Frame that is a Mapping", after establishing that a Region is already accepted as a component of both a `CmpFrame` and a `CmpMap`, exercised by fifty corpus fixtures, and that the single gap is a bare Frame where a Mapping is expected. `CmpFrame` refusing a general Mapping is not the mirror gap it resembles: C refuses it too, at `cmpframe.c:10634`. The sectionless-fixture cluster dropped as maintainer-owned, leaving seven clusters. Cluster 4 moved last and gated. |
