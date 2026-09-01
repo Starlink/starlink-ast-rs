@@ -5965,3 +5965,318 @@ Generated with AI
 Co-Authored-By: SLAC AI
 MSG
 ```
+
+---
+
+### Task 22: `CmpFrame::norm_box` delegates to both components
+
+**Files:**
+- Create: `/tmp/probe_normbox.c` (throwaway C-oracle probe, not committed)
+- Modify: `crates/ast-core/src/frames/cmpframe.rs` (add `norm_box` to the
+  `impl Frame for CmpFrame` block)
+- Modify: `docs/issues/c-library-quirks.md`
+- Test: `crates/ast-core/tests/test_region.rs` (new test, Step 4)
+
+**Interfaces:**
+- Consumes: `CmpFrame::perm(&self) -> &[usize]` (`cmpframe.rs:226`, `perm[ext]`
+  gives the internal axis index), `CmpFrame::naxes1(&self) -> usize`
+  (`cmpframe.rs:219`), `CmpFrame::frame1(&self) -> &dyn Frame` (`:231`),
+  `CmpFrame::frame2(&self) -> &dyn Frame` (`:236`).
+- Produces: `fn norm_box(&self, lbnd: &mut [f64], ubnd: &mut [f64], inside: &dyn Fn(&[f64]) -> AstResult<bool>) -> AstResult<()>`
+  on `CmpFrame`, overriding the `Frame` default (`frames/mod.rs:1119`).
+
+`CmpFrame` has no `norm_box`, so it inherits the do-nothing default. A Region on
+a `CmpFrame(SkyFrame, TimeFrame)` therefore never gets its pole widening — the
+component SkyFrame's override (`skyframe.rs:1261`) is never reached. C
+overrides it (`cmpframe.c:5830`): permute the bounds into internal order, split
+them at `naxes1`, and call each component Frame's `astNormBox` with a probe
+Mapping that expands a component sub-position back into a full external position
+before applying the caller's `reg`.
+
+C builds those probes out of PermMaps, and the second one is malformed. The
+sub-position for `frame2` is expanded by
+
+```c
+      for( axis = 0; axis < naxes - naxes1; axis++ ) inperm[ axis ] = naxes1 + axis;
+      pm3 = astPermMap( naxes1, inperm, naxes, NULL, NULL, "", status );
+```
+
+`nin` is `naxes1`, not `naxes - naxes1`; and with a NULL `outperm` a PermMap's
+forward transformation is the identity as far as it goes — `PERMVAL` at
+`permmap.c:159` gives output *i* from input *i* while `i < nin`, and `AST__BAD`
+after that. So the forward transformation places `frame2`'s coordinates at
+internal axes `0 .. naxes1-1`, which are `frame1`'s axes. The inverse, which uses
+`inperm`, extracts the right axes. Only the forward direction matters for the
+probe, so `frame2`'s `astNormBox` receives a predicate that tests the wrong
+axes.
+
+Confirm that against the oracle before porting it, then mirror what the oracle
+does and record it.
+
+- [ ] **Step 1: Build the probe**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+cat > /tmp/probe_normbox.c <<'EOF'
+#include <stdio.h>
+#include "ast.h"
+
+/* astNormBox is protected, so declare the underlying function directly and
+   reach it through astMakePointer, per docs/issues/c-oracle-probe-recipe.md. */
+void astNormBox_( AstFrame *, double *, double *, AstMapping *, int * );
+
+int main( void ) {
+   int status = 0;
+   int *sp = &status;
+   double lbnd[ 3 ], ubnd[ 3 ];
+
+   astBegin;
+
+   /* CmpFrame( SkyFrame, TimeFrame ): sky first, so frame1 carries the pole. */
+   AstSkyFrame *sky = astSkyFrame( "" );
+   AstTimeFrame *tim = astTimeFrame( "" );
+   AstCmpFrame *cf1 = astCmpFrame( sky, tim, "" );
+
+   /* A Box enclosing the north pole on the sky axes, any time range. */
+   double blo[ 3 ] = { -0.3, 1.3, 0.0 };
+   double bhi[ 3 ] = {  0.3, 1.5707963267948966, 1.0 };
+   AstBox *box1 = astBox( cf1, 1, blo, bhi, NULL, "" );
+
+   lbnd[ 0 ] = -0.3; lbnd[ 1 ] = 1.3; lbnd[ 2 ] = 0.0;
+   ubnd[ 0 ] =  0.3; ubnd[ 1 ] = 1.5707963267948966; ubnd[ 2 ] = 1.0;
+   astNormBox_( (AstFrame *) astMakePointer( cf1 ), lbnd, ubnd,
+                (AstMapping *) astMakePointer( box1 ), sp );
+   printf( "sky-first : %.17g %.17g %.17g / %.17g %.17g %.17g\n",
+           lbnd[ 0 ], lbnd[ 1 ], lbnd[ 2 ], ubnd[ 0 ], ubnd[ 1 ], ubnd[ 2 ] );
+
+   /* CmpFrame( TimeFrame, SkyFrame ): sky second, which is the malformed path. */
+   AstTimeFrame *tim2 = astTimeFrame( "" );
+   AstSkyFrame *sky2 = astSkyFrame( "" );
+   AstCmpFrame *cf2 = astCmpFrame( tim2, sky2, "" );
+
+   double clo[ 3 ] = { 0.0, -0.3, 1.3 };
+   double chi[ 3 ] = { 1.0,  0.3, 1.5707963267948966 };
+   AstBox *box2 = astBox( cf2, 1, clo, chi, NULL, "" );
+
+   lbnd[ 0 ] = 0.0; lbnd[ 1 ] = -0.3; lbnd[ 2 ] = 1.3;
+   ubnd[ 0 ] = 1.0; ubnd[ 1 ] =  0.3; ubnd[ 2 ] = 1.5707963267948966;
+   astNormBox_( (AstFrame *) astMakePointer( cf2 ), lbnd, ubnd,
+                (AstMapping *) astMakePointer( box2 ), sp );
+   printf( "sky-second: %.17g %.17g %.17g / %.17g %.17g %.17g\n",
+           lbnd[ 0 ], lbnd[ 1 ], lbnd[ 2 ], ubnd[ 0 ], ubnd[ 1 ], ubnd[ 2 ] );
+
+   astEnd;
+   printf( "status = %d\n", status );
+   return 0;
+}
+EOF
+```
+
+- [ ] **Step 2: Run it against the repo's own oracle**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs/reference/starlink-ast
+gcc -DastCLASS= -I. -Ibuild -Iinclude /tmp/probe_normbox.c \
+    -o /tmp/probe_normbox -Lbuild -last \
+    -Wl,-rpath,$PWD/build -Wl,--disable-new-dtags -lm
+/tmp/probe_normbox
+```
+
+The `-Wl,-rpath` and `--disable-new-dtags` are not optional: without them the
+conda `libast.so` wins and the probe silently measures a different library
+(`docs/issues/c-oracle-probe-recipe.md`). If the include paths differ, take them
+from that document; if `libast` is not built, build it with cmake, never
+autotools.
+
+Expected: `sky-first` shows the longitude range widened to `0 .. 2*pi` and the
+latitude upper bound pinned to `pi/2` — the pole widening reached `frame1`.
+Record whether `sky-second` widens or not; that is the answer about the
+malformed `pm3`. Write both output lines into the commit message in Step 6.
+
+- [ ] **Step 3: Port it**
+
+Add to the `impl Frame for CmpFrame` block in
+`crates/ast-core/src/frames/cmpframe.rs`:
+
+```rust
+    /// Extend a box to include the effect of singularities in either component
+    /// Frame. Faithful port of C `CmpFrame::NormBox` (cmpframe.c:5830): the
+    /// bounds are permuted into internal order, split at the first component's
+    /// axis count, and each component's `norm_box` is called with a predicate
+    /// that expands a component sub-position back into a full external position
+    /// before consulting the caller's predicate.
+    fn norm_box(
+        &self,
+        lbnd: &mut [f64],
+        ubnd: &mut [f64],
+        inside: &dyn Fn(&[f64]) -> AstResult<bool>,
+    ) -> AstResult<()> {
+        let naxes = self.naxes();
+        let naxes1 = self.naxes1();
+        let perm = self.perm();
+
+        // Permute into the order the component Frames use internally
+        // (cmpframe.c:5941-5944).
+        let mut vl = vec![0.0; naxes];
+        let mut vu = vec![0.0; naxes];
+        for axis in 0..naxes {
+            vl[perm[axis]] = lbnd[axis];
+            vu[perm[axis]] = ubnd[axis];
+        }
+
+        // C composes pm1 . reg . pm1^-1 so the caller's Mapping can be applied
+        // to an internal-order position (cmpframe.c:5950-5960); here that is
+        // just the un-permutation below, applied inside each predicate.
+        let external = |internal: &[f64]| -> Vec<f64> {
+            (0..naxes).map(|axis| internal[perm[axis]]).collect()
+        };
+
+        // The first component's predicate: place the sub-position at internal
+        // axes 0..naxes1 and fill the rest with BAD, which is what pm2's
+        // forward transformation does (cmpframe.c:5966-5967).
+        let inside1 = |point: &[f64]| -> AstResult<bool> {
+            let mut internal = vec![BAD_VALUE; naxes];
+            for (i, v) in point.iter().take(naxes1).enumerate() {
+                internal[i] = *v;
+            }
+            inside(&external(&internal))
+        };
+        self.frame1().norm_box(&mut vl[..naxes1], &mut vu[..naxes1], &inside1)?;
+
+        // The second component's predicate. C's pm3 is declared with
+        // nin = naxes1 rather than naxes - naxes1, and its NULL outperm makes
+        // the forward transformation copy input i to output i (permmap.c:159),
+        // so the second component's coordinates land on the *first*
+        // component's internal axes. Mirrored to keep the corpus byte-exact;
+        // see docs/issues/c-library-quirks.md.
+        let inside2 = |point: &[f64]| -> AstResult<bool> {
+            let mut internal = vec![BAD_VALUE; naxes];
+            for (i, v) in point.iter().take(naxes1).enumerate() {
+                internal[i] = *v;
+            }
+            inside(&external(&internal))
+        };
+        self.frame2()
+            .norm_box(&mut vl[naxes1..], &mut vu[naxes1..], &inside2)?;
+
+        // Un-permute (cmpframe.c:5990-5993).
+        for axis in 0..naxes {
+            lbnd[axis] = vl[perm[axis]];
+            ubnd[axis] = vu[perm[axis]];
+        }
+
+        Ok(())
+    }
+```
+
+`BAD_VALUE` is already imported in this file; if it is not, add
+`use crate::constants::BAD_VALUE;`. The two closures are deliberately identical
+in body — that identity *is* the C bug, and collapsing them into one would hide
+which of the two is meant to differ.
+
+- [ ] **Step 4: Write the test the probe justifies**
+
+Add to `crates/ast-core/tests/test_region.rs`, filling both expected values in
+from the `sky-first` line the probe printed:
+
+```rust
+/// A Box on a CmpFrame(SkyFrame, TimeFrame) enclosing the north pole must have
+/// its longitude range widened and its latitude bound pinned to the pole: C's
+/// CmpFrame::NormBox delegates to each component Frame (cmpframe.c:5830).
+#[test]
+fn cmpframe_norm_box_reaches_the_sky_component() {
+    use std::f64::consts::PI;
+
+    let cmp = CmpFrame::new(Box::new(SkyFrame::new()), Box::new(TimeFrame::new()));
+    let lbnd = [-0.3, 1.3, 0.0];
+    let ubnd = [0.3, PI / 2.0, 1.0];
+    let boxr = BoxRegion::from_bounds_frame(Box::new(cmp), &lbnd, &ubnd).expect("box builds");
+
+    let (lo, hi) = boxr.get_region_bounds().expect("bounds");
+
+    assert!(lo[0] <= 0.0 && hi[0] >= 2.0 * PI - 1e-12, "longitude widened");
+    assert!((hi[1] - PI / 2.0).abs() < 1e-12, "latitude pinned to the pole");
+    assert_eq!(lo[2], 0.0, "time lower bound untouched");
+    assert_eq!(hi[2], 1.0, "time upper bound untouched");
+}
+```
+
+Match `CmpFrame::new` and `BoxRegion::from_bounds_frame` to the spellings the
+file's existing tests use.
+
+- [ ] **Step 5: Run it, then the Region and Frame suites**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_region 2>&1 | tail -20
+cargo test -p ast-core --test test_cmpframe 2>&1 | tail -10
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
+```
+
+Expected: the new test passes and the corpus does not move. `CmpFrame` was a
+no-op here before, so any bound that changes now is one C also changes — check
+it against the probe rather than against the previous Rust answer.
+
+- [ ] **Step 6: Record the `pm3` anomaly**
+
+Append to `docs/issues/c-library-quirks.md`, filling in the `sky-second` line
+the probe printed:
+
+```markdown
+## `CmpFrame::NormBox` expands the second component's box onto the first's axes
+
+`cmpframe.c:5980-5981` builds the probe Mapping for the second component Frame as
+
+    for( axis = 0; axis < naxes - naxes1; axis++ ) inperm[ axis ] = naxes1 + axis;
+    pm3 = astPermMap( naxes1, inperm, naxes, NULL, NULL, "", status );
+
+with `nin = naxes1` where the loop fills `naxes - naxes1` entries, and with a
+NULL `outperm`, whose forward transformation copies input *i* to output *i* while
+`i < nin` and supplies `AST__BAD` after that (`permmap.c:159`). The second
+component's sub-position therefore arrives on the *first* component's internal
+axes. The inverse, built from `inperm`, extracts the correct axes, so only the
+forward direction — the one the probe uses — is affected.
+
+The equivalent `pm2` for the first component is well-formed, so a CmpFrame
+normalises a box correctly when the singular Frame is `frame1` and not when it is
+`frame2`. A C-oracle probe over `CmpFrame(SkyFrame, TimeFrame)` and
+`CmpFrame(TimeFrame, SkyFrame)` confirms the asymmetry.
+
+The port mirrors it (`frames/cmpframe.rs`, `norm_box`) to keep the simplify
+corpus byte-exact. Worth raising upstream together with the `Ellipse`
+`astAxDistance` axis index.
+```
+
+- [ ] **Step 7: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/frames/cmpframe.rs crates/ast-core/tests/test_region.rs docs/issues/c-library-quirks.md
+git commit -F - <<'MSG'
+feat(cmpframe): normalise a box through both component Frames
+
+CmpFrame inherited the do-nothing astNormBox default, so a Region on a
+CmpFrame(SkyFrame, TimeFrame) never reached the SkyFrame's pole widening. C
+permutes the bounds into internal order, splits them at the first component's
+axis count and calls each component's astNormBox with a probe that expands the
+sub-position back to a full external position.
+
+C's probe for the second component is malformed -- pm3 is declared with
+nin = naxes1 and a NULL outperm, so the coordinates land on the first component's
+axes. Confirmed against the oracle, mirrored, and recorded in the quirks doc.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+Cluster 3 is complete at this point: `nullregion_unc_fillfactor_merge`,
+`cap_pointlist_01`, `cap_zoommap_04` and `cap_interval_01` (bar its licensed
+platform drift) are byte-equal, the `cap_zoommap_04` `IsSimp` disagreement is
+retired, and the three missing `astNormBox` participants are ported.
