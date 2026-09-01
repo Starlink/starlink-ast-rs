@@ -10,7 +10,7 @@ algorithm is not "compose base→current and simplify that": it takes a copy of
 the FrameSet and simplifies each internal edge Mapping *individually*, leaving
 the node graph intact, and returns the copy only if at least one edge reduced.
 
-`FrameSet::simplified` (`frameset.rs:1598-1607`) is the whole port of it.
+`FrameSet::simplified` (`frameset.rs:1598-1621`) is the whole port of it.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
@@ -23,14 +23,14 @@ the node graph intact, and returns the copy only if at least one edge reduced.
 | 7 | Set the Mapping's Invert attribute to the value the FrameSet requires | frameset.c:10192-10193 | -- | n/a: as row 6 — the edge Mapping is already in the orientation the edge applies |
 | 8 | Simplify the Mapping | frameset.c:10195-10196 | frameset.rs:1604 | ported |
 | 9 | Restore the Mapping's original Invert attribute, set or cleared as it was | frameset.c:10198-10206 | -- | n/a: nothing was mutated, so nothing is restored |
-| 10 | Test whether simplification was performed, by pointer identity | frameset.c:10208-10210 | -- | gap: PLAN.md §10.17 |
-| 11 | On success, substitute the new Mapping and record its Invert value as the new flag | frameset.c:10212-10216 | frameset.rs:1604 | ported |
-| 12 | Note that some Mapping in the FrameSet simplified | frameset.c:10218-10220 | -- | gap: PLAN.md §10.17 |
+| 10 | Test whether simplification was performed, by pointer identity | frameset.c:10208-10210 | frameset.rs:1609 | ported |
+| 11 | On success, substitute the new Mapping and record its Invert value as the new flag | frameset.c:10212-10216 | frameset.rs:1610 | ported |
+| 12 | Note that some Mapping in the FrameSet simplified | frameset.c:10218-10220 | frameset.rs:1611 | ported |
 | 13 | Annul the simplified Mapping pointer | frameset.c:10222-10224 | -- | n/a: owned values are dropped |
-| 14 | Return the copy if anything simplified, otherwise the original FrameSet | frameset.c:10226-10229 | frameset.rs:1606 | gap: PLAN.md §10.17 |
+| 14 | Return the copy if anything simplified, otherwise the original FrameSet | frameset.c:10226-10229 | frameset.rs:1616-1620 | ported |
 | 15 | Annul the copy | frameset.c:10231-10232 | -- | n/a: owned values are dropped |
 | 16 | Annul the returned pointer if an error occurred | frameset.c:10234-10235 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 17 | Return the result | frameset.c:10237-10238 | frameset.rs:1606 | ported |
+| 17 | Return the result | frameset.c:10237-10238 | frameset.rs:1616 | ported |
 
 ## Rows 10, 12 and 14 — the port always returns the copy
 

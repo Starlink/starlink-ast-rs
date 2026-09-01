@@ -317,7 +317,20 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// The default is C's base `Simplify` (`mapping.c:16752`), which nominates
     /// this Mapping in a list of one and calls its own [`Mapping::map_merge`]
     /// until nothing further changes.
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    ///
+    /// Returns the reduced Mapping and whether it is a different object from
+    /// this one. C's `Simplify` returns `astClone( this )` when nothing reduced,
+    /// and all three of its generic drivers test the returned pointer against
+    /// the input to decide whether to keep going (`frameset.c:10208`,
+    /// `mapping.c:16891`, `cmpmap.c:1456`). An owned-value port cannot make that
+    /// comparison after the fact, so the callee reports it.
+    ///
+    /// The `false` case still carries an object rather than nothing, because C's
+    /// `astClone( this )` is not a bare copy of the input: the nominate loop
+    /// writes `IsSimple` through aliases into `this`'s own children, and those
+    /// stamps are on the pointer C hands back. The port has only `&self`, so it
+    /// returns them on the clone.
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         simplify::base_simplify(self.as_dyn_mapping())
     }
 

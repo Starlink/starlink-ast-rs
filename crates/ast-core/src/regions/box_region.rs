@@ -1593,7 +1593,7 @@ impl Mapping for BoxRegion {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Invoke the parent Region simplify first (box.c:3705); it simplifies
         // the encapsulated FrameSet and any explicit uncertainty Region. All
         // subsequent work is done on the returned copy. `simpler` tracks
@@ -1733,9 +1733,10 @@ impl Mapping for BoxRegion {
         // does not acquire a spurious explicit uncertainty.
         if simpler {
             new.reg_overlay(self, true);
-            Ok(new.clone_box())
+            Ok((new.clone_box(), true))
         } else {
-            Ok(self.clone_box())
+            // C's `else`: `result = astClone( this )` (box.c:4066).
+            Ok((self.clone_box(), false))
         }
     }
 

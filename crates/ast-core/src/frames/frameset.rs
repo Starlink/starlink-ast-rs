@@ -1595,15 +1595,29 @@ impl Mapping for FrameSet {
         map.transform_into(pts, true, out)
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // C FrameSet::Simplify (frameset.c:10111) returns a *copy of
         // the FrameSet* with each internal edge mapping individually
         // simplified — not the composed base→current mapping.
         let mut copy = self.clone();
+        // C's `simpler`, raised by any edge whose `astSimplify` handed back a
+        // different Mapping (`tmp != map`, frameset.c:10208), and the whole
+        // decision between returning the copy and returning the original
+        // (`astClone( simpler ? new : this )`, frameset.c:10226).
+        let mut simpler = false;
         for edge in &mut copy.edges {
-            edge.mapping = edge.mapping.simplify()?;
+            let (simplified, changed) = edge.mapping.simplify_reporting_change()?;
+            edge.mapping = simplified;
+            simpler |= changed;
         }
-        Ok(Box::new(copy))
+        // `astClone( simpler ? new : this )` (frameset.c:10226): when no edge
+        // reduced, the copy — stamps and all — is discarded and the original
+        // returned.
+        Ok(if simpler {
+            (Box::new(copy) as DynMapping, true)
+        } else {
+            (self.clone_box(), false)
+        })
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

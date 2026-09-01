@@ -77,3 +77,47 @@ fn only_c_simplify_classes_implement_simplified() {
          where the base `Simplify` can reach it: {stray:#?}"
     );
 }
+
+/// A FrameSet whose only edge is a UnitMap comes back untouched, and the
+/// working copy the seam simplified into is discarded rather than returned.
+///
+/// C's `FrameSet::Simplify` simplifies the edges of a deep copy
+/// (`frameset.c:10175`) and then returns `astClone( simpler ? new : this )`
+/// (`frameset.c:10226`). Nothing reduces here, so `this` comes back and the
+/// copy — whose UnitMap edge `astSimplify` did stamp — is thrown away. The
+/// stamp is what makes the case falsifiable: return the copy instead and the
+/// dump gains an `IsSimp = 1` inside `Begin UnitMap`. A FrameSet never carries
+/// the card itself, because `Frame` overrides `GetIsSimple` to zero
+/// (`frame.c:5590`) — a Frame's Mapping can still change under it.
+///
+/// The fixture pair lives in the simplify corpus but not in `simplify_tests.txt`:
+/// that harness reduces a FrameSet input to its base→current Mapping, which is
+/// the one thing this case must not do.
+#[test]
+fn frameset_with_no_reducible_edge_returns_the_original() {
+    use ast_core::mappings::Mapping;
+    use ast_core::{AnyObject, from_native_string, to_native_string};
+
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/native/reference/simplify_fixtures");
+    let input = std::fs::read_to_string(dir.join("cap_frameset_nochange.map")).expect("read .map");
+    let want = std::fs::read_to_string(dir.join("cap_frameset_nochange.simp")).expect("read .simp");
+
+    let AnyObject::FrameSet(fs) = from_native_string(&input).expect("parse fixture") else {
+        panic!("cap_frameset_nochange.map must hold a FrameSet");
+    };
+
+    let simplified = (&fs as &dyn Mapping).simplify().expect("simplify");
+    let obj = AnyObject::from_mapping(simplified.as_ref()).expect("result serialises");
+    assert!(
+        matches!(obj, AnyObject::FrameSet(_)),
+        "C returns the FrameSet itself, not the Mapping it composes"
+    );
+    let got = to_native_string(&obj).expect("serialise");
+
+    assert_eq!(
+        got.trim_end(),
+        want.trim_end(),
+        "simplified FrameSet must match C byte for byte"
+    );
+}

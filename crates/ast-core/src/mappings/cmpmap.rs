@@ -784,11 +784,11 @@ impl Mapping for CmpMap {
         }
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         if self.has_been_simplified() {
-            return Ok(Box::new(self.clone()));
+            return Ok((Box::new(self.clone()), false));
         }
-        crate::mappings::simplify::simplify_mapping(self)
+        crate::mappings::simplify::simplify_mapping_reporting_change(self)
     }
 
     fn map_merge(

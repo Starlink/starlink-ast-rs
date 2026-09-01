@@ -1083,7 +1083,7 @@ impl Mapping for CmpRegion {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Faithful port of cmpregion.c::Simplify (cmpregion.c:3517). The two
         // component Regions live in a Frame equivalent to the parent's base
         // Frame; simplification is performed there and the result mapped into
@@ -1241,20 +1241,20 @@ impl Mapping for CmpRegion {
         // Decide whether to use the base-Frame result "newb" or a clone of the
         // supplied Region (cmpregion.c:3760). A base-Frame result is mapped
         // into the parent's current Frame and simplified.
-        let result: DynRegion = if simpler {
-            if let Some(nb) = newb {
-                let mapped = nb.map_region(bcmap.as_ref(), cfrm.as_ref())?;
-                mapping_into_region(<dyn Mapping>::simplify(mapped.as_ref())?).unwrap_or(mapped)
-            } else {
-                // No base-Frame result: use the parent-simplified copy
-                // (cmpregion.c:3767 `result = astClone( newc )`).
-                newc
-            }
+        if !simpler {
+            // C's `else`: `result = astClone( this_mapping )` (cmpregion.c:3773).
+            return Ok((self.clone_box(), false));
+        }
+        let result: DynRegion = if let Some(nb) = newb {
+            let mapped = nb.map_region(bcmap.as_ref(), cfrm.as_ref())?;
+            mapping_into_region(<dyn Mapping>::simplify(mapped.as_ref())?).unwrap_or(mapped)
         } else {
-            self.clone_region()
+            // No base-Frame result: use the parent-simplified copy
+            // (cmpregion.c:3767 `result = astClone( newc )`).
+            newc
         };
 
-        Ok(result.clone_box())
+        Ok((result.clone_box(), true))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

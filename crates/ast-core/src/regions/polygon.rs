@@ -1092,7 +1092,7 @@ impl Mapping for Polygon {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Invoke the parent Region simplify first (polygon.c:5365); it
         // simplifies the encapsulated FrameSet and any explicit uncertainty.
         // All further work is done on the returned copy.
@@ -1120,13 +1120,13 @@ impl Mapping for Polygon {
         // current Mapping is not a UnitMap and the current Frame is 2-D
         // (polygon.c:5379).
         if map.as_any().is::<UnitMap>() || map.nout() != 2 {
-            return if simpler {
-                let mut result = this.clone_region();
-                result.reg_overlay(self, true);
-                Ok(result.clone_box())
-            } else {
-                Ok(self.clone_box())
-            };
+            // C's `else` at polygon.c:5459 — `result = astClone( this )`.
+            if !simpler {
+                return Ok((self.clone_box(), false));
+            }
+            let mut result = this.clone_region();
+            result.reg_overlay(self, true);
+            return Ok((result.clone_box(), true));
         }
         // Transform defining points (vertices) to current frame.
         let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
@@ -1146,7 +1146,9 @@ impl Mapping for Polygon {
         polygon.ensure_inside()?;
         let mut result: DynRegion = Box::new(polygon);
         result.reg_overlay(self, true);
-        Ok(result.clone_box())
+        // A new Polygon was built from the remapped vertices, which is where C
+        // sets `simpler = 1` (polygon.c:5436).
+        Ok((result.clone_box(), true))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

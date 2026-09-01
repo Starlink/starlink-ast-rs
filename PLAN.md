@@ -1449,6 +1449,18 @@ why `cmpframe.c:9019-9034` can override it. Closing this section therefore means
 adding the seam, not just the NormMap branch: the fixture needs a Frame that
 simplifies to a different Frame, and the port has no such Frame yet.
 
+**FrameSet's half is closed.** The three `frame_frameset.md` rows that shared this
+section — 10, 12 and 14, C's `tmp != map` per edge, the `simpler` flag it raises
+and the `astClone( simpler ? new : this )` return — were gaps because the seam
+returned a Mapping without saying whether it had reduced anything, so
+`FrameSet::simplified` handed back its working copy unconditionally.
+`Mapping::simplified` now returns `(DynMapping, bool)` and all three are ported.
+`cap_frameset_nochange` is the fixture: a FrameSet whose one edge is a UnitMap,
+gated by `frameset_with_no_reducible_edge_returns_the_original` in
+`test_simplify_seams.rs` rather than the simplify manifest, because that harness
+reduces a FrameSet input to its base→current Mapping first. What remains open here
+is the NormMap branch and the Frame-level seam it needs.
+
 ### 10.18 Polygon's vertex-transform simplification skips both of C's guards
 
 `polygon.c:5379-5437` re-expresses a Polygon in its current Frame by

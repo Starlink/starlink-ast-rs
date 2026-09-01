@@ -835,7 +835,7 @@ impl Mapping for Prism {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Faithful port of prism.c::Simplify (prism.c:3204). Attempts to
         // express the Prism's two component Regions within the parent
         // Region's current Frame, collapsing the Prism to a single Region
@@ -1036,14 +1036,17 @@ impl Mapping for Prism {
             None => self.clone_region(),
         };
 
-        // If any simplification occurred, overlay the original Region
-        // attributes onto the result (prism.c:3514 passes unc=0: uncertainty
-        // is carried forward explicitly above, so it is left untouched here).
-        if !(result.as_ref() as &dyn Mapping).equal(self as &dyn Mapping) {
+        // C's `result != this_mapping` (prism.c:3513), the one test that decides
+        // both the attribute overlay and whether anything reduced. Prism keeps no
+        // `simpler` flag, so value semantics make it a structural comparison.
+        // Overlay passes unc=0: uncertainty is carried forward explicitly above,
+        // so it is left untouched here.
+        let changed = !(result.as_ref() as &dyn Mapping).equal(self as &dyn Mapping);
+        if changed {
             result.reg_overlay(self, false);
         }
 
-        Ok(result.clone_box())
+        Ok((result.clone_box(), changed))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

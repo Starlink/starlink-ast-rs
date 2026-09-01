@@ -2,6 +2,29 @@
 
 ## Revision history
 
+- **2026-08-31 (rev 7)**: the per-class `Simplify` seam reports whether it
+  reduced anything.
+  `Mapping::simplified` returns `AstResult<(DynMapping, bool)>`.
+  C's `Simplify` returns `astClone( this )` when nothing reduced, and all three
+  of its generic drivers decide what to do next by testing that pointer against
+  the input: per FrameSet edge (`frameset.c:10208`), in the base driver
+  (`mapping.c:16891`) and in `CmpMap::MapMerge`'s self-simplify head
+  (`cmpmap.c:1456`).
+  An owned-value port has no pointer to compare after the fact, so the callee
+  reports the answer instead of the caller reconstructing it — which it had been
+  doing from structural hashes and a thread-local rebuild flag, both now deleted.
+  The `false` case still carries a Mapping rather than nothing, because C's
+  no-change pointer is not a bare copy of the input: `SeparateMappings`
+  (`cmpmap.c:3326`) leaves list entries aliasing the live children, so the
+  nominate loop's `astSimplify` stamps `IsSimple` into `this`'s own children and
+  those stamps ride on the returned pointer. The port holds only `&self` and can
+  deliver them only on a returned object.
+  This is an internal seam, not a public API or ABI change: `simplified` takes a
+  `ViaSimplify` token that only `mappings::simplify_entry` can construct, so the
+  one caller is a compile-time guarantee and there is no `ast.h` consequence to
+  look for. `dyn Mapping::simplify` keeps its `AstResult<DynMapping>` signature;
+  `simplify_reporting_change` beside it exposes the flag inside the crate.
+
 - **2026-08-19 (rev 6)**: reconciled against the implementation after four
   months and 1,087 commits. Conformance was assessed in
   [`docs/reports/2026-08-19-spec-conformance-review.md`](../../reports/2026-08-19-spec-conformance-review.md),

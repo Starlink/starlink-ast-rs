@@ -754,7 +754,7 @@ impl Mapping for PointList {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Invoke the parent Region simplify first (pointlist.c:2228); it
         // simplifies the encapsulated FrameSet and any explicit uncertainty.
         // All further work is done on the returned copy.
@@ -779,13 +779,13 @@ impl Mapping for PointList {
             .frameset
             .mapping(FrameRef::Base, FrameRef::Current)?;
         if map.as_any().is::<UnitMap>() {
-            return if simpler {
-                let mut result = this.clone_region();
-                result.reg_overlay(self, true);
-                Ok(result.clone_box())
-            } else {
-                Ok(self.clone_box())
-            };
+            // C's `else` at pointlist.c:2280 — `result = astClone( this )`.
+            if !simpler {
+                return Ok((self.clone_box(), false));
+            }
+            let mut result = this.clone_region();
+            result.reg_overlay(self, true);
+            return Ok((result.clone_box(), true));
         }
         // Transform defining points to current frame.
         let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
@@ -800,7 +800,9 @@ impl Mapping for PointList {
         data.uncertainty = this.data.uncertainty.clone();
         let mut result: DynRegion = Box::new(PointList { data });
         result.reg_overlay(self, true);
-        Ok(result.clone_box())
+        // Reaching here means the base->current Mapping was not a UnitMap, which
+        // is where C sets `simpler = 1` unconditionally (pointlist.c:2258).
+        Ok((result.clone_box(), true))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

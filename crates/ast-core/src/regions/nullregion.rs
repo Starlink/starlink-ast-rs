@@ -497,7 +497,7 @@ impl Mapping for NullRegion {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Invoke the parent Region simplify first (nullregion.c:1376); it
         // simplifies the encapsulated FrameSet and any explicit uncertainty.
         // All further work is done on the returned copy.
@@ -548,11 +548,17 @@ impl Mapping for NullRegion {
         // Mapping was not a UnitMap), overlay the original Region's attributes
         // and clear a fitted uncertainty if the original had none
         // (nullregion.c:1400). Otherwise keep the original.
-        if simpler || !map.as_any().is::<UnitMap>() {
+        // C has no `simpler` flag here: it tests `result != this_mapping`
+        // directly (nullregion.c:1400), which holds for the fresh NullRegion of
+        // the non-UnitMap branch and for a parent simplify that changed
+        // something. `None` is C's remaining case, where `result` is the
+        // supplied pointer.
+        let changed = simpler || !map.as_any().is::<UnitMap>();
+        if changed {
             result.reg_overlay(self, true);
-            Ok(result.clone_box())
+            Ok((result.clone_box(), true))
         } else {
-            Ok(self.clone_box())
+            Ok((self.clone_box(), false))
         }
     }
 

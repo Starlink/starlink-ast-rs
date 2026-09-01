@@ -964,7 +964,7 @@ impl Mapping for Ellipse {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Invoke the parent Region simplify first (ellipse.c:1950); it
         // simplifies the encapsulated FrameSet and any explicit uncertainty.
         // All further work is done on the returned copy.
@@ -1037,9 +1037,10 @@ impl Mapping for Ellipse {
 
         if simpler {
             new.reg_overlay(self, true);
-            Ok(new.clone_box())
+            Ok((new.clone_box(), true))
         } else {
-            Ok(self.clone_box())
+            // C's `else`: `result = astClone( this )` (ellipse.c:2036).
+            Ok((self.clone_box(), false))
         }
     }
 

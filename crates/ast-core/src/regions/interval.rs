@@ -218,7 +218,7 @@ impl Interval {
     /// returned. When the Box does simplify, the current-Frame axis limits
     /// are recovered from the simplified Box, transferring any missing/equal
     /// /reversed limits from the correct base Frame axis.
-    fn simplify_remapped(&self, map: &dyn Mapping) -> AstResult<DynMapping> {
+    fn simplify_remapped(&self, map: &dyn Mapping) -> AstResult<Option<DynMapping>> {
         use crate::constants::BAD_VALUE;
 
         let nc = self.data.points[0].len();
@@ -361,7 +361,7 @@ impl Interval {
             // A simplified Box has a UnitMap base->current mapping.
             let m = b.data.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
             if !m.as_any().is::<UnitMap>() {
-                return Ok(self.clone_box());
+                return Ok(None);
             }
             let (lb, ub) = b.reg_base_box()?;
             let snc = lb.len();
@@ -372,14 +372,14 @@ impl Interval {
                 .frameset
                 .mapping(FrameRef::Base, FrameRef::Current)?;
             if !m.as_any().is::<UnitMap>() {
-                return Ok(self.clone_box());
+                return Ok(None);
             }
             let snc = iv.data.points[0].len();
             (iv.data.points[0].clone(), iv.data.points[1].clone(), snc)
         } else {
             // NullRegion or non-Region result: not handled here — keep the
             // original (matches the conservative outcome for these fixtures).
-            return Ok(self.clone_box());
+            return Ok(None);
         };
 
         // 5. Determine the base<->current axis correspondence and transfer
@@ -463,7 +463,7 @@ impl Interval {
         if let Some(unc) = self.data.uncertainty.as_ref() {
             data.uncertainty = Some(unc.clone());
         }
-        Ok(Box::new(Interval { data }))
+        Ok(Some(Box::new(Interval { data })))
     }
 }
 
@@ -1386,7 +1386,7 @@ impl Mapping for Interval {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Box-reclassification: an Interval whose bounds are all finite
         // (no BAD on either side) and well-ordered (lbnd[i] <= ubnd[i])
         // is mathematically a BoxRegion. The C reference's interval.c
@@ -1420,7 +1420,7 @@ impl Mapping for Interval {
             if let Some(unc) = self.data.uncertainty.as_ref() {
                 data.uncertainty = Some(unc.clone());
             }
-            return Ok(Box::new(super::BoxRegion { data }));
+            return Ok((Box::new(super::BoxRegion { data }), true));
         }
 
         // Not equivalent to a Box: invoke the parent Region simplify
@@ -1448,22 +1448,35 @@ impl Mapping for Interval {
             .mapping(FrameRef::Base, FrameRef::Current)?;
         let simple_map = map.simplify()?;
         if simple_map.as_ref().as_any().is::<UnitMap>() {
-            return if simpler {
-                let mut result = this.clone_region();
-                result.reg_overlay(self, true);
-                Ok(result.clone_box())
-            } else {
-                Ok(self.clone_box())
-            };
+            // C's `else` at interval.c:3516 — `result = astClone( this )`.
+            if !simpler {
+                return Ok((self.clone_box(), false));
+            }
+            let mut result = this.clone_region();
+            result.reg_overlay(self, true);
+            return Ok((result.clone_box(), true));
         }
 
         // Non-UnitMap base->current: attempt to re-express the Interval in
         // its current Frame. Port of interval.c::Simplify (3216-3517).
-        let simplified = this.simplify_remapped(simple_map.as_ref())?;
-        let mut result = super::merge_util::mapping_into_region(simplified)
-            .expect("Interval::simplify_remapped returns a Region");
-        result.reg_overlay(self, true);
-        Ok(result.clone_box())
+        let (mut result, changed) = match this.simplify_remapped(simple_map.as_ref())? {
+            // C builds the current-Frame Interval and sets `simpler = 1`
+            // (interval.c:3481-3483).
+            Some(simplified) => (
+                super::merge_util::mapping_into_region(simplified)
+                    .expect("Interval::simplify_remapped returns a Region"),
+                true,
+            ),
+            // The remap produced nothing simpler, so `simpler` is whatever the
+            // parent simplify left it (interval.c:3510).
+            None => (this.clone_region(), simpler),
+        };
+        if changed {
+            result.reg_overlay(self, true);
+            Ok((result.clone_box(), true))
+        } else {
+            Ok((self.clone_box(), false))
+        }
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

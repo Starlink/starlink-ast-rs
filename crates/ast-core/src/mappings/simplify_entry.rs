@@ -10,8 +10,11 @@
 //! nothing but the entry point, so [`Mapping::simplified`] has exactly one
 //! possible caller.
 //!
-//! **Do not add anything else to this file.** A second function here could
-//! construct a token, and the guarantee is that nothing but `simplify()` can.
+//! **Do not add anything else to this file.** It holds the gate
+//! (`simplify_reporting_change`), the caller that drops the gate's answer to
+//! "did anything change?" (`simplify`) and the tail they share
+//! (`record_simplified`); there is exactly one `ViaSimplify(())` in the file and
+//! the guarantee is that nothing outside it can write a second one.
 
 use super::{AstResult, CmpMap, DynMapping, Mapping, simplify};
 
@@ -34,17 +37,25 @@ impl dyn Mapping {
     /// This is the only way to reach a per-class reduction: [`ViaSimplify`] is
     /// constructible only here, so anything that wants one calls this.
     pub fn simplify(&self) -> AstResult<DynMapping> {
+        self.simplify_reporting_change().map(|(result, _)| result)
+    }
+
+    /// `simplify`, also reporting whether anything reduced.
+    ///
+    /// `false` is C's `astClone( this )` exit: the per-class slot handed back the
+    /// object it was given, so the identity test C's generic drivers apply to
+    /// the returned pointer (`frameset.c:10208`, `mapping.c:16891`,
+    /// `cmpmap.c:1456`) says "no change". Callers that need that answer ask for
+    /// it here; `simplify` is the same gate with the answer dropped.
+    ///
+    /// The Mapping comes back either way, because C's no-change pointer is the
+    /// caller's own object and carries whatever `IsSimple` stamps the reduction
+    /// wrote into it through aliases. The port has only `&self`, so those stamps
+    /// arrive on the returned clone; discarding it would drop them.
+    pub fn simplify_reporting_change(&self) -> AstResult<(DynMapping, bool)> {
         // The closest analogue of C's `astSimplify`, so the trace counts here
         // line up with the C library's `SIMPLIFY-ENTER`.
         simplify::trace::simplify_enter("public-simplify", self);
-        // A restricted simplify (C `RestrictedSimplify`) does NOT mark its
-        // result as simplified — more simplification may still be possible —
-        // and the restricted flag itself is cleared on the result
-        // (mapping.c:24755-24760).
-        let restricted = self
-            .as_any()
-            .downcast_ref::<CmpMap>()
-            .is_some_and(|c| c.restricted_simplify());
 
         // C short-circuits an already-simplified Mapping here, returning a
         // clone without reaching the vtab slot at all (mapping.c:24763). This
@@ -52,31 +63,46 @@ impl dyn Mapping {
         // to repeat the test, because nothing can reach a reduction except
         // through this function.
         if self.has_been_simplified() {
-            return Ok(self.clone_box());
+            return Ok((self.clone_box(), false));
         }
 
-        let mut result = self.simplified(ViaSimplify(()))?;
-        // `as_any` cannot be called on the `Box<dyn Mapping>` directly: it
-        // would resolve via auto-deref but the resulting `&dyn Any` points at
-        // the Box, not the inner mapping. Going through `as_mut` first gives a
-        // `&mut dyn Mapping`, on which `as_any_mut` returns the inner
-        // type-erased reference that `downcast_mut` can match.
-        let rm: &mut dyn Mapping = result.as_mut();
-        if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
-            // Drop redundant InvA/InvB flags on a parallel CmpMap whose
-            // corresponding child is a UnitMap: since UnitMap is its own
-            // inverse the external flag is observationally irrelevant, and
-            // the C reference emits it cleared.
-            cm.normalize_unitmap_children();
+        let (mut result, changed) = self.simplified(ViaSimplify(()))?;
+        record_simplified(self, &mut result);
+        Ok((result, changed))
+    }
+}
+
+/// C `astSimplify_`'s tail (`mapping.c:24755-24782`): record on the returned
+/// object that it came out of a simplification.
+///
+/// A restricted simplify (C `RestrictedSimplify`) does NOT mark its result as
+/// simplified — more simplification may still be possible — and the restricted
+/// flag itself is cleared on the result (`mapping.c:24755-24760`).
+fn record_simplified(this: &dyn Mapping, result: &mut DynMapping) {
+    let restricted = this
+        .as_any()
+        .downcast_ref::<CmpMap>()
+        .is_some_and(|c| c.restricted_simplify());
+
+    // `as_any` cannot be called on the `Box<dyn Mapping>` directly: it would
+    // resolve via auto-deref but the resulting `&dyn Any` points at the Box, not
+    // the inner mapping. Going through `as_mut` first gives a `&mut dyn
+    // Mapping`, on which `as_any_mut` returns the inner type-erased reference
+    // that `downcast_mut` can match.
+    let rm: &mut dyn Mapping = result.as_mut();
+    if let Some(cm) = rm.as_any_mut().downcast_mut::<CmpMap>() {
+        // Drop redundant InvA/InvB flags on a parallel CmpMap whose
+        // corresponding child is a UnitMap: since UnitMap is its own inverse the
+        // external flag is observationally irrelevant, and the C reference emits
+        // it cleared.
+        cm.normalize_unitmap_children();
+    }
+    if restricted {
+        // Clear the restricted flag on the result; do not set IsSimple.
+        if let Some(cm) = result.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.set_restricted_simplify(false);
         }
-        if restricted {
-            // Clear the restricted flag on the result; do not set IsSimple.
-            if let Some(cm) = result.as_any_mut().downcast_mut::<CmpMap>() {
-                cm.set_restricted_simplify(false);
-            }
-        } else {
-            result.set_has_been_simplified(true);
-        }
-        Ok(result)
+    } else {
+        result.set_has_been_simplified(true);
     }
 }

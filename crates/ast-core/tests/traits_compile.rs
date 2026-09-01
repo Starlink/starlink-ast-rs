@@ -32,7 +32,7 @@ impl Mapping for DummyRegion {
     ) -> AstResult<()> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
     fn rate(&self, _at: &[f64], _ax1: usize, _ax2: usize) -> AstResult<f64> {

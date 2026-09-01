@@ -889,7 +889,7 @@ impl Mapping for Circle {
         Ok(())
     }
 
-    fn simplified(&self, _gate: ViaSimplify) -> AstResult<DynMapping> {
+    fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
         // Invoke the parent Region simplify first (circle.c:1840); it simplifies
         // the encapsulated FrameSet and any explicit uncertainty. All further
         // work is done on the returned copy.
@@ -966,9 +966,10 @@ impl Mapping for Circle {
 
         if simpler {
             new.reg_overlay(self, true);
-            Ok(new.clone_box())
+            Ok((new.clone_box(), true))
         } else {
-            Ok(self.clone_box())
+            // C's `else`: `result = astClone( this )` (circle.c:1929).
+            Ok((self.clone_box(), false))
         }
     }
 

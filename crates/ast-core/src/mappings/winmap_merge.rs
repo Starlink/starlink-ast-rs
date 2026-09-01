@@ -487,7 +487,7 @@ fn try_direct_merge(
 /// self-simplify runs the "Series CmpMaps in parallel" merge, cmpmap.c).
 fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool) -> Option<usize> {
     use super::cmpmap::{CmpMap, Composition};
-    use super::simplify::{mapping_fingerprint, recombine_distributed_branches, reconstruct};
+    use super::simplify::{recombine_distributed_branches, reconstruct};
 
     let n = ctx.len();
 
@@ -604,19 +604,11 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
             series_branch.set_second_orientation(*comp_orig);
         }
 
-        let fp_before = mapping_fingerprint(&series_branch);
         let branch_dyn: &dyn Mapping = &series_branch;
-        super::simplify::clear_simplify_rebuilt();
-        let simplified = branch_dyn.simplify().ok()?;
+        let (simplified, changed) = branch_dyn.simplify_reporting_change().ok()?;
         // C's test is `simpler = ( simp1 != nc[0] ) || ( simp2 != nc[1] )`
-        // (winmap.c:1370) — pointer identity. `CmpMap::Simplify` returns
-        // `astClone( this )` only when its own `simpler` flag stayed 0; once it
-        // folds a replacement out of its component list the pointer differs even
-        // if the fold reproduces the branch's shape. Structural comparison alone
-        // cannot see that, so consult the rebuild flag as well.
-        if super::simplify::simplify_rebuilt()
-            || mapping_fingerprint(simplified.as_ref()) != fp_before
-        {
+        // (winmap.c:1370) — pointer identity, which is what `changed` reports.
+        if changed {
             simpler = true;
         }
         branches.push((simplified, false, false));

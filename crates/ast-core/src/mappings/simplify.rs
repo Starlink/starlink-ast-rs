@@ -14,7 +14,6 @@
 //!    from the flat list.
 
 use std::cell::RefCell;
-use std::hash::{Hash, Hasher};
 
 use crate::constants::BAD_VALUE;
 use crate::error::AstResult;
@@ -27,7 +26,6 @@ use super::pcdmap::PcdMap;
 use super::perm::PermMap;
 use super::shift::ShiftMap;
 use super::sphmap::SphMap;
-use super::tranmap::TranMap;
 use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
 use super::winmap::WinMap;
@@ -47,73 +45,6 @@ thread_local! {
     /// returning it unchanged on a match. That is how a Mapping whose
     /// simplification would recurse onto itself terminates.
     static SIMPLIFY_STACK: RefCell<Vec<DynMapping>> = const { RefCell::new(Vec::new()) };
-
-    /// Whether the most recent [`simplify_mapping`] of a `CmpMap` built a fresh
-    /// object rather than handing back a copy of its input.
-    ///
-    /// C's `CmpMap::Simplify` returns `astClone( this )` when its `simpler` flag
-    /// stayed 0 and a newly folded Mapping otherwise (cmpmap.c:3630-3636), and
-    /// callers distinguish the two by pointer identity. `MapMerge`'s
-    /// self-simplify head is one such caller: `simpler = ( new != map ) || ...`
-    /// (cmpmap.c:1456). A fold can reproduce the input's structure exactly and
-    /// still be a different pointer, so structural comparison alone is not
-    /// enough to reproduce that test — this flag supplies the missing bit.
-    static SIMPLIFY_REBUILT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Whether the `simplify` call that just returned built a fresh object rather
-/// than handing back a copy of its input.
-///
-/// This is the bit C reads by comparing pointers after `astSimplify`. Callers
-/// that reproduce such a test — `CmpMap::MapMerge`'s self-simplify head
-/// (cmpmap.c:1456) and `WinMap::MapMerge`'s parallel distribution
-/// (winmap.c:1370) — consult it alongside a structural comparison, since a
-/// rebuild can reproduce its input's shape exactly and still be a new pointer.
-pub(crate) fn simplify_rebuilt() -> bool {
-    SIMPLIFY_REBUILT.get()
-}
-
-/// Reset the rebuild flag before a `simplify` call whose outcome will be tested.
-pub(crate) fn clear_simplify_rebuilt() {
-    SIMPLIFY_REBUILT.set(false);
-}
-
-/// Compute a structural fingerprint of a mapping for recursion detection.
-///
-/// The fingerprint incorporates the concrete type, dimensions, and for
-/// CmpMaps the composition kind and recursive fingerprints of children.
-/// Collisions are possible but harmless (they only cause an early bail
-/// which is a conservative no-op, not a correctness issue).
-pub(crate) fn mapping_fingerprint(mapping: &dyn Mapping) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    mapping.nin().hash(&mut hasher);
-    mapping.nout().hash(&mut hasher);
-    mapping.as_any().type_id().hash(&mut hasher);
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
-        (cmp.composition() == Composition::Series).hash(&mut hasher);
-        mapping_fingerprint(cmp.first()).hash(&mut hasher);
-        mapping_fingerprint(cmp.second()).hash(&mut hasher);
-    }
-    if let Some(tm) = mapping.as_any().downcast_ref::<TranMap>() {
-        mapping_fingerprint(tm.map1()).hash(&mut hasher);
-        mapping_fingerprint(tm.map2()).hash(&mut hasher);
-    }
-    if let Some(sw) = mapping.as_any().downcast_ref::<super::SwitchMap>() {
-        sw.nroute().hash(&mut hasher);
-        if let Some(fs) = sw.forward_selector() {
-            mapping_fingerprint(fs).hash(&mut hasher);
-        }
-        if let Some(is) = sw.inverse_selector() {
-            mapping_fingerprint(is).hash(&mut hasher);
-        }
-        for rm in sw.route_maps() {
-            mapping_fingerprint(rm.as_ref()).hash(&mut hasher);
-        }
-    }
-    if let Some(sel) = mapping.as_any().downcast_ref::<super::SelectorMap>() {
-        sel.regions().len().hash(&mut hasher);
-    }
-    hasher.finish()
 }
 
 /// RAII guard over [`SIMPLIFY_STACK`], pushing the Mapping being simplified for
@@ -756,20 +687,17 @@ pub(crate) fn cmp_map_merge(
         if eff_inv {
             oriented.invert();
         }
-        let fp_before = mapping_fingerprint(oriented.as_ref());
 
-        SIMPLIFY_REBUILT.set(false);
         trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
-        if let Ok(simplified) = oriented.simplify() {
+        if let Ok((simplified, changed)) = oriented.simplify_reporting_change() {
             // C's test is `simpler = ( new != map ) || ( new_invert !=
             // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
-            // structure. A `CmpMap::Simplify` that set its own `simpler` flag
-            // folds a new object out of its component list, so `new != map` holds
-            // even when the fold reproduces the input's shape exactly; only the
-            // `astClone( this )` branch yields the original pointer. Reproduce
-            // that with the structural comparison *or* the rebuild flag the
-            // recursion just set.
-            if SIMPLIFY_REBUILT.get() || mapping_fingerprint(simplified.as_ref()) != fp_before {
+            // structure, and `changed` is that identity answer reported by the
+            // callee. The second disjunct is redundant in C: it can only fire
+            // when `new != map` already has, because the `astClone( this )`
+            // branch hands back the very object whose `Invert` was just set to
+            // `invert_list[where]`.
+            if changed {
                 let new_inv = simplified.is_inverted();
                 let mut fwd = simplified;
                 if new_inv {
@@ -1196,8 +1124,8 @@ pub(crate) fn try_self_reduce(
 ///
 /// Builds a one-element Mapping list and hands it to the class's own
 /// [`Mapping::map_merge`] repeatedly, stopping when the merge reports no change
-/// or the list grows past one element (`mapping.c:16871-16883`). Returns a clone
-/// when nothing reduced, as C does.
+/// or the list grows past one element (`mapping.c:16871-16883`). Reports `false`
+/// when nothing reduced, which is where C returns `astClone( this )`.
 ///
 /// C's entry guard on `RestrictedSimplify` (`mapping.c:16853`) has no analogue
 /// here: the attribute lives on `CmpMap` alone in this port, and `CmpMap`
@@ -1205,7 +1133,7 @@ pub(crate) fn try_self_reduce(
 /// per-component half of the same rule — only `AllowSimplify` components may be
 /// nominated — belongs to the enclosing `CmpMap`'s loop and lives in
 /// [`MergeCtx`].
-pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping> {
+pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)> {
     // C `astMapList( this, 1, astGetInvert( this ), … )`: for a class with no
     // `MapList` override this appends the Mapping itself and records its own
     // Invert as the effective direction, which is what `flatten` produces for a
@@ -1232,14 +1160,14 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping> {
     // driver has nowhere to put: C returns the original even though the loop
     // reported a change (`mapping.c:16891`).
     if !simpler || ctx.len() > 1 {
-        return Ok(this.clone_box());
+        return Ok((this.clone_box(), false));
     }
 
     // The one remaining element, brought to the orientation the list asks for.
     // C copies it and sets or clears `Invert` when `invert_list[ 0 ]` disagrees
     // with the Mapping's own flag (`mapping.c:16899-16911`); for a one-element
     // list that is exactly what `reconstruct` does to its seed.
-    reconstruct(std::mem::take(&mut ctx.list), true)
+    reconstruct(std::mem::take(&mut ctx.list), true).map(|m| (m, true))
 }
 
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
@@ -3098,13 +3026,13 @@ pub(crate) fn recombine_distributed_branches(
     let new1 = reconstruct(vec![(a1, a1_inv, a1_orig), (a2, a2_inv, a2_orig)], false).ok()?;
     let new2 = reconstruct(vec![(b1, b1_inv, b1_orig), (b2, b2_inv, b2_orig)], false).ok()?;
 
-    // Simplify each half and detect whether either changed (C's `simpler`).
-    let fp1_before = mapping_fingerprint(new1.as_ref());
-    let fp2_before = mapping_fingerprint(new2.as_ref());
-    let mut simp1 = simplify_mapping(new1.as_ref()).ok()?;
-    let mut simp2 = simplify_mapping(new2.as_ref()).ok()?;
-    let simpler = mapping_fingerprint(simp1.as_ref()) != fp1_before
-        || mapping_fingerprint(simp2.as_ref()) != fp2_before;
+    // C `simpler = ( simp1 != new1 ) || ( simp2 != new2 ) ||
+    // astGetInvert( simp1 ) || astGetInvert( simp2 )` (cmpmap.c:1616): pointer
+    // identity on each half, reported by the callee, plus C's safety check that
+    // neither half came back inverted.
+    let (mut simp1, changed1) = simplify_mapping_reporting_change(new1.as_ref()).ok()?;
+    let (mut simp2, changed2) = simplify_mapping_reporting_change(new2.as_ref()).ok()?;
+    let simpler = changed1 || changed2 || simp1.is_inverted() || simp2.is_inverted();
     if !simpler {
         return None;
     }
@@ -3341,7 +3269,8 @@ fn mirror_simple_tags(src: &dyn Mapping, dst: &mut DynMapping) {
     mirror_simple_tags(s_second, d.second_mut());
 }
 
-pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
+#[cfg(test)]
+fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     simplify_mapping_reporting_change(mapping).map(|(m, _)| m)
 }
 
@@ -3349,12 +3278,13 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
 /// differs from the input — C's `tmap != tmap2` (`cmpmap.c:1730`), which in an
 /// owned-value port is a fact the engine knows rather than a pointer comparison.
 ///
-/// The non-CmpMap path reports `false`: the per-class seam returns a Mapping
-/// without saying whether it changed anything, so the flag understates there.
-/// Understating can only cost a `simpler` C sets and the port does not.
-fn simplify_mapping_reporting_change(mapping: &dyn Mapping) -> AstResult<(DynMapping, bool)> {
+/// The non-CmpMap path delegates to the public entry, which reports the same
+/// bit for whichever per-class seam runs.
+pub(crate) fn simplify_mapping_reporting_change(
+    mapping: &dyn Mapping,
+) -> AstResult<(DynMapping, bool)> {
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
-        return mapping.simplify().map(|m| (m, false));
+        return mapping.simplify_reporting_change();
     };
 
     // C's recursion guard (cmpmap.c:3487-3491): if an equal Mapping is already
@@ -3416,7 +3346,6 @@ fn simplify_mapping_reporting_change(mapping: &dyn Mapping) -> AstResult<(DynMap
         let entries: Vec<DynMapping> = list.into_iter().map(|(m, _, _)| m).collect();
         apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
         // C's `!simpler` branch: `astClone( this )`, not a fresh object.
-        SIMPLIFY_REBUILT.set(false);
         return Ok((cloned, false));
     }
 
@@ -3424,13 +3353,11 @@ fn simplify_mapping_reporting_change(mapping: &dyn Mapping) -> AstResult<(DynMap
     // only reduction was a `Converged` one: in the latter case C rebuilt nothing
     // itself, so there is no fold whose `astSetInvert` would clear component tags.
     if !changed && !simpler && reduction != OpaqueLeafReduction::Rebuilds {
-        SIMPLIFY_REBUILT.set(false);
         return reconstruct(list, series).map(|m| (m, false));
     }
 
     // C's `simpler` branch: the result is folded afresh from the component list,
     // so it is a new pointer even when the fold reproduces the input's shape.
-    SIMPLIFY_REBUILT.set(true);
     reconstruct(list, series).map(|m| (m, true))
 }
 
@@ -5162,7 +5089,7 @@ mod tests {
     #[test]
     fn base_simplify_reaches_a_classes_own_map_merge() {
         let zoom = ZoomMap::new(2, 1.0).expect("unit-factor ZoomMap constructs");
-        let out = base_simplify(&zoom).expect("base_simplify succeeds");
+        let (out, _) = base_simplify(&zoom).expect("base_simplify succeeds");
         assert!(
             out.as_any().is::<UnitMap>(),
             "expected a UnitMap from a unit-factor ZoomMap"
@@ -5204,7 +5131,7 @@ mod tests {
     #[test]
     fn base_simplify_returns_a_clone_when_nothing_reduces() {
         let z = ZoomMap::new(1, 3.0).expect("ZoomMap constructs");
-        let out = base_simplify(&z).expect("base_simplify succeeds");
+        let (out, _) = base_simplify(&z).expect("base_simplify succeeds");
         assert_eq!(
             out.as_any()
                 .downcast_ref::<ZoomMap>()
