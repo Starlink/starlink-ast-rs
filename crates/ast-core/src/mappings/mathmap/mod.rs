@@ -180,9 +180,11 @@ impl MathMap {
 
     /// Set the SimpFI attribute.
     pub fn set_simp_fi(&mut self, val: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, mathmap.c:4744).
+        // `SimpFI` is read by MathMap's own MapMerge, which cancels a
+        // forward-then-inverse pair only when both MathMaps permit it
+        // (mathmap.c:4079-4082), so a record left in place could decline the
+        // cancellation the new value allows (mathmap.c:5698-5705,
+        // `astClearIsSimple` at mapping.h:449-460).
         self.simplified.clear();
         self.simp_fi = Some(val);
     }
@@ -194,9 +196,7 @@ impl MathMap {
 
     /// Set the SimpIF attribute.
     pub fn set_simp_if(&mut self, val: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, mathmap.c:4744).
+        // `SimpIF` is read by the same MapMerge test (mathmap.c:5771-5778).
         self.simplified.clear();
         self.simp_if = Some(val);
     }
@@ -209,9 +209,8 @@ impl MathMap {
 
     /// Set the Seed attribute.
     pub fn set_seed(&mut self, seed: i32) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, mathmap.c:4744).
+        // `Seed` changes the sequence the random-number functions return,
+        // hence the transformation itself (mathmap.c:5616-5629).
         self.simplified.clear();
         self.rng.get_mut().set_seed(seed);
     }
@@ -224,9 +223,7 @@ impl MathMap {
 
     /// Clear the Seed attribute back to its default.
     pub fn clear_seed(&mut self) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, mathmap.c:4744).
+        // As for `set_seed` (mathmap.c:5616).
         self.simplified.clear();
         self.rng.get_mut().clear_seed();
     }

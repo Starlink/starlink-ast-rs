@@ -258,8 +258,10 @@ impl GrismMap {
         if invert_result {
             result.invert();
         }
-        // This is a new GrismMap built from the source's attributes, so it
-        // inherits neither of the source's simplified records.
+        // C builds this merged GrismMap the same way -- astCopy, then a setter
+        // per adjusted attribute (grismmap.c:573-592) -- and each of those
+        // setters discards both simplified records (grismmap.c:255,
+        // `astClearIsSimple` at mapping.h:449-460).
         result.simplified.clear();
 
         Some(Box::new(result))

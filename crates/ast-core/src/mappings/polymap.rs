@@ -229,9 +229,13 @@ impl PolyMap {
 
     /// Enable or disable the iterative inverse.
     pub fn set_iter_inverse(&mut self, v: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, polymap.c:5885).
+        // `IterInverse` decides whether the inverse transformation is defined
+        // at all, so it changes what a simplification of this PolyMap could
+        // conclude. PolyMap's own MapMerge does not read the attribute, but C
+        // discards the records on every setter it covers, because a record can
+        // only ever suppress a simplification and never make one wrong -- so it
+        // errs towards discarding (polymap.c:6340-6347, `astClearIsSimple` at
+        // mapping.h:449-460).
         self.simplified.clear();
         self.iter_inverse = Some(v);
         if v && self.nin == self.nout && self.jacobian_terms.is_none() {
@@ -250,9 +254,7 @@ impl PolyMap {
     /// Clear IterInverse back to its default. Mirrors C
     /// `astClearIterInverse`.
     pub fn clear_iter_inverse(&mut self) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, polymap.c:5885).
+        // As for `set_iter_inverse` (polymap.c:6340).
         self.simplified.clear();
         self.iter_inverse = None;
         if self.nin == self.nout && self.iter_inverse() {
@@ -271,9 +273,8 @@ impl PolyMap {
 
     /// Set the maximum number of iterations for the iterative inverse.
     pub fn set_niter_inverse(&mut self, v: usize) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, polymap.c:5885).
+        // `NiterInverse` changes what the iterative inverse computes
+        // (polymap.c:6383-6385).
         self.simplified.clear();
         self.niter_inverse = v;
     }
@@ -285,9 +286,8 @@ impl PolyMap {
 
     /// Set the target relative error for the iterative inverse.
     pub fn set_tol_inverse(&mut self, v: f64) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, polymap.c:5885).
+        // `TolInverse` changes what the iterative inverse computes
+        // (polymap.c:6420-6422).
         self.simplified.clear();
         self.tol_inverse = v;
     }

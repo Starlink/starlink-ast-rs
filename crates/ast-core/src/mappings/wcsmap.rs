@@ -331,9 +331,14 @@ impl WcsMap {
     /// projection's primary range instead of setting them bad. Mirrors C
     /// `astSetLonCheck`, whose `astMAKE_SET` stores `value != 0`.
     pub fn set_lon_check(&mut self, value: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, wcsmap.c:4356).
+        // `LonCheck` changes what the inverse projection returns for a
+        // longitude outside the projection's primary range (wcsmap.c:2805), so a
+        // conclusion an earlier simplification reached about this WcsMap no
+        // longer holds. WcsMap's own MapMerge does not read the attribute, but C
+        // discards the records on every setter it covers, because a record can
+        // only ever suppress a simplification and never make one wrong -- so it
+        // errs towards discarding (wcsmap.c:4825-4828, `astClearIsSimple` at
+        // mapping.h:449-460).
         self.simplified.clear();
         self.lon_check = Some(value);
     }
@@ -355,9 +360,7 @@ impl WcsMap {
     /// correction, so the FitsChan write path does not mistake it for the
     /// header's FITS-WCS projection.
     pub fn set_fits_proj(&mut self, value: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, wcsmap.c:4356).
+        // As for `set_lon_check` (wcsmap.c:4750-4753).
         self.simplified.clear();
         self.fits_proj = Some(value);
     }

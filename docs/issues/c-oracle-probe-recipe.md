@@ -82,6 +82,24 @@ This produces `build-ast/ast.h` and `build-ast/libast.so*`.
 There is also a `build/` tree from an earlier configuration; either works,
 but keep `$R` pointing at whichever you actually built last.
 
+### Trap 1b — a `libast` older than the pinned source
+
+The two build trees do not rebuild themselves, so one of them is usually
+behind `reference/starlink-ast/src/`.
+A probe linked against the older one answers the question for whatever AST
+was current when that tree was last built, and says nothing about the pin.
+It fails silently and convincingly: the probe runs, `astOK` is 1, and the
+answer is simply the old behaviour.
+Check before trusting a result:
+
+```sh
+ls -l --time-style=+%F "$R"/libast.so.9.* reference/starlink-ast/src/<class>.c
+# the library must be newer than the source file the question is about
+```
+
+If it is not, rebuild that tree (`cmake --build "$R" -j`) or point `$R` at the
+other one.
+
 ## Trap 2 — calling protected (internal) AST functions
 
 Public functions declared in `ast.h` (e.g. `astOverlap`, `astCircle`,
@@ -161,6 +179,80 @@ int main(void) {
     return 0;
 }
 ```
+
+## Worked probe — the clear-on-set convention
+
+A second worked example, this time using only the public string interface.
+`IsSimple` is reachable through it (`mapping.c:1564` handles the name in
+`GetAttrib`), as are SphMap's `UnitRadius` (`sphmap.c:448`) and `PolarLong`
+(`:457`), so no `astCLASS` ceremony and no `astMakePointer` are needed.
+
+Two things this probe has to get right:
+
+- `astSimplify` returns a clone when nothing simplifies, so the original
+  pointer must be annulled before the set.
+  SphMap's setter is `astMAKE_SET1`, which refuses to change an object with
+  more than one reference (`object.h:1218`), and the resulting `AST__IMMUT`
+  error then makes every later `astGetI` return the attribute's bad value —
+  `0`, which is indistinguishable from a cleared record.
+- The negative control matters more than the positive cases.
+  `Invert` is not one of the attributes C covers, and `mapping.h:424-437`
+  requires inverting and inverting back to leave the Mapping reporting what it
+  reported before, so that case must print `1` where the others print `0`.
+  Without it, an error state or a build that never sets the flag reads as a
+  pass.
+
+```c
+#include <stdio.h>
+#include "ast.h"
+
+static AstMapping *simplified_sphmap(void) {
+    AstSphMap *m = astSphMap("");
+    AstMapping *s = astSimplify(m);
+    astAnnul(m);
+    return s;
+}
+
+int main(void) {
+    int status = 0;
+    astWatch(&status);
+
+    AstMapping *s = simplified_sphmap();
+    printf("after simplify:          IsSimple = %d\n", astGetI(s, "IsSimple"));
+    astSetD(s, "PolarLong", 1.0);
+    printf("after set PolarLong:     IsSimple = %d\n", astGetI(s, "IsSimple"));
+
+    AstMapping *v = simplified_sphmap();
+    astSetI(v, "UnitRadius", 1);
+    printf("after set UnitRadius:    IsSimple = %d\n", astGetI(v, "IsSimple"));
+
+    AstMapping *x = simplified_sphmap();
+    astClear(x, "PolarLong");
+    printf("after clear PolarLong:   IsSimple = %d\n", astGetI(x, "IsSimple"));
+
+    AstMapping *y = simplified_sphmap();
+    astSetI(y, "Invert", 1);
+    astSetI(y, "Invert", 0);
+    printf("after invert and back:   IsSimple = %d\n", astGetI(y, "IsSimple"));
+
+    printf("astOK = %d\n", astOK);
+    return 0;
+}
+```
+
+Against a `libast` built from the current pin:
+
+```
+after simplify:          IsSimple = 1
+after set PolarLong:     IsSimple = 0
+after set UnitRadius:    IsSimple = 0
+after clear PolarLong:   IsSimple = 0
+after invert and back:   IsSimple = 1
+astOK = 1
+```
+
+Against the stale `build-ast` tree the first two lines read `1` and `1`, which
+is what trap 1b looks like from the outside.
 
 ## Gotchas that produce segfaults or wrong answers
 

@@ -95,9 +95,13 @@ impl LutMap {
 
     /// Set the interpolation method.
     pub fn set_interp(&mut self, interp: LutInterp) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, lutmap.c:1855).
+        // `LutInterp` selects the interpolation the transformation performs,
+        // so a conclusion an earlier simplification reached about it no longer
+        // holds. LutMap's own MapMerge does not read the attribute, but C
+        // discards the records on every setter it covers, because a record can
+        // only ever suppress a simplification and never make one wrong -- so it
+        // errs towards discarding (lutmap.c:1793-1796, `astClearIsSimple` at
+        // mapping.h:449-460).
         self.simplified.clear();
         self.interp = interp;
     }

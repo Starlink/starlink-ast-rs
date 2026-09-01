@@ -255,9 +255,12 @@ impl PermMap {
     /// it changes neither the forward nor the inverse transform — only how
     /// `astMapSplit` decomposes the Mapping (permmap.c `SetPermSplit`).
     pub fn set_perm_split(&mut self, value: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, permmap.c:2646).
+        // `PermSplit` changes only how astMapSplit decomposes the PermMap and
+        // PermMap's own MapMerge does not read it, but C discards the records on
+        // every setter it covers, because a record can only ever suppress a
+        // simplification and never make one wrong -- so it errs towards
+        // discarding (permmap.c:2067-2070, `astClearIsSimple` at
+        // mapping.h:449-460).
         self.simplified.clear();
         self.perm_split = value;
     }
@@ -273,9 +276,7 @@ impl PermMap {
 
     /// Clear the `PermSplit` attribute, restoring the `false` default.
     pub fn clear_perm_split(&mut self) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, permmap.c:2646).
+        // As for `set_perm_split` (permmap.c:2067).
         self.simplified.clear();
         self.perm_split = false;
     }

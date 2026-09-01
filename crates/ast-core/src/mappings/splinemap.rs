@@ -174,9 +174,13 @@ impl SplineMap {
 
     /// Set the maximum number of iterations for the iterative inverse.
     pub fn set_inv_niter(&mut self, n: usize) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, splinemap.c:3096).
+        // `InvNiter` changes what the iterative inverse computes, so a
+        // conclusion an earlier simplification reached about this SplineMap no
+        // longer holds. SplineMap's own MapMerge does not read the attribute,
+        // but C discards the records on every setter it covers, because a record
+        // can only ever suppress a simplification and never make one wrong --
+        // so it errs towards discarding (splinemap.c:2547-2549,
+        // `astClearIsSimple` at mapping.h:449-460).
         self.simplified.clear();
         self.inv_niter = Some(n);
     }
@@ -188,9 +192,7 @@ impl SplineMap {
 
     /// Set the target relative error for the iterative inverse.
     pub fn set_inv_tol(&mut self, tol: f64) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, splinemap.c:3096).
+        // As for `set_inv_niter` (splinemap.c:2586-2588).
         self.simplified.clear();
         self.inv_tol = Some(tol);
     }
@@ -205,9 +207,8 @@ impl SplineMap {
     /// If `true`, out-of-bounds inputs pass through unchanged (unit mapping).
     /// If `false` (default), out-of-bounds inputs produce BAD_VALUE.
     pub fn set_out_unit(&mut self, flag: bool) {
-        // Changing this feeds this class's own simplification, so both
-        // orientations' simplified records are discarded (C
-        // `astClearIsSimple`, splinemap.c:3096).
+        // `OutUnit` changes what the transformation returns outside the
+        // spline's bounds (splinemap.c:2630-2632).
         self.simplified.clear();
         self.out_unit = flag;
     }

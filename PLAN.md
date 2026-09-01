@@ -636,30 +636,59 @@ harness was not comparing this fixture at all. See §9.0. Both paths now render
 through `AnyObject::from_mapping` and agree that the port emits a card C does
 not, which is cause (B). The C rule that clears it is still unidentified.
 
-### 9.2 The clear-on-set convention is not ported
+### 9.2 The clear-on-set convention — PORTED; five attributes lack a setter
 
-Upstream `e40e71b4` added a rule with no counterpart here: an attribute setter
-whose value feeds the first part of that class's own `astMapMerge` discards
-both simplified records (`mapping.h:449-457`). C applies it in 11 classes:
+Upstream `e40e71b4` added the rule: a setter for an attribute that feeds the
+first part of that class's own `astMapMerge` discards both simplified records
+(`mapping.h:449-460`).
+C's own comment there gives the reason and the latitude — nothing else reads the
+records, since a Mapping is offered to `astMapMerge` by its neighbours whatever
+it holds, and a record can only ever suppress a simplification and never make
+one wrong, so C errs towards discarding.
+It applies the rule in 11 classes:
 
-| class | attributes |
-|---|---|
-| ZoomMap | `Zoom` |
-| LutMap | `LutInterp`, `LutEpsilon` |
-| MathMap | `Seed`, `SimpFI`, `SimpIF` |
-| PolyMap | `IterInverse`, `NiterInverse`, `TolInverse` |
-| SplineMap | `InvNiter`, `InvTol`, `OutUnit` |
-| SphMap | `PolarLong`, `UnitRadius` |
-| WcsMap | `FITSProj`, `LonCheck` |
-| PcdMap | `Disco` |
-| PermMap | `PermSplit` |
-| IntraMap | `IntraFlag` |
-| GrismMap | (macro form, `grismmap.c:165,255`) |
+| class | attributes | port |
+|---|---|---|
+| ZoomMap | `Zoom` | no setter |
+| LutMap | `LutInterp` | `set_interp` |
+| LutMap | `LutEpsilon` | no setter |
+| MathMap | `Seed`, `SimpFI`, `SimpIF` | `set_seed`, `clear_seed`, `set_simp_fi`, `set_simp_if` |
+| PolyMap | `IterInverse`, `NiterInverse`, `TolInverse` | `set_iter_inverse`, `clear_iter_inverse`, `set_niter_inverse`, `set_tol_inverse` |
+| SplineMap | `InvNiter`, `InvTol`, `OutUnit` | `set_inv_niter`, `set_inv_tol`, `set_out_unit` |
+| SphMap | `PolarLong`, `UnitRadius` | `set_polar_long`, `set_unit_radius` |
+| WcsMap | `FITSProj`, `LonCheck` | `set_fits_proj`, `set_lon_check` |
+| PcdMap | `Disco` | no setter |
+| PermMap | `PermSplit` | `set_perm_split`, `clear_perm_split` |
+| IntraMap | `IntraFlag` | no setter |
+| GrismMap | (macro form, `grismmap.c:165,255`) | no setter; the merged copy at `grismmap.rs:266` |
 
-Several of these attributes have no setter in the port yet, so the gap is
-latent rather than active. What would expose it: a fixture that sets one of
-these attributes on an already-simplified Mapping and then re-simplifies —
-none exists today.
+Every setter and clearer the port has discards the records, and each cites the
+`astMAKE_SET` / `astMAKE_CLEAR` site it mirrors together with what the attribute
+changes: whether it feeds that class's own `MapMerge` (MathMap's `SimpFI` /
+`SimpIF`, SphMap's `PolarLong` / `UnitRadius`) or only the transformation, which
+is C's err-towards-it case.
+GrismMap has no setter, but C's own merge builds its result with `astCopy`
+followed by a setter per adjusted attribute (`grismmap.c:573-592`), so the
+port's `merge_with_zoom` discards the records on the copy it returns.
+
+**No fixture can express this.** The simplify corpus dumps, simplifies and dumps
+again; there is no "set an attribute after simplifying" step in the format, and
+adding one would change every consumer.
+The gate is `crates/ast-core/tests/test_clear_on_set.rs`: a case per setter, and
+`record_survives_invert_and_back`, which pins an operation C does *not* cover
+(`mapping.h:424-437`) so the other 18 assertions cannot pass on a port that
+never records anything.
+C's behaviour is confirmed by the probe recorded in
+`docs/issues/c-oracle-probe-recipe.md` ("Worked probe — the clear-on-set
+convention"), which reads `IsSimple` through the public string interface
+across a set, a clear and the invert control.
+
+**Still open, deliberately.** Five of C's attributes have no setter in the port:
+`ZoomMap::Zoom`, `LutMap::LutEpsilon`, `PcdMap::Disco`, `IntraMap::IntraFlag`,
+and GrismMap's eight macro-form attributes.
+The rule applies to each when its setter lands, and the row above says so.
+Adding the setters to close this section would be a new public attribute surface
+the spec did not ask for, so they are left absent.
 
 ### 9.4 42 simplify fixtures have no transform-oracle section
 
