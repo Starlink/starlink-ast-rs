@@ -5543,3 +5543,425 @@ Generated with AI
 Co-Authored-By: SLAC AI
 MSG
 ```
+
+---
+
+### Task 20: `Ellipse` bounds come from the mesh, as C's do
+
+**Files:**
+- Modify: `crates/ast-core/src/regions/ellipse.rs:465-481`
+- Test: `crates/ast-core/tests/test_region.rs` (new test, Step 1)
+
+**Interfaces:**
+- Consumes: `Frame::ax_distance(&self, axis: usize, v1: f64, v2: f64) -> AstResult<f64>`
+  (`frames/mod.rs:854`); `Frame::norm_box(&self, lbnd: &mut [f64], ubnd: &mut [f64], inside: &dyn Fn(&[f64]) -> AstResult<bool>) -> AstResult<()>`
+  (`frames/mod.rs:1119`); `RegionGeometry::get_region_mesh(&self) -> AstResult<PointSet>`
+  (the cached wrapper at `ellipse.rs:752`).
+- Produces: no signature change. `reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)>`
+  keeps its shape; only its algorithm changes.
+
+C's `Ellipse::RegBaseBox` (`ellipse.c:933-999`) computes nothing. It forces the
+mesh to exist —
+
+```c
+   if( !this_region->basemesh ) (void) astAnnul( astRegBaseMesh( this ) );
+```
+
+— and then reads the four numbers `RegBaseMesh` cached while generating it. The
+bounds are therefore the bounds *of the mesh points*, accumulated with
+`astAxDistance` as offsets from the ellipse centre, and passed through
+`astNormBox` before being cached (`ellipse.c:1180-1198`).
+
+The port computes a closed-form Cartesian extent instead:
+
+```rust
+        let x_extent = ((a * cos_a).powi(2) + (b * sin_a).powi(2)).sqrt();
+```
+
+That is right for a plain 2-d Frame and wrong for a SkyFrame, where the mesh is
+a geodesic ellipse, the extents are not symmetric about the centre, and a box
+containing a pole must be widened to the full longitude range. `Circle` already
+does it C's way (`circle.rs:340-377`); this task brings `Ellipse` into line.
+
+Two C details the port must keep:
+
+- `astAxDistance( frm, 1, this->centre[ 1 ], p2[ 1 ] )` — C passes **axis 1**
+  when accumulating the axis-2 bounds (`ellipse.c:1190`). On a SkyFrame that is
+  the longitude axis's wrapping rule applied to a latitude difference. It is a C
+  bug; mirror it, as `Circle` does not need to because it passes 1 and 2
+  correctly there, and log it in the quirks doc.
+- The accumulation is `if dist < lb { lb = dist } else if dist > ub { ub = dist }`
+  — an `else if`, so a point that would extend both ends only extends the lower
+  one. With `lb` initialised to `DBL_MAX` and `ub` to `-DBL_MAX`, the first point
+  sets only `lb`. Mirror the asymmetry.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `crates/ast-core/tests/test_region.rs`:
+
+```rust
+/// An Ellipse on a SkyFrame that encloses the north pole must report a
+/// bounding box spanning the whole longitude range, because C's
+/// Ellipse::RegBaseBox accumulates its bounds over the geodesic mesh and then
+/// passes them through astNormBox (ellipse.c:933, 1180-1198).
+#[test]
+fn ellipse_sky_pole_bounds_span_all_longitudes() {
+    use std::f64::consts::PI;
+
+    let frame = SkyFrame::new();
+    // Centre 0.2 radians from the north pole, primary axis 0.5 radians long, so
+    // the mesh crosses the pole.
+    let centre = [0.0, PI / 2.0 - 0.2];
+    let point1 = [0.0, PI / 2.0 - 0.7];
+    let point2 = [0.3, PI / 2.0 - 0.2];
+    let ellipse = EllipseBuilder::from_points(Box::new(frame), &centre, &point1, &point2)
+        .build()
+        .expect("ellipse builds");
+
+    let (lbnd, ubnd) = ellipse.get_region_bounds().expect("bounds");
+
+    assert!(
+        lbnd[0] <= 0.0 && ubnd[0] >= 2.0 * PI - 1e-12,
+        "longitude range should span 0..2pi, got {}..{}",
+        lbnd[0],
+        ubnd[0]
+    );
+    assert!(
+        (ubnd[1] - PI / 2.0).abs() < 1e-12,
+        "latitude upper bound should be pinned to the pole, got {}",
+        ubnd[1]
+    );
+}
+```
+
+Match the imports and the `EllipseBuilder` constructor name to the ones the
+file's existing Ellipse tests use; if `from_points` is spelled differently there,
+use that spelling.
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+cargo test -p ast-core --test test_region ellipse_sky_pole_bounds 2>&1 | tail -20
+```
+
+Expected: FAIL. The closed-form extent gives a longitude range of roughly
+±0.3 radians around the centre and a latitude bound short of `PI/2`.
+
+- [ ] **Step 3: Replace the closed form with C's mesh accumulation**
+
+In `crates/ast-core/src/regions/ellipse.rs`, replace the whole body of
+`reg_base_box` with:
+
+```rust
+    fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        // C computes nothing here: it forces the base mesh to exist and reads
+        // the bounds RegBaseMesh accumulated while generating it
+        // (ellipse.c:933-999). `get_region_mesh` is the cached mesh, so the
+        // points below are the same points, in the same order.
+        let mesh = self.get_region_mesh()?;
+        let centre = &self.data.points[0];
+        let frm = self.data.frameset.base();
+
+        let mut lbx = f64::MAX;
+        let mut ubx = -f64::MAX;
+        let mut lby = f64::MAX;
+        let mut uby = -f64::MAX;
+
+        for ip in 0..mesh.npoint() {
+            let p2 = mesh.point(ip);
+
+            // Bounds are accumulated as offsets from the centre, using
+            // astAxDistance so that a cyclic axis wraps correctly
+            // (ellipse.c:1185-1196). C's `else if` means a point that would
+            // extend both ends of an axis extends only the lower one; and C
+            // passes axis 1 for both axes, which on a SkyFrame applies the
+            // longitude wrapping rule to a latitude difference. Both are
+            // mirrored: see docs/issues/c-library-quirks.md.
+            let dist = frm.ax_distance(1, centre[0], p2[0])?;
+            if dist < lbx {
+                lbx = dist;
+            } else if dist > ubx {
+                ubx = dist;
+            }
+
+            let dist = frm.ax_distance(1, centre[1], p2[1])?;
+            if dist < lby {
+                lby = dist;
+            } else if dist > uby {
+                uby = dist;
+            }
+        }
+
+        let mut lower = vec![centre[0] + lbx, centre[1] + lby];
+        let mut upper = vec![centre[0] + ubx, centre[1] + uby];
+
+        // Extend the box to include the effect of any coordinate-system
+        // singularities. C builds the probe by copying the Ellipse, giving it
+        // the base Frame and clearing Negated (ellipse.c:1198-1203), so the
+        // predicate is membership of the un-negated Ellipse.
+        let (a, b, angle) = self.ellipse_params()?;
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+        let closed = self.data.closed;
+        let inside = |point: &[f64]| -> AstResult<bool> {
+            if crate::constants::is_bad(point[0]) || crate::constants::is_bad(point[1]) {
+                return Ok(false);
+            }
+            let dx = point[0] - centre[0];
+            let dy = point[1] - centre[1];
+            let u = dx * cos_a + dy * sin_a;
+            let v = -dx * sin_a + dy * cos_a;
+            let d = u * u / (a * a) + v * v / (b * b);
+            Ok(if closed { d <= 1.0 } else { d < 1.0 })
+        };
+        frm.norm_box(&mut lower, &mut upper, &inside)?;
+
+        Ok((lower, upper))
+    }
+```
+
+`ellipse_params` returns the Cartesian `(a, b, angle)` this file's
+`reg_base_inside` uses, so the predicate matches that method's own membership
+test; keep the two consistent if either changes.
+
+- [ ] **Step 4: Run the new test and the Region suite**
+
+```bash
+cargo test -p ast-core --test test_region 2>&1 | tail -20
+```
+
+Expected: the new test passes and every existing Ellipse test still passes. A
+non-sky Ellipse's mesh bounds agree with the closed form to within the mesh
+resolution, so any existing exact-value assertion on a Cartesian Ellipse box is
+now approximate — if one fails, compare against a C capture before adjusting it,
+because C's answer is the mesh bound, not the closed form.
+
+- [ ] **Step 5: Record the axis-1 mirror in the quirks doc**
+
+Append to `docs/issues/c-library-quirks.md`:
+
+```markdown
+## `Ellipse::RegBaseMesh` accumulates axis-2 bounds with axis 1
+
+`ellipse.c:1190` calls `astAxDistance( frm, 1, this->centre[ 1 ], p2[ 1 ] )`
+when accumulating the axis-2 bounding-box limits; the axis-1 accumulation four
+lines earlier passes the same axis index. On a Frame whose axes share a
+normalisation rule the two agree, but on a SkyFrame axis 1 is longitude and
+wraps at 2*pi while axis 2 is latitude and does not, so a latitude difference is
+normalised by the wrong rule.
+
+`Circle::RegBaseMesh` (`circle.c:1080-1092`) passes 1 and 2 correctly, so the
+two classes disagree on the same geometry.
+
+The port mirrors it (`regions/ellipse.rs`, `reg_base_box`) to keep the simplify
+corpus byte-exact. Worth raising upstream.
+```
+
+- [ ] **Step 6: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/regions/ellipse.rs crates/ast-core/tests/test_region.rs docs/issues/c-library-quirks.md
+git commit -F - <<'MSG'
+fix(ellipse): take the bounding box from the mesh, as C does
+
+C's Ellipse RegBaseBox computes nothing: it forces the base mesh to exist and
+reads the bounds RegBaseMesh accumulated with astAxDistance as offsets from the
+centre, then passed through astNormBox. The port used a closed-form Cartesian
+extent, which is right on a plain Frame and wrong on a SkyFrame -- asymmetric
+extents, and no pole widening.
+
+C's axis-1-for-both-axes call and its else-if accumulation are mirrored, and the
+axis-1 call is recorded in the quirks doc.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 21: `Polygon` bounds are offsets from the first vertex, and pass through `astNormBox`
+
+**Files:**
+- Modify: `crates/ast-core/src/regions/polygon.rs:644-670`
+- Test: `crates/ast-core/tests/test_region.rs` (new test, Step 1)
+
+**Interfaces:**
+- Consumes: `Frame::ax_distance`, `Frame::norm_box` (as Task 20).
+- Produces: no signature change to `reg_base_box`.
+
+C's `Polygon::RegBaseBox` (`polygon.c:4245-4318`) accumulates each vertex as an
+`astAxDistance` offset from the **first** vertex, adds the first vertex back, and
+passes the result through `astNormBox`:
+
+```c
+/* Find the bounds of the polygon, using the first vertex as the origin, in
+   order to avoid problems with boxes that cross RA=0 or RA=12h. */
+```
+
+The port takes a plain min/max over the raw vertex values, which cannot express
+a polygon spanning RA=0 (its longitude bounds come out as the full circle when
+the polygon is narrow) and never widens for a pole.
+
+C's `else if` asymmetry applies here too, and unlike `Ellipse` this one passes
+axes 1 and 2 correctly.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `crates/ast-core/tests/test_region.rs`:
+
+```rust
+/// A sky Polygon straddling RA = 0 must report a narrow longitude range: C
+/// accumulates the bounds as astAxDistance offsets from the first vertex
+/// precisely so the wrap does not widen the box (polygon.c:4245).
+#[test]
+fn polygon_sky_bounds_use_first_vertex_origin() {
+    use std::f64::consts::PI;
+
+    let frame = SkyFrame::new();
+    // Four vertices spanning RA 2*pi - 0.05 .. 0.05, i.e. 0.1 radians wide.
+    let vertices = [
+        [2.0 * PI - 0.05, 0.1],
+        [0.05, 0.1],
+        [0.05, -0.1],
+        [2.0 * PI - 0.05, -0.1],
+    ];
+    let polygon = PolygonBuilder::from_vertices(Box::new(frame), &vertices)
+        .build()
+        .expect("polygon builds");
+
+    let (lbnd, ubnd) = polygon.get_region_bounds().expect("bounds");
+
+    let width = ubnd[0] - lbnd[0];
+    assert!(
+        width < 0.2,
+        "longitude width should be about 0.1, got {width} ({}..{})",
+        lbnd[0],
+        ubnd[0]
+    );
+}
+```
+
+Match the imports and the `PolygonBuilder` constructor name to the ones the
+file's existing Polygon tests use.
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_region polygon_sky_bounds 2>&1 | tail -20
+```
+
+Expected: FAIL with a width near `2*PI` — the raw min/max spans from 0.05 to
+`2*PI - 0.05`.
+
+- [ ] **Step 3: Port C's algorithm**
+
+In `crates/ast-core/src/regions/polygon.rs`, replace the whole body of
+`reg_base_box` with:
+
+```rust
+    fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        let nv = self.data.points.len();
+        if nv == 0 {
+            return Ok((
+                vec![crate::constants::BAD_VALUE; 2],
+                vec![crate::constants::BAD_VALUE; 2],
+            ));
+        }
+
+        let frm = self.data.frameset.base();
+        let x0 = self.data.points[0][0];
+        let y0 = self.data.points[0][1];
+
+        // C accumulates the bounds as offsets from the first vertex, "in order
+        // to avoid problems with boxes that cross RA=0 or RA=12h"
+        // (polygon.c:4270-4300). The `else if` means a vertex that would extend
+        // both ends of an axis extends only the lower one; mirrored.
+        let mut lower = vec![f64::MAX, f64::MAX];
+        let mut upper = vec![-f64::MAX, -f64::MAX];
+
+        for v in &self.data.points {
+            let dx = frm.ax_distance(1, x0, v[0])?;
+            if dx < lower[0] {
+                lower[0] = dx;
+            } else if dx > upper[0] {
+                upper[0] = dx;
+            }
+
+            let dy = frm.ax_distance(2, y0, v[1])?;
+            if dy < lower[1] {
+                lower[1] = dy;
+            } else if dy > upper[1] {
+                upper[1] = dy;
+            }
+        }
+
+        lower[0] += x0;
+        upper[0] += x0;
+        lower[1] += y0;
+        upper[1] += y0;
+
+        // Extend the box to include the effect of any coordinate-system
+        // singularities. C builds the probe by copying the Polygon, giving it
+        // the base Frame and clearing Negated (polygon.c:4306-4311), so the
+        // predicate is membership of the un-negated Polygon.
+        let inside = |point: &[f64]| -> AstResult<bool> {
+            let pts = PointSet::from_rows(std::iter::once(point));
+            Ok(self.reg_base_inside(&pts)?[0])
+        };
+        frm.norm_box(&mut lower, &mut upper, &inside)?;
+
+        Ok((lower, upper))
+    }
+```
+
+`reg_base_inside` already answers membership of the un-negated Polygon in the
+base Frame (`polygon.rs:600-642`), which is what C's copy-and-clear-Negated
+probe amounts to.
+
+- [ ] **Step 4: Run the new test and the Region suite**
+
+```bash
+cargo test -p ast-core --test test_region 2>&1 | tail -20
+cargo test -p ast-core --test test_polygon 2>&1 | tail -20
+```
+
+Expected: the new test passes. For a Cartesian Frame `ax_distance` is `v2 - v1`,
+so a non-sky Polygon's bounds are unchanged to the last bit — any Cartesian
+Polygon assertion that moves means the offset arithmetic is wrong, not that the
+expectation was stale.
+
+- [ ] **Step 5: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/regions/polygon.rs crates/ast-core/tests/test_region.rs
+git commit -F - <<'MSG'
+fix(polygon): bound the polygon relative to its first vertex
+
+C accumulates a Polygon's bounding box as astAxDistance offsets from the first
+vertex, adds the vertex back, and passes the result through astNormBox -- the
+comment says why: a box crossing RA=0 or RA=12h. The port took a raw min/max over
+the vertex values, which reports the full longitude circle for a narrow polygon
+straddling RA=0 and never widens for a pole.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
