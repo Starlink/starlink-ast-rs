@@ -6280,3 +6280,706 @@ Cluster 3 is complete at this point: `nullregion_unc_fillfactor_merge`,
 `cap_pointlist_01`, `cap_zoommap_04` and `cap_interval_01` (bar its licensed
 platform drift) are byte-equal, the `cap_zoommap_04` `IsSimp` disagreement is
 retired, and the three missing `astNormBox` participants are ported.
+
+---
+
+## Cluster 5 — the clear-on-set setters
+
+`PLAN.md` §9.2 records the clear-on-set convention as ported with five
+attributes left without a setter.
+Four of them are in scope here: `ZoomMap::Zoom`, `LutMap::LutEpsilon`,
+`PcdMap::Disco` and `GrismMap`'s eight macro-form attributes.
+`IntraMap::IntraFlag` is excluded because the class itself is deferred (§1.3 of
+the spec).
+
+The convention is `mapping.h:449-460`: a setter for an attribute that feeds the
+first part of that class's own `astMapMerge` discards **both** simplified
+records.
+C's comment there states the reason and the latitude — nothing else reads the
+records, since a Mapping is offered to `astMapMerge` by its neighbours whatever
+it holds, and a record can only ever suppress a simplification and never make
+one wrong, so C errs towards discarding.
+
+C applies it through the `assign` expression of the attribute macros rather than
+in the macro bodies:
+
+| class | site | C form |
+|---|---|---|
+| ZoomMap | `zoommap.c:1698,1703-1710` | `astMAKE_SET1(ZoomMap,Zoom,double,zoom,(astClearIsSimple(this), (value != 0.0) ? value : (astError(AST__ZOOMI, …), this->zoom)))` |
+| LutMap | `lutmap.c:1839,1842` | `astMAKE_SET1(LutMap,LutEpsilon,double,lutepsilon,(astClearIsSimple(this),value))` |
+| PcdMap | `pcdmap.c:2583,2586` | `astMAKE_SET1(PcdMap,Disco,double,disco,(astClearIsSimple(this),value))` |
+| GrismMap | `grismmap.c:236-262`, applied at `:1736,1778,1817,1855,1895,1933,1973,2014` | a class-local `MAKE_SET` whose body is `astClearIsSimple(this); this->component = (assign);` followed by `UpdateConstants(this, status)` |
+
+Two parts of the macro bodies have no Rust analogue, and the tasks below do not
+port them:
+
+- `astGetRefCount(this) > 1` → `AST__IMMUT`. The port holds every class by value
+  and `Clone` is the deep copy, so there is no shared object a setter could
+  mutate out from under another holder. The `&mut self` receiver is what enforces
+  it.
+- The `astMAKE_CLEAR1` / `MAKE_CLEAR` halves. §9.2's rows are about the missing
+  *setters*, and the port has no `clear_*` on any of these four classes: the
+  unset sentinels C carries (`0.0` for `Zoom`, `AST__BAD` for `LutEpsilon` and
+  `Disco`, `AST__BAD`/`INT_MAX` for GrismMap's eight) do not exist in the Rust
+  structs, which store the effective value directly. Adding clearers would mean
+  introducing those sentinels, which is a separate attribute-surface change the
+  spec did not ask for.
+
+No fixture can express any of this, for the reason `test_clear_on_set.rs`'s
+header already gives: the simplify corpus dumps, simplifies and dumps again, and
+there is no "set an attribute after simplifying" step in the format. The gate is
+a case per setter in that file, made falsifiable by the
+`record_survives_invert_and_back` control already there.
+
+### Task 23: setters for `ZoomMap::Zoom`, `LutMap::LutEpsilon` and `PcdMap::Disco`
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/zoom.rs:47-51` (add a public getter and
+  the setter after `factor`)
+- Modify: `crates/ast-core/src/mappings/lutmap.rs:95-107` (add the setter and a
+  getter beside `set_interp`)
+- Modify: `crates/ast-core/src/mappings/pcdmap.rs:69-72` (add the setter after
+  `disc`)
+- Modify: `crates/ast-core/tests/test_clear_on_set.rs` (four new cases and two
+  new imports)
+- Modify: `PLAN.md:664-720` (§9.2's table and its closing paragraph)
+
+**Interfaces:**
+- Consumes: `Mapping::set_has_been_simplified(&mut self, bool)` and
+  `Mapping::has_been_simplified(&self) -> bool` (both already on the trait);
+  `SimplifiedRecord::clear(&mut self)` (already used by
+  `LutMap::set_interp`); `ErrorCode::Zoomi` (already used by `ZoomMap::new`);
+  the `discards<M: Mapping>(m: M, what: &str, mutate: impl FnOnce(&mut M))`
+  helper at `test_clear_on_set.rs:32`.
+- Produces:
+  - `ZoomMap::zoom(&self) -> f64`
+  - `ZoomMap::set_zoom(&mut self, factor: f64) -> AstResult<()>`
+  - `LutMap::lut_epsilon(&self) -> f64`
+  - `LutMap::set_lut_epsilon(&mut self, epsilon: f64)`
+  - `PcdMap::set_disc(&mut self, disc: f64)`
+
+- [ ] **Step 1: Write the four failing test cases**
+
+Append to `crates/ast-core/tests/test_clear_on_set.rs`, after
+`clearing_perm_split_discards_the_record` (which ends at line 206) and *before*
+the `record_survives_invert_and_back` control and its doc comment:
+
+```rust
+#[test]
+fn zoom_discards_the_record() {
+    discards(ZoomMap::new(2, 3.0).unwrap(), "ZoomMap::set_zoom", |m| {
+        m.set_zoom(4.0).unwrap();
+    });
+}
+
+/// C leaves the Zoom value unchanged when a set of zero is rejected
+/// (`zoommap.c:1706-1710` evaluates to `this->zoom` after the `astError`), but
+/// `astClearIsSimple` is the first term of the same comma expression, so the
+/// records go whether the assignment happens or not.
+#[test]
+fn rejected_zoom_still_discards_the_record() {
+    let mut m = ZoomMap::new(2, 3.0).unwrap();
+    m.set_has_been_simplified(true);
+    let err = m.set_zoom(0.0).expect_err("a zoom factor of zero must be rejected");
+    assert_eq!(err.code(), ErrorCode::Zoomi);
+    assert_eq!(m.zoom(), 3.0, "the rejected set changed the zoom factor");
+    assert!(
+        !m.has_been_simplified(),
+        "the rejected set kept the simplified record"
+    );
+}
+
+#[test]
+fn lut_epsilon_discards_the_record() {
+    discards(lut_map(), "LutMap::set_lut_epsilon", |m| {
+        m.set_lut_epsilon(1e-7);
+    });
+}
+
+#[test]
+fn pcd_disco_discards_the_record() {
+    discards(
+        PcdMap::new(1e-6, [0.0, 0.0]),
+        "PcdMap::set_disc",
+        |m| m.set_disc(2e-6),
+    );
+}
+```
+
+Extend the import block at `test_clear_on_set.rs:26-29` to bring in the three
+new types and the error code:
+
+```rust
+use ast_core::error::ErrorCode;
+use ast_core::mappings::{
+    LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, SphMap, SplineMap,
+    WcsMap, WcsProjection, ZoomMap,
+};
+```
+
+- [ ] **Step 2: Run the cases to verify they fail**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+```
+
+Expected: the crate fails to compile, with `no method named set_zoom found for
+struct ZoomMap`, `no method named zoom`, `no method named set_lut_epsilon` and
+`no method named set_disc`.
+
+- [ ] **Step 3: Add `ZoomMap::zoom` and `ZoomMap::set_zoom`**
+
+In `crates/ast-core/src/mappings/zoom.rs`, replace the `factor` accessor block
+
+```rust
+    /// The zoom factor.
+    pub(crate) fn factor(&self) -> f64 {
+        self.factor
+    }
+```
+
+with
+
+```rust
+    /// The zoom factor.
+    pub(crate) fn factor(&self) -> f64 {
+        self.factor
+    }
+
+    /// The zoom factor — C's `Zoom` attribute.
+    ///
+    /// C returns 1.0 when the attribute is unset (`zoommap.c:1699-1700`, where
+    /// `0.0` is the unset sentinel). A constructed `ZoomMap` always carries a
+    /// non-zero factor, so there is no unset state to report here.
+    pub fn zoom(&self) -> f64 {
+        self.factor
+    }
+
+    /// Set the zoom factor — C's `astSetZoom`.
+    ///
+    /// Returns `ErrorCode::Zoomi` for a factor of zero, and leaves the factor
+    /// unchanged, as C does (`zoommap.c:1703-1710`).
+    ///
+    /// `ZoomMap`'s own `MapMerge` reads the attribute as the seed of its merge
+    /// scan (`zoommap.c:747`) and can replace the run of ZoomMaps and UnitMaps
+    /// it accumulates with a single `UnitMap`, so a conclusion an earlier
+    /// simplification reached no longer holds. Both records are discarded
+    /// whether the new value is accepted or rejected, because
+    /// `astClearIsSimple` is the first term of C's comma expression
+    /// (`zoommap.c:1698`, `astClearIsSimple` at `mapping.h:449-460`).
+    pub fn set_zoom(&mut self, factor: f64) -> AstResult<()> {
+        self.simplified.clear();
+        if factor == 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Zoomi,
+                "zoom factor must not be zero",
+            ));
+        }
+        self.factor = factor;
+        Ok(())
+    }
+```
+
+- [ ] **Step 4: Add `LutMap::lut_epsilon` and `LutMap::set_lut_epsilon`**
+
+In `crates/ast-core/src/mappings/lutmap.rs`, immediately after the `interp`
+getter (which ends at line 112), insert:
+
+```rust
+    /// The stated relative error of the table values — C's `LutEpsilon`.
+    ///
+    /// C's unset sentinel is `AST__BAD`, reported as the `DBL_EPSILON` default
+    /// (`lutmap.c:1840-1841`); the port stores the effective value, so this
+    /// returns `f64::EPSILON` for a `LutMap` nothing has set.
+    pub fn lut_epsilon(&self) -> f64 {
+        self.lut_epsilon
+    }
+
+    /// Set the stated relative error of the table values — C's
+    /// `astSetLutEpsilon`.
+    ///
+    /// The value scales the tolerance `GetLinear` uses (`lutmap.c:599`), so it
+    /// decides whether `LutMap`'s own `MapMerge` sees a linear table and
+    /// replaces the `LutMap` with a `WinMap` — the first thing that `MapMerge`
+    /// does, before it looks at any neighbour (`lutmap.c:1142`). Both simplified
+    /// records are discarded (`lutmap.c:1842`, `astClearIsSimple` at
+    /// `mapping.h:449-460`).
+    pub fn set_lut_epsilon(&mut self, epsilon: f64) {
+        self.simplified.clear();
+        self.lut_epsilon = epsilon;
+    }
+```
+
+- [ ] **Step 5: Add `PcdMap::set_disc`**
+
+In `crates/ast-core/src/mappings/pcdmap.rs`, immediately after the `disc` getter
+(which ends at line 72), insert:
+
+```rust
+    /// Set the distortion coefficient — C's `astSetDisco`.
+    ///
+    /// A zero coefficient is what `PcdMap`'s own `MapMerge` tests for when it
+    /// replaces the `PcdMap` with a `UnitMap`, in the section C marks "without
+    /// reference to the neighbouring Mappings in the list"
+    /// (`pcdmap.c:1418-1422`). A conclusion an earlier simplification reached
+    /// therefore no longer holds, and both simplified records are discarded
+    /// (`pcdmap.c:2586`, `astClearIsSimple` at `mapping.h:449-460`).
+    pub fn set_disc(&mut self, disc: f64) {
+        self.simplified.clear();
+        self.disc = disc;
+    }
+```
+
+- [ ] **Step 6: Run the cases to verify they pass**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+```
+
+Expected: 22 passed — the 18 that were there plus the four new ones,
+`record_survives_invert_and_back` still among them.
+
+- [ ] **Step 7: Confirm the new setters changed nothing else**
+
+The setters are additive, but `zoom()` shadows nothing and `set_zoom` shares the
+zero check with `ZoomMap::new`, so run the two suites that would notice:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -5
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
+```
+
+Expected: both unchanged from the state Cluster 3 left them in.
+
+- [ ] **Step 8: Update `PLAN.md` §9.2**
+
+Replace the three "no setter" cells in the table at `PLAN.md:679-690`:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+import pathlib
+p = pathlib.Path("PLAN.md")
+t = p.read_text()
+for old, new in [
+    ("| ZoomMap | `Zoom` | no setter |",
+     "| ZoomMap | `Zoom` | `set_zoom` |"),
+    ("| LutMap | `LutEpsilon` | no setter |",
+     "| LutMap | `LutEpsilon` | `set_lut_epsilon` |"),
+    ("| PcdMap | `Disco` | no setter |",
+     "| PcdMap | `Disco` | `set_disc` |"),
+]:
+    assert t.count(old) == 1, old
+    t = t.replace(old, new)
+p.write_text(t)
+PY
+```
+
+Then replace §9.2's closing paragraph — the block that currently begins
+`**Still open, deliberately.** Five of C's attributes` and runs to
+`so they are left absent.` — with:
+
+```markdown
+**Two attributes remain without a setter, and neither is reachable.**
+`IntraMap::IntraFlag` has none because `IntraMap` itself is not ported.
+The `clear_*` halves of the four setters added in this section have none because
+the port stores each attribute's effective value rather than C's unset sentinel
+(`0.0` for `Zoom`, `AST__BAD` for `LutEpsilon`, `Disco` and six of GrismMap's
+eight, `INT_MAX` for `GrismM`), so a clearer would mean introducing those
+sentinels and the `Test*` surface that reads them.
+```
+
+- [ ] **Step 9: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/mappings/zoom.rs crates/ast-core/src/mappings/lutmap.rs \
+        crates/ast-core/src/mappings/pcdmap.rs crates/ast-core/tests/test_clear_on_set.rs PLAN.md
+git commit -F - <<'MSG'
+feat(mappings): setters for Zoom, LutEpsilon and Disco
+
+Each discards both simplified records, as C does through the assign expression
+of astMAKE_SET1 (zoommap.c:1698, lutmap.c:1842, pcdmap.c:2586). All three
+attributes feed the first part of their own class's MapMerge -- the unit-factor
+collapse, the linearity test and the zero-coefficient collapse respectively.
+
+set_zoom rejects a factor of zero with AST__ZOOMI and leaves the factor
+unchanged, and still discards the records: astClearIsSimple is the first term of
+C's comma expression, so it runs whether the assignment does or not.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+### Task 24: setters for `GrismMap`'s eight attributes
+
+C gives `GrismMap` a class-local `MAKE_SET` (`grismmap.c:236-262`) whose body
+differs from `astMAKE_SET1` in one respect: after storing the value it calls
+`UpdateConstants(this, status)` to recompute `k1`, `k2` and `k3`.
+The port already has that function as `GrismMap::update_constants`
+(`grismmap.rs:184`), called by the constructor.
+
+Each attribute also has a `Test*` predicate over an unset sentinel
+(`grismmap.c:1737,1779,1818,1856,1896,1934,1974,2015`), which the port models as
+the `set_flags: GrismSetFlags` field (`grismmap.rs:58-75`) so the dump can choose
+commented or uncommented output. Storing a value through a setter makes C's
+predicate true, so each setter sets its flag.
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/grismmap.rs:176-184` (eight setters,
+  inserted between the `grism_theta` getter and `update_constants`)
+- Modify: `crates/ast-core/tests/test_clear_on_set.rs` (eight new cases, one new
+  import)
+
+**Interfaces:**
+- Consumes: `GrismMap::update_constants(&mut self)` (private, `grismmap.rs:184`);
+  `GrismMap::default_map() -> GrismMap` (`grismmap.rs:135`);
+  `SimplifiedRecord::clear(&mut self)`; the `discards` helper at
+  `test_clear_on_set.rs:32`; the eight existing getters `grism_nr`, `grism_nrp`,
+  `grism_wave_r`, `grism_alpha`, `grism_g`, `grism_m`, `grism_eps`,
+  `grism_theta` (`grismmap.rs:141-176`).
+- Produces:
+  - `GrismMap::set_grism_nr(&mut self, value: f64)`
+  - `GrismMap::set_grism_nrp(&mut self, value: f64)`
+  - `GrismMap::set_grism_wave_r(&mut self, value: f64)`
+  - `GrismMap::set_grism_alpha(&mut self, value: f64)`
+  - `GrismMap::set_grism_g(&mut self, value: f64)`
+  - `GrismMap::set_grism_m(&mut self, value: i32)`
+  - `GrismMap::set_grism_eps(&mut self, value: f64)`
+  - `GrismMap::set_grism_theta(&mut self, value: f64)`
+
+- [ ] **Step 1: Write the eight failing test cases**
+
+Append to `crates/ast-core/tests/test_clear_on_set.rs`, after the cases Task 23
+added and still before `record_survives_invert_and_back`:
+
+```rust
+/// C's GrismMap setters go through a class-local `MAKE_SET`
+/// (`grismmap.c:236-262`) rather than `astMAKE_SET1`, but the body opens with
+/// the same `astClearIsSimple`, and C applies it to all eight attributes even
+/// though its own `MapMerge` reads only three of them (`grismmap.c:577-579`).
+/// That is the err-towards-discarding latitude `mapping.h:449-460` grants, so
+/// the port covers all eight too.
+#[test]
+fn grism_nr_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_nr", |m| {
+        m.set_grism_nr(1.5)
+    });
+}
+
+#[test]
+fn grism_nrp_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_nrp", |m| {
+        m.set_grism_nrp(1e-5)
+    });
+}
+
+#[test]
+fn grism_wave_r_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_wave_r", |m| {
+        m.set_grism_wave_r(6000.0)
+    });
+}
+
+#[test]
+fn grism_alpha_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_alpha", |m| {
+        m.set_grism_alpha(0.1)
+    });
+}
+
+#[test]
+fn grism_g_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_g", |m| {
+        m.set_grism_g(1000.0)
+    });
+}
+
+#[test]
+fn grism_m_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_m", |m| {
+        m.set_grism_m(1)
+    });
+}
+
+#[test]
+fn grism_eps_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_eps", |m| {
+        m.set_grism_eps(0.01)
+    });
+}
+
+#[test]
+fn grism_theta_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_theta", |m| {
+        m.set_grism_theta(0.02)
+    });
+}
+
+/// The setters recompute the derived constants, as C's `MAKE_SET` does by
+/// calling `UpdateConstants` after the assignment (`grismmap.c:256-259`).
+/// Without that call the transformation would keep using constants derived from
+/// the old attribute values, which is not visible through the simplified
+/// records, so it gets its own assertion.
+#[test]
+fn grism_setters_recompute_the_constants() {
+    let mut set = GrismMap::default_map();
+    set.set_grism_g(1000.0);
+    set.set_grism_m(1);
+    set.set_grism_wave_r(6000.0);
+
+    let constructed = GrismMap::new(1.0, 0.0, 6000.0, 0.0, 1000.0, 1, 0.0, 0.0);
+
+    let pts = PointSet::from_rows(vec![vec![1.0], vec![2.0], vec![3.0]]);
+    let via_setters = set.transform(&pts, true).unwrap();
+    let via_constructor = constructed.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(
+            via_setters.point(i),
+            via_constructor.point(i),
+            "point {i}: the setters left stale derived constants"
+        );
+    }
+}
+```
+
+Extend the import block again so it reads:
+
+```rust
+use ast_core::coords::PointSet;
+use ast_core::error::ErrorCode;
+use ast_core::mappings::{
+    GrismMap, LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, SphMap,
+    SplineMap, WcsMap, WcsProjection, ZoomMap,
+};
+```
+
+- [ ] **Step 2: Run the cases to verify they fail**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+```
+
+Expected: the crate fails to compile, with `no method named set_grism_nr found
+for struct GrismMap` and one such error per remaining setter.
+
+- [ ] **Step 3: Add the eight setters**
+
+In `crates/ast-core/src/mappings/grismmap.rs`, insert between the `grism_theta`
+getter (which ends at line 176) and the `update_constants` doc comment:
+
+```rust
+    /// Set the refractive index at the reference wavelength.
+    ///
+    /// C's setter is the class-local `MAKE_SET` (`grismmap.c:236-262`) applied
+    /// at `grismmap.c:1736`: it discards both simplified records, stores the
+    /// value and recomputes the derived constants. `GrismMap`'s own `MapMerge`
+    /// has no neighbour-free first part — it reads `GrismG`, `GrismNRP` and
+    /// `GrismWaveR` only when absorbing an adjacent `ZoomMap`
+    /// (`grismmap.c:577-579`) — so this is C's err-towards-discarding case: a
+    /// record can only ever suppress a simplification, never make one wrong
+    /// (`astClearIsSimple` at `mapping.h:449-460`).
+    pub fn set_grism_nr(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_nr = value;
+        self.set_flags.nr = true;
+        self.update_constants();
+    }
+
+    /// Set the rate of change of refractive index with wavelength
+    /// (`grismmap.c:1778`).
+    pub fn set_grism_nrp(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_nrp = value;
+        self.set_flags.nrp = true;
+        self.update_constants();
+    }
+
+    /// Set the reference wavelength (`grismmap.c:1817`).
+    pub fn set_grism_wave_r(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_wave_r = value;
+        self.set_flags.wave_r = true;
+        self.update_constants();
+    }
+
+    /// Set the angle of incidence of incoming light on the grating, in radians
+    /// (`grismmap.c:1855`).
+    pub fn set_grism_alpha(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_alpha = value;
+        self.set_flags.alpha = true;
+        self.update_constants();
+    }
+
+    /// Set the grating ruling density (`grismmap.c:1895`).
+    pub fn set_grism_g(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_g = value;
+        self.set_flags.g = true;
+        self.update_constants();
+    }
+
+    /// Set the diffraction order (`grismmap.c:1933`).
+    pub fn set_grism_m(&mut self, value: i32) {
+        self.simplified.clear();
+        self.grism_m = value;
+        self.set_flags.m = true;
+        self.update_constants();
+    }
+
+    /// Set the angle between the grating normal and the dispersion plane, in
+    /// radians (`grismmap.c:1973`).
+    pub fn set_grism_eps(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_eps = value;
+        self.set_flags.eps = true;
+        self.update_constants();
+    }
+
+    /// Set the angle between the detector normal and the reference ray, in
+    /// radians (`grismmap.c:2014`).
+    pub fn set_grism_theta(&mut self, value: f64) {
+        self.simplified.clear();
+        self.grism_theta = value;
+        self.set_flags.theta = true;
+        self.update_constants();
+    }
+```
+
+- [ ] **Step 4: Run the cases to verify they pass**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -25
+```
+
+Expected: 31 passed — Task 23's 22 plus the eight setter cases and
+`grism_setters_recompute_the_constants`.
+
+If `grism_setters_recompute_the_constants` fails, the setters are storing the
+value without recomputing; check that each one ends with
+`self.update_constants();`. `PointSet::from_rows` and `.point(i)` are the forms
+`crates/ast-core/tests/test_grismmap.rs:75-84` uses.
+
+- [ ] **Step 5: Confirm the dump is unchanged for GrismMaps nothing sets**
+
+The setters write `set_flags`, which decides commented versus uncommented dump
+output, so the corpus is the check that no existing GrismMap dump moved:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -5
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p ast-core --test test_grismmap 2>&1 | tail -5
+```
+
+Expected: all three unchanged. Nothing in the corpus calls a setter, so nothing
+can move; a change here means a setter was called from a construction path,
+which is a bug in this task.
+
+- [ ] **Step 6: Update `PLAN.md` §9.2's GrismMap row**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+import pathlib
+p = pathlib.Path("PLAN.md")
+t = p.read_text()
+old = ("| GrismMap | (macro form, `grismmap.c:165,255`) | no setter; the merged "
+       "copy at `grismmap.rs:266` |")
+new = ("| GrismMap | (macro form, `grismmap.c:165,255`) | `set_grism_nr`, "
+       "`set_grism_nrp`, `set_grism_wave_r`, `set_grism_alpha`, `set_grism_g`, "
+       "`set_grism_m`, `set_grism_eps`, `set_grism_theta`; the merged copy at "
+       "`grismmap.rs:266` |")
+assert t.count(old) == 1, old
+p.write_text(t.replace(old, new))
+PY
+```
+
+The section heading still says "five attributes lack a setter", so retitle it
+too:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+import pathlib
+p = pathlib.Path("PLAN.md")
+t = p.read_text()
+old = "### 9.2 The clear-on-set convention — PORTED; five attributes lack a setter"
+new = "### 9.2 The clear-on-set convention — PORTED, and every reachable attribute has a setter — DONE"
+assert t.count(old) == 1, old
+p.write_text(t.replace(old, new))
+PY
+```
+
+- [ ] **Step 7: Update the gate count in §9.2's prose**
+
+§9.2 says the gate is "a case per setter, and `record_survives_invert_and_back`
+… so the other 18 assertions cannot pass on a port that never records
+anything". Twelve cases were added, so:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+import pathlib
+p = pathlib.Path("PLAN.md")
+t = p.read_text()
+old = "so the other 18 assertions cannot pass on a port that\nnever records anything."
+new = "so the other 30 assertions cannot pass on a port that\nnever records anything."
+assert t.count(old) == 1, old
+p.write_text(t.replace(old, new))
+PY
+```
+
+Verify the number against the suite rather than trusting the arithmetic:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | grep "test result"
+```
+
+Expected: `31 passed`. The prose number is that total minus
+`record_survives_invert_and_back`; if the total differs, put the right number in.
+
+- [ ] **Step 8: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/mappings/grismmap.rs crates/ast-core/tests/test_clear_on_set.rs PLAN.md
+git commit -F - <<'MSG'
+feat(grismmap): setters for the eight dispersion attributes
+
+C's class-local MAKE_SET (grismmap.c:236-262) discards both simplified records,
+stores the value and recomputes the derived constants k1, k2 and k3. Each setter
+does all three, and marks the attribute as set so the dump keeps choosing
+commented or uncommented output the way C's Test* predicates do.
+
+PLAN.md 9.2 is closed: every attribute C covers now has a setter except
+IntraMap::IntraFlag, whose class is not ported.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+Cluster 5 is complete at this point: all four in-scope classes have setters that
+discard both records, `test_clear_on_set.rs` gates each of the twelve against
+the same falsifiability control, and `PLAN.md` §9.2 is marked DONE.
