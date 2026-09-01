@@ -3182,6 +3182,13 @@ cross-platform reference with this machine's libm, which is exactly what the
 corpus-freshness rule forbids. So the byte comparison gets a per-case, per-card,
 magnitude-bounded licence instead, named in source and counted in `PLAN.md` §6.
 
+That reasoning holds only if the drift really is the platform. A reference whose
+values the *previous pin* reproduces exactly is not platform-drifted at all — it is
+simply old, and the fix is the same regeneration `cap_winmap_03` gets. Step 0
+separates the two before anything is licensed, for all six numerically drifted rows
+at once, and the licence in Steps 5 to 8 is written only for the rows that survive
+it.
+
 The manifest's own note on `rigby` has the two `IM5` values attributed the wrong
 way round — it reads as though `-5.9658…` were the port's value, when it is the
 reference's — and cites the residue as a port defect. That sentence is corrected
@@ -3207,6 +3214,69 @@ here.
   ```
   Task 15 removes the `skip_string_compare` rows that this task's regeneration and
   licence make removable.
+
+- [ ] **Step 0: Separate pin-move drift from platform drift**
+
+"Numeric drift" as `check_simplify_fresh.sh` reports it means only that the
+reference's values differ from a local recapture. Two very different things produce
+that, and they call for opposite actions:
+
+- The **pin moved the value**. Then the reference is simply old, exactly as a
+  card-drifted one is, and the fix is to regenerate — no licence.
+- The **reference was captured on another platform's libm**. Then its values are
+  the cross-platform evidence the freshness rule exists to protect, and
+  regenerating would destroy it. That is the case a licence covers.
+
+They are told apart by building the oracle at the commit the reference was captured
+from and capturing again. Do this once, for all six numerically drifted rows:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+git -C reference/starlink-ast worktree add /tmp/ast-oldpin f6762005
+cmake -S /tmp/ast-oldpin -B /tmp/ast-oldpin/build > /tmp/ast-oldpin/cmake.log 2>&1
+cmake --build /tmp/ast-oldpin/build --target ast ast_grf_log ast_grf3d ast_err -j8 \
+      > /tmp/ast-oldpin/build.log 2>&1
+cc tools/oracle_fixtures/gen_simp.c -o /tmp/gen_simp_oldpin \
+   -I /tmp/ast-oldpin/src -I /tmp/ast-oldpin/build -L /tmp/ast-oldpin/build \
+   -Wl,--whole-archive /tmp/ast-oldpin/build/libast_grf_log.a -Wl,--no-whole-archive \
+   -last -last_err -last_grf3d -lyaml -lm \
+   -Wl,-rpath,/tmp/ast-oldpin/build -Wl,--disable-new-dtags
+ldd /tmp/gen_simp_oldpin | grep libast
+```
+
+Expected: `libast.so.9 => /tmp/ast-oldpin/build/libast.so.9`.
+
+```bash
+cd crates/ast-core/tests/fixtures/native/reference
+for f in rigby cap_interval_01 cap_matrixmap_03 cap_pointlist_01 cap_timemap_01 \
+         timemap_invert_normalize; do
+  M=$(ls simplify_fixtures/$f.map $f.map 2>/dev/null | head -1)
+  /tmp/gen_simp_oldpin "$M" /tmp/oldpin_$f.simp
+  if diff -q "${M%.map}.simp" /tmp/oldpin_$f.simp >/dev/null; then
+    echo "$f: PIN-MOVE  (the old pin reproduces the reference -- regenerate it)"
+  else
+    echo "$f: PLATFORM  (the old pin does not reproduce it either -- licence it)"
+  fi
+done
+```
+
+`rigby` is captured with the Channel defaults, so no extra options are needed; if a
+row's manifest line carries `render_options`, pass the matching trailing integers
+(`comment` then `indent`) as Task 10's driver expects.
+
+Record the verdict for each of the six. Every `PIN-MOVE` row is regenerated in
+Step 1 alongside `cap_winmap_03` and needs no licence; only `PLATFORM` rows reach
+Step 5. If `rigby` comes back `PIN-MOVE`, skip Steps 5 to 8 entirely, regenerate it,
+and drop the `NUMERIC_PLATFORM_DRIFT` row from Step 11's ledger edit — the licence
+count is then 0 and the constant is not added at all.
+
+Clean up when the six verdicts are recorded:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+git -C reference/starlink-ast worktree remove --force /tmp/ast-oldpin
+```
 
 - [ ] **Step 1: Regenerate the card-drifted reference**
 
