@@ -4494,3 +4494,1052 @@ MSG
 
 **Cluster 2 closes five fixtures, four skips and a licence, and replaces the
 assumption that the simplify corpus was fresh with a check that says so.**
+
+---
+
+## Cluster 3 — Region simplify results and `astNormBox`
+
+Four fixtures in this cluster produce a `.simp` that is not byte-equal to C's,
+and three of the four turn out to have one cause: an uncertainty Region that
+never passes through the port of `astSetUnc`.
+
+C funnels every uncertainty through `SetUnc` (`region.c:10754`, body
+`:10820-10910`), which does four things to the Region it is handed:
+
+1. remaps it into the parent Region's **base** Frame, via `Conv` and
+   `astMapRegion`;
+2. negates it if it is unbounded, so the stored uncertainty is always bounded;
+3. calls `astSetRegionFS( this->unc, 0 )` when the uncertainty's own
+   base→current Mapping simplifies to a UnitMap — which is what omits the
+   `FrmSet` block from its dump;
+4. re-centres it at the parent Region's first defining point.
+
+Three paths reach it in C. The constructor routes a construction-time
+uncertainty through it (`region.c:13372`, `SetUnc( new, unc, status )`), so
+every `astBox( frm, …, unc, … )` gets all four. `Region::Simplify` installs the
+simplified uncertainty through it after the stability check
+(`region.c:11303-11305`). The **loader** does not — `region.c:13559` stores what
+the Channel read verbatim, so a Region read from a `.map` file keeps exactly
+the uncertainty the file described.
+
+The port has a faithful `astSetUnc` in `Region::set_uncertainty`
+(`regions/mod.rs:345`) and `parent_region_simplify` calls it
+(`mod.rs:1018`). What is missing is the constructor route: every builder writes
+`data.uncertainty = self.uncertainty` directly, so a Region built with an
+uncertainty gets none of the four steps. That is `cap_interval_01`'s `X7` (a
+time uncertainty left in seconds where C converts it to days) and
+`cap_pointlist_01`'s `X5`/`X6` (values passed through unchanged where C remaps
+and re-centres them). The fourth fixture, `nullregion_unc_fillfactor_merge`, is
+a self-confessed shortcut in `NullRegion::region_merge`; and `cap_zoommap_04`'s
+59 inserted lines are step 3 not happening, which is also the last row of
+`ISSIMP_DISAGREEMENTS`.
+
+Two facts about these fixtures that must not be mistaken for defects:
+
+- `cap_interval_01`'s `X5` and `X6` differ from the reference in the 12th
+  significant figure, and the port agrees with a fresh capture from the pinned
+  C to the last digit. That is the reference's platform drift, licensed in
+  Task 12. **Those two values stay as they are.**
+- Every capture from `cargo run -p ast-core --example simp_one` carries one
+  extra trailing blank line. That is the example's own output, not the
+  serializer's; the harness does not see it.
+
+The cluster closes with the three unported `astNormBox` call sites, which are
+the same subject from the other end: `Ellipse` and `Polygon` compute a base
+Frame bounding box without asking the Frame to extend it over a singularity,
+and `CmpFrame` has no override at all, so a box spanning a pole inside a
+compound Frame is never extended.
+
+---
+
+### Task 16: `NullRegion::region_merge` builds on the base Frames and simplifies the combined uncertainty
+
+**Files:**
+- Modify: `crates/ast-core/src/regions/nullregion.rs:332-395`
+- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixture
+  `nullregion_unc_fillfactor_merge`, no source change)
+
+**Interfaces:**
+- Consumes: `Region::get_unc_frm(&self, ifrm: FrameRef) -> AstResult<DynRegion>`
+  (`regions/mod.rs:522`); `Region::map_region(&self, mapping: &dyn Mapping, frame: &dyn Frame) -> AstResult<DynRegion>`
+  (`mod.rs:672`); `Region::reg_overlay(&mut self, that: &dyn Region, clear_unc: bool)`
+  (`mod.rs:1037`); `Region::set_uncertainty(&mut self, unc: DynRegion)` (`mod.rs:345`);
+  `<dyn Mapping>::simplify(&self) -> AstResult<DynMapping>`
+  (`mappings/simplify_entry.rs:39`); `merge_util::mapping_into_region`.
+- Produces: nothing new — `region_merge` keeps its signature
+  `fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping>`.
+
+C's `MergeNullRegion` (`nullregion.c:571`) builds the merged NullRegion on a
+CmpFrame of the two **base** Frames (`:652-661`), gives it the supplied
+Region's attributes with one `astRegOverlay( new, this, 1 )` (`:675`), sets the
+uncertainty from a **simplified** Prism of the two base-Frame uncertainties
+(`:688-705`), and only then maps the whole thing into a CmpFrame of the two
+current Frames through a parallel CmpMap of the two base→current Mappings
+(`:713-740`). The port builds directly on the current Frames, combines
+attributes pairwise instead of overlaying, and stores the Prism unsimplified.
+The reference `.simp` shows what that costs: C's result carries a 2-d **Box**
+uncertainty (`Npoint = 2`, `Ncoord = 2`, corners ±0.1), and the port emits a
+Prism.
+
+- [ ] **Step 1: Capture the current diff, so the change can be read against it**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+F=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
+cargo run -q -p ast-core --example simp_one -- $F.map > /tmp/nrufm.port
+diff $F.simp /tmp/nrufm.port | tee /tmp/nrufm.diff | head -40
+```
+
+Expected: the `Unc` block differs — `Begin Prism` in the port where the
+reference has `Begin Box`.
+
+- [ ] **Step 2: Rewrite the merge body to follow C's order**
+
+Replace the whole of `fn region_merge` in
+`crates/ast-core/src/regions/nullregion.rs` (currently lines 332-395) with:
+
+```rust
+    fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
+        // Faithful port of `nullregion.c::MergeNullRegion` (571). A NullRegion
+        // only merges with another NullRegion (other classes handle merging a
+        // NullRegion with themselves). `intfirst` selects the axis order.
+        //
+        // Guard (nullregion.c:643-645, 672): the same Closed, either both or
+        // neither with a defined uncertainty, and equal Negated.
+        let other = other_reg.as_any().downcast_ref::<NullRegion>()?;
+        if self.is_closed() != other.is_closed()
+            || self.test_unc() != other.test_unc()
+            || self.data.negated != other.data.negated
+        {
+            return None;
+        }
+
+        // The merged Region is built on a CmpFrame of the two *base* Frames
+        // and mapped into the current Frames at the end (nullregion.c:652-661).
+        let bfrm_this = self.data.frameset.base().snapshot();
+        let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
+        let bfrm = if intfirst {
+            crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)
+        } else {
+            crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)
+        };
+
+        // NullRegion has no defining points.
+        let frameset = FrameSet::new(Box::new(bfrm) as DynFrame);
+        let mut new = NullRegion {
+            data: RegionData::new(frameset, Vec::new()),
+        };
+
+        // Propagate the supplied Region's attributes (nullregion.c:675). C
+        // overlays from `this` alone, not from a combination of the two, and
+        // asks for the uncertainty to be cleared so the one installed below is
+        // the only one.
+        new.reg_overlay(self, true);
+
+        // Ensure Negated is set correctly (nullregion.c:678-682). The guard
+        // above already requires the two to agree.
+        new.data.negated = self.data.negated;
+
+        // When both supplied Regions have an uncertainty, the merged Region's
+        // uncertainty is a Prism of the two base-Frame uncertainties,
+        // simplified, installed through astSetUnc (nullregion.c:685-705).
+        if self.test_unc() && other.test_unc() {
+            let unc_this = self.get_unc_frm(FrameRef::Base).ok()?;
+            let unc_reg = other_reg.get_unc_frm(FrameRef::Base).ok()?;
+            let (first, second) = if intfirst {
+                (unc_this, unc_reg)
+            } else {
+                (unc_reg, unc_this)
+            };
+            let bunc = super::PrismBuilder::from_dyn(first, second)
+                .and_then(|b| b.build())
+                .ok()?;
+            let sbunc = <dyn Mapping>::simplify(&bunc).ok()?;
+            let sbunc = super::merge_util::mapping_into_region(sbunc)?;
+            new.set_uncertainty(sbunc);
+        }
+
+        // The current Frames, combined in the same order (nullregion.c:713-721).
+        let cfrm_this = self.data.frameset.current().snapshot();
+        let cfrm_reg = other_reg.get_region_frame();
+        let cfrm = if intfirst {
+            crate::frames::CmpFrame::new(cfrm_this, cfrm_reg)
+        } else {
+            crate::frames::CmpFrame::new(cfrm_reg, cfrm_this)
+        };
+
+        // The two base->current Mappings, in parallel (nullregion.c:724-735).
+        let map_this = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let map_reg = other_reg
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let bcmap = if intfirst {
+            crate::mappings::CmpMap::new(map_this, map_reg, Composition::Parallel).ok()?
+        } else {
+            crate::mappings::CmpMap::new(map_reg, map_this, Composition::Parallel).ok()?
+        };
+
+        // Map the merged Region into the new current Frame (nullregion.c:738).
+        let mut result = new.map_region(&bcmap, &cfrm).ok()?;
+
+        // FillFactor product and MeshSize ratio scaling, applied to the mapped
+        // result as C applies them (nullregion.c:740-776).
+        let scaling = super::merge_util::MergeScaling {
+            msz_this: (
+                self.data.effective_mesh_size(),
+                self.data.mesh_size_set,
+                self.naxes(),
+            ),
+            msz_reg: (other.mesh_size(), other.test_mesh_size(), other.naxes()),
+            fill_this: (self.data.effective_fill_factor(), self.data.fill_factor_set),
+            fill_reg: (other.fill_factor(), other.test_fill_factor()),
+        };
+        super::merge_util::apply_merge_scaling_to(result.as_mut(), &scaling);
+
+        // A Region is a Mapping; the sibling-trait port needs the upcast
+        // written down.
+        Some(result.as_dyn_mapping().clone_box())
+    }
+```
+
+- [ ] **Step 3: Add the one helper the new body needs**
+
+`apply_merge_scaling` takes a `&mut RegionData`, but C applies the FillFactor
+product and the MeshSize ratio to the Region `astMapRegion` returned. Add a
+sibling that reaches those two attributes through the trait. In
+`crates/ast-core/src/regions/merge_util.rs`, after `apply_merge_scaling`,
+append:
+
+```rust
+/// `apply_merge_scaling` for a Region that already exists, rather than for the
+/// `RegionData` a Region is about to be built from. `MergeNullRegion` applies
+/// the FillFactor product and the MeshSize ratio to the Region returned by
+/// `astMapRegion` (nullregion.c:740-776), not to the Region built before it.
+pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &MergeScaling) {
+    if scaling.fill_this.1 || scaling.fill_reg.1 {
+        region.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0);
+    }
+
+    if scaling.msz_this.1 || scaling.msz_reg.1 {
+        let def_this = default_mesh_size(scaling.msz_this.2) as f64;
+        let def_reg = default_mesh_size(scaling.msz_reg.2) as f64;
+        let fac_this = scaling.msz_this.0 as f64 / def_this;
+        let fac_reg = scaling.msz_reg.0 as f64 / def_reg;
+        let def_result = default_mesh_size(region.naxes()) as f64;
+        region.set_mesh_size((fac_this * fac_reg * def_result).round() as usize);
+    }
+}
+```
+
+- [ ] **Step 4: Build**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo build -p ast-core 2>&1 | tail -20
+```
+
+Expected: clean. `merge_util.rs` already imports `default_mesh_size` from
+`super::data`, so the new helper needs no new `use`.
+
+- [ ] **Step 5: Re-capture the fixture**
+
+```bash
+F=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
+cargo run -q -p ast-core --example simp_one -- $F.map > /tmp/nrufm.port
+diff $F.simp /tmp/nrufm.port
+```
+
+Expected: no output beyond the single trailing blank line the example adds.
+The `Unc` block is now `Begin Box` with `Npoint = 2`, `Ncoord = 2` and corners
+at ±0.1, because simplifying a Prism of two 1-d Boxes gives a 2-d Box.
+
+- [ ] **Step 6: Run both fixture consumers, and the Region tests**
+
+```bash
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -25
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p ast-core --test test_region 2>&1 | tail -5
+```
+
+Expected: `test_simplify_regression` reports one more byte-exact case and no
+new failures; the round-trip test and the Region tests stay green. A NullRegion
+merge appears in more than one fixture, so a regression here shows up as a
+different fixture failing, not as this one still differing.
+
+- [ ] **Step 7: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/regions/nullregion.rs crates/ast-core/src/regions/merge_util.rs
+git commit -F - <<'MSG'
+fix(regions): merge two NullRegions the way C does
+
+MergeNullRegion builds the merged Region on a CmpFrame of the two base Frames,
+overlays the supplied Region's attributes with one astRegOverlay, installs a
+simplified Prism of the two base-Frame uncertainties through astSetUnc, and only
+then maps the result into a CmpFrame of the two current Frames. The port built
+directly on the current Frames, combined Closed and Adaptive pairwise where C
+copies them from one side, and stored the Prism unsimplified.
+
+Simplifying it is what turns a Prism of two 1-d Boxes into the 2-d Box C emits,
+which is the whole of nullregion_unc_fillfactor_merge's diff.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 17: A construction-time uncertainty goes through `astSetUnc`, as C's constructor does
+
+**Files:**
+- Modify: `crates/ast-core/src/regions/box_region.rs:135`
+- Modify: `crates/ast-core/src/regions/circle.rs:205`
+- Modify: `crates/ast-core/src/regions/ellipse.rs:312`
+- Modify: `crates/ast-core/src/regions/interval.rs:92`
+- Modify: `crates/ast-core/src/regions/pointlist.rs:111`
+- Modify: `crates/ast-core/src/regions/polygon.rs:289`
+- Modify: `crates/ast-core/src/regions/prism.rs:94`
+- Modify: `crates/ast-core/src/regions/cmpregion.rs:119`
+- Modify: `crates/ast-core/src/regions/nullregion.rs:62`
+- Modify: `crates/ast-core/src/regions/merge_util.rs:106`
+- Modify: `crates/ast-core/src/regions/mod.rs:388-391` (the doc paragraph that
+  records the bypass)
+- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixtures
+  `cap_interval_01` and `cap_pointlist_01`, no source change)
+
+**Interfaces:**
+- Consumes: `Region::set_uncertainty(&mut self, unc: DynRegion)`
+  (`regions/mod.rs:345`).
+- Produces: no signature change. Every `<Class>Builder::build()` keeps
+  `pub fn build(self) -> AstResult<Class>`; what changes is that the
+  uncertainty is installed on the finished Region instead of written into its
+  `RegionData`.
+
+C's `astInitRegion` ends with `SetUnc( new, unc, status )` (`region.c:13372`),
+so every C Region constructed with an uncertainty — `astBox( frm, 1, lbnd,
+ubnd, unc, "" )`, `astInterval(…)`, `astPrism(…)` — gets the uncertainty
+remapped into its own base Frame, negated if unbounded, tagged to omit its
+FrameSet when the base→current Mapping is a UnitMap, and re-centred on the new
+Region's first defining point. The port's builders write the supplied Region
+into `data.uncertainty` unchanged, so none of that happens.
+
+Two fixtures show the two halves of the cost. `cap_interval_01`'s result carries
+a 4-d Box uncertainty whose axis-3 (time) half-width C reports as
+`5.7870370370370369e-10` days; the port reports `5.0000000000000002e-05`, the
+same number in seconds. The factor is 86400: the supplied uncertainty's own
+base Frame is a TimeFrame in seconds and its current Frame is in days, joined
+by a ZoomMap, and it is `astSetUnc`'s `astMapRegion` that carries the value
+across. `cap_pointlist_01`'s `X5` and `X6` are the input `.map`'s own
+`X3`/`X4` reproduced digit for digit — the port passes the supplied uncertainty
+through untouched where C remaps and re-centres it.
+
+The loader is deliberately *not* changed: `region.c:13559` stores what the
+Channel read verbatim, so reading a `.map` must stay an identity.
+
+- [ ] **Step 1: Capture the two diffs before the change**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+for c in cap_interval_01 cap_pointlist_01; do
+  cargo run -q -p ast-core --example simp_one -- $D/$c.map > /tmp/$c.before
+  echo "=== $c ==="; diff $D/$c.simp /tmp/$c.before
+done
+```
+
+Expected: `cap_interval_01` differs on `X5`, `X6`, `X7` and has one extra
+`Closed = 1` line; `cap_pointlist_01` differs on `X5` and `X6`. The `X5`/`X6`
+difference in `cap_interval_01` is the reference's platform drift (12th
+significant figure, licensed in Task 12) and will still be there at the end of
+this task. `X7` and both of `cap_pointlist_01`'s values are the gap this task
+closes. The extra `Closed = 1` is Task 19.
+
+- [ ] **Step 2: Install through `set_uncertainty` in the five single-expression builders**
+
+In `crates/ast-core/src/regions/box_region.rs`, replace
+
+```rust
+        data.uncertainty = self.uncertainty;
+
+        Ok(BoxRegion { data })
+```
+
+with
+
+```rust
+        let mut region = BoxRegion { data };
+
+        // C's constructor routes a construction-time uncertainty through
+        // astSetUnc (region.c:13372), which remaps it into this Region's base
+        // Frame, negates it if it is unbounded, omits its FrameSet from the dump
+        // when its base->current Mapping is a UnitMap, and re-centres it on this
+        // Region's first defining point.
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
+```
+
+Make the same replacement in `circle.rs` (`Ok(Circle { data })`),
+`ellipse.rs` (`Ok(Ellipse { data })`), `interval.rs` (`Ok(Interval { data })`)
+and `pointlist.rs` (`Ok(PointList { data })`), substituting the class name in
+the two places it appears. Where `data` is not otherwise mutated after the line
+you removed, drop its `mut` — clippy's `unused_mut` will name the file if you
+miss one.
+
+- [ ] **Step 3: The two builders whose constructor expression has fields**
+
+In `crates/ast-core/src/regions/prism.rs`, replace
+
+```rust
+        data.uncertainty = self.uncertainty;
+
+        Ok(Prism {
+            data,
+            region1: self.region1,
+            region2: self.region2,
+        })
+```
+
+with
+
+```rust
+        let mut region = Prism {
+            data,
+            region1: self.region1,
+            region2: self.region2,
+        };
+
+        // astSetUnc, as C's constructor calls it (region.c:13372).
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
+```
+
+In `crates/ast-core/src/regions/cmpregion.rs`, replace
+
+```rust
+        data.uncertainty = self.uncertainty;
+
+        Ok(CmpRegion {
+            data,
+            region1: self.region1,
+            region2: self.region2,
+            operator: self.operator,
+        })
+```
+
+with
+
+```rust
+        let mut region = CmpRegion {
+            data,
+            region1: self.region1,
+            region2: self.region2,
+            operator: self.operator,
+        };
+
+        // astSetUnc, as C's constructor calls it (region.c:13372).
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
+```
+
+- [ ] **Step 4: NullRegion, whose re-centre step is a no-op**
+
+In `crates/ast-core/src/regions/nullregion.rs`, replace
+
+```rust
+        data.uncertainty = self.uncertainty;
+
+        Ok(NullRegion { data })
+```
+
+with
+
+```rust
+        let mut region = NullRegion { data };
+
+        // astSetUnc, as C's constructor calls it (region.c:13372). A NullRegion
+        // has no defining points, so C's re-centre step is skipped there too
+        // (`if( this->points )`, region.c:10871-10876); the remap, the
+        // negate-if-unbounded and the RegionFS tag all still apply.
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
+```
+
+- [ ] **Step 5: Polygon, where the order against `ensure_inside` matters**
+
+C reaches `SetUnc` inside `astInitRegion`, which `astInitPolygon` calls *before*
+it runs `EnsureInside` (`polygon.c:7160`). `EnsureInside` can reverse the vertex
+order, which changes which vertex is first, and `SetUnc` re-centres on the first
+vertex — so the uncertainty is centred on the vertex that was first *before* the
+reversal. In `crates/ast-core/src/regions/polygon.rs`, replace
+
+```rust
+        data.uncertainty = self.uncertainty;
+
+        // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
+        // necessary so that the unnegated Polygon represents the bounded
+        // interior, matching the parent Region convention.
+        let mut polygon = Polygon {
+            data,
+            simp_vertices: None,
+        };
+        polygon.ensure_inside()?;
+        Ok(polygon)
+```
+
+with
+
+```rust
+        let mut polygon = Polygon {
+            data,
+            simp_vertices: None,
+        };
+
+        // astSetUnc, as C's constructor calls it (region.c:13372). C reaches it
+        // from astInitRegion, which astInitPolygon calls before EnsureInside, so
+        // the uncertainty is re-centred on the first vertex as supplied — before
+        // any reversal below can change which vertex that is.
+        if let Some(unc) = self.uncertainty {
+            polygon.set_uncertainty(unc);
+        }
+
+        // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
+        // necessary so that the unnegated Polygon represents the bounded
+        // interior, matching the parent Region convention.
+        polygon.ensure_inside()?;
+        Ok(polygon)
+```
+
+- [ ] **Step 6: The shared cross-class merge tail**
+
+`finish_region_merge` writes the combined uncertainty straight into the
+`RegionData` (`merge_util.rs:106`) although its own doc says `astSetUnc`
+assigns it. The Region is built inside a `match`, so install the uncertainty on
+each arm's finished Region instead. In
+`crates/ast-core/src/regions/merge_util.rs`, delete the line
+
+```rust
+        data.uncertainty = uncertainty.clone();
+```
+
+from the `apply_attrs` closure, and change the `match built` block to:
+
+```rust
+    match built {
+        MergedRegion::Interval(lbnd, ubnd) => {
+            let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
+            apply_attrs(&mut data);
+            let mut merged = Interval { data };
+            if let Some(unc) = uncertainty {
+                merged.set_uncertainty(unc);
+            }
+            // A fully-bounded Interval reclassifies to a Box (interval.c
+            // Cache / Simplify); an unbounded one stays an Interval.
+            <dyn Mapping>::simplify(&merged).ok()
+        }
+        MergedRegion::Box(centre, corner) => {
+            let mut data = RegionData::new(frameset, vec![centre, corner]);
+            apply_attrs(&mut data);
+            let mut merged = BoxRegion { data };
+            if let Some(unc) = uncertainty {
+                merged.set_uncertainty(unc);
+            }
+            Some(Box::new(merged))
+        }
+        MergedRegion::PointList(points) => {
+            let mut data = RegionData::new(frameset, points);
+            apply_attrs(&mut data);
+            let mut merged = PointList { data };
+            if let Some(unc) = uncertainty {
+                merged.set_uncertainty(unc);
+            }
+            Some(Box::new(merged))
+        }
+    }
+```
+
+`uncertainty` is now moved into whichever arm runs, so the closure can no
+longer capture it; if the compiler complains that `apply_attrs` still borrows
+it, the leftover `uncertainty.clone()` line was not removed.
+
+- [ ] **Step 7: Build**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo build -p ast-core 2>&1 | tail -20
+```
+
+Expected: clean. `set_uncertainty` is a `Region` trait method, so each file
+needs `Region` in scope; all nine already implement the trait in the same file,
+so no new `use` is required.
+
+- [ ] **Step 8: Re-capture the two fixtures**
+
+```bash
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+for c in cap_interval_01 cap_pointlist_01; do
+  cargo run -q -p ast-core --example simp_one -- $D/$c.map > /tmp/$c.after
+  echo "=== $c ==="; diff $D/$c.simp /tmp/$c.after
+done
+```
+
+Expected: `cap_pointlist_01` is byte-equal. `cap_interval_01` still differs on
+`X5`/`X6` (reference platform drift) and on the extra `Closed = 1` (Task 19),
+but `X7` now reads `5.7870370370370369e-10`.
+
+- [ ] **Step 9: Run the whole corpus, and stop if anything else moved**
+
+```bash
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p ast-core 2>&1 | tail -40
+```
+
+Expected: `cap_pointlist_01` passes, no previously-passing fixture fails, and
+the full `ast-core` suite is as green as the Task 1 baseline recorded in
+`/tmp/baseline/all.txt`.
+
+This is the step with the widest blast radius in the cluster: `astSetUnc` can
+drop an uncertainty whose Frame will not convert, and it sets the RegionFS flag
+that decides whether an uncertainty's `FrmSet` block is dumped. If another
+fixture's `Unc` block changes, **stop and diff it against a fresh C capture**
+(`/tmp/freshC/`, regenerated by the Task 10 driver) rather than adjusting this
+change — C's constructor really does all four steps, so a disagreement means
+one of the four is ported wrongly, not that the route is wrong.
+
+- [ ] **Step 10: Correct the doc paragraph that recorded the bypass**
+
+`Region::set_uncertainty`'s doc (`regions/mod.rs:388-391`) ends with a
+paragraph saying the builders bypass this path. Replace it with:
+
+```rust
+    /// Every route that installs an uncertainty goes through here, as in C:
+    /// the builders (C's constructor, region.c:13372), the simplifier
+    /// (region.c:11303-11305) and the cross-class merges. The one exception is
+    /// the loader, which stores what the Channel read verbatim
+    /// (region.c:13559), so reading a Region back is an identity.
+```
+
+- [ ] **Step 11: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/regions
+git commit -F - <<'MSG'
+fix(regions): construct an uncertainty through astSetUnc
+
+C's astInitRegion ends with SetUnc, so every Region built with an uncertainty
+gets it remapped into the new Region's base Frame, negated if unbounded, tagged
+to omit its FrameSet when the base->current Mapping is a UnitMap, and re-centred
+on the first defining point. The builders wrote the supplied Region into
+RegionData unchanged and the cross-class merge tail did the same, so none of the
+four happened.
+
+cap_pointlist_01 was reproducing its input's uncertainty coordinates verbatim,
+and cap_interval_01 was reporting a time uncertainty in seconds where C reports
+days -- the same number scaled by 86400, which is the ZoomMap astSetUnc carries
+it across.
+
+The loader is left alone: C stores what the Channel read verbatim, so reading a
+Region back stays an identity.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 18: `Region::Simplify` tests the simplified uncertainty for change the way C does
+
+**Files:**
+- Modify: `crates/ast-core/src/regions/mod.rs:958-960`
+- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixture
+  `cap_zoommap_04` and its `ISSIMP_DISAGREEMENTS` row, source change in Step 5)
+
+**Interfaces:**
+- Consumes: `<dyn Mapping>::simplify_reporting_change(&self) -> AstResult<(DynMapping, bool)>`
+  (`mappings/simplify_entry.rs:55`).
+- Produces: no signature change to `parent_region_simplify`.
+
+C decides whether the uncertainty simplified by comparing pointers:
+
+```c
+   sunc = astSimplify( unc );
+   if( sunc != unc ) {
+```
+
+(`region.c:11193-11196`.) The port asks `Mapping::equal` instead:
+
+```rust
+            let sunc_map = <dyn Mapping>::simplify(unc.as_ref())?;
+            let unc_changed = !Mapping::equal(unc.as_ref(), sunc_map.as_ref());
+```
+
+`Mapping::equal` is conversion-based — it composes the two Mappings and asks
+whether the result simplifies to a UnitMap. A simplification that changes only
+*structure* is therefore reported as no change, and the whole `if` body is
+skipped: the stability check never runs, `set_uncertainty` is never called, and
+the simplified uncertainty is discarded.
+
+That is `cap_zoommap_04`. Its uncertainty's own base→current Mapping simplifies
+to a UnitMap, which is exactly the condition under which `astSetUnc` calls
+`astSetRegionFS(this->unc, 0)` (`region.c:10863-10869`) and the dump omits the
+uncertainty's `FrmSet` block. The port keeps the unsimplified uncertainty, so it
+emits 59 lines of `FrmSet` C does not, and — because `simpler` is never set —
+also reports `IsSimp = 3` where C reports 0.
+
+`simplify_reporting_change` is the gate's own answer to that question, and its
+doc says so: `false` *is* C's `astClone( this )` exit, the one C's generic
+drivers detect by pointer identity.
+
+- [ ] **Step 1: Capture the diff before the change**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p ast-core --example simp_one -- $D/cap_zoommap_04.map > /tmp/zm04.before
+diff $D/cap_zoommap_04.simp /tmp/zm04.before | head -20
+grep -c '' /tmp/zm04.before $D/cap_zoommap_04.simp
+```
+
+Expected: the port's output is 59 lines longer, all inside a `FrmSet` block in
+the `Unc` Region, and its `IsSimp` card reads 3 where the reference reads 0.
+
+- [ ] **Step 2: Ask the gate instead of the comparator**
+
+In `crates/ast-core/src/regions/mod.rs`, replace
+
+```rust
+            // Try simplifying the uncertainty. Only proceed if it changed
+            // (region.c:11193-11196).
+            let sunc_map = <dyn Mapping>::simplify(unc.as_ref())?;
+            let unc_changed = !Mapping::equal(unc.as_ref(), sunc_map.as_ref());
+```
+
+with
+
+```rust
+            // Try simplifying the uncertainty. Only proceed if it changed
+            // (region.c:11193-11196). C's test is `sunc != unc`, pointer
+            // identity on what the per-class slot handed back, so a reduction
+            // that changes only structure counts. `Mapping::equal` would not
+            // see one: it is conversion-based, and collapsing an uncertainty's
+            // FrameSet to a UnitMap leaves the transform unchanged.
+            let (sunc_map, unc_changed) =
+                <dyn Mapping>::simplify_reporting_change(unc.as_ref())?;
+```
+
+- [ ] **Step 3: Build**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo build -p ast-core 2>&1 | tail -20
+```
+
+Expected: clean. If `Mapping::equal` is now unused in this file, clippy will say
+so in Step 6; leave the `use` alone until then, since other methods in the file
+call it.
+
+- [ ] **Step 4: Re-capture the fixture**
+
+```bash
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p ast-core --example simp_one -- $D/cap_zoommap_04.map > /tmp/zm04.after
+diff $D/cap_zoommap_04.simp /tmp/zm04.after && echo BYTE-EQUAL
+```
+
+Expected: `BYTE-EQUAL`. The `FrmSet` block is gone because `set_uncertainty` now
+runs and its RegionFS step fires, and `IsSimp` reads 0 because `simpler` is now
+set.
+
+- [ ] **Step 5: Retire the `ISSIMP_DISAGREEMENTS` row**
+
+`cap_zoommap_04`'s row in `ISSIMP_DISAGREEMENTS`
+(`crates/ast-core/tests/test_simplify_regression.rs:583`) records "3 vs C's 0"
+as an accepted disagreement. Delete that entry. The companion assertion that
+fails when a listed case starts agreeing is what would otherwise flag this, so
+running the test without deleting the row is a failure, not a pass.
+
+- [ ] **Step 6: Run the corpus and the round-trip**
+
+```bash
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p ast-core 2>&1 | tail -40
+```
+
+Expected: `cap_zoommap_04` passes and no other fixture moves. This change makes
+the uncertainty-simplify branch reachable for every Region, so a fixture that
+now differs is one where the *stability check* or `set_uncertainty` diverges —
+diff it against a fresh C capture before touching this change.
+
+- [ ] **Step 7: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/regions/mod.rs crates/ast-core/tests/test_simplify_regression.rs
+git commit -F - <<'MSG'
+fix(regions): detect a structural uncertainty simplification
+
+C's Region Simplify decides whether the uncertainty simplified by pointer
+identity on what the per-class slot returned. The port asked Mapping::equal,
+which is conversion-based, so a reduction that changed only structure -- an
+uncertainty whose own base->current Mapping collapses to a UnitMap -- was
+reported as no change and thrown away.
+
+Asking the simplify gate for its own answer instead lets astSetUnc run, which is
+what drops the uncertainty's FrmSet block from the dump. cap_zoommap_04 is now
+byte-equal and its IsSimp disagreement is retired.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 19: A derived Box carries `Closed` only where C sets it
+
+**Files:**
+- Modify: `crates/ast-core/src/regions/interval.rs:343-344`
+- Modify (conditionally, see Step 4): `crates/ast-core/src/regions/interval.rs:1109`,
+  `crates/ast-core/src/regions/interval.rs:1432-1433`
+- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixture
+  `cap_interval_01`, no source change)
+
+**Interfaces:**
+- Consumes: `RegionData`'s `closed` / `closed_set` fields (`regions/data.rs`).
+- Produces: no signature change.
+
+`cap_interval_01`'s result is an Interval whose uncertainty is a 4-d Box. The
+port emits one line C does not, inside that `Unc` block:
+
+```
+      Closed = 1 	# Boundary is inside
+```
+
+The card appears only when `closed_set` is true, so somewhere on the route that
+builds that Box the port marks Closed as explicitly set where C leaves it at its
+default. C sets Closed on a derived Box in exactly one place — `Cache`
+(`interval.c:512`), `astSetClosed( this->box, astGetClosed( this ) )`, on the Box
+that stands in for a fully-bounded Interval. Every other Box construction in
+`interval.c` leaves it alone, including the one in the unbounded `Simplify`
+branch:
+
+```c
+         box = astBox( bfrm, 1, lbnd, ubnd, unc, "", status );
+```
+
+(`interval.c:3338`.) The port has three unconditional `closed_set = true` writes
+in `interval.rs` (lines 344, 1109 and 1433); the other three writes in the file
+copy `self.data.closed_set`, which is what `astRegOverlay` does.
+
+Line 344 is the port of `interval.c:3338` and has no C analogue — that is a
+divergence regardless of which one this fixture exercises, so fix it first and
+re-measure.
+
+- [ ] **Step 1: Re-measure after Tasks 16-18**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p ast-core --example simp_one -- $D/cap_interval_01.map > /tmp/int01.after17
+diff $D/cap_interval_01.simp /tmp/int01.after17
+```
+
+Expected: the `X5`/`X6` platform drift licensed in Task 12, and the extra
+`Closed = 1`. Task 17 changed which construction produces the combined
+uncertainty — this fixture's input is a Prism carrying a Box uncertainty over a
+SkyFrame and an Interval uncertainty over a TimeFrame, and the 4-d Box in the
+result is the two combined — so if the `Closed` card is already gone, record
+that in the commit message and skip to Step 6 with only the Step 2 edit.
+
+- [ ] **Step 2: Drop the `Closed` write that has no C analogue**
+
+In `crates/ast-core/src/regions/interval.rs`, inside the unbounded-branch Box
+construction, replace
+
+```rust
+        let box_reg = {
+            let frameset = FrameSet::new(base_frame);
+            let mut data = RegionData::new(frameset, vec![centre, corner]);
+            data.closed = true;
+            data.closed_set = true;
+            super::BoxRegion { data }
+        };
+```
+
+with
+
+```rust
+        let box_reg = {
+            let frameset = FrameSet::new(base_frame);
+            let data = RegionData::new(frameset, vec![centre, corner]);
+            // C constructs this Box with `astBox( bfrm, 1, lbnd, ubnd, unc, "" )`
+            // and no astSetClosed (interval.c:3338), so Closed keeps its default
+            // and stays unset. Only Cache's equivalent Box gets an explicit
+            // Closed (interval.c:512).
+            super::BoxRegion { data }
+        };
+```
+
+- [ ] **Step 3: Build and re-measure**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo build -p ast-core 2>&1 | tail -20
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p ast-core --example simp_one -- $D/cap_interval_01.map > /tmp/int01.step3
+diff $D/cap_interval_01.simp /tmp/int01.step3
+```
+
+Expected: only the `X5`/`X6` drift remains. If the `Closed` card is gone, go to
+Step 6.
+
+- [ ] **Step 4: If the card survives, identify which site emitted it**
+
+Two sites are left. Add a temporary `eprintln!` to each and run the one fixture:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+import re
+p = 'crates/ast-core/src/regions/interval.rs'
+s = open(p).read()
+s = s.replace("        box_data.closed = true;\n        box_data.closed_set = true;\n",
+              "        box_data.closed = true;\n        box_data.closed_set = true;\n        eprintln!(\"CLOSED-SITE reg_centre_set\");\n", 1)
+s = s.replace("            data.closed = true;\n            data.closed_set = true;\n            if let Some(unc) = self.data.uncertainty.as_ref() {",
+              "            data.closed = true;\n            data.closed_set = true;\n            eprintln!(\"CLOSED-SITE box_equivalent\");\n            if let Some(unc) = self.data.uncertainty.as_ref() {", 1)
+open(p, 'w').write(s)
+PY
+D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p ast-core --example simp_one -- $D/cap_interval_01.map >/dev/null
+```
+
+The site names printed tell you which construction runs on this fixture. Then
+revert the probe:
+
+```bash
+git checkout crates/ast-core/src/regions/interval.rs
+```
+
+— which also reverts Step 2, so re-apply Step 2 afterwards.
+
+- [ ] **Step 5: Match C at the site the probe named**
+
+**If the probe named `box_equivalent`** (`interval.rs:1425-1439`, the port of
+C's `Cache` + `astSimplify( box )` head at `interval.c:3196-3200`): C *does* set
+Closed here, but it sets the Interval's own value through `astSetClosed`, and it
+reaches the site only when `Cache` decided the Interval is an unnegated Box. The
+port's guard at line 1415 already requires `self.data.closed`, so the value
+agrees; what differs is that C's `astSetClosed` runs on a Box that
+`astSimplify` then passes through `astRegOverlay` from the *supplied Interval*
+(`box.c`'s Simplify tail), which copies the Interval's `closed_set` state. So
+replace
+
+```rust
+            data.closed = true;
+            data.closed_set = true;
+```
+
+with
+
+```rust
+            // C sets Closed on Cache's equivalent Box from the Interval's own
+            // value (interval.c:512), and astSimplify's astRegOverlay then
+            // carries the Interval's set/unset state onto the result
+            // (region.c:9861). Copy both, rather than marking Closed explicit.
+            data.closed = self.data.closed;
+            data.closed_set = self.data.closed_set;
+```
+
+**If the probe named `reg_centre_set`** (`interval.rs:1103-1110`): that Box is
+C's local `astBox` inside `RegCentre` (`interval.c:2535-2557`), used only to
+move the centre and then discarded — its bounds are read back into the
+Interval's own defining points and the Box never escapes. A Closed card
+reaching the dump from there means the Box *is* escaping; find the escape rather
+than changing the flag, because C's local Box is genuinely closed.
+
+**If the probe printed nothing**, the Box came from outside `interval.rs`: run
+the same probe over `merge_util.rs`'s `MergedRegion::Box` arm and
+`prism.rs`'s uncertainty combination.
+
+- [ ] **Step 6: Run the corpus**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p ast-core --test test_region 2>&1 | tail -10
+```
+
+Expected: `cap_interval_01` fails on `X5`/`X6` alone, which is the reference's
+platform drift and is licensed in Task 12 — so it stays on the licensed list
+with its reason string updated to name only the two values. No other fixture
+moves.
+
+- [ ] **Step 7: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/regions/interval.rs
+git commit -F - <<'MSG'
+fix(interval): stop marking Closed explicit on a derived Box
+
+C sets Closed on a Box derived from an Interval in one place only -- Cache's
+equivalent Box, from the Interval's own value. The Box the unbounded Simplify
+branch builds gets no astSetClosed at all, so its Closed stays at the default
+and never reaches the dump. The port marked it explicitly set, which put a
+spurious Closed card inside cap_interval_01's uncertainty.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
