@@ -82,6 +82,35 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "no simplify oracle section is excluded",
     ),
     (
+        "test_simplify_regression.rs",
+        "SERIAL_UNGATED",
+        6,
+        "fixtures whose simplified dump differs from C's `.simp` in something \
+         other than an `IsSimp` line. Five causes, each named per row and \
+         traced to a port gap in PLAN.md §6: two Region-simplify tags C \
+         leaves bare, a Prism uncertainty where C has a Box, a FrameSet where \
+         C has a PointSet, a `Closed` card C omits at its default, and two \
+         mesh coordinates past 4 ulp",
+    ),
+    (
+        "test_simplify_regression.rs",
+        "NO_ISSIMP_CARD_UNGATED",
+        1,
+        "neg_box_asymmetric_2d: `simplify` must stamp whatever it returns \
+         (mapping.c:24763) and does not for a Region. The same defect as \
+         SERIAL_UNGATED's cause B seen from the other side",
+    ),
+    (
+        "test_simplify_regression.rs",
+        "ISSIMP_DISAGREEMENTS",
+        7,
+        "fixtures whose `IsSimp` card count differs from C's. Not a separate \
+         mask -- each sits inside `skip_string_compare`, \
+         ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED -- but the count is the \
+         only thing gating the four `skip_string_compare` cases, so it is \
+         pinned as a set of its own",
+    ),
+    (
         "test_deferred_fixtures.rs",
         "DEFERRED_CLASSES",
         3,
@@ -151,12 +180,16 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
 }
 
 /// Count the entries in a `const NAME: &[...] = &[ ... ];` slice literal.
+///
+/// Top-level items are counted whatever their shape, so a flat `&[&str]` list
+/// counts the same as a list of tuples.
 fn count_entries(src: &str, name: &str) -> Option<usize> {
     let decl = src.find(&format!("const {name}"))?;
     let open = src[decl..].find("= &[")? + decl + 3;
     let bytes = src.as_bytes();
     let (mut depth, mut i) = (0usize, open);
-    let mut top_level_items = 0usize;
+    let mut items = 0usize;
+    let mut item_started = false;
     let mut in_str = false;
     let mut prev_escape = false;
     while i < bytes.len() {
@@ -171,28 +204,41 @@ fn count_entries(src: &str, name: &str) -> Option<usize> {
                 prev_escape = false;
             }
         } else if c == '/' && bytes.get(i + 1) == Some(&b'/') {
-            // A `//` comment runs to end of line. Without this, a parenthesis
-            // in a per-entry justification counts as an entry — the reason
-            // strings above are exactly where parentheses belong.
+            // A `//` comment runs to end of line and is not item content. The
+            // per-entry justifications are exactly where a comma or a bracket
+            // in prose would otherwise be read as structure.
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
             continue;
         } else {
             match c {
-                '"' => in_str = true,
+                '"' => {
+                    in_str = true;
+                    item_started = true;
+                }
                 '[' | '(' => {
                     depth += 1;
-                    if depth == 2 {
-                        top_level_items += 1;
+                    if depth > 1 {
+                        item_started = true;
                     }
                 }
                 ']' | ')' => {
                     depth -= 1;
                     if depth == 0 {
-                        return Some(top_level_items);
+                        if item_started {
+                            items += 1;
+                        }
+                        return Some(items);
                     }
                 }
+                ',' if depth == 1 => {
+                    if item_started {
+                        items += 1;
+                    }
+                    item_started = false;
+                }
+                other if !other.is_whitespace() => item_started = true,
                 _ => {}
             }
         }
@@ -250,6 +296,8 @@ fn no_relaxation_hides_outside_the_ledger() {
         "_RELAXED",
         "_ALLOWED",
         "DEFERRED_",
+        "_UNGATED",
+        "_DISAGREEMENTS",
     ];
     let mut unlisted = Vec::new();
     for entry in std::fs::read_dir(tests_dir()).expect("tests dir readable") {

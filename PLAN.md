@@ -322,9 +322,19 @@ Closed (marked historical in-doc, removed as active work):
 Every way a gate in `ast-core` can be relaxed, counted so the total cannot grow
 silently. **This table is mirrored by `crates/ast-core/tests/test_verification_ledger.rs`,
 which is the executable copy**: it asserts each count and fails on any
-`const *_EXCLUDED` / `_LICENSED` / `_SKIPPED` in the test tree that is not in
-its table. Adding a relaxation therefore means writing its reason down in two
-places, and finding one by accident is no longer possible.
+`const *_EXCLUDED` / `_LICENSED` / `_SKIPPED` / `_UNGATED` / `_DISAGREEMENTS`
+in the test tree that is not in its table. Adding a relaxation therefore means
+writing its reason down in two places, and finding one by accident is no longer
+possible.
+
+The last two suffixes were added at the simplify parity closeout, and with them
+three lists that had been documented in §10 but never counted here: the six
+byte-comparison divergences in `SERIAL_UNGATED`, the one untagged Region result
+in `NO_ISSIMP_CARD_UNGATED`, and the seven-fixture `ISSIMP_DISAGREEMENTS` set.
+Each was already asserted as an exact set in its own harness, so none could
+grow unnoticed; what was missing was their appearance in the total. The counter
+gained the ability to count them at the same time: it read a flat `&[&str]`
+list as empty, so a ledger row for one would have passed at any size.
 
 | Gate | Cases | Relaxed | What the relaxation is |
 |---|---:|---:|---|
@@ -333,8 +343,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 468 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
 | simplify regression | 468 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 468 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 468 | 7 | `ISSIMP_DISAGREEMENTS` — fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
 | simplify regression | 468 | 142 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f`. Was 141 before `cap_box_permmap_nonbidi`, the negative control for a PermMap whose permutation is not bi-directional (§10.13) |
+| simplify regression | 468 | 6 | `SERIAL_UNGATED` — fixtures whose dump differs from C's `.simp` in something other than an `IsSimp` line, enumerated with causes B–F in the table below. Every one is a port defect: the pinned C reproduces all six `.simp` files byte-exactly. The set is asserted exactly, so it can shrink but not grow |
+| simplify regression | 468 | 1 | `NO_ISSIMP_CARD_UNGATED` — `neg_box_asymmetric_2d`, where `simplify` returns a Region without stamping it. C stamps whatever it returns (`mapping.c:24763`); this is cause B seen from the other side |
 | transform oracle | 1752 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1752 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
