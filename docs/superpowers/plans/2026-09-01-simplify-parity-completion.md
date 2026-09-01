@@ -1546,3 +1546,1063 @@ The instrument now refuses a rotted citation, an unclassified extension point, a
 The remaining 35 are a counted number that each cluster reduces.
 
 ---
+
+## Cluster 1 — the `IsSimp` card
+
+Three fixtures in this cluster: `cefit_circle_conformal` and
+`cefit_circle_nonconformal_keep` (rows B in `SERIAL_UNGATED`, and two of the
+seven `ISSIMP_DISAGREEMENTS` rows) and `neg_box_asymmetric_2d` (the single
+`NO_ISSIMP_CARD_UNGATED` row).
+They rest on two C rules the port does not have, both read off the pinned
+source.
+
+**Rule 1 — a Frame never reports `IsSimple`.**
+`frame.c:5590` overrides the protected `astGetIsSimple` method and returns 0
+unconditionally, "because Frames are not immutable (unlike non-Frame
+Mappings)".
+Every FrameSet and every Region inherits that override, so `mapping.c:23781`,
+which writes the card only when `astGetIsSimple` is non-zero, never writes one
+for a Frame-kind object however many times `astSimplify` has stamped it.
+The port reproduces the *output* by accident — no Frame-kind class holds a
+`SimplifiedRecord`, so the `Mapping` trait defaults at
+`crates/ast-core/src/mappings/mod.rs:564-582` return `false` — but the harness
+asserts the opposite, requiring a card on every simplified result
+(`test_simplify_regression.rs:402-406`), and `neg_box_asymmetric_2d` is licensed
+out of that wrong assertion rather than gated by the right one.
+
+**Rule 2 — the card is discarded on load whenever the class's own loader routes
+an attribute through a clearing setter.**
+Upstream `e40e71b4` made a setter for an attribute that feeds the first part of
+its class's own `astMapMerge` discard both simplified records
+(`mapping.h:449-460`, PLAN.md §9.2).
+Every loader for those classes assigns the attribute *through that setter* —
+`astLoadZoomMap` at `zoommap.c:2238` calls `SetZoom`, whose `astMAKE_SET1` at
+`zoommap.c:1704` calls `astClearIsSimple` — and `astLoadMapping` has already
+installed the record from the `IsSimp` card by then (`mapping.c:24137`, which
+runs in the parent before any class-specific card is read).
+So for those classes a dumped `IsSimp = 1` does not survive being read back.
+
+The corpus discriminates rule 2 on two matched pairs, same class and same
+nesting depth, differing only in whether a clearing attribute is present:
+
+| fixture | class | clearing attribute in the `.map` | `IsSimp` in C's `.simp` |
+|---|---|---|---|
+| `cefit_circle_conformal` | ZoomMap | `Zoom = 2` | absent |
+| `cap_poly_unc_frame` | ZoomMap | `Zoom = 4` | present |
+| `cefit_circle_nonconformal_keep` | MathMap | `SimpFI = 1`, `SimpIF = 1` | absent |
+| `cap_poly_bent_edges` | MathMap | none | present |
+
+The two "present" rows are not counter-examples, and they are this cluster's
+negative controls.
+Where the record is cleared on load, a card can still reappear, because
+`astSimplify_` stamps whatever the vtab slot returns and the base `Simplify`
+returns `astClone(this)` — the same pointer — so the stamp lands on the object
+already in the tree.
+`FrameSet::Simplify` keeps that stamp only when some edge reduced:
+`astClone( simpler ? new : this )` at `frameset.c:10226` discards the whole deep
+copy otherwise, stamps and all.
+`cap_poly_unc_frame` reaches its ZoomMap through a path that adopts the copy;
+`cefit_circle_conformal` does not, so its original — cleared at load — is what C
+dumps.
+That is the `flags = 0` object PLAN.md §9.1 saw and read as freshly constructed:
+it is the original, and the constructor it was looking for does not exist.
+`cap_poly_bent_edges` never loses the record at all, because its MathMap carries
+no `SimpFI` / `SimpIF` / `Seeded` card and `TestSimpFI` is therefore false.
+
+`FrameSet::simplified` (`crates/ast-core/src/frames/frameset.rs:1647-1670`)
+already mirrors `frameset.c:10111` edge for edge, including the unconditional
+`edge.mapping = simplified` that stands in for C's in-place stamp of the same
+pointer, so rule 2 is the only missing piece on the port side.
+
+---
+
+### Task 6: A Frame-kind result never reports `IsSimple`
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/mod.rs:564-582` (record the Frame rule on the two trait defaults)
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs:400-410` (replace the file-wide card requirement), `:545-547` (delete `NO_ISSIMP_CARD_UNGATED`), `:565-577` (delete its licence assertion)
+- Modify: `PLAN.md:349` (delete the ledger row)
+
+**Interfaces:**
+- Consumes: `ast_core::serial::AnyObject::from_mapping(m: &dyn Mapping) -> Option<AnyObject>` and `AnyObject::as_frame(&self) -> Option<&dyn Frame>`, both already public (`crates/ast-core/src/serial/mod.rs:1480`, `:1647`); `common::strip_is_simp(&str) -> String`.
+- Produces: two free functions in `crates/ast-core/tests/test_simplify_regression.rs`, used by this task and re-run unchanged by tasks 7 and 9:
+  - `fn result_is_frame_kind(m: &dyn Mapping) -> bool`
+  - `fn has_top_level_is_simp(dump: &str) -> bool`
+
+- [ ] **Step 1: Confirm the harness assertion is the file-wide one described above**
+
+```bash
+sed -n '400,410p' crates/ast-core/tests/test_simplify_regression.rs
+```
+
+Expected: the comment "the result of `simplify` always does (mapping.c:24763
+stamps every result)" followed by
+`if ignore_is_simp_line && !simp_str.contains("IsSimp") {`.
+`contains` searches the whole dump, so a card on a *nested* Mapping satisfies
+it — which is why only `neg_box_asymmetric_2d`, a Box over a bare Frame with no
+inner Mapping to carry one, ever tripped it.
+
+- [ ] **Step 2: Add the two helpers at the end of the file**
+
+Append to `crates/ast-core/tests/test_simplify_regression.rs`:
+
+```rust
+/// Whether `m` is a Frame, a FrameSet or a Region.
+///
+/// C's `IsSimple` getter is overridden on the Frame class to return zero
+/// unconditionally (`frame.c:5590`), and FrameSet and every Region inherit
+/// that override, so `mapping.c:23781` writes no `IsSimp` card for any of
+/// them. `AnyObject::as_frame` is exactly that set of classes.
+fn result_is_frame_kind(m: &dyn Mapping) -> bool {
+    AnyObject::from_mapping(m).is_some_and(|obj| obj.as_frame().is_some())
+}
+
+/// Whether a native dump carries an `IsSimp` card on its *outermost* object.
+///
+/// Native output indents a top-level attribute by exactly four spaces and
+/// anything nested by more, so the prefix distinguishes the outermost object's
+/// own cards from those of the Mappings it encapsulates.
+fn has_top_level_is_simp(dump: &str) -> bool {
+    dump.lines().any(|line| {
+        line.strip_prefix("    ")
+            .is_some_and(|rest| rest.starts_with("IsSimp"))
+    })
+}
+```
+
+- [ ] **Step 3: Add the imports the helpers need**
+
+At the top of `crates/ast-core/tests/test_simplify_regression.rs`, extend the
+existing `ast_core` imports so `AnyObject` and `Mapping` are in scope:
+
+```rust
+use ast_core::serial::AnyObject;
+```
+
+Run `grep -n "^use " crates/ast-core/tests/test_simplify_regression.rs` first
+and add only what is missing — `Mapping` is already imported for the transform
+checks.
+
+- [ ] **Step 4: Replace the file-wide requirement with C's rule**
+
+In `crates/ast-core/tests/test_simplify_regression.rs`, replace
+
+```rust
+                // A negative fixture's reference is its own input, which was
+                // never simplified and so carries no `IsSimp` at all — but the
+                // result of `simplify` always does (mapping.c:24763 stamps
+                // every result). Requiring one keeps the strip from hiding a
+                // result that is untagged altogether.
+                if ignore_is_simp_line && !simp_str.contains("IsSimp") {
+                    other_failures.push(format!("{name}: simplify() produced no IsSimp card"));
+                }
+```
+
+with
+
+```rust
+                // A negative fixture's reference is its own input, which was
+                // never simplified and so carries no `IsSimp` at all, so the
+                // strip above would hide a result tagged wrongly at the top
+                // level. `astSimplify` stamps whatever it returns
+                // (mapping.c:24783), and the card is written when
+                // `astGetIsSimple` reports it (mapping.c:23781) — which a
+                // Frame, a FrameSet and a Region never do, because the getter
+                // is overridden on the Frame class to return zero
+                // (frame.c:5590). So the card is required exactly when the
+                // result is not Frame-kind, and forbidden when it is.
+                if ignore_is_simp_line {
+                    let card = has_top_level_is_simp(&simp_str);
+                    let frame_kind = result_is_frame_kind(simplified.as_ref());
+                    if card && frame_kind {
+                        other_failures.push(format!(
+                            "{name}: IsSimp card on a Frame-kind result (frame.c:5590)"
+                        ));
+                    } else if !card && !frame_kind {
+                        other_failures
+                            .push(format!("{name}: simplify() produced no IsSimp card"));
+                    }
+                }
+```
+
+- [ ] **Step 5: Delete the licence and its assertion**
+
+Delete these three lines (`test_simplify_regression.rs:545-547`):
+
+```rust
+    // `simplify` must stamp whatever it returns (mapping.c:24763). It does not
+    // for a Region, which is the same defect as (B) seen from the other side.
+    const NO_ISSIMP_CARD_UNGATED: &[&str] = &["neg_box_asymmetric_2d"];
+```
+
+and the block that consumes it:
+
+```rust
+    let (no_card_licensed, no_card_other): (Vec<String>, Vec<String>) =
+        other_failures.iter().cloned().partition(|m| {
+            NO_ISSIMP_CARD_UNGATED
+                .iter()
+                .any(|n| m.starts_with(&format!("{n}:")))
+        });
+    assert_eq!(
+        no_card_licensed.len(),
+        NO_ISSIMP_CARD_UNGATED.len(),
+        "the untagged-result licence no longer matches: {no_card_licensed:?}"
+    );
+```
+
+Then replace the line that re-binds the filtered list
+
+```rust
+    let other_failures = no_card_other;
+```
+
+with nothing — `other_failures` is already the list the panic counts.
+
+- [ ] **Step 6: Run the harness**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+```
+
+Expected: PASS. The three other Frame-kind identical-reference rows —
+`cap_box_permmap_nonbidi`, `interval_halfinf_simplify`,
+`interval_remapped_simplify` — passed the old check only on a nested card and
+must now pass the new one on the absence of a top-level one; if any of them
+reports "IsSimp card on a Frame-kind result", the port is stamping a Region and
+that is a real finding to fix before continuing, not a row to license.
+
+- [ ] **Step 7: Record the rule where the port relies on it**
+
+In `crates/ast-core/src/mappings/mod.rs`, extend the doc comment on
+`has_been_simplified` (currently ending "Serialised as the `IsSimp` token.")
+with the paragraph that makes the default deliberate rather than incidental:
+
+```rust
+    /// A Frame, a FrameSet and a Region always report `false` and keep this
+    /// default: C overrides the getter on the Frame class to return zero
+    /// unconditionally (`frame.c:5590`), because a Frame is mutable and so no
+    /// record of having been simplified can stay true. They hold no
+    /// `SimplifiedRecord` for the same reason, and
+    /// `test_simplify_regression.rs` gates the resulting absence of an
+    /// `IsSimp` card on every Frame-kind result in the corpus.
+```
+
+- [ ] **Step 8: Delete the ledger row**
+
+In `PLAN.md`, delete the `NO_ISSIMP_CARD_UNGATED` row (line 349, the row whose
+count is 1), and in the paragraph at `PLAN.md:332-333` drop the clause "the one
+untagged Region result in `NO_ISSIMP_CARD_UNGATED`," so the sentence lists only
+the two surviving sets.
+
+Then correct the `ignore_is_simp_line` row (line 351), whose last clause reads
+"The companion assertion requires the result to carry at least one, so the strip
+cannot hide an untagged result." Replace it with:
+
+> The companion assertion requires a top-level card exactly when the result is
+> not Frame-kind — C's `IsSimple` getter is overridden on the Frame class to
+> return zero (`frame.c:5590`) — so the strip can hide neither an untagged
+> Mapping result nor a wrongly tagged Region.
+
+- [ ] **Step 9: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+git add -A crates PLAN.md
+git commit -F - <<'MSG'
+simplify: gate the IsSimp card against C's Frame override
+
+C overrides the IsSimple getter on the Frame class to return zero
+unconditionally (frame.c:5590), so a FrameSet and every Region inherit it and
+never carry an IsSimp card however often astSimplify has stamped them. The
+harness required a card on every result and searched the whole dump for one, so
+a card on a nested Mapping satisfied it and the one fixture with no nested
+Mapping was licensed out.
+
+The requirement is now C's: on the outermost object, a card exactly when the
+result is not a Frame, a FrameSet or a Region, and no card when it is.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 7: The `IsSimp` card is discarded on load — ZoomMap and MathMap
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/zoom.rs:48-51` (add the setter), `:312-321` (route `from_node` through it)
+- Modify: `crates/ast-core/src/mappings/mathmap/mod.rs:698-733` (route `from_node` through the three setters it already has)
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs:514-543` (delete two `SERIAL_UNGATED` rows), `:583-606` (delete two `ISSIMP_DISAGREEMENTS` rows)
+- Modify: `docs/issues/c-library-quirks.md` (append the dump/load asymmetry)
+- Modify: `PLAN.md:346`, `PLAN.md:348` (ledger counts)
+
+**Interfaces:**
+- Consumes: `SimplifiedRecord::clear(&mut self)` (`crates/ast-core/src/mappings/mod.rs:154-196`); `Node::get_double(&self, key: &str, default: f64) -> f64`, `Node::get_int(&self, key: &str, default: i64) -> i64` (`crates/ast-core/src/serial/node.rs`); the existing `MathMap::set_simp_fi(&mut self, val: bool)`, `set_simp_if(&mut self, val: bool)`, `set_seed(&mut self, seed: i32)` (`crates/ast-core/src/mappings/mathmap/mod.rs:182-215`).
+- Produces: `ZoomMap::set_factor(&mut self, factor: f64) -> AstResult<()>` — `pub(crate)`, used by Task 8's gate and by nothing in the public API.
+
+- [ ] **Step 1: Read C's loader for both classes and confirm the routing**
+
+```bash
+sed -n '2235,2239p' reference/starlink-ast/src/zoommap.c
+sed -n '7389,7412p' reference/starlink-ast/src/mathmap.c
+```
+
+Expected, in both: the raw value read with an *unset* default, a `Test…`
+predicate, and the value re-applied through the private `Set…` function only
+when the predicate holds. `TestZoom` is `this->zoom != 0.0`
+(`zoommap.c:1712`), `TestSimpFI` is `simp_fi != -INT_MAX`, and `TestSeed` is
+`rcontext.seed_set` — which the loader reads from the `Seeded` card. Each
+`Set…` calls `astClearIsSimple`, and `astLoadMapping` has already installed
+the record from the `IsSimp` card (`mapping.c:24137`) because the parent loader
+runs first.
+
+- [ ] **Step 2: Add `ZoomMap::set_factor`**
+
+In `crates/ast-core/src/mappings/zoom.rs`, immediately after the `factor`
+getter:
+
+```rust
+    /// Set the zoom factor.
+    ///
+    /// `Zoom` is the whole of the transformation and so feeds the first part
+    /// of ZoomMap's own `MapMerge`, which is why C's setter discards both
+    /// simplified records (`astMAKE_SET1` at zoommap.c:1704, the convention at
+    /// mapping.h:449-460). Zero is rejected as `ZoomMap::new` rejects it,
+    /// matching the `AST__ZOOMI` error C raises in the same setter.
+    pub(crate) fn set_factor(&mut self, factor: f64) -> AstResult<()> {
+        if factor == 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Zoomi,
+                "zoom factor must not be zero",
+            ));
+        }
+        self.simplified.clear();
+        self.factor = factor;
+        Ok(())
+    }
+```
+
+`AstError`, `ErrorCode` and `AstResult` are already imported for `new`.
+
+- [ ] **Step 3: Route `ZoomMap::from_node` through it**
+
+Replace the body of `from_node` in `crates/ast-core/src/mappings/zoom.rs`:
+
+```rust
+    fn from_node(node: &Node) -> AstResult<Self> {
+        let base = read_mapping_base(node);
+        // C reads the raw value against the unset default of zero and then
+        // re-applies it through `SetZoom` when `TestZoom` reports it set, i.e.
+        // when it is non-zero (zoommap.c:2237-2238, zoommap.c:1712). That
+        // setter discards the simplified record the parent loader has just
+        // installed from the `IsSimp` card, so a dumped card does not survive
+        // being read back.
+        let raw = node.get_double("Zoom", 0.0);
+        let mut m = ZoomMap::new(base.nin, if raw != 0.0 { raw } else { 1.0 })?;
+        if base.inverted {
+            m.invert();
+        }
+        m.set_has_been_simplified(base.has_been_simplified);
+        if raw != 0.0 {
+            m.set_factor(raw)?;
+        }
+        Ok(m)
+    }
+```
+
+The `set_has_been_simplified` call stays, and stays *before* the setter: it
+stands for `astLoadMapping` running in the parent, and removing it would make
+the port agree with C on this corpus for the wrong reason — a class whose
+loader routes nothing must still honour the card.
+
+- [ ] **Step 4: Route `MathMap::from_node` through its three setters**
+
+In `crates/ast-core/src/mappings/mathmap/mod.rs`, replace the attribute reads
+and the struct literal at the end of `from_node`. Read the raw values as now,
+but construct with the *unset* values and apply each through its setter:
+
+```rust
+        // Read the raw attribute values against C's unset defaults. Each is
+        // then re-applied through the setter that discards the simplified
+        // records, exactly as C's loader does (mathmap.c:7392, 7397, 7410) —
+        // so a dumped `IsSimp` card does not survive being read back.
+        let simp_fi_raw = node.get_int("SimpFI", -1);
+        let simp_if_raw = node.get_int("SimpIF", -1);
+        let seeded = node.get_int("Seeded", 0) != 0;
+        let seed = node.get_int("Seed", 0) as i32;
+
+        let mut m = Self {
+            nin,
+            nout,
+            fwd_exprs,
+            inv_exprs,
+            fwd_compiled,
+            inv_compiled,
+            rng: UnsafeCell::new(MathMapRng::with_default_seed()),
+            simp_fi: None,
+            simp_if: None,
+            inverted: base.inverted,
+            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
+            has_forward,
+            has_inverse,
+        };
+        if simp_fi_raw >= 0 {
+            m.set_simp_fi(simp_fi_raw != 0);
+        }
+        if simp_if_raw >= 0 {
+            m.set_simp_if(simp_if_raw != 0);
+        }
+        if seeded {
+            m.set_seed(seed);
+        }
+        Ok(m)
+```
+
+C reads the seed only inside the `TestSeed` branch and otherwise takes
+`DefaultSeed` (`mathmap.c:7405-7412`); reading it unconditionally here is
+harmless because it is used only inside the same branch, and
+`MathMapRng::with_default_seed` is the port of `DefaultSeed`.
+
+- [ ] **Step 5: Run the two fixtures the rules pin**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -40
+```
+
+Expected: the licence assertions now fail, because the two `cefit_*` cases pass
+and the lists still name them. That is the signal to delete the rows, and the
+reason the deletions are a separate step from the code.
+
+- [ ] **Step 6: Delete the two `SERIAL_UNGATED` rows**
+
+In `crates/ast-core/tests/test_simplify_regression.rs`, delete these two entries
+and the `(B)` paragraph of the comment above `SERIAL_UNGATED` that describes
+them:
+
+```rust
+    (
+        "cefit_circle_conformal",
+        "IsSimp on the FrameSet's ZoomMap; C emits none",
+    ),
+    (
+        "cefit_circle_nonconformal_keep",
+        "IsSimp on the FrameSet's MathMap; C emits none",
+    ),
+```
+
+- [ ] **Step 7: Delete the two `ISSIMP_DISAGREEMENTS` rows**
+
+In the same file delete:
+
+```rust
+    "cefit_circle_conformal (1 vs C's 0)",
+    "cefit_circle_nonconformal_keep (1 vs C's 0)",
+```
+
+Leave `"cap_zoommap_04 (3 vs C's 0)"` — it is cluster 3's, and Task 21 removes
+it.
+
+- [ ] **Step 8: Re-run the harness and the negative controls**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
+cargo test -p ast-core --test test_native_roundtrip 2>&1 | tail -10
+```
+
+Expected: PASS. `cap_poly_unc_frame`, `cap_poly_bent_edges` and
+`cap_ident_frame` keep their `IsSimp` cards and are the cases that fail if the
+clear is applied too widely — `cap_poly_unc_frame` is a ZoomMap with `Zoom = 4`
+whose card C nonetheless emits, because the copy carrying the re-stamp is the
+one adopted. If any of the three regresses, the fault is in where the stamp
+lands, not in the clear; do not weaken the clear to recover them.
+
+- [ ] **Step 9: Record the C asymmetry in the quirks document**
+
+C writes an `IsSimp` card that its own loader then discards for twelve classes,
+so a dump/load cycle is not idempotent in that flag. The standing rule is that a
+mirrored C artefact is logged rather than reasoned about at each site. Append to
+`docs/issues/c-library-quirks.md`:
+
+````markdown
+## The `IsSimp` card does not survive being read back, for twelve classes
+
+`astLoadMapping` installs the simplified record from the `IsSimp` card
+(`mapping.c:24137`) and the parent loader runs before any class-specific card is
+read. Each class whose loader validates an attribute re-applies it through the
+private `Set…` function, following the comment at `zoommap.c:2231-2233` — "If a
+'set' value is obtained, we then use the appropriate (private) Set... member
+function to validate and set the value properly". For the eleven classes that
+follow the clear-on-set convention (`mapping.h:449-460`, PLAN.md §9.2), plus
+GrismMap's macro form, that `Set…` calls `astClearIsSimple`, which discards
+both records:
+
+```c
+      new->zoom = astReadDouble( channel, "zoom", 0.0 );
+      if ( TestZoom( new, status ) ) SetZoom( new, new->zoom, status );
+```
+
+So `astWrite` followed by `astRead` loses the flag for those classes, and a
+Mapping that was known to be simplified is offered to `astSimplify` again. The
+cost is a redundant simplification, never a wrong answer — which is the same
+latitude the convention's own comment claims — and it is invisible unless the
+dump is compared against a re-dump.
+
+The two are not independent choices: the loader routing exists to validate, and
+the clearing exists because a set can invalidate a record. Their composition is
+what nobody chose.
+
+**Rust behaviour (mirror):** the port routes `from_node` through the same
+setters for the same classes, so a `.simp` reference and the port's dump of the
+loaded object agree card for card. `cefit_circle_conformal` (ZoomMap) and
+`cefit_circle_nonconformal_keep` (MathMap) pin it; `cap_poly_bent_edges`, whose
+MathMap carries no `SimpFI` / `SimpIF` / `Seeded` card and so routes nothing, is
+the control.
+
+To be raised upstream.
+````
+
+- [ ] **Step 10: Update the ledger counts**
+
+In `PLAN.md`, the `SERIAL_UNGATED` row (line 348) drops from 6 to 4 and the
+`ISSIMP_DISAGREEMENTS` row (line 346) from 7 to 5. Edit both counts and both
+descriptions so the remaining causes are the ones still named in source.
+
+- [ ] **Step 11: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+git add -A crates PLAN.md docs
+git commit -F - <<'MSG'
+simplify: discard the IsSimp card on load, as C's loaders do
+
+C's loader for a class that validates an attribute re-applies it through the
+private setter, and for the classes following the clear-on-set convention that
+setter discards the simplified records the parent loader has just installed from
+the IsSimp card. A dumped card therefore does not survive being read back.
+
+ZoomMap and MathMap are the two classes the corpus pins: cefit_circle_conformal
+and cefit_circle_nonconformal_keep both dumped a card C does not emit.
+cap_poly_bent_edges, whose MathMap carries no SimpFI, SimpIF or Seeded card and
+so routes nothing, keeps its card and is the control.
+
+The dump/load asymmetry is C's, and is recorded in the quirks document.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 8: The same load-time discard for the classes whose setters already exist
+
+Six more classes follow C's clear-on-set convention with a setter the port
+already has, so only the loader routing is missing.
+Two of them route through the setter already but install the record *afterwards*,
+which undoes the clear — the same defect with the operations in the other order.
+
+| class | attribute | C loader | port today |
+|---|---|---|---|
+| LutMap | `LutInterp` | lutmap.c:2573 | struct field, no setter call |
+| PolyMap | `IterInverse`, `NiterInverse`, `TolInverse` | polymap.c:7462, 7466, 7470 | struct fields, no setter calls |
+| SplineMap | `InvNiter`, `InvTol`, `OutUnit` | splinemap.c:3644, 3648, 3652 | struct fields, no setter calls |
+| SphMap | `UnitRadius`, `PolarLong` | sphmap.c:2041, 2046 | struct fields, no setter calls |
+| WcsMap | `FITSProj`, `LonCheck` | wcsmap.c:6026, 6033 | setters called, then the record installed |
+| PermMap | `PermSplit` | permmap.c:3091 | struct field, then the record installed |
+
+`LutMap::LutEpsilon`, `PcdMap::Disco` and GrismMap's eight have no setter at all
+and are cluster 5's, at Task 23; `IntraMap::IntraFlag` is excluded with the
+class.
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/lutmap.rs:890-921` (`from_node`)
+- Modify: `crates/ast-core/src/mappings/polymap.rs:2022-2043` (`from_node`)
+- Modify: `crates/ast-core/src/mappings/splinemap.rs:1083-1104` (`from_node`)
+- Modify: `crates/ast-core/src/mappings/sphmap.rs:425-451` (`from_node`)
+- Modify: `crates/ast-core/src/mappings/wcsmap.rs:1168-1205` (`from_node`, ordering)
+- Modify: `crates/ast-core/src/mappings/perm.rs:1328-1337` (`from_node`)
+- Modify: `crates/ast-core/tests/test_clear_on_set.rs` (add the load-path gate)
+
+**Interfaces:**
+- Consumes: `ast_core::to_native_string(&AnyObject) -> AstResult<String>` and `ast_core::from_native_string(&str) -> AstResult<AnyObject>`; `AnyObject::from_mapping(&dyn Mapping) -> Option<AnyObject>`, `AnyObject::as_mapping(&self) -> Option<&dyn Mapping>` (`crates/ast-core/src/serial/mod.rs:1480`, `:1594`); `Node::get(&self, key: &str) -> Option<&NodeValue>`, which is case-insensitive and reports `Unset` as absent (`node.rs:135-143`); the setters listed in the table above; `ZoomMap::set_factor` from Task 7.
+- Produces: `fn load_discards(m: impl Mapping, what: &str)` in `crates/ast-core/tests/test_clear_on_set.rs`.
+
+- [ ] **Step 1: Write the failing gate**
+
+Append to `crates/ast-core/tests/test_clear_on_set.rs`:
+
+```rust
+/// Record the flag on `m`, dump it to native, read it back, and require the
+/// flag to be gone.
+///
+/// C's loader re-applies a validated attribute through the private setter
+/// (`zoommap.c:2231-2238` states the convention), and for a class following
+/// clear-on-set that setter discards the record `astLoadMapping` has just
+/// installed from the `IsSimp` card (`mapping.c:24137`). `m` must therefore
+/// carry an explicitly set attribute, or there is no card for the loader to
+/// route and nothing to discard.
+fn load_discards(mut m: impl Mapping, what: &str) {
+    m.set_has_been_simplified(true);
+    let obj = AnyObject::from_mapping(&m).expect("class is not in AnyObject");
+    let text = to_native_string(&obj).expect("dump failed");
+    assert!(
+        text.contains("IsSimp"),
+        "{what}: the dump carries no IsSimp card, so the case proves nothing"
+    );
+    let back = from_native_string(&text).expect("load failed");
+    let loaded = back.as_mapping().expect("loaded object is not a Mapping");
+    assert!(
+        !loaded.has_been_simplified(),
+        "{what}: the simplified record survived the load"
+    );
+}
+
+/// The control: a class with no clear-on-set attribute routes nothing through a
+/// setter, so its loader must honour the card.
+#[test]
+fn load_keeps_the_record_for_a_class_that_routes_nothing() {
+    let mut m = ShiftMap::new(&[1.0, 2.0]).unwrap();
+    m.set_has_been_simplified(true);
+    let text = to_native_string(&AnyObject::from_mapping(&m).unwrap()).unwrap();
+    let back = from_native_string(&text).unwrap();
+    assert!(
+        back.as_mapping().unwrap().has_been_simplified(),
+        "ShiftMap: the card was discarded by a class that clears nothing"
+    );
+}
+
+#[test]
+fn load_discards_the_record_for_every_clear_on_set_class() {
+    let mut zoom = ZoomMap::new(2, 3.0).unwrap();
+    zoom.set_has_been_simplified(true);
+    load_discards(zoom, "ZoomMap::Zoom");
+
+    let mut math = math_map();
+    math.set_simp_fi(true);
+    math.set_simp_if(true);
+    load_discards(math, "MathMap::SimpFI");
+
+    let mut lut = lut_map();
+    lut.set_interp(LutInterp::Nearest);
+    load_discards(lut, "LutMap::LutInterp");
+
+    let mut poly = poly_map();
+    poly.set_iter_inverse(true);
+    poly.set_niter_inverse(7);
+    poly.set_tol_inverse(1e-8);
+    load_discards(poly, "PolyMap::IterInverse");
+
+    let mut spline = spline_map();
+    spline.set_inv_niter(9);
+    spline.set_inv_tol(1e-7);
+    spline.set_out_unit(true);
+    load_discards(spline, "SplineMap::InvNiter");
+
+    let mut sph = SphMap::new();
+    sph.set_unit_radius(true);
+    sph.set_polar_long(0.5);
+    load_discards(sph, "SphMap::UnitRadius");
+
+    let mut wcs = wcs_map();
+    wcs.set_fits_proj(true);
+    wcs.set_lon_check(true);
+    load_discards(wcs, "WcsMap::FITSProj");
+
+    let mut perm = perm_map();
+    perm.set_perm_split(true);
+    load_discards(perm, "PermMap::PermSplit");
+}
+```
+
+Extend the imports at the top of the file with what the new cases need:
+
+```rust
+use ast_core::mappings::{ShiftMap, SphMap, ZoomMap};
+use ast_core::{AnyObject, from_native_string, to_native_string};
+```
+
+Run `grep -n "^use \|^}" crates/ast-core/tests/test_clear_on_set.rs | head` and
+merge these into the existing `use ast_core::mappings::{…}` list rather than
+adding a second one. `SphMap::new()` takes no arguments; check with
+`grep -n "pub fn new" crates/ast-core/src/mappings/sphmap.rs` and use the
+constructor as it stands.
+
+- [ ] **Step 2: Run it and read which classes fail**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+```
+
+Expected: `load_discards_the_record_for_every_clear_on_set_class` fails on the
+first class in the list that has not been fixed — ZoomMap and MathMap pass from
+Task 7, so the failure names LutMap. The control test passes. Fix the classes in
+list order, re-running after each so the failure moves down the list.
+
+- [ ] **Step 3: LutMap**
+
+In `crates/ast-core/src/mappings/lutmap.rs`, after the `if base.inverted {
+m.invert(); }` block in `from_node` and before `Ok(m)`:
+
+```rust
+        // C re-applies the interpolation method through `SetLutInterp` when
+        // `TestLutInterp` reports it set (lutmap.c:2572-2573), which discards
+        // the simplified record the parent loader installed from the `IsSimp`
+        // card.
+        if node.get("LutInt").is_some() {
+            m.set_interp(interp);
+        }
+```
+
+- [ ] **Step 4: PolyMap**
+
+In `crates/ast-core/src/mappings/polymap.rs`, in the same position in
+`from_node`:
+
+```rust
+        // C re-applies each iterative-inverse attribute through its setter when
+        // the Test predicate reports it set (polymap.c:7461-7470), which
+        // discards the simplified record installed from the `IsSimp` card.
+        if let Some(v) = iter_inv {
+            m.set_iter_inverse(v);
+        }
+        if node.get("NiterInv").is_some() {
+            m.set_niter_inverse(niter_inv);
+        }
+        if node.get("TolInv").is_some() {
+            m.set_tol_inverse(tol_inv);
+        }
+```
+
+- [ ] **Step 5: SplineMap**
+
+In `crates/ast-core/src/mappings/splinemap.rs`, after the line
+`m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);`
+and before `Ok(m)`:
+
+```rust
+        // C re-applies each attribute through its setter when the Test
+        // predicate reports it set (splinemap.c:3643-3652), which discards the
+        // simplified record installed from the `IsSimp` card.
+        if let Some(n) = inv_niter {
+            m.set_inv_niter(n);
+        }
+        if let Some(tol) = inv_tol {
+            m.set_inv_tol(tol);
+        }
+        if node.get("OutUnit").is_some() {
+            m.set_out_unit(out_unit);
+        }
+```
+
+- [ ] **Step 6: SphMap**
+
+In `crates/ast-core/src/mappings/sphmap.rs`, in the same position:
+
+```rust
+        // C re-applies both attributes through their setters when the Test
+        // predicates report them set (sphmap.c:2040-2046), which discards the
+        // simplified record installed from the `IsSimp` card.
+        if node.get("UntRd").is_some() {
+            m.set_unit_radius(unit_radius);
+        }
+        if polar_long_set {
+            m.set_polar_long(polar_long);
+        }
+```
+
+`polar_long_set` is the predicate the loader already computes by walking
+`node.items`, which is C's `TestPolarLong` — a commented-out default does not
+count as set.
+
+- [ ] **Step 7: WcsMap — install the record before the setters, not after**
+
+In `crates/ast-core/src/mappings/wcsmap.rs`, `from_node` calls the two setters
+and only then `wcs.set_has_been_simplified(base.has_been_simplified)`, so the
+record is installed after the clears and survives. Move that call to just after
+the `WcsMap::new` line:
+
+```rust
+        let mut wcs = WcsMap::new(base.nin, proj, wcsax1, wcsax2)?;
+
+        // `astLoadMapping` installs the record from the `IsSimp` card before any
+        // class attribute is read (mapping.c:24137), so the setters below — which
+        // follow C's clear-on-set convention — discard it.
+        wcs.set_has_been_simplified(base.has_been_simplified);
+```
+
+and delete the later call:
+
+```rust
+        wcs.set_has_been_simplified(base.has_been_simplified);
+```
+
+- [ ] **Step 8: PermMap — route through the setter, and install the record first**
+
+In `crates/ast-core/src/mappings/perm.rs`, `from_node` assigns the field
+directly and installs the record afterwards. Replace
+
+```rust
+        m.perm_split = node.get_int("pmsplt", 0) != 0;
+        if base.inverted {
+            m.invert();
+        }
+
+        m.set_has_been_simplified(base.has_been_simplified);
+        Ok(m)
+```
+
+with
+
+```rust
+        if base.inverted {
+            m.invert();
+        }
+
+        m.set_has_been_simplified(base.has_been_simplified);
+
+        // C re-applies `PermSplit` through `SetPermSplit` when `TestPermSplit`
+        // reports it set (permmap.c:3090-3091), which discards the record the
+        // parent loader has just installed from the `IsSimp` card.
+        if node.get("PmSplt").is_some() {
+            m.set_perm_split(node.get_int("PmSplt", 0) != 0);
+        }
+        Ok(m)
+```
+
+`Node::get` matches case-insensitively (`node.rs:137`), so the mixed-case key
+finds the card the serialiser writes.
+
+- [ ] **Step 9: Run the gate, then the whole suite**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -10
+cargo test -p ast-core 2>&1 | tail -40
+```
+
+Expected: PASS throughout, including the whole `.simp` corpus and the native
+round-trip test. A round-trip failure here would mean a class dumps an attribute
+whose absence on reload changes another card — read the diff before touching the
+routing.
+
+- [ ] **Step 10: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+git add -A crates
+git commit -F - <<'MSG'
+simplify: route six more loaders through their clearing setters
+
+LutMap, PolyMap, SplineMap and SphMap assigned validated attributes straight
+into the struct, so the IsSimp card survived a load C discards it on. WcsMap and
+PermMap installed the record after calling the setters, which undid the clear.
+
+The gate dumps a stamped Mapping with the attribute explicitly set, reads it
+back, and requires the record gone — one case per clear-on-set class with a
+setter. ShiftMap, which clears nothing, is the control that must keep it.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 9: Write the two rules down where the next reader will look
+
+`PLAN.md` §9.1 records a conclusion the C source has now overturned — that C
+dumps a freshly constructed ZoomMap whose constructor is unidentified — and §9.2
+states that no fixture can express the clear-on-set convention, which the two
+`cefit_*` fixtures now do through the load path.
+Both are load-bearing: §9.1 is what a reader picking up this cluster would start
+from, and §9.2's claim is the reason the convention had no corpus gate.
+
+**Files:**
+- Modify: `PLAN.md:642-664` (§9.1), `PLAN.md:664-712` (§9.2)
+- Modify: `docs/audits/mapmerge/README.md` (the cluster's audit note, if the file records per-cluster status — check with `grep -n "9.1\|9.2" docs/audits/mapmerge/README.md`)
+
+**Interfaces:**
+- Consumes: nothing — documentation only.
+- Produces: nothing consumed by a later task; Task 31's closing report cites §9.1 and §9.2 as rewritten here.
+
+- [ ] **Step 1: Replace §9.1 with the rule and its evidence**
+
+In `PLAN.md`, replace the whole of §9.1 — heading included — with:
+
+```markdown
+### 9.1 `cefit_circle_*` — CLOSED: the card is discarded on load
+
+The port emitted an `IsSimp` card on the FrameSet's inner ZoomMap
+(`cefit_circle_conformal`) and MathMap (`cefit_circle_nonconformal_keep`) that
+the pinned C does not.
+
+The instrumentation had established that C dumps an object with `flags = 0`
+even though the input `.map` carries `IsSimp = 1` on that Mapping and
+`astLoadMapping` honours the card (`mapping.c:24137`), and concluded that the
+object must have been freshly constructed. It was not. It is the same object,
+whose flag its own loader discarded: `astLoadZoomMap` re-applies the validated
+`Zoom` value through `SetZoom` (`zoommap.c:2237-2238`), and that setter calls
+`astClearIsSimple` under the convention in §9.2. `astLoadMathMap` does the same
+for `SimpFI`, `SimpIF` and `Seed` (`mathmap.c:7392, 7397, 7410`).
+
+A stamp can still reappear afterwards, which is why the corpus looks
+inconsistent at first reading. `astSimplify_` stamps whatever the vtab slot
+returns (`mapping.c:24783`) and the base `Simplify` returns `astClone(this)` —
+the same pointer — so the stamp lands on the object already in the tree.
+`FrameSet::Simplify` then keeps it only when some edge reduced:
+`astClone( simpler ? new : this )` at `frameset.c:10226` discards the entire
+deep copy otherwise, stamps and all. `Region::Simplify` does the same at
+`region.c:11042`.
+
+The corpus discriminates the rule on two matched pairs — same class, same
+nesting depth, differing only in whether a clearing attribute is present:
+
+| fixture | class | clearing attribute in the `.map` | `IsSimp` in C's `.simp` |
+|---|---|---|---|
+| `cefit_circle_conformal` | ZoomMap | `Zoom = 2` | absent |
+| `cap_poly_unc_frame` | ZoomMap | `Zoom = 4` | present — the copy carrying the re-stamp is the one adopted |
+| `cefit_circle_nonconformal_keep` | MathMap | `SimpFI = 1`, `SimpIF = 1` | absent |
+| `cap_poly_bent_edges` | MathMap | none, so `TestSimpFI` is false | present |
+
+The dump/load asymmetry is C's own and is recorded in
+`docs/issues/c-library-quirks.md` ("The `IsSimp` card does not survive being
+read back, for twelve classes").
+
+A second rule surfaced with it and closed `NO_ISSIMP_CARD_UNGATED`: no
+Frame-kind object ever carries a top-level `IsSimp` card, because
+`astGetIsSimple` is overridden on the Frame class to return zero unconditionally
+(`frame.c:5590`, "always zero because Frames are not immutable"), and FrameSet
+and every Region inherit that override. `test_simplify_regression.rs` now
+requires a top-level card exactly when the result is not Frame-kind, on every
+negative fixture in the corpus.
+```
+
+- [ ] **Step 2: Correct §9.2's "no fixture can express this"**
+
+In `PLAN.md` §9.2, replace the paragraph beginning "**No fixture can express
+this.**" — through the sentence ending "across a set, a clear and the invert
+control." — with:
+
+```markdown
+**A fixture expresses half of it.** The simplify corpus dumps, simplifies and
+dumps again, so it has no "set an attribute after simplifying" step and cannot
+reach a setter directly. It does reach the *loader*, which C routes through the
+same setters: `cefit_circle_conformal` (ZoomMap) and
+`cefit_circle_nonconformal_keep` (MathMap) both dumped a card C discards on load,
+and `cap_poly_bent_edges` — whose MathMap carries no `SimpFI` / `SimpIF` /
+`Seeded` card, so `TestSimpFI` is false and nothing is routed — is the control
+that keeps its card (§9.1).
+
+The direct half is gated by `crates/ast-core/tests/test_clear_on_set.rs`: a case
+per setter, plus `record_survives_invert_and_back`, which pins an operation C
+does *not* cover (`mapping.h:424-437`) so the other assertions cannot pass on a
+port that never records anything, plus `load_discards_the_record_for_every_clear_on_set_class`,
+which dumps a stamped Mapping with the attribute set, reads it back and requires
+the record gone — with ShiftMap, which clears nothing, as the control that must
+keep it.
+C's behaviour is confirmed by the probe recorded in
+`docs/issues/c-oracle-probe-recipe.md` ("Worked probe — the clear-on-set
+convention"), which reads `IsSimple` through the public string interface across a
+set, a clear and the invert control.
+```
+
+- [ ] **Step 3: Update §9.2's port column for the classes this cluster changed**
+
+In §9.2's table, `ZoomMap | Zoom` reads "no setter". Replace that cell with
+`set_factor` (`pub(crate)`, Task 7). Leave `LutMap::LutEpsilon`, `PcdMap::Disco`,
+`IntraMap::IntraFlag` and GrismMap as they stand — Task 23 changes the first two
+and GrismMap, and IntraMap is excluded with the class.
+
+Then, in the "**Still open, deliberately**" paragraph that follows, change "Five
+of C's attributes have no setter in the port" to "Four of C's attributes have no
+setter in the port" and delete `ZoomMap::Zoom` from its list, keeping the
+argument about the public attribute surface intact — `set_factor` is
+`pub(crate)`, so it does not widen the public API and the argument still holds
+for the remaining four.
+
+- [ ] **Step 4: Retitle §9.2's heading to match**
+
+The heading reads "### 9.2 The clear-on-set convention — PORTED; five attributes
+lack a setter". Change "five" to "four".
+
+- [ ] **Step 5: Check the audit index for a stale cluster note**
+
+```bash
+grep -rn "9\.1\|IsSimp" docs/audits/mapmerge/README.md
+```
+
+If a row or paragraph names §9.1 as open, update it to cite §9.1 as closed by
+this cluster. If nothing matches, there is nothing to change — the audit
+checklists carry per-step verdicts, not cluster status.
+
+- [ ] **Step 6: Verify the whole suite and the ledger arithmetic**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core 2>&1 | tail -20
+grep -n "ISSIMP_DISAGREEMENTS\|SERIAL_UNGATED\|NO_ISSIMP_CARD_UNGATED" PLAN.md
+```
+
+Expected: PASS, and the ledger shows `ISSIMP_DISAGREEMENTS` at 5,
+`SERIAL_UNGATED` at 4, and no `NO_ISSIMP_CARD_UNGATED` row. Cross-check each
+count against the source lists:
+
+```bash
+grep -n "ISSIMP_DISAGREEMENTS" -A 26 crates/ast-core/tests/test_simplify_regression.rs | grep -c '"'
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git add -A PLAN.md docs
+git commit -F - <<'MSG'
+docs: record why the IsSimp card does not survive a load
+
+PLAN.md §9.1 concluded that C dumps a freshly constructed ZoomMap whose
+constructor was unidentified. It dumps the same object, whose flag its own loader
+discarded by re-applying the validated Zoom value through a setter that follows
+the clear-on-set convention. §9.1 now carries that rule, the Frame override that
+closes the other half of the cluster, and the two matched fixture pairs that
+discriminate both.
+
+§9.2 said no fixture could express the convention. The load path expresses it,
+and two fixtures pin it.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+**Cluster 1 closes three fixtures and one licence.**
+`cefit_circle_conformal` and `cefit_circle_nonconformal_keep` leave both
+`SERIAL_UNGATED` and `ISSIMP_DISAGREEMENTS`; `NO_ISSIMP_CARD_UNGATED` is deleted
+rather than emptied, because the assertion it licensed was the wrong one.
+The corpus gains no fixture: both rules were already pinned by fixtures that
+were passing for the wrong reason, which is what the two-sided top-level check
+now prevents.
