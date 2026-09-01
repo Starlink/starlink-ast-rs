@@ -64,9 +64,17 @@ extension point on the same footing as `MapMerge`: `astSimplify_`
 whole simplification algorithm. Such a body belongs in this audit whichever
 directory the class lives in.
 
+The Rust tree cannot be the only authority, because a C class whose simplify
+seam was never ported has no Rust module and so produces no checklist to be
+missing. `C_SIMPLIFY_SEAMS` in the test lists every C file that installs a
+`MapMerge` or `Simplify` vtab entry against what covers it — a checklist stem,
+the base driver module, a `DEFERRED_CLASSES` row, or a `PLAN.md` gap section —
+and when the submodule is present the list is re-derived from the C source and
+required to match, so a pin move that adds a seam fails there.
+
 `test_mapmerge_audit.rs` enforces all of this.
 A class in the audit universe with no checklist fails, and so does a row whose
-verdict is outside the set.
+verdict is outside the set, and so does a C seam nothing covers.
 
 ## Which seam a reduction belongs in
 

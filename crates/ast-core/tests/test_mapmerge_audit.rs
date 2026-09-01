@@ -262,3 +262,165 @@ fn no_checklist_is_orphaned() {
          renamed or removed and the checklist was left behind: {orphans:?}"
     );
 }
+
+/// Every C class that installs a `MapMerge` or `Simplify` vtab entry, paired
+/// with what covers it on this side.
+///
+/// `audit_universe` is derived from the Rust module tree, so a C seam whose
+/// class has no Rust module of its own produces no checklist to be missing and
+/// sits outside the audit entirely. The C source is the authority on which
+/// classes have a seam at all, so it is the authority here.
+///
+/// Coverage is one of:
+///
+/// - an audit checklist stem under `docs/audits/mapmerge/`;
+/// - `driver: <repo-relative path>` for the base `Mapping` bodies, whose port
+///   is one module the per-class checklists cite rather than a class of its own;
+/// - `deferred: <class>` for a class this port has not started, counted in
+///   `test_deferred_fixtures.rs::DEFERRED_CLASSES`;
+/// - `gap: PLAN.md <section>` for a seam that is neither ported nor deferred.
+const C_SIMPLIFY_SEAMS: &[(&str, &str)] = &[
+    ("box.c", "region_box_region"),
+    ("circle.c", "region_circle"),
+    ("cmpframe.c", "gap: PLAN.md §9.6"),
+    ("cmpmap.c", "cmpmap"),
+    ("cmpregion.c", "region_cmpregion"),
+    ("dssmap.c", "dssmap"),
+    ("ellipse.c", "region_ellipse"),
+    ("frameset.c", "frame_frameset"),
+    ("grismmap.c", "grismmap"),
+    ("interval.c", "region_interval"),
+    ("intramap.c", "deferred: IntraMap"),
+    ("lutmap.c", "lutmap"),
+    (
+        "mapping.c",
+        "driver: crates/ast-core/src/mappings/simplify.rs",
+    ),
+    ("mathmap.c", "mathmap"),
+    ("matrixmap.c", "matrix"),
+    ("normmap.c", "normmap"),
+    ("nullregion.c", "region_nullregion"),
+    ("pcdmap.c", "pcdmap"),
+    ("permmap.c", "perm"),
+    ("pointlist.c", "region_pointlist"),
+    ("polygon.c", "region_polygon"),
+    ("polymap.c", "polymap"),
+    ("prism.c", "region_prism"),
+    ("ratemap.c", "ratemap"),
+    ("region.c", "region_mod"),
+    ("selectormap.c", "selectormap"),
+    ("shiftmap.c", "shift"),
+    ("slamap.c", "slamap"),
+    ("specmap.c", "specmap"),
+    ("sphmap.c", "sphmap"),
+    ("splinemap.c", "splinemap"),
+    ("stc.c", "deferred: StcResourceProfile"),
+    ("switchmap.c", "switchmap"),
+    ("timemap.c", "timemap"),
+    ("tranmap.c", "tranmap"),
+    ("unitmap.c", "unit"),
+    ("unitnormmap.c", "unitnormmap"),
+    ("wcsmap.c", "wcsmap"),
+    ("winmap.c", "winmap"),
+    ("xphmap.c", "deferred: XphMap"),
+    ("zoommap.c", "zoom"),
+];
+
+/// Whether a line installs a `MapMerge` or `Simplify` vtab entry.
+fn installs_simplify_seam(line: &str) -> bool {
+    let line = line.trim_start();
+    for prefix in ["vtab->", "mapping->"] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            for slot in ["MapMerge", "Simplify"] {
+                if let Some(tail) = rest.strip_prefix(slot) {
+                    if tail.trim_start().starts_with('=') {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+#[test]
+fn every_c_simplify_seam_is_covered() {
+    let plan = std::fs::read_to_string(repo_root().join("PLAN.md")).expect("PLAN.md readable");
+    let universe = audit_universe();
+    let mut bad = Vec::new();
+    for (file, coverage) in C_SIMPLIFY_SEAMS {
+        if let Some(path) = coverage.strip_prefix("driver: ") {
+            if !repo_root().join(path.trim()).is_file() {
+                bad.push(format!("{file}: driver {path:?} does not exist"));
+            }
+        } else if let Some(section) = coverage.strip_prefix("gap: PLAN.md ") {
+            let number = section.trim().trim_start_matches('§');
+            if !plan.contains(&format!("### {number} ")) {
+                bad.push(format!("{file}: PLAN.md has no {section:?}"));
+            }
+        } else if let Some(class) = coverage.strip_prefix("deferred: ") {
+            let deferred = std::fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/test_deferred_fixtures.rs"),
+            )
+            .expect("deferred test readable");
+            if !deferred.contains(&format!("\"{}\"", class.trim())) {
+                bad.push(format!(
+                    "{file}: {class:?} is not in DEFERRED_CLASSES, so nothing \
+                     counts it as unported"
+                ));
+            }
+        } else if !checklist_path(coverage).is_file() {
+            bad.push(format!("{file}: no checklist {coverage}.md"));
+        } else if !universe.contains(*coverage) {
+            bad.push(format!(
+                "{file}: checklist {coverage}.md exists but {coverage} is not in \
+                 the Rust-side audit universe"
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "every C class with a MapMerge or Simplify vtab entry needs a \
+         checklist, a driver module, a DEFERRED_CLASSES row, or a PLAN.md gap \
+         section:\n  {}",
+        bad.join("\n  ")
+    );
+}
+
+/// Re-derive the C seam set from the submodule when it is present, so a pin
+/// move that adds or removes a seam fails here instead of passing unnoticed.
+/// Tier 1 runs without the submodule, where the committed list stands alone.
+#[test]
+fn the_c_seam_list_matches_the_c_source() {
+    let src = repo_root().join("reference/starlink-ast/src");
+    if !src.is_dir() {
+        eprintln!(
+            "reference/starlink-ast absent — C seam list checked against the \
+             committed copy only. Run with the submodule to re-derive it."
+        );
+        return;
+    }
+    let mut found = BTreeSet::new();
+    for entry in std::fs::read_dir(&src).expect("C source dir readable") {
+        let path = entry.expect("readable entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("c") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("C source readable");
+        if text.lines().any(installs_simplify_seam) {
+            found.insert(path.file_name().unwrap().to_str().unwrap().to_string());
+        }
+    }
+    let listed: BTreeSet<String> = C_SIMPLIFY_SEAMS
+        .iter()
+        .map(|(f, _)| (*f).to_string())
+        .collect();
+    let added: Vec<&String> = found.difference(&listed).collect();
+    let removed: Vec<&String> = listed.difference(&found).collect();
+    assert!(
+        added.is_empty() && removed.is_empty(),
+        "C_SIMPLIFY_SEAMS no longer matches the pinned C source. New seams need \
+         coverage; vanished ones need their row deleted.\n  new: {added:?}\n  \
+         gone: {removed:?}"
+    );
+}

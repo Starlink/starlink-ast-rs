@@ -815,6 +815,43 @@ What would expose the rest is a test that resolves each `Rust site` to a line
 range and requires the range to contain an item whose name the row's `C step`
 mentions; nothing weaker distinguishes a stale number from a wrong one.
 
+### 9.6 `CmpFrame::Simplify` is unported, and the audit could not see it
+
+C gives CmpFrame a `Simplify` body of its own (`cmpframe.c:8963-9050`,
+installed at `:4745`): it calls `astSimplify` on each of the two component
+Frames and, if either returned a different object and both are still Frames,
+returns a copy of the CmpFrame holding the simplified components.
+`crates/ast-core/src/frames/cmpframe.rs` has no counterpart, and cannot have one
+in its present shape, because `CmpFrame` does not implement `Mapping` — the
+operation C spells `astSimplify( cmpframe )` is not expressible through the Rust
+API at all.
+
+Reachability is narrow but real. Only four C classes override the Frame-level
+`Simplify` slot — `region.c`, `frameset.c`, `stc.c` and `cmpframe.c` — so
+simplifying a component Frame changes something only when that component is a
+Region, a FrameSet, an Stc or a nested CmpFrame containing one. Nothing inside
+AST reaches this body except itself: `astSimplify` is applied to a Frame-typed
+argument only at `cmpframe.c:9019-9020`, and `FrameSet::Simplify` reduces the
+inter-node Mappings without touching the Frames (`frameset.c:10195`). The entry
+point is therefore a caller's own `astSimplify` on a CmpFrame, which is why no
+fixture in the corpus exercises it and no result in the corpus is wrong because
+of it.
+
+What made this invisible is worth more than the gap itself: `audit_universe` in
+`test_mapmerge_audit.rs` was derived from the Rust module tree, so a C seam with
+no Rust module produced no checklist to be missing, and
+`every_audited_class_has_a_checklist` passed. The gate now takes the C source as
+the authority on which classes have a seam: `C_SIMPLIFY_SEAMS` lists all 41 C
+files that install a `MapMerge` or `Simplify` vtab entry with what covers each,
+and when the submodule is present the list is re-derived from
+`reference/starlink-ast/src/*.c` and required to match, so a pin move that adds
+a seam fails there rather than passing unnoticed.
+
+What would expose the gap in behaviour is a fixture that simplifies a
+`CmpFrame{Region, BasicFrame}` and compares against C — which first needs
+`CmpFrame` to implement `Mapping`, the same prerequisite the missing port has.
+
+
 ## 10. Gaps named by the `MapMerge` / `Simplify` audit
 
 Each entry is cited by a `gap` verdict in a checklist under
