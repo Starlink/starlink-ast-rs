@@ -701,3 +701,9 @@ cap_cmpperm_resume | simplify_fixtures/cap_cmpperm_resume.map | simplify_fixture
 # rebuilds it into canonical form with the inversion cleared (permmap.c:1362) and
 # the swap then runs on the rebuilt PermMap.
 cap_cmpperm_resume_inv | simplify_fixtures/cap_cmpperm_resume_inv.map | simplify_fixtures/cap_cmpperm_resume_inv.simp |
+
+# A ChebyMap with two forward terms over the same basis-function order. C has no
+# chebymap.c::MapMerge, so PolyMap's consolidation (polymap.c:3624-3745) adds
+# them: CF1 = 4 where the input had 1.5 and 2.5. The third term is a T_3, which
+# keeps C out of the linear replacement this port deliberately omits.
+cap_cheby_consolidate | simplify_fixtures/cap_cheby_consolidate.map | simplify_fixtures/cap_cheby_consolidate.simp |

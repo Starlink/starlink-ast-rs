@@ -4,6 +4,13 @@
 //! basis functions instead of simple powers. The input domain is normalized
 //! to [-1, 1] before evaluation, and points outside the domain produce
 //! [`BAD_VALUE`] outputs.
+//!
+//! C defines no `chebymap.c::MapMerge`, so a ChebyMap inherits PolyMap's
+//! (`polymap.c:3597`). Of its two halves this class ports the coefficient
+//! consolidation (`polymap.c:3624-3745`), which combines terms over the same
+//! basis-function orders; the linear replacement (`:3747-3875`) is not ported,
+//! because it reads the coefficients as monomial and loses the domain scaling
+//! the bounds define.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
@@ -515,6 +522,50 @@ impl Mapping for ChebyMap {
         // The pair's input dimension depends on which direction self is used.
         let pair_nin = if self_inv { self.nout() } else { self.nin() };
         Some(Box::new(UnitMap::new(pair_nin)))
+    }
+
+    fn map_merge(
+        &self,
+        ctx: &mut super::simplify::MergeCtx,
+        where_: usize,
+        series: bool,
+    ) -> Option<usize> {
+        // C has no `chebymap.c::MapMerge`, so a ChebyMap's is PolyMap's whole
+        // body (`polymap.c:3597`). Of its two replace-with-simpler halves only
+        // the coefficient consolidation (`polymap.c:3624-3745`) applies to a
+        // Chebyshev basis; the linear replacement (`:3747-3875`) reads the
+        // coefficients as if they were monomial and drops the domain scaling
+        // these bounds define, so it is not reproduced here.
+        //
+        // Like PolyMap, this works from the transformation as *constructed* and
+        // leaves the list's applied direction alone (`polymap.c:3856-3859`), so
+        // the replacement inherits `eff_inv` rather than absorbing it.
+        if let Some((fwd, inv)) = self.poly.consolidated_terms() {
+            let (nin, nout) = if self.inverted {
+                (self.nout(), self.nin())
+            } else {
+                (self.nin(), self.nout())
+            };
+            let mut rebuilt = ChebyMap::new(
+                nin,
+                nout,
+                &fwd,
+                inv.as_deref(),
+                &self.lbnd_f,
+                &self.ubnd_f,
+                self.lbnd_i.as_deref(),
+                self.ubnd_i.as_deref(),
+            )
+            .ok()?;
+            if self.inverted {
+                rebuilt.invert();
+            }
+            let eff_inv = ctx.entry(where_).1;
+            ctx.set_pair_single(where_, (Box::new(rebuilt), eff_inv, false));
+            return Some(where_);
+        }
+
+        super::simplify::default_map_merge(ctx, where_, series)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

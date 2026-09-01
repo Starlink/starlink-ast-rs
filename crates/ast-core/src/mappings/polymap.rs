@@ -828,13 +828,19 @@ impl PolyMap {
     /// before any inversion (`polymap.c:3610-3618`, `:3757`), so the stored
     /// `Invert` flag selects nothing and the caller keeps the list entry's
     /// direction flag rather than folding it in.
-    fn replace_with_simpler(&self) -> Option<DynMapping> {
-        // Combine coefficients referring to the same combination of input
-        // powers — two constant terms for one output become one constant term.
-        // C does this for the forward transformation and then the inverse
-        // (`polymap.c:3630`, `for( check_fwd = 0; check_fwd < 2; check_fwd++ )`),
-        // so both directions are consolidated here too. Doing only one leaves a
-        // SIP inverse polynomial holding its identity term and its linear
+    /// Combine coefficients that refer to the same combination of input powers,
+    /// forward then inverse (`polymap.c:3624-3745`). `None` when neither
+    /// direction changed, which is C leaving `result` at -1 for this half.
+    ///
+    /// Basis-independent: two terms over the same powers add whether those
+    /// powers index monomials or Chebyshev polynomials, which is why
+    /// `ChebyMap::map_merge` calls this and not the linear half.
+    pub(crate) fn consolidated_terms(&self) -> Option<(Vec<PolyTerm>, Option<Vec<PolyTerm>>)> {
+        // Two constant terms for one output become one constant term. C does
+        // the forward transformation and then the inverse (`polymap.c:3630`,
+        // `for( check_fwd = 0; check_fwd < 2; check_fwd++ )`), so both
+        // directions are consolidated here too. Doing only one leaves a SIP
+        // inverse polynomial holding its identity term and its linear
         // correction as two separate coefficients, which the SIP extractor then
         // reads one of.
         let consolidate = |terms: &[PolyTerm]| -> Vec<PolyTerm> {
@@ -857,10 +863,34 @@ impl PolyMap {
             out
         };
 
-        let fwd_terms = self.forward.as_slice();
-        let inv_terms = self.inverse.as_deref();
-        let consolidated = consolidate(fwd_terms);
-        let consolidated_inv = inv_terms.map(consolidate);
+        let consolidated = consolidate(&self.forward);
+        let consolidated_inv = self.inverse.as_deref().map(consolidate);
+
+        // C's `mod` flag (`polymap.c:3629`, set at `:3726`, read at `:3734`). A
+        // structural fingerprint of the forward terms is not enough, because
+        // consolidating the *inverse* coefficients leaves the forward
+        // transformation, and so the fingerprint, untouched.
+        let inv_changed = match (self.inverse.as_deref(), consolidated_inv.as_ref()) {
+            (Some(orig), Some(new)) => new.len() != orig.len(),
+            _ => false,
+        };
+        if consolidated.len() == self.forward.len() && !inv_changed {
+            return None;
+        }
+
+        Some((consolidated, consolidated_inv))
+    }
+
+    fn replace_with_simpler(&self) -> Option<DynMapping> {
+        // C's consolidation half. When it changes nothing the linear test below
+        // runs on the terms as stored, which is C reading `pmap0` when its
+        // `mod` flag is clear (`polymap.c:3733-3745`).
+        let consolidation = self.consolidated_terms();
+        let consolidated_changed = consolidation.is_some();
+        let (consolidated, consolidated_inv) = match consolidation {
+            Some((fwd, inv)) => (fwd, inv),
+            None => (self.forward.clone(), self.inverse.clone()),
+        };
 
         // Check if all remaining terms are affine (constant or linear).
         // A term is constant if sum of powers == 0, linear if sum == 1 with
@@ -935,16 +965,10 @@ impl PolyMap {
             }
         }
 
-        // If neither transformation changed there is nothing to replace: C's
-        // `mod` flag (`polymap.c:3629`, set at `:3726`, read at `:3734`). A
-        // structural fingerprint of the forward terms is not enough, because
-        // consolidating the *inverse* coefficients leaves the forward
-        // transformation, and so the fingerprint, untouched.
-        let inv_changed = match (inv_terms, consolidated_inv.as_ref()) {
-            (Some(orig), Some(new)) => new.len() != orig.len(),
-            _ => false,
-        };
-        if consolidated.len() == fwd_terms.len() && !inv_changed {
+        // The linear test failed, so the only replacement left is the
+        // consolidated PolyMap — and only if the consolidation changed
+        // something.
+        if !consolidated_changed {
             return None;
         }
 

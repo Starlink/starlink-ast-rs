@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 456 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 456 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 456 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 456 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
+| simplify regression | 457 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 457 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
+| simplify regression | 457 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 457 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
 | transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -825,19 +825,24 @@ class checks the `IsSimple` bit (`box_region`, `circle`, `cmpregion`, `ellipse`,
 the port re-simplifies a Region C returns untouched — measured as unobservable on
 this corpus, and not shipped.
 
-### 10.2 ChebyMap does not inherit PolyMap's `MapMerge`
+### 10.2 ChebyMap did not inherit PolyMap's `MapMerge` — consolidation half FIXED
 
 In C, `chebymap.c` defines no `MapMerge`; only `polymap.c:2439` fills the slot,
 so a ChebyMap's `MapMerge` is PolyMap's whole body at `polymap.c:3597-3961`. In
-the port, `ChebyMap` is its own struct with no `map_merge`, so it takes the trait
-default and reaches none of PolyMap's replace-with-simpler half. Its
-`simplified()` (`chebymap.rs:454-460`) returns an unchanged clone.
+the port, `ChebyMap` is its own struct, and it had no `map_merge` at all, so it
+took the trait default and reached none of PolyMap's replace-with-simpler half.
 
-Two halves are missing, and they are not equally safe to port.
+Two halves were missing, and they are not equally safe to port.
 
 The coefficient consolidation (`polymap.c:3624-3745`) combines coefficients that
 use the same set of input powers. That is basis-independent — two `T_2` terms for
-one output add exactly as two `x^2` terms do — so it ports as it stands.
+one output add exactly as two `x^2` terms do — so it ports as it stands, and now
+does. `PolyMap::consolidated_terms` (`polymap.rs:838`) is C's first half split out
+of `replace_with_simpler` unchanged, and `ChebyMap::map_merge`
+(`chebymap.rs:527-569`) calls it and rebuilds a ChebyMap with the same bounds.
+`cap_cheby_consolidate` is the fixture — two forward `T_2` coefficients of 1.5 and
+2.5 that C writes back as one of 4, with a `T_3` term present so C stays out of
+the linear branch — and it fails byte-exactly with `ChebyMap::map_merge` removed.
 
 The linear replacement (`polymap.c:3747-3875`) will not be ported. C reads the
 coefficient arrays with nothing that distinguishes a Chebyshev basis from a power
@@ -858,11 +863,6 @@ The reproduction lives in `ast_tester/gen_simplify_fixtures.c` as
 port's simplify corpus because a positive fixture there asserts the port
 reproduces the `.simp` byte for byte, which for this pair means reproducing the
 wrong Mapping.
-
-What remains open is the consolidation half, and it needs a way into PolyMap's
-body that skips the linear branch. What would expose it: a ChebyMap with two
-forward terms that use the same input powers for one output, nominated inside a
-list, whose `.simp` C writes with the terms combined.
 
 ### 10.16 The port has a per-class `simplified()` seam that C does not — FIXED
 
