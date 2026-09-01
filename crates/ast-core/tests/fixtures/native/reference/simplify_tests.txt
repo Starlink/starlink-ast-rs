@@ -729,3 +729,26 @@ cap_box_permmap_null | simplify_fixtures/cap_box_permmap_null.map | simplify_fix
 # abandoning it discards the parent Region simplification as well
 # (box.c:4064), so the Region comes back exactly as supplied.
 cap_box_permmap_nonbidi | simplify_fixtures/cap_box_permmap_nonbidi.map | simplify_fixtures/cap_box_permmap_nonbidi.map |
+
+# A restricted simplify (cmpmap.c:3538) with one eligible component. Only the
+# ZoomMap carrying AllowSimplify is nominated, but its own MapMerge reaches
+# across ineligible neighbours, so the whole chain collapses to a single
+# ZoomMap. astSimplify leaves a restricted result unstamped (mapping.c:24782)
+# and clears both protected flags on it (mapping.c:24783, :24788), so the
+# result carries no IsSimp, ReSimp or AlSimp card.
+cap_restricted_inverted | simplify_fixtures/cap_restricted_inverted.map | simplify_fixtures/cap_restricted_inverted.simp |
+
+# The same tree with nothing eligible. astMapList still reports the inverted
+# CmpMap as an improvement, but a restricted simplify discards that answer
+# (cmpmap.c:3530) and the nominate loop skips every component
+# (cmpmap.c:3569), so Simplify returns astClone(this) (cmpmap.c:3641): the
+# swapped decomposition is thrown away and the tree comes back as supplied,
+# less the ReSimp card cleared on the result.
+cap_restricted_no_eligible | simplify_fixtures/cap_restricted_no_eligible.map | simplify_fixtures/cap_restricted_no_eligible.simp |
+
+# A restricted simplify that does rebuild. Two adjacent eligible ZoomMaps
+# merge, so the sequence is folded back into a CmpMap; the third eligible
+# ZoomMap sits beside a MathMap and merges with nothing, so it survives into
+# the result. C clears AllowSimplify on every component as it folds
+# (cmpmap.c:3692), so the surviving ZoomMap carries no AlSimp card.
+cap_restricted_component_flags | simplify_fixtures/cap_restricted_component_flags.map | simplify_fixtures/cap_restricted_component_flags.simp |

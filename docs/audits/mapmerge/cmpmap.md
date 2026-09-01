@@ -153,7 +153,7 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | 47 | Initialise the Mapping-pointer and Invert-flag arrays | cmpmap.c:3504-3508 | -- | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialise |
 | 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3510-3516 | simplify.rs:3579,3598 | ported |
 | 49 | Read the RestrictedSimplify flag | cmpmap.c:3518-3524 | simplify.rs:3577 | ported |
-| 50 | Under a restricted simplify, discard the `simpler` flag the decomposition set | cmpmap.c:3526-3530 | -- | gap: PLAN.md §10.20 |
+| 50 | Under a restricted simplify, discard the `simpler` flag the decomposition set | cmpmap.c:3526-3530 | simplify.rs:3337 | ported |
 | 51 | Make the list entries independent of one another, so modifying one does not modify another | cmpmap.c:3532-3535 | simplify.rs:370 | ported |
 | 52 | Clear the Frozen flag on every component | cmpmap.c:3537-3545 | simplify.rs:627 | ported |
 | 53 | Initialise the modified-index and Mapping-count histories | cmpmap.c:3547-3551 | simplify.rs:1708-1709 | ported |
@@ -173,7 +173,7 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | 67 | For a longer list, note whether the last Mapping's Invert attribute is set, and its value | cmpmap.c:3668-3680 | simplify.rs:3396,3406 | ported |
 | 68 | Set the last Mapping's Invert attribute to the value the list requires | cmpmap.c:3682-3683 | simplify.rs:3401-3403 | ported |
 | 69 | Loop through the sequence in reverse, so each Mapping is combined with the CmpMap built so far | cmpmap.c:3685-3687 | simplify.rs:3394,3408 | ported |
-| 70 | Clear the protected AllowSimplify flag on each component, now the sequence is simplified | cmpmap.c:3689-3692 | -- | gap: PLAN.md §10.20 |
+| 70 | Clear the protected AllowSimplify flag on each component, now the sequence is simplified | cmpmap.c:3689-3692 | simplify.rs:3380-3382 | ported |
 | 71 | Clone the pointer to the last Mapping in the sequence, which is encountered first | cmpmap.c:3694-3697 | simplify.rs:3396 | ported |
 | 72 | For each earlier Mapping, save its Invert state, set the value required, combine it into the CmpMap, and restore the state | cmpmap.c:3699-3723 | simplify.rs:3408-3448 | ported |
 | 73 | Restore the last Mapping's Invert state once the whole sequence has been merged | cmpmap.c:3726-3733 | simplify.rs:3436-3438 | ported |
@@ -213,16 +213,26 @@ The same ownership settles row 65, where C makes a point of `astCopy` rather tha
 affect the returned Mapping: `reconstruct` is handed the list by value, so the leaf
 it returns is already independent of the input tree.
 
-## Rows 50 and 70 — nothing in the port distinguishes a restricted simplify here
+## Rows 50 and 70 — the three places the mode changes the answer
 
-Row 56 is the one place the port honours `RestrictedSimplify`: a component without
-`AllowSimplify` is never nominated. C uses the mode twice more — it declines to
-count the decomposition itself as an improvement (row 50), and it clears
-`AllowSimplify` off each component as it folds the result (row 70, with
-`astSimplify_` clearing it on the result at `mapping.c:24786-24788`). Neither is
-ported, so under a restricted simplify the port rebuilds trees C clones, and an
-`AlSimp` card survives into the output. PLAN.md §10.20 records what would exercise
-the mode: today nothing in the port sets either flag except deserialisation.
+C consults `RestrictedSimplify` three times, and the port now does all three. A
+component without `AllowSimplify` is never nominated (row 56). The decomposition
+on its own does not count as an improvement, because C cannot yet know whether an
+inverted CmpMap it met will be eligible (row 50) — so a restricted simplify that
+merges nothing returns `astClone( this )` and the supplied tree survives
+unswapped. And the protected `AllowSimplify` flag is cleared off each component
+as the sequence is folded back into a CmpMap (row 70), with `astSimplify_`
+clearing it on the result whichever branch ran
+(`mapping.c:24786-24788`, `simplify_entry.rs:105`) so it cannot reach a public
+dump. The base driver's own gate for an ineligible Mapping
+(`mapping.c:16853-16855`) is at `simplify.rs:1140`.
+
+Three fixtures hold the mode, one per behaviour: `cap_restricted_no_eligible`
+(nothing eligible, so the inverted CmpMap comes back as supplied),
+`cap_restricted_inverted` (one eligible ZoomMap whose own merge reaches across
+its ineligible neighbours and collapses the chain), and
+`cap_restricted_component_flags` (a rebuild that keeps an eligible component,
+whose `AlSimp` card the fold clears).
 
 ## No C row — where the series UnitMap strip lives
 

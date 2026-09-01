@@ -155,16 +155,6 @@ impl CmpMap {
         })
     }
 
-    /// Whether this CmpMap has the `RestrictedSimplify` flag set (C `ReSimp`).
-    pub(crate) fn restricted_simplify(&self) -> bool {
-        self.restricted_simplify
-    }
-
-    /// Set (or clear) the `RestrictedSimplify` flag (C `ReSimp`).
-    pub(crate) fn set_restricted_simplify(&mut self, flag: bool) {
-        self.restricted_simplify = flag;
-    }
-
     /// Record, for the named orientation, that `astSimplify` returned this
     /// CmpMap.
     ///
@@ -858,6 +848,14 @@ impl Mapping for CmpMap {
             return Some(r);
         }
         self.map_split2(in_axes)
+    }
+
+    fn restricted_simplify(&self) -> bool {
+        self.restricted_simplify
+    }
+
+    fn set_restricted_simplify(&mut self, flag: bool) {
+        self.restricted_simplify = flag;
     }
 
     fn has_been_simplified(&self) -> bool {

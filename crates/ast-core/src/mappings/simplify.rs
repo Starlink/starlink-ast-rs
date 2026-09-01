@@ -1134,6 +1134,13 @@ pub(crate) fn try_self_reduce(
 /// nominated — belongs to the enclosing `CmpMap`'s loop and lives in
 /// [`MergeCtx`].
 pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)> {
+    // C's base `Simplify` declines outright when the Mapping is under a
+    // restricted simplify without being flagged eligible
+    // (mapping.c:16853-16855).
+    if this.restricted_simplify() && !this.allow_simplify() {
+        return Ok((this.clone_box(), false));
+    }
+
     // C `astMapList( this, 1, astGetInvert( this ), … )`: for a class with no
     // `MapList` override this appends the Mapping itself and records its own
     // Invert as the effective direction, which is what `flatten` produces for a
@@ -3322,7 +3329,12 @@ pub(crate) fn simplify_mapping_reporting_change(
     // original nesting instead of the canonical form C produces.
     // C's `simpler` (cmpmap.c:3634) — the flag that decides between cloning the
     // supplied CmpMap and rebuilding it from the component list.
-    let simpler = decomposition_is_simpler(mapping, false, series);
+    //
+    // C sets it from the decomposition and then discards it under a restricted
+    // simplify: it cannot yet know whether an inverted CmpMap it met will be
+    // eligible, so the decomposition alone does not count as an improvement
+    // (cmpmap.c:3526-3530).
+    let simpler = !restricted && decomposition_is_simpler(mapping, false, series);
     // An opposite-kind component that `flatten` reduced eagerly must still be
     // adopted, so the tree has to be rebuilt from the list. Whether that rebuild
     // is C's closing fold depends on which reduction fired — see
@@ -3358,6 +3370,17 @@ pub(crate) fn simplify_mapping_reporting_change(
 
     // C's `simpler` branch: the result is folded afresh from the component list,
     // so it is a new pointer even when the fold reproduces the input's shape.
+    //
+    // The fold clears the protected `AllowSimplify` flag on each component as it
+    // goes (cmpmap.c:3689-3692), so the flag cannot appear in a public dump. C
+    // does this only in its multi-element branch; a single-element result is an
+    // `astCopy` (cmpmap.c:3651) whose flag `astSimplify` clears on the result
+    // instead.
+    if list.len() > 1 {
+        for (component, _, _) in &mut list {
+            component.set_allow_simplify(false);
+        }
+    }
     reconstruct(list, series).map(|m| (m, true))
 }
 

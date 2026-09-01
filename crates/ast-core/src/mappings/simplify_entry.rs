@@ -79,10 +79,7 @@ impl dyn Mapping {
 /// simplified — more simplification may still be possible — and the restricted
 /// flag itself is cleared on the result (`mapping.c:24755-24760`).
 fn record_simplified(this: &dyn Mapping, result: &mut DynMapping) {
-    let restricted = this
-        .as_any()
-        .downcast_ref::<CmpMap>()
-        .is_some_and(|c| c.restricted_simplify());
+    let restricted = this.restricted_simplify();
 
     // `as_any` cannot be called on the `Box<dyn Mapping>` directly: it would
     // resolve via auto-deref but the resulting `&dyn Any` points at the Box, not
@@ -99,10 +96,11 @@ fn record_simplified(this: &dyn Mapping, result: &mut DynMapping) {
     }
     if restricted {
         // Clear the restricted flag on the result; do not set IsSimple.
-        if let Some(cm) = result.as_any_mut().downcast_mut::<CmpMap>() {
-            cm.set_restricted_simplify(false);
-        }
+        result.set_restricted_simplify(false);
     } else {
         result.set_has_been_simplified(true);
     }
+    // C clears this on the result whichever branch ran (`mapping.c:24788`), so
+    // the protected flag cannot appear in a public dump.
+    result.set_allow_simplify(false);
 }
