@@ -20,6 +20,9 @@ tracing = { workspace = true, optional = true }
 # Lets the examples print the `ast::simplify` events the `tracing` feature emits;
 # a library never installs a subscriber itself.
 tracing-subscriber = { workspace = true }
+# Derives the enclosing item of an audit-checklist citation; used by
+# `test_audit_citations.rs`.
+audit-tools = { path = "../audit-tools" }
 
 [features]
 # Opt-in prototypes used for measurement (cross-lane SIMD eval, etc.). Off by

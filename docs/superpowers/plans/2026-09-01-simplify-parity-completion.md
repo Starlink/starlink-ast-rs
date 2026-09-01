@@ -557,7 +557,7 @@ The count of files *not* yet carrying it is a ledger row, so the remainder is an
 - Consumes: `audit_tools::{parse_citation, enclosing_rust_item, enclosing_c_function, Citation}` from Task 2.
 - Produces: the header marker string `Citations: verified against pin 3e60abaa`, which every later cluster adds to the checklists it touches, and the ledger row `CHECKLISTS_UNREPAIRED`.
 
-- [ ] **Step 1: Write the failing gate**
+- [x] **Step 1: Write the failing gate**
 
 Create `crates/ast-core/tests/test_audit_citations.rs`:
 
@@ -707,7 +707,7 @@ fn every_repaired_rust_citation_names_a_file_that_exists() {
 }
 ```
 
-- [ ] **Step 2: Add the dev-dependency and run the gate**
+- [x] **Step 2: Add the dev-dependency and run the gate**
 
 In `crates/ast-core/Cargo.toml`, under `[dev-dependencies]`:
 
@@ -722,7 +722,7 @@ cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
 Expected: PASS with nothing checked — no checklist carries the marker yet.
 That is the point at which the ledger row matters: without it, the gate would sit there checking nothing.
 
-- [ ] **Step 3: Write the rewriter**
+- [x] **Step 3: Write the rewriter**
 
 Create `crates/audit-tools/src/bin/anchor-citations.rs`:
 
@@ -830,7 +830,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 4: Anchor `sphmap.md` and `region_polygon.md`**
+- [x] **Step 4: Anchor `sphmap.md` and `region_polygon.md`**
 
 These two were re-anchored by hand at `PLAN.md` §9.5 and are the natural first opt-in.
 
@@ -850,7 +850,7 @@ Then add the marker to each file's header block, on the line after `Audited:`:
 Citations: verified against pin 3e60abaa
 ```
 
-- [ ] **Step 5: Run the gate and expect it to bite**
+- [x] **Step 5: Run the gate and expect it to bite**
 
 ```bash
 cargo test -p ast-core --test test_audit_citations 2>&1 | tail -30
@@ -859,7 +859,7 @@ cargo test -p ast-core --test test_audit_citations 2>&1 | tail -30
 Expected: FAIL on any row whose number drifted since it was hand-anchored, naming the item actually at that line.
 Fix each by reading the code, then re-run until PASS.
 
-- [ ] **Step 6: Add the ledger row**
+- [x] **Step 6: Add the ledger row**
 
 In `crates/ast-core/tests/test_verification_ledger.rs`, `LEDGER` cannot hold this one — the count is of files, not of a `const` — so add it to `manifest_relaxations()` instead, beside the existing manifest-derived rows:
 
@@ -903,7 +903,7 @@ and add to the returned `vec![]`:
         ),
 ```
 
-- [ ] **Step 7: Mirror the row in `PLAN.md` §6 and commit**
+- [x] **Step 7: Mirror the row in `PLAN.md` §6 and commit**
 
 Add a row to the Verification-posture ledger table in `PLAN.md` §6, matching the table's existing shape:
 
