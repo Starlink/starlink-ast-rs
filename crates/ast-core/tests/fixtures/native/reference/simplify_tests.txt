@@ -683,3 +683,9 @@ lut_exactly_linear | simplify_fixtures/lut_exactly_linear.map | simplify_fixture
 # (wcsmap.c:6052). neg_wcs_tan_no_reduce is a genuine projection and survives.
 wcs_unknown_lone_reduce | simplify_fixtures/wcs_unknown_lone_reduce.map | simplify_fixtures/wcs_unknown_lone_reduce.simp |
 neg_wcs_tan_no_reduce | simplify_fixtures/neg_wcs_tan_no_reduce.map | simplify_fixtures/neg_wcs_tan_no_reduce.map |
+
+# A series CmpMap nested eleven deep, each level holding a ZoomMap, which C
+# collapses to one ZoomMap. Nothing bounds C's recursion depth: simplify_stackmaps
+# grows with astGrow (cmpmap.c:3496) and exists only to detect a Mapping already
+# being simplified.
+cap_deep_nest_zoom | simplify_fixtures/cap_deep_nest_zoom.map | simplify_fixtures/cap_deep_nest_zoom.simp |

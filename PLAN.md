@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 453 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 453 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 453 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 453 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
+| simplify regression | 454 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 454 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
+| simplify regression | 454 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 454 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
 | transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -539,14 +539,14 @@ counted failure in the harness and a panic in the region test. Never a skip.
 Turning the gate on exposed eleven pre-existing byte-comparison failures and
 seven `IsSimp` count disagreements. The pinned C reproduces all eleven `.simp`
 files byte-exactly, so every one is a port defect, not a stale fixture. They
-are enumerated with causes in `SERIAL_UNGATED`, now down to seven fixtures in
+are enumerated with causes in `SERIAL_UNGATED`, now down to six fixtures in
 five causes:
 
 | cause | fixtures | what is wrong |
 |---|---|---|
 | A | 4 SwitchMap cases — CLOSED | `IsSimp` missing on the FSMap / ISMap sub-Mappings; `SwitchMap::simplified` now stamps them |
 | B | 2 `cefit_circle_*`, `neg_box_asymmetric_2d` | Region simplify tags a Mapping inside the encapsulated FrameSet that C leaves bare, and does not tag the returned Region at all |
-| C | 2 `*_unc_fillfactor_merge` | emits a `Prism` uncertainty where C emits a `Box` |
+| C | `nullregion_unc_fillfactor_merge` | emits a `Prism` uncertainty where C emits a `Box`. `box_unc_fillfactor_merge` was here, declined by the structural-hash recursion guard's one collision in the corpus, and is byte-exact now that the guard runs C's `astEqual` (§10.19) |
 | D | `cap_zoommap_04` | emits `FrmSet`/FrameSet where C emits `Points`/PointSet |
 | E | `cap_interval_01` | `Closed = 1` where C omits it. `cmpmap_parallel_series_dim_mismatch` was here — two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps — and is byte-exact now that the branch simplifies where C simplifies (§10.3) |
 | F | `cap_pointlist_01` | two mesh coordinates diverge past 4 ulp |
@@ -1446,31 +1446,54 @@ the `ok` guard. The uncertainty-Frame divergence needs a Polygon with an
 explicit uncertainty and a non-UnitMap base-to-current Mapping: compare the
 `Unc` value written under the simplified Polygon.
 
-### 10.19 Two pieces of the simplify engine had no counterpart in C — one closed
+### 10.19 Two pieces of the simplify engine had no counterpart in C — both closed
 
-Both sit in `mappings/simplify.rs`, in the port of `cmpmap.c::Simplify`, and
-neither is reachable from any fixture in the corpus — which is why they have gone
-unrecorded. They are listed together because the question they raise is the same:
-what does the engine do that C's does not, and what would show it?
+Both sat in `mappings/simplify.rs`, in the port of `cmpmap.c::Simplify`. They are
+listed together because the question they raised is the same: what did the engine
+do that C's does not, and what showed it?
 
-**A recursion-depth cap of ten.** `MAX_SIMPLIFY_DEPTH = 10`
-(`simplify.rs:131`) makes `SimplifyGuard::enter` refuse to simplify at all once
-ten nested `simplify_mapping` calls are on the stack, so the mapping is returned
-as supplied. C has no such limit: `cmpmap.c:3487-3498` maintains
-`simplify_stackmaps` purely to detect a Mapping *already being simplified*
-(`astEqual` against each entry) and grows it without bound. A constant with no
-analogue in the C source is stop signal 1, and this one changes the answer rather
-than merely costing time — past ten levels the port silently declines a
-simplification C performs.
+**A recursion-depth cap of ten, and a structural hash standing in for
+`astEqual` — CLOSED.** `SimplifyGuard::enter` refused to simplify at all once ten
+nested `simplify_mapping` calls were on the stack, returning the mapping as
+supplied, and compared a structural hash (`mapping_fingerprint`) where C compares
+Mappings. C has neither: `cmpmap.c:3487-3498` keeps `simplify_stackmaps` purely to
+detect a Mapping *already being simplified*, holds one `astClone`d Mapping per
+depth, tests each with `astEqual`, and grows the array with `astGrow` without
+bound. Both substitutes declined reductions C performs — the cap unconditionally
+past its depth, the hash whenever two Mappings of the same class and shape differ
+only in their numbers. A constant with no analogue in the C source is stop signal
+1, and this one changed the answer rather than merely costing time.
 
-Nothing reaches it: with a `panic!` in place of the refusal, the whole tier-1 and
-tier-2 suite passes. What would expose it: a CmpMap nested more than ten deep
-whose reduction needs the innermost level — for instance eleven nested series
-CmpMaps each holding a ZoomMap, which C collapses to a single ZoomMap. The cap
-also interacts with the fingerprint guard beside it, which stands in for C's
-`astEqual` comparison with a structural hash (`mapping_fingerprint`,
-`simplify.rs:93`); a hash collision there declines a simplification C performs,
-where C's equality test cannot.
+The guard is now C's: a `Vec<DynMapping>` pushed and popped by the same RAII
+guard, with `Mapping::equal` as the test.
+
+The hash half closed by demonstration. Instrumenting the guard to run both tests
+and report where they part company found exactly one disagreement across all 454
+corpus fixtures — `box_unc_fillfactor_merge`, at depth 1, where the hash claimed
+a cycle and `equal` did not — and that fixture is byte-exact against the pinned C
+now that the guard recurses there. Its `SERIAL_UNGATED` row under cause C is
+retired; `nullregion_unc_fillfactor_merge` remains, so the Prism-for-Box
+uncertainty defect in §6 cause C is a smaller thing than the pair suggested.
+
+The depth half closed by construction, not by demonstration, and the reason is
+worth recording because it says something about the port's shape. Nesting depth in
+the *input* does not drive recursion depth here: `flatten` is iterative, so an
+eleven-deep left-nested series CmpMap is levelled in one pass and enters the guard
+once. `cap_deep_nest_zoom` was generated to reach eleven levels — eleven nested
+series CmpMaps each holding a ZoomMap, which C collapses to a single ZoomMap — and
+it passed at HEAD with the cap still in place. Instrumenting the refusal path
+measured the real ceiling: the whole tier-1/2 suite never exceeds depth 7, and
+only `cap_cmpmap_01` and `cap_cmpmap_04` reach that. The depth the engine does
+reach comes from `map_merge`-internal simplify calls on trees under construction,
+not from how deeply the caller nested its input, so exposing the old cap would
+have needed a fixture that drives *that* number past ten. `cap_deep_nest_zoom`
+stays in the corpus as a positive control for the collapse C performs, not as
+coverage of the cap.
+
+Removing the cap trades a silently-declined simplification for a stack overflow
+on a genuine non-terminating recursion. That is C's exposure too, and a crash is
+findable; if one appears the bug is in whichever `equal` fails to recognise the
+repeat.
 
 **A UnitMap strip that duplicated `UnitMap::map_merge` — CLOSED.**
 `merge_loop_restricted` stripped `UnitMap` entries from a series list twice — inside

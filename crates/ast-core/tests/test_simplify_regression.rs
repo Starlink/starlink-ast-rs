@@ -501,11 +501,11 @@ fn simplify_regression() {
     // comparison and the `IsSimp` count check without saying anything.
     //
     // None of these is a regression and none is a stale fixture: the pinned C
-    // reproduces all eleven `.simp` files byte-exactly. They are pre-existing
+    // reproduces every `.simp` file here byte-exactly. They are pre-existing
     // defects that had no gate. Each row names the diagnosed cause, and the set
     // is asserted exactly, so fixing one forces the row out.
     //
-    // Note what `equal()` did here: it passed all eleven, including a Prism
+    // Note what `equal()` did here: it passed every one of them, including a Prism
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
@@ -520,7 +520,6 @@ fn simplify_regression() {
             "IsSimp on the FrameSet's MathMap; C emits none",
         ),
         // (C) The uncertainty Region does not collapse Prism -> Box.
-        ("box_unc_fillfactor_merge", "emits Prism where C emits Box"),
         (
             "nullregion_unc_fillfactor_merge",
             "emits Prism where C emits Box",

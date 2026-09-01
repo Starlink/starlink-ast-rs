@@ -139,8 +139,8 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
 | 43 | Check the inherited status and bail out | cmpmap.c:3466 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3471-3491 | simplify.rs:190-197,3567-3574 | gap: PLAN.md §10.19 |
-| 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3493-3499 | simplify.rs:199-218 | gap: PLAN.md §10.19 |
+| 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3471-3491 | simplify.rs:126-131,3372-3380 | ported |
+| 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3493-3499 | simplify.rs:131-132 | ported: the stack's own length is the depth, so there is no separate counter |
 | 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3501-3502 | simplify.rs:3557-3559 | ported |
 | 47 | Initialise the Mapping-pointer and Invert-flag arrays | cmpmap.c:3504-3508 | -- | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialise |
 | 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3510-3516 | simplify.rs:3579,3598 | ported |
@@ -170,23 +170,22 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | 72 | For each earlier Mapping, save its Invert state, set the value required, combine it into the CmpMap, and restore the state | cmpmap.c:3699-3723 | simplify.rs:3408-3448 | ported |
 | 73 | Restore the last Mapping's Invert state once the whole sequence has been merged | cmpmap.c:3726-3733 | simplify.rs:3436-3438 | ported |
 | 74 | Annul the Mapping pointers in the list and free the dynamic arrays | cmpmap.c:3738-3745 | -- | n/a: the owned list is dropped |
-| 75 | Decrement the recursion depth, release the recorded Mapping, and free the stack at depth zero | cmpmap.c:3747-3755 | simplify.rs:222-228 | ported |
+| 75 | Decrement the recursion depth, release the recorded Mapping, and free the stack at depth zero | cmpmap.c:3747-3755 | simplify.rs:136-142 | ported |
 | 76 | Annul the result if an error occurred, and return it | cmpmap.c:3757-3761 | -- | n/a: an error is a `Result::Err`, so there is no result value to discard alongside it |
 
-## Rows 44 and 45 — the recursion guard is a structural hash plus a depth cap
+## Rows 44 and 45 — the recursion guard
 
 C's guard is exact and unbounded: `astEqual` against each Mapping currently being
 simplified higher up (`cmpmap.c:3487-3491`), over a stack that grows to whatever
 depth the recursion reaches (`astGrow`, `cmpmap.c:3496`).
 
-The port compares a `u64` structural hash instead (`mapping_fingerprint`,
-`simplify.rs:93`), so a collision declines a simplification C would perform, and
-it refuses outright once ten simplifies are nested (`MAX_SIMPLIFY_DEPTH`,
-`simplify.rs:131`). That cap has no analogue anywhere in `cmpmap.c`, and it
-changes the answer rather than the cost: past the tenth level the port returns the
-Mapping unsimplified where C carries on. Both are latent on the present corpus —
-replacing the refusal with a `panic!` leaves the whole tier-1/2 suite green, so
-nothing reaches it. PLAN.md §10.19.
+The port keeps the same list, as a `Vec<DynMapping>` pushed and popped by an RAII
+guard, and tests it with `Mapping::equal`. C's separate depth counter has no
+counterpart because the stack's own length is that number; nothing in the port
+reads it.
+
+The port previously compared a `u64` structural hash and refused outright past ten
+nested simplifies. PLAN.md §10.19 records what those cost and how each was closed.
 
 ## Row 51 — the list is fully cloned, and the tags are copied back by hand
 
