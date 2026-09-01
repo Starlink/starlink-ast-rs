@@ -934,3 +934,615 @@ MSG
 ```
 
 ---
+### Task 4: What a row claims about itself — verdict vocabulary and the architecture column
+
+Spec §3.4 widens the verdicts a row may carry; spec §3.2 makes each row state whether its C step is an extension point, and gates the architecture rows on landing in a trait method.
+Both are properties of a row's own cells, so they are one reviewable change.
+
+The column is added to a checklist by whichever cluster repairs it, alongside the citation marker.
+The header marker becomes:
+
+```
+Citations: verified against pin 3e60abaa
+Extension points: classified
+```
+
+**Files:**
+- Modify: `crates/audit-tools/src/lib.rs`
+- Modify: `crates/ast-core/tests/test_mapmerge_audit.rs:158` (`verdict_is_valid`)
+- Modify: `crates/ast-core/tests/test_audit_citations.rs`
+- Modify: `docs/audits/mapmerge/sphmap.md`, `docs/audits/mapmerge/region_polygon.md`, `docs/audits/mapmerge/README.md`
+- Test: `crates/ast-core/tests/test_audit_citations.rs`, `crates/audit-tools/src/lib.rs`
+
+**Interfaces:**
+- Consumes: `audit_tools::{parse_citation, enclosing_rust_item}`; the `REPAIRED` marker from Task 3.
+- Produces:
+  - `pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String>` — the `impl` header enclosing `line`, normalised to `"Trait for Type"` or `"Type"`, whichever the header is.
+  - the marker `Extension points: classified`, which clusters 1–7 add as they repair each checklist.
+
+- [ ] **Step 1: Write the failing test for `enclosing_rust_impl`**
+
+Append inside `crates/audit-tools/src/lib.rs`'s `mod tests`:
+
+```rust
+    const IMPLS: &str = "\
+struct Zoom;
+
+impl Zoom {
+    fn helper(&self) -> u32 {
+        1
+    }
+}
+
+impl Mapping for Zoom {
+    fn simplified(&self) -> u32 {
+        2
+    }
+}
+";
+
+    #[test]
+    fn distinguishes_a_trait_method_from_an_inherent_one() {
+        assert_eq!(enclosing_rust_impl(IMPLS, 5).as_deref(), Some("Zoom"));
+        assert_eq!(
+            enclosing_rust_impl(IMPLS, 11).as_deref(),
+            Some("Mapping for Zoom")
+        );
+        assert_eq!(enclosing_rust_impl(IMPLS, 1), None);
+    }
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+cargo test -p audit-tools 2>&1 | tail -10
+```
+
+Expected: FAIL — `cannot find function `enclosing_rust_impl``.
+
+- [ ] **Step 3: Implement it**
+
+Add to `crates/audit-tools/src/lib.rs`, beside `enclosing_rust_item`:
+
+```rust
+/// The `impl` header enclosing `line` (1-based), as `"Trait for Type"` when the
+/// block implements a trait and `"Type"` when it does not.
+///
+/// This is what distinguishes a step that landed on a trait method — the port's
+/// equivalent of a C vtab slot — from one that landed on an inherent helper.
+pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String> {
+    let mut stack: Vec<(String, usize)> = Vec::new();
+    let mut depth = 0usize;
+    let mut pending: Option<String> = None;
+    for (i, text) in src.lines().enumerate() {
+        let code = code_only(text);
+        if let Some(header) = impl_header(&code) {
+            pending = Some(header);
+        }
+        for c in code.chars() {
+            match c {
+                '{' => {
+                    depth += 1;
+                    if let Some(header) = pending.take() {
+                        stack.push((header, depth));
+                    }
+                }
+                '}' => {
+                    if stack.last().is_some_and(|(_, d)| *d == depth) {
+                        stack.pop();
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+        }
+        if i + 1 == line {
+            return stack.last().map(|(header, _)| header.clone());
+        }
+    }
+    None
+}
+
+/// The subject of an `impl` line, with generics and `where` clauses removed.
+fn impl_header(code: &str) -> Option<String> {
+    let trimmed = code.trim_start();
+    let rest = trimmed.strip_prefix("impl")?;
+    if rest.starts_with(|c: char| is_ident(c)) {
+        return None;
+    }
+    let body = rest
+        .split(" where ")
+        .next()
+        .unwrap_or(rest)
+        .split('{')
+        .next()
+        .unwrap_or(rest);
+    let mut out = String::new();
+    let mut generic = 0i32;
+    for c in body.chars() {
+        match c {
+            '<' => generic += 1,
+            '>' => generic -= 1,
+            _ if generic == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    let header = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!header.is_empty()).then_some(header)
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+cargo test -p audit-tools 2>&1 | tail -10
+```
+
+Expected: PASS, 5 tests.
+
+- [ ] **Step 5: Extend the verdict vocabulary**
+
+In `crates/ast-core/tests/test_mapmerge_audit.rs`, replace the body of `verdict_is_valid` with the full spec §3.4 vocabulary.
+`mirrors-quirk:` is spelled `divergence:` in this repo already, on three `chebymap.md` rows, and keeps that spelling — the requirement is that the verdict names an anchor in the quirks document, not that it uses a particular word:
+
+```rust
+/// The verdicts a checklist row may carry.
+///
+/// Each one either asserts the step is present or names where the work or the
+/// decision that excuses it is tracked. A verdict that names nothing would let
+/// a missing step read as a finished one.
+fn verdict_is_valid(verdict: &str) -> bool {
+    verdict == "ported"
+        || verdict.starts_with("n/a: ")
+        || verdict.starts_with("gap: PLAN.md §")
+        || verdict.starts_with("deferred: ")
+        || verdict.starts_with("driver: ")
+        || verdict.starts_with("unreachable: ")
+        || (verdict.starts_with("divergence:")
+            && verdict.contains("docs/issues/c-library-quirks.md"))
+}
+```
+
+- [ ] **Step 6: Run the audit test and confirm nothing regressed**
+
+```bash
+cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -15
+```
+
+Expected: PASS — the vocabulary only widened, and `C_SIMPLIFY_SEAMS`'s `deferred:` / `driver:` verdicts, which the previous body did not list, are now accepted by the same predicate rather than by a separate one.
+If `every_checklist_row_has_a_verdict` now fails, a row is using a word outside the table; fix the row, not the predicate.
+
+- [ ] **Step 7: Write the failing architecture-column gate**
+
+Append to `crates/ast-core/tests/test_audit_citations.rs`:
+
+```rust
+/// The marker a checklist carries once its rows classify their C steps.
+const CLASSIFIED: &str = "Extension points: classified";
+
+fn is_classified(text: &str) -> bool {
+    text.lines().take(12).any(|l| l.contains(CLASSIFIED))
+}
+
+/// The cells of a checklist table row, trimmed, or `None` for a non-row.
+fn row_cells(line: &str) -> Option<Vec<&str>> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('|') {
+        return None;
+    }
+    let cells: Vec<&str> = trimmed
+        .trim_matches('|')
+        .split('|')
+        .map(str::trim)
+        .collect();
+    cells.first()?.parse::<u32>().ok().map(|_| cells)
+}
+
+/// A classified checklist states, per row, whether the C step is an extension
+/// point, and an architecture row's Rust site is inside a trait `impl`.
+///
+/// The classification is the mechanical test from `docs/porting-hazards.md` H1:
+/// does a generic driver in another file dispatch to this through the vtab? A
+/// step that answers yes and lands on an inherent helper is the shape of the
+/// two most expensive mistakes this port has made.
+#[test]
+fn every_architecture_row_lands_on_a_trait_method() {
+    let mut bad = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        if !is_classified(&text) {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for (i, line) in text.lines().enumerate() {
+            let Some(cells) = row_cells(line) else {
+                continue;
+            };
+            // | # | C step | C site | Rust site | extension point | verdict |
+            if cells.len() != 6 {
+                bad.push(format!(
+                    "{name}:{}: a classified checklist needs six columns, this row has {}",
+                    i + 1,
+                    cells.len()
+                ));
+                continue;
+            }
+            let point = cells[4];
+            if point != "architecture" && point != "ceremony" {
+                bad.push(format!(
+                    "{name}:{}: extension point is `{point}`, expected `architecture` or `ceremony`",
+                    i + 1
+                ));
+                continue;
+            }
+            if point != "architecture" || cells[5] != "ported" {
+                continue;
+            }
+            let Some(cit) = audit_tools::parse_citation(cells[3]) else {
+                bad.push(format!(
+                    "{name}:{}: an architecture row must cite its Rust site, this one has `{}`",
+                    i + 1,
+                    cells[3]
+                ));
+                continue;
+            };
+            let Some(src_path) = resolve(&cit.file) else {
+                bad.push(format!("{name}:{}: no such file {}", i + 1, cit.file));
+                continue;
+            };
+            let src = std::fs::read_to_string(&src_path).expect("source readable");
+            match audit_tools::enclosing_rust_impl(&src, cit.start) {
+                Some(header) if header.contains(" for ") => {}
+                other => bad.push(format!(
+                    "{name}:{}: architecture step ported to {}:{}, which is in {} — \
+                     a step a generic driver dispatches to belongs on a trait method",
+                    i + 1,
+                    cit.file,
+                    cit.start,
+                    other.as_deref().unwrap_or("no impl block")
+                )),
+            }
+        }
+    }
+    assert!(bad.is_empty(), "{}", bad.join("\n  "));
+}
+```
+
+- [ ] **Step 8: Classify the two repaired checklists**
+
+Add the fifth column to every row of `sphmap.md` and `region_polygon.md`, before the verdict, and add `Extension points: classified` to each header.
+
+For `region_polygon.md`, the classification follows from `Simplify` being a vtab slot a generic driver dispatches to: rows 3, 5, 12, 13, 14, 16 and 17 — the parent-`Simplify` call, the re-expression decision, the construction, the `SimpVertices` mesh check, the adoption, the `reg_overlay` tail and the unchanged return — are `architecture`; the error-status, pointer-hygiene and buffer-shuffling rows are `ceremony`.
+Update the table's header row and its `|---|` separator in both files.
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tail -30
+```
+
+Expected: FAIL on any architecture row whose Rust site is not in an `impl Trait for Type` block.
+For `region_polygon.md` the cited sites are inside `impl Region for Polygon`, so those rows pass; a failure here means the row cites a helper and the row's Rust site should be corrected to the trait method that calls it.
+
+- [ ] **Step 9: Extend the unrepaired count to cover both markers**
+
+In `crates/ast-core/tests/test_verification_ledger.rs`, the `unrepaired` closure added in Task 3 counts files missing the citation marker.
+Change its predicate so a file counts as repaired only when it carries both markers:
+
+```rust
+        let head: String = text.lines().take(12).collect::<Vec<_>>().join("\n");
+        (!(head.contains("Citations: verified against pin")
+            && head.contains("Extension points: classified")))
+        .then_some(())
+```
+
+The count stays 35 — the same two files carry both markers — so the ledger row does not change.
+
+- [ ] **Step 10: Update the checklist template and commit**
+
+In `docs/audits/mapmerge/README.md`, update the template header block and the column layout so a new checklist starts in the classified shape:
+
+```
+Audited: YYYY-MM-DD against pin <sha>
+Citations: verified against pin <sha>
+Extension points: classified
+
+| # | C step | C site | Rust site | extension point | verdict |
+|---|---|---|---|---|---|
+```
+
+Record in the same README that `architecture` means a generic driver in another file dispatches to the step through the vtab, and that an architecture row's Rust site must be a trait method.
+
+```bash
+cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+  --test test_verification_ledger 2>&1 | tail -10
+cargo fmt --all && cargo clippy --workspace -- -D warnings
+git add -A crates docs/audits/mapmerge
+git commit -F - <<'MSG'
+audit: make each row state whether its C step is an extension point
+
+The mechanical test from porting-hazards H1 — does a generic driver in
+another file dispatch to this through the vtab? — is the one that would have
+caught the port's two most expensive mistakes. Recording the answer per row
+and gating the architecture rows on landing in a trait method puts the test
+where it can fire.
+
+The verdict vocabulary widens at the same time, so a row that is excused by
+a deferred class, a generic driver, or a gated decision says which.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 5: The universe of C steps stays C-derived
+
+Spec §3.3: `C_SIMPLIFY_SEAMS` already re-derives the seam *set* from the C source, so a seam cannot be dropped by dropping it from a list.
+This goes a level deeper: the *steps* inside each seam body are enumerated from source too, so a step omitted from an otherwise-ported body is detectable.
+
+AST's house style makes this mechanical — every step inside a seam body is preceded by a `/* … */` comment block starting at column 0.
+
+**Files:**
+- Create: `crates/audit-tools/src/c_steps.rs`
+- Modify: `crates/audit-tools/src/lib.rs` (`mod c_steps; pub use`)
+- Modify: `crates/ast-core/tests/test_audit_citations.rs`
+- Modify: `docs/audits/mapmerge/sphmap.md`, `docs/audits/mapmerge/region_polygon.md`
+- Test: `crates/audit-tools/src/c_steps.rs`, `crates/ast-core/tests/test_audit_citations.rs`
+
+**Interfaces:**
+- Consumes: `audit_tools::{c_functions, parse_citation}` from Tasks 2 and 4.
+- Produces: `pub fn c_step_comments(src: &str, function: &str) -> Vec<(usize, String)>` — the line and text of each column-0 comment block inside the named definition, in source order.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `crates/audit-tools/src/c_steps.rs` with the test module only:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const C: &str = "\
+/* Not inside anything. */
+static int MapMerge( AstMapping *this, int *status ) {
+
+/* Local Variables: */
+   int result;
+
+/* Check the global error status. */
+   if ( !astOK ) return 0;
+
+/* Combine the two Mappings, if
+   they can be combined. */
+   result = 1;
+
+   return result;
+}
+
+/* Also not inside anything. */
+";
+
+    #[test]
+    fn enumerates_the_step_comments_of_one_definition() {
+        let steps = c_step_comments(C, "MapMerge");
+        assert_eq!(
+            steps,
+            vec![
+                (4, "Local Variables:".to_string()),
+                (7, "Check the global error status.".to_string()),
+                (10, "Combine the two Mappings, if they can be combined.".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unknown_function_has_no_steps() {
+        assert!(c_step_comments(C, "Simplify").is_empty());
+    }
+}
+```
+
+- [ ] **Step 2: Register the module and watch the test fail**
+
+Add to `crates/audit-tools/src/lib.rs`, above the test module:
+
+```rust
+mod c_steps;
+pub use c_steps::c_step_comments;
+```
+
+```bash
+cargo test -p audit-tools 2>&1 | tail -10
+```
+
+Expected: FAIL — `cannot find function `c_step_comments``.
+
+- [ ] **Step 3: Implement it**
+
+Prepend to `crates/audit-tools/src/c_steps.rs`:
+
+```rust
+//! Enumerating the steps of a C seam body from the source.
+//!
+//! AST's house style precedes every step inside a function body with a comment
+//! block starting at column 0. Deriving the steps from those comments keeps the
+//! audit's universe of steps out of any hand-maintained list: a step that is
+//! present in C and absent from a checklist is then a detectable omission
+//! rather than an invisible one.
+
+use crate::c_functions;
+
+/// The line and text of each column-0 comment block inside `function`'s body.
+///
+/// A block's text is joined onto one line with runs of whitespace collapsed, so
+/// a comment that wraps in the source compares as what it says.
+pub fn c_step_comments(src: &str, function: &str) -> Vec<(usize, String)> {
+    let lines: Vec<&str> = src.lines().collect();
+    let Some((_, start, end)) = c_functions(src)
+        .into_iter()
+        .find(|(name, _, _)| name == function)
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut i = start; // Skip the declarator line itself.
+    while i + 1 < end {
+        let text = lines[i];
+        if !text.starts_with("/*") {
+            i += 1;
+            continue;
+        }
+        let first = i;
+        let mut body = String::new();
+        loop {
+            body.push(' ');
+            body.push_str(lines[i]);
+            if lines[i].contains("*/") || i + 1 >= end {
+                break;
+            }
+            i += 1;
+        }
+        let cleaned = body
+            .trim()
+            .trim_start_matches("/*")
+            .trim_end_matches("*/")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push((first + 1, cleaned));
+        i += 1;
+    }
+    out
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+cargo test -p audit-tools 2>&1 | tail -10
+```
+
+Expected: PASS, 7 tests.
+
+- [ ] **Step 5: Write the failing coverage gate**
+
+Append to `crates/ast-core/tests/test_audit_citations.rs`:
+
+```rust
+/// Every C step inside a function a repaired checklist cites is covered by one
+/// of that checklist's rows.
+///
+/// The functions considered are exactly those the checklist already cites into,
+/// so the gate needs no class-to-function map: citing a body commits the
+/// checklist to enumerating that body. A step the checklist deliberately does
+/// not enumerate is listed under an `Uncited C steps:` heading with a reason,
+/// which is a named exclusion rather than a silent one.
+#[test]
+fn every_c_step_in_a_cited_body_is_covered_by_a_row() {
+    let mut bad = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        if !is_repaired(&text) {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+        // The C ranges the rows cite, and the C functions they land in.
+        let mut ranges: Vec<(String, usize, usize)> = Vec::new();
+        for line in text.lines() {
+            for cell in line.split('|') {
+                if let Some(cit) = audit_tools::parse_citation(cell) {
+                    if !cit.file.ends_with(".rs") {
+                        ranges.push((cit.file, cit.start, cit.end.unwrap_or(cit.start)));
+                    }
+                }
+            }
+        }
+        let excused: Vec<&str> = text
+            .lines()
+            .skip_while(|l| !l.starts_with("Uncited C steps:"))
+            .skip(1)
+            .take_while(|l| l.starts_with("- "))
+            .collect();
+
+        let mut bodies: Vec<(String, String)> = Vec::new();
+        for (file, start, _) in &ranges {
+            let Some(src_path) = resolve(file) else {
+                continue;
+            };
+            let src = std::fs::read_to_string(&src_path).expect("source readable");
+            if let Some(func) = audit_tools::enclosing_c_function(&src, *start) {
+                if !bodies.iter().any(|(f, g)| f == file && *g == func) {
+                    bodies.push((file.clone(), func));
+                }
+            }
+        }
+
+        for (file, func) in bodies {
+            let src_path = resolve(&file).expect("resolved above");
+            let src = std::fs::read_to_string(&src_path).expect("source readable");
+            for (line, comment) in audit_tools::c_step_comments(&src, &func) {
+                let covered = ranges
+                    .iter()
+                    .any(|(f, s, e)| *f == file && *s <= line && line <= *e);
+                let excused = excused.iter().any(|l| l.contains(&format!("{file}:{line}")));
+                if !covered && !excused {
+                    bad.push(format!(
+                        "{name}: {file}:{line} in {func} — \"{comment}\" is not covered \
+                         by any row and is not listed under `Uncited C steps:`"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "C steps present in a cited body and absent from the checklist:\n  {}",
+        bad.join("\n  ")
+    );
+}
+```
+
+- [ ] **Step 6: Run it and close what it reports**
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tail -40
+```
+
+Expected: FAIL, listing the step comments in `SphMap`'s and `Polygon`'s cited bodies that no row covers.
+For each one, either add the row that describes it — with its own `C site`, `Rust site`, extension-point classification and verdict — or, when the comment is not a step (`Local Variables:`, `Astronomical Applications:`), list it under a new heading in the checklist:
+
+```
+Uncited C steps:
+- polygon.c:5340 — `Local Variables:` is a declaration block, not a step
+```
+
+Add the heading only where it is needed, and give each entry a reason.
+Do not widen the gate.
+
+- [ ] **Step 7: Verify and commit**
+
+```bash
+cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit 2>&1 | tail -10
+cargo fmt --all && cargo clippy --workspace -- -D warnings
+git add -A crates docs/audits/mapmerge
+git commit -F - <<'MSG'
+audit: derive the universe of C steps from the C source
+
+The seam set was already re-derived from the C source, so a seam could not be
+dropped by dropping it from a list. The steps inside a seam body could be. A
+checklist that cites into a body now has to enumerate that body, and a step it
+deliberately omits is named with a reason.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+Phase 0 is complete.
+The instrument now refuses a rotted citation, an unclassified extension point, an architecture step on an inherent helper, and an unenumerated C step — on the two checklists that have opted in.
+The remaining 35 are a counted number that each cluster reduces.
+
+---
