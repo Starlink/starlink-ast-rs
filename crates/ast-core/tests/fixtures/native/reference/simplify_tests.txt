@@ -765,3 +765,21 @@ cap_ident_cmpmap | simplify_fixtures/cap_ident_cmpmap.map | simplify_fixtures/ca
 # Frame overrides astDoNotSimplify to zero (frame.c:3511), so this one still
 # simplifies and its CmpMap of two ZoomMaps collapses to one.
 cap_ident_frame | simplify_fixtures/cap_ident_frame.map | simplify_fixtures/cap_ident_frame.simp |
+
+# A Polygon with an explicit uncertainty Box, mapped into a zoomed Frame.
+# polygon.c:5384 takes the uncertainty in the *current* Frame
+# (astGetUncFrm(new, AST__CURRENT)), so the replacement Polygon's Unc block is
+# the Box remapped through the ZoomMap, not the base-Frame Box.
+cap_poly_unc_frame | simplify_fixtures/cap_poly_unc_frame.map | simplify_fixtures/cap_poly_unc_frame.simp |
+
+# SimpVertices=0 with a Mapping that bows the edges. polygon.c:5415 meshes the
+# mapped Polygon and asks the straight-edged replacement whether every mesh
+# point lands on its boundary; the 0.005*x2*x2 term displaces the midpoint of
+# the x1=0 edge by 0.5, far outside the 0.01 uncertainty, so astRegPins fails
+# and the original Polygon is returned.
+cap_poly_bent_edges | simplify_fixtures/cap_poly_bent_edges.map | simplify_fixtures/cap_poly_bent_edges.simp |
+
+# The positive twin: the same bowed Mapping with SimpVertices at its default 1.
+# The mesh check is skipped and the vertices are transformed, bowed edges and
+# all. The pair discriminates the SimpVertices branch from the vertex transform.
+cap_poly_bend_allowed | simplify_fixtures/cap_poly_bend_allowed.map | simplify_fixtures/cap_poly_bend_allowed.simp |

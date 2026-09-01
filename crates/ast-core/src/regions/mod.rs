@@ -366,9 +366,26 @@ pub trait Region: Frame + Mapping {
         // Map the supplied uncertainty into this Region's base Frame. C
         // inverts this->frameset, runs Conv(unc->frameset, ...), then
         // astMapRegion (region.c:10840-10850). The base Frame of this Region
-        // is the target coordinate system.
+        // is the target coordinate system, and `Conv` aligns in the Domain of
+        // that Frame (region.c:2367-2370).
+        let mut unc = unc;
         let target = self.get_region_frameset().base().snapshot();
-        let conv = match unc.get_region_frame().convert_to(target.as_ref(), &[]) {
+        let domain = target.domain().to_string();
+        let converted = unc
+            .get_region_frame()
+            .convert_to(target.as_ref(), &[&domain]);
+
+        // `Conv` re-instates each FrameSet's original base Frame index with
+        // astSetBase (region.c:2373-2374). That restores the index it read,
+        // but leaves the attribute *set* even when it was unset on entry, so
+        // the uncertainty's FrameSet from here on dumps `Base` as an active
+        // card. The other FrameSet `Conv` restores is this Region's own, which
+        // is inverted across the call, so there astSetBase writes the Current
+        // slot instead (frameset.c:9836) — an index this port always dumps as
+        // active, so it needs no flag of its own.
+        let _ = unc.region_frameset_mut().set_base(FrameRef::Base);
+
+        let conv = match converted {
             Ok(Some(fs)) => fs,
             _ => {
                 // Frames not convertible: annul existing, mirroring C's error

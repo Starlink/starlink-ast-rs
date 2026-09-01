@@ -1109,11 +1109,19 @@ impl Serializable for Polygon {
 
     fn to_node(&self) -> AstResult<Node> {
         let mut node = region_to_node_skeleton("Polygon", "Polygonal region", &self.data);
-        // Polygon instance variables (polygon.c::Dump, :6701). AST always
-        // records the vertex-order convention: a non-zero value indicates the
-        // STC system (inside to the left when moving anti-clockwise round the
-        // vertices as viewed from the inside of the celestial sphere), which is
-        // what AST currently uses.
+        // Polygon instance variables (polygon.c::Dump, :6692). SimpVertices is
+        // written only when set.
+        if let Some(sv) = self.simp_vertices {
+            node.push_int(
+                "SimpVT",
+                sv as i64,
+                Some("Simplify by transforming vertices?".to_string()),
+            );
+        }
+        // AST always records the vertex-order convention: a non-zero value
+        // indicates the STC system (inside to the left when moving
+        // anti-clockwise round the vertices as viewed from the inside of the
+        // celestial sphere), which is what AST currently uses.
         node.push_int(
             "Order",
             1,
@@ -1125,7 +1133,13 @@ impl Serializable for Polygon {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
-        Ok(Polygon { data })
+        // polygon.c:7300 reads SimpVT back as a boolean; an absent card leaves
+        // the attribute unset.
+        let simp_vertices = node.get_int_any_if_set("SimpVT").map(|v| v != 0);
+        Ok(Polygon {
+            data,
+            simp_vertices,
+        })
     }
 }
 

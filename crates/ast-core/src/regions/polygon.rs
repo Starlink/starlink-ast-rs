@@ -156,6 +156,11 @@ fn cross(o: &[f64; 2], a: &[f64; 2], b: &[f64; 2]) -> f64 {
 pub struct Polygon {
     /// Shared region data (frameset, defining points, flags).
     pub(crate) data: RegionData,
+    /// `SimpVertices`: whether simplification may re-define the Polygon by
+    /// transforming its vertices without checking that the edges stayed
+    /// straight. `None` is unset, and reads back as the default `true`
+    /// (polygon.c:6510-6514).
+    pub(crate) simp_vertices: Option<bool>,
 }
 
 /// Builder for constructing a [`Polygon`].
@@ -269,6 +274,16 @@ impl PolygonBuilder {
     pub fn build(self) -> AstResult<Polygon> {
         let frameset = FrameSet::new(self.frame);
 
+        // A vertex may not be bad (polygon.c:7131).
+        for v in &self.vertices {
+            if v.contains(&BAD_VALUE) {
+                return Err(AstError::new(
+                    ErrorCode::Badin,
+                    "One or more of the supplied vertex coordinates is bad".to_string(),
+                ));
+            }
+        }
+
         // Defining points are the vertices themselves.
         let points = self.vertices;
         let mut data = RegionData::new(frameset, points);
@@ -277,9 +292,43 @@ impl PolygonBuilder {
         // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
         // necessary so that the unnegated Polygon represents the bounded
         // interior, matching the parent Region convention.
-        let mut polygon = Polygon { data };
+        let mut polygon = Polygon {
+            data,
+            simp_vertices: None,
+        };
         polygon.ensure_inside()?;
         Ok(polygon)
+    }
+}
+
+// ============================================================================
+// Attributes
+// ============================================================================
+
+impl Polygon {
+    /// `SimpVertices`: may simplification re-define the Polygon by
+    /// transforming its vertices?
+    ///
+    /// When this is false, [`Mapping::simplified`] additionally checks that the
+    /// transformation left the edges straight, and abandons the replacement if
+    /// it did not. The default is true (polygon.c:6511).
+    pub fn simp_vertices(&self) -> bool {
+        self.simp_vertices.unwrap_or(true)
+    }
+
+    /// Set `SimpVertices`.
+    pub fn set_simp_vertices(&mut self, value: bool) {
+        self.simp_vertices = Some(value);
+    }
+
+    /// Has `SimpVertices` been set?
+    pub fn test_simp_vertices(&self) -> bool {
+        self.simp_vertices.is_some()
+    }
+
+    /// Clear `SimpVertices`, restoring the default.
+    pub fn clear_simp_vertices(&mut self) {
+        self.simp_vertices = None;
     }
 }
 
@@ -1119,6 +1168,18 @@ impl Mapping for Polygon {
         };
         let simpler = parent.is_some();
 
+        // C's tail at polygon.c:5455: with no simplification of any kind the
+        // supplied Region is returned as it stands; otherwise the parent's copy
+        // takes the supplied Region's attributes and is returned.
+        let keep_or_overlay = |new: &Polygon, simpler: bool| -> AstResult<(DynMapping, bool)> {
+            if !simpler {
+                return Ok((self.clone_box(), false));
+            }
+            let mut result = new.clone_region();
+            result.reg_overlay(self, true);
+            Ok((result.clone_box(), true))
+        };
+
         let map = this
             .data
             .frameset
@@ -1127,34 +1188,68 @@ impl Mapping for Polygon {
         // current Mapping is not a UnitMap and the current Frame is 2-D
         // (polygon.c:5379).
         if map.as_any().is::<UnitMap>() || map.nout() != 2 {
-            // C's `else` at polygon.c:5459 — `result = astClone( this )`.
-            if !simpler {
-                return Ok((self.clone_box(), false));
-            }
-            let mut result = this.clone_region();
-            result.reg_overlay(self, true);
-            return Ok((result.clone_box(), true));
+            return keep_or_overlay(this, simpler);
         }
-        // Transform defining points (vertices) to current frame.
-        let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
-        let transformed = map.transform(&pts, true)?;
+
         let current_frame = this.data.frameset.current().snapshot();
+        // The uncertainty is taken in the *current* Frame (polygon.c:5384),
+        // unconditionally: a Polygon with none gets its default here, and the
+        // reg_overlay below is what puts the "none" back.
+        let unc = this.get_unc_frm(FrameRef::Current)?;
+
+        // C transforms the *supplied* Region's vertices through the *supplied*
+        // Region's base->current Mapping (astRegTransform( this, this->points,
+        // ... ), polygon.c:5387).
+        let self_map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
+        let transformed = self_map.transform(&pts, true)?;
         let naxes = current_frame.naxes();
-        let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
-            .map(|i| transformed.point(i)[..naxes].to_vec())
-            .collect();
-        let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, new_points);
-        data.uncertainty = this.data.uncertainty.clone();
-        // Remapping the vertices into the current Frame can change their
-        // winding order, so restore the bounded-when-unnegated convention that
-        // C's constructor applies (EnsureInside, polygon.c:7160).
-        let mut polygon = Polygon { data };
-        polygon.ensure_inside()?;
-        let mut result: DynRegion = Box::new(polygon);
-        result.reg_overlay(self, true);
+        let mut new_points: Vec<Vec<f64>> = Vec::with_capacity(self.data.points.len());
+        for i in 0..self.data.points.len() {
+            let p = transformed.point(i);
+            // C clears `ok` if any transformed axis-1 value is bad and keeps
+            // the original Polygon in that case (polygon.c:5400-5407). Axis 2
+            // is copied without being tested — the asymmetry is C's.
+            if is_bad(p[0]) {
+                return keep_or_overlay(this, simpler);
+            }
+            new_points.push(p[..naxes].to_vec());
+        }
+
+        // Assemble the replacement the way C's constructor does
+        // (astInitPolygon, polygon.c:7120-7165): defining points first, then
+        // the uncertainty through SetUnc, and only then the winding-order
+        // correction — SetUnc re-centres the uncertainty on the first defining
+        // point, so it must run before any reversal of the vertex order.
+        let mut newpol = Polygon {
+            data: RegionData::new(FrameSet::new(current_frame), new_points),
+            simp_vertices: None,
+        };
+        newpol.set_uncertainty(unc);
+        newpol.ensure_inside()?;
+
+        // With SimpVertices zero, check that the transformation did not bend
+        // the edges significantly: mesh the Polygon as it stands and require
+        // every mesh point to lie on the replacement's boundary
+        // (polygon.c:5412-5427).
+        // C reads the attribute off the *supplied* Polygon (`this` at
+        // polygon.c:5415), which is `self` here.
+        if !self.simp_vertices() {
+            let base_mesh = this.reg_base_mesh()?;
+            let base_mesh_ps = PointSet::from_rows(base_mesh.iter().map(|p| p.as_slice()));
+            let mesh = map.transform(&base_mesh_ps, true)?;
+            if !newpol.reg_pins(&mesh, None)? {
+                return keep_or_overlay(this, simpler);
+            }
+        }
+
         // A new Polygon was built from the remapped vertices, which is where C
-        // sets `simpler = 1` (polygon.c:5436).
+        // sets `simpler = 1` unconditionally (polygon.c:5436).
+        let mut result: DynRegion = Box::new(newpol);
+        result.reg_overlay(self, true);
         Ok((result.clone_box(), true))
     }
 

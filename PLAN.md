@@ -1461,40 +1461,62 @@ gated by `frameset_with_no_reducible_edge_returns_the_original` in
 reduces a FrameSet input to its base→current Mapping first. What remains open here
 is the NormMap branch and the Frame-level seam it needs.
 
-### 10.18 Polygon's vertex-transform simplification skips both of C's guards
+### 10.18 Polygon's vertex-transform simplification skipped both of C's guards — FIXED
 
 `polygon.c:5379-5437` re-expresses a Polygon in its current Frame by
-transforming the vertices, and guards the result twice before adopting it:
+transforming the vertices, and guards the result twice before adopting it. The
+port transformed the vertices and adopted the result unconditionally, and built
+the new Polygon with the uncertainty as stored, in the base Frame, where C
+passes `astGetUncFrm( new, AST__CURRENT )` — the uncertainty mapped into the
+Frame the new vertices live in (`:5384`). `SimpVertices` did not exist at all:
+no attribute, no accessor, no `SimpVT` card.
 
-- **Bad vertices.** C copies the transformed axis-1 values and clears `ok` if
-  any is `AST__BAD` (`:5400-5407`), building the new Polygon only when `ok`.
-  Axis 2 is copied without being tested — a C asymmetry, not a deliberate rule.
-- **Bent edges.** When `SimpVertices` is zero, C meshes the *original* Polygon
-  and requires `astRegPins` to place every mesh point on the new Polygon's
-  boundary, discarding the new Polygon if not (`:5412-5428`). This is the whole
-  purpose of the attribute: a non-linear Mapping can carry the vertices to the
-  right places while bowing the edges between them.
+All four are now ported in `Polygon::simplified` (`polygon.rs:1151-1253`), and
+`docs/audits/mapmerge/region_polygon.md` rows 7, 11, 12 and 13 are `ported`.
 
-`Polygon::simplified` (`polygon.rs:1095-1149`) does neither. It transforms the
-vertices and adopts the result unconditionally. It also builds the new Polygon
-with `this.data.uncertainty.clone()` — the uncertainty as stored, in the base
-Frame — where C passes `astGetUncFrm( new, AST__CURRENT )`, the uncertainty
-mapped into the Frame the new vertices live in (`:5384`, `:5411`).
+- **The uncertainty Frame.** `get_unc_frm(FrameRef::Current)` is called
+  unconditionally, as C calls it: a Polygon with no explicit uncertainty gets
+  its default here, and the `reg_overlay` in the tail restores the unset state.
+  `cap_poly_unc_frame` pins it — a Polygon with a ±0.1 Box uncertainty over a
+  ZoomMap of 4, whose simplified `Unc` block is the Box scaled by the zoom, not
+  the base-Frame Box.
+- **Bent edges.** With `SimpVertices` zero the original Polygon is meshed and
+  every mesh point must lie on the replacement's boundary (`:5412-5428`), which
+  is what catches a Mapping that carries the vertices to the right places while
+  bowing the edges between them. `cap_poly_bent_edges` is a Polygon over
+  `y1 = x1 + 0.005*x2*x2` with the attribute cleared and a ±0.01 uncertainty:
+  the 0.005 bow over the 20-unit edge exceeds the 0.01 uncertainty, so
+  `astRegPins` rejects it and C keeps the original.
+  `cap_poly_bend_allowed` is the same geometry with the attribute left at its
+  default, where C adopts the transformed Polygon — the pair is what makes the
+  branch falsifiable, since a check that always failed would pass the first
+  fixture alone.
+- **`SimpVertices`.** Attribute, accessors and the `SimpVT` card C writes at
+  `polygon.c:6692`, written only when the attribute is set, so an unset one
+  leaves the round-trip untouched. The default is 1 (`polygon.c:6511`, where
+  `-INT_MAX` is the unset sentinel).
 
-`SimpVertices` does not exist in the port at all: no attribute, no accessor, no
-serialisation of the `SimpVT` card C writes at `polygon.c:6692`. The default is
-1 (`polygon.c` `astMAKE_GET(Polygon,SimpVertices,...)`), and on the default the
-bend check is skipped, so the missing check is invisible until something sets
-the attribute to zero — which the port cannot express.
+**The bad-vertex guard is ported but cannot be fixture-pinned.** C clears `ok`
+when a transformed vertex has `AST__BAD` on axis 1 and builds nothing in that
+case (`:5400-5407`); axis 2 is copied without being tested, and the port
+reproduces that asymmetry rather than tidying it. No C program can reach the
+guard: a Polygon cannot hold a bad vertex (`polygon.c:7131` rejects one, which
+`PolygonBuilder::build` now does too), and `astMapRegion` refuses any Mapping
+that sends a defining point to `AST__BAD` (`region.c:5546`), so neither public
+API can install a base-to-current Mapping that produces one. What would expose a
+divergence: a path that installs such a Mapping without that check — the same
+candidate §10.13 records for Box's unbounded PermMap exit, and nothing in the
+corpus writes it.
 
-What would expose it: a fixture with a Polygon whose base-to-current Mapping is
-non-linear enough to bow the edges (a `WcsMap`, or a `PolyMap` with a quadratic
-term), `SimpVertices` cleared, and an uncertainty large enough for `astRegPins`
-to be the deciding test. C keeps the original Polygon; the port returns the
-transformed one. A second fixture, with one vertex mapping to `AST__BAD`, covers
-the `ok` guard. The uncertainty-Frame divergence needs a Polygon with an
-explicit uncertainty and a non-UnitMap base-to-current Mapping: compare the
-`Unc` value written under the simplified Polygon.
+**One shared primitive changed with it.** C reaches the uncertainty through
+`SetUnc`, whose `Conv` helper (`region.c:2315`) aligns in the Domain of the
+target Frame and then re-instates both FrameSets' base Frame index with
+`astSetBase` (`:2373-2374`). Restoring it that way leaves the attribute *set*
+even when it was unset on entry, so every uncertainty assembled through
+`set_uncertainty` dumps `Base` as an active card rather than a commented
+default. `region.c:2367-2374` is ported in `Region::set_uncertainty`
+(`regions/mod.rs:366-386`); without it both new fixtures differ from C on that
+one card.
 
 ### 10.19 Two pieces of the simplify engine had no counterpart in C — both closed
 
