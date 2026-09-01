@@ -107,7 +107,7 @@ Cluster 7 then sweeps whatever the clusters did not touch.
 - Consumes: nothing.
 - Produces: `/tmp/baseline/*.txt` transcripts every later task diffs against, and the confirmed starting counts quoted in Task 4's ledger row.
 
-- [ ] **Step 1: Export the toolchain**
+- [x] **Step 1: Export the toolchain**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -115,7 +115,7 @@ RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
 ```
 
-- [ ] **Step 2: Confirm the pin is `3e60abaa` and unmodified**
+- [x] **Step 2: Confirm the pin is `3e60abaa` and unmodified**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -127,7 +127,7 @@ git -C reference/starlink-ast status --porcelain | head
 Expected: the gitlink and the checkout both read `3e60abaa`, and `status --porcelain` prints nothing.
 If they disagree, stop — every line number in this plan is against that pin.
 
-- [ ] **Step 3: Run the full nine-binary gate and save the transcript**
+- [x] **Step 3: Run the full nine-binary gate and save the transcript**
 
 ```bash
 mkdir -p /tmp/baseline
@@ -139,7 +139,7 @@ cargo clippy --workspace -- -D warnings 2>&1 | tail -5
 Expected: every test binary passes, `FMT-CLEAN` prints, clippy reports no warnings.
 If anything fails at baseline, stop and report — this plan assumes a green HEAD and a pre-existing failure would be attributed to the wrong cluster.
 
-- [ ] **Step 4: Record the starting relaxation counts**
+- [x] **Step 4: Record the starting relaxation counts**
 
 ```bash
 cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -5
@@ -152,7 +152,7 @@ ls docs/audits/mapmerge/*.md | grep -vc README
 Expected: the ledger passes; 468 manifest rows; the four names `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`; 37 checklists.
 Write these into `/tmp/baseline/counts.txt`.
 
-- [ ] **Step 5: Build the C oracle library if it is not already built**
+- [x] **Step 5: Build the C oracle library if it is not already built**
 
 ```bash
 ls reference/starlink-ast/build/libast.so || \
@@ -184,7 +184,7 @@ It is a workspace member rather than a module inside `ast-core` because `ast-cor
   - `pub struct Citation { pub file: String, pub start: usize, pub end: Option<usize>, pub item: Option<String> }`
   - `pub fn parse_citation(text: &str) -> Option<Citation>` — parses `polygon.rs:1158`, `polygon.rs:1158-1262` and `polygon.rs:1158 (fn simplified)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `crates/audit-tools/src/lib.rs` containing only this test module for now:
 
@@ -276,7 +276,7 @@ static void Other( void ) {
 }
 ```
 
-- [ ] **Step 2: Create the crate and register it, then watch the tests fail**
+- [x] **Step 2: Create the crate and register it, then watch the tests fail**
 
 ```bash
 mkdir -p crates/audit-tools/src/bin
@@ -300,7 +300,7 @@ cargo test -p audit-tools 2>&1 | tail -20
 
 Expected: FAIL — `cannot find function `enclosing_rust_item` in this scope`, three more like it.
 
-- [ ] **Step 3: Implement the derivation**
+- [x] **Step 3: Implement the derivation**
 
 Prepend to `crates/audit-tools/src/lib.rs`, above the test module:
 
@@ -508,7 +508,7 @@ fn c_definition_name(lines: &[&str], i: usize) -> Option<String> {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 cargo test -p audit-tools 2>&1 | tail -10
@@ -517,7 +517,7 @@ cargo test -p audit-tools 2>&1 | tail -10
 Expected: PASS, 4 tests.
 If `finds_the_c_definition_not_the_prototype` fails, the prototype-rejection branch is what to look at — a prototype's statement reaches `;` at paren depth 0 before any `{`.
 
-- [ ] **Step 5: Check formatting and lints, then commit**
+- [x] **Step 5: Check formatting and lints, then commit**
 
 ```bash
 cargo fmt --all
