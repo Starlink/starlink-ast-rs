@@ -2444,3 +2444,31 @@ The reproduction is committed as two cases in `reference/starlink-ast/ast_tester
 They are deliberately absent from `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, because a positive fixture there is an assertion that the port reproduces the `.simp` file byte for byte, which for this pair means reproducing the wrong Mapping.
 
 To be raised upstream.
+
+## `Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides
+
+`box.c:3794-3830` walks a PermMap's input permutation array to decide whether the slice the PermMap selects intersects the Box.
+An input fed a constant is a slice: the constant has to lie within the Box's range on that axis, or the simplified Region is a NullRegion rather than a Box.
+
+The test is written as an assignment, not an accumulation:
+
+```c
+if( closed == neg ) {
+   isNull = ( k <= lb || k >= ub );
+} else {
+   isNull = ( k < lb || k > ub );
+}
+```
+
+With two or more constant-fed inputs, each one overwrites the previous verdict, so only the last is consulted.
+Each constant-fed input is a plane the region has to lie in, so any one of them missing the Box empties the intersection.
+A PermMap whose first constant misses the Box and whose second lies inside it therefore gives a Box where it should give a NullRegion.
+The `feed >= nout` case two branches down sets `isNull = 1` unconditionally, so an unbounded input followed by a constant inside the Box is lost the same way.
+
+`isNull` is initialised to zero once before the loop (`box.c:3750`), which is what makes the assignment look deliberate at a glance.
+`simpler`, set beside it, is the one flag in the loop that can only be cleared.
+
+**Rust behaviour (mirror):** `BoxRegion::simplify_over_permmap` (`crates/ast-core/src/regions/box_region.rs:474-498`) assigns in the same place, so the port agrees with C on a multi-constant PermMap; a comment at the assignment points here.
+`cap_box_permmap_null` covers the single-constant case, which is unaffected either way.
+
+To be raised upstream.

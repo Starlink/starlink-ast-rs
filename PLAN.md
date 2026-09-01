@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 457 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 457 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 457 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 457 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
+| simplify regression | 460 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 460 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
+| simplify regression | 460 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 460 | 142 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f`. Was 141 before `cap_box_permmap_nonbidi`, the negative control for a PermMap whose permutation is not bi-directional (§10.13) |
 | transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -1342,7 +1342,7 @@ of about 9e307; the guard is wrong on its own terms whether or not a Region usin
 the base rule can reach an unbounded axis today, so the direct unit test is the
 gate rather than a fixture.
 
-### 10.13 Box's PermMap simplification branch is unported
+### 10.13 Box's PermMap simplification branch was unported — FIXED
 
 `box.c:3719-3882` is an explicit branch for the case where a Box's base-to-current
 Mapping is a PermMap. It reads the PermMap's permutation arrays and constants
@@ -1355,20 +1355,48 @@ directly and builds the current-Frame Region axis by axis:
 - when base axes are absent from the current Frame, the slice the PermMap selects
   is checked for intersecting the Box, which can make the result a NullRegion.
 
-`crates/ast-core/src/regions/box_region.rs` contains no reference to `PermMap`.
-Its simplification goes straight to the generic best-fitting-Box path
-(`box_region.rs:1539-1566`), then the Polygon and Prism paths.
+`BoxRegion::simplify_over_permmap` (`box_region.rs:426-525`) now carries all five
+cases in C's order, ahead of the generic best-fitting-Box path, and the branch is
+a downcast on the base-to-current Mapping (`box_region.rs:1629`). A permutation
+that is not bi-directional returns `None`, which clears `simpler` and so discards
+the parent simplification along with it, as `box.c:4064` does.
 
-A plain axis permutation is handled anyway, because it is exact and the mesh
-comparison succeeds. What the generic path cannot produce is a constant-valued
-axis, an unbounded axis, or a result that is an Interval or a NullRegion rather
-than a Box.
+Two conventions had to be translated rather than copied. The port stores the
+public 1-based permutation form (`+j` names axis `j`, `0` names `AST__BAD`, `-j`
+names `constants[j-1]`) where C stores the 0-based form and `astPermMapId_`
+(`permmap.c:2678-2707`) turns a public `0` into `nin` / `nout`; C's `feed >= nin`
+test is therefore `feed == 0 || feed > nin` here. And C's `isNull` is an
+assignment rather than an accumulation, so the last constant-fed input decides —
+mirrored deliberately and recorded in `docs/issues/c-library-quirks.md`.
 
-What would expose it: a Box whose FrameSet holds a PermMap with a constant
-output — a 3-D Box sliced to 2-D with the third axis pinned — simplified and
-serialised. C writes an Interval or a Box with equal limits on that axis; the port
-writes whatever the mesh fit produced, or fails to simplify at all. No corpus
-fixture builds a Box over a PermMap with constants.
+Three fixtures gate it: `cap_box_permmap_const` (an output pinned to a constant),
+`cap_box_permmap_null` (a slice that misses the Box, giving a NullRegion) and
+`cap_box_permmap_nonbidi` (a non-bidirectional permutation, its own reference
+because C does not simplify it).
+
+**Which construction the generator needed.** The public `astMapRegion` is
+`astMapRegionId_`, whose tail simplifies the Region it is about to return
+(`region.c:14020-14024`), so a fixture built through it holds the *answer* in its
+`.map` and proves nothing — the same defect §10.17 records for
+`normmap_frame_simplifies`. `astBox` on a FrameSet is no escape either: `astInitRegion`
+resolves a supplied FrameSet to its current Frame. The three fixtures therefore call
+the protected `astMapRegion_` (`region.c:5375`), which does not simplify, reaching it
+through `astMakePointer` and using the protected `astWrite_` / `astSimplify_` on the
+true Object pointer it returns. Any future fixture over a Region's base-to-current
+Mapping needs the same construction.
+
+**The unbounded exit has no oracle fixture.** `astMapRegion` refuses to build a
+Region whose forward transformation gives a bad axis value, reporting
+`AST__NODEF` (`region.c:5539`), and it is the only public way to install a
+base-to-current PermMap — so no C program can produce a Box whose PermMap feeds
+an output with `AST__BAD` (audit rows 21 and 23). It is covered instead by
+`box_region.rs::tests::permmap_bad_output_simplifies_to_unbounded_interval`,
+which performs the same FrameSet edge surgery `map_region` performs, without the
+`AST__NODEF` check, and asserts the result is an Interval unbounded on the
+affected axis. What would expose a divergence against C: a C path that installs a
+base-to-current PermMap without that check — reading a Native Region dump whose
+`FrmSet` already carries one is the only candidate, and nothing in the corpus
+writes such a dump.
 
 ### 10.17 NormMap does not simplify its encapsulated Frame
 
@@ -1398,6 +1426,12 @@ same Box, and the port passes the fixture by declining a branch it has not porte
 The harness compares correctly; the fixture cannot discriminate, because the
 reduction it was built around happened before `astSimplify` was ever called. That
 is why the mis-verdict survived.
+
+`astBox` is not the only thing standing in the way: the public `astMapRegion` is
+`astMapRegionId_`, which simplifies the Region it returns (`region.c:14020-14024`),
+so building the FrameSet after construction is no escape either. §10.13's fixtures
+show the way round both — call the protected `astMapRegion_` through
+`astMakePointer` and write the result with the protected `astWrite_`.
 
 What would expose it: an encapsulated Frame whose reduction is *not* absorbed by
 its own constructor. A CmpFrame is the direct route — `cmpframe.c:9019-9034`

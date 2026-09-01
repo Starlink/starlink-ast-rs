@@ -707,3 +707,25 @@ cap_cmpperm_resume_inv | simplify_fixtures/cap_cmpperm_resume_inv.map | simplify
 # them: CF1 = 4 where the input had 1.5 and 2.5. The third term is a T_3, which
 # keeps C out of the linear replacement this port deliberately omits.
 cap_cheby_consolidate | simplify_fixtures/cap_cheby_consolidate.map | simplify_fixtures/cap_cheby_consolidate.simp |
+
+# A 2-D Box whose base->current Mapping is a PermMap. The permutation is known
+# exactly, so box.c:3722 swaps the Box's axes explicitly instead of fitting a
+# mesh. Here the PermMap's third output is fed a constant, which gives that
+# current-Frame axis equal limits (box.c:3764), so the result is a 3-D Box
+# pinned on axis 3. astMapRegion is the only way to install a base->current
+# Mapping in a Region -- astBox resolves a FrameSet to its current Frame
+# (region.c:10730, see normmap_frame_simplifies) -- and its public interface
+# simplifies what it returns (region.c:14024), so the generator calls the
+# protected astMapRegion_ to keep the answer out of the .map file.
+cap_box_permmap_const | simplify_fixtures/cap_box_permmap_const.map | simplify_fixtures/cap_box_permmap_const.simp |
+
+# The same construction with a PermMap input fed a constant of 99, outside the
+# Box's range of 0 to 20 on that axis. The slice the PermMap selects misses the
+# Box, so the simplified Region is a NullRegion (box.c:3806).
+cap_box_permmap_null | simplify_fixtures/cap_box_permmap_null.map | simplify_fixtures/cap_box_permmap_null.simp |
+
+# Negative control: both PermMap outputs are fed base axis 1, so the two Frames
+# are not related bi-directionally. box.c:3825 abandons the branch, and
+# abandoning it discards the parent Region simplification as well
+# (box.c:4064), so the Region comes back exactly as supplied.
+cap_box_permmap_nonbidi | simplify_fixtures/cap_box_permmap_nonbidi.map | simplify_fixtures/cap_box_permmap_nonbidi.map |

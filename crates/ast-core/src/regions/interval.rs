@@ -95,6 +95,24 @@ impl IntervalBuilder {
     }
 }
 
+impl Interval {
+    /// Build an `Interval` directly from an owned `DynFrame` and explicit
+    /// lower/upper bounds, without an intervening `impl Frame` type parameter.
+    ///
+    /// Used internally where the Frame is only available as a boxed trait
+    /// object. `BAD_VALUE` in either array leaves that direction unconstrained,
+    /// as with [`IntervalBuilder`].
+    pub(crate) fn from_bounds_frame(
+        frame: DynFrame,
+        lbnd: Vec<f64>,
+        ubnd: Vec<f64>,
+    ) -> AstResult<Interval> {
+        let frameset = FrameSet::new(frame);
+        let data = RegionData::new(frameset, vec![lbnd, ubnd]);
+        Ok(Interval { data })
+    }
+}
+
 // ============================================================================
 // Integrity
 // ============================================================================

@@ -14,11 +14,11 @@ use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
 use crate::mappings::helpers::{is_bad, point_has_bad};
-use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
+use crate::mappings::{DynMapping, Mapping, PermMap, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::merge_util::MergedRegion;
-use super::{DynRegion, Interval, NullRegion, Overlap, PointList, Region};
+use super::{DynRegion, Interval, NullRegion, NullRegionBuilder, Overlap, PointList, Region};
 
 /// An axis-aligned box region within a coordinate frame.
 ///
@@ -411,6 +411,119 @@ impl BoxRegion {
         }
     }
 
+    /// Rebuild this Box over a PermMap linking its base and current Frames.
+    ///
+    /// Faithful port of the PermMap branch of C `Simplify` (box.c:3722-3866).
+    /// Each current-Frame axis takes the limits of the base-Frame axis feeding
+    /// it; an axis fed a constant gets equal limits; an axis fed nothing is
+    /// unbounded, which makes the result an Interval rather than a Box. A
+    /// base-Frame axis fed a constant selects a slice through the coordinate
+    /// system, and a slice that misses the Box gives a NullRegion.
+    ///
+    /// `Ok(None)` reports the one case C declines: a base-Frame axis fed by an
+    /// output whose own feed is a different axis, so the two Frames are not
+    /// related bi-directionally (box.c:3825).
+    fn simplify_over_permmap(&self, pm: &PermMap) -> AstResult<Option<DynRegion>> {
+        let neg = self.is_negated();
+        let closed = self.is_closed();
+        let (base_lbnd, base_ubnd) = self.bounds();
+
+        let nin = pm.nin();
+        let nout = pm.nout();
+        let inperm = pm.inperm();
+        let outperm = pm.outperm();
+        let constants = pm.constants();
+
+        let mut lbnd = vec![BAD_VALUE; nout];
+        let mut ubnd = vec![BAD_VALUE; nout];
+        let mut is_null = false;
+        let mut is_interval = false;
+
+        // Each output is an axis of the current Frame. Find the base-Frame axis
+        // feeding it under the forward transformation (box.c:3755). `nin` and
+        // `nout` follow the PermMap's Invert flag while the permutation arrays
+        // do not, so an entry beyond the end of an array is read as the
+        // unbounded case rather than off the end of the array.
+        for ic in 0..nout {
+            let feed = outperm.get(ic).copied().unwrap_or(0);
+            if feed < 0 {
+                // Fed a constant, so both limits are that constant
+                // (box.c:3764).
+                let k = constant_at(constants, feed);
+                lbnd[ic] = k;
+                ubnd[ic] = k;
+            } else if feed == 0 || feed as usize > nin {
+                // Fed AST__BAD, so the axis is unbounded (box.c:3771).
+                lbnd[ic] = BAD_VALUE;
+                ubnd[ic] = BAD_VALUE;
+            } else {
+                // Fed an input, so the output takes that input's limits
+                // (box.c:3777).
+                lbnd[ic] = base_lbnd[feed as usize - 1];
+                ubnd[ic] = base_ubnd[feed as usize - 1];
+            }
+
+            // A missing bound makes the result an Interval (box.c:3784).
+            if is_bad(lbnd[ic]) || is_bad(ubnd[ic]) {
+                is_interval = true;
+            }
+        }
+
+        // Any base-Frame axis absent from the current Frame means the PermMap
+        // selects a slice, which need not meet the Box (box.c:3794).
+        for ic in 0..nin {
+            let feed = inperm.get(ic).copied().unwrap_or(0);
+            if feed < 0 {
+                // Fed a constant: the slice misses the Box unless the constant
+                // lies within the Box's limits on this axis (box.c:3806). C
+                // assigns rather than accumulates here, so the last
+                // constant-fed input decides; see
+                // docs/issues/c-library-quirks.md.
+                let k = constant_at(constants, feed);
+                let lb = base_lbnd[ic];
+                let ub = base_ubnd[ic];
+                is_null = if closed == neg {
+                    k <= lb || k >= ub
+                } else {
+                    k < lb || k > ub
+                };
+            } else if feed == 0 || feed as usize > nout {
+                // Fed AST__BAD: the input axis is unbounded and so extends
+                // beyond the Box (box.c:3819).
+                is_null = true;
+            } else if outperm.get(feed as usize - 1).copied().unwrap_or(0) != ic as i64 + 1 {
+                // The relationship is not bi-directional (box.c:3825).
+                return Ok(None);
+            }
+        }
+
+        // Build the replacement Region in the current Frame (box.c:3831). The
+        // uncertainty comes from the Box only when it holds an explicit one;
+        // the parent Simplify has already simplified it.
+        let unc = if self.test_unc() {
+            Some(self.get_unc_frm(FrameRef::Current)?)
+        } else {
+            None
+        };
+        let frm = self.data.frameset.current().snapshot();
+
+        let mut new: DynRegion = if is_null {
+            Box::new(NullRegionBuilder::from_dyn(frm).build()?)
+        } else if is_interval {
+            Box::new(Interval::from_bounds_frame(frm, lbnd, ubnd)?)
+        } else {
+            Box::new(BoxRegion::from_bounds_frame(frm, &lbnd, &ubnd)?)
+        };
+        if let Some(unc) = unc {
+            new.set_uncertainty(unc);
+        }
+        if neg {
+            new.negate();
+        }
+
+        Ok(Some(new))
+    }
+
     /// Compute the effective lower and upper bounds from centre and corner.
     ///
     /// The box extends symmetrically around the centre: the opposite corner
@@ -433,6 +546,18 @@ impl BoxRegion {
 
         (lbnd, ubnd)
     }
+}
+
+/// The constant a negative PermMap permutation entry refers to.
+///
+/// The entry `-j` names `constants[j-1]` (`permmap.c:524`). C indexes the array
+/// unchecked; an entry naming a constant that was never supplied is read here as
+/// `BAD_VALUE`, which leaves the axis unbounded.
+fn constant_at(constants: &[f64], feed: i64) -> f64 {
+    constants
+        .get((-feed - 1) as usize)
+        .copied()
+        .unwrap_or(BAD_VALUE)
 }
 
 /// Half the geodesic distance along each edge of a box.
@@ -1501,7 +1626,20 @@ impl Mapping for BoxRegion {
         // overlaid via astRegOverlay (box.c:4061).
         let mut new: DynRegion = this.clone_region();
 
-        if !simple_map.as_ref().as_any().is::<UnitMap>() {
+        if let Some(pm) = simple_map.as_ref().as_any().downcast_ref::<PermMap>() {
+            // The permutation is known exactly, so the Box's axes are swapped
+            // explicitly rather than fitted through a mesh (box.c:3722). C sets
+            // `simpler` unconditionally on entry to this branch (box.c:3748) and
+            // clears it only when the permutation is not bi-directional, which
+            // discards the parent simplification along with it (box.c:4064).
+            match this.simplify_over_permmap(pm)? {
+                Some(replacement) => {
+                    new = replacement;
+                    simpler = true;
+                }
+                None => simpler = false,
+            }
+        } else if !simple_map.as_ref().as_any().is::<UnitMap>() {
             // Transform defining points to current frame to form a candidate
             // remapped Box.
             let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
@@ -1645,5 +1783,60 @@ impl Mapping for BoxRegion {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::BasicFrameBuilder;
+
+    /// A PermMap that feeds one of its outputs with AST__BAD leaves that axis
+    /// unbounded, so the Box simplifies to an Interval rather than a Box
+    /// (box.c:3771, 3784).
+    ///
+    /// The base->current edge is installed here directly rather than through
+    /// [`Region::map_region`], because `map_region` rejects a Mapping whose
+    /// forward transformation yields a bad axis value (region.c:5539) — the C
+    /// library does the same, so no fixture generated through a public C
+    /// constructor can reach this exit.
+    #[test]
+    fn permmap_bad_output_simplifies_to_unbounded_interval() {
+        let base = BasicFrameBuilder::new(2).build().unwrap();
+        let bx = BoxRegionBuilder::from_bounds(base, &[1.0, 3.0], &[5.0, 9.0])
+            .unwrap()
+            .build()
+            .unwrap();
+
+        // Forward: output 1 <- input 2, output 2 <- AST__BAD.
+        // Inverse: input 1 <- the constant 3.0, input 2 <- output 1.
+        // Input 2 and output 1 are bi-directional, and the constant feeding
+        // input 1 lies inside the Box's first-axis bounds, so the slice meets
+        // the Box and the result is not a NullRegion (box.c:3806, 3825).
+        let pm = PermMap::new(&[-1, 1], &[2, 0], &[3.0]).unwrap();
+        let curr = BasicFrameBuilder::new(2).build().unwrap();
+
+        let mut region: DynRegion = Box::new(bx);
+        {
+            let fs = region.region_frameset_mut();
+            let icurr = fs.current_idx() + 1;
+            fs.add_frame(FrameRef::Current, Box::new(pm), Box::new(curr))
+                .unwrap();
+            fs.remove_frame(FrameRef::Index(icurr)).unwrap();
+        }
+
+        let simple = <dyn Mapping>::simplify(region.as_ref()).unwrap();
+        let interval = simple
+            .as_any()
+            .downcast_ref::<Interval>()
+            .expect("a PermMap output fed AST__BAD makes the Box an Interval");
+
+        // The Interval's defining points hold the lower then upper bound: the
+        // first axis takes the Box's second-axis bounds, the second axis is
+        // unbounded in both directions.
+        assert_eq!(interval.data.points[0][0], 3.0);
+        assert_eq!(interval.data.points[1][0], 9.0);
+        assert!(is_bad(interval.data.points[0][1]));
+        assert!(is_bad(interval.data.points[1][1]));
     }
 }
