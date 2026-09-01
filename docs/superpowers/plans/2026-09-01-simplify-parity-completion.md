@@ -8011,3 +8011,1118 @@ forward golden, inverse golden, round-trip and equivalence checks enabled; and
 the two per-row licences that replace them — 25 reference-gap rows and 2
 substituted rows — are each asserted as an exact set against the corpus, counted
 in the ledger, and named in `PLAN.md` §6.
+
+---
+
+## Cluster 7 — the instrument sweep
+
+Phase 0 built four gates and switched them on for two checklists.
+The other 35 declare no marker, so nothing checks them, and the ledger row `CHECKLISTS_UNREPAIRED` is what keeps that visible rather than comfortable.
+This cluster takes it to zero and then removes it, so the markers become mandatory and a new checklist cannot arrive unrepaired.
+
+The residual citation rot is real and measured. `PLAN.md` §9.5 records that 255 of the 257 `simplify.rs:N` citations no longer designate the line they were written against, and the checklists' own front matter says why: they were audited against pins `3cf4bc5c` and `07fbe2dc`, while the pin is now `3e60abaa`.
+
+There is also a defect in the Phase 0 resolver that has to be fixed before the mass repair, or the repair certifies the wrong files:
+
+| Cited name | Files in `crates/ast-core/src` with that basename | Citations |
+|---|---:|---:|
+| `simplify.rs` | 2 (`mappings/simplify.rs`, `units/simplify.rs`) | 259 |
+| `pointlist.rs` | 2 (`regions/pointlist.rs`, `coords/pointlist.rs`) | 11 |
+| `mod.rs` | 13 | 47, all already written directory-qualified |
+
+Phase 0's `resolve` walks `src` and keeps the last basename match, so a `simplify.rs` citation may be checked against `units/simplify.rs`, and every `regions/mod.rs` citation is checked against whichever `mod.rs` the walk saw last — `parse_citation` stops the file stem at the `/`.
+Task 27 fixes the derivation, then repairs the twelve composition checklists; Task 28 the thirteen conversion and distortion ones; Task 29 the ten Region and Frame ones, after which the row goes.
+
+The work per file is the same four operations, and each task carries them in full:
+
+1. anchor every citation to `file:line (fn name)` with the Phase 0 tool, re-anchoring by hand whatever it reports;
+2. add the extension-point column, `architecture` or `ceremony`, by the mechanical H1 test;
+3. answer the C-step coverage gate — a row for each uncovered step, or an `Uncited C steps:` entry with a reason;
+4. add both markers and let the four gates run.
+
+### Task 27: an unambiguous resolver, then the twelve composition checklists
+
+**Files:**
+- Modify: `crates/audit-tools/src/lib.rs` (`parse_citation`, plus `resolve_source`)
+- Modify: `crates/audit-tools/src/bin/anchor-citations.rs` (drop its private `resolve`)
+- Modify: `crates/ast-core/tests/test_audit_citations.rs` (drop its private `resolve`; one gate replaced)
+- Modify: all 37 files in `docs/audits/mapmerge/` (the ambiguity rewrite), then in full: `cmpmap.md`, `winmap.md`, `perm.md`, `matrix.md`, `zoom.md`, `shift.md`, `unit.md`, `tranmap.md`, `switchmap.md`, `selectormap.md`, `ratemap.md`, `normmap.md`
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs`, `PLAN.md`
+
+**Interfaces:**
+- Consumes: `audit_tools::{parse_citation, enclosing_rust_item, enclosing_c_function, enclosing_rust_impl, c_step_comments, Citation}` from Tasks 2, 4 and 5; the markers `Citations: verified against pin 3e60abaa` and `Extension points: classified` from Tasks 3 and 4; the binary `anchor-citations` from Task 3.
+- Produces:
+  - `pub enum Resolution { Found(std::path::PathBuf), Missing, Ambiguous(Vec<std::path::PathBuf>) }`
+  - `pub fn resolve_source(root: &std::path::Path, file: &str) -> Resolution` — the single derivation both the tool and the gate call, matching a citation's name as a **path suffix** so `regions/mod.rs` is exact and a bare `mod.rs` is ambiguous.
+  - Twelve checklists carrying both markers, which Tasks 28 and 29 do not re-touch.
+
+- [ ] **Step 1: Measure the ambiguity, so the fix has a number**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+for b in $(grep -oh '[A-Za-z_0-9]*\.rs:' docs/audits/mapmerge/*.md | sort -u | tr -d ':'); do
+  n=$(find crates/ast-core/src -name "$b" | wc -l)
+  [ "$n" -ne 1 ] && echo "$b -> $n candidates, $(grep -oh "$b:" docs/audits/mapmerge/*.md | wc -l) citations"
+done
+```
+
+Expected: `mod.rs -> 13`, `pointlist.rs -> 2`, `simplify.rs -> 2`.
+`path.rs` may also appear; it occurs only in `README.md`'s column description, which `checklists()` excludes.
+
+- [ ] **Step 2: Write the failing test for a path-qualified stem**
+
+Append inside `crates/audit-tools/src/lib.rs`'s `mod tests`:
+
+```rust
+    #[test]
+    fn keeps_a_directory_qualified_file_name() {
+        let c = parse_citation("regions/mod.rs:890-1003 (fn parent_region_simplify)").unwrap();
+        assert_eq!(c.file, "regions/mod.rs");
+        assert_eq!((c.start, c.end), (890, Some(1003)));
+        assert_eq!(c.item.as_deref(), Some("parent_region_simplify"));
+        // A leading backtick or table pipe is not part of the name.
+        let c = parse_citation("| mathmap/mod.rs:421-432 |").unwrap();
+        assert_eq!(c.file, "mathmap/mod.rs");
+        // Prose citing a bare name still parses; the resolver is what refuses it.
+        assert_eq!(parse_citation("simplify.rs:959").unwrap().file, "simplify.rs");
+    }
+```
+
+- [ ] **Step 3: Run it and watch it fail**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p audit-tools keeps_a_directory 2>&1 | tail -12
+```
+
+Expected: FAIL — `assertion `left == right` failed: left: "mod.rs", right: "regions/mod.rs"`.
+The stem scan stops at the `/`.
+
+- [ ] **Step 4: Accept `/` in the stem**
+
+In `crates/audit-tools/src/lib.rs`, `parse_citation`'s stem scan takes one more character class:
+
+```rust
+        let stem: String = text[..colon]
+            .chars()
+            .rev()
+            .take_while(|c| is_ident(*c) || *c == '.' || *c == '/')
+            .collect();
+```
+
+A leading `/` cannot occur in a checklist citation, but strip one defensively so a stray path separator does not become part of the name:
+
+```rust
+        let file: String = stem.chars().rev().collect();
+        let file = file.trim_start_matches('/').to_string();
+```
+
+```bash
+cargo test -p audit-tools 2>&1 | tail -8
+```
+
+Expected: PASS, including `parses_all_three_citation_forms`, which uses bare names and is unaffected.
+
+- [ ] **Step 5: Write the failing test for unique resolution**
+
+The resolver needs the tree, so its test lives with the gate. Append to `crates/ast-core/tests/test_audit_citations.rs`:
+
+```rust
+/// The resolver answers against this tree, so its contract is tested against
+/// this tree: a name that matches two files is ambiguous, not arbitrary.
+#[test]
+fn resolution_is_by_unique_path_suffix() {
+    use audit_tools::Resolution;
+    let root = repo_root();
+    // Two `simplify.rs` and thirteen `mod.rs` exist under src.
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "simplify.rs"),
+        Resolution::Ambiguous(_)
+    ));
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "mod.rs"),
+        Resolution::Ambiguous(_)
+    ));
+    // Qualifying by one directory is enough for both.
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "mappings/simplify.rs"),
+        Resolution::Found(_)
+    ));
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "regions/mod.rs"),
+        Resolution::Found(_)
+    ));
+    // A nested module directory resolves without naming every parent.
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "mathmap/mod.rs"),
+        Resolution::Found(_)
+    ));
+    // A unique basename needs no qualification.
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "zoom.rs"),
+        Resolution::Found(_)
+    ));
+    // C sources resolve from the pinned submodule, and a missing one is
+    // Missing rather than a panic, because the submodule is optional.
+    assert!(matches!(
+        audit_tools::resolve_source(&root, "nosuchfile.rs"),
+        Resolution::Missing
+    ));
+}
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations resolution_is_by 2>&1 | tail -10
+```
+
+Expected: FAIL — `could not find `resolve_source` in `audit_tools``.
+
+- [ ] **Step 6: Implement the shared resolver**
+
+Add to `crates/audit-tools/src/lib.rs`:
+
+```rust
+use std::path::{Path, PathBuf};
+
+/// What a citation's file name designates in the tree.
+#[derive(Debug)]
+pub enum Resolution {
+    /// Exactly one file matches.
+    Found(PathBuf),
+    /// No file matches, or the pinned C submodule is absent.
+    Missing,
+    /// More than one file matches, so the citation designates nothing.
+    /// Qualify it with as many leading directories as it takes.
+    Ambiguous(Vec<PathBuf>),
+}
+
+/// Resolve a citation's file name against the tree at `root`.
+///
+/// A Rust name is matched as a path suffix under `crates/ast-core/src`, on whole
+/// path components, so `regions/mod.rs` matches `.../src/regions/mod.rs` and not
+/// `.../src/fitschan/mod.rs`, and a bare `mod.rs` matches all thirteen. A C name
+/// resolves in the pinned submodule's `src`.
+///
+/// One derivation, called by both `anchor-citations` and the citation gate, so a
+/// citation the tool rewrote cannot be one the gate reads differently.
+pub fn resolve_source(root: &Path, file: &str) -> Resolution {
+    if !file.ends_with(".rs") {
+        let path = root.join("reference/starlink-ast/src").join(file);
+        return if path.is_file() {
+            Resolution::Found(path)
+        } else {
+            Resolution::Missing
+        };
+    }
+
+    let wanted: Vec<&str> = file.split('/').collect();
+    let mut hits = Vec::new();
+    let mut stack = vec![root.join("crates/ast-core/src")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let components: Vec<String> = path
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                .collect();
+            if components.len() >= wanted.len()
+                && components[components.len() - wanted.len()..]
+                    .iter()
+                    .zip(&wanted)
+                    .all(|(have, want)| have == want)
+            {
+                hits.push(path);
+            }
+        }
+    }
+    hits.sort();
+    match hits.len() {
+        0 => Resolution::Missing,
+        1 => Resolution::Found(hits.remove(0)),
+        _ => Resolution::Ambiguous(hits),
+    }
+}
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations resolution_is_by 2>&1 | tail -8
+```
+
+Expected: PASS.
+
+- [ ] **Step 7: Route both callers through it**
+
+Delete the private `resolve` from `crates/ast-core/tests/test_audit_citations.rs` and from `crates/audit-tools/src/bin/anchor-citations.rs`, and call the library in both.
+In the gate, the two existing uses become:
+
+```rust
+        let Resolution::Found(src_path) = audit_tools::resolve_source(&repo_root(), &cit.file) else {
+            continue;
+        };
+```
+
+and in the tool's `main`:
+
+```rust
+                let Resolution::Found(src_path) = audit_tools::resolve_source(&root, &cit.file) else {
+                    continue;
+                };
+```
+
+with `use audit_tools::Resolution;` at the top of each.
+Then replace `every_repaired_rust_citation_names_a_file_that_exists` — which could not see an ambiguity — with the gate that can:
+
+```rust
+/// A repaired checklist's citations must each designate exactly one file.
+///
+/// An unresolvable citation is unfalsifiable, and an ambiguous one is worse: the
+/// checker picks a file and certifies the row against the wrong source. `mod.rs`
+/// has thirteen candidates in this tree and `simplify.rs` has two, so the
+/// qualification is load-bearing rather than tidiness.
+#[test]
+fn every_repaired_citation_resolves_to_exactly_one_file() {
+    let root = repo_root();
+    let mut bad = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        if !is_repaired(&text) {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for (i, line) in text.lines().enumerate() {
+            for cell in line.split('|') {
+                let Some(cit) = audit_tools::parse_citation(cell) else {
+                    continue;
+                };
+                match audit_tools::resolve_source(&root, &cit.file) {
+                    Resolution::Found(_) => {}
+                    // A C citation with the submodule absent is the one
+                    // permitted Missing: tier-1 must build without it.
+                    Resolution::Missing if !cit.file.ends_with(".rs") => {}
+                    Resolution::Missing => bad.push(format!(
+                        "{name}:{}: no such file {}",
+                        i + 1,
+                        cit.file
+                    )),
+                    Resolution::Ambiguous(hits) => bad.push(format!(
+                        "{name}:{}: {} matches {} files ({}); qualify it with \
+                         its directory",
+                        i + 1,
+                        cit.file,
+                        hits.len(),
+                        hits.iter()
+                            .map(|p| p.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                }
+            }
+        }
+    }
+    assert!(bad.is_empty(), "unresolvable citations:\n  {}", bad.join("\n  "));
+}
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
+```
+
+Expected: FAIL on `sphmap.md` and `region_polygon.md` if either cites a bare `simplify.rs`, PASS otherwise.
+`region_polygon.md` cites `polygon.rs` and `sphmap.md` cites `sphmap.rs` and `simplify.rs`; fix whatever it names in the next step's rewrite and re-run.
+
+- [ ] **Step 8: Qualify every ambiguous citation, in all 37 files**
+
+Two names, mechanically: all 259 `simplify.rs` citations are the mappings one — the checklists' own prose says so, `units/simplify.rs` is a unit-string simplifier no seam cites — and all 11 `pointlist.rs` citations are in `region_pointlist.md`.
+
+```bash
+python3 - <<'PY'
+import re, pathlib
+subs = [
+    (re.compile(r'(?<![\w/])simplify\.rs:'), 'mappings/simplify.rs:'),
+    (re.compile(r'(?<![\w/])pointlist\.rs:'), 'regions/pointlist.rs:'),
+]
+total = 0
+for p in sorted(pathlib.Path('docs/audits/mapmerge').glob('*.md')):
+    if p.name == 'README.md':
+        continue
+    t = p.read_text()
+    o = t
+    for rx, rep in subs:
+        t = rx.sub(rep, t)
+    if t != o:
+        n = sum(1 for _ in re.finditer(r'mappings/simplify\.rs:|regions/pointlist\.rs:', t))
+        print(f"{p.name}: {n}")
+        p.write_text(t)
+        total += 1
+print(f"{total} files rewritten")
+PY
+grep -c 'mappings/simplify\.rs:' docs/audits/mapmerge/*.md | grep -v ':0' | wc -l
+```
+
+Expected: 20 files rewritten for `simplify.rs` plus `region_pointlist.md`.
+The prose sentences that name `simplify.rs` without a line number are left alone — they are prose, not citations — but check the diff and qualify any that read as a file reference, so a reader is not sent to the wrong module.
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tail -12
+```
+
+Expected: PASS. Only the two Phase 0 files are checked, and both now resolve uniquely.
+
+- [ ] **Step 9: Anchor the twelve composition checklists**
+
+These twelve are the classes whose seam bodies compose, condense or swap Mappings: `CmpMap`, `WinMap`, `PermMap`, `MatrixMap`, `ZoomMap`, `ShiftMap`, `UnitMap`, `TranMap`, `SwitchMap`, `SelectorMap`, `RateMap` and `NormMap` — 339 rows, 324 Rust citations, 377 C citations.
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+cargo run -p audit-tools --bin anchor-citations -- --write \
+  docs/audits/mapmerge/cmpmap.md docs/audits/mapmerge/winmap.md \
+  docs/audits/mapmerge/perm.md docs/audits/mapmerge/matrix.md \
+  docs/audits/mapmerge/zoom.md docs/audits/mapmerge/shift.md \
+  docs/audits/mapmerge/unit.md docs/audits/mapmerge/tranmap.md \
+  docs/audits/mapmerge/switchmap.md docs/audits/mapmerge/selectormap.md \
+  docs/audits/mapmerge/ratemap.md docs/audits/mapmerge/normmap.md \
+  2>&1 | tee /tmp/anchor-groupA.txt | tail -40
+wc -l /tmp/anchor-groupA.txt
+git diff --stat docs/audits/mapmerge/
+```
+
+Every line the tool printed is a citation whose line number is not inside any item — the rot §9.5 measured.
+Re-anchor each by hand: read the `C step` cell, find the construct it names in the current source, and cite that line.
+Do not remap mechanically; §9.5 records that a `difflib`-based remap relocated 25 rows confidently wrong.
+
+The header of each file also states the pin it was audited against — `3cf4bc5c` for these twelve. Leave the `Audited:` line as the historical record and add the new marker beneath it; the marker is the claim about *now*.
+
+- [ ] **Step 10: Add the extension-point column**
+
+The classification is the H1 test — does a generic driver in another file dispatch to this step through the vtab? — and after anchoring, each row's C site names its enclosing C function, so the answer is derivable rather than a matter of opinion:
+
+```bash
+python3 - <<'PY'
+import re, pathlib, sys
+
+# The vtab slots a generic driver dispatches to per class. CLAUDE.md's
+# "Known architecture, not boilerplate" list, plus the seam bodies the
+# checklists cite into.
+SEAMS = {
+    "MapMerge", "Transform", "Simplify", "Equal", "MapSplit", "Match",
+    "SubFrame", "Overlay", "RegPins", "RegBaseMesh", "RegBaseBox",
+    "GetDefUnc", "RegBaseGrid", "ResolvePoints", "RegCentre", "MapList",
+    "Rate", "RegBaseGrid",
+}
+# Steps that are ceremony wherever they appear, including inside a seam body.
+CEREMONY = (
+    "check the global error status", "local variables", "initialise the returned",
+    "initialise", "annul", "free", "obtain a pointer", "return the result",
+    "attribute", "dump", "load", "validate the",
+)
+FILES = sys.argv[1:]
+for name in FILES:
+    p = pathlib.Path(name)
+    lines = p.read_text().split("\n")
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith("| # |"):
+            out.append(line.replace("| Rust site |", "| Rust site | extension point |"))
+            continue
+        if re.fullmatch(r"\|(\s*-+\s*\|)+", s) and s.count("|") == 6:
+            out.append(line[: line.rindex("|---|")] + "|---|---|")
+            continue
+        cells = s.split("|")
+        if len(cells) == 7 and cells[1].strip().isdigit():
+            fn = re.search(r"\(fn (\w+)\)", cells[3])
+            step = cells[2].strip().lower()
+            arch = bool(fn) and fn.group(1) in SEAMS and not any(
+                step.startswith(c) or step == c.rstrip() for c in CEREMONY
+            )
+            cells.insert(5, " architecture " if arch else " ceremony ")
+            out.append("|".join(cells))
+            continue
+        out.append(line)
+    p.write_text("\n".join(out))
+    print(f"{p.name}: classified")
+PY
+```
+
+Run it over the twelve files, then read the diff row by row.
+The script decides from the anchored C function name and the step's own wording; the rows it gets wrong are the ones to fix by hand, and there are two recurring kinds:
+
+- A row whose C site is a helper the seam calls (`MatMat`, `WinWin`, `PermGet`) rather than the seam itself. The helper is reached only from the class's own seam body, never dispatched through the vtab, so the step is still part of the architecture the driver relies on: mark it `architecture` and leave the citation on the helper.
+- The last row of `zoom.md`, `matrix.md`, `perm.md` and others is the clear-on-set rule, whose C site is in `SetAttrib` / `ClearAttrib`. `CLAUDE.md` names attribute string dispatch as ceremony, and cluster 5's fixtures are what hold that behaviour, so these rows are `ceremony`.
+
+```bash
+cargo run -p audit-tools --bin anchor-citations -- \
+  docs/audits/mapmerge/zoom.md | head -30
+```
+
+Reading one file back through the tool without `--write` is a cheap check that the table still parses as a table after the column insert.
+
+- [ ] **Step 11: Answer the C-step coverage gate**
+
+Add both markers to each of the twelve headers, immediately after the `Audited:` lines:
+
+```
+Citations: verified against pin 3e60abaa
+Extension points: classified
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateA.txt | tail -40
+```
+
+Four gates now run on twelve more files, and each failure has one correct response:
+
+- a citation claiming the wrong item — re-anchor the row against the code its `C step` describes;
+- an architecture row on an inherent method — cite the trait method that calls the helper, or reclassify with the H1 test in front of you, never by preference;
+- an uncovered C step — add the row, with its own C site, Rust site, classification and verdict; or, when the comment is not a step, add it under `Uncited C steps:` with a reason, e.g. `- cmpmap.c:1445 — \`Local Variables:\` is a declaration block, not a step`;
+- a six-column row that has five — the column insert missed it, usually a row whose `#` cell holds a range.
+
+Work file by file and re-run. Do not widen a gate to close a file.
+
+- [ ] **Step 12: Drop the ledger count by twelve**
+
+In `crates/ast-core/tests/test_verification_ledger.rs`, the `CHECKLISTS_UNREPAIRED` row goes from 35 to 23:
+
+```rust
+    (
+        "docs/audits/mapmerge/*.md",
+        "CHECKLISTS_UNREPAIRED",
+        23,
+        "audit checklists not yet citation-verified and extension-point \
+         classified — the four gates in test_audit_citations.rs check a \
+         checklist once its header declares both. Zero at cluster 7, when the \
+         markers become mandatory",
+    ),
+```
+
+And in `PLAN.md` §6:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("PLAN.md")
+t = p.read_text()
+old = "| audit checklists | 37 | 35 |"
+new = "| audit checklists | 37 | 23 |"
+assert t.count(old) == 1
+p.write_text(t.replace(old, new, 1))
+PY
+```
+
+- [ ] **Step 13: Run the full gate, format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+  --test test_verification_ledger 2>&1 | tail -12
+cargo test -p audit-tools 2>&1 | tail -5
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+git add -A crates/audit-tools crates/ast-core docs/audits/mapmerge PLAN.md
+git commit -F - <<'MSG'
+audit: resolve citations by unique path, and repair the twelve composition checklists
+
+The Phase 0 resolver kept the last basename match under src, so all 259
+`simplify.rs` citations could be checked against `units/simplify.rs` and every
+`regions/mod.rs` citation against whichever of the thirteen `mod.rs` files the
+walk saw last -- `parse_citation` stopped the name at the `/`. Citations now
+resolve by unique path suffix, ambiguity is an error rather than a guess, and
+the two ambiguous names in the corpus are qualified.
+
+With that fixed, CmpMap, WinMap, PermMap, MatrixMap, ZoomMap, ShiftMap,
+UnitMap, TranMap, SwitchMap, SelectorMap, RateMap and NormMap are anchored
+against the current pin, classified by the H1 extension-point test, and opted
+into the four gates. CHECKLISTS_UNREPAIRED falls 35 -> 23.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 28: the thirteen conversion and distortion checklists
+
+The classes whose seams convert coordinates or apply a distortion rather than compose Mappings: `SlaMap`, `SpecMap`, `TimeMap`, `WcsMap`, `GrismMap`, `PolyMap`, `ChebyMap`, `LutMap`, `PcdMap`, `MathMap`, `SplineMap`, `DssMap` and `UnitNormMap` — 357 rows, 350 Rust citations, 397 C citations.
+
+Two rows in this group are not a citation exercise:
+
+- `lutmap.md` row 24 is the audit's only row-level `gap: PLAN.md §9.2`, and cluster 5's Task 23 is what closes it. This task flips it to `ported` and cites the new setter.
+- `chebymap.md` rows 9, 10 and 11 carry `divergence:` verdicts citing `docs/issues/c-library-quirks.md`, because C's own PolyMap-shaped reduction loses the Chebyshev domain scaling. ChebyMap simplification is deferred per the spec's §10.2 exclusion, so those verdicts stay exactly as they are and the file's front matter says the deferral is deliberate.
+
+**Files:**
+- Modify: `docs/audits/mapmerge/slamap.md`, `specmap.md`, `timemap.md`, `wcsmap.md`, `grismmap.md`, `polymap.md`, `chebymap.md`, `lutmap.md`, `pcdmap.md`, `mathmap.md`, `splinemap.md`, `dssmap.md`, `unitnormmap.md`
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs`, `PLAN.md`
+
+**Interfaces:**
+- Consumes: `audit_tools::{parse_citation, resolve_source, Resolution, enclosing_rust_item, enclosing_c_function, enclosing_rust_impl, c_step_comments}`; the `anchor-citations` binary; both header markers.
+- Produces: thirteen checklists carrying both markers. Nothing consumes them but the gates.
+
+- [ ] **Step 1: Anchor all thirteen**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo run -p audit-tools --bin anchor-citations -- --write \
+  docs/audits/mapmerge/slamap.md docs/audits/mapmerge/specmap.md \
+  docs/audits/mapmerge/timemap.md docs/audits/mapmerge/wcsmap.md \
+  docs/audits/mapmerge/grismmap.md docs/audits/mapmerge/polymap.md \
+  docs/audits/mapmerge/chebymap.md docs/audits/mapmerge/lutmap.md \
+  docs/audits/mapmerge/pcdmap.md docs/audits/mapmerge/mathmap.md \
+  docs/audits/mapmerge/splinemap.md docs/audits/mapmerge/dssmap.md \
+  docs/audits/mapmerge/unitnormmap.md \
+  2>&1 | tee /tmp/anchor-groupB.txt | tail -40
+git diff --stat docs/audits/mapmerge/
+```
+
+Re-anchor by hand every citation the tool reported, reading the construct the row's `C step` cell names.
+`slamap.md` and `specmap.md` are the two largest and cite long conversion tables; a row that cites a table entry rather than a function body is one the tool cannot anchor, and its correct citation is the function that consumes the table.
+
+- [ ] **Step 2: Add the extension-point column**
+
+```bash
+python3 - <<'PY'
+import re, pathlib, sys
+SEAMS = {
+    "MapMerge", "Transform", "Simplify", "Equal", "MapSplit", "Match",
+    "SubFrame", "Overlay", "RegPins", "RegBaseMesh", "RegBaseBox",
+    "GetDefUnc", "RegBaseGrid", "ResolvePoints", "RegCentre", "MapList",
+    "Rate",
+}
+CEREMONY = (
+    "check the global error status", "local variables", "initialise the returned",
+    "initialise", "annul", "free", "obtain a pointer", "return the result",
+    "attribute", "dump", "load", "validate the",
+)
+for name in sys.argv[1:]:
+    p = pathlib.Path(name)
+    lines = p.read_text().split("\n")
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith("| # |"):
+            out.append(line.replace("| Rust site |", "| Rust site | extension point |"))
+            continue
+        if re.fullmatch(r"\|(\s*-+\s*\|)+", s) and s.count("|") == 6:
+            out.append(line[: line.rindex("|---|")] + "|---|---|")
+            continue
+        cells = s.split("|")
+        if len(cells) == 7 and cells[1].strip().isdigit():
+            fn = re.search(r"\(fn (\w+)\)", cells[3])
+            step = cells[2].strip().lower()
+            arch = bool(fn) and fn.group(1) in SEAMS and not any(
+                step.startswith(c) for c in CEREMONY
+            )
+            cells.insert(5, " architecture " if arch else " ceremony ")
+            out.append("|".join(cells))
+            continue
+        out.append(line)
+    p.write_text("\n".join(out))
+    print(f"{p.name}: classified")
+PY
+```
+
+Run it over the thirteen, then read the diff.
+The recurring hand corrections in this group:
+
+- `SpecMap`, `SlaMap` and `TimeMap` rows citing a conversion helper (`SpecAdd`, `SlaAdd`, `TimeAdd`) rather than `MapMerge`: the helper is called only from the class's own seam, so the step is `architecture`.
+- `PolyMap` and `ChebyMap` rows citing the iterative-inverse machinery: `architecture`, because `Transform` is a vtab slot the generic transform driver dispatches to.
+- `LutMap` row 24 and any other clear-on-set row: `ceremony`, per `CLAUDE.md` on attribute string dispatch.
+
+- [ ] **Step 3: Close `lutmap.md`'s gap row**
+
+Cluster 5's Task 23 added the setter. The row becomes:
+
+```
+| 24 | Setting or clearing LutInterp or LutEpsilon clears the simplified record | lutmap.c:1793-1796 (fn SetAttrib), and :120 | lutmap.rs:97-105 (fn set_lut_epsilon) | ceremony | ported |
+```
+
+Check the cited Rust line against the setter cluster 5 actually landed before writing it — the number here is the one in the tree, not a guess:
+
+```bash
+grep -n 'fn set_lut_epsilon\|fn set_lut_interp\|fn clear_lut' crates/ast-core/src/mappings/lutmap.rs
+```
+
+- [ ] **Step 4: Record ChebyMap's deferral in its front matter**
+
+`chebymap.md` keeps its three `divergence:` rows, and its header states why the file is repaired while the class's simplification is not:
+
+```
+ChebyMap simplification is deferred: C's own `MapMerge` reduction mirrors
+PolyMap's and loses the Chebyshev domain scaling, so reproducing it would
+reproduce the defect. The reduction is marked in
+`ChebyMap::map_merge` and tracked at `PLAN.md` §10.2; rows 9-11 carry
+`divergence:` verdicts citing `docs/issues/c-library-quirks.md`.
+```
+
+The marker on this file therefore claims the citations and classifications are right, which is all it claims.
+
+- [ ] **Step 5: Add both markers and answer the gates**
+
+Add to each of the thirteen headers, after the `Audited:` lines:
+
+```
+Citations: verified against pin 3e60abaa
+Extension points: classified
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateB.txt | tail -40
+```
+
+Fix each failure at the row it names — re-anchor a rotted citation, correct a misclassified row, add a missing row for an uncovered C step, or list the step under `Uncited C steps:` with a reason.
+Re-run until PASS.
+
+- [ ] **Step 6: Drop the ledger count to ten**
+
+```rust
+    (
+        "docs/audits/mapmerge/*.md",
+        "CHECKLISTS_UNREPAIRED",
+        10,
+        "audit checklists not yet citation-verified and extension-point \
+         classified — the four gates in test_audit_citations.rs check a \
+         checklist once its header declares both. Zero at cluster 7, when the \
+         markers become mandatory",
+    ),
+```
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("PLAN.md")
+t = p.read_text()
+old = "| audit checklists | 37 | 23 |"
+new = "| audit checklists | 37 | 10 |"
+assert t.count(old) == 1
+p.write_text(t.replace(old, new, 1))
+PY
+```
+
+- [ ] **Step 7: Verify and commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+  --test test_verification_ledger 2>&1 | tail -12
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+git add -A crates/ast-core docs/audits/mapmerge PLAN.md
+git commit -F - <<'MSG'
+audit: repair the thirteen conversion and distortion checklists
+
+SlaMap, SpecMap, TimeMap, WcsMap, GrismMap, PolyMap, ChebyMap, LutMap, PcdMap,
+MathMap, SplineMap, DssMap and UnitNormMap are anchored against the current
+pin, classified by the H1 extension-point test, and opted into the four gates.
+
+lutmap.md row 24 was the audit's only row-level gap; cluster 5 landed the
+setter it was waiting for, so it now reads `ported` and cites it. chebymap.md
+keeps its three `divergence:` verdicts and states the §10.2 deferral in its
+front matter, so the marker claims what it can: the citations and the
+classifications, not a simplification the port deliberately does not perform.
+
+CHECKLISTS_UNREPAIRED falls 23 -> 10.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+### Task 29: the ten Region and Frame checklists, and the row goes
+
+The last group is the Region seams plus the one Frame checklist: `region_interval`, `region_box_region`, `region_prism`, `region_mod`, `region_cmpregion`, `region_nullregion`, `region_pointlist`, `region_ellipse`, `region_circle` and `frame_frameset` — 282 rows, 259 Rust citations, 313 C citations.
+Phase 0 already repaired `sphmap.md` and `region_polygon.md`, which is why the three groups come to 35 rather than 37.
+
+With these done, every checklist declares both markers, so this task removes the escape rather than decrementing it: `is_repaired` becomes unconditionally true, a new gate says it must stay that way, and `CHECKLISTS_UNREPAIRED` leaves the ledger and `PLAN.md` §6 entirely.
+A checklist added later arrives gated.
+
+This task also closes the three unasserted skip modes in `test_simplify_regression`.
+They are all no-ops today — the harness prints `468 passed, 0 skipped (file absent), 0 skipped (parse — unported class or gap)` — which is exactly why now is when they can be closed without licensing anything.
+A skip mode that reads zero is one nobody has to argue about; left in place it is the mechanism by which a future regression passes quietly.
+
+**Files:**
+- Modify: `docs/audits/mapmerge/region_interval.md`, `region_box_region.md`, `region_prism.md`, `region_mod.md`, `region_cmpregion.md`, `region_nullregion.md`, `region_pointlist.md`, `region_ellipse.md`, `region_circle.md`, `frame_frameset.md`
+- Modify: `crates/ast-core/tests/test_audit_citations.rs` (two gates added)
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs:178-181`, `:221`, `:459-467`, `:628`
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs` (row removed)
+- Modify: `PLAN.md` (§6 row removed, §9.5 closed)
+
+**Interfaces:**
+- Consumes: `audit_tools::{parse_citation, resolve_source, Resolution}`; `checklists()`, `is_repaired`, `row_cells` from Task 3; the `anchor-citations` binary.
+- Produces:
+  - `fn every_checklist_declares_both_markers()` — the gate that makes the markers mandatory.
+  - `fn no_row_is_left_at_gap()` — no checklist row may carry a `gap:` verdict.
+  - A `simplify_regression` with no unasserted skip mode.
+  - Nothing consumes these; they are terminal gates.
+
+- [ ] **Step 1: Anchor all ten**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo run -p audit-tools --bin anchor-citations -- --write \
+  docs/audits/mapmerge/region_interval.md docs/audits/mapmerge/region_box_region.md \
+  docs/audits/mapmerge/region_prism.md docs/audits/mapmerge/region_mod.md \
+  docs/audits/mapmerge/region_cmpregion.md docs/audits/mapmerge/region_nullregion.md \
+  docs/audits/mapmerge/region_pointlist.md docs/audits/mapmerge/region_ellipse.md \
+  docs/audits/mapmerge/region_circle.md docs/audits/mapmerge/frame_frameset.md \
+  2>&1 | tee /tmp/anchor-groupC.txt | tail -40
+git diff --stat docs/audits/mapmerge/
+```
+
+Re-anchor by hand each citation the tool reports.
+Clusters 1 and 3 moved code in `regions/mod.rs`, `regions/box_region.rs` and `regions/prism.rs`, so some of these rows rotted during this plan rather than before it; the fix is the same either way — cite the construct the row's `C step` cell describes.
+
+`region_mod.md`'s rows are the shared parent `Region::Simplify`, and many per-class rows in the other nine legitimately cite `regions/mod.rs` too, because that is where the step lives in Rust.
+Cite the shared function; the verdict stays `ported`, since the step is present, just not duplicated per class.
+
+- [ ] **Step 2: Add the extension-point column**
+
+```bash
+python3 - <<'PY'
+import re, pathlib, sys
+SEAMS = {
+    "MapMerge", "Transform", "Simplify", "Equal", "MapSplit", "Match",
+    "SubFrame", "Overlay", "RegPins", "RegBaseMesh", "RegBaseBox",
+    "GetDefUnc", "RegBaseGrid", "ResolvePoints", "RegCentre", "MapList",
+    "Rate",
+}
+CEREMONY = (
+    "check the global error status", "local variables", "initialise the returned",
+    "initialise", "annul", "free", "obtain a pointer", "return the result",
+    "attribute", "dump", "load", "validate the",
+)
+for name in sys.argv[1:]:
+    p = pathlib.Path(name)
+    lines = p.read_text().split("\n")
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith("| # |"):
+            out.append(line.replace("| Rust site |", "| Rust site | extension point |"))
+            continue
+        if re.fullmatch(r"\|(\s*-+\s*\|)+", s) and s.count("|") == 6:
+            out.append(line[: line.rindex("|---|")] + "|---|---|")
+            continue
+        cells = s.split("|")
+        if len(cells) == 7 and cells[1].strip().isdigit():
+            fn = re.search(r"\(fn (\w+)\)", cells[3])
+            step = cells[2].strip().lower()
+            arch = bool(fn) and fn.group(1) in SEAMS and not any(
+                step.startswith(c) for c in CEREMONY
+            )
+            cells.insert(5, " architecture " if arch else " ceremony ")
+            out.append("|".join(cells))
+            continue
+        out.append(line)
+    p.write_text("\n".join(out))
+    print(f"{p.name}: classified")
+PY
+```
+
+Run it over the ten and read the diff.
+The Region seams are where the H1 test earns its keep, so expect to correct these by hand:
+
+- A row citing `RegPins`, `RegBaseMesh`, `RegBaseBox`, `RegBaseGrid`, `RegCentre`, `GetDefUnc` or `ResolvePoints` is `architecture` — every one of those is a vtab slot the shared `Region` driver dispatches to per class, and collapsing any of them into a central match is the mistake H1 names.
+- `region_mod.md`'s own rows are the driver, not a dispatch target: a step that *calls* a seam is `architecture` (the driver's control flow is the thing that must be portable), while its status checks and pointer bookkeeping are `ceremony`.
+- `frame_frameset.md`'s `SubFrame`, `Overlay` and `Match` rows are `architecture` for the same reason.
+- Rows describing the `Closed` / `Negated` boundary rule are `architecture`: the rule lives in `reg_base_inside`, which the mesh and pin seams both consult.
+
+- [ ] **Step 3: Add both markers to the ten and run the gates**
+
+Add after each `Audited:` line:
+
+```
+Citations: verified against pin 3e60abaa
+Extension points: classified
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateC.txt | tail -40
+```
+
+All four gates now run on all 37 files.
+Fix each reported row where it is reported; add an `Uncited C steps:` entry with a reason for any comment that is not a step.
+Re-run until PASS.
+
+- [ ] **Step 4: Write the failing gate that makes the markers mandatory**
+
+Append to `crates/ast-core/tests/test_audit_citations.rs`:
+
+```rust
+/// Every checklist declares both markers, so the four gates above have no
+/// checklist they silently skip.
+///
+/// Until cluster 7 the markers were opt-in and the ledger counted the files
+/// that had not opted in. Now they are the entry condition: a checklist added
+/// later fails here until its citations are anchored to the current pin and its
+/// rows classified, which is the point at which its claims become checkable.
+#[test]
+fn every_checklist_declares_both_markers() {
+    let mut missing = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if !text.contains(REPAIRED) {
+            missing.push(format!("{name}: no `{REPAIRED}` line"));
+        }
+        if !text.contains(CLASSIFIED) {
+            missing.push(format!("{name}: no `{CLASSIFIED}` line"));
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "checklists that opt out of the citation gates:\n  {}\n\
+         Anchor the citations against the current pin and classify each row's \
+         extension point, then declare both markers.",
+        missing.join("\n  ")
+    );
+}
+
+/// No checklist row may record a gap.
+///
+/// A `gap:` verdict says the C step has no Rust counterpart, which is the
+/// condition this plan exists to remove. The permitted verdicts are `ported`,
+/// `n/a: <reason>`, `divergence: <quirks citation>` and `unreachable: <gate>` —
+/// each of which says the behaviour is accounted for.
+#[test]
+fn no_row_is_left_at_gap() {
+    let mut gaps = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for (i, line) in text.lines().enumerate() {
+            let Some(cells) = row_cells(line) else {
+                continue;
+            };
+            let verdict = cells.last().map(|c| c.trim()).unwrap_or("");
+            if verdict.starts_with("gap:") {
+                gaps.push(format!("{name}:{}: {verdict}", i + 1));
+            }
+        }
+    }
+    assert!(
+        gaps.is_empty(),
+        "checklist rows still recording a gap:\n  {}",
+        gaps.join("\n  ")
+    );
+}
+```
+
+```bash
+cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
+```
+
+Expected: both PASS — Task 27 and Task 28 added the markers to their 25 files, this task's Step 3 added the last ten, and Task 28 flipped `lutmap.md` row 24 off `gap`.
+If `no_row_is_left_at_gap` fails on `lutmap.md`, Task 28's Step 3 was skipped; do it rather than relax the gate.
+
+The one `gap` left in the audit machinery is not a checklist row: `C_SIMPLIFY_SEAMS` in `test_mapmerge_audit.rs` maps `cmpframe.c` to `gap: PLAN.md §9.6`, and cluster 4's Task 30 is what settles it.
+`verdict_is_valid` therefore still accepts the `gap: PLAN.md ` form; leave it accepting, because removing it here would make Task 30's starting state uncompilable.
+
+- [ ] **Step 5: Remove the ledger row**
+
+Delete the `CHECKLISTS_UNREPAIRED` entry from `LEDGER` in `crates/ast-core/tests/test_verification_ledger.rs`.
+The marker is not one of `MARKERS`, so `no_relaxation_hides_outside_the_ledger` does not require an entry for it — the row existed to keep a count visible while it was nonzero, and a zero row invites the reading that something is still licensed.
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("crates/ast-core/tests/test_verification_ledger.rs")
+t = p.read_text()
+start = t.index('        "docs/audits/mapmerge/*.md",')
+# Back up to the opening paren of the tuple, forward to the line after its close.
+open_paren = t.rindex("    (\n", 0, start)
+close = t.index("    ),\n", start) + len("    ),\n")
+p.write_text(t[:open_paren] + t[close:])
+print("removed the CHECKLISTS_UNREPAIRED ledger row")
+PY
+python3 - <<'PY'
+import re
+from pathlib import Path
+p = Path("PLAN.md")
+t = p.read_text()
+rows = [l for l in t.split("\n") if l.startswith("| audit checklists |")]
+assert len(rows) == 1, rows
+t = t.replace(rows[0] + "\n", "", 1)
+p.write_text(t)
+print("removed the §6 row")
+PY
+cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -8
+```
+
+Expected: PASS. `every_relaxation_is_the_size_the_ledger_says` iterates `LEDGER`, so a removed row is simply not checked, and the new gate in Step 4 is what holds the invariant now.
+
+- [ ] **Step 6: Write the failing assertions for the three skip modes**
+
+`test_simplify_regression` currently reports its skips and passes regardless.
+Add the assertions at the end of `simplify_regression`, replacing the lone `assert!(passed > 0, …)` floor:
+
+```rust
+    // Every case is accounted for: passed, or counted as a failure. A skip
+    // would be a case that neither passed nor failed, which is what the three
+    // assertions below rule out.
+    assert_eq!(
+        skipped_missing, 0,
+        "{skipped_missing} manifest cases have no fixture file. The corpus is \
+         committed, so a missing fixture is a broken checkout or a manifest \
+         entry added without its data — not a case to pass over."
+    );
+    assert_eq!(
+        parse_skipped, 0,
+        "{parse_skipped} fixtures failed to parse. A fixture the reader cannot \
+         load is an unported class or a read-path gap, and either way it is a \
+         failure of this gate rather than a case outside it."
+    );
+    assert!(
+        passed >= 468,
+        "only {passed} cases passed; the corpus held 468 at cluster 7 and \
+         fixtures are only ever added. A drop means cases stopped being run, \
+         which no failure count would show."
+    );
+```
+
+And the missing-manifest early return at `:178-181` becomes an assertion:
+
+```rust
+    assert!(
+        manifest.exists(),
+        "{} not found. The manifest is committed; its absence is a broken \
+         checkout, not a reason for this gate to pass.",
+        manifest.display()
+    );
+```
+
+- [ ] **Step 7: Prove each assertion can fail**
+
+An assertion that cannot fail is the thing it replaced. Check all three by hand, reverting each after:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+
+# 1. Missing manifest.
+mv crates/ast-core/tests/fixtures/simplify_fixtures/simplify_tests.txt /tmp/mt.txt
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -c 'not found'
+mv /tmp/mt.txt crates/ast-core/tests/fixtures/simplify_fixtures/simplify_tests.txt
+
+# 2. Missing fixture file.
+F=$(ls crates/ast-core/tests/fixtures/simplify_fixtures/*.map | head -1)
+mv "$F" /tmp/one.map
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'have no fixture|passed'
+mv /tmp/one.map "$F"
+
+# 3. Unparseable fixture.
+cp "$F" /tmp/one.map && printf 'Begin Garbage\n' > "$F"
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'failed to parse|passed'
+cp /tmp/one.map "$F"
+
+# Back to green.
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -6
+```
+
+Expected: each of the three fails the test with its own message, and the restore returns it to `468 passed, 0 skipped (file absent), 0 skipped (parse …)`.
+If case 3 produces a *parse* count of zero and a failure instead, the reader classifies a malformed header as a read failure rather than a parse skip — that is a stricter behaviour than the assertion demands, so record it in the comment and keep the assertion, which still holds for the paths that do set `parse_skipped`.
+
+The two remaining named exclusions in this harness, `SERIAL_UNGATED` (6 rows) and `NO_ISSIMP_CARD_UNGATED` (1), stay as they are: they are named, per-case, and counted in the ledger, which is the shape the rules ask for.
+
+- [ ] **Step 8: Close `PLAN.md` §9.5**
+
+The section exists because 255 of 257 `simplify.rs` citations had rotted and no gate said so. All 37 checklists are now anchored against pin `3e60abaa` and four gates hold it.
+Replace §9.5's body with its resolution, keeping the warning that made it expensive, because the next pin move will need it:
+
+```markdown
+### 9.5 Audit checklist citations — CLOSED (cluster 7)
+
+All 37 checklists in `docs/audits/mapmerge/` are anchored against pin
+`3e60abaa` and declare `Citations: verified against pin 3e60abaa` and
+`Extension points: classified`.
+Four gates in `crates/ast-core/tests/test_audit_citations.rs` hold it: each
+citation resolves to exactly one file, names the item it claims, every
+architecture row lands on a trait method, and every C step comment inside a
+cited body is covered by a row or named under `Uncited C steps:`.
+`every_checklist_declares_both_markers` makes the markers the entry condition,
+so a checklist added later is gated on arrival.
+
+Citations are resolved by unique path suffix, not basename: `simplify.rs` has
+two candidates in this tree and `mod.rs` has thirteen, so citations name
+`mappings/simplify.rs` and `regions/mod.rs`.
+
+**When the pin moves**, re-anchor with
+`cargo run -p audit-tools --bin anchor-citations -- --write docs/audits/mapmerge/*.md`
+and hand-check every row the tool cannot anchor. Do not remap mechanically by
+text similarity: that was tried, and it relocated 25 rows confidently wrong,
+which is how the rot went unnoticed in the first place. Update the pin in both
+marker lines in the same commit range, so a checklist never claims a pin it was
+not checked against.
+```
+
+- [ ] **Step 9: Run everything the sweep touches, format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+  --test test_verification_ledger --test test_simplify_regression \
+  --test test_transform_oracle 2>&1 | tail -20
+cargo test -p audit-tools 2>&1 | tail -5
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+```
+
+Expected: all green, `simplify_regression` still `468 passed`, and the audit gates now covering 37 files.
+
+```bash
+git add -A crates/ast-core crates/audit-tools docs/audits/mapmerge PLAN.md
+git commit -F - <<'MSG'
+audit: repair the ten Region and Frame checklists, and make the markers mandatory
+
+Interval, Box, Prism, the shared Region driver, CmpRegion, NullRegion,
+PointList, Ellipse, Circle and FrameSet are anchored against the current pin
+and classified. All 37 checklists now declare both markers, so
+CHECKLISTS_UNREPAIRED has nothing to count: the row leaves the ledger and
+PLAN.md §6, and `every_checklist_declares_both_markers` makes the markers the
+entry condition instead -- a checklist added later is gated on arrival.
+`no_row_is_left_at_gap` holds the row verdicts.
+
+simplify_regression's three skip modes are closed. A missing manifest, a
+manifest case with no fixture, and a fixture that fails to parse were all
+printed and passed over; each is now an assertion, and each was checked by
+hand to fail. They read zero today, which is why they can be closed without
+licensing anything -- left in place they were the route by which a future
+regression would pass quietly.
+
+PLAN.md §9.5 is closed, keeping the instruction that the next pin move
+re-anchors with the tool and hand-checks what it cannot anchor. Mechanical
+remapping by text similarity relocated 25 rows confidently wrong.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+- [ ] **Step 10: Confirm the sweep is complete**
+
+```bash
+grep -L 'Citations: verified against pin 3e60abaa' docs/audits/mapmerge/*.md
+grep -c 'gap:' docs/audits/mapmerge/*.md | grep -v ':0'
+grep -rn 'CHECKLISTS_UNREPAIRED' crates docs PLAN.md
+```
+
+Expected: the first prints only `README.md`; the second prints nothing; the third prints nothing.
