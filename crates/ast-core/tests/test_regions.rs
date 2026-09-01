@@ -4009,3 +4009,29 @@ fn parallel_merge_scales_fill_factor() {
     assert!(region.test_fill_factor(), "merged FillFactor should be set");
     assert!((region.fill_factor() - 0.4).abs() < 1e-12);
 }
+
+/// An axis unbounded above gets a zero-width default uncertainty, as C does for
+/// any axis whose bound is ±DBL_MAX (`region.c:3564`). Testing for the bad value
+/// alone catches only the lower bound, because AST__BAD *is* -DBL_MAX while
+/// +DBL_MAX is an ordinary finite number.
+#[test]
+fn an_axis_unbounded_above_gets_a_zero_width_default_uncertainty() {
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    // No upper limit: `reg_base_box2` reports `ubnd = +DBL_MAX` for this axis.
+    let interval = IntervalBuilder::new(frame, vec![0.0], vec![BAD_VALUE])
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = interval.reg_base_box2().unwrap();
+    assert_eq!(lbnd[0], 0.0);
+    assert_eq!(ubnd[0], f64::MAX);
+
+    let unc = interval.default_bounding_box_unc().unwrap();
+    let (ulbnd, uubnd) = unc.reg_base_box2().unwrap();
+    assert_eq!(
+        (ulbnd[0], uubnd[0]),
+        (0.0, 0.0),
+        "an axis unbounded above must get both default-uncertainty bounds zeroed"
+    );
+}

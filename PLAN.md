@@ -1317,36 +1317,33 @@ and inverted, the second collapses to a single `ZoomMap` with `Zoom = 10` once
 the exposed component merges with its neighbour — and both are byte-exact in the
 port.
 
-### 10.12 `GetDefUnc`'s unbounded-axis guard misses the upper bound
+### 10.12 `GetDefUnc`'s unbounded-axis guard missed the upper bound — FIXED
 
 `region.c:3560-3573` builds the default uncertainty as a Box covering 1.0E-6 of
 the Region's base-Frame bounding box, and skips any axis whose bound is
 `±DBL_MAX`, setting both output bounds to zero for it.
 
-The port's guard (`regions/mod.rs:466`) is
-`!is_bad(ubnd[i]) && !is_bad(lbnd[i])`, and `is_bad(v)` is
+The port's guard was `!is_bad(ubnd[i]) && !is_bad(lbnd[i])`, and `is_bad(v)` is
 `v == BAD_VALUE || !v.is_finite()` (`mappings/helpers/mod.rs:11-13`) with
-`BAD_VALUE == -f64::MAX`.
+`BAD_VALUE == -f64::MAX`. That catches an unbounded *lower* bound, which is
+`-f64::MAX` and therefore `BAD_VALUE`. It did not catch an unbounded *upper*
+bound: `f64::MAX` is finite and is not `BAD_VALUE`, so the axis took the bounded
+branch and received a half-width of roughly `0.5e-6 * f64::MAX`, about 9e301,
+where C gives it zero.
 
-That catches an unbounded *lower* bound, which is `-f64::MAX` and therefore
-`BAD_VALUE`. It does not catch an unbounded *upper* bound: `f64::MAX` is finite
-and is not `BAD_VALUE`, so the axis takes the bounded branch and receives a
-half-width of roughly `0.5e-6 * f64::MAX`, about 9e301, where C gives it zero.
+`regions/mod.rs:471` now carries C's asymmetric test as it stands —
+`ubnd[i] != f64::MAX && lbnd[i] != -f64::MAX` — alongside the `is_bad` handling
+the surrounding code needs. The magnitude form (`ubnd[i].abs() == f64::MAX`)
+would have been wrong in the other direction: C takes the bounded branch for
+`lbnd[i] == +DBL_MAX`.
 
-The correct test is against `f64::MAX` in magnitude, as `Interval` already does
-for its own bounds (`interval.rs:160-163`).
-
-Reachability today is limited: `default_bounding_box_unc` is the base-class rule,
-and Interval, NullRegion, Prism and CmpRegion — the Regions that can be unbounded
-— all override `get_def_unc`. The Regions that use the base rule (Box, Circle,
-Ellipse, Polygon, PointList) have finite bounds. So the defect is latent rather
-than active.
-
-What would expose it: a Region using the base rule whose `reg_base_box2` returns
-`f64::MAX` on an axis, or a direct unit test on `default_bounding_box_unc` with
-such a box. The second is the cheaper gate and is worth adding regardless of
-whether the first is currently reachable, because the guard is wrong on its own
-terms.
+The gate is `an_axis_unbounded_above_gets_a_zero_width_default_uncertainty` in
+`crates/ast-core/tests/test_regions.rs`, which builds a one-axis `Interval` with
+no upper limit, confirms `reg_base_box2` reports `+f64::MAX` for it, and asserts
+both default-uncertainty bounds are zero. Before the fix it measured a half-width
+of about 9e307; the guard is wrong on its own terms whether or not a Region using
+the base rule can reach an unbounded axis today, so the direct unit test is the
+gate rather than a fixture.
 
 ### 10.13 Box's PermMap simplification branch is unported
 

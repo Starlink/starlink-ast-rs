@@ -463,7 +463,12 @@ pub trait Region: Frame + Mapping {
         let nax = lbnd.len();
         let bfrm = self.get_region_frameset().base().snapshot();
         for i in 0..nax {
-            if !is_bad(ubnd[i]) && !is_bad(lbnd[i]) {
+            // C tests the two bounds asymmetrically (`region.c:3564`): an axis is
+            // unbounded when its upper bound is `+DBL_MAX` or its lower bound is
+            // `-DBL_MAX`. `AST__BAD` *is* `-DBL_MAX`, so `is_bad(lbnd[i])` already
+            // covers the lower half; the upper half needs its own test because
+            // `+DBL_MAX` is an ordinary finite number.
+            if !is_bad(ubnd[i]) && !is_bad(lbnd[i]) && ubnd[i] != f64::MAX && lbnd[i] != -f64::MAX {
                 let mut hw = (0.5e-6 * (ubnd[i] - lbnd[i])).abs();
                 let c = 0.5 * (ubnd[i] + lbnd[i]);
                 if hw == 0.0 {

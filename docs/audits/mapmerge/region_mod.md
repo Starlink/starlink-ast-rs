@@ -12,7 +12,7 @@ uncertainty Region if that stays stable across the Region's extent; and
 The Rust counterparts are `parent_region_simplify` (`regions/mod.rs:890-1003`) —
 which every concrete Region's `simplified` calls first, matching C where every
 subclass `Simplify` calls the parent — and `default_bounding_box_unc`
-(`regions/mod.rs:461-483`) behind `get_def_unc` (`regions/mod.rs:489`).
+(`regions/mod.rs:461-485`) behind `get_def_unc` (`regions/mod.rs:494`).
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
@@ -46,12 +46,12 @@ subclass `Simplify` calls the parent — and `default_bounding_box_unc`
 | 28 | Return the result | region.c:11326-11327 | regions/mod.rs:1002 | ported |
 | 29 | `GetDefUnc`: get the base Frame and its axis count | region.c:3544-3549 | regions/mod.rs:463-464 | ported |
 | 30 | Get the base-Frame bounding box, honouring that `astRegBaseBox` assumes an un-negated Region | region.c:3550-3559 | regions/mod.rs:462 | ported |
-| 31 | Build a Box covering 1.0E-6 of that bounding box, centred on its centre | region.c:3560-3566 | regions/mod.rs:465-473 | ported |
-| 32 | Fall back to a half-width of `c * 0.5E-6` when the box is degenerate on an axis | region.c:3567 | regions/mod.rs:469-471 | ported |
-| 33 | Set both bounds to zero on an axis whose bound is `±DBL_MAX` | region.c:3568-3573 | regions/mod.rs:466,474-477 | gap: PLAN.md §10.12 |
-| 34 | Create the Box in the base Frame | region.c:3574-3577 | regions/mod.rs:479-482 | ported |
+| 31 | Build a Box covering 1.0E-6 of that bounding box, centred on its centre | region.c:3560-3566 | regions/mod.rs:465,472-478 | ported |
+| 32 | Fall back to a half-width of `c * 0.5E-6` when the box is degenerate on an axis | region.c:3567 | regions/mod.rs:474-476 | ported |
+| 33 | Set both bounds to zero on an axis whose bound is `±DBL_MAX` | region.c:3568-3573 | regions/mod.rs:471,479-482 | ported |
+| 34 | Create the Box in the base Frame | region.c:3574-3577 | regions/mod.rs:484 | ported |
 | 35 | Free resources and return NULL on error | region.c:3578-3585 | -- | n/a: owned values are dropped and an error is a `Result::Err` |
-| 36 | Return the Box | region.c:3586-3587 | regions/mod.rs:482 | ported |
+| 36 | Return the Box | region.c:3586-3587 | regions/mod.rs:484 | ported |
 
 ## Row 23 — the tolerance is C's, and C's comment understates it
 
@@ -61,17 +61,17 @@ that the figure is arbitrary; 0.005 of the sum of two widths is nearer 0.5% of
 their mean. The port uses `0.005` and records both the constant and C's wording,
 so the arithmetic follows C rather than C's comment.
 
-## Row 33 — the upper-bound guard does not catch an unbounded axis
+## Row 33 — the guard has to test the two bounds asymmetrically
 
-C skips an axis whose bound is `±DBL_MAX`, setting both output bounds to zero.
-The port's guard is `!is_bad(ubnd[i]) && !is_bad(lbnd[i])`, and
-`is_bad(v)` is `v == BAD_VALUE || !v.is_finite()` (`mappings/helpers/mod.rs:11-13`)
-with `BAD_VALUE == -f64::MAX`.
+C skips an axis whose upper bound is `+DBL_MAX` or whose lower bound is
+`-DBL_MAX`, setting both output bounds to zero. `is_bad(v)` is
+`v == BAD_VALUE || !v.is_finite()` (`mappings/helpers/mod.rs:11-13`) with
+`BAD_VALUE == -f64::MAX`, so an `is_bad` test on its own covers only the lower
+half; `+f64::MAX` is an ordinary finite number and takes the bounded branch,
+where it earns a half-width of about `0.5e-6 * f64::MAX`.
 
-So the *lower* case is caught, because an unbounded lower bound is `-f64::MAX`
-which is `BAD_VALUE`. The *upper* case is not: an unbounded upper bound is
-`f64::MAX`, which is finite and is not `BAD_VALUE`, so the axis takes the bounded
-branch and gets a half-width of about `0.5e-6 * f64::MAX`. See PLAN.md §10.12.
+The port carries C's test in the same asymmetric form. A magnitude test would
+diverge for `lbnd == +DBL_MAX`, where C is bounded.
 
 ## Row 11 — re-centring is what makes a sliced Region's uncertainty usable
 
