@@ -141,42 +141,6 @@ struct SimplifyGuard {
 
 thread_local! {
     static SIMPLIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    /// Re-entrancy depth of the public `Mapping::simplify` entry point.
-    /// Some internal simplification steps (e.g. the WinMap parallel-CmpMap
-    /// distribution probe in `winmap_merge.rs`) call the public `simplify`
-    /// recursively; this counter lets the final top-level cleanup passes run
-    /// only at the outermost call.
-    static PUBLIC_SIMPLIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// RAII guard that tracks re-entrancy of the public `Mapping::simplify`
-/// entry point. `is_outermost()` is true only for the first (outermost)
-/// active call on this thread.
-pub(crate) struct PublicSimplifyGuard {
-    outermost: bool,
-}
-
-impl PublicSimplifyGuard {
-    /// Enter the public simplify entry, incrementing the depth counter.
-    pub(crate) fn enter() -> Self {
-        let outermost = PUBLIC_SIMPLIFY_DEPTH.with(|d| {
-            let cur = d.get();
-            d.set(cur + 1);
-            cur == 0
-        });
-        Self { outermost }
-    }
-
-    /// Whether this is the outermost active public simplify call.
-    pub(crate) fn is_outermost(&self) -> bool {
-        self.outermost
-    }
-}
-
-impl Drop for PublicSimplifyGuard {
-    fn drop(&mut self) {
-        PUBLIC_SIMPLIFY_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
-    }
 }
 
 impl SimplifyGuard {
@@ -5295,6 +5259,36 @@ mod tests {
             out.as_any().is::<UnitMap>(),
             "expected a UnitMap from a unit-factor ZoomMap"
         );
+    }
+
+    /// A unit-scale WinMap becomes a ShiftMap wherever it sits, because the
+    /// narrowing is `win_map_merge`'s closing step (`winmap.c:1820-1822`) and
+    /// the nominate loop reaches it for a parallel component too.
+    ///
+    /// The PermMap sibling is the discriminating part: it cannot merge with the
+    /// WinMap, so the WinMap survives into the reconstructed tree and the
+    /// narrowing has to have happened while it was nominated rather than as a
+    /// side effect of a series merge.
+    #[test]
+    fn unit_scale_winmap_in_a_parallel_branch_narrows_to_a_shiftmap() {
+        use crate::mappings::{PermMap, WinMap};
+
+        let win = WinMap::new(&[3.0], &[1.0]).expect("unit-scale WinMap constructs");
+        let perm = PermMap::new(&[1, 2], &[2, 1], &[]).expect("axis-swap PermMap constructs");
+        let par = CmpMap::new(Box::new(win), Box::new(perm), Composition::Parallel)
+            .expect("parallel CmpMap constructs");
+
+        let out = <dyn Mapping>::simplify(&par).expect("simplify succeeds");
+        let cm = out
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .expect("still a parallel CmpMap");
+        let shift = cm
+            .first()
+            .as_any()
+            .downcast_ref::<ShiftMap>()
+            .expect("the unit-scale WinMap narrowed to a ShiftMap");
+        assert_eq!(shift.shifts(), &[3.0]);
     }
 
     /// A Mapping its own `map_merge` cannot reduce comes back unchanged rather

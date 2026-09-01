@@ -1562,31 +1562,29 @@ C leaves the CmpMap whole; the port collapses it to one ZoomMap.
 The same fixture with `Ident` on a Frame inside a FrameSet checks the Frame
 override, which must keep simplifying.
 
-### 10.22 The public entry performs two tree rewrites C's `astSimplify_` does not
+### 10.22 The public entry performs one tree rewrite C's `astSimplify_` does not
 
 `mapping.c:24755-24808` adds no algorithm: an `IsSimple` short-circuit, the
 `Simplify` call, the stamp, and the two flag clears of §10.20.
-`<dyn Mapping>::simplify` (`simplify_entry.rs:36-102`) also rewrites the result
-tree twice before returning it.
+`<dyn Mapping>::simplify` (`simplify_entry.rs:36-82`) also rewrites the result
+tree once before returning it.
 
 - `normalize_unitmap_children` (`cmpmap.rs:223`, called at
-  `simplify_entry.rs:74`) drops redundant `InvA`/`InvB` flags on a parallel
+  `simplify_entry.rs:70`) drops redundant `InvA`/`InvB` flags on a parallel
   CmpMap whose corresponding child is a UnitMap. It is load-bearing and measured:
   §10.15 records four `equal()` failures and two serialisation failures without
   it, and it is one of the two layers that reproduce C's inversion push-down.
-- `narrow_unit_scale_winmap_children` (`simplify_entry.rs:90`), gated on
-  `PublicSimplifyGuard::is_outermost()`, converts an all-unit-scale WinMap child
-  to a ShiftMap at the top level, standing in for C's final `winmap.c:1819` step
-  for a WinMap the nominate loop never nominated productively.
+- `narrow_unit_scale_winmap_children` — **FIXED**. The second rewrite converted
+  an all-unit-scale WinMap child to a ShiftMap at the outermost public call,
+  standing in for C's final `winmap.c:1819` step. It was measured dead at pin
+  `07fbe2dc` and deleted along with `PublicSimplifyGuard` and the method itself:
+  0 failing suites, the 453-fixture corpus at `0 equal() / 0 transform / 9
+  serialization / 1 other`, and all 194 `wcsconv` byte comparisons, identical
+  before and after. The narrowing happens where C does it, in `win_map_merge`'s
+  closing pass reached through `flatten`'s `defer_winmap`;
+  `unit_scale_winmap_in_a_parallel_branch_narrows_to_a_shiftmap`
+  (`simplify.rs`) holds that, using a PermMap sibling the WinMap cannot merge
+  with so the narrowing cannot be a side effect of a series merge.
 
-Measured at pin `07fbe2dc`, with the second call disabled: the whole `ast-core`
-suite is green — 98 test binaries, including the 453-fixture simplify corpus, all
-194 `wcsconv` byte comparisons and the native round-trip. Nothing in the corpus
-demands it any more, which is consistent with the narrowing having moved into
-`win_map_merge`'s final pass via `flatten`'s `defer_winmap`.
-
-Two ways to close this, and the choice is a measurement, not a preference: delete
-the call, or find the fixture that demands it and record it in the doc comment the
-way §10.15 requires of every surviving dump-shaping layer. Deleting it is
-preferred, because a layer nothing demands is a place where a correct change looks
-like a regression.
+The section stays open for `normalize_unitmap_children`, which §10.15 measured as
+load-bearing.
