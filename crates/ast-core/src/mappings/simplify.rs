@@ -2137,26 +2137,6 @@ fn compute_merge_parallel_pair_in_series(
     let mut any_improvement = false;
 
     for (sub1, sub2) in matched {
-        // Pre-merge length (sum of leaf counts) for the
-        // length-comparison heuristic below — total flat-leaf count
-        // of the two sublists before composition.
-        let pre_len: usize = sub1
-            .iter()
-            .map(|(m, _, _)| {
-                flatten(m.as_ref(), false, true)
-                    .map(|f| f.len())
-                    .unwrap_or(1)
-            })
-            .sum::<usize>()
-            + sub2
-                .iter()
-                .map(|(m, _, _)| {
-                    flatten(m.as_ref(), false, true)
-                        .map(|f| f.len())
-                        .unwrap_or(1)
-                })
-                .sum::<usize>();
-
         // Build parallel submaps from each sublist.
         let Ok(par1) = reconstruct(sub1, false) else {
             return None;
@@ -2170,31 +2150,19 @@ fn compute_merge_parallel_pair_in_series(
             return None;
         };
         let series_box: DynMapping = Box::new(series_map);
+        let pre_simplify_inverted = series_box.is_inverted();
 
         // Simplify the series combination.
-        let Ok(simplified) = simplify_mapping(series_box.as_ref()) else {
+        let Ok((simplified, changed)) = simplify_mapping_reporting_change(series_box.as_ref())
+        else {
             return None;
         };
 
-        // Check if simplification produced something different.
-        if !simplified.as_any().is::<CmpMap>() {
+        // C's `simpler` test (`cmpmap.c:1730-1734`): the simplified pair is a
+        // different object, or its orientation changed.
+        let new_inv = simplified.is_inverted();
+        if changed || new_inv != pre_simplify_inverted {
             any_improvement = true;
-        } else if let Some(cmp) = simplified.as_any().downcast_ref::<CmpMap>() {
-            // If still a CmpMap, check if it's structurally simpler:
-            // a non-series result or a simpler series (fewer components).
-            if cmp.composition() != Composition::Series {
-                any_improvement = true;
-            } else {
-                // Check if the simplified chain is shorter than the
-                // sum of pre-merge leaf counts. Mirrors C cmpmap.c:1726
-                // which marks `simpler = 1` whenever the simplified
-                // sub-chain pointer or invert state changed.
-                if let Ok(flat) = flatten(simplified.as_ref(), false, true) {
-                    if flat.len() < pre_len {
-                        any_improvement = true;
-                    }
-                }
-            }
         }
 
         // C keeps each pair's `astSimplify` result at whatever orientation it
@@ -2204,7 +2172,6 @@ fn compute_merge_parallel_pair_in_series(
         // with no reorientation). Normalise to the list invariant
         // (forward-stored + flags): effective == original == the result's
         // returned orientation.
-        let new_inv = simplified.is_inverted();
         let mut simplified = simplified;
         if new_inv {
             simplified.invert();
@@ -2270,26 +2237,17 @@ fn dimension_match_parallel_lists(
         }
 
         if out_accum == in_accum && out_accum > 0 {
-            // Match boundary found. Clone the sublists.
+            // Match boundary found. Clone the sublists. C accumulates them with
+            // `CombineMaps( …, 0, … )` (`cmpmap.c:1694-1712`), which combines the
+            // components as they stand; the one `astSimplify` is on the combined
+            // pair.
             let sub1: Vec<(DynMapping, bool, bool)> = par_list1[sub1_start..i1]
                 .iter()
-                .map(|(m, inv, orig)| {
-                    (
-                        m.simplify().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
-                        *inv,
-                        *orig,
-                    )
-                })
+                .map(|(m, inv, orig)| (m.clone_box(), *inv, *orig))
                 .collect();
             let sub2: Vec<(DynMapping, bool, bool)> = par_list2[sub2_start..i2]
                 .iter()
-                .map(|(m, inv, orig)| {
-                    (
-                        m.simplify().unwrap_or_else(|_| Box::new(UnitMap::new(1))),
-                        *inv,
-                        *orig,
-                    )
-                })
+                .map(|(m, inv, orig)| (m.clone_box(), *inv, *orig))
                 .collect();
             pairs.push((sub1, sub2));
             sub1_start = i1;
@@ -3443,8 +3401,19 @@ fn mirror_simple_tags(src: &dyn Mapping, dst: &mut DynMapping) {
 }
 
 pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
+    simplify_mapping_reporting_change(mapping).map(|(m, _)| m)
+}
+
+/// C's `Simplify` for a CmpMap (`cmpmap.c:3396`), reporting whether the result
+/// differs from the input — C's `tmap != tmap2` (`cmpmap.c:1730`), which in an
+/// owned-value port is a fact the engine knows rather than a pointer comparison.
+///
+/// The non-CmpMap path reports `false`: the per-class seam returns a Mapping
+/// without saying whether it changed anything, so the flag understates there.
+/// Understating can only cost a `simpler` C sets and the port does not.
+fn simplify_mapping_reporting_change(mapping: &dyn Mapping) -> AstResult<(DynMapping, bool)> {
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
-        return mapping.simplify();
+        return mapping.simplify().map(|m| (m, false));
     };
 
     // Guard against infinite recursion.  The fingerprint-based guard
@@ -3459,7 +3428,7 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
             // The guard matched, so C returns `astClone( this_mapping )`. The
             // comparison that produced the match has already cleared the
             // element tags on the object being cloned.
-            return Ok(mapping.clone_box());
+            return Ok((mapping.clone_box(), false));
         }
     };
 
@@ -3509,7 +3478,7 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
         apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
         // C's `!simpler` branch: `astClone( this )`, not a fresh object.
         SIMPLIFY_REBUILT.set(false);
-        return Ok(cloned);
+        return Ok((cloned, false));
     }
 
     // The plain builder is used both when nothing reduced at all and when the
@@ -3517,13 +3486,13 @@ pub(crate) fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
     // itself, so there is no fold whose `astSetInvert` would clear component tags.
     if !changed && !simpler && reduction != OpaqueLeafReduction::Rebuilds {
         SIMPLIFY_REBUILT.set(false);
-        return reconstruct(list, series);
+        return reconstruct(list, series).map(|m| (m, false));
     }
 
     // C's `simpler` branch: the result is folded afresh from the component list,
     // so it is a new pointer even when the fold reproduces the input's shape.
     SIMPLIFY_REBUILT.set(true);
-    reconstruct(list, series)
+    reconstruct(list, series).map(|m| (m, true))
 }
 
 // ------------------------------------------------------------------ //

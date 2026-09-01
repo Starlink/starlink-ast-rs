@@ -332,8 +332,8 @@ places, and finding one by accident is no longer possible.
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
 | simplify regression | 453 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 453 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, two cards over C and one short, both sides of §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3) |
-| simplify regression | 453 | 6 | fixtures whose `IsSimp` card count still differs from C. One under-tags (`rigby`); two over-tag on the sublist members `dimension_match_parallel_lists` simplifies where C simplifies only the pair it combines from them (`cap_specmap_02`, `parpair_one_side_reduces`, §10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Eleven rows preceded these: `cap_cmpmap_01` and `cap_cmpmap_04` closed with §10.16, the three `cmpmap_perm_swap*` fixtures closed when the swap branch stopped simplifying the components C hands on as they stand (§10.3), and `cap_cmpmap_03` closed when the same branch stopped simplifying the parallel CmpMap it reassembles (§10.3). Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 453 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
+| simplify regression | 453 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
 | simplify regression | 453 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
 | transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
@@ -539,17 +539,18 @@ counted failure in the harness and a panic in the region test. Never a skip.
 Turning the gate on exposed eleven pre-existing byte-comparison failures and
 seven `IsSimp` count disagreements. The pinned C reproduces all eleven `.simp`
 files byte-exactly, so every one is a port defect, not a stale fixture. They
-are enumerated with causes in `SERIAL_UNGATED`, which groups them into seven:
+are enumerated with causes in `SERIAL_UNGATED`, now down to seven fixtures in
+five causes:
 
 | cause | fixtures | what is wrong |
 |---|---|---|
-| A | 4 SwitchMap cases | `IsSimp` missing on the FSMap / ISMap sub-Mappings |
+| A | 4 SwitchMap cases — CLOSED | `IsSimp` missing on the FSMap / ISMap sub-Mappings; `SwitchMap::simplified` now stamps them |
 | B | 2 `cefit_circle_*`, `neg_box_asymmetric_2d` | Region simplify tags a Mapping inside the encapsulated FrameSet that C leaves bare, and does not tag the returned Region at all |
 | C | 2 `*_unc_fillfactor_merge` | emits a `Prism` uncertainty where C emits a `Box` |
 | D | `cap_zoommap_04` | emits `FrmSet`/FrameSet where C emits `Points`/PointSet |
-| E | `cap_interval_01`, `cmpmap_parallel_series_dim_mismatch` | `Closed = 1` where C omits it; two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps |
+| E | `cap_interval_01` | `Closed = 1` where C omits it. `cmpmap_parallel_series_dim_mismatch` was here — two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps — and is byte-exact now that the branch simplifies where C simplifies (§10.3) |
 | F | `cap_pointlist_01` | two mesh coordinates diverge past 4 ulp |
-| G | `parpair_one_side_reduces` | one or two extra `IsSimp` cards, and nothing else in the tree, on a leaf the port simplifies and C hands on as it stands. Diagnosed as `try_self_reduce` firing through the `simplified()` gate and predicted to close with §10.16; §10.16 landed and the counts did not move, so that diagnosis was wrong. The real sources are two `.simplify()` calls with no C counterpart, both in CmpMap's parallel handling (§10.3). Removing the first closed `cmpmap_perm_parallel_swap` and `cmpmap_perm_swap_{a,b}constants`; the second is the one still open here. `cap_slamap_03`, `cap_wcsmap_01`, `cap_cmpmap_01` and `cap_cmpmap_04` did close with §10.16, when PermMap's rebuild moved into `map_merge`, and `lsst` closed the same way when PolyMap's coefficient consolidation and affine rebuild moved |
+| G | `parpair_one_side_reduces` — CLOSED | one or two extra `IsSimp` cards, and nothing else in the tree, on a leaf the port simplifies and C hands on as it stands. Diagnosed as `try_self_reduce` firing through the `simplified()` gate and predicted to close with §10.16; §10.16 landed and the counts did not move, so that diagnosis was wrong. The sources were two `.simplify()` calls with no C counterpart, both in CmpMap's parallel handling (§10.3): the first closed `cmpmap_perm_parallel_swap` and `cmpmap_perm_swap_{a,b}constants`, the second closed this fixture byte-exact. `cap_slamap_03`, `cap_wcsmap_01`, `cap_cmpmap_01` and `cap_cmpmap_04` did close with §10.16, when PermMap's rebuild moved into `map_merge`, and `lsst` closed the same way when PolyMap's coefficient consolidation and affine rebuild moved |
 
 `equal()` passed all eleven, but that is not an `equal()` defect. C's
 `region.c::Equal` compares class name, `points`, base Frame, current Frame, the
@@ -918,31 +919,121 @@ Two things the entry above did not anticipate:
 - **The gate is now unconditional.** Every reduction passes through
   `simplify_entry`, so every one short-circuits on `IsSimple` and stamps its
   result at `mapping.c:24763`'s equivalent. Serialisation failures in the simplify
-  harness went 12 to 9, and `cap_cmpmap_01` and `cap_cmpmap_04` reached C's card
-  count (§10.3).
+  harness went 12 to 9. It also brought `cap_cmpmap_01` and `cap_cmpmap_04` to
+  C's card count of 18, which §10.3 has since shown was a coincidence of two
+  errors in opposite directions.
 
 What it did not fix: the WinMap under-merge of §10.3, which the entry above
 implied was downstream of the seam and is not. Cause (G) in §9.2 named the
 `simplified()` gate as the source of five fixtures' extra cards and predicted they
 would close here. They did not; the real source was two `.simplify()` calls in
-CmpMap's parallel handling with no C counterpart, one of which is now removed
-(§10.3).
+CmpMap's parallel handling with no C counterpart, both of which have since been
+removed (§10.3).
 
-### 10.3 Two of the four under-tagged fixtures closed; the rest is over-nomination, not a missing merge
+### 10.3 The parallel-in-series branch now simplifies where C simplifies; seven CmpMap tags remain
 
-`cap_cmpmap_01` and `cap_cmpmap_04` now emit 18 `IsSimp` cards, matching C: they
-closed when the 25 stray reductions moved from `simplified()` into `map_merge`
-(§10.16), because C reaches those reductions from the nominate loop and the port
-now does too. `cap_cmpmap_03` closed the same way, by removing divergence 3 below:
-the port was simplifying the parallel CmpMap it reassembles, which C hands to the
-list as built. `cap_specmap_02` (10 vs 8) remains. The title of this entry was
-wrong for a long time: the missing cards are missing because the *reductions* are
-missing, not the stamps.
+All three divergences in the port's handling of C's `cmpmap.c:1624-1783` are
+closed, so rows 22, 23 and 26 of `docs/audits/mapmerge/cmpmap.md` are `ported`.
+Two fixtures came byte-exact with the change — `cmpmap_parallel_series_dim_mismatch`
+and `parpair_one_side_reduces` — and their `SERIAL_UNGATED` rows are deleted,
+taking that list from nine cases to seven. `cap_specmap_02` went from ten
+`IsSimp` cards to seven against C's eight; only the WinMap under-merge half of
+its row survives, because the CmpMap C tags there is one the port never forms.
+
+The entry is still open, for a reason the change itself exposed.
+
+**`cap_cmpmap_01` and `cap_cmpmap_04` never agreed with C.** They read 18 cards
+against C's 18 and now read 16 and 15. Both are `skip_string_compare`, so the
+card count was the only gate on them — and it is a total, which two errors in
+opposite directions can satisfy (H10). The port was tagging leaf classes C never
+tags while already missing CmpMap tags C sets. Per class, the two sides now
+differ in one place only:
+
+| fixture | port | C |
+|---|---|---|
+| `cap_cmpmap_01` | 14 CmpMap, 1 MatrixMap, 1 UnitMap | 16 CmpMap, 1 MatrixMap, 1 UnitMap |
+| `cap_cmpmap_04` | 13 CmpMap, 1 MatrixMap, 1 UnitMap | 16 CmpMap, 1 MatrixMap, 1 UnitMap |
+
+Before the change the port tagged 14 CmpMaps in each and made both totals up to
+18 with tags C does not set at all — a MathMap and a TranMap in `_01`, a TranMap
+and a second UnitMap in `_04`. Dropping the per-member simplify removed those,
+which is C's shape, and `_04` lost one of its CmpMap tags with them.
+
+A positional diff against the reference is now short enough to itemise. `_01`
+differs in three `IsSimp = 1` lines C emits on inner CmpMaps and the port does
+not, plus one object where the port emits `IsSimp = 1` and C emits `Invert = 1`
+— the open `InvA`/`InvB` dump quirk
+(`docs/issues/c-library-quirks.md:320`), not a stamping difference. `_04` differs
+in four such `IsSimp` lines and the same one `Invert` line. Both totals are
+registered in `ISSIMP_DISAGREEMENTS` with that diagnosis, so nothing here is
+hidden any more; what changed is that the number now measures something.
+
+**What would expose the rest.** Whether the seven missing CmpMap tags share
+`cap_specmap_02`'s cause — a CmpMap C forms and the port does not — is not
+established: the diff says which objects lack the tag, not why. Two things would
+settle it, and neither exists yet: a fixture covering these trees that is *not*
+`skip_string_compare`, and a trace mapping each of C's 16 CmpMap tags to the
+nomination that produced it. While a count is the only gate on `_01` and `_04`,
+they cannot show it themselves.
+
+#### What C does in this branch
+
+C's shape at `cmpmap.c:1624-1783` is: match the two parallel lists into aligned
+sublists, `CombineMaps` each pair in series **without simplifying the members**,
+`tmap2 = astSimplify( tmap )` on the combined pair (`:1728`), set `simpler` from
+the identity test `tmap != tmap2 || astGetInvert( tmap ) != astGetInvert( tmap2 )`
+(`:1731-1733`) *before* annulling `tmap`, and assemble the survivors into one
+parallel CmpMap with no further simplification. The port diverged in three
+places, all now closed:
+
+1. **Per-member simplify.** `dimension_match_parallel_lists` simplified every
+   member of both sublists. C passes them to `CombineMaps( …, 0, … )` as they
+   stand — that `0` is the series flag, not a simplify flag
+   (`cmpmap.c:1694-1712`). The port now clones them unchanged
+   (`simplify.rs:2244-2251`).
+2. **The `simpler` test.** A three-branch structural test ending in a comparison
+   of flat leaf counts stood in for C's identity test — a threshold with no
+   analogue in `cmpmap.c` (stop signal 1), deciding whether the whole restructure
+   fired. C's test is ported at `simplify.rs:2161-2166`:
+   `simplify_mapping_reporting_change` (`simplify.rs:3403-3496`) reports whether
+   the result differs from its input, which in an owned-value port is a fact the
+   engine knows rather than a pointer comparison, and the Invert flags are
+   compared beside it.
+3. **Trailing simplify of the rebuilt CmpMap.** The port simplified the
+   reassembled parallel CmpMap before returning it; C hands `new` to the list as
+   built (`cmpmap.c:1738-1746`) and lets the nominate loop reach it when it is
+   nominated in its own right (`simplify.rs:2191-2198`). Closing this took
+   `cap_cmpmap_03` from six cards to **seven, which is C's count**.
+
+The per-pair `astSimplify` of `:1728` was always ported, at
+`simplify.rs:2148-2159`; the recursion was never the missing piece. An earlier
+reading of divergence 1 had it standing in for a missing recursion, and that was
+wrong — it was standing in for divergences 2 and 3 in the same function, which is
+why removing it alone moved fixtures in both directions.
+
+The same over-simplification was in `try_swap_permmap_parallel_at`, which
+simplified each surviving component before rebuilding the swapped CmpMap. C
+assembles the new CmpMap from `cmpmap2->map1` / `map2` directly
+(`cmpmap.c:2053-2070`) and never simplifies them; the nominate loop reaches them
+afterwards, through the rebuilt CmpMap. Removing those two calls closed
+`cmpmap_perm_parallel_swap`, `cmpmap_perm_swap_aconstants` and
+`cmpmap_perm_swap_bconstants` byte-exact with no losses elsewhere.
+
+Seven approaches to `cap_cmpmap_03` were measured and reverted before divergence
+3 was found, six recorded in `test_simplify_regression.rs` plus a blanket stamp
+in `CmpMap::simplified`. Every one of them tried to add a stamp; what closed it
+was removing a simplification C does not perform. The blanket stamp is the
+clearest case: it moved `cap_cmpmap_04` one card closer *and* gave
+`cap_zoommap_01` a card C does not emit, because it stamps nodes the port
+produced and C did not while still missing the ones C produced and the port did
+not.
+
+#### The residual is over-nomination, not a missing merge
 
 Both engines are instrumented — `build_simplify_trace.sh` for C,
 `simplify::trace` behind the `tracing` feature for the port — and log each
 nomination and what it returned. Re-measured on `cap_specmap_02` at pin
-`07fbe2dc`, after §10.16 landed:
+`07fbe2dc` with all three divergences closed:
 
 **The two traces are not directly comparable, and the raw counts mislead.** When
 `ShiftMap::MapMerge` converts to a WinMap and calls `astMapMerge` on it
@@ -950,38 +1041,35 @@ nomination and what it returned. Re-measured on `cap_specmap_02` at pin
 the delegated WinMap at the same nesting depth. The port calls `win_map_merge`
 directly, so only the ShiftMap event appears. Nine of C's raw nominations are
 those echoes, and all nine are productive — so C's raw 96/23 is 87/14 in genuine
-nominations, against the port's 153/15. Detect an echo as a nomination whose
-immediately following nomination is a different class at the same indentation.
+nominations. Detect an echo as a nomination whose immediately following
+nomination is a different class at the same indentation.
 
 | class | C noms | port noms | C productive | port productive |
 |---|---:|---:|---:|---:|
-| CmpMap | 22 | 31 | 5 | 5 |
-| LutMap | 16 | 30 | 0 | 0 |
-| PermMap | 9 | 16 | 0 | 0 |
-| WinMap | 9 | 14 | 1 | 2 |
-| ShiftMap | 9 | 12 | 3 | 3 |
-| SpecMap | 8 | 22 | 1 | 1 |
-| ZoomMap | 7 | 21 | 1 | 1 |
+| CmpMap | 22 | 23 | 5 | 5 |
+| LutMap | 16 | 20 | 0 | 0 |
+| PermMap | 9 | 11 | 0 | 0 |
+| WinMap | 9 | 10 | 1 | 2 |
+| ShiftMap | 9 | 11 | 3 | 3 |
+| SpecMap | 8 | 14 | 1 | 1 |
+| ZoomMap | 7 | 13 | 1 | 1 |
 | MatrixMap | 4 | 4 | 0 | 0 |
 | UnitMap | 3 | 3 | 3 | 3 |
-| **total** | **87** | **153** | **14** | **15** |
+| **total** | **87** | **109** | **14** | **15** |
 
-The port's CmpMap row is 20 series plus 11 parallel; C reports both compositions
+The port's CmpMap row is 12 series plus 11 parallel; C reports both compositions
 under the one class name.
 
 **There is no productive deficit.** Both engines perform the same merges, and the
 port's one extra productive WinMap is a *second* occurrence of the same
-`WinMap where=1 series=0 nmap=2` merge C performs once. What remains is entirely
-over-nomination: the port nominates 153 times to C's 87, concentrated in LutMap
-(30 vs 16), SpecMap (22 vs 8), ZoomMap (21 vs 7), CmpMap (31 vs 22) and PermMap
-(16 vs 9) — every one of which is productive **zero** times on this fixture. The
-port is not missing a merge rule; it re-walks lists C walks once. Consistent with
-that, the port nominates an already-stamped Mapping 51 times where C does 16.
-
-That also explains why stamping harder cannot work: blanket-stamping
-`CmpMap::simplified` moved `cap_cmpmap_04` one card closer *and* gave
-`cap_zoommap_01` a card C does not emit. It stamps nodes the port produced and C
-did not, while still missing the ones C produced and the port did not.
+`WinMap where=1 series=0 nmap=2` merge C performs once. What remains is
+over-nomination: 109 against C's 87, concentrated in LutMap (20 vs 16), SpecMap
+(14 vs 8), ZoomMap (13 vs 7) and PermMap (11 vs 9) — every one of which is
+productive **zero** times on this fixture. The port is not missing a merge rule;
+it re-walks lists C walks once. Closing the three divergences removed two of
+those extra passes, taking the port from 153 nominations to 109 while leaving the
+productive count at 15, and brought the number of nominations of an
+already-stamped Mapping from 51 to 15, against C's 16.
 
 **Upstream has since fixed a C bug in the same branch.** At pin `8d4f526f`,
 `cmpmap.c` commit `4f2fc0ed` — *"test for simplification before annulling the
@@ -989,19 +1077,16 @@ pointer under test"* — repairs the parallel-CmpMaps-in-series case: the annul 
 `tmap` ran before the `tmap != tmap2` test, so the test was always true and the
 pair was rebuilt as a parallel CmpMap of series compositions **even when no
 component reduced**. The sibling branch 120 lines earlier had it in the right
-order.
-
-The regenerated `cmpmap_parallel_series_dim_mismatch.simp` carries two more
-`IsSimp` cards than the stale copy, and the port emits one where C now emits
-three. That is a new, licensed disagreement in exactly the branch this entry is
-narrowed to, and it is better evidence than anything measured before it: the C
-side of the comparison was wrong until now, so any conclusion drawn about this
-branch before pin `8d4f526f` was drawn against a buggy oracle.
+order. Any conclusion drawn about this branch before pin `8d4f526f` was drawn
+against a buggy oracle. The regenerated
+`cmpmap_parallel_series_dim_mismatch.simp` carries two more `IsSimp` cards than
+the stale copy, and the port now emits all three — that fixture is one of the two
+this entry closed.
 
 **The ShiftMap delegation is not the divergence.** An earlier revision of this
 entry narrowed the deficit to the `ShiftMap where=0 series=1 nmap=4` nomination,
 on the reading that C's list still held four elements afterwards and the port's
-held three. Re-reading the C trace at pin `07fbe2dc` shows otherwise:
+held three. The C trace at pin `07fbe2dc` shows otherwise:
 
 ```
 MAPMERGE ShiftMap where=0 series=1 nmap=4 issimp=0     # c_trace:108
@@ -1015,100 +1100,8 @@ MAPMERGE-RESULT WinMap   result=-1
 The `nmap=4` WinMap line is the delegation echo described above, not a separate
 opportunity, and C's next genuine nomination is `WinMap where=0 series=1 nmap=3`
 — exactly the port's. `ShiftMap::map_merge` (`shift.rs:168-238`) delegates and
-reverts as C does, and on this step the two agree on class, index, result and
-resulting list length. One difference does survive at that step: C reports
-`issimp=0` for that ShiftMap and the port reports `issimp=1`, so the port has
-stamped a Mapping C has not. That is a state divergence, not a merge divergence,
-and it is the same over-stamping the 51-vs-16 count above measures.
-
-#### Three divergences in the parallel-CmpMaps-in-series path
-
-`cap_specmap_02` is over-tagged, not under-tagged, and the extra cards come from
-`simplify.rs`'s handling of C's `cmpmap.c:1624-1783`. C's shape there is: match
-the two parallel lists into aligned sublists, `CombineMaps` each pair in series
-**without simplifying the members**, `tmap2 = astSimplify( tmap )` on the combined
-pair (`:1728`), set `simpler` from the identity test `tmap != tmap2 ||
-astGetInvert( tmap ) != astGetInvert( tmap2 )` (`:1731-1733`), and assemble the
-survivors into one parallel CmpMap with no further simplification. The port
-diverged in three places, each with no C counterpart; the third is closed:
-
-1. **Per-member simplify** — `dimension_match_parallel_lists` calls `.simplify()`
-   on every member of both sublists (`simplify.rs:2313,2323`). C passes the
-   members to `CombineMaps(..., 0, ...)` as they stand.
-2. **The `simpler` test** — `simplify.rs:2215-2233` substitutes a three-branch
-   structural test for C's identity test, ending in a comparison of flat leaf
-   counts (`flat.len() < pre_len`). A length comparison is not "the pointer or
-   the Invert flag changed", and C makes no such comparison anywhere in this
-   branch. The source comment at `simplify.rs:2223` claims it mirrors C; it does
-   not.
-3. **Trailing simplify of the rebuilt CmpMap** — CLOSED. The port simplified the
-   reassembled parallel CmpMap before returning it; C returns the index and lets
-   the nominate loop reach the rebuilt CmpMap on a later pass, and the port now
-   does the same (`simplify.rs:2260-2266`).
-
-The per-pair `astSimplify` of `:1728` **is** ported, at `simplify.rs:2211`; the
-recursion is present. Divergences 1 and 3 are extra simplification passes, and
-each pass runs its own merge loop, which is a direct mechanism for the
-over-nomination measured above — closing 3 removed one of them. Divergence 2 is a heuristic threshold with no
-analogue in the C source — stop signal 1 — and it decides whether the whole
-restructure fires.
-
-The first over-simplification found this way was in
-`try_swap_permmap_parallel_at`, which simplified each surviving component before
-rebuilding the swapped CmpMap. C assembles the new CmpMap from `cmpmap2->map1` /
-`map2` directly (`cmpmap.c:2053-2070`) and never simplifies them; the nominate
-loop reaches them afterwards, through the rebuilt CmpMap.
-
-The first was in `try_swap_permmap_parallel_at`, which simplified each surviving
-component before rebuilding the swapped CmpMap. C assembles the new CmpMap from
-`cmpmap2->map1` / `map2` directly (`cmpmap.c:2053-2070`) and never simplifies
-them; the nominate loop reaches them afterwards, through the rebuilt CmpMap.
-Removing the two calls is committed, and it closed `cmpmap_perm_parallel_swap`,
-`cmpmap_perm_swap_aconstants` and `cmpmap_perm_swap_bconstants` byte-exact with
-no losses elsewhere.
-
-**Divergence 1 — the per-member simplify.** Removing it was measured and **not**
-committed, because on its own it trades one gap for another:
-
-| fixture | with the call | without it | C |
-|---|---:|---:|---:|
-| `cap_specmap_02` | 10 | 7 | 8 |
-| `parpair_one_side_reduces` | 5 | **3** | 3 |
-| `cap_cmpmap_01` | **18** | 16 | 18 |
-| `cap_cmpmap_04` | **18** | 15 | 18 |
-| `cmpmap_parallel_series_dim_mismatch` | 3 | 1 | 3 |
-
-The earlier reading of this table was that the three fixtures which lose cards
-lose ones C gets from a recursion inside `astSimplify( tmap )` that the port does
-not perform. That reading was wrong: the `:1728` recursion **is** ported, at
-`simplify.rs:2211`. What the per-member call is standing in for is not a missing
-recursion but the two other divergences in the same function — removing one extra
-simplification while the others remain moves the fixtures that depend on the
-combination. Divergence 3 has since been removed on its own, so the middle column
-above is no longer the current measurement; divergences 1 and 2 still have to go
-together, against C's `simpler` test.
-
-**Divergence 3 — the trailing simplify — CLOSED.** The trailing
-`simplify_mapping` on the reassembled parallel CmpMap is gone; C hands `new` to
-the list as built (`cmpmap.c:1738-1746`) and lets the nominate loop reduce it when
-it is nominated in its own right. `cap_cmpmap_03` moved from six `IsSimp` cards to
-**seven, which is C's count**, and nothing else moved: 453 fixtures pass, the same
-nine serialization mismatches in the same order, and the only other counted
-failure is the pre-existing licensed `neg_box_asymmetric_2d`. Its
-`ISSIMP_PLACEMENT_LICENSED` row is deleted, so the licence is down to one case.
-
-**What would expose the rest.** Divergence 2 is the load-bearing one: it decides
-whether the restructure fires at all, and `flat.len() < pre_len` is a threshold
-with no analogue in `cmpmap.c` (stop signal 1). Porting C's identity test needs
-`Mapping::equal` on the pre- and post-simplify pair plus a comparison of their
-Invert flags, which the port has; the fixtures that would expose a wrong answer
-are the five in the table above. Divergence 1 should be removed in the same
-change, not before it.
-
-Seven approaches to `cap_cmpmap_03` were measured and reverted before this, six
-recorded in `test_simplify_regression.rs` plus the blanket stamp above. Every one
-of them tried to add a stamp; what closed it was removing a simplification C does
-not perform.
+reverts as C does, and the two agree on class, index, `issimp`, result and
+resulting list length at that step.
 
 ### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
 

@@ -37,11 +37,11 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:922-928`) delegates to
 | 19 | Assume at first that nothing will simplify | cmpmap.c:1653-1659 | simplify.rs:2245 | ported |
 | 20 | Initialise the two list indices and the two empty sub-lists | cmpmap.c:1661-1668 | simplify.rs:2355-2361 | ported |
 | 21 | Walk both lists, swapping Nin and Nout for a component applied inverted | cmpmap.c:1670-1691 | simplify.rs:2368-2381 | ported |
-| 22 | Sub-list 1 has too few outputs: combine the next component into it, unsimplified | cmpmap.c:1693-1702 | simplify.rs:2310-2318 | gap: PLAN.md §10.3 |
-| 23 | Sub-list 2 has too few inputs: combine the next component into it, unsimplified | cmpmap.c:1704-1713 | simplify.rs:2320-2328 | gap: PLAN.md §10.3 |
+| 22 | Sub-list 1 has too few outputs: combine the next component into it, unsimplified | cmpmap.c:1693-1702 | simplify.rs:2244-2247 | ported |
+| 23 | Sub-list 2 has too few inputs: combine the next component into it, unsimplified | cmpmap.c:1704-1713 | simplify.rs:2248-2251 | ported |
 | 24 | Skip the pair on the first pass, when neither sub-list exists yet | cmpmap.c:1715-1721 | -- | n/a: the port advances one list before testing the boundary, so a pair is never formed empty |
-| 25 | Combine the aligned pair in series and simplify the combination | cmpmap.c:1723-1729 | simplify.rs:2204-2213 | ported |
-| 26 | Note that something simplified, if the pointer or the Invert flag changed | cmpmap.c:1730-1734 | simplify.rs:2215-2233 | gap: PLAN.md §10.3 |
+| 25 | Combine the aligned pair in series and simplify the combination | cmpmap.c:1723-1729 | simplify.rs:2144-2159 | ported |
+| 26 | Note that something simplified, if the pointer or the Invert flag changed | cmpmap.c:1730-1734 | simplify.rs:2161-2166 | ported |
 | 27 | Add the simplified pair into the replacement parallel CmpMap | cmpmap.c:1736-1747 | simplify.rs:2252-2253,2260-2265 | ported |
 | 28 | Reset both sub-lists for the next pair, or stop when either list runs out | cmpmap.c:1749-1767 | simplify.rs:2406-2415 | ported |
 | 29 | Free the two component lists and their invert flags | cmpmap.c:1770-1783 | -- | n/a: owned values are dropped |
@@ -91,30 +91,35 @@ the port performs each step; the disagreement is over which object ends up
 being a whole simplification result, not over a missing step. Three of the four
 now agree with C; `cap_specmap_02` is the one left. See PLAN.md §10.3.
 
-## Rows 22, 23 and 26 — two extra simplifications in one branch
+## Rows 22, 23 and 26 — the branch now simplifies where C simplifies
 
 C's parallel-CmpMaps-in-series branch simplifies in exactly one place: the pair it
 has just combined (`tmap2 = astSimplify( tmap )`, `cmpmap.c:1728`, ported at
-`simplify.rs:2211`). It accumulates sub-list members with
+`simplify.rs:2156`). It accumulates sub-list members with
 `CombineMaps( ..., 0, status )` and never simplifies them, sets `simpler` from an
 identity test on the pointer and the Invert flag (`cmpmap.c:1731-1733`), and hands
 the assembled parallel CmpMap to the list as built.
 
-The port simplifies at two of the other three points:
+All three points now match. The sub-list members are cloned as they stand
+(`simplify.rs:2244-2251`); the identity test is C's two terms — the result differs
+from the input, or its stored orientation changed (`simplify.rs:2161-2166`), the
+first term being the flag `simplify_mapping_reporting_change` returns rather than a
+pointer comparison an owned-value port cannot make; and the reassembled parallel
+CmpMap goes into the list unsimplified (row 30).
 
-- every member of both aligned sub-lists, at `simplify.rs:2313` and `:2323`;
-- and in place of C's identity test, a three-branch structural test whose last
-  branch compares flat leaf counts (`simplify.rs:2226-2231`). A leaf-count
-  threshold has no analogue anywhere in `cmpmap.c`, and it decides whether the
-  whole restructure fires. The comment at `simplify.rs:2223` claims it mirrors C;
-  it does not.
+What the port had instead were two extra simplification passes, each running its
+own merge loop — the mechanism behind the nomination counts in PLAN.md §10.3 — and
+a leaf-count threshold in place of the identity test, which had no analogue
+anywhere in `cmpmap.c` and decided whether the whole restructure fired.
 
-Each extra pass runs its own merge loop, which is the mechanism behind the
-nomination counts in PLAN.md §10.3 (153 against C's 87 on `cap_specmap_02`).
-The third point, a simplify of the reassembled parallel CmpMap before it went into
-the list, is gone: C hands `new` on as built (`cmpmap.c:1738-1746`), and removing
-it moved `cap_cmpmap_03` from six `IsSimp` cards to seven, which is C's count, with
-no other fixture moving (row 30, and PLAN.md §10.3).
+Removing them made `cmpmap_parallel_series_dim_mismatch` and
+`parpair_one_side_reduces` byte-exact, and moved `cap_specmap_02` from ten
+`IsSimp` cards to seven against C's eight. It also showed that
+`cap_cmpmap_01`/`_04` agreed with C on card *count* only by coincidence: the
+per-member simplify tagged leaf classes C never tags in those trees while the
+port was already missing CmpMap tags C sets. Both are compared by `astEqual`
+only, so the count was the only gate on them. PLAN.md §10.3 carries the
+measurements.
 
 ## `Simplify` — cmpmap.c:3396-3762
 
@@ -125,11 +130,11 @@ list, drive each component's `astMapMerge` from a nominate loop until the list
 stops improving, and fold the survivors back into a right-associated CmpMap.
 
 The Rust `CmpMap::simplified` (`cmpmap.rs:825-830`) delegates to
-`simplify::simplify_mapping` (`simplify.rs:3556-3638`), so Rust sites below are in
-`simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:826` is
+`simplify::simplify_mapping` (`simplify.rs:3403-3496`), so Rust sites below are in
+`simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:788` is
 C's `astGetIsSimple` short-circuit, which C performs one level up in
 `astSimplify_` (`mapping.c:24802-24804`) and the port performs both there
-(`simplify_entry.rs:58`) and here.
+(`simplify_entry.rs:54`) and here.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|

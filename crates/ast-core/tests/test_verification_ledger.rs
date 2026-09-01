@@ -53,10 +53,9 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_simplify_regression.rs",
         "ISSIMP_PLACEMENT_LICENSED",
         1,
-        "cap_specmap_02 emits two IsSimp cards too many and misses one C \
-         emits; the Mapping is identical. Both sides are PLAN.md §10.3: the \
-         WinMap under-merge that stops the port forming the CmpMap C tags, and \
-         the sublist members the port simplifies on their own",
+        "cap_specmap_02 misses one IsSimp card C emits; the Mapping is \
+         identical. PLAN.md §10.3: the WinMap under-merge stops the port \
+         forming the CmpMap C tags there",
     ),
     (
         "test_serialisation.rs",
@@ -129,8 +128,9 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
             skip_string_compare,
             "rigby (an IsSimp count difference plus a near-zero inverse-matrix \
              element differing by ~1%), cap_cmpmap_01 and cap_cmpmap_04 (the \
-             open InvA/InvB quirk), cap_winmap_03 (a sub-ulp shift residue C \
-             emits and we compute as zero). lsst retired its skip once the \
+             open InvA/InvB quirk, plus three inner CmpMaps C tags and the port \
+             does not -- PLAN.md §10.3), cap_winmap_03 (a sub-ulp shift residue \
+             C emits and we compute as zero). lsst retired its skip once the \
              manifest could name the Channel settings its reference was \
              captured with",
         ),

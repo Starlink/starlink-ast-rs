@@ -73,9 +73,10 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// port stopped simplifying the reassembled parallel CmpMap that C hands to the
 /// list as built.
 ///
-/// `cap_specmap_02` differs in both directions at once. C tags a CmpMap the port
-/// never forms, and the port tags leaves C never simplifies on their own — both
-/// sides of PLAN.md §10.3.
+/// `cap_specmap_02` is short one card: C tags the CmpMap wrapping the
+/// SpecMap/ZoomMap pair, which the port never forms because of the WinMap
+/// under-merge of PLAN.md §10.3. The over-tagging half of that row is closed —
+/// the port no longer simplifies each member of a dimension-matched sublist.
 ///
 /// Measured dead ends, so they are not retried: tagging the reduced leaf in
 /// `flatten`; tagging the reconstructed parallel; tagging every
@@ -90,12 +91,10 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// Fields: name, cards this port emits, cards C emits, what differs.
 const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[(
     "cap_specmap_02",
-    10,
+    7,
     8,
     "C tags the CmpMap wrapping the SpecMap/ZoomMap pair, which the port \
-         never forms (the WinMap under-merge of PLAN.md §10.3), and the port \
-         tags three leaves that `dimension_match_parallel_lists` simplifies \
-         individually where C simplifies only the combined pair (§10.3)",
+         never forms (the WinMap under-merge of PLAN.md §10.3)",
 )];
 
 fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
@@ -526,16 +525,6 @@ fn simplify_regression() {
             "nullregion_unc_fillfactor_merge",
             "emits Prism where C emits Box",
         ),
-        // (E) Newly visible at upstream 8d4f526f, and the same MapMerge branch
-        // §10.3 is narrowed to. cmpmap.c:4f2fc0ed fixed the
-        // parallel-CmpMaps-in-series case, which annulled the pointer under test
-        // before testing it, so the pair was rebuilt even when nothing reduced.
-        // The card count now matches C; the two cards land on the leaves rather
-        // than on the intermediate CmpMaps C stamps.
-        (
-            "cmpmap_parallel_series_dim_mismatch",
-            "two IsSimp cards on the leaves where C has them on the CmpMaps",
-        ),
         // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
         // where C has collapsed to bare Points.
         (
@@ -549,14 +538,6 @@ fn simplify_regression() {
         (
             "cap_pointlist_01",
             "two mesh coordinates diverge past 4 ulp",
-        ),
-        // (G) `dimension_match_parallel_lists` simplifies each member of a
-        // matched sublist; C simplifies only the pair it combines from them
-        // (cmpmap.c:1728), so extra IsSimp cards land on the leaves.
-        // PLAN.md §10.3.
-        (
-            "parpair_one_side_reduces",
-            "two extra IsSimp cards on the sublist members",
         ),
     ];
     // `simplify` must stamp whatever it returns (mapping.c:24763). It does not
@@ -600,13 +581,19 @@ fn simplify_regression() {
     const ISSIMP_DISAGREEMENTS: &[&str] = &[
         // Under-tagging, gated all along.
         "rigby (8 vs C's 9)",
-        // Over-tagging: `dimension_match_parallel_lists` simplifies each member
-        // of a matched sublist, where C simplifies only the pair it combines
-        // from them (`cmpmap.c:1728`), so the port stamps leaves C does not.
-        // Dropping that call moves both of these but does not close either --
-        // the measured trade-off is in PLAN.md §10.3.
-        "cap_specmap_02 (10 vs C's 8)",
-        "parpair_one_side_reduces (5 vs C's 3)",
+        // Under-tagging: C tags the CmpMap wrapping the SpecMap/ZoomMap pair,
+        // which the port never forms. PLAN.md §10.3.
+        "cap_specmap_02 (7 vs C's 8)",
+        // Newly visible, not new. Both totals agreed with C at 18 by
+        // coincidence: the port tagged leaf classes C never tags in these trees
+        // — a TranMap and a MathMap in `_01`, a TranMap and a second UnitMap in
+        // `_04` — while already missing CmpMap tags C sets. Dropping the
+        // per-member simplify of a dimension-matched sublist removed the leaf
+        // tags, which is C's shape, and left the CmpMap deficit showing. Both
+        // are `skip_string_compare`, so the count was the only gate and the
+        // coincidence passed it. PLAN.md §10.3.
+        "cap_cmpmap_01 (16 vs C's 18)",
+        "cap_cmpmap_04 (15 vs C's 18)",
         // These render to a Region, so the old hand-rolled dispatch returned
         // `None` and the count was never taken. Causes (B) and (D) in
         // SERIAL_UNGATED. Cause (A), the four SwitchMap fixtures, is closed:
