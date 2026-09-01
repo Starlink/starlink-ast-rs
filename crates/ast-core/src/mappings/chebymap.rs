@@ -10,7 +10,9 @@
 //! consolidation (`polymap.c:3624-3745`), which combines terms over the same
 //! basis-function orders; the linear replacement (`:3747-3875`) is not ported,
 //! because it reads the coefficients as monomial and loses the domain scaling
-//! the bounds define.
+//! the bounds define. That half is not finished: the `[-1,1]` case, where the
+//! scaling is the identity and C's arithmetic holds, is still unreduced —
+//! marked `UNPORTED` in this class's `map_merge` and tracked as PLAN.md §10.2.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
@@ -538,6 +540,13 @@ impl Mapping for ChebyMap {
         // Chebyshev basis; the linear replacement (`:3747-3875`) reads the
         // coefficients as if they were monomial and drops the domain scaling
         // these bounds define, so it is not reproduced here.
+        //
+        // UNPORTED: that leaves a sound case unreduced. When the bounds are
+        // exactly `[-1,1]` the domain scaling is the identity, C's arithmetic is
+        // then correct, and a linear ChebyMap over those bounds should reduce to
+        // a MatrixMap and a ShiftMap here. It does not. See PLAN.md §10.2 for
+        // what closing it needs, and `docs/issues/c-library-quirks.md` for why
+        // the general case stays out.
         //
         // Like PolyMap, this works from the transformation as *constructed* and
         // leaves the list's applied direction alone (`polymap.c:3856-3859`), so

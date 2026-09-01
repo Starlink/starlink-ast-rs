@@ -1012,7 +1012,7 @@ class checks the `IsSimple` bit (`box_region`, `circle`, `cmpregion`, `ellipse`,
 the port re-simplifies a Region C returns untouched — measured as unobservable on
 this corpus, and not shipped.
 
-### 10.2 ChebyMap did not inherit PolyMap's `MapMerge` — consolidation half FIXED
+### 10.2 ChebyMap did not inherit PolyMap's `MapMerge` — consolidation half FIXED, linear half DEFERRED
 
 In C, `chebymap.c` defines no `MapMerge`; only `polymap.c:2439` fills the slot,
 so a ChebyMap's `MapMerge` is PolyMap's whole body at `polymap.c:3597-3961`. In
@@ -1050,6 +1050,26 @@ The reproduction lives in `ast_tester/gen_simplify_fixtures.c` as
 port's simplify corpus because a positive fixture there asserts the port
 reproduces the `.simp` byte for byte, which for this pair means reproducing the
 wrong Mapping.
+
+The sound half of that branch is still a port gap, and it is deferred rather than
+closed. C's arithmetic is correct when the bounds are exactly `[-1,1]`: the
+domain scaling is then the identity, so a linear ChebyMap over those bounds
+reduces to the same MatrixMap and ShiftMap a PolyMap would. The port does not
+reduce it. `ChebyMap::map_merge` carries an `UNPORTED` marker at the point the
+branch would go, and the class's module doc names the gap, so `rg UNPORTED
+crates/ast-core/src/mappings/chebymap.rs` finds it.
+
+Three things have to happen together, which is why it waits. The general case
+needs the C defect fixed at source — guard `polymap.c:3747-3875` against a
+Chebyshev basis, or give `chebymap.c` its own `MapMerge` — and that is an
+upstream change, not a port change. The `[-1,1]` case needs
+`cheby_linear_lone_reduce` and `neg_cheby_quadratic_no_reduce` inside the corpus
+to be falsifiable, and they live in the submodule's
+`ast_tester/gen_simplify_fixtures.c`. Both routes therefore run through a
+reference-pin move, and upstream has since reorganised `ast_tester`, so the pin
+move needs planning of its own (§8). Until that lands, a linear ChebyMap is left
+alone whatever its bounds — never reduced wrongly, and, for `[-1,1]`, not reduced
+at all.
 
 ### 10.16 The port has a per-class `simplified()` seam that C does not — FIXED
 
