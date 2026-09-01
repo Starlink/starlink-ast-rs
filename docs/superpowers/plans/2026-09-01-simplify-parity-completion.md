@@ -2606,3 +2606,1821 @@ rather than emptied, because the assertion it licensed was the wrong one.
 The corpus gains no fixture: both rules were already pinned by fixtures that
 were passing for the wrong reason, which is what the two-sided top-level check
 now prevents.
+
+## Cluster 2 — the four `skip_string_compare` fixtures
+
+`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04` and `cap_winmap_03` are the only rows
+in the manifest that opt out of the byte comparison, and they are the reason
+`test_verification_ledger.rs` pins `"simplify manifest: skip_string_compare" => 4`.
+`cap_specmap_02` is the fifth fixture in the cluster: it is byte-compared, under
+the counted `ISSIMP_PLACEMENT_LICENSED` row.
+The spec's §2.2 attributes them to five separate defects — CmpMap flatten,
+`recombine_distributed_branches`, `CmpMap::map_merge`, `WinMap::map_merge` and
+the `MatrixMap` inverse. Re-baselining all four against the pinned C reduces
+that to **one** port defect, **one** licensed C artefact and **two** stale
+references, and none of the four needs any arithmetic work.
+
+The re-baseline is what Tasks 10 and 11 make repeatable, because the reason the
+misattribution survived is structural: **the simplify corpus has no freshness
+checker.** `tools/oracle_fixtures/check_corpus_fresh.sh` covers only the wcsconv
+corpus. The reference pin moved from `f6762005` — the commit `simplify_tests.txt`
+names as `rigby.simp`'s capture point — to the current `3e60abaa`, twenty-two
+commits, one of which changes simplify behaviour
+(`4f2fc0ed`, "cmpmap: test for simplification before annulling the pointer under
+test", whose own message records that the bug it fixes "dropped the IsSimp
+markers from two nested components"). `PLAN.md` §8 tracks that sync as pending.
+The corpus was never regenerated, so two references have been read as port gaps
+for months.
+
+What a fresh capture from `3e60abaa` actually shows, for the four rows:
+
+| fixture | fresh C vs the committed reference | fresh C vs the port |
+|---|---|---|
+| `cap_winmap_03` | reference carries one extra `Sft2 = -1.0061396160665481e-16` card | **identical** |
+| `rigby` | four numeric residues differ; `IM5` by ~1% of a cancellation residue, the other three by 1–2 ulp | one missing `IsSimp` card (8 against 9) |
+| `cap_cmpmap_01` | identical | 3 missing `IsSimp`, 1 extra `IsSimp` where C writes `Invert = 1`, 1 missing `Invert = 1` |
+| `cap_cmpmap_04` | identical | 4 missing `IsSimp`, 1 extra `IsSimp` where C writes `Invert = 1`, 1 missing `Invert = 1` |
+| `cap_specmap_02` | identical | one missing `IsSimp` card (7 against 8) |
+
+`cap_winmap_03` closes outright once its reference is regenerated: the port
+already reproduces the pinned C byte for byte.
+
+Every one of the nine missing cards sits on an **inner CmpMap**, and the "extra"
+card in the two `cap_cmpmap_*` cases sits exactly where C emits `Invert = 1`
+instead: that is the `InvA`/`InvB` aliasing line this plan excludes. So the whole
+residue is one defect — the port does not stamp inner CmpMaps that C stamps —
+plus the one excluded line.
+
+That also refutes the existing licence's stated reason.
+`ISSIMP_PLACEMENT_LICENSED` says C tags a CmpMap "which the port never forms (the
+WinMap under-merge of PLAN.md §10.3)". The port does form it: the
+`CmpMap(SpecMap, ZoomMap)` at `cap_specmap_02.simp:97-122` is byte-identical to
+C's in the port's own output. Only the tag is missing, so §10.3's
+"over-nomination" framing does not describe the observable, which is
+under-stamping.
+
+### Task 10: The C-oracle simplify driver, committed
+
+Every re-baseline in this cluster was done with a scratch driver copied out of
+the heredoc inside `tools/oracle_fixtures/build_simplify_trace.sh`. That heredoc
+is reachable only by running the trace-build script, which patches a *copy* of
+the submodule — so the one instrument that answers "what does the pinned C
+actually emit for this `.map`?" is not a file anyone can run. Commit it.
+
+**Files:**
+- Create: `tools/oracle_fixtures/gen_simp.c`
+- Modify: `tools/oracle_fixtures/Makefile`
+- Modify: `tools/oracle_fixtures/build_simplify_trace.sh` (replace the embedded heredoc with a copy of the committed file)
+- Modify: `tools/oracle_fixtures/README.md` (if present — check with `ls tools/oracle_fixtures/`)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `tools/oracle_fixtures/gen_simp`, invoked as
+  `gen_simp <in.map|in.ast> <out.simp> [comment] [indent]` where the two optional
+  trailing arguments are integers passed straight to the output `Channel`'s
+  `Comment` and `Indent` attributes, defaulting to `1` and `3`. Exit status 0 on
+  success, 1 on a read/write failure, 2 on a usage error. Task 11 drives it.
+
+- [ ] **Step 1: Write the driver**
+
+Create `tools/oracle_fixtures/gen_simp.c`:
+
+```c
+/*
+*  Name:
+*     gen_simp
+
+*  Purpose:
+*     Read a native-format Object, simplify it, and write the result.
+
+*  Description:
+*     Reads one native-encoded Object from the named file, calls astSimplify on
+*     it, and writes the result to the named output file. A FrameSet reads and
+*     simplifies as a Mapping, so both the `.map` and the `.ast` inputs in the
+*     simplify corpus work.
+*
+*     The output Channel's Comment and Indent attributes come from the two
+*     optional trailing arguments, so a reference captured with either turned
+*     off can be reproduced exactly.
+
+*  Usage:
+*     gen_simp <in> <out> [comment] [indent]
+*/
+
+#include "ast.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static FILE *src;
+static char linebuf[4096];
+
+static const char *srcfn( void ) {
+   if( fgets( linebuf, sizeof linebuf, src ) ) {
+      size_t n = strlen( linebuf );
+      while( n && ( linebuf[ n - 1 ] == '\n' || linebuf[ n - 1 ] == '\r' ) ) {
+         linebuf[ --n ] = 0;
+      }
+      return linebuf;
+   }
+   return NULL;
+}
+
+int main( int argc, char **argv ) {
+   int comment = 1;
+   int indent = 3;
+
+   if( argc < 3 ) {
+      fprintf( stderr, "usage: gen_simp <in> <out> [comment] [indent]\n" );
+      return 2;
+   }
+   if( argc > 3 ) comment = atoi( argv[ 3 ] );
+   if( argc > 4 ) indent = atoi( argv[ 4 ] );
+
+   astBegin;
+
+   src = fopen( argv[ 1 ], "r" );
+   if( !src ) {
+      fprintf( stderr, "gen_simp: cannot open %s\n", argv[ 1 ] );
+      return 1;
+   }
+   AstChannel *in = astChannel( srcfn, NULL, "" );
+   AstMapping *map = (AstMapping *) astRead( in );
+   fclose( src );
+   if( !map ) {
+      fprintf( stderr, "gen_simp: read failed for %s\n", argv[ 1 ] );
+      return 1;
+   }
+
+   AstMapping *simp = astSimplify( map );
+
+   AstChannel *out = astChannel( NULL, NULL, "SinkFile=%s,Comment=%d,Indent=%d",
+                                 argv[ 2 ], comment, indent );
+   if( astWrite( out, simp ) != 1 ) {
+      fprintf( stderr, "gen_simp: write failed for %s\n", argv[ 2 ] );
+      return 1;
+   }
+
+   astEnd;
+   return astOK ? 0 : 1;
+}
+```
+
+- [ ] **Step 2: Add the Makefile target**
+
+`tools/oracle_fixtures/Makefile` already defines `REF`, `LIBS` and `RPATH` for
+`ast2ast`. Read them first so the new target reuses them verbatim:
+
+```bash
+cat tools/oracle_fixtures/Makefile
+```
+
+Add `gen_simp` to the default target's prerequisite list and give it a rule in
+the same shape as `ast2ast`'s:
+
+```make
+gen_simp: gen_simp.c
+	$(CC) $(CFLAGS) -I$(REF)/src -I$(REF)/build -o $@ $< $(LIBS) $(RPATH)
+```
+
+- [ ] **Step 3: Build it and check it links against the repo's own libast**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+make -C tools/oracle_fixtures gen_simp
+ldd tools/oracle_fixtures/gen_simp | grep -i ast
+```
+
+Expected: the `libast` entries resolve under `reference/starlink-ast/build`, not
+under a conda prefix. If any resolves to conda, the RPATH is not taking — see
+`docs/issues/c-oracle-probe-recipe.md`, "the stale conda libast trap", and check
+that `-Wl,--disable-new-dtags` survived into `RPATH`.
+
+- [ ] **Step 4: Reproduce one known-fresh reference exactly**
+
+```bash
+cd crates/ast-core/tests/fixtures/native/reference
+../../../../../../tools/oracle_fixtures/gen_simp \
+   simplify_fixtures/cap_specmap_02.map /tmp/cap_specmap_02.freshC
+diff simplify_fixtures/cap_specmap_02.simp /tmp/cap_specmap_02.freshC && echo BYTE-EXACT
+```
+
+Expected: `BYTE-EXACT`. This is the driver's own gate — a reference that is fresh
+must come back byte-identical, or the driver is not reproducing the capture
+conditions and nothing built on it means anything.
+
+- [ ] **Step 5: Check the `Comment` / `Indent` arguments against the one reference captured without them**
+
+```bash
+cd crates/ast-core/tests/fixtures/native/reference
+../../../../../../tools/oracle_fixtures/gen_simp lsst.ast /tmp/lsst.freshC 0 0
+diff lsst.simp /tmp/lsst.freshC && echo BYTE-EXACT
+```
+
+Expected: `BYTE-EXACT`. `lsst` is the manifest row carrying
+`render_options = comment=0,indent=0`, so it is the only case that exercises the
+two optional arguments.
+
+- [ ] **Step 6: Replace the heredoc in the trace script with the committed file**
+
+`build_simplify_trace.sh` writes its own copy of this driver. Find it:
+
+```bash
+grep -n "gen_simp" tools/oracle_fixtures/build_simplify_trace.sh
+```
+
+Replace the `cat > .../gen_simp.c <<'EOF' … EOF` block with a copy of the
+committed source, so there is one driver and not two:
+
+```bash
+cp "$(dirname "$0")/gen_simp.c" "$TRACE_DIR/gen_simp.c"
+```
+
+using whatever variable the script already holds the patched-submodule path in.
+Then re-run it once to confirm it still builds:
+
+```bash
+bash tools/oracle_fixtures/build_simplify_trace.sh 2>&1 | tail -5
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git add tools/oracle_fixtures
+git commit -F - <<'MSG'
+tools: commit the C-oracle simplify driver
+
+The only way to ask the pinned C what it emits for a simplify fixture was a
+heredoc inside build_simplify_trace.sh, reachable only by running the script
+that patches a copy of the submodule. gen_simp.c is now a file with a Makefile
+target, taking the output Channel's Comment and Indent from the command line so
+a reference captured with either off can be reproduced. The trace script copies
+it rather than carrying a second version.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+### Task 11: The simplify-corpus freshness checker
+
+`check_corpus_fresh.sh` builds `wcsconverter` from a pristine copy of the
+submodule and delegates to `check_corpus_fresh.py`, which classifies each
+reference as fresh, card-drifted, numerically drifted or structurally drifted.
+The simplify corpus has no equivalent, which is why two of its references drifted
+across a pin move unnoticed. This task builds the missing pair in the same shape.
+
+One convention has to be encoded or the checker is useless: **a negative
+fixture's reference is its own input.** `neg_unit_lone`'s row is
+`neg_unit_lone | simplify_fixtures/neg_unit_lone.map | simplify_fixtures/neg_unit_lone.map |`,
+and 139 rows are like it. A fresh capture of such a row differs from its
+reference by exactly one line — the top-level `IsSimp = 1` card that
+`astSimplify_` stamps on every result (`mapping.c:24783`) and that the input,
+never having been simplified, does not carry. Treating that as drift would
+report 139 false positives and bury the two real ones.
+
+**Files:**
+- Create: `tools/oracle_fixtures/check_simplify_fresh.sh`
+- Create: `tools/oracle_fixtures/check_simplify_fresh.py`
+- Modify: `tools/oracle_fixtures/README.md`
+
+**Interfaces:**
+- Consumes: `tools/oracle_fixtures/gen_simp` (Task 10).
+- Produces: `check_simplify_fresh.sh`, exit 0 when every reference is fresh or
+  only numerically drifted, exit 1 when any is card-drifted or structurally
+  drifted. Task 12 acts on its output.
+
+- [ ] **Step 1: Write the comparator**
+
+Create `tools/oracle_fixtures/check_simplify_fresh.py`:
+
+```python
+"""Classify every simplify reference against a fresh capture from the pinned C.
+
+Card-only drift means the reference predates a library change and must be
+regenerated. Numeric drift means it was captured on another platform: it is
+reported and tolerated, because regenerating it here would replace a
+cross-platform reference with this machine's libm. Structural drift -- a
+different nesting or a different class -- should never happen.
+
+A negative fixture names its own input as its reference. Its fresh capture
+differs by exactly the top-level ``IsSimp`` card that ``astSimplify_`` stamps on
+every result, so that one line is discounted for those rows and for those rows
+only.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+CARD = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=")
+STRUCT = re.compile(r"^\s*(Begin|End|IsA)\s+(\S+)")
+
+Row = tuple[str, str, str, int, int]
+
+
+def parse_manifest(path: Path) -> list[Row]:
+    """Return (name, input, reference, comment, indent) for every manifest row."""
+    rows: list[Row] = []
+    for raw in path.read_text().splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        fields = [f.strip() for f in line.split("|")]
+        while len(fields) < 5:
+            fields.append("")
+        name, inp, ref, _skip, opts = fields[:5]
+        comment, indent = 1, 3
+        for item in (o.strip() for o in opts.split(",") if o.strip()):
+            key, _, value = item.partition("=")
+            if key.strip() == "comment":
+                comment = int(value)
+            elif key.strip() == "indent":
+                indent = int(value)
+            else:
+                raise SystemExit(f"{name}: unknown render option {key!r}")
+        rows.append((name, inp, ref, comment, indent))
+    return rows
+
+
+def shape(text: str) -> list[str]:
+    """Return the structural skeleton: one token per Begin/End/IsA and card name."""
+    out: list[str] = []
+    for line in text.splitlines():
+        found = STRUCT.match(line)
+        if found:
+            out.append(f"{found.group(1)} {found.group(2)}")
+            continue
+        found = CARD.match(line)
+        if found:
+            out.append(found.group(1))
+    return out
+
+
+def classify(ref: str, fresh: str, negative: bool) -> str:
+    """Return 'fresh', 'numeric', 'card' or 'structural' for one comparison."""
+    if negative:
+        # The reference is the unsimplified input; discount the one card the
+        # simplify result always gains, and nothing else.
+        fresh_lines = fresh.splitlines()
+        stamped = [i for i, l in enumerate(fresh_lines) if l.strip().startswith("IsSimp =")]
+        if len(stamped) == 1:
+            del fresh_lines[stamped[0]]
+            fresh = "\n".join(fresh_lines) + "\n"
+    if ref == fresh:
+        return "fresh"
+    ref_shape, fresh_shape = shape(ref), shape(fresh)
+    if ref_shape != fresh_shape:
+        classes_ref = [t for t in ref_shape if t.startswith(("Begin", "End", "IsA"))]
+        classes_fresh = [t for t in fresh_shape if t.startswith(("Begin", "End", "IsA"))]
+        return "structural" if classes_ref != classes_fresh else "card"
+    return "numeric"
+
+
+def main(argv: list[str]) -> int:
+    """Compare every manifest row's reference against a fresh capture."""
+    if len(argv) != 4:
+        print("usage: check_simplify_fresh.py <corpus-dir> <gen_simp> <work-dir>")
+        return 2
+    corpus, driver, work = Path(argv[1]), Path(argv[2]), Path(argv[3])
+    work.mkdir(parents=True, exist_ok=True)
+
+    counts = {"fresh": 0, "numeric": 0, "card": 0, "structural": 0}
+    for name, inp, ref, comment, indent in parse_manifest(corpus / "simplify_tests.txt"):
+        out = work / f"{name}.freshC"
+        result = subprocess.run(
+            [str(driver), str(corpus / inp), str(out), str(comment), str(indent)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            print(f"CAPTURE-FAILED {name}: {result.stderr.strip()}")
+            counts["structural"] += 1
+            continue
+        verdict = classify(
+            (corpus / ref).read_text(), out.read_text(), negative=(inp == ref)
+        )
+        counts[verdict] += 1
+        if verdict != "fresh":
+            print(f"{verdict.upper():>10} {name}")
+
+    print(
+        f"\n{counts['fresh']} fresh, {counts['numeric']} numerically drifted, "
+        f"{counts['card']} card-drifted, {counts['structural']} structurally drifted"
+    )
+    if counts["card"] or counts["structural"]:
+        print(
+            "\nCard-drifted references predate a library change: regenerate them "
+            "with gen_simp. Numeric drift is left alone -- regenerating it would "
+            "bake this machine's libm into a cross-platform reference."
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
+```
+
+- [ ] **Step 2: Write the driver script**
+
+Create `tools/oracle_fixtures/check_simplify_fresh.sh`:
+
+```sh
+#!/bin/sh
+# Check every simplify reference against the pinned C oracle.
+#
+# Card-only drift means a reference predates a library change and must be
+# regenerated; it exits non-zero. Numeric drift means the reference was
+# captured on another platform and is reported but tolerated. Structural drift
+# should never happen and exits non-zero.
+#
+#   ./tools/oracle_fixtures/check_simplify_fresh.sh
+set -e
+HERE=$(cd "$(dirname "$0")/../.." && pwd)
+SRC=$HERE/reference/starlink-ast
+[ -d "$SRC/src" ] || { echo "reference submodule not initialised"; exit 1; }
+
+make -C "$HERE/tools/oracle_fixtures" gen_simp >/dev/null
+
+exec python3 "$HERE/tools/oracle_fixtures/check_simplify_fresh.py" \
+   "$HERE/crates/ast-core/tests/fixtures/native/reference" \
+   "$HERE/tools/oracle_fixtures/gen_simp" \
+   "${TMPDIR:-/tmp}/ast-simplify-oracle"
+```
+
+Then:
+
+```bash
+chmod +x tools/oracle_fixtures/check_simplify_fresh.sh
+```
+
+- [ ] **Step 3: Make it ruff and mypy clean**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+ruff check tools/oracle_fixtures/check_simplify_fresh.py
+ruff format --check tools/oracle_fixtures/check_simplify_fresh.py
+mypy --strict tools/oracle_fixtures/check_simplify_fresh.py
+```
+
+Expected: clean. If `mypy --strict` is not how the repo runs it, match
+`check_corpus_fresh.py` — check with
+`grep -rn "mypy" pyproject.toml setup.cfg .pre-commit-config.yaml 2>/dev/null`.
+
+- [ ] **Step 4: Run it and record the verdict**
+
+```bash
+./tools/oracle_fixtures/check_simplify_fresh.sh
+```
+
+Expected output — exactly two drifted references and a non-zero exit:
+
+```
+      CARD cap_winmap_03
+   NUMERIC rigby
+   NUMERIC cap_interval_01
+   NUMERIC cap_matrixmap_03
+   NUMERIC cap_pointlist_01
+   NUMERIC cap_timemap_01
+   NUMERIC timemap_invert_normalize
+
+460 fresh, 6 numerically drifted, 1 card-drifted, 0 structurally drifted
+```
+
+If any row reports `STRUCTURAL` or `CAPTURE-FAILED`, stop: the driver or the
+manifest parser is wrong, not the corpus. If the negative rows report as
+`CARD`, the negative convention in `classify` is not firing — check that the
+row's input and reference paths compare equal as written in the manifest.
+
+- [ ] **Step 5: Document the two verdicts and what to do with each**
+
+Append to `tools/oracle_fixtures/README.md`:
+
+```markdown
+## `check_simplify_fresh.sh` — is the simplify corpus still the pinned C's output?
+
+Captures every row of
+`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` from the
+pinned oracle with `gen_simp` and classifies the difference:
+
+- **card** — the reference has a different set of cards. It predates a library
+  change; regenerate it with `gen_simp` and commit the regeneration in the same
+  range as the pin move. Exits non-zero.
+- **numeric** — the same cards with different values. The reference was captured
+  on another platform. Leave the values alone: regenerating here would replace a
+  cross-platform reference with this machine's libm. Where a residue falls
+  outside the harness's 4-ulp token tolerance, license it per case in
+  `NUMERIC_PLATFORM_DRIFT` in `test_simplify_regression.rs` and count it in
+  `PLAN.md` §6.
+- **structural** — a different class or nesting. Should never happen; treat as a
+  bug in the driver or the manifest.
+
+A negative fixture names its own input as its reference, so its fresh capture
+gains the one top-level `IsSimp` card `astSimplify_` stamps on every result.
+That single line is discounted for those rows and nothing else is.
+
+Run it after every move of the `reference/starlink-ast` pin, alongside
+`check_corpus_fresh.sh`.
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git add tools/oracle_fixtures
+git commit -F - <<'MSG'
+tools: check the simplify corpus against the pinned oracle
+
+check_corpus_fresh.sh covers only the wcsconv corpus, so the simplify corpus
+crossed a pin move with no check. Two of its references drifted and were read as
+port gaps for months.
+
+check_simplify_fresh.sh captures every manifest row from the pinned C and
+classifies the difference as card, numeric or structural, with the same
+regenerate/leave-alone rules the wcsconv checker uses. A negative fixture names
+its own input as its reference, so the one IsSimp card a simplify result always
+gains is discounted for those rows.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+### Task 12: The two stale references
+
+`cap_winmap_03` is card-drifted: the pinned C does not emit the
+`Sft2 = -1.0061396160665481e-16` line its reference carries, and the port's output
+is otherwise byte-identical to a fresh capture. Regenerating it closes the
+fixture and retires its `skip_string_compare` row, along with the manifest comment
+that diagnosed the residue as C's "sub-ulp rounding artefact" — the pinned C does
+not produce it at all.
+
+`rigby` is numerically drifted, and its values stay. Four residues differ from a
+fresh local capture; three are within 1–2 ulp and pass the harness's 4-ulp token
+tolerance already. The fourth, `IM5`, is cancellation noise on an element whose
+row-mates are of order one:
+
+| card | committed reference | fresh local capture, and the port |
+|---|---|---|
+| `IM0` | `0.081296825791877622` | `0.081296825791877636` |
+| `IM1`, `IM2` | `-12386.129525133196` | `-12386.129525133199` |
+| `IM3` | `24100.800700246855` | `24100.800700246858` |
+| `IM5` | `-5.9658198263111446e-17` | `-5.8980598183211441e-17` |
+
+The two `IM5` values agree to no significant figures and differ by about 1% of
+their own magnitude, which is what cancellation residue looks like — the element
+is a matrix entry that should be zero. Regenerating the file would replace a
+cross-platform reference with this machine's libm, which is exactly what the
+corpus-freshness rule forbids. So the byte comparison gets a per-case, per-card,
+magnitude-bounded licence instead, named in source and counted in `PLAN.md` §6.
+
+The manifest's own note on `rigby` has the two `IM5` values attributed the wrong
+way round — it reads as though `-5.9658…` were the port's value, when it is the
+reference's — and cites the residue as a port defect. That sentence is corrected
+here.
+
+**Files:**
+- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_winmap_03.simp` (regenerate)
+- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt:43-54` (the `rigby` note), `:485-491` (the `cap_winmap_03` note and its `yes`)
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs`
+- Modify: `PLAN.md` §6 (the ledger table)
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs`
+
+**Interfaces:**
+- Consumes: `tools/oracle_fixtures/gen_simp` (Task 10), `check_simplify_fresh.sh` (Task 11).
+- Produces:
+  ```rust
+  /// A reference value captured on another machine whose local recapture from the
+  /// pinned C differs by more than the 4-ulp token tolerance.
+  const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, f64)] = &[…];
+
+  /// Drop the lines one `NUMERIC_PLATFORM_DRIFT` entry licenses, from both sides.
+  fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, Vec<String>);
+  ```
+  Task 15 removes the `skip_string_compare` rows that this task's regeneration and
+  licence make removable.
+
+- [ ] **Step 1: Regenerate the card-drifted reference**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd crates/ast-core/tests/fixtures/native/reference
+../../../../../../tools/oracle_fixtures/gen_simp \
+   simplify_fixtures/cap_winmap_03.map simplify_fixtures/cap_winmap_03.simp
+git diff --stat simplify_fixtures/cap_winmap_03.simp
+```
+
+Expected: one line removed, the `Sft2` card. Confirm that is the only change:
+
+```bash
+git diff simplify_fixtures/cap_winmap_03.simp
+```
+
+Expected exactly:
+
+```
+-                      Sft2 = -1.0061396160665481e-16 	# Shift for axis 2
+```
+
+If anything else moves, stop — the driver is not reproducing the capture
+conditions and Task 10 Step 4's gate should have caught it.
+
+- [ ] **Step 2: Re-run the freshness checker**
+
+```bash
+./tools/oracle_fixtures/check_simplify_fresh.sh
+```
+
+Expected: `0 card-drifted`, exit status 0, and the six numeric rows unchanged.
+
+- [ ] **Step 3: Write the failing test — `rigby` byte-compared**
+
+Remove `rigby`'s skip so the comparison runs. In
+`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, change
+
+```
+rigby | rigby.map | rigby.simp | yes |
+```
+
+to
+
+```
+rigby | rigby.map | rigby.simp | |
+```
+
+- [ ] **Step 4: Run it to see the residue the licence has to cover**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -A 8 "=== rigby ==="
+```
+
+Expected: two differing lines — the `IM5` card, and one missing `IsSimp` card.
+The `IsSimp` line is Task 14's; only `IM5` is this task's.
+
+- [ ] **Step 5: Add the licence and its comparator**
+
+In `crates/ast-core/tests/test_simplify_regression.rs`, immediately after the
+`ISSIMP_PLACEMENT_LICENSED` declaration, add:
+
+```rust
+/// Reference values captured on another machine, whose local recapture from the
+/// pinned C differs by more than the 4-ulp token tolerance.
+///
+/// `tools/oracle_fixtures/check_simplify_fresh.sh` classifies these as numeric
+/// drift, and the corpus-freshness rule keeps them: regenerating one here would
+/// replace a cross-platform reference with this machine's libm. So the byte
+/// comparison drops exactly the named card, on exactly the named fixture, and
+/// only while both sides are cancellation residue — below the entry's bound in
+/// absolute value, on an element whose row-mates are of order one.
+///
+/// `(fixture, card name, magnitude bound)`.
+const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, f64)] = &[(
+    "rigby",
+    "IM5",
+    1e-15,
+)];
+
+/// Drop the lines one `NUMERIC_PLATFORM_DRIFT` entry licenses, from both sides.
+///
+/// A line is dropped only when its card name matches the entry and its value
+/// parses below the entry's bound in absolute value. Exactly one line must be
+/// dropped from each side; any other count is returned as a failure, so the
+/// licence cannot widen to cover a card that grew, moved or multiplied.
+fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
+    let mut problems = Vec::new();
+    let mut got = got.to_string();
+    let mut want = want.to_string();
+
+    for (fixture, card, bound) in NUMERIC_PLATFORM_DRIFT {
+        if *fixture != name {
+            continue;
+        }
+        let prefix = format!("{card} =");
+        let residue = |line: &str| -> bool {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with(&prefix) {
+                return false;
+            }
+            trimmed
+                .split_once('=')
+                .and_then(|(_, rest)| {
+                    rest.split('\t').next().unwrap_or(rest).trim().parse::<f64>().ok()
+                })
+                .is_some_and(|v| v.abs() < *bound)
+        };
+        for (side, text) in [("got", &mut got), ("want", &mut want)] {
+            let kept: Vec<&str> = text.lines().filter(|l| !residue(l)).collect();
+            let dropped = text.lines().count() - kept.len();
+            if dropped != 1 {
+                problems.push(format!(
+                    "{name}: NUMERIC_PLATFORM_DRIFT licenses one {card} residue below \
+                     {bound:e}, but dropped {dropped} from the {side} side"
+                ));
+            }
+            *text = kept.join("\n");
+        }
+    }
+
+    (got, want, problems)
+}
+```
+
+- [ ] **Step 6: Wire it into the byte comparison**
+
+In the Check 3 block, after the `(got, want)` binding and before the licence's
+card-count assertion, insert:
+
+```rust
+                let (got, want, residue_problems) = drop_licensed_residue(name, &got, &want);
+                other_failures.extend(residue_problems);
+```
+
+The `let` shadows the existing `got` / `want`, so nothing below changes.
+
+- [ ] **Step 7: Run it to confirm the residue is covered and nothing else is**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -A 6 "=== rigby ==="
+```
+
+Expected: the `IM5` line is gone from the diff and only the `IsSimp` line remains.
+`rigby` still fails, which is correct — Task 14 closes it.
+
+- [ ] **Step 8: Prove the licence is falsifiable**
+
+Temporarily widen the bound to `1e-10` and check that the comparator now reports
+a count problem rather than silently dropping more:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+sed -i 's/    1e-15,/    1e-10,/' crates/ast-core/tests/test_simplify_regression.rs
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep "NUMERIC_PLATFORM_DRIFT licenses"
+sed -i 's/    1e-10,/    1e-15,/' crates/ast-core/tests/test_simplify_regression.rs
+```
+
+Expected: at least one `dropped N from the … side` line at `1e-10`, and none at
+`1e-15`. If `1e-10` also drops exactly one from each side, the bound is not
+discriminating anything and the licence should be tightened until it is.
+
+- [ ] **Step 9: Retire `cap_winmap_03`'s skip and its refuted note**
+
+In `simplify_tests.txt`, delete the six-line comment block beginning
+`# cap_winmap_03: structure identical except C's inner ShiftMap emits an extra`
+and replace the row
+
+```
+cap_winmap_03            | simplify_fixtures/cap_winmap_03.map | simplify_fixtures/cap_winmap_03.simp | yes
+```
+
+with
+
+```
+cap_winmap_03            | simplify_fixtures/cap_winmap_03.map | simplify_fixtures/cap_winmap_03.simp |
+```
+
+- [ ] **Step 10: Correct the `rigby` note**
+
+In `simplify_tests.txt`, replace the paragraph beginning
+`# rigby keeps its skip for two reasons, neither of them formatting.` through
+`# where that residue comes from.` with:
+
+```
+# rigby's reference predates the current pin: it was captured at f6762005, and
+# the pin has since moved to 3e60abaa. A fresh capture agrees with the port on
+# every numeric residue, so the differences are the reference's, not the port's.
+# Three are within the 4-ulp token tolerance. The fourth, IM5, is cancellation
+# residue on an element whose row-mates are of order one -- the reference has
+# -5.9658198263111446e-17 where both the pinned C and the port now produce
+# -5.8980598183211441e-17. Regenerating would bake this machine's libm into a
+# cross-platform reference, so the value stays and the byte comparison licenses
+# that one card through NUMERIC_PLATFORM_DRIFT in test_simplify_regression.rs.
+# See tools/oracle_fixtures/check_simplify_fresh.sh for the taxonomy.
+```
+
+- [ ] **Step 11: Update the ledger, in both copies**
+
+`rigby` left the skip list at Step 3 and `cap_winmap_03` at Step 9, so two rows
+remain. In `PLAN.md` §6, change the `skip_string_compare` row's count from 4 to 2,
+change its list to `` (`cap_cmpmap_01`, `cap_cmpmap_04`) ``, and append to its
+text:
+
+```
+`cap_winmap_03` retired when its reference was regenerated: the card it diverged
+on is one the pinned C does not emit at all. `rigby` retired when the same check
+showed the reference numerically drifted across the `f6762005` → `3e60abaa` pin
+move, with the port agreeing with a fresh capture
+```
+
+Then add a new row immediately below it:
+
+```
+| simplify regression | 468 | 1 | `NUMERIC_PLATFORM_DRIFT` — one card on one fixture (`rigby`'s `IM5`), dropped from both sides only while each side parses below 1e-15 in absolute value on an element whose row-mates are of order one. The reference was captured on another platform and the freshness rule keeps its values; the licence is per case, per card and magnitude-bounded, and reports a failure if it ever drops a different number of lines from the two sides |
+```
+
+In `crates/ast-core/tests/test_verification_ledger.rs`, change
+`"simplify manifest: skip_string_compare" => 4` to `=> 2` and add
+`"NUMERIC_PLATFORM_DRIFT" => 1` to the table, matching the surrounding entries'
+form. Then:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -20
+```
+
+Expected: PASS. A failure naming an uncounted constant means the new `const` is
+not in the table; a failure on the count means the manifest still has more `yes`
+rows than the ledger claims — check with
+`awk -F'|' 'NF>3 && $4 ~ /yes/ {print $1}' crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`.
+
+- [ ] **Step 12: Run the whole simplify suite and record what is left**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+```
+
+Expected: `cap_winmap_03` passes; `rigby` fails on one `IsSimp` line;
+`cap_cmpmap_01` and `cap_cmpmap_04` still skip; `cap_specmap_02` still runs under
+its licence. Also run the second consumer of these fixtures — the auto-discovering
+round-trip test — because a regenerated reference is an input to it too:
+
+```bash
+cargo test -p ast-core --test native_round_trip 2>&1 | tail -10
+```
+
+If that test name does not exist, find it with
+`grep -rln "simplify_fixtures" crates/ast-core/tests/*.rs` and run every file it
+names. Both consumers must be run whenever a `.simp` changes.
+
+- [ ] **Step 13: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add -A crates PLAN.md
+git commit -F - <<'MSG'
+test(simplify): re-baseline the two references that had drifted
+
+cap_winmap_03's reference carried a Sft2 card the pinned C does not emit. It was
+diagnosed as C's sub-ulp rounding artefact and skipped; it is card drift across
+the f6762005 -> 3e60abaa pin move. Regenerated, and the fixture is byte-exact.
+
+rigby's reference is numerically drifted from the same pin move, and its values
+stay: a fresh capture agrees with the port on every residue, and regenerating
+would replace a cross-platform reference with this machine's libm. Three residues
+are inside the 4-ulp token tolerance. The fourth is cancellation noise on an
+element whose row-mates are of order one, and is licensed per case, per card and
+magnitude-bounded, with a check that it drops the same number of lines from both
+sides. The manifest's note had the two values attributed the wrong way round.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+### Task 13: Where C's inner-CmpMap stamp comes from, and a minimal fixture for it
+
+Nine `IsSimp` cards are missing across four fixtures, and every one of them sits
+on an inner CmpMap. `cap_specmap_02` carries exactly one, which makes it the
+fixture to work on: its diff against the pinned C is a single line.
+
+C's side is settled. `tools/oracle_fixtures/build_issimp_instrumented.sh` builds a
+copy of the pinned library in which `astSetIsSimple` logs the object, its shape
+and a backtrace, and in which the dump logs every object that still carries the
+tag. Run on `cap_specmap_02.map` it prints 28 stamps and 8 surviving tags, and the
+sixth surviving tag — the `CmpMap(SpecMap, ZoomMap)` at `cap_specmap_02.simp:97`
+— resolves to this chain, read outwards from the stamp:
+
+```
+astSimplify_               mapping.c:24805     <- the stamp
+MapMerge  (astSimplify at cmpmap.c:1443)       <- nominated element, self-simplify head
+Simplify
+astSimplify_
+MapMerge  (astSimplify at cmpmap.c:1609)       <- simp2 = astSimplify( new2 )
+Simplify
+astSimplify_
+MapMerge  (astSimplify at cmpmap.c:1443)
+Simplify
+astSimplify_                                   <- the public call
+```
+
+So C stamps it as a *nominated list element* whose self-simplify found nothing
+(`simpler == 0` at `cmpmap.c:1456`, and the returned pointer is annulled at
+`cmpmap.c:1474`), two levels down, inside the `simp2 = astSimplify( new2 )` of the
+series-CmpMaps-in-parallel merge at `cmpmap.c:1608-1609`. The stamp survives
+because it was written through the live element pointer, and because the closing
+fold at `cmpmap.c:3709` combines that same object into the CmpMap it builds.
+
+The port has all three of those seams: `set_component_simple_tag`
+(`simplify.rs:560`, called at `simplify.rs:736` on exactly C's `!simpler` path),
+`compute_merge_series_pair_in_parallel` (`simplify.rs:2995-3070`, whose
+`simp1`/`simp2` stamps sit at `simplify.rs:3061-3062`), and `reconstruct`. The tag
+is nonetheless absent from the output, so one of the three drops it. This task
+shrinks the 680-line fixture to something small enough to reason about and lands
+it as a failing gate; Task 14 uses it to choose the fix.
+
+**Files:**
+- Create: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.map`
+- Create: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.simp`
+- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
+
+**Interfaces:**
+- Consumes: `tools/oracle_fixtures/gen_simp` (Task 10);
+  `tools/oracle_fixtures/build_issimp_instrumented.sh` (already in the repo).
+- Produces: a manifest row `cap_cmpmap_nested_tag` whose reference carries the
+  nested `IsSimp` card the port omits — the smallest failing case for Task 14.
+
+- [ ] **Step 1: Build the instrumented oracle and confirm the chain**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+./tools/oracle_fixtures/build_issimp_instrumented.sh /tmp/ast-instr
+cd /tmp/ast-instr
+cmake --build build --target ast_grf_log ast_grf3d ast_err -j8 >/dev/null
+cc gen_simp.c -o gen_simp -I build -L build \
+   -Wl,--whole-archive build/libast_grf_log.a -Wl,--no-whole-archive \
+   -last -last_err -last_grf3d -lyaml -lm \
+   -Wl,-rpath,/tmp/ast-instr/build -Wl,--disable-new-dtags
+ldd gen_simp | grep libast
+```
+
+Expected: `libast.so.9 => /tmp/ast-instr/build/libast.so.9`. Any other path is
+the conda-libast trap (`docs/issues/c-oracle-probe-recipe.md`) and the stamps
+would come from the wrong library.
+
+The script's own `cc` line omits the grf archives, which is why the two extra
+commands above are needed; leave the script alone rather than fixing it here.
+
+- [ ] **Step 2: Capture the stamps and locate the one that matters**
+
+```bash
+cd crates/ast-core/tests/fixtures/native/reference
+AST_LOG_ISSIMPLE=1 /tmp/ast-instr/gen_simp \
+   simplify_fixtures/cap_specmap_02.map /tmp/instr02.simp 2>/tmp/instr02.stamps
+diff /tmp/instr02.simp simplify_fixtures/cap_specmap_02.simp && echo "instrument agrees with the reference"
+grep DUMPTAG /tmp/instr02.stamps
+```
+
+Expected: eight `DUMPTAG` lines in dump order. The sixth is the `nin=1` CmpMap at
+`cap_specmap_02.simp:97`. Take its address and read its stamp's backtrace:
+
+```bash
+OBJ=$(grep DUMPTAG /tmp/instr02.stamps | sed -n 6p | sed 's/.*obj=\([^ ]*\).*/\1/')
+awk -v o="$OBJ" '/^STAMP/{p=index($0,o)>0} p' /tmp/instr02.stamps
+```
+
+Resolve each `libast.so.9(+0x…)` frame to a function, and each to the call it is
+returning from:
+
+```bash
+cd /tmp/ast-instr
+for a in $(awk -v o="$OBJ" '/^STAMP/{p=index($0,o)>0} p' /tmp/instr02.stamps \
+             | sed -n 's/.*libast\.so\.9(+\(0x[0-9a-f]*\)).*/\1/p'); do
+  echo "== $a $(addr2line -f -e build/libast.so.9 $a | head -1)"
+  objdump -d --start-address=$((a-0x30)) --stop-address=$((a+4)) build/libast.so.9 | tail -6
+done
+```
+
+Expected: the chain quoted above. The two `MapMerge` frames are told apart by
+what precedes the call — a single `astSimplify` after an `astSetInvert` is
+`cmpmap.c:1443`; two back-to-back `astSimplify` calls whose results are then
+compared are `cmpmap.c:1608-1609`.
+
+- [ ] **Step 3: Cut the fixture down to the failing subtree**
+
+The stamp is raised inside the simplify of a parallel CmpMap two levels below the
+root, so the input can lose everything outside that. `cap_specmap_02.map`'s root
+is a series CmpMap; take its `MapA` only.
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/native/reference
+python3 - <<'PY'
+from pathlib import Path
+src = Path("simplify_fixtures/cap_specmap_02.map").read_text().splitlines()
+
+def block(lines, start):
+    """Return the inclusive line range of the Begin...End block starting at `start`."""
+    depth = 0
+    for i in range(start, len(lines)):
+        s = lines[i].strip()
+        if s.startswith("Begin "):
+            depth += 1
+        elif s.startswith("End "):
+            depth -= 1
+            if depth == 0:
+                return start, i
+    raise SystemExit("unterminated block")
+
+# The root's MapA value is the first Begin after the root's `MapA =` card.
+mapa = next(i for i, l in enumerate(src) if l.strip().startswith("MapA ="))
+begin = next(i for i in range(mapa, len(src)) if src[i].strip().startswith("Begin "))
+lo, hi = block(src, begin)
+indent = len(src[lo]) - len(src[lo].lstrip())
+out = [l[indent:] if l.startswith(" " * indent) else l.lstrip() for l in src[lo:hi + 1]]
+Path("/tmp/shrink0.map").write_text("\n".join(out) + "\n")
+print(f"extracted {hi - lo + 1} lines from {lo + 1}..{hi + 1}")
+PY
+/sdf/home/t/timj/WORK/starlink-astrs/tools/oracle_fixtures/gen_simp /tmp/shrink0.map /tmp/shrink0.simp
+grep -c "IsSimp" /tmp/shrink0.simp
+```
+
+Expected: a `.simp` whose `IsSimp` count is at least 3 — the extracted root, and
+the two CmpMaps beneath it that C stamps. If the count is 0, the subtree simplifies
+to something without a CmpMap and the wrong `MapA` was taken; print the root's
+class with `head -1 /tmp/shrink0.map` and check it is the parallel CmpMap.
+
+- [ ] **Step 4: Check the port fails on the shrunk map for the same reason**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo run -q -p ast-core --example simp_one -- /tmp/shrink0.map > /tmp/shrink0.port
+diff /tmp/shrink0.simp /tmp/shrink0.port
+```
+
+Expected: exactly one differing line, a missing `IsSimp = 1` on an inner CmpMap,
+plus the example's trailing blank line. If the diff is empty, the shrink cut away
+the defect — go back to Step 3 and take the whole root instead, then remove the
+root's `MapB` subtree only.
+
+- [ ] **Step 5: Shrink again, on the parallel branch**
+
+The parallel CmpMap has two branches and the stamp is on one of them. Delete the
+other and re-check:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+from pathlib import Path
+
+src = Path("/tmp/shrink0.map").read_text().splitlines()
+
+def block(lines, start):
+    depth = 0
+    for i in range(start, len(lines)):
+        s = lines[i].strip()
+        if s.startswith("Begin "):
+            depth += 1
+        elif s.startswith("End "):
+            depth -= 1
+            if depth == 0:
+                return start, i
+    raise SystemExit("unterminated block")
+
+# Each branch of the root is the Begin block following a MapA=/MapB= card at the
+# root's own indentation. Emit each branch on its own as a candidate.
+cards = [i for i, l in enumerate(src)
+         if l.strip() in ("MapA =", "MapB =") and len(l) - len(l.lstrip()) == 4]
+for tag, card in zip("ab", cards):
+    begin = next(i for i in range(card, len(src)) if src[i].strip().startswith("Begin "))
+    lo, hi = block(src, begin)
+    indent = len(src[lo]) - len(src[lo].lstrip())
+    out = [l[indent:] if l.startswith(" " * indent) else l.lstrip() for l in src[lo:hi + 1]]
+    Path(f"/tmp/shrink_{tag}.map").write_text("\n".join(out) + "\n")
+    print(f"wrote /tmp/shrink_{tag}.map ({hi - lo + 1} lines)")
+PY
+for t in a b; do
+  ./tools/oracle_fixtures/gen_simp /tmp/shrink_$t.map /tmp/shrink_$t.simp
+  cargo run -q -p ast-core --example simp_one -- /tmp/shrink_$t.map > /tmp/shrink_$t.port
+  echo "== $t: $(diff /tmp/shrink_$t.simp /tmp/shrink_$t.port | grep -c IsSimp) IsSimp diffs, $(wc -l < /tmp/shrink_$t.map) input lines"
+done
+```
+
+Keep whichever branch still shows an `IsSimp` diff. If **neither** does, the
+defect needs both branches present — the stamp comes from the
+series-CmpMaps-in-parallel merge, which by construction needs two series
+branches — so keep `/tmp/shrink0.map` and stop shrinking. Record which outcome
+you got; Task 14 Step 1 reads it.
+
+- [ ] **Step 6: Install the smallest reproducer as a fixture**
+
+Use whichever of `/tmp/shrink0.map`, `/tmp/shrink_a.map`, `/tmp/shrink_b.map`
+still fails and is smallest:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+SRC=/tmp/shrink0.map   # or shrink_a / shrink_b, per Step 5
+DEST=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cp "$SRC" "$DEST/cap_cmpmap_nested_tag.map"
+./tools/oracle_fixtures/gen_simp "$DEST/cap_cmpmap_nested_tag.map" \
+                                 "$DEST/cap_cmpmap_nested_tag.simp"
+grep -n "IsSimp" "$DEST/cap_cmpmap_nested_tag.simp"
+```
+
+The `.simp` is an oracle product and is never hand-edited.
+
+- [ ] **Step 7: Add the manifest row, with the comment that says what it pins**
+
+Append to `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`,
+in the `cap_*` block and in alphabetical position:
+
+```
+# cap_cmpmap_nested_tag: the smallest input for which C stamps IsSimp on a CmpMap
+# that is neither the simplify result nor an element of the final component list.
+# C raises it at cmpmap.c:1443 on a nominated element whose self-simplify found
+# nothing, inside the simp2 = astSimplify( new2 ) of the series-CmpMaps-in-parallel
+# merge (cmpmap.c:1608-1609), and the closing fold at cmpmap.c:3709 combines that
+# same object into the tree it builds, so the tag reaches the dump. Shrunk from
+# cap_specmap_02, which carries the same single missing card in 680 lines.
+cap_cmpmap_nested_tag    | simplify_fixtures/cap_cmpmap_nested_tag.map | simplify_fixtures/cap_cmpmap_nested_tag.simp |
+```
+
+- [ ] **Step 8: Run both consumers and confirm the new row fails on the tag alone**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 \
+  | grep -A 6 "=== cap_cmpmap_nested_tag ==="
+cargo test -p ast-core --test test_native_round_trip 2>&1 | tail -5
+```
+
+Expected: the new row fails on one missing `IsSimp` line and nothing else, and
+the round-trip test passes on the new pair. If the round-trip test's name differs,
+find every consumer with
+`grep -rln "simplify_fixtures" crates/ast-core/tests/*.rs` and run them all.
+
+- [ ] **Step 9: Commit the failing gate**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git add crates/ast-core/tests/fixtures/native/reference
+git commit -F - <<'MSG'
+test(simplify): add the minimal nested-IsSimp fixture
+
+C stamps IsSimp on a CmpMap that is neither the result of the simplification nor
+an element of the final component list: the tag is raised on a nominated element
+whose self-simplify found nothing, two levels down inside the
+series-CmpMaps-in-parallel merge, and the closing fold combines that same object
+into the tree it builds.
+
+cap_specmap_02 shows it as one missing card in 680 lines. This fixture is the
+same defect shrunk to the subtree that produces it, so the fix has something small
+to be developed against. It fails until the port keeps the tag.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+The commit lands a failing test on purpose; Task 14 is the fix and follows
+immediately.
+
+### Task 14: Keep the tag C raises on a nominated element
+
+The tag is per orientation. `CmpMap::simplified` is a two-slot record and
+`dump_is_simple` reads the slot for the object's *current* `Invert`
+(`cmpmap.rs:903-909`), because that is the orientation the dump is about to
+serialise. Two writers in `simplify.rs` set it, and only one of them accounts for
+that:
+
+- `simplify.rs:724`, on the path where the self-simplify *did* reduce something,
+  writes `fwd.set_simplified_in(new_inv, true)` — the mapping is held forward and
+  the tag goes into the slot for the orientation the tree will store it at. The
+  comment there says exactly that.
+- `simplify.rs:560-565`, `set_component_simple_tag`, on C's `!simpler` path,
+  writes `cm.set_dump_simplified_in(cm.is_inverted(), true)`. A list entry is held
+  in its forward orientation by [`flatten`]'s contract, so this always writes the
+  forward slot — while the entry's serialised orientation is the third member of
+  its tuple, `orig_inv`, which `reconstruct` re-applies to the child. When
+  `orig_inv` is true the tag is written to one slot and read from the other.
+
+That is candidate 1, and it is the one the shape of the code points at. Steps 1-2
+discriminate it from the two alternatives before anything is changed, because a
+tag that goes missing has three places it can go missing and picking by inspection
+is what has been wrong here before.
+
+**Files:**
+- Modify: `crates/ast-core/src/mappings/simplify.rs:560-565`
+- Test: `crates/ast-core/tests/test_simplify_regression.rs` (existing harness; no new test file)
+
+**Interfaces:**
+- Consumes: `MergeContext::list` entries as `(DynMapping, bool, bool)` =
+  `(map_forward, effective_inv, orig_inv)`; `CmpMap::set_dump_simplified_in(&mut self, inverted: bool, flag: bool)`;
+  `Mapping::dump_is_simple(&self) -> bool`.
+- Produces: no signature change. `set_component_simple_tag(&mut self, index: usize)`
+  keeps its name and arity.
+
+- [ ] **Step 1: Find out whether the tag is being written at all**
+
+Add a temporary probe to `set_component_simple_tag` in
+`crates/ast-core/src/mappings/simplify.rs`, replacing the body:
+
+```rust
+    pub(crate) fn set_component_simple_tag(&mut self, index: usize) {
+        let orig_inv = self.list[index].2;
+        let eff_inv = self.list[index].1;
+        if let Some(cm) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() {
+            let inv = cm.is_inverted();
+            eprintln!(
+                "TAGWRITE index={index} class=CmpMap nin={} is_inverted={inv} \
+                 eff_inv={eff_inv} orig_inv={orig_inv}",
+                cm.nin()
+            );
+            cm.set_dump_simplified_in(inv, true);
+        } else {
+            eprintln!("TAGSKIP index={index} class={}", self.list[index].0.class_name());
+        }
+    }
+```
+
+Then run the minimal fixture from Task 13:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo run -q -p ast-core --example simp_one -- \
+   crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.map \
+   > /dev/null 2>/tmp/tagwrite.txt
+sort /tmp/tagwrite.txt | uniq -c | sort -rn | head
+```
+
+- [ ] **Step 2: Read the probe and select the fix**
+
+Apply this rule to the output — it is mechanical, and only one branch can hold:
+
+| Observation | Diagnosis | Fix |
+|---|---|---|
+| A `TAGWRITE` line appears with `orig_inv=true` and `is_inverted=false` | candidate 1: written to the forward slot, read from the inverted one | Step 3 |
+| Every `TAGWRITE` has `orig_inv=false`, and there is one per stamp C raises | candidate 2: the write is correct and the entry is discarded downstream | Step 4 |
+| No `TAGWRITE` at all, or only `TAGSKIP` | candidate 3: the port never reaches C's `!simpler` head for this element | Step 5 |
+
+Record which branch held. Do only that branch's step, then continue at Step 6.
+
+- [ ] **Step 3: Candidate 1 — write the tag at the orientation the tree stores**
+
+Replace the probe body with the fix:
+
+```rust
+    /// Record C's `astSimplify` stamp on the nominated component.
+    ///
+    /// C's self-simplify head (cmpmap.c:1443) reaches the element through
+    /// `astSimplify`, which stamps its result (mapping.c:24805). When the result
+    /// is the element itself — `simpler == 0`, and the returned pointer is
+    /// annulled at cmpmap.c:1474 — the stamp stays on the live object, so it is
+    /// still there when the closing fold combines that object into the tree.
+    ///
+    /// The record is per orientation and the dump reads the slot for the
+    /// orientation the object is serialised at. An entry is held forward, and
+    /// `reconstruct` restores its stored orientation from the tuple's `orig_inv`,
+    /// so that is the slot the tag belongs in.
+    pub(crate) fn set_component_simple_tag(&mut self, index: usize) {
+        let orig_inv = self.list[index].2;
+        if let Some(cm) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.set_dump_simplified_in(orig_inv, true);
+        }
+    }
+```
+
+- [ ] **Step 4: Candidate 2 — carry the entry's tag through the rebuild**
+
+The write is right and the entry is replaced downstream, so the replacement has to
+inherit the tag. In `MergeContext`, add a helper next to
+`set_component_simple_tag`:
+
+```rust
+    /// Copy the entry's `IsSimple` record onto a mapping that replaces it.
+    ///
+    /// C replaces a list slot by annulling one pointer and storing another, but
+    /// the object it annuls is the live tree child and keeps whatever stamp it
+    /// earned. Where the port's replacement is a fresh object, the record has to
+    /// travel with the slot.
+    fn inherit_simple_tag(&mut self, index: usize, from: &dyn Mapping) {
+        if !from.dump_is_simple() {
+            return;
+        }
+        let orig_inv = self.list[index].2;
+        if let Some(cm) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() {
+            cm.set_dump_simplified_in(orig_inv, true);
+        }
+    }
+```
+
+and call it from `replace_pair_with`, immediately before the `self.list.remove`:
+
+```rust
+        let carried = self.list[i1].0.dump_is_simple() || self.list[i1 + 1].0.dump_is_simple();
+        self.list[i1] = (merged, eff_inv != orig_inv, orig_inv);
+        if carried {
+            let prior = self.list[i1].0.clone_box();
+            self.inherit_simple_tag(i1, prior.as_ref());
+        }
+        self.list.remove(i1 + 1);
+```
+
+- [ ] **Step 5: Candidate 3 — reach C's `!simpler` head for this element**
+
+The head at `simplify.rs:704-736` runs only from `CmpMap::map_merge`, so an element
+that never gets nominated never gets its stamp. Compare the port's nomination order
+against C's by adding a probe at the head's entry:
+
+```rust
+        eprintln!(
+            "NOMINATE where={where_} class={} nin={}",
+            ctx.list[where_].0.class_name(),
+            ctx.list[where_].0.nin()
+        );
+        trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
+```
+
+and against C's, from the instrumented build of Task 13 — every `cmpmap.c:1443`
+frame in `/tmp/instr02.stamps` is one nomination that reached the head. The port
+must nominate the same elements in the same order; where it stops early, the loop
+bound is the defect, and `merge_loop_restricted` at `simplify.rs:3313` is where the
+bound lives. Fix the bound, do not add a nomination outside the loop.
+
+- [ ] **Step 6: Remove every probe**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+grep -n "TAGWRITE\|TAGSKIP\|NOMINATE" crates/ast-core/src/mappings/simplify.rs
+```
+
+Expected: no output. An `eprintln!` left in a hot path is a performance defect as
+well as noise.
+
+- [ ] **Step 7: Run the minimal fixture**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 \
+  | grep -A 6 "=== cap_cmpmap_nested_tag ===" || echo "cap_cmpmap_nested_tag passes"
+```
+
+Expected: `cap_cmpmap_nested_tag passes`.
+
+- [ ] **Step 8: Run the four fixtures the cluster is about**
+
+`cap_cmpmap_01` and `cap_cmpmap_04` still carry their `skip_string_compare`, so
+compare them directly instead of through the harness:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd crates/ast-core/tests/fixtures/native/reference
+for f in cap_specmap_02 cap_cmpmap_01 cap_cmpmap_04 rigby; do
+  cargo run -q -p ast-core --example simp_one -- simplify_fixtures/$f.map \
+     > /tmp/$f.port 2>/dev/null
+  echo "== $f"
+  diff simplify_fixtures/$f.simp /tmp/$f.port | grep -E "IsSimp|Invert" || echo "   no IsSimp/Invert diffs"
+done
+```
+
+Expected: no `IsSimp` differences on any of the four. `cap_cmpmap_01` and
+`cap_cmpmap_04` each keep exactly two `Invert`/`IsSimp` lines that are the
+excluded `InvA`/`InvB` aliasing artefact — one line the port emits where C emits
+`Invert = 1`, and one C emits that the port does not. Those are out of scope
+(see **Out of scope**), and Task 15 writes the narrow licence for them.
+
+If any `IsSimp` difference remains, it is a *second* loss point rather than a
+failure of the fix — return to Step 1 with the fixture that still differs and run
+the probe on it. Do not add a second tag writer to cover it; find where that one
+is lost.
+
+- [ ] **Step 9: Run the whole corpus and the round-trip test**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd /sdf/home/t/timj/WORK/starlink-astrs
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
+cargo test -p ast-core --test test_native_round_trip 2>&1 | tail -5
+```
+
+Expected: `rigby` and `cap_cmpmap_nested_tag` pass; the only remaining simplify
+failures are `cap_cmpmap_01` and `cap_cmpmap_04`, which are still skipped, and
+`cap_specmap_02`, which still fails its licensed card count — Task 15 retires the
+licence.
+
+A newly-failing fixture elsewhere in the corpus means the tag now appears where C
+does not put it. That is the negative-control signal: the corpus's 139 negative
+rows exist to catch exactly this, and loosening any of them is not an option.
+Diagnose with `SIMPLIFY_DIFF=1` on the newly-failing name.
+
+- [ ] **Step 10: Check the hot path is untouched**
+
+The change is inside the simplifier, not a Frame attribute setter, so the SCUBA-2
+constraint is not in play — but the tag writer runs once per nomination, so confirm
+it did not acquire a clone or an allocation:
+
+```bash
+grep -n -A 6 "fn set_component_simple_tag" crates/ast-core/src/mappings/simplify.rs
+```
+
+Expected: a field write and a downcast, no `clone_box`, no `Vec`. Candidate 2's
+`inherit_simple_tag` does clone, and it runs only on the replacement path where C
+also builds a new object; that is acceptable, and no other candidate's fix may.
+
+- [ ] **Step 11: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add crates/ast-core/src/mappings/simplify.rs
+git commit -F - <<'MSG'
+simplify: record a nominated component's IsSimple at the stored orientation
+
+C's self-simplify head reaches each nominated element through astSimplify, which
+stamps its result. When nothing reduced, the result is the element itself, so the
+stamp stays on the live object and is still there when the closing fold builds it
+into the tree.
+
+The port raised the stamp too, but wrote it into the slot for the entry's current
+orientation. An entry is held forward while reconstruct restores the orientation
+recorded in the entry's orig_inv, and the dump reads the slot for the orientation
+it is about to serialise -- so whenever those differed the tag was written to one
+slot and read from the other, and nine cards across four fixtures went missing.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+### Task 15: Retire the cluster's licences and correct what they claimed
+
+Four `skip_string_compare` rows, one `ISSIMP_PLACEMENT_LICENSED` entry and three
+`ISSIMP_DISAGREEMENTS` rows exist because of this cluster. Tasks 12 and 14 make
+all of them removable except the `InvA`/`InvB` aliasing line, which stays and
+needs a licence narrow enough to cover only itself.
+
+Several of the comments those licences carry are now known to be wrong, and each
+wrong one is a reason someone would stop looking. They are corrected here rather
+than deleted, because the corrected reason is what keeps the next reader from
+re-deriving it:
+
+- `ISSIMP_PLACEMENT_LICENSED` says C tags a CmpMap "which the port never forms
+  (the WinMap under-merge of PLAN.md §10.3)". The port forms it: the
+  `CmpMap(SpecMap, ZoomMap)` at `cap_specmap_02.simp:97` is byte-identical in the
+  port's output. Only the tag was missing.
+- The `cap_cmpmap_01` / `_04` / `cap_specmap_02` block says the three are
+  "astequal-only" and that their transforms and structure "match C exactly". Two
+  of those three no longer need any skip.
+- `ISSIMP_DISAGREEMENTS`'s preamble says the corpus "was regenerated against the
+  pin at f6762005, so a stale fixture is no longer a possible explanation". The
+  pin is at `3e60abaa`, 22 commits later, and two of this cluster's five fixtures
+  turned out to be exactly that.
+
+**Files:**
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs:64-98` (the licence and its doc comment), `:578-607` (`ISSIMP_DISAGREEMENTS`)
+- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt:405-427` (the three-fixture block), `:431`, `:434`
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs`
+- Modify: `PLAN.md` §6, §8, §10.3
+- Modify: `docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md` (§2.2)
+
+**Interfaces:**
+- Consumes: `NUMERIC_PLATFORM_DRIFT` and `drop_licensed_residue` (Task 12);
+  the tag fix (Task 14).
+- Produces: `ISSIMP_PLACEMENT_LICENSED` reduced to zero rows and the constant
+  deleted, with the aliasing artefact moved to a new
+  `INVAB_ALIASING_LICENSED: &[(&str, &str)]` — `(fixture, reason)` — consumed only
+  by the Check 3 block.
+
+- [ ] **Step 1: Confirm the two skips are removable before removing them**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cd crates/ast-core/tests/fixtures/native/reference
+for f in cap_cmpmap_01 cap_cmpmap_04; do
+  cargo run -q -p ast-core --example simp_one -- simplify_fixtures/$f.map \
+     > /tmp/$f.port 2>/dev/null
+  echo "== $f"
+  diff simplify_fixtures/$f.simp /tmp/$f.port | grep "^[<>]"
+done
+```
+
+Expected, per fixture: exactly two lines — a `> … IsSimp = 1` the port emits and a
+`< … Invert = 1` C emits at the same position. That pair is the aliasing artefact:
+C recorded the shared child's `Invert` on the parent, so the port's node has an
+`IsSimp` card where C's has an `Invert` card. Anything else in the diff means Task
+14 is incomplete; go back to its Step 8.
+
+- [ ] **Step 2: Replace the placement licence with the aliasing licence**
+
+In `crates/ast-core/tests/test_simplify_regression.rs`, delete
+`ISSIMP_PLACEMENT_LICENSED` and its doc comment in full (`:64-98`) and put this in
+its place:
+
+```rust
+/// Cases whose only remaining difference from the C reference is the `InvA` /
+/// `InvB` line C records from its own reference counting.
+///
+/// C's `CombineMaps` writes a child's `Invert` onto the enclosing CmpMap when the
+/// two share a pointer, so the pair the dump carries reflects the object graph's
+/// history rather than the Mapping (docs/issues/c-library-quirks.md, "CmpMap
+/// dumps InvA/InvB disagreeing with the child's own Invert"). The port holds
+/// components by value and has no such history to record, and mirroring it would
+/// mean modelling C's reference counts — which is why this is licensed rather
+/// than ported.
+///
+/// The comparison drops one `Invert = 1` line from C's side and one `IsSimp = 1`
+/// line from the port's, at the same position, and requires exactly one of each.
+/// Every other line, `Invert` and `IsSimp` alike, is compared.
+///
+/// Fields: name, what differs.
+const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
+    (
+        "cap_cmpmap_01",
+        "C records the shared child's Invert on the enclosing CmpMap; the port's \
+         node carries its IsSimp card at that position instead",
+    ),
+    (
+        "cap_cmpmap_04",
+        "C records the shared child's Invert on the enclosing CmpMap; the port's \
+         node carries its IsSimp card at that position instead",
+    ),
+];
+
+/// Drop the one line each side the `InvA`/`InvB` aliasing licence covers.
+///
+/// Returns the trimmed pair and any problems: the licence requires exactly one
+/// `Invert = 1` on the reference side and exactly one `IsSimp = 1` on the port's,
+/// so it cannot widen to absorb a second divergence of either kind.
+fn drop_aliasing_line(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
+    let Some((_, reason)) = INVAB_ALIASING_LICENSED.iter().find(|(n, _)| *n == name) else {
+        return (got.to_string(), want.to_string(), Vec::new());
+    };
+    let mut problems = Vec::new();
+    let trim = |text: &str, needle: &str, side: &str| -> String {
+        let mut dropped = 0;
+        let kept: Vec<&str> = text
+            .lines()
+            .filter(|l| {
+                let hit = l.trim_start().starts_with(needle) && dropped == 0;
+                if hit {
+                    dropped += 1;
+                }
+                !hit
+            })
+            .collect();
+        if dropped != 1 {
+            problems.push(format!(
+                "{name}: INVAB_ALIASING_LICENSED covers one {needle} on the {side} \
+                 side ({reason}), but found {dropped}"
+            ));
+        }
+        kept.join("\n")
+    };
+    let got = trim(got, "IsSimp = 1", "port");
+    let want = trim(want, "Invert = 1", "reference");
+    (got, want, problems)
+}
+```
+
+The closure captures `problems` mutably and is called twice, so declare it `let
+mut trim = …` and bind `got` before `want`; if the borrow checker objects, inline
+the two calls as separate loops rather than reaching for `RefCell`.
+
+- [ ] **Step 3: Rewire Check 3 and delete the card-count assertions**
+
+In the Check 3 block of `crates/ast-core/tests/test_simplify_regression.rs`,
+replace the `licence` lookup and its card-count enforcement with:
+
+```rust
+                let (got, want, residue_problems) = drop_licensed_residue(name, &got, &want);
+                other_failures.extend(residue_problems);
+                let (got, want, aliasing_problems) = drop_aliasing_line(name, &got, &want);
+                other_failures.extend(aliasing_problems);
+```
+
+Keep `strip_is_simp` for the `ignore_is_simp_line` rows, and keep the
+`ignore_is_simp_line && !simp_str.contains("IsSimp")` guard — that guard is what
+makes a row which starts emitting the card visible. Remove `|| licence.is_some()`
+from `strip_is_simp`'s condition: no row now needs its `IsSimp` lines stripped
+wholesale.
+
+- [ ] **Step 4: Drop the three rows from `ISSIMP_DISAGREEMENTS` and correct its preamble**
+
+In `crates/ast-core/tests/test_simplify_regression.rs`, delete the three entries
+`"cap_specmap_02 (7 vs C's 8)"`, `"cap_cmpmap_01 (16 vs C's 18)"` and
+`"cap_cmpmap_04 (15 vs C's 18)"` together with the comment paragraphs above them,
+leaving the three `cefit_*` / `cap_zoommap_04` rows and their comment. Replace the
+preamble at `:578-582` with:
+
+```rust
+    // Every row here is a real gap: the pinned C oracle and the committed
+    // `.simp` agree, and the port's `IsSimp` count differs from both.
+    //
+    // Staleness is ruled out per row, not per corpus:
+    // `tools/oracle_fixtures/check_simplify_fresh.sh` classifies every reference
+    // against the pin and reports card, numeric and structural drift separately,
+    // so a row can only appear here once that check calls its reference fresh.
+    // See PLAN.md §6.
+```
+
+- [ ] **Step 5: Remove the remaining two skips and correct the manifest block**
+
+In `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, replace
+the whole `cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02` comment block
+(`:405-427`) with:
+
+```
+# cap_cmpmap_01 and cap_cmpmap_04 are byte-compared, with one line dropped from
+# each side by INVAB_ALIASING_LICENSED in test_simplify_regression.rs. C's
+# CombineMaps records a shared child's Invert on the enclosing CmpMap, so C's dump
+# has an `Invert = 1` where the port's node carries its `IsSimp` card. That is C's
+# reference counting showing through the dump, not a property of the Mapping; see
+# docs/issues/c-library-quirks.md, "CmpMap dumps InvA/InvB disagreeing with the
+# child's own Invert". The port holds components by value and has no such history.
+# Every other line in both files is compared, including every other Invert and
+# IsSimp card.
+#
+# cap_specmap_02 needs no licence at all. It was short one IsSimp card on the
+# CmpMap(SpecMap, ZoomMap) at cap_specmap_02.simp:97 -- a node the port does form,
+# byte for byte. C stamps it at cmpmap.c:1443 on a nominated element whose
+# self-simplify found nothing, and the port wrote that stamp into the slot for the
+# wrong orientation. cap_cmpmap_nested_tag is the minimal fixture for it.
+```
+
+and change both rows to have an empty fourth field:
+
+```
+cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtures/cap_cmpmap_01.simp |
+cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp |
+```
+
+- [ ] **Step 6: Correct the stale-corpus claim in the scenario block**
+
+In the same file, the scenario preamble (`:38-41`) says `rigby.simp` "has been
+regenerated from that C", naming `f6762005`. Replace those four lines with:
+
+```
+# rigby.simp was captured the same way, and was regenerated from the C at
+# f6762005 with the Channel defaults, so it needs no render_options. The pin has
+# since moved to 3e60abaa and rigby's numeric residues were not recaptured -- see
+# the note on its row below, and check_simplify_fresh.sh for how that is now
+# detected rather than assumed.
+```
+
+- [ ] **Step 7: Run the harness with no skips left in this cluster**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -25
+```
+
+Expected: PASS. A failure naming `INVAB_ALIASING_LICENSED … but found 0` means
+Task 14's fix changed which card that node carries — re-read Step 1's diff. A
+failure naming a count mismatch in `ISSIMP_DISAGREEMENTS` means one of the three
+deleted rows still disagrees.
+
+- [ ] **Step 8: Prove the aliasing licence is falsifiable**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+python3 - <<'PY'
+from pathlib import Path
+p = Path("crates/ast-core/tests/test_simplify_regression.rs")
+t = p.read_text()
+assert '"cap_cmpmap_02",' not in t
+p.write_text(t.replace('    (\n        "cap_cmpmap_01",',
+                       '    (\n        "cap_cmpmap_02",\n        "probe",\n    ),\n    (\n        "cap_cmpmap_01",', 1))
+PY
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep "INVAB_ALIASING_LICENSED"
+git checkout crates/ast-core/tests/test_simplify_regression.rs
+```
+
+Expected: a `but found 0` problem for `cap_cmpmap_02`, which passes byte-exact and
+so has neither line to drop. A licence that stayed silent there would be dropping
+lines opportunistically rather than covering a named artefact.
+
+- [ ] **Step 9: Update the ledger, in both copies**
+
+In `PLAN.md` §6, delete the `ISSIMP_PLACEMENT_LICENSED` row, change the
+`skip_string_compare` row's count to 0 and delete it, and add:
+
+```
+| simplify regression | 469 | 2 | `INVAB_ALIASING_LICENSED` — `cap_cmpmap_01`, `cap_cmpmap_04`. One `Invert = 1` dropped from C's side and one `IsSimp = 1` from the port's, at the same node, each required to be exactly one. C's `CombineMaps` records a shared child's `Invert` on the parent, which is reference-count history rather than a property of the Mapping (docs/issues/c-library-quirks.md). Every other line is compared |
+```
+
+Change the `ISSIMP_DISAGREEMENTS` row's count from 7 to 4 and replace its closing
+sentence — "A stale fixture is no longer a possible cause: the corpus was
+regenerated against the pin at `f6762005`" — with:
+
+```
+Staleness is ruled out per row by `tools/oracle_fixtures/check_simplify_fresh.sh`,
+which classifies each reference against the pin as fresh, card-drifted,
+numerically drifted or structurally drifted. It was card and numeric drift, unchecked
+across the `f6762005` → `3e60abaa` pin move, that kept two of this row's former
+entries in it
+```
+
+Update the case totals from 468 to 469 for the new fixture, in every §6 row.
+
+In `crates/ast-core/tests/test_verification_ledger.rs`, delete
+`"simplify manifest: skip_string_compare"` and `"ISSIMP_PLACEMENT_LICENSED"`, add
+`"INVAB_ALIASING_LICENSED" => 2`, and change `"ISSIMP_DISAGREEMENTS"` to 4. Then:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -20
+```
+
+Expected: PASS.
+
+- [ ] **Step 10: Close PLAN.md §10.3 and record the sync in §8**
+
+§10.3 is the "WinMap under-merge" row that `ISSIMP_PLACEMENT_LICENSED` and the
+manifest both cited as the reason for `cap_specmap_02`'s missing card. Replace its
+status with a closing note:
+
+```
+Closed. The missing card was not an under-merge: the port forms
+`CmpMap(SpecMap, ZoomMap)` byte for byte and wrote C's stamp into the slot for the
+wrong orientation. Fixed in `set_component_simple_tag`; `cap_cmpmap_nested_tag` is
+the minimal fixture.
+```
+
+In §8, the pending-upstream-sync section, add:
+
+```
+The simplify corpus was not covered by a freshness check when the pin moved from
+`f6762005` to `3e60abaa`, and two references were stale for the whole of that
+interval. `tools/oracle_fixtures/check_simplify_fresh.sh` now covers it, and must
+be run alongside `check_corpus_fresh.sh` after any pin move.
+```
+
+- [ ] **Step 11: Amend the spec in the same change**
+
+`docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md` §2.2
+describes cluster 2 as five defects in the CmpMap flatten and WinMap merge paths.
+The evidence says otherwise, and CLAUDE.md requires the spec be amended in the
+change that proves it wrong rather than left standing. Replace §2.2's defect list
+with:
+
+```markdown
+Cluster 2 turned out to be one defect and two stale references, not five defects.
+
+The defect: C's self-simplify head stamps `IsSimp` on a nominated element whose
+simplify found nothing (`cmpmap.c:1443`, with the pointer annulled at
+`cmpmap.c:1474`), and the closing fold at `cmpmap.c:3709` builds that same object
+into the tree, so the tag reaches the dump. The port raised the stamp on C's path
+but recorded it against the entry's current orientation rather than the orientation
+`reconstruct` restores, so it was written to one slot of the per-orientation record
+and read from the other. Nine cards across four fixtures.
+
+The references: `cap_winmap_03` was card-drifted and `rigby` numerically drifted
+across the `f6762005` → `3e60abaa` pin move, which no check covered because
+`check_corpus_fresh.sh` only ever looked at the wcsconv corpus.
+
+Neither MatrixMap-inverse arithmetic nor the `WinTerms` / `WinMat` paths are
+involved, and the port already matches the post-`4f2fc0ed` ordering at
+`cmpmap.c:1726`. Two genuine C-versus-port arithmetic divergences remain recorded
+and unscheduled: `MtrZoom` (`matrixmap.c:4040-4072`) divides the inverse
+elementwise where the port multiplies by the reciprocal, and `MtrRot`
+(`matrixmap.c:3880-3975`) accumulates the inverse through `SMtrMult(0, …)` where
+the port recomputes from `MatrixMap::new`. No fixture in the corpus distinguishes
+either.
+```
+
+Add a revision-history entry recording the amendment and its date.
+
+- [ ] **Step 12: Format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+unset CARGO_TARGET_DIR RUSTC RUSTDOC
+git add -A crates PLAN.md docs
+git commit -F - <<'MSG'
+test(simplify): byte-compare the whole cluster, and correct what the licences claimed
+
+The four skip_string_compare rows are gone. cap_winmap_03 and rigby were stale
+references, cap_specmap_02 was one missing tag, and cap_cmpmap_01 and _04 are now
+byte-compared with one line dropped from each side for the InvA/InvB aliasing
+artefact -- a licence that requires exactly one Invert on C's side and one IsSimp
+on the port's, so it cannot absorb anything else.
+
+Three claims in those licences were wrong and are corrected rather than deleted.
+cap_specmap_02's card was not missing because the port never forms the CmpMap: it
+forms it byte for byte. The three fixtures were not astequal-only for structural
+reasons. And the corpus had not been regenerated against the pin -- the check that
+would have shown that did not exist until this cluster, and two references had been
+read as port gaps ever since the pin moved.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+**Cluster 2 closes five fixtures, four skips and a licence, and replaces the
+assumption that the simplify corpus was fresh with a check that says so.**
