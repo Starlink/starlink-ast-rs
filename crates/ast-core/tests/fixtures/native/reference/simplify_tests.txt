@@ -344,7 +344,6 @@ interval_self_simplify  | simplify_fixtures/interval_self_simplify.map  | simpli
 nullregion_self_simplify | simplify_fixtures/nullregion_self_simplify.map | simplify_fixtures/nullregion_self_simplify.simp |
 nullregion_parallel_merge | simplify_fixtures/nullregion_parallel_merge.map | simplify_fixtures/nullregion_parallel_merge.simp |
 pointlist_self_simplify | simplify_fixtures/pointlist_self_simplify.map | simplify_fixtures/pointlist_self_simplify.simp |
-normmap_frame_simplifies | simplify_fixtures/normmap_frame_simplifies.map | simplify_fixtures/normmap_frame_simplifies.simp |
 selectormap_region_simplify | simplify_fixtures/selectormap_region_simplify.map | simplify_fixtures/selectormap_region_simplify.simp |
 regbasepick_prism_subset | simplify_fixtures/regbasepick_prism_subset.map | simplify_fixtures/regbasepick_prism_subset.simp |
 regbasepick_cmpregion_subset | simplify_fixtures/regbasepick_cmpregion_subset.map | simplify_fixtures/regbasepick_cmpregion_subset.simp |
@@ -714,7 +713,7 @@ cap_cheby_consolidate | simplify_fixtures/cap_cheby_consolidate.map | simplify_f
 # current-Frame axis equal limits (box.c:3764), so the result is a 3-D Box
 # pinned on axis 3. astMapRegion is the only way to install a base->current
 # Mapping in a Region -- astBox resolves a FrameSet to its current Frame
-# (region.c:10730, see normmap_frame_simplifies) -- and its public interface
+# (region.c:10730) -- and its public interface
 # simplifies what it returns (region.c:14024), so the generator calls the
 # protected astMapRegion_ to keep the answer out of the .map file.
 cap_box_permmap_const | simplify_fixtures/cap_box_permmap_const.map | simplify_fixtures/cap_box_permmap_const.simp |
@@ -783,3 +782,12 @@ cap_poly_bent_edges | simplify_fixtures/cap_poly_bent_edges.map | simplify_fixtu
 # The mesh check is skipped and the vertices are transformed, bowed edges and
 # all. The pair discriminates the SimpVertices branch from the vertex transform.
 cap_poly_bend_allowed | simplify_fixtures/cap_poly_bend_allowed.map | simplify_fixtures/cap_poly_bend_allowed.simp |
+
+# A NormMap over a CmpFrame whose first component is a FrameSet whose
+# base->current Mapping is a CmpMap(Zoom 2, Zoom 3). normmap.c:619 simplifies
+# the encapsulated Frame first: CmpFrame simplifies its components and rebuilds
+# around the results (cmpframe.c:9018), the CmpMap collapsing to ZoomMap(6), so
+# C rebuilds the NormMap around the changed CmpFrame instead of reaching the
+# basic-Frame test that would give a UnitMap (normmap.c:632). Reversing the two
+# tests, or reading the class of the unsimplified Frame, changes the answer.
+cap_normmap_cmpframe | simplify_fixtures/cap_normmap_cmpframe.map | simplify_fixtures/cap_normmap_cmpframe.simp |

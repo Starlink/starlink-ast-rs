@@ -645,6 +645,31 @@ impl Frame for CmpFrame {
         Box::new(cmp)
     }
 
+    /// Simplify both component Frames and rebuild around the results
+    /// (`cmpframe.c:9018-9034`).
+    ///
+    /// C tests `astIsAFrame` on each simplified component and abandons the
+    /// whole rebuild if either is no longer a Frame; here that result is not
+    /// representable, so a component whose reduction is Mapping-valued reports
+    /// no change (see `simplify_frame_via_mapping`) and is left in place.
+    fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
+        let f1 = self.frame1.simplify_frame()?;
+        let f2 = self.frame2.simplify_frame()?;
+        if f1.is_none() && f2.is_none() {
+            return Ok(None);
+        }
+        let mut new = self.clone();
+        if let Some(f) = f1 {
+            new.frame1 = f;
+        }
+        if let Some(f) = f2 {
+            new.frame2 = f;
+        }
+        // The default Domain is derived from the component Domains.
+        new.domain_default = std::cell::OnceCell::new();
+        Ok(Some(Box::new(new)))
+    }
+
     // Match-control attributes — mirror C `astGet/SetMinAxes` etc.
     // CmpFrame's MinAxes / MaxAxes default in C are derived from
     // the components' MinAxes / MaxAxes (sum for max, max for min);

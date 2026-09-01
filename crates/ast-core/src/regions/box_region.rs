@@ -12,7 +12,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
+use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, PermMap, UnitMap, ViaSimplify};
 
@@ -1533,6 +1533,13 @@ impl Frame for BoxRegion {
 
     fn snapshot(&self) -> DynFrame {
         Box::new(self.clone())
+    }
+
+    /// C has one `Simplify` slot, so a Region simplifies through its Mapping
+    /// side and the caller keeps the result because it is still a Frame
+    /// (`astIsAFrame`, `cmpframe.c:9024`).
+    fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
+        simplify_frame_via_mapping(self)
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {

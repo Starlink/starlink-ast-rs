@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
-use crate::frames::{Frame, FrameRef, FrameSet, SkyFrame};
+use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, SkyFrame};
 use crate::mappings::helpers::is_bad;
 use crate::mappings::{Mapping, UnitMap};
 
@@ -136,6 +136,21 @@ impl Clone for RegionData {
     }
 }
 
+/// The Frame a Region encapsulates, given the Frame its constructor was
+/// supplied (`region.c:13311-13323`).
+///
+/// A Region contributes the current Frame of its own FrameSet, a FrameSet its
+/// current Frame, and any other Frame is used as supplied.
+fn resolve_supplied_frame(frame: &dyn Frame) -> DynFrame {
+    if let Some(region) = crate::regions::any_as_region(frame.as_any()) {
+        region.get_region_frame()
+    } else if let Some(fs) = frame.as_any().downcast_ref::<FrameSet>() {
+        fs.current().snapshot()
+    } else {
+        frame.snapshot()
+    }
+}
+
 impl RegionData {
     /// Create a new `RegionData` with default attribute values.
     ///
@@ -147,8 +162,14 @@ impl RegionData {
         // Ensure 2-frame structure: base + current connected by UnitMap.
         // This matches the C library and ensures with_integrity works
         // (fuse_into_current_edges needs at least one edge to compose the delta).
+        //
+        // A single-frame FrameSet is the frame a Region constructor was handed,
+        // which C resolves before storing: a Region contributes the Frame it
+        // encapsulates and a FrameSet its current Frame (region.c:13311-13323).
         if fs.nframe() == 1 {
-            let naxes = fs.base().naxes();
+            let resolved = resolve_supplied_frame(fs.current());
+            let naxes = resolved.naxes();
+            fs = FrameSet::new(resolved);
             let current_snap = fs.current().snapshot();
             fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
                 .expect("adding current frame to region FrameSet");

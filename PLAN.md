@@ -1398,68 +1398,83 @@ base-to-current PermMap without that check — reading a Native Region dump whos
 `FrmSet` already carries one is the only candidate, and nothing in the corpus
 writes such a dump.
 
-### 10.17 NormMap does not simplify its encapsulated Frame
+### 10.17 NormMap did not simplify its encapsulated Frame — FIXED
 
 `normmap.c:619-631` is the *first* thing C's `MapMerge` does: `astSimplify` the
 encapsulated Frame, and if that returns a different object, replace the NormMap
 with a new one wrapping the simplified Frame and report a change. Only if the
 Frame did not simplify does C reach the basic-Frame test that turns the NormMap
 into a UnitMap (`:632-640`), and only after that does it consider neighbours.
+The class C reads for that second test is `astGetClass( smap )`, the class of
+the *simplified* Frame, so the two tests are one call apart rather than one
+pass.
 
-`NormMap::map_merge` (`normmap.rs:188-205`) performs the basic-Frame test and
-nothing else, so the port never rebuilds a NormMap around a reduced Frame. The
-audit recorded both halves as ported on the strength of the one downcast; the
-module comment cites `normmap.c:632-640` alone, which is what the Rust code does.
+`NormMap::map_merge` (`normmap.rs:210-221`) performs both, in that order, and
+the module comment records why the order is load-bearing.
 
-The branch is reachable because `Simplify` is a real Frame-level seam: CmpFrame
-overrides it to simplify each component and rebuild
-(`cmpframe.c:9018-9034`), and every Region class overrides it too, so a Frame *can*
-simplify to a different Frame.
+**The seam came first.** `Simplify` is a Mapping vtab slot every Frame inherits
+(`mapping.c:16853`), which is what lets `CmpFrame` override it to simplify its
+components and rebuild (`cmpframe.c:9018-9034`), `FrameSet` override it
+(`frameset.c:10111`) and every Region override it. The port had no Frame-level
+simplify at all: `FrameSet` was the only type under
+`crates/ast-core/src/frames/` implementing `Mapping`, so `CmpFrame` had nothing
+to override. `Frame::simplify_frame` (`frames/mod.rs:240`) is the port of the
+slot, with the `Option` convention `Mapping::simplified` uses — `None` is what C
+signals by handing back the pointer it was given, which is `normmap.c:626`'s
+identity test. The default is `None`; `CmpFrame` folds its two components;
+`FrameSet` and the nine Region classes delegate to their Mapping side through
+`simplify_frame_via_mapping` (`frames/mod.rs:50`), which asks
+`simplify_reporting_change` whether anything reduced and drops a result that is
+no longer a Frame — C's `astIsAFrame` guard (`cmpframe.c:9024`).
 
-**A fixture was written for it and does not reach it.**
-`gen_simplify_fixtures.c:2612-2632` builds `normmap_frame_simplifies` as a NormMap
-over a Box whose FrameSet holds `CmpMap(ZoomMap(2), ZoomMap(3))` in series,
-expecting the Box to reduce. It does not: `astBox` resolves the FrameSet to its
-current Frame at construction, so the dumped `.map` already holds a Box over a
-plain `ZOOMED` Frame with the bounds transformed. Both `.map` and `.simp` carry the
-same Box, and the port passes the fixture by declining a branch it has not ported.
-The harness compares correctly; the fixture cannot discriminate, because the
-reduction it was built around happened before `astSimplify` was ever called. That
-is why the mis-verdict survived.
+**The fixture that could not discriminate is retired.**
+`normmap_frame_simplifies` built a NormMap over a Box whose FrameSet held
+`CmpMap(ZoomMap(2), ZoomMap(3))`, expecting the Box to reduce. It did not:
+`astBox` resolves a supplied FrameSet to its current Frame at construction
+(`region.c:13311-13323`), so the dumped `.map` already held a Box over a plain
+`ZOOMED` Frame with the bounds transformed, both halves of the fixture carried
+the same Box, and the port passed it by declining a branch it had not ported. It
+is deleted, generator case and both references.
 
-`astBox` is not the only thing standing in the way: the public `astMapRegion` is
-`astMapRegionId_`, which simplifies the Region it returns (`region.c:14020-14024`),
-so building the FrameSet after construction is no escape either. §10.13's fixtures
-show the way round both — call the protected `astMapRegion_` through
-`astMakePointer` and write the result with the protected `astWrite_`.
+`cap_normmap_cmpframe` replaces it: a NormMap over a CmpFrame whose first
+component is a FrameSet whose base→current Mapping is `CmpMap(ZoomMap(2),
+ZoomMap(3))`. The CmpFrame does not absorb the reduction at construction, so
+`astSimplify` has a different Frame to return and C takes the rebuild branch —
+the `.simp` differs from the `.map` in the FrameSet's edge Mapping, `ZoomMap(6)`
+against the CmpMap. A CmpFrame holding a *Region* was the first shape tried and
+was rejected: C's `astEqual` returns 0 for a CmpFrame containing a Region
+compared with its own copy, so the harness's `equal()` gate could not have
+applied to it. The FrameSet component compares equal and still discriminates.
 
-What would expose it: an encapsulated Frame whose reduction is *not* absorbed by
-its own constructor. A CmpFrame is the direct route — `cmpframe.c:9019-9034`
-rebuilds only when a component Frame simplifies, so a CmpFrame holding a Region
-that reduces gives `astSimplify` something to return. Compare the `.simp` on the
-NormMap's `Frame` value, not just the card count: C writes the reduced Frame and
-the port writes the original.
+**Where the rebuild was being discarded.** `try_self_reduce`
+(`mappings/simplify.rs:1115`) installed a class's replacement only when it
+compared unequal to the Mapping it replaced. Frame equality is conversion-based,
+so a NormMap rebuilt around a Frame whose *internal* Mapping reduced compares
+equal to the original and the rebuild was dropped. C's test is on the pointer
+`astSimplify` handed back and C makes it in the class body, which is where the
+port's three callers make it too — each returns `None` when nothing changed — so
+the helper now installs whatever it is given.
 
-Nothing in `ast-core` can currently supply that CmpFrame. `FrameSet` is the only
-type under `crates/ast-core/src/frames/` that implements `Mapping`
-(`frames/frameset.rs:1561`), so `CmpFrame` has no `simplified` to override and
-there is no Frame-level simplify seam for a NormMap to call. C's
-`Frame::Simplify` is inherited by every Frame through the Mapping vtab, which is
-why `cmpframe.c:9019-9034` can override it. Closing this section therefore means
-adding the seam, not just the NormMap branch: the fixture needs a Frame that
-simplifies to a different Frame, and the port has no such Frame yet.
+**Two defects the fixture exposed on the way.** `FrameSet::snapshot` returned
+`current().snapshot()`, and `snapshot` doubles as the deep-copy hook for a `dyn
+Frame`, so cloning any object holding a FrameSet as a Frame silently downgraded
+it to a plain Frame; it now clones the FrameSet, as `astCopy` does, and
+`FrameSet::map_from` unwraps a FrameSet `previous` so an integrity delta stays a
+delta between current Frames. `RegionData::new` had been relying on that lossy
+snapshot for C's supplied-Frame resolution, which is now ported explicitly
+(`regions/data.rs`): a Region contributes its own encapsulated Frame, a FrameSet
+its current Frame, and any other Frame is used as supplied.
 
-**FrameSet's half is closed.** The three `frame_frameset.md` rows that shared this
-section — 10, 12 and 14, C's `tmp != map` per edge, the `simpler` flag it raises
-and the `astClone( simpler ? new : this )` return — were gaps because the seam
-returned a Mapping without saying whether it had reduced anything, so
+**FrameSet's half.** The three `frame_frameset.md` rows that shared this section
+— 10, 12 and 14, C's `tmp != map` per edge, the `simpler` flag it raises and the
+`astClone( simpler ? new : this )` return — were gaps because the seam returned
+a Mapping without saying whether it had reduced anything, so
 `FrameSet::simplified` handed back its working copy unconditionally.
-`Mapping::simplified` now returns `(DynMapping, bool)` and all three are ported.
+`Mapping::simplified` returns `(DynMapping, bool)` and all three are ported.
 `cap_frameset_nochange` is the fixture: a FrameSet whose one edge is a UnitMap,
 gated by `frameset_with_no_reducible_edge_returns_the_original` in
 `test_simplify_seams.rs` rather than the simplify manifest, because that harness
-reduces a FrameSet input to its base→current Mapping first. What remains open here
-is the NormMap branch and the Frame-level seam it needs.
+reduces a FrameSet input to its base→current Mapping first.
 
 ### 10.18 Polygon's vertex-transform simplification skipped both of C's guards — FIXED
 

@@ -35,7 +35,8 @@ use crate::mappings::SimplifiedRecord;
 /// forward/inverse pairs to a UnitMap and eliminates duplicate
 /// consecutive NormMaps.
 ///
-/// A NormMap encapsulating a basic Frame (whose `norm()` is identity)
+/// A NormMap whose Frame itself simplifies is rebuilt around the simplified
+/// Frame, and one encapsulating a basic Frame (whose `norm()` is identity)
 /// simplifies to a UnitMap.
 pub struct NormMap {
     /// The frame whose `norm()` method is called.
@@ -194,19 +195,30 @@ impl Mapping for NormMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C opens its MapMerge with the replace-with-simpler step
-        // (normmap.c:632-640): a basic Frame's astNorm does nothing, so a
-        // NormMap over one is a UnitMap. Anything else falls through to the
+        // C's MapMerge tries two replacements before it looks at neighbours,
+        // in this order. Anything that neither replaces falls through to the
         // neighbour steps, which `NormMap::try_merge` performs.
         //
-        // C tries one thing first: simplify the encapsulated Frame and rebuild
-        // the NormMap around the result if it reduced (normmap.c:619-631). That
-        // is unported; see PLAN.md §10.17 for what would expose it.
-        let reduced: Option<DynMapping> = self
-            .frame
-            .as_any()
-            .downcast_ref::<BasicFrame>()
-            .map(|_| Box::new(UnitMap::new(self.naxes())) as DynMapping);
+        // The order is load-bearing: C reaches the second test with
+        // `class = astGetClass( smap )`, the class of the *simplified* Frame,
+        // so a Frame that reduces to a basic Frame is rebuilt on this
+        // iteration and becomes a UnitMap on the next one. Collapsing the two
+        // into a single pass yields a UnitMap where C yields a NormMap.
+        //
+        // An error from the Frame simplify abandons the merge, as C's status
+        // check does.
+        let simplified_frame = self.frame.simplify_frame().ok()?;
+        let reduced: Option<DynMapping> = if let Some(frame) = simplified_frame {
+            // The encapsulated Frame reduced: rebuild the NormMap around it
+            // (normmap.c:619-631).
+            Some(Box::new(NormMap::new(frame)))
+        } else if self.frame.as_any().is::<BasicFrame>() {
+            // A basic Frame's astNorm does nothing, so the NormMap is a UnitMap
+            // (normmap.c:632-640).
+            Some(Box::new(UnitMap::new(self.naxes())))
+        } else {
+            None
+        };
 
         super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
     }

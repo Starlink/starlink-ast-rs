@@ -28,10 +28,35 @@ pub use timeframe::{TimeFrame, TimeScale, TimeSystem};
 use std::fmt;
 
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::{AsAny, DynMapping, PermMap};
+use crate::mappings::{AsAny, DynMapping, Mapping, PermMap};
+use crate::serial::AnyObject;
 
 /// An owned, dynamically-dispatched Frame.
 pub type DynFrame = Box<dyn Frame>;
+
+/// [`Frame::simplify_frame`] for a class that is both a Frame and a Mapping.
+///
+/// C has one `Simplify` slot, so `astSimplify` on a Region or a FrameSet runs
+/// that class's own Mapping-level reduction and the caller then asks whether
+/// what came back is still a Frame (`astIsAFrame( map1 )`,
+/// `cmpframe.c:9024`). A Region always simplifies to a Region, but a
+/// FrameSet's reduction can hand back a plain Mapping, which is the case that
+/// test exists for; here it is the `into_frame` conversion that drops it.
+///
+/// "No simplification took place" is
+/// [`simplify_reporting_change`](crate::mappings::Mapping)'s answer rather than
+/// a fresh comparison: C's identity test on the returned pointer asks for the
+/// same fact the engine already reports.
+pub(crate) fn simplify_frame_via_mapping(m: &dyn Mapping) -> AstResult<Option<DynFrame>> {
+    let (simplified, changed) = m.simplify_reporting_change()?;
+    if !changed {
+        return Ok(None);
+    }
+    // Every class that implements `Frame` has an `AnyObject` variant, and
+    // `any_object_from_mapping_covers_as_mapping` keeps that true, so a `None`
+    // here is a Mapping-valued result rather than a missing case.
+    Ok(AnyObject::from_mapping(simplified.as_ref()).and_then(|o| o.into_frame()))
+}
 
 /// A cached description of a line segment within a 2-D [`Frame`].
 ///
@@ -198,6 +223,22 @@ pub trait Frame: AsAny + Send + fmt::Debug {
         // (the same indirection `default_find_frame` uses).
         let from = self.snapshot();
         find_frame::convert_frames(from.as_ref(), to, &domainlist)
+    }
+
+    /// C `astSimplify` applied to a Frame — the Mapping `Simplify` slot every
+    /// Frame inherits (`frame.c` defines none of its own, so a plain Frame gets
+    /// `mapping.c:16853`, which returns a clone).
+    ///
+    /// `None` means no simplification took place, which is what C signals by
+    /// returning a clone of the input pointer: the caller's identity test
+    /// (`smap != map->frame`, `normmap.c:626`) is a `None` check here.
+    ///
+    /// The default is `None`: a Frame with no internal structure has nothing to
+    /// reduce. [`CmpFrame`] overrides it (`cmpframe.c:9018-9034`), as does every
+    /// class that is both a Frame and a Mapping — each `Region` and `FrameSet`,
+    /// through `simplify_frame_via_mapping`.
+    fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
+        Ok(None)
     }
 
     /// Observer geodetic latitude in radians.

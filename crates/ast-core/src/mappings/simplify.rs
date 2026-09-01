@@ -1094,9 +1094,9 @@ pub(crate) fn wcs_map_merge(
 ///
 /// `reduced` is the replacement the class arrived at, or `None` when it has
 /// none. The class computes it in its own `map_merge`, which is where C's body
-/// computes it, and the entry is replaced only when the candidate differs from
-/// the Mapping it replaces — a candidate equal to the original is C's
-/// "no simplification took place".
+/// computes it, and `Some` is the class stating that a simplification took
+/// place — C's own test is on the pointer `astSimplify` handed back, and it too
+/// is made in the class body, not here.
 pub(crate) fn self_reduce_map_merge(
     this: &dyn Mapping,
     reduced: Option<DynMapping>,
@@ -1119,9 +1119,7 @@ pub(crate) fn try_self_reduce(
     where_: usize,
 ) -> Option<usize> {
     trace::simplify_enter("self-reduce-head", this);
-    if let Some(simp) = reduced
-        && (simp.is_inverted() != this.is_inverted() || !simp.equal(this))
-    {
+    if let Some(simp) = reduced {
         let (eff, orig) = {
             let e = ctx.entry(where_);
             (e.1, e.2)

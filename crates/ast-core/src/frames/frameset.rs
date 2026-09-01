@@ -12,7 +12,7 @@ use crate::serial::{
     FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
 
-use super::{DynFrame, Frame};
+use super::{DynFrame, Frame, simplify_frame_via_mapping};
 
 /// Identifies a frame within a [`FrameSet`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1149,10 +1149,30 @@ impl Frame for FrameSet {
     }
 
     fn snapshot(&self) -> DynFrame {
-        self.current().snapshot()
+        // A copy of a FrameSet is a FrameSet, as C `astCopy` gives
+        // (`object.c:1174`): the class has to survive, because a FrameSet used
+        // as a Frame keeps its internal Mappings and is dumped as a FrameSet.
+        // Callers that want the Frame-level state a FrameSet presents — an
+        // integrity delta, or the Frame a Region encapsulates — take
+        // `current().snapshot()` explicitly.
+        Box::new(self.clone())
+    }
+
+    /// C has one `Simplify` slot, so a FrameSet simplifies through its Mapping
+    /// side (`frameset.c:10111`). That reduction can hand back something that
+    /// is no longer a Frame, which is the case `astIsAFrame` guards
+    /// (`cmpframe.c:9024`) and which the helper's conversion drops.
+    fn simplify_frame(&self) -> AstResult<Option<DynFrame>> {
+        simplify_frame_via_mapping(self)
     }
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
+        // The Frame-level state a FrameSet presents is its current Frame's, so
+        // a delta against an earlier FrameSet is a delta between the two
+        // current Frames.
+        if let Some(previous) = previous.as_any().downcast_ref::<FrameSet>() {
+            return self.current().map_from(previous.current());
+        }
         self.current().map_from(previous)
     }
 

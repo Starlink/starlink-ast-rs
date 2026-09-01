@@ -2,6 +2,28 @@
 
 ## Revision history
 
+- **2026-08-31 (rev 9)**: `Frame` gained the simplify seam it had been missing.
+  C has one `Simplify` slot, on the Mapping vtab, and every Frame inherits it
+  (`mapping.c:16853`); `CmpFrame` overrides it to simplify its components and
+  rebuild (`cmpframe.c:9018-9034`), `FrameSet` overrides it (`frameset.c:10111`)
+  and so does every Region.
+  The port's sibling traits gave `Frame` no access to it: `FrameSet` was the only
+  type under `frames/` implementing `Mapping`, so a caller holding a `dyn Frame`
+  had no way to ask, and `NormMap::MapMerge`'s first branch — rebuild around the
+  encapsulated Frame if it simplifies (`normmap.c:619-631`) — was unreachable
+  rather than merely unwritten.
+  `Frame::simplify_frame(&self) -> AstResult<Option<DynFrame>>` is that slot, with
+  the `Option` convention rev 7 gives `Mapping::simplified` and for the same
+  reason: `None` is the pointer C hands back unchanged, which is what
+  `normmap.c:626`'s identity test reads.
+  The default is `None`, `CmpFrame` folds its two components, and `FrameSet` and
+  the nine Region classes delegate to their Mapping side through a shared helper
+  that asks `simplify_reporting_change` whether anything reduced and drops a
+  result that is no longer a Frame — C's `astIsAFrame` guard (`cmpframe.c:9024`),
+  which the return type makes unrepresentable rather than optional.
+  This is an internal seam: `dyn Frame` is not part of the C ABI surface and no
+  `ast.h` prototype changes.
+
 - **2026-08-31 (rev 8)**: `Ident` is Mapping-level bookkeeping, and it has a
   consumer.
   C refuses to simplify or decompose a Mapping whose `Ident` is set: the
@@ -409,6 +431,8 @@ pub trait Frame {
     fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;  // rev 6: was `convert(.., &str)`
     // resolve, intersect, axnorm, matchaxes, axdistance, axoffset ...
 
+    fn simplify_frame(&self) -> AstResult<Option<DynFrame>>;  // rev 9: C's inherited Simplify slot
+
     // Self-identifying metadata used by FrameSet / Region integrity:
     fn snapshot(&self) -> DynFrame;                    // deep clone for delta computation
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping>;
@@ -431,6 +455,8 @@ Notes:
   (Mapping) and a coordinate-system descriptor (Frame), and that
   combination is load-bearing for the region-integrity feature
   (changing the coordinate system auto-transforms the defining points).
+- `Frame::simplify_frame` is C's inherited `Simplify` slot at Frame level
+  *(rev 9)*, returning `None` where C returns the pointer it was given.
 - `Frame::snapshot` / `Frame::map_from` are the primitives used by
   FrameSet integrity (described later). They're on `Frame` because every
   Frame subclass needs to know how to produce a deep-clone of itself and

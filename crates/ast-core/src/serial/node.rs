@@ -144,10 +144,21 @@ impl Node {
         None
     }
 
-    /// Remove all `Unset` items from this node (for minimal output).
+    /// Remove every `Unset` item from this node and from the objects nested
+    /// inside it.
+    ///
+    /// This is C's `Full = -1`, which a class sets on the Channel around a
+    /// nested write and restores afterwards (`cmpframe.c:10485-10500`). A
+    /// Channel attribute is in force for the whole of the nested object's
+    /// dump, however deep it goes, so the removal recurses.
     pub fn strip_unset(&mut self) {
         self.items
             .retain(|item| !matches!(&item.value, NodeValue::Unset(_)));
+        for item in &mut self.items {
+            if let NodeValue::Object(child) = &mut item.value {
+                child.strip_unset();
+            }
+        }
     }
 
     /// Look up the first item with the given key, returning its value

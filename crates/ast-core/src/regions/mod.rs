@@ -1174,7 +1174,13 @@ impl Clone for Box<dyn Region> {
 /// type, else return `None`. The C reference uses `astIsARegion` for the
 /// same purpose in the region merge code.
 pub(crate) fn as_region(mapping: &dyn Mapping) -> Option<&dyn Region> {
-    let a = mapping.as_any();
+    any_as_region(mapping.as_any())
+}
+
+/// Borrow a `dyn Any` as a `dyn Region` if it is a concrete Region type, else
+/// return `None`. Reached where the value arrives as a `dyn Frame`, which every
+/// Region also implements.
+pub(crate) fn any_as_region(a: &dyn std::any::Any) -> Option<&dyn Region> {
     if let Some(r) = a.downcast_ref::<Circle>() {
         Some(r)
     } else if let Some(r) = a.downcast_ref::<BoxRegion>() {
