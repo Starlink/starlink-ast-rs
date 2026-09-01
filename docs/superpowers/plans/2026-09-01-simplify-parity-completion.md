@@ -8464,7 +8464,47 @@ cargo run -p audit-tools --bin anchor-citations -- \
 
 Reading one file back through the tool without `--write` is a cheap check that the table still parses as a table after the column insert.
 
-- [ ] **Step 11: Answer the C-step coverage gate**
+- [ ] **Step 11: Point the verdict reader at the last cell, not the fifth**
+
+`verdicts()` in `crates/ast-core/tests/test_mapmerge_audit.rs:139-155` reads
+`cells[4]`, so a six-column row hands it the new extension-point cell and every
+verdict gate fails with `architecture is not a permitted verdict`. Take the last
+cell and accept both widths, since the three groups add the column in three
+commits and the file must gate correctly in between:
+
+```rust
+/// The verdict cell of every table row in a checklist.
+///
+/// The verdict is the last column. Checklists carry five columns before their
+/// extension points are classified and six after, and both are read here so a
+/// half-swept corpus still gates.
+fn verdicts(text: &str) -> Vec<String> {
+    text.lines()
+        .filter(|l| l.trim_start().starts_with('|'))
+        .filter_map(|l| {
+            let cells: Vec<&str> = l.trim().trim_matches('|').split('|').collect();
+            if !(5..=6).contains(&cells.len()) {
+                return None;
+            }
+            let first = cells[0].trim();
+            // Skip the header row and the `|---|` separator.
+            if first.parse::<u32>().is_err() {
+                return None;
+            }
+            Some(cells[cells.len() - 1].trim().to_string())
+        })
+        .collect()
+}
+```
+
+```bash
+cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -12
+```
+
+Expected: PASS. Run this before adding the markers — the verdict gates are not
+marker-gated, so they see the twelve rewritten files immediately.
+
+- [ ] **Step 12: Answer the C-step coverage gate**
 
 Add both markers to each of the twelve headers, immediately after the `Audited:` lines:
 
@@ -8486,7 +8526,7 @@ Four gates now run on twelve more files, and each failure has one correct respon
 
 Work file by file and re-run. Do not widen a gate to close a file.
 
-- [ ] **Step 12: Drop the ledger count by twelve**
+- [ ] **Step 13: Drop the ledger count by twelve**
 
 In `crates/ast-core/tests/test_verification_ledger.rs`, the `CHECKLISTS_UNREPAIRED` row goes from 35 to 23:
 
@@ -8516,7 +8556,7 @@ p.write_text(t.replace(old, new, 1))
 PY
 ```
 
-- [ ] **Step 13: Run the full gate, format, lint, commit**
+- [ ] **Step 14: Run the full gate, format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -9126,3 +9166,830 @@ grep -rn 'CHECKLISTS_UNREPAIRED' crates docs PLAN.md
 ```
 
 Expected: the first prints only `README.md`; the second prints nothing; the third prints nothing.
+
+---
+
+## Cluster 4 — a bare Frame where a Mapping is expected
+
+This cluster is gated deliberately and delivers no behaviour change.
+
+Two nestings are settled and stay settled: a Region inside a `CmpFrame` (15 corpus fixtures) and a Region inside a `CmpMap` (35).
+Both are read, written and byte-compared today, because a Region is a Frame *and* a Mapping in this port, which is what the port design spec's sibling-trait separation already provides.
+
+The one construct C accepts and this port refuses is a **bare Frame in a Mapping slot** — equivalently, a `Map<n>` slot of a serialised FrameSet holding `Begin Frame` or `Begin CmpFrame`.
+It works in C because `Frame::Transform` (`frame.c:11739`) is a UnitMap transform, so every Frame is trivially a Mapping there.
+
+The narrow question is about C's intent, not about this port: **is a bare Frame in a Mapping slot a side effect of C having made Frame a Mapping in order to support Region, or is there a real use case for it?**
+The corpus supplies no evidence for the second reading — nothing in it puts a bare Frame in a Mapping slot, and the Region case, the one with obvious meaning, already works.
+So this task produces the artifact the maintainers need to answer it: a C-written dump the Rust reader refuses, committed, with a test that pins the refusal and a written statement of the question.
+
+If the answer comes back "there is a use case", the work is `impl Mapping for CmpFrame` — one class, following `cmpframe.c:9975-10018` for `Transform` and `cmpframe.c:8963` for `Simplify`, with `UnitMap::new(naxes)` for a non-Region component, which is the same object C builds at `frame.c:11806`.
+That outcome needs no amendment to the port design spec.
+If the answer is "no use case", the exclusion stays and carries that answer as its reason.
+
+### Task 30: the committed failing fixture, and the question
+
+**Files:**
+- Create: `tools/oracle_fixtures/frame_in_map_slot_probe.c`
+- Modify: `tools/oracle_fixtures/Makefile:16-18` (`PROGS`)
+- Create: `crates/ast-core/tests/fixtures/frame_in_map_slot.ast`
+- Create: `crates/ast-core/tests/test_frame_in_map_slot.rs`
+- Create: `docs/issues/frame-in-a-mapping-slot.md`
+- Modify: `crates/ast-core/tests/test_mapmerge_audit.rs` (`C_SIMPLIFY_SEAMS`, `verdict_is_valid`, `every_c_simplify_seam_is_covered`, and one gate deleted)
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs` (`MARKERS`, `LEDGER`)
+- Modify: `PLAN.md` (§6 row, §9.6 rewritten), `docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md` (§3.4 row)
+
+**Interfaces:**
+- Consumes: the native reader's public entry point, `Channel::read` over a `&str` (as `test_native_roundtrip_all` uses it); `MARKERS` and `LEDGER` from `test_verification_ledger.rs`.
+- Produces:
+  - `crates/ast-core/tests/fixtures/frame_in_map_slot.ast` — a C-written FrameSet whose `Map2` slot holds `Begin CmpFrame`.
+  - `const FRAME_IN_MAP_SLOT_UNDECIDED: &[(&str, &str)]` — one entry, fixture name and reason.
+  - `fn frame_in_a_map_slot_is_rejected()` and `fn the_settled_region_nestings_still_read()`.
+  - The seam-coverage form `undecided: <issue path>`, replacing `gap: PLAN.md §9.6` for `cmpframe.c`.
+
+- [ ] **Step 1: Write the probe**
+
+`tools/oracle_fixtures/frame_in_map_slot_probe.c`:
+
+```c
+/* Write a FrameSet whose Map<n> slot holds a bare CmpFrame.
+ *
+ * C accepts a Frame wherever a Mapping is expected, because Frame::Transform
+ * is a UnitMap transform (frame.c:11739). This program builds such a FrameSet,
+ * transforms through it to show the construct is functional rather than merely
+ * accepted, and dumps it in Native format.
+ *
+ * Build and run from tools/oracle_fixtures: make frame_in_map_slot_probe
+ */
+
+#include <stdio.h>
+#include "ast.h"
+
+int main(void) {
+    astBegin;
+
+    /* A 2-D pixel Frame as the base. */
+    AstFrame *pix = astFrame(2, "Domain=GRID,Title=pixel grid");
+    AstFrameSet *fs = astFrameSet(pix, " ");
+
+    /* An ordinary Mapping step, so the dump has a Map1 that reads normally. */
+    AstFrame *mid = astFrame(2, "Domain=MID");
+    astAddFrame(fs, AST__BASE, astZoomMap(2, 2.0, " "), mid);
+
+    /* The construct under question: a bare CmpFrame used as the Mapping. Its
+       two 1-D components make it 2-in, 2-out, so it is a valid step here. */
+    AstCmpFrame *cf = astCmpFrame(astFrame(1, "Domain=A"), astFrame(1, "Domain=B"), " ");
+    AstFrame *top = astFrame(2, "Domain=TOP");
+    astAddFrame(fs, 2, (AstMapping *) cf, top);
+
+    /* C transforms through it: the Frame acts as a UnitMap. */
+    double xin[2] = {1.0, 2.0}, yin[2] = {3.0, 4.0};
+    double xout[2], yout[2];
+    astTran2(fs, 2, xin, yin, 1, xout, yout);
+    printf("nframe=%d  (%g,%g) -> (%g,%g)\n", astGetI(fs, "Nframe"),
+           xin[0], yin[0], xout[0], yout[0]);
+
+    AstChannel *ch = astChannel(NULL, NULL, "SinkFile=frame_in_map_slot.ast,Comment=1");
+    astWrite(ch, fs);
+
+    if (!astOK) {
+        fprintf(stderr, "AST reported an error, status %d\n", astStatus);
+        astEnd;
+        return 1;
+    }
+    astEnd;
+    return 0;
+}
+```
+
+- [ ] **Step 2: Register it and build it against the repo's own libast**
+
+Add `frame_in_map_slot_probe` to `PROGS` in `tools/oracle_fixtures/Makefile`, keeping the existing continuation style:
+
+```make
+PROGS := linear_approx analyse_poly scale_poly_inputs find_basis_vectors \
+	fit_line make_int_world sip_int_world head2ast ast2ast keymap_hash \
+	frame_in_map_slot_probe
+```
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs/tools/oracle_fixtures
+make frame_in_map_slot_probe 2>&1 | tail -5
+ldd frame_in_map_slot_probe | grep -i ast
+```
+
+`ldd` must name the repo build. If it names a conda `libast.so`, the RPATH trap has bitten and the numbers would come from AST 9.3.1 — the Makefile's link line already carries `-Wl,-rpath,$PWD/build -Wl,--disable-new-dtags`, so check the build directory rather than working around it.
+
+- [ ] **Step 3: Run it and confirm C accepts the construct**
+
+```bash
+./frame_in_map_slot_probe
+head -30 frame_in_map_slot.ast
+grep -n 'Begin CmpFrame\|^ *Map[12] =' frame_in_map_slot.ast | head
+```
+
+Expected: `nframe=3  (1,2) -> (2,4)` — the ZoomMap doubles and the CmpFrame passes through — and a dump whose `Map2` value is `Begin CmpFrame`.
+If C rejects the construct instead, this whole cluster is void: stop, and report that, because the question then answers itself.
+
+- [ ] **Step 4: Commit the fixture where tier 1 can read it**
+
+```bash
+cp frame_in_map_slot.ast \
+  /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/frame_in_map_slot.ast
+cd /sdf/home/t/timj/WORK/starlink-astrs
+grep -c . crates/ast-core/tests/fixtures/frame_in_map_slot.ast
+```
+
+This is a reference product: written by the C oracle, never hand-edited.
+It is committed rather than symlinked, so tier 1 reads it with the submodule absent.
+
+- [ ] **Step 5: Write the test that pins the refusal**
+
+`crates/ast-core/tests/test_frame_in_map_slot.rs`:
+
+```rust
+//! A bare Frame where a Mapping is expected.
+//!
+//! C accepts a Frame in any Mapping slot, because `Frame::Transform`
+//! (`frame.c:11739`) transforms through `astUnitMap( astGetNaxes( this ) )`.
+//! This port makes Region the only Frame that is also a Mapping, so a `Map<n>`
+//! slot holding `Begin Frame` or `Begin CmpFrame` is refused.
+//!
+//! The fixture here is a dump C wrote, and the first test pins the refusal so
+//! that the day the decision changes, this test is what changes with it. The
+//! second test is the control: the two Region nestings that are settled must
+//! keep working, so a future fix cannot be a blanket "accept any Frame".
+//!
+//! The question this exists to put to the maintainers is in
+//! `docs/issues/frame-in-a-mapping-slot.md`.
+
+use std::path::{Path, PathBuf};
+
+use ast_core::Channel;
+
+/// The one dump the reader refuses, with the reason it is refused.
+///
+/// Not a gap in the port's own terms and not a licensed relaxation of a
+/// comparison: a construct whose support is an open design question. The reason
+/// string is what a reader gets instead of a silent failure, and the count is
+/// in the verification ledger so it cannot grow unnoticed.
+const FRAME_IN_MAP_SLOT_UNDECIDED: &[(&str, &str)] = &[(
+    "frame_in_map_slot.ast",
+    "a bare Frame in a Map<n> slot. C accepts it because every Frame is a \
+     Mapping there; this port makes Region the only Frame that is a Mapping. \
+     Whether C's acceptance is a side effect of supporting Region or answers a \
+     real use case is a question for the maintainers — \
+     docs/issues/frame-in-a-mapping-slot.md",
+)];
+
+fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+#[test]
+fn frame_in_a_map_slot_is_rejected() {
+    for (name, reason) in FRAME_IN_MAP_SLOT_UNDECIDED {
+        let path = fixtures().join(name);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
+
+        // The construct is present in the fixture: if a future regeneration
+        // lost it, this test would pass for the wrong reason.
+        assert!(
+            text.contains("Begin CmpFrame"),
+            "{name} no longer contains a Frame in a Mapping slot, so it does \
+             not exercise what it was captured for"
+        );
+
+        let err = Channel::new()
+            .read_str(&text)
+            .expect_err(&format!("{name} was read; the decision recorded in \
+                 FRAME_IN_MAP_SLOT_UNDECIDED has changed, so update that entry \
+                 and this test rather than deleting them. Reason on record: \
+                 {reason}"));
+        let message = err.to_string();
+        assert!(
+            message.contains("CmpFrame"),
+            "{name} was refused, but not for the recorded reason: {message}"
+        );
+    }
+}
+
+/// The control. A Region is a Frame and a Mapping here, so a Region nested in a
+/// `CmpFrame` and a Region nested in a `CmpMap` both read. Those are settled,
+/// and this test is what keeps the refusal above narrow: it fails if anyone
+/// closes the gap by refusing Frames in Mapping slots wholesale.
+#[test]
+fn the_settled_region_nestings_still_read() {
+    let region_classes = [
+        "Begin Box", "Begin Circle", "Begin Ellipse", "Begin Interval",
+        "Begin NullRegion", "Begin PointList", "Begin Polygon",
+        "Begin Prism", "Begin CmpRegion",
+    ];
+    let mut in_cmpmap = 0usize;
+    let mut in_cmpframe = 0usize;
+
+    let corpus = fixtures().join("simplify_fixtures");
+    for entry in std::fs::read_dir(&corpus).expect("simplify corpus readable") {
+        let path = entry.expect("readable entry").path();
+        if path.extension().and_then(|x| x.to_str()) != Some("map") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("fixture readable");
+        if !region_classes.iter().any(|c| text.contains(c)) {
+            continue;
+        }
+        let outer_map = text.contains("Begin CmpMap");
+        let outer_frame = text.contains("Begin CmpFrame");
+        if !outer_map && !outer_frame {
+            continue;
+        }
+        Channel::new()
+            .read_str(&text)
+            .unwrap_or_else(|e| panic!("{} no longer reads: {e}", path.display()));
+        in_cmpmap += usize::from(outer_map);
+        in_cmpframe += usize::from(outer_frame);
+    }
+
+    // The corpus held 35 Region-in-CmpMap and 15 Region-in-CmpFrame nestings
+    // when this control was written. Floors, not equalities: fixtures are added.
+    assert!(
+        in_cmpmap >= 35,
+        "only {in_cmpmap} fixtures nest a Region inside a CmpMap; the settled \
+         nesting is no longer covered"
+    );
+    assert!(
+        in_cmpframe >= 15,
+        "only {in_cmpframe} fixtures nest a Region inside a CmpFrame; the \
+         settled nesting is no longer covered"
+    );
+}
+```
+
+- [ ] **Step 6: Run it and read the error the reader actually gives**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_frame_in_map_slot 2>&1 | tail -25
+```
+
+Expected: `frame_in_a_map_slot_is_rejected` PASS, on the message
+`unknown Mapping class: CmpFrame` or whatever the reader emits — if the substring
+assertion fails, replace `"CmpFrame"` with the class name the message really
+carries rather than loosening it to a bare "is an error".
+
+If `read_str` is not the reader's entry name, take the one
+`test_native_roundtrip_all` uses:
+
+```bash
+grep -n 'Channel::new()\|fn read' crates/ast-core/tests/test_native_roundtrip_all.rs | head -5
+```
+
+The counts in the control are the ones §4.2 measured; if the floors fail, print the two totals and check the corpus rather than adjusting the floors to fit.
+
+- [ ] **Step 7: Write the question to the maintainers**
+
+`docs/issues/frame-in-a-mapping-slot.md`:
+
+```markdown
+# A bare Frame where a Mapping is expected
+
+## The question
+
+Is a bare Frame in a Mapping slot a side effect of C having made Frame a
+Mapping in order to support Region, or is there a real use case for it?
+
+The Rust port refuses one construct C accepts, and the answer decides whether
+that is a bug to fix or a faithful narrowing to record.
+
+## What is settled, and is not being asked
+
+A Region is a Frame *and* a Mapping in this port, so both of these are read,
+written and byte-compared today:
+
+| Construct | Components | C | This port |
+|---|---|---|---|
+| `CmpFrame` holding Frames | Frames | accepted | accepted |
+| `CmpFrame` holding a Region | Frames — a Region is a Frame | accepted | accepted, 15 fixtures |
+| `CmpMap` holding a Region | Mappings — a Region is a Mapping | accepted | accepted, 35 fixtures |
+| `CmpFrame` holding a general Mapping | — | **rejected** | rejected |
+| `CmpMap` holding a bare Frame | Mappings — a bare Frame is a Mapping in C only | accepted | **rejected — the question** |
+
+`CmpFrame` refusing a general Mapping is not a mirror gap: C refuses it too.
+`AstCmpFrame`'s fields are `AstFrame *frame1` and `AstFrame *frame2`
+(`cmpframe.h:301-302`) and `astCmpFrame_` calls `astCheckFrame` on both
+arguments (`cmpframe.c:10634-10635`). The asymmetry with `CmpMap` is C's, and
+the port reproduces it.
+
+## Why C accepts it
+
+`Frame::Transform` (`frame.c:11739`) transforms through
+`astUnitMap( astGetNaxes( this ) )`, so a bare Frame used as a Mapping is an
+exact copy. `CmpFrame::Transform` (`cmpframe.c:9898`) relies on that: it builds
+`astCmpMap( this->frame1, this->frame2, 0, ... )` at `cmpframe.c:9975` — a
+CmpMap whose components are Frames — and wraps it in PermMaps at
+`:9997-10018`. C's own comment on that function says the result "will normally
+be a UnitMap but may not be if the CmpFrame contains any Regions", which is the
+reading this question tests.
+
+C accommodated the arrangement deliberately, not accidentally: `frame.c:6233`
+installs a `DoNotSimplify` override returning zero, so a Frame with `Ident` set
+stays simplifiable as a Mapping where the base rule at `mapping.c:1150` would
+have blocked it. The port mirrors that override (`mappings/mod.rs:666`).
+
+## The artifact
+
+`crates/ast-core/tests/fixtures/frame_in_map_slot.ast` is a dump the C library
+wrote: a FrameSet whose `Map2` slot holds `Begin CmpFrame`. `astAddFrame`
+accepted it, `astTran2` transformed through it, and the Channel dumped it
+without error. Reproduce it with
+`tools/oracle_fixtures/frame_in_map_slot_probe.c`.
+
+`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the current refusal and
+keeps it narrow: its second test requires the 35 Region-in-`CmpMap` and 15
+Region-in-`CmpFrame` nestings to keep reading, so the gap cannot be closed by
+refusing Frames in Mapping slots wholesale, nor the refusal widened to catch
+the settled cases.
+
+## What each answer costs
+
+**If there is a real use case:** implement `Mapping` for `CmpFrame` — one
+class, not seven. `Transform` follows `cmpframe.c:9975-10018`, using each
+Region component directly and `UnitMap::new(naxes)` for a non-Region component;
+`Simplify` follows `cmpframe.c:8963`. Substituting a `UnitMap` is faithful
+rather than a shortcut, because it is the object C constructs at
+`frame.c:11806`, and the downcast that distinguishes the cases is already in
+the tree (`regions::any_as_region`, `regions/mod.rs:1183`, already applied to a
+Frame at `regions/data.rs:145`). One further both-traits class alongside
+`FrameSet` and the nine Regions sits inside the existing design; the port
+design spec needs no amendment.
+
+**If there is none:** the exclusion stays, and this document records the answer
+as its reason.
+
+## Evidence available today
+
+No fixture in the simplify corpus puts a bare Frame in a Mapping slot, and the
+Region case — the one with obvious meaning — already works. That is the whole
+of the evidence for the second reading, which is why the question goes to the
+team rather than being answered here.
+```
+
+- [ ] **Step 8: Replace the seam's `gap:` coverage with `undecided:`**
+
+`cmpframe.c` is the audit's last `gap:`.
+It cannot become a checklist: `audit_universe()` derives the universe from Rust modules containing `fn simplified`, and `no_checklist_is_orphaned` rejects a checklist no module claims — `frames/cmpframe.rs` has no `fn simplified` precisely because CmpFrame is not a Mapping here, which is the open question rather than an oversight.
+
+In `crates/ast-core/tests/test_mapmerge_audit.rs`, the entry becomes:
+
+```rust
+    (
+        "cmpframe.c",
+        "undecided: docs/issues/frame-in-a-mapping-slot.md",
+    ),
+```
+
+Extend the doc comment on `C_SIMPLIFY_SEAMS` with the new form and drop the `gap:` one:
+
+```rust
+/// - `undecided: <repo-relative path>` for a seam whose port depends on an open
+///   design question, where the path states the question, names the fixture
+///   that demonstrates it, and is counted in the verification ledger.
+```
+
+Then in `every_c_simplify_seam_is_covered`, replace the `gap: PLAN.md ` arm:
+
+```rust
+        } else if let Some(doc) = coverage.strip_prefix("undecided: ") {
+            let path = repo_root().join(doc.trim());
+            match std::fs::read_to_string(&path) {
+                Err(e) => bad.push(format!("{file}: {doc} unreadable: {e}")),
+                Ok(text) => {
+                    // The document has to carry the question and the artifact,
+                    // or "undecided" is an excuse rather than a record.
+                    if !text.contains("## The question") {
+                        bad.push(format!("{file}: {doc} states no question"));
+                    }
+                    if !text.contains("frame_in_map_slot.ast") {
+                        bad.push(format!(
+                            "{file}: {doc} names no fixture demonstrating the \
+                             construct"
+                        ));
+                    }
+                }
+            }
+```
+
+Removing the `gap:` arm means a seam recorded as a gap in future falls through to the final branch and fails as a missing checklist, which is the ratchet: recording a new gap now takes a deliberate change to this file.
+
+- [ ] **Step 9: Retire the two verdict forms nothing uses**
+
+`verdict_is_valid`'s `gap: PLAN.md ` arm has no row left after Task 28, and Task 29's `no_row_is_left_at_gap` is what holds that.
+Remove the arm, and delete `every_gap_verdict_names_a_real_plan_section` (`:212`), which it existed to serve:
+
+```rust
+fn verdict_is_valid(v: &str) -> bool {
+    v == "ported"
+        || (v.starts_with("n/a:") && v.len() > "n/a:".len() + 1)
+        // A divergence is a step the port refuses because performing it would
+        // reproduce a defect in C's own. The citation is what makes it a
+        // finding rather than an opinion, so it is part of the verdict.
+        || (v.starts_with("divergence:") && v.contains("docs/issues/c-library-quirks.md"))
+}
+```
+
+The spec reserved a fourth form, `unreachable: <gate>`, for the `cmpframe.c` `Transform` and `Simplify` rows. Those rows have no checklist to live in, for the orphan reason in Step 8, so the form is never introduced and the seam coverage carries the state instead. Amend the spec rather than leaving it describing something that does not exist:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md")
+t = p.read_text()
+old = "| `unreachable: <gate>` | Correct to omit while a gated decision stands. Used only for the `cmpframe.c` `Transform` and `Simplify` rows, gated on cluster 4. |"
+assert t.count(old) == 1
+new = ("| ~~`unreachable: <gate>`~~ | Not introduced. It was reserved for the `cmpframe.c` "
+       "`Transform` and `Simplify` rows, but those rows have no checklist to live in: "
+       "`audit_universe()` derives the universe from Rust modules containing `fn simplified`, "
+       "and `no_checklist_is_orphaned` rejects a checklist no module claims. The state is "
+       "carried by the seam coverage form `undecided: docs/issues/frame-in-a-mapping-slot.md` "
+       "instead. |")
+p.write_text(t.replace(old, new, 1))
+PY
+```
+
+Add the amendment to the spec's revision history in the same edit, since that is what the history is for:
+
+```markdown
+| 2 | 2026-09-01 | Cluster 4 implemented. The `unreachable: <gate>` verdict form of §3.4 is withdrawn unused: the rows it was reserved for cannot exist while `CmpFrame` has no simplify seam in Rust, so the seam-coverage form `undecided: <issue path>` carries the open state, and the question is written up in `docs/issues/frame-in-a-mapping-slot.md`. |
+```
+
+- [ ] **Step 10: Count the exclusion in the ledger**
+
+In `crates/ast-core/tests/test_verification_ledger.rs`, add `"_UNDECIDED"` to `MARKERS` and the row:
+
+```rust
+    (
+        "crates/ast-core/tests/test_frame_in_map_slot.rs",
+        "FRAME_IN_MAP_SLOT_UNDECIDED",
+        1,
+        "one C-written dump the reader refuses: a bare Frame in a Map<n> slot. \
+         Whether to support it is an open design question, stated with its \
+         artifact in docs/issues/frame-in-a-mapping-slot.md",
+    ),
+```
+
+And the matching `PLAN.md` §6 row, in the existing column order:
+
+```markdown
+| Frame in a Mapping slot | 1 | 1 | one C-written dump the reader refuses; the construct's support is an open design question |
+```
+
+```bash
+cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -10
+```
+
+Expected: PASS. If `no_relaxation_hides_outside_the_ledger` reports the new marker, the `MARKERS` addition is missing; if `every_relaxation_is_the_size_the_ledger_says` reports a count of 1 vs 0, `count_entries` is not counting a two-field tuple — check how it counts rather than changing the constant's shape.
+
+- [ ] **Step 11: Rewrite `PLAN.md` §9.6**
+
+§9.6 was the gap section this seam pointed at. It becomes the open question, with the pointer to the write-up and the artifact:
+
+```markdown
+### 9.6 A bare Frame where a Mapping is expected — OPEN, awaiting a maintainer decision
+
+C accepts a Frame in any Mapping slot, because `Frame::Transform`
+(`frame.c:11739`) transforms through a UnitMap. This port makes Region the only
+Frame that is also a Mapping, so a `Map<n>` slot holding `Begin Frame` or
+`Begin CmpFrame` is refused.
+
+The narrow question — whether C's acceptance is a side effect of having made
+Frame a Mapping in order to support Region, or answers a real use case — is
+written up with its C citations, the cost of each answer, and the evidence
+available in `docs/issues/frame-in-a-mapping-slot.md`.
+
+The artifact is `crates/ast-core/tests/fixtures/frame_in_map_slot.ast`, a dump
+the C library wrote, reproducible with
+`tools/oracle_fixtures/frame_in_map_slot_probe.c`.
+`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the refusal and keeps it
+narrow: the 35 Region-in-`CmpMap` and 15 Region-in-`CmpFrame` nestings must keep
+reading, so the gap cannot be closed by refusing Frames in Mapping slots
+wholesale.
+
+`C_SIMPLIFY_SEAMS` records `cmpframe.c` as
+`undecided: docs/issues/frame-in-a-mapping-slot.md`, and
+`FRAME_IN_MAP_SLOT_UNDECIDED` counts the one fixture in §6.
+```
+
+- [ ] **Step 12: Run every gate this touched, format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test -p ast-core --test test_frame_in_map_slot --test test_mapmerge_audit \
+  --test test_audit_citations --test test_verification_ledger \
+  --test test_native_roundtrip_all 2>&1 | tail -20
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+git add -A crates/ast-core tools/oracle_fixtures docs PLAN.md
+git commit -F - <<'MSG'
+audit: commit the Frame-in-a-Mapping-slot artifact and put the question in writing
+
+C accepts a Frame wherever a Mapping is expected, because Frame::Transform
+transforms through a UnitMap (frame.c:11739). This port makes Region the only
+Frame that is also a Mapping, so a Map<n> slot holding `Begin Frame` or
+`Begin CmpFrame` is refused. A probe shows C building, transforming through and
+dumping such a FrameSet, and that dump is now a committed fixture with a test
+that pins the refusal.
+
+The refusal is deliberately narrow, and a control keeps it that way: the 35
+Region-in-CmpMap and 15 Region-in-CmpFrame nestings must keep reading, so the
+gap cannot be closed by refusing Frames in Mapping slots wholesale.
+
+docs/issues/frame-in-a-mapping-slot.md states the question -- whether C's
+acceptance is a side effect of having made Frame a Mapping in order to support
+Region, or answers a real use case -- with the C citations, the cost of each
+answer, and the evidence available. The corpus supplies none for the second
+reading, which is why it goes to the team rather than being answered here.
+
+cmpframe.c's seam coverage moves from `gap: PLAN.md §9.6` to
+`undecided: <issue path>`, which requires the document to carry both the
+question and the artifact. That was the audit's last gap, so the `gap:` verdict
+form and the check that served it are removed: recording a new gap now takes a
+deliberate change. The spec's reserved `unreachable:` verdict is withdrawn
+unused, since the rows it was for cannot exist while CmpFrame has no simplify
+seam in Rust.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+---
+
+## Close
+
+### Task 31: the closing report and the final ledger
+
+The plan's purpose was a single answer to a question that has been asked repeatedly and answered only partially: has the simplifier's logic been validated against the C oracle, and is it complete?
+This task writes that answer down with the evidence attached, so the next person to ask does not have to reconstruct it, and states plainly what remains outside it.
+
+The report is not a summary of the plan. It is a statement of what holds parity today, what each remaining exclusion is, and what would falsify each claim.
+
+**Files:**
+- Create: `docs/reports/<today>-simplify-parity-final.md`
+- Modify: `PLAN.md` (§6 totals, §9 closed sections, §10 remaining, the test-migration tracker)
+- Modify: `CLAUDE.md` (the audit pointer, one line)
+
+**Interfaces:**
+- Consumes: the ledger in `test_verification_ledger.rs`; the gate counts printed by `test_transform_oracle`, `test_simplify_regression`, `test_native_roundtrip_all`, `test_wcsconv`; the audit gates in `test_audit_citations.rs` and `test_mapmerge_audit.rs`.
+- Produces: nothing code-facing. The report is terminal.
+
+- [ ] **Step 1: Run the whole suite and capture the real numbers**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core 2>&1 | tee /tmp/final-tier1.txt | tail -40
+grep -E '^test result|passed,|failures' /tmp/final-tier1.txt | tail -30
+```
+
+Every number in the report comes from this file. Do not carry a number forward from an earlier task's expected output — the corpus and the counts moved during the plan.
+
+```bash
+# The four data-driven harnesses, with their own summaries.
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+cargo test -p ast-core --test test_transform_oracle 2>&1 | grep -E 'sections|passed'
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep -E 'passed|excluded'
+cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E 'passed|excluded'
+```
+
+- [ ] **Step 2: Re-derive the ledger, from the ledger**
+
+```bash
+cargo test -p ast-core --test test_verification_ledger -- --nocapture 2>&1 | tail -40
+grep -n '^    (' -A4 crates/ast-core/tests/test_verification_ledger.rs | grep -E '^\s*[0-9]+-\s+[0-9]+,' | wc -l
+```
+
+Then read `LEDGER` and transcribe every row into the report's table.
+The ledger is the authority on what is excluded; the report must not add an exclusion the ledger does not carry, or omit one it does.
+
+- [ ] **Step 3: Confirm the tier-3 and tier-4 tiers, if the submodule is present**
+
+```bash
+git -C reference/starlink-ast rev-parse --short HEAD
+cargo test -p ast-oracle-tests 2>&1 | tail -12
+```
+
+If the submodule is absent, say so in the report rather than implying those tiers were run.
+A declared gate that was not run is worse than no gate.
+
+- [ ] **Step 4: Write the report**
+
+```bash
+REPORT=docs/reports/$(date +%F)-simplify-parity-final.md
+```
+
+Its content, with every count replaced by what Steps 1–3 printed:
+
+```markdown
+# Simplify parity: what is verified, and what is not
+
+## The question this answers
+
+Is the simplifier's logic complete against the C library, and is that verified
+rather than asserted?
+
+**Yes for everything the corpus reaches, by byte-equality of simplify output,
+with four named exclusions and one open design question.** The rest of this
+report is what that sentence rests on.
+
+The standard is deliberate. Earlier reports rested on `astEqual` agreement, and
+that standard passed while `MapSplit` and CmpMap's flatten logic were missing
+entirely: two objects can be equal without having been built the same way, so
+`astEqual` cannot see a missing algorithm. The standard here is that C's logic
+exists in Rust in the same conceptual form, confirmed by byte-equal `.map` and
+`.simp` output against the C oracle's own dumps. `astEqual` compliance is not
+evidence and is not cited.
+
+## What holds it
+
+| Gate | What it compares | Cases | Exclusions |
+|---|---|---:|---:|
+| `test_simplify_regression` | `astSimplify` output, byte-exact against the oracle's dump | <measured in Step 1> | `SERIAL_UNGATED` 6, `NO_ISSIMP_CARD_UNGATED` 1 |
+| `test_transform_oracle` | forward and inverse transforms, and round trips | <measured in Step 1> sections | `RTRIP_REFERENCE_GAPS_LICENSED` 25 rows, `FMA_SUBSTITUTIONS_LICENSED` 2 rows |
+| `test_native_roundtrip_all` | Native serialisation, byte-exact | <measured in Step 1> | <measured in Step 1> |
+| `test_wcsconv` | FITS read path against the oracle's FrameSet | <measured in Step 1> | `NATIVE_READ_EXCLUDED` <measured in Step 1>, `ISSIMP_PLACEMENT_LICENSED` 4 |
+| `test_mapmerge_audit` | every C `MapMerge` / `Simplify` seam has a named cover | 37 checklists | `undecided:` 1 (`cmpframe.c`) |
+| `test_audit_citations` | every checklist row's citations resolve, and every C step is covered | 37 checklists | none |
+| `test_verification_ledger` | every relaxation in the tree appears in the ledger at its stated size | <measured in Step 1> rows | none |
+
+Three properties make these gates rather than reports:
+
+- **No skip mode.** A case that cannot be compared is in a named list with a
+  per-case reason, and every list is counted in `PLAN.md` §6 so the total cannot
+  drift. `simplify_regression`'s three remaining skip modes — a missing
+  manifest, a manifest case with no fixture, and a fixture that fails to parse —
+  were closed in cluster 7 while they read zero, and each was checked by hand to
+  fail.
+- **Every gate has a floor.** A gate that compared nothing would pass; each
+  asserts a minimum case count, so a corpus that stops being read fails.
+- **Every licence has a falsifiability control.** Each exclusion list has a
+  companion test that fails when an excluded case starts passing, or when the
+  excuse would cover a case it was not measured on. Cluster 6's two overrides
+  each carry one.
+
+## The audit
+
+`docs/audits/mapmerge/` holds one checklist per C class with a `MapMerge` or
+`Simplify` vtab entry: 37 files, <measured in Step 1> rows, each naming a C step, its C site with
+the enclosing function, its Rust site, whether the step is an extension point or
+ceremony, and a verdict.
+
+Verdicts are `ported`, `n/a: <reason>` for a step whose C purpose does not exist
+in Rust (ambient status, pointer annulment, buffer marshalling), or
+`divergence: <quirks citation>` for a step the port refuses because performing it
+would reproduce a defect in C's own. There is no `gap` verdict: the form was
+removed once the last row left it, so recording a new gap takes a deliberate
+change to the gate.
+
+Four gates hold the checklists. Citations resolve to exactly one file and name
+the item they claim; architecture rows land on a trait method; and every C step
+comment inside a cited body is covered by a row or named under
+`Uncited C steps:` with a reason. Citations are anchored against pin
+`3e60abaa`; when the pin moves, re-anchor with
+`cargo run -p audit-tools --bin anchor-citations -- --write docs/audits/mapmerge/*.md`
+and hand-check every row the tool cannot place. Mechanical remapping by text
+similarity was tried and relocated 25 rows confidently wrong.
+
+The extension-point column exists because collapsing a per-class seam into one
+central match is the most expensive mistake this port has made, twice (H1 in
+`docs/porting-hazards.md`). <measured in Step 1> rows are classified `architecture`, and each
+lands on a trait method a generic driver dispatches to.
+
+## What is excluded, and why each is not a hole
+
+<transcribe every LEDGER row here: file, marker, count, reason>
+
+Four classes of exclusion, all narrow:
+
+1. **Deferred classes** — IntraMap, XphMap, StcResourceProfile. Not ported at
+   all, counted in `DEFERRED_CLASSES`, and no fixture claims otherwise.
+2. **C behaviour that cannot be reproduced from owned values** — the `InvA` /
+   `InvB` aliasing dump line in `cap_cmpmap_01` and `cap_cmpmap_04`, which
+   depends on two C pointers being the same object. Recorded in
+   `docs/issues/c-library-quirks.md`, never worked around in Rust code.
+3. **C behaviour the port declines to reproduce** — ChebyMap's `MapMerge`
+   reduction, which mirrors PolyMap's and loses the Chebyshev domain scaling.
+   Marked in `ChebyMap::map_merge` and tracked at `PLAN.md` §10.2. The fix
+   belongs upstream and is deferred until the pin moves, because upstream has
+   reorganised the fixtures.
+4. **Reader-order artefacts** — the four `ISSIMP_PLACEMENT_LICENSED` wcsconv
+   cases, where the card order depends on the order C's reader happened to
+   construct objects in.
+
+## The one open design question
+
+A bare Frame in a Mapping slot. C accepts it; this port makes Region the only
+Frame that is also a Mapping. The question, its C citations, the cost of each
+answer and the artifact are in `docs/issues/frame-in-a-mapping-slot.md`, and
+`PLAN.md` §9.6 points there. It is a question about C's intent, and the corpus
+supplies no evidence that the construct is used.
+
+## What would falsify this report
+
+- Any of the seven gates failing.
+- A ledger row whose count no longer matches the list it names — the ledger
+  test checks this, so a drift is a failure rather than a discrepancy.
+- A `.map` or `.simp` fixture regenerated from the oracle that no longer matches
+  byte-for-byte.
+- A new C fixture exercising a simplify path the audit records as `ported`, that
+  does not match. The audit is a claim about C's logic being present, and the
+  corpus is what tests it; a new fixture is the way to attack the claim.
+
+## Handoff
+
+New reference fixtures written by the C oracle during this work are candidates
+for the upstream branch, so upstream's corpus and this one stay in step. The
+sectionless fixtures — those lacking a transform-oracle section — resolve on
+that sync rather than here.
+```
+
+Write the counts, not the placeholders.
+A `<measured in Step 1>` left in the report is the defect this whole document exists to prevent.
+
+- [ ] **Step 5: Close the `PLAN.md` sections this plan finished**
+
+```bash
+grep -n '^### 9\.\|^### 10\.' PLAN.md
+```
+
+For each §9 section this plan closed, replace the body with its resolution and the gate that holds it, in the form §9.5 took in cluster 7.
+§9.6 was rewritten in Task 30 and stays open.
+§10.2 (ChebyMap) and §10.3 stay open and now say what they wait on: the pin move, and upstream's fixture reorganisation.
+
+Then update §6's totals row if it has one, and confirm the table still adds up:
+
+```bash
+cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -6
+```
+
+- [ ] **Step 6: Update the test-migration tracker and the `CLAUDE.md` pointer**
+
+Mark the rows for every test this plan added or changed in `PLAN.md`'s "C → Rust test migration" tracker, and point `CLAUDE.md`'s conformance-status paragraph at the new report alongside the existing one:
+
+```bash
+grep -n 'spec-conformance-review' CLAUDE.md
+```
+
+Add one sentence naming the report and what it establishes, in the same paragraph.
+
+- [ ] **Step 7: Full suite, format, lint, commit**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test --workspace 2>&1 | tail -30
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+git add -A docs PLAN.md CLAUDE.md
+git commit -F - <<'MSG'
+docs: the simplify parity closing report
+
+States what is verified and what is not, with the evidence attached: seven
+gates, their case counts and floors, the audit's 37 checklists and their four
+citation gates, every ledger row transcribed, and the four classes of exclusion
+with why each is narrow rather than a hole.
+
+The standard is byte-equal simplify output against the C oracle, not astEqual
+agreement. astEqual passed while MapSplit and CmpMap's flatten logic were
+missing entirely, because two objects can be equal without having been built
+the same way, so it cannot see a missing algorithm. It is not cited as
+evidence anywhere in the report.
+
+One design question stays open -- a bare Frame in a Mapping slot -- with its
+artifact committed and the question in writing.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+- [ ] **Step 8: Report the state of the branch**
+
+Print, for the record, what the branch now contains and what is left:
+
+```bash
+git log --oneline main..HEAD | wc -l
+git diff --stat main..HEAD | tail -3
+grep -c '^- \[x\]' docs/superpowers/plans/2026-09-01-simplify-parity-completion.md || true
+```
+
+Then hand back with three things named: the gates that now hold parity, the
+exclusions that remain and where each is counted, and the two items that need a
+human — the maintainer question in
+`docs/issues/frame-in-a-mapping-slot.md`, and the upstream fixture sync that
+resolves the sectionless fixtures and carries the ChebyMap fix.
