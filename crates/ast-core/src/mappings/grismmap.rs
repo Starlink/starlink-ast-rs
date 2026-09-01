@@ -56,6 +56,7 @@ pub struct GrismMap {
     k3: f64,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Per-attribute "was this set by the user / source" flags, mirroring
     /// the C library's `Test*` predicates so we can choose commented vs
     /// uncommented dump output to match byte-exact.
@@ -115,6 +116,7 @@ impl GrismMap {
             k3: 0.0,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             set_flags: GrismSetFlags {
                 nr: true,
                 nrp: true,
@@ -447,6 +449,26 @@ impl Mapping for GrismMap {
         // is only valid in specific orderings.
 
         None
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

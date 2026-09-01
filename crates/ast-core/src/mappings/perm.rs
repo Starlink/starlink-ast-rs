@@ -45,6 +45,7 @@ pub struct PermMap {
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Serialize outperm as `OutCpy=1` (identity shorthand).
     out_is_copy: bool,
     /// Serialize inperm as `InCpy=1` (identity shorthand).
@@ -77,6 +78,7 @@ impl PermMap {
             constants: constants.to_vec(),
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             out_is_copy: false,
             in_is_copy: false,
             perm_split: false,
@@ -181,6 +183,7 @@ impl PermMap {
             constants: new_consts,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             out_is_copy,
             in_is_copy,
             perm_split: self.perm_split,
@@ -1156,6 +1159,26 @@ impl Mapping for PermMap {
             }
         }
         true
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

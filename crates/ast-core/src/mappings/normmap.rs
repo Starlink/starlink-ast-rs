@@ -44,6 +44,7 @@ pub struct NormMap {
     inverted: bool,
     /// Whether simplification is inhibited.
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl NormMap {
@@ -56,6 +57,7 @@ impl NormMap {
             frame,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -86,6 +88,7 @@ impl Clone for NormMap {
             frame: self.frame.snapshot(),
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
         }
     }
 }
@@ -274,6 +277,26 @@ impl Mapping for NormMap {
         true
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -343,6 +366,7 @@ impl Serializable for NormMap {
             frame,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         };
 
         if base.inverted {

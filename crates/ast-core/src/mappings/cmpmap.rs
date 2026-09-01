@@ -104,6 +104,7 @@ pub struct CmpMap {
     kind: Composition,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Whether the forward transform is defined.
     pub(crate) tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -147,6 +148,7 @@ impl CmpMap {
             kind,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             tran_forward,
             tran_inverse,
             inv_a,
@@ -690,6 +692,7 @@ impl Clone for CmpMap {
             kind: self.kind,
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -824,10 +827,25 @@ impl Mapping for CmpMap {
         let series = self.kind == Composition::Series;
         // Flatten both into canonical component lists, accounting for
         // tree structure differences like (A;(B;C)) vs ((A;B);C).
-        let Ok(list_self) = super::simplify::flatten(self, false, series) else {
+        //
+        // A CmpMap that must be left intact does not decompose (C's `MapList`
+        // consults `astDoNotSimplify`, cmpmap.c:1154), so its list would hold
+        // one element: the CmpMap itself. C compares the two lists element by
+        // element (cmpmap.c:399), so when both sides refuse the comparison is
+        // the one it started with and never terminates. Decompose the children
+        // instead when that happens: each side then contributes the list its
+        // components give, which is the same comparison one level down.
+        let decompose = |cmp: &CmpMap| {
+            if self.do_not_simplify() && other_cmp.do_not_simplify() {
+                super::simplify::flatten_children(cmp, false, series)
+            } else {
+                super::simplify::flatten(cmp, false, series)
+            }
+        };
+        let Ok(list_self) = decompose(self) else {
             return false;
         };
-        let Ok(list_other) = super::simplify::flatten(other_cmp, false, series) else {
+        let Ok(list_other) = decompose(other_cmp) else {
             return false;
         };
         if list_self.len() != list_other.len() {
@@ -856,6 +874,26 @@ impl Mapping for CmpMap {
 
     fn set_restricted_simplify(&mut self, flag: bool) {
         self.restricted_simplify = flag;
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {
@@ -972,6 +1010,7 @@ impl Serializable for CmpMap {
             kind,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             tran_forward: true,
             tran_inverse: true,
             inv_a,

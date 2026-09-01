@@ -631,6 +631,42 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// Set (or clear) the `AllowSimplify` flag (C `AlSimp`).
     fn set_allow_simplify(&mut self, _flag: bool) {}
 
+    /// The `Ident` token — a user-supplied permanent name for this mapping,
+    /// empty when unset. C keeps it on Object (`object.c:5221`), so it applies
+    /// to every class; the `Frame` side of the port carries the same four
+    /// accessors ([`crate::frames::Frame::ident`]).
+    fn ident(&self) -> &str {
+        ""
+    }
+
+    /// Set the `Ident` token. Default no-op; concrete classes with an `Ident`
+    /// field override this. Mirrors C `astSetIdent` (`object.c:5225`).
+    fn set_ident(&mut self, _ident: &str) {}
+
+    /// Clear `Ident`, restoring the unset state. Mirrors C `astClearIdent`
+    /// (`object.c:5217`).
+    fn clear_ident(&mut self) {}
+
+    /// Whether `Ident` has been explicitly set. Mirrors C `astTestIdent`
+    /// (`object.c:5229`), which tests the stored pointer rather than the
+    /// string's contents.
+    fn test_ident(&self) -> bool {
+        false
+    }
+
+    /// C `astDoNotSimplify` (`mapping.c:1107`): whether this mapping must be
+    /// left intact. Consulted by both of C's generic drivers — the
+    /// `astSimplify_` gate (`mapping.c:24764`) and `astMapList`'s refusal to
+    /// decompose a CmpMap (`cmpmap.c:1154`).
+    ///
+    /// The base rule is "`Ident` is set", on the reasoning that a user who
+    /// named a mapping wants it to survive (`mapping.c:1150`). `Frame`
+    /// overrides it to `false` (`frame.c:3511-3554`), so a named Frame,
+    /// FrameSet or Region is still simplified.
+    fn do_not_simplify(&self) -> bool {
+        self.test_ident()
+    }
+
     #[doc(hidden)]
     fn clone_box(&self) -> DynMapping;
 }

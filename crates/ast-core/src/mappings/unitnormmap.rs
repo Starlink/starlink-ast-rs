@@ -44,6 +44,7 @@ pub struct UnitNormMap {
     centre: Vec<f64>,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl UnitNormMap {
@@ -56,6 +57,7 @@ impl UnitNormMap {
             centre: centre.into(),
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -437,6 +439,26 @@ impl Mapping for UnitNormMap {
         }
 
         None
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

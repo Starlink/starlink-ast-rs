@@ -47,6 +47,7 @@ pub struct PcdMap {
     pcdcen: [f64; 2],
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl PcdMap {
@@ -61,6 +62,7 @@ impl PcdMap {
             pcdcen,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -281,6 +283,26 @@ impl Mapping for PcdMap {
         }
 
         None
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

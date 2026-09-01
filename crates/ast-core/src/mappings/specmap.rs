@@ -511,6 +511,7 @@ pub struct SpecMap {
     conversions: Vec<SpecConversion>,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl SpecMap {
@@ -520,6 +521,7 @@ impl SpecMap {
             conversions: Vec::new(),
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -1221,6 +1223,7 @@ pub(crate) fn spec_map_merge(
             conversions: steps,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         })
     };
     ctx.replace_range_with(imap1, imap2, new);
@@ -1403,6 +1406,7 @@ impl Mapping for SpecMap {
                 conversions: steps,
                 inverted: false,
                 simplified: SimplifiedRecord::default(),
+                ident: None,
             }))
         }
     }
@@ -1432,6 +1436,26 @@ impl Mapping for SpecMap {
                         }
                     })
             })
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

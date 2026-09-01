@@ -62,7 +62,11 @@ impl dyn Mapping {
         // is the gate: a class whose reduction lives in `map_merge` never has
         // to repeat the test, because nothing can reach a reduction except
         // through this function.
-        if self.has_been_simplified() {
+        //
+        // The same condition also declines for a Mapping that must be left
+        // intact (`astDoNotSimplify`, mapping.c:24764) — C tests both in one
+        // expression, so the two take the same `astClone( this )` exit.
+        if self.has_been_simplified() || self.do_not_simplify() {
             return Ok((self.clone_box(), false));
         }
 

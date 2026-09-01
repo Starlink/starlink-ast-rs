@@ -20,6 +20,7 @@ pub struct ZoomMap {
     factor: f64,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     allow_simplify: bool,
 }
 
@@ -39,6 +40,7 @@ impl ZoomMap {
             factor,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             allow_simplify: false,
         })
     }
@@ -247,6 +249,26 @@ impl Mapping for ZoomMap {
         // C's zoommap.c absorbs WinMap/ShiftMap neighbours by multiplying
         // their terms directly (zoommap.c:1013-1057) — no rounding snap.
         compose_linear(&s1, &c1, &s2, &c2, false)
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

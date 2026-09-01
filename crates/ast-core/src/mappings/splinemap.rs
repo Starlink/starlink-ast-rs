@@ -70,6 +70,7 @@ pub struct SplineMap {
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl SplineMap {
@@ -122,6 +123,7 @@ impl SplineMap {
             out_unit: false,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -900,6 +902,26 @@ impl Mapping for SplineMap {
         None
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -1071,6 +1093,7 @@ impl Serializable for SplineMap {
             out_unit,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         };
 
         if base.inverted {

@@ -4,7 +4,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::AstResult;
 use crate::pal;
-use crate::serial::{Node, Serializable, read_mapping_base};
+use crate::serial::{Node, Serializable, read_mapping_base, write_object_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad, point_has_bad};
@@ -43,6 +43,7 @@ pub struct SphMap {
     polar_long_set: bool,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl SphMap {
@@ -56,6 +57,7 @@ impl SphMap {
             polar_long_set: false,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -336,6 +338,26 @@ impl Mapping for SphMap {
             && ast_equal(self.polar_long, other.polar_long)
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -357,6 +379,7 @@ impl Serializable for SphMap {
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Cartesian to Spherical mapping".to_string());
+        write_object_base(&mut node, self);
         // SphMap always serializes with stored dimensions (Nin=3, Nout=2)
         // regardless of invert state. The Invert flag is separate.
         node.push_int("Nin", 3, Some("Number of input coordinates".to_string()));
@@ -418,6 +441,7 @@ impl Serializable for SphMap {
             polar_long_set,
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
         };
         if base.inverted {
             m.invert();

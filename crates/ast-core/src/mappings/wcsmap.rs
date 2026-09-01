@@ -106,6 +106,7 @@ pub struct WcsMap {
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
     /// inverse projection clips returned longitude values to the projection's
     /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
@@ -187,6 +188,7 @@ impl WcsMap {
                     prj: RefCell::new(prj),
                     inverted: false,
                     simplified: SimplifiedRecord::default(),
+                    ident: None,
                     lon_check: None,
                     fits_proj: None,
                     tpn_tan: None,
@@ -212,6 +214,7 @@ impl WcsMap {
             prj: RefCell::new(prj),
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             lon_check: None,
             fits_proj: None,
             tpn_tan: None,
@@ -538,6 +541,9 @@ impl WcsMap {
             prj: RefCell::new(prj),
             inverted: self.inverted,
             simplified: self.simplified,
+            // C builds a fresh WcsMap for this rebuild (wcsmap.c:4667), and a
+            // fresh Object has no Ident.
+            ident: None,
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -586,6 +592,7 @@ impl Clone for WcsMap {
             prj: RefCell::new(prj),
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
             lon_check: self.lon_check,
             fits_proj: self.fits_proj,
             tpn_tan: self.tpn_tan,
@@ -955,6 +962,26 @@ impl Mapping for WcsMap {
             && self.latax == other.latax
             && self.ncoord == other.ncoord
             && self.params_equal(other)
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

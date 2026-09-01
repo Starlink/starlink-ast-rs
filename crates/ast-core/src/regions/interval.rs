@@ -1353,6 +1353,13 @@ impl Frame for Interval {
 // ============================================================================
 
 impl Mapping for Interval {
+    // C's `Frame` overrides `astDoNotSimplify` to zero (frame.c:3511-3554): a
+    // set `Ident` is a user label on a coordinate system, not a request to keep
+    // a Mapping intact, so a named Frame is still simplified.
+    fn do_not_simplify(&self) -> bool {
+        false
+    }
+
     fn nin(&self) -> usize {
         self.data.frameset.current().naxes()
     }

@@ -51,6 +51,7 @@ pub struct MatrixMap {
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Cached form of the forward matrix (Full or Diagonal).
     form: MatrixForm,
     /// Cached form of the inverse matrix (Full or Diagonal).
@@ -125,6 +126,7 @@ impl MatrixMap {
             inverse,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             form,
             inv_form,
         })
@@ -166,6 +168,7 @@ impl MatrixMap {
             inverse: Some(inverse),
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             form,
             inv_form: form,
         })
@@ -956,6 +959,26 @@ impl Mapping for MatrixMap {
         Some((kept_outs, Box::new(sub)))
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -1202,6 +1225,7 @@ impl Serializable for MatrixMap {
             inverse,
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
             form,
             inv_form,
         })

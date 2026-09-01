@@ -54,6 +54,7 @@ pub struct RateMap {
     inverted: bool,
     /// Whether simplification is inhibited.
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// The encapsulated Mapping's Invert flag as it stood when this RateMap was
     /// built — C's `RateMap.invert` (`ratemap.h:152`), written as the `Inv`
     /// card.
@@ -105,6 +106,7 @@ impl RateMap {
             ax2,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             invert_snapshot,
         })
     }
@@ -196,6 +198,7 @@ impl Clone for RateMap {
             ax2: self.ax2,
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
             invert_snapshot: self.invert_snapshot,
         }
     }
@@ -452,6 +455,26 @@ impl Mapping for RateMap {
         (true, false)
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -594,6 +617,7 @@ impl Serializable for RateMap {
             ax2,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             invert_snapshot: inv_snapshot,
         };
 

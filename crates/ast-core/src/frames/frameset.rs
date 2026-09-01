@@ -105,6 +105,10 @@ pub struct FrameSet {
     /// Maps each frame (0-based) to its node (0-based).
     /// When `nnode == nframe`, this is the identity mapping.
     node_map: Vec<usize>,
+    /// The FrameSet's own `Ident`, `None` when unset. C keeps this on Object
+    /// and a FrameSet reads its own rather than its current Frame's
+    /// (`frameset.c:2759`, `:4841`, `:10830` all pass `this`).
+    ident: Option<String>,
 }
 
 impl Clone for FrameSet {
@@ -127,6 +131,7 @@ impl Clone for FrameSet {
             varfrm: self.varfrm.clone(),
             nnode: self.nnode,
             node_map: self.node_map.clone(),
+            ident: self.ident.clone(),
         }
     }
 }
@@ -165,6 +170,7 @@ impl FrameSet {
             varfrm: vec![0],
             nnode: 1,
             node_map: vec![0],
+            ident: None,
         }
     }
 
@@ -1230,7 +1236,23 @@ impl Frame for FrameSet {
     }
 
     fn ident(&self) -> &str {
-        self.current().ident()
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn min_axes(&self) -> usize {
@@ -1559,6 +1581,13 @@ fn frameset_convert_to(
 // ====================================================================== //
 
 impl Mapping for FrameSet {
+    // C's `Frame` overrides `astDoNotSimplify` to zero (frame.c:3511-3554): a
+    // set `Ident` is a user label on a coordinate system, not a request to keep
+    // a Mapping intact, so a named Frame is still simplified.
+    fn do_not_simplify(&self) -> bool {
+        false
+    }
+
     fn nin(&self) -> usize {
         self.base().naxes()
     }
@@ -1689,6 +1718,22 @@ impl Serializable for FrameSet {
     fn to_node(&self) -> AstResult<Node> {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Set of inter-related coordinate systems".to_string());
+
+        // Object-level attributes come first, before the commented Frame proxy
+        // header: C dumps the class chain from the top down (`object.c:1697`),
+        // and writes the `IsA Object` marker only when something preceded it.
+        // The value is the FrameSet's own, not the current Frame's
+        // (`frameset.c:4841`).
+        if let Some(ref ident) = self.ident {
+            if !ident.is_empty() {
+                node.push_string(
+                    "Ident",
+                    ident,
+                    Some("Permanent Object identification string".to_string()),
+                );
+                node.push_isa("Object", Some("AST Object".to_string()));
+            }
+        }
 
         // Write proxy attributes from the current frame as commented (unset).
         // The C library writes all current-frame attributes as informational
@@ -1926,6 +1971,15 @@ impl Serializable for FrameSet {
         let current = node.get_int("Currnt", 1) as usize;
         let nnode = node.get_int("Nnode", nframe as i64) as usize;
 
+        // The FrameSet's own Object-level `Ident` (`frameset.c:4841`), absent
+        // when unset.
+        let ident_read = node.get_string("Ident", "");
+        let ident = if ident_read.is_empty() {
+            None
+        } else {
+            Some(ident_read)
+        };
+
         // Read frame-to-node mapping (Nod{i}, defaults to identity).
         let mut node_map: Vec<usize> = Vec::with_capacity(nframe);
         for i in 0..nframe {
@@ -1994,6 +2048,7 @@ impl Serializable for FrameSet {
             varfrm,
             nnode,
             node_map,
+            ident,
         })
     }
 }

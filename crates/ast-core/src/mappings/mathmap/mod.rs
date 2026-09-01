@@ -52,6 +52,7 @@ pub struct MathMap {
     simp_if: Option<bool>,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Whether the forward transform is defined.
     has_forward: bool,
     /// Whether the inverse transform is defined.
@@ -90,6 +91,7 @@ impl Clone for MathMap {
             simp_if: self.simp_if,
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
             has_forward: self.has_forward,
             has_inverse: self.has_inverse,
         }
@@ -165,6 +167,7 @@ impl MathMap {
             simp_if: None,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             has_forward,
             has_inverse,
         })
@@ -523,6 +526,26 @@ impl Mapping for MathMap {
         Some(Box::new(UnitMap::new(nin1)))
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -709,6 +732,7 @@ impl Serializable for MathMap {
             simp_if,
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
             has_forward,
             has_inverse,
         })

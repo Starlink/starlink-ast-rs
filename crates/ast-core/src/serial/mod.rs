@@ -42,8 +42,26 @@ pub(crate) trait Serializable {
 // Mapping base helpers
 // ---------------------------------------------------------------------------
 
-/// Write common Mapping attributes (Nin, Nout, IsSimp, Invert, IsA Mapping).
+/// Write the Object-level attributes that precede the Mapping block. C dumps
+/// the class chain from the top down, so Object's attributes and its `IsA`
+/// marker come before Nin (`object.c:1697`). `Ident` is written active when it
+/// is set and non-empty, and the `IsA Object` marker only when something was
+/// written, matching C's `astWriteString` / `astWriteIsA` rules.
+pub(crate) fn write_object_base(node: &mut Node, mapping: &dyn Mapping) {
+    if mapping.test_ident() && !mapping.ident().is_empty() {
+        node.push_string(
+            "Ident",
+            mapping.ident(),
+            Some("Permanent Object identification string".to_string()),
+        );
+        node.push_isa("Object", Some("AST Object".to_string()));
+    }
+}
+
+/// Write common Mapping attributes (Ident, Nin, Nout, IsSimp, Invert,
+/// IsA Mapping).
 pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
+    write_object_base(node, mapping);
     // Write intrinsic (forward-direction) Nin and Nout, matching the C library
     // which uses `this->nin` / `this->nout` directly (bypassing the Invert
     // attribute). When inverted, nin()/nout() return swapped values, so we
@@ -71,9 +89,7 @@ pub(crate) fn write_mapping_base(node: &mut Node, mapping: &dyn Mapping) {
     // RestrictedSimplify (C `ReSimp`) is a base-Mapping attribute but only
     // CmpMap ever carries a non-default value. Emitted between IsSimp and
     // AlSimp to match the C base Dump order (mapping.c:23764).
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>()
-        && cmp.restricted_simplify()
-    {
+    if mapping.restricted_simplify() {
         node.push_int(
             "ReSimp",
             1,
@@ -158,6 +174,15 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
     // class's `from_node` need not read it individually.
     if node.get_int("AlSimp", 0) != 0 {
         result.set_allow_simplify(true);
+    }
+    // Ident is an Object-level attribute that can appear on any class; apply it
+    // generically for the same reason. Frame-derived classes read their own
+    // Ident in `from_node`, and their Mapping-side setter is a no-op.
+    if node.get("Ident").is_some() {
+        let ident = node.get_string("Ident", "");
+        if !ident.is_empty() {
+            result.set_ident(&ident);
+        }
     }
     Ok(result)
 }

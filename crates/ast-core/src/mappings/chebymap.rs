@@ -59,6 +59,7 @@ pub struct ChebyMap {
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl ChebyMap {
@@ -191,6 +192,7 @@ impl ChebyMap {
             offset_i: offset_i_v,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         })
     }
 
@@ -616,6 +618,26 @@ impl Mapping for ChebyMap {
             _ => false,
         };
         inv_lbnd && inv_ubnd
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {
@@ -1055,6 +1077,7 @@ impl Serializable for ChebyMap {
             offset_i,
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
         };
         if base.inverted {
             m.invert();

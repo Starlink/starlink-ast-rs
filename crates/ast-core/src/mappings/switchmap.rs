@@ -70,6 +70,7 @@ pub struct SwitchMap {
     route_inv: Vec<bool>,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     intrinsic_nin: usize,
     intrinsic_nout: usize,
 }
@@ -186,6 +187,7 @@ impl SwitchMap {
             route_inv,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -218,6 +220,7 @@ impl SwitchMap {
             route_inv,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             intrinsic_nin: nin,
             intrinsic_nout: nout,
         })
@@ -407,6 +410,7 @@ impl Clone for SwitchMap {
             route_inv: self.route_inv.clone(),
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
             intrinsic_nin: self.intrinsic_nin,
             intrinsic_nout: self.intrinsic_nout,
         }
@@ -450,6 +454,26 @@ impl Mapping for SwitchMap {
         // C passes the computed selector availability to astInitMapping
         // (switchmap.c).
         (self.fsmap.is_some(), self.ismap.is_some())
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

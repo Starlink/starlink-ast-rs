@@ -31,6 +31,7 @@ pub struct SelectorMap {
     badval: f64,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 /// Builder for [`SelectorMap`].
@@ -83,6 +84,7 @@ impl SelectorMapBuilder {
             badval: self.badval,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 }
@@ -156,6 +158,7 @@ impl SelectorMap {
             badval: self.badval,
             inverted: self.inverted,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }))
     }
 }
@@ -178,6 +181,7 @@ impl Clone for SelectorMap {
             badval: self.badval,
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
         }
     }
 }
@@ -222,6 +226,26 @@ impl Mapping for SelectorMap {
     fn dump_tran_flags(&self) -> (bool, bool) {
         // C passes (1, 0) to astInitMapping (selectormap.c).
         (true, false)
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

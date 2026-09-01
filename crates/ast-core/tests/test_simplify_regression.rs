@@ -239,28 +239,6 @@ fn simplify_regression() {
                 continue;
             }
         };
-        // For a FrameSet input, the reference `.simp` is the simplified
-        // base→current Mapping (that is how the C fixtures were generated:
-        // `astSimplify(astGetMapping(fs, AST__BASE, AST__CURRENT))`), not a
-        // simplified FrameSet. Extract that composed mapping so all three
-        // checks compare like against like.
-        let mapping = match input_obj {
-            AnyObject::FrameSet(ref fs) => match fs.mapping(FrameRef::Base, FrameRef::Current) {
-                Ok(m) => m,
-                Err(_) => {
-                    parse_skipped.push(name.to_string());
-                    continue;
-                }
-            },
-            other => match other.into_mapping() {
-                Some(m) => m,
-                None => {
-                    parse_skipped.push(name.to_string());
-                    continue;
-                }
-            },
-        };
-
         // Parse reference .simp
         let ref_text = match std::fs::read_to_string(&reference_path) {
             Ok(t) => t,
@@ -276,12 +254,37 @@ fn simplify_regression() {
                 continue;
             }
         };
+        // Most FrameSet fixtures were generated as
+        // `astSimplify(astGetMapping(fs, AST__BASE, AST__CURRENT))`, so their
+        // reference is a Mapping and the input has to be reduced to the same
+        // composed Mapping for all three checks to compare like against like.
+        // A fixture whose reference is itself a FrameSet was generated as
+        // `astSimplify(fs)`, and there the FrameSet *is* the subject.
+        let reference_is_frameset = matches!(ref_obj, AnyObject::FrameSet(_));
         let ref_mapping = match ref_obj.into_mapping() {
             Some(m) => m,
             None => {
                 parse_skipped.push(name.to_string());
                 continue;
             }
+        };
+        let mapping = match input_obj {
+            AnyObject::FrameSet(fs) if !reference_is_frameset => {
+                match fs.mapping(FrameRef::Base, FrameRef::Current) {
+                    Ok(m) => m,
+                    Err(_) => {
+                        parse_skipped.push(name.to_string());
+                        continue;
+                    }
+                }
+            }
+            other => match other.into_mapping() {
+                Some(m) => m,
+                None => {
+                    parse_skipped.push(name.to_string());
+                    continue;
+                }
+            },
         };
 
         // Simplify (use public simplify() which sets IsSimp flag)

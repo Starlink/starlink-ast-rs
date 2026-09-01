@@ -14,6 +14,7 @@ pub struct UnitMap {
     ncoord: usize,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl UnitMap {
@@ -23,6 +24,7 @@ impl UnitMap {
             ncoord,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -144,6 +146,26 @@ impl Mapping for UnitMap {
         }
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -175,6 +197,7 @@ impl Serializable for UnitMap {
             ncoord: base.nin,
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
         })
     }
 }

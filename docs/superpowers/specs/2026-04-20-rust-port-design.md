@@ -2,6 +2,31 @@
 
 ## Revision history
 
+- **2026-08-31 (rev 8)**: `Ident` is Mapping-level bookkeeping, and it has a
+  consumer.
+  C refuses to simplify or decompose a Mapping whose `Ident` is set: the
+  `astSimplify_` gate declines before reaching the per-class `Simplify` slot
+  (`mapping.c:24764`) and `CmpMap::MapList` declines to decompose
+  (`cmpmap.c:1154`), both by asking `astDoNotSimplify` (`mapping.c:1107`), whose
+  body is `astTestIdent( this )`.
+  `Frame` overrides that test to zero (`frame.c:3511-3554`), so a named Frame,
+  Region or FrameSet is still simplified.
+  `Mapping` therefore carries `ident` / `set_ident` / `clear_ident` /
+  `test_ident` and the `do_not_simplify` predicate that reads them, with storage
+  on all 26 concrete Mapping classes, and every `Region` plus `FrameSet`
+  overrides `do_not_simplify` to `false`.
+  This is the "private `Object` super-trait for shared bookkeeping" the note
+  below anticipates, arriving as trait methods on `Mapping` rather than as a
+  super-trait: there was no second class of bookkeeping to share, and a
+  super-trait would have had to be implemented by `Frame` too, where the value
+  is read but the seam is inert.
+  `FrameSet` owns its own `Ident` rather than forwarding to its current Frame,
+  matching C's 30-OCT-2009 change (`frameset.c:2759`, `:4841`, `:10830` all pass
+  `this`).
+  Serialisation follows C's Object dump: the card is written only when
+  `test_ident` and the value is non-empty (`object.c:1697`), before the
+  `IsA Object` marker, so an unset `Ident` changes no existing dump.
+
 - **2026-08-31 (rev 7)**: the per-class `Simplify` seam reports whether it
   reduced anything.
   `Mapping::simplified` returns `AstResult<(DynMapping, bool)>`.
@@ -417,6 +442,9 @@ Notes:
   `Object` methods). A private `Object` super-trait may exist inside
   `ast-core` as an implementation detail for shared bookkeeping (class
   name, ID, Ident), but it is not part of the public API.
+  **Rev 8**: no such super-trait was needed. `Ident` is the one piece of that
+  bookkeeping a generic driver reads, and it lives as `Mapping` trait methods
+  plus the `do_not_simplify` predicate that consumes them.
 - **Rev 6 — one public supertrait was needed after all: `AsAny`.** Two days
   into implementation it became clear there was no way to ask "is this Mapping
   a `UnitMap`?", which the simplifier, `map_merge` and `Region::overlap` all

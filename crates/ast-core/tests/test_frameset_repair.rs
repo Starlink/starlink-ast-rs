@@ -96,19 +96,26 @@ fn remove_frame_above_current_keeps_current() {
 // ===========================================================================
 
 #[test]
-fn frameset_delegates_domain_and_ident() {
+fn frameset_delegates_domain_but_owns_ident() {
     let mut sky = SkyFrame::new(SkySystem::Icrs);
     sky.set_ident("Q");
     let mut fs = FrameSet::new(frame_with_domain(2, "PIXEL"));
     fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(sky))
         .unwrap();
 
-    // C forwards GetDomain / GetIdent to the current frame.
+    // C forwards GetDomain to the current frame.
     assert_eq!(Frame::domain(&fs), "SKY");
-    assert_eq!(Frame::ident(&fs), "Q");
+
+    // Ident is the FrameSet's own, not the current frame's
+    // (frameset.c:4841 passes `this`).
+    assert_eq!(Frame::ident(&fs), "");
+    Frame::set_ident(&mut fs, "FS");
+    assert_eq!(Frame::ident(&fs), "FS");
+    assert_eq!(fs.frame(FrameRef::Current).unwrap().ident(), "Q");
 
     fs.set_current(FrameRef::Base).unwrap();
     assert_eq!(Frame::domain(&fs), "PIXEL");
+    assert_eq!(Frame::ident(&fs), "FS");
 }
 
 #[test]

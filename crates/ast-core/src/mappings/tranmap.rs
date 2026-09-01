@@ -37,6 +37,7 @@ pub struct TranMap {
     map2: DynMapping,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Whether the forward transform is defined.
     tran_forward: bool,
     /// Whether the inverse transform is defined.
@@ -95,6 +96,7 @@ impl TranMap {
             map2,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             tran_forward,
             tran_inverse,
             inv_a,
@@ -167,6 +169,7 @@ impl Clone for TranMap {
             map2: self.map2.clone(),
             inverted: self.inverted,
             simplified: self.simplified,
+            ident: self.ident.clone(),
             tran_forward: self.tran_forward,
             tran_inverse: self.tran_inverse,
             inv_a: self.inv_a,
@@ -449,6 +452,26 @@ impl Mapping for TranMap {
         }
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -616,6 +639,7 @@ impl Serializable for TranMap {
             map2: map_b,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             tran_forward,
             tran_inverse,
             inv_a,

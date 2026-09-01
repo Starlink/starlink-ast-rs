@@ -364,6 +364,7 @@ pub struct SlaMap {
     conversions: Vec<SlaConversion>,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
 }
 
 impl SlaMap {
@@ -373,6 +374,7 @@ impl SlaMap {
             conversions: Vec::new(),
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
         }
     }
 
@@ -1299,6 +1301,26 @@ impl Mapping for SlaMap {
                     && a.args.len() == b.args.len()
                     && a.args.iter().zip(&b.args).all(|(x, y)| ast_equal(*x, *y))
             })
+    }
+
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
     }
 
     fn has_been_simplified(&self) -> bool {

@@ -224,36 +224,15 @@ pub(crate) fn flatten(
 
     trace::map_list(mapping, series, inv);
 
-    // Try to decompose if this is a CmpMap of the matching kind.
-    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
-        if cmp.composition() == target_kind {
-            // Combine external inversion with the CmpMap's own flag.
-            // XOR: if both are inverted they cancel.
-            let cmp_inv = inv != cmp.is_inverted();
-
-            // Effective inversion for each child: inv_a/inv_b record
-            // the expected child invert state. If the child's current
-            // state differs, that flips the direction. Then the CmpMap's
-            // own inversion (cmp_inv) flips again.
-            let child_inv_a = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
-            let child_inv_b = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
-
-            if !cmp_inv {
-                let mut result = flatten(cmp.first(), child_inv_a, series)?;
-                result.extend(flatten(cmp.second(), child_inv_b, series)?);
-                return Ok(result);
-            } else if series {
-                // Inverted series: reverse child order.
-                let mut result = flatten(cmp.second(), child_inv_b, series)?;
-                result.extend(flatten(cmp.first(), child_inv_a, series)?);
-                return Ok(result);
-            } else {
-                // Inverted parallel: same order.
-                let mut result = flatten(cmp.first(), child_inv_a, series)?;
-                result.extend(flatten(cmp.second(), child_inv_b, series)?);
-                return Ok(result);
-            }
-        }
+    // Try to decompose if this is a CmpMap of the matching kind that may be
+    // simplified at all: C tests both in one condition (cmpmap.c:1154), and a
+    // CmpMap that must be left intact falls through to the base `MapList`,
+    // which appends the Mapping itself as a single leaf.
+    if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>()
+        && cmp.composition() == target_kind
+        && !mapping.do_not_simplify()
+    {
+        return flatten_children(cmp, inv, series);
     }
 
     // A class that overrides C `astMapList` (currently only `Prism`, which is
@@ -298,6 +277,40 @@ pub(crate) fn flatten(
     }
 
     Ok(vec![(cloned, effective_inv, orig_inv)])
+}
+
+/// Decompose the two children of a same-kind `CmpMap`, each at its effective
+/// direction, and concatenate the results in the order the composition applies
+/// them. This is the body of C `cmpmap.c::MapList`'s decomposing branch
+/// (`cmpmap.c:1154`), split out so a caller that needs the child-level
+/// decomposition can ask for it directly.
+pub(crate) fn flatten_children(
+    cmp: &CmpMap,
+    inv: bool,
+    series: bool,
+) -> AstResult<Vec<(DynMapping, bool, bool)>> {
+    // Combine external inversion with the CmpMap's own flag.
+    // XOR: if both are inverted they cancel.
+    let cmp_inv = inv != cmp.is_inverted();
+
+    // Effective inversion for each child: inv_a/inv_b record
+    // the expected child invert state. If the child's current
+    // state differs, that flips the direction. Then the CmpMap's
+    // own inversion (cmp_inv) flips again.
+    let child_inv_a = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+    let child_inv_b = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+
+    if cmp_inv && series {
+        // Inverted series: reverse child order.
+        let mut result = flatten(cmp.second(), child_inv_b, series)?;
+        result.extend(flatten(cmp.first(), child_inv_a, series)?);
+        Ok(result)
+    } else {
+        // Forward, or inverted parallel: same order.
+        let mut result = flatten(cmp.first(), child_inv_a, series)?;
+        result.extend(flatten(cmp.second(), child_inv_b, series)?);
+        Ok(result)
+    }
 }
 
 /// Mirror of the `simpler` flag returned by C `cmpmap.c` `MapList`

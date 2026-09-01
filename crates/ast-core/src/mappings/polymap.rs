@@ -50,6 +50,7 @@ pub struct PolyMap {
     tol_inverse: f64,
     inverted: bool,
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Pre-computed Jacobian polynomial terms (one set of terms per input axis).
     /// Only populated when `iter_inverse` is true and `nin == nout`.
     jacobian_terms: Option<Vec<Vec<PolyTerm>>>,
@@ -201,6 +202,7 @@ impl PolyMap {
             tol_inverse: 1e-6,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             jacobian_terms: None,
             forward_by_output,
             forward_max_pows,
@@ -1630,6 +1632,26 @@ impl Mapping for PolyMap {
         }
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -2008,6 +2030,7 @@ impl Serializable for PolyMap {
             tol_inverse: tol_inv,
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
             jacobian_terms,
             forward_by_output,
             forward_max_pows,

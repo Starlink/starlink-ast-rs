@@ -250,3 +250,29 @@ including the two unit tests written against them
 `UnitMap::map_merge`. What the outer strips could not have got right: a UnitMap
 without `AllowSimplify` is never nominated under a restricted simplify, so C cannot
 strip it, while neither outer strip consulted the flag. PLAN.md §10.19.
+
+## Rows 11 and 48 — the `DoNotSimplify` gate on the decomposition
+
+C's `MapList` decomposes a CmpMap only when it is the right kind *and*
+`astDoNotSimplify` returns zero (`cmpmap.c:1154`); otherwise it falls through to
+the base `MapList`, which appends the Mapping itself as one leaf. The port has
+the same condition on `flatten`'s decomposing branch (`simplify.rs:233`), and the
+non-decomposing path was already the single-leaf append, so a named CmpMap
+reaches the nominate loop intact. The companion gate in the public entry
+(`mapping.c:24764`, `simplify_entry.rs:69`) shares its `astClone( this )` exit
+with the `IsSimple` short-circuit, as C's one expression does.
+
+`CmpMap::Equal` (`cmpmap.c:297`) is the reason the port needed a second
+decomposition entry point. C compares two CmpMaps by decomposing both with
+`astMapList` and walking the lists element by element (`:374`, `:381`, `:399`).
+When both sides refuse to decompose, each list holds one element — the CmpMap it
+came from — so the element-wise comparison is the comparison it started with and
+C recurses without bound. It is unreachable from C's own callers only because
+one side almost never carries an `Ident`. The port terminates instead: when both
+sides refuse, `equal` calls `flatten_children` (`simplify.rs:287`), which runs
+the body of C's decomposing branch on the two children directly. That is the
+comparison C makes with either side's flag cleared, one level down, so no answer
+C can actually produce changes.
+
+`cap_ident_cmpmap` holds the gate and `cap_ident_frame` the `Frame` override.
+PLAN.md §10.21.

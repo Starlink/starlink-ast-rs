@@ -53,6 +53,7 @@ pub struct LutMap {
     lut_epsilon: f64,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
+    ident: Option<String>,
     /// Whether the inverse transform is defined.
     tran_inverse: bool,
 }
@@ -86,6 +87,7 @@ impl LutMap {
             monotonic,
             inverted: false,
             simplified: SimplifiedRecord::default(),
+            ident: None,
             tran_inverse: monotonic != 0,
             lut_epsilon: f64::EPSILON,
         })
@@ -778,6 +780,26 @@ impl Mapping for LutMap {
         (true, self.tran_inverse)
     }
 
+    fn ident(&self) -> &str {
+        self.ident.as_deref().unwrap_or("")
+    }
+
+    fn set_ident(&mut self, ident: &str) {
+        self.ident = if ident.is_empty() {
+            None
+        } else {
+            Some(ident.to_string())
+        };
+    }
+
+    fn clear_ident(&mut self) {
+        self.ident = None;
+    }
+
+    fn test_ident(&self) -> bool {
+        self.ident.is_some()
+    }
+
     fn has_been_simplified(&self) -> bool {
         self.simplified.get(self.inverted)
     }
@@ -886,6 +908,7 @@ impl Serializable for LutMap {
             lut_epsilon: node.get_double("LutEps", f64::EPSILON),
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
+            ident: None,
             tran_inverse: base.has_inverse,
         };
         if base.inverted {

@@ -752,3 +752,16 @@ cap_restricted_no_eligible | simplify_fixtures/cap_restricted_no_eligible.map | 
 # the result. C clears AllowSimplify on every component as it folds
 # (cmpmap.c:3692), so the surviving ZoomMap carries no AlSimp card.
 cap_restricted_component_flags | simplify_fixtures/cap_restricted_component_flags.map | simplify_fixtures/cap_restricted_component_flags.simp |
+
+# A series CmpMap whose inner CmpMap carries Ident. C refuses to decompose that
+# CmpMap (astMapList consults astDoNotSimplify, cmpmap.c:1154) and refuses to
+# reach its Simplify slot (mapping.c:24764), on the base rule that a set Ident
+# means the user wants the Mapping left intact (mapping.c:1150). The whole
+# chain therefore comes back as supplied -- the outer ZoomMap cannot merge
+# across the named CmpMap either -- with only the outer IsSimp card added.
+cap_ident_cmpmap | simplify_fixtures/cap_ident_cmpmap.map | simplify_fixtures/cap_ident_cmpmap.simp |
+
+# The negative control for the same rule: a FrameSet carrying the same Ident.
+# Frame overrides astDoNotSimplify to zero (frame.c:3511), so this one still
+# simplifies and its CmpMap of two ZoomMaps collapses to one.
+cap_ident_frame | simplify_fixtures/cap_ident_frame.map | simplify_fixtures/cap_ident_frame.simp |
