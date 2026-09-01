@@ -6983,3 +6983,1031 @@ MSG
 Cluster 5 is complete at this point: all four in-scope classes have setters that
 discard both records, `test_clear_on_set.rs` gates each of the twelve against
 the same falsifiability control, and `PLAN.md` §9.2 is marked DONE.
+
+---
+
+## Cluster 6 — the two transform-oracle overrides
+
+`crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` is the
+last place in the transform harness where a check can be switched off per
+fixture. It holds two entries, and the spec requires both gone (§6.2, the row
+`transform_oracle_overrides.txt` 2 → 0).
+
+Neither is a simplify defect, and neither closes by making the port compute
+something different. Both are cases where the *assertion* is wrong:
+
+| Entry | What it disables | What is actually true |
+|---|---|---|
+| `tnx-cheb.head   off` | the round-trip check for the whole fixture | C's own recorded inverse does not recover the pixel either, so the identity the check asserts is not a property of the fixture |
+| `simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map   golden-inv off` | the golden comparison of the whole inverse section (24 rows) | two of the 24 recorded rows were produced by the generator's compiler fusing a multiply-add, which stepped past C's own zero-norm branch; the other 22 are ordinary values the port already matches |
+
+The committed comment on the first entry is also factually wrong at HEAD, and
+Task 25 corrects it: it claims "sky->pixel returns BAD for the whole fixture (no
+inverse exists)", while `headers.oracle` records real inverse values for 23 of
+the 24 rows.
+
+Both tasks replace a fixture-wide switch with something narrower, named,
+asserted as an exact set, and falsifiable — the same shape as
+`ISSIMP_PLACEMENT_LICENSED`. The ledger count does not go to zero; it goes from
+"two checks disabled across 48 rows" to "26 named rows, each with a reason and
+an exact assertion".
+
+### Task 25: the `tnx-cheb.head` round-trip
+
+**Files:**
+- Modify: `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` (drop the `tnx-cheb.head` entry and the comment block above it)
+- Modify: `crates/ast-core/tests/test_transform_oracle.rs:826-873` (`compare_rtrip`), plus a new const, helper, census test and unit control
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs:34` (`LEDGER`)
+- Modify: `PLAN.md` §6 (the ledger table)
+
+**Interfaces:**
+- Consumes: `within_tol(got: f64, reference: f64, rtol: f64, atol: f64) -> bool` (`test_transform_oracle.rs:35`); `struct Section { relpath: String, nin: usize, nout: usize, forward: bool, inputs: Vec<Vec<f64>>, outputs: Vec<Vec<f64>> }` with `fn npoint(&self) -> usize`; `parse_oracle(text: &str) -> Result<Vec<Section>, String>`; `const RTRIP_RTOL: f64 = 1e-6`; `const RTRIP_ATOL: f64 = 0.05`; `has_ext(relpath: &str, ext: &str) -> bool`; `ast_core::mappings::UnitMap::new(ncoord: usize) -> UnitMap`.
+- Produces: `fn reference_round_trips(fwd: &Section, inv_ref: &[Vec<f64>], row: usize, rtol: f64, atol: f64) -> bool`; `const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])]`; and the new `compare_rtrip(map: &dyn Mapping, fwd: &Section, inv_live: &[Vec<f64>], inv_ref: &[Vec<f64>], rtol: f64, atol: f64) -> Vec<AxisMiss>` signature, which Task 26 does not touch.
+
+The evidence first, because it is what makes this a comparator fix rather than a
+port fix. `headers.oracle:5542-5600` holds the two `tnx-cheb.head` sections. Row
+0 of the forward section maps pixel `1 1` to sky `1.9230261913765907
+0.98543052426309297`; row 0 of the inverse section maps that sky back to
+`2375.9261709459961 -2531.6459935815383`. That is C's own answer, recorded by
+the C generator: C does not recover the pixel. Row 22 of the inverse section is
+`BAD BAD` where the forward output was real. So the fixture does not satisfy
+`inverse(forward(P)) == P` under the C library, and a check that asserts it of
+the port is asserting something about the fixture, not about the port.
+
+`compare_equiv` (`test_transform_oracle.rs:786-820`) already has the pattern for
+this: it compares live `.map` against live `.simp` only at rows where the two
+*recorded* columns agree, skipping the rest with `continue; // out of shared
+domain at generation time`. The round-trip check gets the same treatment,
+decided from stored data alone, and placed last so it can only ever excuse a row
+the live comparison has already failed.
+
+Ordering matters and is load-bearing: `tsc.head` row 10 is a row whose recorded
+inverse also fails to recover the pixel (C records `418.3068181819074` for pixel
+`1400.125` — the 360-degree alias the file's own comment describes), and whose
+live result passes today through the alias-aware escape. With the new gate last,
+that row keeps being asserted.
+
+- [ ] **Step 1: Drop the override and watch the gate fail**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+from pathlib import Path
+p = Path("crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt")
+t = p.read_text()
+old = """# KNOWN ROUND-TRIP FAILURE -- INVESTIGATE.  The golden checks still pin the
+# fixture's forward and inverse outputs; only the round-trip accuracy
+# assertion is disabled.
+#
+# tnx-cheb.head: the TNX Chebyshev distortion builds a ChebyMap, which disables
+#   PolyMap's iterative inverse (it cannot represent its own Jacobian -- the
+#   derivative of a 1st-kind Chebyshev T_n is a 2nd-kind U_(n-1), which
+#   ChebyMap's storage does not support; see src/chebymap.c).  So sky->pixel
+#   returns BAD for the whole fixture (no inverse exists).
+tnx-cheb.head   off
+
+# (tsc.head needs no override: its only failing pixel is a 360 deg alias in an
+#  image wider than the quad-cube period, now accepted by the alias-aware
+#  round-trip check -- inverse(forward(P)) forward-maps back to the same sky.)
+
+"""
+new = """# Rows where C's own recorded inverse does not recover the pixel are excused
+# per row by RTRIP_REFERENCE_GAPS_LICENSED in test_transform_oracle.rs, not by
+# an entry here: tnx-cheb.head (all 24 rows) and tsc.head (row 10, a 360 deg
+# alias in an image wider than the quad-cube period, which the alias-aware
+# check accepts on its own anyway).
+
+"""
+assert t.count(old) == 1
+p.write_text(t.replace(old, new))
+PY
+```
+
+Then run the gate that owns `.head` sections:
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle 2>&1 | tail -20
+```
+
+Expected: FAIL. `head oracle sections diverged from C (not excluded)` naming
+`tnx-cheb.head (forward=false)` with `mismatch:round-trip`. The round-trip check
+is now enabled for the fixture and the port cannot satisfy it, because C cannot
+either.
+
+- [ ] **Step 2: Add the census of reference gaps as an exact set**
+
+The set is a property of the corpus, so it is asserted without loading a single
+fixture. Add the const immediately after `compare_rtrip` in
+`crates/ast-core/tests/test_transform_oracle.rs`:
+
+```rust
+/// Rows where C's own recorded inverse does not recover the recorded forward
+/// input, keyed by fixture. `compare_rtrip` excuses exactly these, and only
+/// after the live result has failed both the direct and the aliased
+/// comparison, so a row C round-trips is never excused here.
+///
+/// This is a statement about the corpus, and
+/// `reference_rtrip_gaps_are_exactly_the_recorded_set` checks it against the
+/// `.oracle` files with no fixture loaded and no live transform involved. It
+/// assumes the default round-trip tolerances, which is safe while
+/// `transform_oracle_overrides.txt` declares none.
+const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
+    // Every row. The TNX Chebyshev distortion builds a ChebyMap, whose
+    // storage cannot hold its own Jacobian (the derivative of a 1st-kind
+    // Chebyshev T_n is a 2nd-kind U_(n-1)), so PolyMap's iterative inverse is
+    // unavailable and C's sky->pixel lands nowhere near the pixel it came
+    // from: row 0 goes 1,1 -> 2375.93,-2531.65, and row 22 is BAD
+    // (`headers.oracle:5542-5600`). The golden checks still pin both
+    // directions against C, which is what proves the port reproduces C's
+    // wrong inverse rather than a different one.
+    ("tnx-cheb.head", &[
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+        12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    ]),
+    // One row on the tangential spherical cube: the image is wider than the
+    // quad-cube period, so C's inverse returns the aliased preimage
+    // 418.3068181819074 for pixel 1400.125. The port recovers the pixel
+    // itself, so this row passes through `pixel_ok` and never reaches the
+    // reference gate — it is listed because the census is of the corpus, not
+    // of what the gate excuses.
+    ("tsc.head", &[10]),
+];
+```
+
+- [ ] **Step 3: Add the census test**
+
+Put it after `every_oracle_section_is_gated` at the end of the file, beside the
+other corpus-wide assertions:
+
+```rust
+/// The set of rows where C's own recorded inverse does not recover the pixel is
+/// exactly `RTRIP_REFERENCE_GAPS_LICENSED`. Corpus-only: no fixture is loaded
+/// and no transform runs, so this cannot be satisfied by a change in the port.
+/// A regenerated corpus, a new fixture whose reference does not round-trip, or
+/// a stale entry all fail here.
+#[test]
+fn reference_rtrip_gaps_are_exactly_the_recorded_set() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let mut found: std::collections::BTreeMap<String, Vec<usize>> = Default::default();
+    for name in [
+        "simplify_fixtures.oracle",
+        "headers.oracle",
+        "framesets.oracle",
+    ] {
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        let sections = parse_oracle(&text).expect("oracle parses");
+        // Same pairing as `run_oracle`: an inverse section of a GRID fixture
+        // with the immediately-preceding forward section of the same fixture.
+        let mut prev_fwd: Option<&Section> = None;
+        for s in &sections {
+            let grid = has_ext(&s.relpath, ".head") || has_ext(&s.relpath, ".ast");
+            if !s.forward && grid {
+                if let Some(fwd) = prev_fwd.filter(|f| {
+                    f.relpath == s.relpath && f.nin == s.nout && f.npoint() == s.npoint()
+                }) {
+                    for row in 0..fwd.npoint() {
+                        // `compare_rtrip` skips a row whose forward output was
+                        // BAD before any comparison happens.
+                        if (0..fwd.nout).any(|b| fwd.outputs[b][row] == BAD_VALUE) {
+                            continue;
+                        }
+                        if !reference_round_trips(fwd, &s.outputs, row, RTRIP_RTOL, RTRIP_ATOL) {
+                            found.entry(s.relpath.clone()).or_default().push(row);
+                        }
+                    }
+                }
+            }
+            if s.forward {
+                prev_fwd = Some(s);
+            }
+        }
+    }
+
+    let expected: std::collections::BTreeMap<String, Vec<usize>> =
+        RTRIP_REFERENCE_GAPS_LICENSED
+            .iter()
+            .map(|(rp, rows)| ((*rp).to_string(), rows.to_vec()))
+            .collect();
+    assert_eq!(
+        found, expected,
+        "the rows where C's own inverse does not recover the pixel have \
+         changed. Update RTRIP_REFERENCE_GAPS_LICENSED, the ledger and \
+         PLAN.md §6 together, with a reason per fixture",
+    );
+}
+```
+
+- [ ] **Step 4: Add the unit control for the gate's ordering**
+
+Three rows, three outcomes, one identity mapping — the whole point is that the
+reference gate fires last. Add to the `check_tests` module, after
+`equiv_skips_points_where_recorded_disagree`:
+
+```rust
+    #[test]
+    fn rtrip_excuses_only_rows_the_reference_also_fails() {
+        // A 1-axis identity mapping, so the alias escape is easy to reason
+        // about: a recovered pixel forward-maps to itself.
+        let map = ast_core::mappings::UnitMap::new(1);
+        let fwd = Section {
+            relpath: "synthetic.head".into(),
+            nin: 1,
+            nout: 1,
+            forward: true,
+            inputs: vec![vec![10.0, 20.0, 30.0, 40.0]],
+            outputs: vec![vec![10.0, 20.0, 30.0, 40.0]],
+        };
+        //            row 0: live recovers                     -> pass
+        //            row 1: live wrong, reference recovers    -> MISS
+        //            row 2: live wrong, reference also wrong  -> excused
+        //            row 3: live recovers, reference wrong    -> pass (order)
+        let inv_live = vec![vec![10.0, 99.0, 99.0, 40.0]];
+        let inv_ref = vec![vec![10.0, 20.0, 77.0, 55.0]];
+        let misses = compare_rtrip(
+            &map, &fwd, &inv_live, &inv_ref, RTRIP_RTOL, RTRIP_ATOL,
+        );
+        assert_eq!(misses.len(), 1, "only row 1 may be reported: {misses:?}");
+        assert_eq!(misses[0].row, 1);
+    }
+```
+
+- [ ] **Step 5: Run it and watch it fail to compile**
+
+```bash
+cargo test -p ast-core --test test_transform_oracle rtrip_excuses 2>&1 | tail -20
+```
+
+Expected: FAIL — `error[E0061]: this function takes 5 arguments but 6 arguments
+were supplied`, pointing at `compare_rtrip`. The gate does not exist yet.
+
+- [ ] **Step 6: Add the helper**
+
+Immediately before `compare_rtrip` in
+`crates/ast-core/tests/test_transform_oracle.rs`:
+
+```rust
+/// Does C's own recorded inverse recover the recorded forward input at this
+/// row? When it does not, `inverse(forward(P)) == P` is not a property of the
+/// fixture, and requiring it of the port would assert something about the
+/// corpus. Decided from stored data alone — the live transform plays no part —
+/// which is the gate `compare_equiv` applies to the shared domain.
+fn reference_round_trips(
+    fwd: &Section,
+    inv_ref: &[Vec<f64>],
+    row: usize,
+    rtol: f64,
+    atol: f64,
+) -> bool {
+    (0..fwd.nin).all(|a| within_tol(inv_ref[a][row], fwd.inputs[a][row], rtol, atol))
+}
+```
+
+- [ ] **Step 7: Take the recorded inverse in `compare_rtrip` and gate on it last**
+
+Change the signature and doc comment (`test_transform_oracle.rs:822-836`):
+
+```rust
+/// Round-trip accuracy (GRID corpora): inverse(forward(P)) ~= P, BAD-skipping
+/// and alias-aware (a different recovered pixel is accepted if it
+/// forward-maps to the same sky). `inv_live` is the live output of the
+/// inverse section (i.e. inverse(forward(P))); `inv_ref` is C's recorded
+/// output for the same section, which excuses a row C does not round-trip
+/// either — checked last, so it can only excuse a row the live comparison has
+/// already failed.
+fn compare_rtrip(
+    map: &dyn Mapping,
+    fwd: &Section,
+    inv_live: &[Vec<f64>],
+    inv_ref: &[Vec<f64>],
+    rtol: f64,
+    atol: f64,
+) -> Vec<AxisMiss> {
+```
+
+Then add the gate after the alias block and before the per-axis miss loop,
+replacing the blank line between them:
+
+```rust
+        // Different pixel: accept if it forward-maps to the same sky.
+        if let Some(sky2) = &sky2 {
+            let alias = (0..fwd.nout).all(|b| {
+                within_tol_wrap(sky2[b][row], fwd.outputs[b][row], GOLDEN_RTOL, GOLDEN_ATOL)
+            });
+            if alias {
+                continue;
+            }
+        }
+        // Last: C's own recorded inverse does not recover this pixel either,
+        // so the identity is not a property of the fixture.
+        if !reference_round_trips(fwd, inv_ref, row, rtol, atol) {
+            continue;
+        }
+        for (a, (inv_col, inp_col)) in inv_live.iter().zip(fwd.inputs.iter()).enumerate() {
+```
+
+- [ ] **Step 8: Pass the recorded outputs at the call site**
+
+In `run_oracle` (`test_transform_oracle.rs:1000-1010`), `s` is the inverse
+section, so its recorded outputs are C's inverse:
+
+```rust
+                if let Some((rtol, atol)) = overrides.rtrip(&s.relpath) {
+                    misses.extend(compare_rtrip(map, fwd, &live, &s.outputs, rtol, atol));
+                }
+```
+
+- [ ] **Step 9: Run the control and the three gates**
+
+```bash
+cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
+```
+
+Expected: PASS, including `rtrip_excuses_only_rows_the_reference_also_fails`,
+`reference_rtrip_gaps_are_exactly_the_recorded_set`,
+`head_sections_match_oracle`, `slamap_sections_match_oracle` and
+`simplify_sections_match_oracle`. If `head_sections_match_oracle` still fails on
+`tnx-cheb.head`, the failure is now a golden mismatch, not a round-trip one, and
+it is a port defect to fix rather than anything this task licenses.
+
+- [ ] **Step 10: Update the committed-overrides parse test**
+
+`parses_committed_overrides_file` (`test_transform_oracle.rs:645-658`) asserts
+the entry that no longer exists. Replace its first assertion:
+
+```rust
+    #[test]
+    fn parses_committed_overrides_file() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/oracle/transform_oracle_overrides.txt"
+        );
+        let o = parse_overrides(&std::fs::read_to_string(path).unwrap());
+        // tnx-cheb.head has no override: its round-trip runs with the default
+        // tolerances, and the rows C does not round-trip are excused per row.
+        assert_eq!(o.rtrip("tnx-cheb.head"), Some((RTRIP_RTOL, RTRIP_ATOL)));
+        // neg_unitnormmap_inv_fwd_diffcentre.map skips golden inverse only.
+        let rel = "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map";
+        assert!(o.golden_off(rel, false) && !o.golden_off(rel, true));
+    }
+```
+
+- [ ] **Step 11: Add the ledger row**
+
+In `crates/ast-core/tests/test_verification_ledger.rs`, add to `LEDGER` after
+the `SIMPLIFY_ORACLE_EXCLUDED` entry:
+
+```rust
+    (
+        "test_transform_oracle.rs",
+        "RTRIP_REFERENCE_GAPS_LICENSED",
+        2,
+        "two fixtures, 25 rows, where C's own recorded inverse does not \
+         recover the pixel either: tnx-cheb.head (all 24 rows -- a ChebyMap \
+         has no usable inverse) and tsc.head row 10 (a 360 deg alias). \
+         Asserted as an exact set against the corpus with no fixture loaded, \
+         and reached only after the live result has failed both the direct \
+         and the aliased comparison",
+    ),
+```
+
+The name carries `_LICENSED`, so `no_relaxation_hides_outside_the_ledger` would
+have demanded this row even if it were forgotten.
+
+- [ ] **Step 12: Mirror it in `PLAN.md` §6**
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("PLAN.md")
+t = p.read_text()
+old = "| transform oracle | 1752 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |\n"
+new = ("| transform oracle | 1752 sections | 1 | `transform_oracle_overrides.txt`: one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |\n"
+       "| transform oracle | 25 rows | 2 | `RTRIP_REFERENCE_GAPS_LICENSED` — rows where C's own recorded inverse does not recover the pixel either: `tnx-cheb.head` (all 24 rows, a ChebyMap has no usable inverse) and `tsc.head` row 10 (a 360 deg alias). Asserted as an exact set against the corpus with no fixture loaded, and reached only after the live result has failed both the direct and the aliased comparison |\n")
+assert t.count(old) == 1
+p.write_text(t.replace(old, new))
+PY
+```
+
+- [ ] **Step 13: Run the ledger and format**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test -p ast-core --test test_verification_ledger --test test_transform_oracle 2>&1 | tail -15
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+```
+
+Expected: both test binaries pass; clippy clean.
+
+- [ ] **Step 14: Commit**
+
+```bash
+git add crates/ast-core/tests/test_transform_oracle.rs \
+        crates/ast-core/tests/test_verification_ledger.rs \
+        crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt \
+        PLAN.md
+git commit -F - <<'MSG'
+test(oracle): excuse round-trip rows C itself does not round-trip
+
+The tnx-cheb.head override disabled the round-trip check for the whole fixture,
+on the stated grounds that sky->pixel returns BAD throughout. It does not:
+headers.oracle records real inverse values for 23 of the 24 rows, and none of
+them recovers the pixel they came from -- row 0 goes 1,1 -> 2375.93,-2531.65.
+The identity the check asserts is not a property of the fixture, so C fails it
+too.
+
+compare_rtrip now takes the recorded inverse alongside the live one and excuses
+a row whose recorded inverse does not recover the input either, decided from
+stored data alone, the way compare_equiv gates on the recorded shared domain.
+The gate runs last, after the direct and aliased comparisons, so tsc.head row 10
+-- whose reference is an alias but whose live result recovers the pixel -- stays
+asserted through the live path.
+
+The rows are counted: RTRIP_REFERENCE_GAPS_LICENSED names both fixtures and all
+25 rows, and a corpus-only test asserts that set exactly, with no fixture loaded
+and no transform run.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+### Task 26: the `neg_unitnormmap_inv_fwd_diffcentre` inverse golden
+
+**Files:**
+- Create: `tools/oracle_fixtures/unitnorm_probe.c`
+- Modify: `tools/oracle_fixtures/Makefile:16-17` (`PROGS`)
+- Modify: `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` (drop the last entry; rewrite the header to say the file declares nothing)
+- Modify: `crates/ast-core/tests/test_transform_oracle.rs` (new const, substitution helper, call-site change, two tests)
+- Modify: `crates/ast-core/tests/test_verification_ledger.rs:34` (`LEDGER`)
+- Modify: `docs/issues/c-library-quirks.md` (new entry at the end)
+- Modify: `PLAN.md` §6
+
+**Interfaces:**
+- Consumes: `struct Section` and `parse_oracle` as in Task 25; `compare_golden(kind: &str, live: &[Vec<f64>], reference: &[Vec<f64>], angular: &[bool]) -> Vec<AxisMiss>` (`test_transform_oracle.rs:758`); `GOLDEN_RTOL`, `GOLDEN_ATOL`; `ast_core::constants::BAD_VALUE`; `Overrides::golden_off(&self, relpath: &str, forward: bool) -> bool`.
+- Produces: `const FMA_SUBSTITUTIONS_LICENSED: &[(&str, bool, usize, &[f64])]`; `fn substituted_reference<'a>(relpath: &str, forward: bool, recorded: &'a [Vec<f64>]) -> std::borrow::Cow<'a, [Vec<f64>]>`. Nothing later in the plan consumes either.
+
+The override disables the golden comparison of a whole 24-row inverse section
+because two of its rows disagree. The two rows are rows 2 and 3 of the inverse
+section at `simplify_fixtures.oracle:18516`, which share an input —
+`-0.70710678118654746 -0.70710678118654746 7.0710678118654755` — and a recorded
+output of `0.75853844164804163 0.65162829323331306 3.4075347438225656e-16`.
+
+That third component is the tell. `unitnormmap.c:886-1085` computes `max_relin`
+as the largest `|in - centre|` over the axes and, when it is exactly zero
+(`:1024`), writes `AST__BAD` to the first `ncoord_out-1` outputs and `0` to the
+last. `3.4e-16` is not zero and not a physically meaningful residue: it is what
+`fma(u, d, 5.0)` and `fma(u, d, 6.0)` produce for this fixture's centre, and
+substituting those two fused multiply-adds reproduces the recorded norm and both
+unit components bit-exactly, while the unfused arithmetic gives an exact zero.
+The generator host was arm64 macOS, where the compiler contracts
+`in*norm + map->centre[coord]` (`unitnormmap.c:1079`) into an FMA by default. So
+C's own zero-norm guard at `:1024` was stepped past on that host, and it is
+taken on any non-contracting build — x86-64 C without `-mfma`, and Rust
+everywhere.
+
+`crates/ast-core/src/mappings/unitnormmap.rs:173-198` already mirrors C's branch
+exactly, so there is nothing to fix in the port. Three ways out were rejected:
+loosening the tolerance (a tolerance with no C analogue — stop signal 1);
+regenerating the section (numeric drift must be left alone, per the corpus rules
+in `CLAUDE.md`); and narrowing the skip to two rows (the spec requires the
+override count to reach 0, and a per-row skip still asserts nothing about the
+two rows).
+
+What is left is to substitute the *unfused* expectation, which is a stronger
+claim than the recorded reference: the port must produce exactly
+`(BAD, BAD, 0)`, the values C's own source prescribes for a zero-relative input.
+The substitution is named, its rows are asserted to be the arm64 values it
+replaces — so a regenerated corpus makes it fail rather than silently pass — and
+a C probe on this host is what establishes the substituted value in the first
+place.
+
+- [ ] **Step 1: Write the probe that asks this host's C library**
+
+The evidence has to come from C, not from the Rust port, or the substituted
+value is just the port's own output promoted to a reference. Create
+`tools/oracle_fixtures/unitnorm_probe.c`, following `ast2ast.c`'s channel-source
+pattern:
+
+```c
+/* unitnorm_probe -- read a native-text Mapping from a file, run one point
+ * through its inverse transform, and print the result.
+ *
+ * Answers "what does the C library on THIS machine compute here?" for oracle
+ * rows whose recorded values depend on the generator host's floating point.
+ *
+ * Usage: ./unitnorm_probe <fixture.map> <x1> <x2> ... <xN>
+ *   with N = the Mapping's Nout (the inverse transform's inputs).
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "ast.h"
+
+static char *text = NULL;
+static size_t pos = 0;
+
+/* Hand the channel one line per call, NULL at end of input. */
+static char *source(void) {
+    static char line[4096];
+    if (!text || text[pos] == '\0') return NULL;
+    size_t n = 0;
+    while (text[pos] != '\0' && text[pos] != '\n' && n < sizeof(line) - 1) {
+        line[n++] = text[pos++];
+    }
+    if (text[pos] == '\n') pos++;
+    line[n] = '\0';
+    return line;
+}
+
+int main(int argc, char **argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: unitnorm_probe <fixture.map> <x1> ... <xN>\n");
+        return 2;
+    }
+
+    FILE *f = fopen(argv[1], "r");
+    if (!f) { perror(argv[1]); return 1; }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    text = malloc((size_t) len + 1);
+    if (fread(text, 1, (size_t) len, f) != (size_t) len) { perror("fread"); return 1; }
+    text[len] = '\0';
+    fclose(f);
+
+    astBegin;
+    AstChannel *chin = astChannel(source, NULL, "");
+    AstMapping *map = (AstMapping *) astRead(chin);
+    if (!astOK || !map) { fprintf(stderr, "astRead failed\n"); return 1; }
+
+    int nin = astGetI(map, "Nin");
+    int nout = astGetI(map, "Nout");
+    int ncoord_in = nout;              /* inverse: the map's outputs feed in */
+    if (argc - 2 != ncoord_in) {
+        fprintf(stderr, "expected %d coordinates, got %d\n", ncoord_in, argc - 2);
+        return 2;
+    }
+
+    double *in = malloc(sizeof(double) * (size_t) ncoord_in);
+    double *out = malloc(sizeof(double) * (size_t) nin);
+    for (int c = 0; c < ncoord_in; c++) in[c] = atof(argv[2 + c]);
+
+    astTranN(map, 1, ncoord_in, 1, in, 0, nin, 1, out);
+
+    for (int c = 0; c < nin; c++) {
+        if (out[c] == AST__BAD) printf(" BAD");
+        else printf(" %.17g", out[c]);
+    }
+    printf("\n");
+
+    astEnd;
+    return astOK ? 0 : 1;
+}
+```
+
+- [ ] **Step 2: Register it in the probe Makefile**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+from pathlib import Path
+p = Path("tools/oracle_fixtures/Makefile")
+t = p.read_text()
+old = "         fit_line make_int_world sip_int_world head2ast ast2ast keymap_hash\n"
+new = "         fit_line make_int_world sip_int_world head2ast ast2ast keymap_hash \\\n         unitnorm_probe\n"
+assert t.count(old) == 1
+p.write_text(t.replace(old, new))
+PY
+```
+
+- [ ] **Step 3: Build and run it against the fixture**
+
+The oracle's inverse rows 2 and 3 share an input, so one point settles both.
+
+```bash
+cd tools/oracle_fixtures
+make unitnorm_probe 2>&1 | tail -3
+FIX=../../crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map
+./unitnorm_probe "$FIX" \
+  -0.70710678118654746 -0.70710678118654746 7.0710678118654755
+```
+
+Expected: ` BAD BAD 0`. That is this host's C library taking
+`unitnormmap.c:1024`, and it is the value the substitution asserts. If it prints
+the recorded arm64 triple instead, this host contracts too and the substitution
+is wrong for it — stop and report, because then the divergence is not FMA and the
+diagnosis needs redoing rather than the plan continuing.
+
+Record the reading in the commit message; the probe itself is a permanent tool,
+not a throwaway, and belongs in the same commit.
+
+- [ ] **Step 4: Add the substitution table**
+
+In `crates/ast-core/tests/test_transform_oracle.rs`, immediately after
+`RTRIP_REFERENCE_GAPS_LICENSED`:
+
+```rust
+/// Oracle rows whose recorded values were produced by the generator host's
+/// compiler contracting a multiply-add, where the unfused arithmetic C's own
+/// source prescribes gives a different answer. Each entry replaces the recorded
+/// row with the unfused expectation for the golden comparison only, keyed by
+/// `(relpath, forward, row, expected outputs)`.
+///
+/// This is a strengthening, not a relaxation: the substituted row is asserted
+/// exactly, at the same tolerance as every other row.
+/// `fma_substitutions_replace_rows_that_really_differ` keeps each entry honest
+/// by requiring the recorded values to still be the ones being replaced.
+const FMA_SUBSTITUTIONS_LICENSED: &[(&str, bool, usize, &[f64])] = &[
+    // UnitNormMap's inverse writes `in*norm + centre[coord]`
+    // (`unitnormmap.c:1079`). This fixture's rows 2 and 3 feed the transform an
+    // input whose distance from the centre is zero, which C detects by
+    // `max_relin == 0` at `unitnormmap.c:1024` and answers with BAD on every
+    // axis but the last and 0 on that one. The arm64 generator's compiler fused
+    // the multiply-add, leaving 3.4075347438225656e-16 instead of an exact
+    // zero, so the guard never fired and the row recorded a noise direction:
+    // 0.75853844164804163 0.65162829323331306 3.4075347438225656e-16. Both
+    // fused values are reproducible as fma(u, d, 5.0) and fma(u, d, 6.0).
+    // Any non-contracting build -- Rust anywhere, and C on this repo's x86-64
+    // host, confirmed with `tools/oracle_fixtures/unitnorm_probe` -- takes the
+    // guard. See `docs/issues/c-library-quirks.md`.
+    (
+        "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map",
+        false,
+        2,
+        &[BAD_VALUE, BAD_VALUE, 0.0],
+    ),
+    (
+        "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map",
+        false,
+        3,
+        &[BAD_VALUE, BAD_VALUE, 0.0],
+    ),
+];
+
+/// The reference a golden comparison should use: the recorded outputs, with any
+/// `FMA_SUBSTITUTIONS_LICENSED` row replaced. Borrows when nothing applies,
+/// which is every section but one.
+fn substituted_reference<'a>(
+    relpath: &str,
+    forward: bool,
+    recorded: &'a [Vec<f64>],
+) -> std::borrow::Cow<'a, [Vec<f64>]> {
+    let subs: Vec<_> = FMA_SUBSTITUTIONS_LICENSED
+        .iter()
+        .filter(|(rp, fwd, _, _)| *rp == relpath && *fwd == forward)
+        .collect();
+    if subs.is_empty() {
+        return std::borrow::Cow::Borrowed(recorded);
+    }
+    let mut patched = recorded.to_vec();
+    for (_, _, row, expect) in subs {
+        assert_eq!(
+            expect.len(),
+            patched.len(),
+            "FMA substitution for {relpath} row {row} has {} values but the \
+             section has {} axes",
+            expect.len(),
+            patched.len(),
+        );
+        for (axis, col) in patched.iter_mut().enumerate() {
+            col[*row] = expect[axis];
+        }
+    }
+    std::borrow::Cow::Owned(patched)
+}
+```
+
+- [ ] **Step 5: Add the test that keeps each entry honest**
+
+After `reference_rtrip_gaps_are_exactly_the_recorded_set`:
+
+```rust
+/// Every FMA substitution must name a row that exists and whose recorded values
+/// actually differ from the substituted ones. A regenerated corpus that agrees
+/// with the unfused arithmetic makes the entry dead weight, and this fails
+/// rather than letting it sit there unnoticed.
+#[test]
+fn fma_substitutions_replace_rows_that_really_differ() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    for (relpath, forward, row, expect) in FMA_SUBSTITUTIONS_LICENSED {
+        let name = if has_ext(relpath, ".head") {
+            "headers.oracle"
+        } else if has_ext(relpath, ".ast") {
+            "framesets.oracle"
+        } else {
+            "simplify_fixtures.oracle"
+        };
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        let sections = parse_oracle(&text).expect("oracle parses");
+        let s = sections
+            .iter()
+            .find(|s| s.relpath == *relpath && s.forward == *forward)
+            .unwrap_or_else(|| panic!("no section for {relpath} (forward={forward})"));
+        assert!(
+            *row < s.npoint(),
+            "{relpath} row {row} is past the section's {} rows",
+            s.npoint(),
+        );
+        assert_eq!(expect.len(), s.outputs.len(), "{relpath} row {row}: axis count");
+        let differs = (0..s.outputs.len())
+            .any(|a| !within_tol(s.outputs[a][*row], expect[a], GOLDEN_RTOL, GOLDEN_ATOL));
+        assert!(
+            differs,
+            "{relpath} row {row}: the recorded values already agree with the \
+             substitution, so the entry is dead. Delete it from \
+             FMA_SUBSTITUTIONS_LICENSED, the ledger and PLAN.md §6",
+        );
+    }
+}
+```
+
+- [ ] **Step 6: Run both tests before the harness uses the table**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+cargo test -p ast-core --test test_transform_oracle fma_substitutions 2>&1 | tail -12
+```
+
+Expected: PASS. The table is self-consistent with the corpus. The golden
+comparison does not use it yet, so `simplify_sections_match_oracle` is unchanged
+at this point.
+
+- [ ] **Step 7: Drop the override and watch the gate fail**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+python3 - <<'PY'
+from pathlib import Path
+p = Path("crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt")
+t = p.read_text()
+old = """# KNOWN GENERATOR-PLATFORM DIVERGENCE.  The inverse of a UnitNormMap at a
+# point coincident with its centre is singular: the direction is undefined, so
+# the answer depends on the architecture's rounding at the last bit.  The
+# reference was captured on arm64 macOS; x86 Linux computes BAD where the arm64
+# macOS generator recorded a noise direction.
+simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map   golden-inv off
+"""
+new = """# Two rows of that fixture's inverse section are substituted per row by
+# FMA_SUBSTITUTIONS_LICENSED in test_transform_oracle.rs, which asserts the
+# value C's own source prescribes rather than the fused one the generator host
+# recorded.  The other 22 rows are compared as normal.
+"""
+assert t.count(old) == 1
+p.write_text(t.replace(old, new))
+PY
+cargo test -p ast-core --test test_transform_oracle simplify_sections_match_oracle 2>&1 | tail -15
+```
+
+Expected: FAIL — `simplify oracle sections diverged from C (not excluded)`,
+naming `neg_unitnormmap_inv_fwd_diffcentre.map (forward=false)` with misses at
+rows 2 and 3 only. Two rows, not 24: the rest of the section was always
+matching, which the fixture-wide skip was hiding.
+
+- [ ] **Step 8: Use the substituted reference at the golden call site**
+
+In `run_oracle` (`test_transform_oracle.rs:975-990`), the golden branch:
+
+```rust
+        if overrides.golden_off(&s.relpath, s.forward) {
+            skipped_by_override = true;
+        } else {
+            let kind = if s.forward { "golden-fwd" } else { "golden-inv" };
+            let reference = substituted_reference(&s.relpath, s.forward, &s.outputs);
+            misses.extend(compare_golden(kind, &live, &reference, &angular));
+        }
+```
+
+`s.outputs` itself is left alone, so the round-trip check and the
+`.map`/`.simp` equivalence check keep seeing exactly what C recorded. Neither
+touches this section anyway — a `.map` fixture has no round-trip, and the
+equivalence check pairs forward sections — but the narrow scope is deliberate:
+the substitution is a claim about one comparison, not a rewrite of the corpus in
+memory.
+
+- [ ] **Step 9: Run the three gates**
+
+```bash
+cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
+```
+
+Expected: PASS throughout, with `simplify_sections_match_oracle` green and no
+override skipping anything.
+
+- [ ] **Step 10: Assert the overrides file declares nothing**
+
+Both entries are gone, so the file is comments only. Rewrite its opening line
+and tighten the parse test. First the file:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt")
+t = p.read_text()
+old = t.split("\n")[0]
+assert old.startswith("#"), old
+head = """# Per-fixture overrides for test_transform_oracle.rs.
+#
+# This file currently declares NO overrides, and
+# `parses_committed_overrides_file` asserts that it stays that way: every
+# fixture in every oracle corpus has its forward golden, inverse golden,
+# round-trip and .map/.simp equivalence checks enabled, at the harness's
+# default tolerances.
+#
+# The syntax below is retained because the parser supports it and a future
+# fixture may need it. Any entry added here must carry a comment saying what
+# is disabled and why, and must be counted in PLAN.md §6.
+#"""
+p.write_text(head + t[len(old):])
+PY
+sed -n '1,24p' crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt
+```
+
+Then the test, replacing the body written in Task 25's step 10:
+
+```rust
+    #[test]
+    fn parses_committed_overrides_file() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/oracle/transform_oracle_overrides.txt"
+        );
+        let o = parse_overrides(&std::fs::read_to_string(path).unwrap());
+        // The committed file declares nothing: no fixture may switch a check
+        // off wholesale. Per-row licences live in the harness, where they are
+        // named and asserted.
+        assert!(
+            o.rtrip.is_empty() && o.golden.is_empty(),
+            "transform_oracle_overrides.txt must declare no overrides; found \
+             rtrip={:?} golden={:?}",
+            o.rtrip,
+            o.golden,
+        );
+        // The parser still works, so a future entry would take effect.
+        let probe = parse_overrides("a.head off\nb.map golden-inv off\n");
+        assert_eq!(probe.rtrip("a.head"), None);
+        assert!(probe.golden_off("b.map", false));
+    }
+```
+
+`Overrides`' fields must be reachable from the test module; they are private
+fields of a private struct in the same file, so no visibility change is needed.
+
+- [ ] **Step 11: Add the quirks entry**
+
+`docs/issues/c-library-quirks.md` requires the C site, the observation, the
+consequence, and what mirrors it. Append:
+
+```bash
+cat >> docs/issues/c-library-quirks.md <<'DOC'
+
+---
+
+## `UnitNormMap`'s zero-norm guard is defeated by compiler multiply-add contraction
+
+`unitnormmap.c:1024-1031` handles the singular case of the forward transform: a
+point coincident with the centre has no direction, so `max_relin == 0` and C
+writes `AST__BAD` to every output but the last, and `0` to that one. The inverse
+at `unitnormmap.c:1060-1082` mirrors it, testing `norm == 0` before falling
+through to `ptr_out[coord][point] = in*norm + map->centre[coord]` at `:1079`.
+
+Both tests are exact comparisons against zero, and the value they test is
+computed by that same multiply-add. A compiler permitted to contract it into a
+fused multiply-add -- GCC and Clang both do by default, `-ffp-contract=fast`,
+and arm64 has the instruction -- rounds once instead of twice and leaves a
+residue where the unfused arithmetic gives an exact zero. The guard then does
+not fire, and the transform returns a normalised direction derived from that
+residue.
+
+The effect is visible in this repo's own oracle corpus, which was generated on
+arm64 macOS. The inverse section of
+`simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map` records
+`0.75853844164804163 0.65162829323331306 3.4075347438225656e-16` for an input
+coincident with the centre, where the guard prescribes `BAD BAD 0`. Both fused
+values are reproducible as `fma(u, d, 5.0)` and `fma(u, d, 6.0)` for that
+fixture's centre. The C library built on this repo's x86-64 host returns
+`BAD BAD 0` for the same input, confirmed with
+`tools/oracle_fixtures/unitnorm_probe`.
+
+So the same C source gives two different answers for the singular case depending
+on how it was compiled, and neither is a rounding difference in a continuous
+quantity: one is a defined sentinel and the other is a unit vector pointing in
+an arbitrary direction. A guard that must hold exactly should not be written
+against a contractable expression; `volatile`, `-ffp-contract=off`, or a
+comparison made before the multiply-add would all settle it.
+
+**Rust behaviour (no mirror):** Rust does not contract floating-point
+expressions, so `UnitNormMap::transform_into`
+(`crates/ast-core/src/mappings/unitnormmap.rs:173-198`) always takes the guard
+and always returns `BAD_VALUE` on the leading axes and `0.0` on the last —
+agreeing with the C source as written, and with C as built anywhere that does
+not fuse. `FMA_SUBSTITUTIONS_LICENSED` in
+`crates/ast-core/tests/test_transform_oracle.rs` substitutes the two affected
+oracle rows so the port is held to the prescribed value rather than the fused
+one.
+
+To be raised upstream.
+DOC
+```
+
+- [ ] **Step 12: Update the ledger and `PLAN.md` §6**
+
+The ledger row:
+
+```rust
+    (
+        "test_transform_oracle.rs",
+        "FMA_SUBSTITUTIONS_LICENSED",
+        2,
+        "two rows of one UnitNormMap inverse section where the generator \
+         host's compiler fused the multiply-add at unitnormmap.c:1079 and \
+         stepped past C's own zero-norm branch. The substituted expectation \
+         is the unfused value C's source prescribes, asserted exactly, and a \
+         test fails if the recorded values ever stop differing from it",
+    ),
+```
+
+And `PLAN.md`:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+p = Path("PLAN.md")
+t = p.read_text()
+old = "| transform oracle | 1752 sections | 1 | `transform_oracle_overrides.txt`: one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |\n"
+new = ("| transform oracle | 1752 sections | 0 | `transform_oracle_overrides.txt` declares no overrides, and a test asserts the file stays empty |\n")
+assert t.count(old) == 1
+t = t.replace(old, new)
+anchor = "| transform oracle | 25 rows | 2 |"
+i = t.index(anchor)
+j = t.index("\n", i) + 1
+row = "| transform oracle | 2 rows | 2 | `FMA_SUBSTITUTIONS_LICENSED` — two rows of one UnitNormMap inverse section where the generator host's compiler fused the multiply-add at `unitnormmap.c:1079` and stepped past C's own zero-norm branch; the expectation is the unfused C value, asserted exactly |\n"
+p.write_text(t[:j] + row + t[j:])
+PY
+sed -n '/^| Gate | Cases/,/^$/p' PLAN.md
+```
+
+- [ ] **Step 13: Run everything the change touches, format, lint**
+
+```bash
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+cargo fmt --all
+cargo test -p ast-core --test test_transform_oracle --test test_verification_ledger 2>&1 | tail -18
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
+  cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
+```
+
+Expected: all transform-oracle tests pass with both exclusion mechanisms
+asserted; `every_relaxation_is_the_size_the_ledger_says` and
+`no_relaxation_hides_outside_the_ledger` pass with the two new rows; clippy
+clean.
+
+- [ ] **Step 14: Commit**
+
+```bash
+git add tools/oracle_fixtures/unitnorm_probe.c tools/oracle_fixtures/Makefile \
+        crates/ast-core/tests/test_transform_oracle.rs \
+        crates/ast-core/tests/test_verification_ledger.rs \
+        crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt \
+        docs/issues/c-library-quirks.md PLAN.md
+git commit -F - <<'MSG'
+test(oracle): hold UnitNormMap to C's zero-norm branch, not the fused reference
+
+The golden-inv override skipped all 24 rows of one UnitNormMap inverse section
+because two of them disagreed, on the stated grounds that the singular direction
+depends on the architecture's rounding. It does not depend on rounding: the
+recorded 3.4075347438225656e-16 residue is fma(u, d, 5.0) and fma(u, d, 6.0) for
+this fixture's centre, bit-exactly, so the arm64 generator's compiler contracted
+the multiply-add at unitnormmap.c:1079 and C's own `max_relin == 0` guard at
+:1024 never fired. Unfused, the residue is an exact zero and the guard
+prescribes BAD BAD 0 -- which is what the C library built on this host returns
+for the same input, via the new tools/oracle_fixtures/unitnorm_probe.
+
+So the two rows are substituted with the value C's source prescribes and
+asserted exactly, at the same tolerance as every other row; that is a stronger
+claim than the recorded reference, not a weaker one. A test requires the
+recorded values to still differ from the substitution, so a regenerated corpus
+fails here instead of leaving a dead entry. The other 22 rows, which the
+fixture-wide skip was also hiding, were matching all along and are now compared.
+
+transform_oracle_overrides.txt now declares nothing, and a test asserts it
+stays that way. The contraction quirk is written up in
+docs/issues/c-library-quirks.md for upstream.
+
+Generated with AI
+
+Co-Authored-By: SLAC AI
+MSG
+```
+
+**Cluster 6 is closed when:** `transform_oracle_overrides.txt` declares no
+overrides and a test enforces that; every one of the 1752 sections has its
+forward golden, inverse golden, round-trip and equivalence checks enabled; and
+the two per-row licences that replace them — 25 reference-gap rows and 2
+substituted rows — are each asserted as an exact set against the corpus, counted
+in the ledger, and named in `PLAN.md` §6.
