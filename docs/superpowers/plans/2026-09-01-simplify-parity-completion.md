@@ -908,7 +908,7 @@ and add to the returned `vec![]`:
 Add a row to the Verification-posture ledger table in `PLAN.md` §6, matching the table's existing shape:
 
 ```
-| audit checklists | 37 | 35 | not yet citation-verified — the gate in `test_audit_citations.rs` checks a checklist once its header declares the pin its citations were verified against. Falls per cluster; zero at cluster 7, when the marker becomes mandatory |
+| audit checklists | 37 | 35 | not yet citation-verified — the gate in `test_audit_citations.rs` checks a checklist once its header declares the pin its citations were verified against. Clusters 1-6 change code, not checklists, so the count stands at 35 until cluster 7 repairs all 35 in three groups (35 -> 23 -> 10 -> 0) and removes this row, at which point both markers become the entry condition for any checklist |
 ```
 
 ```bash
@@ -958,7 +958,7 @@ Extension points: classified
 - Consumes: `audit_tools::{parse_citation, enclosing_rust_item}`; the `REPAIRED` marker from Task 3.
 - Produces:
   - `pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String>` — the `impl` header enclosing `line`, normalised to `"Trait for Type"` or `"Type"`, whichever the header is.
-  - the marker `Extension points: classified`, which clusters 1–7 add as they repair each checklist.
+  - the marker `Extension points: classified`, which cluster 7 adds to every remaining checklist in Tasks 27-29; Phase 0 adds it to the two it repairs here.
 
 - [ ] **Step 1: Write the failing test for `enclosing_rust_impl`**
 
@@ -2017,7 +2017,7 @@ it.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
-cargo test -p ast-core --test test_native_roundtrip 2>&1 | tail -10
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
 ```
 
 Expected: PASS. `cap_poly_unc_frame`, `cap_poly_bent_edges` and
@@ -2606,6 +2606,34 @@ rather than emptied, because the assertion it licensed was the wrong one.
 The corpus gains no fixture: both rules were already pinned by fixtures that
 were passing for the wrong reason, which is what the two-sided top-level check
 now prevents.
+
+- [ ] **Cluster 1 exit check: back the fix out and watch the fixtures fail**
+
+Spec §6.4 requires a revert-check per cluster: a fixture that still passes with
+the fix removed was never gating it.
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git stash list | head -1
+# Back out only the Region IsSimp stamping, leaving the tests in place.
+git diff HEAD~4 --stat -- crates/ast-core/src
+git checkout HEAD~4 -- crates/ast-core/src/regions/
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+```
+
+Expected: `cefit_circle_conformal`, `cefit_circle_nonconformal_keep` and
+`neg_box_asymmetric_2d` fail. If all three still pass, the stamping was not what
+closed them — find what did before continuing, because the cluster's evidence is
+then attributing the result to the wrong change.
+
+```bash
+git checkout HEAD -- crates/ast-core/src/regions/
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+```
+
+Expected: back to green. The revert is never committed.
+
 
 ## Cluster 2 — the four `skip_string_compare` fixtures
 
@@ -3525,7 +3553,7 @@ its licence. Also run the second consumer of these fixtures — the auto-discove
 round-trip test — because a regenerated reference is an input to it too:
 
 ```bash
-cargo test -p ast-core --test native_round_trip 2>&1 | tail -10
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
 ```
 
 If that test name does not exist, find it with
@@ -3815,7 +3843,7 @@ cap_cmpmap_nested_tag    | simplify_fixtures/cap_cmpmap_nested_tag.map | simplif
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 \
   | grep -A 6 "=== cap_cmpmap_nested_tag ==="
-cargo test -p ast-core --test test_native_round_trip 2>&1 | tail -5
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
 ```
 
 Expected: the new row fails on one missing `IsSimp` line and nothing else, and
@@ -4065,7 +4093,7 @@ is lost.
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
 cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
-cargo test -p ast-core --test test_native_round_trip 2>&1 | tail -5
+cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
 ```
 
 Expected: `rigby` and `cap_cmpmap_nested_tag` pass; the only remaining simplify
@@ -4494,6 +4522,39 @@ MSG
 
 **Cluster 2 closes five fixtures, four skips and a licence, and replaces the
 assumption that the simplify corpus was fresh with a check that says so.**
+
+- [ ] **Cluster 2 exit check: revert, then measure the transform paths**
+
+The revert-check first (spec §6.4). Cluster 2 changed CmpMap flatten,
+`recombine_distributed_branches`, `CmpMap::map_merge` and `WinMap::map_merge`:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git checkout HEAD~6 -- crates/ast-core/src/mappings/
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+git checkout HEAD -- crates/ast-core/src/mappings/
+```
+
+Expected: `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03` and
+`cap_specmap_02` fail on the reverted tree and pass again after the restore.
+A fixture that passes both ways is measuring something else.
+
+Then the performance measurement spec §6.5 requires, because this cluster touched
+transform paths and there is no automated performance gate:
+
+```bash
+cargo run --release --example bench_per_class -p ast-core 2>&1 | tee /tmp/bench-cluster2.txt | tail -30
+grep -n 'WinMap\|CmpMap\|MatrixMap' /tmp/bench-cluster2.txt
+```
+
+Compare against the snapshot in `docs/issues/mapping-perf-vs-c-oracle.md` and
+report the result whichever way it goes. A class that got slower is not
+automatically a blocker — the snapshot already records several cheap mappings
+5-42x slower than C at bulk N — but the SCUBA-2 path (PolyMap, MatrixMap) and
+the classes this cluster touched must not regress. If one did, say so with the
+numbers rather than proceeding quietly.
+
 
 ---
 
@@ -6281,6 +6342,33 @@ Cluster 3 is complete at this point: `nullregion_unc_fillfactor_merge`,
 platform drift) are byte-equal, the `cap_zoommap_04` `IsSimp` disagreement is
 retired, and the three missing `astNormBox` participants are ported.
 
+- [ ] **Cluster 3 exit check: revert, then measure the Region mesh path**
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git checkout HEAD~7 -- crates/ast-core/src/regions/ crates/ast-core/src/frames/
+cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+git checkout HEAD -- crates/ast-core/src/regions/ crates/ast-core/src/frames/
+```
+
+Expected: `nullregion_unc_fillfactor_merge`, `cap_interval_01`,
+`cap_pointlist_01` and `cap_zoommap_04` fail on the reverted tree and pass again
+after the restore.
+
+Then the measurement (spec §6.5) — this cluster changed the Region mesh and three
+`astNormBox` participants, all on transform paths:
+
+```bash
+cargo run --release --example bench_per_class -p ast-core 2>&1 | tee /tmp/bench-cluster3.txt | tail -30
+diff <(grep -oE '^[A-Za-z]+ +[0-9.]+' /tmp/bench-cluster2.txt) \
+     <(grep -oE '^[A-Za-z]+ +[0-9.]+' /tmp/bench-cluster3.txt) || true
+```
+
+Report the comparison against `docs/issues/mapping-perf-vs-c-oracle.md` and
+against cluster 2's run, whichever way it goes.
+
+
 ---
 
 ## Cluster 5 — the clear-on-set setters
@@ -6983,6 +7071,26 @@ MSG
 Cluster 5 is complete at this point: all four in-scope classes have setters that
 discard both records, `test_clear_on_set.rs` gates each of the twelve against
 the same falsifiability control, and `PLAN.md` §9.2 is marked DONE.
+
+- [ ] **Cluster 5 exit check: back the setters out and watch the cases fail**
+
+Cluster 5 adds no corpus fixture — no dump can express a cleared simplify record
+— so its gate is `test_clear_on_set.rs`, and the revert-check applies to that:
+
+```bash
+cd /sdf/home/t/timj/WORK/starlink-astrs
+export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
+git checkout HEAD~2 -- crates/ast-core/src/mappings/
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+git checkout HEAD -- crates/ast-core/src/mappings/
+cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -8
+```
+
+Expected: the twelve new cases fail to compile or fail outright on the reverted
+tree — a missing setter is a compile error, which is a legitimate way for this
+check to fail — and pass again after the restore. If they pass on the reverted
+tree, the cases are not exercising the setters they name.
+
 
 ---
 
@@ -9757,6 +9865,20 @@ grep -E '^test result|passed,|failures' /tmp/final-tier1.txt | tail -30
 
 Every number in the report comes from this file. Do not carry a number forward from an earlier task's expected output — the corpus and the counts moved during the plan.
 
+Spec §6.1 names the nine binaries that decide it, so name them explicitly rather than trusting a package-wide summary to have run them all:
+
+```bash
+for t in test_simplify_regression test_simplify_seams test_regions \
+         test_mapmerge_audit test_verification_ledger test_transform_oracle \
+         test_serialisation test_wcsconv test_deferred_fixtures; do
+  r=$(cargo test -p ast-core --test "$t" 2>&1 | grep -E '^test result' | tail -1)
+  printf '%-28s %s\n' "$t" "${r:-DID NOT RUN}"
+done
+cargo fmt --all -- --check && echo "fmt clean"
+```
+
+`DID NOT RUN` against any of the nine means the binary has been renamed or removed; find its current name rather than dropping it from the list. Nothing is reported done on a narrower run.
+
 ```bash
 # The four data-driven harnesses, with their own summaries.
 cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
@@ -9824,6 +9946,8 @@ evidence and is not cited.
 | `test_mapmerge_audit` | every C `MapMerge` / `Simplify` seam has a named cover | 37 checklists | `undecided:` 1 (`cmpframe.c`) |
 | `test_audit_citations` | every checklist row's citations resolve, and every C step is covered | 37 checklists | none |
 | `test_verification_ledger` | every relaxation in the tree appears in the ledger at its stated size | <measured in Step 1> rows | none |
+
+Every cluster that changed behaviour carries a revert-check: the fix backed out, the fixtures confirmed to fail, the fix restored. Clusters 6 and 7 discharge it differently — cluster 6's two licences each carry a companion test that fails when the excuse would cover a case the reference does not also fail, and cluster 7 changed gates rather than behaviour, so each of its three closed skip modes was made to fail by hand instead.
 
 Three properties make these gates rather than reports:
 
