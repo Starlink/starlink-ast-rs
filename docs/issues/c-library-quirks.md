@@ -2472,3 +2472,41 @@ The `feed >= nout` case two branches down sets `isNull = 1` unconditionally, so 
 `cap_box_permmap_null` covers the single-constant case, which is unaffected either way.
 
 To be raised upstream.
+
+## `Polygon::Simplify`'s bad-vertex guard tests axis 1 only
+
+`polygon.c:5395-5406` re-organises the transformed vertices into the axis-major
+buffer the Polygon constructor wants, and uses the copy loop to check for
+`AST__BAD`:
+
+```c
+         q = ptr2[ 0 ];
+         for( iv = 0; iv < nv; iv++ ) {
+            if( ( *(p++) = *(q++) ) == AST__BAD ) ok = 0;
+         }
+         q = ptr2[ 1 ];
+         for( iv = 0; iv < nv; iv++ ) *(p++) = *(q++);
+```
+
+The axis-1 loop tests each value as it copies it; the axis-2 loop copies without
+testing.
+A vertex whose longitude survives the Mapping and whose latitude does not
+therefore reaches `astPolygon` at `polygon.c:5410` with `AST__BAD` in it, where
+the axis-1 case is caught and the transformed Polygon discarded.
+The asymmetry is in the loop structure, not in a condition, which is what makes
+it look deliberate: the second loop is written as a bare copy.
+
+The guard is unreachable through either public API, which is why the asymmetry
+has survived.
+A Polygon cannot hold a bad vertex — `polygon.c:7131` rejects one at
+construction — and `astMapRegion` refuses any Mapping that sends a defining
+point to `AST__BAD` (`region.c:5546`), so no route to `astSimplify` can present
+a vertex for the untested loop to pass through.
+
+**Rust behaviour (mirror):** `Polygon::simplified`
+(`crates/ast-core/src/regions/polygon.rs:1218-1229`) clears `ok` on a bad axis-1
+value and leaves axis 2 untested, so the port agrees with C on a hypothetical
+half-bad vertex; a comment at the loop points here.
+No fixture pins it, and none can, for the reason above.
+
+To be raised upstream.

@@ -1219,7 +1219,9 @@ impl Mapping for Polygon {
             let p = transformed.point(i);
             // C clears `ok` if any transformed axis-1 value is bad and keeps
             // the original Polygon in that case (polygon.c:5400-5407). Axis 2
-            // is copied without being tested — the asymmetry is C's.
+            // is copied without being tested — the asymmetry is C's, and is
+            // mirrored here; see docs/issues/c-library-quirks.md,
+            // "`Polygon::Simplify`'s bad-vertex guard tests axis 1 only".
             if is_bad(p[0]) {
                 return keep_or_overlay(this, simpler);
             }

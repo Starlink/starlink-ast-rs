@@ -34,7 +34,7 @@ it is audited here too.
 | 21 | For each interior element, interpolate linearly between the first and last values by fractional position | lutmap.c:606-616 | lutmap.rs:124 | ported |
 | 22 | Form a second tolerance from the interpolated value, and use whichever is larger | lutmap.c:617-622 | lutmap.rs:116-160 | ported |
 | 23 | Accept linearity within twice that tolerance | lutmap.c:623-627 | lutmap.rs:147-155 | ported |
-| 24 | Setting or clearing LutInterp or LutEpsilon clears the simplified record | lutmap.c:1842, and :120 | -- | gap: PLAN.md §9.2 |
+| 24 | Setting or clearing LutInterp or LutEpsilon clears the simplified record | lutmap.c:1793-1796, and :120 | lutmap.rs:97-105 | gap: PLAN.md §9.2 |
 
 ## Rows 4 and 19 to 23 — the linearity test now matches C's
 
@@ -50,15 +50,17 @@ departing from linear by ~3e-13 relative, which C keeps as a LutMap, and one
 linear to the last bit, which C replaces with a WinMap. The port's earlier
 hardcoded `1e-10` converted both.
 
-## Row 24 — two attributes, both governed
+## Row 24 — two attributes, one of them reachable
 
 `lutmap.c:120` records that the simplified record must be discarded when either
 `LutInterp` or `LutEpsilon` is set or cleared, "since both change what MapMerge
 does" — `LutEpsilon` because it is the linearity tolerance, `LutInterp` because
-the table's meaning changes. The port has `set_interp` (`lutmap.rs:87`) and no
-`LutEpsilon` at all, and neither clears the record. This is the one row in the
-audit where the convention is a live gap rather than a latent one, because the
-setter exists. See PLAN.md §9.2.
+the table's meaning changes. `set_interp` (`lutmap.rs:97-105`) discards both
+records, as `astSetLutInterp` does at `lutmap.c:1793-1796`. `LutEpsilon` has no
+setter: the field is read by `table_is_linear` and populated from the `LutEps`
+card on load (`lutmap.rs:912`), so there is no mutation for the convention to
+attach to. That half of the row stays with the attributes listed in PLAN.md §9.2
+— the obligation lands the moment a setter does.
 
 ## Row 11 — the higher neighbour first, but the lower index reported
 

@@ -43,7 +43,7 @@ separately in `chebymap.md`.
 | 24 | Otherwise replace both with UnitMaps and leave the loop | polymap.c:3933-3954 | polymap.rs:1566-1569 | ported |
 | 25 | Re-instate the nominated PolyMap's Invert flag if it was not replaced | polymap.c:3955-3959 | -- | n/a: nothing was mutated, so nothing is restored |
 | 26 | Return the result | polymap.c:3960-3961 | polymap.rs:1537 | ported |
-| 27 | Setting or clearing IterInverse, NiterInverse or TolInverse clears the simplified record | polymap.c, per mapping.h:449-457 | -- | gap: PLAN.md §9.2 |
+| 27 | Setting or clearing IterInverse, NiterInverse or TolInverse clears the simplified record | polymap.c:6340-6347, :6383-6385, :6420-6422 | polymap.rs:231-239, :258, :275-278, :288-291 | ported |
 
 ## Row 7 — both directions, not just the applied one
 

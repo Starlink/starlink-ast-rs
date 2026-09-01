@@ -367,7 +367,7 @@ mod parse_tests {
             let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
             total += parse_oracle(&text).expect("committed oracle parses").len();
         }
-        assert_eq!(total, 1614);
+        assert_eq!(total, 1752);
     }
 }
 
@@ -1477,9 +1477,9 @@ const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 /// Number of simplify-corpus oracle section-directions currently gated. The
 /// gate asserts it examined at least this many, so a rename or deletion of a
 /// fixture cannot make the gate pass vacuously.
-/// Of the 1614 sections, 259 are `.head` and 136 are SlaMap, leaving 1219
+/// Of the 1752 sections, 259 are `.head` and 136 are SlaMap, leaving 1357
 /// here, of which 18 are the deferred-class load-fails licensed below.
-const SIMPLIFY_SECTION_FLOOR: usize = 1201;
+const SIMPLIFY_SECTION_FLOOR: usize = 1339;
 
 /// Is this oracle section part of the simplify corpus (a `simplify_fixtures/`
 /// relpath or a top-level `.ast`/`.map`/`.simp` fixture)? This is everything
@@ -1502,7 +1502,7 @@ fn is_deferred_class_fixture(relpath: &str) -> bool {
 }
 
 /// Regression gate over every oracle section the `.head` and SlaMap gates do
-/// not cover — the simplify corpus, which is the bulk of the 1614 sections.
+/// not cover — the simplify corpus, which is the bulk of the 1752 sections.
 ///
 /// Without this the majority of the corpus was read only by
 /// `transform_oracle_report`, which is `#[ignore]` and does not assert, so a
@@ -1613,7 +1613,7 @@ fn every_oracle_section_is_gated() {
         ungated.is_empty(),
         "oracle sections covered by no gate:\n{ungated:?}",
     );
-    assert_eq!(total, 1614, "gates must span every section");
+    assert_eq!(total, 1752, "gates must span every section");
 }
 
 /// Investigative harness. Not part of the normal suite or CI: run with
@@ -1638,7 +1638,7 @@ fn transform_oracle_report() {
         let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
         reports.extend(run_oracle(&text, &ov));
     }
-    assert_eq!(reports.len(), 1614, "harness must cover every section");
+    assert_eq!(reports.len(), 1752, "harness must cover every section");
     let out = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../target/transform_oracle_report.json"

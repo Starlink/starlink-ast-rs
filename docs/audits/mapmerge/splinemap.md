@@ -32,7 +32,7 @@ neighbour attempt reaches `SplineMap::try_merge` (`splinemap.rs:853-898`).
 | 17 | Leave the neighbour loop | splinemap.c:1838-1841 | simplify.rs:1155-1250 | ported |
 | 18 | Re-instate the nominated SplineMap's Invert flag if it was not replaced | splinemap.c:1842-1846 | -- | n/a: nothing was mutated, so nothing is restored |
 | 19 | Return the result | splinemap.c:1847-1848 | splinemap.rs:794 | ported |
-| 20 | Setting or clearing InvNiter, InvTol or OutUnit clears the simplified record | splinemap.c, per mapping.h:449-457 | -- | gap: PLAN.md §9.2 |
+| 20 | Setting or clearing InvNiter, InvTol or OutUnit clears the simplified record | splinemap.c:2547-2549, :2586-2588, :2630-2632 | splinemap.rs:176-184, :194-196, :209-212 | ported |
 
 ## Row 16 — two UnitMaps, or one merged Mapping
 

@@ -331,12 +331,12 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 460 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 460 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 460 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 460 | 142 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f`. Was 141 before `cap_box_permmap_nonbidi`, the negative control for a PermMap whose permutation is not bi-directional (§10.13) |
-| transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
-| transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
+| simplify regression | 468 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 468 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
+| simplify regression | 468 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 468 | 142 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f`. Was 141 before `cap_box_permmap_nonbidi`, the negative control for a PermMap whose permutation is not bi-directional (§10.13) |
+| transform oracle | 1752 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
+| transform oracle | 1752 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
 | deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
 
@@ -367,6 +367,19 @@ oracle reference instead of naming its own input. The `ignore_is_simp_line` row 
 the empty rows are newly *listed* rather than newly added — they predate the
 sync and were simply not written down, which is what the executable ledger now
 prevents.
+
+Movement at the simplify parity closeout: the corpus grew and the relaxations
+did not. The simplify manifest went from 460 cases to 468 and the transform
+oracle from 1614 sections to 1752, with every `*_ORACLE_EXCLUDED` list still
+empty; the `ignore_is_simp_line` count moved with the negative fixtures added
+alongside them. The ChebyMap linear-reduction divergence recorded in that pass
+is not a row here: the port declines a C step that loses a ChebyMap's domain
+scaling, and the two fixtures that would pin C's answer are kept out of the
+corpus rather than compared under a loosened gate — `chebymap.md` carries it as
+a `divergence:` verdict citing `docs/issues/c-library-quirks.md`, which is where
+work refused rather than work owed belongs. The Polygon axis-1 guard asymmetry
+from the same pass is a faithful mirror, logged in the same document, and
+relaxes nothing.
 
 Known hole, not a relaxation: `native_round_trip_fixture`'s `trim()` /
 `split_whitespace()` comparison — see the open row in §5.
@@ -510,7 +523,7 @@ fixtures had been generated by the buggy C.
 |---|---|---|
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
-| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1614 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
+| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1752 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
 | testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08; the nine functions added upstream at `f6762005` ported 2026-08-20 |
 | testmapping.c | crates/ast-core/tests/test_mapping.rs | partially ported 2026-08-20 — the four `IsSimple` functions added upstream at `f6762005`. `testselfsimplifyafterset` is unconstructible here (ZoomMap's `Zoom` and PcdMap's `Disco` have no `&mut self` setter). The file's original PolyMap / LinearApprox body, converted from `testmapping.f`, is covered by `test_polymap.rs` and `test_polytran.rs` |
 | testfitschan.c | crates/ast-core/tests/test_fitschan*.rs | partially ported — `testgrismorder`, added upstream at `f6762005`, is in `test_fitschan_wcs_write.rs` (2026-08-20); the rest of the file is spread across the seven `test_fitschan_*` files |
@@ -690,34 +703,105 @@ The rule applies to each when its setter lands, and the row above says so.
 Adding the setters to close this section would be a new public attribute surface
 the spec did not ask for, so they are left absent.
 
-### 9.4 42 simplify fixtures have no transform-oracle section
+### 9.4 51 simplify fixture files have no transform-oracle section
 
-`simplify_fixtures.oracle` predates 25 fixtures added since it was captured, and
-holds only the `.map` half of two more, so 42 of the `.map` / `.simp` files in
-`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/` carry no
-oracle section: `cmpmap_inverted_lone`, `cmpmap_inverted_nested`,
-`lut_exactly_linear`, `parcomp_inverted_reemitted`,
-`parcomp_inverted_nested_reemitted`, `parpair_aligned_reduces`,
-`parpair_one_side_reduces`, `pcd_zero_disc_lone`, `pcd_zero_disc_series`,
-`rate_inner_reduce_lone`, `rate_inner_reduce_series`, `time_jdtomjd_noop`,
-`time_mjdtojd_noop`, `unit_parallel_invert_pcd`, `wcs_unknown_lone_reduce`, the
-`.simp` halves of `switchmap_inv_fwdonly` and `switchmap_inv_invonly`, and ten
-negatives.
+Every section the generator can produce for a fixture that exists in
+`reference/starlink-ast/ast_tester/simplify_fixtures/` is now committed, so of
+the 790 `.map` / `.simp` files in
+`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`, 51 carry no
+oracle section, for two reasons.
+
+**Nine cannot have one.** `cap_matrixmap_04.map`, `cap_specmap_02.map` and
+`.simp`, `neg_ratemap_different_inner.map`, `neg_ratemap_diff_indices.map`,
+`neg_ratemap_diff_inner.map`, `ratemap_inverse_cancel.map`,
+`selectormap_inverse_cancel.map` and `selectormap_inverse_cancel_tail.map` are
+CmpMaps whose dump carries `Fwd = 0` and `Inv = 0`: neither transformation is
+defined, so `astTran` has nothing to compute and `gen_transform_oracle` emits
+nothing (`gen_transform_oracle.c:210-211` reads `TranForward` / `TranInverse` and
+skips each direction that is absent). These fixtures exist to pin structure —
+what the simplifier does or declines to do to the tree — and that is what
+`test_simplify_regression.rs` compares.
+
+**Forty-two are Rust-only fixtures the generator never sees.** Twenty-two stems
+live in the Rust fixture tree but were never copied into the submodule's
+`ast_tester/simplify_fixtures/`: `cefit_circle_conformal`,
+`cefit_circle_nonconformal_keep`, `cefit_circle_to_ellipse`,
+`cefit_ellipse_to_circle`, `defunc_cmpregion_component_unc`,
+`defunc_interval_unbounded`, `defunc_nullregion_2d`, `defunc_prism_box_interval`,
+`merge_box_fillfactor_product`, `merge_box_meshsize_scaled`,
+`merge_interval_meshsize_scaled`, `neg_cmpmap_neighbour_not_cmpmap`,
+`neg_win_series_cmpmap_neighbour`, `regbasepick_circle_permaxes`,
+`regbasepick_cmpregion_subset`, `regbasepick_prism_subset`,
+`setunc_box_remapped_unc`, `setunc_unbounded_negated`,
+`setunc_unitmap_regionfs_omitted`, `simpstab_box_linear_unc`,
+`simpstab_box_nonlinear_unc` and `simpstab_permmap_slice_unc`. Twenty of the
+twenty-two are Region `Simplify` fixtures; the two `neg_` entries are CmpMap
+negatives. Closing this bucket means copying them into the submodule fixture
+directory, committing there and moving the pin, which belongs with §8's pending
+upstream sync rather than to a corpus capture.
 
 This is not a hole in the transform-oracle gates: `resolves_every_oracle_relpath`
-asserts every oracle *section* resolves to a fixture, and all 1614 that exist are
+asserts every oracle *section* resolves to a fixture, and all 1752 that exist are
 gated with empty exclusion lists. Each of these fixtures is compared for
 serialisation byte-exactness and `IsSimp` placement by
 `test_simplify_regression.rs`; what is missing is the independent check that the
 simplified Mapping *transforms* points the way C's does.
 
-Closing it means capturing the missing sections from the oracle rather than
-regenerating the file: a full regeneration also imports
-`cheby_linear_lone_reduce` and `neg_cheby_quadratic_no_reduce`, which reproduce
-the C defect recorded in `docs/issues/c-library-quirks.md` and are deliberately
-out of the port's corpus (§10.2), and rewrites every value in `headers.oracle`
-and `framesets.oracle` in the last digit or two — platform drift, which the
-corpus-freshness protocol says to leave alone.
+Sections are captured from the oracle, never by regenerating the file: a full
+regeneration also imports `cheby_linear_lone_reduce` and
+`neg_cheby_quadratic_no_reduce`, which reproduce the C defect recorded in
+`docs/issues/c-library-quirks.md` and are deliberately out of the port's corpus
+(§10.2), and rewrites every value in `headers.oracle` and `framesets.oracle` in
+the last digit or two — platform drift, which the corpus-freshness protocol says
+to leave alone.
+
+The submodule's own copy, `reference/starlink-ast/ast_tester/simplify_fixtures.oracle`,
+holds 1399 sections and is tracked and clean at the pinned commit, so the two
+trees are not byte-identical and cannot be made so without committing inside the
+submodule and moving the pin. Nothing in the Rust test tree reads that copy —
+`test_transform_oracle.rs` reads only
+`crates/ast-core/tests/fixtures/oracle/`, and the submodule copy feeds the C-side
+`check_transform_oracle`. Bringing it forward belongs with §8's pending sync,
+alongside the Rust-only fixtures above.
+
+### 9.5 The audit checklists' `simplify.rs` line citations have rotted
+
+Of the 257 `simplify.rs:N` citations across the twenty checklist files in
+`docs/audits/mapmerge/`, 255 no longer designate the source line they designated
+when they were written.
+The cause is this repo's own churn in `simplify.rs`: `cmpmap.md` cites
+`simplify.rs:719-802` for `simplify::cmp_map_merge`, which now begins at 688, and
+every row beneath that header is displaced by the same amount.
+Measured by blaming each citing line to the revision that wrote it, taking
+`simplify.rs` at that revision, and mapping old line numbers onto current ones
+through `difflib.SequenceMatcher`'s matching blocks.
+
+Two things this is not.
+It is not a wrong verdict: the rows say what C does and whether the port does it,
+and that judgement was made against the code, not against the number.
+It is not caught by `test_mapmerge_audit.rs`, which checks that every audited
+class has a checklist, that every row carries one of the four verdicts, that
+every `gap:` names a real `PLAN.md` section and that no checklist is orphaned —
+it does not resolve `Rust site` citations at all.
+
+A mechanical remap through the same `difflib` mapping was tried and rejected.
+It reproduces a hand-derived re-anchoring exactly wherever the original citation
+was right, and it faithfully relocates an already-wrong citation to a new wrong
+line.
+`simplify.rs:1155-1250`, cited identically by 25 rows across 8 files for the
+shared neighbour-pair driver, was already wrong when written — at those
+revisions it lands inside `perm_map_merge`, and the driver the rows describe is
+`default_map_merge`, now `simplify.rs:1190-1285`.
+A remap turns those 25 rows into 25 confidently-wrong citations, which is worse
+than an obviously stale one, so the fix is a per-row re-anchor against the code
+the row describes.
+
+`sphmap.md` and `region_polygon.md` are re-anchored by hand, each value checked
+against the construct its row names.
+The remaining eighteen files are not.
+What would expose the rest is a test that resolves each `Rust site` to a line
+range and requires the range to contain an item whose name the row's `C step`
+mentions; nothing weaker distinguishes a stale number from a wrong one.
 
 ## 10. Gaps named by the `MapMerge` / `Simplify` audit
 
@@ -727,7 +811,32 @@ does not exist here.
 
 [`docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md`](docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md)
 orders these entries into waves and gives each one a design, a gate and a record
-obligation.
+obligation, with the task breakdown in
+[`docs/superpowers/plans/2026-08-24-simplify-parity-closeout.md`](superpowers/plans/2026-08-24-simplify-parity-closeout.md):
+fourteen tasks, one per spec item, each landing its fixtures with the code that
+needs them.
+
+**Done.** Every item the spec inventoried is closed: A1 (§10.3's two extra
+simplifications), A2 (§10.19), A3 (§10.20), A4 (§10.4), A5 (§10.21), A6
+(§10.22's dead rewrite), A7 (§10.17's "the result is new"), B1 (§10.2's
+consolidation half), B2 (§10.13), B3 (§10.18), B4 (§10.17's NormMap branch), B5
+(§10.12) and C1 (§9.2's convention). Thirteen fixtures were added and one
+retired; the transform-oracle corpus went from 1614 sections to 1752 with every
+exclusion list still empty.
+
+What the closeout leaves open, and where:
+
+- **§9.2, for five attributes with no setter** — `ZoomMap::Zoom`,
+  `LutMap::LutEpsilon`, `PcdMap::Disco`, `IntraMap::IntraFlag` and GrismMap's
+  macro-form attributes. The convention is ported for every attribute the port
+  can mutate; these have nothing to attach it to yet.
+- **§10.2's linear half, as a `divergence:`** — C's linear reduction loses a
+  ChebyMap's domain scaling, so the port declines the step and the two fixtures
+  that would pin C's answer stay out of the corpus.
+- **§10.3's seven remaining CmpMap tags** — the WinMap under-merge, which the
+  closeout narrowed but did not close.
+- **§9.4's two sectionless buckets and §9.5's checklist citations** — record
+  work the closeout measured rather than finished.
 
 ### 10.1 RateMap's self-reduction is unreachable from the nominate loop — FIXED
 
@@ -1019,23 +1128,23 @@ places, all now closed:
    member of both sublists. C passes them to `CombineMaps( …, 0, … )` as they
    stand — that `0` is the series flag, not a simplify flag
    (`cmpmap.c:1694-1712`). The port now clones them unchanged
-   (`simplify.rs:2244-2251`).
+   (`simplify.rs:2131-2139`).
 2. **The `simpler` test.** A three-branch structural test ending in a comparison
    of flat leaf counts stood in for C's identity test — a threshold with no
    analogue in `cmpmap.c` (stop signal 1), deciding whether the whole restructure
-   fired. C's test is ported at `simplify.rs:2161-2166`:
-   `simplify_mapping_reporting_change` (`simplify.rs:3403-3496`) reports whether
+   fired. C's test is ported at `simplify.rs:3051-3053`:
+   `simplify_mapping_reporting_change` (`simplify.rs:3293-3388`) reports whether
    the result differs from its input, which in an owned-value port is a fact the
    engine knows rather than a pointer comparison, and the Invert flags are
    compared beside it.
 3. **Trailing simplify of the rebuilt CmpMap.** The port simplified the
    reassembled parallel CmpMap before returning it; C hands `new` to the list as
    built (`cmpmap.c:1738-1746`) and lets the nominate loop reach it when it is
-   nominated in its own right (`simplify.rs:2191-2198`). Closing this took
+   nominated in its own right (`simplify.rs:3066-3068`). Closing this took
    `cap_cmpmap_03` from six cards to **seven, which is C's count**.
 
 The per-pair `astSimplify` of `:1728` was always ported, at
-`simplify.rs:2148-2159`; the recursion was never the missing piece. An earlier
+`simplify.rs:3051-3052`; the recursion was never the missing piece. An earlier
 reading of divergence 1 had it standing in for a missing recursion, and that was
 wrong — it was standing in for divergences 2 and 3 in the same function, which is
 why removing it alone moved fixtures in both directions.
@@ -1144,19 +1253,19 @@ never attempts this.
 The port had it the other way round: the swap lived in `perm_map_merge` and fired
 when a **PermMap** was nominated, looking at the `(where_, where_ + 1)` pair. The
 arithmetic was already C's. The branch now sits at the end of `cmp_map_merge`
-(`simplify.rs:827-849`) behind C's four conditions, and
+(`simplify.rs:768-790`) behind C's four conditions, and
 `try_swap_permmap_parallel_at` is unchanged.
 
 The record's original premise was wrong about what this cost. It said the two
 triggers report different indices and so resume one element apart. They do not:
 C returns `result = imap1 = where - 1` from the CmpMap's nomination
 (`cmpmap.c:2119`), the port returned `Some(where_)` from the PermMap's, and
-because `run_nominate_loop` advances before clamping (`simplify.rs:1501`) both
-name the PermMap's slot and both resume there. Nor is a pair reachable in C but
-not here: C's `result == -1` guard *defers* the swap to a later round rather than
-forbidding it, so the port's earlier trigger only ever preempted a merge C would
-reach on its next pass over the same list. No corpus fixture and no purpose-built
-candidate separates the two on output.
+because `run_nominate_loop` advances before clamping (`simplify.rs:1467`,
+`:1498-1500`) both name the PermMap's slot and both resume there. Nor is a pair
+reachable in C but not here: C's `result == -1` guard *defers* the swap to a
+later round rather than forbidding it, so the port's earlier trigger only ever
+preempted a merge C would reach on its next pass over the same list. No corpus
+fixture and no purpose-built candidate separates the two on output.
 
 What the move is visible in is the nomination trace. `cap_cmpperm_resume`
 (`[Zoom2, PermMap, parallel CmpMap, Zoom3]` in series) and its inverted-PermMap
@@ -1179,7 +1288,8 @@ It is ported, elsewhere. C clears `invert_list[ where ]` — the *list's* applie
 direction, not the object's own attribute — and that surfaces in the dump as the
 parent CmpMap dropping its `InvA` or `InvB`. The port carries the applied
 direction as a separate value in `MergeCtx` and folds it into the leaf when the
-tree is rebuilt (`simplify.rs:3204-3212`), reaching the same dump.
+tree is rebuilt (`simplify.rs:3116-3118`, applied at `:3132-3134` and
+`:3142-3144`), reaching the same dump.
 
 Two fixtures prove it, on independent configurations: `unit_parallel_invert_clear`
 (a MathMap neighbour, 2 axes), which predates this audit, and
@@ -1211,7 +1321,7 @@ along and only the seam was missing, which is exactly what the pair
 discriminates.
 
 `pcd_map_merge` now performs C's opening move itself, before the swap
-(`simplify.rs:2903-2911`), and returns immediately: C makes the reduction the `if`
+(`simplify.rs:2637-2645`), and returns immediately: C makes the reduction the `if`
 of an if/else whose `else` holds the whole neighbour search, so a reduced PcdMap
 never looks at a neighbour in the same pass. `self_reduce_map_merge` cannot
 express that ordering, which is why the reduction is inline rather than delegated.
@@ -1639,7 +1749,7 @@ C's `Simplify` treats a restricted simplify as a distinct mode. Three of the
 things it does in that mode had no counterpart in the port; all three are now
 ported, and each has a fixture pair that fails without it.
 
-**`simpler` is reset — FIXED (`simplify.rs:3337`).** `astMapList` sets `simpler`
+**`simpler` is reset — FIXED (`simplify.rs:3340`).** `astMapList` sets `simpler`
 whenever it meets an inverted CmpMap during the decomposition, and C then
 discards that flag under a restricted simplify — it cannot know yet whether the
 inverted CmpMap will be eligible, so it declines to count the decomposition
@@ -1651,7 +1761,7 @@ holding an inverted CmpMap with nothing marked eligible, whose `.simp` differs
 from its `.map` only in the dropped `ReSimp = 1` card.
 
 **`AllowSimplify` is cleared on each component — FIXED
-(`simplify.rs:3380-3382`).** C clears the flag on every component as it folds the
+(`simplify.rs:3382-3386`).** C clears the flag on every component as it folds the
 result back into a CmpMap (`cmpmap.c:3689-3692`), explicitly so the protected
 flag does not appear in a public dump. C does this only in its multi-element
 branch; a single-element result is an `astCopy` (`cmpmap.c:3651`) whose flag
@@ -1667,7 +1777,7 @@ gate: its `.simp` carries neither `ReSimp` nor `IsSimp` nor `AlSimp`.
 
 The mode's fourth consult point, the base driver's opening
 `if( astRestrictedSimplify(this) ) { if( !astAllowSimplify(this) ) return
-astClone(this); }` (`mapping.c:16853-16855`), is ported at `simplify.rs:1140`.
+astClone(this); }` (`mapping.c:16853-16855`), is ported at `simplify.rs:1150-1152`.
 `RestrictedSimplify` moved from a `CmpMap` inherent method to a `Mapping` trait
 pair, matching C's shared `flags` word (`mapping.h:415-482`); only `CmpMap` has
 storage for it, the only class that can hold components to restrict.

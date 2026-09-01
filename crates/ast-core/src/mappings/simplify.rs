@@ -1138,12 +1138,11 @@ pub(crate) fn try_self_reduce(
 /// or the list grows past one element (`mapping.c:16871-16883`). Reports `false`
 /// when nothing reduced, which is where C returns `astClone( this )`.
 ///
-/// C's entry guard on `RestrictedSimplify` (`mapping.c:16853`) has no analogue
-/// here: the attribute lives on `CmpMap` alone in this port, and `CmpMap`
-/// overrides the slot, so no Mapping reaching this driver can carry it. The
-/// per-component half of the same rule — only `AllowSimplify` components may be
-/// nominated — belongs to the enclosing `CmpMap`'s loop and lives in
-/// [`MergeCtx`].
+/// C's entry guard on `RestrictedSimplify` (`mapping.c:16853-16855`) is the
+/// first thing the driver does: a Mapping under a restricted simplify that is
+/// not flagged eligible is handed straight back. The per-component half of the
+/// same rule — only `AllowSimplify` components may be nominated — belongs to
+/// the enclosing `CmpMap`'s loop and lives in [`MergeCtx`].
 pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)> {
     // C's base `Simplify` declines outright when the Mapping is under a
     // restricted simplify without being flagged eligible
@@ -3108,8 +3107,6 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
 
     // Apply the effective inversion to a component about to be composed.
     //
-    // Apply the effective inversion to a component about to be composed.
-    //
     // A plain flag toggle. `CmpMap::normalize_unitmap_children`, run once on the
     // fully simplified top-level result, is what produces C's canonical
     // `InvA`/`InvB` shape; three further layers that also pushed an inversion
@@ -3187,11 +3184,6 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
     Ok(acc)
 }
 
-/// Simplify a mapping using the flatten/merge/reconstruct pipeline.
-///
-/// For `CmpMap` inputs this decomposes the tree, attempts pairwise
-/// merges, and rebuilds. For non-`CmpMap` inputs it delegates to the
-/// mapping's own `simplified()` method.
 /// Write the nominate loop's `IsSimple` stamps back onto the tree that
 /// `simplify_mapping` is about to return unchanged.
 ///

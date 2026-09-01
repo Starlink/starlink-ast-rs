@@ -170,11 +170,12 @@ in the checklist rather than implying the collision path is tested.
 
 ### A3 — treat a restricted simplify as C's distinct mode (§10.20)
 
-Two steps have no counterpart in the port.
+Three steps have no counterpart in the port, one of them found after this spec's
+inventory was written; see "Amendments made during execution".
 C discards the `simpler` flag `astMapList` set when it met an inverted CmpMap
 during decomposition, because under a restricted simplify it cannot yet know
 whether that CmpMap is eligible (`cmpmap.c:3526-3530`); the port computes the same
-flag in `decomposition_is_simpler` (`simplify.rs:3598`) and never consults
+flag in `decomposition_is_simpler` (`simplify.rs:325`) and never consults
 `restricted`, so where C returns `astClone( this )` the port rebuilds the tree and
 the result right-associates.
 And C clears `AllowSimplify` on every component as it folds the result
@@ -183,8 +184,8 @@ explicitly so a protected flag cannot appear in a public dump; the port clears i
 in neither place, so an `AlSimp` card survives a simplify and is re-emitted by
 `serial/mod.rs:83`.
 
-**Design.** Consult `restricted` at `simplify.rs:3598` and clear `AllowSimplify`
-at both of C's sites.
+**Design.** Consult `restricted` where the decomposition's `simpler` flag is
+formed (`simplify.rs:3340`) and clear `AllowSimplify` at both of C's sites.
 Both are small; the work is the fixture.
 
 **Gate.** One native fixture, hand-built or generated, whose CmpMap carries
@@ -368,7 +369,7 @@ And when `SimpVertices` is zero it meshes the *original* Polygon and requires
 `astRegPins` to place every mesh point on the new Polygon's boundary
 (`:5412-5428`) — the whole purpose of the attribute, since a non-linear Mapping
 can carry vertices to the right places while bowing the edges between them.
-`Polygon::simplified` (`polygon.rs:1095-1149`) does neither, and builds the new
+`Polygon::simplified` (`polygon.rs:1158-1262`) does neither, and builds the new
 Polygon with the uncertainty as stored, in the base Frame, where C passes
 `astGetUncFrm( new, AST__CURRENT )`.
 
@@ -537,6 +538,32 @@ fails the gate or leaves the record claiming work that is done.
 - **A performance gate.** The over-nomination in §10.3 is a fidelity question
   here, not a speed one. `ast-oracle-bench` is still a placeholder, and wiring it
   up is tracked separately.
+
+## Amendments made during execution
+
+Two departures from the inventory above, both additions to its scope rather than
+substitutions.
+
+**A3 has three restricted-mode steps, not two.** C's base `Simplify` opens with
+`if( astRestrictedSimplify(this) ) { if( !astAllowSimplify(this) ) return
+astClone(this); }` (`mapping.c:16853-16855`), a consult point the inventory did
+not list because it sits in the base driver rather than in `cmpmap.c`. It is
+ported at `simplify.rs:1150-1152`, and porting it is what made
+`RestrictedSimplify` a `Mapping` trait pair rather than a `CmpMap` inherent
+method, matching C's shared `flags` word (`mapping.h:415-482`). The A3 row's
+count of 2 refers to the two `cmpmap.md` rows the item was found through, and is
+left as the record of how the item was scoped.
+
+**B3 includes adding `SimpVertices`, which the inventory treated as a
+prerequisite.** The attribute, its accessor and the `SimpVT` card C writes at
+`polygon.c:6692` are part of the work, not a precondition for it: the bend check
+is skipped on the attribute's default of 1, so nothing can exercise the guard
+until the attribute can be cleared.
+
+Citations in the band sections below the diagnosis point at the code as it stood
+when the item was written, which is what makes the diagnosis checkable; they are
+not updated as the code moves. The current sites are in each item's `PLAN.md`
+§10 entry and in the audit checklist row named under **Record**.
 
 ## What to read first
 

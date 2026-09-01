@@ -35,7 +35,7 @@ There is no replace-with-simpler step and no lower-neighbour case.
 | 18 | Decrement the Mapping count and return the index of the first modified element | mathmap.c:4171-4174 | simplify.rs:1434 | ported |
 | 19 | Clear the returned value if an error occurred | mathmap.c:4178-4179 | -- | n/a: an error is an `Err`, not a value that has to be scrubbed on the way out |
 | 20 | Return the result | mathmap.c:4181-4182 | mathmap/mod.rs:431 | ported |
-| 21 | Setting Seed, SimpFI or SimpIF clears the simplified record | mathmap.c:5629,5705,5778 | -- | gap: PLAN.md §9.2 |
+| 21 | Setting Seed, SimpFI or SimpIF clears the simplified record | mathmap.c:5616-5629, :5698-5705, :5771-5778 | mathmap/mod.rs:182-188, :198-200, :211-214, :227 | ported |
 
 ## Row 8 — the flag pairing is asymmetric
 
