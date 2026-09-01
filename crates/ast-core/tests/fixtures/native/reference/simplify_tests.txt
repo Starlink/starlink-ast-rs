@@ -689,3 +689,15 @@ neg_wcs_tan_no_reduce | simplify_fixtures/neg_wcs_tan_no_reduce.map | simplify_f
 # grows with astGrow (cmpmap.c:3496) and exists only to detect a Mapping already
 # being simplified.
 cap_deep_nest_zoom | simplify_fixtures/cap_deep_nest_zoom.map | simplify_fixtures/cap_deep_nest_zoom.simp |
+
+# [ZoomMap, PermMap, parallel CmpMap, ZoomMap] in series, pinning the output of
+# the CmpMap / PermMap swap (cmpmap.c:1816-1841). C runs the swap from the
+# nominated parallel CmpMap once its lower neighbour is the PermMap and no
+# earlier branch simplified anything; the nomination order is what this case
+# exercises, so compare traces as well as bytes when it moves.
+cap_cmpperm_resume | simplify_fixtures/cap_cmpperm_resume.map | simplify_fixtures/cap_cmpperm_resume.simp |
+
+# The same swap with the PermMap stored inverted, so its own nomination first
+# rebuilds it into canonical form with the inversion cleared (permmap.c:1362) and
+# the swap then runs on the rebuilt PermMap.
+cap_cmpperm_resume_inv | simplify_fixtures/cap_cmpperm_resume_inv.map | simplify_fixtures/cap_cmpperm_resume_inv.simp |

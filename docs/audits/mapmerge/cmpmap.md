@@ -46,16 +46,16 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:922-928`) delegates to
 | 28 | Reset both sub-lists for the next pair, or stop when either list runs out | cmpmap.c:1749-1767 | simplify.rs:2406-2415 | ported |
 | 29 | Free the two component lists and their invert flags | cmpmap.c:1770-1783 | -- | n/a: owned values are dropped |
 | 30 | Update the list: annul the pair, insert the replacement, close the gap and return the first modified index | cmpmap.c:1784-1815 | simplify.rs:906-908 (via `replace_pair_with`, simplify.rs:714) | ported |
-| 31 | If merging in series and the previous Mapping is a PermMap, try swapping the CmpMap in front of it | cmpmap.c:1816-1845 | -- | gap: PLAN.md §10.4 |
-| 32 | Read both Mappings' Invert attributes and set them to the requested values | cmpmap.c:1846-1858 | -- | gap: PLAN.md §10.4 |
-| 33 | Read the shapes of the PermMap and of the CmpMap's two components | cmpmap.c:1855-1871 | -- | gap: PLAN.md §10.4 |
-| 34 | Require the PermMap outputs feeding each component to come from a contiguous input block | cmpmap.c:1872-1912 | -- | gap: PLAN.md §10.4 |
+| 31 | If merging in series and the previous Mapping is a PermMap, try swapping the CmpMap in front of it | cmpmap.c:1816-1845 | simplify.rs:827-849 | ported |
+| 32 | Read both Mappings' Invert attributes and set them to the requested values | cmpmap.c:1846-1858 | simplify.rs:2287-2301 | ported |
+| 33 | Read the shapes of the PermMap and of the CmpMap's two components | cmpmap.c:1855-1871 | simplify.rs:2303-2320 | ported |
+| 34 | Require the PermMap outputs feeding each component to come from a contiguous input block | cmpmap.c:1872-1912 | simplify.rs:2321-2400 | ported |
 | 35 | Transform a set of bad inputs through the PermMap to recover its constant outputs | cmpmap.c:1927-1950 | simplify.rs:1002 | ported |
-| 36 | Substitute a UnitMap for a component whose inputs are all constant | cmpmap.c:1951-1966 | -- | gap: PLAN.md §10.4 |
-| 37 | Build the replacement PermMap's permutation and constant arrays for both components | cmpmap.c:1967-2043 | -- | gap: PLAN.md §10.4 |
-| 38 | Create the new PermMap and the new CmpMap | cmpmap.c:2044-2068 | -- | gap: PLAN.md §10.4 |
+| 36 | Substitute a UnitMap for a component whose inputs are all constant | cmpmap.c:1951-1966 | simplify.rs:2321-2400 | ported |
+| 37 | Build the replacement PermMap's permutation and constant arrays for both components | cmpmap.c:1967-2043 | simplify.rs:2321-2400 | ported |
+| 38 | Create the new PermMap and the new CmpMap | cmpmap.c:2044-2068 | simplify.rs:2321-2400 | ported |
 | 39 | Re-instate the component and neighbour Invert attributes | cmpmap.c:2069-2095 | -- | n/a: nothing was mutated, so nothing is restored |
-| 40 | On a successful swap, store the new CmpMap and PermMap in the two slots and return the first index | cmpmap.c:2096-2119 | -- | gap: PLAN.md §10.4 |
+| 40 | On a successful swap, store the new CmpMap and PermMap in the two slots and return the first index | cmpmap.c:2096-2119 | simplify.rs:845-849 | ported |
 | 41 | Clear the result value if an error occurred | cmpmap.c:2120-2122 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 42 | Return the result | cmpmap.c:2123-2124 | simplify.rs:801 | ported |
 
@@ -68,19 +68,27 @@ time a CmpMap is nominated the list is already flat. The reduction is the same;
 what differs is that C's version reports a change and restarts the loop, while
 the port's happens once up front.
 
-## Rows 31 to 40 — the swap exists, on the other nominee
+## Rows 31 to 40 — the swap runs from C's nominee
 
-C has this swap only here, on the CmpMap side: `permmap.c` contains no reference
-to `CmpMap`, so a nominated PermMap never attempts it. The port is the mirror
-image — no swap branch in `CmpMap::map_merge`, and the swap in `perm_map_merge`
-(`simplify.rs:1010-1030`) firing when a PermMap is nominated. Row 35 is marked
-ported because the port borrows exactly this section's constant-transform
-arithmetic, cited at `simplify.rs:1002`.
+C has this swap only on the CmpMap side: `permmap.c` contains no reference to
+`CmpMap`, so a nominated PermMap never attempts it. The port now matches, with
+the branch at the end of `cmp_map_merge` (`simplify.rs:827-849`) behind C's four
+conditions — nothing simplified earlier, the nominee is not first in the list,
+the nominee is a *parallel* CmpMap, and its lower neighbour is a PermMap — and
+reporting `where_ - 1`, the PermMap's old slot, as C's `result = imap1` does.
+Rows 32 to 38 point at `try_swap_permmap_parallel_at`, which holds the
+arithmetic and was not changed. Row 32's set-and-restore has no counterpart
+there: the applied direction is a flag beside each Mapping in the list, so the
+helper reads it and picks the matching permutation arrays instead of mutating an
+attribute.
 
-Because the nominate loop offers every element in turn, a `[PermMap, CmpMap]`
-pair does get swapped — when the PermMap's turn comes, not the CmpMap's. What
-differs is which index the merge reports, and therefore where the loop resumes.
-See PLAN.md §10.4.
+Moving it did not change any fixture's output. Both triggers reach the same pair
+and report the same slot, so the nominate loop resumes in the same place; what
+differs is one nomination of ordering, visible in the trace and not in the
+result. `cap_cmpperm_resume` pins that trace: PermMap at 1 returning -1 and the
+parallel CmpMap at 2 returning 1, matching the instrumented C line for line
+where the port previously returned 1 from the PermMap's own nomination. See
+PLAN.md §10.4.
 
 ## The under-tagging fixtures
 

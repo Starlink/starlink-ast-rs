@@ -331,10 +331,10 @@ places, and finding one by accident is no longer possible.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 454 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
-| simplify regression | 454 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 454 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
-| simplify regression | 454 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
+| simplify regression | 456 | 4 | `skip_string_compare` in the manifest (`rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`). `lsst` retired its skip when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 456 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
+| simplify regression | 456 | 7 | fixtures whose `IsSimp` card count still differs from C. Four under-tag: `rigby`, `cap_specmap_02`, and `cap_cmpmap_01` / `cap_cmpmap_04`, whose totals matched C at 18 only because tags C never sets made up for the same CmpMap deficit (§10.3); three are the Region-simplify shape gaps (`cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, `cap_zoommap_04`). Retired before these: the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand, `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles, and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). `cap_cmpmap_01` and `cap_cmpmap_04` were retired with §10.16 and are back, because that closure was the coincidence above. Not a separate mask: they sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale fixture is no longer a possible cause: the corpus was regenerated against the pin at `f6762005` |
+| simplify regression | 456 | 141 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires the result to carry at least one, so the strip cannot hide an untagged result. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f` |
 | transform oracle | 1614 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1614 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -1103,35 +1103,39 @@ opportunity, and C's next genuine nomination is `WinMap where=0 series=1 nmap=3`
 reverts as C does, and the two agree on class, index, `issimp`, result and
 resulting list length at that step.
 
-### 10.4 The CmpMap/PermMap swap is hung off the wrong nominee
+### 10.4 The CmpMap/PermMap swap was hung off the wrong nominee — FIXED
 
-`cmpmap.c:1816-2119` swaps a series CmpMap in front of an adjacent PermMap. It
-runs when the **CmpMap** is nominated and the PermMap is its lower neighbour.
-There is no counterpart on the PermMap side: `permmap.c` contains no reference to
-`CmpMap` at all, so a nominated PermMap never attempts this.
+`cmpmap.c:1816-2119` swaps a parallel CmpMap in front of an adjacent PermMap. It
+runs when the **CmpMap** is nominated and the PermMap is its lower neighbour, as
+the last block of `CmpMap::MapMerge`, reached only when nothing earlier
+simplified (`result == -1`). There is no counterpart on the PermMap side:
+`permmap.c` contains no reference to `CmpMap` at all, so a nominated PermMap
+never attempts this.
 
-The port has it the other way round. `CmpMap::map_merge` has no swap branch, and
-the swap lives in `perm_map_merge` (`simplify.rs:1010-1030`), which fires when a
-**PermMap** is nominated and looks at the `(where_, where_ + 1)` pair. The
-arithmetic is C's — the constant-transform maths is cited to `cmpmap.c:1929-2041`
-at `simplify.rs:1002` — but the trigger is the opposite element.
+The port had it the other way round: the swap lived in `perm_map_merge` and fired
+when a **PermMap** was nominated, looking at the `(where_, where_ + 1)` pair. The
+arithmetic was already C's. The branch now sits at the end of `cmp_map_merge`
+(`simplify.rs:827-849`) behind C's four conditions, and
+`try_swap_permmap_parallel_at` is unchanged.
 
-Both find the swap, because the nominate loop offers every element in turn. What
-differs is which nomination performs it, hence the index reported and where the
-loop resumes. That is the H2 hazard: a structurally different route to the same
-Mapping, surfacing wherever something consumes the structure rather than the
-Mapping.
+The record's original premise was wrong about what this cost. It said the two
+triggers report different indices and so resume one element apart. They do not:
+C returns `result = imap1 = where - 1` from the CmpMap's nomination
+(`cmpmap.c:2119`), the port returned `Some(where_)` from the PermMap's, and
+because `run_nominate_loop` advances before clamping (`simplify.rs:1501`) both
+name the PermMap's slot and both resume there. Nor is a pair reachable in C but
+not here: C's `result == -1` guard *defers* the swap to a later round rather than
+forbidding it, so the port's earlier trigger only ever preempted a merge C would
+reach on its next pass over the same list. No corpus fixture and no purpose-built
+candidate separates the two on output.
 
-It also means the two sides disagree about *which pair*. C looks behind the
-nominated CmpMap; the port looks ahead of the nominated PermMap. Those are the
-same pair, so a `[PermMap, CmpMap]` run is covered either way — but a nominated
-CmpMap whose PermMap neighbour has already been passed by the cursor is reached
-in C and not here.
-
-What would expose it: a series list holding `[A, PermMap, parallel CmpMap, B]`
-where `A` and `B` can each merge with what the swap brings next to them, so the
-resume point decides which merge happens first. Replay it through the C oracle
-and compare the `IsSimp` cards and the tree shape, not just `astEqual`.
+What the move is visible in is the nomination trace. `cap_cmpperm_resume`
+(`[Zoom2, PermMap, parallel CmpMap, Zoom3]` in series) and its inverted-PermMap
+sibling `cap_cmpperm_resume_inv` are byte-exact positive controls on the swap's
+result; against the instrumented oracle the port now matches nomination for
+nomination — `PermMap where=1` returning no change, then `CmpMap where=2`
+returning 1 — where before it returned 1 from the PermMap's own nomination. That
+trace agreement, not a fixture that flipped, is the evidence the seam moved.
 
 This entry replaces the plan's §10.4, which duplicated §9.2.
 
@@ -1156,8 +1160,8 @@ three are byte-exact against the pinned C.
 
 One residual difference is not observable in any fixture: C reports the clearing
 as a change and so restarts its nominate loop, where the port reports `None`. If
-that ever matters it will show as a resume-point difference of the kind §10.4
-describes, not as a wrong Mapping.
+that ever matters it will show as a resume-point difference, not as a wrong
+Mapping.
 
 ### 10.7 PcdMap's zero-distortion reduction is unreachable from the nominate loop — FIXED
 

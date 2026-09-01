@@ -84,8 +84,10 @@ forward, so a PermMap applied inverted carries the inversion in the flag beside
 it; keying the rebuild on the object would leave such a PermMap unchanged and
 report no simplification.
 
-## The CmpMap swap that lives here
+## The CmpMap swap does not live here
 
-`perm_map_merge` also performs the CmpMap-past-PermMap swap, which in C belongs
-to `cmpmap.c::MapMerge` and fires on the other element. It is audited as rows 18
-to 27 of `cmpmap.md`; see PLAN.md §10.4.
+`permmap.c` never mentions `CmpMap`: the swap of a parallel CmpMap in front of an
+adjacent PermMap is run from the CmpMap's own `MapMerge` (`cmpmap.c:1816-2125`),
+so a nominated PermMap never attempts it. The port matches, with the branch in
+`cmp_map_merge` (`simplify.rs:827-849`). It is audited as rows 31 to 40 of
+`cmpmap.md`.

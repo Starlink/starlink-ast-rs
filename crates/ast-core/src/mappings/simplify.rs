@@ -824,6 +824,30 @@ pub(crate) fn cmp_map_merge(
         }
     }
 
+    // Swap a parallel CmpMap in front of an adjacent PermMap
+    // (C `cmpmap.c::MapMerge` 1816-2125).
+    // ==================================================
+    // Reached only when no earlier branch simplified anything (C's
+    // `result == -1`), the nominated CmpMap is parallel, it is not first in the
+    // list, and its lower neighbour is a PermMap. The swap may let either of
+    // the two Mappings merge with its new neighbour. C reports the PermMap's
+    // old slot (`result = imap1`, `cmpmap.c:2119`), so the nominate loop
+    // resumes there.
+    if series
+        && where_ > 0
+        && ctx
+            .entry(where_)
+            .0
+            .as_any()
+            .downcast_ref::<CmpMap>()
+            .is_some_and(|c| c.composition() == Composition::Parallel)
+        && ctx.entry(where_ - 1).0.as_any().is::<PermMap>()
+        && try_swap_permmap_parallel_at(&mut ctx.list, where_ - 1)
+    {
+        ctx.resync_frozen();
+        return Some(where_ - 1);
+    }
+
     default_map_merge(ctx, where_, series)
 }
 
@@ -1016,51 +1040,19 @@ pub(crate) fn zoom_map_merge(
     Some(imap1)
 }
 
-/// `map_merge` for a nominated `PermMap`, performing the CmpMap-past-PermMap
-/// swap of C `cmpmap.c::MapMerge` (1816-2119).
+/// `map_merge` for a nominated `PermMap`, mirroring C `permmap.c::MapMerge`
+/// (1362-1373): a direct merge with the upper neighbour, then the rebuild into
+/// the PermMap's canonical stored form.
 ///
-/// C runs that swap on the other element: it fires when the *CmpMap* is
-/// nominated and the PermMap is its lower neighbour, and `permmap.c` never
-/// mentions `CmpMap` at all. Here it fires when the PermMap is nominated and
-/// the CmpMap is its upper neighbour. Those are the same pair, so the nominate
-/// loop reaches the swap either way, but the index reported differs and so does
-/// where the loop resumes -- see PLAN.md §10.4.
-///
-/// When a nominated PermMap immediately precedes a parallel CmpMap in a series
-/// sequence and has a "block-swap" structure that aligns with the CmpMap's
-/// component-dimension boundaries, the two are reordered: the CmpMap moves in
-/// front and the PermMap is rebuilt (or removed if it becomes identity) to
-/// undo the block swap against the reversed component ordering. Any PermMap
-/// output that is a constant has its value transformed through the swapped
-/// component (const-transform math borrowed from `cmpmap.c:1929-2041`, per the
-/// swap helper). This can enable further pairwise merges on later nominations.
-///
-/// The swap logic lives in [`try_swap_permmap_parallel_at`]; the per-class
-/// entry point only checks the `(where_, where_+1)` adjacency C examines when
-/// the PermMap is nominated, then falls back to [`default_map_merge`] for the
-/// ordinary direct-pairwise merge (C's `-1` for the swap becomes a plain
-/// neighbour merge attempt).
+/// The CmpMap-past-PermMap swap is not here. C runs it from the nominated
+/// parallel CmpMap (`cmpmap.c:1816-2125`) and `permmap.c` never mentions
+/// `CmpMap` at all, so it lives in [`cmp_map_merge`].
 pub(crate) fn perm_map_merge(
     _perm: &PermMap,
     ctx: &mut MergeCtx,
     where_: usize,
     series: bool,
 ) -> Option<usize> {
-    if series
-        && where_ + 1 < ctx.len()
-        && ctx.entry(where_).0.as_any().is::<PermMap>()
-        && ctx
-            .entry(where_ + 1)
-            .0
-            .as_any()
-            .downcast_ref::<CmpMap>()
-            .is_some_and(|c| c.composition() == Composition::Parallel)
-        && try_swap_permmap_parallel_at(&mut ctx.list, where_)
-    {
-        ctx.resync_frozen();
-        return Some(where_);
-    }
-
     if let Some(modified) = default_map_merge(ctx, where_, series) {
         return Some(modified);
     }
