@@ -195,7 +195,8 @@ The apparent asymmetry with `CmpMap` is real but it is C's asymmetry, faithfully
 **A CmpMap holding a bare Frame is the one gap**, and it is the same thing as a bare Frame in a FrameSet's `Map<n>` slot.
 It exists because in C a bare Frame is a Mapping and here it is not.
 The Region content of such a Frame is irrelevant to the failure: a `CmpFrame` in a `Map<n>` slot fails identically whether or not it holds a Region, and a plain `Frame` fails the same way.
-So the question for the maintainers is narrow — is there a legitimate workflow that puts a bare Frame where a Mapping belongs, given that the Region case, which is the one with obvious meaning, already works?
+So the question for the maintainers is narrow, and it is a question about C's intent rather than about this port: is a bare Frame in a Mapping slot a side effect of C having made Frame a Mapping in order to support Region, or is there a real use case for it?
+The corpus supplies no evidence for the second reading — no fixture in it puts a bare Frame in a Mapping slot, and the Region case, which is the one with obvious meaning, already works — which is precisely why the question is worth a broader discussion with the team rather than a decision taken here.
 
 ### 4.3 What cluster 4 delivers
 
