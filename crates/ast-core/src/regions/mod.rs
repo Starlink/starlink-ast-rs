@@ -994,9 +994,12 @@ pub trait Region: Frame + Mapping {
             }
 
             // Try simplifying the uncertainty. Only proceed if it changed
-            // (region.c:11193-11196).
-            let sunc_map = <dyn Mapping>::simplify(unc.as_ref())?;
-            let unc_changed = !Mapping::equal(unc.as_ref(), sunc_map.as_ref());
+            // (region.c:11193-11196). C's test is `sunc != unc`, pointer
+            // identity on what the per-class slot handed back, so a reduction
+            // that changes only structure counts. `Mapping::equal` would not
+            // see one: it is conversion-based, and collapsing an uncertainty's
+            // FrameSet to a UnitMap leaves the transform unchanged.
+            let (sunc_map, unc_changed) = <dyn Mapping>::simplify_reporting_change(unc.as_ref())?;
             if unc_changed && let Some(mut sunc) = merge_util::mapping_into_region(sunc_map) {
                 // The stability check (region.c:11213-11306): re-centre the
                 // simplified uncertainty at opposite corners of a test box and

@@ -728,15 +728,9 @@ fn simplify_regression() {
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // (A) Region-simplify shape divergence, not a card: we keep a FrmSet
-        // where C has collapsed to bare Points.
-        (
-            "cap_zoommap_04",
-            "emits FrmSet/FrameSet where C emits Points/PointSet",
-        ),
-        // (B) Serialisation default: C omits Closed when it holds the default.
+        // (A) Serialisation default: C omits Closed when it holds the default.
         ("cap_interval_01", "emits Closed = 1 where C omits it"),
-        // (C) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
+        // (B) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
         // 4-ulp token tolerance, so real arithmetic divergence.
         (
             "cap_pointlist_01",
@@ -776,9 +770,6 @@ fn simplify_regression() {
         "cap_specmap_02 (7 vs C's 8)",
         // Shrunk from `cap_specmap_02`, and carries the same signature.
         "cap_cmpmap_nested_tag (4 vs C's 5)",
-        // Renders to a Region, and carries row (A) of SERIAL_UNGATED: the
-        // FrmSet the port keeps is what its three surplus stamps hang off.
-        "cap_zoommap_04 (3 vs C's 0)",
     ];
     issimp_disagreements.sort();
     let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();
