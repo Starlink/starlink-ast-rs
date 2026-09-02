@@ -6446,7 +6446,7 @@ a case per setter in that file, made falsifiable by the
   - `LutMap::set_lut_epsilon(&mut self, epsilon: f64)`
   - `PcdMap::set_disc(&mut self, disc: f64)`
 
-- [ ] **Step 1: Write the four failing test cases**
+- [x] **Step 1: Write the four failing test cases**
 
 Append to `crates/ast-core/tests/test_clear_on_set.rs`, after
 `clearing_perm_split_discards_the_record` (which ends at line 206) and *before*
@@ -6505,7 +6505,7 @@ use ast_core::mappings::{
 };
 ```
 
-- [ ] **Step 2: Run the cases to verify they fail**
+- [x] **Step 2: Run the cases to verify they fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6516,7 +6516,7 @@ Expected: the crate fails to compile, with `no method named set_zoom found for
 struct ZoomMap`, `no method named zoom`, `no method named set_lut_epsilon` and
 `no method named set_disc`.
 
-- [ ] **Step 3: Add `ZoomMap::zoom` and `ZoomMap::set_zoom`**
+- [x] **Step 3: Add `ZoomMap::zoom` and `ZoomMap::set_zoom`**
 
 In `crates/ast-core/src/mappings/zoom.rs`, replace the `factor` accessor block
 
@@ -6569,7 +6569,7 @@ with
     }
 ```
 
-- [ ] **Step 4: Add `LutMap::lut_epsilon` and `LutMap::set_lut_epsilon`**
+- [x] **Step 4: Add `LutMap::lut_epsilon` and `LutMap::set_lut_epsilon`**
 
 In `crates/ast-core/src/mappings/lutmap.rs`, immediately after the `interp`
 getter (which ends at line 112), insert:
@@ -6599,7 +6599,7 @@ getter (which ends at line 112), insert:
     }
 ```
 
-- [ ] **Step 5: Add `PcdMap::set_disc`**
+- [x] **Step 5: Add `PcdMap::set_disc`**
 
 In `crates/ast-core/src/mappings/pcdmap.rs`, immediately after the `disc` getter
 (which ends at line 72), insert:
@@ -6619,7 +6619,7 @@ In `crates/ast-core/src/mappings/pcdmap.rs`, immediately after the `disc` getter
     }
 ```
 
-- [ ] **Step 6: Run the cases to verify they pass**
+- [x] **Step 6: Run the cases to verify they pass**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6629,7 +6629,7 @@ cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
 Expected: 22 passed — the 18 that were there plus the four new ones,
 `record_survives_invert_and_back` still among them.
 
-- [ ] **Step 7: Confirm the new setters changed nothing else**
+- [x] **Step 7: Confirm the new setters changed nothing else**
 
 The setters are additive, but `zoom()` shadows nothing and `set_zoom` shares the
 zero check with `ZoomMap::new`, so run the two suites that would notice:
@@ -6642,7 +6642,7 @@ cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
 
 Expected: both unchanged from the state Cluster 3 left them in.
 
-- [ ] **Step 8: Update `PLAN.md` §9.2**
+- [x] **Step 8: Update `PLAN.md` §9.2**
 
 Replace the three "no setter" cells in the table at `PLAN.md:679-690`:
 
@@ -6680,7 +6680,7 @@ eight, `INT_MAX` for `GrismM`), so a clearer would mean introducing those
 sentinels and the `Test*` surface that reads them.
 ```
 
-- [ ] **Step 9: Format, lint, commit**
+- [x] **Step 9: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6746,7 +6746,7 @@ predicate true, so each setter sets its flag.
   - `GrismMap::set_grism_eps(&mut self, value: f64)`
   - `GrismMap::set_grism_theta(&mut self, value: f64)`
 
-- [ ] **Step 1: Write the eight failing test cases**
+- [x] **Step 1: Write the eight failing test cases**
 
 Append to `crates/ast-core/tests/test_clear_on_set.rs`, after the cases Task 23
 added and still before `record_survives_invert_and_back`:
@@ -6852,7 +6852,7 @@ use ast_core::mappings::{
 };
 ```
 
-- [ ] **Step 2: Run the cases to verify they fail**
+- [x] **Step 2: Run the cases to verify they fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6862,7 +6862,7 @@ cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
 Expected: the crate fails to compile, with `no method named set_grism_nr found
 for struct GrismMap` and one such error per remaining setter.
 
-- [ ] **Step 3: Add the eight setters**
+- [x] **Step 3: Add the eight setters**
 
 In `crates/ast-core/src/mappings/grismmap.rs`, insert between the `grism_theta`
 getter (which ends at line 176) and the `update_constants` doc comment:
@@ -6946,7 +6946,7 @@ getter (which ends at line 176) and the `update_constants` doc comment:
     }
 ```
 
-- [ ] **Step 4: Run the cases to verify they pass**
+- [x] **Step 4: Run the cases to verify they pass**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6961,7 +6961,7 @@ value without recomputing; check that each one ends with
 `self.update_constants();`. `PointSet::from_rows` and `.point(i)` are the forms
 `crates/ast-core/tests/test_grismmap.rs:75-84` uses.
 
-- [ ] **Step 5: Confirm the dump is unchanged for GrismMaps nothing sets**
+- [x] **Step 5: Confirm the dump is unchanged for GrismMaps nothing sets**
 
 The setters write `set_flags`, which decides commented versus uncommented dump
 output, so the corpus is the check that no existing GrismMap dump moved:
@@ -6977,7 +6977,7 @@ Expected: all three unchanged. Nothing in the corpus calls a setter, so nothing
 can move; a change here means a setter was called from a construction path,
 which is a bug in this task.
 
-- [ ] **Step 6: Update `PLAN.md` §9.2's GrismMap row**
+- [x] **Step 6: Update `PLAN.md` §9.2's GrismMap row**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -7012,7 +7012,7 @@ p.write_text(t.replace(old, new))
 PY
 ```
 
-- [ ] **Step 7: Update the gate count in §9.2's prose**
+- [x] **Step 7: Update the gate count in §9.2's prose**
 
 §9.2 says the gate is "a case per setter, and `record_survives_invert_and_back`
 … so the other 18 assertions cannot pass on a port that never records
@@ -7041,7 +7041,7 @@ cargo test -p ast-core --test test_clear_on_set 2>&1 | grep "test result"
 Expected: `31 passed`. The prose number is that total minus
 `record_survives_invert_and_back`; if the total differs, put the right number in.
 
-- [ ] **Step 8: Format, lint, commit**
+- [x] **Step 8: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -7072,7 +7072,7 @@ Cluster 5 is complete at this point: all four in-scope classes have setters that
 discard both records, `test_clear_on_set.rs` gates each of the twelve against
 the same falsifiability control, and `PLAN.md` §9.2 is marked DONE.
 
-- [ ] **Cluster 5 exit check: back the setters out and watch the cases fail**
+- [x] **Cluster 5 exit check: back the setters out and watch the cases fail**
 
 Cluster 5 adds no corpus fixture — no dump can express a cleared simplify record
 — so its gate is `test_clear_on_set.rs`, and the revert-check applies to that:
@@ -7090,6 +7090,23 @@ Expected: the twelve new cases fail to compile or fail outright on the reverted
 tree — a missing setter is a compile error, which is a legitimate way for this
 check to fail — and pass again after the restore. If they pass on the reverted
 tree, the cases are not exercising the setters they name.
+
+Run as three targeted bypasses rather than a directory-wide revert, because the
+tree also carries the loader routing this cluster added and a `git checkout` of
+the directory would take that with it:
+
+- Commenting out `self.simplified.clear()` in `set_grism_g` and
+  `set_lut_epsilon` fails `grism_g_discards_the_record` and
+  `lut_epsilon_discards_the_record`, and nothing else.
+- Bypassing every `Test*` branch in `GrismMap::from_node` and
+  `PcdMap::from_node` fails `load_discards_the_record_for_every_clear_on_set_class`
+  and takes the simplify round-trip to 788/792, failing exactly
+  `grism_zoom_merge`, `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies` and
+  `pcd_unit_series_merge` — the four cases `ROUNDTRIP_DISCARD_LICENSED` used to
+  license.
+- Moving `self.simplified.clear()` after the zero check in `set_zoom` fails
+  `rejected_zoom_still_discards_the_record`, which is what pins C's
+  comma-expression order at `zoommap.c:1698`.
 
 
 ---
