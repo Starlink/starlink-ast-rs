@@ -61,6 +61,33 @@ reference's class.
 This is the instrument behind every re-baseline in the simplify corpus, and
 `check_corpus_fresh_simplify.sh` drives it over the whole set.
 
+## `check_simplify_fresh.sh` — is the simplify corpus still the pinned C's output?
+
+Captures every row of
+`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` from the
+pinned oracle with `gen_simp` and classifies the difference:
+
+- **card** — the reference has a different set of cards. It predates a library
+  change; regenerate it with `gen_simp` and commit the regeneration in the same
+  range as the pin move. Exits non-zero.
+- **numeric** — the same cards with different values. The reference was captured
+  on another platform. Leave the values alone: regenerating here would replace a
+  cross-platform reference with this machine's libm. Where a residue falls
+  outside the harness's token tolerance, license it per case in
+  `test_simplify_regression.rs` and count it in `PLAN.md` §6.
+- **structural** — a different class or nesting. Should never happen; treat as a
+  bug in the driver or the manifest.
+
+A negative fixture names its own input as its reference, and the input was never
+simplified, so every `IsSimp` card the fresh capture carries is a stamp the
+simplifier put on a Mapping it handed back. Those lines are dropped from both
+sides for those rows and nothing else is —
+`test_simplify_regression.rs` compares them the same way and gates the card
+counts separately.
+
+Run it after every move of the `reference/starlink-ast` pin, alongside
+`check_corpus_fresh.sh`.
+
 ## Provenance rule
 
 When a fixture's expected value changes (e.g., a captured number drifts
