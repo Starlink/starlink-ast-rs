@@ -2085,6 +2085,34 @@ fn sky_ellipse_disc() {
     );
 }
 
+/// A sky Polygon straddling RA = 0 must report a narrow longitude range. C
+/// accumulates the bounds as `astAxDistance` offsets from the first vertex
+/// precisely so the wrap does not widen the box (polygon.c:4263-4297).
+#[test]
+fn polygon_sky_bounds_use_first_vertex_origin() {
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    // Four vertices spanning RA 2*pi - 0.05 .. 0.05, so 0.1 radians wide.
+    let vertices = vec![
+        vec![2.0 * PI - 0.05, 0.1],
+        vec![0.05, 0.1],
+        vec![0.05, -0.1],
+        vec![2.0 * PI - 0.05, -0.1],
+    ];
+    let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
+
+    let (lbnd, ubnd) = polygon.get_region_bounds().unwrap();
+
+    let width = ubnd[0] - lbnd[0];
+    assert!(
+        width < 0.2,
+        "longitude width should be about 0.1, got {} ({}..{})",
+        width,
+        lbnd[0],
+        ubnd[0]
+    );
+}
+
 /// An Ellipse on a SkyFrame that encloses the north pole must report a
 /// bounding box spanning the whole longitude range and pinned to the pole in
 /// latitude. C's `Ellipse::RegBaseBox` returns the bounds `RegBaseMesh`

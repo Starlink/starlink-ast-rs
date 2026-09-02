@@ -252,6 +252,15 @@ fn negated_copy() {
 
 // ---- Bounding box ----
 
+/// The bounds are the extremes of the boundary mesh, not the closed-form
+/// extent of the ellipse, because C reads them off `RegBaseMesh`
+/// (ellipse.c:988-998). Two consequences show here. A mesh sample only lands
+/// on an axis tip when the tip's parametric angle is a multiple of the mesh
+/// step, so an end that misses falls short by a factor `cos(2*pi/MeshSize)`.
+/// And C accumulates with `if ... else if`, so the first sample — the primary
+/// axis tip at parametric angle zero — claims the lower end of each axis and
+/// cannot also claim the upper. Values captured from C `astEllipse` +
+/// `astGetRegionBounds` at MeshSize 200.
 #[test]
 fn bounding_box_axis_aligned() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
@@ -263,16 +272,20 @@ fn bounding_box_axis_aligned() {
     let (lower, upper) = ellipse.get_region_bounds().unwrap();
     assert!((lower[0] - (-4.0)).abs() < 1e-10); // 1 - 5
     assert!((lower[1] - (-1.0)).abs() < 1e-10); // 2 - 3
-    assert!((upper[0] - 6.0).abs() < 1e-10); // 1 + 5
+    // The primary axis tip took the lower end, so the upper end is the
+    // neighbouring mesh point: 1 + 5*cos(2*pi/200).
+    assert!((upper[0] - 5.997_532_801_828_654).abs() < 1e-10);
     assert!((upper[1] - 5.0).abs() < 1e-10); // 2 + 3
 }
 
+/// Semi-major 4, semi-minor 2, primary axis along axis 2. Axis 1 is spanned
+/// exactly, because the secondary axis tips sit on mesh samples; axis 2 loses
+/// its upper end to the `if ... else if`, as in
+/// [`bounding_box_axis_aligned`]. Values captured from C `astEllipse` +
+/// `astGetRegionBounds`.
 #[test]
 fn bounding_box_rotated() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
-    // Semi-major = 4, semi-minor = 2, rotated 90 degrees (pi/2).
-    // After rotation: x_extent = sqrt((4*0)^2 + (2*1)^2) = 2
-    //                 y_extent = sqrt((4*1)^2 + (2*0)^2) = 4
     let ellipse = EllipseBuilder::new(frame, vec![0.0, 0.0], [4.0, 2.0], PI / 2.0)
         .unwrap()
         .build()
@@ -282,7 +295,8 @@ fn bounding_box_rotated() {
     assert!((lower[0] - (-2.0)).abs() < 1e-10);
     assert!((lower[1] - (-4.0)).abs() < 1e-10);
     assert!((upper[0] - 2.0).abs() < 1e-10);
-    assert!((upper[1] - 4.0).abs() < 1e-10);
+    // 4*cos(2*pi/200).
+    assert!((upper[1] - 3.998_026_241_462_923_3).abs() < 1e-10);
 }
 
 // ---- Batch transform (Mapping::transform) ----

@@ -2504,7 +2504,7 @@ point to `AST__BAD` (`region.c:5546`), so no route to `astSimplify` can present
 a vertex for the untested loop to pass through.
 
 **Rust behaviour (mirror):** `Polygon::simplified`
-(`crates/ast-core/src/regions/polygon.rs:1218-1229`) clears `ok` on a bad axis-1
+(`crates/ast-core/src/regions/polygon.rs:1251-1262`) clears `ok` on a bad axis-1
 value and leaves axis 2 untested, so the port agrees with C on a hypothetical
 half-bad vertex; a comment at the loop points here.
 No fixture pins it, and none can, for the reason above.

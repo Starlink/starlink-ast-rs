@@ -429,6 +429,77 @@ impl Polygon {
         PolygonBuilder::new(frame, vertices)?.build()
     }
 
+    /// Un-negated base-Frame membership, with the effective `Closed` value
+    /// supplied by the caller. `reg_base_inside` passes the Region's own
+    /// value; `reg_base_box` passes the raw one, because the probe C hands to
+    /// `astNormBox` is a copy with Negated cleared (polygon.c:4300-4302).
+    fn base_inside(&self, pts: &PointSet, closed: bool) -> AstResult<Vec<bool>> {
+        // Faithful port of C Polygon Transform (polygon.c:6235). The membership
+        // test is winding-relative: a line is drawn from a cached interior
+        // point to the test point, and the number of edges crossed determines
+        // whether the two lie on the same side of the boundary. This mirrors C
+        // exactly (rather than a winding-absolute ray-cast to infinity) so that
+        // reversing the vertex order in `ensure_inside` is a true no-op on the
+        // represented region, as it is in C.
+        let npoint = pts.npoint();
+        let bfrm = self.data.frameset.base();
+
+        let (edges, in_point, _acw) = self.cache()?;
+        let nv = edges.len();
+
+        // Boundary position of a test point relative to the polygon.
+        #[derive(PartialEq)]
+        enum Pos {
+            Unknown,
+            In,
+            Out,
+            On,
+        }
+
+        let mut result = vec![false; npoint];
+
+        for (idx, inside) in result.iter_mut().enumerate() {
+            let point = pts.point(idx);
+
+            // BAD input coordinates mean the point is outside.
+            if point_has_bad(&point[..2]) {
+                continue;
+            }
+
+            let p = [point[0], point[1]];
+
+            // Define the line from the interior point to the test point.
+            let a = bfrm
+                .line_def(&in_point, &p)?
+                .ok_or_else(|| AstError::new(ErrorCode::Inter, "reg_base_inside: bad test line"))?;
+
+            // Count crossings of this line with the polygon edges.
+            let mut ncross = 0i32;
+            let mut pos = Pos::Unknown;
+
+            for edge in edges.iter().take(nv) {
+                if bfrm.line_contains(edge, &p)? {
+                    pos = Pos::On;
+                    break;
+                } else if bfrm.line_crossing(edge, &a)?.0 {
+                    ncross += 1;
+                }
+            }
+
+            if pos == Pos::Unknown {
+                pos = if ncross % 2 == 0 { Pos::In } else { Pos::Out };
+            }
+
+            *inside = match pos {
+                Pos::In => true,
+                Pos::Out => false,
+                _ => closed,
+            };
+        }
+
+        Ok(result)
+    }
+
     /// Calculate the cached intermediate values used by the membership and
     /// bounded tests.
     ///
@@ -580,98 +651,60 @@ impl RegionGeometry for Polygon {
     }
 
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>> {
-        // Faithful port of C Polygon Transform (polygon.c:6235). The membership
-        // test is winding-relative: a line is drawn from a cached interior
-        // point to the test point, and the number of edges crossed determines
-        // whether the two lie on the same side of the boundary. This mirrors C
-        // exactly (rather than a winding-absolute ray-cast to infinity) so that
-        // reversing the vertex order in `ensure_inside` is a true no-op on the
-        // represented region, as it is in C. The caller applies negation, so
-        // this returns the un-negated membership (C's `neg == 0` branch).
-        let npoint = pts.npoint();
-        let closed = self.data.closed_for_base_inside();
-        let bfrm = self.data.frameset.base();
-
-        let (edges, in_point, _acw) = self.cache()?;
-        let nv = edges.len();
-
-        // Boundary position of a test point relative to the polygon.
-        #[derive(PartialEq)]
-        enum Pos {
-            Unknown,
-            In,
-            Out,
-            On,
-        }
-
-        let mut result = vec![false; npoint];
-
-        for (idx, inside) in result.iter_mut().enumerate() {
-            let point = pts.point(idx);
-
-            // BAD input coordinates mean the point is outside.
-            if point_has_bad(&point[..2]) {
-                continue;
-            }
-
-            let p = [point[0], point[1]];
-
-            // Define the line from the interior point to the test point.
-            let a = bfrm
-                .line_def(&in_point, &p)?
-                .ok_or_else(|| AstError::new(ErrorCode::Inter, "reg_base_inside: bad test line"))?;
-
-            // Count crossings of this line with the polygon edges.
-            let mut ncross = 0i32;
-            let mut pos = Pos::Unknown;
-
-            for edge in edges.iter().take(nv) {
-                if bfrm.line_contains(edge, &p)? {
-                    pos = Pos::On;
-                    break;
-                } else if bfrm.line_crossing(edge, &a)?.0 {
-                    ncross += 1;
-                }
-            }
-
-            if pos == Pos::Unknown {
-                pos = if ncross % 2 == 0 { Pos::In } else { Pos::Out };
-            }
-
-            *inside = match pos {
-                Pos::In => true,
-                Pos::Out => false,
-                _ => closed,
-            };
-        }
-
-        Ok(result)
+        // The caller applies negation, so this reports the un-negated
+        // membership (C's `neg == 0` branch).
+        self.base_inside(pts, self.data.closed_for_base_inside())
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        let nv = self.data.points.len();
+        if self.data.points.is_empty() {
+            return Ok((vec![BAD_VALUE; 2], vec![BAD_VALUE; 2]));
+        }
 
-        let mut lower = vec![f64::MAX; 2];
-        let mut upper = vec![f64::MIN; 2];
+        let frm = self.data.frameset.base();
+        let x0 = self.data.points[0][0];
+        let y0 = self.data.points[0][1];
+
+        // C expresses the box as axis offsets from the first vertex "in order
+        // to avoid problems with boxes that cross RA=0 or RA=12h"
+        // (polygon.c:4263-4297). Both ends start at zero, so the origin vertex
+        // is always enclosed, and the `else if` means a vertex that would
+        // extend both ends of an axis extends only the lower one.
+        let mut lower = vec![0.0_f64; 2];
+        let mut upper = vec![0.0_f64; 2];
 
         for v in &self.data.points {
-            for ax in 0..2 {
-                if !is_bad(v[ax]) {
-                    if v[ax] < lower[ax] {
-                        lower[ax] = v[ax];
-                    }
-                    if v[ax] > upper[ax] {
-                        upper[ax] = v[ax];
-                    }
-                }
+            let dist = frm.ax_distance(1, x0, v[0])?;
+            if dist < lower[0] {
+                lower[0] = dist;
+            } else if dist > upper[0] {
+                upper[0] = dist;
+            }
+
+            let dist = frm.ax_distance(2, y0, v[1])?;
+            if dist < lower[1] {
+                lower[1] = dist;
+            } else if dist > upper[1] {
+                upper[1] = dist;
             }
         }
 
-        // If no valid vertices, return BAD bounds.
-        if nv == 0 {
-            lower = vec![crate::constants::BAD_VALUE; 2];
-            upper = vec![crate::constants::BAD_VALUE; 2];
-        }
+        lower[0] += x0;
+        lower[1] += y0;
+        upper[0] += x0;
+        upper[1] += y0;
+
+        // Extend the box to cover any coordinate-system singularity it
+        // contains. C builds the membership probe by copying the Polygon,
+        // giving it the base Frame and clearing Negated (polygon.c:4299-4305),
+        // so the predicate is membership of the un-negated Polygon and the raw
+        // Closed value is the effective one.
+        let closed = self.data.closed;
+        let inside = |point: &[f64]| -> AstResult<bool> {
+            let pts = PointSet::from_rows(std::iter::once(point));
+            Ok(self.base_inside(&pts, closed)?[0])
+        };
+        frm.norm_box(&mut lower, &mut upper, &inside)?;
 
         Ok((lower, upper))
     }
