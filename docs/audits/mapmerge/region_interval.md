@@ -11,9 +11,11 @@ Interval, re-defines it in its current Frame by transforming a bounding box and
 reading the transformed limits back. `GetDefUnc` (`interval.c:658-703`) builds the
 default uncertainty from the Interval's own limits.
 
-`Interval::map_merge` (`interval.rs:1484`) delegates to
-`simplify::region_map_merge`; `Interval::simplified` is `interval.rs:1371-1449`,
-whose remap half is the `simplify_remapped` override at `interval.rs:203-424`.
+`Interval::map_merge` (`interval.rs:1527`) delegates to
+`simplify::region_map_merge`; `Interval::simplified` is `interval.rs:1427-1492`,
+whose remap half is the `simplify_remapped` override at `interval.rs:255-476`.
+`Cache` (`interval.c:379-517`), which both `Simplify` and `GetDefUnc` open with,
+is `Interval::cache` at `interval.rs:177-253`.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
@@ -27,11 +29,11 @@ whose remap half is the `simplify_remapped` override at `interval.rs:203-424`.
 | 8 | Annul the second and shuffle the rest down, clearing the vacated slot | interval.c:1198-1209 | simplify.rs:1331-1345 | ported |
 | 9 | Decrement the Mapping count and return the index of the first modified element | interval.c:1210-1219 | simplify.rs:1345 | ported |
 | 10 | Return the result | interval.c:1220-1221 | simplify.rs:1349 | ported |
-| 11 | `Simplify`: if the Interval is equivalent to a Box, use the Box's implementation | interval.c:3196-3201 | interval.rs:1373-1406 | ported |
-| 12 | Otherwise use the implementation for unbounded intervals | interval.c:3202-3205 | interval.rs:1408-1449 | ported |
-| 13 | Invoke the parent Region simplify | interval.c:3206-3210 | interval.rs:1409-1412 | ported |
-| 14 | Note whether that simplified anything | interval.c:3211-3215 | interval.rs:1412-1425 | ported |
-| 15 | If the base-to-current Mapping is not a UnitMap, re-define the Interval in its current Frame | interval.c:3216-3220 | interval.rs:1426-1440 | ported |
+| 11 | `Simplify`: if the Interval is equivalent to a Box, use the Box's implementation | interval.c:3196-3201 | interval.rs:1428-1436 | ported |
+| 12 | Otherwise use the implementation for unbounded intervals | interval.c:3202-3205 | interval.rs:1438-1492 | ported |
+| 13 | Invoke the parent Region simplify | interval.c:3206-3210 | interval.rs:1441-1443 | ported |
+| 14 | Note whether that simplified anything | interval.c:3211-3215 | interval.rs:1443-1455 | ported |
+| 15 | If the base-to-current Mapping is not a UnitMap, re-define the Interval in its current Frame | interval.c:3216-3220 | interval.rs:1457-1474 | ported |
 | 16 | Copy the bounds, replacing missing limits with arbitrary non-BAD values | interval.c:3221-3235 | interval.rs:211-241 | ported |
 | 17 | Ensure a good upper bound on each axis | interval.c:3236-3251 | interval.rs:211-241 | ported |
 | 18 | Ensure a good lower bound on each axis | interval.c:3252-3266 | interval.rs:211-241 | ported |
@@ -53,37 +55,60 @@ whose remap half is the `simplify_remapped` override at `interval.rs:203-424`.
 | 34 | Keep an exclusion an exclusion likewise | interval.c:3465-3476 | interval.rs:368-424 | ported |
 | 35 | Create the simplified Interval from those current-Frame limits | interval.c:3477-3485 | interval.rs:368-424 | ported |
 | 36 | Free resources | interval.c:3486-3506 | -- | n/a: owned values are dropped |
-| 37 | If anything simplified, overlay the original Region's attributes and return it | interval.c:3507-3520 | interval.rs:1441-1448 | ported |
+| 37 | If anything simplified, overlay the original Region's attributes and return it | interval.c:3507-3520 | interval.rs:1486-1491 | ported |
 | 38 | Annul the returned pointer if an error occurred | interval.c:3521-3523 | -- | n/a: an error is a `Result::Err` |
-| 39 | Return the result | interval.c:3524-3525 | interval.rs:1448 | ported |
-| 40 | `GetDefUnc`: if the Interval is equivalent to a Box, use that Box's default uncertainty | interval.c:583-657 | interval.rs:1017-1019 | ported |
-| 41 | Get the base-Frame axis count and allocate the uncertainty bounds | interval.c:658-665 | interval.rs:1021-1030 | ported |
-| 42 | Refresh the cached bounds | interval.c:666-668 | interval.rs:1021-1030 | ported |
-| 43 | On an axis with both limits, use 1.0E-6 of the difference between them | interval.c:669-681 | interval.rs:1031-1042 | ported |
-| 44 | Otherwise use zero | interval.c:682-688 | interval.rs:1038-1042 | ported |
-| 45 | Create the Box | interval.c:689-692 | interval.rs:1043-1050 | ported |
+| 39 | Return the result | interval.c:3524-3525 | interval.rs:1488-1490 | ported |
+| 40 | `GetDefUnc`: if the Interval is equivalent to a Box, use that Box's default uncertainty | interval.c:583-657 | interval.rs:1025-1028 | ported |
+| 41 | Get the base-Frame axis count and allocate the uncertainty bounds | interval.c:658-665 | interval.rs:1034-1039 | ported |
+| 42 | Refresh the cached bounds | interval.c:666-668 | interval.rs:1025 | ported |
+| 43 | On an axis with both limits, use 1.0E-6 of the difference between them | interval.c:669-681 | interval.rs:1040-1050 | ported |
+| 44 | Otherwise use zero | interval.c:682-688 | interval.rs:1050-1053 | ported |
+| 45 | Create the Box | interval.c:689-692 | interval.rs:1056-1058 | ported |
 | 46 | Free resources and return NULL on error | interval.c:693-701 | -- | n/a: owned values are dropped and an error is a `Result::Err` |
-| 47 | Return the Box | interval.c:702-703 | interval.rs:1050 | ported |
+| 47 | Return the Box | interval.c:702-703 | interval.rs:1056-1058 | ported |
 
 ## Rows 43 and 44 — the guard the base class gets wrong
 
-Interval tests `lb != -f64::MAX && ub != f64::MAX` (`interval.rs:1035`), which is
+Interval tests `lb != -f64::MAX && ub != f64::MAX` (`interval.rs:1040`), which is
 the correct rendering of C's `±DBL_MAX` test in both directions. The base-class
 `default_bounding_box_unc` uses `is_bad` instead and so misses the upper case —
 see PLAN.md §10.12. This class is the reference for what that guard should look
 like.
 
-## Row 11 — the Box path comes first
+## Row 11 — the Box path comes first, and it hands the Box to the simplifier
 
 C dispatches on Box-equivalence before doing any remap work, and the port keeps
-that order (`interval.rs:1373-1406`). It narrows the condition slightly: a
-Negated or non-Closed Interval stays an Interval, because `BoxRegion`'s contract
-is a closed, non-negated axis-aligned Region. C's `astIntervalBox` reaches the
-same place through the Box it constructs.
+that order (`interval.rs:1428-1436`). The condition is C's: every resolved limit
+finite, every axis sharing axis 1's included/excluded orientation, and axis 1
+including rather than excluding its interval. A Negated Interval still yields a
+Box — C negates the Box (`interval.c:509`) rather than declining — and the
+Interval's `Closed` value transfers with an explicit `astSetClosed`
+(`interval.c:512`).
+
+What the branch returns is `astSimplify( box )`, not the Box. That matters
+because `Cache` builds the Box in the **base** Frame and, when the base→current
+Mapping is not a UnitMap, maps it into the current Frame with `astMapRegion`
+(`interval.c:495-499`) — which extends the Box's FrameSet rather than moving its
+points. The Mapping therefore reaches `Box::Simplify`, which is what re-expresses
+the bounds in the current Frame's units. A reclassification that labelled the
+base-Frame numbers with the current Frame and returned would drop that Mapping;
+PLAN.md §10.25 records what such a divergence costs.
+
+C applies no `astRegOverlay` on this branch, so nothing from the Interval is
+carried onto the result beyond what `Cache` put on the Box.
+
+## Rows 11, 40 and the `reg_pins_mask` delegation — one `Cache`
+
+`Cache` populates two things: the resolved limit arrays and, conditionally, the
+equivalent Box. Three C bodies read them — `Simplify` (`interval.c:3198`),
+`GetDefUnc` (`interval.c:646`, `interval.c:668`) and `RegPins`
+(`interval.c:2682`) — so `Interval::cache` returns the pair of arrays alongside
+the optional Box and all three call sites take it from there.
+`interval.rs:177-253` is the only copy of the classification.
 
 ## Rows 16 to 21 — arbitrary limits, then reined back in
 
 The re-definition has to transform a *bounded* box, so C fills each missing limit
 with an arbitrary value, transforms, and then limits the result back to the
 Interval's real limits. Skipping the second half would widen the Interval; the
-port does both (`interval.rs:211-307`).
+port does both (`interval.rs:263-359`).

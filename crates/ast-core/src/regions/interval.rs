@@ -153,18 +153,28 @@ impl Interval {
         (lbnd, ubnd)
     }
 
-    /// If this Interval is equivalent to an un-negated Box, return that Box in
-    /// the base Frame; otherwise return `None`.
+    /// Resolve the axis limits into finite values and, when the Interval is
+    /// equivalent to a Box, build that Box.
     ///
-    /// Mirrors C `Cache` (interval.c:441-513): the Interval is a Box iff every
-    /// axis limit is finite and every axis shares the first axis's
-    /// included/excluded orientation. A missing limit resolves to `∓DBL_MAX`,
-    /// which is infinite and therefore disqualifies the Box form. When the
-    /// Interval is an *excluded* (negated) Box, C stores a negated Box; the
-    /// callers that use this helper want the un-negated equivalent only, so a
-    /// negated orientation returns `None`. The Interval's own negation and
-    /// Closed attributes are transferred onto the returned Box.
-    fn equivalent_box(&self) -> AstResult<Option<super::BoxRegion>> {
+    /// Faithful port of C `Cache` (interval.c:379-517), which caches both
+    /// results on the Interval; the port recomputes them per call, so the
+    /// return value carries what C leaves in `this->lbnd`, `this->ubnd` and
+    /// `this->box`.
+    ///
+    /// A missing limit resolves to `∓DBL_MAX`. The Interval is a Box iff every
+    /// resolved limit is finite and every axis shares the first axis's
+    /// included/excluded orientation; an axis ordering that *excludes* its
+    /// interval (`lbnd > ubnd` on axis 1) means C caches no Box at all, so
+    /// that yields `None` too.
+    ///
+    /// The Box is built in the base Frame and then, when the base→current
+    /// Mapping is not a `UnitMap`, mapped into the current Frame with
+    /// `map_region` (interval.c:495-499) — which extends the Box's FrameSet
+    /// rather than moving its points, so the returned Box represents the same
+    /// area in the same Frame the Interval represents. The Interval's negation
+    /// and its `Closed` value are then transferred (interval.c:509, 512), the
+    /// latter as an explicit set because C uses `astSetClosed`.
+    fn cache(&self) -> AstResult<(Vec<f64>, Vec<f64>, Option<DynRegion>)> {
         let raw_l = &self.data.points[0];
         let raw_u = &self.data.points[1];
         let nc = raw_l.len();
@@ -198,16 +208,35 @@ impl Interval {
         }
 
         if !is_box || neg {
-            return Ok(None);
+            return Ok((lbnd, ubnd, None));
         }
 
         let bfrm = self.data.frameset.base().snapshot();
         let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
-        bbox.data.uncertainty = self.get_uncertainty();
-        bbox.data.negated = self.data.negated;
-        bbox.data.closed = self.data.closed;
-        bbox.data.closed_set = self.data.closed_set;
-        Ok(Some(bbox))
+
+        // C passes the base-Frame uncertainty to `astBox`, which installs it
+        // through `astSetUnc` like any other constructor (interval.c:492).
+        if self.data.uncertainty.is_some() {
+            let unc = self.get_unc_frm(FrameRef::Base)?;
+            bbox.set_uncertainty(unc);
+        }
+
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let mut result: DynRegion = if map.as_any().is::<UnitMap>() {
+            Box::new(bbox)
+        } else {
+            let cfrm = self.data.frameset.current().snapshot();
+            bbox.map_region(map.as_ref(), cfrm.as_ref())?
+        };
+
+        if self.data.negated {
+            result.negate();
+        }
+        result.set_closed(self.data.closed);
+        Ok((lbnd, ubnd, Some(result)))
     }
 
     /// Re-express this Interval in its current Frame across a non-UnitMap
@@ -729,58 +758,11 @@ impl Region for Interval {
             ));
         }
 
-        let raw_l = &self.data.points[0];
-        let raw_u = &self.data.points[1];
-
-        // Cache: decide Box-equivalence exactly as interval.c:441-485. A BAD
-        // axis limit means unconstrained (-/+DBL_MAX); any infinite limit
-        // disqualifies the Box form. All axes must share the first axis's
-        // included/excluded orientation.
-        let mut is_box = true;
-        let mut lbnd = vec![0.0f64; nc];
-        let mut ubnd = vec![0.0f64; nc];
-        let mut neg = false;
-        for i in 0..nc {
-            lbnd[i] = if is_bad(raw_l[i]) {
-                -f64::MAX
-            } else {
-                raw_l[i]
-            };
-            ubnd[i] = if is_bad(raw_u[i]) { f64::MAX } else { raw_u[i] };
-            if lbnd[i].abs() == f64::MAX {
-                is_box = false;
-            }
-            if ubnd[i].abs() == f64::MAX {
-                is_box = false;
-            }
-            if i == 0 {
-                neg = lbnd[i] > ubnd[i];
-            } else if neg {
-                if lbnd[i] < ubnd[i] {
-                    is_box = false;
-                }
-            } else if lbnd[i] > ubnd[i] {
-                is_box = false;
-            }
-        }
-
-        // If effectively an un-negated Box, delegate to the equivalent Box's
-        // RegPins (interval.c:2682). The Box is built in the Interval's base
-        // Frame with the same bound limits; the Interval's negation and
-        // Closed attribute are transferred (interval.c:509,512). C's Cache
-        // also maps the box into the current Frame when the base->current
-        // Mapping is not a UnitMap, purely for its own cache reuse; that
-        // remapping is elided because RegPins tests points in the base Frame
-        // and the base-Frame Box is the equivalent region (matches C for the
-        // reachable UnitMap case; tracked with the RCENT / R-UNC gaps).
-        if is_box && !neg {
-            let bfrm = self.data.frameset.base().snapshot();
-            let mut bbox = super::BoxRegion::from_bounds_frame(bfrm, &lbnd, &ubnd)?;
-            bbox.data.uncertainty = self.get_uncertainty();
-            bbox.data.negated = self.data.negated;
-            bbox.data.closed = self.data.closed;
-            bbox.data.closed_set = self.data.closed_set;
-            return bbox.reg_pins_mask(pts, unc);
+        // Resolve the axis limits and, if the Interval is equivalent to a Box,
+        // delegate to that Box's RegPins (interval.c:2682-2684).
+        let (lbnd, ubnd, box_reg) = self.cache()?;
+        if let Some(box_reg) = box_reg {
+            return box_reg.reg_pins_mask(pts, unc);
         }
 
         // Not Box-equivalent: at least one infinite boundary. The border
@@ -1038,28 +1020,25 @@ impl Region for Interval {
 
     fn get_def_unc(&self) -> AstResult<DynRegion> {
         // Port of interval.c::GetDefUnc (interval.c:583). If this Interval is
-        // equivalent to a Box, delegate to that Box's default uncertainty.
-        if let Some(box_reg) = self.equivalent_box()? {
+        // equivalent to a Box, delegate to that Box's default uncertainty
+        // (interval.c:646-648).
+        let (cache_lbnd, cache_ubnd, box_reg) = self.cache()?;
+        if let Some(box_reg) = box_reg {
             return box_reg.get_def_unc();
         }
 
         // Otherwise build a Box covering 1.0E-6 of each axis interval using the
-        // Interval's OWN limits (not the base-class bounding box). An axis with
-        // an infinite limit collapses to a zero-width [0, 0] interval.
-        let raw_l = &self.data.points[0];
-        let raw_u = &self.data.points[1];
-        let nax = raw_l.len();
+        // Interval's OWN cached limits (not the base-class bounding box). An
+        // axis with an infinite limit collapses to a zero-width [0, 0]
+        // interval.
+        let nax = cache_lbnd.len();
         let bfrm = self.data.frameset.base().snapshot();
 
         let mut lbnd = vec![0.0f64; nax];
         let mut ubnd = vec![0.0f64; nax];
         for i in 0..nax {
-            let lb = if is_bad(raw_l[i]) {
-                -f64::MAX
-            } else {
-                raw_l[i]
-            };
-            let ub = if is_bad(raw_u[i]) { f64::MAX } else { raw_u[i] };
+            let lb = cache_lbnd[i];
+            let ub = cache_ubnd[i];
             if lb != -f64::MAX && ub != f64::MAX {
                 let mut hw = (0.5e-6 * (ub - lb)).abs();
                 let c = 0.5 * (ub + lb);
@@ -1446,40 +1425,14 @@ impl Mapping for Interval {
     }
 
     fn simplified(&self, _gate: ViaSimplify) -> AstResult<(DynMapping, bool)> {
-        // Box-reclassification: an Interval whose bounds are all finite
-        // (no BAD on either side) and well-ordered (lbnd[i] <= ubnd[i])
-        // is mathematically a BoxRegion. The C reference's interval.c
-        // Simplify performs this reclassification before any
-        // base-to-current remap; mirror that ordering. Negated and
-        // not-closed Intervals stay as Intervals — Box's contract is a
-        // closed, non-negated axis-aligned region.
-        let lbnd = &self.data.points[0];
-        let ubnd = &self.data.points[1];
-        let all_finite = lbnd.iter().chain(ubnd.iter()).all(|&v| !is_bad(v));
-        let well_ordered = lbnd.iter().zip(ubnd.iter()).all(|(&l, &u)| l <= u);
-        if all_finite && well_ordered && !self.data.negated && self.data.closed {
-            // Box stores defining points as [centre, corner] (point 0 =
-            // centre, point 1 = corner). Mirrors C box.c astBox
-            // construction from lower/upper bounds.
-            let centre: Vec<f64> = lbnd
-                .iter()
-                .zip(ubnd.iter())
-                .map(|(&l, &u)| 0.5 * (l + u))
-                .collect();
-            let corner = ubnd.clone();
-            let frameset = FrameSet::new(self.data.frameset.current().snapshot());
-            let mut data = RegionData::new(frameset, vec![centre, corner]);
-            data.adaptive = self.data.adaptive;
-            data.mesh_size = self.data.mesh_size;
-            data.mesh_size_set = self.data.mesh_size_set;
-            data.fill_factor = self.data.fill_factor;
-            data.fill_factor_set = self.data.fill_factor_set;
-            data.closed = true;
-            data.closed_set = true;
-            if let Some(unc) = self.data.uncertainty.as_ref() {
-                data.uncertainty = Some(unc.clone());
-            }
-            return Ok((Box::new(super::BoxRegion { data }), true));
+        // If this Interval is equivalent to a Box, simplify that Box and
+        // return the result (interval.c:3196-3201). The equivalent Box carries
+        // the Interval's FrameSet, so its own Simplify is what re-expresses
+        // the bounds in the current Frame; nothing is transferred back onto an
+        // Interval and C applies no `astRegOverlay` on this branch.
+        if let (_, _, Some(box_reg)) = self.cache()? {
+            let simplified = (box_reg.as_ref() as &dyn Mapping).simplify()?;
+            return Ok((simplified, true));
         }
 
         // Not equivalent to a Box: invoke the parent Region simplify

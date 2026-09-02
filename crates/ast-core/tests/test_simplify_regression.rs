@@ -142,9 +142,22 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 /// drift, and the corpus-freshness rule keeps them: regenerating one here would
 /// replace a cross-platform reference with this machine's libm. So the byte
 /// comparison drops exactly the named card, on exactly the named fixture,
-/// carrying exactly the named value — and only while both values are
-/// cancellation residue, below the entry's bound in absolute value, on an
-/// element whose row-mates are of order one.
+/// carrying exactly the named value, and only while that value is below the
+/// entry's bound in absolute value.
+///
+/// An entry is admissible only when the port reproduces this machine's C
+/// capture on that card to the last digit — which is what makes the difference
+/// the reference's platform and not the port's arithmetic. Two shapes qualify:
+///
+/// - **Cancellation residue.** `rigby`'s `IM5` is a matrix element near zero
+///   whose row-mates are of order one, so its value is the residue of a
+///   subtraction and carries no significant figures at all.
+/// - **A trailing-figure spread the reference does not reproduce.**
+///   `cap_interval_01`'s `X5` and `X6` are the two sky half-widths of the
+///   default uncertainty Box, agreeing with the reference to twelve significant
+///   figures. They are nominally equal, and this machine's C makes them equal
+///   to the last bit; the reference has them differing from *each other*, which
+///   is that platform's transformation of the same two widths.
 ///
 /// Naming both values is what keeps the licence from spreading: `rigby` has a
 /// second `IM5` card, holding an exact zero, that the same card name would also
@@ -152,13 +165,29 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 ///
 /// `(fixture, card name, value in the reference, value this machine produces,
 /// magnitude bound)`.
-const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, &str, &str, f64)] = &[(
-    "rigby",
-    "IM5",
-    "-5.9658198263111446e-17",
-    "-5.8980598183211441e-17",
-    1e-15,
-)];
+const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, &str, &str, f64)] = &[
+    (
+        "rigby",
+        "IM5",
+        "-5.9658198263111446e-17",
+        "-5.8980598183211441e-17",
+        1e-15,
+    ),
+    (
+        "cap_interval_01",
+        "X5",
+        "2.4240684055495722e-06",
+        "2.4240684055476816e-06",
+        1e-5,
+    ),
+    (
+        "cap_interval_01",
+        "X6",
+        "2.4240684055430873e-06",
+        "2.4240684055476816e-06",
+        1e-5,
+    ),
+];
 
 /// The value a card line carries, as written, with any trailing comment removed.
 fn card_value<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
@@ -728,20 +757,15 @@ fn simplify_regression() {
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // (A) Numeric, in the 4-d uncertainty Box's corner point: `X7` is
-        // 86400x the reference because the time uncertainty's base->current
-        // ZoomMap (1/86400) is not applied to it, and `X5`/`X6` differ in the
-        // 12th significant figure, where C's two sky values differ from each
-        // other and the port's do not.
-        (
-            "cap_interval_01",
-            "uncertainty corner: X7 misses the time ZoomMap, X5/X6 differ in the 12th figure",
-        ),
-        // (B) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
-        // 4-ulp token tolerance, so real arithmetic divergence.
+        // Numeric, on one mesh coordinate: `X6` diverges from this machine's C
+        // capture by ~1.2e-10 relative, past the 4-ulp token tolerance, so it
+        // is the port's arithmetic and not the reference's platform. Its
+        // row-mate `X5` matches that capture to ~1 ulp and differs only from
+        // the reference, which `NUMERIC_PLATFORM_DRIFT` does not yet cover, so
+        // the row still carries both lines.
         (
             "cap_pointlist_01",
-            "two mesh coordinates diverge past 4 ulp",
+            "one mesh coordinate diverges past 4 ulp",
         ),
     ];
     let ungated: Vec<&str> = SERIAL_UNGATED.iter().map(|(n, _)| *n).collect();

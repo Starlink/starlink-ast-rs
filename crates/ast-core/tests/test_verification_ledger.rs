@@ -99,22 +99,22 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
-        1,
-        "one inverse-matrix element of `rigby`, whose reference was captured \
-         on another platform's libm: the pinned C does not reproduce its value \
-         here either, and the corpus-freshness rule keeps a cross-platform \
-         reference rather than replacing it with this machine's. Both values \
-         are cancellation residue near zero, and the entry names both, so the \
-         licence covers one line on one fixture",
+        3,
+        "one inverse-matrix element of `rigby` and the two sky half-widths of \
+         `cap_interval_01`'s uncertainty Box, whose references were captured \
+         on another platform's libm: the pinned C does not reproduce their \
+         values here either, the port reproduces this machine's capture to the \
+         last digit, and the corpus-freshness rule keeps a cross-platform \
+         reference rather than replacing it with this machine's. Each entry \
+         names both values, so each licence covers one line on one fixture",
     ),
     (
         "test_simplify_regression.rs",
         "SERIAL_UNGATED",
-        2,
-        "fixtures whose simplified dump differs from C's `.simp` in something \
-         other than an `IsSimp` line. Two causes, each named per row and \
-         traced to a port gap in PLAN.md §6: a `Closed` card C omits at its \
-         default, and two mesh coordinates past 4 ulp",
+        1,
+        "one fixture whose simplified dump differs from C's `.simp` in \
+         something other than an `IsSimp` line: a `cap_pointlist_01` mesh \
+         coordinate past the 4-ulp token tolerance, traced in PLAN.md §6",
     ),
     (
         "test_simplify_regression.rs",
