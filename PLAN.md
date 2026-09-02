@@ -640,29 +640,53 @@ Specified in
 [`docs/superpowers/specs/2026-08-21-simplify-mapmerge-audit-design.md`](superpowers/specs/2026-08-21-simplify-mapmerge-audit-design.md)
 as W3.
 
-### 9.1 `cefit_circle_*` — the two dump paths disagree with each other
+### 9.1 `cefit_circle_*` — CLOSED: the card is discarded on load
 
-`test_regions.rs::simplify_circle_conformal_keeps_circle` and
-`simplify_circle_nonconformal_keeps_circle` fail. The port emits an `IsSimp`
-card on the FrameSet's inner ZoomMap that the pinned C does not.
+The port emitted an `IsSimp` card on the FrameSet's inner ZoomMap
+(`cefit_circle_conformal`) and MathMap (`cefit_circle_nonconformal_keep`) that
+the pinned C does not.
 
-What the instrumentation established:
+The instrumentation had established that C dumps an object with `flags = 0`
+even though the input `.map` carries `IsSimp = 1` on that Mapping and
+`astLoadMapping` honours the card (`mapping.c:24137`), and concluded that the
+object must have been freshly constructed. It was not. It is the same object,
+whose flag its own loader discarded: `astLoadZoomMap` re-applies the validated
+`Zoom` value through `SetZoom` (`zoommap.c:2237-2238`), and that setter calls
+`astClearIsSimple` under the convention in §9.2. `astLoadMathMap` does the same
+for `SimpFI`, `SimpIF` and `Seed` (`mathmap.c:7392, 7397, 7410`).
 
-- The input `.map` carries `IsSimp = 1` on that ZoomMap, and C's loader honours
-  it (`mapping.c:24138`).
-- At dump time C is writing a *different* ZoomMap object with `flags = 0`
-  (`DUMPALL obj=… class=ZoomMap invert=127 flags=0`). C's Mapping copy
-  constructor clears only `report` (`mapping.c:23608-23648`), so a copy would
-  have preserved the flag: the object C dumps was freshly constructed.
-- Which constructor builds it is not yet identified. Do not guess — the rule
-  has to come from the C source.
+A stamp can still reappear afterwards, which is why the corpus looks
+inconsistent at first reading. `astSimplify_` stamps whatever the vtab slot
+returns (`mapping.c:24783`) and the base `Simplify` returns `astClone(this)` —
+the same pointer — so the stamp lands on the object already in the tree.
+`FrameSet::Simplify` then keeps it only when some edge reduced:
+`astClone( simpler ? new : this )` at `frameset.c:10226` discards the entire
+deep copy otherwise, stamps and all. `Region::Simplify` does the same at
+`region.c:11042`.
 
-Resolved, and it was not a disagreement between the paths: the regression
-harness was not comparing this fixture at all. See §9.0. Both paths now render
-through `AnyObject::from_mapping` and agree that the port emits a card C does
-not, which is cause (B). The C rule that clears it is still unidentified.
+The corpus discriminates the rule on two matched pairs — same class, same
+nesting depth, differing only in whether a clearing attribute is present:
 
-### 9.2 The clear-on-set convention — PORTED; five attributes lack a setter
+| fixture | class | clearing attribute in the `.map` | `IsSimp` in C's `.simp` |
+|---|---|---|---|
+| `cefit_circle_conformal` | ZoomMap | `Zoom = 2` | absent |
+| `cap_poly_unc_frame` | ZoomMap | `Zoom = 4` | present — the copy carrying the re-stamp is the one adopted |
+| `cefit_circle_nonconformal_keep` | MathMap | `SimpFI = 1`, `SimpIF = 1` | absent |
+| `cap_poly_bent_edges` | MathMap | none, so `TestSimpFI` is false | present |
+
+The dump/load asymmetry is C's own and is recorded in
+`docs/issues/c-library-quirks.md` ("The `IsSimp` card does not survive being
+read back, for twelve classes").
+
+A second rule surfaced with it and closed `NO_ISSIMP_CARD_UNGATED`: no
+Frame-kind object ever carries a top-level `IsSimp` card, because
+`astGetIsSimple` is overridden on the Frame class to return zero unconditionally
+(`frame.c:5590`, "always zero because Frames are not immutable"), and FrameSet
+and every Region inherit that override. `test_simplify_regression.rs` now
+requires a top-level card exactly when the result is not Frame-kind, on every
+negative fixture in the corpus.
+
+### 9.2 The clear-on-set convention — PORTED; four attributes lack a setter
 
 Upstream `e40e71b4` added the rule: a setter for an attribute that feeds the
 first part of that class's own `astMapMerge` discards both simplified records
@@ -675,7 +699,7 @@ It applies the rule in 11 classes:
 
 | class | attributes | port |
 |---|---|---|
-| ZoomMap | `Zoom` | no setter |
+| ZoomMap | `Zoom` | `set_factor` |
 | LutMap | `LutInterp` | `set_interp` |
 | LutMap | `LutEpsilon` | no setter |
 | MathMap | `Seed`, `SimpFI`, `SimpIF` | `set_seed`, `clear_seed`, `set_simp_fi`, `set_simp_if` |
@@ -697,20 +721,29 @@ GrismMap has no setter, but C's own merge builds its result with `astCopy`
 followed by a setter per adjusted attribute (`grismmap.c:573-592`), so the
 port's `merge_with_zoom` discards the records on the copy it returns.
 
-**No fixture can express this.** The simplify corpus dumps, simplifies and dumps
-again; there is no "set an attribute after simplifying" step in the format, and
-adding one would change every consumer.
-The gate is `crates/ast-core/tests/test_clear_on_set.rs`: a case per setter, and
-`record_survives_invert_and_back`, which pins an operation C does *not* cover
-(`mapping.h:424-437`) so the other 18 assertions cannot pass on a port that
-never records anything.
+**A fixture expresses half of it.** The simplify corpus dumps, simplifies and
+dumps again, so it has no "set an attribute after simplifying" step and cannot
+reach a setter directly. It does reach the *loader*, which C routes through the
+same setters: `cefit_circle_conformal` (ZoomMap) and
+`cefit_circle_nonconformal_keep` (MathMap) both dumped a card C discards on load,
+and `cap_poly_bent_edges` — whose MathMap carries no `SimpFI` / `SimpIF` /
+`Seeded` card, so `TestSimpFI` is false and nothing is routed — is the control
+that keeps its card (§9.1).
+
+The direct half is gated by `crates/ast-core/tests/test_clear_on_set.rs`: a case
+per setter, plus `record_survives_invert_and_back`, which pins an operation C
+does *not* cover (`mapping.h:424-437`) so the other assertions cannot pass on a
+port that never records anything, plus `load_discards_the_record_for_every_clear_on_set_class`,
+which dumps a stamped Mapping with the attribute set, reads it back and requires
+the record gone — with ShiftMap, which clears nothing, as the control that must
+keep it.
 C's behaviour is confirmed by the probe recorded in
 `docs/issues/c-oracle-probe-recipe.md` ("Worked probe — the clear-on-set
-convention"), which reads `IsSimple` through the public string interface
-across a set, a clear and the invert control.
+convention"), which reads `IsSimple` through the public string interface across a
+set, a clear and the invert control.
 
-**Still open, deliberately.** Five of C's attributes have no setter in the port:
-`ZoomMap::Zoom`, `LutMap::LutEpsilon`, `PcdMap::Disco`, `IntraMap::IntraFlag`,
+**Still open, deliberately.** Four of C's attributes have no setter in the port:
+`LutMap::LutEpsilon`, `PcdMap::Disco`, `IntraMap::IntraFlag`,
 and GrismMap's eight macro-form attributes.
 The rule applies to each when its setter lands, and the row above says so.
 Adding the setters to close this section would be a new public attribute surface
