@@ -323,6 +323,38 @@ pub trait Region: Frame + Mapping {
     #[doc(hidden)]
     fn region_fs_flag(&self) -> bool;
 
+    /// Clear `RegionFS` on this Region and on every Region nested inside it.
+    ///
+    /// C's Region `Copy` ends with `astClearRegionFS( out )`
+    /// (region.c:12936-12940), and each Region nested in the copy is itself a
+    /// copy, so the clear reaches all of them. A cleared `RegionFS` yields the
+    /// default of 1, so a deep copy always dumps its own Frame — which is what
+    /// restores the Frame on a component Region that had it suppressed.
+    ///
+    /// This deliberately is not part of [`Clone`]: the port also clones where C
+    /// takes a new reference with `astClone`, and those must leave `RegionFS`
+    /// alone. Compound classes override this to reach their component Regions.
+    fn clear_region_fs_deep(&mut self) {
+        self.set_region_fs_flag(true);
+        if let Some(mut unc) = self.get_uncertainty() {
+            unc.clear_region_fs_deep();
+            self.store_uncertainty(Some(unc));
+        }
+    }
+
+    /// A deep copy of this Region, as C's `astCopy` produces one.
+    ///
+    /// [`clone_region`](Region::clone_region) alone is the port of `astClone` —
+    /// a second reference to the same Region. `astCopy` differs in one
+    /// observable way: it clears `RegionFS` throughout the copy
+    /// (region.c:12936-12940), so use this wherever the C source says
+    /// `astCopy`.
+    fn copy_region(&self) -> DynRegion {
+        let mut out = self.clone_region();
+        out.clear_region_fs_deep();
+        out
+    }
+
     /// Set the uncertainty region associated with boundary positions.
     ///
     /// Faithful port of C `astSetUnc` (region.c:10754). Each Region may carry
@@ -819,7 +851,11 @@ pub trait Region: Frame + Mapping {
 
         // Take a deep copy of the (possibly axis-reduced) Region and perform
         // the base→current edge surgery on its FrameSet (region.c:5703-5722).
-        let mut result: DynRegion = usethis.clone_region();
+        // The base and current Frames of the result generally differ, so the
+        // result includes its FrameSet in a dump (region.c:5721
+        // `astSetRegionFS( result, 1 )`) — which is also what the copy's own
+        // cleared `RegionFS` leaves it at.
+        let mut result: DynRegion = usethis.copy_region();
         {
             let fs = result.region_frameset_mut();
             let icurr = fs.current_idx() + 1; // 1-based for FrameRef::Index
@@ -912,7 +948,7 @@ pub trait Region: Frame + Mapping {
     fn parent_region_simplify(&self) -> AstResult<Option<DynRegion>> {
         // Deep-copy the supplied Region so the result differs from the input
         // when simplification occurs (region.c:11131).
-        let mut new = self.clone_region();
+        let mut new = self.copy_region();
         let mut simpler = false;
 
         // Simplify the encapsulated FrameSet, noting whether it changed

@@ -8,7 +8,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
-use crate::mappings::{DynMapping, Mapping, UnitMap, ViaSimplify};
+use crate::mappings::{Composition, DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
 use super::{DynRegion, Overlap, Region};
@@ -334,50 +334,91 @@ impl Region for NullRegion {
         // only merges with another NullRegion (other classes handle merging a
         // NullRegion with themselves). `intfirst` selects the axis order.
         //
-        // Guard (nullregion.c:645): same Closed, and either both or neither
-        // have a defined uncertainty; both must have equal Negated.
+        // Guard (nullregion.c:645, 672): the same Closed, either both or
+        // neither with a defined uncertainty, and equal Negated.
         let other = other_reg.as_any().downcast_ref::<NullRegion>()?;
         if self.is_closed() != other.is_closed()
-            || self.data.uncertainty.is_some() != other.data.uncertainty.is_some()
+            || self.test_unc() != other.test_unc()
             || self.data.negated != other.data.negated
         {
             return None;
         }
 
-        // Combine the two current Frames into a CmpFrame in the requested
-        // order.
-        let f_this = self.data.frameset.current().snapshot();
-        let f_reg = other_reg.get_region_frame();
-        let cmp_frame = if intfirst {
-            crate::frames::CmpFrame::new(f_this, f_reg)
+        // The merged Region is built on a CmpFrame of the two *base* Frames
+        // and mapped into the current Frames at the end (nullregion.c:652-661).
+        let bfrm_this = self.data.frameset.base().snapshot();
+        let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
+        let bfrm = if intfirst {
+            crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)
         } else {
-            crate::frames::CmpFrame::new(f_reg, f_this)
+            crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)
         };
-        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
 
         // NullRegion has no defining points.
-        let mut data = RegionData::new(frameset, Vec::new());
-        data.negated = self.data.negated;
-        data.closed = self.data.closed && other.data.closed;
-        data.closed_set = self.data.closed_set || other.data.closed_set;
-        data.adaptive = self.data.adaptive && other.data.adaptive;
+        let frameset = FrameSet::new(Box::new(bfrm) as DynFrame);
+        let mut new = NullRegion {
+            data: RegionData::new(frameset, Vec::new()),
+        };
 
-        // Combine uncertainties into a Prism when both are present, in the
-        // requested order (nullregion.c:694). C additionally simplifies the
-        // Prism; storing it unsimplified is transform-equivalent (a later
-        // simplify pass reduces it).
-        if let (Some(u1), Some(u2)) = (&self.data.uncertainty, &other.data.uncertainty) {
+        // Propagate the supplied Region's attributes (nullregion.c:675). C
+        // overlays from `this` alone, not from a combination of the two, and
+        // asks for the uncertainty to be cleared so the one installed below is
+        // the only one.
+        new.reg_overlay(self, true);
+
+        // Ensure Negated is set correctly (nullregion.c:678-682). The guard
+        // above already requires the two to agree.
+        new.data.negated = self.data.negated;
+
+        // When both supplied Regions have an uncertainty, the merged Region's
+        // uncertainty is a Prism of the two base-Frame uncertainties,
+        // simplified, installed through astSetUnc (nullregion.c:685-705).
+        if self.test_unc() && other.test_unc() {
+            let unc_this = self.get_unc_frm(FrameRef::Base).ok()?;
+            let unc_reg = other_reg.get_unc_frm(FrameRef::Base).ok()?;
             let (first, second) = if intfirst {
-                (u1.clone(), u2.clone())
+                (unc_this, unc_reg)
             } else {
-                (u2.clone(), u1.clone())
+                (unc_reg, unc_this)
             };
-            if let Ok(prism) = super::PrismBuilder::from_dyn(first, second).and_then(|b| b.build())
-            {
-                data.uncertainty = Some(Box::new(prism) as DynRegion);
-            }
+            let bunc = super::PrismBuilder::from_dyn(first, second)
+                .and_then(|b| b.build())
+                .ok()?;
+            let sbunc = <dyn Mapping>::simplify(&bunc).ok()?;
+            let sbunc = super::merge_util::mapping_into_region(sbunc)?;
+            new.set_uncertainty(sbunc);
         }
 
+        // The current Frames, combined in the same order (nullregion.c:713-721).
+        let cfrm_this = self.data.frameset.current().snapshot();
+        let cfrm_reg = other_reg.get_region_frame();
+        let cfrm = if intfirst {
+            crate::frames::CmpFrame::new(cfrm_this, cfrm_reg)
+        } else {
+            crate::frames::CmpFrame::new(cfrm_reg, cfrm_this)
+        };
+
+        // The two base->current Mappings, in parallel (nullregion.c:724-735).
+        let map_this = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let map_reg = other_reg
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let bcmap = if intfirst {
+            crate::mappings::CmpMap::new(map_this, map_reg, Composition::Parallel).ok()?
+        } else {
+            crate::mappings::CmpMap::new(map_reg, map_this, Composition::Parallel).ok()?
+        };
+
+        // Map the merged Region into the new current Frame (nullregion.c:738).
+        let mut result = new.map_region(&bcmap, &cfrm).ok()?;
+
+        // FillFactor product and MeshSize ratio scaling, applied to the mapped
+        // result as C applies them (nullregion.c:740-776).
         let scaling = super::merge_util::MergeScaling {
             msz_this: (
                 self.data.effective_mesh_size(),
@@ -388,9 +429,11 @@ impl Region for NullRegion {
             fill_this: (self.data.effective_fill_factor(), self.data.fill_factor_set),
             fill_reg: (other.fill_factor(), other.test_fill_factor()),
         };
-        super::merge_util::apply_merge_scaling(&mut data, &scaling);
+        super::merge_util::apply_merge_scaling_to(result.as_mut(), &scaling);
 
-        Some(Box::new(NullRegion { data }))
+        // A Region is a Mapping; the sibling-trait port needs the upcast
+        // written down.
+        Some(result.as_dyn_mapping().clone_box())
     }
 
     fn clone_region(&self) -> DynRegion {

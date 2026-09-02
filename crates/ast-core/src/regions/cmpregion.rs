@@ -919,6 +919,18 @@ impl Region for CmpRegion {
         self.data.region_fs
     }
 
+    fn clear_region_fs_deep(&mut self) {
+        // C copies both component Regions (cmpregion.c:4165-4166), and each copy clears its own
+        // `RegionFS` (region.c:12936-12940).
+        self.set_region_fs_flag(true);
+        if let Some(mut unc) = self.get_uncertainty() {
+            unc.clear_region_fs_deep();
+            self.store_uncertainty(Some(unc));
+        }
+        self.region1.clear_region_fs_deep();
+        self.region2.clear_region_fs_deep();
+    }
+
     fn get_uncertainty(&self) -> Option<DynRegion> {
         self.data.uncertainty.clone()
     }

@@ -73,6 +73,28 @@ pub(super) fn apply_merge_scaling(data: &mut RegionData, scaling: &MergeScaling)
     }
 }
 
+/// [`apply_merge_scaling`] for a Region that already exists, rather than for the
+/// `RegionData` a Region is about to be built from.
+///
+/// `MergeNullRegion` applies the FillFactor product and the MeshSize ratio to
+/// the Region `astMapRegion` returned (nullregion.c:740-776), not to the Region
+/// built before it, so the result's own axis count is what sets the MeshSize
+/// default.
+pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &MergeScaling) {
+    if scaling.fill_this.1 || scaling.fill_reg.1 {
+        region.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0);
+    }
+
+    if scaling.msz_this.1 || scaling.msz_reg.1 {
+        let def_this = default_mesh_size(scaling.msz_this.2) as f64;
+        let def_reg = default_mesh_size(scaling.msz_reg.2) as f64;
+        let fac_this = scaling.msz_this.0 as f64 / def_this;
+        let fac_reg = scaling.msz_reg.0 as f64 / def_reg;
+        let def_result = default_mesh_size(region.naxes()) as f64;
+        region.set_mesh_size((fac_this * fac_reg * def_result).round() as usize);
+    }
+}
+
 /// Finish a cross-type Region merge: build the concrete merged Region in
 /// the combined `frameset`, propagate the `this`-side attributes, clear
 /// the Negated flag, attach the combined uncertainty, apply the

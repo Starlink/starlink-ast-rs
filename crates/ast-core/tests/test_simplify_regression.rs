@@ -728,20 +728,15 @@ fn simplify_regression() {
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // (C) The uncertainty Region does not collapse Prism -> Box.
-        (
-            "nullregion_unc_fillfactor_merge",
-            "emits Prism where C emits Box",
-        ),
-        // (D) Region-simplify shape divergence, not a card: we keep a FrmSet
+        // (A) Region-simplify shape divergence, not a card: we keep a FrmSet
         // where C has collapsed to bare Points.
         (
             "cap_zoommap_04",
             "emits FrmSet/FrameSet where C emits Points/PointSet",
         ),
-        // (E) Serialisation default: C omits Closed when it holds the default.
+        // (B) Serialisation default: C omits Closed when it holds the default.
         ("cap_interval_01", "emits Closed = 1 where C omits it"),
-        // (F) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
+        // (C) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
         // 4-ulp token tolerance, so real arithmetic divergence.
         (
             "cap_pointlist_01",
@@ -781,11 +776,8 @@ fn simplify_regression() {
         "cap_specmap_02 (7 vs C's 8)",
         // Shrunk from `cap_specmap_02`, and carries the same signature.
         "cap_cmpmap_nested_tag (4 vs C's 5)",
-        // Renders to a Region, so the old hand-rolled dispatch returned `None`
-        // and the count was never taken. Causes (B) and (D) in SERIAL_UNGATED.
-        // Cause (A), the four SwitchMap fixtures, is closed: C reaches each
-        // encapsulated Mapping through `astSimplify`, which records what it
-        // returns, and `SwitchMap::simplified` now stamps them.
+        // Renders to a Region, and carries row (A) of SERIAL_UNGATED: the
+        // FrmSet the port keeps is what its three surplus stamps hang off.
         "cap_zoommap_04 (3 vs C's 0)",
     ];
     issimp_disagreements.sort();
