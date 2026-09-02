@@ -71,6 +71,27 @@ entry's applied direction rather than absorbing it. `replace_with_simpler` reads
 orientation-aware accessors, so the stored `Invert` flag selects nothing; the
 entry's flag is carried over unchanged at `polymap.rs:1532-1533`.
 
+## Row 10 — the composition's shape is `astSimplify`'s answer, not one chosen here
+
+C does not decide what a linear PolyMap becomes. It builds the ShiftMap and the
+MatrixMap from the accumulated offsets and matrix, composes them in series and
+simplifies the pair:
+
+```c
+         sm = astShiftMap( nout, offsets, " ", status );
+         mm = astMatrixMap( nin, nout, 0, matrix, " ", status );
+         cm = astCmpMap( mm, sm, 1, " ", status );
+         new = astSimplify( cm );
+```
+
+`replace_with_simpler` builds the same two Mappings, composes them the same way
+round and calls `simplify` on the pair (`polymap.rs:934-939 (fn replace_with_simpler)`). Deriving the
+shape here instead — a bare MatrixMap when every offset is zero, a WinMap when
+the matrix is diagonal — reaches the same Mapping by a different route and loses
+what the call also does: `astSimplify` stamps whatever it returns
+(`mapping.c:24783 (fn astSimplify_)`), so the replacement carries the `IsSimp` card C's reference
+shows on it. `lsst.simp` is what pins that.
+
 ## Rows 4 to 12 — the reduction is a step of the merge
 
 Both replace-with-simpler steps are the head of C's `MapMerge`, not a separate

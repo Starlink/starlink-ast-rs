@@ -557,10 +557,17 @@ impl MergeCtx {
     /// when it returns that component unreduced (`astSimplify_`, mapping.c:24763
     /// — the tag is set on the returned clone, which for an unreduced Mapping is
     /// the component itself).
+    ///
+    /// The record is per orientation, and the orientation C stamps is the one it
+    /// forced the component into before calling `astSimplify` —
+    /// `invert_list[where]` (cmpmap.c:1436-1440), the entry's effective
+    /// inversion. C restores the component's own `Invert` afterwards
+    /// (cmpmap.c:1447-1454), so the dump reads the record at the *stored*
+    /// orientation instead, and the two need not agree.
     pub(crate) fn set_component_simple_tag(&mut self, index: usize) {
+        let eff_inv = self.list[index].1;
         if let Some(cm) = self.list[index].0.as_any_mut().downcast_mut::<CmpMap>() {
-            let inv = cm.is_inverted();
-            cm.set_dump_simplified_in(inv, true);
+            cm.set_dump_simplified_in(eff_inv, true);
         }
     }
 
@@ -731,6 +738,20 @@ pub(crate) fn cmp_map_merge(
                 ctx.set_pair_single(where_, (fwd, new_inv, new_inv));
                 return Some(where_);
             }
+
+            // C's `!simpler` case is `new == map`: the recursion handed back the
+            // very object it was given, so every `IsSimple` it raised on that
+            // object's descendants is already on the component the closing fold
+            // will encapsulate. Owned values make the returned object a separate
+            // one, so adopt it in place of the entry to carry those records
+            // forward; `!changed` is C's pointer identity, which means the two
+            // are the same Mapping.
+            let mut adopted = simplified;
+            if adopted.is_inverted() {
+                adopted.invert();
+            }
+            let (eff, orig) = (ctx.entry(where_).1, ctx.entry(where_).2);
+            ctx.set_pair_single(where_, (adopted, eff, orig));
         }
 
         ctx.set_component_simple_tag(where_);
@@ -3368,7 +3389,7 @@ pub(crate) fn simplify_mapping_reporting_change(
     // only reduction was a `Converged` one: in the latter case C rebuilt nothing
     // itself, so there is no fold whose `astSetInvert` would clear component tags.
     if !changed && !simpler && reduction != OpaqueLeafReduction::Rebuilds {
-        return reconstruct(list, series).map(|m| (m, false));
+        return Ok((reconstruct(list, series)?, false));
     }
 
     // C's `simpler` branch: the result is folded afresh from the component list,
@@ -3384,7 +3405,7 @@ pub(crate) fn simplify_mapping_reporting_change(
             component.set_allow_simplify(false);
         }
     }
-    reconstruct(list, series).map(|m| (m, true))
+    Ok((reconstruct(list, series)?, true))
 }
 
 // ------------------------------------------------------------------ //

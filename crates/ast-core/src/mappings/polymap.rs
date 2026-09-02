@@ -14,7 +14,6 @@ use super::matrix::MatrixMap;
 use super::rate::numeric_rate;
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
-use super::winmap::WinMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
@@ -909,62 +908,35 @@ impl PolyMap {
             });
 
         if is_affine {
-            let mut shifts = vec![0.0; nout];
+            // C fills a zero-initialised offset vector and coefficient matrix
+            // from the consolidated terms (`polymap.c:3760-3841`): a term with
+            // no input powers is an offset, a term with a single unit power is a
+            // matrix element.
+            let mut offsets = vec![0.0; nout];
             let mut matrix = vec![0.0; nout * nin];
 
             for term in &consolidated {
                 let out_idx = term.out_axis - 1;
                 let power_sum: usize = term.powers.iter().sum();
                 if power_sum == 0 {
-                    shifts[out_idx] += term.coeff;
+                    offsets[out_idx] = term.coeff;
                 } else {
                     let in_idx = term.powers.iter().position(|&p| p == 1).unwrap();
-                    matrix[out_idx * nin + in_idx] += term.coeff;
+                    matrix[out_idx * nin + in_idx] = term.coeff;
                 }
             }
 
-            let all_shifts_zero = shifts.iter().all(|&s| s.abs() < 1e-30);
-
-            if all_shifts_zero {
-                // Pure linear: just MatrixMap.
-                if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
-                    if let Ok(mm) = MatrixMap::new(m) {
-                        return Some(Box::new(mm));
-                    }
-                }
-            } else {
-                // Affine: check if it can be a WinMap (diagonal matrix,
-                // square case).
-                let is_diagonal = nin == nout
-                    && (0..nout).all(|i| {
-                        (0..nin).all(|j| {
-                            if i == j {
-                                true
-                            } else {
-                                matrix[i * nin + j].abs() < 1e-30
-                            }
-                        })
-                    });
-
-                if is_diagonal {
-                    let scales: Vec<f64> = (0..nout).map(|i| matrix[i * nin + i]).collect();
-                    if let Ok(wm) = WinMap::new(&shifts, &scales) {
-                        return Some(Box::new(wm));
-                    }
-                } else {
-                    // General affine: MatrixMap then ShiftMap in series.
-                    if let Ok(m) = ndarray::Array2::from_shape_vec((nout, nin), matrix) {
-                        if let Ok(mm) = MatrixMap::new(m) {
-                            let sm = ShiftMap::new(shifts);
-                            if let Ok(cmp) =
-                                CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series)
-                            {
-                                return Some(Box::new(cmp));
-                            }
-                        }
-                    }
-                }
-            }
+            // C builds the MatrixMap and the ShiftMap, composes them in series
+            // and hands the pair to `astSimplify` (`polymap.c:3847-3851`), so
+            // whatever shape the linear transformation reduces to is the
+            // simplifier's answer rather than a shape decided here. The
+            // simplification is also what leaves `IsSimp` on the replacement.
+            let m = ndarray::Array2::from_shape_vec((nout, nin), matrix).ok()?;
+            let mm = MatrixMap::new(m).ok()?;
+            let sm = ShiftMap::new(offsets);
+            let cm = CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series).ok()?;
+            let cm: &dyn Mapping = &cm;
+            return cm.simplify().ok();
         }
 
         // The linear test failed, so the only replacement left is the

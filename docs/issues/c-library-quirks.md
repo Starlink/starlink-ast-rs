@@ -2547,3 +2547,53 @@ loaded object agree card for card.
 `SimpIF` / `Seeded` card and so routes nothing, is the control.
 
 To be raised upstream.
+
+## An `IsSimp` card can record a merge probe C threw away, because the probe shares its sub-Mappings with the live tree
+
+`astSimplify` stamps the object it returns (`mapping.c:24783`) and nothing in the
+merge machinery ever unstamps it.
+`CmpMap`'s `MapMerge` simplifies speculatively, and one of its probes is built
+out of the very objects it is probing:
+
+```c
+   new1 = CombineMaps( invert1 ? cmpmap1->map2 : cmpmap1->map1, ...
+   simp1 = astSimplify( new1 );
+   simp2 = astSimplify( new2 );
+   ...
+   if ( simpler ) new =
+                (AstMapping *) astCmpMap( simp1, simp2, 1, "", status );
+   new1 = astAnnul( new1 );
+```
+
+`CombineMaps` clones its arguments rather than copying them
+(`cmpmap.c:626-627`), and `astInitCmpMap_` clones again (`cmpmap.c:4650`,
+`cmpmap.c:4657`), so `new1` and `new2` hold the same `AstMapping` objects as the
+CmpMaps they were assembled from.
+Simplifying them (`cmpmap.c:1608-1609`) recurses into `MapMerge`, which stamps
+whichever component `astSimplify` hands back at `cmpmap.c:1443`.
+When the probe then fails its test (`cmpmap.c:1621`) and every pointer is
+annulled (`cmpmap.c:1624-1628`), the wrappers go but the stamp stays on the
+shared component.
+`astCopy` copies the Mapping structure's flag word with everything else, so a
+later copy of that component carries the record too.
+
+The result is an `IsSimp = 1` card on a sub-Mapping that no surviving
+simplification ever produced.
+Which components acquire one depends on which probes ran and on the sharing, not
+on the shape of the tree that is dumped.
+
+The neighbouring branch guards against exactly this class of leakage —
+`SeparateMappings` at `cmpmap.c:1650-1651` exists because "some Mapping classes
+make temporary changes to the Mappings" — but the series-in-parallel probe above
+does not use it.
+
+**Rust behaviour (not mirrored):** owned values give every tree its own
+sub-Mappings, so a discarded probe cannot write on the live tree, and the port
+records only the stamps that surviving simplifications leave.
+`rigby`, `cap_specmap_02` and `cap_cmpmap_nested_tag` each carry one such card;
+`cap_cmpmap_01` and `cap_cmpmap_04` carry one each on top of the `InvA`/`InvB`
+aliasing already recorded above.
+Their `IsSimp` counts are pinned as named exclusions in
+`test_simplify_regression.rs`, so the deficit stays visible and cannot grow.
+
+To be raised upstream.

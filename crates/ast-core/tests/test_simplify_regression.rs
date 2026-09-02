@@ -536,13 +536,15 @@ fn simplify_regression() {
         other_failures.len(),
     );
     // The `IsSimp` card records which sub-Mappings were, at some instant, the
-    // whole result of a simplification. Upstream `e40e71b4` made C's answer
-    // deterministic — a property of the Mapping tree, not of which nodes some
-    // probe happened to touch — so it is now a well-defined target this engine
-    // can be held to, where before it could not be reproduced even in
-    // principle. These are the fixtures that do not yet hit it. Four of the six
-    // are masked by `skip_string_compare` for an unrelated reason and two by the
-    // counted licence, so without this list the number would be invisible.
+    // whole result of a simplification. Upstream `e40e71b4` made that
+    // reproducible for the stamps a surviving simplification leaves, so it is a
+    // target this engine can be held to; these are the fixtures that do not hit
+    // it. Three of the four differ by one card that C wrote during a merge probe
+    // it then abandoned — the probe shares its sub-Mappings with the live tree,
+    // so the stamp outlives it, and owned values cannot reproduce that
+    // (`docs/issues/c-library-quirks.md`). The fourth is a structural
+    // divergence of its own. Without this list the number would be invisible,
+    // because a licensed or skipped string comparison never reaches the count.
 
     if !parse_skipped.is_empty() {
         eprintln!(
@@ -644,30 +646,20 @@ fn simplify_regression() {
     // a row may be added here only once that check reports the fixture fresh.
     // See PLAN.md §6.
     const ISSIMP_DISAGREEMENTS: &[&str] = &[
-        // Under-tagging, gated all along.
+        // Under-tagging on a component C stamped inside a merge probe it then
+        // threw away. The probe's CmpMaps are assembled by cloning, so they
+        // share their sub-Mappings with the live tree and the stamp outlives the
+        // probe; owned values give each tree its own children, so the port
+        // cannot reproduce it. See `docs/issues/c-library-quirks.md`.
         "rigby (8 vs C's 9)",
-        // Under-tagging on an inner WinMap that `astSimplify` handed back
-        // unchanged and still stamped. The same nominated-element stamp as
-        // `cap_cmpmap_01`/`_04`, on a different class. PLAN.md §10.3.
-        "lsst (1 vs C's 2)",
-        // Under-tagging: C tags the CmpMap wrapping the SpecMap/ZoomMap pair,
-        // which the port never forms. PLAN.md §10.3.
         "cap_specmap_02 (7 vs C's 8)",
-        // Newly visible, not new. Both totals agreed with C at 18 by
-        // coincidence: the port tagged leaf classes C never tags in these trees
-        // — a TranMap and a MathMap in `_01`, a TranMap and a second UnitMap in
-        // `_04` — while already missing CmpMap tags C sets. Dropping the
-        // per-member simplify of a dimension-matched sublist removed the leaf
-        // tags, which is C's shape, and left the CmpMap deficit showing. Both
-        // are `skip_string_compare`, so the count was the only gate and the
-        // coincidence passed it. PLAN.md §10.3.
-        "cap_cmpmap_01 (16 vs C's 18)",
-        "cap_cmpmap_04 (15 vs C's 18)",
-        // These render to a Region, so the old hand-rolled dispatch returned
-        // `None` and the count was never taken. Causes (B) and (D) in
-        // SERIAL_UNGATED. Cause (A), the four SwitchMap fixtures, is closed:
-        // C reaches each encapsulated Mapping through `astSimplify`, which
-        // records what it returns, and `SwitchMap::simplified` now stamps them.
+        // Shrunk from `cap_specmap_02`, and carries the same signature.
+        "cap_cmpmap_nested_tag (4 vs C's 5)",
+        // Renders to a Region, so the old hand-rolled dispatch returned `None`
+        // and the count was never taken. Causes (B) and (D) in SERIAL_UNGATED.
+        // Cause (A), the four SwitchMap fixtures, is closed: C reaches each
+        // encapsulated Mapping through `astSimplify`, which records what it
+        // returns, and `SwitchMap::simplified` now stamps them.
         "cap_zoommap_04 (3 vs C's 0)",
     ];
     issimp_disagreements.sort();

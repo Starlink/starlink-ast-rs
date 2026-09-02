@@ -105,13 +105,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "ISSIMP_DISAGREEMENTS",
-        6,
-        "fixtures whose `IsSimp` card count differs from C's. Some sit inside \
-         `skip_string_compare`, ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED; \
-         `rigby` and `lsst` are byte-compared and fail there too, so for them \
-         this list is a statement of the same gap rather than a mask. Pinned \
-         as a set of its own because for the `skip_string_compare` cases the \
-         count is the only gate",
+        4,
+        "fixtures whose `IsSimp` card count differs from C's. Three differ by \
+         one card C wrote inside a merge probe it then abandoned, which \
+         survives on a sub-Mapping the probe shares with the live tree \
+         (docs/issues/c-library-quirks.md); the fourth, `cap_zoommap_04`, is a \
+         Region-simplify shape gap. Some sit inside `skip_string_compare`, \
+         ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED, so the count is their \
+         only gate, which is why the set is pinned on its own",
     ),
     (
         "test_serialisation.rs",
