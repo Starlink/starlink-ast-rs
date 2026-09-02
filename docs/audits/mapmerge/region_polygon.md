@@ -6,6 +6,9 @@ Audited: 2026-08-24 against pin 07fbe2dc
 Citations: verified against pin 3e60abaa
 Extension points: classified
 
+Uncited C steps:
+- polygon.c:5335 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
+
 Polygon has no `MapMerge`; C gives it a `Simplify` body
 (`polygon.c:5291-5467 (fn Simplify)`) that calls the parent `Region::Simplify` and then, in two
 dimensions and through a non-UnitMap, re-expresses the polygon in its current

@@ -389,6 +389,9 @@ fn c_definition_name(lines: &[&str], i: usize) -> Option<CDefinition> {
     None
 }
 
+mod c_steps;
+pub use c_steps::c_step_comments;
+
 #[cfg(test)]
 mod tests {
     /// A class whose trait method delegates its algorithm to a free function in

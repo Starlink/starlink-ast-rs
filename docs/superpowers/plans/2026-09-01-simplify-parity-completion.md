@@ -1294,7 +1294,7 @@ AST's house style makes this mechanical — every step inside a seam body is pre
 - Consumes: `audit_tools::{c_functions, parse_citation}` from Tasks 2 and 4.
 - Produces: `pub fn c_step_comments(src: &str, function: &str) -> Vec<(usize, String)>` — the line and text of each column-0 comment block inside the named definition, in source order.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `crates/audit-tools/src/c_steps.rs` with the test module only:
 
@@ -1343,7 +1343,7 @@ static int MapMerge( AstMapping *this, int *status ) {
 }
 ```
 
-- [ ] **Step 2: Register the module and watch the test fail**
+- [x] **Step 2: Register the module and watch the test fail**
 
 Add to `crates/audit-tools/src/lib.rs`, above the test module:
 
@@ -1358,7 +1358,7 @@ cargo test -p audit-tools 2>&1 | tail -10
 
 Expected: FAIL — `cannot find function `c_step_comments``.
 
-- [ ] **Step 3: Implement it**
+- [x] **Step 3: Implement it**
 
 Prepend to `crates/audit-tools/src/c_steps.rs`:
 
@@ -1417,7 +1417,7 @@ pub fn c_step_comments(src: &str, function: &str) -> Vec<(usize, String)> {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 cargo test -p audit-tools 2>&1 | tail -10
@@ -1425,7 +1425,7 @@ cargo test -p audit-tools 2>&1 | tail -10
 
 Expected: PASS, 7 tests.
 
-- [ ] **Step 5: Write the failing coverage gate**
+- [x] **Step 5: Write the failing coverage gate**
 
 Append to `crates/ast-core/tests/test_audit_citations.rs`:
 
@@ -1504,7 +1504,7 @@ fn every_c_step_in_a_cited_body_is_covered_by_a_row() {
 }
 ```
 
-- [ ] **Step 6: Run it and close what it reports**
+- [x] **Step 6: Run it and close what it reports**
 
 ```bash
 cargo test -p ast-core --test test_audit_citations 2>&1 | tail -40
@@ -1521,7 +1521,7 @@ Uncited C steps:
 Add the heading only where it is needed, and give each entry a reason.
 Do not widen the gate.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit 2>&1 | tail -10

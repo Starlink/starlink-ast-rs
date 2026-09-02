@@ -298,3 +298,94 @@ fn every_architecture_row_lands_on_a_trait_method() {
         bad.join("\n  ")
     );
 }
+
+/// Every C step inside the seam body a repaired checklist audits is covered by
+/// one of that checklist's rows.
+///
+/// The bodies considered are the ones the checklist's own table rows cite in the
+/// C file its header names, so the gate needs no class-to-function map: putting
+/// a row's C site inside a body commits the checklist to enumerating that body.
+/// Prose elsewhere in the file may cite another class's code as evidence without
+/// taking on its steps. A step the checklist deliberately does not enumerate is
+/// listed under an `Uncited C steps:` heading with a reason, which is a named
+/// exclusion rather than a silent one.
+#[test]
+fn every_c_step_in_a_cited_body_is_covered_by_a_row() {
+    let mut bad = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        if !is_repaired(&text) {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+        // The C file this checklist audits, by base name.
+        let Some(c_source) = text
+            .lines()
+            .take(12)
+            .find_map(|l| l.trim().strip_prefix("C source:"))
+            .and_then(|p| p.trim().rsplit('/').next())
+        else {
+            bad.push(format!("{name}: header names no `C source:`"));
+            continue;
+        };
+
+        // The ranges the table rows cite in that file.
+        let mut ranges: Vec<(String, usize, usize)> = Vec::new();
+        for line in text.lines() {
+            let Some(cells) = row_cells(line) else {
+                continue;
+            };
+            for (cit, _) in audit_tools::citations(cells[2]) {
+                if cit.file == c_source {
+                    ranges.push((cit.file, cit.start, cit.end.unwrap_or(cit.start)));
+                }
+            }
+        }
+        let excused: Vec<&str> = text
+            .lines()
+            .skip_while(|l| !l.starts_with("Uncited C steps:"))
+            .skip(1)
+            .take_while(|l| l.starts_with("- "))
+            .collect();
+
+        let mut bodies: Vec<(String, String)> = Vec::new();
+        for (file, start, _) in &ranges {
+            let Resolution::Found(src_path) = resolve(file) else {
+                continue;
+            };
+            let src = std::fs::read_to_string(&src_path).expect("source readable");
+            if let Some(func) = audit_tools::enclosing_c_function(&src, *start) {
+                if !bodies.iter().any(|(f, g)| f == file && *g == func) {
+                    bodies.push((file.clone(), func));
+                }
+            }
+        }
+
+        for (file, func) in bodies {
+            let Resolution::Found(src_path) = resolve(&file) else {
+                continue; // reported by the resolution gate
+            };
+            let src = std::fs::read_to_string(&src_path).expect("source readable");
+            for (line, comment) in audit_tools::c_step_comments(&src, &func) {
+                let covered = ranges
+                    .iter()
+                    .any(|(f, s, e)| *f == file && *s <= line && line <= *e);
+                let excused = excused
+                    .iter()
+                    .any(|l| l.contains(&format!("{file}:{line}")));
+                if !covered && !excused {
+                    bad.push(format!(
+                        "{name}: {file}:{line} in {func} — \"{comment}\" is not covered \
+                         by any row and is not listed under `Uncited C steps:`"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "C steps present in a cited body and absent from the checklist:\n  {}",
+        bad.join("\n  ")
+    );
+}

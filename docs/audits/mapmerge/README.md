@@ -94,6 +94,29 @@ to the code the seam actually owns, or the collapse fixed.
   the evidence for it live, and the verdict is invalid without that citation.
   This is not a softer `gap`: a gap is work owed, a divergence is work refused.
 
+## `Uncited C steps:`
+
+The rows are not trusted to be complete: `c_step_comments` enumerates the steps
+of the C body from the source, and `test_audit_citations.rs` requires each one to
+fall inside some row's `C site`.
+The bodies it enumerates are the ones the table rows cite in the file the
+`C source:` header names, so prose elsewhere in the checklist can cite another
+class's code as evidence without taking on its steps.
+
+AST's own prologue block is skipped — it documents the function rather than
+naming a step in it.
+Anything else the checklist does not enumerate is named, with a reason, under an
+optional heading in the header block:
+
+```
+Uncited C steps:
+- polygon.c:5335 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
+```
+
+A step that is a step belongs in a row, with its own verdict, even when the
+verdict is `n/a`.
+The heading is for comment blocks that name no step at all.
+
 ## Which classes need a checklist
 
 The list is derived from the source tree, not written down here, so a new class
