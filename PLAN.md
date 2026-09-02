@@ -349,7 +349,7 @@ list as empty, so a ledger row for one would have passed at any size.
 | simplify regression | 469 | 3 | `ISSIMP_DISAGREEMENTS` — fixtures whose `IsSimp` card count still differs from C. Three under-tag by exactly one card, and that card is one C wrote during a merge probe it then abandoned: the probe's CmpMaps are assembled by cloning, so they share their sub-Mappings with the live tree and the stamp outlives the probe (`docs/issues/c-library-quirks.md`, "An `IsSimp` card can record a merge probe C threw away"). Owned values give each tree its own children, so the port cannot reproduce it — `rigby`, `cap_specmap_02` and `cap_cmpmap_nested_tag`, the last shrunk from `cap_specmap_02` to isolate the signature. Retired with this cluster: `cap_zoommap_04`, which over-tagged by three because its uncertainty simplification was being discarded (§10.23); `lsst`, when `PolyMap`'s linear branch began composing its MatrixMap and ShiftMap and handing the pair to `astSimplify` as C does, and `cap_cmpmap_01` / `cap_cmpmap_04`, when `CmpMap::map_merge` began adopting the object its own self-simplify returns unchanged — C's `new == map`, which carries the recursion's descendant stamps forward (§10.3). Retired earlier: `cefit_circle_conformal` and `cefit_circle_nonconformal_keep` when `from_node` began routing through the setters that discard the record, as C's loaders do (§9.2); the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand; `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles; and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). The byte comparison licenses all three through `ABANDONED_PROBE_STAMP_LICENSED`, so the count is their only gate. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale reference is ruled out per fixture by `tools/oracle_fixtures/check_simplify_fresh.sh`, which recaptures the corpus from the pinned C |
 | simplify regression | 469 | 142 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires a top-level card exactly when the result is not Frame-kind — C's `IsSimple` getter is overridden on the Frame class to return zero (`frame.c:5590`) — so the strip can hide neither an untagged Mapping result nor a wrongly tagged Region. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f`. Was 141 before `cap_box_permmap_nonbidi`, the negative control for a PermMap whose permutation is not bi-directional (§10.13) |
 | simplify regression | 469 | 0 | `SERIAL_UNGATED` — empty. Every fixture's simplified dump is byte-compared against C's `.simp` in full, and any difference fails. The table survives so a newly diagnosed C-side artefact has a home, and the harness asserts the set exactly, so a row cannot appear without a diagnosis. All seven causes enumerated in the table below are closed: A (SwitchMap `IsSimp` on FSMap / ISMap), B (a card on a Mapping inside a Region's FrameSet, §9.2), C (`nullregion_unc_fillfactor_merge`'s `Prism` uncertainty), D (`cap_zoommap_04`'s `FrmSet` block, §10.23), E (`cap_interval_01`'s corner point, §10.25), F (`cap_pointlist_01`'s uncertainty corner, §10.26) and G (`parpair_one_side_reduces`'s extra `IsSimp` cards, §10.3) |
-| simplify round-trip (`test_serialisation.rs`) | 790 | 4 | `ROUNDTRIP_DISCARD_LICENSED` — `grism_zoom_merge`, `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies`, `pcd_unit_series_merge`. C's own round-trip of these drops the `IsSimp` card and the port keeps it, because GrismMap's eight attributes and `PcdMap::Disco` are the two remaining clear-on-set attributes with no setter for the loader to route through (§9.2). The other 786 compare byte-exactly against C's round-trip, 43 of them against a `.rt` reference captured from the oracle where C is not idempotent. Asserted as an exact set, so a case that starts round-tripping forces its row out |
+| simplify round-trip (`test_serialisation.rs`) | 792 | 0 | **No relaxation exists.** Every `.map` / `.simp` in the corpus is read, written and byte-compared against C's own round-trip, 43 of them against a `.rt` reference captured from the oracle where C is not idempotent, and any difference fails. Was 4 under `ROUNDTRIP_DISCARD_LICENSED`, two GrismMap and two PcdMap fixtures whose reference drops an `IsSimp` card the port kept: C's loaders re-apply each attribute their `Test*` predicate reports set through the private setter, which discards the record the parent loader installed from the card, and the port now does the same for GrismMap's eight attributes, `LutMap::LutEpsilon` and `PcdMap::Disco` (§9.2) |
 | transform oracle | 1752 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1752 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
@@ -706,7 +706,7 @@ and every Region inherit that override. `test_simplify_regression.rs` now
 requires a top-level card exactly when the result is not Frame-kind, on every
 negative fixture in the corpus.
 
-### 9.2 The clear-on-set convention — PORTED; two attributes lack a setter
+### 9.2 The clear-on-set convention — PORTED, and every reachable attribute has a setter — DONE
 
 Upstream `e40e71b4` added the rule: a setter for an attribute that feeds the
 first part of that class's own `astMapMerge` discards both simplified records
@@ -727,19 +727,22 @@ It applies the rule in 11 classes:
 | SplineMap | `InvNiter`, `InvTol`, `OutUnit` | `set_inv_niter`, `set_inv_tol`, `set_out_unit` |
 | SphMap | `PolarLong`, `UnitRadius` | `set_polar_long`, `set_unit_radius` |
 | WcsMap | `FITSProj`, `LonCheck` | `set_fits_proj`, `set_lon_check` |
-| PcdMap | `Disco` | `set_disc` |
+| PcdMap | `Disco`, `PcdCen` | `set_disc`, `set_pcd_cen` |
 | PermMap | `PermSplit` | `set_perm_split`, `clear_perm_split` |
 | IntraMap | `IntraFlag` | no setter |
-| GrismMap | (macro form, `grismmap.c:165,255`) | no setter; the merged copy at `grismmap.rs:266` |
+| GrismMap | (macro form, `grismmap.c:165,255`) | `set_grism_nr`, `set_grism_nrp`, `set_grism_wave_r`, `set_grism_alpha`, `set_grism_g`, `set_grism_m`, `set_grism_eps`, `set_grism_theta` |
 
 Every setter and clearer the port has discards the records, and each cites the
 `astMAKE_SET` / `astMAKE_CLEAR` site it mirrors together with what the attribute
 changes: whether it feeds that class's own `MapMerge` (MathMap's `SimpFI` /
 `SimpIF`, SphMap's `PolarLong` / `UnitRadius`) or only the transformation, which
 is C's err-towards-it case.
-GrismMap has no setter, but C's own merge builds its result with `astCopy`
-followed by a setter per adjusted attribute (`grismmap.c:573-592`), so the
-port's `merge_with_zoom` discards the records on the copy it returns.
+GrismMap's eight setters come from a class-local `MAKE_SET`
+(`grismmap.c:236-262`) whose body opens with the same `astClearIsSimple` and ends
+by recomputing the derived constants, so each of them does both; C's own merge
+builds its result with `astCopy` followed by a setter per adjusted attribute
+(`grismmap.c:573-592`), which the port's `merge_with_zoom` mirrors by discarding
+the records on the copy it returns.
 
 **A fixture expresses half of it.** The simplify corpus dumps, simplifies and
 dumps again, so it has no "set an attribute after simplifying" step and cannot
@@ -762,18 +765,40 @@ C's behaviour is confirmed by the probe recorded in
 convention"), which reads `IsSimple` through the public string interface across a
 set, a clear and the invert control.
 
-**Still open.** Two of C's attributes have no setter in the port:
-`IntraMap::IntraFlag`, because `IntraMap` itself is not ported, and GrismMap's
-eight macro-form attributes.
-The rule applies to each when its setter lands, and the row above says so.
+**One attribute remains without a setter, and it is not reachable.**
+`IntraMap::IntraFlag` has none because `IntraMap` itself is not ported.
 
-The `clear_*` halves of `set_zoom`, `set_lut_epsilon` and `set_disc` have no
-counterpart either, because the port stores each attribute's effective value
-rather than C's unset sentinel (`0.0` for `Zoom`, `AST__BAD` for `LutEpsilon` and
-`Disco`); a clearer would mean introducing those sentinels and the `Test*`
-surface that reads them.
-`AST__IMMUT` has none for the same structural reason the other setters do not:
-`&mut self` is what C's `astGetRefCount( this ) > 1` guard tests for.
+**Where the dump can see the difference, the setter carries C's `Test*`
+predicate.**
+GrismMap, LutMap and PcdMap store the value C's getter would report rather than
+C's unset sentinel, and carry the sentinel test as a flag beside it, so passing
+`BAD_VALUE` — `INT_MAX` for `GrismM` — restores the default and leaves the
+attribute untested, exactly as `astSet` with the sentinel does.
+GrismMap's dump writes an untested attribute commented out
+(`grismmap.c:1733-1737`), PcdMap writes all three of its cards with the flag C's
+`TestDisco` / `TestPcdCen` supplies (`pcdmap.c:2705-2721`), and LutMap writes the
+`LutEps` card only when the attribute is set (`lutmap.c:2009-2013`).
+`ZoomMap::Zoom` needs no flag: C's sentinel is `0.0`, which its setter rejects,
+so a constructed ZoomMap has no untested state to report.
+
+**The loaders route through the setters, which is how a fixture reaches them.**
+C's `Load` assigns each raw value and then re-applies it through the private
+setter when its `Test*` predicate reports the card present — `grismmap.c:2548-2571`,
+`lutmap.c:2572-2577`, `pcdmap.c:3192-3205` — and that is what discards the record
+`astLoadMapping` has just installed from the `IsSimp` card.
+Routing the port's `from_node` the same way is what closed the four fixtures that
+had been licensed under `ROUNDTRIP_DISCARD_LICENSED` (§6): `grism_zoom_merge`,
+`grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies` and `pcd_unit_series_merge`
+now round-trip byte-exactly, and backing the routing out fails those four and no
+others.
+
+`set_zoom`, `set_lut_epsilon`, `set_disc`, `set_pcd_cen` and GrismMap's eight
+have no `clear_*` counterpart, because for each of them the sentinel already
+reaches the state a clearer would: `astClearDisco` and `astSetDisco( map,
+AST__BAD )` store the same `AST__BAD` (`pcdmap.c:2583-2586`), and the same holds
+for `LutEpsilon` and for every GrismMap attribute.
+None of the setters raises `AST__IMMUT`, for a structural reason: `&mut self` is
+what C's `astGetRefCount( this ) > 1` guard tests for.
 
 ### 9.4 51 simplify fixture files have no transform-oracle section
 

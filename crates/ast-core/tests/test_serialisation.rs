@@ -1177,33 +1177,6 @@ fn native_round_trip_fixture(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Fixtures whose round-trip reference C captured with the `IsSimp` card
-/// dropped, but where the port still keeps it because the class has no setter
-/// to route the load through.
-///
-/// GrismMap's eight attributes and `PcdMap::Disco` are the two remaining
-/// clear-on-set attributes with no setter at all (PLAN.md §9.2); the record
-/// therefore survives a load C discards it on. Each is asserted below, so a
-/// case that starts passing forces its row out rather than sitting here.
-const ROUNDTRIP_DISCARD_LICENSED: &[(&str, &str)] = &[
-    (
-        "grism_zoom_merge.simp",
-        "GrismMap has no setter to route the load through",
-    ),
-    (
-        "grism_zoom_inv_merge.simp",
-        "GrismMap has no setter to route the load through",
-    ),
-    (
-        "pcd_swap_zoom_simplifies.simp",
-        "PcdMap::Disco has no setter to route the load through",
-    ),
-    (
-        "pcd_unit_series_merge.simp",
-        "PcdMap::Disco has no setter to route the load through",
-    ),
-];
-
 #[test]
 fn native_byte_exact_round_trip_simplify_fixtures() {
     let fixture_dir = std::path::PathBuf::from(concat!(
@@ -1260,33 +1233,10 @@ fn native_byte_exact_round_trip_simplify_fixtures() {
     // means new regressions slip in unnoticed. If a class isn't yet
     // ready, the .map/.simp pair must be excluded from this corpus
     // explicitly rather than swept under the rug.
-    let (pending, unlicensed): (Vec<String>, Vec<String>) = failed.iter().cloned().partition(|f| {
-        ROUNDTRIP_DISCARD_LICENSED
-            .iter()
-            .any(|(n, _)| f.starts_with(n))
-    });
     assert!(
-        unlicensed.is_empty(),
+        failed.is_empty(),
         "{} simplify-fixture round-trip failures (see eprintln list above)",
-        unlicensed.len()
-    );
-    let mut still: Vec<&str> = pending
-        .iter()
-        .map(|f| {
-            ROUNDTRIP_DISCARD_LICENSED
-                .iter()
-                .find(|(n, _)| f.starts_with(n))
-                .expect("partitioned on this list")
-                .0
-        })
-        .collect();
-    still.sort_unstable();
-    let mut expected: Vec<&str> = ROUNDTRIP_DISCARD_LICENSED.iter().map(|(n, _)| *n).collect();
-    expected.sort_unstable();
-    assert_eq!(
-        still, expected,
-        "the licensed-discard set has changed. A case that now round-trips means \
-         its class gained a setter -- delete the row"
+        failed.len()
     );
 }
 

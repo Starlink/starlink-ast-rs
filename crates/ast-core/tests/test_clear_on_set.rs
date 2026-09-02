@@ -23,10 +23,12 @@
 //! makes the assertions falsifiable — it pins an operation C does *not* cover,
 //! so the flag has to be able to survive.
 
+use ast_core::constants::BAD_VALUE;
+use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::mappings::{
-    LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, ShiftMap, SphMap,
-    SplineMap, WcsMap, WcsProjection, ZoomMap,
+    GrismMap, LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, ShiftMap,
+    SphMap, SplineMap, WcsMap, WcsProjection, ZoomMap,
 };
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -247,6 +249,121 @@ fn pcd_disco_discards_the_record() {
     });
 }
 
+/// C's GrismMap setters go through a class-local `MAKE_SET`
+/// (`grismmap.c:236-262`) rather than `astMAKE_SET1`, but the body opens with
+/// the same `astClearIsSimple`, and C applies it to all eight attributes even
+/// though its own `MapMerge` reads only three of them (`grismmap.c:577-579`).
+/// That is the err-towards-discarding latitude `mapping.h:449-460` grants, so
+/// the port covers all eight too.
+#[test]
+fn grism_nr_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_nr", |m| {
+        m.set_grism_nr(1.5)
+    });
+}
+
+#[test]
+fn grism_nrp_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_nrp", |m| {
+        m.set_grism_nrp(1e-5)
+    });
+}
+
+#[test]
+fn grism_wave_r_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_wave_r", |m| {
+        m.set_grism_wave_r(6000.0)
+    });
+}
+
+#[test]
+fn grism_alpha_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_alpha", |m| {
+        m.set_grism_alpha(0.1)
+    });
+}
+
+#[test]
+fn grism_g_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_g", |m| {
+        m.set_grism_g(1000.0)
+    });
+}
+
+#[test]
+fn grism_m_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_m", |m| {
+        m.set_grism_m(1)
+    });
+}
+
+#[test]
+fn grism_eps_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_eps", |m| {
+        m.set_grism_eps(0.01)
+    });
+}
+
+#[test]
+fn grism_theta_discards_the_record() {
+    discards(GrismMap::default_map(), "GrismMap::set_grism_theta", |m| {
+        m.set_grism_theta(0.02)
+    });
+}
+
+/// The setters recompute the derived constants, as C's `MAKE_SET` does by
+/// calling `UpdateConstants` after the assignment (`grismmap.c:256-259`).
+/// Without that call the transformation would keep using constants derived from
+/// the old attribute values, which is not visible through the simplified
+/// records, so it gets its own assertion.
+#[test]
+fn grism_setters_recompute_the_constants() {
+    let mut set = GrismMap::default_map();
+    set.set_grism_g(1000.0);
+    set.set_grism_m(1);
+    set.set_grism_wave_r(6000.0);
+
+    let constructed = GrismMap::new(1.0, 0.0, 6000.0, 0.0, 1000.0, 1, 0.0, 0.0);
+
+    let pts = PointSet::from_rows(vec![vec![1.0], vec![2.0], vec![3.0]]);
+    let via_setters = set.transform(&pts, true).unwrap();
+    let via_constructor = constructed.transform(&pts, true).unwrap();
+    for i in 0..pts.npoint() {
+        assert_eq!(
+            via_setters.point(i),
+            via_constructor.point(i),
+            "point {i}: the setters left stale derived constants"
+        );
+    }
+}
+
+/// C stores a GrismMap attribute raw and reads it back through a getter that
+/// substitutes the default for the `AST__BAD` unset sentinel, so
+/// `astSetGrismNR( map, AST__BAD )` restores the default and makes
+/// `astTestGrismNR` false (`grismmap.c:1733-1737`). The port stores what the
+/// getter would report and carries the sentinel test as the flag the dump reads,
+/// so the sentinel has to be recognised in the setter. The dump is where the
+/// test half is observable: an untested attribute is written commented out.
+#[test]
+fn grism_sentinel_restores_the_default_and_untests_the_attribute() {
+    let mut m = GrismMap::new(1.5, 0.0, 6000.0, 0.0, 1000.0, 1, 0.0, 0.0);
+    assert!(
+        to_native_string(&AnyObject::GrismMap(m.clone()))
+            .unwrap()
+            .contains("GrmNR = 1.5"),
+        "a constructed GrismMap should write GrmNR as a set card"
+    );
+
+    m.set_grism_nr(BAD_VALUE);
+    assert_eq!(m.grism_nr(), 1.0, "the sentinel should restore the default");
+
+    let dump = to_native_string(&AnyObject::GrismMap(m)).unwrap();
+    assert!(
+        dump.contains("#   GrmNR = 1 "),
+        "the sentinel should leave GrmNR untested, so the card is commented out; got:\n{dump}"
+    );
+}
+
 /// The control. `Invert` is not one of the attributes C covers: inverting a
 /// Mapping changes which record applies, and inverting it back restores the
 /// original one, so the Mapping reports exactly what it reported before
@@ -322,6 +439,10 @@ fn load_discards_the_record_for_every_clear_on_set_class() {
     lut.set_interp(LutInterp::Nearest);
     load_discards(lut, "LutMap::LutInterp");
 
+    let mut lut_eps = lut_map();
+    lut_eps.set_lut_epsilon(1e-10);
+    load_discards(lut_eps, "LutMap::LutEpsilon");
+
     let mut poly = poly_map();
     poly.set_iter_inverse(true);
     poly.set_niter_inverse(7);
@@ -347,4 +468,16 @@ fn load_discards_the_record_for_every_clear_on_set_class() {
     let mut perm = perm_map();
     perm.set_perm_split(true);
     load_discards(perm, "PermMap::PermSplit");
+
+    let mut pcd = PcdMap::new(0.01, [1.0, 2.0]);
+    pcd.set_disc(0.02);
+    load_discards(pcd, "PcdMap::Disco");
+
+    let mut pcd_cen = PcdMap::new(0.01, [1.0, 2.0]);
+    pcd_cen.set_pcd_cen(1, 3.0).unwrap();
+    load_discards(pcd_cen, "PcdMap::PcdCen");
+
+    let mut grism = GrismMap::new(1.5, 0.0, 6000.0, 0.0, 1000.0, 1, 0.0, 0.0);
+    grism.set_grism_g(1200.0);
+    load_discards(grism, "GrismMap::GrismG");
 }

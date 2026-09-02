@@ -12,8 +12,8 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
-use crate::error::AstResult;
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::error::{AstError, AstResult, ErrorCode};
+use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -43,8 +43,18 @@ use crate::mappings::SimplifiedRecord;
 /// that is accurate to negligible levels for astrometric purposes.
 #[derive(Debug, Clone)]
 pub struct PcdMap {
+    /// The distortion coefficient as C's getter reports it, 0.0 in place of the
+    /// `AST__BAD` unset sentinel (`pcdmap.c:2584-2585`).
     disc: f64,
+    /// Whether `Disco` holds a supplied value — C's `TestDisco`
+    /// (`pcdmap.c:2587`), which the dump writes as the card's set flag.
+    disc_set: bool,
+    /// The distortion centre as C's getter reports it, 0.0 per axis in place of
+    /// the `AST__BAD` unset sentinel (`pcdmap.c:2638-2639`).
     pcdcen: [f64; 2],
+    /// Whether each `PcdCen` axis holds a supplied value — C's `TestPcdCen`
+    /// (`pcdmap.c:2637`).
+    pcdcen_set: [bool; 2],
     inverted: bool,
     simplified: SimplifiedRecord,
     ident: Option<String>,
@@ -56,10 +66,20 @@ impl PcdMap {
     /// `disc` is the distortion coefficient (positive = pincushion,
     /// negative = barrel, zero = no distortion).
     /// `pcdcen` is the `[x, y]` centre of the distortion.
+    /// `AST__BAD` for either leaves that attribute unset, as C's initialiser
+    /// stores it raw and its getter then reports the default
+    /// (`pcdmap.c:96-98`).
     pub fn new(disc: f64, pcdcen: [f64; 2]) -> Self {
+        let disc_set = disc != BAD_VALUE;
+        let pcdcen_set = [pcdcen[0] != BAD_VALUE, pcdcen[1] != BAD_VALUE];
         Self {
-            disc,
-            pcdcen,
+            disc: if disc_set { disc } else { 0.0 },
+            disc_set,
+            pcdcen: [
+                if pcdcen_set[0] { pcdcen[0] } else { 0.0 },
+                if pcdcen_set[1] { pcdcen[1] } else { 0.0 },
+            ],
+            pcdcen_set,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -79,9 +99,41 @@ impl PcdMap {
     /// (`pcdmap.c:1418-1422`), so a conclusion an earlier simplification reached
     /// no longer holds. Both simplified records are discarded (`pcdmap.c:2586`,
     /// the convention at `mapping.h:449-460`).
+    ///
+    /// C stores the value raw and reads it back through a getter that reports
+    /// 0.0 in place of the `AST__BAD` unset sentinel (`pcdmap.c:2584-2585`).
+    /// The port stores what that getter would report and carries the sentinel
+    /// test as a flag, so passing `BAD_VALUE` here restores the default and
+    /// leaves the attribute untested, exactly as `astSetDisco( map, AST__BAD )`
+    /// does.
     pub fn set_disc(&mut self, disc: f64) {
         self.simplified.clear();
-        self.disc = disc;
+        self.disc_set = disc != BAD_VALUE;
+        self.disc = if self.disc_set { disc } else { 0.0 };
+    }
+
+    /// Set the distortion centre on one axis — C's `astSetPcdCen`.
+    ///
+    /// `axis` is 1-based. An index outside 1..=2 is rejected with
+    /// `ErrorCode::Axiin` and changes nothing, as C's class-local `MAKE_SET`
+    /// does (`pcdmap.c:490-494`); that macro then discards both simplified
+    /// records before storing (`pcdmap.c:506-507`, the convention at
+    /// `mapping.h:449-460`).
+    ///
+    /// `BAD_VALUE` restores the default and leaves the axis untested, as the
+    /// sentinel does in C (`pcdmap.c:2637-2639`).
+    pub fn set_pcd_cen(&mut self, axis: usize, value: f64) -> AstResult<()> {
+        if !(1..=2).contains(&axis) {
+            return Err(AstError::new(
+                ErrorCode::Axiin,
+                format!("axis index {axis} is out of range 1..=2"),
+            ));
+        }
+        self.simplified.clear();
+        let i = axis - 1;
+        self.pcdcen_set[i] = value != BAD_VALUE;
+        self.pcdcen[i] = if self.pcdcen_set[i] { value } else { 0.0 };
+        Ok(())
     }
 
     /// The distortion centre.
@@ -340,37 +392,56 @@ impl Serializable for PcdMap {
         let mut node = Node::new(self.class_name());
         node.class_comment = Some("Apply pincushion distortion".to_string());
         write_mapping_base(&mut node, self);
-        // PcdCn0 — always write (default 0.0)
-        node.push_double(
-            "PcdCn0",
-            self.pcdcen[0],
-            Some("Distortion centre on first axis".to_string()),
-        );
-        // PcdCn1 — always write (default 0.0)
-        node.push_double(
-            "PcdCn1",
-            self.pcdcen[1],
-            Some("Distortion centre on second axis".to_string()),
-        );
-        // Disco — always write (default 0.0)
-        node.push_double(
-            "Disco",
-            self.disc,
-            Some("Distortion coefficient".to_string()),
-        );
+        // C writes all three cards, set or not, and an unset card carries the
+        // default the getter reports for information only (pcdmap.c:2705-2721).
+        let comments = [
+            "Distortion centre on first axis",
+            "Distortion centre on second axis",
+        ];
+        for (i, comment) in comments.iter().enumerate() {
+            let key = format!("PcdCn{i}");
+            if self.pcdcen_set[i] {
+                node.push_double(&key, self.pcdcen[i], Some((*comment).to_string()));
+            } else {
+                node.push_unset(
+                    &key,
+                    NodeValue::Double(self.pcdcen[i]),
+                    Some((*comment).to_string()),
+                );
+            }
+        }
+        let disco_comment = Some("Distortion coefficient".to_string());
+        if self.disc_set {
+            node.push_double("Disco", self.disc, disco_comment);
+        } else {
+            node.push_unset("Disco", NodeValue::Double(self.disc), disco_comment);
+        }
         Ok(node)
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
         let base = read_mapping_base(node);
-        let disc = node.get_double("Disco", 0.0);
-        let pcdcen0 = node.get_double("PcdCn0", 0.0);
-        let pcdcen1 = node.get_double("PcdCn1", 0.0);
+        let disc = node.get_double("Disco", BAD_VALUE);
+        let pcdcen0 = node.get_double("PcdCn0", BAD_VALUE);
+        let pcdcen1 = node.get_double("PcdCn1", BAD_VALUE);
         let mut m = PcdMap::new(disc, [pcdcen0, pcdcen1]);
         if base.inverted {
             m.invert();
         }
         m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
+        // C re-applies each attribute through the private setter when its
+        // `Test*` predicate reports the card present (pcdmap.c:3192-3205), which
+        // discards the simplified record the parent loader installed from the
+        // `IsSimp` card.
+        if node.get("PcdCn0").is_some() {
+            m.set_pcd_cen(1, pcdcen0)?;
+        }
+        if node.get("PcdCn1").is_some() {
+            m.set_pcd_cen(2, pcdcen1)?;
+        }
+        if node.get("Disco").is_some() {
+            m.set_disc(disc);
+        }
         Ok(m)
     }
 }

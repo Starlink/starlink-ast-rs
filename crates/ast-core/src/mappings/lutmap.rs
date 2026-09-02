@@ -51,6 +51,10 @@ pub struct LutMap {
     /// It scales the linearity tolerance in [`Self::table_is_linear`], so it
     /// decides whether a nearly-linear table is replaced by a WinMap.
     lut_epsilon: f64,
+    /// Whether `LutEpsilon` holds a supplied value — C's `TestLutEpsilon`
+    /// (`lutmap.c:1843`), which decides whether the `LutEps` card is written at
+    /// all (`lutmap.c:2009-2013`).
+    lut_epsilon_set: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
     simplified: SimplifiedRecord,
     ident: Option<String>,
@@ -90,6 +94,7 @@ impl LutMap {
             ident: None,
             tran_inverse: monotonic != 0,
             lut_epsilon: f64::EPSILON,
+            lut_epsilon_set: false,
         })
     }
 
@@ -129,9 +134,17 @@ impl LutMap {
     /// before it looks at any neighbour (`lutmap.c:1142`). Both simplified
     /// records are discarded (`lutmap.c:1842`, the convention at
     /// `mapping.h:449-460`).
+    /// `BAD_VALUE` restores the `f64::EPSILON` default and leaves the attribute
+    /// untested, as the sentinel does in C (`lutmap.c:1839-1843`), so the
+    /// `LutEps` card is no longer written.
     pub fn set_lut_epsilon(&mut self, epsilon: f64) {
         self.simplified.clear();
-        self.lut_epsilon = epsilon;
+        self.lut_epsilon_set = epsilon != BAD_VALUE;
+        self.lut_epsilon = if self.lut_epsilon_set {
+            epsilon
+        } else {
+            f64::EPSILON
+        };
     }
 
     /// Return the number of entries in the lookup table.
@@ -894,6 +907,14 @@ impl Serializable for LutMap {
             interp_val,
             Some("Interpolation method".to_string()),
         );
+        // C writes the precision only when it has been set (lutmap.c:2009-2013).
+        if self.lut_epsilon_set {
+            node.push_double(
+                "LutEps",
+                self.lut_epsilon,
+                Some("Table relative error".to_string()),
+            );
+        }
 
         for (i, &v) in self.lut.iter().enumerate() {
             if !is_bad(v) {
@@ -925,6 +946,8 @@ impl Serializable for LutMap {
             *entry = node.get_double(&format!("L{}", i + 1), BAD_VALUE);
         }
 
+        let lut_epsilon = node.get_double("LutEps", f64::EPSILON);
+        let lut_epsilon_set = node.get("LutEps").is_some();
         let monotonic = compute_monotonicity(&lut);
         let mut m = LutMap {
             lut,
@@ -932,7 +955,8 @@ impl Serializable for LutMap {
             inc,
             interp,
             monotonic,
-            lut_epsilon: node.get_double("LutEps", f64::EPSILON),
+            lut_epsilon,
+            lut_epsilon_set,
             inverted: false,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
@@ -947,6 +971,10 @@ impl Serializable for LutMap {
         // card.
         if node.get("LutInt").is_some() {
             m.set_interp(interp);
+        }
+        // C re-applies LutEpsilon the same way (lutmap.c:2576-2577).
+        if node.get("LutEps").is_some() {
+            m.set_lut_epsilon(lut_epsilon);
         }
         Ok(m)
     }

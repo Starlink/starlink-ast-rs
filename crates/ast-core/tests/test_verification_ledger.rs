@@ -129,15 +129,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          only gate — which is why the set is pinned on its own",
     ),
     (
-        "test_serialisation.rs",
-        "ROUNDTRIP_DISCARD_LICENSED",
-        4,
-        "two GrismMap and two PcdMap fixtures whose round-trip reference C \
-         captured with the `IsSimp` card discarded, and which the port still \
-         keeps because neither class has a setter for the loader to route \
-         through (PLAN.md §9.2)",
-    ),
-    (
         "test_deferred_fixtures.rs",
         "DEFERRED_CLASSES",
         3,

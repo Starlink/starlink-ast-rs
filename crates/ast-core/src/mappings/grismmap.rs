@@ -63,7 +63,7 @@ pub struct GrismMap {
     set_flags: GrismSetFlags,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 struct GrismSetFlags {
     nr: bool,
     nrp: bool,
@@ -175,6 +175,114 @@ impl GrismMap {
     /// The angle between detector normal and reference ray.
     pub fn grism_theta(&self) -> f64 {
         self.grism_theta
+    }
+
+    /// Set the refractive index at the reference wavelength — C's
+    /// `astSetGrismNR`.
+    ///
+    /// GrismMap's setters come from a class-local `MAKE_SET`
+    /// (`grismmap.c:236-262`) rather than `astMAKE_SET1`. It opens with the same
+    /// `astClearIsSimple`, so both simplified records are discarded
+    /// (`mapping.h:449-460`), and it ends by recalculating the derived constants
+    /// the transformation uses.
+    ///
+    /// C stores the value raw and reads it back through a getter that reports
+    /// the default in place of the `AST__BAD` unset sentinel
+    /// (`grismmap.c:1733-1737`). The port stores what that getter would report
+    /// and carries the sentinel test as a flag, so passing `BAD_VALUE` here
+    /// restores the default and leaves the attribute untested, exactly as
+    /// `astSetGrismNR( map, AST__BAD )` does.
+    pub fn set_grism_nr(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.nr = value != BAD_VALUE;
+        self.grism_nr = if value == BAD_VALUE { 1.0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the rate of change of refractive index with wavelength — C's
+    /// `astSetGrismNRP` (`grismmap.c:1775-1779`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    pub fn set_grism_nrp(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.nrp = value != BAD_VALUE;
+        self.grism_nrp = if value == BAD_VALUE { 0.0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the reference wavelength — C's `astSetGrismWaveR`
+    /// (`grismmap.c:1814-1818`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    pub fn set_grism_wave_r(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.wave_r = value != BAD_VALUE;
+        self.grism_wave_r = if value == BAD_VALUE { 5000.0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the angle of incidence of incoming light on the grating — C's
+    /// `astSetGrismAlpha` (`grismmap.c:1852-1856`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    pub fn set_grism_alpha(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.alpha = value != BAD_VALUE;
+        self.grism_alpha = if value == BAD_VALUE { 0.0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the grating ruling density — C's `astSetGrismG`
+    /// (`grismmap.c:1892-1896`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    pub fn set_grism_g(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.g = value != BAD_VALUE;
+        self.grism_g = if value == BAD_VALUE { 0.0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the diffraction order — C's `astSetGrismM`
+    /// (`grismmap.c:1930-1934`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes. This attribute's unset
+    /// sentinel is `INT_MAX` rather than `AST__BAD` (`grismmap.c:1930`), so
+    /// `i32::MAX` is what restores the default here.
+    pub fn set_grism_m(&mut self, value: i32) {
+        self.simplified.clear();
+        self.set_flags.m = value != i32::MAX;
+        self.grism_m = if value == i32::MAX { 0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the angle between grating normal and dispersion plane — C's
+    /// `astSetGrismEps` (`grismmap.c:1970-1974`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    pub fn set_grism_eps(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.eps = value != BAD_VALUE;
+        self.grism_eps = if value == BAD_VALUE { 0.0 } else { value };
+        self.update_constants();
+    }
+
+    /// Set the angle between detector normal and reference ray — C's
+    /// `astSetGrismTheta` (`grismmap.c:2011-2015`).
+    ///
+    /// Discards both simplified records and recalculates the derived constants,
+    /// as [`set_grism_nr`](Self::set_grism_nr) describes.
+    pub fn set_grism_theta(&mut self, value: f64) {
+        self.simplified.clear();
+        self.set_flags.theta = value != BAD_VALUE;
+        self.grism_theta = if value == BAD_VALUE { 0.0 } else { value };
+        self.update_constants();
     }
 
     /// Recalculate the derived constants k1, k2, k3.
@@ -612,6 +720,34 @@ impl Serializable for GrismMap {
             map.invert();
         }
         map.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
+        // C's loader re-applies each attribute whose `Test*` predicate reports it
+        // set through the private setter (`grismmap.c:2548-2571`), which discards
+        // the simplified record the parent loader installed from the `IsSimp`
+        // card.
+        if set_flags.nr {
+            map.set_grism_nr(nr);
+        }
+        if set_flags.nrp {
+            map.set_grism_nrp(nrp);
+        }
+        if set_flags.wave_r {
+            map.set_grism_wave_r(wave_r);
+        }
+        if set_flags.alpha {
+            map.set_grism_alpha(alpha);
+        }
+        if set_flags.g {
+            map.set_grism_g(g);
+        }
+        if set_flags.m {
+            map.set_grism_m(m);
+        }
+        if set_flags.eps {
+            map.set_grism_eps(eps);
+        }
+        if set_flags.theta {
+            map.set_grism_theta(theta);
+        }
         Ok(map)
     }
 }
