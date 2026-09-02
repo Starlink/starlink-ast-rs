@@ -286,16 +286,23 @@ impl PolygonBuilder {
 
         // Defining points are the vertices themselves.
         let points = self.vertices;
-        let mut data = RegionData::new(frameset, points);
-        data.uncertainty = self.uncertainty;
-
-        // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
-        // necessary so that the unnegated Polygon represents the bounded
-        // interior, matching the parent Region convention.
+        let data = RegionData::new(frameset, points);
         let mut polygon = Polygon {
             data,
             simp_vertices: None,
         };
+
+        // astSetUnc, as C's constructor calls it (region.c:13372). C reaches it
+        // from astInitRegion, which astInitPolygon calls before EnsureInside, so
+        // the uncertainty is re-centred on the first vertex as supplied -- before
+        // any reversal below can change which vertex that is.
+        if let Some(unc) = self.uncertainty {
+            polygon.set_uncertainty(unc);
+        }
+
+        // Mirror C astInitPolygon (polygon.c:7160): reverse the vertex order if
+        // necessary so that the unnegated Polygon represents the bounded
+        // interior, matching the parent Region convention.
         polygon.ensure_inside()?;
         Ok(polygon)
     }

@@ -369,11 +369,13 @@ pub trait Region: Frame + Mapping {
     /// UnitMap, and re-centred at this Region's first defining point.
     ///
     /// This is a shared default; the C body is fully generic (it touches only
-    /// the FrameSet, defining points, uncertainty field, and cache). Only the
-    /// construction-time uncertainty supplied through a builder bypasses this
-    /// path (C routes it through `SetUnc` at region.c:13372; the builders store
-    /// it directly, which the existing serialization corpus does not exercise
-    /// under a non-trivial Frame relationship).
+    /// the FrameSet, defining points, uncertainty field, and cache).
+    ///
+    /// Every route that installs an uncertainty goes through here, as in C:
+    /// the builders (C's constructor, region.c:13372), the simplifier
+    /// (region.c:11303-11305) and the cross-class merges. The one exception is
+    /// the loader, which stores what the Channel read verbatim
+    /// (region.c:13559), so reading a Region back is an identity.
     fn set_uncertainty(&mut self, unc: DynRegion) {
         // Validate that the supplied Region is of a re-centreable
         // (centro-symmetric) class. C tests this via

@@ -107,10 +107,15 @@ impl PointListBuilder {
     /// Build the PointList.
     pub fn build(self) -> AstResult<PointList> {
         let frameset = FrameSet::new(self.frame);
-        let mut data = RegionData::new(frameset, self.points);
-        data.uncertainty = self.uncertainty;
+        let data = RegionData::new(frameset, self.points);
+        let mut region = PointList { data };
 
-        Ok(PointList { data })
+        // astSetUnc, as C's constructor calls it (region.c:13372).
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
     }
 }
 

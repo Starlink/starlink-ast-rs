@@ -9,7 +9,7 @@
 //! out the parts common to both so each class only has to build the
 //! per-class bounds/points.
 
-use crate::frames::FrameSet;
+use crate::frames::{DynFrame, FrameSet};
 use crate::mappings::{CmpMap, Composition, DynMapping, Mapping};
 
 use super::data::{RegionData, default_mesh_size};
@@ -95,60 +95,102 @@ pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &M
     }
 }
 
-/// Finish a cross-type Region merge: build the concrete merged Region in
-/// the combined `frameset`, propagate the `this`-side attributes, clear
-/// the Negated flag, attach the combined uncertainty, apply the
-/// FillFactor/MeshSize scaling, and (for an Interval result) re-simplify so
-/// a fully-bounded Interval reclassifies to a Box.
+/// The Frames and Mapping a cross-type merge builds its result through: the
+/// combined base Frame the merged Region is constructed on, the combined current
+/// Frame it ends in, and the parallel base->current Mapping between them
+/// (interval.c:1335-1343 and 1573-1598, box.c:1764-1773 and 2019-2044).
+pub(super) struct MergeFrames {
+    /// `astCmpFrame` of the two base Frames, in merge order.
+    pub(super) bfrm: DynFrame,
+    /// `astCmpFrame` of the two current Frames, in merge order.
+    pub(super) cfrm: DynFrame,
+    /// Parallel `astCmpMap` of the two base->current Mappings, in merge order.
+    pub(super) bcmap: DynMapping,
+}
+
+/// The attributes `astRegOverlay(new, this, 1)` copies from the `this` Region
+/// onto the merged one.
+pub(super) struct MergeOverlay {
+    /// `this`'s Closed value.
+    pub(super) closed: bool,
+    /// Whether `this` has Closed set explicitly.
+    pub(super) closed_set: bool,
+    /// `this`'s Adaptive value.
+    pub(super) adaptive: bool,
+}
+
+/// Finish a cross-type Region merge: build the concrete merged Region on the
+/// combined base Frame, propagate the `this`-side attributes, clear the Negated
+/// flag, install the combined uncertainty, map the result into the combined
+/// current Frame, apply the FillFactor/MeshSize scaling, and (for an Interval
+/// result) re-simplify so a fully-bounded Interval reclassifies to a Box.
 ///
-/// Mirrors the shared tail of `MergeInterval`/`MergeBox`
-/// (interval.c:1537, box.c:1983): `astRegOverlay(new, this, 1)` copies
-/// Negated/Closed/Adaptive from `this`, `astClearNegated` then forces the
-/// result un-negated, `astSetUnc` assigns the combined uncertainty, and the
-/// FillFactor/MeshSize scaling block (box.c:2049-2085) sets the merged
-/// FillFactor to the product of the two and the merged MeshSize to the
-/// result default scaled by the product of each source's used/default
-/// ratio.
+/// Mirrors the shared tail of `MergeInterval`/`MergeBox` (interval.c:1537-1639,
+/// box.c:1983-2085). The order is C's: `astRegOverlay(new, this, 1)` copies
+/// Closed/Adaptive from `this`, `astClearNegated` forces the result un-negated,
+/// `astSetUnc` installs the combined uncertainty, `astMapRegion(new, bcmap,
+/// cfrm)` carries the Region from `bfrm` into the combined current Frame, and
+/// the scaling block sets the FillFactor to the product of the two and the
+/// MeshSize to the result default scaled by the product of each source's
+/// used/default ratio.
+///
+/// Building on `bfrm` rather than on the current Frame is what the defining
+/// points require — they are base-Frame coordinates — and the `astMapRegion`
+/// that follows is also what restores the `Frm` block on the uncertainty, since
+/// its deep copy clears `RegionFS` throughout (region.c:12936-12940).
 pub(super) fn finish_region_merge(
     built: MergedRegion,
-    frameset: FrameSet,
-    this_closed: bool,
-    this_closed_set: bool,
-    this_adaptive: bool,
+    frames: MergeFrames,
+    overlay: MergeOverlay,
     uncertainty: Option<DynRegion>,
     scaling: MergeScaling,
 ) -> Option<DynMapping> {
+    let MergeFrames { bfrm, cfrm, bcmap } = frames;
+
     let apply_attrs = |data: &mut RegionData| {
         // astRegOverlay copies Closed and Adaptive from `this`; Negated is
         // then cleared (the merged Region is always un-negated).
-        data.closed = this_closed;
-        data.closed_set = this_closed_set;
-        data.adaptive = this_adaptive;
+        data.closed = overlay.closed;
+        data.closed_set = overlay.closed_set;
+        data.adaptive = overlay.adaptive;
         data.negated = false;
-        data.uncertainty = uncertainty.clone();
-
-        apply_merge_scaling(data, &scaling);
     };
 
-    match built {
+    let frameset = FrameSet::new(bfrm);
+
+    // A fully-bounded Interval reclassifies to a Box (interval.c Cache /
+    // Simplify); an unbounded one stays an Interval.
+    let reclassify = matches!(built, MergedRegion::Interval(_, _));
+
+    let mut new: DynRegion = match built {
         MergedRegion::Interval(lbnd, ubnd) => {
             let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
             apply_attrs(&mut data);
-            let merged = Interval { data };
-            // A fully-bounded Interval reclassifies to a Box (interval.c
-            // Cache / Simplify); an unbounded one stays an Interval.
-            <dyn Mapping>::simplify(&merged).ok()
+            Box::new(Interval { data })
         }
         MergedRegion::Box(centre, corner) => {
             let mut data = RegionData::new(frameset, vec![centre, corner]);
             apply_attrs(&mut data);
-            Some(Box::new(BoxRegion { data }))
+            Box::new(BoxRegion { data })
         }
         MergedRegion::PointList(points) => {
             let mut data = RegionData::new(frameset, points);
             apply_attrs(&mut data);
-            Some(Box::new(PointList { data }))
+            Box::new(PointList { data })
         }
+    };
+
+    if let Some(unc) = uncertainty {
+        new.set_uncertainty(unc);
+    }
+
+    let mut result = new.map_region(bcmap.as_ref(), cfrm.as_ref()).ok()?;
+    apply_merge_scaling_to(result.as_mut(), &scaling);
+
+    if reclassify {
+        <dyn Mapping>::simplify(result.as_dyn_mapping()).ok()
+    } else {
+        Some(result.as_dyn_mapping().clone_box())
     }
 }
 

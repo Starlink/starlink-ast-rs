@@ -115,15 +115,20 @@ impl CmpRegionBuilder {
 
         // CmpRegion has no defining points of its own (geometry is in sub-regions).
         let points = Vec::new();
-        let mut data = RegionData::new(frameset, points);
-        data.uncertainty = self.uncertainty;
-
-        Ok(CmpRegion {
+        let data = RegionData::new(frameset, points);
+        let mut region = CmpRegion {
             data,
             region1: self.region1,
             region2: self.region2,
             operator: self.operator,
-        })
+        };
+
+        // astSetUnc, as C's constructor calls it (region.c:13372).
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
     }
 }
 

@@ -58,10 +58,18 @@ impl NullRegionBuilder {
         let frameset = FrameSet::new(self.frame);
         // NullRegion has no defining points.
         let points = Vec::new();
-        let mut data = RegionData::new(frameset, points);
-        data.uncertainty = self.uncertainty;
+        let data = RegionData::new(frameset, points);
+        let mut region = NullRegion { data };
 
-        Ok(NullRegion { data })
+        // astSetUnc, as C's constructor calls it (region.c:13372). A NullRegion
+        // has no defining points, so C's re-centre step is skipped there too
+        // (`if( this->points )`, region.c:10871-10876); the remap, the
+        // negate-if-unbounded and the RegionFS tag all still apply.
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
     }
 }
 

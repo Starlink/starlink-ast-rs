@@ -131,10 +131,19 @@ impl BoxRegionBuilder {
 
         // Defining points: points[0] = centre, points[1] = corner.
         let points = vec![self.centre, self.corner];
-        let mut data = RegionData::new(frameset, points);
-        data.uncertainty = self.uncertainty;
+        let data = RegionData::new(frameset, points);
+        let mut region = BoxRegion { data };
 
-        Ok(BoxRegion { data })
+        // C's constructor routes a construction-time uncertainty through
+        // astSetUnc (region.c:13372), which remaps it into this Region's base
+        // Frame, negates it if it is unbounded, omits its FrameSet from the dump
+        // when its base->current Mapping is a UnitMap, and re-centres it on this
+        // Region's first defining point.
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
     }
 }
 
@@ -1449,16 +1458,54 @@ impl Region for BoxRegion {
 
         let built = built?;
 
-        // Combine the two current Frames into a CmpFrame in the requested
-        // order.
+        // The merged Region is built on a CmpFrame of the two *base* Frames and
+        // mapped into the combined current Frame at the end (box.c:1764-1773).
+        let bfrm_this = self.data.frameset.base().snapshot();
+        let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
+        let bfrm: DynFrame = if intfirst {
+            Box::new(crate::frames::CmpFrame::new(bfrm_this, bfrm_reg))
+        } else {
+            Box::new(crate::frames::CmpFrame::new(bfrm_reg, bfrm_this))
+        };
+
+        // The two current Frames, combined in the same order (box.c:2019-2030).
         let f_this = self.data.frameset.current().snapshot();
         let f_reg = other_reg.get_region_frame();
-        let cmp_frame = if intfirst {
-            crate::frames::CmpFrame::new(f_this, f_reg)
+        let cfrm: DynFrame = if intfirst {
+            Box::new(crate::frames::CmpFrame::new(f_this, f_reg))
         } else {
-            crate::frames::CmpFrame::new(f_reg, f_this)
+            Box::new(crate::frames::CmpFrame::new(f_reg, f_this))
         };
-        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
+
+        // The two base->current Mappings, in parallel (box.c:2032-2044).
+        let map_this = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let map_reg = other_reg
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let bcmap: DynMapping = if intfirst {
+            Box::new(
+                crate::mappings::CmpMap::new(
+                    map_this,
+                    map_reg,
+                    crate::mappings::Composition::Parallel,
+                )
+                .ok()?,
+            )
+        } else {
+            Box::new(
+                crate::mappings::CmpMap::new(
+                    map_reg,
+                    map_this,
+                    crate::mappings::Composition::Parallel,
+                )
+                .ok()?,
+            )
+        };
 
         // Combine uncertainties in the requested order when both are present.
         let unc = super::merge_util::combine_uncertainties(
@@ -1480,10 +1527,12 @@ impl Region for BoxRegion {
 
         super::merge_util::finish_region_merge(
             built,
-            frameset,
-            self.data.closed,
-            self.data.closed_set,
-            self.data.adaptive,
+            super::merge_util::MergeFrames { bfrm, cfrm, bcmap },
+            super::merge_util::MergeOverlay {
+                closed: self.data.closed,
+                closed_set: self.data.closed_set,
+                adaptive: self.data.adaptive,
+            },
             unc,
             scaling,
         )

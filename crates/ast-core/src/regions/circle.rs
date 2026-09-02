@@ -201,10 +201,15 @@ impl CircleBuilder {
         let frameset = FrameSet::new(self.frame);
 
         let points = vec![self.centre, edge];
-        let mut data = RegionData::new(frameset, points);
-        data.uncertainty = self.uncertainty;
+        let data = RegionData::new(frameset, points);
+        let mut region = Circle { data };
 
-        Ok(Circle { data })
+        // astSetUnc, as C's constructor calls it (region.c:13372).
+        if let Some(unc) = self.uncertainty {
+            region.set_uncertainty(unc);
+        }
+
+        Ok(region)
     }
 }
 
