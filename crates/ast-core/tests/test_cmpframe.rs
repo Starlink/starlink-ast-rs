@@ -3,11 +3,13 @@
 
 #![allow(clippy::approx_constant)] // 3.14 is intentional opaque test value, not π
 
-use std::f64::consts::PI;
+use std::f64::consts::{FRAC_PI_2, PI};
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::error::ErrorCode;
-use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame};
+use ast_core::frames::{
+    BasicFrameBuilder, CmpFrame, Frame, SkyFrame, SkySystem, TimeFrame, TimeSystem,
+};
 
 fn make_frame(naxes: usize) -> Box<dyn Frame> {
     Box::new(BasicFrameBuilder::new(naxes).build().unwrap())
@@ -188,4 +190,81 @@ fn cmpframe_angle() {
     let c = &[0.0, 1.0];
     let angle = cmp.angle(a, b, c).unwrap();
     assert!((angle + PI / 2.0).abs() < 1e-12, "got {angle}");
+}
+
+// ---- NormBox delegation (cmpframe.c:5830) ----
+
+/// The probe C hands each component Frame carries `AST__BAD` on the other
+/// component's axes (cmpframe.c:5941-5945). Every Region that calls
+/// `astNormBox` passes an un-negated copy of itself, and an un-negated Region
+/// reports a point with a bad axis as outside, so neither pole is ever
+/// detected and the box comes back untouched. Captured from C `astNormBox` on
+/// a CmpFrame(SkyFrame, TimeFrame) with a Box spanning the north pole: the
+/// bounds are returned exactly as supplied, where the same box on a plain
+/// SkyFrame widens to `0 .. 2*pi` in longitude. A fill with anything but bad
+/// values — the box's own coordinates, say — would widen the box here and fail
+/// this test; the companion below is what proves the delegation runs at all.
+#[test]
+fn norm_box_probe_carries_bad_on_the_other_components_axes() {
+    let cmp = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+        Box::new(TimeFrame::new(TimeSystem::Mjd)),
+    );
+
+    let mut lbnd = [-0.3, 1.3, 0.0];
+    let mut ubnd = [0.3, FRAC_PI_2, 1.0];
+
+    // What an un-negated Region's probe reports: a point carrying a bad axis
+    // is outside.
+    let inside = |point: &[f64]| -> Result<bool, ast_core::error::AstError> {
+        Ok(!point.contains(&BAD_VALUE))
+    };
+    cmp.norm_box(&mut lbnd, &mut ubnd, &inside).unwrap();
+
+    assert_eq!(lbnd, [-0.3, 1.3, 0.0]);
+    assert_eq!(ubnd, [0.3, FRAC_PI_2, 1.0]);
+}
+
+/// A predicate that accepts the bad-carrying probe point — which is what a
+/// negated Region does — reaches the SkyFrame's pole widening through the
+/// delegation, so the split and the un-permutation are exercised. Captured
+/// from C with `Negated` set on the same Box: the sky axes come back as
+/// `0 .. 2*pi` and `-pi/2 .. pi/2`, and the time axis is untouched.
+#[test]
+fn norm_box_reaches_the_sky_component() {
+    let cmp = CmpFrame::new(
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+        Box::new(TimeFrame::new(TimeSystem::Mjd)),
+    );
+
+    let mut lbnd = [-0.3, 1.3, 0.0];
+    let mut ubnd = [0.3, FRAC_PI_2, 1.0];
+
+    let inside = |_point: &[f64]| -> Result<bool, ast_core::error::AstError> { Ok(true) };
+    cmp.norm_box(&mut lbnd, &mut ubnd, &inside).unwrap();
+
+    assert_eq!(lbnd, [0.0, -FRAC_PI_2, 0.0]);
+    assert_eq!(ubnd[0], 2.0 * PI);
+    assert_eq!(ubnd[1], FRAC_PI_2);
+    assert_eq!(ubnd[2], 1.0);
+}
+
+/// C declares the second component's probe PermMap with `nin = naxes1`
+/// (cmpframe.c:5970) where the loop above it fills `naxes - naxes1` entries,
+/// so a second component whose axis count differs from the first's is rejected
+/// by `astTran2`'s arity check. Captured from C: `astNormBox` on a
+/// CmpFrame(TimeFrame, SkyFrame) raises AST__NCPIN.
+#[test]
+fn norm_box_rejects_a_second_component_of_a_different_size() {
+    let cmp = CmpFrame::new(
+        Box::new(TimeFrame::new(TimeSystem::Mjd)),
+        Box::new(SkyFrame::new(SkySystem::Icrs)),
+    );
+
+    let mut lbnd = [0.0, -0.3, 1.3];
+    let mut ubnd = [1.0, 0.3, FRAC_PI_2];
+
+    let inside = |_point: &[f64]| -> Result<bool, ast_core::error::AstError> { Ok(true) };
+    let err = cmp.norm_box(&mut lbnd, &mut ubnd, &inside).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
 }

@@ -614,6 +614,87 @@ impl Frame for CmpFrame {
         Ok(())
     }
 
+    /// Extend a box to include the effect of singularities in either
+    /// component Frame. Mirrors C `CmpFrame::NormBox` (cmpframe.c:5830): the
+    /// bounds are permuted into the internal order the components use, split
+    /// at the first component's axis count, and each component's `norm_box` is
+    /// invoked with a predicate that expands a component sub-position back
+    /// into a full external position before consulting the caller's predicate.
+    ///
+    /// The expansion fills the other component's axes with [`BAD_VALUE`],
+    /// because that is what C's probe PermMap supplies there
+    /// (cmpframe.c:5944-5945). Every caller passes an un-negated Region, which
+    /// reports a point carrying a bad axis as outside, so the singularity is
+    /// never detected and no component ever widens its half of the box. The
+    /// delegation is C's, inertness included; see
+    /// `docs/issues/c-library-quirks.md`.
+    fn norm_box(
+        &self,
+        lbnd: &mut [f64],
+        ubnd: &mut [f64],
+        inside: &dyn Fn(&[f64]) -> AstResult<bool>,
+    ) -> AstResult<()> {
+        let naxes = self.naxes();
+        let naxes1 = self.frame1.naxes();
+        let perm = &self.perm;
+
+        // Permute into the order the component Frames use internally
+        // (cmpframe.c:5921-5924).
+        let mut vl = vec![0.0; naxes];
+        let mut vu = vec![0.0; naxes];
+        for axis in 0..naxes {
+            vl[perm[axis]] = lbnd[axis];
+            vu[perm[axis]] = ubnd[axis];
+        }
+
+        // C wraps the caller's Mapping in `pm1` and its inverse so it can be
+        // applied to an internal-order position (cmpframe.c:5926-5939); here
+        // that is the un-permutation applied inside each predicate below.
+        let external = |internal: &[f64]| -> Vec<f64> {
+            (0..naxes).map(|axis| internal[perm[axis]]).collect()
+        };
+
+        // The first component's predicate. `pm2`'s forward transformation
+        // copies the sub-position to internal axes 0..naxes1 and supplies
+        // AST__BAD for the rest (cmpframe.c:5941-5945).
+        let inside1 = |point: &[f64]| -> AstResult<bool> {
+            if point.len() != naxes1 {
+                return Err(AstError::new(
+                    ErrorCode::Ncpin,
+                    format!(
+                        "CmpFrame NormBox: probe expects {naxes1} coordinate values, got {}",
+                        point.len()
+                    ),
+                ));
+            }
+            let mut internal = vec![BAD_VALUE; naxes];
+            internal[..naxes1].copy_from_slice(point);
+            inside(&external(&internal))
+        };
+        self.frame1
+            .norm_box(&mut vl[..naxes1], &mut vu[..naxes1], &inside1)?;
+
+        // The second component's predicate. C declares `pm3` with
+        // `nin = naxes1` rather than `naxes - naxes1`, and gives it a null
+        // `outperm`, whose forward transformation copies input i to output i
+        // while i < nin (permmap.c:159) — so the second component's
+        // coordinates land on the *first* component's internal axes, and a
+        // component whose axis count differs from `naxes1` is rejected
+        // outright by the arity check in `astTran2`. Both are mirrored; see
+        // `docs/issues/c-library-quirks.md`.
+        let inside2 = |point: &[f64]| -> AstResult<bool> { inside1(point) };
+        self.frame2
+            .norm_box(&mut vl[naxes1..], &mut vu[naxes1..], &inside2)?;
+
+        // Un-permute (cmpframe.c:5973-5976).
+        for axis in 0..naxes {
+            lbnd[axis] = vl[perm[axis]];
+            ubnd[axis] = vu[perm[axis]];
+        }
+
+        Ok(())
+    }
+
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         let n = self.naxes();
         super::validate_permutation(perm, n)?;

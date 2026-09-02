@@ -37,6 +37,7 @@ Detail and C↔Rust locations in `docs/audits/region-class-coverage-audit.md`.
 | RT-TRACE | `RegTrace` boundary tracing unported (base + 6 classes) | Plot/Grf backend | deferred |
 | RS-SPLIT | CmpRegion `RegSplit` disjoint split unported (cmpregion.c:2472) | Plot/Grf backend | deferred |
 | ACC-PARS | Geometry accessors (`CirclePars` etc.) unexposed | STC-S | deferred |
+| CIR-NB3 | Circle `reg_base_box` calls `norm_box` only when `naxes == 2` (circle.rs:329), where C calls `astNormBox` for both the 2-D and the >2-D branch (circle.c:1100, outside the if/else); above two axes the port also takes an axis-offset path C does not have | — (latent; needs a >2-D Circle on a Frame with an override, i.e. a Circle on a CmpFrame(SkyFrame, ...) enclosing a pole, whose bounds C reports unwidened via the quirk in `docs/issues/c-library-quirks.md` and whose Frame-order variant C errors on) | medium |
 
 ## 2. Frames and Mappings
 

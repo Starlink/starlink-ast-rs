@@ -2617,3 +2617,55 @@ both axes, keeping the port's bounds identical to C's on any Frame where the
 distinction would appear.
 
 To be raised upstream.
+
+## `CmpFrame::NormBox` can never widen a box, and errors when the components differ in size
+
+`CmpFrame::NormBox` (`cmpframe.c:5830`) permutes the supplied bounds into
+internal order, splits them at the first component's axis count, and calls each
+component Frame's `astNormBox` with a probe Mapping that expands a component
+sub-position back into a full position before applying the caller's Mapping. Two
+things are wrong with the probes.
+
+**The fill value defeats the test.** `pm2`, the probe for the first component, is
+built so its forward transformation "copies the lower naxes1 inputs to the same
+outputs, and supplies AST__BAD for the other outputs" (`cmpframe.c:5941-5945`).
+Every caller of `astNormBox` — `Circle::RegBaseMesh` (`circle.c:1095-1100`),
+`Ellipse::RegBaseMesh` (`ellipse.c:1177-1184`), `Polygon::RegBaseBox`
+(`polygon.c:4311-4314`) — passes a copy of itself with `Negated` cleared, and an
+un-negated Region maps a position carrying `AST__BAD` to `AST__BAD`. So the
+component's singularity test (`skyframe.c:7196`, `astTran2` on the two poles)
+always sees `AST__BAD` and always concludes the box holds neither pole. A
+CmpFrame therefore never widens a box, for either component.
+
+The asymmetry is visible from the public API. A Circle centred 0.3 radians from
+the north pole with radius 0.3 reports, on a plain SkyFrame, a longitude range of
+`0 .. 2*pi` and a latitude bound pinned to `pi/2`; the same Circle on a
+`CmpFrame(SkyFrame, TimeFrame)` reports the raw mesh bounds,
+`0 .. 6.1537493326940522` and `1.5587964318268464`.
+
+**The second probe is malformed.** `pm3`, the probe for the second component, is
+
+    for( axis = 0; axis < naxes - naxes1; axis++ ) inperm[ axis ] = naxes1 + axis;
+    pm3 = astPermMap( naxes1, inperm, naxes, NULL, NULL, "", status );
+
+with `nin = naxes1` where the loop fills `naxes - naxes1` entries, and with a
+null `outperm`, whose forward transformation copies input *i* to output *i* while
+`i < nin` and supplies `AST__BAD` after that (`permmap.c:159`). The second
+component's sub-position therefore arrives on the *first* component's internal
+axes. The inverse, built from `inperm`, extracts the correct axes, so only the
+forward direction — the one the probe uses — is affected.
+
+When the second component's axis count differs from the first's, the arity check
+in `astTran2` rejects the probe outright: `AST__NCPIN`, "Bad number of input
+coordinate values". `astGetRegionBounds` on a Circle on a
+`CmpFrame(TimeFrame, SkyFrame)` raises it, and `SkyFrame::NormBox` then reads the
+uninitialised `xo` / `yo` arrays it passed to `astTran2` and widens the box from
+whatever they hold.
+
+**Rust behaviour (mirrored):** `frames/cmpframe.rs`, `norm_box` performs the same
+permute / split / delegate / un-permute, fills the other component's axes with
+`BAD_VALUE`, hands both components the same first-component expansion, and
+returns `ErrorCode::Ncpin` where C's arity check fires. What follows that error
+in C is a read of uninitialised memory and is not reproduced.
+
+To be raised upstream, together with the `Ellipse` `astAxDistance` axis index.
