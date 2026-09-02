@@ -112,36 +112,7 @@ for t in $SATELLITES; do
       || { tail -25 "$DEST/build.log"; exit 1; }
 done
 
-cat > "$DEST/gen_simp.c" <<'EOF'
-#include "ast.h"
-#include <stdio.h>
-#include <string.h>
-static FILE *src;
-static char linebuf[4096];
-static const char *srcfn(void) {
-   if (fgets(linebuf, sizeof linebuf, src)) {
-      size_t n = strlen(linebuf);
-      while (n && (linebuf[n-1] == '\n' || linebuf[n-1] == '\r')) linebuf[--n] = 0;
-      return linebuf;
-   }
-   return NULL;
-}
-int main(int argc, char **argv) {
-   astBegin;
-   if (argc < 3) { fprintf(stderr, "usage: gen_simp in.map out.simp\n"); return 2; }
-   src = fopen(argv[1], "r");
-   if (!src) { fprintf(stderr, "cannot open %s\n", argv[1]); return 1; }
-   AstChannel *in = astChannel(srcfn, NULL, "");
-   AstMapping *map = (AstMapping *) astRead(in);
-   fclose(src);
-   if (!map) { fprintf(stderr, "read failed\n"); return 1; }
-   AstMapping *simp = astSimplify(map);
-   AstChannel *out = astChannel(NULL, NULL, "SinkFile=%s", argv[2]);
-   if (astWrite(out, simp) != 1) { fprintf(stderr, "write failed\n"); return 1; }
-   astEnd;
-   return 0;
-}
-EOF
+cp "$(dirname "$0")/gen_simp.c" "$DEST/gen_simp.c"
 
 YAML=$(ls -d /opt/homebrew/opt/libyaml/lib /usr/local/opt/libyaml/lib 2>/dev/null | head -1)
 GRF="-last_err -last_grf_2.0 -last_grf_3.2 -last_grf_5.6 -last_grf3d"

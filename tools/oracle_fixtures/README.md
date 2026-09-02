@@ -40,6 +40,27 @@ Two probes generate / cross-check the `.ast` FrameSet round-trip corpus
   FITS, so a Rust round-trip can be diffed against the authoritative
   C round-trip rather than only against the first dump.
 
+## `gen_simp` — what does the pinned C emit for a simplify fixture?
+
+```shell
+gen_simp [-m] <in> <out> [comment] [indent]
+```
+
+Reads one native-encoded Object, calls `astSimplify` on it, and writes the
+result. `comment` and `indent` are passed to the output Channel and default to
+the Channel's own defaults (1 and 3), so a reference captured with either turned
+off is reproducible — `lsst.simp` is the one such row in
+`simplify_tests.txt`, captured with `0 0`.
+
+`-m` replaces a FrameSet by its base->current Mapping before simplifying. Most
+of the corpus's FrameSet fixtures were captured that way, so their reference is
+a Mapping; a fixture whose reference is itself a FrameSet was captured without
+it. `test_simplify_regression.rs` applies the same rule, keyed on the
+reference's class.
+
+This is the instrument behind every re-baseline in the simplify corpus, and
+`check_corpus_fresh_simplify.sh` drives it over the whole set.
+
 ## Provenance rule
 
 When a fixture's expected value changes (e.g., a captured number drifts
