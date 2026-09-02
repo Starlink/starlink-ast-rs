@@ -1848,7 +1848,7 @@ MSG
 - Consumes: `SimplifiedRecord::clear(&mut self)` (`crates/ast-core/src/mappings/mod.rs:154-196`); `Node::get_double(&self, key: &str, default: f64) -> f64`, `Node::get_int(&self, key: &str, default: i64) -> i64` (`crates/ast-core/src/serial/node.rs`); the existing `MathMap::set_simp_fi(&mut self, val: bool)`, `set_simp_if(&mut self, val: bool)`, `set_seed(&mut self, seed: i32)` (`crates/ast-core/src/mappings/mathmap/mod.rs:182-215`).
 - Produces: `ZoomMap::set_factor(&mut self, factor: f64) -> AstResult<()>` — `pub(crate)`, used by Task 8's gate and by nothing in the public API.
 
-- [ ] **Step 1: Read C's loader for both classes and confirm the routing**
+- [x] **Step 1: Read C's loader for both classes and confirm the routing**
 
 ```bash
 sed -n '2235,2239p' reference/starlink-ast/src/zoommap.c
@@ -1864,7 +1864,7 @@ when the predicate holds. `TestZoom` is `this->zoom != 0.0`
 the record from the `IsSimp` card (`mapping.c:24137`) because the parent loader
 runs first.
 
-- [ ] **Step 2: Add `ZoomMap::set_factor`**
+- [x] **Step 2: Add `ZoomMap::set_factor`**
 
 In `crates/ast-core/src/mappings/zoom.rs`, immediately after the `factor`
 getter:
@@ -1892,7 +1892,7 @@ getter:
 
 `AstError`, `ErrorCode` and `AstResult` are already imported for `new`.
 
-- [ ] **Step 3: Route `ZoomMap::from_node` through it**
+- [x] **Step 3: Route `ZoomMap::from_node` through it**
 
 Replace the body of `from_node` in `crates/ast-core/src/mappings/zoom.rs`:
 
@@ -1923,7 +1923,7 @@ stands for `astLoadMapping` running in the parent, and removing it would make
 the port agree with C on this corpus for the wrong reason — a class whose
 loader routes nothing must still honour the card.
 
-- [ ] **Step 4: Route `MathMap::from_node` through its three setters**
+- [x] **Step 4: Route `MathMap::from_node` through its three setters**
 
 In `crates/ast-core/src/mappings/mathmap/mod.rs`, replace the attribute reads
 and the struct literal at the end of `from_node`. Read the raw values as now,
@@ -1972,7 +1972,7 @@ C reads the seed only inside the `TestSeed` branch and otherwise takes
 harmless because it is used only inside the same branch, and
 `MathMapRng::with_default_seed` is the port of `DefaultSeed`.
 
-- [ ] **Step 5: Run the two fixtures the rules pin**
+- [x] **Step 5: Run the two fixtures the rules pin**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -1983,7 +1983,7 @@ Expected: the licence assertions now fail, because the two `cefit_*` cases pass
 and the lists still name them. That is the signal to delete the rows, and the
 reason the deletions are a separate step from the code.
 
-- [ ] **Step 6: Delete the two `SERIAL_UNGATED` rows**
+- [x] **Step 6: Delete the two `SERIAL_UNGATED` rows**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, delete these two entries
 and the `(B)` paragraph of the comment above `SERIAL_UNGATED` that describes
@@ -2000,7 +2000,7 @@ them:
     ),
 ```
 
-- [ ] **Step 7: Delete the two `ISSIMP_DISAGREEMENTS` rows**
+- [x] **Step 7: Delete the two `ISSIMP_DISAGREEMENTS` rows**
 
 In the same file delete:
 
@@ -2012,7 +2012,7 @@ In the same file delete:
 Leave `"cap_zoommap_04 (3 vs C's 0)"` — it is cluster 3's, and Task 21 removes
 it.
 
-- [ ] **Step 8: Re-run the harness and the negative controls**
+- [x] **Step 8: Re-run the harness and the negative controls**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2027,7 +2027,7 @@ whose card C nonetheless emits, because the copy carrying the re-stamp is the
 one adopted. If any of the three regresses, the fault is in where the stamp
 lands, not in the clear; do not weaken the clear to recover them.
 
-- [ ] **Step 9: Record the C asymmetry in the quirks document**
+- [x] **Step 9: Record the C asymmetry in the quirks document**
 
 C writes an `IsSimp` card that its own loader then discards for twelve classes,
 so a dump/load cycle is not idempotent in that flag. The standing rule is that a
@@ -2072,13 +2072,13 @@ the control.
 To be raised upstream.
 ````
 
-- [ ] **Step 10: Update the ledger counts**
+- [x] **Step 10: Update the ledger counts**
 
 In `PLAN.md`, the `SERIAL_UNGATED` row (line 348) drops from 6 to 4 and the
 `ISSIMP_DISAGREEMENTS` row (line 346) from 7 to 5. Edit both counts and both
 descriptions so the remaining causes are the ones still named in source.
 
-- [ ] **Step 11: Format, lint, commit**
+- [x] **Step 11: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
