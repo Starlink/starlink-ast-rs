@@ -35,7 +35,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_wcsconv.rs",
         "ISSIMP_PLACEMENT_LICENSED",
-        4,
+        3,
         "C's reader reduces Mappings as it assembles them, so its cards record \
          the order that reader worked in; this port simplifies once, at the \
          end. The Mapping is the same and only which sub-Mappings were \
