@@ -97,6 +97,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "no simplify oracle section is excluded",
     ),
     (
+        "test_transform_oracle.rs",
+        "RTRIP_REFERENCE_GAPS_LICENSED",
+        2,
+        "two fixtures, 25 rows, where C's own recorded inverse does not \
+         recover the pixel either: tnx-cheb.head (all 24 rows -- a ChebyMap \
+         has no usable inverse) and tsc.head row 10 (a 360 deg alias). \
+         Asserted as an exact set against the corpus with no fixture loaded, \
+         and reached only after the live result has failed both the direct \
+         and the aliased comparison",
+    ),
+    (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
         5,

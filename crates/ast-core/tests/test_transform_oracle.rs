@@ -651,8 +651,9 @@ mod override_tests {
             "/tests/fixtures/oracle/transform_oracle_overrides.txt"
         );
         let o = parse_overrides(&std::fs::read_to_string(path).unwrap());
-        // tnx-cheb.head has round-trip disabled.
-        assert_eq!(o.rtrip("tnx-cheb.head"), None);
+        // tnx-cheb.head has no override: its round-trip runs with the default
+        // tolerances, and the rows C does not round-trip are excused per row.
+        assert_eq!(o.rtrip("tnx-cheb.head"), Some((RTRIP_RTOL, RTRIP_ATOL)));
         // neg_unitnormmap_inv_fwd_diffcentre.map skips golden inverse only.
         let rel = "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map";
         assert!(o.golden_off(rel, false) && !o.golden_off(rel, true));
@@ -781,6 +782,40 @@ fn compare_golden(
     misses
 }
 
+/// Rows where C's own recorded inverse does not recover the recorded forward
+/// input, keyed by fixture. `compare_rtrip` excuses exactly these, and only
+/// after the live result has failed both the direct and the aliased
+/// comparison, so a row C round-trips is never excused here.
+///
+/// This is a statement about the corpus, and
+/// `reference_rtrip_gaps_are_exactly_the_recorded_set` checks it against the
+/// `.oracle` files with no fixture loaded and no live transform involved. It
+/// assumes the default round-trip tolerances, which is safe while
+/// `transform_oracle_overrides.txt` declares none.
+const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
+    // Every row. The TNX Chebyshev distortion builds a ChebyMap, whose
+    // storage cannot hold its own Jacobian (the derivative of a 1st-kind
+    // Chebyshev T_n is a 2nd-kind U_(n-1)), so PolyMap's iterative inverse is
+    // unavailable and C's sky->pixel lands nowhere near the pixel it came
+    // from: row 0 goes 1,1 -> 2375.93,-2531.65, and row 22 is BAD
+    // (`headers.oracle:5542-5600`). The golden checks still pin both
+    // directions against C, which is what proves the port reproduces C's
+    // wrong inverse rather than a different one.
+    (
+        "tnx-cheb.head",
+        &[
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        ],
+    ),
+    // One row on the tangential spherical cube: the image is wider than the
+    // quad-cube period, so C's inverse returns the aliased preimage
+    // 418.3068181819074 for pixel 1400.125. The port recovers the pixel
+    // itself, so this row passes through `pixel_ok` and never reaches the
+    // reference gate — it is listed because the census is of the corpus, not
+    // of what the gate excuses.
+    ("tsc.head", &[10]),
+];
+
 /// Equivalence check C, gated on stored agreement: compare live `.map` vs
 /// live `.simp` only where the recorded values already agree.
 fn compare_equiv(
@@ -819,14 +854,33 @@ fn compare_equiv(
     misses
 }
 
+/// Does C's own recorded inverse recover the recorded forward input at this
+/// row? When it does not, `inverse(forward(P)) == P` is not a property of the
+/// fixture, and requiring it of the port would assert something about the
+/// corpus. Decided from stored data alone — the live transform plays no part —
+/// which is the gate `compare_equiv` applies to the shared domain.
+fn reference_round_trips(
+    fwd: &Section,
+    inv_ref: &[Vec<f64>],
+    row: usize,
+    rtol: f64,
+    atol: f64,
+) -> bool {
+    (0..fwd.nin).all(|a| within_tol(inv_ref[a][row], fwd.inputs[a][row], rtol, atol))
+}
+
 /// Round-trip accuracy (GRID corpora): inverse(forward(P)) ~= P, BAD-skipping
 /// and alias-aware (a different recovered pixel is accepted if it
 /// forward-maps to the same sky). `inv_live` is the live output of the
-/// inverse section (i.e. inverse(forward(P))).
+/// inverse section (i.e. inverse(forward(P))); `inv_ref` is C's recorded
+/// output for the same section, which excuses a row C does not round-trip
+/// either — checked last, so it can only excuse a row the live comparison has
+/// already failed.
 fn compare_rtrip(
     map: &dyn Mapping,
     fwd: &Section,
     inv_live: &[Vec<f64>],
+    inv_ref: &[Vec<f64>],
     rtol: f64,
     atol: f64,
 ) -> Vec<AxisMiss> {
@@ -861,6 +915,11 @@ fn compare_rtrip(
             if alias {
                 continue;
             }
+        }
+        // Last: C's own recorded inverse does not recover this pixel either,
+        // so the identity is not a property of the fixture.
+        if !reference_round_trips(fwd, inv_ref, row, rtol, atol) {
+            continue;
         }
         for (a, (inv_col, inp_col)) in inv_live.iter().zip(fwd.inputs.iter()).enumerate() {
             let (got, reference) = (inv_col[row], inp_col[row]);
@@ -903,6 +962,30 @@ mod check_tests {
         let simp_live = vec![vec![20.0, 9.0]];
         let misses = compare_equiv(&map_live, &simp_live, &map_ref, &simp_ref, &[false]);
         assert_eq!(misses.len(), 1);
+        assert_eq!(misses[0].row, 1);
+    }
+
+    #[test]
+    fn rtrip_excuses_only_rows_the_reference_also_fails() {
+        // A 1-axis identity mapping, so the alias escape is easy to reason
+        // about: a recovered pixel forward-maps to itself.
+        let map = ast_core::mappings::UnitMap::new(1);
+        let fwd = Section {
+            relpath: "synthetic.head".into(),
+            nin: 1,
+            nout: 1,
+            forward: true,
+            inputs: vec![vec![10.0, 20.0, 30.0, 40.0]],
+            outputs: vec![vec![10.0, 20.0, 30.0, 40.0]],
+        };
+        //            row 0: live recovers                     -> pass
+        //            row 1: live wrong, reference recovers    -> MISS
+        //            row 2: live wrong, reference also wrong  -> excused
+        //            row 3: live recovers, reference wrong    -> pass (order)
+        let inv_live = vec![vec![10.0, 99.0, 99.0, 40.0]];
+        let inv_ref = vec![vec![10.0, 20.0, 77.0, 55.0]];
+        let misses = compare_rtrip(&map, &fwd, &inv_live, &inv_ref, RTRIP_RTOL, RTRIP_ATOL);
+        assert_eq!(misses.len(), 1, "only row 1 may be reported: {misses:?}");
         assert_eq!(misses[0].row, 1);
     }
 }
@@ -1002,7 +1085,7 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
                 .filter(|f| f.relpath == s.relpath && f.nin == s.nout && f.npoint() == s.npoint())
             {
                 if let Some((rtol, atol)) = overrides.rtrip(&s.relpath) {
-                    misses.extend(compare_rtrip(map, fwd, &live, rtol, atol));
+                    misses.extend(compare_rtrip(map, fwd, &live, &s.outputs, rtol, atol));
                 }
             }
         }
@@ -1614,6 +1697,61 @@ fn every_oracle_section_is_gated() {
         "oracle sections covered by no gate:\n{ungated:?}",
     );
     assert_eq!(total, 1752, "gates must span every section");
+}
+
+/// The set of rows where C's own recorded inverse does not recover the pixel is
+/// exactly `RTRIP_REFERENCE_GAPS_LICENSED`. Corpus-only: no fixture is loaded
+/// and no transform runs, so this cannot be satisfied by a change in the port.
+/// A regenerated corpus, a new fixture whose reference does not round-trip, or
+/// a stale entry all fail here.
+#[test]
+fn reference_rtrip_gaps_are_exactly_the_recorded_set() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    let mut found: std::collections::BTreeMap<String, Vec<usize>> = Default::default();
+    for name in [
+        "simplify_fixtures.oracle",
+        "headers.oracle",
+        "framesets.oracle",
+    ] {
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        let sections = parse_oracle(&text).expect("oracle parses");
+        // Same pairing as `run_oracle`: an inverse section of a GRID fixture
+        // with the immediately-preceding forward section of the same fixture.
+        let mut prev_fwd: Option<&Section> = None;
+        for s in &sections {
+            let grid = has_ext(&s.relpath, ".head") || has_ext(&s.relpath, ".ast");
+            if !s.forward && grid {
+                if let Some(fwd) = prev_fwd.filter(|f| {
+                    f.relpath == s.relpath && f.nin == s.nout && f.npoint() == s.npoint()
+                }) {
+                    for row in 0..fwd.npoint() {
+                        // `compare_rtrip` skips a row whose forward output was
+                        // BAD before any comparison happens.
+                        if (0..fwd.nout).any(|b| fwd.outputs[b][row] == BAD_VALUE) {
+                            continue;
+                        }
+                        if !reference_round_trips(fwd, &s.outputs, row, RTRIP_RTOL, RTRIP_ATOL) {
+                            found.entry(s.relpath.clone()).or_default().push(row);
+                        }
+                    }
+                }
+            }
+            if s.forward {
+                prev_fwd = Some(s);
+            }
+        }
+    }
+
+    let expected: std::collections::BTreeMap<String, Vec<usize>> = RTRIP_REFERENCE_GAPS_LICENSED
+        .iter()
+        .map(|(rp, rows)| ((*rp).to_string(), rows.to_vec()))
+        .collect();
+    assert_eq!(
+        found, expected,
+        "the rows where C's own inverse does not recover the pixel have \
+         changed. Update RTRIP_REFERENCE_GAPS_LICENSED, the ledger and \
+         PLAN.md §6 together, with a reason per fixture",
+    );
 }
 
 /// Investigative harness. Not part of the normal suite or CI: run with
