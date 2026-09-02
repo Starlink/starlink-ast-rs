@@ -35,23 +35,21 @@ spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec
 # captured, which is what the render_options field says. lsst is byte-exact
 # under those options and needs no skip at all.
 #
-# rigby.simp was captured the same way, and was also stale: the pinned C at
-# f6762005 reproduces neither its formatting nor its IsSimp placement. It has
-# been regenerated from that C with the Channel defaults, so it now needs no
-# render_options.
-#
-# rigby keeps its skip for two reasons, neither of them formatting. It emits
-# one IsSimp card fewer than C (8 against 9) -- pinned by the
-# ISSIMP_DISAGREEMENTS assertion, so that part is visible without the skip --
-# and one inverse-matrix element comes out as -5.9658198263111446e-17 where C
-# has -5.8980598183211441e-17. Both are noise around zero, but they differ by
-# about 1% relatively, far outside the 4-ulp token tolerance. rigby exercises
-# the celestial WinMat Scl->1.0 path (see project_rigby_winmat_trace), which is
-# where that residue comes from.
+# rigby.simp is byte-compared, and its values are numerically drifted: neither
+# the pinned C nor the C at the previous pin f6762005 reproduces them on this
+# machine, so the reference was captured on another platform's libm and the
+# corpus-freshness rule keeps it. A fresh capture agrees with the port on every
+# residue. Three are inside the 4-ulp token tolerance. The fourth, the IM5 card
+# holding -5.9658198263111446e-17 where both the pinned C and the port produce
+# -5.8980598183211441e-17, is cancellation residue on an element whose row-mates
+# are of order one; the byte comparison licenses that one value through
+# NUMERIC_PLATFORM_DRIFT in test_simplify_regression.rs. rigby exercises the
+# celestial WinMat Scl->1.0 path, which is where the residue comes from.
+# See tools/oracle_fixtures/check_simplify_fresh.sh for the taxonomy.
 brad  | brad.map  | brad.simp  |
 lsst1 | lsst1.map | lsst1.simp |
 lsst  | lsst.ast  | lsst.simp  | | comment=0,indent=0
-rigby | rigby.map | rigby.simp | yes |
+rigby | rigby.map | rigby.simp | |
 
 # Focused rule fixtures (in simplify_fixtures/ subdirectory).
 unit_series_elision     | simplify_fixtures/unit_series_elision.map     | simplify_fixtures/unit_series_elision.simp     |
@@ -482,13 +480,7 @@ cap_unitnormmap_01       | simplify_fixtures/cap_unitnormmap_01.map | simplify_f
 cap_wcsmap_01            | simplify_fixtures/cap_wcsmap_01.map | simplify_fixtures/cap_wcsmap_01.simp |
 cap_winmap_01            | simplify_fixtures/cap_winmap_01.map | simplify_fixtures/cap_winmap_01.simp |
 cap_winmap_02            | simplify_fixtures/cap_winmap_02.map | simplify_fixtures/cap_winmap_02.simp |
-# cap_winmap_03: structure identical except C's inner ShiftMap emits an extra
-# Sft2 = -1.0061396160665481e-16 line for axis 2 where our WinMap->ShiftMap
-# conversion computes that shift as exactly 0.0 (which the ShiftMap serializer
-# omits, only emitting nonzero shifts). C's residue is a sub-ulp rounding
-# artefact of its shift extraction; both are astequal-equal (|-1e-16| is far
-# below threshold). astequal-only.
-cap_winmap_03            | simplify_fixtures/cap_winmap_03.map | simplify_fixtures/cap_winmap_03.simp | yes
+cap_winmap_03            | simplify_fixtures/cap_winmap_03.map | simplify_fixtures/cap_winmap_03.simp |
 cap_winmap_04            | simplify_fixtures/cap_winmap_04.map | simplify_fixtures/cap_winmap_04.simp |
 cap_zoommap_01           | simplify_fixtures/cap_zoommap_01.map | simplify_fixtures/cap_zoommap_01.simp |
 cap_zoommap_02           | simplify_fixtures/cap_zoommap_02.map | simplify_fixtures/cap_zoommap_02.simp |

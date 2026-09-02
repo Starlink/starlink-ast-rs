@@ -2920,7 +2920,7 @@ report 139 false positives and bury the two real ones.
   only numerically drifted, exit 1 when any is card-drifted or structurally
   drifted. Task 12 acts on its output.
 
-- [ ] **Step 1: Write the comparator**
+- [x] **Step 1: Write the comparator**
 
 Create `tools/oracle_fixtures/check_simplify_fresh.py`:
 
@@ -3056,7 +3056,7 @@ if __name__ == "__main__":
     sys.exit(main(sys.argv))
 ```
 
-- [ ] **Step 2: Write the driver script**
+- [x] **Step 2: Write the driver script**
 
 Create `tools/oracle_fixtures/check_simplify_fresh.sh`:
 
@@ -3089,7 +3089,7 @@ Then:
 chmod +x tools/oracle_fixtures/check_simplify_fresh.sh
 ```
 
-- [ ] **Step 3: Make it ruff and mypy clean**
+- [x] **Step 3: Make it ruff and mypy clean**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3102,7 +3102,7 @@ Expected: clean. If `mypy --strict` is not how the repo runs it, match
 `check_corpus_fresh.py` — check with
 `grep -rn "mypy" pyproject.toml setup.cfg .pre-commit-config.yaml 2>/dev/null`.
 
-- [ ] **Step 4: Run it and record the verdict**
+- [x] **Step 4: Run it and record the verdict**
 
 ```bash
 ./tools/oracle_fixtures/check_simplify_fresh.sh
@@ -3127,7 +3127,7 @@ manifest parser is wrong, not the corpus. If the negative rows report as
 `CARD`, the negative convention in `classify` is not firing — check that the
 row's input and reference paths compare equal as written in the manifest.
 
-- [ ] **Step 5: Document the two verdicts and what to do with each**
+- [x] **Step 5: Document the two verdicts and what to do with each**
 
 Append to `tools/oracle_fixtures/README.md`:
 
@@ -3158,7 +3158,7 @@ Run it after every move of the `reference/starlink-ast` pin, alongside
 `check_corpus_fresh.sh`.
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3243,7 +3243,7 @@ here.
   Task 15 removes the `skip_string_compare` rows that this task's regeneration and
   licence make removable.
 
-- [ ] **Step 0: Separate pin-move drift from platform drift**
+- [x] **Step 0: Separate pin-move drift from platform drift**
 
 "Numeric drift" as `check_simplify_fresh.sh` reports it means only that the
 reference's values differ from a local recapture. Two very different things produce
@@ -3306,7 +3306,7 @@ cd /sdf/home/t/timj/WORK/starlink-astrs
 git -C reference/starlink-ast worktree remove --force /tmp/ast-oldpin
 ```
 
-- [ ] **Step 1: Regenerate the card-drifted reference**
+- [x] **Step 1: Regenerate the card-drifted reference**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3331,7 +3331,7 @@ Expected exactly:
 If anything else moves, stop — the driver is not reproducing the capture
 conditions and Task 10 Step 4's gate should have caught it.
 
-- [ ] **Step 2: Re-run the freshness checker**
+- [x] **Step 2: Re-run the freshness checker**
 
 ```bash
 ./tools/oracle_fixtures/check_simplify_fresh.sh
@@ -3339,7 +3339,7 @@ conditions and Task 10 Step 4's gate should have caught it.
 
 Expected: `0 card-drifted`, exit status 0, and the six numeric rows unchanged.
 
-- [ ] **Step 3: Write the failing test — `rigby` byte-compared**
+- [x] **Step 3: Write the failing test — `rigby` byte-compared**
 
 Remove `rigby`'s skip so the comparison runs. In
 `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, change
@@ -3354,7 +3354,7 @@ to
 rigby | rigby.map | rigby.simp | |
 ```
 
-- [ ] **Step 4: Run it to see the residue the licence has to cover**
+- [x] **Step 4: Run it to see the residue the licence has to cover**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3364,7 +3364,7 @@ SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | gr
 Expected: two differing lines — the `IM5` card, and one missing `IsSimp` card.
 The `IsSimp` line is Task 14's; only `IM5` is this task's.
 
-- [ ] **Step 5: Add the licence and its comparator**
+- [x] **Step 5: Add the licence and its comparator**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, immediately after the
 `ISSIMP_PLACEMENT_LICENSED` declaration, add:
@@ -3432,7 +3432,7 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
 }
 ```
 
-- [ ] **Step 6: Wire it into the byte comparison**
+- [x] **Step 6: Wire it into the byte comparison**
 
 In the Check 3 block, after the `(got, want)` binding and before the licence's
 card-count assertion, insert:
@@ -3444,7 +3444,7 @@ card-count assertion, insert:
 
 The `let` shadows the existing `got` / `want`, so nothing below changes.
 
-- [ ] **Step 7: Run it to confirm the residue is covered and nothing else is**
+- [x] **Step 7: Run it to confirm the residue is covered and nothing else is**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3454,7 +3454,7 @@ SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | gr
 Expected: the `IM5` line is gone from the diff and only the `IsSimp` line remains.
 `rigby` still fails, which is correct — Task 14 closes it.
 
-- [ ] **Step 8: Prove the licence is falsifiable**
+- [x] **Step 8: Prove the licence is falsifiable**
 
 Temporarily widen the bound to `1e-10` and check that the comparator now reports
 a count problem rather than silently dropping more:
@@ -3470,7 +3470,7 @@ Expected: at least one `dropped N from the … side` line at `1e-10`, and none a
 `1e-15`. If `1e-10` also drops exactly one from each side, the bound is not
 discriminating anything and the licence should be tightened until it is.
 
-- [ ] **Step 9: Retire `cap_winmap_03`'s skip and its refuted note**
+- [x] **Step 9: Retire `cap_winmap_03`'s skip and its refuted note**
 
 In `simplify_tests.txt`, delete the six-line comment block beginning
 `# cap_winmap_03: structure identical except C's inner ShiftMap emits an extra`
@@ -3486,7 +3486,7 @@ with
 cap_winmap_03            | simplify_fixtures/cap_winmap_03.map | simplify_fixtures/cap_winmap_03.simp |
 ```
 
-- [ ] **Step 10: Correct the `rigby` note**
+- [x] **Step 10: Correct the `rigby` note**
 
 In `simplify_tests.txt`, replace the paragraph beginning
 `# rigby keeps its skip for two reasons, neither of them formatting.` through
@@ -3505,7 +3505,7 @@ In `simplify_tests.txt`, replace the paragraph beginning
 # See tools/oracle_fixtures/check_simplify_fresh.sh for the taxonomy.
 ```
 
-- [ ] **Step 11: Update the ledger, in both copies**
+- [x] **Step 11: Update the ledger, in both copies**
 
 `rigby` left the skip list at Step 3 and `cap_winmap_03` at Step 9, so two rows
 remain. In `PLAN.md` §6, change the `skip_string_compare` row's count from 4 to 2,
@@ -3540,7 +3540,7 @@ not in the table; a failure on the count means the manifest still has more `yes`
 rows than the ledger claims — check with
 `awk -F'|' 'NF>3 && $4 ~ /yes/ {print $1}' crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`.
 
-- [ ] **Step 12: Run the whole simplify suite and record what is left**
+- [x] **Step 12: Run the whole simplify suite and record what is left**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3560,7 +3560,7 @@ If that test name does not exist, find it with
 `grep -rln "simplify_fixtures" crates/ast-core/tests/*.rs` and run every file it
 names. Both consumers must be run whenever a `.simp` changes.
 
-- [ ] **Step 13: Format, lint, commit**
+- [x] **Step 13: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH

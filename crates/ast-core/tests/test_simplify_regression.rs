@@ -97,6 +97,79 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[(
          never forms (the WinMap under-merge of PLAN.md §10.3)",
 )];
 
+/// Reference values captured on another machine, whose local recapture from the
+/// pinned C differs by more than the 4-ulp token tolerance.
+///
+/// `tools/oracle_fixtures/check_simplify_fresh.sh` classifies these as numeric
+/// drift, and the corpus-freshness rule keeps them: regenerating one here would
+/// replace a cross-platform reference with this machine's libm. So the byte
+/// comparison drops exactly the named card, on exactly the named fixture,
+/// carrying exactly the named value — and only while both values are
+/// cancellation residue, below the entry's bound in absolute value, on an
+/// element whose row-mates are of order one.
+///
+/// Naming both values is what keeps the licence from spreading: `rigby` has a
+/// second `IM5` card, holding an exact zero, that the same card name would also
+/// have covered.
+///
+/// `(fixture, card name, value in the reference, value this machine produces,
+/// magnitude bound)`.
+const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, &str, &str, f64)] = &[(
+    "rigby",
+    "IM5",
+    "-5.9658198263111446e-17",
+    "-5.8980598183211441e-17",
+    1e-15,
+)];
+
+/// The value a card line carries, as written, with any trailing comment removed.
+fn card_value<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix(prefix)?;
+    Some(rest.split('\t').next().unwrap_or(rest).trim())
+}
+
+/// Drop the lines one `NUMERIC_PLATFORM_DRIFT` entry licenses, from both sides.
+///
+/// A line is dropped only when its card name matches the entry, its value is
+/// written exactly as the entry records it for that side, and that value parses
+/// below the entry's bound in absolute value. Exactly one line must be dropped
+/// from each side; any other count is returned as a failure, so the licence
+/// cannot widen to cover a card that grew, moved or multiplied.
+fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
+    let mut problems = Vec::new();
+    let mut got = got.to_string();
+    let mut want = want.to_string();
+
+    for (fixture, card, ref_value, local_value, bound) in NUMERIC_PLATFORM_DRIFT {
+        if *fixture != name {
+            continue;
+        }
+        let prefix = format!("{card} =");
+        for (side, expected, text) in [
+            ("got", local_value, &mut got),
+            ("want", ref_value, &mut want),
+        ] {
+            let residue = |line: &str| -> bool {
+                card_value(line, &prefix).is_some_and(|v| {
+                    v == *expected && v.parse::<f64>().is_ok_and(|n| n.abs() < *bound)
+                })
+            };
+            let kept: Vec<&str> = text.lines().filter(|l| !residue(l)).collect();
+            let dropped = text.lines().count() - kept.len();
+            if dropped != 1 {
+                problems.push(format!(
+                    "{name}: NUMERIC_PLATFORM_DRIFT licenses one {card} = {expected} \
+                     below {bound:e}, but dropped {dropped} from the {side} side"
+                ));
+            }
+            *text = kept.join("\n");
+        }
+    }
+
+    (got, want, problems)
+}
+
 fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
     AnyObject::from_mapping(m)
 }
@@ -382,6 +455,8 @@ fn simplify_regression() {
                 } else {
                     (simp_str.clone(), ref_text.clone())
                 };
+                let (got, want, residue_problems) = drop_licensed_residue(name, &got, &want);
+                other_failures.extend(residue_problems);
                 // A licensed case still has to carry exactly the recorded
                 // number of cards on each side, so the licence covers the
                 // diagnosed placement gap and nothing else.
@@ -563,13 +638,18 @@ fn simplify_regression() {
     let serial_failures = unlicensed;
 
     // Every row here is a real gap: the pinned C oracle and the committed
-    // `.simp` agree, and the port's `IsSimp` count differs from both. The
-    // corpus was regenerated against the pin at f6762005, so a stale fixture
-    // is no longer a possible explanation for a row appearing in this list.
+    // `.simp` agree, and the port's `IsSimp` count differs from both.
+    // `tools/oracle_fixtures/check_simplify_fresh.sh` is what establishes the
+    // first half of that, by recapturing the whole corpus from the pinned C, so
+    // a row may be added here only once that check reports the fixture fresh.
     // See PLAN.md §6.
     const ISSIMP_DISAGREEMENTS: &[&str] = &[
         // Under-tagging, gated all along.
         "rigby (8 vs C's 9)",
+        // Under-tagging on an inner WinMap that `astSimplify` handed back
+        // unchanged and still stamped. The same nominated-element stamp as
+        // `cap_cmpmap_01`/`_04`, on a different class. PLAN.md §10.3.
+        "lsst (1 vs C's 2)",
         // Under-tagging: C tags the CmpMap wrapping the SpecMap/ZoomMap pair,
         // which the port never forms. PLAN.md §10.3.
         "cap_specmap_02 (7 vs C's 8)",

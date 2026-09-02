@@ -5,6 +5,7 @@
  MapA =
  Begin WinMap
  Nin = 2
+ IsSimp = 1
  IsA Mapping
  Sft1 = -1
  Scl1 = 0.00049127978383689509

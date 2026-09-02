@@ -83,6 +83,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_simplify_regression.rs",
+        "NUMERIC_PLATFORM_DRIFT",
+        1,
+        "one inverse-matrix element of `rigby`, whose reference was captured \
+         on another platform's libm: the pinned C does not reproduce its value \
+         here either, and the corpus-freshness rule keeps a cross-platform \
+         reference rather than replacing it with this machine's. Both values \
+         are cancellation residue near zero, and the entry names both, so the \
+         licence covers one line on one fixture",
+    ),
+    (
+        "test_simplify_regression.rs",
         "SERIAL_UNGATED",
         4,
         "fixtures whose simplified dump differs from C's `.simp` in something \
@@ -94,12 +105,13 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "ISSIMP_DISAGREEMENTS",
-        5,
-        "fixtures whose `IsSimp` card count differs from C's. Not a separate \
-         mask -- each sits inside `skip_string_compare`, \
-         ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED -- but the count is the \
-         only thing gating the four `skip_string_compare` cases, so it is \
-         pinned as a set of its own",
+        6,
+        "fixtures whose `IsSimp` card count differs from C's. Some sit inside \
+         `skip_string_compare`, ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED; \
+         `rigby` and `lsst` are byte-compared and fail there too, so for them \
+         this list is a statement of the same gap rather than a mask. Pinned \
+         as a set of its own because for the `skip_string_compare` cases the \
+         count is the only gate",
     ),
     (
         "test_serialisation.rs",
@@ -181,12 +193,13 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
         (
             "simplify manifest: skip_string_compare",
             skip_string_compare,
-            "rigby (an IsSimp count difference plus a near-zero inverse-matrix \
-             element differing by ~1%), cap_cmpmap_01 and cap_cmpmap_04 (the \
-             open InvA/InvB quirk, plus three inner CmpMaps C tags and the port \
-             does not -- PLAN.md §10.3), cap_winmap_03 (a sub-ulp shift residue \
-             C emits and we compute as zero). lsst retired its skip once the \
-             manifest could name the Channel settings its reference was \
+            "cap_cmpmap_01 and cap_cmpmap_04, for the open InvA/InvB aliasing \
+             quirk, which no port can reproduce without shadowing C's \
+             reference counting. rigby and cap_winmap_03 retired theirs when \
+             the corpus was recaptured from the pinned C: cap_winmap_03's \
+             reference was stale and rigby's difference is one named value, \
+             licensed by NUMERIC_PLATFORM_DRIFT. lsst retired its skip once \
+             the manifest could name the Channel settings its reference was \
              captured with",
         ),
         (
@@ -299,7 +312,7 @@ fn every_relaxation_is_the_size_the_ledger_says() {
     }
     for (what, got, _reason) in manifest_relaxations() {
         let want = match what {
-            "simplify manifest: skip_string_compare" => 4,
+            "simplify manifest: skip_string_compare" => 2,
             "simplify manifest: negative fixtures stripping IsSimp" => 142,
             "wcsconv manifest: astequal compare mode" => 8,
             "audit checklists not yet verified and classified" => 35,
@@ -335,6 +348,7 @@ fn no_relaxation_hides_outside_the_ledger() {
         "DEFERRED_",
         "_UNGATED",
         "_DISAGREEMENTS",
+        "_DRIFT",
     ];
     let mut unlisted = Vec::new();
     for entry in std::fs::read_dir(tests_dir()).expect("tests dir readable") {
