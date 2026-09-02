@@ -28,3 +28,18 @@ When one of these classes lands:
 2. Add the corresponding entries to `../simplify_tests.txt`.
 3. Confirm both the simplify regression and the byte-exact round-trip
    corpus pass for them.
+
+## `.rt` round-trip references in `simplify_fixtures/`
+
+A `.map` / `.simp` reference is C's dump of a *simplified* object, so reading
+one back and re-dumping it is not the identity.
+A loader that validates an attribute re-applies it through the private setter,
+which for a clear-on-set class discards the simplified record `astLoadMapping`
+installed from the `IsSimp` card — see `docs/issues/c-library-quirks.md`.
+
+The reference for a round-trip is therefore C's dump of the *loaded* object.
+For 43 of the 790 fixtures that differs from the fixture itself, and the
+difference is captured beside it as `<fixture>.rt` by
+`tools/oracle_fixtures/gen_roundtrip_refs.sh`.
+The generator refuses to capture a difference in anything but an `IsSimp` line,
+so an unexplained divergence has to be read rather than blessed.

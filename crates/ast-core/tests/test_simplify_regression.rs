@@ -525,16 +525,6 @@ fn simplify_regression() {
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // (B) Region simplify tags a Mapping inside the encapsulated FrameSet
-        // that C leaves bare. See PLAN.md §9.1.
-        (
-            "cefit_circle_conformal",
-            "IsSimp on the FrameSet's ZoomMap; C emits none",
-        ),
-        (
-            "cefit_circle_nonconformal_keep",
-            "IsSimp on the FrameSet's MathMap; C emits none",
-        ),
         // (C) The uncertainty Region does not collapse Prism -> Box.
         (
             "nullregion_unc_fillfactor_merge",
@@ -598,8 +588,6 @@ fn simplify_regression() {
         // SERIAL_UNGATED. Cause (A), the four SwitchMap fixtures, is closed:
         // C reaches each encapsulated Mapping through `astSimplify`, which
         // records what it returns, and `SwitchMap::simplified` now stamps them.
-        "cefit_circle_conformal (1 vs C's 0)",
-        "cefit_circle_nonconformal_keep (1 vs C's 0)",
         "cap_zoommap_04 (3 vs C's 0)",
     ];
     issimp_disagreements.sort();

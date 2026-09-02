@@ -2510,3 +2510,40 @@ half-bad vertex; a comment at the loop points here.
 No fixture pins it, and none can, for the reason above.
 
 To be raised upstream.
+
+## The `IsSimp` card does not survive being read back, for twelve classes
+
+`astLoadMapping` installs the simplified record from the `IsSimp` card
+(`mapping.c:24137`) and the parent loader runs before any class-specific card is
+read.
+Each class whose loader validates an attribute re-applies it through the private
+`Set…` function, following the comment at `zoommap.c:2231-2233` — "If a 'set'
+value is obtained, we then use the appropriate (private) Set... member function
+to validate and set the value properly".
+For the eleven classes that follow the clear-on-set convention
+(`mapping.h:449-460`, PLAN.md §9.2), plus GrismMap's macro form, that `Set…`
+calls `astClearIsSimple`, which discards both records:
+
+```c
+      new->zoom = astReadDouble( channel, "zoom", 0.0 );
+      if ( TestZoom( new, status ) ) SetZoom( new, new->zoom, status );
+```
+
+So `astWrite` followed by `astRead` loses the flag for those classes, and a
+Mapping that was known to be simplified is offered to `astSimplify` again.
+The cost is a redundant simplification, never a wrong answer — which is the same
+latitude the convention's own comment claims — and it is invisible unless the
+dump is compared against a re-dump.
+
+The two are not independent choices: the loader routing exists to validate, and
+the clearing exists because a set can invalidate a record.
+Their composition is what nobody chose.
+
+**Rust behaviour (mirror):** the port routes `from_node` through the same
+setters for the same classes, so a `.simp` reference and the port's dump of the
+loaded object agree card for card.
+`cefit_circle_conformal` (ZoomMap) and `cefit_circle_nonconformal_keep`
+(MathMap) pin it; `cap_poly_bent_edges`, whose MathMap carries no `SimpFI` /
+`SimpIF` / `Seeded` card and so routes nothing, is the control.
+
+To be raised upstream.

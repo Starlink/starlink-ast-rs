@@ -694,45 +694,41 @@ impl Serializable for MathMap {
         let has_forward = compiled.has_fwd;
         let has_inverse = compiled.has_inv;
 
-        // Read attributes
+        // Read the raw attribute values against C's unset defaults. Each is
+        // then re-applied through the setter that discards the simplified
+        // records, exactly as C's loader does (mathmap.c:7392, 7397, 7410) --
+        // so a dumped `IsSimp` card does not survive being read back.
         let simp_fi_raw = node.get_int("SimpFI", -1);
-        let simp_fi = if simp_fi_raw >= 0 {
-            Some(simp_fi_raw != 0)
-        } else {
-            None
-        };
         let simp_if_raw = node.get_int("SimpIF", -1);
-        let simp_if = if simp_if_raw >= 0 {
-            Some(simp_if_raw != 0)
-        } else {
-            None
-        };
-
-        // Seed
         let seeded = node.get_int("Seeded", 0) != 0;
-        let rng = if seeded {
-            let seed = node.get_int("Seed", 0) as i32;
-            MathMapRng::new(seed, true)
-        } else {
-            MathMapRng::with_default_seed()
-        };
+        let seed = node.get_int("Seed", 0) as i32;
 
-        Ok(Self {
+        let mut m = Self {
             nin,
             nout,
             fwd_exprs,
             inv_exprs,
             fwd_compiled,
             inv_compiled,
-            rng: UnsafeCell::new(rng),
-            simp_fi,
-            simp_if,
+            rng: UnsafeCell::new(MathMapRng::with_default_seed()),
+            simp_fi: None,
+            simp_if: None,
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,
             has_forward,
             has_inverse,
-        })
+        };
+        if simp_fi_raw >= 0 {
+            m.set_simp_fi(simp_fi_raw != 0);
+        }
+        if simp_if_raw >= 0 {
+            m.set_simp_if(simp_if_raw != 0);
+        }
+        if seeded {
+            m.set_seed(seed);
+        }
+        Ok(m)
     }
 }
 

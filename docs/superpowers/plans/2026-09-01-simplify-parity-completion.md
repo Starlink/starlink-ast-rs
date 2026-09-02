@@ -1629,7 +1629,7 @@ pointer, so rule 2 is the only missing piece on the port side.
   - `fn result_is_frame_kind(m: &dyn Mapping) -> bool`
   - `fn has_top_level_is_simp(dump: &str) -> bool`
 
-- [ ] **Step 1: Confirm the harness assertion is the file-wide one described above**
+- [x] **Step 1: Confirm the harness assertion is the file-wide one described above**
 
 ```bash
 sed -n '400,410p' crates/ast-core/tests/test_simplify_regression.rs
@@ -1642,7 +1642,7 @@ stamps every result)" followed by
 it — which is why only `neg_box_asymmetric_2d`, a Box over a bare Frame with no
 inner Mapping to carry one, ever tripped it.
 
-- [ ] **Step 2: Add the two helpers at the end of the file**
+- [x] **Step 2: Add the two helpers at the end of the file**
 
 Append to `crates/ast-core/tests/test_simplify_regression.rs`:
 
@@ -1670,7 +1670,7 @@ fn has_top_level_is_simp(dump: &str) -> bool {
 }
 ```
 
-- [ ] **Step 3: Add the imports the helpers need**
+- [x] **Step 3: Add the imports the helpers need**
 
 At the top of `crates/ast-core/tests/test_simplify_regression.rs`, extend the
 existing `ast_core` imports so `AnyObject` and `Mapping` are in scope:
@@ -1683,7 +1683,7 @@ Run `grep -n "^use " crates/ast-core/tests/test_simplify_regression.rs` first
 and add only what is missing — `Mapping` is already imported for the transform
 checks.
 
-- [ ] **Step 4: Replace the file-wide requirement with C's rule**
+- [x] **Step 4: Replace the file-wide requirement with C's rule**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, replace
 
@@ -1725,7 +1725,7 @@ with
                 }
 ```
 
-- [ ] **Step 5: Delete the licence and its assertion**
+- [x] **Step 5: Delete the licence and its assertion**
 
 Delete these three lines (`test_simplify_regression.rs:545-547`):
 
@@ -1759,7 +1759,7 @@ Then replace the line that re-binds the filtered list
 
 with nothing — `other_failures` is already the list the panic counts.
 
-- [ ] **Step 6: Run the harness**
+- [x] **Step 6: Run the harness**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -1773,7 +1773,7 @@ must now pass the new one on the absence of a top-level one; if any of them
 reports "IsSimp card on a Frame-kind result", the port is stamping a Region and
 that is a real finding to fix before continuing, not a row to license.
 
-- [ ] **Step 7: Record the rule where the port relies on it**
+- [x] **Step 7: Record the rule where the port relies on it**
 
 In `crates/ast-core/src/mappings/mod.rs`, extend the doc comment on
 `has_been_simplified` (currently ending "Serialised as the `IsSimp` token.")
@@ -1789,7 +1789,7 @@ with the paragraph that makes the default deliberate rather than incidental:
     /// `IsSimp` card on every Frame-kind result in the corpus.
 ```
 
-- [ ] **Step 8: Delete the ledger row**
+- [x] **Step 8: Delete the ledger row**
 
 In `PLAN.md`, delete the `NO_ISSIMP_CARD_UNGATED` row (line 349, the row whose
 count is 1), and in the paragraph at `PLAN.md:332-333` drop the clause "the one
@@ -1805,7 +1805,7 @@ cannot hide an untagged result." Replace it with:
 > return zero (`frame.c:5590`) — so the strip can hide neither an untagged
 > Mapping result nor a wrongly tagged Region.
 
-- [ ] **Step 9: Format, lint, commit**
+- [x] **Step 9: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH

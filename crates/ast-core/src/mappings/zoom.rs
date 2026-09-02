@@ -50,6 +50,25 @@ impl ZoomMap {
         self.factor
     }
 
+    /// Set the zoom factor.
+    ///
+    /// `Zoom` is the whole of the transformation and so feeds the first part
+    /// of ZoomMap's own `MapMerge`, which is why C's setter discards both
+    /// simplified records (`astMAKE_SET1` at zoommap.c:1704, the convention at
+    /// mapping.h:449-460). Zero is rejected as `ZoomMap::new` rejects it,
+    /// matching the `AST__ZOOMI` error C raises in the same setter.
+    pub(crate) fn set_factor(&mut self, factor: f64) -> AstResult<()> {
+        if factor == 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Zoomi,
+                "zoom factor must not be zero",
+            ));
+        }
+        self.simplified.clear();
+        self.factor = factor;
+        Ok(())
+    }
+
     fn effective_forward(&self, forward: bool) -> bool {
         forward != self.inverted
     }
@@ -310,13 +329,21 @@ impl Serializable for ZoomMap {
 
     fn from_node(node: &Node) -> AstResult<Self> {
         let base = read_mapping_base(node);
-        let factor = node.get_double("Zoom", 1.0);
-        let mut m = ZoomMap::new(base.nin, factor)?;
+        // C reads the raw value against the unset default of zero and then
+        // re-applies it through `SetZoom` when `TestZoom` reports it set, i.e.
+        // when it is non-zero (zoommap.c:2237-2238, zoommap.c:1712). That
+        // setter discards the simplified record the parent loader has just
+        // installed from the `IsSimp` card, so a dumped card does not survive
+        // being read back.
+        let raw = node.get_double("Zoom", 0.0);
+        let mut m = ZoomMap::new(base.nin, if raw != 0.0 { raw } else { 1.0 })?;
         if base.inverted {
             m.invert();
         }
-
         m.set_has_been_simplified(base.has_been_simplified);
+        if raw != 0.0 {
+            m.set_factor(raw)?;
+        }
         Ok(m)
     }
 }

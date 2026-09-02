@@ -84,23 +84,31 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "SERIAL_UNGATED",
-        6,
+        4,
         "fixtures whose simplified dump differs from C's `.simp` in something \
-         other than an `IsSimp` line. Five causes, each named per row and \
-         traced to a port gap in PLAN.md §6: two Region-simplify tags C \
-         leaves bare, a Prism uncertainty where C has a Box, a FrameSet where \
-         C has a PointSet, a `Closed` card C omits at its default, and two \
-         mesh coordinates past 4 ulp",
+         other than an `IsSimp` line. Four causes, each named per row and \
+         traced to a port gap in PLAN.md §6: a Prism uncertainty where C has \
+         a Box, a FrameSet where C has a PointSet, a `Closed` card C omits at \
+         its default, and two mesh coordinates past 4 ulp",
     ),
     (
         "test_simplify_regression.rs",
         "ISSIMP_DISAGREEMENTS",
-        7,
+        5,
         "fixtures whose `IsSimp` card count differs from C's. Not a separate \
          mask -- each sits inside `skip_string_compare`, \
          ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED -- but the count is the \
          only thing gating the four `skip_string_compare` cases, so it is \
          pinned as a set of its own",
+    ),
+    (
+        "test_serialisation.rs",
+        "ROUNDTRIP_DISCARD_LICENSED",
+        4,
+        "two GrismMap and two PcdMap fixtures whose round-trip reference C \
+         captured with the `IsSimp` card discarded, and which the port still \
+         keeps because neither class has a setter for the loader to route \
+         through (PLAN.md §9.2)",
     ),
     (
         "test_deferred_fixtures.rs",
