@@ -7172,7 +7172,7 @@ inverse also fails to recover the pixel (C records `418.3068181819074` for pixel
 live result passes today through the alias-aware escape. With the new gate last,
 that row keeps being asserted.
 
-- [ ] **Step 1: Drop the override and watch the gate fail**
+- [x] **Step 1: Drop the override and watch the gate fail**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -7220,7 +7220,7 @@ Expected: FAIL. `head oracle sections diverged from C (not excluded)` naming
 is now enabled for the fixture and the port cannot satisfy it, because C cannot
 either.
 
-- [ ] **Step 2: Add the census of reference gaps as an exact set**
+- [x] **Step 2: Add the census of reference gaps as an exact set**
 
 The set is a property of the corpus, so it is asserted without loading a single
 fixture. Add the const immediately after `compare_rtrip` in
@@ -7260,7 +7260,7 @@ const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
 ];
 ```
 
-- [ ] **Step 3: Add the census test**
+- [x] **Step 3: Add the census test**
 
 Put it after `every_oracle_section_is_gated` at the end of the file, beside the
 other corpus-wide assertions:
@@ -7323,7 +7323,7 @@ fn reference_rtrip_gaps_are_exactly_the_recorded_set() {
 }
 ```
 
-- [ ] **Step 4: Add the unit control for the gate's ordering**
+- [x] **Step 4: Add the unit control for the gate's ordering**
 
 Three rows, three outcomes, one identity mapping — the whole point is that the
 reference gate fires last. Add to the `check_tests` module, after
@@ -7357,7 +7357,7 @@ reference gate fires last. Add to the `check_tests` module, after
     }
 ```
 
-- [ ] **Step 5: Run it and watch it fail to compile**
+- [x] **Step 5: Run it and watch it fail to compile**
 
 ```bash
 cargo test -p ast-core --test test_transform_oracle rtrip_excuses 2>&1 | tail -20
@@ -7366,7 +7366,7 @@ cargo test -p ast-core --test test_transform_oracle rtrip_excuses 2>&1 | tail -2
 Expected: FAIL — `error[E0061]: this function takes 5 arguments but 6 arguments
 were supplied`, pointing at `compare_rtrip`. The gate does not exist yet.
 
-- [ ] **Step 6: Add the helper**
+- [x] **Step 6: Add the helper**
 
 Immediately before `compare_rtrip` in
 `crates/ast-core/tests/test_transform_oracle.rs`:
@@ -7388,7 +7388,7 @@ fn reference_round_trips(
 }
 ```
 
-- [ ] **Step 7: Take the recorded inverse in `compare_rtrip` and gate on it last**
+- [x] **Step 7: Take the recorded inverse in `compare_rtrip` and gate on it last**
 
 Change the signature and doc comment (`test_transform_oracle.rs:822-836`):
 
@@ -7431,7 +7431,7 @@ replacing the blank line between them:
         for (a, (inv_col, inp_col)) in inv_live.iter().zip(fwd.inputs.iter()).enumerate() {
 ```
 
-- [ ] **Step 8: Pass the recorded outputs at the call site**
+- [x] **Step 8: Pass the recorded outputs at the call site**
 
 In `run_oracle` (`test_transform_oracle.rs:1000-1010`), `s` is the inverse
 section, so its recorded outputs are C's inverse:
@@ -7442,7 +7442,7 @@ section, so its recorded outputs are C's inverse:
                 }
 ```
 
-- [ ] **Step 9: Run the control and the three gates**
+- [x] **Step 9: Run the control and the three gates**
 
 ```bash
 cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
@@ -7455,7 +7455,7 @@ Expected: PASS, including `rtrip_excuses_only_rows_the_reference_also_fails`,
 `tnx-cheb.head`, the failure is now a golden mismatch, not a round-trip one, and
 it is a port defect to fix rather than anything this task licenses.
 
-- [ ] **Step 10: Update the committed-overrides parse test**
+- [x] **Step 10: Update the committed-overrides parse test**
 
 `parses_committed_overrides_file` (`test_transform_oracle.rs:645-658`) asserts
 the entry that no longer exists. Replace its first assertion:
@@ -7477,7 +7477,7 @@ the entry that no longer exists. Replace its first assertion:
     }
 ```
 
-- [ ] **Step 11: Add the ledger row**
+- [x] **Step 11: Add the ledger row**
 
 In `crates/ast-core/tests/test_verification_ledger.rs`, add to `LEDGER` after
 the `SIMPLIFY_ORACLE_EXCLUDED` entry:
@@ -7499,7 +7499,7 @@ the `SIMPLIFY_ORACLE_EXCLUDED` entry:
 The name carries `_LICENSED`, so `no_relaxation_hides_outside_the_ledger` would
 have demanded this row even if it were forgotten.
 
-- [ ] **Step 12: Mirror it in `PLAN.md` §6**
+- [x] **Step 12: Mirror it in `PLAN.md` §6**
 
 ```bash
 python3 - <<'PY'
@@ -7514,7 +7514,7 @@ p.write_text(t.replace(old, new))
 PY
 ```
 
-- [ ] **Step 13: Run the ledger and format**
+- [x] **Step 13: Run the ledger and format**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -7527,7 +7527,7 @@ CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$R
 
 Expected: both test binaries pass; clippy clean.
 
-- [ ] **Step 14: Commit**
+- [x] **Step 14: Commit**
 
 ```bash
 git add crates/ast-core/tests/test_transform_oracle.rs \
@@ -7611,7 +7611,7 @@ replaces — so a regenerated corpus makes it fail rather than silently pass —
 a C probe on this host is what establishes the substituted value in the first
 place.
 
-- [ ] **Step 1: Write the probe that asks this host's C library**
+- [x] **Step 1: Write the probe that asks this host's C library**
 
 The evidence has to come from C, not from the Rust port, or the substituted
 value is just the port's own output promoted to a reference. Create
@@ -7695,7 +7695,7 @@ int main(int argc, char **argv) {
 }
 ```
 
-- [ ] **Step 2: Register it in the probe Makefile**
+- [x] **Step 2: Register it in the probe Makefile**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -7710,7 +7710,7 @@ p.write_text(t.replace(old, new))
 PY
 ```
 
-- [ ] **Step 3: Build and run it against the fixture**
+- [x] **Step 3: Build and run it against the fixture**
 
 The oracle's inverse rows 2 and 3 share an input, so one point settles both.
 
@@ -7731,7 +7731,7 @@ diagnosis needs redoing rather than the plan continuing.
 Record the reading in the commit message; the probe itself is a permanent tool,
 not a throwaway, and belongs in the same commit.
 
-- [ ] **Step 4: Add the substitution table**
+- [x] **Step 4: Add the substitution table**
 
 In `crates/ast-core/tests/test_transform_oracle.rs`, immediately after
 `RTRIP_REFERENCE_GAPS_LICENSED`:
@@ -7807,7 +7807,7 @@ fn substituted_reference<'a>(
 }
 ```
 
-- [ ] **Step 5: Add the test that keeps each entry honest**
+- [x] **Step 5: Add the test that keeps each entry honest**
 
 After `reference_rtrip_gaps_are_exactly_the_recorded_set`:
 
@@ -7851,7 +7851,7 @@ fn fma_substitutions_replace_rows_that_really_differ() {
 }
 ```
 
-- [ ] **Step 6: Run both tests before the harness uses the table**
+- [x] **Step 6: Run both tests before the harness uses the table**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -7862,7 +7862,7 @@ Expected: PASS. The table is self-consistent with the corpus. The golden
 comparison does not use it yet, so `simplify_sections_match_oracle` is unchanged
 at this point.
 
-- [ ] **Step 7: Drop the override and watch the gate fail**
+- [x] **Step 7: Drop the override and watch the gate fail**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -7893,7 +7893,7 @@ naming `neg_unitnormmap_inv_fwd_diffcentre.map (forward=false)` with misses at
 rows 2 and 3 only. Two rows, not 24: the rest of the section was always
 matching, which the fixture-wide skip was hiding.
 
-- [ ] **Step 8: Use the substituted reference at the golden call site**
+- [x] **Step 8: Use the substituted reference at the golden call site**
 
 In `run_oracle` (`test_transform_oracle.rs:975-990`), the golden branch:
 
@@ -7914,7 +7914,7 @@ equivalence check pairs forward sections — but the narrow scope is deliberate:
 the substitution is a claim about one comparison, not a rewrite of the corpus in
 memory.
 
-- [ ] **Step 9: Run the three gates**
+- [x] **Step 9: Run the three gates**
 
 ```bash
 cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
@@ -7923,7 +7923,7 @@ cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
 Expected: PASS throughout, with `simplify_sections_match_oracle` green and no
 override skipping anything.
 
-- [ ] **Step 10: Assert the overrides file declares nothing**
+- [x] **Step 10: Assert the overrides file declares nothing**
 
 Both entries are gone, so the file is comments only. Rewrite its opening line
 and tighten the parse test. First the file:
@@ -7982,7 +7982,7 @@ Then the test, replacing the body written in Task 25's step 10:
 `Overrides`' fields must be reachable from the test module; they are private
 fields of a private struct in the same file, so no visibility change is needed.
 
-- [ ] **Step 11: Add the quirks entry**
+- [x] **Step 11: Add the quirks entry**
 
 `docs/issues/c-library-quirks.md` requires the C site, the observation, the
 consequence, and what mirrors it. Append:
@@ -8039,7 +8039,7 @@ To be raised upstream.
 DOC
 ```
 
-- [ ] **Step 12: Update the ledger and `PLAN.md` §6**
+- [x] **Step 12: Update the ledger and `PLAN.md` §6**
 
 The ledger row:
 
@@ -8076,7 +8076,7 @@ PY
 sed -n '/^| Gate | Cases/,/^$/p' PLAN.md
 ```
 
-- [ ] **Step 13: Run everything the change touches, format, lint**
+- [x] **Step 13: Run everything the change touches, format, lint**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -8092,7 +8092,7 @@ asserted; `every_relaxation_is_the_size_the_ledger_says` and
 `no_relaxation_hides_outside_the_ledger` pass with the two new rows; clippy
 clean.
 
-- [ ] **Step 14: Commit**
+- [x] **Step 14: Commit**
 
 ```bash
 git add tools/oracle_fixtures/unitnorm_probe.c tools/oracle_fixtures/Makefile \
@@ -8129,6 +8129,22 @@ Generated with AI
 Co-Authored-By: SLAC AI
 MSG
 ```
+
+Both tasks diverged from the written steps in ways worth recording:
+
+- Task 25's golden and round-trip helpers take a `CheckKind`, not a `&str`, so
+  the call-site snippets were adapted to the real signatures.
+- Task 26's Makefile anchor differed from the plan's text, and the probe needed
+  `static const char *source(void)` with `astChannel(source, NULL, "%s", "")` to
+  compile clean under `-Wall`, matching `ast2ast.c`. Registering the probe in
+  `.gitignore` and documenting it in `tools/oracle_fixtures/README.md` was extra
+  work the steps did not name.
+- Task 26's step 7 was landed in the same batch as its step 8, so the two-row
+  failure was never witnessed in passing. It was witnessed afterwards by
+  inserting `false &&` into the substitution filter:
+  `simplify_sections_match_oracle` then fails on
+  `neg_unitnormmap_inv_fwd_diffcentre.map (forward=false)` with `nmiss=4`, rows 2
+  and 3 across two axes, and passes again on restore.
 
 **Cluster 6 is closed when:** `transform_oracle_overrides.txt` declares no
 overrides and a test enforces that; every one of the 1752 sections has its
