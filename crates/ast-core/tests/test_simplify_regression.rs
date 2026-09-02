@@ -60,42 +60,80 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
     true
 }
 
-/// Try to wrap a DynMapping back into an AnyObject for serialization.
-/// Downcasts to known concrete types.
-/// Cases whose only remaining difference from the C reference is where an
-/// `IsSimp` card sits, with the exact card count on each side.
+/// Cases where the C reference carries one `IsSimp` card the port cannot: C
+/// stamped a sub-Mapping inside a merge probe it then abandoned.
 ///
-/// `IsSimp` records the set of sub-Mappings that were, at some instant, the
-/// entire result of a simplification. Two engines that reach the same Mapping by
-/// different internal routes disagree on that set, and the Mapping here *is* the
-/// same — `equal()` and the transform check both pass. Aligning the routes, not
-/// adding a stamp, is what closes a row: `cap_cmpmap_03` closed when the
-/// port stopped simplifying the reassembled parallel CmpMap that C hands to the
-/// list as built.
+/// `CmpMap::MapMerge`'s series-in-parallel probe assembles two trial CmpMaps with
+/// `CombineMaps` and simplifies each (`cmpmap.c:1608-1609`), keeping the result
+/// only if it is simpler (`cmpmap.c:1621`) and annulling every pointer either way
+/// (`cmpmap.c:1624-1628`). `CombineMaps` clones rather than copies
+/// (`cmpmap.c:626-627`), and `astInitCmpMap_` clones again (`cmpmap.c:4650`,
+/// `cmpmap.c:4657`), so a trial CmpMap holds the very Mappings the live tree
+/// holds. Simplifying it recurses into `MapMerge`, which stamps whatever
+/// `astSimplify` returns (`cmpmap.c:1443`) — and when the probe is thrown away the
+/// stamp stays on the shared sub-Mapping. The neighbouring parallel-in-series
+/// probe guards against exactly this with `SeparateMappings`
+/// (`cmpmap.c:1650-1651`); this one does not.
 ///
-/// `cap_specmap_02` is short one card: C tags the CmpMap wrapping the
-/// SpecMap/ZoomMap pair, which the port never forms because of the WinMap
-/// under-merge of PLAN.md §10.3. The over-tagging half of that row is closed —
-/// the port no longer simplifies each member of a dimension-matched sublist.
+/// Owned values give each tree its own children, so no probe in the port can
+/// leave a mark on the tree that outlives it. Mirroring the card would mean
+/// modelling C's reference counting, which is why this is licensed rather than
+/// ported. See `docs/issues/c-library-quirks.md`.
 ///
-/// Measured dead ends, so they are not retried: tagging the reduced leaf in
-/// `flatten`; tagging the reconstructed parallel; tagging every
-/// `simplify_mapping` result; and deferring leaf reduction entirely. The first
-/// three over-tagged `cap_lutmap_01` / `cap_matrixmap_03` / `cap_zoommap_01`;
-/// the last broke four unrelated cases.
+/// The comparison drops exactly one reference-only `IsSimp = 1` line, at a
+/// position where the port's line is the reference's next line, and requires the
+/// drop to happen. Every other line is compared, `IsSimp` cards included, so a
+/// second missing card fails the row.
 ///
-/// The licence is per case, drops only the `IsSimp` lines, and pins both counts
-/// — so it cannot absorb a new difference, and the moment the port emits the
-/// missing card the count check fails, which is the signal to delete the row.
+/// Fields: name, where the abandoned probe left the card.
+const ABANDONED_PROBE_STAMP_LICENSED: &[(&str, &str)] = &[
+    (
+        "rigby",
+        "on the SpecMap inside the celestial/spectral parallel pair",
+    ),
+    (
+        "cap_specmap_02",
+        "on the CmpMap wrapping the SpecMap/ZoomMap pair",
+    ),
+    (
+        "cap_cmpmap_nested_tag",
+        "on the innermost CmpMap, shrunk from cap_specmap_02",
+    ),
+    (
+        "cap_cmpmap_01",
+        "on the CmpMap holding the differentiated SpecMap",
+    ),
+    (
+        "cap_cmpmap_04",
+        "on the CmpMap holding the differentiated SpecMap",
+    ),
+];
+
+/// Cases where one node's dump carries `Invert` in C and `IsSimp` in the port,
+/// because C recorded a shared child's inversion on the enclosing CmpMap.
 ///
-/// Fields: name, cards this port emits, cards C emits, what differs.
-const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize, &str)] = &[(
-    "cap_specmap_02",
-    7,
-    8,
-    "C tags the CmpMap wrapping the SpecMap/ZoomMap pair, which the port \
-         never forms (the WinMap under-merge of PLAN.md §10.3)",
-)];
+/// `CombineMaps` writes a child's `Invert` onto the CmpMap it builds when the two
+/// share a pointer, so the pair the dump carries reflects the object graph's
+/// history rather than the Mapping (`docs/issues/c-library-quirks.md`, "CmpMap
+/// dumps InvA/InvB disagreeing with the child's own Invert"). The port holds
+/// components by value and has no such history to record.
+///
+/// The comparison consumes the two as a pair at one position: the reference's
+/// `Invert = 1` against the port's `IsSimp = 1`, once, on the same node. A card
+/// that moved to another node, or either card appearing alone, leaves the pair
+/// unspent and fails the row.
+///
+/// Fields: name, which node carries it.
+const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
+    (
+        "cap_cmpmap_01",
+        "the CmpMap under MapB holding the SpecMap/ZoomMap pair",
+    ),
+    (
+        "cap_cmpmap_04",
+        "the CmpMap under MapB holding the SpecMap/ZoomMap pair",
+    ),
+];
 
 /// Reference values captured on another machine, whose local recapture from the
 /// pinned C differs by more than the 4-ulp token tolerance.
@@ -170,6 +208,110 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
     (got, want, problems)
 }
 
+/// Consume the lines the two aliasing licences allow, walking both dumps in step.
+///
+/// Each licence is spent positionally, not by searching for a card name: a
+/// reference-only line counts only where the port's line is the reference's *next*
+/// line, and a substituted pair counts only where both halves sit at the same
+/// position. That is what stops a licence naming a common card from absorbing a
+/// divergence somewhere else in the tree.
+///
+/// Lines are matched with the same 4-ulp token comparison the verdict uses, so a
+/// numeric residue inside tolerance does not look like a divergence and shift the
+/// walk. A genuine divergence is kept on both sides and the walk carries on
+/// aligned, so the verdict reports it and the diagnostic prints it.
+///
+/// Returns the trimmed pair and one problem per licence entry left unspent —
+/// which is how a row that has started matching C becomes visible.
+fn drop_aliasing_lines(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
+    // (reference card, port card or none, reason, spent)
+    let mut budget: Vec<(&str, Option<&str>, &str, bool)> = Vec::new();
+    for (fixture, reason) in ABANDONED_PROBE_STAMP_LICENSED {
+        if *fixture == name {
+            budget.push(("IsSimp = 1", None, reason, false));
+        }
+    }
+    for (fixture, reason) in INVAB_ALIASING_LICENSED {
+        if *fixture == name {
+            budget.push(("Invert = 1", Some("IsSimp = 1"), reason, false));
+        }
+    }
+    if budget.is_empty() {
+        return (got.to_string(), want.to_string(), Vec::new());
+    }
+
+    let same = |a: &str, b: &str| common::line_tokens_equivalent(a, b, 4);
+    let (g, w): (Vec<&str>, Vec<&str>) = (got.lines().collect(), want.lines().collect());
+    let (mut kept_got, mut kept_want): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+    let (mut i, mut j) = (0usize, 0usize);
+
+    while i < g.len() && j < w.len() {
+        if same(g[i], w[j]) {
+            kept_got.push(g[i]);
+            kept_want.push(w[j]);
+            i += 1;
+            j += 1;
+            continue;
+        }
+
+        // A line the reference carries alone, licensed as an abandoned probe's
+        // stamp: the port's line here is the reference's next line.
+        let insertion = w
+            .get(j + 1)
+            .is_some_and(|next| same(g[i], next))
+            .then(|| {
+                budget.iter_mut().find(|(r, p, _, spent)| {
+                    p.is_none() && !*spent && w[j].trim_start().starts_with(*r)
+                })
+            })
+            .flatten();
+        if let Some(entry) = insertion {
+            entry.3 = true;
+            j += 1;
+            continue;
+        }
+
+        // One node's card written differently on each side.
+        let substitution = budget.iter_mut().find(|(r, p, _, spent)| {
+            !*spent
+                && p.is_some_and(|p| g[i].trim_start().starts_with(p))
+                && w[j].trim_start().starts_with(*r)
+        });
+        if let Some(entry) = substitution {
+            entry.3 = true;
+            i += 1;
+            j += 1;
+            continue;
+        }
+
+        kept_got.push(g[i]);
+        kept_want.push(w[j]);
+        i += 1;
+        j += 1;
+    }
+    kept_got.extend_from_slice(&g[i..]);
+    kept_want.extend_from_slice(&w[j..]);
+
+    let problems = budget
+        .iter()
+        .filter(|(_, _, _, spent)| !*spent)
+        .map(|(r, p, reason, _)| match p {
+            Some(p) => format!(
+                "{name}: INVAB_ALIASING_LICENSED covers a reference `{r}` against a \
+                 port `{p}` on {reason}, and found no such pair"
+            ),
+            None => format!(
+                "{name}: ABANDONED_PROBE_STAMP_LICENSED covers one reference-only \
+                 `{r}` {reason}, and found none"
+            ),
+        })
+        .collect();
+
+    (kept_got.join("\n"), kept_want.join("\n"), problems)
+}
+
+/// Try to wrap a DynMapping back into an AnyObject for serialization.
+/// Downcasts to known concrete types.
 fn mapping_to_any_object(m: &dyn Mapping) -> Option<AnyObject> {
     AnyObject::from_mapping(m)
 }
@@ -444,10 +586,7 @@ fn simplify_regression() {
         if !skip_string_compare {
             if let Some(simp_str) = mapping_to_native_string_with(simplified.as_ref(), render_opts)
             {
-                let licence = ISSIMP_PLACEMENT_LICENSED
-                    .iter()
-                    .find(|(n, _, _, _)| *n == name);
-                let (got, want) = if ignore_is_simp_line || licence.is_some() {
+                let (got, want) = if ignore_is_simp_line {
                     (
                         common::strip_is_simp(&simp_str),
                         common::strip_is_simp(&ref_text),
@@ -457,21 +596,8 @@ fn simplify_regression() {
                 };
                 let (got, want, residue_problems) = drop_licensed_residue(name, &got, &want);
                 other_failures.extend(residue_problems);
-                // A licensed case still has to carry exactly the recorded
-                // number of cards on each side, so the licence covers the
-                // diagnosed placement gap and nothing else.
-                if let Some((_, want_got, want_ref, _)) = licence {
-                    let (n_got, n_ref) = (
-                        simp_str.matches("IsSimp").count(),
-                        ref_text.matches("IsSimp").count(),
-                    );
-                    if (n_got, n_ref) != (*want_got, *want_ref) {
-                        other_failures.push(format!(
-                            "{name}: IsSimp card count is ({n_got}, {n_ref}), \
-                             licensed as ({want_got}, {want_ref})"
-                        ));
-                    }
-                }
+                let (got, want, aliasing_problems) = drop_aliasing_lines(name, &got, &want);
+                other_failures.extend(aliasing_problems);
                 // A negative fixture's reference is its own input, which was
                 // never simplified and so carries no `IsSimp` at all, so the
                 // strip above would hide a result tagged wrongly at the top

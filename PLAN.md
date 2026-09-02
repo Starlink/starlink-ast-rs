@@ -341,10 +341,11 @@ list as empty, so a ledger row for one would have passed at any size.
 | wcsconv (`test_wcsconv.rs`) | 194 | 8 | `astequal` compare mode — FMA contraction / libm differences vs x86-64 Linux captures that C AST on arm64 does not reproduce either |
 | wcsconv | 194 | 4 | `ISSIMP_PLACEMENT_LICENSED` — drops the `IsSimp` tag lines both sides *and pins the card count on each side*, so it covers the tag placement and nothing else. A deliberate divergence, not a gap: C's placement here records the order its reader simplified in (§8). `axes-swap`, `cd-cross`, `vopt-f2w`, `wave-f2w`; C emits more cards than the port in each. 24 rows preceded these; 20 were pinned against references the pinned C no longer reproduced and were retired with the corpus refresh (§9.3) |
 | wcsconv | 194 | 0 | **No skip mode exists.** `NATIVE_READ_EXCLUDED` is empty and gated against refilling |
-| simplify regression | 469 | 2 | `skip_string_compare` in the manifest (`cap_cmpmap_01`, `cap_cmpmap_04`), both for the open `InvA`/`InvB` aliasing quirk. Was 4: `tools/oracle_fixtures/check_simplify_fresh.sh` recaptured the whole corpus from the pinned C and showed `cap_winmap_03`'s reference was stale — it predates both this pin and `f6762005`, so the sub-ulp `Sft2` residue it carried was never this C's output — and showed `rigby`'s difference is a single named value, now licensed by `NUMERIC_PLATFORM_DRIFT` instead. `lsst` retired its skip earlier, when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
+| simplify regression | 469 | 0 | **No skip mode exists.** `skip_string_compare` is empty and gated against refilling: every row in the manifest is byte-compared. The last two, `cap_cmpmap_01` and `cap_cmpmap_04`, gave theirs up for the two positional aliasing licences below. Was 4 before that: `tools/oracle_fixtures/check_simplify_fresh.sh` recaptured the whole corpus from the pinned C and showed `cap_winmap_03`'s reference was stale — it predates both this pin and `f6762005`, so the sub-ulp `Sft2` residue it carried was never this C's output — and showed `rigby`'s difference is a single named value, now licensed by `NUMERIC_PLATFORM_DRIFT` instead. `lsst` retired its skip earlier, when the manifest gained a `render_options` field: its reference was captured with the Channel's `Comment` and `Indent` off, and rendering the same way makes it byte-exact |
 | simplify regression | 469 | 1 | `NUMERIC_PLATFORM_DRIFT` — one `IM5` card of `rigby`, `-5.9658198263111446e-17` in the reference against `-5.8980598183211441e-17` from both the port and the pinned C on this machine. Numeric drift, not a port gap: the reference was captured on another platform's libm, and the corpus-freshness rule keeps such a reference rather than replacing it with this machine's. The licence names the fixture, the card, *both* values and a magnitude bound, and requires exactly one line to drop from each side — `rigby.simp` carries a second `IM5`, holding an exact zero, that a card-name-only rule would have covered too |
-| simplify regression | 469 | 1 | `ISSIMP_PLACEMENT_LICENSED` — same counted form as the wcsconv row (`cap_specmap_02`, one card short of C: the CmpMap C tags there is one the port never forms, §10.3). Was 2: `cap_cmpmap_03` closed when the port stopped simplifying the reassembled parallel CmpMap (§10.3, divergence 3). The over-tagging half of the row closed with the per-member simplify |
-| simplify regression | 469 | 4 | `ISSIMP_DISAGREEMENTS` — fixtures whose `IsSimp` card count still differs from C. Three under-tag by exactly one card, and that card is one C wrote during a merge probe it then abandoned: the probe's CmpMaps are assembled by cloning, so they share their sub-Mappings with the live tree and the stamp outlives the probe (`docs/issues/c-library-quirks.md`, "An `IsSimp` card can record a merge probe C threw away"). Owned values give each tree its own children, so the port cannot reproduce it — `rigby`, `cap_specmap_02` and `cap_cmpmap_nested_tag`, the last shrunk from `cap_specmap_02` to isolate the signature. One over-tags: `cap_zoommap_04`, the remaining Region-simplify shape gap. Retired with this cluster: `lsst`, when `PolyMap`'s linear branch began composing its MatrixMap and ShiftMap and handing the pair to `astSimplify` as C does, and `cap_cmpmap_01` / `cap_cmpmap_04`, when `CmpMap::map_merge` began adopting the object its own self-simplify returns unchanged — C's `new == map`, which carries the recursion's descendant stamps forward (§10.3). Retired earlier: `cefit_circle_conformal` and `cefit_circle_nonconformal_keep` when `from_node` began routing through the setters that discard the record, as C's loaders do (§9.2); the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand; `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles; and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). Some of these sit inside `skip_string_compare`, the counted licence above, or `SERIAL_UNGATED`. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale reference is ruled out per fixture by `tools/oracle_fixtures/check_simplify_fresh.sh`, which recaptures the corpus from the pinned C |
+| simplify regression | 469 | 5 | `ABANDONED_PROBE_STAMP_LICENSED` — one reference-only `IsSimp = 1` line each in `rigby`, `cap_specmap_02`, `cap_cmpmap_nested_tag`, `cap_cmpmap_01` and `cap_cmpmap_04`. C stamped a sub-Mapping inside a merge probe it then abandoned: `CombineMaps` assembles the trial CmpMaps by cloning (`cmpmap.c:626-627`), so a trial holds the very sub-Mappings the live tree holds, the recursion stamps whatever `astSimplify` returns (`cmpmap.c:1443`), and discarding the probe (`cmpmap.c:1621-1628`) leaves the mark behind. The neighbouring parallel-in-series probe guards against exactly this with `SeparateMappings` (`cmpmap.c:1650-1651`); this one does not. Owned values give each tree its own children, so no probe in the port can leave a mark that outlives it (`docs/issues/c-library-quirks.md`, "An `IsSimp` card can record a merge probe C threw away"). Spent positionally — a line counts only where the port's line is the reference's *next* line — one per fixture, required to be found, with every other line compared |
+| simplify regression | 469 | 2 | `INVAB_ALIASING_LICENSED` — one node in each of `cap_cmpmap_01` and `cap_cmpmap_04` whose dump carries `Invert = 1` in C and `IsSimp = 1` in the port. C's `CombineMaps` records a shared child's `Invert` on the CmpMap it builds, so the pair the dump carries is reference-count history rather than a property of the Mapping (`docs/issues/c-library-quirks.md`, "CmpMap dumps InvA/InvB disagreeing with the child's own Invert"); the port holds components by value and has no such history. The two cards are consumed as a pair at one position, so neither can go missing elsewhere unnoticed. This is what retired both fixtures' `skip_string_compare`, which had been hiding the whole 350-line file. Preceded by `ISSIMP_PLACEMENT_LICENSED`, which read `cap_specmap_02`'s missing card as a CmpMap the port never forms (§10.3): the port forms it byte for byte, and the card was the abandoned probe's |
+| simplify regression | 469 | 4 | `ISSIMP_DISAGREEMENTS` — fixtures whose `IsSimp` card count still differs from C. Three under-tag by exactly one card, and that card is one C wrote during a merge probe it then abandoned: the probe's CmpMaps are assembled by cloning, so they share their sub-Mappings with the live tree and the stamp outlives the probe (`docs/issues/c-library-quirks.md`, "An `IsSimp` card can record a merge probe C threw away"). Owned values give each tree its own children, so the port cannot reproduce it — `rigby`, `cap_specmap_02` and `cap_cmpmap_nested_tag`, the last shrunk from `cap_specmap_02` to isolate the signature. One over-tags: `cap_zoommap_04`, the remaining Region-simplify shape gap. Retired with this cluster: `lsst`, when `PolyMap`'s linear branch began composing its MatrixMap and ShiftMap and handing the pair to `astSimplify` as C does, and `cap_cmpmap_01` / `cap_cmpmap_04`, when `CmpMap::map_merge` began adopting the object its own self-simplify returns unchanged — C's `new == map`, which carries the recursion's descendant stamps forward (§10.3). Retired earlier: `cefit_circle_conformal` and `cefit_circle_nonconformal_keep` when `from_node` began routing through the setters that discard the record, as C's loaders do (§9.2); the three `cmpmap_perm_swap*` fixtures when the swap branch stopped simplifying the components C hands on as they stand; `cap_cmpmap_03` when the same branch stopped simplifying the parallel CmpMap it reassembles; and `parpair_one_side_reduces` when it stopped simplifying a dimension-matched sublist's members (all §10.3). The byte comparison licenses the first three through `ABANDONED_PROBE_STAMP_LICENSED` and never reaches the fourth, which `SERIAL_UNGATED` holds, so the count is their only gate. Listed because otherwise the number is invisible, and asserted as a set in `test_simplify_regression.rs` so it cannot grow. A stale reference is ruled out per fixture by `tools/oracle_fixtures/check_simplify_fresh.sh`, which recaptures the corpus from the pinned C |
 | simplify regression | 469 | 142 | `ignore_is_simp_line` for the negative fixtures, whose reference *is* their input and so cannot carry the tag `simplify` always stamps. The companion assertion requires a top-level card exactly when the result is not Frame-kind — C's `IsSimple` getter is overridden on the Frame class to return zero (`frame.c:5590`) — so the strip can hide neither an untagged Mapping result nor a wrongly tagged Region. 134 with `neg_time_mjdtojd_real` (§10.9), `neg_unit_parallel_forward` (§10.6) `neg_parpair_aligned_irreducible` (§10.14), `neg_lut_near_linear` (§10.8), and five upstream repaired at pin `8d4f526f`. Was 141 before `cap_box_permmap_nonbidi`, the negative control for a PermMap whose permutation is not bi-directional (§10.13) |
 | simplify regression | 469 | 4 | `SERIAL_UNGATED` — fixtures whose dump differs from C's `.simp` in something other than an `IsSimp` line, enumerated with causes C–F in the table below. Every one is a port defect: the pinned C reproduces all four `.simp` files byte-exactly. The set is asserted exactly, so it can shrink but not grow. Cause B — a card on a Mapping inside a Region's FrameSet that C leaves bare — retired with the load-time discard (§9.2) |
 | simplify round-trip (`test_serialisation.rs`) | 790 | 4 | `ROUNDTRIP_DISCARD_LICENSED` — `grism_zoom_merge`, `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies`, `pcd_unit_series_merge`. C's own round-trip of these drops the `IsSimp` card and the port keeps it, because GrismMap's eight attributes and `PcdMap::Disco` are the two remaining clear-on-set attributes with no setter for the loader to route through (§9.2). The other 786 compare byte-exactly against C's round-trip, 43 of them against a `.rt` reference captured from the oracle where C is not idempotent. Asserted as an exact set, so a case that starts round-tripping forces its row out |
@@ -505,29 +506,46 @@ records the order the reader simplified in") and licensed with both card counts
 pinned (§6), so a *shape* difference could never hide behind it.
 
 `cap_specmap_02` on the simplify corpus is one card too few, from the same input
-on both sides. Six fixes were tried and measured, and all were reverted —
-including tagging every `simplify_mapping` result, which is `astSimplify_`'s
-literal contract, and deferring leaf reduction entirely. The
-finding is that this engine never has the missing node as the whole result of a
-simplify, where C does: `IsSimp` records the set of sub-Mappings that were at
-some instant the entire result of a simplification, and two engines reaching the
-same Mapping by different internal routes disagree on that set. The Mapping is
-identical — `equal()`, the transform check and every other byte all match. The
-dead ends are listed in `test_simplify_regression.rs` so they are not retried.
+on both sides, and the card is one the port cannot write. `IsSimp` records the
+set of sub-Mappings that were at some instant the entire result of a
+simplification, and one of C's instants is inside a merge probe it goes on to
+throw away: `CmpMap::MapMerge`'s series-in-parallel probe assembles its trial
+CmpMaps by cloning (`cmpmap.c:626-627`, `cmpmap.c:4650`, `cmpmap.c:4657`), so a
+trial holds the very sub-Mappings the live tree holds, the recursive
+`astSimplify` stamps one of them (`cmpmap.c:1443`), and the stamp survives the
+probe's annulment (`cmpmap.c:1624-1628`). The neighbouring parallel-in-series
+probe guards against exactly this by copying instead of cloning
+(`cmpmap.c:1650-1651`); this one does not. Owned values give each Rust tree its
+own children, so there is no route by which the port could reach that node.
+`ABANDONED_PROBE_STAMP_LICENSED` drops the one card, positionally, on the five
+fixtures it affects and compares every other line. Six earlier fixes were tried
+and measured before the mechanism was found, and all were reverted — including
+tagging every `simplify_mapping` result, which is `astSimplify_`'s literal
+contract, and deferring leaf reduction entirely; they are listed in
+`test_simplify_regression.rs` so they are not retried.
 
 The `.ast` FrameSet corpus (`frameset_fixtures/`) is byte-exact throughout and
 could not have caught either: it round-trips read → write and never
 re-simplifies.
 
-**Not in this range, still open:** the `CmpMap` `InvA`/`InvB` quirk. It is why
-`cap_cmpmap_01` and `cap_cmpmap_04` keep their `skip_string_compare`; the
-`IsSimp` reason they used to share is gone.
+**Not in this range, still open:** the `CmpMap` `InvA`/`InvB` quirk. It cost
+`cap_cmpmap_01` and `cap_cmpmap_04` their whole byte comparison until the
+closeout replaced their `skip_string_compare` with `INVAB_ALIASING_LICENSED`,
+which drops the one node it affects and compares the other 349 lines.
 
 General rule this instantiated, and it held: before moving the pin, diff the
 incoming range for serialization changes and check
 `docs/issues/c-library-quirks.md` for entries the port *mirrors*. Four of the
 five mirrors found this way were invisible to every existing test, because the
 fixtures had been generated by the buggy C.
+
+Second rule, from the next pin move: freshness must be checked on every corpus
+the pin feeds. The simplify corpus was not covered by a freshness check when the
+pin moved from `f6762005` to `3e60abaa`, and two references were stale for the
+whole of that interval — `cap_winmap_03`'s `Sft2` residue and `rigby`'s single
+drifted value were both read as port defects and cost real time.
+`tools/oracle_fixtures/check_simplify_fresh.sh` now covers it, and must be run
+alongside `check_corpus_fresh.sh` after any pin move.
 
 ---
 
@@ -917,8 +935,10 @@ What the closeout leaves open, and where:
 - **§10.2's linear half, as a `divergence:`** — C's linear reduction loses a
   ChebyMap's domain scaling, so the port declines the step and the two fixtures
   that would pin C's answer stay out of the corpus.
-- **§10.3's seven remaining CmpMap tags** — the WinMap under-merge, which the
-  closeout narrowed but did not close.
+- **§10.3's seven remaining CmpMap tags** — closed. There was no WinMap
+  under-merge: the port forms the CmpMaps C tags, and was raising C's stamps on
+  objects it then discarded. What survives is one card per fixture that a merge
+  probe C abandoned left on a shared sub-Mapping, licensed positionally in §6.
 - **§9.4's two sectionless buckets and §9.5's checklist citations** — record
   work the closeout measured rather than finished.
 
@@ -1165,28 +1185,31 @@ Two things the entry above did not anticipate:
   C's card count of 18, which §10.3 has since shown was a coincidence of two
   errors in opposite directions.
 
-What it did not fix: the WinMap under-merge of §10.3, which the entry above
-implied was downstream of the seam and is not. Cause (G) in §9.2 named the
+What it did not fix: what §10.3 then called the WinMap under-merge, which the
+entry above implied was downstream of the seam and is not — and which turned out
+not to be an under-merge at all (§10.3). Cause (G) in §9.2 named the
 `simplified()` gate as the source of five fixtures' extra cards and predicted they
 would close here. They did not; the real source was two `.simplify()` calls in
 CmpMap's parallel handling with no C counterpart, both of which have since been
 removed (§10.3).
 
-### 10.3 The parallel-in-series branch now simplifies where C simplifies; seven CmpMap tags remain
+### 10.3 The parallel-in-series branch now simplifies where C simplifies — FIXED
 
 All three divergences in the port's handling of C's `cmpmap.c:1624-1783` are
 closed, so rows 22, 23 and 26 of `docs/audits/mapmerge/cmpmap.md` are `ported`.
 Two fixtures came byte-exact with the change — `cmpmap_parallel_series_dim_mismatch`
 and `parpair_one_side_reduces` — and their `SERIAL_UNGATED` rows are deleted,
 taking that list from nine cases to seven. `cap_specmap_02` went from ten
-`IsSimp` cards to seven against C's eight; only the WinMap under-merge half of
-its row survives, because the CmpMap C tags there is one the port never forms.
+`IsSimp` cards to seven against C's eight. The remaining card was read as a
+WinMap under-merge — a CmpMap the port never forms — and it was not: the port
+forms `CmpMap(SpecMap, ZoomMap)` byte for byte, and the missing card is the
+abandoned probe's, closed below.
 
 The entry is still open, for a reason the change itself exposed.
 
 **`cap_cmpmap_01` and `cap_cmpmap_04` never agreed with C.** They read 18 cards
-against C's 18 and now read 16 and 15. Both are `skip_string_compare`, so the
-card count was the only gate on them — and it is a total, which two errors in
+against C's 18 and now read 16 and 15. Both were `skip_string_compare` while this
+was written, so the card count was the only gate on them — and it is a total, which two errors in
 opposite directions can satisfy (H10). The port was tagging leaf classes C never
 tags while already missing CmpMap tags C sets. Per class, the two sides now
 differ in one place only:
@@ -1206,17 +1229,24 @@ differs in three `IsSimp = 1` lines C emits on inner CmpMaps and the port does
 not, plus one object where the port emits `IsSimp = 1` and C emits `Invert = 1`
 — the open `InvA`/`InvB` dump quirk
 (`docs/issues/c-library-quirks.md:320`), not a stamping difference. `_04` differs
-in four such `IsSimp` lines and the same one `Invert` line. Both totals are
-registered in `ISSIMP_DISAGREEMENTS` with that diagnosis, so nothing here is
-hidden any more; what changed is that the number now measures something.
+in four such `IsSimp` lines and the same one `Invert` line.
 
-**What would expose the rest.** Whether the seven missing CmpMap tags share
-`cap_specmap_02`'s cause — a CmpMap C forms and the port does not — is not
-established: the diff says which objects lack the tag, not why. Two things would
-settle it, and neither exists yet: a fixture covering these trees that is *not*
-`skip_string_compare`, and a trace mapping each of C's 16 CmpMap tags to the
-nomination that produced it. While a count is the only gate on `_01` and `_04`,
-they cannot show it themselves.
+**Closed.** The missing `IsSimp` lines were two causes, not the seven-CmpMap
+mystery this section described. Most of them were stamps the port raised and then
+threw away: C reaches each nominated element through `astSimplify`
+(`cmpmap.c:1443`), which stamps its result, and when nothing reduced that result
+*is* the element — C's `new == map` — so every stamp the recursion left on its
+descendants is already on the object the closing fold encapsulates.
+`CmpMap::map_merge` now adopts that object rather than tagging only its list
+entry, and the tag is written at the orientation C stamps, `invert_list[where]`.
+`_01` and `_04` reached 18 cards against C's 18 with that.
+
+What is left in each is one card the port cannot raise, from a merge probe C
+abandoned but whose mark survives on a shared sub-Mapping, and the one
+`InvA`/`InvB` node. Both are licensed positionally and per fixture
+(`ABANDONED_PROBE_STAMP_LICENSED`, `INVAB_ALIASING_LICENSED`, §6), so both
+fixtures gave up `skip_string_compare` and every other line of both files is now
+byte-compared — the gate this section said they could not have.
 
 #### What C does in this branch
 

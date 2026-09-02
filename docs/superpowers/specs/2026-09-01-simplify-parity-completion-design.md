@@ -77,6 +77,14 @@ Closes the seven CmpMap tags of `PLAN.md` §10.3 — `cap_specmap_02` at 7 tags 
 All four `skip_string_compare` opt-outs live here: `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03`.
 Removing them is this cluster's headline result, less the aliasing line named in §1.3.
 
+**Outcome.**
+The cluster was one defect, one construction-shape divergence, two stale references and one unreproducible card — not seven tag defects.
+The defect is that `CmpMap::map_merge` discarded the object its own self-simplify returned when that object was structurally unchanged, where C adopts it (`new == map`) and so carries the recursion's descendant stamps forward; the stamp it then writes takes its orientation from `invert_list[where]`, not from the nominee's own `Invert`.
+The construction-shape divergence is `PolyMap`'s linear branch, which now composes its `MatrixMap` and `ShiftMap` and hands the pair to `astSimplify` as C does instead of reducing them itself.
+The two stale references are `cap_winmap_03`, whose `Sft2` residue predates both this pin and `f6762005`, and `rigby`, whose single drifted inverse-matrix element is platform drift; both are recaptured and reclassified by `tools/oracle_fixtures/check_simplify_fresh.sh`.
+The unreproducible card is one `IsSimp` line per fixture on five fixtures, written by C inside a merge probe it then abandoned and reachable only because that probe clones its components; it falls under §1.3's aliasing exclusion and is licensed positionally by `ABANDONED_PROBE_STAMP_LICENSED`.
+All four `skip_string_compare` opt-outs are gone and the manifest's counter is pinned at zero, so no row can stop being byte-compared.
+
 ### 2.3 Cluster 3 — Region simplify results and singularity handling
 
 Scope: `NullRegion`, `Prism`, `Box`, `Interval`, `PointList`, the Region mesh, and `astNormBox`.
@@ -317,3 +325,4 @@ It answers directly whether the simplifier has validated parity with C, and stat
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-09-01 | Initial design. Section 4 revised during review from "implement `Mapping` for seven Frame classes, reversing the sibling-trait decision" to "Region is the only Frame that is a Mapping", after establishing that a Region is already accepted as a component of both a `CmpFrame` and a `CmpMap`, exercised by fifty corpus fixtures, and that the single gap is a bare Frame where a Mapping is expected. `CmpFrame` refusing a general Mapping is not the mirror gap it resembles: C refuses it too, at `cmpframe.c:10634`. The sectionless-fixture cluster dropped as maintainer-owned, leaving seven clusters. Cluster 4 moved last and gated. |
+| 2 | 2026-09-02 | §2.2 gained the cluster's outcome: one `map_merge` defect, `PolyMap`'s linear-branch construction shape, two stale references, and one `IsSimp` card per fixture on five fixtures that C writes inside a merge probe it abandons — the last covered by §1.3's aliasing exclusion rather than by a code change. Recorded because §2.2 had predicted seven tag defects, and acting on that prediction would have meant curve-fitting the tag set. |

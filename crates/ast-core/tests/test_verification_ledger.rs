@@ -51,11 +51,26 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_simplify_regression.rs",
-        "ISSIMP_PLACEMENT_LICENSED",
-        1,
-        "cap_specmap_02 misses one IsSimp card C emits; the Mapping is \
-         identical. PLAN.md §10.3: the WinMap under-merge stops the port \
-         forming the CmpMap C tags there",
+        "ABANDONED_PROBE_STAMP_LICENSED",
+        5,
+        "one reference-only IsSimp card per fixture, which C stamped on a \
+         sub-Mapping inside a merge probe it then abandoned. The probe's \
+         CmpMaps are assembled by cloning, so the object it marked is one the \
+         live tree still holds; owned values give each tree its own children, \
+         so no probe in the port can leave a mark that outlives it \
+         (docs/issues/c-library-quirks.md). Spent positionally, one line per \
+         fixture, with every other line compared",
+    ),
+    (
+        "test_simplify_regression.rs",
+        "INVAB_ALIASING_LICENSED",
+        2,
+        "one node in each of cap_cmpmap_01 and _04 whose dump carries `Invert` \
+         in C and `IsSimp` in the port. C's CombineMaps records a shared \
+         child's Invert on the CmpMap it builds, which is reference-count \
+         history rather than a property of the Mapping \
+         (docs/issues/c-library-quirks.md). The two cards are consumed as a \
+         pair at one position, so neither can go missing elsewhere unnoticed",
     ),
     (
         "test_serialisation.rs",
@@ -110,9 +125,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          one card C wrote inside a merge probe it then abandoned, which \
          survives on a sub-Mapping the probe shares with the live tree \
          (docs/issues/c-library-quirks.md); the fourth, `cap_zoommap_04`, is a \
-         Region-simplify shape gap. Some sit inside `skip_string_compare`, \
-         ISSIMP_PLACEMENT_LICENSED or SERIAL_UNGATED, so the count is their \
-         only gate, which is why the set is pinned on its own",
+         Region-simplify shape gap. The byte comparison licenses the first \
+         three through ABANDONED_PROBE_STAMP_LICENSED and never reaches the \
+         fourth, which SERIAL_UNGATED holds, so the count is their only gate — \
+         which is why the set is pinned on its own",
     ),
     (
         "test_serialisation.rs",
@@ -194,12 +210,12 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
         (
             "simplify manifest: skip_string_compare",
             skip_string_compare,
-            "cap_cmpmap_01 and cap_cmpmap_04, for the open InvA/InvB aliasing \
-             quirk, which no port can reproduce without shadowing C's \
-             reference counting. rigby and cap_winmap_03 retired theirs when \
-             the corpus was recaptured from the pinned C: cap_winmap_03's \
-             reference was stale and rigby's difference is one named value, \
-             licensed by NUMERIC_PLATFORM_DRIFT. lsst retired its skip once \
+            "no skip mode: every row in the simplify manifest is \
+             byte-compared, and this counter is kept at zero and gated so a \
+             `yes` cannot come back. The last two, cap_cmpmap_01 and _04, gave \
+             theirs up for the two positional aliasing licences above; \
+             cap_winmap_03's reference was stale, rigby's difference is one \
+             named value under NUMERIC_PLATFORM_DRIFT, and lsst's went once \
              the manifest could name the Channel settings its reference was \
              captured with",
         ),
@@ -313,7 +329,7 @@ fn every_relaxation_is_the_size_the_ledger_says() {
     }
     for (what, got, _reason) in manifest_relaxations() {
         let want = match what {
-            "simplify manifest: skip_string_compare" => 2,
+            "simplify manifest: skip_string_compare" => 0,
             "simplify manifest: negative fixtures stripping IsSimp" => 142,
             "wcsconv manifest: astequal compare mode" => 8,
             "audit checklists not yet verified and classified" => 35,

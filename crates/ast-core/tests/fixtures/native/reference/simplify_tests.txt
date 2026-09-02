@@ -403,38 +403,41 @@ sla_run_partial          | simplify_fixtures/sla_run_partial.map          | simp
 # New fixtures imported from upstream 50c2b21b (simplify sweep).
 # ============================================================
 
-# cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02 are astequal-only (skip the
-# byte-exact string diff). Their transforms and structure match C exactly; the
-# ONLY divergence is where one `Invert` line sits: cap_cmpmap_01 and _04 place
-# it on the enclosing CmpMap rather than on its child.
+# cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02 are all byte-compared. Two
+# artefacts of C's object sharing are licensed in test_simplify_regression.rs,
+# each positionally and per fixture; every other line in every one of the three
+# files is compared, Invert and IsSimp cards included.
 #
-# That is the `InvA`/`InvB` quirk, still open upstream: C's `CombineMaps`
-# records the child's Invert on the parent when the two CmpMaps share a
-# pointer, so the pair the dump carries reflects C's reference counting rather
-# than the Mapping. See docs/issues/c-library-quirks.md, "CmpMap dumps
-# InvA/InvB disagreeing with the child's own Invert". The port holds components
-# by value and has no such history to record. Compared by astequal only until
-# that quirk is settled upstream.
+# ABANDONED_PROBE_STAMP_LICENSED covers one reference-only `IsSimp = 1` in each.
+# C's series-CmpMaps-in-parallel merge probe assembles trial CmpMaps by cloning
+# (cmpmap.c:626-627, cmpmap.c:4650) and simplifies them (cmpmap.c:1608-1609), so a
+# trial holds the very sub-Mappings the live tree holds. The recursion stamps
+# whatever astSimplify returns (cmpmap.c:1443), and when the probe is discarded
+# (cmpmap.c:1621-1628) the stamp stays behind on the shared object. The port gives
+# each tree its own children, so no probe of its own can leave that mark.
 #
-# Measured 2026-08-20, after leaf reduction moved out of the decomposition:
-# apart from that one Invert line, cap_cmpmap_01 differs by two IsSimp cards
-# (16 against C's 18) and cap_cmpmap_04 by three (15 against 18). So both would
-# still need the counted IsSimp licence even once the Invert quirk is settled;
-# the blanket skip is not covering only the tag. Everything else in both files
-# matches, including the Invert cards on every other node.
+# INVAB_ALIASING_LICENSED covers one further node in cap_cmpmap_01 and _04, where
+# C's dump carries `Invert = 1` and the port's carries `IsSimp = 1`. C's
+# CombineMaps records a shared child's Invert on the CmpMap it builds, so the pair
+# the dump carries is reference-count history rather than a property of the
+# Mapping. The two are consumed together, at one position, so neither card can go
+# missing elsewhere unnoticed.
+#
+# Both are recorded in docs/issues/c-library-quirks.md, to be raised upstream.
 
 # --- Supported classes ---
-cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtures/cap_cmpmap_01.simp | yes
+cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtures/cap_cmpmap_01.simp |
 cap_cmpmap_02            | simplify_fixtures/cap_cmpmap_02.map | simplify_fixtures/cap_cmpmap_02.simp |
 cap_cmpmap_03            | simplify_fixtures/cap_cmpmap_03.map | simplify_fixtures/cap_cmpmap_03.simp |
-cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp | yes
+cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp |
 # cap_cmpmap_nested_tag: the smallest input for which C stamps IsSimp on a CmpMap
 # that is neither the simplify result nor an element of the final component list.
 # C raises it at cmpmap.c:1443 on a nominated element whose self-simplify found
 # nothing, inside the simp2 = astSimplify( new2 ) of the series-CmpMaps-in-parallel
-# merge (cmpmap.c:1608-1609), and the closing fold at cmpmap.c:3709 combines that
-# same object into the tree it builds, so the tag reaches the dump. Shrunk from
-# cap_specmap_02, which carries the same single missing card in 680 lines.
+# merge (cmpmap.c:1608-1609). That probe is then abandoned, and the stamp survives
+# only because CombineMaps clones its arguments, so the object it marked is one the
+# live tree still holds. Shrunk from cap_specmap_02, which carries the same single
+# card in 680 lines.
 cap_cmpmap_nested_tag    | simplify_fixtures/cap_cmpmap_nested_tag.map | simplify_fixtures/cap_cmpmap_nested_tag.simp |
 cap_interval_01          | simplify_fixtures/cap_interval_01.map | simplify_fixtures/cap_interval_01.simp |
 cap_lutmap_01            | simplify_fixtures/cap_lutmap_01.map | simplify_fixtures/cap_lutmap_01.simp |
