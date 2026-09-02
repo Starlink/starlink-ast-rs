@@ -2709,7 +2709,7 @@ actually emit for this `.map`?" is not a file anyone can run. Commit it.
   `Comment` and `Indent` attributes, defaulting to `1` and `3`. Exit status 0 on
   success, 1 on a read/write failure, 2 on a usage error. Task 11 drives it.
 
-- [ ] **Step 1: Write the driver**
+- [x] **Step 1: Write the driver**
 
 Create `tools/oracle_fixtures/gen_simp.c`:
 
@@ -2794,7 +2794,7 @@ int main( int argc, char **argv ) {
 }
 ```
 
-- [ ] **Step 2: Add the Makefile target**
+- [x] **Step 2: Add the Makefile target**
 
 `tools/oracle_fixtures/Makefile` already defines `REF`, `LIBS` and `RPATH` for
 `ast2ast`. Read them first so the new target reuses them verbatim:
@@ -2811,7 +2811,7 @@ gen_simp: gen_simp.c
 	$(CC) $(CFLAGS) -I$(REF)/src -I$(REF)/build -o $@ $< $(LIBS) $(RPATH)
 ```
 
-- [ ] **Step 3: Build it and check it links against the repo's own libast**
+- [x] **Step 3: Build it and check it links against the repo's own libast**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2824,7 +2824,7 @@ under a conda prefix. If any resolves to conda, the RPATH is not taking — see
 `docs/issues/c-oracle-probe-recipe.md`, "the stale conda libast trap", and check
 that `-Wl,--disable-new-dtags` survived into `RPATH`.
 
-- [ ] **Step 4: Reproduce one known-fresh reference exactly**
+- [x] **Step 4: Reproduce one known-fresh reference exactly**
 
 ```bash
 cd crates/ast-core/tests/fixtures/native/reference
@@ -2837,7 +2837,7 @@ Expected: `BYTE-EXACT`. This is the driver's own gate — a reference that is fr
 must come back byte-identical, or the driver is not reproducing the capture
 conditions and nothing built on it means anything.
 
-- [ ] **Step 5: Check the `Comment` / `Indent` arguments against the one reference captured without them**
+- [x] **Step 5: Check the `Comment` / `Indent` arguments against the one reference captured without them**
 
 ```bash
 cd crates/ast-core/tests/fixtures/native/reference
@@ -2849,7 +2849,7 @@ Expected: `BYTE-EXACT`. `lsst` is the manifest row carrying
 `render_options = comment=0,indent=0`, so it is the only case that exercises the
 two optional arguments.
 
-- [ ] **Step 6: Replace the heredoc in the trace script with the committed file**
+- [x] **Step 6: Replace the heredoc in the trace script with the committed file**
 
 `build_simplify_trace.sh` writes its own copy of this driver. Find it:
 
@@ -2871,7 +2871,7 @@ Then re-run it once to confirm it still builds:
 bash tools/oracle_fixtures/build_simplify_trace.sh 2>&1 | tail -5
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3913,7 +3913,7 @@ is what has been wrong here before.
 - Produces: no signature change. `set_component_simple_tag(&mut self, index: usize)`
   keeps its name and arity.
 
-- [ ] **Step 1: Find out whether the tag is being written at all**
+- [x] **Step 1: Find out whether the tag is being written at all**
 
 Add a temporary probe to `set_component_simple_tag` in
 `crates/ast-core/src/mappings/simplify.rs`, replacing the body:
@@ -3946,7 +3946,7 @@ cargo run -q -p ast-core --example simp_one -- \
 sort /tmp/tagwrite.txt | uniq -c | sort -rn | head
 ```
 
-- [ ] **Step 2: Read the probe and select the fix**
+- [x] **Step 2: Read the probe and select the fix**
 
 Apply this rule to the output — it is mechanical, and only one branch can hold:
 
@@ -3958,7 +3958,7 @@ Apply this rule to the output — it is mechanical, and only one branch can hold
 
 Record which branch held. Do only that branch's step, then continue at Step 6.
 
-- [ ] **Step 3: Candidate 1 — write the tag at the orientation the tree stores**
+- [x] **Step 3: Candidate 1 — write the tag at the orientation the tree stores**
 
 Replace the probe body with the fix:
 
@@ -3983,7 +3983,7 @@ Replace the probe body with the fix:
     }
 ```
 
-- [ ] **Step 4: Candidate 2 — carry the entry's tag through the rebuild**
+- [x] **Step 4: Candidate 2 — carry the entry's tag through the rebuild**
 
 The write is right and the entry is replaced downstream, so the replacement has to
 inherit the tag. In `MergeContext`, add a helper next to
@@ -4019,7 +4019,7 @@ and call it from `replace_pair_with`, immediately before the `self.list.remove`:
         self.list.remove(i1 + 1);
 ```
 
-- [ ] **Step 5: Candidate 3 — reach C's `!simpler` head for this element**
+- [x] **Step 5: Candidate 3 — reach C's `!simpler` head for this element**
 
 The head at `simplify.rs:704-736` runs only from `CmpMap::map_merge`, so an element
 that never gets nominated never gets its stamp. Compare the port's nomination order
@@ -4040,7 +4040,7 @@ must nominate the same elements in the same order; where it stops early, the loo
 bound is the defect, and `merge_loop_restricted` at `simplify.rs:3313` is where the
 bound lives. Fix the bound, do not add a nomination outside the loop.
 
-- [ ] **Step 6: Remove every probe**
+- [x] **Step 6: Remove every probe**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -4050,7 +4050,7 @@ grep -n "TAGWRITE\|TAGSKIP\|NOMINATE" crates/ast-core/src/mappings/simplify.rs
 Expected: no output. An `eprintln!` left in a hot path is a performance defect as
 well as noise.
 
-- [ ] **Step 7: Run the minimal fixture**
+- [x] **Step 7: Run the minimal fixture**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4060,7 +4060,7 @@ SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 \
 
 Expected: `cap_cmpmap_nested_tag passes`.
 
-- [ ] **Step 8: Run the four fixtures the cluster is about**
+- [x] **Step 8: Run the four fixtures the cluster is about**
 
 `cap_cmpmap_01` and `cap_cmpmap_04` still carry their `skip_string_compare`, so
 compare them directly instead of through the harness:
@@ -4087,7 +4087,7 @@ failure of the fix — return to Step 1 with the fixture that still differs and 
 the probe on it. Do not add a second tag writer to cover it; find where that one
 is lost.
 
-- [ ] **Step 9: Run the whole corpus and the round-trip test**
+- [x] **Step 9: Run the whole corpus and the round-trip test**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4106,7 +4106,7 @@ does not put it. That is the negative-control signal: the corpus's 139 negative
 rows exist to catch exactly this, and loosening any of them is not an option.
 Diagnose with `SIMPLIFY_DIFF=1` on the newly-failing name.
 
-- [ ] **Step 10: Check the hot path is untouched**
+- [x] **Step 10: Check the hot path is untouched**
 
 The change is inside the simplifier, not a Frame attribute setter, so the SCUBA-2
 constraint is not in play — but the tag writer runs once per nomination, so confirm
@@ -4120,7 +4120,7 @@ Expected: a field write and a downcast, no `clone_box`, no `Vec`. Candidate 2's
 `inherit_simple_tag` does clone, and it runs only on the replacement path where C
 also builds a new object; that is acceptable, and no other candidate's fix may.
 
-- [ ] **Step 11: Format, lint, commit**
+- [x] **Step 11: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4189,7 +4189,7 @@ re-deriving it:
   `INVAB_ALIASING_LICENSED: &[(&str, &str)]` — `(fixture, reason)` — consumed only
   by the Check 3 block.
 
-- [ ] **Step 1: Confirm the two skips are removable before removing them**
+- [x] **Step 1: Confirm the two skips are removable before removing them**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4208,7 +4208,7 @@ C recorded the shared child's `Invert` on the parent, so the port's node has an
 `IsSimp` card where C's has an `Invert` card. Anything else in the diff means Task
 14 is incomplete; go back to its Step 8.
 
-- [ ] **Step 2: Replace the placement licence with the aliasing licence**
+- [x] **Step 2: Replace the placement licence with the aliasing licence**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, delete
 `ISSIMP_PLACEMENT_LICENSED` and its doc comment in full (`:64-98`) and put this in
@@ -4284,7 +4284,7 @@ The closure captures `problems` mutably and is called twice, so declare it `let
 mut trim = …` and bind `got` before `want`; if the borrow checker objects, inline
 the two calls as separate loops rather than reaching for `RefCell`.
 
-- [ ] **Step 3: Rewire Check 3 and delete the card-count assertions**
+- [x] **Step 3: Rewire Check 3 and delete the card-count assertions**
 
 In the Check 3 block of `crates/ast-core/tests/test_simplify_regression.rs`,
 replace the `licence` lookup and its card-count enforcement with:
@@ -4302,7 +4302,7 @@ makes a row which starts emitting the card visible. Remove `|| licence.is_some()
 from `strip_is_simp`'s condition: no row now needs its `IsSimp` lines stripped
 wholesale.
 
-- [ ] **Step 4: Drop the three rows from `ISSIMP_DISAGREEMENTS` and correct its preamble**
+- [x] **Step 4: Drop the three rows from `ISSIMP_DISAGREEMENTS` and correct its preamble**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, delete the three entries
 `"cap_specmap_02 (7 vs C's 8)"`, `"cap_cmpmap_01 (16 vs C's 18)"` and
@@ -4321,7 +4321,7 @@ preamble at `:578-582` with:
     // See PLAN.md §6.
 ```
 
-- [ ] **Step 5: Remove the remaining two skips and correct the manifest block**
+- [x] **Step 5: Remove the remaining two skips and correct the manifest block**
 
 In `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, replace
 the whole `cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02` comment block
@@ -4352,7 +4352,7 @@ cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtur
 cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp |
 ```
 
-- [ ] **Step 6: Correct the stale-corpus claim in the scenario block**
+- [x] **Step 6: Correct the stale-corpus claim in the scenario block**
 
 In the same file, the scenario preamble (`:38-41`) says `rigby.simp` "has been
 regenerated from that C", naming `f6762005`. Replace those four lines with:
@@ -4365,7 +4365,7 @@ regenerated from that C", naming `f6762005`. Replace those four lines with:
 # detected rather than assumed.
 ```
 
-- [ ] **Step 7: Run the harness with no skips left in this cluster**
+- [x] **Step 7: Run the harness with no skips left in this cluster**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4377,7 +4377,7 @@ Task 14's fix changed which card that node carries — re-read Step 1's diff. A
 failure naming a count mismatch in `ISSIMP_DISAGREEMENTS` means one of the three
 deleted rows still disagrees.
 
-- [ ] **Step 8: Prove the aliasing licence is falsifiable**
+- [x] **Step 8: Prove the aliasing licence is falsifiable**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4397,7 +4397,7 @@ Expected: a `but found 0` problem for `cap_cmpmap_02`, which passes byte-exact a
 so has neither line to drop. A licence that stayed silent there would be dropping
 lines opportunistically rather than covering a named artefact.
 
-- [ ] **Step 9: Update the ledger, in both copies**
+- [x] **Step 9: Update the ledger, in both copies**
 
 In `PLAN.md` §6, delete the `ISSIMP_PLACEMENT_LICENSED` row, change the
 `skip_string_compare` row's count to 0 and delete it, and add:
@@ -4431,7 +4431,7 @@ cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -20
 
 Expected: PASS.
 
-- [ ] **Step 10: Close PLAN.md §10.3 and record the sync in §8**
+- [x] **Step 10: Close PLAN.md §10.3 and record the sync in §8**
 
 §10.3 is the "WinMap under-merge" row that `ISSIMP_PLACEMENT_LICENSED` and the
 manifest both cited as the reason for `cap_specmap_02`'s missing card. Replace its
@@ -4453,7 +4453,7 @@ interval. `tools/oracle_fixtures/check_simplify_fresh.sh` now covers it, and mus
 be run alongside `check_corpus_fresh.sh` after any pin move.
 ```
 
-- [ ] **Step 11: Amend the spec in the same change**
+- [x] **Step 11: Amend the spec in the same change**
 
 `docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md` §2.2
 describes cluster 2 as five defects in the CmpMap flatten and WinMap merge paths.
@@ -4488,7 +4488,7 @@ either.
 
 Add a revision-history entry recording the amendment and its date.
 
-- [ ] **Step 12: Format, lint, commit**
+- [x] **Step 12: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4523,7 +4523,7 @@ MSG
 **Cluster 2 closes five fixtures, four skips and a licence, and replaces the
 assumption that the simplify corpus was fresh with a check that says so.**
 
-- [ ] **Cluster 2 exit check: revert, then measure the transform paths**
+- [x] **Cluster 2 exit check: revert, then measure the transform paths**
 
 The revert-check first (spec §6.4). Cluster 2 changed CmpMap flatten,
 `recombine_distributed_branches`, `CmpMap::map_merge` and `WinMap::map_merge`:
