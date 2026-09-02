@@ -48,38 +48,19 @@ pub(super) struct MergeScaling {
 }
 
 /// Apply the FillFactor/MeshSize scaling of a parallel Region merge to the
-/// merged Region's `data`, given the two source Regions' scaling inputs.
+/// merged Region.
 ///
 /// Faithful port of the shared scaling block in `MergeBox`/`MergeInterval`/
 /// `MergePointList`/`MergeNullRegion` (box.c:2049-2085 and identical
-/// elsewhere): the FillFactor is the product of the two supplied
-/// FillFactors when either was set, and the MeshSize (when either was set)
-/// is the result's default scaled by the product of each source's
-/// used/default ratio. The per-source and result defaults are the
-/// naxes-dependent `astGetMeshSize` values.
-pub(super) fn apply_merge_scaling(data: &mut RegionData, scaling: &MergeScaling) {
-    if scaling.fill_this.1 || scaling.fill_reg.1 {
-        data.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0);
-    }
-
-    if scaling.msz_this.1 || scaling.msz_reg.1 {
-        let def_this = default_mesh_size(scaling.msz_this.2) as f64;
-        let def_reg = default_mesh_size(scaling.msz_reg.2) as f64;
-        let fac_this = scaling.msz_this.0 as f64 / def_this;
-        let fac_reg = scaling.msz_reg.0 as f64 / def_reg;
-        let def_result = default_mesh_size(data.frameset.current().naxes()) as f64;
-        let scaled = (fac_this * fac_reg * def_result).round() as usize;
-        data.set_mesh_size(scaled);
-    }
-}
-
-/// [`apply_merge_scaling`] for a Region that already exists, rather than for the
-/// `RegionData` a Region is about to be built from.
+/// elsewhere): the FillFactor is the product of the two supplied FillFactors
+/// when either was set, and the MeshSize (when either was set) is the result's
+/// default scaled by the product of each source's used/default ratio. The
+/// per-source and result defaults are the naxes-dependent `astGetMeshSize`
+/// values.
 ///
-/// `MergeNullRegion` applies the FillFactor product and the MeshSize ratio to
-/// the Region `astMapRegion` returned (nullregion.c:740-776), not to the Region
-/// built before it, so the result's own axis count is what sets the MeshSize
-/// default.
+/// C applies both to the Region `astMapRegion` returned (nullregion.c:740-776
+/// and the same order elsewhere), not to the Region built before it, so the
+/// result's own axis count is what sets the MeshSize default.
 pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &MergeScaling) {
     if scaling.fill_this.1 || scaling.fill_reg.1 {
         region.set_fill_factor(scaling.fill_this.0 * scaling.fill_reg.0);
@@ -109,7 +90,7 @@ pub(super) struct MergeFrames {
 }
 
 /// The attributes `astRegOverlay(new, this, 1)` copies from the `this` Region
-/// onto the merged one.
+/// onto the merged one, plus the Negated value the owning merge sets afterwards.
 pub(super) struct MergeOverlay {
     /// `this`'s Closed value.
     pub(super) closed: bool,
@@ -117,6 +98,11 @@ pub(super) struct MergeOverlay {
     pub(super) closed_set: bool,
     /// `this`'s Adaptive value.
     pub(super) adaptive: bool,
+    /// The Negated value the merged Region ends with. `MergeBox` and
+    /// `MergeInterval` clear it unconditionally (box.c:1990,
+    /// interval.c:1544); `MergePointList` propagates the common Negated
+    /// value of the two supplied PointLists (pointlist.c:1367-1371).
+    pub(super) negated: bool,
 }
 
 /// Finish a cross-type Region merge: build the concrete merged Region on the
@@ -124,14 +110,19 @@ pub(super) struct MergeOverlay {
 /// flag, install the combined uncertainty, map the result into the combined
 /// current Frame, and apply the FillFactor/MeshSize scaling.
 ///
-/// Mirrors the shared tail of `MergeInterval`/`MergeBox` (interval.c:1537-1639,
-/// box.c:1983-2085). The order is C's: `astRegOverlay(new, this, 1)` copies
-/// Closed/Adaptive from `this`, `astClearNegated` forces the result un-negated,
-/// `astSetUnc` installs the combined uncertainty, `astMapRegion(new, bcmap,
-/// cfrm)` carries the Region from `bfrm` into the combined current Frame, and
-/// the scaling block sets the FillFactor to the product of the two and the
-/// MeshSize to the result default scaled by the product of each source's
-/// used/default ratio.
+/// Mirrors the shared tail of `MergeInterval`/`MergeBox`/`MergePointList`
+/// (interval.c:1537-1639, box.c:1983-2085, pointlist.c:1359-1465). The order is
+/// C's: `astRegOverlay(new, this, 1)` copies Closed/Adaptive from `this`, the
+/// Negated flag is then set to `overlay.negated`, `astSetUnc` installs the
+/// combined uncertainty, `astMapRegion(new, bcmap, cfrm)` carries the Region
+/// from `bfrm` into the combined current Frame, and the scaling block sets the
+/// FillFactor to the product of the two and the MeshSize to the result default
+/// scaled by the product of each source's used/default ratio.
+///
+/// `astSetUnc` is the install path, not a direct field assignment, because it
+/// re-centres the uncertainty on the merged Region's first defining point
+/// (region.c:10871-10876) — for a Box uncertainty that regenerates the corner
+/// from the cached geodesic half-lengths in the combined base Frame.
 ///
 /// Building on `bfrm` rather than on the current Frame is what the defining
 /// points require — they are base-Frame coordinates — and the `astMapRegion`
@@ -147,12 +138,12 @@ pub(super) fn finish_region_merge(
     let MergeFrames { bfrm, cfrm, bcmap } = frames;
 
     let apply_attrs = |data: &mut RegionData| {
-        // astRegOverlay copies Closed and Adaptive from `this`; Negated is
-        // then cleared (the merged Region is always un-negated).
+        // astRegOverlay copies Closed and Adaptive from `this`; the Negated
+        // flag is then set explicitly by the owning merge.
         data.closed = overlay.closed;
         data.closed_set = overlay.closed_set;
         data.adaptive = overlay.adaptive;
-        data.negated = false;
+        data.negated = overlay.negated;
     };
 
     let frameset = FrameSet::new(bfrm);

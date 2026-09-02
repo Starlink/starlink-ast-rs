@@ -1532,6 +1532,7 @@ impl Region for BoxRegion {
                 closed: self.data.closed,
                 closed_set: self.data.closed_set,
                 adaptive: self.data.adaptive,
+                negated: false,
             },
             unc,
             scaling,

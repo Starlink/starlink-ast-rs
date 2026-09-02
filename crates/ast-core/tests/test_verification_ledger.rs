@@ -99,22 +99,23 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
-        3,
-        "one inverse-matrix element of `rigby` and the two sky half-widths of \
-         `cap_interval_01`'s uncertainty Box, whose references were captured \
-         on another platform's libm: the pinned C does not reproduce their \
-         values here either, the port reproduces this machine's capture to the \
-         last digit, and the corpus-freshness rule keeps a cross-platform \
-         reference rather than replacing it with this machine's. Each entry \
-         names both values, so each licence covers one line on one fixture",
+        5,
+        "one inverse-matrix element of `rigby`, the two sky half-widths of \
+         `cap_interval_01`'s uncertainty Box, and the two sky coordinates of \
+         `cap_pointlist_01`'s re-centred uncertainty corner, whose references \
+         were captured on another platform's libm: the pinned C does not \
+         reproduce their values here either, the port reproduces this \
+         machine's capture to the last digit, and the corpus-freshness rule \
+         keeps a cross-platform reference rather than replacing it with this \
+         machine's. Each entry names both values and bounds their difference, \
+         so each licence covers one line on one fixture",
     ),
     (
         "test_simplify_regression.rs",
         "SERIAL_UNGATED",
-        1,
-        "one fixture whose simplified dump differs from C's `.simp` in \
-         something other than an `IsSimp` line: a `cap_pointlist_01` mesh \
-         coordinate past the 4-ulp token tolerance, traced in PLAN.md §6",
+        0,
+        "no fixture opts out of the byte comparison: every simplified dump is \
+         compared against C's `.simp` in full, and a difference fails",
     ),
     (
         "test_simplify_regression.rs",

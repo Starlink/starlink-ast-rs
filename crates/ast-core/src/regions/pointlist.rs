@@ -605,9 +605,15 @@ impl Region for PointList {
             return None;
         }
 
+        let nax_this = self.naxes();
+        let nax_reg = other_reg.naxes();
+
         // Concatenate the two single points' axis values in the requested
-        // order.
-        let mut point = Vec::with_capacity(self.naxes() + other.naxes());
+        // order (pointlist.c:1341-1358). The defining points are base-Frame
+        // coordinates, so the merged PointList is built on a CmpFrame of the
+        // two *base* Frames (pointlist.c:1311-1319) and mapped into the
+        // combined current Frame at the end.
+        let mut point = Vec::with_capacity(nax_this + nax_reg);
         if intfirst {
             point.extend_from_slice(&self.data.points[0]);
             point.extend_from_slice(&other.data.points[0]);
@@ -616,43 +622,85 @@ impl Region for PointList {
             point.extend_from_slice(&self.data.points[0]);
         }
 
-        // Combine the two current Frames into a CmpFrame in the requested
-        // order.
+        let bfrm_this = self.data.frameset.base().snapshot();
+        let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
+        let bfrm: DynFrame = if intfirst {
+            Box::new(crate::frames::CmpFrame::new(bfrm_this, bfrm_reg))
+        } else {
+            Box::new(crate::frames::CmpFrame::new(bfrm_reg, bfrm_this))
+        };
+
+        // The two current Frames, combined in the same order
+        // (pointlist.c:1398-1406).
         let f_this = self.data.frameset.current().snapshot();
         let f_reg = other_reg.get_region_frame();
-        let cmp_frame = if intfirst {
-            crate::frames::CmpFrame::new(f_this, f_reg)
+        let cfrm: DynFrame = if intfirst {
+            Box::new(crate::frames::CmpFrame::new(f_this, f_reg))
         } else {
-            crate::frames::CmpFrame::new(f_reg, f_this)
+            Box::new(crate::frames::CmpFrame::new(f_reg, f_this))
         };
-        let frameset = FrameSet::new(Box::new(cmp_frame) as DynFrame);
 
+        // The two base->current Mappings, in parallel (pointlist.c:1408-1424).
+        let map_this = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let map_reg = other_reg
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)
+            .ok()?;
+        let bcmap: DynMapping = if intfirst {
+            Box::new(
+                crate::mappings::CmpMap::new(
+                    map_this,
+                    map_reg,
+                    crate::mappings::Composition::Parallel,
+                )
+                .ok()?,
+            )
+        } else {
+            Box::new(
+                crate::mappings::CmpMap::new(
+                    map_reg,
+                    map_this,
+                    crate::mappings::Composition::Parallel,
+                )
+                .ok()?,
+            )
+        };
+
+        // Combine the base-Frame uncertainties in the requested order when
+        // both are present (pointlist.c:1373-1394).
         let unc = super::merge_util::combine_uncertainties(
             self.data.uncertainty.clone(),
             other_reg.get_uncertainty(),
             intfirst,
         );
 
-        let mut data = RegionData::new(frameset, vec![point]);
-        data.negated = self.data.negated;
-        data.closed = self.data.closed && other.data.closed;
-        data.closed_set = self.data.closed_set || other.data.closed_set;
-        data.adaptive = self.data.adaptive && other.data.adaptive;
-        data.uncertainty = unc;
-
         let scaling = super::merge_util::MergeScaling {
             msz_this: (
                 self.data.effective_mesh_size(),
                 self.data.mesh_size_set,
-                self.naxes(),
+                nax_this,
             ),
-            msz_reg: (other.mesh_size(), other.test_mesh_size(), other.naxes()),
+            msz_reg: (other.mesh_size(), other.test_mesh_size(), nax_reg),
             fill_this: (self.data.effective_fill_factor(), self.data.fill_factor_set),
             fill_reg: (other.fill_factor(), other.test_fill_factor()),
         };
-        super::merge_util::apply_merge_scaling(&mut data, &scaling);
 
-        Some(Box::new(PointList { data }))
+        super::merge_util::finish_region_merge(
+            super::merge_util::MergedRegion::PointList(vec![point]),
+            super::merge_util::MergeFrames { bfrm, cfrm, bcmap },
+            super::merge_util::MergeOverlay {
+                closed: self.data.closed,
+                closed_set: self.data.closed_set,
+                adaptive: self.data.adaptive,
+                negated: self.data.negated,
+            },
+            unc,
+            scaling,
+        )
     }
 
     fn clone_region(&self) -> DynRegion {

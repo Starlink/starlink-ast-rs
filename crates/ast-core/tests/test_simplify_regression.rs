@@ -142,12 +142,12 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 /// drift, and the corpus-freshness rule keeps them: regenerating one here would
 /// replace a cross-platform reference with this machine's libm. So the byte
 /// comparison drops exactly the named card, on exactly the named fixture,
-/// carrying exactly the named value, and only while that value is below the
-/// entry's bound in absolute value.
+/// carrying exactly the named value, and only while the two named values are
+/// closer together than the entry's bound.
 ///
 /// An entry is admissible only when the port reproduces this machine's C
 /// capture on that card to the last digit — which is what makes the difference
-/// the reference's platform and not the port's arithmetic. Two shapes qualify:
+/// the reference's platform and not the port's arithmetic. Three shapes qualify:
 ///
 /// - **Cancellation residue.** `rigby`'s `IM5` is a matrix element near zero
 ///   whose row-mates are of order one, so its value is the residue of a
@@ -158,34 +158,54 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 ///   figures. They are nominally equal, and this machine's C makes them equal
 ///   to the last bit; the reference has them differing from *each other*, which
 ///   is that platform's transformation of the same two widths.
+/// - **A geodesic round trip.** `cap_pointlist_01`'s `X5` and `X6` are the sky
+///   half of the merged uncertainty Box's corner, which `astSetUnc` regenerates
+///   by re-centring the Box and re-offsetting the corner through a
+///   `CmpFrame(TimeFrame, SkyFrame)` (region.c:10871-10876, box.c RegCentre).
+///   The `atan2`/`asin` pair in that round trip is where the two platforms'
+///   libm parts company, twelve significant figures in.
 ///
 /// Naming both values is what keeps the licence from spreading: `rigby` has a
 /// second `IM5` card, holding an exact zero, that the same card name would also
 /// have covered.
 ///
 /// `(fixture, card name, value in the reference, value this machine produces,
-/// magnitude bound)`.
+/// bound on the difference between the two)`.
 const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, &str, &str, f64)] = &[
     (
         "rigby",
         "IM5",
         "-5.9658198263111446e-17",
         "-5.8980598183211441e-17",
-        1e-15,
+        1e-18,
     ),
     (
         "cap_interval_01",
         "X5",
         "2.4240684055495722e-06",
         "2.4240684055476816e-06",
-        1e-5,
+        1e-17,
     ),
     (
         "cap_interval_01",
         "X6",
         "2.4240684055430873e-06",
         "2.4240684055476816e-06",
-        1e-5,
+        1e-17,
+    ),
+    (
+        "cap_pointlist_01",
+        "X5",
+        "3.1241551949160478",
+        "3.1241551949160575",
+        1e-14,
+    ),
+    (
+        "cap_pointlist_01",
+        "X6",
+        "-0.20069734795308758",
+        "-0.20069734795284888",
+        1e-12,
     ),
 ];
 
@@ -212,22 +232,32 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
         if *fixture != name {
             continue;
         }
+        // The licence covers a difference, so it lapses the moment the two
+        // named values are further apart than the entry admits.
+        let spread = match (ref_value.parse::<f64>(), local_value.parse::<f64>()) {
+            (Ok(r), Ok(l)) => (r - l).abs(),
+            _ => f64::INFINITY,
+        };
+        if spread >= *bound {
+            problems.push(format!(
+                "{name}: NUMERIC_PLATFORM_DRIFT names {card} values {spread:e} apart, \
+                 which its {bound:e} bound does not admit"
+            ));
+        }
+
         let prefix = format!("{card} =");
         for (side, expected, text) in [
             ("got", local_value, &mut got),
             ("want", ref_value, &mut want),
         ] {
-            let residue = |line: &str| -> bool {
-                card_value(line, &prefix).is_some_and(|v| {
-                    v == *expected && v.parse::<f64>().is_ok_and(|n| n.abs() < *bound)
-                })
-            };
+            let residue =
+                |line: &str| -> bool { card_value(line, &prefix).is_some_and(|v| v == *expected) };
             let kept: Vec<&str> = text.lines().filter(|l| !residue(l)).collect();
             let dropped = text.lines().count() - kept.len();
             if dropped != 1 {
                 problems.push(format!(
-                    "{name}: NUMERIC_PLATFORM_DRIFT licenses one {card} = {expected} \
-                     below {bound:e}, but dropped {dropped} from the {side} side"
+                    "{name}: NUMERIC_PLATFORM_DRIFT licenses one {card} = {expected}, \
+                     but dropped {dropped} from the {side} side"
                 ));
             }
             *text = kept.join("\n");
@@ -741,33 +771,19 @@ fn simplify_regression() {
     // difference has been diagnosed as a C-side artefact (see
     // `docs/issues/c-library-quirks.md`) opts out per-fixture via the manifest's
     // `skip_string_compare` flag, with the reason recorded there.
-    // Byte comparisons that were never running until `AnyObject::from_mapping`
-    // replaced this file's hand-rolled dispatch. The old dispatch covered 18
-    // Mapping classes and no Region, FrameSet or SwitchMap, and an unhandled
-    // class returned `None` from inside an `if let Some(..)` — so every fixture
-    // whose simplified result was one of those classes skipped both the byte
-    // comparison and the `IsSimp` count check without saying anything.
     //
-    // None of these is a regression and none is a stale fixture: the pinned C
-    // reproduces every `.simp` file here byte-exactly. They are pre-existing
-    // defects that had no gate. Each row names the diagnosed cause, and the set
-    // is asserted exactly, so fixing one forces the row out.
+    // Serialisation failures the byte comparison is allowed to carry, each
+    // diagnosed against the pinned C oracle and named with its cause. The set is
+    // asserted exactly, so a row cannot be added without a diagnosis and cannot
+    // survive being fixed.
     //
-    // Note what `equal()` did here: it passed every one of them, including a Prism
-    // where C has a Box. Structural equality is far weaker than the byte
-    // comparison, which is why losing the byte comparison cost this much.
-    const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // Numeric, on one mesh coordinate: `X6` diverges from this machine's C
-        // capture by ~1.2e-10 relative, past the 4-ulp token tolerance, so it
-        // is the port's arithmetic and not the reference's platform. Its
-        // row-mate `X5` matches that capture to ~1 ulp and differs only from
-        // the reference, which `NUMERIC_PLATFORM_DRIFT` does not yet cover, so
-        // the row still carries both lines.
-        (
-            "cap_pointlist_01",
-            "one mesh coordinate diverges past 4 ulp",
-        ),
-    ];
+    // The table is empty: every fixture whose simplified form is dumped is
+    // byte-compared, and any difference fails. Card-level licences that cover a
+    // single value rather than a whole fixture live in
+    // `NUMERIC_PLATFORM_DRIFT`, `INVAB_ALIASING_LICENSED` and
+    // `ABANDONED_PROBE_STAMP_LICENSED` instead, which is where a newly diagnosed
+    // C-side artefact belongs unless it defeats the comparison entirely.
+    const SERIAL_UNGATED: &[(&str, &str)] = &[];
     let ungated: Vec<&str> = SERIAL_UNGATED.iter().map(|(n, _)| *n).collect();
     let (licensed, unlicensed): (Vec<String>, Vec<String>) = serial_failures
         .iter()
