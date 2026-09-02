@@ -4642,7 +4642,7 @@ The reference `.simp` shows what that costs: C's result carries a 2-d **Box**
 uncertainty (`Npoint = 2`, `Ncoord = 2`, corners ±0.1), and the port emits a
 Prism.
 
-- [ ] **Step 1: Capture the current diff, so the change can be read against it**
+- [x] **Step 1: Capture the current diff, so the change can be read against it**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4655,7 +4655,7 @@ diff $F.simp /tmp/nrufm.port | tee /tmp/nrufm.diff | head -40
 Expected: the `Unc` block differs — `Begin Prism` in the port where the
 reference has `Begin Box`.
 
-- [ ] **Step 2: Rewrite the merge body to follow C's order**
+- [x] **Step 2: Rewrite the merge body to follow C's order**
 
 Replace the whole of `fn region_merge` in
 `crates/ast-core/src/regions/nullregion.rs` (currently lines 332-395) with:
@@ -4769,7 +4769,7 @@ Replace the whole of `fn region_merge` in
     }
 ```
 
-- [ ] **Step 3: Add the one helper the new body needs**
+- [x] **Step 3: Add the one helper the new body needs**
 
 `apply_merge_scaling` takes a `&mut RegionData`, but C applies the FillFactor
 product and the MeshSize ratio to the Region `astMapRegion` returned. Add a
@@ -4798,7 +4798,7 @@ pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &M
 }
 ```
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4808,7 +4808,7 @@ cargo build -p ast-core 2>&1 | tail -20
 Expected: clean. `merge_util.rs` already imports `default_mesh_size` from
 `super::data`, so the new helper needs no new `use`.
 
-- [ ] **Step 5: Re-capture the fixture**
+- [x] **Step 5: Re-capture the fixture**
 
 ```bash
 F=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
@@ -4820,7 +4820,7 @@ Expected: no output beyond the single trailing blank line the example adds.
 The `Unc` block is now `Begin Box` with `Npoint = 2`, `Ncoord = 2` and corners
 at ±0.1, because simplifying a Prism of two 1-d Boxes gives a 2-d Box.
 
-- [ ] **Step 6: Run both fixture consumers, and the Region tests**
+- [x] **Step 6: Run both fixture consumers, and the Region tests**
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -25
@@ -4833,7 +4833,7 @@ new failures; the round-trip test and the Region tests stay green. A NullRegion
 merge appears in more than one fixture, so a regression here shows up as a
 different fixture failing, not as this one still differing.
 
-- [ ] **Step 7: Format, lint, commit**
+- [x] **Step 7: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4911,7 +4911,7 @@ through untouched where C remaps and re-centres it.
 The loader is deliberately *not* changed: `region.c:13559` stores what the
 Channel read verbatim, so reading a `.map` must stay an identity.
 
-- [ ] **Step 1: Capture the two diffs before the change**
+- [x] **Step 1: Capture the two diffs before the change**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4930,7 +4930,7 @@ significant figure, licensed in Task 12) and will still be there at the end of
 this task. `X7` and both of `cap_pointlist_01`'s values are the gap this task
 closes. The extra `Closed = 1` is Task 19.
 
-- [ ] **Step 2: Install through `set_uncertainty` in the five single-expression builders**
+- [x] **Step 2: Install through `set_uncertainty` in the five single-expression builders**
 
 In `crates/ast-core/src/regions/box_region.rs`, replace
 
@@ -4964,7 +4964,7 @@ the two places it appears. Where `data` is not otherwise mutated after the line
 you removed, drop its `mut` — clippy's `unused_mut` will name the file if you
 miss one.
 
-- [ ] **Step 3: The two builders whose constructor expression has fields**
+- [x] **Step 3: The two builders whose constructor expression has fields**
 
 In `crates/ast-core/src/regions/prism.rs`, replace
 
@@ -5026,7 +5026,7 @@ with
         Ok(region)
 ```
 
-- [ ] **Step 4: NullRegion, whose re-centre step is a no-op**
+- [x] **Step 4: NullRegion, whose re-centre step is a no-op**
 
 In `crates/ast-core/src/regions/nullregion.rs`, replace
 
@@ -5052,7 +5052,7 @@ with
         Ok(region)
 ```
 
-- [ ] **Step 5: Polygon, where the order against `ensure_inside` matters**
+- [x] **Step 5: Polygon, where the order against `ensure_inside` matters**
 
 C reaches `SetUnc` inside `astInitRegion`, which `astInitPolygon` calls *before*
 it runs `EnsureInside` (`polygon.c:7160`). `EnsureInside` can reverse the vertex
@@ -5097,7 +5097,7 @@ with
         Ok(polygon)
 ```
 
-- [ ] **Step 6: The shared cross-class merge tail**
+- [x] **Step 6: The shared cross-class merge tail**
 
 `finish_region_merge` writes the combined uncertainty straight into the
 `RegionData` (`merge_util.rs:106`) although its own doc says `astSetUnc`
@@ -5149,7 +5149,7 @@ from the `apply_attrs` closure, and change the `match built` block to:
 longer capture it; if the compiler complains that `apply_attrs` still borrows
 it, the leftover `uncertainty.clone()` line was not removed.
 
-- [ ] **Step 7: Build**
+- [x] **Step 7: Build**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5160,7 +5160,7 @@ Expected: clean. `set_uncertainty` is a `Region` trait method, so each file
 needs `Region` in scope; all nine already implement the trait in the same file,
 so no new `use` is required.
 
-- [ ] **Step 8: Re-capture the two fixtures**
+- [x] **Step 8: Re-capture the two fixtures**
 
 ```bash
 D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
@@ -5174,7 +5174,7 @@ Expected: `cap_pointlist_01` is byte-equal. `cap_interval_01` still differs on
 `X5`/`X6` (reference platform drift) and on the extra `Closed = 1` (Task 19),
 but `X7` now reads `5.7870370370370369e-10`.
 
-- [ ] **Step 9: Run the whole corpus, and stop if anything else moved**
+- [x] **Step 9: Run the whole corpus, and stop if anything else moved**
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
@@ -5194,7 +5194,7 @@ fixture's `Unc` block changes, **stop and diff it against a fresh C capture**
 change — C's constructor really does all four steps, so a disagreement means
 one of the four is ported wrongly, not that the route is wrong.
 
-- [ ] **Step 10: Correct the doc paragraph that recorded the bypass**
+- [x] **Step 10: Correct the doc paragraph that recorded the bypass**
 
 `Region::set_uncertainty`'s doc (`regions/mod.rs:388-391`) ends with a
 paragraph saying the builders bypass this path. Replace it with:
@@ -5207,7 +5207,7 @@ paragraph saying the builders bypass this path. Replace it with:
     /// (region.c:13559), so reading a Region back is an identity.
 ```
 
-- [ ] **Step 11: Format, lint, commit**
+- [x] **Step 11: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5286,7 +5286,7 @@ also reports `IsSimp = 3` where C reports 0.
 doc says so: `false` *is* C's `astClone( this )` exit, the one C's generic
 drivers detect by pointer identity.
 
-- [ ] **Step 1: Capture the diff before the change**
+- [x] **Step 1: Capture the diff before the change**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5300,7 +5300,7 @@ grep -c '' /tmp/zm04.before $D/cap_zoommap_04.simp
 Expected: the port's output is 59 lines longer, all inside a `FrmSet` block in
 the `Unc` Region, and its `IsSimp` card reads 3 where the reference reads 0.
 
-- [ ] **Step 2: Ask the gate instead of the comparator**
+- [x] **Step 2: Ask the gate instead of the comparator**
 
 In `crates/ast-core/src/regions/mod.rs`, replace
 
@@ -5324,7 +5324,7 @@ with
                 <dyn Mapping>::simplify_reporting_change(unc.as_ref())?;
 ```
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5335,7 +5335,7 @@ Expected: clean. If `Mapping::equal` is now unused in this file, clippy will say
 so in Step 6; leave the `use` alone until then, since other methods in the file
 call it.
 
-- [ ] **Step 4: Re-capture the fixture**
+- [x] **Step 4: Re-capture the fixture**
 
 ```bash
 D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
@@ -5347,7 +5347,7 @@ Expected: `BYTE-EQUAL`. The `FrmSet` block is gone because `set_uncertainty` now
 runs and its RegionFS step fires, and `IsSimp` reads 0 because `simpler` is now
 set.
 
-- [ ] **Step 5: Retire the `ISSIMP_DISAGREEMENTS` row**
+- [x] **Step 5: Retire the `ISSIMP_DISAGREEMENTS` row**
 
 `cap_zoommap_04`'s row in `ISSIMP_DISAGREEMENTS`
 (`crates/ast-core/tests/test_simplify_regression.rs:583`) records "3 vs C's 0"
@@ -5355,7 +5355,7 @@ as an accepted disagreement. Delete that entry. The companion assertion that
 fails when a listed case starts agreeing is what would otherwise flag this, so
 running the test without deleting the row is a failure, not a pass.
 
-- [ ] **Step 6: Run the corpus and the round-trip**
+- [x] **Step 6: Run the corpus and the round-trip**
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
@@ -5368,7 +5368,7 @@ the uncertainty-simplify branch reachable for every Region, so a fixture that
 now differs is one where the *stability check* or `set_uncertainty` diverges —
 diff it against a fresh C capture before touching this change.
 
-- [ ] **Step 7: Format, lint, commit**
+- [x] **Step 7: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5439,7 +5439,7 @@ Line 344 is the port of `interval.c:3338` and has no C analogue — that is a
 divergence regardless of which one this fixture exercises, so fix it first and
 re-measure.
 
-- [ ] **Step 1: Re-measure after Tasks 16-18**
+- [x] **Step 1: Re-measure after Tasks 16-18**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5456,7 +5456,7 @@ SkyFrame and an Interval uncertainty over a TimeFrame, and the 4-d Box in the
 result is the two combined — so if the `Closed` card is already gone, record
 that in the commit message and skip to Step 6 with only the Step 2 edit.
 
-- [ ] **Step 2: Drop the `Closed` write that has no C analogue**
+- [x] **Step 2: Drop the `Closed` write that has no C analogue**
 
 In `crates/ast-core/src/regions/interval.rs`, inside the unbounded-branch Box
 construction, replace
@@ -5485,7 +5485,7 @@ with
         };
 ```
 
-- [ ] **Step 3: Build and re-measure**
+- [x] **Step 3: Build and re-measure**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5498,7 +5498,7 @@ diff $D/cap_interval_01.simp /tmp/int01.step3
 Expected: only the `X5`/`X6` drift remains. If the `Closed` card is gone, go to
 Step 6.
 
-- [ ] **Step 4: If the card survives, identify which site emitted it**
+- [x] **Step 4: If the card survives, identify which site emitted it**
 
 Two sites are left. Add a temporary `eprintln!` to each and run the one fixture:
 
@@ -5527,7 +5527,7 @@ git checkout crates/ast-core/src/regions/interval.rs
 
 — which also reverts Step 2, so re-apply Step 2 afterwards.
 
-- [ ] **Step 5: Match C at the site the probe named**
+- [x] **Step 5: Match C at the site the probe named**
 
 **If the probe named `box_equivalent`** (`interval.rs:1425-1439`, the port of
 C's `Cache` + `astSimplify( box )` head at `interval.c:3196-3200`): C *does* set
@@ -5566,7 +5566,7 @@ than changing the flag, because C's local Box is genuinely closed.
 the same probe over `merge_util.rs`'s `MergedRegion::Box` arm and
 `prism.rs`'s uncertainty combination.
 
-- [ ] **Step 6: Run the corpus**
+- [x] **Step 6: Run the corpus**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5580,7 +5580,7 @@ platform drift and is licensed in Task 12 — so it stays on the licensed list
 with its reason string updated to name only the two values. No other fixture
 moves.
 
-- [ ] **Step 7: Format, lint, commit**
+- [x] **Step 7: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5656,7 +5656,7 @@ Two C details the port must keep:
   one. With `lb` initialised to `DBL_MAX` and `ub` to `-DBL_MAX`, the first point
   sets only `lb`. Mirror the asymmetry.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `crates/ast-core/tests/test_region.rs`:
 
@@ -5699,7 +5699,7 @@ Match the imports and the `EllipseBuilder` constructor name to the ones the
 file's existing Ellipse tests use; if `from_points` is spelled differently there,
 use that spelling.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5710,7 +5710,7 @@ cargo test -p ast-core --test test_region ellipse_sky_pole_bounds 2>&1 | tail -2
 Expected: FAIL. The closed-form extent gives a longitude range of roughly
 ±0.3 radians around the centre and a latitude bound short of `PI/2`.
 
-- [ ] **Step 3: Replace the closed form with C's mesh accumulation**
+- [x] **Step 3: Replace the closed form with C's mesh accumulation**
 
 In `crates/ast-core/src/regions/ellipse.rs`, replace the whole body of
 `reg_base_box` with:
@@ -5787,7 +5787,7 @@ In `crates/ast-core/src/regions/ellipse.rs`, replace the whole body of
 `reg_base_inside` uses, so the predicate matches that method's own membership
 test; keep the two consistent if either changes.
 
-- [ ] **Step 4: Run the new test and the Region suite**
+- [x] **Step 4: Run the new test and the Region suite**
 
 ```bash
 cargo test -p ast-core --test test_region 2>&1 | tail -20
@@ -5799,7 +5799,7 @@ resolution, so any existing exact-value assertion on a Cartesian Ellipse box is
 now approximate — if one fails, compare against a C capture before adjusting it,
 because C's answer is the mesh bound, not the closed form.
 
-- [ ] **Step 5: Record the axis-1 mirror in the quirks doc**
+- [x] **Step 5: Record the axis-1 mirror in the quirks doc**
 
 Append to `docs/issues/c-library-quirks.md`:
 
@@ -5820,7 +5820,7 @@ The port mirrors it (`regions/ellipse.rs`, `reg_base_box`) to keep the simplify
 corpus byte-exact. Worth raising upstream.
 ```
 
-- [ ] **Step 6: Format, lint, commit**
+- [x] **Step 6: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5876,7 +5876,7 @@ the polygon is narrow) and never widens for a pole.
 C's `else if` asymmetry applies here too, and unlike `Ellipse` this one passes
 axes 1 and 2 correctly.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `crates/ast-core/tests/test_region.rs`:
 
@@ -5915,7 +5915,7 @@ fn polygon_sky_bounds_use_first_vertex_origin() {
 Match the imports and the `PolygonBuilder` constructor name to the ones the
 file's existing Polygon tests use.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -5925,7 +5925,7 @@ cargo test -p ast-core --test test_region polygon_sky_bounds 2>&1 | tail -20
 Expected: FAIL with a width near `2*PI` — the raw min/max spans from 0.05 to
 `2*PI - 0.05`.
 
-- [ ] **Step 3: Port C's algorithm**
+- [x] **Step 3: Port C's algorithm**
 
 In `crates/ast-core/src/regions/polygon.rs`, replace the whole body of
 `reg_base_box` with:
@@ -5990,7 +5990,7 @@ In `crates/ast-core/src/regions/polygon.rs`, replace the whole body of
 base Frame (`polygon.rs:600-642`), which is what C's copy-and-clear-Negated
 probe amounts to.
 
-- [ ] **Step 4: Run the new test and the Region suite**
+- [x] **Step 4: Run the new test and the Region suite**
 
 ```bash
 cargo test -p ast-core --test test_region 2>&1 | tail -20
@@ -6002,7 +6002,7 @@ so a non-sky Polygon's bounds are unchanged to the last bit — any Cartesian
 Polygon assertion that moves means the offset arithmetic is wrong, not that the
 expectation was stale.
 
-- [ ] **Step 5: Format, lint, commit**
+- [x] **Step 5: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6074,7 +6074,7 @@ axes.
 Confirm that against the oracle before porting it, then mirror what the oracle
 does and record it.
 
-- [ ] **Step 1: Build the probe**
+- [x] **Step 1: Build the probe**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -6133,7 +6133,7 @@ int main( void ) {
 EOF
 ```
 
-- [ ] **Step 2: Run it against the repo's own oracle**
+- [x] **Step 2: Run it against the repo's own oracle**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs/reference/starlink-ast
@@ -6154,7 +6154,7 @@ latitude upper bound pinned to `pi/2` — the pole widening reached `frame1`.
 Record whether `sky-second` widens or not; that is the answer about the
 malformed `pm3`. Write both output lines into the commit message in Step 6.
 
-- [ ] **Step 3: Port it**
+- [x] **Step 3: Port it**
 
 Add to the `impl Frame for CmpFrame` block in
 `crates/ast-core/src/frames/cmpframe.rs`:
@@ -6235,7 +6235,7 @@ Add to the `impl Frame for CmpFrame` block in
 in body — that identity *is* the C bug, and collapsing them into one would hide
 which of the two is meant to differ.
 
-- [ ] **Step 4: Write the test the probe justifies**
+- [x] **Step 4: Write the test the probe justifies**
 
 Add to `crates/ast-core/tests/test_region.rs`, filling both expected values in
 from the `sky-first` line the probe printed:
@@ -6265,7 +6265,7 @@ fn cmpframe_norm_box_reaches_the_sky_component() {
 Match `CmpFrame::new` and `BoxRegion::from_bounds_frame` to the spellings the
 file's existing tests use.
 
-- [ ] **Step 5: Run it, then the Region and Frame suites**
+- [x] **Step 5: Run it, then the Region and Frame suites**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6278,7 +6278,7 @@ Expected: the new test passes and the corpus does not move. `CmpFrame` was a
 no-op here before, so any bound that changes now is one C also changes — check
 it against the probe rather than against the previous Rust answer.
 
-- [ ] **Step 6: Record the `pm3` anomaly**
+- [x] **Step 6: Record the `pm3` anomaly**
 
 Append to `docs/issues/c-library-quirks.md`, filling in the `sky-second` line
 the probe printed:
@@ -6308,7 +6308,7 @@ corpus byte-exact. Worth raising upstream together with the `Ellipse`
 `astAxDistance` axis index.
 ```
 
-- [ ] **Step 7: Format, lint, commit**
+- [x] **Step 7: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -6342,7 +6342,7 @@ Cluster 3 is complete at this point: `nullregion_unc_fillfactor_merge`,
 platform drift) are byte-equal, the `cap_zoommap_04` `IsSimp` disagreement is
 retired, and the three missing `astNormBox` participants are ported.
 
-- [ ] **Cluster 3 exit check: revert, then measure the Region mesh path**
+- [x] **Cluster 3 exit check: revert, then measure the Region mesh path**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
