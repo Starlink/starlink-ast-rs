@@ -110,12 +110,12 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_simplify_regression.rs",
         "SERIAL_UNGATED",
-        4,
+        3,
         "fixtures whose simplified dump differs from C's `.simp` in something \
-         other than an `IsSimp` line. Four causes, each named per row and \
-         traced to a port gap in PLAN.md §6: a Prism uncertainty where C has \
-         a Box, a FrameSet where C has a PointSet, a `Closed` card C omits at \
-         its default, and two mesh coordinates past 4 ulp",
+         other than an `IsSimp` line. Three causes, each named per row and \
+         traced to a port gap in PLAN.md §6: a FrameSet where C has a \
+         PointSet, a `Closed` card C omits at its default, and two mesh \
+         coordinates past 4 ulp",
     ),
     (
         "test_simplify_regression.rs",
