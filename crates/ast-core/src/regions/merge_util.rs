@@ -10,7 +10,7 @@
 //! per-class bounds/points.
 
 use crate::frames::{DynFrame, FrameSet};
-use crate::mappings::{CmpMap, Composition, DynMapping, Mapping};
+use crate::mappings::{DynMapping, Mapping};
 
 use super::data::{RegionData, default_mesh_size};
 use super::{
@@ -122,8 +122,7 @@ pub(super) struct MergeOverlay {
 /// Finish a cross-type Region merge: build the concrete merged Region on the
 /// combined base Frame, propagate the `this`-side attributes, clear the Negated
 /// flag, install the combined uncertainty, map the result into the combined
-/// current Frame, apply the FillFactor/MeshSize scaling, and (for an Interval
-/// result) re-simplify so a fully-bounded Interval reclassifies to a Box.
+/// current Frame, and apply the FillFactor/MeshSize scaling.
 ///
 /// Mirrors the shared tail of `MergeInterval`/`MergeBox` (interval.c:1537-1639,
 /// box.c:1983-2085). The order is C's: `astRegOverlay(new, this, 1)` copies
@@ -158,10 +157,6 @@ pub(super) fn finish_region_merge(
 
     let frameset = FrameSet::new(bfrm);
 
-    // A fully-bounded Interval reclassifies to a Box (interval.c Cache /
-    // Simplify); an unbounded one stays an Interval.
-    let reclassify = matches!(built, MergedRegion::Interval(_, _));
-
     let mut new: DynRegion = match built {
         MergedRegion::Interval(lbnd, ubnd) => {
             let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
@@ -187,11 +182,10 @@ pub(super) fn finish_region_merge(
     let mut result = new.map_region(bcmap.as_ref(), cfrm.as_ref()).ok()?;
     apply_merge_scaling_to(result.as_mut(), &scaling);
 
-    if reclassify {
-        <dyn Mapping>::simplify(result.as_dyn_mapping()).ok()
-    } else {
-        Some(result.as_dyn_mapping().clone_box())
-    }
+    // C returns the mapped Region as it stands. A fully-bounded Interval
+    // reclassifies to a Box on the simplify loop's next visit to this list
+    // entry, through `Interval::Simplify`'s equivalent-Box head.
+    Some(result.as_dyn_mapping().clone_box())
 }
 
 /// Convert a `DynMapping` to a `DynRegion` if it is a concrete Region
@@ -282,14 +276,17 @@ pub(super) fn region_is_point(
 /// `first_this` (true → `this` axes come first).
 ///
 /// Mirrors the uncertainty half of `MergeInterval`/`MergeBox`
-/// (interval.c:1547, box.c:1993): build a Prism from the two base-Frame
-/// uncertainties in the correct order, then simplify it. Rather than
-/// calling `Prism::simplified` (which does not yet fuse Box+Box
-/// components), we follow `prism.c::Simplify` (3305-3336) directly:
-/// combine the two uncertainty Regions into a parallel CmpMap, simplify
-/// that, and if the result is a Region use it; otherwise fall back to an
-/// unsimplified Prism (transform-equivalent — a later simplify pass
-/// reduces it).
+/// (interval.c:1547-1565, box.c:1993-2011): build a Prism from the two
+/// base-Frame uncertainties in the correct order, then simplify that Prism.
+///
+/// Going through the Prism rather than straight to the parallel CmpMap its
+/// `Simplify` starts from is load-bearing, not ceremony. `Prism::Simplify`
+/// ends with `astRegOverlay( result, this, 0 )` (prism.c:3513), which copies
+/// the Prism's own Closed, Adaptive, RegionFS, MeshSize and FillFactor — all
+/// at their constructor defaults, and all unset — over whatever the reduced
+/// Region carried. Skipping the Prism leaves an explicit `Closed` behind on a
+/// combined uncertainty whose components reclassified through an equivalent
+/// Box, and that card then shows up in the merged Region's `Unc` block.
 ///
 /// Returns `None` if either Region lacks an uncertainty (the caller only
 /// assigns an uncertainty when both are present, matching C's
@@ -302,19 +299,12 @@ pub(super) fn combine_uncertainties(
     let (u1, u2) = (unc_this?, unc_other?);
     let (r1, r2) = if this_first { (u1, u2) } else { (u2, u1) };
 
-    // Try prism.c::Simplify's route first: a parallel CmpMap of the two
-    // uncertainty Regions, simplified. If the two same-class boxes merge,
-    // the result is a single Region of the combined dimensionality.
-    if let Ok(cmp) = CmpMap::new(r1.clone_region(), r2.clone_region(), Composition::Parallel)
-        && let Ok(simp) = <dyn Mapping>::simplify(&cmp)
-        && let Some(region) = mapping_into_region(simp)
-    {
-        return Some(region);
-    }
-
-    // Fall back to an unsimplified Prism.
-    PrismBuilder::from_dyn(r1, r2)
+    let prism = PrismBuilder::from_dyn(r1, r2)
         .and_then(|b| b.build())
-        .ok()
-        .map(|p| Box::new(p) as DynRegion)
+        .ok()?;
+    let simplified = <dyn Mapping>::simplify(&prism).ok()?;
+
+    // `astSimplify` of a Region always yields a Region; keep the Prism itself
+    // if the concrete simplified form is not a plain Region class.
+    mapping_into_region(simplified).or_else(|| Some(Box::new(prism) as DynRegion))
 }

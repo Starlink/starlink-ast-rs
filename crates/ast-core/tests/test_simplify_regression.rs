@@ -728,8 +728,15 @@ fn simplify_regression() {
     // where C has a Box. Structural equality is far weaker than the byte
     // comparison, which is why losing the byte comparison cost this much.
     const SERIAL_UNGATED: &[(&str, &str)] = &[
-        // (A) Serialisation default: C omits Closed when it holds the default.
-        ("cap_interval_01", "emits Closed = 1 where C omits it"),
+        // (A) Numeric, in the 4-d uncertainty Box's corner point: `X7` is
+        // 86400x the reference because the time uncertainty's base->current
+        // ZoomMap (1/86400) is not applied to it, and `X5`/`X6` differ in the
+        // 12th significant figure, where C's two sky values differ from each
+        // other and the port's do not.
+        (
+            "cap_interval_01",
+            "uncertainty corner: X7 misses the time ZoomMap, X5/X6 differ in the 12th figure",
+        ),
         // (B) Numeric: X5 to ~3e-15 relative, X6 to ~1.2e-10 -- both past the
         // 4-ulp token tolerance, so real arithmetic divergence.
         (

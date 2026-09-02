@@ -593,7 +593,7 @@ two causes:
 | B | 2 `cefit_circle_*`, `neg_box_asymmetric_2d` — CLOSED | Region simplify tagged a Mapping inside the encapsulated FrameSet that C leaves bare, and did not tag the returned Region at all. Both halves were one misreading of where the card comes from: C's loader routes a validated attribute through the setter that discards the record (§9.2), so the `cefit_circle_*` cards were never C's to emit; and C's `IsSimple` getter is overridden on the Frame class to return zero (`frame.c:5590`), so a Region is never tagged and `neg_box_asymmetric_2d` was correct all along |
 | C | `nullregion_unc_fillfactor_merge` — CLOSED | emitted a `Prism` uncertainty where C emits a `Box`, because `NullRegion::region_merge` returned the other Region with its own uncertainty rather than building C's merged NullRegion. It now follows `MergeNullRegion` (`nullregion.c:571`): the result is a NullRegion built on a CmpFrame of the two base Frames, `astRegOverlay` carries the supplied Region's attributes across, the two base-Frame uncertainties combine as `astPrism` followed by `astSimplify` — which is what collapses the pair to a single Box — and `astMapRegion` then carries the whole thing into the combined current Frame. `box_unc_fillfactor_merge` was here, declined by the structural-hash recursion guard's one collision in the corpus, and is byte-exact now that the guard runs C's `astEqual` (§10.19) |
 | D | `cap_zoommap_04` — CLOSED | emitted 59 lines of `FrmSet` inside `Unc` that C omits, and `IsSimp = 3` where C writes 0. Both came from one test: C asks `sunc != unc` after simplifying the uncertainty, and the port asked `Mapping::equal`, which is conversion-based and cannot see a reduction that changes only structure. The uncertainty's own base→current Mapping collapses to a UnitMap here, which is exactly the condition under which `astSetUnc` clears its `RegionFS` and the dump drops the block (§10.23) |
-| E | `cap_interval_01` | `Closed = 1` where C omits it. `cmpmap_parallel_series_dim_mismatch` was here — two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps — and is byte-exact now that the branch simplifies where C simplifies (§10.3) |
+| E | `cap_interval_01` | the 4-d uncertainty Box's corner point: `X7` is 86400× the reference because the time uncertainty's base→current ZoomMap is not applied, and `X5`/`X6` differ in the 12th significant figure. The `Closed = 1` card C omits retired when `combine_uncertainties` began simplifying the combined uncertainty through the Prism, whose own `astRegOverlay` carries its unset Closed onto the result (§10.24). `cmpmap_parallel_series_dim_mismatch` was here — two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps — and is byte-exact now that the branch simplifies where C simplifies (§10.3) |
 | F | `cap_pointlist_01` | two mesh coordinates diverge past 4 ulp |
 | G | `parpair_one_side_reduces` — CLOSED | one or two extra `IsSimp` cards, and nothing else in the tree, on a leaf the port simplifies and C hands on as it stands. Diagnosed as `try_self_reduce` firing through the `simplified()` gate and predicted to close with §10.16; §10.16 landed and the counts did not move, so that diagnosis was wrong. The sources were two `.simplify()` calls with no C counterpart, both in CmpMap's parallel handling (§10.3): the first closed `cmpmap_perm_parallel_swap` and `cmpmap_perm_swap_{a,b}constants`, the second closed this fixture byte-exact. `cap_slamap_03`, `cap_wcsmap_01`, `cap_cmpmap_01` and `cap_cmpmap_04` did close with §10.16, when PermMap's rebuild moved into `map_merge`, and `lsst` closed the same way when PolyMap's coefficient consolidation and affine rebuild moved |
 
@@ -2041,3 +2041,29 @@ and its `ISSIMP_DISAGREEMENTS` row.
 The branch is now reachable for every Region rather than only for uncertainties
 whose transform changes, so a Region fixture that moves here is one where the
 stability check or `set_uncertainty` diverges, not this test.
+
+### 10.24 A merged Region's combined uncertainty skipped C's Prism — FIXED
+
+`MergeInterval` and `MergeBox` build the merged Region's uncertainty from the
+two components' base-Frame uncertainties as `astSimplify( astPrism( u1, u2 ) )`
+(`interval.c:1547-1565`, `box.c:1993-2011`). The port went straight to the
+parallel CmpMap that `Prism::Simplify` starts from (`prism.c:3305-3336`),
+reasoning that the Prism contributes nothing beyond that head.
+
+It contributes the tail. `Prism::Simplify` ends with
+`astRegOverlay( result, (AstRegion *) this_mapping, 0 )` (`prism.c:3513`), and
+`astRegOverlay` copies raw fields — `Closed`, `Adaptive`, `RegionFS`, and, on an
+axis-count change, `MeshSize` and `FillFactor` — from the Prism onto the reduced
+Region. Every one of those sits at its constructor default on a Prism built
+inside a merge, so the overlay is what clears them.
+
+`cap_interval_01` is where it showed. Its time uncertainty is a bounded Interval,
+which reclassifies to a Box through `Interval::Cache` — and `Cache` ends with an
+unconditional `astSetClosed( this->box, astGetClosed( this ) )`
+(`interval.c:512`), so that Box legitimately carries an explicit `Closed`, in C
+as in the port. C's Prism overlay then wipes it; the port's CmpMap shortcut left
+it, and the card surfaced in the merged Interval's `Unc` block.
+
+`combine_uncertainties` now builds the Prism and simplifies it. The shortcut was
+not an optimisation of C's path — it was a different path that happened to agree
+whenever neither component had an attribute worth clobbering.

@@ -344,9 +344,11 @@ impl Interval {
         let corner: Vec<f64> = ubnd.clone();
         let box_reg = {
             let frameset = FrameSet::new(base_frame);
-            let mut data = RegionData::new(frameset, vec![centre, corner]);
-            data.closed = true;
-            data.closed_set = true;
+            // C constructs this Box with `astBox( bfrm, 1, lbnd, ubnd, unc, "" )`
+            // and no astSetClosed (interval.c:3338), so Closed keeps its default
+            // and stays unset. Only Cache's equivalent Box gets an explicit
+            // Closed (interval.c:512).
+            let data = RegionData::new(frameset, vec![centre, corner]);
             super::BoxRegion { data }
         };
         let current_frame = self.data.frameset.current().snapshot();
