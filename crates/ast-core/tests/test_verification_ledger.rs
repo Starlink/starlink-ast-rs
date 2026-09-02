@@ -94,14 +94,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_simplify_regression.rs",
-        "NO_ISSIMP_CARD_UNGATED",
-        1,
-        "neg_box_asymmetric_2d: `simplify` must stamp whatever it returns \
-         (mapping.c:24763) and does not for a Region. The same defect as \
-         SERIAL_UNGATED's cause B seen from the other side",
-    ),
-    (
-        "test_simplify_regression.rs",
         "ISSIMP_DISAGREEMENTS",
         7,
         "fixtures whose `IsSimp` card count differs from C's. Not a separate \

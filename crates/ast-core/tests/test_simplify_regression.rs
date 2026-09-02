@@ -398,12 +398,25 @@ fn simplify_regression() {
                     }
                 }
                 // A negative fixture's reference is its own input, which was
-                // never simplified and so carries no `IsSimp` at all — but the
-                // result of `simplify` always does (mapping.c:24763 stamps
-                // every result). Requiring one keeps the strip from hiding a
-                // result that is untagged altogether.
-                if ignore_is_simp_line && !simp_str.contains("IsSimp") {
-                    other_failures.push(format!("{name}: simplify() produced no IsSimp card"));
+                // never simplified and so carries no `IsSimp` at all, so the
+                // strip above would hide a result tagged wrongly at the top
+                // level. `astSimplify` stamps whatever it returns
+                // (mapping.c:24783), and the card is written when
+                // `astGetIsSimple` reports it (mapping.c:23781) — which a
+                // Frame, a FrameSet and a Region never do, because the getter
+                // is overridden on the Frame class to return zero
+                // (frame.c:5590). So the card is required exactly when the
+                // result is not Frame-kind, and forbidden when it is.
+                if ignore_is_simp_line {
+                    let card = has_top_level_is_simp(&simp_str);
+                    let frame_kind = result_is_frame_kind(simplified.as_ref());
+                    if card && frame_kind {
+                        other_failures.push(format!(
+                            "{name}: IsSimp card on a Frame-kind result (frame.c:5590)"
+                        ));
+                    } else if !card && !frame_kind {
+                        other_failures.push(format!("{name}: simplify() produced no IsSimp card"));
+                    }
                 }
                 if !common::native_strings_equivalent(&got, &want, 4) {
                     serial_failures.push(name.to_string());
@@ -542,10 +555,6 @@ fn simplify_regression() {
             "two mesh coordinates diverge past 4 ulp",
         ),
     ];
-    // `simplify` must stamp whatever it returns (mapping.c:24763). It does not
-    // for a Region, which is the same defect as (B) seen from the other side.
-    const NO_ISSIMP_CARD_UNGATED: &[&str] = &["neg_box_asymmetric_2d"];
-
     let ungated: Vec<&str> = SERIAL_UNGATED.iter().map(|(n, _)| *n).collect();
     let (licensed, unlicensed): (Vec<String>, Vec<String>) = serial_failures
         .iter()
@@ -561,19 +570,7 @@ fn simplify_regression() {
          progress — delete the row. More means a real regression, because \
          every row here was verified against the pinned C oracle."
     );
-    let (no_card_licensed, no_card_other): (Vec<String>, Vec<String>) =
-        other_failures.iter().cloned().partition(|m| {
-            NO_ISSIMP_CARD_UNGATED
-                .iter()
-                .any(|n| m.starts_with(&format!("{n}:")))
-        });
-    assert_eq!(
-        no_card_licensed.len(),
-        NO_ISSIMP_CARD_UNGATED.len(),
-        "the untagged-result licence no longer matches: {no_card_licensed:?}"
-    );
     let serial_failures = unlicensed;
-    let other_failures = no_card_other;
 
     // Every row here is a real gap: the pinned C oracle and the committed
     // `.simp` agree, and the port's `IsSimp` count differs from both. The
@@ -1762,4 +1759,26 @@ fn invert_clears_has_been_simplified() {
         !s.has_been_simplified(),
         "invert() should clear the flag (C clears IsSimple)"
     );
+}
+
+/// Whether `m` is a Frame, a FrameSet or a Region.
+///
+/// C's `IsSimple` getter is overridden on the Frame class to return zero
+/// unconditionally (`frame.c:5590`), and FrameSet and every Region inherit
+/// that override, so `mapping.c:23781` writes no `IsSimp` card for any of
+/// them. `AnyObject::as_frame` is exactly that set of classes.
+fn result_is_frame_kind(m: &dyn Mapping) -> bool {
+    AnyObject::from_mapping(m).is_some_and(|obj| obj.as_frame().is_some())
+}
+
+/// Whether a native dump carries an `IsSimp` card on its *outermost* object.
+///
+/// Native output indents a top-level attribute by exactly four spaces and
+/// anything nested by more, so the prefix distinguishes the outermost object's
+/// own cards from those of the Mappings it encapsulates.
+fn has_top_level_is_simp(dump: &str) -> bool {
+    dump.lines().any(|line| {
+        line.strip_prefix("    ")
+            .is_some_and(|rest| rest.starts_with("IsSimp"))
+    })
 }

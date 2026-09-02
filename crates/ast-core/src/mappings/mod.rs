@@ -561,6 +561,14 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// discarding one, and inverting and inverting back leaves the Mapping
     /// reporting exactly what it reported before. Serialised as the `IsSimp`
     /// token.
+    ///
+    /// A Frame, a FrameSet and a Region always report `false` and keep this
+    /// default: C overrides the getter on the Frame class to return zero
+    /// unconditionally (`frame.c:5590`), because a Frame is mutable and so no
+    /// record of having been simplified can stay true. They hold no
+    /// `SimplifiedRecord` for the same reason, and
+    /// `test_simplify_regression.rs` gates the resulting absence of an
+    /// `IsSimp` card on every Frame-kind result in the corpus.
     fn has_been_simplified(&self) -> bool {
         false
     }
