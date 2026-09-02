@@ -791,6 +791,11 @@ had been licensed under `ROUNDTRIP_DISCARD_LICENSED` (§6): `grism_zoom_merge`,
 `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies` and `pcd_unit_series_merge`
 now round-trip byte-exactly, and backing the routing out fails those four and no
 others.
+The composition of the two — a validating re-application that discards a record
+the same loader just installed — is not a decision either half's upstream
+history claims, so it is logged as a mirrored quirk with its revisit trigger in
+`docs/issues/c-library-quirks.md` under "The `IsSimp` card does not survive being
+read back, for twelve classes".
 
 `set_zoom`, `set_lut_epsilon`, `set_disc`, `set_pcd_cen` and GrismMap's eight
 have no `clear_*` counterpart, because for each of them the sentinel already

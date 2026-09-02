@@ -972,7 +972,11 @@ impl Serializable for LutMap {
         if node.get("LutInt").is_some() {
             m.set_interp(interp);
         }
-        // C re-applies LutEpsilon the same way (lutmap.c:2576-2577).
+        // C re-applies LutEpsilon the same way (lutmap.c:2576-2577). Both
+        // branches mirror a quirk rather than a design decision, so they are
+        // revisited when the pin moves: see `docs/issues/c-library-quirks.md`,
+        // "The `IsSimp` card does not survive being read back, for twelve
+        // classes".
         if node.get("LutEps").is_some() {
             m.set_lut_epsilon(lut_epsilon);
         }

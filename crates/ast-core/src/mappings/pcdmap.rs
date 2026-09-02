@@ -432,7 +432,10 @@ impl Serializable for PcdMap {
         // C re-applies each attribute through the private setter when its
         // `Test*` predicate reports the card present (pcdmap.c:3192-3205), which
         // discards the simplified record the parent loader installed from the
-        // `IsSimp` card.
+        // `IsSimp` card. The routing mirrors a quirk rather than a design
+        // decision, so it is revisited when the pin moves: see
+        // `docs/issues/c-library-quirks.md`, "The `IsSimp` card does not survive
+        // being read back, for twelve classes".
         if node.get("PcdCn0").is_some() {
             m.set_pcd_cen(1, pcdcen0)?;
         }

@@ -2542,9 +2542,34 @@ Their composition is what nobody chose.
 **Rust behaviour (mirror):** the port routes `from_node` through the same
 setters for the same classes, so a `.simp` reference and the port's dump of the
 loaded object agree card for card.
+The routing lives in `ZoomMap::from_node`, `MathMap::from_node`,
+`LutMap::from_node` (`LutInterp` and `LutEpsilon`), `PolyMap::from_node`,
+`SplineMap::from_node`, `SphMap::from_node`, `WcsMap::from_node`,
+`PcdMap::from_node` (`Disco` and both `PcdCen` axes), `PermMap::from_node` and
+`GrismMap::from_node` (all eight attributes).
+
+Four fixtures pin the mirror by comparing C's own re-dump:
+`grism_zoom_merge`, `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies` and
+`pcd_unit_series_merge` all carry an `IsSimp` card that C's reader drops, and
+they were licensed under `ROUNDTRIP_DISCARD_LICENSED` until the GrismMap and
+PcdMap loaders were routed; the licence is now retired and all 792 simplify
+fixtures round-trip byte-exactly.
 `cefit_circle_conformal` (ZoomMap) and `cefit_circle_nonconformal_keep`
-(MathMap) pin it; `cap_poly_bent_edges`, whose MathMap carries no `SimpFI` /
-`SimpIF` / `Seeded` card and so routes nothing, is the control.
+(MathMap) pin the simplify side; `cap_poly_bent_edges`, whose MathMap carries no
+`SimpFI` / `SimpIF` / `Seeded` card and so routes nothing, is the control.
+
+**Revisit trigger.** This is a mirrored quirk, not recorded behaviour, so an
+upstream fix turns the mirror into a bug (CLAUDE.md, upstream sync protocol).
+Upstream would most likely fix it in `astLoadMapping`'s caller chain by
+restoring the flag after the class loader's attribute re-application, or by
+reading `IsSimp` after the class-specific cards rather than before.
+Either way the fix shows up as an `IsSimp` card appearing in a re-dump where the
+pinned corpus has none, so the signal is the four fixtures above failing their
+round-trip on a pin move.
+The port's response is then to delete the `if …is_some() { set_… }` routing from
+the eleven `from_node` bodies listed above — the setters themselves stay, since
+the clear-on-set convention they implement is deliberate and useful — and to
+recapture those four references from the new oracle.
 
 To be raised upstream.
 

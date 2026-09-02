@@ -723,7 +723,10 @@ impl Serializable for GrismMap {
         // C's loader re-applies each attribute whose `Test*` predicate reports it
         // set through the private setter (`grismmap.c:2548-2571`), which discards
         // the simplified record the parent loader installed from the `IsSimp`
-        // card.
+        // card. The routing mirrors a quirk rather than a design decision, so it
+        // is revisited when the pin moves: see `docs/issues/c-library-quirks.md`,
+        // "The `IsSimp` card does not survive being read back, for twelve
+        // classes".
         if set_flags.nr {
             map.set_grism_nr(nr);
         }
