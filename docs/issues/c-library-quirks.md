@@ -2694,3 +2694,50 @@ returns `ErrorCode::Ncpin` where C's arity check fires. What follows that error
 in C is a read of uninitialised memory and is not reproduced.
 
 To be raised upstream, together with the `Ellipse` `astAxDistance` axis index.
+
+---
+
+## `UnitNormMap`'s zero-norm guard is defeated by compiler multiply-add contraction
+
+`unitnormmap.c:1024-1031` handles the singular case of the forward transform: a
+point coincident with the centre has no direction, so `max_relin == 0` and C
+writes `AST__BAD` to every output but the last, and `0` to that one. The inverse
+at `unitnormmap.c:1058-1082` mirrors it, testing `norm == 0` before falling
+through to `ptr_out[coord][point] = in*norm + map->centre[coord]` at `:1079`.
+
+Both tests are exact comparisons against zero, and the value they test is
+computed by that same multiply-add. A compiler permitted to contract it into a
+fused multiply-add -- GCC and Clang both do by default, `-ffp-contract=fast`,
+and arm64 has the instruction -- rounds once instead of twice and leaves a
+residue where the unfused arithmetic gives an exact zero. The guard then does
+not fire, and the transform returns a normalised direction derived from that
+residue.
+
+The effect is visible in this repo's own oracle corpus, which was generated on
+arm64 macOS. The inverse section of
+`simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map` records
+`0.75853844164804163 0.65162829323331306 3.4075347438225656e-16` for an input
+coincident with the centre, where the guard prescribes `BAD BAD 0`. Both fused
+values are reproducible as `fma(u, d, 5.0)` and `fma(u, d, 6.0)` for that
+fixture's centre. The C library built on this repo's x86-64 host returns
+`BAD BAD 0` for the same input, confirmed with
+`tools/oracle_fixtures/unitnorm_probe`.
+
+So the same C source gives two different answers for the singular case depending
+on how it was compiled, and neither is a rounding difference in a continuous
+quantity: one is a defined sentinel and the other is a unit vector pointing in
+an arbitrary direction. A guard that must hold exactly should not be written
+against a contractable expression; `volatile`, `-ffp-contract=off`, or a
+comparison made before the multiply-add would all settle it.
+
+**Rust behaviour (no mirror):** Rust does not contract floating-point
+expressions, so `UnitNormMap::transform_into`
+(`crates/ast-core/src/mappings/unitnormmap.rs:173-198`) always takes the guard
+and always returns `BAD_VALUE` on the leading axes and `0.0` on the last —
+agreeing with the C source as written, and with C as built anywhere that does
+not fuse. `FMA_SUBSTITUTIONS_LICENSED` in
+`crates/ast-core/tests/test_transform_oracle.rs` substitutes the two affected
+oracle rows so the port is held to the prescribed value rather than the fused
+one.
+
+To be raised upstream.

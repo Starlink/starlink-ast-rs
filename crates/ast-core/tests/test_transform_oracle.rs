@@ -537,13 +537,13 @@ fn transform_section(map: &dyn Mapping, s: &Section) -> Result<Vec<Vec<f64>>, St
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct RtripRule {
     off: bool,
     rtol: f64,
     atol: f64,
 }
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct GoldenRule {
     fwd_off: bool,
     inv_off: bool,
@@ -651,12 +651,20 @@ mod override_tests {
             "/tests/fixtures/oracle/transform_oracle_overrides.txt"
         );
         let o = parse_overrides(&std::fs::read_to_string(path).unwrap());
-        // tnx-cheb.head has no override: its round-trip runs with the default
-        // tolerances, and the rows C does not round-trip are excused per row.
-        assert_eq!(o.rtrip("tnx-cheb.head"), Some((RTRIP_RTOL, RTRIP_ATOL)));
-        // neg_unitnormmap_inv_fwd_diffcentre.map skips golden inverse only.
-        let rel = "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map";
-        assert!(o.golden_off(rel, false) && !o.golden_off(rel, true));
+        // The committed file declares nothing: no fixture may switch a check
+        // off wholesale. Per-row licences live in the harness, where they are
+        // named and asserted.
+        assert!(
+            o.rtrip.is_empty() && o.golden.is_empty(),
+            "transform_oracle_overrides.txt must declare no overrides; found \
+             rtrip={:?} golden={:?}",
+            o.rtrip,
+            o.golden,
+        );
+        // The parser still works, so a future entry would take effect.
+        let probe = parse_overrides("a.head off\nb.map golden-inv off\n");
+        assert_eq!(probe.rtrip("a.head"), None);
+        assert!(probe.golden_off("b.map", false));
     }
 }
 
@@ -815,6 +823,75 @@ const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
     // of what the gate excuses.
     ("tsc.head", &[10]),
 ];
+
+/// Oracle rows whose recorded values were produced by the generator host's
+/// compiler contracting a multiply-add, where the unfused arithmetic C's own
+/// source prescribes gives a different answer. Each entry replaces the recorded
+/// row with the unfused expectation for the golden comparison only, keyed by
+/// `(relpath, forward, row, expected outputs)`.
+///
+/// This is a strengthening, not a relaxation: the substituted row is asserted
+/// exactly, at the same tolerance as every other row.
+/// `fma_substitutions_replace_rows_that_really_differ` keeps each entry honest
+/// by requiring the recorded values to still be the ones being replaced.
+const FMA_SUBSTITUTIONS_LICENSED: &[(&str, bool, usize, &[f64])] = &[
+    // UnitNormMap's inverse writes `in*norm + centre[coord]`
+    // (`unitnormmap.c:1079`). This fixture's rows 2 and 3 feed the transform an
+    // input whose distance from the centre is zero, which C detects by
+    // `max_relin == 0` at `unitnormmap.c:1024` and answers with BAD on every
+    // axis but the last and 0 on that one. The arm64 generator's compiler fused
+    // the multiply-add, leaving 3.4075347438225656e-16 instead of an exact
+    // zero, so the guard never fired and the row recorded a noise direction:
+    // 0.75853844164804163 0.65162829323331306 3.4075347438225656e-16. Both
+    // fused values are reproducible as fma(u, d, 5.0) and fma(u, d, 6.0).
+    // Any non-contracting build -- Rust anywhere, and C on this repo's x86-64
+    // host, confirmed with `tools/oracle_fixtures/unitnorm_probe` -- takes the
+    // guard. See `docs/issues/c-library-quirks.md`.
+    (
+        "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map",
+        false,
+        2,
+        &[BAD_VALUE, BAD_VALUE, 0.0],
+    ),
+    (
+        "simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map",
+        false,
+        3,
+        &[BAD_VALUE, BAD_VALUE, 0.0],
+    ),
+];
+
+/// The reference a golden comparison should use: the recorded outputs, with any
+/// `FMA_SUBSTITUTIONS_LICENSED` row replaced. Borrows when nothing applies,
+/// which is every section but one.
+fn substituted_reference<'a>(
+    relpath: &str,
+    forward: bool,
+    recorded: &'a [Vec<f64>],
+) -> std::borrow::Cow<'a, [Vec<f64>]> {
+    let subs: Vec<_> = FMA_SUBSTITUTIONS_LICENSED
+        .iter()
+        .filter(|(rp, fwd, _, _)| *rp == relpath && *fwd == forward)
+        .collect();
+    if subs.is_empty() {
+        return std::borrow::Cow::Borrowed(recorded);
+    }
+    let mut patched = recorded.to_vec();
+    for (_, _, row, expect) in subs {
+        assert_eq!(
+            expect.len(),
+            patched.len(),
+            "FMA substitution for {relpath} row {row} has {} values but the \
+             section has {} axes",
+            expect.len(),
+            patched.len(),
+        );
+        for (axis, col) in patched.iter_mut().enumerate() {
+            col[*row] = expect[axis];
+        }
+    }
+    std::borrow::Cow::Owned(patched)
+}
 
 /// Equivalence check C, gated on stored agreement: compare live `.map` vs
 /// live `.simp` only where the recorded values already agree.
@@ -1073,7 +1150,8 @@ fn run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport> {
             } else {
                 CheckKind::GoldenInv
             };
-            misses.extend(compare_golden(kind, &live, &s.outputs, &angular));
+            let reference = substituted_reference(&s.relpath, s.forward, &s.outputs);
+            misses.extend(compare_golden(kind, &live, &reference, &angular));
         }
 
         // Round-trip: an inverse section of a GRID fixture paired with the
@@ -1752,6 +1830,48 @@ fn reference_rtrip_gaps_are_exactly_the_recorded_set() {
          changed. Update RTRIP_REFERENCE_GAPS_LICENSED, the ledger and \
          PLAN.md §6 together, with a reason per fixture",
     );
+}
+
+/// Every FMA substitution must name a row that exists and whose recorded values
+/// actually differ from the substituted ones. A regenerated corpus that agrees
+/// with the unfused arithmetic makes the entry dead weight, and this fails
+/// rather than letting it sit there unnoticed.
+#[test]
+fn fma_substitutions_replace_rows_that_really_differ() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
+    for (relpath, forward, row, expect) in FMA_SUBSTITUTIONS_LICENSED {
+        let name = if has_ext(relpath, ".head") {
+            "headers.oracle"
+        } else if has_ext(relpath, ".ast") {
+            "framesets.oracle"
+        } else {
+            "simplify_fixtures.oracle"
+        };
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
+        let sections = parse_oracle(&text).expect("oracle parses");
+        let s = sections
+            .iter()
+            .find(|s| s.relpath == *relpath && s.forward == *forward)
+            .unwrap_or_else(|| panic!("no section for {relpath} (forward={forward})"));
+        assert!(
+            *row < s.npoint(),
+            "{relpath} row {row} is past the section's {} rows",
+            s.npoint(),
+        );
+        assert_eq!(
+            expect.len(),
+            s.outputs.len(),
+            "{relpath} row {row}: axis count"
+        );
+        let differs = (0..s.outputs.len())
+            .any(|a| !within_tol(s.outputs[a][*row], expect[a], GOLDEN_RTOL, GOLDEN_ATOL));
+        assert!(
+            differs,
+            "{relpath} row {row}: the recorded values already agree with the \
+             substitution, so the entry is dead. Delete it from \
+             FMA_SUBSTITUTIONS_LICENSED, the ledger and PLAN.md §6",
+        );
+    }
 }
 
 /// Investigative harness. Not part of the normal suite or CI: run with

@@ -1,4 +1,14 @@
-# Per-fixture overrides for check_transform_oracle.
+# Per-fixture overrides for test_transform_oracle.rs.
+#
+# This file currently declares NO overrides, and
+# `parses_committed_overrides_file` asserts that it stays that way: every
+# fixture in every oracle corpus has its forward golden, inverse golden,
+# round-trip and .map/.simp equivalence checks enabled, at the harness's
+# default tolerances.
+#
+# The syntax below is retained because the parser supports it and a future
+# fixture may need it. Any entry added here must carry a comment saying what
+# is disabled and why, and must be counted in PLAN.md §6.
 #
 # Round-trip lines (GRID-domain corpora: .head, .ast).  The round-trip
 # check asserts inverse(forward(P)) recovers the pixel P within an
@@ -23,13 +33,7 @@
 # alias in an image wider than the quad-cube period, which the alias-aware
 # check accepts on its own anyway).
 
-# neg_unitnormmap_inv_fwd_diffcentre.map: the fixture is
-# UnitNormMap(centre A)^-1 then UnitNormMap(centre B).  Its inverse chain,
-# fed the forward outputs of the sampled all-zero input, reconstructs
-# centre A as B + |A-B| * (A-B)/|A-B|.  Whether that lands on A exactly
-# (residual zero, output AST__BAD) or ~1e-16 away (output an arbitrary
-# unit-vector direction made of rounding noise) depends on the
-# architecture's rounding, so no recorded value at that point is stable:
-# x86 Linux computes BAD where the arm64 macOS generator recorded a noise
-# direction.  The forward section remains pinned by the golden check.
-simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map   golden-inv off
+# Two rows of that fixture's inverse section are substituted per row by
+# FMA_SUBSTITUTIONS_LICENSED in test_transform_oracle.rs, which asserts the
+# value C's own source prescribes rather than the fused one the generator host
+# recorded.  The other 22 rows are compared as normal.

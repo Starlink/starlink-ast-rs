@@ -11,3 +11,5 @@ sip_int_world
 head2ast
 ast2ast
 keymap_hash
+gen_simp
+unitnorm_probe

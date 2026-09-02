@@ -40,6 +40,24 @@ Two probes generate / cross-check the `.ast` FrameSet round-trip corpus
   FITS, so a Rust round-trip can be diffed against the authoritative
   C round-trip rather than only against the first dump.
 
+## `unitnorm_probe` — what does C on *this* host compute here?
+
+```shell
+unitnorm_probe <fixture.map> <x1> ... <xN>
+```
+
+Reads one native-encoded Mapping, runs a single point through its inverse
+transform (`N` = the Mapping's `Nout`), and prints the result with `BAD` for
+`AST__BAD`.
+Used to settle whether a recorded oracle value is a property of the C algorithm
+or of the generator host's floating point: the reference corpus was captured on
+arm64 macOS, and a value that this host's C library disagrees with is a
+platform artefact rather than a port defect.
+Its first use was the zero-norm case of
+`simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map`
+(`docs/issues/c-library-quirks.md`, "`UnitNormMap`'s zero-norm guard is defeated
+by compiler multiply-add contraction").
+
 ## `gen_simp` — what does the pinned C emit for a simplify fixture?
 
 ```shell

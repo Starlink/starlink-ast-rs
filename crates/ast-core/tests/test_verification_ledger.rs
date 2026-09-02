@@ -108,6 +108,16 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          and the aliased comparison",
     ),
     (
+        "test_transform_oracle.rs",
+        "FMA_SUBSTITUTIONS_LICENSED",
+        2,
+        "two rows of one UnitNormMap inverse section where the generator \
+         host's compiler fused the multiply-add at unitnormmap.c:1079 and \
+         stepped past C's own zero-norm branch. The substituted expectation \
+         is the unfused value C's source prescribes, asserted exactly, and a \
+         test fails if the recorded values ever stop differing from it",
+    ),
+    (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
         5,
