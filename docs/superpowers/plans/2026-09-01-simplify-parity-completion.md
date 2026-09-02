@@ -3643,7 +3643,7 @@ it as a failing gate; Task 14 uses it to choose the fix.
 - Produces: a manifest row `cap_cmpmap_nested_tag` whose reference carries the
   nested `IsSimp` card the port omits — the smallest failing case for Task 14.
 
-- [ ] **Step 1: Build the instrumented oracle and confirm the chain**
+- [x] **Step 1: Build the instrumented oracle and confirm the chain**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3664,7 +3664,7 @@ would come from the wrong library.
 The script's own `cc` line omits the grf archives, which is why the two extra
 commands above are needed; leave the script alone rather than fixing it here.
 
-- [ ] **Step 2: Capture the stamps and locate the one that matters**
+- [x] **Step 2: Capture the stamps and locate the one that matters**
 
 ```bash
 cd crates/ast-core/tests/fixtures/native/reference
@@ -3699,7 +3699,7 @@ what precedes the call — a single `astSimplify` after an `astSetInvert` is
 `cmpmap.c:1443`; two back-to-back `astSimplify` calls whose results are then
 compared are `cmpmap.c:1608-1609`.
 
-- [ ] **Step 3: Cut the fixture down to the failing subtree**
+- [x] **Step 3: Cut the fixture down to the failing subtree**
 
 The stamp is raised inside the simplify of a parallel CmpMap two levels below the
 root, so the input can lose everything outside that. `cap_specmap_02.map`'s root
@@ -3742,7 +3742,7 @@ the two CmpMaps beneath it that C stamps. If the count is 0, the subtree simplif
 to something without a CmpMap and the wrong `MapA` was taken; print the root's
 class with `head -1 /tmp/shrink0.map` and check it is the parallel CmpMap.
 
-- [ ] **Step 4: Check the port fails on the shrunk map for the same reason**
+- [x] **Step 4: Check the port fails on the shrunk map for the same reason**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3755,7 +3755,7 @@ plus the example's trailing blank line. If the diff is empty, the shrink cut awa
 the defect — go back to Step 3 and take the whole root instead, then remove the
 root's `MapB` subtree only.
 
-- [ ] **Step 5: Shrink again, on the parallel branch**
+- [x] **Step 5: Shrink again, on the parallel branch**
 
 The parallel CmpMap has two branches and the stamp is on one of them. Delete the
 other and re-check:
@@ -3804,7 +3804,7 @@ series-CmpMaps-in-parallel merge, which by construction needs two series
 branches — so keep `/tmp/shrink0.map` and stop shrinking. Record which outcome
 you got; Task 14 Step 1 reads it.
 
-- [ ] **Step 6: Install the smallest reproducer as a fixture**
+- [x] **Step 6: Install the smallest reproducer as a fixture**
 
 Use whichever of `/tmp/shrink0.map`, `/tmp/shrink_a.map`, `/tmp/shrink_b.map`
 still fails and is smallest:
@@ -3821,7 +3821,7 @@ grep -n "IsSimp" "$DEST/cap_cmpmap_nested_tag.simp"
 
 The `.simp` is an oracle product and is never hand-edited.
 
-- [ ] **Step 7: Add the manifest row, with the comment that says what it pins**
+- [x] **Step 7: Add the manifest row, with the comment that says what it pins**
 
 Append to `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`,
 in the `cap_*` block and in alphabetical position:
@@ -3837,7 +3837,7 @@ in the `cap_*` block and in alphabetical position:
 cap_cmpmap_nested_tag    | simplify_fixtures/cap_cmpmap_nested_tag.map | simplify_fixtures/cap_cmpmap_nested_tag.simp |
 ```
 
-- [ ] **Step 8: Run both consumers and confirm the new row fails on the tag alone**
+- [x] **Step 8: Run both consumers and confirm the new row fails on the tag alone**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3851,7 +3851,7 @@ the round-trip test passes on the new pair. If the round-trip test's name differ
 find every consumer with
 `grep -rln "simplify_fixtures" crates/ast-core/tests/*.rs` and run them all.
 
-- [ ] **Step 9: Commit the failing gate**
+- [x] **Step 9: Commit the failing gate**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH

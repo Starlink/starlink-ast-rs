@@ -428,6 +428,14 @@ cap_cmpmap_01            | simplify_fixtures/cap_cmpmap_01.map | simplify_fixtur
 cap_cmpmap_02            | simplify_fixtures/cap_cmpmap_02.map | simplify_fixtures/cap_cmpmap_02.simp |
 cap_cmpmap_03            | simplify_fixtures/cap_cmpmap_03.map | simplify_fixtures/cap_cmpmap_03.simp |
 cap_cmpmap_04            | simplify_fixtures/cap_cmpmap_04.map | simplify_fixtures/cap_cmpmap_04.simp | yes
+# cap_cmpmap_nested_tag: the smallest input for which C stamps IsSimp on a CmpMap
+# that is neither the simplify result nor an element of the final component list.
+# C raises it at cmpmap.c:1443 on a nominated element whose self-simplify found
+# nothing, inside the simp2 = astSimplify( new2 ) of the series-CmpMaps-in-parallel
+# merge (cmpmap.c:1608-1609), and the closing fold at cmpmap.c:3709 combines that
+# same object into the tree it builds, so the tag reaches the dump. Shrunk from
+# cap_specmap_02, which carries the same single missing card in 680 lines.
+cap_cmpmap_nested_tag    | simplify_fixtures/cap_cmpmap_nested_tag.map | simplify_fixtures/cap_cmpmap_nested_tag.simp |
 cap_interval_01          | simplify_fixtures/cap_interval_01.map | simplify_fixtures/cap_interval_01.simp |
 cap_lutmap_01            | simplify_fixtures/cap_lutmap_01.map | simplify_fixtures/cap_lutmap_01.simp |
 cap_mathmap_01           | simplify_fixtures/cap_mathmap_01.map | simplify_fixtures/cap_mathmap_01.simp |
