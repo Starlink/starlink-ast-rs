@@ -167,11 +167,13 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
             return None;
         }
         let text = std::fs::read_to_string(&path).expect("checklist readable");
-        (!text
-            .lines()
-            .take(12)
-            .any(|l| l.contains("Citations: verified against pin")))
-        .then_some(())
+        let header: Vec<&str> = text.lines().take(12).collect();
+        // A checklist counts as done only with both markers: its citations
+        // verified against the pin, and its steps classified as extension
+        // points. Either one alone leaves a gate skipping the file.
+        let marked = |marker: &str| header.iter().any(|l| l.contains(marker));
+        (!(marked("Citations: verified against pin") && marked("Extension points: classified")))
+            .then_some(())
     })
     .count();
 
@@ -201,13 +203,14 @@ fn manifest_relaxations() -> Vec<(&'static str, usize, &'static str)> {
              that C AST on arm64 does not reproduce either",
         ),
         (
-            "audit checklists not yet citation-verified",
+            "audit checklists not yet verified and classified",
             unrepaired,
-            "the citation gate in test_audit_citations.rs checks a checklist \
-             only once its header declares the pin its citations were verified \
-             against. Each cluster verifies the checklists it touches and drops \
-             this number; cluster 7 takes it to zero, at which point the marker \
-             becomes mandatory and this row goes",
+            "the gates in test_audit_citations.rs check a checklist only once \
+             its header declares the pin its citations were verified against \
+             and that its steps are classified as extension points. Each \
+             cluster does the checklists it touches and drops this number; \
+             cluster 7 takes it to zero, at which point the markers become \
+             mandatory and this row goes",
         ),
     ]
 }
@@ -299,7 +302,7 @@ fn every_relaxation_is_the_size_the_ledger_says() {
             "simplify manifest: skip_string_compare" => 4,
             "simplify manifest: negative fixtures stripping IsSimp" => 142,
             "wcsconv manifest: astequal compare mode" => 8,
-            "audit checklists not yet citation-verified" => 35,
+            "audit checklists not yet verified and classified" => 35,
             other => panic!("unledgered manifest relaxation: {other}"),
         };
         if got != want {

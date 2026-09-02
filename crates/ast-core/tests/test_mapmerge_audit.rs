@@ -150,19 +150,27 @@ fn verdicts(text: &str) -> Vec<String> {
             if first.parse::<u32>().is_err() {
                 return None;
             }
-            Some(cells[4].trim().to_string())
+            // The verdict is the last cell, so a checklist that also classifies
+            // its steps as extension points is read the same way.
+            Some(cells.last().expect("row has cells").trim().to_string())
         })
         .collect()
 }
 
-fn verdict_is_valid(v: &str) -> bool {
-    v == "ported"
-        || (v.starts_with("n/a:") && v.len() > "n/a:".len() + 1)
-        || (v.starts_with("gap: PLAN.md ") && v.len() > "gap: PLAN.md ".len() + 1)
-        // A divergence is a step the port refuses because performing it would
-        // reproduce a defect in C's own. The citation is what makes it a
-        // finding rather than an opinion, so it is part of the verdict.
-        || (v.starts_with("divergence:") && v.contains("docs/issues/c-library-quirks.md"))
+/// The verdicts a checklist row may carry.
+///
+/// Each one either asserts the step is present or names where the work or the
+/// decision that excuses it is tracked. A verdict that names nothing would let
+/// a missing step read as a finished one.
+fn verdict_is_valid(verdict: &str) -> bool {
+    verdict == "ported"
+        || verdict.starts_with("n/a: ")
+        || verdict.starts_with("gap: PLAN.md §")
+        || verdict.starts_with("deferred: ")
+        || verdict.starts_with("driver: ")
+        || verdict.starts_with("unreachable: ")
+        || (verdict.starts_with("divergence:")
+            && verdict.contains("docs/issues/c-library-quirks.md"))
 }
 
 #[test]
@@ -200,8 +208,9 @@ fn every_checklist_row_has_a_verdict() {
     }
     assert!(
         bad.is_empty(),
-        "a verdict must be `ported`, `n/a: <reason>`, `gap: PLAN.md <section>`, \
-         or `divergence: <reason citing docs/issues/c-library-quirks.md>`: \
+        "a verdict must be `ported`, `n/a: <reason>`, `gap: PLAN.md §<section>`, \
+         `deferred: <class>`, `driver: <path>`, `unreachable: <reason>`, or \
+         `divergence: <reason citing docs/issues/c-library-quirks.md>`: \
          {bad:#?}"
     );
 }

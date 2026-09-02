@@ -198,6 +198,72 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
     out
 }
 
+/// The `impl` header enclosing `line` (1-based), as `"Trait for Type"` when the
+/// block implements a trait and `"Type"` when it does not.
+///
+/// This is what distinguishes a step that landed on a trait method — the port's
+/// equivalent of a C vtab slot — from one that landed on an inherent helper.
+pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String> {
+    let mut stack: Vec<(String, usize)> = Vec::new();
+    let mut depth = 0usize;
+    let mut pending: Option<String> = None;
+    for (i, text) in src.lines().enumerate() {
+        let code = code_only(text);
+        if let Some(header) = impl_header(&code) {
+            pending = Some(header);
+        }
+        for c in code.chars() {
+            match c {
+                '{' => {
+                    depth += 1;
+                    if let Some(header) = pending.take() {
+                        stack.push((header, depth));
+                    }
+                }
+                '}' => {
+                    if stack.last().is_some_and(|(_, d)| *d == depth) {
+                        stack.pop();
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+        }
+        if i + 1 == line {
+            return stack.last().map(|(header, _)| header.clone());
+        }
+    }
+    None
+}
+
+/// The subject of an `impl` line, with generics and `where` clauses removed.
+fn impl_header(code: &str) -> Option<String> {
+    let trimmed = code.trim_start();
+    let rest = trimmed.strip_prefix("impl")?;
+    if rest.starts_with(|c: char| is_ident(c)) {
+        return None;
+    }
+    let body = rest
+        .split(" where ")
+        .next()
+        .unwrap_or(rest)
+        .split('{')
+        .next()
+        .unwrap_or(rest);
+    let mut out = String::new();
+    let mut generic = 0i32;
+    for c in body.chars() {
+        match c {
+            '<' => generic += 1,
+            '>' => generic -= 1,
+            _ if generic == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    let header = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!header.is_empty()).then_some(header)
+}
+
 /// The name of the `fn` whose body, signature or documentation contains `line`
 /// (1-based). The innermost enclosing item wins.
 pub fn enclosing_rust_item(src: &str, line: usize) -> Option<String> {
@@ -325,6 +391,91 @@ fn c_definition_name(lines: &[&str], i: usize) -> Option<CDefinition> {
 
 #[cfg(test)]
 mod tests {
+    /// A class whose trait method delegates its algorithm to a free function in
+    /// a neighbouring module, which is how the port holds `MapMerge` bodies.
+    const CLASS_SRC: &str = r#"
+impl SphMap {
+    fn helper(&self) -> u32 {
+        inherent_only()
+    }
+}
+
+impl Mapping for SphMap {
+    fn map_merge(&self, ctx: &mut Ctx) -> bool {
+        super::simplify::sph_map_merge(self, ctx)
+    }
+}
+"#;
+
+    const MERGE_SRC: &str = r#"
+fn sph_map_merge(map: &SphMap, ctx: &mut Ctx) -> bool {
+    if let Some(hit) = try_sphmap_diagonal_pattern_at(ctx) {
+        return default_map_merge(ctx, hit);
+    }
+    false
+}
+
+fn try_sphmap_diagonal_pattern_at(ctx: &Ctx) -> Option<usize> {
+    extract_3d_diagonal(ctx)
+}
+
+fn extract_3d_diagonal(ctx: &Ctx) -> Option<usize> {
+    None
+}
+
+fn unrelated_helper(ctx: &Ctx) -> bool {
+    false
+}
+"#;
+
+    #[test]
+    fn a_trait_method_owns_the_body_it_delegates_to() {
+        assert_eq!(trait_method_names(CLASS_SRC), vec!["map_merge".to_string()]);
+        for owned in [
+            "map_merge",
+            "sph_map_merge",
+            "try_sphmap_diagonal_pattern_at",
+            "extract_3d_diagonal",
+        ] {
+            assert!(
+                reached_from_trait_method(CLASS_SRC, MERGE_SRC, owned),
+                "{owned} hangs off the seam"
+            );
+        }
+        for outside in ["helper", "unrelated_helper"] {
+            assert!(
+                !reached_from_trait_method(CLASS_SRC, MERGE_SRC, outside),
+                "{outside} is not reached from a trait method"
+            );
+        }
+    }
+
+    const IMPLS: &str = "\
+struct Zoom;
+
+impl Zoom {
+    fn helper(&self) -> u32 {
+        1
+    }
+}
+
+impl Mapping for Zoom {
+    fn simplified(&self) -> u32 {
+        2
+    }
+}
+";
+
+    #[test]
+    fn distinguishes_a_trait_method_from_an_inherent_one() {
+        assert_eq!(enclosing_rust_impl(IMPLS, 5).as_deref(), Some("Zoom"));
+        assert_eq!(
+            enclosing_rust_impl(IMPLS, 11).as_deref(),
+            Some("Mapping for Zoom")
+        );
+        assert_eq!(enclosing_rust_impl(IMPLS, 1), None);
+    }
+
     use super::*;
 
     // Line numbers are 1-based and the assertions below depend on them:
@@ -611,4 +762,94 @@ pub fn resolve_source(root: &std::path::Path, file: &str) -> Resolution {
         1 => Resolution::Found(found.remove(0)),
         _ => Resolution::Ambiguous(found),
     }
+}
+
+/// Every `fn` in `src` declared inside an `impl <Trait> for <Type>` block.
+///
+/// These are the port's equivalent of C's vtab slots: the methods a generic
+/// driver reaches per class.
+pub fn trait_method_names(src: &str) -> Vec<String> {
+    rust_items(src)
+        .into_iter()
+        .filter(|(_, _, last)| {
+            enclosing_rust_impl(src, *last).is_some_and(|header| header.contains(" for "))
+        })
+        .map(|(name, _, _)| name)
+        .collect()
+}
+
+/// The names `item` calls, as identifiers that appear before a `(` in its body.
+///
+/// Over-collecting is harmless here — a name that calls nothing contributes
+/// nothing to the reachable set — so this looks for the shape of a call rather
+/// than resolving one.
+fn called_names(src: &str, item: &str) -> Vec<String> {
+    const KEYWORDS: &[&str] = &[
+        "if", "while", "for", "match", "return", "fn", "let", "as", "in", "else", "loop", "move",
+    ];
+    let Some((_, first, last)) = rust_items(src)
+        .into_iter()
+        .find(|(name, _, _)| name == item)
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in src.lines().take(last).skip(first - 1) {
+        let code = code_only(line);
+        let chars: Vec<char> = code.chars().collect();
+        for (i, c) in chars.iter().enumerate() {
+            if *c != '(' {
+                continue;
+            }
+            let mut start = i;
+            while start > 0 && is_ident(chars[start - 1]) {
+                start -= 1;
+            }
+            let name: String = chars[start..i].iter().collect();
+            if !name.is_empty()
+                && !name.starts_with(|c: char| c.is_ascii_digit())
+                && !KEYWORDS.contains(&name.as_str())
+            {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
+/// Whether `item` is a trait method of the class, or code such a method owns.
+///
+/// A class's per-class algorithm does not always sit in the trait method
+/// itself: the `MapMerge` bodies live in `mappings/simplify.rs` and the trait
+/// method calls one. What the audit needs to know is that the per-class seam
+/// exists and the code hangs off it, so this follows calls out of the class's
+/// trait methods, through `class_src` and `cited_src`, and reports whether they
+/// reach `item`.
+pub fn reached_from_trait_method(class_src: &str, cited_src: &str, item: &str) -> bool {
+    use std::collections::BTreeSet;
+    let mut frontier = trait_method_names(class_src);
+    let mut seen: BTreeSet<String> = frontier.iter().cloned().collect();
+    // Deep enough for the port's longest chain: the trait method calls the
+    // class's merge body, which calls a pattern matcher, which calls an
+    // extractor.
+    for _ in 0..4 {
+        if seen.contains(item) {
+            return true;
+        }
+        let mut next = Vec::new();
+        for name in frontier.drain(..) {
+            for src in [class_src, cited_src] {
+                for callee in called_names(src, &name) {
+                    if seen.insert(callee.clone()) {
+                        next.push(callee);
+                    }
+                }
+            }
+        }
+        frontier = next;
+        if frontier.is_empty() {
+            break;
+        }
+    }
+    seen.contains(item)
 }

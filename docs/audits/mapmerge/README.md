@@ -17,7 +17,18 @@ typically 5 to 20 rows per class, never line by line.
 C source: reference/starlink-ast/src/<file>.c
 Rust: crates/ast-core/src/<dir>/<module>.rs
 Audited: YYYY-MM-DD against pin <sha>
+Citations: verified against pin <sha>
+Extension points: classified
 ```
+
+The last two lines are what the gates in `test_audit_citations.rs` look for, in
+the first twelve lines of the file.
+`Citations:` says every citation in the file carries the name of the item it
+lands in and was checked against that pin; `Extension points:` says every row
+classifies its C step.
+A file without them is skipped by those gates and counted in `PLAN.md` §6, so
+adding a marker to a file whose rows do not hold up makes a test fail rather
+than a claim pass.
 
 ## The table
 
@@ -27,7 +38,39 @@ Audited: YYYY-MM-DD against pin <sha>
 | `C step` | C's own wording for the step |
 | `C site` | `file.c:start-end` |
 | `Rust site` | `path.rs:start-end`, or `--` when the verdict is `n/a` |
-| `verdict` | exactly one of the four below |
+| `extension point` | `architecture` or `ceremony` — see below |
+| `verdict` | exactly one of the forms below |
+
+A citation may name the item it lands in, as `sphmap.c:743-747 (fn MapMerge)`.
+The name is what makes a stale line number detectable, and
+`crates/audit-tools` derives it for both the tool that writes the citations and
+the test that checks them.
+Anchor a repaired file with `cargo run -p audit-tools --bin anchor-citations --
+docs/audits/mapmerge/<file>.md --write`, then read what it wrote: it names the
+item at the line, which is not always the item the row means.
+
+## The extension-point column
+
+Each row says whether its C step is `architecture` or `ceremony`, applying the
+mechanical test in [`docs/porting-hazards.md`](../../porting-hazards.md) H1: does
+a generic driver in another file dispatch to this through the vtab?
+
+- `ceremony` — the step exists only because of C's conventions and asks nothing
+  of the port: an error-status check, a pointer annulled or freed, a result
+  sentinel initialised or cleared, an axis-major buffer marshalled for a C
+  constructor, an accessor the `astMAKE_SET` family generates.
+- `architecture` — the step does work the port must also do, and so has to hang
+  off the same per-class seam C reaches it through.
+
+`test_audit_citations.rs` checks the second one: an `architecture` row whose
+verdict is `ported` must cite a Rust site inside an `impl Trait for Type` block,
+or inside code one of the class's trait methods calls.
+The second form is what this port does with `MapMerge`: the trait method is a
+few lines that call a `<class>_map_merge` body in `mappings/simplify.rs`, and
+the rows cite the body.
+A row that lands anywhere else is the shape of H1 — a per-class extension point
+collapsed into a central `match` — and the row's Rust site should be corrected
+to the code the seam actually owns, or the collapse fixed.
 
 ## Verdicts
 
@@ -38,6 +81,13 @@ Audited: YYYY-MM-DD against pin <sha>
 - `gap: PLAN.md <section>` — not ported.
   The named `PLAN.md` section must exist and must say what would expose the
   gap, not merely what is missing.
+- `deferred: <class>` — the step belongs to a class this port has not started,
+  counted in `test_deferred_fixtures.rs::DEFERRED_CLASSES`.
+- `driver: <path>` — the step is performed by the shared driver at that path
+  rather than by this class.
+- `unreachable: <reason>` — the step is ported, and no construction available
+  through the public API reaches it. The reason must say what makes it
+  unreachable.
 - `divergence: <reason>` — the step applies, and the port deliberately does not
   perform it, because performing it would reproduce a defect in the C step.
   The reason must cite `docs/issues/c-library-quirks.md`, where the finding and

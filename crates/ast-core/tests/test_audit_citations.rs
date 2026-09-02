@@ -158,3 +158,143 @@ fn every_repaired_citation_resolves_to_exactly_one_file() {
         bad.join("\n  ")
     );
 }
+
+/// The marker a checklist carries once its rows classify their C steps.
+const CLASSIFIED: &str = "Extension points: classified";
+
+fn is_classified(text: &str) -> bool {
+    text.lines().take(12).any(|l| l.contains(CLASSIFIED))
+}
+
+/// The cells of a checklist table row, trimmed, or `None` for a non-row.
+fn row_cells(line: &str) -> Option<Vec<&str>> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('|') {
+        return None;
+    }
+    let cells: Vec<&str> = trimmed
+        .trim_matches('|')
+        .split('|')
+        .map(str::trim)
+        .collect();
+    cells.first()?.parse::<u32>().ok().map(|_| cells)
+}
+
+/// The Rust module a checklist audits, from its `Rust:` header line.
+///
+/// The class's own module is where its trait methods live, so it is what says
+/// whether a cited helper hangs off one of them.
+fn class_module(text: &str) -> Option<PathBuf> {
+    let line = text
+        .lines()
+        .take(12)
+        .find_map(|l| l.trim().strip_prefix("Rust:"))?;
+    let path = repo_root().join(line.trim());
+    path.is_file().then_some(path)
+}
+
+/// A classified checklist states, per row, whether the C step is an extension
+/// point, and an architecture row's Rust site hangs off a trait method.
+///
+/// The classification is the mechanical test from `docs/porting-hazards.md` H1:
+/// does a generic driver in another file dispatch to this through the vtab? A
+/// step that answers yes and lands somewhere no per-class seam reaches is the
+/// shape of the two most expensive mistakes this port has made. The site itself
+/// need not be the trait method — a class's merge body lives in
+/// `mappings/simplify.rs` and the trait method calls it — so a site the class's
+/// trait methods reach counts.
+#[test]
+fn every_architecture_row_lands_on_a_trait_method() {
+    let mut bad = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        if !is_classified(&text) {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for (i, line) in text.lines().enumerate() {
+            let Some(cells) = row_cells(line) else {
+                continue;
+            };
+            // | # | C step | C site | Rust site | extension point | verdict |
+            if cells.len() != 6 {
+                bad.push(format!(
+                    "{name}:{}: a classified checklist needs six columns, this row has {}",
+                    i + 1,
+                    cells.len()
+                ));
+                continue;
+            }
+            let point = cells[4];
+            if point != "architecture" && point != "ceremony" {
+                bad.push(format!(
+                    "{name}:{}: extension point is `{point}`, expected `architecture` or `ceremony`",
+                    i + 1
+                ));
+                continue;
+            }
+            if point != "architecture" || cells[5] != "ported" {
+                continue;
+            }
+            let sites = audit_tools::citations(cells[3]);
+            if sites.is_empty() {
+                bad.push(format!(
+                    "{name}:{}: an architecture row must cite its Rust site, this one has `{}`",
+                    i + 1,
+                    cells[3]
+                ));
+                continue;
+            }
+            let class_src = class_module(&text)
+                .map(|p| std::fs::read_to_string(p).expect("class module readable"))
+                .unwrap_or_default();
+            let mut verdicts = Vec::new();
+            for (cit, _) in &sites {
+                let Resolution::Found(src_path) = resolve(&cit.file) else {
+                    // Reported by every_repaired_citation_resolves_to_exactly_one_file.
+                    verdicts.push(Ok(()));
+                    break;
+                };
+                let src = std::fs::read_to_string(&src_path).expect("source readable");
+                let on_trait = audit_tools::enclosing_rust_impl(&src, cit.start)
+                    .is_some_and(|header| header.contains(" for "));
+                let owned = || {
+                    audit_tools::enclosing_rust_item(&src, cit.start).is_some_and(|item| {
+                        audit_tools::reached_from_trait_method(&class_src, &src, &item)
+                    })
+                };
+                if on_trait || owned() {
+                    verdicts.push(Ok(()));
+                } else {
+                    verdicts.push(Err(format!(
+                        "{}:{} is in {}",
+                        cit.file,
+                        cit.start,
+                        audit_tools::enclosing_rust_item(&src, cit.start)
+                            .unwrap_or_else(|| "no item".to_string())
+                    )));
+                }
+            }
+            if !verdicts.iter().any(Result::is_ok) {
+                bad.push(format!(
+                    "{name}:{}: architecture step ported to {} — a step a generic \
+                     driver dispatches to belongs on a trait method, or on code \
+                     one of the class's trait methods calls",
+                    i + 1,
+                    verdicts
+                        .into_iter()
+                        .filter_map(Result::err)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "a classified checklist's rows have to say which C steps are extension \
+         points, and an architecture step has to have landed on a trait \
+         method:\n  {}",
+        bad.join("\n  ")
+    );
+}

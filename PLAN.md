@@ -350,7 +350,7 @@ list as empty, so a ledger row for one would have passed at any size.
 | transform oracle | 1752 sections | 0 | all three `*_ORACLE_EXCLUDED` lists are empty |
 | transform oracle | 1752 sections | 2 | `tnx-cheb` round-trip off (ChebyMap cannot represent its own inverse); one UnitNormMap inverse golden off (BAD-vs-noise at a singular point) |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
-| audit citations (`test_audit_citations.rs`) | 37 checklists | 35 | the citation gate checks a checklist only once its header declares the pin its citations were verified against, so an unmarked checklist's `file:line` citations are still unchecked. Each cluster verifies the checklists it touches and drops this number; cluster 7 takes it to zero, at which point the marker becomes mandatory and this row goes
+| audit checklist markers (`test_audit_citations.rs`) | 37 checklists | 35 | the two gates check a checklist only once its header declares the pin its citations were verified against and that its steps are classified as extension points, so an unmarked checklist's `file:line` citations and its architecture rows are still unchecked. Each cluster does the checklists it touches and drops this number; cluster 7 takes it to zero, at which point the markers become mandatory and this row goes |
 | deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
 
 What the upstream `IsSimp` fix did and did not do, since the two get conflated:

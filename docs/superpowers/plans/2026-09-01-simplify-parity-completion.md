@@ -960,7 +960,7 @@ Extension points: classified
   - `pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String>` — the `impl` header enclosing `line`, normalised to `"Trait for Type"` or `"Type"`, whichever the header is.
   - the marker `Extension points: classified`, which cluster 7 adds to every remaining checklist in Tasks 27-29; Phase 0 adds it to the two it repairs here.
 
-- [ ] **Step 1: Write the failing test for `enclosing_rust_impl`**
+- [x] **Step 1: Write the failing test for `enclosing_rust_impl`**
 
 Append inside `crates/audit-tools/src/lib.rs`'s `mod tests`:
 
@@ -992,7 +992,7 @@ impl Mapping for Zoom {
     }
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 ```bash
 cargo test -p audit-tools 2>&1 | tail -10
@@ -1000,7 +1000,7 @@ cargo test -p audit-tools 2>&1 | tail -10
 
 Expected: FAIL — `cannot find function `enclosing_rust_impl``.
 
-- [ ] **Step 3: Implement it**
+- [x] **Step 3: Implement it**
 
 Add to `crates/audit-tools/src/lib.rs`, beside `enclosing_rust_item`:
 
@@ -1072,7 +1072,7 @@ fn impl_header(code: &str) -> Option<String> {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 cargo test -p audit-tools 2>&1 | tail -10
@@ -1080,7 +1080,7 @@ cargo test -p audit-tools 2>&1 | tail -10
 
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Extend the verdict vocabulary**
+- [x] **Step 5: Extend the verdict vocabulary**
 
 In `crates/ast-core/tests/test_mapmerge_audit.rs`, replace the body of `verdict_is_valid` with the full spec §3.4 vocabulary.
 `mirrors-quirk:` is spelled `divergence:` in this repo already, on three `chebymap.md` rows, and keeps that spelling — the requirement is that the verdict names an anchor in the quirks document, not that it uses a particular word:
@@ -1103,7 +1103,7 @@ fn verdict_is_valid(verdict: &str) -> bool {
 }
 ```
 
-- [ ] **Step 6: Run the audit test and confirm nothing regressed**
+- [x] **Step 6: Run the audit test and confirm nothing regressed**
 
 ```bash
 cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -15
@@ -1112,7 +1112,7 @@ cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -15
 Expected: PASS — the vocabulary only widened, and `C_SIMPLIFY_SEAMS`'s `deferred:` / `driver:` verdicts, which the previous body did not list, are now accepted by the same predicate rather than by a separate one.
 If `every_checklist_row_has_a_verdict` now fails, a row is using a word outside the table; fix the row, not the predicate.
 
-- [ ] **Step 7: Write the failing architecture-column gate**
+- [x] **Step 7: Write the failing architecture-column gate**
 
 Append to `crates/ast-core/tests/test_audit_citations.rs`:
 
@@ -1208,7 +1208,7 @@ fn every_architecture_row_lands_on_a_trait_method() {
 }
 ```
 
-- [ ] **Step 8: Classify the two repaired checklists**
+- [x] **Step 8: Classify the two repaired checklists**
 
 Add the fifth column to every row of `sphmap.md` and `region_polygon.md`, before the verdict, and add `Extension points: classified` to each header.
 
@@ -1222,7 +1222,7 @@ cargo test -p ast-core --test test_audit_citations 2>&1 | tail -30
 Expected: FAIL on any architecture row whose Rust site is not in an `impl Trait for Type` block.
 For `region_polygon.md` the cited sites are inside `impl Region for Polygon`, so those rows pass; a failure here means the row cites a helper and the row's Rust site should be corrected to the trait method that calls it.
 
-- [ ] **Step 9: Extend the unrepaired count to cover both markers**
+- [x] **Step 9: Extend the unrepaired count to cover both markers**
 
 In `crates/ast-core/tests/test_verification_ledger.rs`, the `unrepaired` closure added in Task 3 counts files missing the citation marker.
 Change its predicate so a file counts as repaired only when it carries both markers:
@@ -1236,7 +1236,7 @@ Change its predicate so a file counts as repaired only when it carries both mark
 
 The count stays 35 — the same two files carry both markers — so the ledger row does not change.
 
-- [ ] **Step 10: Update the checklist template and commit**
+- [x] **Step 10: Update the checklist template and commit**
 
 In `docs/audits/mapmerge/README.md`, update the template header block and the column layout so a new checklist starts in the classified shape:
 
