@@ -2085,6 +2085,40 @@ fn sky_ellipse_disc() {
     );
 }
 
+/// An Ellipse on a SkyFrame that encloses the north pole must report a
+/// bounding box spanning the whole longitude range and pinned to the pole in
+/// latitude. C's `Ellipse::RegBaseBox` returns the bounds `RegBaseMesh`
+/// accumulated over the geodesic mesh, after passing them through
+/// `astNormBox` (ellipse.c:933, 1180-1198), which is what widens a box
+/// containing a singularity.
+#[test]
+fn ellipse_sky_pole_bounds_span_all_longitudes() {
+    let sky = SkyFrame::new(SkySystem::Icrs);
+
+    // Centre 0.2 radians short of the north pole, with the primary axis
+    // 0.5 radians long and pointing south along the centre's meridian, so the
+    // mesh runs over the pole.
+    let centre = vec![0.0, FRAC_PI_2 - 0.2];
+    let ellipse = EllipseBuilder::new(sky, centre, [0.5, 0.3], -FRAC_PI_2)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let (lbnd, ubnd) = ellipse.get_region_bounds().unwrap();
+
+    assert!(
+        lbnd[0] <= 0.0 && ubnd[0] >= 2.0 * PI - 1.0e-12,
+        "longitude range should span 0..2pi, got {}..{}",
+        lbnd[0],
+        ubnd[0]
+    );
+    assert!(
+        (ubnd[1] - FRAC_PI_2).abs() < 1.0e-12,
+        "latitude upper bound should be pinned to the pole, got {}",
+        ubnd[1]
+    );
+}
+
 // ============================================================================
 // Polygon on SkyFrame — membership
 // (from checkPolygon, lines 644-750 of testregions.c)

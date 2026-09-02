@@ -2597,3 +2597,23 @@ Their `IsSimp` counts are pinned as named exclusions in
 `test_simplify_regression.rs`, so the deficit stays visible and cannot grow.
 
 To be raised upstream.
+
+## `Ellipse::RegBaseMesh` accumulates the axis-2 bounds with axis 1
+
+`ellipse.c:1157` calls `astAxDistance( frm, 1, this->centre[ 1 ], p2[ 1 ] )`
+while accumulating the axis-2 limits of the mesh bounding box; the axis-1
+accumulation five lines earlier passes the same axis index.
+`Circle::RegBaseMesh` (`circle.c:1043-1055`) passes 1 and 2, so the two classes
+read different rules off the same Frame.
+
+`astAxDistance` dispatches to the Axis (`frame.c:1473`), so the index matters
+whenever a Frame's two axes normalise differently.
+It does not bite on a SkyFrame, where both axes are SkyAxis objects and
+`AxisDistance` is `palDrange( v2 - v1 )` regardless of which one is asked
+(`skyaxis.c`), which is why no fixture shows a difference today.
+
+**Rust behaviour (mirrored):** `regions/ellipse.rs`, `reg_base_box` passes 1 for
+both axes, keeping the port's bounds identical to C's on any Frame where the
+distinction would appear.
+
+To be raised upstream.

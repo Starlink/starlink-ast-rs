@@ -468,19 +468,69 @@ impl RegionGeometry for Ellipse {
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        let (a, b, angle) = self.ellipse_params()?;
+        // C computes nothing here: it forces the base mesh to exist and reads
+        // the bounds RegBaseMesh accumulated while generating it
+        // (ellipse.c:988-998). `get_region_mesh` is the cached mesh, so the
+        // points below are the same points in the same order.
+        let mesh = self.get_region_mesh()?;
         let centre = &self.data.points[0];
+        let frm = self.data.frameset.base();
+
+        let mut lbx = f64::MAX;
+        let mut ubx = -f64::MAX;
+        let mut lby = f64::MAX;
+        let mut uby = -f64::MAX;
+
+        for ip in 0..mesh.npoint() {
+            let p2 = mesh.point(ip);
+            if is_bad(p2[0]) || is_bad(p2[1]) {
+                continue;
+            }
+
+            // The box is accumulated as axis offsets from the centre, via
+            // ax_distance, so that a cyclic axis wraps correctly
+            // (ellipse.c:1143-1157). Two details of C's loop are mirrored: the
+            // `else if`, which stops one point extending both ends of an axis,
+            // and the axis index, which is 1 for both axes.
+            let dist = frm.ax_distance(1, centre[0], p2[0])?;
+            if dist < lbx {
+                lbx = dist;
+            } else if dist > ubx {
+                ubx = dist;
+            }
+
+            let dist = frm.ax_distance(1, centre[1], p2[1])?;
+            if dist < lby {
+                lby = dist;
+            } else if dist > uby {
+                uby = dist;
+            }
+        }
+
+        let mut lower = vec![centre[0] + lbx, centre[1] + lby];
+        let mut upper = vec![centre[0] + ubx, centre[1] + uby];
+
+        // Extend the box to cover any coordinate-system singularity it
+        // contains. C builds the membership probe by copying the Ellipse,
+        // giving it the base Frame and clearing Negated (ellipse.c:1170-1173),
+        // so the predicate is membership of the un-negated Ellipse and the raw
+        // Closed value is the effective one.
+        let (a, b, angle) = self.ellipse_params()?;
         let cos_a = angle.cos();
         let sin_a = angle.sin();
-
-        // For a general rotated ellipse, the extent on each axis is:
-        // x_extent = sqrt((a*cos(angle))^2 + (b*sin(angle))^2)
-        // y_extent = sqrt((a*sin(angle))^2 + (b*cos(angle))^2)
-        let x_extent = ((a * cos_a).powi(2) + (b * sin_a).powi(2)).sqrt();
-        let y_extent = ((a * sin_a).powi(2) + (b * cos_a).powi(2)).sqrt();
-
-        let lower = vec![centre[0] - x_extent, centre[1] - y_extent];
-        let upper = vec![centre[0] + x_extent, centre[1] + y_extent];
+        let closed = self.data.closed;
+        let inside = |point: &[f64]| -> AstResult<bool> {
+            if point_has_bad(&point[..2]) {
+                return Ok(false);
+            }
+            let dx = point[0] - centre[0];
+            let dy = point[1] - centre[1];
+            let u = dx * cos_a + dy * sin_a;
+            let v = -dx * sin_a + dy * cos_a;
+            let d = u * u / (a * a) + v * v / (b * b);
+            Ok(if closed { d <= 1.0 } else { d < 1.0 })
+        };
+        frm.norm_box(&mut lower, &mut upper, &inside)?;
 
         Ok((lower, upper))
     }
