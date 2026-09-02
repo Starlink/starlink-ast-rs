@@ -918,6 +918,13 @@ impl Serializable for LutMap {
         if base.inverted {
             m.invert();
         }
+        // C re-applies the interpolation method through `SetLutInterp` when
+        // `TestLutInterp` reports it set (lutmap.c:2572-2573), which discards
+        // the simplified record the parent loader installed from the `IsSimp`
+        // card.
+        if node.get("LutInt").is_some() {
+            m.set_interp(interp);
+        }
         Ok(m)
     }
 }

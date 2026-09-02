@@ -2040,6 +2040,18 @@ impl Serializable for PolyMap {
         if base.inverted {
             m.invert();
         }
+        // C re-applies each iterative-inverse attribute through its setter when
+        // the Test predicate reports it set (polymap.c:7461-7470), which
+        // discards the simplified record installed from the `IsSimp` card.
+        if let Some(v) = iter_inv {
+            m.set_iter_inverse(v);
+        }
+        if node.get("NiterInv").is_some() {
+            m.set_niter_inverse(niter_inv);
+        }
+        if node.get("TolInv").is_some() {
+            m.set_tol_inverse(tol_inv);
+        }
         Ok(m)
     }
 }

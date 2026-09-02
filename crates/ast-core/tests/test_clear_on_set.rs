@@ -24,9 +24,10 @@
 //! so the flag has to be able to survive.
 
 use ast_core::mappings::{
-    LutInterp, LutMap, Mapping, MathMap, PermMap, PolyMap, PolyTerm, SphMap, SplineMap, WcsMap,
-    WcsProjection,
+    LutInterp, LutMap, Mapping, MathMap, PermMap, PolyMap, PolyTerm, ShiftMap, SphMap, SplineMap,
+    WcsMap, WcsProjection, ZoomMap,
 };
+use ast_core::{AnyObject, from_native_string, to_native_string};
 
 /// Record the flag on `m`, run `mutate`, and require the flag to be gone.
 fn discards<M: Mapping>(mut m: M, what: &str, mutate: impl FnOnce(&mut M)) {
@@ -224,4 +225,85 @@ fn record_survives_invert_and_back() {
         m.has_been_simplified(),
         "inverting and inverting back lost the record"
     );
+}
+
+/// Record the flag on `m`, dump it to native, read it back, and require the
+/// flag to be gone.
+///
+/// C's loader re-applies a validated attribute through the private setter
+/// (`zoommap.c:2231-2238` states the convention), and for a class following
+/// clear-on-set that setter discards the record `astLoadMapping` has just
+/// installed from the `IsSimp` card (`mapping.c:24137`). `m` must therefore
+/// carry an explicitly set attribute, or there is no card for the loader to
+/// route and nothing to discard.
+fn load_discards(mut m: impl Mapping, what: &str) {
+    m.set_has_been_simplified(true);
+    let obj = AnyObject::from_mapping(&m).expect("class is not in AnyObject");
+    let text = to_native_string(&obj).expect("dump failed");
+    assert!(
+        text.contains("IsSimp"),
+        "{what}: the dump carries no IsSimp card, so the case proves nothing"
+    );
+    let back = from_native_string(&text).expect("load failed");
+    let loaded = back.as_mapping().expect("loaded object is not a Mapping");
+    assert!(
+        !loaded.has_been_simplified(),
+        "{what}: the simplified record survived the load"
+    );
+}
+
+/// The control: a class with no clear-on-set attribute routes nothing through a
+/// setter, so its loader must honour the card.
+#[test]
+fn load_keeps_the_record_for_a_class_that_routes_nothing() {
+    let mut m = ShiftMap::new([1.0, 2.0]);
+    m.set_has_been_simplified(true);
+    let text = to_native_string(&AnyObject::from_mapping(&m).unwrap()).unwrap();
+    let back = from_native_string(&text).unwrap();
+    assert!(
+        back.as_mapping().unwrap().has_been_simplified(),
+        "ShiftMap: the card was discarded by a class that clears nothing"
+    );
+}
+
+#[test]
+fn load_discards_the_record_for_every_clear_on_set_class() {
+    let mut zoom = ZoomMap::new(2, 3.0).unwrap();
+    zoom.set_has_been_simplified(true);
+    load_discards(zoom, "ZoomMap::Zoom");
+
+    let mut math = math_map();
+    math.set_simp_fi(true);
+    math.set_simp_if(true);
+    load_discards(math, "MathMap::SimpFI");
+
+    let mut lut = lut_map();
+    lut.set_interp(LutInterp::Nearest);
+    load_discards(lut, "LutMap::LutInterp");
+
+    let mut poly = poly_map();
+    poly.set_iter_inverse(true);
+    poly.set_niter_inverse(7);
+    poly.set_tol_inverse(1e-8);
+    load_discards(poly, "PolyMap::IterInverse");
+
+    let mut spline = spline_map();
+    spline.set_inv_niter(9);
+    spline.set_inv_tol(1e-7);
+    spline.set_out_unit(true);
+    load_discards(spline, "SplineMap::InvNiter");
+
+    let mut sph = SphMap::new();
+    sph.set_unit_radius(true);
+    sph.set_polar_long(0.5);
+    load_discards(sph, "SphMap::UnitRadius");
+
+    let mut wcs = wcs_map();
+    wcs.set_fits_proj(true);
+    wcs.set_lon_check(true);
+    load_discards(wcs, "WcsMap::FITSProj");
+
+    let mut perm = perm_map();
+    perm.set_perm_split(true);
+    load_discards(perm, "PermMap::PermSplit");
 }

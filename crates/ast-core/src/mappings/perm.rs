@@ -1328,12 +1328,18 @@ impl Serializable for PermMap {
         let mut m = PermMap::new(&inperm, &outperm, &constants)?;
         m.out_is_copy = out_cpy;
         m.in_is_copy = in_cpy;
-        m.perm_split = node.get_int("pmsplt", 0) != 0;
         if base.inverted {
             m.invert();
         }
 
         m.set_has_been_simplified(base.has_been_simplified);
+
+        // C re-applies `PermSplit` through `SetPermSplit` when `TestPermSplit`
+        // reports it set (permmap.c:3090-3091), which discards the record the
+        // parent loader has just installed from the `IsSimp` card.
+        if node.get("PmSplt").is_some() {
+            m.set_perm_split(node.get_int("PmSplt", 0) != 0);
+        }
         Ok(m)
     }
 }

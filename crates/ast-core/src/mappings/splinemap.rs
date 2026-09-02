@@ -1101,6 +1101,18 @@ impl Serializable for SplineMap {
             m.invert();
         }
         m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
+        // C re-applies each attribute through its setter when the Test
+        // predicate reports it set (splinemap.c:3643-3652), which discards the
+        // simplified record installed from the `IsSimp` card.
+        if let Some(n) = inv_niter {
+            m.set_inv_niter(n);
+        }
+        if let Some(tol) = inv_tol {
+            m.set_inv_tol(tol);
+        }
+        if node.get("OutUnit").is_some() {
+            m.set_out_unit(out_unit);
+        }
         Ok(m)
     }
 }

@@ -1166,6 +1166,13 @@ impl Serializable for WcsMap {
 
         let mut wcs = WcsMap::new(base.nin, proj, wcsax1, wcsax2)?;
 
+        // `astLoadMapping` installs the record from the `IsSimp` card before any
+        // class attribute is read (mapping.c:24137), so the setters below -- which
+        // follow C's clear-on-set convention -- discard it. The record is keyed
+        // on the orientation the loaded Mapping ends up in, which the `Invert`
+        // card has already supplied.
+        wcs.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
+
         // FITSProj / LonCheck / TPNTan — each is only present when explicitly
         // set (helpful=0 in the dump). C reads all three (wcsmap.c:6016-6034)
         // before InitPrjPrm and the PV values, so TPNTan is in place by the
@@ -1199,8 +1206,6 @@ impl Serializable for WcsMap {
         if base.inverted {
             wcs.invert();
         }
-
-        wcs.set_has_been_simplified(base.has_been_simplified);
 
         Ok(wcs)
     }

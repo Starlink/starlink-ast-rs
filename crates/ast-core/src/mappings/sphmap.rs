@@ -448,6 +448,15 @@ impl Serializable for SphMap {
         if base.inverted {
             m.invert();
         }
+        // C re-applies both attributes through their setters when the Test
+        // predicates report them set (sphmap.c:2040-2046), which discards the
+        // simplified record installed from the `IsSimp` card.
+        if node.get("UntRd").is_some() {
+            m.set_unit_radius(unit_radius);
+        }
+        if polar_long_set {
+            m.set_polar_long(polar_long);
+        }
         Ok(m)
     }
 }
