@@ -11,15 +11,15 @@ accumulations of the same shape, sharing the tail that decides whether anything
 was actually simplified.
 
 `PermMap::map_merge` (`perm.rs:539-546`) delegates to `simplify::perm_map_merge`
-(`simplify.rs:1130-1173`), which reaches the composition pairwise through
+(`simplify.rs:1126-1169`), which reaches the composition pairwise through
 `default_map_merge` and `PermMap::try_merge` rather than bracketing a run.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
 | 1 | Initialise the returned result to -1 | permmap.c:916-917 | -- | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | permmap.c:919-920 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | In series, search adjacent lower-numbered Mappings until one is neither a PermMap nor a UnitMap | permmap.c:928-944 | simplify.rs:1339-1434 | ported |
-| 4 | Search adjacent higher-numbered Mappings the same way | permmap.c:945-955 | simplify.rs:1339-1434 | ported |
+| 3 | In series, search adjacent lower-numbered Mappings until one is neither a PermMap nor a UnitMap | permmap.c:928-944 | simplify.rs:1335-1430 | ported |
+| 4 | Search adjacent higher-numbered Mappings the same way | permmap.c:945-955 | simplify.rs:1335-1430 | ported |
 | 5 | Take the first Mapping found and how its Invert attribute is applied | permmap.c:956-960 | -- | n/a: a pairwise merge composes two entries at a time, so there is no run to take endpoints from |
 | 6 | Use it to fix the replacement's input coordinate count | permmap.c:961-969 | perm.rs:703-802 | ported |
 | 7 | Repeat for the last Mapping found to fix the output coordinate count | permmap.c:970-979 | perm.rs:703-802 | ported |
@@ -36,9 +36,9 @@ was actually simplified.
 | 18 | Mark a bad result in the accumulated array with -1 | permmap.c:1078-1083 | perm.rs:703-802 | ported |
 | 19 | Append an unseen constant to the constants list | permmap.c:1084-1092 | perm.rs:703-802 | ported |
 | 20 | Store a negative reference to that constant in the accumulated array | permmap.c:1093-1108 | perm.rs:703-802 | ported |
-| 21 | In parallel, take the nominated PermMap and how its Invert attribute is applied | permmap.c:1109-1118 | simplify.rs:1161-1162 | ported |
+| 21 | In parallel, take the nominated PermMap and how its Invert attribute is applied | permmap.c:1109-1118 | simplify.rs:1157-1158 | ported |
 | 22 | Initialise the replacement's coordinate counts from it | permmap.c:1119-1129 | perm.rs:710-742 | ported |
-| 23 | Search both directions for adjacent PermMaps and UnitMaps, accumulating their effective coordinate counts | permmap.c:1130-1176 | simplify.rs:1339-1434 | ported |
+| 23 | Search both directions for adjacent PermMaps and UnitMaps, accumulating their effective coordinate counts | permmap.c:1130-1176 | simplify.rs:1335-1430 | ported |
 | 24 | Allocate the replacement arrays and constants list, then build both directions as in series | permmap.c:1177-1303 | perm.rs:710-802 | ported |
 | 25 | Accumulate each Mapping's input and output coordinate offsets across the run | permmap.c:1294-1303 | perm.rs:710-802 | ported |
 | 26 | Inspect the accumulated `inperm` to decide whether the replacement needs to store it | permmap.c:1304-1320 | perm.rs:111-188 | ported |
@@ -53,10 +53,10 @@ was actually simplified.
 | 35 | Do nothing more unless something simplified | permmap.c:1399-1401 | perm.rs:174-175 | ported |
 | 36 | If the run collapses to a UnitMap, create that | permmap.c:1402-1406 | perm.rs:137-138 | ported |
 | 37 | Otherwise create the replacement PermMap, passing NULL for every argument that can be omitted | permmap.c:1407-1415 | perm.rs:111-188 | ported |
-| 38 | Annul the replaced pointers, insert the new one with a cleared invert flag, close the gap and return the first index | permmap.c:1416-1446 | simplify.rs:1167-1172 | ported |
+| 38 | Annul the replaced pointers, insert the new one with a cleared invert flag, close the gap and return the first index | permmap.c:1416-1446 | simplify.rs:1163-1168 | ported |
 | 39 | Free the workspace arrays | permmap.c:1447-1451 | -- | n/a: owned values are dropped |
 | 40 | Clear the returned value if an error occurred | permmap.c:1452-1454 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 41 | Return the result | permmap.c:1455-1456 | simplify.rs:1172 | ported |
+| 41 | Return the result | permmap.c:1455-1456 | simplify.rs:1168 | ported |
 
 ## A run at once, or a pair at a time
 

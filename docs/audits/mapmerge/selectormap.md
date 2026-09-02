@@ -26,12 +26,12 @@ self-simplification itself, in `SelectorMap::reduced_children`
 | 6 | If anything simplified, build a new SelectorMap from the results | selectormap.c:706-715 | selectormap.rs:150-157 | ported |
 | 7 | Release resources | selectormap.c:716-722 | -- | n/a: owned values are dropped |
 | 8 | Otherwise merge with a neighbouring SelectorMap, in series only | selectormap.c:723-728 | selectormap.rs:313-343 | ported |
-| 9 | Check the higher neighbour first, noting the lower index of the pair | selectormap.c:729-735 | simplify.rs:1155-1250 | ported |
-| 10 | Failing that, check the lower neighbour the same way | selectormap.c:736-746 | simplify.rs:1155-1250 | ported |
+| 9 | Check the higher neighbour first, noting the lower index of the pair | selectormap.c:729-735 | simplify.rs:1151-1246 | ported |
+| 10 | Failing that, check the lower neighbour the same way | selectormap.c:736-746 | simplify.rs:1151-1246 | ported |
 | 11 | Cancel the pair only if the two SelectorMaps are equal with opposite invert flags | selectormap.c:747-755 | selectormap.rs:324-340 | ported |
 | 12 | Replace the first of the pair with a UnitMap and set its invert flag | selectormap.c:756-763 | selectormap.rs:342 | ported |
-| 13 | Annul the second and shuffle the rest down, clearing the vacated slot | selectormap.c:764-775 | simplify.rs:1155-1250 | ported |
-| 14 | Decrement the Mapping count and return the index of the first modified element | selectormap.c:776-783 | simplify.rs:1155-1250 | ported |
+| 13 | Annul the second and shuffle the rest down, clearing the vacated slot | selectormap.c:764-775 | simplify.rs:1151-1246 | ported |
+| 14 | Decrement the Mapping count and return the index of the first modified element | selectormap.c:776-783 | simplify.rs:1151-1246 | ported |
 | 15 | Clear the result value if an error occurred | selectormap.c:784-786 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 16 | Return the result | selectormap.c:787-788 | selectormap.rs:310 | ported |
 

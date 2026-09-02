@@ -19,16 +19,16 @@ is `Interval::cache` at `interval.rs:177-253`.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
-| 1 | `MapMerge`: simplify the Interval, assuming a changed pointer means something happened | interval.c:1146-1150 | simplify.rs:1292-1301 | ported |
-| 2 | Replace it in the list with the new Region, marking it forward | interval.c:1151-1157 | simplify.rs:1298-1299 | ported |
-| 3 | Return the index of the first modified element | interval.c:1158-1160 | simplify.rs:1299 | ported |
-| 4 | Otherwise merge with a neighbouring Region, in parallel only | interval.c:1161-1167 | simplify.rs:1303-1305 | ported |
-| 5 | Try the lower neighbour first | interval.c:1168-1177 | simplify.rs:1306-1315 | ported |
-| 6 | Failing that, try the upper neighbour | interval.c:1178-1188 | simplify.rs:1316-1330 | ported |
-| 7 | On success, replace the first of the pair with the merged Region and clear its invert flag | interval.c:1189-1197 | simplify.rs:1331-1345 | ported |
-| 8 | Annul the second and shuffle the rest down, clearing the vacated slot | interval.c:1198-1209 | simplify.rs:1331-1345 | ported |
-| 9 | Decrement the Mapping count and return the index of the first modified element | interval.c:1210-1219 | simplify.rs:1345 | ported |
-| 10 | Return the result | interval.c:1220-1221 | simplify.rs:1349 | ported |
+| 1 | `MapMerge`: simplify the Interval, assuming a changed pointer means something happened | interval.c:1146-1150 | simplify.rs:1288-1297 | ported |
+| 2 | Replace it in the list with the new Region, marking it forward | interval.c:1151-1157 | simplify.rs:1294-1295 | ported |
+| 3 | Return the index of the first modified element | interval.c:1158-1160 | simplify.rs:1295 | ported |
+| 4 | Otherwise merge with a neighbouring Region, in parallel only | interval.c:1161-1167 | simplify.rs:1299-1301 | ported |
+| 5 | Try the lower neighbour first | interval.c:1168-1177 | simplify.rs:1302-1311 | ported |
+| 6 | Failing that, try the upper neighbour | interval.c:1178-1188 | simplify.rs:1312-1326 | ported |
+| 7 | On success, replace the first of the pair with the merged Region and clear its invert flag | interval.c:1189-1197 | simplify.rs:1327-1341 | ported |
+| 8 | Annul the second and shuffle the rest down, clearing the vacated slot | interval.c:1198-1209 | simplify.rs:1327-1341 | ported |
+| 9 | Decrement the Mapping count and return the index of the first modified element | interval.c:1210-1219 | simplify.rs:1341 | ported |
+| 10 | Return the result | interval.c:1220-1221 | simplify.rs:1345 | ported |
 | 11 | `Simplify`: if the Interval is equivalent to a Box, use the Box's implementation | interval.c:3196-3201 | interval.rs:1428-1436 | ported |
 | 12 | Otherwise use the implementation for unbounded intervals | interval.c:3202-3205 | interval.rs:1438-1492 | ported |
 | 13 | Invoke the parent Region simplify | interval.c:3206-3210 | interval.rs:1441-1443 | ported |

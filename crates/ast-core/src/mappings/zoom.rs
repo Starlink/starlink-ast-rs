@@ -45,26 +45,35 @@ impl ZoomMap {
         })
     }
 
-    /// The zoom factor.
-    pub(crate) fn factor(&self) -> f64 {
+    /// The zoom factor — C's `Zoom` attribute.
+    ///
+    /// C reports 1.0 for an unset attribute (`zoommap.c:1699-1700`, where 0.0 is
+    /// the unset sentinel). A constructed `ZoomMap` always carries a non-zero
+    /// factor, so there is no unset state to report.
+    pub fn zoom(&self) -> f64 {
         self.factor
     }
 
-    /// Set the zoom factor.
+    /// Set the zoom factor — C's `astSetZoom`.
     ///
-    /// `Zoom` is the whole of the transformation and so feeds the first part
-    /// of ZoomMap's own `MapMerge`, which is why C's setter discards both
-    /// simplified records (`astMAKE_SET1` at zoommap.c:1704, the convention at
-    /// mapping.h:449-460). Zero is rejected as `ZoomMap::new` rejects it,
-    /// matching the `AST__ZOOMI` error C raises in the same setter.
-    pub(crate) fn set_factor(&mut self, factor: f64) -> AstResult<()> {
+    /// Zero is rejected with `ErrorCode::Zoomi` and leaves the factor unchanged,
+    /// as C does (`zoommap.c:1703-1710`, whose assign expression evaluates to
+    /// `this->zoom` after the `astError`).
+    ///
+    /// `Zoom` is the whole of the transformation and so feeds the first part of
+    /// ZoomMap's own `MapMerge`, which can replace the run of ZoomMaps and
+    /// UnitMaps it accumulates with a single `UnitMap` (`zoommap.c:747`). Both
+    /// simplified records are discarded whether the new value is accepted or
+    /// rejected, because `astClearIsSimple` is the first term of C's comma
+    /// expression (`zoommap.c:1698`, the convention at `mapping.h:449-460`).
+    pub fn set_zoom(&mut self, factor: f64) -> AstResult<()> {
+        self.simplified.clear();
         if factor == 0.0 {
             return Err(AstError::new(
                 ErrorCode::Zoomi,
                 "zoom factor must not be zero",
             ));
         }
-        self.simplified.clear();
         self.factor = factor;
         Ok(())
     }
@@ -342,7 +351,7 @@ impl Serializable for ZoomMap {
         }
         m.set_has_been_simplified(base.has_been_simplified);
         if raw != 0.0 {
-            m.set_factor(raw)?;
+            m.set_zoom(raw)?;
         }
         Ok(m)
     }

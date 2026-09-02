@@ -38,9 +38,9 @@ merge's own rule is `TranMap::try_merge` (`tranmap.rs:335-404`).
 | 21 | Take the merge only if either composition actually simplified | tranmap.c:957-960 | tranmap.rs:335-404 | ported |
 | 22 | Construct a new TranMap from the two simplified compositions | tranmap.c:961-967 | tranmap.rs:335-404 | ported |
 | 23 | Free resources and re-instate the higher TranMap's component Invert values | tranmap.c:968-978 | -- | n/a: owned values are dropped and nothing was mutated |
-| 24 | Replace the first of the pair with the merged TranMap and set its invert flag | tranmap.c:979-985 | simplify.rs:1426-1434 | ported |
-| 25 | Annul the second and shuffle the rest down, clearing the vacated slot | tranmap.c:986-997 | simplify.rs:1426-1434 | ported |
-| 26 | Decrement the Mapping count and return the index of the first modified element | tranmap.c:998-1005 | simplify.rs:1426-1434 | ported |
+| 24 | Replace the first of the pair with the merged TranMap and set its invert flag | tranmap.c:979-985 | simplify.rs:1422-1430 | ported |
+| 25 | Annul the second and shuffle the rest down, clearing the vacated slot | tranmap.c:986-997 | simplify.rs:1422-1430 | ported |
+| 26 | Decrement the Mapping count and return the index of the first modified element | tranmap.c:998-1005 | simplify.rs:1422-1430 | ported |
 | 27 | Re-instate the nominated TranMap's component Invert values | tranmap.c:1006-1009 | -- | n/a: nothing was mutated, so nothing is restored |
 | 28 | Clear the result value if an error occurred | tranmap.c:1010-1012 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 29 | Return the result | tranmap.c:1013-1014 | tranmap.rs:332 | ported |

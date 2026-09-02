@@ -21,12 +21,12 @@ second arm calls `SwitchMap::reduced_children` (`switchmap.rs:344-385`).
 | 3 | Get a typed pointer to this SwitchMap and the route Mapping count | switchmap.c:961-964 | -- | n/a: the Rust method already has `&self` |
 | 4 | Temporarily restore every encapsulated Mapping's Invert flag to its construction value | switchmap.c:965-991 | switchmap.rs:27-50, switchmap.rs:355-365 | ported |
 | 5 | Merge with a neighbouring SwitchMap, in series only | switchmap.c:992-996 | switchmap.rs:639-641 | ported |
-| 6 | Check the higher neighbour first, noting the lower index of the pair | switchmap.c:997-1003 | simplify.rs:1155-1250 | ported |
-| 7 | Failing that, check the lower neighbour the same way | switchmap.c:1004-1014 | simplify.rs:1155-1250 | ported |
+| 6 | Check the higher neighbour first, noting the lower index of the pair | switchmap.c:997-1003 | simplify.rs:1151-1246 | ported |
+| 7 | Failing that, check the lower neighbour the same way | switchmap.c:1004-1014 | simplify.rs:1151-1246 | ported |
 | 8 | Cancel the pair only if the two SwitchMaps are equal with opposite invert flags | switchmap.c:1015-1023 | switchmap.rs:674-720 | ported |
 | 9 | Replace the first of the pair with a UnitMap and set its invert flag | switchmap.c:1024-1031 | switchmap.rs:674-720 | ported |
-| 10 | Annul the second and shuffle the rest down, clearing the vacated slot | switchmap.c:1032-1043 | simplify.rs:1155-1250 | ported |
-| 11 | Decrement the Mapping count and return the index of the first modified element | switchmap.c:1044-1051 | simplify.rs:1155-1250 | ported |
+| 10 | Annul the second and shuffle the rest down, clearing the vacated slot | switchmap.c:1032-1043 | simplify.rs:1151-1246 | ported |
+| 11 | Decrement the Mapping count and return the index of the first modified element | switchmap.c:1044-1051 | simplify.rs:1151-1246 | ported |
 | 12 | Attempt to simplify the SwitchMap on its own, only if no change was made above | switchmap.c:1052-1056 | switchmap.rs:639-641 | ported |
 | 13 | If the SwitchMap is inverted, replace it with an equal forward one by swapping the selectors and inverting the route Mappings, and stop there | switchmap.c:1057-1076 | switchmap.rs:652-660, switchmap.rs:234-254 | ported |
 | 14 | Otherwise try to simplify each encapsulated Mapping, noting whether anything changed | switchmap.c:1077-1091 | switchmap.rs:344-365 | ported |

@@ -459,7 +459,7 @@ impl FluxFrame {
             if smap.as_any().is::<UnitMap>() {
                 1.0
             } else if let Some(zm) = smap.as_any().downcast_ref::<ZoomMap>() {
-                zm.factor()
+                zm.zoom()
             } else {
                 let mid = 0.5 * (specval_in + specval_out);
                 let r = smap.rate(&[mid], 1, 1)?;

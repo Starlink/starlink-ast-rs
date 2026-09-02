@@ -25,17 +25,17 @@ basic-Frame test of row 6 only when the Frame did not reduce.
 | 6 | A basic Frame's `astNorm` does nothing, so the NormMap becomes a UnitMap | normmap.c:632-640 | normmap.rs:215-219 | ported |
 | 7 | Otherwise: cancel with its own inverse in series, or drop duplicates | normmap.c:641-645 | normmap.rs:226-261 | ported |
 | 8 | Start with nothing to cancel against | normmap.c:646-648 | -- | n/a: the port's pairwise hook is asked about one neighbour at a time, so there is no candidate index to initialise |
-| 9 | Consider the lower neighbour | normmap.c:649-651 | simplify.rs:1155-1250 | ported |
+| 9 | Consider the lower neighbour | normmap.c:649-651 | simplify.rs:1151-1246 | ported |
 | 10 | Require the two Invert flags to be opposite | normmap.c:652-656 | normmap.rs:244-249 | ported |
 | 11 | Require the encapsulated Frames to be equal | normmap.c:657-664 | normmap.rs:245 | ported |
-| 12 | Likewise consider the upper neighbour | normmap.c:665-678 | simplify.rs:1155-1250 | ported |
+| 12 | Likewise consider the upper neighbour | normmap.c:665-678 | simplify.rs:1151-1246 | ported |
 | 13 | On a cancel, replace both with UnitMaps and report the lower index | normmap.c:679-688 | normmap.rs:246 | ported |
 | 14 | Otherwise look for a run of identical NormMaps following the nominated one | normmap.c:689-693 | normmap.rs:251-258 | ported |
-| 15 | Walk forward until the list ends or a non-NormMap is reached | normmap.c:694-701 | simplify.rs:1155-1250 | ported |
+| 15 | Walk forward until the list ends or a non-NormMap is reached | normmap.c:694-701 | simplify.rs:1151-1246 | ported |
 | 16 | Require the Invert flags to be equal | normmap.c:702-704 | normmap.rs:244-254 | ported |
 | 17 | Require the Frames to be equal | normmap.c:705-708 | normmap.rs:254 | ported |
 | 18 | Replace each later NormMap with a UnitMap | normmap.c:709-713 | normmap.rs:255-257 | ported |
-| 19 | Report the index of the *first* modified Mapping, so a later change does not overwrite it | normmap.c:714-722 | simplify.rs:1155-1250 | ported |
+| 19 | Report the index of the *first* modified Mapping, so a later change does not overwrite it | normmap.c:714-722 | simplify.rs:1151-1246 | ported |
 | 20 | Free resources | normmap.c:723-725 | -- | n/a: owned values are dropped |
 | 21 | Re-instate the nominated NormMap's Invert attribute | normmap.c:726-728 | -- | n/a: nothing was mutated, so nothing is restored |
 | 22 | Clear the result value if an error occurred | normmap.c:729-731 | -- | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |

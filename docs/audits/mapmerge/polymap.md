@@ -34,7 +34,7 @@ separately in `chebymap.md`.
 | 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3881-3886 | polymap.rs:1544-1557 | ported |
 | 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3887-3892 | -- | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
 | 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3893-3896 | polymap.rs:1566-1568 | ported |
-| 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3897-3908 | simplify.rs:1155-1250 | ported |
+| 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3897-3908 | simplify.rs:1151-1246 | ported |
 | 19 | Require the neighbour to be used in the opposite direction | polymap.c:3909-3911 | polymap.rs:1554-1557 | ported |
 | 20 | Set the neighbour's Invert flag so the equality test compares like with like | polymap.c:3912-3921 | polymap.rs:1558-1565 | ported |
 | 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3922-3925 | polymap.rs:1558-1565 | ported |

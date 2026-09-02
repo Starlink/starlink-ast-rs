@@ -708,9 +708,9 @@ impl Mapping for MatrixMap {
         // orientations until they were made to share this helper.
         if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
             let f = if other_inv {
-                1.0 / zm.factor()
+                1.0 / zm.zoom()
             } else {
-                zm.factor()
+                zm.zoom()
             };
             let n = if self_inv { self.nin() } else { self.nout() };
             if zm.nin() != n {

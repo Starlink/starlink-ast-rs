@@ -847,11 +847,7 @@ pub(crate) fn zoom_map_merge(
     // bool carries the applied inversion).
     let eff_zoom = |entry: &(DynMapping, bool, bool)| -> Option<f64> {
         let zm = entry.0.as_any().downcast_ref::<ZoomMap>()?;
-        Some(if entry.1 {
-            1.0 / zm.factor()
-        } else {
-            zm.factor()
-        })
+        Some(if entry.1 { 1.0 / zm.zoom() } else { zm.zoom() })
     };
     // The `has_been_simplified` flag (C `IsSimple`) does NOT block merging:
     // C `MapMerge` never consults it. The only per-component merge barrier
@@ -868,9 +864,9 @@ pub(crate) fn zoom_map_merge(
     if series {
         // Effective zoom of the nominated ZoomMap.
         let mut zoom_acc = if where_inv {
-            1.0 / zoom.factor()
+            1.0 / zoom.zoom()
         } else {
-            zoom.factor()
+            zoom.zoom()
         };
 
         // Extend downward over adjacent ZoomMaps (accumulate) and UnitMaps.
@@ -2563,7 +2559,7 @@ fn grism_zoom_merge_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bo
         // Get the effective forward zoom factor.
         // zoom.is_inverted() is always false (normalized in flatten).
         // If zoom_inv is true, the zoom is applied inversely → z = 1/factor.
-        let mut z = zoom.factor();
+        let mut z = zoom.zoom();
         if zoom_inv && z != 0.0 {
             z = 1.0 / z;
         }
@@ -2593,7 +2589,7 @@ fn grism_zoom_merge_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bo
         // zoom.is_inverted() is always false (normalized in flatten).
         // C code: "if astGetInvert(map1) == inv1 && z != 0.0, z = 1/z"
         // With is_inverted()=false: if false == zoom_inv → if !zoom_inv → invert z.
-        let mut z = zoom.factor();
+        let mut z = zoom.zoom();
         if !zoom_inv && z != 0.0 {
             z = 1.0 / z;
         }
@@ -2780,9 +2776,9 @@ fn do_pcd_swap_first(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: b
     if let Some(zm) = list[i + 1].0.as_any().downcast_ref::<ZoomMap>() {
         let other_inv = list[i + 1].1;
         let zoom = if other_inv {
-            1.0 / zm.factor()
+            1.0 / zm.zoom()
         } else {
-            zm.factor()
+            zm.zoom()
         };
 
         // PcdMap first, ZoomMap second → after swap:
@@ -2827,9 +2823,9 @@ fn do_pcd_swap_second(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: 
     if let Some(zm) = list[i].0.as_any().downcast_ref::<ZoomMap>() {
         let other_inv = list[i].1;
         let zoom = if other_inv {
-            1.0 / zm.factor()
+            1.0 / zm.zoom()
         } else {
-            zm.factor()
+            zm.zoom()
         };
 
         // ZoomMap first, PcdMap second → after swap:
@@ -2989,7 +2985,7 @@ pub(crate) fn sph_map_merge(
 fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
     if let Some(zm) = m.as_any().downcast_ref::<ZoomMap>() {
         if zm.nin() == 3 {
-            let f = zm.factor();
+            let f = zm.zoom();
             return Some([f, f, f]);
         }
     }
@@ -4686,7 +4682,7 @@ mod tests {
         let result = <dyn Mapping>::simplify(&mm).unwrap();
         assert!(result.as_any().is::<ZoomMap>());
         assert!(!result.is_inverted());
-        assert!((result.as_any().downcast_ref::<ZoomMap>().unwrap().factor() - 0.25).abs() < 1e-12);
+        assert!((result.as_any().downcast_ref::<ZoomMap>().unwrap().zoom() - 0.25).abs() < 1e-12);
 
         // Either way the forward transform divides by 4.
         let pts = PointSet::from_rows([[8.0, 12.0]]);
@@ -5183,7 +5179,7 @@ mod tests {
             out.as_any()
                 .downcast_ref::<ZoomMap>()
                 .expect("still a ZoomMap")
-                .factor(),
+                .zoom(),
             3.0
         );
     }

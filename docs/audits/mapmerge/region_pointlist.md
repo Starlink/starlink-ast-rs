@@ -18,12 +18,12 @@ rows 16-18, 20-22, 25 and 26 cite `merge_util.rs`, where that tail lives once.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
-| 1 | `MapMerge`: simplify the PointList, assuming a changed pointer means something happened | pointlist.c:972-1100 | simplify.rs:1292-1301 | ported |
-| 2 | Replace it in the list with the new Region, marking it forward | pointlist.c:1101-1130 | simplify.rs:1298-1299 | ported |
-| 3 | Otherwise merge with a neighbouring Region, in parallel only | pointlist.c:1131-1160 | simplify.rs:1303-1305 | ported |
-| 4 | Try the lower neighbour, then the upper | pointlist.c:1161-1180 | simplify.rs:1306-1330 | ported |
-| 5 | On success replace the pair, close the gap, and return the first index | pointlist.c:1181-1199 | simplify.rs:1331-1345 | ported |
-| 6 | Return the result | pointlist.c:1200-1202 | simplify.rs:1349 | ported |
+| 1 | `MapMerge`: simplify the PointList, assuming a changed pointer means something happened | pointlist.c:972-1100 | simplify.rs:1288-1297 | ported |
+| 2 | Replace it in the list with the new Region, marking it forward | pointlist.c:1101-1130 | simplify.rs:1294-1295 | ported |
+| 3 | Otherwise merge with a neighbouring Region, in parallel only | pointlist.c:1131-1160 | simplify.rs:1299-1301 | ported |
+| 4 | Try the lower neighbour, then the upper | pointlist.c:1161-1180 | simplify.rs:1302-1326 | ported |
+| 5 | On success replace the pair, close the gap, and return the first index | pointlist.c:1181-1199 | simplify.rs:1327-1341 | ported |
+| 6 | Return the result | pointlist.c:1200-1202 | simplify.rs:1345 | ported |
 | 7 | `MergePointList`: initialise the result and check the global error status | pointlist.c:1281-1286 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 8 | Require both Regions to agree on Closed and to be both with or both without an uncertainty | pointlist.c:1289-1290 | pointlist.rs:599-606 | ported |
 | 9 | Get the Negated flags of the two Regions | pointlist.c:1293-1294 | pointlist.rs:601 | ported |

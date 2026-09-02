@@ -23,9 +23,10 @@
 //! makes the assertions falsifiable — it pins an operation C does *not* cover,
 //! so the flag has to be able to survive.
 
+use ast_core::error::ErrorCode;
 use ast_core::mappings::{
-    LutInterp, LutMap, Mapping, MathMap, PermMap, PolyMap, PolyTerm, ShiftMap, SphMap, SplineMap,
-    WcsMap, WcsProjection, ZoomMap,
+    LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, ShiftMap, SphMap,
+    SplineMap, WcsMap, WcsProjection, ZoomMap,
 };
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
@@ -203,6 +204,46 @@ fn perm_split_discards_the_record() {
 fn clearing_perm_split_discards_the_record() {
     discards(perm_map(), "PermMap::clear_perm_split", |m| {
         m.clear_perm_split()
+    });
+}
+
+#[test]
+fn zoom_discards_the_record() {
+    discards(ZoomMap::new(2, 3.0).unwrap(), "ZoomMap::set_zoom", |m| {
+        m.set_zoom(4.0).unwrap();
+    });
+}
+
+/// C leaves the Zoom value unchanged when a set of zero is rejected
+/// (`zoommap.c:1706-1710` evaluates to `this->zoom` after the `astError`), but
+/// `astClearIsSimple` is the first term of the same comma expression, so the
+/// records go whether the assignment happens or not.
+#[test]
+fn rejected_zoom_still_discards_the_record() {
+    let mut m = ZoomMap::new(2, 3.0).unwrap();
+    m.set_has_been_simplified(true);
+    let err = m
+        .set_zoom(0.0)
+        .expect_err("a zoom factor of zero must be rejected");
+    assert_eq!(err.code(), ErrorCode::Zoomi);
+    assert_eq!(m.zoom(), 3.0, "the rejected set changed the zoom factor");
+    assert!(
+        !m.has_been_simplified(),
+        "the rejected set kept the simplified record"
+    );
+}
+
+#[test]
+fn lut_epsilon_discards_the_record() {
+    discards(lut_map(), "LutMap::set_lut_epsilon", |m| {
+        m.set_lut_epsilon(1e-7);
+    });
+}
+
+#[test]
+fn pcd_disco_discards_the_record() {
+    discards(PcdMap::new(1e-6, [0.0, 0.0]), "PcdMap::set_disc", |m| {
+        m.set_disc(2e-6)
     });
 }
 

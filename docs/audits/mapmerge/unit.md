@@ -19,15 +19,15 @@ parallel is coalesced with adjacent UnitMaps.
 | 7 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:534-538 | unit.rs:113-114 | ported |
 | 8 | In parallel, a UnitMap can be merged with UnitMaps on either side | unitmap.c:539-544 | unit.rs:117 | ported |
 | 9 | Initialise indices for the adjacent UnitMaps and the coordinate count of the replacement | unitmap.c:545-549 | -- | n/a: the port's pairwise hook is asked about one neighbour at a time, so there is no run to bracket |
-| 10 | Inspect earlier Mappings, stopping at the first that is not a UnitMap | unitmap.c:550-556 | simplify.rs:1155-1250 | ported |
+| 10 | Inspect earlier Mappings, stopping at the first that is not a UnitMap | unitmap.c:550-556 | simplify.rs:1151-1246 | ported |
 | 11 | Extend the run's start index and accumulate its coordinate count | unitmap.c:557-562 | unit.rs:138-140 | ported |
-| 12 | Repeat for later Mappings in the sequence | unitmap.c:563-571 | simplify.rs:1155-1250 | ported |
+| 12 | Repeat for later Mappings in the sequence | unitmap.c:563-571 | simplify.rs:1151-1246 | ported |
 | 13 | Compute the net reduction and check whether it is zero, meaning no adjacent UnitMaps | unitmap.c:572-578 | -- | n/a: a pairwise hook that finds no UnitMap neighbour returns `None`, which is the same answer without a count |
-| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 | simplify.rs:3204-3212 | ported |
+| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 | simplify.rs:3200-3208 | ported |
 | 15 | If UnitMaps can be merged, create the replacement UnitMap | unitmap.c:588-592 | unit.rs:139-140 | ported |
 | 16 | Annul the pointers to all the UnitMaps being replaced | unitmap.c:593-597 | -- | n/a: owned values are dropped |
-| 17 | Insert the new pointer and its Invert flag, close the gap, and clear the vacated slots | unitmap.c:598-614 | simplify.rs:1155-1250 | ported |
-| 18 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:615-624 | simplify.rs:1155-1250 | ported |
+| 17 | Insert the new pointer and its Invert flag, close the gap, and clear the vacated slots | unitmap.c:598-614 | simplify.rs:1151-1246 | ported |
+| 18 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:615-624 | simplify.rs:1151-1246 | ported |
 | 19 | Return the result | unitmap.c:625-626 | unit.rs:117 | ported |
 
 ## Rows 5 to 7 — removing in the loop, not after it

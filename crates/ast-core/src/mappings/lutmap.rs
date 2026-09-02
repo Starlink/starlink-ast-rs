@@ -111,6 +111,29 @@ impl LutMap {
         self.interp
     }
 
+    /// The stated relative error of the table values — C's `LutEpsilon`.
+    ///
+    /// C's unset sentinel is `AST__BAD`, reported as the `DBL_EPSILON` default
+    /// (`lutmap.c:1840-1841`); the port stores the effective value, so a `LutMap`
+    /// nothing has set reports `f64::EPSILON`.
+    pub fn lut_epsilon(&self) -> f64 {
+        self.lut_epsilon
+    }
+
+    /// Set the stated relative error of the table values — C's
+    /// `astSetLutEpsilon`.
+    ///
+    /// The value scales the tolerance `GetLinear` works to (`lutmap.c:599`), so
+    /// it decides whether LutMap's own `MapMerge` sees a linear table and
+    /// replaces the LutMap with a `WinMap` — the first thing that merge does,
+    /// before it looks at any neighbour (`lutmap.c:1142`). Both simplified
+    /// records are discarded (`lutmap.c:1842`, the convention at
+    /// `mapping.h:449-460`).
+    pub fn set_lut_epsilon(&mut self, epsilon: f64) {
+        self.simplified.clear();
+        self.lut_epsilon = epsilon;
+    }
+
     /// Return the number of entries in the lookup table.
     pub fn nlut(&self) -> usize {
         self.lut.len()

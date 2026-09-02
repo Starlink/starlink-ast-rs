@@ -467,7 +467,7 @@ pub(crate) fn extract_linear_params(
     }
     if let Some(zm) = mapping.as_any().downcast_ref::<ZoomMap>() {
         let n = zm.nin();
-        let f = if inv { 1.0 / zm.factor() } else { zm.factor() };
+        let f = if inv { 1.0 / zm.zoom() } else { zm.zoom() };
         return Some((vec![0.0; n], vec![f; n]));
     }
     if let Some(sm) = mapping.as_any().downcast_ref::<ShiftMap>() {

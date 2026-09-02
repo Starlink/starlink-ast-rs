@@ -706,7 +706,7 @@ and every Region inherit that override. `test_simplify_regression.rs` now
 requires a top-level card exactly when the result is not Frame-kind, on every
 negative fixture in the corpus.
 
-### 9.2 The clear-on-set convention — PORTED; four attributes lack a setter
+### 9.2 The clear-on-set convention — PORTED; two attributes lack a setter
 
 Upstream `e40e71b4` added the rule: a setter for an attribute that feeds the
 first part of that class's own `astMapMerge` discards both simplified records
@@ -719,15 +719,15 @@ It applies the rule in 11 classes:
 
 | class | attributes | port |
 |---|---|---|
-| ZoomMap | `Zoom` | `set_factor` |
+| ZoomMap | `Zoom` | `set_zoom` |
 | LutMap | `LutInterp` | `set_interp` |
-| LutMap | `LutEpsilon` | no setter |
+| LutMap | `LutEpsilon` | `set_lut_epsilon` |
 | MathMap | `Seed`, `SimpFI`, `SimpIF` | `set_seed`, `clear_seed`, `set_simp_fi`, `set_simp_if` |
 | PolyMap | `IterInverse`, `NiterInverse`, `TolInverse` | `set_iter_inverse`, `clear_iter_inverse`, `set_niter_inverse`, `set_tol_inverse` |
 | SplineMap | `InvNiter`, `InvTol`, `OutUnit` | `set_inv_niter`, `set_inv_tol`, `set_out_unit` |
 | SphMap | `PolarLong`, `UnitRadius` | `set_polar_long`, `set_unit_radius` |
 | WcsMap | `FITSProj`, `LonCheck` | `set_fits_proj`, `set_lon_check` |
-| PcdMap | `Disco` | no setter |
+| PcdMap | `Disco` | `set_disc` |
 | PermMap | `PermSplit` | `set_perm_split`, `clear_perm_split` |
 | IntraMap | `IntraFlag` | no setter |
 | GrismMap | (macro form, `grismmap.c:165,255`) | no setter; the merged copy at `grismmap.rs:266` |
@@ -762,12 +762,18 @@ C's behaviour is confirmed by the probe recorded in
 convention"), which reads `IsSimple` through the public string interface across a
 set, a clear and the invert control.
 
-**Still open, deliberately.** Four of C's attributes have no setter in the port:
-`LutMap::LutEpsilon`, `PcdMap::Disco`, `IntraMap::IntraFlag`,
-and GrismMap's eight macro-form attributes.
+**Still open.** Two of C's attributes have no setter in the port:
+`IntraMap::IntraFlag`, because `IntraMap` itself is not ported, and GrismMap's
+eight macro-form attributes.
 The rule applies to each when its setter lands, and the row above says so.
-Adding the setters to close this section would be a new public attribute surface
-the spec did not ask for, so they are left absent.
+
+The `clear_*` halves of `set_zoom`, `set_lut_epsilon` and `set_disc` have no
+counterpart either, because the port stores each attribute's effective value
+rather than C's unset sentinel (`0.0` for `Zoom`, `AST__BAD` for `LutEpsilon` and
+`Disco`); a clearer would mean introducing those sentinels and the `Test*`
+surface that reads them.
+`AST__IMMUT` has none for the same structural reason the other setters do not:
+`&mut self` is what C's `astGetRefCount( this ) > 1` guard tests for.
 
 ### 9.4 51 simplify fixture files have no transform-oracle section
 
@@ -854,10 +860,10 @@ A mechanical remap through the same `difflib` mapping was tried and rejected.
 It reproduces a hand-derived re-anchoring exactly wherever the original citation
 was right, and it faithfully relocates an already-wrong citation to a new wrong
 line.
-`simplify.rs:1155-1250`, cited identically by 25 rows across 8 files for the
+`simplify.rs:1151-1246`, cited identically by 25 rows across 8 files for the
 shared neighbour-pair driver, was already wrong when written — at those
 revisions it lands inside `perm_map_merge`, and the driver the rows describe is
-`default_map_merge`, now `simplify.rs:1190-1285`.
+`default_map_merge`, now `simplify.rs:1186-1281`.
 A remap turns those 25 rows into 25 confidently-wrong citations, which is worse
 than an obviously stale one, so the fix is a per-row re-anchor against the code
 the row describes.
@@ -1263,23 +1269,23 @@ places, all now closed:
    member of both sublists. C passes them to `CombineMaps( …, 0, … )` as they
    stand — that `0` is the series flag, not a simplify flag
    (`cmpmap.c:1694-1712`). The port now clones them unchanged
-   (`simplify.rs:2131-2139`).
+   (`simplify.rs:2127-2135`).
 2. **The `simpler` test.** A three-branch structural test ending in a comparison
    of flat leaf counts stood in for C's identity test — a threshold with no
    analogue in `cmpmap.c` (stop signal 1), deciding whether the whole restructure
-   fired. C's test is ported at `simplify.rs:3051-3053`:
-   `simplify_mapping_reporting_change` (`simplify.rs:3293-3388`) reports whether
+   fired. C's test is ported at `simplify.rs:3047-3049`:
+   `simplify_mapping_reporting_change` (`simplify.rs:3289-3384`) reports whether
    the result differs from its input, which in an owned-value port is a fact the
    engine knows rather than a pointer comparison, and the Invert flags are
    compared beside it.
 3. **Trailing simplify of the rebuilt CmpMap.** The port simplified the
    reassembled parallel CmpMap before returning it; C hands `new` to the list as
    built (`cmpmap.c:1738-1746`) and lets the nominate loop reach it when it is
-   nominated in its own right (`simplify.rs:3066-3068`). Closing this took
+   nominated in its own right (`simplify.rs:3062-3064`). Closing this took
    `cap_cmpmap_03` from six cards to **seven, which is C's count**.
 
 The per-pair `astSimplify` of `:1728` was always ported, at
-`simplify.rs:3051-3052`; the recursion was never the missing piece. An earlier
+`simplify.rs:3047-3048`; the recursion was never the missing piece. An earlier
 reading of divergence 1 had it standing in for a missing recursion, and that was
 wrong — it was standing in for divergences 2 and 3 in the same function, which is
 why removing it alone moved fixtures in both directions.
@@ -1395,7 +1401,7 @@ The record's original premise was wrong about what this cost. It said the two
 triggers report different indices and so resume one element apart. They do not:
 C returns `result = imap1 = where - 1` from the CmpMap's nomination
 (`cmpmap.c:2119`), the port returned `Some(where_)` from the PermMap's, and
-because `run_nominate_loop` advances before clamping (`simplify.rs:1467`,
+because `run_nominate_loop` advances before clamping (`simplify.rs:1463`,
 `:1498-1500`) both name the PermMap's slot and both resume there. Nor is a pair
 reachable in C but not here: C's `result == -1` guard *defers* the swap to a
 later round rather than forbidding it, so the port's earlier trigger only ever
@@ -1423,7 +1429,7 @@ It is ported, elsewhere. C clears `invert_list[ where ]` — the *list's* applie
 direction, not the object's own attribute — and that surfaces in the dump as the
 parent CmpMap dropping its `InvA` or `InvB`. The port carries the applied
 direction as a separate value in `MergeCtx` and folds it into the leaf when the
-tree is rebuilt (`simplify.rs:3116-3118`, applied at `:3132-3134` and
+tree is rebuilt (`simplify.rs:3112-3114`, applied at `:3132-3134` and
 `:3142-3144`), reaching the same dump.
 
 Two fixtures prove it, on independent configurations: `unit_parallel_invert_clear`
@@ -1456,7 +1462,7 @@ along and only the seam was missing, which is exactly what the pair
 discriminates.
 
 `pcd_map_merge` now performs C's opening move itself, before the swap
-(`simplify.rs:2637-2645`), and returns immediately: C makes the reduction the `if`
+(`simplify.rs:2633-2641`), and returns immediately: C makes the reduction the `if`
 of an if/else whose `else` holds the whole neighbour search, so a reduced PcdMap
 never looks at a neighbour in the same pass. `self_reduce_map_merge` cannot
 express that ordering, which is why the reduction is inline rather than delegated.
@@ -1721,7 +1727,7 @@ compared with its own copy, so the harness's `equal()` gate could not have
 applied to it. The FrameSet component compares equal and still discriminates.
 
 **Where the rebuild was being discarded.** `try_self_reduce`
-(`mappings/simplify.rs:1115`) installed a class's replacement only when it
+(`mappings/simplify.rs:1111`) installed a class's replacement only when it
 compared unequal to the Mapping it replaced. Frame equality is conversion-based,
 so a NormMap rebuilt around a Frame whose *internal* Mapping reduced compares
 equal to the original and the rebuild was dropped. C's test is on the pointer
@@ -1884,7 +1890,7 @@ C's `Simplify` treats a restricted simplify as a distinct mode. Three of the
 things it does in that mode had no counterpart in the port; all three are now
 ported, and each has a fixture pair that fails without it.
 
-**`simpler` is reset — FIXED (`simplify.rs:3340`).** `astMapList` sets `simpler`
+**`simpler` is reset — FIXED (`simplify.rs:3336`).** `astMapList` sets `simpler`
 whenever it meets an inverted CmpMap during the decomposition, and C then
 discards that flag under a restricted simplify — it cannot know yet whether the
 inverted CmpMap will be eligible, so it declines to count the decomposition
@@ -1896,7 +1902,7 @@ holding an inverted CmpMap with nothing marked eligible, whose `.simp` differs
 from its `.map` only in the dropped `ReSimp = 1` card.
 
 **`AllowSimplify` is cleared on each component — FIXED
-(`simplify.rs:3382-3386`).** C clears the flag on every component as it folds the
+(`simplify.rs:3378-3382`).** C clears the flag on every component as it folds the
 result back into a CmpMap (`cmpmap.c:3689-3692`), explicitly so the protected
 flag does not appear in a public dump. C does this only in its multi-element
 branch; a single-element result is an `astCopy` (`cmpmap.c:3651`) whose flag
@@ -1912,7 +1918,7 @@ gate: its `.simp` carries neither `ReSimp` nor `IsSimp` nor `AlSimp`.
 
 The mode's fourth consult point, the base driver's opening
 `if( astRestrictedSimplify(this) ) { if( !astAllowSimplify(this) ) return
-astClone(this); }` (`mapping.c:16853-16855`), is ported at `simplify.rs:1150-1152`.
+astClone(this); }` (`mapping.c:16853-16855`), is ported at `simplify.rs:1146-1148`.
 `RestrictedSimplify` moved from a `CmpMap` inherent method to a `Mapping` trait
 pair, matching C's shared `flags` word (`mapping.h:415-482`); only `CmpMap` has
 storage for it, the only class that can hold components to restrict.

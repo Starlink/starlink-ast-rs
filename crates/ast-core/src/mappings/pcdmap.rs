@@ -71,6 +71,19 @@ impl PcdMap {
         self.disc
     }
 
+    /// Set the distortion coefficient — C's `astSetDisco`.
+    ///
+    /// A zero coefficient is what PcdMap's own `MapMerge` tests for when it
+    /// replaces the PcdMap with a `UnitMap`, in the section C marks "without
+    /// reference to the neighbouring Mappings in the list"
+    /// (`pcdmap.c:1418-1422`), so a conclusion an earlier simplification reached
+    /// no longer holds. Both simplified records are discarded (`pcdmap.c:2586`,
+    /// the convention at `mapping.h:449-460`).
+    pub fn set_disc(&mut self, disc: f64) {
+        self.simplified.clear();
+        self.disc = disc;
+    }
+
     /// The distortion centre.
     pub fn pcdcen(&self) -> [f64; 2] {
         self.pcdcen

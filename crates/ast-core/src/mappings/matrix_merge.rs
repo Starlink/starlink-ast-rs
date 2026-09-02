@@ -234,9 +234,9 @@ fn merge_matrix_pair(
     // perturb the last ULP).
     if let Some(zm) = other.as_any().downcast_ref::<ZoomMap>() {
         let zfac = if other_inv {
-            1.0 / zm.factor()
+            1.0 / zm.zoom()
         } else {
-            zm.factor()
+            zm.zoom()
         };
         // Zoom axis count must match the shared dimension.
         let n = if mm_inv { mm.nin() } else { mm.nout() };
