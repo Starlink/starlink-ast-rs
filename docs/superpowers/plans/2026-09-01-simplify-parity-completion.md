@@ -2143,7 +2143,7 @@ class.
 - Consumes: `ast_core::to_native_string(&AnyObject) -> AstResult<String>` and `ast_core::from_native_string(&str) -> AstResult<AnyObject>`; `AnyObject::from_mapping(&dyn Mapping) -> Option<AnyObject>`, `AnyObject::as_mapping(&self) -> Option<&dyn Mapping>` (`crates/ast-core/src/serial/mod.rs:1480`, `:1594`); `Node::get(&self, key: &str) -> Option<&NodeValue>`, which is case-insensitive and reports `Unset` as absent (`node.rs:135-143`); the setters listed in the table above; `ZoomMap::set_factor` from Task 7.
 - Produces: `fn load_discards(m: impl Mapping, what: &str)` in `crates/ast-core/tests/test_clear_on_set.rs`.
 
-- [ ] **Step 1: Write the failing gate**
+- [x] **Step 1: Write the failing gate**
 
 Append to `crates/ast-core/tests/test_clear_on_set.rs`:
 
@@ -2243,7 +2243,7 @@ adding a second one. `SphMap::new()` takes no arguments; check with
 `grep -n "pub fn new" crates/ast-core/src/mappings/sphmap.rs` and use the
 constructor as it stands.
 
-- [ ] **Step 2: Run it and read which classes fail**
+- [x] **Step 2: Run it and read which classes fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2255,7 +2255,7 @@ first class in the list that has not been fixed — ZoomMap and MathMap pass fro
 Task 7, so the failure names LutMap. The control test passes. Fix the classes in
 list order, re-running after each so the failure moves down the list.
 
-- [ ] **Step 3: LutMap**
+- [x] **Step 3: LutMap**
 
 In `crates/ast-core/src/mappings/lutmap.rs`, after the `if base.inverted {
 m.invert(); }` block in `from_node` and before `Ok(m)`:
@@ -2270,7 +2270,7 @@ m.invert(); }` block in `from_node` and before `Ok(m)`:
         }
 ```
 
-- [ ] **Step 4: PolyMap**
+- [x] **Step 4: PolyMap**
 
 In `crates/ast-core/src/mappings/polymap.rs`, in the same position in
 `from_node`:
@@ -2290,7 +2290,7 @@ In `crates/ast-core/src/mappings/polymap.rs`, in the same position in
         }
 ```
 
-- [ ] **Step 5: SplineMap**
+- [x] **Step 5: SplineMap**
 
 In `crates/ast-core/src/mappings/splinemap.rs`, after the line
 `m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);`
@@ -2311,7 +2311,7 @@ and before `Ok(m)`:
         }
 ```
 
-- [ ] **Step 6: SphMap**
+- [x] **Step 6: SphMap**
 
 In `crates/ast-core/src/mappings/sphmap.rs`, in the same position:
 
@@ -2331,7 +2331,7 @@ In `crates/ast-core/src/mappings/sphmap.rs`, in the same position:
 `node.items`, which is C's `TestPolarLong` — a commented-out default does not
 count as set.
 
-- [ ] **Step 7: WcsMap — install the record before the setters, not after**
+- [x] **Step 7: WcsMap — install the record before the setters, not after**
 
 In `crates/ast-core/src/mappings/wcsmap.rs`, `from_node` calls the two setters
 and only then `wcs.set_has_been_simplified(base.has_been_simplified)`, so the
@@ -2353,7 +2353,7 @@ and delete the later call:
         wcs.set_has_been_simplified(base.has_been_simplified);
 ```
 
-- [ ] **Step 8: PermMap — route through the setter, and install the record first**
+- [x] **Step 8: PermMap — route through the setter, and install the record first**
 
 In `crates/ast-core/src/mappings/perm.rs`, `from_node` assigns the field
 directly and installs the record afterwards. Replace
@@ -2389,7 +2389,7 @@ with
 `Node::get` matches case-insensitively (`node.rs:137`), so the mixed-case key
 finds the card the serialiser writes.
 
-- [ ] **Step 9: Run the gate, then the whole suite**
+- [x] **Step 9: Run the gate, then the whole suite**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2402,7 +2402,7 @@ round-trip test. A round-trip failure here would mean a class dumps an attribute
 whose absence on reload changes another card — read the diff before touching the
 routing.
 
-- [ ] **Step 10: Format, lint, commit**
+- [x] **Step 10: Format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2447,7 +2447,7 @@ from, and §9.2's claim is the reason the convention had no corpus gate.
 - Consumes: nothing — documentation only.
 - Produces: nothing consumed by a later task; Task 31's closing report cites §9.1 and §9.2 as rewritten here.
 
-- [ ] **Step 1: Replace §9.1 with the rule and its evidence**
+- [x] **Step 1: Replace §9.1 with the rule and its evidence**
 
 In `PLAN.md`, replace the whole of §9.1 — heading included — with:
 
@@ -2499,7 +2499,7 @@ requires a top-level card exactly when the result is not Frame-kind, on every
 negative fixture in the corpus.
 ```
 
-- [ ] **Step 2: Correct §9.2's "no fixture can express this"**
+- [x] **Step 2: Correct §9.2's "no fixture can express this"**
 
 In `PLAN.md` §9.2, replace the paragraph beginning "**No fixture can express
 this.**" — through the sentence ending "across a set, a clear and the invert
@@ -2528,7 +2528,7 @@ convention"), which reads `IsSimple` through the public string interface across 
 set, a clear and the invert control.
 ```
 
-- [ ] **Step 3: Update §9.2's port column for the classes this cluster changed**
+- [x] **Step 3: Update §9.2's port column for the classes this cluster changed**
 
 In §9.2's table, `ZoomMap | Zoom` reads "no setter". Replace that cell with
 `set_factor` (`pub(crate)`, Task 7). Leave `LutMap::LutEpsilon`, `PcdMap::Disco`,
@@ -2542,12 +2542,12 @@ argument about the public attribute surface intact — `set_factor` is
 `pub(crate)`, so it does not widen the public API and the argument still holds
 for the remaining four.
 
-- [ ] **Step 4: Retitle §9.2's heading to match**
+- [x] **Step 4: Retitle §9.2's heading to match**
 
 The heading reads "### 9.2 The clear-on-set convention — PORTED; five attributes
 lack a setter". Change "five" to "four".
 
-- [ ] **Step 5: Check the audit index for a stale cluster note**
+- [x] **Step 5: Check the audit index for a stale cluster note**
 
 ```bash
 grep -rn "9\.1\|IsSimp" docs/audits/mapmerge/README.md
@@ -2557,7 +2557,7 @@ If a row or paragraph names §9.1 as open, update it to cite §9.1 as closed by
 this cluster. If nothing matches, there is nothing to change — the audit
 checklists carry per-step verdicts, not cluster status.
 
-- [ ] **Step 6: Verify the whole suite and the ledger arithmetic**
+- [x] **Step 6: Verify the whole suite and the ledger arithmetic**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2573,7 +2573,7 @@ count against the source lists:
 grep -n "ISSIMP_DISAGREEMENTS" -A 26 crates/ast-core/tests/test_simplify_regression.rs | grep -c '"'
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -2607,7 +2607,7 @@ The corpus gains no fixture: both rules were already pinned by fixtures that
 were passing for the wrong reason, which is what the two-sided top-level check
 now prevents.
 
-- [ ] **Cluster 1 exit check: back the fix out and watch the fixtures fail**
+- [x] **Cluster 1 exit check: back the fix out and watch the fixtures fail**
 
 Spec §6.4 requires a revert-check per cluster: a fixture that still passes with
 the fix removed was never gating it.
