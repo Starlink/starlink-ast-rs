@@ -299,14 +299,36 @@ clear the flag; each now restores it around the validating call."
 
 ## Task 2: Regenerate the simplify corpus after the `IsSimp` fix
 
-`astSimplify` returns a Mapping unchanged when `IsSimple` is set (`src/mapping.c:24764`). Preserving nested `IsSimp` cards on load therefore changes what a re-read tree simplifies to. No `.map` fixture's top-level object carries an `IsSimp` card, so the entry points are unaffected; nested cards are the exposure. This task measures the blast radius and lands it with an explanation, which is why it is separate from Task 1.
+**Outcome, recorded 2026-09-03: the blast radius is zero, and the plan's stated
+mechanism was wrong.** Kept here as the record of what was measured.
 
-**Files:**
-- Modify: files under `ast_tester/fixtures/simplify/` (data only)
+The plan predicted that preserving nested `IsSimp` would change what a re-read
+tree simplifies to, and that the regeneration would show it.
+Neither held:
 
-**Interfaces:**
-- Consumes: Task 1's library behaviour.
-- Produces: a simplify corpus consistent with the fixed library. Tasks 6, 8, 9 and 11 all read it.
+- `gen_simplify_fixtures` almost never reads a fixture — it constructs objects
+  through the public API, simplifies and dumps (only `:1455` and `:3538` read
+  anything), so the loader fix cannot change its output.
+- The `simplify_*` ctests *do* read (`simplify.c:83`), so they were the real
+  exposure. They did not move either: 1202 of 1202 fixture-driven tests pass,
+  and 72 of 72 of the rest.
+
+The reason is that the fix makes read→simplify *more* like the
+construct→simplify path the references were generated from, not less. Before
+it, dropping the card meant re-walking nodes that then simplified to the same
+result.
+
+Regenerating produced a diff in exactly two files, `neg_time_5arg_mismatch.map`
+and `time_5arg_cancel.map`, both a one-ULP change to `Time1f` — the
+ERFA-computed geodetic-to-geocentric value that
+`crates/ast-core/tests/test_serialisation.rs:1122` and
+`simplify_tests.txt:308` already name as the canonical platform drift in this
+corpus. TimeMap is not one of the ten affected classes, and a guard on when a
+flag is cleared cannot alter a computed double. That is numeric drift captured
+on another host, so per the sync protocol it was reverted rather than committed.
+
+**There is therefore no commit for this task.** The steps below are what was
+run.
 
 - [ ] **Step 1: Record the pre-regeneration state**
 
