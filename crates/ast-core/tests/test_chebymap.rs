@@ -971,3 +971,124 @@ fn chebymap_2d_cancels_with_inverse() {
     assert_eq!(merged2.nin(), 2);
     assert_eq!(merged2.nout(), 2);
 }
+
+#[test]
+fn chebymap_does_not_cancel_when_the_inverse_shapes_differ() {
+    use ast_core::mappings::{CmpMap, Composition};
+
+    // Identical forward transformations and bounding boxes, inverse
+    // transformations with different coefficient counts and maximum powers.
+    // C compares the pair with astEqual, which reaches the comparison ChebyMap
+    // inherits from PolyMap, and that half compares the inverse coefficient
+    // counts and maximum powers (polymap.c:758-776), so the pair does not
+    // cancel. Confirmed against the oracle.
+    let fwd = vec![PolyTerm {
+        coeff: 2.0,
+        powers: vec![2],
+        out_axis: 1,
+    }];
+    let inv_a = vec![PolyTerm {
+        coeff: 0.5,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let inv_b = vec![
+        PolyTerm {
+            coeff: 0.5,
+            powers: vec![1],
+            out_axis: 1,
+        },
+        PolyTerm {
+            coeff: 0.3,
+            powers: vec![2],
+            out_axis: 1,
+        },
+    ];
+    let a = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv_a),
+        &[0.0],
+        &[10.0],
+        Some(&[-5.0]),
+        Some(&[5.0]),
+    )
+    .unwrap();
+    let mut b = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv_b),
+        &[0.0],
+        &[10.0],
+        Some(&[-5.0]),
+        Some(&[5.0]),
+    )
+    .unwrap();
+    b.invert();
+
+    let cm = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+    let s = <dyn Mapping>::simplify(&cm).unwrap();
+    assert!(
+        !s.as_any().is::<UnitMap>(),
+        "the inverse transformations have different shapes, so the pair stands"
+    );
+}
+
+#[test]
+fn chebymap_cancels_when_only_inverse_coefficient_values_differ() {
+    use ast_core::mappings::{CmpMap, Composition};
+
+    // Identical forward transformations and bounding boxes; inverse
+    // transformations with the same coefficient counts and maximum powers but
+    // different coefficient values. The comparison ChebyMap inherits from
+    // PolyMap compares the forward coefficients a second time in place of the
+    // inverse ones (polymap.c:778-804), so the values never enter it and the
+    // pair cancels. See docs/issues/c-library-quirks.md.
+    let fwd = vec![PolyTerm {
+        coeff: 2.0,
+        powers: vec![2],
+        out_axis: 1,
+    }];
+    let inv_a = vec![PolyTerm {
+        coeff: 0.5,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let inv_b = vec![PolyTerm {
+        coeff: 0.7,
+        powers: vec![1],
+        out_axis: 1,
+    }];
+    let a = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv_a),
+        &[0.0],
+        &[10.0],
+        Some(&[-5.0]),
+        Some(&[5.0]),
+    )
+    .unwrap();
+    let mut b = ChebyMap::new(
+        1,
+        1,
+        &fwd,
+        Some(&inv_b),
+        &[0.0],
+        &[10.0],
+        Some(&[-5.0]),
+        Some(&[5.0]),
+    )
+    .unwrap();
+    b.invert();
+
+    let cm = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+    let s = <dyn Mapping>::simplify(&cm).unwrap();
+    assert!(
+        s.as_any().is::<UnitMap>(),
+        "the two ChebyMaps compare equal, so the opposed pair cancels"
+    );
+}

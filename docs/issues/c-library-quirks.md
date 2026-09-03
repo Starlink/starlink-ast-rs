@@ -2831,6 +2831,11 @@ Comparing the inverse coefficients as well would make the port refuse a
 cancellation the oracle performs, so the mirror is deliberate;
 `polymap_cancels_when_only_inverse_coefficient_values_differ` in
 `crates/ast-core/tests/test_polymap.rs` pins it.
+ChebyMap inherits the comparison — `chebymap.c::Equal` calls the PolyMap one
+before it compares the two bounding boxes (`chebymap.c:462-507`) — so the same
+blindness reaches a ChebyMap pair, pinned by
+`chebymap_cancels_when_only_inverse_coefficient_values_differ` in
+`crates/ast-core/tests/test_chebymap.rs`.
 Revisit when this is fixed upstream, at which point the inverse terms compare
 the same way the forward ones do.
 

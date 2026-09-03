@@ -1120,7 +1120,7 @@ use the same set of input powers. That is basis-independent — two `T_2` terms 
 one output add exactly as two `x^2` terms do — so it ports as it stands, and now
 does. `PolyMap::consolidated_terms` (`polymap.rs:838`) is C's first half split out
 of `replace_with_simpler` unchanged, and `ChebyMap::map_merge`
-(`chebymap.rs:527-569`) calls it and rebuilds a ChebyMap with the same bounds.
+(`chebymap.rs:506-555`) calls it and rebuilds a ChebyMap with the same bounds.
 `cap_cheby_consolidate` is the fixture — two forward `T_2` coefficients of 1.5 and
 2.5 that C writes back as one of 4, with a `T_3` term present so C stays out of
 the linear branch — and it fails byte-exactly with `ChebyMap::map_merge` removed.
@@ -2323,3 +2323,24 @@ coefficients and powers compares the *forward* ones a second time
 compare equal and cancel. C's own oracle confirms the cancellation.
 `polymap_cancels_when_only_inverse_coefficient_values_differ` pins it and
 `docs/issues/c-library-quirks.md` records it for upstream.
+
+### 10.30 ChebyMap's cancellation test was hand-rolled too — FIXED
+
+`chebymap.c` sets no `MapMerge` slot, so a ChebyMap's is PolyMap's whole body,
+and the neighbour half there calls `astEqual` (`polymap.c:3917-3924`) — which for
+a ChebyMap reaches `chebymap.c::Equal`: the comparison inherited from PolyMap
+plus the two bounding boxes (`chebymap.c:462-507`).
+
+`ChebyMap::try_merge` compared the two bounding boxes and the forward terms
+itself and never looked at the inverse ones, so it cancelled a pair whose inverse
+transformations have different coefficient counts and maximum powers — the same
+divergence §10.29 closed in PolyMap, reached by a different route. The oracle
+leaves such a pair as a CmpMap of two ChebyMaps; the port returned a UnitMap.
+`try_merge` now forces both stored `Invert` flags to the direction the list
+applies to the nominated Mapping, as C does, and calls `equal`.
+
+`chebymap_does_not_cancel_when_the_inverse_shapes_differ` is the control, with a
+quadratic forward transformation so C's linear half does not pre-empt the
+comparison. Routing through `equal` also inherits the `Equal` bug §10.29 records:
+`chebymap_cancels_when_only_inverse_coefficient_values_differ` pins that the
+oracle still cancels a pair whose inverse coefficient *values* differ.

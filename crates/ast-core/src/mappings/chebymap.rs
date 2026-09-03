@@ -477,52 +477,27 @@ impl Mapping for ChebyMap {
             return None;
         }
         let other_cheby = other.as_any().downcast_ref::<ChebyMap>()?;
-        // Compare all defining properties (ignoring the inverted flag).
-        if self.lbnd_f.len() != other_cheby.lbnd_f.len() {
+
+        // C forces both stored `Invert` flags to the direction the list applies
+        // to the nominated Mapping and then calls `astEqual`
+        // (`polymap.c:3888-3920`), which reaches `chebymap.c::Equal`: the
+        // comparison inherited from PolyMap plus the two bounding boxes
+        // (`chebymap.c:462-507`). The inherited half rejects a pair whose
+        // `Invert` flags differ (`polymap.c:806-812`), so the forcing is what
+        // lets two entries pointing in opposite directions compare at all;
+        // what it then compares is each transformation as constructed.
+        let mut a = self.clone();
+        let mut b = other_cheby.clone();
+        if a.inverted != self_inv {
+            a.invert();
+        }
+        if b.inverted != self_inv {
+            b.invert();
+        }
+        if !a.equal(&b) {
             return None;
         }
-        let fwd_bounds_match = self
-            .lbnd_f
-            .iter()
-            .zip(&other_cheby.lbnd_f)
-            .all(|(a, b)| ast_equal(*a, *b))
-            && self
-                .ubnd_f
-                .iter()
-                .zip(&other_cheby.ubnd_f)
-                .all(|(a, b)| ast_equal(*a, *b));
-        if !fwd_bounds_match {
-            return None;
-        }
-        let inv_bounds_match = match (&self.lbnd_i, &other_cheby.lbnd_i) {
-            (Some(a), Some(b)) => {
-                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| ast_equal(*x, *y))
-            }
-            (None, None) => true,
-            _ => false,
-        } && match (&self.ubnd_i, &other_cheby.ubnd_i) {
-            (Some(a), Some(b)) => {
-                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| ast_equal(*x, *y))
-            }
-            (None, None) => true,
-            _ => false,
-        };
-        if !inv_bounds_match {
-            return None;
-        }
-        // Compare the inner polynomial (ignoring inversion state).
-        // Use a temporary un-inverted copy for comparison if needed.
-        let self_fwd = self.poly.forward_terms();
-        let other_fwd = other_cheby.poly.forward_terms();
-        if self_fwd.len() != other_fwd.len() {
-            return None;
-        }
-        let fwd_match = self_fwd.iter().zip(other_fwd).all(|(a, b)| {
-            ast_equal(a.coeff, b.coeff) && a.powers == b.powers && a.out_axis == b.out_axis
-        });
-        if !fwd_match {
-            return None;
-        }
+
         // The pair's input dimension depends on which direction self is used.
         let pair_nin = if self_inv { self.nout() } else { self.nin() };
         Some(Box::new(UnitMap::new(pair_nin)))
