@@ -12,23 +12,23 @@ best-fitting Box in the current Frame, a Polygon for the 2-D case, and a split
 into a Prism.
 
 `BoxRegion::map_merge` (`box_region.rs:1775-1782`) delegates to
-`simplify::region_map_merge` (`simplify.rs:1281-1346`); `BoxRegion::simplified`
+`simplify::region_map_merge` (`mappings/simplify.rs:1281-1346`); `BoxRegion::simplified`
 is `box_region.rs:1596-1740`.
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
 | 1 | `MapMerge`: get a pointer to the Box | box.c:1573-1575 | -- | n/a: the Rust method already has `&self` |
-| 2 | See if the Box can be replaced by a simpler Region, without reference to its neighbours | box.c:1576-1579 | simplify.rs:1288-1297 | ported |
-| 3 | Simplify the Box, assuming a changed pointer means something happened | box.c:1580-1584 | simplify.rs:1292-1294 | ported |
-| 4 | Replace the Box in the list with the new Region, marking it forward | box.c:1585-1591 | simplify.rs:1294-1295 | ported |
-| 5 | Return the index of the first modified element | box.c:1592-1594 | simplify.rs:1295 | ported |
-| 6 | Otherwise merge with a neighbouring Region, in parallel only | box.c:1595-1601 | simplify.rs:1299-1301 | ported |
-| 7 | Try the lower neighbour first | box.c:1602-1611 | simplify.rs:1302-1311 | ported |
-| 8 | Failing that, try the upper neighbour | box.c:1612-1622 | simplify.rs:1312-1326 | ported |
-| 9 | On success, replace the first of the pair with the merged Region and clear its invert flag | box.c:1623-1631 | simplify.rs:1327-1341 | ported |
-| 10 | Annul the second and shuffle the rest down, clearing the vacated slot | box.c:1632-1643 | simplify.rs:1327-1341 | ported |
-| 11 | Decrement the Mapping count and return the index of the first modified element | box.c:1644-1653 | simplify.rs:1341 | ported |
-| 12 | Return the result | box.c:1654-1655 | simplify.rs:1345 | ported |
+| 2 | See if the Box can be replaced by a simpler Region, without reference to its neighbours | box.c:1576-1579 | mappings/simplify.rs:1288-1297 | ported |
+| 3 | Simplify the Box, assuming a changed pointer means something happened | box.c:1580-1584 | mappings/simplify.rs:1292-1294 | ported |
+| 4 | Replace the Box in the list with the new Region, marking it forward | box.c:1585-1591 | mappings/simplify.rs:1294-1295 | ported |
+| 5 | Return the index of the first modified element | box.c:1592-1594 | mappings/simplify.rs:1295 | ported |
+| 6 | Otherwise merge with a neighbouring Region, in parallel only | box.c:1595-1601 | mappings/simplify.rs:1299-1301 | ported |
+| 7 | Try the lower neighbour first | box.c:1602-1611 | mappings/simplify.rs:1302-1311 | ported |
+| 8 | Failing that, try the upper neighbour | box.c:1612-1622 | mappings/simplify.rs:1312-1326 | ported |
+| 9 | On success, replace the first of the pair with the merged Region and clear its invert flag | box.c:1623-1631 | mappings/simplify.rs:1327-1341 | ported |
+| 10 | Annul the second and shuffle the rest down, clearing the vacated slot | box.c:1632-1643 | mappings/simplify.rs:1327-1341 | ported |
+| 11 | Decrement the Mapping count and return the index of the first modified element | box.c:1644-1653 | mappings/simplify.rs:1341 | ported |
+| 12 | Return the result | box.c:1654-1655 | mappings/simplify.rs:1345 | ported |
 | 13 | `Simplify`: invoke the parent Region simplify, which handles the FrameSet and uncertainty | box.c:3703-3706 | box_region.rs:1601 | ported |
 | 14 | Note whether that simplified anything, by pointer inequality | box.c:3707-3711 | box_region.rs:1601-1615 | ported |
 | 15 | Get the base-to-current Mapping and its input and output counts | box.c:3712-3718 | box_region.rs:1617-1621, 431-432 | ported |
@@ -97,4 +97,4 @@ uncertainty does not come back carrying that as an explicit one.
 
 C wraps the whole neighbour-merge half in a parallel test, because two Regions in
 series are not a Region. `region_map_merge` returns to the generic path for
-series at `simplify.rs:1299-1301`.
+series at `mappings/simplify.rs:1299-1301`.

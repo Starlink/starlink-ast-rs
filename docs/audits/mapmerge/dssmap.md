@@ -23,9 +23,9 @@ rebuilding the DssMap from the amended FITS cards.
 | 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 | -- | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan |
 | 11 | Update each changed keyword in that copy | dssmap.c:1067-1097 | dssmap.rs:634-638 | ported |
 | 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1098-1102 | dssmap.rs:634-642 | ported |
-| 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 | simplify.rs:1151-1246 | ported |
-| 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1108-1119 | simplify.rs:1151-1246 | ported |
-| 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1120-1126 | simplify.rs:1151-1246 | ported |
+| 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 | mappings/simplify.rs:1151-1246 | ported |
+| 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1108-1119 | mappings/simplify.rs:1151-1246 | ported |
+| 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1120-1126 | mappings/simplify.rs:1151-1246 | ported |
 | 16 | Annul the amended FitsChan | dssmap.c:1127-1131 | -- | n/a: no FitsChan is created |
 | 17 | Free the scale and shift arrays | dssmap.c:1132-1135 | -- | n/a: owned values are dropped |
 | 18 | Re-instate the WinMap's original Invert attribute | dssmap.c:1136-1143 | -- | n/a: the WinMap entry is read without being mutated |
@@ -53,4 +53,4 @@ pairwise merge. Row 19's Rust site is that call.
 
 A DssMap reduction added later belongs at the top of `map_merge`, which is where
 C would put one, and where the base `Simplify` driver
-(`simplify.rs::base_simplify`) reaches it.
+(`mappings/simplify.rs::base_simplify`) reaches it.

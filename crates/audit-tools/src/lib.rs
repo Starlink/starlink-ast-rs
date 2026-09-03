@@ -153,13 +153,16 @@ fn attached_start(raw: &[&str], i: usize) -> usize {
 /// The range runs from the start of the item's doc-comment block to the line
 /// closing its body, so a citation to the signature or the documentation
 /// designates the same item a citation to the body does. A declaration with no
-/// body, as in a trait, ends at its semicolon.
+/// body, as in a trait, ends at its semicolon. A semicolon reached with the
+/// parameter list still open belongs to a type inside it, such as the length of
+/// an array parameter, and does not end the signature.
 pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
     let raw: Vec<&str> = src.lines().collect();
     let mut out = Vec::new();
     // Items whose body has opened, as `(name, first line, body brace depth)`.
     let mut open: Vec<(String, usize, usize)> = Vec::new();
     let mut depth = 0usize;
+    let mut parens = 0usize;
     let mut pending: Option<(String, usize)> = None;
     for (i, text) in raw.iter().enumerate() {
         let code = code_only(text);
@@ -168,6 +171,8 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
         }
         for c in code.chars() {
             match c {
+                '(' => parens += 1,
+                ')' => parens = parens.saturating_sub(1),
                 '{' => {
                     depth += 1;
                     if let Some((name, first)) = pending.take() {
@@ -182,7 +187,7 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
                     depth = depth.saturating_sub(1);
                 }
                 // A signature with no body, as in a trait declaration.
-                ';' => {
+                ';' if parens == 0 => {
                     if let Some((name, first)) = pending.take() {
                         out.push((name, first, i + 1));
                     }
@@ -522,6 +527,28 @@ fn free() -> u32 {
         assert_eq!(enclosing_rust_item(RUST, 3), None);
     }
 
+    const WRAPPED_SIGNATURE: &str = "\
+fn wrapped(
+    xs: &[(u32, u32); 2],
+    flag: bool,
+) -> bool {
+    xs[0].0 == 1 && flag
+}
+";
+
+    #[test]
+    fn a_semicolon_inside_a_parameter_list_does_not_end_the_signature() {
+        // The `;` is the array length in `xs`, not the end of a bodiless
+        // declaration, so the item spans its whole body.
+        for line in 1..=6 {
+            assert_eq!(
+                enclosing_rust_item(WRAPPED_SIGNATURE, line).as_deref(),
+                Some("wrapped"),
+                "line {line}"
+            );
+        }
+    }
+
     const C: &str = "\
 /* Prototype. */
 static int MapMerge( AstMapping *, int, int * );
@@ -676,6 +703,30 @@ trait T {
         // A component must match whole: `list.rs` is not a suffix of
         // `pointlist.rs`.
         assert_eq!(resolve_source(root, "no_such_file.rs"), Resolution::Missing);
+        // Thirteen files are named `mod.rs`, and one leading component is
+        // enough for each of them however deep it sits.
+        match resolve_source(root, "mod.rs") {
+            Resolution::Ambiguous(paths) => assert_eq!(paths.len(), 13, "{paths:?}"),
+            other => panic!("expected Ambiguous, got {other:?}"),
+        }
+        match resolve_source(root, "mathmap/mod.rs") {
+            Resolution::Found(path) => assert!(path.ends_with("mappings/mathmap/mod.rs")),
+            other => panic!("expected Found, got {other:?}"),
+        }
+        // A unique basename needs no qualification.
+        match resolve_source(root, "zoom.rs") {
+            Resolution::Found(path) => assert!(path.ends_with("mappings/zoom.rs")),
+            other => panic!("expected Found, got {other:?}"),
+        }
+        // A C name resolves in the pinned submodule, and its absence is
+        // Missing rather than a panic, because tier-1 builds without it.
+        let c = resolve_source(root, "zoommap.c");
+        assert!(
+            matches!(&c, Resolution::Found(p) if p.ends_with("starlink-ast/src/zoommap.c"))
+                || c == Resolution::Missing,
+            "{c:?}"
+        );
+        assert_eq!(resolve_source(root, "nosuchfile.c"), Resolution::Missing);
     }
 
     #[test]

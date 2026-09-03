@@ -11,12 +11,12 @@ Frame. `GetDefUnc` (`nullregion.c:218-235`) is a zero-radius Circle at the origi
 
 | # | C step | C site | Rust site | verdict |
 |---|---|---|---|---|
-| 1 | `MapMerge`: simplify the NullRegion, assuming a changed pointer means something happened | nullregion.c:338-460 | simplify.rs:1288-1297 | ported |
-| 2 | Replace it in the list with the new Region, marking it forward | nullregion.c:461-480 | simplify.rs:1294-1295 | ported |
-| 3 | Otherwise merge with a neighbouring Region, in parallel only | nullregion.c:481-520 | simplify.rs:1299-1301 | ported |
-| 4 | Try the lower neighbour, then the upper | nullregion.c:521-545 | simplify.rs:1302-1326 | ported |
-| 5 | On success replace the pair, close the gap, and return the first index | nullregion.c:546-565 | simplify.rs:1327-1341 | ported |
-| 6 | Return the result | nullregion.c:566-568 | simplify.rs:1345 | ported |
+| 1 | `MapMerge`: simplify the NullRegion, assuming a changed pointer means something happened | nullregion.c:338-460 | mappings/simplify.rs:1288-1297 | ported |
+| 2 | Replace it in the list with the new Region, marking it forward | nullregion.c:461-480 | mappings/simplify.rs:1294-1295 | ported |
+| 3 | Otherwise merge with a neighbouring Region, in parallel only | nullregion.c:481-520 | mappings/simplify.rs:1299-1301 | ported |
+| 4 | Try the lower neighbour, then the upper | nullregion.c:521-545 | mappings/simplify.rs:1302-1326 | ported |
+| 5 | On success replace the pair, close the gap, and return the first index | nullregion.c:546-565 | mappings/simplify.rs:1327-1341 | ported |
+| 6 | Return the result | nullregion.c:566-568 | mappings/simplify.rs:1345 | ported |
 | 7 | `Simplify`: initialise the returned pointer | nullregion.c:1365-1366 | -- | n/a: the Rust returns `AstResult<DynMapping>` |
 | 8 | Check the global error status and bail out | nullregion.c:1368-1369 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 9 | Get a pointer to the supplied Region structure | nullregion.c:1371-1373 | -- | n/a: the Rust method already has `&self` |
