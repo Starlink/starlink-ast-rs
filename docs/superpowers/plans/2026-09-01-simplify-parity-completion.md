@@ -8197,7 +8197,7 @@ The work per file is the same four operations, and each task carries them in ful
   - `pub fn resolve_source(root: &std::path::Path, file: &str) -> Resolution` — the single derivation both the tool and the gate call, matching a citation's name as a **path suffix** so `regions/mod.rs` is exact and a bare `mod.rs` is ambiguous.
   - Twelve checklists carrying both markers, which Tasks 28 and 29 do not re-touch.
 
-- [ ] **Step 1: Measure the ambiguity, so the fix has a number**
+- [x] **Step 1: Measure the ambiguity, so the fix has a number**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -8210,7 +8210,7 @@ done
 Expected: `mod.rs -> 13`, `pointlist.rs -> 2`, `simplify.rs -> 2`.
 `path.rs` may also appear; it occurs only in `README.md`'s column description, which `checklists()` excludes.
 
-- [ ] **Step 2: Write the failing test for a path-qualified stem**
+- [x] **Step 2: Write the failing test for a path-qualified stem**
 
 Append inside `crates/audit-tools/src/lib.rs`'s `mod tests`:
 
@@ -8229,7 +8229,7 @@ Append inside `crates/audit-tools/src/lib.rs`'s `mod tests`:
     }
 ```
 
-- [ ] **Step 3: Run it and watch it fail**
+- [x] **Step 3: Run it and watch it fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -8239,7 +8239,7 @@ cargo test -p audit-tools keeps_a_directory 2>&1 | tail -12
 Expected: FAIL — `assertion `left == right` failed: left: "mod.rs", right: "regions/mod.rs"`.
 The stem scan stops at the `/`.
 
-- [ ] **Step 4: Accept `/` in the stem**
+- [x] **Step 4: Accept `/` in the stem**
 
 In `crates/audit-tools/src/lib.rs`, `parse_citation`'s stem scan takes one more character class:
 
@@ -8264,7 +8264,7 @@ cargo test -p audit-tools 2>&1 | tail -8
 
 Expected: PASS, including `parses_all_three_citation_forms`, which uses bare names and is unaffected.
 
-- [ ] **Step 5: Write the failing test for unique resolution**
+- [x] **Step 5: Write the failing test for unique resolution**
 
 The resolver needs the tree, so its test lives with the gate. Append to `crates/ast-core/tests/test_audit_citations.rs`:
 
@@ -8318,7 +8318,7 @@ cargo test -p ast-core --test test_audit_citations resolution_is_by 2>&1 | tail 
 
 Expected: FAIL — `could not find `resolve_source` in `audit_tools``.
 
-- [ ] **Step 6: Implement the shared resolver**
+- [x] **Step 6: Implement the shared resolver**
 
 Add to `crates/audit-tools/src/lib.rs`:
 
@@ -8398,7 +8398,7 @@ cargo test -p ast-core --test test_audit_citations resolution_is_by 2>&1 | tail 
 
 Expected: PASS.
 
-- [ ] **Step 7: Route both callers through it**
+- [x] **Step 7: Route both callers through it**
 
 Delete the private `resolve` from `crates/ast-core/tests/test_audit_citations.rs` and from `crates/audit-tools/src/bin/anchor-citations.rs`, and call the library in both.
 In the gate, the two existing uses become:
@@ -8478,7 +8478,7 @@ cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
 Expected: FAIL on `sphmap.md` and `region_polygon.md` if either cites a bare `simplify.rs`, PASS otherwise.
 `region_polygon.md` cites `polygon.rs` and `sphmap.md` cites `sphmap.rs` and `simplify.rs`; fix whatever it names in the next step's rewrite and re-run.
 
-- [ ] **Step 8: Qualify every ambiguous citation, in all 37 files**
+- [x] **Step 8: Qualify every ambiguous citation, in all 37 files**
 
 Two names, mechanically: all 259 `simplify.rs` citations are the mappings one — the checklists' own prose says so, `units/simplify.rs` is a unit-string simplifier no seam cites — and all 11 `pointlist.rs` citations are in `region_pointlist.md`.
 
@@ -8516,7 +8516,7 @@ cargo test -p ast-core --test test_audit_citations 2>&1 | tail -12
 
 Expected: PASS. Only the two Phase 0 files are checked, and both now resolve uniquely.
 
-- [ ] **Step 9: Anchor the twelve composition checklists**
+- [x] **Step 9: Anchor the twelve composition checklists**
 
 These twelve are the classes whose seam bodies compose, condense or swap Mappings: `CmpMap`, `WinMap`, `PermMap`, `MatrixMap`, `ZoomMap`, `ShiftMap`, `UnitMap`, `TranMap`, `SwitchMap`, `SelectorMap`, `RateMap` and `NormMap` — 339 rows, 324 Rust citations, 377 C citations.
 
@@ -8540,7 +8540,7 @@ Do not remap mechanically; §9.5 records that a `difflib`-based remap relocated 
 
 The header of each file also states the pin it was audited against — `3cf4bc5c` for these twelve. Leave the `Audited:` line as the historical record and add the new marker beneath it; the marker is the claim about *now*.
 
-- [ ] **Step 10: Add the extension-point column**
+- [x] **Step 10: Add the extension-point column**
 
 The classification is the H1 test — does a generic driver in another file dispatch to this step through the vtab? — and after anchoring, each row's C site names its enclosing C function, so the answer is derivable rather than a matter of opinion:
 
@@ -8605,7 +8605,7 @@ cargo run -p audit-tools --bin anchor-citations -- \
 
 Reading one file back through the tool without `--write` is a cheap check that the table still parses as a table after the column insert.
 
-- [ ] **Step 11: Point the verdict reader at the last cell, not the fifth**
+- [x] **Step 11: Point the verdict reader at the last cell, not the fifth**
 
 `verdicts()` in `crates/ast-core/tests/test_mapmerge_audit.rs:139-155` reads
 `cells[4]`, so a six-column row hands it the new extension-point cell and every
@@ -8645,7 +8645,7 @@ cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -12
 Expected: PASS. Run this before adding the markers — the verdict gates are not
 marker-gated, so they see the twelve rewritten files immediately.
 
-- [ ] **Step 12: Answer the C-step coverage gate**
+- [x] **Step 12: Answer the C-step coverage gate**
 
 Add both markers to each of the twelve headers, immediately after the `Audited:` lines:
 
@@ -8667,7 +8667,7 @@ Four gates now run on twelve more files, and each failure has one correct respon
 
 Work file by file and re-run. Do not widen a gate to close a file.
 
-- [ ] **Step 13: Drop the ledger count by twelve**
+- [x] **Step 13: Drop the ledger count by twelve**
 
 In `crates/ast-core/tests/test_verification_ledger.rs`, the `CHECKLISTS_UNREPAIRED` row goes from 35 to 23:
 
@@ -8697,7 +8697,7 @@ p.write_text(t.replace(old, new, 1))
 PY
 ```
 
-- [ ] **Step 14: Run the full gate, format, lint, commit**
+- [x] **Step 14: Run the full gate, format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -8749,7 +8749,7 @@ Two rows in this group are not a citation exercise:
 - Consumes: `audit_tools::{parse_citation, resolve_source, Resolution, enclosing_rust_item, enclosing_c_function, enclosing_rust_impl, c_step_comments}`; the `anchor-citations` binary; both header markers.
 - Produces: thirteen checklists carrying both markers. Nothing consumes them but the gates.
 
-- [ ] **Step 1: Anchor all thirteen**
+- [x] **Step 1: Anchor all thirteen**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -8769,7 +8769,7 @@ git diff --stat docs/audits/mapmerge/
 Re-anchor by hand every citation the tool reported, reading the construct the row's `C step` cell names.
 `slamap.md` and `specmap.md` are the two largest and cite long conversion tables; a row that cites a table entry rather than a function body is one the tool cannot anchor, and its correct citation is the function that consumes the table.
 
-- [ ] **Step 2: Add the extension-point column**
+- [x] **Step 2: Add the extension-point column**
 
 ```bash
 python3 - <<'PY'
@@ -8820,7 +8820,7 @@ The recurring hand corrections in this group:
 - `PolyMap` and `ChebyMap` rows citing the iterative-inverse machinery: `architecture`, because `Transform` is a vtab slot the generic transform driver dispatches to.
 - `LutMap` row 24 and any other clear-on-set row: `ceremony`, per `CLAUDE.md` on attribute string dispatch.
 
-- [ ] **Step 3: Close `lutmap.md`'s gap row**
+- [x] **Step 3: Close `lutmap.md`'s gap row**
 
 Cluster 5's Task 23 added the setter. The row becomes:
 
@@ -8834,7 +8834,7 @@ Check the cited Rust line against the setter cluster 5 actually landed before wr
 grep -n 'fn set_lut_epsilon\|fn set_lut_interp\|fn clear_lut' crates/ast-core/src/mappings/lutmap.rs
 ```
 
-- [ ] **Step 4: Record ChebyMap's deferral in its front matter**
+- [x] **Step 4: Record ChebyMap's deferral in its front matter**
 
 `chebymap.md` keeps its three `divergence:` rows, and its header states why the file is repaired while the class's simplification is not:
 
@@ -8848,7 +8848,7 @@ reproduce the defect. The reduction is marked in
 
 The marker on this file therefore claims the citations and classifications are right, which is all it claims.
 
-- [ ] **Step 5: Add both markers and answer the gates**
+- [x] **Step 5: Add both markers and answer the gates**
 
 Add to each of the thirteen headers, after the `Audited:` lines:
 
@@ -8864,7 +8864,7 @@ cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateB.txt | t
 Fix each failure at the row it names — re-anchor a rotted citation, correct a misclassified row, add a missing row for an uncovered C step, or list the step under `Uncited C steps:` with a reason.
 Re-run until PASS.
 
-- [ ] **Step 6: Drop the ledger count to ten**
+- [x] **Step 6: Drop the ledger count to ten**
 
 ```rust
     (
@@ -8890,7 +8890,7 @@ p.write_text(t.replace(old, new, 1))
 PY
 ```
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -8951,7 +8951,7 @@ A skip mode that reads zero is one nobody has to argue about; left in place it i
   - A `simplify_regression` with no unasserted skip mode.
   - Nothing consumes these; they are terminal gates.
 
-- [ ] **Step 1: Anchor all ten**
+- [x] **Step 1: Anchor all ten**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -8972,7 +8972,7 @@ Clusters 1 and 3 moved code in `regions/mod.rs`, `regions/box_region.rs` and `re
 `region_mod.md`'s rows are the shared parent `Region::Simplify`, and many per-class rows in the other nine legitimately cite `regions/mod.rs` too, because that is where the step lives in Rust.
 Cite the shared function; the verdict stays `ported`, since the step is present, just not duplicated per class.
 
-- [ ] **Step 2: Add the extension-point column**
+- [x] **Step 2: Add the extension-point column**
 
 ```bash
 python3 - <<'PY'
@@ -9024,7 +9024,7 @@ The Region seams are where the H1 test earns its keep, so expect to correct thes
 - `frame_frameset.md`'s `SubFrame`, `Overlay` and `Match` rows are `architecture` for the same reason.
 - Rows describing the `Closed` / `Negated` boundary rule are `architecture`: the rule lives in `reg_base_inside`, which the mesh and pin seams both consult.
 
-- [ ] **Step 3: Add both markers to the ten and run the gates**
+- [x] **Step 3: Add both markers to the ten and run the gates**
 
 Add after each `Audited:` line:
 
@@ -9041,7 +9041,7 @@ All four gates now run on all 37 files.
 Fix each reported row where it is reported; add an `Uncited C steps:` entry with a reason for any comment that is not a step.
 Re-run until PASS.
 
-- [ ] **Step 4: Write the failing gate that makes the markers mandatory**
+- [x] **Step 4: Write the failing gate that makes the markers mandatory**
 
 Append to `crates/ast-core/tests/test_audit_citations.rs`:
 
@@ -9115,7 +9115,7 @@ If `no_row_is_left_at_gap` fails on `lutmap.md`, Task 28's Step 3 was skipped; d
 The one `gap` left in the audit machinery is not a checklist row: `C_SIMPLIFY_SEAMS` in `test_mapmerge_audit.rs` maps `cmpframe.c` to `gap: PLAN.md §9.6`, and cluster 4's Task 30 is what settles it.
 `verdict_is_valid` therefore still accepts the `gap: PLAN.md ` form; leave it accepting, because removing it here would make Task 30's starting state uncompilable.
 
-- [ ] **Step 5: Remove the ledger row**
+- [x] **Step 5: Remove the ledger row**
 
 Delete the `CHECKLISTS_UNREPAIRED` entry from `LEDGER` in `crates/ast-core/tests/test_verification_ledger.rs`.
 The marker is not one of `MARKERS`, so `no_relaxation_hides_outside_the_ledger` does not require an entry for it — the row existed to keep a count visible while it was nonzero, and a zero row invites the reading that something is still licensed.
@@ -9148,7 +9148,7 @@ cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -8
 
 Expected: PASS. `every_relaxation_is_the_size_the_ledger_says` iterates `LEDGER`, so a removed row is simply not checked, and the new gate in Step 4 is what holds the invariant now.
 
-- [ ] **Step 6: Write the failing assertions for the three skip modes**
+- [x] **Step 6: Write the failing assertions for the three skip modes**
 
 `test_simplify_regression` currently reports its skips and passes regardless.
 Add the assertions at the end of `simplify_regression`, replacing the lone `assert!(passed > 0, …)` floor:
@@ -9188,7 +9188,7 @@ And the missing-manifest early return at `:178-181` becomes an assertion:
     );
 ```
 
-- [ ] **Step 7: Prove each assertion can fail**
+- [x] **Step 7: Prove each assertion can fail**
 
 An assertion that cannot fail is the thing it replaced. Check all three by hand, reverting each after:
 
@@ -9221,7 +9221,7 @@ If case 3 produces a *parse* count of zero and a failure instead, the reader cla
 
 The two remaining named exclusions in this harness, `SERIAL_UNGATED` (6 rows) and `NO_ISSIMP_CARD_UNGATED` (1), stay as they are: they are named, per-case, and counted in the ledger, which is the shape the rules ask for.
 
-- [ ] **Step 8: Close `PLAN.md` §9.5**
+- [x] **Step 8: Close `PLAN.md` §9.5**
 
 The section exists because 255 of 257 `simplify.rs` citations had rotted and no gate said so. All 37 checklists are now anchored against pin `3e60abaa` and four gates hold it.
 Replace §9.5's body with its resolution, keeping the warning that made it expensive, because the next pin move will need it:
@@ -9252,7 +9252,7 @@ marker lines in the same commit range, so a checklist never claims a pin it was
 not checked against.
 ```
 
-- [ ] **Step 9: Run everything the sweep touches, format, lint, commit**
+- [x] **Step 9: Run everything the sweep touches, format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -9298,7 +9298,7 @@ Co-Authored-By: SLAC AI
 MSG
 ```
 
-- [ ] **Step 10: Confirm the sweep is complete**
+- [x] **Step 10: Confirm the sweep is complete**
 
 ```bash
 grep -L 'Citations: verified against pin 3e60abaa' docs/audits/mapmerge/*.md
@@ -9348,7 +9348,7 @@ If the answer is "no use case", the exclusion stays and carries that answer as i
   - `fn frame_in_a_map_slot_is_rejected()` and `fn the_settled_region_nestings_still_read()`.
   - The seam-coverage form `undecided: <issue path>`, replacing `gap: PLAN.md §9.6` for `cmpframe.c`.
 
-- [ ] **Step 1: Write the probe**
+- [x] **Step 1: Write the probe**
 
 `tools/oracle_fixtures/frame_in_map_slot_probe.c`:
 
@@ -9403,7 +9403,7 @@ int main(void) {
 }
 ```
 
-- [ ] **Step 2: Register it and build it against the repo's own libast**
+- [x] **Step 2: Register it and build it against the repo's own libast**
 
 Add `frame_in_map_slot_probe` to `PROGS` in `tools/oracle_fixtures/Makefile`, keeping the existing continuation style:
 
@@ -9421,7 +9421,7 @@ ldd frame_in_map_slot_probe | grep -i ast
 
 `ldd` must name the repo build. If it names a conda `libast.so`, the RPATH trap has bitten and the numbers would come from AST 9.3.1 — the Makefile's link line already carries `-Wl,-rpath,$PWD/build -Wl,--disable-new-dtags`, so check the build directory rather than working around it.
 
-- [ ] **Step 3: Run it and confirm C accepts the construct**
+- [x] **Step 3: Run it and confirm C accepts the construct**
 
 ```bash
 ./frame_in_map_slot_probe
@@ -9432,7 +9432,7 @@ grep -n 'Begin CmpFrame\|^ *Map[12] =' frame_in_map_slot.ast | head
 Expected: `nframe=3  (1,2) -> (2,4)` — the ZoomMap doubles and the CmpFrame passes through — and a dump whose `Map2` value is `Begin CmpFrame`.
 If C rejects the construct instead, this whole cluster is void: stop, and report that, because the question then answers itself.
 
-- [ ] **Step 4: Commit the fixture where tier 1 can read it**
+- [x] **Step 4: Commit the fixture where tier 1 can read it**
 
 ```bash
 cp frame_in_map_slot.ast \
@@ -9444,7 +9444,7 @@ grep -c . crates/ast-core/tests/fixtures/frame_in_map_slot.ast
 This is a reference product: written by the C oracle, never hand-edited.
 It is committed rather than symlinked, so tier 1 reads it with the submodule absent.
 
-- [ ] **Step 5: Write the test that pins the refusal**
+- [x] **Step 5: Write the test that pins the refusal**
 
 `crates/ast-core/tests/test_frame_in_map_slot.rs`:
 
@@ -9567,7 +9567,7 @@ fn the_settled_region_nestings_still_read() {
 }
 ```
 
-- [ ] **Step 6: Run it and read the error the reader actually gives**
+- [x] **Step 6: Run it and read the error the reader actually gives**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -9588,7 +9588,7 @@ grep -n 'Channel::new()\|fn read' crates/ast-core/tests/test_native_roundtrip_al
 
 The counts in the control are the ones §4.2 measured; if the floors fail, print the two totals and check the corpus rather than adjusting the floors to fit.
 
-- [ ] **Step 7: Write the question to the maintainers**
+- [x] **Step 7: Write the question to the maintainers**
 
 `docs/issues/frame-in-a-mapping-slot.md`:
 
@@ -9676,7 +9676,7 @@ of the evidence for the second reading, which is why the question goes to the
 team rather than being answered here.
 ```
 
-- [ ] **Step 8: Replace the seam's `gap:` coverage with `undecided:`**
+- [x] **Step 8: Replace the seam's `gap:` coverage with `undecided:`**
 
 `cmpframe.c` is the audit's last `gap:`.
 It cannot become a checklist: `audit_universe()` derives the universe from Rust modules containing `fn simplified`, and `no_checklist_is_orphaned` rejects a checklist no module claims — `frames/cmpframe.rs` has no `fn simplified` precisely because CmpFrame is not a Mapping here, which is the open question rather than an oversight.
@@ -9723,7 +9723,7 @@ Then in `every_c_simplify_seam_is_covered`, replace the `gap: PLAN.md ` arm:
 
 Removing the `gap:` arm means a seam recorded as a gap in future falls through to the final branch and fails as a missing checklist, which is the ratchet: recording a new gap now takes a deliberate change to this file.
 
-- [ ] **Step 9: Retire the two verdict forms nothing uses**
+- [x] **Step 9: Retire the two verdict forms nothing uses**
 
 `verdict_is_valid`'s `gap: PLAN.md ` arm has no row left after Task 28, and Task 29's `no_row_is_left_at_gap` is what holds that.
 Remove the arm, and delete `every_gap_verdict_names_a_real_plan_section` (`:212`), which it existed to serve:
@@ -9764,7 +9764,7 @@ Add the amendment to the spec's revision history in the same edit, since that is
 | 2 | 2026-09-01 | Cluster 4 implemented. The `unreachable: <gate>` verdict form of §3.4 is withdrawn unused: the rows it was reserved for cannot exist while `CmpFrame` has no simplify seam in Rust, so the seam-coverage form `undecided: <issue path>` carries the open state, and the question is written up in `docs/issues/frame-in-a-mapping-slot.md`. |
 ```
 
-- [ ] **Step 10: Count the exclusion in the ledger**
+- [x] **Step 10: Count the exclusion in the ledger**
 
 In `crates/ast-core/tests/test_verification_ledger.rs`, add `"_UNDECIDED"` to `MARKERS` and the row:
 
@@ -9791,7 +9791,7 @@ cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -10
 
 Expected: PASS. If `no_relaxation_hides_outside_the_ledger` reports the new marker, the `MARKERS` addition is missing; if `every_relaxation_is_the_size_the_ledger_says` reports a count of 1 vs 0, `count_entries` is not counting a two-field tuple — check how it counts rather than changing the constant's shape.
 
-- [ ] **Step 11: Rewrite `PLAN.md` §9.6**
+- [x] **Step 11: Rewrite `PLAN.md` §9.6**
 
 §9.6 was the gap section this seam pointed at. It becomes the open question, with the pointer to the write-up and the artifact:
 
@@ -9821,7 +9821,7 @@ wholesale.
 `FRAME_IN_MAP_SLOT_UNDECIDED` counts the one fixture in §6.
 ```
 
-- [ ] **Step 12: Run every gate this touched, format, lint, commit**
+- [x] **Step 12: Run every gate this touched, format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
