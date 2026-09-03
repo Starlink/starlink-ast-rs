@@ -135,19 +135,19 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
     ),
 ];
 
-/// Reference values captured on another machine, whose local recapture from the
-/// pinned C differs by more than the 4-ulp token tolerance.
+/// Reference values whose recapture from the pinned C on another platform
+/// differs by more than the 4-ulp token tolerance.
 ///
 /// `tools/oracle_fixtures/check_simplify_fresh.sh` classifies these as numeric
-/// drift, and the corpus-freshness rule keeps them: regenerating one here would
-/// replace a cross-platform reference with this machine's libm. So the byte
-/// comparison drops exactly the named card, on exactly the named fixture,
-/// carrying exactly the named value, and only while the two named values are
-/// closer together than the entry's bound.
+/// drift, and the corpus-freshness rule keeps them: regenerating one on the
+/// host that reports the drift would replace a cross-platform reference with
+/// that host's libm. So the byte comparison drops exactly the named card, on
+/// exactly the named fixture, and only while the reference and the port's own
+/// value are closer together than the entry's bound.
 ///
-/// An entry is admissible only when the port reproduces this machine's C
+/// An entry is admissible only when the port reproduces its own host's C
 /// capture on that card to the last digit — which is what makes the difference
-/// the reference's platform and not the port's arithmetic. Three shapes qualify:
+/// a platform's libm and not the port's arithmetic. Three shapes qualify:
 ///
 /// - **Cancellation residue.** `rigby`'s `IM5` is a matrix element near zero
 ///   whose row-mates are of order one, so its value is the residue of a
@@ -155,9 +155,9 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 /// - **A trailing-figure spread the reference does not reproduce.**
 ///   `cap_interval_01`'s `X5` and `X6` are the two sky half-widths of the
 ///   default uncertainty Box, agreeing with the reference to twelve significant
-///   figures. They are nominally equal, and this machine's C makes them equal
-///   to the last bit; the reference has them differing from *each other*, which
-///   is that platform's transformation of the same two widths.
+///   figures. They are nominally equal, and C on x86-64 makes them equal to the
+///   last bit; the reference has them differing from *each other*, which is
+///   arm64's transformation of the same two widths.
 /// - **A geodesic round trip.** `cap_pointlist_01`'s `X5` and `X6` are the sky
 ///   half of the merged uncertainty Box's corner, which `astSetUnc` regenerates
 ///   by re-centring the Box and re-offsetting the corner through a
@@ -165,12 +165,19 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 ///   The `atan2`/`asin` pair in that round trip is where the two platforms'
 ///   libm parts company, twelve significant figures in.
 ///
-/// Naming both values is what keeps the licence from spreading: `rigby` has a
-/// second `IM5` card, holding an exact zero, that the same card name would also
-/// have covered.
+/// The bound is what keeps the licence from spreading: `rigby` has a second
+/// `IM5` card, holding an exact zero, that the same card name would otherwise
+/// also have covered, and the bound is far tighter than the gap between the two.
 ///
-/// `(fixture, card name, value in the reference, value this machine produces,
-/// bound on the difference between the two)`.
+/// The reference value is matched byte for byte, because the corpus is fixed
+/// bytes. The port's value is matched numerically, within the bound, because
+/// the port's is whatever the host's libm gives: the corpus was captured on
+/// arm64 macOS, so a build there reproduces the reference exactly while an
+/// x86-64 build lands the recorded distance away. Pinning the port's side to
+/// one host's digits would make the licence fire on that host alone.
+///
+/// `(fixture, card name, value in the reference, value an x86-64 Linux build
+/// produces, bound on the difference between the reference and the port)`.
 const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, &str, &str, f64)] = &[
     (
         "rigby",
@@ -218,11 +225,13 @@ fn card_value<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
 
 /// Drop the lines one `NUMERIC_PLATFORM_DRIFT` entry licenses, from both sides.
 ///
-/// A line is dropped only when its card name matches the entry, its value is
-/// written exactly as the entry records it for that side, and that value parses
-/// below the entry's bound in absolute value. Exactly one line must be dropped
-/// from each side; any other count is returned as a failure, so the licence
-/// cannot widen to cover a card that grew, moved or multiplied.
+/// A reference line is dropped only when its card name matches the entry and it
+/// carries the value the entry records, written exactly as the corpus writes
+/// it. The port's line is dropped only when its card name matches and its value
+/// sits within the entry's bound of the reference's, since which digits the port
+/// produces is the host's libm's business. Exactly one line must be dropped from
+/// each side; any other count is returned as a failure, so the licence cannot
+/// widen to cover a card that grew, moved or multiplied.
 fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
     let mut problems = Vec::new();
     let mut got = got.to_string();
@@ -246,18 +255,37 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
         }
 
         let prefix = format!("{card} =");
-        for (side, expected, text) in [
-            ("got", local_value, &mut got),
-            ("want", ref_value, &mut want),
+        let reference: Option<f64> = ref_value.parse().ok();
+        // The reference is fixed bytes, so it is matched as written. The port's
+        // value is whatever this host's libm gives, so it is matched by
+        // distance from the reference instead.
+        let want_residue =
+            |line: &str| -> bool { card_value(line, &prefix).is_some_and(|v| v == *ref_value) };
+        let got_residue = |line: &str| -> bool {
+            match (
+                card_value(line, &prefix).and_then(|v| v.parse::<f64>().ok()),
+                reference,
+            ) {
+                (Some(v), Some(r)) => (v - r).abs() < *bound,
+                _ => false,
+            }
+        };
+        for (side, matches, text) in [
+            ("got", &got_residue as &dyn Fn(&str) -> bool, &mut got),
+            ("want", &want_residue as &dyn Fn(&str) -> bool, &mut want),
         ] {
-            let residue =
-                |line: &str| -> bool { card_value(line, &prefix).is_some_and(|v| v == *expected) };
-            let kept: Vec<&str> = text.lines().filter(|l| !residue(l)).collect();
+            let kept: Vec<&str> = text.lines().filter(|l| !matches(l)).collect();
             let dropped = text.lines().count() - kept.len();
             if dropped != 1 {
+                let seen: Vec<&str> = text
+                    .lines()
+                    .filter_map(|l| card_value(l, &prefix))
+                    .collect();
                 problems.push(format!(
-                    "{name}: NUMERIC_PLATFORM_DRIFT licenses one {card} = {expected}, \
-                     but dropped {dropped} from the {side} side"
+                    "{name}: NUMERIC_PLATFORM_DRIFT licenses one {card} within \
+                     {bound:e} of {ref_value}, but dropped {dropped} from the \
+                     {side} side, which carries [{}]",
+                    seen.join(", ")
                 ));
             }
             *text = kept.join("\n");
@@ -265,6 +293,39 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
     }
 
     (got, want, problems)
+}
+
+/// The licence must hold on any host, including the arm64 one the corpus was
+/// captured on, where the port reproduces the reference to the last digit.
+///
+/// `rigby`'s second `IM5` card, an exact zero, stands in for what the bound has
+/// to keep out: a card-name-only rule would consume it too.
+#[test]
+fn drift_licence_fires_wherever_the_port_lands_inside_the_bound() {
+    let want = "IM5 = 0\nIM5 = -5.9658198263111446e-17\nIM6 = 1";
+    for local in ["-5.9658198263111446e-17", "-5.8980598183211441e-17"] {
+        let got = format!("IM5 = 0\nIM5 = {local}\nIM6 = 1");
+        let (g, w, problems) = drop_licensed_residue("rigby", &got, want);
+        assert!(problems.is_empty(), "{local}: {problems:?}");
+        assert_eq!(g, w, "{local}: the two sides must be left identical");
+        assert!(
+            g.contains("IM5 = 0"),
+            "{local}: the exact zero must survive"
+        );
+    }
+}
+
+/// And it must lapse outside the bound, rather than absorbing the difference.
+#[test]
+fn drift_licence_lapses_outside_the_bound() {
+    let want = "IM5 = 0\nIM5 = -5.9658198263111446e-17\nIM6 = 1";
+    let got = "IM5 = 0\nIM5 = -6.5e-17\nIM6 = 1";
+    let (_, _, problems) = drop_licensed_residue("rigby", got, want);
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(
+        problems[0].contains("dropped 0 from the got side"),
+        "{problems:?}"
+    );
 }
 
 /// Consume the lines the two aliasing licences allow, walking both dumps in step.

@@ -124,12 +124,13 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "one inverse-matrix element of `rigby`, the two sky half-widths of \
          `cap_interval_01`'s uncertainty Box, and the two sky coordinates of \
          `cap_pointlist_01`'s re-centred uncertainty corner, whose references \
-         were captured on another platform's libm: the pinned C does not \
-         reproduce their values here either, the port reproduces this \
-         machine's capture to the last digit, and the corpus-freshness rule \
-         keeps a cross-platform reference rather than replacing it with this \
-         machine's. Each entry names both values and bounds their difference, \
-         so each licence covers one line on one fixture",
+         were captured on arm64: an x86-64 build of the pinned C does not \
+         reproduce their values, the port reproduces its own host's capture to \
+         the last digit, and the corpus-freshness rule keeps a cross-platform \
+         reference rather than replacing it. Each entry names the reference's \
+         value exactly and bounds how far the port's own value may sit from \
+         it, so each licence covers one line on one fixture on whichever host \
+         builds it",
     ),
     (
         "test_simplify_regression.rs",

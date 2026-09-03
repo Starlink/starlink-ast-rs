@@ -35,7 +35,10 @@ jobs:
         run: cargo build --workspace
 
       - name: Test
-        run: cargo test -p ast-core
+        # --no-fail-fast so one run reports every failing test binary: a
+        # platform-specific failure in an early binary would otherwise hide
+        # whatever the later ones would have said on that platform.
+        run: cargo test -p ast-core --no-fail-fast
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
