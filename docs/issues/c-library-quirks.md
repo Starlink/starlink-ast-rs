@@ -2786,3 +2786,52 @@ this is fixed upstream, and the arithmetic becomes `1.0 / zm.zoom()` for an
 inverted neighbour.
 
 To be raised upstream.
+
+## `PolyMap`'s `Equal` never compares the inverse coefficients
+
+**Status:** Confirmed against the C source at pin `3e60abaa`, and against the
+built oracle.
+**Mirrored in Rust**, with a flag to revisit — see below.
+
+`polymap.c::Equal` compares the two PolyMaps' forward transformations and then
+their inverse ones (`polymap.c:708-804`).
+The forward half compares four properties: the per-axis coefficient counts
+`ncoeff_f`, the per-axis maximum powers `mxpow_f`, the coefficient values
+`coeff_f`, and the power patterns `power_f`.
+The inverse half compares `ncoeff_i` and `mxpow_i` (`polymap.c:758-776`) and then
+compares `coeff_f` and `power_f` a second time (`polymap.c:778-804`) where it
+means `coeff_i` and `power_i`.
+
+The two repeated blocks are byte-for-byte copies of the forward ones, indices
+included, so they can only ever agree with the comparison already made.
+The inverse coefficient *values* and power patterns therefore never enter the
+result: two PolyMaps agreeing on their forward transformations and on the shape
+of their inverses — how many inverse coefficients each axis has, and the largest
+power each input is raised to — compare equal however far apart their inverse
+coefficients are.
+
+The consequence reaches `MapMerge`. Its neighbour half forces both PolyMaps'
+`Invert` flags to the direction the merge list applies to the nominated one and
+then calls `astEqual` (`polymap.c:3888-3920`); a pair that compares equal in
+opposite directions is replaced by a UnitMap.
+So a PolyMap and its neighbour cancel to a UnitMap even when their inverse
+transformations are different polynomials, and the composition the list held is
+not the one that comes out.
+
+Confirmed with the oracle: a forward `y = 2x` paired with its inverse-direction
+neighbour, one carrying the inverse `x = 0.5 y` and the other `x = 0.7 y`,
+simplifies to `Begin UnitMap`.
+
+**Rust behaviour (mirrored):** `PolyMap::equal`
+(`crates/ast-core/src/mappings/polymap.rs:1624-1636`) compares the forward terms
+in full and the inverse terms only through `inverse_shape`
+(`crates/ast-core/src/mappings/polymap.rs:90-101`), which reduces a term list to
+C's `ncoeff_i` and `mxpow_i`.
+Comparing the inverse coefficients as well would make the port refuse a
+cancellation the oracle performs, so the mirror is deliberate;
+`polymap_cancels_when_only_inverse_coefficient_values_differ` in
+`crates/ast-core/tests/test_polymap.rs` pins it.
+Revisit when this is fixed upstream, at which point the inverse terms compare
+the same way the forward ones do.
+
+To be raised upstream.

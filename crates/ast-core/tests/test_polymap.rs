@@ -1216,3 +1216,120 @@ fn iter_inverse_takes_priority_over_explicit_inverse_coefficients() {
         out.point(0)[0]
     );
 }
+
+// ---------------------------------------------------------------------------
+// The two reductions C runs at the head of `MapMerge`
+// ---------------------------------------------------------------------------
+
+fn term(coeff: f64, powers: &[usize], out_axis: usize) -> PolyTerm {
+    PolyTerm {
+        coeff,
+        powers: powers.to_vec(),
+        out_axis,
+    }
+}
+
+#[test]
+fn polymap_whose_terms_all_cancel_becomes_a_matrixmap() {
+    use ast_core::mappings::MatrixMap;
+
+    // Two constant terms that sum to zero. Consolidating them leaves the
+    // forward transformation with no coefficients, but it is still defined, so
+    // C's linear test runs and rebuilds the PolyMap out of a zero MatrixMap and
+    // a zero ShiftMap (polymap.c:3757).
+    let fwd = vec![term(1.0, &[0], 1), term(-1.0, &[0], 1)];
+    let pm = PolyMap::new(1, 1, &fwd, None).unwrap();
+
+    let s = <dyn Mapping>::simplify(&pm).unwrap();
+    assert!(
+        s.as_any().is::<MatrixMap>(),
+        "a PolyMap whose terms cancel is linear, so it reduces like any other \
+         linear PolyMap"
+    );
+}
+
+#[test]
+fn polymap_does_not_cancel_against_a_different_inverse() {
+    use ast_core::mappings::{CmpMap, Composition, UnitMap};
+
+    // Identical forward transformations, inverse ones with different coefficient
+    // counts. C forces both Invert flags to the list entry's direction and
+    // compares the pair with astEqual (polymap.c:3917-3920), whose PolyMap
+    // implementation tests the inverse coefficient counts (polymap.c:758-766),
+    // so the two do not cancel.
+    //
+    // The forward transformation has to be non-linear: C's linear half runs
+    // first, and it replaces a linear PolyMap with a MatrixMap and a ShiftMap
+    // built from the forward coefficients alone, discarding the inverse
+    // polynomial that distinguishes the pair.
+    let fwd = vec![term(2.0, &[2], 1)];
+    let a = PolyMap::new(1, 1, &fwd, Some(&[term(0.5, &[1], 1)])).unwrap();
+    let b = PolyMap::new(1, 1, &fwd, Some(&[term(0.5, &[1], 1), term(1.0, &[2], 1)])).unwrap();
+
+    let mut b_inv = b;
+    b_inv.invert();
+    let cm = CmpMap::new(Box::new(a), Box::new(b_inv), Composition::Series).unwrap();
+    let s = <dyn Mapping>::simplify(&cm).unwrap();
+    assert!(
+        !s.as_any().is::<UnitMap>(),
+        "PolyMaps whose inverse transformations have different coefficient \
+         counts are not equal, so the pair does not cancel"
+    );
+}
+
+#[test]
+fn polymap_cancels_when_only_inverse_coefficient_values_differ() {
+    use ast_core::mappings::{CmpMap, Composition, UnitMap};
+
+    // Identical forward transformations; inverse transformations with the same
+    // coefficient counts and maximum powers but different coefficient values.
+    // PolyMap's Equal compares the inverse coefficient counts and maximum powers
+    // and then compares the forward coefficients a second time in place of the
+    // inverse ones (polymap.c:778-804), so the values never enter the
+    // comparison and the pair cancels. See docs/issues/c-library-quirks.md.
+    let fwd = vec![term(2.0, &[2], 1)];
+    let a = PolyMap::new(1, 1, &fwd, Some(&[term(0.5, &[1], 1)])).unwrap();
+    let mut b = PolyMap::new(1, 1, &fwd, Some(&[term(0.7, &[1], 1)])).unwrap();
+    b.invert();
+
+    let cm = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+    let s = <dyn Mapping>::simplify(&cm).unwrap();
+    assert!(
+        s.as_any().is::<UnitMap>(),
+        "the two PolyMaps compare equal, so the opposed pair cancels"
+    );
+}
+
+#[test]
+fn ident_set_polymap_nominated_in_a_list_is_left_alone() {
+    use ast_core::mappings::{CmpMap, Composition, ZoomMap};
+    use ast_core::{AnyObject, to_native_string};
+
+    // Two cubic terms over the same powers would consolidate into one, but the
+    // PolyMap carries an Ident. C's MapMerge dispatcher returns without calling
+    // the class method at all in that case (mapping.c:24257), and the
+    // replace-with-simpler halves live inside the class method, so the
+    // coefficients survive as constructed even though the PolyMap is nominated
+    // inside a list rather than simplified on its own.
+    let fwd = vec![term(1.0, &[3], 1), term(2.0, &[3], 1)];
+    let mut pm = PolyMap::new(1, 1, &fwd, None).unwrap();
+    pm.set_ident("keepme");
+
+    let cm = CmpMap::new(
+        Box::new(pm),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let s = <dyn Mapping>::simplify(&cm).unwrap();
+
+    let text = to_native_string(&AnyObject::from_mapping(s.as_ref()).unwrap()).unwrap();
+    assert!(
+        text.contains("Ident = \"keepme\""),
+        "the Ident survives:\n{text}"
+    );
+    assert!(
+        text.contains("NCF1 = 2"),
+        "both cubic coefficients survive unconsolidated:\n{text}"
+    );
+}

@@ -82,6 +82,25 @@ fn compute_max_powers(terms: &[PolyTerm], nin: usize) -> Vec<usize> {
     max_pows
 }
 
+/// The per-axis coefficient counts and per-axis maximum powers of an inverse
+/// transformation: C's `ncoeff_i` and `mxpow_i`, the only inverse properties
+/// `PolyMap`'s `Equal` compares (`polymap.c:758-776`). An inverse term's
+/// `out_axis` indexes the forward inputs and its powers index the forward
+/// outputs, so the counts have length `nin` and the maxima length `nout`.
+fn inverse_shape(terms: &[PolyTerm], nin: usize, nout: usize) -> (Vec<usize>, Vec<usize>) {
+    let mut ncoeff = vec![0usize; nin];
+    let mut mxpow = vec![0usize; nout];
+    for term in terms {
+        if let Some(count) = ncoeff.get_mut(term.out_axis - 1) {
+            *count += 1;
+        }
+        for (max, &power) in mxpow.iter_mut().zip(&term.powers) {
+            *max = (*max).max(power);
+        }
+    }
+    (ncoeff, mxpow)
+}
+
 /// Group term indices by their output axis (0-based output index).
 fn compute_terms_by_output(terms: &[PolyTerm], nout: usize) -> Vec<Vec<usize>> {
     let mut by_output = vec![Vec::new(); nout];
@@ -816,19 +835,6 @@ impl PolyMap {
         Ok(())
     }
 
-    /// The two "replace with simpler" steps C runs at the head of
-    /// `polymap.c::MapMerge` (`polymap.c:3606-3871`), before it looks at any
-    /// neighbour: coefficients over the same combination of input powers are
-    /// combined, and a PolyMap whose remaining terms are all constant or
-    /// first-order is rebuilt out of a `MatrixMap` and a `ShiftMap`.
-    ///
-    /// Returns the replacement, or `None` when neither transformation changed.
-    ///
-    /// Everything here reads the transformation as *constructed*: C uses
-    /// `coeff_f` / `coeff_i` directly and takes the coordinate counts from
-    /// before any inversion (`polymap.c:3610-3618`, `:3757`), so the stored
-    /// `Invert` flag selects nothing and the caller keeps the list entry's
-    /// direction flag rather than folding it in.
     /// Combine coefficients that refer to the same combination of input powers,
     /// forward then inverse (`polymap.c:3624-3745`). `None` when neither
     /// direction changed, which is C leaving `result` at -1 for this half.
@@ -882,6 +888,19 @@ impl PolyMap {
         Some((consolidated, consolidated_inv))
     }
 
+    /// The two "replace with simpler" steps C runs at the head of
+    /// `polymap.c::MapMerge` (`polymap.c:3606-3871`), before it looks at any
+    /// neighbour: coefficients over the same combination of input powers are
+    /// combined, and a PolyMap whose remaining terms are all constant or
+    /// first-order is rebuilt out of a `MatrixMap` and a `ShiftMap`.
+    ///
+    /// Returns the replacement, or `None` when neither transformation changed.
+    ///
+    /// Everything here reads the transformation as *constructed*: C uses
+    /// `coeff_f` / `coeff_i` directly and takes the coordinate counts from
+    /// before any inversion (`polymap.c:3610-3618`, `:3757`), so the stored
+    /// `Invert` flag selects nothing and the caller keeps the list entry's
+    /// direction flag rather than folding it in.
     fn replace_with_simpler(&self) -> Option<DynMapping> {
         // C's consolidation half. When it changes nothing the linear test below
         // runs on the terms as stored, which is C reading `pmap0` when its
@@ -896,12 +915,16 @@ impl PolyMap {
         // Check if all remaining terms are affine (constant or linear).
         // A term is constant if sum of powers == 0, linear if sum == 1 with
         // exactly one power == 1. C tests only the constructed forward
-        // transformation, and only when nin == nout (`polymap.c:3757`).
+        // transformation, and its own guard is that the forward coefficients
+        // exist and the coordinate counts match (`polymap.c:3757`,
+        // `if( pmap0->ncoeff_f && nout == nin )`). An empty consolidated set is
+        // therefore still affine: a forward transformation whose coefficients
+        // all cancel is the zero matrix, which is what C builds from its
+        // zero-initialised workspace.
         let nin = self.nin;
         let nout = self.nout;
-        let is_affine = nin == nout
-            && !consolidated.is_empty()
-            && nin > 0
+        let is_affine = self.forward_defined()
+            && nin == nout
             && consolidated.iter().all(|t| {
                 let power_sum: usize = t.powers.iter().sum();
                 power_sum <= 1 && t.powers.iter().all(|&p| p <= 1)
@@ -1554,20 +1577,29 @@ impl Mapping for PolyMap {
             return None;
         }
         let other_poly = other.as_any().downcast_ref::<PolyMap>()?;
-        if self.nin == other_poly.nin
-            && self.nout == other_poly.nout
-            && self.forward.len() == other_poly.forward.len()
-            && self.forward.iter().zip(&other_poly.forward).all(|(a, b)| {
-                ast_equal(a.coeff, b.coeff) && a.powers == b.powers && a.out_axis == b.out_axis
-            })
-        {
-            // Input dimension of the pair depends on which direction
-            // self is being used in.
-            let pair_nin = if self_inv { self.nout } else { self.nin };
-            Some(Box::new(UnitMap::new(pair_nin)))
-        } else {
-            None
+
+        // C forces the stored `Invert` flag of both PolyMaps to the direction
+        // the list applies to the nominated one and then compares them with
+        // `astEqual` (`polymap.c:3888-3920`). `PolyMap`'s own `Equal` rejects a
+        // pair whose `Invert` flags differ (`polymap.c:806-812`), so the forcing
+        // is what lets two list entries pointing in opposite directions compare
+        // at all; what it then compares is each transformation as constructed.
+        let mut a = self.clone();
+        let mut b = other_poly.clone();
+        if a.inverted != self_inv {
+            a.invert();
         }
+        if b.inverted != self_inv {
+            b.invert();
+        }
+        if !a.equal(&b) {
+            return None;
+        }
+
+        // Input dimension of the pair depends on which direction
+        // self is being used in.
+        let pair_nin = if self_inv { self.nout } else { self.nin };
+        Some(Box::new(UnitMap::new(pair_nin)))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -1589,15 +1621,15 @@ impl Mapping for PolyMap {
                 return false;
             }
         }
-        // Compare inverse terms.
+        // Inverse transformation: C compares the per-axis coefficient counts and
+        // the per-axis maximum powers, and then compares the *forward*
+        // coefficients and powers a second time in place of the inverse ones
+        // (`polymap.c:758-804`), so the inverse coefficient values and power
+        // patterns never enter the comparison. Recorded in
+        // docs/issues/c-library-quirks.md.
         match (&self.inverse, &other.inverse) {
             (Some(a), Some(b)) => {
-                if a.len() != b.len() {
-                    return false;
-                }
-                a.iter().zip(b).all(|(x, y)| {
-                    ast_equal(x.coeff, y.coeff) && x.powers == y.powers && x.out_axis == y.out_axis
-                })
+                inverse_shape(a, self.nin, self.nout) == inverse_shape(b, other.nin, other.nout)
             }
             (None, None) => true,
             _ => false,

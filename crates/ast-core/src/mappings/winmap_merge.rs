@@ -843,7 +843,9 @@ fn swap_is_worthwhile(
         // Do the neighbours merge? Probe via a 2-element MergeCtx.
         let mut probe = MergeCtx::new(vec![(ma, ia, false), (mb, ib, false)]);
         let nominee = probe.entry(0).0.clone_box();
-        if nominee.map_merge(&mut probe, 0, series).is_some() && probe.len() < 2 {
+        if super::simplify::dispatch_map_merge(nominee.as_ref(), &mut probe, 0, series).is_some()
+            && probe.len() < 2
+        {
             return true;
         }
     }

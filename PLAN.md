@@ -1973,11 +1973,13 @@ exercise the mode as C's own callers do.
 
 ### 10.21 `astDoNotSimplify` and the Mapping-level `Ident` it reads — FIXED
 
-C gates simplification on a per-class protected method with two callers, both in
+C gates simplification on a per-class protected method with three callers, all in
 generic drivers.
 `astSimplify_` refuses to reach the `Simplify` slot when it returns non-zero
-(`mapping.c:24764`), and `astMapList` refuses to decompose a CmpMap when it does
-(`cmpmap.c:1154`), so a flagged Mapping is neither simplified nor taken apart.
+(`mapping.c:24764`), `astMapList` refuses to decompose a CmpMap when it does
+(`cmpmap.c:1154`), and `astMapMerge_` refuses to reach the `MapMerge` slot
+(`mapping.c:24257`), so a flagged Mapping is neither simplified, taken apart nor
+merged. The third site is §10.29.
 The base rule is "the `Ident` attribute is set" (`mapping.c:1107-1152`), on the
 reasoning that a user who named a Mapping wants it to survive intact.
 `Frame` overrides it to return zero always, so Frames are simplified despite a set
@@ -2276,3 +2278,48 @@ divergences in a class whose checklist had reported every row ported.
 `table_is_linear` (`lutmap.rs:167-201`) and `map_merge`
 (`lutmap.rs:687-744`) are now C's two branches in C's order, with C's return
 value.
+
+### 10.29 PolyMap's merge half, and the third `astDoNotSimplify` site — FIXED
+
+Re-anchoring `docs/audits/mapmerge/polymap.md` against the code found three
+divergences, one of them in the shared driver rather than in PolyMap.
+
+- **The `MapMerge` dispatcher had no guard.** `astDoNotSimplify` has a third
+  caller besides the two named in §10.21: C's public `astMapMerge_` returns
+  without reaching the class's `MapMerge` slot when the nominated Mapping's
+  `Ident` is set (`mapping.c:24257`). Because the replace-with-simpler halves
+  live *inside* the per-class method, that guard also stops a named Mapping
+  self-reducing while nominated inside a list — not just merging with a
+  neighbour. The port called `map_merge` directly from four sites, so an
+  `Ident`-set PolyMap nominated in a CmpMap consolidated its coefficients and
+  lost the attribute the flag exists to preserve. `dispatch_map_merge`
+  (`mappings/simplify.rs:1207`) is now the only way in, and
+  `ident_set_polymap_nominated_in_a_list_is_left_alone` is the control. C's
+  `AllowSimplify` save-and-propagate block (`mapping.c:24263-24385`) is
+  deliberately not part of it: the port decides restricted-simplify eligibility
+  live in `MergeCtx::may_nominate`.
+- **The linear half's guard had a term C does not have.** C asks only whether
+  the forward coefficients exist and the coordinate counts match
+  (`polymap.c:3757`), and fills a zero-initialised matrix and offset vector from
+  whatever terms remain. The port additionally required the consolidated term
+  list to be non-empty, so a PolyMap whose coefficients all cancel stayed an
+  empty PolyMap where C produces a diagonal MatrixMap of zeroes.
+  `polymap_whose_terms_all_cancel_becomes_a_matrixmap` is the control.
+- **The cancellation test was hand-rolled.** C forces both PolyMaps' `Invert`
+  flags to the direction the list applies to the nominated one and calls
+  `astEqual` (`polymap.c:3917-3920`). `PolyMap::try_merge` compared the
+  coordinate counts and the forward terms itself, so it cancelled a pair whose
+  inverse transformations have different coefficient counts — a pair C leaves
+  alone, because its `Equal` compares `ncoeff_i` and `mxpow_i`
+  (`polymap.c:758-776`). It now mirrors C's forcing and calls `equal`.
+  `polymap_does_not_cancel_against_a_different_inverse` is the control, with a
+  non-linear forward transformation so the linear half above does not pre-empt
+  the comparison.
+
+Closing the third one moved `PolyMap`'s `Equal` onto C's comparison exactly,
+which means adopting a C bug: the block that should compare the inverse
+coefficients and powers compares the *forward* ones a second time
+(`polymap.c:778-804`), so two PolyMaps whose inverse coefficient values differ
+compare equal and cancel. C's own oracle confirms the cancellation.
+`polymap_cancels_when_only_inverse_coefficient_values_differ` pins it and
+`docs/issues/c-library-quirks.md` records it for upstream.

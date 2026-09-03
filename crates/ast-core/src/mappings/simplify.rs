@@ -649,7 +649,7 @@ impl MergeCtx {
         let mut sub = MergeCtx::new(suffix);
         let nominee = sub.list[sub_index].0.clone_box();
         trace::map_merge(nominee.as_ref(), sub_index, series, sub.len());
-        let modified = nominee.map_merge(&mut sub, sub_index, series);
+        let modified = dispatch_map_merge(nominee.as_ref(), &mut sub, sub_index, series);
         trace::map_merge_result(nominee.as_ref(), modified);
         self.list.extend(sub.list);
         self.resync_frozen();
@@ -1181,7 +1181,7 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)>
     while !ctx.is_frozen(0) {
         let nominee = ctx.entry(0).0.clone_box();
         trace::map_merge(nominee.as_ref(), 0, true, ctx.len());
-        let modified = nominee.map_merge(&mut ctx, 0, true);
+        let modified = dispatch_map_merge(nominee.as_ref(), &mut ctx, 0, true);
         trace::map_merge_result(nominee.as_ref(), modified);
 
         if ctx.len() > 1 || modified.is_none() {
@@ -1202,6 +1202,31 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<(DynMapping, bool)>
     // with the Mapping's own flag (`mapping.c:16899-16911`); for a one-element
     // list that is exactly what `reconstruct` does to its seed.
     reconstruct(std::mem::take(&mut ctx.list), true).map(|m| (m, true))
+}
+
+/// Offer the list to the nominated Mapping's own `map_merge`.
+///
+/// C's public dispatcher is `astMapMerge_` (`mapping.c:24242`), and its entry
+/// guard is part of the contract every caller gets: a Mapping whose `Ident`
+/// attribute has been set never merges, so its identity survives the
+/// simplification of the tree around it (`mapping.c:24257`). The per-class
+/// `MapMerge` implementations are reached only through here, which is why none
+/// of them repeats the test.
+///
+/// The guard also stops a nominated Mapping *self*-reducing, since C's
+/// replace-with-simpler halves live inside the same per-class method. That is
+/// how an `Ident`-set leaf keeps its coefficients as constructed even when it is
+/// nominated inside a list.
+pub(crate) fn dispatch_map_merge(
+    nominee: &dyn Mapping,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    series: bool,
+) -> Option<usize> {
+    if nominee.do_not_simplify() {
+        return None;
+    }
+    nominee.map_merge(ctx, where_, series)
 }
 
 pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
@@ -1476,7 +1501,7 @@ fn run_nominate_loop(
             // neighbours (C clones map_list[nominated] before astMapMerge).
             let nominee = ctx.list[nominated].0.clone_box();
             trace::map_merge(nominee.as_ref(), nominated, series, ctx.len());
-            let modified = nominee.map_merge(ctx, nominated, series);
+            let modified = dispatch_map_merge(nominee.as_ref(), ctx, nominated, series);
             trace::map_merge_result(nominee.as_ref(), modified);
 
             // Move on to nominate the next mapping (C `nominated++`).
