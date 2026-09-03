@@ -384,6 +384,63 @@ Amend the final sentence to state what actually changed if Step 3 found more tha
 
 ---
 
+## Task 2b: The read-then-dump gate (added during execution)
+
+**Landed 2026-09-03** as `c2c50521` and `d13cbe54`. Recorded here because it was
+not in the plan and changes two later tasks.
+
+Task 2 showed that upstream cannot witness the `IsSimp` defect at all: both
+simplify families call `astSimplify` after reading, and `astSimplify` re-sets
+`IsSimple` on every node it visits, so a record a loader dropped is put straight
+back before anything compares it. `_noop` also compares *stripped* files. The
+Rust port's 43 `.rt` files existed precisely because its round-trip is read→dump
+with no simplify in between.
+
+So upstream gained the gate it lacked: `ast_tester/roundtrip.c` reads one Object
+and writes it straight out, `cmake/run_roundtrip_test.cmake` requires the output
+to be byte-identical to the input, and one ctest is registered per fixture —
+both halves of every simplify pair, plus a glob over `programs/**/*.ast` and
+`serialisation/**/*.ast`. No reference file and no skip flag: the assertion does
+not depend on what the fixture contains, so a fixture that cannot round-trip is
+a serialisation defect. The four IntraMap functions `simplify.c` registers are
+registered here too, so those fixtures are readable rather than excluded.
+`wcsconv/` is excluded: its references are FITS-encoded, so reading one back
+needs a FitsChan and the encoding it was written with.
+
+**This is the fixture-level demonstration that the `IsSimp` fix works.** Of the
+43 fixtures the Rust port needed a `.rt` override for, the 39 that exist
+upstream now round-trip byte-identically, none failing — so the override
+mechanism is provably unnecessary.
+
+The gate found 13 pre-existing failures on first run, and the partition is
+informative: **not one was built by `gen_simplify_fixtures`.** Every fixture the
+generator owns already round-tripped; the ones that did not were exactly those
+with no generator, whose stored form was whatever hand-made them rather than
+what the Channel writes today. Each was replaced by its own round-trip output
+and re-round-tripped to confirm it is now a fixed point:
+
+| fixture | cause |
+|---|---|
+| `brad`, `lsst1`, `intramap_inverse_cancel` | no leading-space indentation, or no comments |
+| `rigby` | fewer significant digits, plus a redundant `Invert = 0` |
+| `series_parallel_absorb`, `reconstruct_right_assoc` | the only two files in the corpus ending in a blank line |
+| `intra_invfwd_cancel_tail` | recorded the IntraMap `Purp` / `Auth` of whatever registration created it |
+| `cap_timemap_02` | a KeyMap re-dumped with two entries transposed — the fixture predated upstream's KeyMap ordering fix, and the normalised form is a fixed point, which is the evidence that fix holds |
+| the five `programs/**/*.ast` | 15-significant-digit values where the library now writes 17 (the same doubles, fully specified), dropped redundant `Invert = 0`, and five missing `MemCnt` cards |
+
+Normalising a `.map` changes only how the input is written, never the object
+read from it, so no `.simp` reference moved.
+
+**Two later tasks change as a result.** U2's "`gen_roundtrip_refs.sh` and
+`ast2ast.c` are deleted, not ported" is wrong: `ast2ast.c` became `roundtrip.c`
+here, so it moves upstream rather than being deleted, and only
+`gen_roundtrip_refs.sh` is deleted. And Task 3's and Task 4's new directories
+are covered by the glob automatically, so each must confirm its
+`roundtrip_serialisation_*` / `roundtrip_wcsconv_framesets_*` tests pass rather
+than assuming the byte-identity check in its own steps is the only gate.
+
+---
+
 ## Task 3: `gen_native_fixtures` and the `serialisation/` tree
 
 The 24 minimal per-class dumps pin the serializer for a *bare* object of each class — attribute set, defaults, comment text, `IsA` boundaries — which neither the simplify corpus (only simplified composites) nor `framesets/` (only FITS-derived FrameSets) covers. Their generator was added to this tree by `1f6b322` in the Rust repo and never committed, so the source is gone; only a stale binary survives in the untracked `build/ast_tester/gen_native_fixtures`. It is rewritten here from the fixtures it produced, which fully determine its output. See spec §2.1.
