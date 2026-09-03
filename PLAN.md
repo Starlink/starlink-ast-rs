@@ -1494,7 +1494,7 @@ along and only the seam was missing, which is exactly what the pair
 discriminates.
 
 `pcd_map_merge` now performs C's opening move itself, before the swap
-(`simplify.rs:2633-2641`), and returns immediately: C makes the reduction the `if`
+(`simplify.rs:2656-2664`), and returns immediately: C makes the reduction the `if`
 of an if/else whose `else` holds the whole neighbour search, so a reduced PcdMap
 never looks at a neighbour in the same pass. `self_reduce_map_merge` cannot
 express that ordering, which is why the reduction is inline rather than delegated.
@@ -2199,3 +2199,49 @@ empties `SERIAL_UNGATED`. Its `X5` / `X6` differ from the reference in the 12th
 significant figure and are licensed under `NUMERIC_PLATFORM_DRIFT` (§6): the
 reference was captured on another platform, whose libm parts company with this
 one inside that geodesic round trip.
+
+### 10.27 PcdMap's swap half was a sketch of C's — FIXED
+
+`pcdmap.c::MapMerge` spends two thirds of its body on the swap: when neither
+neighbour merges, it swaps the PcdMap past an adjacent ZoomMap or axis-swapping
+PermMap, either to bring it next to a Mapping it can merge with, or — with no
+such Mapping in reach — on the speculation that one of the two swapped Mappings
+then simplifies on its own.
+
+The port had the first half of that and none of the second. Five divergences,
+found by re-anchoring `docs/audits/mapmerge/pcdmap.md` against the code:
+
+- **Ordering.** C tries the direct merge with a neighbour first and reaches the
+  swap only when it fails (`pcdmap.c:1446-1524`). `pcd_map_merge` tried the swap
+  first and fell through to `default_map_merge`.
+- **Parallel.** C's whole neighbour search is inside `if( series )`, and
+  `pcdmap.c:1729-1731` says a PcdMap combines in parallel with nothing. The port
+  reached `default_map_merge` with `series == false`.
+- **The step walk.** C counts the Mappings between the PcdMap and its nearest
+  merge target with class tests only, stepping over any PermMap
+  (`pcdmap.c:1546-1564`). The port used `CanSwap`'s stricter test, so a PermMap
+  that is not an axis swap hid a target behind it instead of ending the walk.
+- **The nested merge.** C follows a target-directed swap with `astMapMerge` over
+  the sub-list that begins at the new adjacency (`pcdmap.c:1628-1647`), so the
+  PcdMap that has just moved next to its target merges in the same pass. The
+  port made the swap and returned, leaving the merge to a later iteration of the
+  nominate loop — which reaches it only if the loop nominates that PcdMap again.
+- **The speculative swap.** `pcdmap.c:1654-1726` was unported. C copies the pair,
+  swaps the copies, simplifies both, and keeps the swap only if a simplified
+  class differs from the swapped class. `MatrixMap` and `WinMap` both have this
+  branch (`matrix_merge.rs:912-947`, `winmap_merge.rs:766-807`); PcdMap did not.
+
+`pcd_swap_strategy` (`simplify.rs:2693-2751`) is now C's body in C's order, with
+`pcd_steps_to_merge_target` (`:2762-2789`) as C's class-only walk,
+`pcd_swap_pair` (`:2863-2919`) as `PcdZoom` and `PcdPerm` on a copied pair, and
+`pcd_speculative_swap` (`:2795-2832`) as C's two-attempt speculation. The
+`pcd_swap_at` / `do_pcd_swap_first` / `do_pcd_swap_second` trio it replaces is
+retired.
+
+One arithmetic divergence surfaced with it and is mirrored rather than fixed:
+C reads the neighbour ZoomMap's stored `Zoom` and clears the replacement's Invert
+flag, so an inverted neighbour comes out of the swap scaling by its factor rather
+than by the reciprocal. That is a C defect, recorded in
+`docs/issues/c-library-quirks.md` under "`PcdZoom` discards an inverted
+neighbour ZoomMap's direction" with the flag to revisit once it is fixed
+upstream.

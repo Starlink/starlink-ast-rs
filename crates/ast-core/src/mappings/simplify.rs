@@ -2636,14 +2636,17 @@ pub(crate) fn grism_map_merge(
     default_map_merge(ctx, where_, series)
 }
 
-/// Per-class `map_merge` for a nominated `PcdMap`, mirroring the swap logic
-/// of C `pcdmap.c::MapMerge` (1503-1714). A PcdMap merges directly only with
-/// its own inverse or a UnitMap (handled by [`default_map_merge`] via
-/// `try_merge`); when no direct merge is available, it tries to swap past an
-/// adjacent ZoomMap or axis-swapping PermMap to move towards a distant merge
-/// partner (another PcdMap or UnitMap), so the PcdMap can merge directly on a
-/// later nomination. The swap is attempted around the nominated index (C's
-/// `where`); on success the index of the first modified element is returned.
+/// Per-class `map_merge` for a nominated `PcdMap`, a port of C
+/// `pcdmap.c::MapMerge` (1406-1736).
+///
+/// C's body has four parts, in this order: replace a zero-distortion PcdMap
+/// with a UnitMap without reference to its neighbours; merge directly with an
+/// adjacent UnitMap or with the PcdMap's own inverse; swap past an adjacent
+/// ZoomMap or axis-swapping PermMap to move the PcdMap towards a distant
+/// Mapping it could merge with, then merge at the new adjacency; and, with no
+/// such Mapping in reach, swap speculatively and keep the swap only if one of
+/// the swapped Mappings then simplifies. A PcdMap combines in parallel with
+/// nothing.
 pub(crate) fn pcd_map_merge(
     pcd: &PcdMap,
     ctx: &mut MergeCtx,
@@ -2660,66 +2663,176 @@ pub(crate) fn pcd_map_merge(
         return Some(where_);
     }
 
-    if series {
-        if let Some(modified) = pcd_swap_at(&mut ctx.list, where_) {
-            ctx.resync_frozen();
-            return Some(modified);
-        }
-    }
-
-    default_map_merge(ctx, where_, series)
-}
-
-/// Consider swapping the PcdMap at index `i` with the neighbour that brings it
-/// nearest to a merge target, mirroring C `pcdmap.c::MapMerge` (1512-1637).
-///
-/// Steps to a merge target are counted in both directions (over the run of
-/// swappable ZoomMaps / axis-swapping PermMaps), and the swap is made towards
-/// the nearer target. Returns the index of the first modified element, or
-/// `None` when no swap is worthwhile (or `i` is not a PcdMap).
-fn pcd_swap_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> Option<usize> {
-    if !list[i].0.as_any().is::<PcdMap>() {
+    // The whole neighbour search sits inside C's `if( series )`: a PcdMap
+    // cannot combine in parallel with any other Mapping (pcdmap.c:1729-1731).
+    if !series {
         return None;
     }
 
-    let pcd_inv = list[i].1;
+    // The direct merge comes first: an adjacent UnitMap, or this PcdMap's own
+    // inverse (pcdmap.c:1446-1513). `PcdMap::try_merge` is C's `CanMerge`
+    // together with the Mapping C builds from the pair, and
+    // `default_map_merge` offers the pair on each side as C's two `CanMerge`
+    // calls do.
+    if let Some(modified) = default_map_merge(ctx, where_, series) {
+        return Some(modified);
+    }
 
-    // Try swapping with the higher neighbor (i+1) towards a target further right.
-    // Count how many steps to a merge target in the forward direction.
-    let nstep_hi = if i + 1 < list.len() && can_swap_pcd_with(&list[i + 1].0) {
-        find_pcd_merge_target_steps(list, i + 2, true)
+    // Only when neither neighbour merges does C consider swapping
+    // (pcdmap.c:1515-1524).
+    pcd_swap_strategy(ctx, where_, series)
+}
+
+/// The swap half of C `pcdmap.c::MapMerge` (1526-1726).
+///
+/// Count the Mappings separating the PcdMap from the nearest Mapping it could
+/// merge with on each side, swap towards the nearer one and merge at the new
+/// adjacency; with no such Mapping in reach, swap speculatively with each
+/// eligible neighbour in turn. Returns the index of the first modified
+/// element, or `None` when no swap is made.
+fn pcd_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
+    if !ctx.entry(where_).0.as_any().is::<PcdMap>() {
+        return None;
+    }
+    let n = ctx.len();
+
+    // C's `swaphi` and `swaplo`, its `CanSwap` on each side
+    // (pcdmap.c:1527-1534, 1570-1577).
+    let swaphi = where_ + 1 < n && can_swap_pcd_with(&ctx.entry(where_ + 1).0);
+    let swaplo = where_ > 0 && can_swap_pcd_with(&ctx.entry(where_ - 1).0);
+
+    // `nstep2` and `nstep1`: how many Mappings separate the PcdMap from the
+    // nearest Mapping it could merge with, walking towards the end and towards
+    // the start of the list (pcdmap.c:1536-1566, 1579-1598). -1 means none.
+    let nstep2 = if swaphi {
+        pcd_steps_to_merge_target(ctx, where_, true)
+    } else {
+        -1
+    };
+    let nstep1 = if swaplo {
+        pcd_steps_to_merge_target(ctx, where_, false)
     } else {
         -1
     };
 
-    // Try swapping with the lower neighbor (i-1) towards a target further left.
-    let nstep_lo = if i >= 1 && can_swap_pcd_with(&list[i - 1].0) {
-        if i >= 2 {
-            find_pcd_merge_target_steps(list, i - 2, false)
-        } else {
-            -1
-        }
-    } else {
-        -1
-    };
-
-    // Choose the direction that gets us to a merge target in fewer steps.
-    if nstep_lo >= 0 && (nstep_hi < 0 || nstep_hi > nstep_lo) {
-        // Swap with lower neighbor: neighbor at i-1, PcdMap at i.
-        // PcdMap is second (ipc=1 in C terms).
-        do_pcd_swap_second(list, i - 1, pcd_inv);
-        Some(i - 1)
-    } else if nstep_hi >= 0 {
-        // Swap with higher neighbor: PcdMap at i, neighbor at i+1.
-        // PcdMap is first (ipc=0 in C terms).
-        do_pcd_swap_first(list, i, pcd_inv);
-        Some(i)
+    // Swap in the direction of the nearer target (pcdmap.c:1602-1612).
+    let target = if nstep1 != -1 && (nstep2 == -1 || nstep2 > nstep1) {
+        Some(where_ - 1)
+    } else if nstep2 != -1 {
+        Some(where_)
     } else {
         None
+    };
+
+    if let Some(i1) = target {
+        let swapped = pcd_swap_pair(pcd_clone_pair(ctx, i1), where_ - i1)?;
+        let [first, second] = swapped;
+        ctx.set_pair(i1, first, second);
+
+        // C follows the swap with an `astMapMerge` over the sub-list that
+        // starts at the new adjacency, so the PcdMap that has just moved next
+        // to the target merges in the same pass (pcdmap.c:1628-1647). The
+        // sub-list scoping is C's: the nominated Mapping cannot reach back
+        // past the element the sub-list starts at.
+        if where_ == i1 && where_ + 1 < ctx.len() {
+            ctx.merge_subrange(where_ + 1, 0, series);
+        } else if where_ >= 2 {
+            ctx.merge_subrange(where_ - 2, 0, series);
+        }
+        return Some(i1);
+    }
+
+    // No target: the swap may still be worth making if a swapped Mapping is
+    // simpler than the Mapping it replaces (pcdmap.c:1651-1726).
+    if swaphi || swaplo {
+        return pcd_speculative_swap(ctx, where_, swaphi, swaplo);
+    }
+    None
+}
+
+/// How many Mappings separate the PcdMap at `where_` from the nearest Mapping
+/// it could merge with, walking towards the end of the list (`forward`) or
+/// towards its start; -1 when there is none.
+///
+/// C stops at the first UnitMap or PcdMap, and stops with -1 at the first
+/// Mapping it could not swap past (pcdmap.c:1544-1564). The class tests are
+/// C's: any PermMap can be stepped over here, not only the axis-swapping ones
+/// `CanSwap` accepts, so a non-swapping PermMap in the run does not hide a
+/// target behind it.
+fn pcd_steps_to_merge_target(ctx: &MergeCtx, where_: usize, forward: bool) -> i64 {
+    let n = ctx.len();
+    let mut i = where_;
+    loop {
+        if forward {
+            i += 1;
+            if i >= n {
+                return -1;
+            }
+        } else {
+            if i == 0 {
+                return -1;
+            }
+            i -= 1;
+        }
+        let m = ctx.entry(i).0.as_ref();
+        if m.as_any().is::<UnitMap>() || m.as_any().is::<PcdMap>() {
+            return if forward {
+                (i - where_ - 1) as i64
+            } else {
+                (where_ - 1 - i) as i64
+            };
+        }
+        if !(m.as_any().is::<ZoomMap>() || m.as_any().is::<PermMap>()) {
+            return -1;
+        }
     }
 }
 
-/// Check if a mapping can be swapped with an adjacent PcdMap.
+/// C's speculative swap (pcdmap.c:1654-1726): swap with the lower neighbour
+/// and then with the upper one, keeping the first swap after which one of the
+/// two Mappings simplifies to a different class. C works on copies so a
+/// rejected swap leaves the list untouched.
+fn pcd_speculative_swap(
+    ctx: &mut MergeCtx,
+    where_: usize,
+    swaphi: bool,
+    swaplo: bool,
+) -> Option<usize> {
+    for attempt in 0..2 {
+        let i1 = if attempt == 0 && swaplo {
+            where_ - 1
+        } else if attempt == 1 && swaphi {
+            where_
+        } else {
+            continue;
+        };
+
+        let Some(swapped) = pcd_swap_pair(pcd_clone_pair(ctx, i1), where_ - i1) else {
+            continue;
+        };
+
+        // C compares the class of each swapped Mapping with the class of its
+        // simplification and discards the swap when neither changed
+        // (pcdmap.c:1694-1701).
+        let worthwhile = swapped.iter().any(|entry| {
+            entry
+                .0
+                .simplify()
+                .ok()
+                .is_some_and(|s| s.as_any().type_id() != entry.0.as_any().type_id())
+        });
+
+        if worthwhile {
+            let [first, second] = swapped;
+            ctx.set_pair(i1, first, second);
+            return Some(i1);
+        }
+    }
+    None
+}
+
+/// Check if a mapping can be swapped with an adjacent PcdMap — C's `CanSwap`
+/// (pcdmap.c:833-854): a ZoomMap, or a PermMap that simply swaps the two axes.
 fn can_swap_pcd_with(m: &DynMapping) -> bool {
     if m.as_any().is::<ZoomMap>() {
         return true;
@@ -2730,133 +2843,79 @@ fn can_swap_pcd_with(m: &DynMapping) -> bool {
     false
 }
 
-/// Search forward or backward from `start` for a PcdMap or UnitMap merge
-/// target, skipping over ZoomMaps and axis-swapping PermMaps.
-/// Returns the number of intermediate steps if found, -1 otherwise.
-fn find_pcd_merge_target_steps(
-    list: &[(DynMapping, bool, bool)],
-    start: usize,
-    forward: bool,
-) -> i32 {
-    if start >= list.len() {
-        return -1;
-    }
-    let mut pos = start;
-    let mut steps = 0i32;
-    loop {
-        if pos >= list.len() {
-            return -1;
-        }
-        if list[pos].0.as_any().is::<PcdMap>() || list[pos].0.as_any().is::<UnitMap>() {
-            return steps;
-        }
-        if !can_swap_pcd_with(&list[pos].0) {
-            return -1;
-        }
-        steps += 1;
-        if forward {
-            pos += 1;
-        } else {
-            if pos == 0 {
-                return -1;
-            }
-            pos -= 1;
-        }
-    }
+/// Copy the `(i1, i1 + 1)` pair without disturbing the list, as C copies the
+/// two Mappings and their Invert flags before swapping them
+/// (pcdmap.c:1680-1683).
+fn pcd_clone_pair(ctx: &MergeCtx, i1: usize) -> [(DynMapping, bool, bool); 2] {
+    let a = ctx.entry(i1);
+    let b = ctx.entry(i1 + 1);
+    [(a.0.clone_box(), a.1, a.2), (b.0.clone_box(), b.1, b.2)]
 }
 
-/// Perform PcdMap swap when PcdMap is first (at `i`) and neighbor is at `i+1`.
-/// After swap: neighbor at i, new PcdMap at i+1.
-/// C equivalent: ipc=0 in PcdZoom/PcdPerm.
-fn do_pcd_swap_first(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: bool) {
-    let pcd = list[i].0.as_any().downcast_ref::<PcdMap>().unwrap();
-    let pcd_disc = pcd.disc();
-    let pcd_cen = pcd.pcdcen();
+/// Swap a PcdMap past its neighbour — C's `PcdZoom` (pcdmap.c:2302-2420) and
+/// `PcdPerm` (2422-2528). `ipc` is the index of the PcdMap within the supplied
+/// pair, and the returned pair holds the same two classes in the opposite
+/// order. `None` when the neighbour is neither a ZoomMap nor a PermMap.
+///
+/// The PcdMap C creates carries the distortion of the composition and the
+/// Invert flag of the supplied PcdMap; the ZoomMap C creates carries a cleared
+/// Invert flag, and a PermMap is passed through with its own flag.
+fn pcd_swap_pair(
+    pair: [(DynMapping, bool, bool); 2],
+    ipc: usize,
+) -> Option<[(DynMapping, bool, bool); 2]> {
+    let [lower, upper] = pair;
+    let (pcd_entry, other) = if ipc == 0 {
+        (lower, upper)
+    } else {
+        (upper, lower)
+    };
+    let pcd = pcd_entry.0.as_any().downcast_ref::<PcdMap>()?;
+    let pcd_inv = pcd_entry.1;
+    let disco = pcd.disc();
+    let [xcen, ycen] = pcd.pcdcen();
 
-    if let Some(zm) = list[i + 1].0.as_any().downcast_ref::<ZoomMap>() {
-        let other_inv = list[i + 1].1;
-        let zoom = if other_inv {
-            1.0 / zm.zoom()
+    let (new_pcd, new_other) = if let Some(zm) = other.0.as_any().downcast_ref::<ZoomMap>() {
+        // C reads the `Zoom` attribute itself, which does not depend on the
+        // ZoomMap's direction, and gives the ZoomMap it creates a cleared
+        // Invert flag (pcdmap.c:2369, 2383, 2414). An inverted neighbour
+        // therefore comes out of the swap scaling by its stored factor rather
+        // than by the reciprocal; see the ZoomMap direction entry in
+        // docs/issues/c-library-quirks.md.
+        let zoom = zm.zoom();
+
+        // The PcdMap applied first sees the un-zoomed coordinates, so after the
+        // swap its centre is zoomed and its coefficient divided by the square
+        // of the zoom; applied second, the reverse (pcdmap.c:2388-2398).
+        let (cen, disc) = if ipc == 0 {
+            ([xcen * zoom, ycen * zoom], disco / (zoom * zoom))
         } else {
-            zm.zoom()
+            ([xcen / zoom, ycen / zoom], disco * zoom * zoom)
         };
+        let new_pcd = PcdMap::new(disc, cen);
+        let new_zoom: DynMapping = Box::new(ZoomMap::new(2, zoom).ok()?);
+        (new_pcd, (new_zoom, false, false))
+    } else if other.0.as_any().is::<PermMap>() {
+        // The PermMap is passed through unchanged, with its own Invert flag,
+        // and the PcdMap's centre has its two axes exchanged
+        // (pcdmap.c:2503-2523).
+        let new_pcd = PcdMap::new(disco, [ycen, xcen]);
+        (new_pcd, (other.0.clone_box(), other.1, other.2))
+    } else {
+        return None;
+    };
 
-        // PcdMap first, ZoomMap second → after swap:
-        // New centre = old_centre * zoom
-        // New disc = old_disc / (zoom^2)
-        let new_cen = [pcd_cen[0] * zoom, pcd_cen[1] * zoom];
-        let new_disc = pcd_disc / (zoom * zoom);
-        let mut new_pcd = PcdMap::new(new_disc, new_cen);
-        if pcd_inv {
-            new_pcd.invert();
-        }
-
-        let new_zoom = ZoomMap::new(2, zoom).unwrap();
-        list[i] = (Box::new(new_zoom), false, false);
-        list[i + 1] = (Box::new(new_pcd), false, false);
-    } else if list[i + 1].0.as_any().is::<PermMap>() {
-        let other_inv = list[i + 1].1;
-
-        // PcdMap first, PermMap(swap) second → after swap:
-        // PermMap at i, new PcdMap(swapped centre) at i+1.
-        let new_cen = [pcd_cen[1], pcd_cen[0]];
-        let mut new_pcd = PcdMap::new(pcd_disc, new_cen);
-        if pcd_inv {
-            new_pcd.invert();
-        }
-
-        let pm_clone = list[i + 1].0.clone_box();
-        let pm_orig = list[i + 1].2;
-        list[i] = (pm_clone, other_inv, pm_orig);
-        list[i + 1] = (Box::new(new_pcd), false, false);
+    let mut new_pcd = new_pcd;
+    if pcd_inv {
+        new_pcd.invert();
     }
-}
+    let new_pcd_entry: (DynMapping, bool, bool) = (Box::new(new_pcd), false, false);
 
-/// Perform PcdMap swap when PcdMap is second (at `i+1`) and neighbor is at `i`.
-/// After swap: new PcdMap at i, neighbor at i+1.
-/// C equivalent: ipc=1 in PcdZoom/PcdPerm.
-fn do_pcd_swap_second(list: &mut [(DynMapping, bool, bool)], i: usize, pcd_inv: bool) {
-    let pcd = list[i + 1].0.as_any().downcast_ref::<PcdMap>().unwrap();
-    let pcd_disc = pcd.disc();
-    let pcd_cen = pcd.pcdcen();
-
-    if let Some(zm) = list[i].0.as_any().downcast_ref::<ZoomMap>() {
-        let other_inv = list[i].1;
-        let zoom = if other_inv {
-            1.0 / zm.zoom()
-        } else {
-            zm.zoom()
-        };
-
-        // ZoomMap first, PcdMap second → after swap:
-        // New centre = old_centre / zoom
-        // New disc = old_disc * (zoom^2)
-        let new_cen = [pcd_cen[0] / zoom, pcd_cen[1] / zoom];
-        let new_disc = pcd_disc * zoom * zoom;
-        let mut new_pcd = PcdMap::new(new_disc, new_cen);
-        if pcd_inv {
-            new_pcd.invert();
-        }
-
-        let new_zoom = ZoomMap::new(2, zoom).unwrap();
-        list[i] = (Box::new(new_pcd), false, false);
-        list[i + 1] = (Box::new(new_zoom), false, false);
-    } else if list[i].0.as_any().is::<PermMap>() {
-        let other_inv = list[i].1;
-
-        // PermMap(swap) first, PcdMap second → after swap:
-        // new PcdMap(swapped centre) at i, PermMap at i+1.
-        let new_cen = [pcd_cen[1], pcd_cen[0]];
-        let mut new_pcd = PcdMap::new(pcd_disc, new_cen);
-        if pcd_inv {
-            new_pcd.invert();
-        }
-
-        let pm_clone = list[i].0.clone_box();
-        let pm_orig = list[i].2;
-        list[i] = (Box::new(new_pcd), false, false);
-        list[i + 1] = (pm_clone, other_inv, pm_orig);
-    }
+    Some(if ipc == 0 {
+        [new_other, new_pcd_entry]
+    } else {
+        [new_pcd_entry, new_other]
+    })
 }
 
 /// Detect and apply the diagonal-sandwich pattern anchored at index `i`,

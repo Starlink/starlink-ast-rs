@@ -34,7 +34,7 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:787-794 (fn map_merge)`) delegates to
 | 8 | Determine whether simplification occurred, by pointer identity or a changed Invert | cmpmap.c:1456-1463 (fn MapMerge) | mappings/simplify.rs:713-720 (fn cmp_map_merge) | architecture | ported |
 | 9 | On success, replace the list entry with the new Mapping and its invert flag, and return | cmpmap.c:1464-1474 (fn MapMerge) | mappings/simplify.rs:738-739 (fn cmp_map_merge) | architecture | ported |
 | 10 | Otherwise annul the new Mapping pointer | cmpmap.c:1475-1477 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 11 | If a series CmpMap is being combined in series, replace it in the list with its two components | cmpmap.c:1479-1533 (fn MapMerge) | mappings/simplify.rs:3333 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 11 | If a series CmpMap is being combined in series, replace it in the list with its two components | cmpmap.c:1479-1533 (fn MapMerge) | mappings/simplify.rs:3392 (fn simplify_mapping_reporting_change) | architecture | ported |
 | 12 | If no simplification was done, look for a neighbouring CmpMap to merge with | cmpmap.c:1534-1542 (fn MapMerge) | mappings/simplify.rs:772 (fn cmp_map_merge) | architecture | ported |
 | 13 | Obtain the pair of indices to merge, taking (0,1) when the nominee is first | cmpmap.c:1543-1553 (fn MapMerge) | mappings/simplify.rs:773-774 (fn cmp_map_merge) | architecture | ported |
 | 14 | Require the neighbour to be a CmpMap, and obtain both pointers and their invert flags | cmpmap.c:1554-1582 (fn MapMerge) | mappings/simplify.rs:775-781 (fn cmp_map_merge) | architecture | ported |
@@ -71,7 +71,7 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:787-794 (fn map_merge)`) delegates to
 
 C splices the two components into the Mapping list from inside `MapMerge`,
 growing the list by one. The port decomposes before the nominate loop instead,
-in `flatten` (`mappings/simplify.rs:231-236 (fn flatten)`, called at `mappings/simplify.rs:3333 (fn simplify_mapping_reporting_change)`), so by the
+in `flatten` (`mappings/simplify.rs:231-236 (fn flatten)`, called at `mappings/simplify.rs:3392 (fn simplify_mapping_reporting_change)`), so by the
 time a CmpMap is nominated the list is already flat. The reduction is the same;
 what differs is that C's version reports a change and restarts the loop, while
 the port's happens once up front.
@@ -146,7 +146,7 @@ list, drive each component's `astMapMerge` from a nominate loop until the list
 stops improving, and fold the survivors back into a right-associated CmpMap.
 
 The Rust `CmpMap::simplified` (`cmpmap.rs:780-785 (fn simplified)`) delegates to
-`simplify::simplify_mapping` (`mappings/simplify.rs:3310-3405 (fn simplify_mapping_reporting_change)`), so Rust sites below are in
+`simplify::simplify_mapping` (`mappings/simplify.rs:3369-3464 (fn simplify_mapping_reporting_change)`), so Rust sites below are in
 `mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:781 (fn simplified)` is
 C's `astGetIsSimple` short-circuit, which C performs one level up in
 `astSimplify_` (`mapping.c:24802-24804 (fn astSimplify_)`) and the port performs both there
@@ -155,13 +155,13 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 43 | Initialise the result, check the inherited status and bail out | cmpmap.c:3462-3466 (fn Simplify) | -- | ceremony | n/a: the Rust signature hands back an owned Mapping in an `AstResult`, so there is no result pointer to initialise and no ambient status to test on entry |
-| 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3471-3491 (fn Simplify) | mappings/simplify.rs:58-61 (fn enter), mappings/simplify.rs:3321-3328 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3471-3491 (fn Simplify) | mappings/simplify.rs:58-61 (fn enter), mappings/simplify.rs:3380-3387 (fn simplify_mapping_reporting_change) | architecture | ported |
 | 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3493-3499 (fn Simplify) | mappings/simplify.rs:62 (fn enter) | architecture | ported |
-| 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3501-3502 (fn Simplify) | mappings/simplify.rs:3313-3315 (fn simplify_mapping_reporting_change) | ceremony | ported |
+| 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3501-3502 (fn Simplify) | mappings/simplify.rs:3372-3374 (fn simplify_mapping_reporting_change) | ceremony | ported |
 | 47 | Initialise the Mapping-pointer and Invert-flag arrays | cmpmap.c:3504-3508 (fn Simplify) | -- | ceremony | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialise |
-| 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3510-3516 (fn Simplify) | mappings/simplify.rs:3333 (fn simplify_mapping_reporting_change), mappings/simplify.rs:3357 (fn simplify_mapping_reporting_change) | architecture | ported |
-| 49 | Read the RestrictedSimplify flag | cmpmap.c:3518-3524 (fn Simplify) | mappings/simplify.rs:3331 (fn simplify_mapping_reporting_change) | architecture | ported |
-| 50 | Under a restricted simplify, discard the `simpler` flag the decomposition set | cmpmap.c:3526-3530 (fn Simplify) | mappings/simplify.rs:3357 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3510-3516 (fn Simplify) | mappings/simplify.rs:3392 (fn simplify_mapping_reporting_change), mappings/simplify.rs:3416 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 49 | Read the RestrictedSimplify flag | cmpmap.c:3518-3524 (fn Simplify) | mappings/simplify.rs:3390 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 50 | Under a restricted simplify, discard the `simpler` flag the decomposition set | cmpmap.c:3526-3530 (fn Simplify) | mappings/simplify.rs:3416 (fn simplify_mapping_reporting_change) | architecture | ported |
 | 51 | Make the list entries independent of one another, so modifying one does not modify another | cmpmap.c:3532-3535 (fn Simplify) | mappings/simplify.rs:261 (fn flatten) | architecture | ported |
 | 52 | Clear the Frozen flag on every component | cmpmap.c:3537-3545 (fn Simplify) | mappings/simplify.rs:484 (fn new) | architecture | ported |
 | 53 | Initialise the modified-index and Mapping-count histories | cmpmap.c:3547-3551 (fn Simplify) | mappings/simplify.rs:1550-1551 (fn merge_loop_restricted) | architecture | ported |
@@ -175,16 +175,16 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | 61 | On a repeating pattern, freeze the modified Mapping so it stops contributing to the argument | cmpmap.c:3611-3614 (fn Simplify) | mappings/simplify.rs:1505-1508 (fn run_nominate_loop) | architecture | ported |
 | 62 | Otherwise note the improvement, and step back to the modified Mapping if it precedes the next nominee | cmpmap.c:3616-3626 (fn Simplify) | mappings/simplify.rs:1509-1517 (fn run_nominate_loop) | architecture | ported |
 | 63 | Free the two histories | cmpmap.c:3631-3633 (fn Simplify) | -- | ceremony | n/a: owned `Vec`s are dropped |
-| 64 | If nothing simplified, clone the supplied CmpMap rather than rebuilding it | cmpmap.c:3635-3641 (fn Simplify) | mappings/simplify.rs:3366-3382 (fn simplify_mapping_reporting_change) | architecture | ported |
-| 65 | A single-element list is returned as a copy, not a clone, so the result is independent of the component Mappings | cmpmap.c:3643-3658 (fn Simplify) | mappings/simplify.rs:3144-3151 (fn reconstruct_inner) | architecture | ported |
-| 66 | Set or clear the copy's Invert attribute as the list requires | cmpmap.c:3660-3666 (fn Simplify) | mappings/simplify.rs:3149-3151 (fn reconstruct_inner) | architecture | ported |
-| 67 | For a longer list, note whether the last Mapping's Invert attribute is set, and its value | cmpmap.c:3668-3680 (fn Simplify) | mappings/simplify.rs:3144-3154 (fn reconstruct_inner) | architecture | ported |
-| 68 | Set the last Mapping's Invert attribute to the value the list requires | cmpmap.c:3682-3683 (fn Simplify) | mappings/simplify.rs:3149-3151 (fn reconstruct_inner) | architecture | ported |
-| 69 | Loop through the sequence in reverse, so each Mapping is combined with the CmpMap built so far | cmpmap.c:3685-3687 (fn Simplify) | mappings/simplify.rs:3156 (fn reconstruct_inner) | architecture | ported |
-| 70 | Clear the protected AllowSimplify flag on each component, now the sequence is simplified | cmpmap.c:3689-3692 (fn Simplify) | mappings/simplify.rs:3399-3403 (fn simplify_mapping_reporting_change) | architecture | ported |
-| 71 | Clone the pointer to the last Mapping in the sequence, which is encountered first | cmpmap.c:3694-3697 (fn Simplify) | mappings/simplify.rs:3144 (fn reconstruct_inner) | architecture | ported |
-| 72 | For each earlier Mapping, save its Invert state, set the value required, combine it into the CmpMap, and restore the state | cmpmap.c:3699-3723 (fn Simplify) | mappings/simplify.rs:3156-3199 (fn reconstruct_inner) | architecture | ported |
-| 73 | Restore the last Mapping's Invert state once the whole sequence has been merged | cmpmap.c:3726-3733 (fn Simplify) | mappings/simplify.rs:3184-3186 (fn reconstruct_inner) | architecture | ported |
+| 64 | If nothing simplified, clone the supplied CmpMap rather than rebuilding it | cmpmap.c:3635-3641 (fn Simplify) | mappings/simplify.rs:3425-3441 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 65 | A single-element list is returned as a copy, not a clone, so the result is independent of the component Mappings | cmpmap.c:3643-3658 (fn Simplify) | mappings/simplify.rs:3203-3210 (fn reconstruct_inner) | architecture | ported |
+| 66 | Set or clear the copy's Invert attribute as the list requires | cmpmap.c:3660-3666 (fn Simplify) | mappings/simplify.rs:3208-3210 (fn reconstruct_inner) | architecture | ported |
+| 67 | For a longer list, note whether the last Mapping's Invert attribute is set, and its value | cmpmap.c:3668-3680 (fn Simplify) | mappings/simplify.rs:3203-3213 (fn reconstruct_inner) | architecture | ported |
+| 68 | Set the last Mapping's Invert attribute to the value the list requires | cmpmap.c:3682-3683 (fn Simplify) | mappings/simplify.rs:3208-3210 (fn reconstruct_inner) | architecture | ported |
+| 69 | Loop through the sequence in reverse, so each Mapping is combined with the CmpMap built so far | cmpmap.c:3685-3687 (fn Simplify) | mappings/simplify.rs:3215 (fn reconstruct_inner) | architecture | ported |
+| 70 | Clear the protected AllowSimplify flag on each component, now the sequence is simplified | cmpmap.c:3689-3692 (fn Simplify) | mappings/simplify.rs:3458-3462 (fn simplify_mapping_reporting_change) | architecture | ported |
+| 71 | Clone the pointer to the last Mapping in the sequence, which is encountered first | cmpmap.c:3694-3697 (fn Simplify) | mappings/simplify.rs:3203 (fn reconstruct_inner) | architecture | ported |
+| 72 | For each earlier Mapping, save its Invert state, set the value required, combine it into the CmpMap, and restore the state | cmpmap.c:3699-3723 (fn Simplify) | mappings/simplify.rs:3215-3258 (fn reconstruct_inner) | architecture | ported |
+| 73 | Restore the last Mapping's Invert state once the whole sequence has been merged | cmpmap.c:3726-3733 (fn Simplify) | mappings/simplify.rs:3243-3245 (fn reconstruct_inner) | architecture | ported |
 | 74 | Annul the Mapping pointers in the list and free the dynamic arrays | cmpmap.c:3738-3745 (fn Simplify) | -- | ceremony | n/a: the owned list is dropped |
 | 75 | Decrement the recursion depth, release the recorded Mapping, and free the stack at depth zero | cmpmap.c:3747-3755 (fn Simplify) | mappings/simplify.rs:68-71 (fn drop) | architecture | ported |
 | 76 | Annul the result if an error occurred, and return it | cmpmap.c:3757-3761 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, so there is no result value to discard alongside it |
@@ -213,7 +213,7 @@ That difference is visible in one place. When the nominate loop's `astSimplify`
 tags an entry `IsSimple` (`cmpmap.c:1443 (fn MapMerge)`), C writes through the alias onto the
 real child, and the tag is still there when row 64 returns `astClone( this )`. The
 port has to transplant those tags onto its fresh clone explicitly, which is what
-`apply_component_stamps` (`mappings/simplify.rs:3221 (fn apply_component_stamps)`) does, walking the tree in the order
+`apply_component_stamps` (`mappings/simplify.rs:3280 (fn apply_component_stamps)`) does, walking the tree in the order
 `flatten` built the list.
 
 The same ownership settles row 65, where C makes a point of `astCopy` rather than

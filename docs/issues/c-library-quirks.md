@@ -2741,3 +2741,48 @@ oracle rows so the port is held to the prescribed value rather than the fused
 one.
 
 To be raised upstream.
+
+## `PcdZoom` discards an inverted neighbour ZoomMap's direction
+
+**Status:** Confirmed against the C source at pin `3e60abaa`.
+**Mirrored in Rust**, with a flag to revisit — see below.
+
+`pcdmap.c::MapMerge` can swap a PcdMap past an adjacent ZoomMap so it lands
+beside a Mapping it can merge with (`pcdmap.c:1617-1626`).
+`PcdZoom` does the swap, and it starts by setting both Mappings' `Invert`
+attributes to the values the merge list holds for them (`pcdmap.c:2360-2366`), so
+that the attribute reads which follow see each Mapping the way the list applies
+it.
+
+That is effective for the PcdMap, whose `Disco` and `PcdCen` are read through
+accessors that consult `Invert`, but not for the ZoomMap: `Zoom` is
+`astMAKE_GET(ZoomMap,Zoom,double,1.0,...)` returning the stored factor
+(`zoommap.c:1699-1700`), and it is `Transform` that turns the factor into its
+reciprocal when the Mapping is applied inverted (`zoommap.c:1610-1617`).
+So `zoom = astGetZoom( zm )` at `pcdmap.c:2369` is the stored factor whatever
+the list says, and the replacement `zm2 = astZoomMap( 2, zoom )` at
+`pcdmap.c:2383` is stored with `inverts[ ipc ] = 0` at `pcdmap.c:2414`.
+
+An inverted ZoomMap of factor 2 — scaling by 0.5 — therefore comes out of the
+swap as a forward ZoomMap of factor 2, and the PcdMap that swapped past it
+carries a centre and coefficient derived from 2 rather than from 0.5.
+The composition is not the one that went in.
+
+Nothing in the merge list forbids the inverted case: `CanSwap` accepts any
+ZoomMap without consulting its direction (`pcdmap.c:833-838`), and `astMapList`
+records an inverted leaf as a forward Mapping with its flag set.
+In a settled list the case is rare, because `zoommap.c::MapMerge` rebuilds an
+effectively inverted lone ZoomMap as a forward one with the reciprocal factor
+before a PcdMap is nominated — which is why the corpus does not reach it.
+It is the nomination order, not the code, that keeps this from being observable.
+
+**Rust behaviour (mirrored):** `pcd_swap_pair`
+(`crates/ast-core/src/mappings/simplify.rs:2863-2919`) reads `zm.zoom()` and
+ignores the neighbour's list flag, exactly as C does, and stores the ZoomMap it
+builds with a cleared flag.
+Using the effective factor instead would make the port disagree with the oracle
+on any list that reaches the case, so the mirror is deliberate; revisit it when
+this is fixed upstream, and the arithmetic becomes `1.0 / zm.zoom()` for an
+inverted neighbour.
+
+To be raised upstream.
