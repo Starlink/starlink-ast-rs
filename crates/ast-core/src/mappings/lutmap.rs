@@ -152,27 +152,22 @@ impl LutMap {
         self.lut.len()
     }
 
-    /// Return the input coordinate at the first entry.
-    /// The equivalent `WinMap` when the lookup table is linear, applied in the
-    /// given direction — C `lutmap.c:1142-1174`.
-    ///
-    /// `None` when the table is not linear, is shorter than two entries, or has
-    /// equal first and last values: C guards on `b1 != b2` (`:1155`), because a
-    /// constant table would give a WinMap with a zero scale.
-    ///
-    /// The corner-point construction is C's, rather than computing shift and
-    /// scale directly and inverting, so the arithmetic matches and the result
-    /// is always a *forward* WinMap.
     /// Whether the lookup table is linear, as C's `GetLinear`
-    /// (`lutmap.c:598-627`) decides it.
+    /// (`lutmap.c:578-627`) decides it.
     ///
-    /// The tolerance is scaled by the `LutEpsilon` attribute — the stated
-    /// relative error of the table values, `f64::EPSILON` by default — and taken
-    /// as the larger of two estimates: one from the table's full range and one
-    /// from the interpolated value at the element under test, the second so that
-    /// values near zero do not get an unusably tight bound. Linearity is
+    /// A nearest-neighbour table is never linear, whatever its values, because
+    /// of the discontinuities at the first and last entries (`lutmap.c:578`).
+    ///
+    /// Otherwise the tolerance is scaled by the `LutEpsilon` attribute — the
+    /// stated relative error of the table values, `f64::EPSILON` by default —
+    /// and taken as the larger of two estimates: one from the table's full range
+    /// and one from the interpolated value at the element under test, the second
+    /// so that values near zero do not get an unusably tight bound. Linearity is
     /// accepted within twice that.
     fn table_is_linear(&self) -> bool {
+        if self.interp == LutInterp::Nearest {
+            return false;
+        }
         let n = self.lut.len();
         if n < 2 {
             return false;
@@ -205,6 +200,16 @@ impl LutMap {
         true
     }
 
+    /// The equivalent `WinMap` when the lookup table is linear, applied in the
+    /// given direction — C `lutmap.c:1142-1174`.
+    ///
+    /// `None` when the table is not linear, is shorter than two entries, or has
+    /// equal first and last values: C guards on `b1 != b2` (`:1154`), because a
+    /// constant table would give a WinMap with a zero scale.
+    ///
+    /// The corner-point construction is C's, rather than computing shift and
+    /// scale directly and inverting, so the arithmetic matches and the result
+    /// is always a *forward* WinMap.
     pub(crate) fn linear_equivalent(&self, inverted: bool) -> Option<WinMap> {
         let n = self.lut.len();
         if n < 2 {
@@ -725,12 +730,17 @@ impl Mapping for LutMap {
                 probe.invert();
                 if self.applied_equal(&probe, eff_inv) {
                     ctx.replace_pair_with(ilo, Box::new(UnitMap::new(1)), false);
-                    return Some(where_.min(ilo));
+                    // C reports `where`, not `ilo`, even when the pair it
+                    // replaced started at `where - 1` (lutmap.c:1234).
+                    return Some(where_);
                 }
             }
         }
 
-        super::simplify::default_map_merge(ctx, where_, series)
+        // C's LutMap has no further branch: nothing else merges with a LutMap,
+        // and an adjacent UnitMap is removed when the UnitMap itself is
+        // nominated (unitmap.c:519).
+        None
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -753,43 +763,6 @@ impl Mapping for LutMap {
                 .iter()
                 .zip(&other.lut)
                 .all(|(a, b)| ast_equal(*a, *b))
-    }
-
-    fn try_merge(
-        &self,
-        other: &dyn Mapping,
-        series: bool,
-        self_inv: bool,
-        other_inv: bool,
-    ) -> Option<DynMapping> {
-        if !series {
-            return None;
-        }
-        // Only cancel with inverse: same LUT, opposite direction.
-        if self_inv == other_inv {
-            return None;
-        }
-        let other_lut = other.as_any().downcast_ref::<LutMap>()?;
-        // Must be same LUT data, start, inc, and interpolation method.
-        if self.lut.len() != other_lut.lut.len() {
-            return None;
-        }
-        if !ast_equal(self.start, other_lut.start) || !ast_equal(self.inc, other_lut.inc) {
-            return None;
-        }
-        if self.interp != other_lut.interp {
-            return None;
-        }
-        if !self
-            .lut
-            .iter()
-            .zip(&other_lut.lut)
-            .all(|(a, b)| ast_equal(*a, *b))
-        {
-            return None;
-        }
-        // LutMap maps 1 coordinate to 1 coordinate.
-        Some(Box::new(UnitMap::new(1)))
     }
 
     fn has_forward(&self) -> bool {

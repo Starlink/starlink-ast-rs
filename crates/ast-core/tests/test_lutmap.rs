@@ -4,7 +4,7 @@
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
-use ast_core::mappings::{LutInterp, LutMap, Mapping, UnitMap};
+use ast_core::mappings::{CmpMap, Composition, LutInterp, LutMap, Mapping, UnitMap};
 use ast_core::{AnyObject, from_native_string, to_native_string};
 
 // ---------------------------------------------------------------------------
@@ -513,50 +513,66 @@ fn lutmap_serialisation_inverted() {
 }
 
 // ---------------------------------------------------------------------------
-// try_merge (inverse self-cancellation)
+// Cancellation against an adjacent inverse LutMap
 // ---------------------------------------------------------------------------
+
+/// A non-linear table, so the WinMap replacement cannot fire and the
+/// cancellation branch is what is under test.
+const CURVED: [f64; 5] = [0.0, 1.0, 4.0, 9.0, 16.0];
+
+fn series_of(first: LutMap, second: LutMap) -> CmpMap {
+    CmpMap::new(Box::new(first), Box::new(second), Composition::Series).unwrap()
+}
 
 #[test]
 fn lutmap_cancels_with_inverse() {
-    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
-    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+    let lm = LutMap::new(&CURVED, 0.0, 1.0).unwrap();
+    let mut inv = lm.clone();
+    inv.invert();
 
-    // Same LUT, opposite invert flags -> should cancel to UnitMap.
-    let merged = lm.try_merge(&lm, true, false, true);
-    assert!(merged.is_some());
-    assert!(merged.unwrap().as_any().is::<UnitMap>());
+    let s = <dyn Mapping>::simplify(&series_of(lm, inv)).unwrap();
+    assert!(
+        s.as_any().is::<UnitMap>(),
+        "a LutMap in series with its own inverse collapses to a UnitMap"
+    );
 }
 
 #[test]
 fn lutmap_no_cancel_different_lut() {
-    let lut1 = vec![0.0, 1.0, 4.0, 9.0, 16.0];
-    let lut2 = vec![0.0, 2.0, 4.0, 6.0, 8.0];
-    let lm1 = LutMap::new(&lut1, 0.0, 1.0).unwrap();
-    let lm2 = LutMap::new(&lut2, 0.0, 1.0).unwrap();
+    let lm1 = LutMap::new(&CURVED, 0.0, 1.0).unwrap();
+    let mut lm2 = LutMap::new(&[0.0, 2.0, 3.0, 9.0, 8.0], 0.0, 1.0).unwrap();
+    lm2.invert();
 
-    // Different LUTs -> should NOT cancel.
-    let merged = lm1.try_merge(&lm2, true, false, true);
-    assert!(merged.is_none());
+    let s = <dyn Mapping>::simplify(&series_of(lm1, lm2)).unwrap();
+    assert!(
+        !s.as_any().is::<UnitMap>(),
+        "different tables do not cancel"
+    );
 }
 
 #[test]
 fn lutmap_no_cancel_same_direction() {
-    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
-    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+    let lm = LutMap::new(&CURVED, 0.0, 1.0).unwrap();
 
-    // Same invert flags -> not an inverse pair, should not cancel.
-    let merged = lm.try_merge(&lm, true, false, false);
-    assert!(merged.is_none());
+    let s = <dyn Mapping>::simplify(&series_of(lm.clone(), lm)).unwrap();
+    assert!(
+        !s.as_any().is::<UnitMap>(),
+        "two LutMaps applied the same way are not an inverse pair"
+    );
 }
 
 #[test]
 fn lutmap_no_cancel_parallel() {
-    let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
-    let lm = LutMap::new(&lut, 0.0, 1.0).unwrap();
+    let lm = LutMap::new(&CURVED, 0.0, 1.0).unwrap();
+    let mut inv = lm.clone();
+    inv.invert();
 
-    // Parallel composition -> no merge supported.
-    let merged = lm.try_merge(&lm, false, false, true);
-    assert!(merged.is_none());
+    let parallel = CmpMap::new(Box::new(lm), Box::new(inv), Composition::Parallel).unwrap();
+    let s = <dyn Mapping>::simplify(&parallel).unwrap();
+    assert!(
+        !s.as_any().is::<UnitMap>(),
+        "C only cancels the pair in series (lutmap.c:1178)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -589,6 +605,23 @@ fn lutmap_linear_simplifies_to_winmap() {
         "WinMap output {} != LutMap output {}",
         actual.point(0)[0],
         expected.point(0)[0]
+    );
+}
+
+#[test]
+fn lutmap_nearest_linear_does_not_simplify() {
+    use ast_core::mappings::WinMap;
+
+    // The table is exactly linear, but nearest-neighbour interpolation puts
+    // discontinuities at the first and last entries, so C's GetLinear refuses
+    // to call it linear (lutmap.c:578).
+    let mut lm = LutMap::new(&[1.0, 3.0, 5.0, 7.0, 9.0], 0.0, 1.0).unwrap();
+    lm.set_interp(LutInterp::Nearest);
+
+    let s = <dyn Mapping>::simplify(&lm).unwrap();
+    assert!(
+        !s.as_any().is::<WinMap>(),
+        "a nearest-neighbour LutMap is not replaced by a WinMap"
     );
 }
 

@@ -2245,3 +2245,34 @@ than by the reciprocal. That is a C defect, recorded in
 `docs/issues/c-library-quirks.md` under "`PcdZoom` discards an inverted
 neighbour ZoomMap's direction" with the flag to revisit once it is fixed
 upstream.
+
+### 10.28 LutMap's linearity test and merge tail diverged from C's — FIXED
+
+Re-anchoring `docs/audits/mapmerge/lutmap.md` against the code found four
+divergences in a class whose checklist had reported every row ported.
+
+- **Nearest-neighbour tables.** `GetLinear` refuses a nearest-neighbour LutMap
+  before it looks at a single value, because the transformation is a staircase
+  and the discontinuities sit at the ends of the table (`lutmap.c:578`).
+  `table_is_linear` had no such test, so an exactly linear table with
+  `LutInterp` set to nearest was replaced by a WinMap — a Mapping that returns
+  `BAD_VALUE` outside the table became one that extrapolates.
+  `lutmap_nearest_linear_does_not_simplify` is the negative control.
+- **The reported index.** C returns `where`, the index of the nominated LutMap,
+  even when the pair it replaced began at `where - 1` (`lutmap.c:1234`). The port
+  returned `where_.min(ilo)`, which rewinds the nominate loop
+  (`cmpmap.c:3625`) to an element C leaves alone and freezes a different entry
+  under a repeating pattern (`cmpmap.c:3614`).
+- **The merge tail.** C's LutMap `MapMerge` has two branches and no third:
+  nothing else in the library merges with a LutMap, and an adjacent UnitMap is
+  removed when the UnitMap is itself nominated (`unitmap.c:519`). The port fell
+  through to `default_map_merge`, which offers the pair to the neighbour.
+- **The second cancellation rule.** `LutMap::try_merge` implemented the same
+  equal-but-opposite cancellation as the inline branch, by comparing fields
+  rather than by folding both applied directions in, and was reachable only
+  through the `default_map_merge` tail above. It is retired; the four tests that
+  called it now drive the branch through `simplify`.
+
+`table_is_linear` (`lutmap.rs:167-201`) and `map_merge`
+(`lutmap.rs:687-744`) are now C's two branches in C's order, with C's return
+value.
