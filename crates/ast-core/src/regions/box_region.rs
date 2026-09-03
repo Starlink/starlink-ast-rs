@@ -1206,6 +1206,10 @@ impl Region for BoxRegion {
     }
 
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        super::region_bounds_current(self)
+    }
+
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }
 

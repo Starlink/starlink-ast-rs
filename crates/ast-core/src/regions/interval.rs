@@ -371,7 +371,7 @@ impl Interval {
         let base_frame = self.data.frameset.base().snapshot();
         let centre: Vec<f64> = (0..nc).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect();
         let corner: Vec<f64> = ubnd.clone();
-        let box_reg = {
+        let mut box_reg = {
             let frameset = FrameSet::new(base_frame);
             // C constructs this Box with `astBox( bfrm, 1, lbnd, ubnd, unc, "" )`
             // and no astSetClosed (interval.c:3338), so Closed keeps its default
@@ -380,6 +380,13 @@ impl Interval {
             let data = RegionData::new(frameset, vec![centre, corner]);
             super::BoxRegion { data }
         };
+        // The `unc` argument is this Interval's uncertainty read in the base
+        // Frame, which is where the Box's own defining points live
+        // (interval.c:3337).
+        if self.data.uncertainty.is_some() {
+            let unc = self.get_unc_frm(FrameRef::Base)?;
+            box_reg.set_uncertainty(unc);
+        }
         let current_frame = self.data.frameset.current().snapshot();
         let box2 = box_reg.map_region(map, current_frame.as_ref())?;
         let sreg = (box2.as_ref() as &dyn Mapping).simplify()?;
@@ -388,6 +395,13 @@ impl Interval {
         // mapping preserves a 1-to-1 axis correspondence. Detect this: our
         // BoxRegion::simplified returns an unchanged clone (still a Box whose
         // base->current mapping is *not* a UnitMap) when it cannot simplify.
+        //
+        // A NullRegion is the answer in its own right: it is already expressed
+        // in the current Frame, so C uses it as the simplified Region
+        // (interval.c:3352-3355).
+        if let Some(null) = sreg.as_any().downcast_ref::<super::NullRegion>() {
+            return Ok(Some(Box::new(null.clone())));
+        }
         let sreg_is_box = sreg.as_any().downcast_ref::<super::BoxRegion>();
         let sreg_is_interval = sreg.as_any().downcast_ref::<Interval>();
 
@@ -413,8 +427,9 @@ impl Interval {
             let snc = iv.data.points[0].len();
             (iv.data.points[0].clone(), iv.data.points[1].clone(), snc)
         } else {
-            // NullRegion or non-Region result: not handled here — keep the
-            // original (matches the conservative outcome for these fixtures).
+            // `astSimplify` of a Region always yields a Region, and the two
+            // classes above plus the NullRegion handled earlier are every class
+            // C admits here (interval.c:3352-3358).
             return Ok(None);
         };
 
@@ -496,10 +511,17 @@ impl Interval {
         data.fill_factor = self.data.fill_factor;
         data.fill_factor_set = self.data.fill_factor_set;
         data.adaptive = self.data.adaptive;
-        if let Some(unc) = self.data.uncertainty.as_ref() {
-            data.uncertainty = Some(unc.clone());
+        let mut result = Interval { data };
+        // C hands the constructor the uncertainty read in the *current* Frame
+        // (interval.c:3479), and the constructor's SetUnc maps it back into the
+        // new Interval's base Frame -- which is that same current Frame here, so
+        // the stored uncertainty is this Interval's carried through the
+        // base->current Mapping.
+        if self.data.uncertainty.is_some() {
+            let unc = self.get_unc_frm(FrameRef::Current)?;
+            result.set_uncertainty(unc);
         }
-        Ok(Some(Box::new(Interval { data })))
+        Ok(Some(Box::new(result)))
     }
 }
 
@@ -932,6 +954,10 @@ impl Region for Interval {
     }
 
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        super::region_bounds_current(self)
+    }
+
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }
 
@@ -1204,22 +1230,31 @@ impl Region for Interval {
                 let ubnd = concat(&self.data.points[1], &bad);
                 Some(MergedRegion::Interval(lbnd, ubnd))
             }
-        } else if other.is::<super::PointList>() {
-            // Interval + PointList → PointList (interval.c:1458) is
-            // unreachable in practice and is deliberately not ported here.
-            // A point-Interval only reaches a neighbour merge after failing
-            // to self-simplify, but a zero-width *closed* Interval always
-            // reclassifies to a Box first (see `Interval::simplified` and C
-            // `interval.c::Cache`), so the Box+PointList path in
-            // `box.c::MergeBox` handles it instead. A non-closed point
-            // Interval fails the shared Closed guard above, since a
-            // PointList reports `Closed = !Negated`. The C branch itself is
-            // also dead for the same reason and contains upstream defects
-            // (a `lbnd[i] - lbnd[i]` self-subtraction, `astGetRegionBounds`
-            // overwriting the Interval bounds, and reads of uninitialised
-            // `lbnd_unc`/`ubnd_unc`); reproducing it faithfully is neither
-            // possible nor useful.
-            None
+        } else if let Some(other) = other.downcast_ref::<super::PointList>() {
+            // Interval + PointList → PointList (interval.c:1458). Both
+            // un-negated.
+            if neg_this || other.is_negated() {
+                None
+            } else {
+                // C reads the Interval's own bounds into `lbnd`/`ubnd` and then
+                // overwrites both arrays with the base-Frame uncertainty's
+                // bounds, so the axis values the merged PointList receives are
+                // the centre of that uncertainty rather than of the Interval;
+                // its "zero width on every axis" test subtracts a value from
+                // itself and therefore always passes
+                // (docs/issues/c-library-quirks.md). Both are mirrored, so the
+                // port produces C's points.
+                let bunc = self.get_unc_frm(FrameRef::Base).ok()?;
+                let (ulb, uub) = bunc.get_region_bounds().ok()?;
+                let axval: Vec<f64> = (0..nax_this).map(|i| 0.5 * (ulb[i] + uub[i])).collect();
+                let points = other
+                    .data
+                    .points
+                    .iter()
+                    .map(|p| concat(&axval, p))
+                    .collect();
+                Some(MergedRegion::PointList(points))
+            }
         } else {
             None
         };

@@ -151,18 +151,24 @@ fn negated_forward_transform_passes_through() {
 
 // ---- Bounds and mesh ----
 
+// A Region with no extent reports a lower bound above its upper bound, which is
+// how `astGetRegionBounds` distinguishes "empty" from "a single constant value".
+// A NullRegion contains no points, so C returns 1.0 and -1.0 on every axis
+// (nullregion.c:961, nullregion.c:1203).
 #[test]
-fn bounds_are_bad() {
+fn bounds_report_an_empty_extent() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let nr = NullRegionBuilder::new(frame).build().unwrap();
 
     let (lower, upper) = nr.get_region_bounds().unwrap();
-    assert_eq!(lower.len(), 2);
-    assert_eq!(upper.len(), 2);
-    assert!(is_bad(lower[0]));
-    assert!(is_bad(lower[1]));
-    assert!(is_bad(upper[0]));
-    assert!(is_bad(upper[1]));
+    assert_eq!(lower, vec![1.0, 1.0]);
+    assert_eq!(upper, vec![-1.0, -1.0]);
+
+    // The base-Frame box uses the same convention, and a NullRegion overrides
+    // the current-Frame method so the two never diverge.
+    let (blower, bupper) = nr.region_base_box().unwrap();
+    assert_eq!(blower, vec![1.0, 1.0]);
+    assert_eq!(bupper, vec![-1.0, -1.0]);
 }
 
 #[test]

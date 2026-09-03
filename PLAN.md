@@ -355,7 +355,6 @@ list as empty, so a ledger row for one would have passed at any size.
 | transform oracle | 25 rows | 2 | `RTRIP_REFERENCE_GAPS_LICENSED` — rows where C's own recorded inverse does not recover the pixel either: `tnx-cheb.head` (all 24 rows, a ChebyMap has no usable inverse) and `tsc.head` row 10 (a 360 deg alias). Asserted as an exact set against the corpus with no fixture loaded, and reached only after the live result has failed both the direct and the aliased comparison |
 | transform oracle | 2 rows | 2 | `FMA_SUBSTITUTIONS_LICENSED` — two rows of one UnitNormMap inverse section where the generator host's compiler fused the multiply-add at `unitnormmap.c:1079` and stepped past C's own zero-norm branch; the expectation is the unfused C value, asserted exactly |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
-| audit checklist markers (`test_audit_citations.rs`) | 37 checklists | 10 | the two gates check a checklist only once its header declares the pin its citations were verified against and that its steps are classified as extension points, so an unmarked checklist's `file:line` citations and its architecture rows are still unchecked. Each cluster does the checklists it touches and drops this number; cluster 7 takes it to zero, at which point the markers become mandatory and this row goes |
 | deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
 
 What the upstream `IsSimp` fix did and did not do, since the two get conflated:
@@ -868,44 +867,34 @@ submodule and moving the pin. Nothing in the Rust test tree reads that copy —
 `check_transform_oracle`. Bringing it forward belongs with §8's pending sync,
 alongside the Rust-only fixtures above.
 
-### 9.5 The audit checklists' `simplify.rs` line citations have rotted
+### 9.5 Audit checklist citations — CLOSED (cluster 7)
 
-Of the 257 `simplify.rs:N` citations across the twenty checklist files in
-`docs/audits/mapmerge/`, 255 no longer designate the source line they designated
-when they were written.
-The cause is this repo's own churn in `simplify.rs`: `cmpmap.md` cites
-`simplify.rs:719-802` for `simplify::cmp_map_merge`, which now begins at 688, and
-every row beneath that header is displaced by the same amount.
-Measured by blaming each citing line to the revision that wrote it, taking
-`simplify.rs` at that revision, and mapping old line numbers onto current ones
-through `difflib.SequenceMatcher`'s matching blocks.
+All 37 checklists in `docs/audits/mapmerge/` are anchored against pin `3e60abaa`
+and declare `Citations: verified against pin 3e60abaa` and
+`Extension points: classified`.
+Six gates in `crates/ast-core/tests/test_audit_citations.rs` hold it: each
+citation resolves to exactly one file, names the item it claims, every
+architecture row lands on a trait method, and every C step comment inside a cited
+body is covered by a row or named under `Uncited C steps:`.
+`every_checklist_declares_both_markers` makes the markers the entry condition, so
+a checklist added later is gated on arrival, and `no_row_is_left_at_gap` holds
+the row verdicts.
 
-Two things this is not.
-It is not a wrong verdict: the rows say what C does and whether the port does it,
-and that judgement was made against the code, not against the number.
-It is not caught by `test_mapmerge_audit.rs`, which checks that every audited
-class has a checklist, that every row carries one of the four verdicts, that
-every `gap:` names a real `PLAN.md` section and that no checklist is orphaned —
-it does not resolve `Rust site` citations at all.
+Citations are resolved by unique path suffix, not basename: `simplify.rs` has two
+candidates in this tree and `mod.rs` has thirteen, so citations name
+`mappings/simplify.rs` and `regions/mod.rs`.
 
-A mechanical remap through the same `difflib` mapping was tried and rejected.
-It reproduces a hand-derived re-anchoring exactly wherever the original citation
-was right, and it faithfully relocates an already-wrong citation to a new wrong
-line.
-`simplify.rs:1151-1246`, cited identically by 25 rows across 8 files for the
-shared neighbour-pair driver, was already wrong when written — at those
-revisions it lands inside `perm_map_merge`, and the driver the rows describe is
-`default_map_merge`, now `simplify.rs:1186-1281`.
-A remap turns those 25 rows into 25 confidently-wrong citations, which is worse
-than an obviously stale one, so the fix is a per-row re-anchor against the code
-the row describes.
-
-`sphmap.md` and `region_polygon.md` are re-anchored by hand, each value checked
-against the construct its row names.
-The remaining eighteen files are not.
-What would expose the rest is a test that resolves each `Rust site` to a line
-range and requires the range to contain an item whose name the row's `C step`
-mentions; nothing weaker distinguishes a stale number from a wrong one.
+**When the pin moves**, re-anchor with
+`cargo run -p audit-tools --bin anchor-citations -- --write docs/audits/mapmerge/*.md`
+and hand-check every row the tool cannot anchor.
+Do not remap mechanically by text similarity: that was tried, and it relocated 25
+rows confidently wrong, which is how the rot went unnoticed in the first place.
+`simplify.rs:1151-1246`, cited identically by those 25 rows for the shared
+neighbour-pair driver, was already wrong when written — at those revisions it
+lands inside `perm_map_merge`, while the driver the rows describe is
+`default_map_merge`.
+Update the pin in both marker lines in the same commit range, so a checklist
+never claims a pin it was not checked against.
 
 ### 9.6 `CmpFrame::Simplify` is unported, and the audit could not see it
 

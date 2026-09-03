@@ -111,9 +111,10 @@ impl RegionGeometry for NullRegion {
     }
 
     fn reg_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        // No bounds — return BAD_VALUE for all axes.
+        // An upper bound below the lower bound is how a Region reports that it
+        // contains no points (nullregion.c:961).
         let naxes = self.data.frameset.base().naxes();
-        Ok((vec![BAD_VALUE; naxes], vec![BAD_VALUE; naxes]))
+        Ok((vec![1.0; naxes], vec![-1.0; naxes]))
     }
 
     fn reg_base_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
@@ -238,8 +239,17 @@ impl Region for NullRegion {
         self.data.set_region_fs(frame);
     }
 
-    fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
+    }
+
+    fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        // C overrides the base-class method rather than inheriting it
+        // (nullregion.c:1203): a NullRegion has no boundary to transform into
+        // the current Frame, so the same empty-extent bounds are returned
+        // whatever the base->current Mapping is.
+        let naxes = self.data.frameset.base().naxes();
+        Ok((vec![1.0; naxes], vec![-1.0; naxes]))
     }
 
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
@@ -605,8 +615,17 @@ impl Mapping for NullRegion {
             data.fill_factor = new.data.fill_factor;
             data.fill_factor_set = new.data.fill_factor_set;
             data.adaptive = new.data.adaptive;
-            data.uncertainty = new.data.uncertainty.clone();
-            Box::new(NullRegion { data })
+            let mut region = NullRegion { data };
+            // C reads the uncertainty with `astGetUnc( new, 0 )`, which yields
+            // the *current*-Frame uncertainty and nothing at all when none was
+            // ever assigned (nullregion.c:1388, region.c:3889-3893). The
+            // constructor's SetUnc then maps it into the rebuilt NullRegion's
+            // base Frame.
+            if new.test_unc() {
+                let unc = new.get_unc_frm(FrameRef::Current)?;
+                region.set_uncertainty(unc);
+            }
+            Box::new(region)
         };
 
         // If any simplification occurred (FrameSet/uncertainty changed, or the

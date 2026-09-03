@@ -141,6 +141,9 @@ impl Region for DummyRegion {
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        Err(AstError::new(ErrorCode::Nodef, "not implemented"))
+    }
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }

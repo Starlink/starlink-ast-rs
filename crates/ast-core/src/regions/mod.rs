@@ -199,21 +199,34 @@ pub trait Region: Frame + Mapping {
     // Geometry queries
     // ------------------------------------------------------------------
 
-    /// Get the bounding box of this region in the base frame.
+    /// Bounding box of this Region within the Frame it represents, i.e. its
+    /// *current* Frame.
     ///
-    /// Returns `(lower, upper)` where each is a vector of length `naxes()`.
-    /// Axes that are unbounded use [`BAD_VALUE`](crate::constants::BAD_VALUE).
+    /// Mirrors C `astGetRegionBounds` (region.c:8948). Returns
+    /// `(lower, upper)`, each of length `naxes()`. The Negated attribute is
+    /// ignored, so the box encloses the un-negated Region. An axis with no
+    /// extent reports a lower bound above its upper bound; an axis whose bounds
+    /// cannot be determined reports
+    /// [`BAD_VALUE`](crate::constants::BAD_VALUE) for both.
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)>;
+
+    /// Bounding box of this Region in its *base* Frame.
+    ///
+    /// Mirrors C `astRegBaseBox` (region.c:7855). The Negated attribute is
+    /// ignored, and the bounds are un-mapped: the base→current Mapping is not
+    /// applied. Where the two Frames coincide this is the same box
+    /// [`get_region_bounds`](Region::get_region_bounds) returns.
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)>;
 
     /// Bounding box of the *un-negated* region in the base Frame, ignoring the
     /// Negated attribute of any component Regions.
     ///
     /// Mirrors C `astRegBaseBox2` (region.c:7909). The base-class behaviour is
-    /// identical to [`get_region_bounds`](Region::get_region_bounds); only
-    /// compound classes (CmpRegion) override it so the un-negated assumption is
+    /// identical to [`region_base_box`](Region::region_base_box); only compound
+    /// classes (CmpRegion) override it so the un-negated assumption is
     /// propagated to their components.
     fn reg_base_box2(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
-        self.get_region_bounds()
+        self.region_base_box()
     }
 
     /// Bounding box of the un-negated region in the *current* Frame, ignoring
@@ -1011,7 +1024,7 @@ pub trait Region: Frame + Mapping {
                 // else a box 100× the uncertainty size centred on the
                 // uncertainty centre (region.c:11221-11236).
                 let (lbnd, ubnd) = if self.is_bounded() {
-                    self.get_region_bounds()?
+                    self.region_base_box()?
                 } else {
                     let (slb, sub) = sunc.get_region_bounds()?;
                     let cen = orig_cen.clone().unwrap_or_else(|| vec![0.0; naxb]);
@@ -1140,6 +1153,109 @@ pub trait Region: Frame + Mapping {
     /// Clone this region into a boxed trait object.
     #[doc(hidden)]
     fn clone_region(&self) -> DynRegion;
+}
+
+/// Bounding box of a Region within its *current* Frame.
+///
+/// Faithful port of C `GetRegionBounds` (region.c:8948), the base-class
+/// implementation every Region shares. The Negated attribute is ignored, so
+/// the box encloses the un-negated Region.
+///
+/// When the simplified base→current Mapping is a `UnitMap` the base-Frame box
+/// is the answer already. Otherwise points on the Region's boundary are
+/// transformed into the current Frame and bounded there: a bounded Region
+/// supplies a boundary mesh, and an unbounded one, which has no mesh, supplies
+/// the corners of its base bounding box instead.
+pub(crate) fn region_bounds_current<R>(this: &R) -> AstResult<(Vec<f64>, Vec<f64>)>
+where
+    R: Region + data::RegionGeometry + ?Sized,
+{
+    use crate::constants::BAD_VALUE;
+
+    // The simplified base->current Mapping (region.c:9036).
+    let fs = this.get_region_frameset();
+    let smap = fs.mapping(FrameRef::Base, FrameRef::Current)?.simplify()?;
+
+    // A UnitMap leaves the base-Frame box as the answer (region.c:9040-9041).
+    if smap.as_any().is::<UnitMap>() {
+        return this.reg_base_box();
+    }
+
+    // A bounded Region has a genuine mesh of points on its boundary
+    // (region.c:9048-9049).
+    let bmesh = if this.is_bounded() {
+        let mesh = this.reg_base_mesh()?;
+        PointSet::from_rows(mesh.iter().map(|p| p.as_slice()))
+    } else {
+        // An unbounded Region has none, so the corners of its base-Frame
+        // bounding box are used instead (region.c:9053-9092).
+        let nbase = smap.nin();
+        let (blbnd, bubnd) = this.reg_base_box()?;
+        let npos = 1usize << nbase;
+        let mut pset = PointSet::zeros(npos, nbase);
+        let mut jmax = 1usize;
+        for i in 0..nbase {
+            let mut lo = true;
+            let mut j = 0usize;
+            for ip in 0..npos {
+                if j == jmax {
+                    lo = !lo;
+                    j = 0;
+                }
+                pset.point_mut(ip)[i] = if lo { blbnd[i] } else { bubnd[i] };
+                j += 1;
+            }
+            jmax *= 2;
+        }
+        pset
+    };
+
+    // Transform the points into the current Frame (region.c:9096).
+    let cmesh = smap.transform(&bmesh, true)?;
+
+    // The points may span a singularity such as the RA=0 line of a SkyFrame,
+    // so normalise each axis into the shortest possible range
+    // (region.c:9098-9110).
+    let frm = fs.current();
+    let ncur = frm.naxes();
+    let mut cols: Vec<Vec<f64>> = (0..ncur).map(|i| cmesh.axis_iter(i).collect()).collect();
+    for (i, col) in cols.iter_mut().enumerate() {
+        frm.ax_norm(i + 1, 1, col)?;
+    }
+
+    // Bound the normalised points (astBndPoints, pointset.c:681): an axis with
+    // no good value is returned bad.
+    let mut lbnd = vec![BAD_VALUE; ncur];
+    let mut ubnd = vec![BAD_VALUE; ncur];
+    for (i, col) in cols.iter().enumerate() {
+        for &v in col {
+            if v == BAD_VALUE {
+                continue;
+            }
+            if lbnd[i] == BAD_VALUE {
+                lbnd[i] = v;
+                ubnd[i] = v;
+            } else if v < lbnd[i] {
+                lbnd[i] = v;
+            } else if v > ubnd[i] {
+                ubnd[i] = v;
+            }
+        }
+    }
+
+    // The bounds may themselves span the singularity, so take the width from
+    // the Frame and rebuild the upper bound from it (region.c:9112-9124).
+    for i in 0..ncur {
+        let width = frm.ax_distance(i + 1, lbnd[i], ubnd[i])?;
+        if width != BAD_VALUE {
+            ubnd[i] = lbnd[i] + width;
+        } else {
+            ubnd[i] = BAD_VALUE;
+            lbnd[i] = BAD_VALUE;
+        }
+    }
+
+    Ok((lbnd, ubnd))
 }
 
 /// Result of picking axes from a Region: either a same-class sub-Region

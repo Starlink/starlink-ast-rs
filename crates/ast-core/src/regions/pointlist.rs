@@ -474,6 +474,10 @@ impl Region for PointList {
     }
 
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        super::region_bounds_current(self)
+    }
+
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }
 
@@ -863,9 +867,15 @@ impl Mapping for PointList {
             .map(|i| transformed.point(i)[..naxes].to_vec())
             .collect();
         let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, new_points);
-        data.uncertainty = this.data.uncertainty.clone();
+        // C hands the constructor the uncertainty in the *current* Frame
+        // (pointlist.c:2254-2257), and the constructor's SetUnc maps it into the
+        // new PointList's base Frame and re-centres it on the first point. The
+        // `reg_overlay` below then clears it again when the supplied Region had
+        // no uncertainty of its own.
+        let unc = this.get_unc_frm(FrameRef::Current)?;
+        let data = RegionData::new(frameset, new_points);
         let mut result: DynRegion = Box::new(PointList { data });
+        result.set_uncertainty(unc);
         result.reg_overlay(self, true);
         // Reaching here means the base->current Mapping was not a UnitMap, which
         // is where C sets `simpler = 1` unconditionally (pointlist.c:2258).

@@ -17,7 +17,7 @@ re-fitted — the vertices go where the Mapping sends them — so the checks C m
 before adopting the result are the only thing standing between a transformed
 polygon and a wrong one.
 
-`Polygon::simplified` (`polygon.rs:1198-1302 (fn simplified)`) is the port of it.
+`Polygon::simplified` (`polygon.rs:1202-1307 (fn simplified)`) is the port of it.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|

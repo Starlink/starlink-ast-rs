@@ -2840,3 +2840,56 @@ Revisit when this is fixed upstream, at which point the inverse terms compare
 the same way the forward ones do.
 
 To be raised upstream.
+
+## `MergeInterval`'s PointList branch measures the uncertainty instead of the Interval
+
+`interval.c:1458-1535` absorbs a neighbouring `PointList` into an `Interval`,
+producing a `PointList` in the combined base Frame.
+The Interval contributes one constant axis value per axis, which requires it to
+have zero width — the branch's own comment says "We can only do this if the
+Interval has zero width on each axis (i.e. represents a point)".
+
+Two separate slips mean neither the test nor the values do that:
+
+```c
+         astRegBaseBox( this, lbnd, ubnd );
+         …
+         bunc = astGetUncFrm( this, AST__BASE );
+         astGetRegionBounds( bunc, lbnd, ubnd );
+         …
+            for( i = 0; i < nax_this; i++ ) {
+               if( fabs( lbnd[ i ] - lbnd[ i ] ) >
+                   0.25*fabs( ubnd_unc[ i ] - lbnd_unc[ i ] ) ) {
+```
+
+`astGetRegionBounds` is handed `lbnd`/`ubnd` rather than the `lbnd_unc`/
+`ubnd_unc` arrays declared for it (`interval.c:1467-1470`), so the Interval's
+own bounds — read one statement earlier — are overwritten by the uncertainty
+Region's, and `lbnd_unc`/`ubnd_unc` are never written at all.
+The width test then subtracts `lbnd[i]` from itself (`interval.c:1479`), so its
+left side is always `0.0`, and its right side reads the two uninitialised
+arrays.
+
+The outcome is nonetheless deterministic.
+`0.0 > 0.25*fabs( x )` is false for every `x`, `NaN` included, so `ok` stays 1
+and the zero-width requirement never rejects anything.
+The constant axis values become `0.5*( lbnd[i] + ubnd[i] )`
+(`interval.c:1484`) over the *uncertainty's* bounds, so the merged PointList's
+extra axes sit at the centre of the Interval's uncertainty Region rather than at
+the Interval's own centre.
+Where no uncertainty was assigned, `astGetUncFrm` supplies the default one, and
+`interval.c::GetDefUnc` centres that on the Interval's centre when every limit
+is finite — which is why the values look right in the bounded case and collapse
+to `0.0` on any axis with a missing limit.
+
+**Rust behaviour (mirrored):** `Interval::region_merge`'s PointList arm
+(`crates/ast-core/src/regions/interval.rs:1229-1253`) reads the base-Frame
+uncertainty's bounds, takes their midpoint per axis, and applies no width test,
+so the port produces C's points on every input.
+The uninitialised reads have no Rust counterpart because their only consumer is
+a comparison whose result they cannot change.
+
+Fixing this upstream changes which Interval/PointList pairs merge at all, so the
+mirror is what keeps the corpus byte-exact; revisit it with the fix.
+
+To be raised upstream.

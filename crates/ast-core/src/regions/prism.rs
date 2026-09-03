@@ -537,8 +537,68 @@ impl Region for Prism {
         }
     }
 
-    fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
+    }
+
+    fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        // C overrides the base-class method (prism.c:941): where the Prism's
+        // base->current Mapping splits on the two components' axes, each
+        // component is bounded in its own part of the current Frame and the
+        // results are un-permuted into place. That avoids meshing the whole
+        // Prism boundary, and keeps an unbounded component's bounds exact.
+        let nax1 = self.naxes1();
+        let nax2 = self.naxes2();
+
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let cfrm = self.data.frameset.current().snapshot();
+
+        // Split the Mapping on the base-Frame axes of each component
+        // (prism.c:1057-1075). `map_split` takes and returns 1-based axes.
+        let axin1: Vec<usize> = (1..=nax1).collect();
+        let split1 = map.map_split(&axin1);
+        let axin2: Vec<usize> = (nax1 + 1..=nax1 + nax2).collect();
+        let split2 = map.map_split(&axin2);
+
+        // Where either component's axes do not split out, the parent method is
+        // used (prism.c:1085-1087).
+        let (Some((caxes1, map1)), Some((caxes2, map2))) = (split1, split2) else {
+            return super::region_bounds_current(self);
+        };
+
+        let nax1_out = map1.nout();
+        let nax2_out = map2.nout();
+        let target1: Vec<i32> = caxes1.iter().map(|&a| (a - 1) as i32).collect();
+        let target2: Vec<i32> = caxes2.iter().map(|&a| (a - 1) as i32).collect();
+        let cfrm1 = cfrm.pick_axes_snapshot(&target1)?;
+        let cfrm2 = cfrm.pick_axes_snapshot(&target2)?;
+
+        // Bound each component within its own part of the current Frame
+        // (prism.c:1099-1109).
+        let reg1 = self.region1.map_region(map1.as_ref(), cfrm1.as_ref())?;
+        let (tlbnd1, tubnd1) = reg1.get_region_bounds()?;
+        let reg2 = self.region2.map_region(map2.as_ref(), cfrm2.as_ref())?;
+        let (tlbnd2, tubnd2) = reg2.get_region_bounds()?;
+
+        // Undo any axis permutation the Prism's FrameSet introduced
+        // (prism.c:1111-1120). Any current-Frame axis neither split reaches is
+        // left as C leaves it: untouched.
+        let ncur = cfrm.naxes();
+        let mut lbnd = vec![0.0; ncur];
+        let mut ubnd = vec![0.0; ncur];
+        for iax in 0..nax1_out {
+            lbnd[caxes1[iax] - 1] = tlbnd1[iax];
+            ubnd[caxes1[iax] - 1] = tubnd1[iax];
+        }
+        for iax in 0..nax2_out {
+            lbnd[caxes2[iax] - 1] = tlbnd2[iax];
+            ubnd[caxes2[iax] - 1] = tubnd2[iax];
+        }
+
+        Ok((lbnd, ubnd))
     }
 
     fn get_region_disc(&self) -> AstResult<(Vec<f64>, f64)> {

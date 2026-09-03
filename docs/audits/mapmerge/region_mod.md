@@ -2,81 +2,145 @@
 
 C source: reference/starlink-ast/src/region.c
 Rust: crates/ast-core/src/regions/mod.rs
-Audited: 2026-08-21 against pin 3cf4bc5c
+Audited: 2026-09-03 against pin 3e60abaa
+Citations: verified against pin 3e60abaa
+Extension points: classified
 
-Two C bodies, both generic drivers every Region subclass reaches: `Simplify`
-(`region.c:11119-11327`), which simplifies the encapsulated FrameSet and then the
-uncertainty Region if that stays stable across the Region's extent; and
-`GetDefUnc` (`region.c:3538-3587`), the default uncertainty.
+Uncited C steps:
+- region.c:11089 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
+- region.c:3528 (fn GetDefUnc) — `Local Variables:` is the local-variable declaration block, not a step
 
-The Rust counterparts are `parent_region_simplify` (`regions/mod.rs:890-1003`) —
-which every concrete Region's `simplified` calls first, matching C where every
-subclass `Simplify` calls the parent — and `default_bounding_box_unc`
-(`regions/mod.rs:461-485`) behind `get_def_unc` (`regions/mod.rs:494`).
+Two C bodies, both generic drivers every Region subclass reaches through the
+vtab: `Simplify` (`region.c:11119-11328 (fn Simplify)`), which simplifies the
+encapsulated FrameSet and then the uncertainty Region if that stays stable
+across the Region's extent; and `GetDefUnc`
+(`region.c:3538-3588 (fn GetDefUnc)`), the default uncertainty.
 
-| # | C step | C site | Rust site | verdict |
-|---|---|---|---|---|
-| 1 | Initialise the returned pointer | region.c:11119-11120 | -- | n/a: the Rust returns `Option<DynRegion>`, `None` meaning nothing changed |
-| 2 | Check the global error status and bail out | region.c:11122-11123 | -- | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Obtain a pointer to the Region structure | region.c:11125-11127 | -- | n/a: the Rust method already has `&self` |
-| 4 | Deep-copy the supplied Region, so the returned pointer differs from the supplied one when anything changes | region.c:11128-11132 | regions/mod.rs:891-892 | ported |
-| 5 | Simplify the encapsulated FrameSet, noting whether anything changed | region.c:11133-11137 | regions/mod.rs:896-900 | ported |
-| 6 | If so, replace the FrameSet with the simpler one | region.c:11138-11144 | regions/mod.rs:901-906 | ported |
-| 7 | A default uncertainty is simplified by deleting it, since it is regenerated on demand | region.c:11145-11149 | regions/mod.rs:908-911 | ported |
-| 8 | An explicit uncertainty is simplified in place | region.c:11150-11153 | regions/mod.rs:912 | ported |
-| 9 | Obtain the Region's uncertainty | region.c:11154-11156 | regions/mod.rs:913-914 | ported |
-| 10 | Get the base-to-current Mapping of the original Region | region.c:11157-11159 | regions/mod.rs:915-916 | ported |
-| 11 | When that Mapping has unequal input and output counts, re-centre the uncertainty so it is centred within the Region's extent | region.c:11160-11192 | regions/mod.rs:925-936 | ported |
-| 12 | Try simplifying the uncertainty, proceeding only if it changed | region.c:11193-11197 | regions/mod.rs:937-941 | ported |
-| 13 | A simplifiable uncertainty means its base-to-current Mapping is linear enough to absorb, but that has to hold across the whole Region | region.c:11198-11212 | regions/mod.rs:942-947 | ported |
-| 14 | Note the simplified uncertainty's original base-Frame centre | region.c:11213-11215 | regions/mod.rs:942-947 | ported |
-| 15 | Allocate the test-box bounds | region.c:11216-11220 | -- | n/a: owned vectors |
-| 16 | Use this Region's base-Frame bounding box as the test box when it is available | region.c:11221-11225 | regions/mod.rs:948-950 | ported |
-| 17 | Otherwise use a box 100 times the size of the uncertainty, centred on it | region.c:11226-11237 | regions/mod.rs:948-955 | ported |
-| 18 | Re-centre the uncertainty at the test box's lower bounds and take its bounding box | region.c:11238-11247 | regions/mod.rs:966-971 | ported |
-| 19 | Do the same at the upper bounds | region.c:11248-11256 | regions/mod.rs:972-976 | ported |
-| 20 | Get this Region's base Frame | region.c:11257-11259 | regions/mod.rs:894 | ported |
-| 21 | Assume at first that the simplified uncertainty will not be used | region.c:11260-11266 | regions/mod.rs:977-983 | ported |
-| 22 | Compare the two bounding-box widths on each base-Frame axis | region.c:11270-11276 | regions/mod.rs:977-983 | ported |
-| 23 | Reject the simplified uncertainty when the widths differ by more than the arbitrary 0.1% figure | region.c:11277-11287 | regions/mod.rs:977-983 | ported |
-| 24 | Reinstate the simplified uncertainty's original centre | region.c:11288-11300 | regions/mod.rs:989-991 | ported |
-| 25 | If it can be used, record a simplification and store the new uncertainty | region.c:11301-11313 | regions/mod.rs:993-999 | ported |
-| 26 | Return the new Region if anything simplified, otherwise a clone | region.c:11314-11322 | regions/mod.rs:1000-1002 | ported |
-| 27 | Annul the returned pointer if an error occurred | region.c:11323-11325 | -- | n/a: an error is a `Result::Err` |
-| 28 | Return the result | region.c:11326-11327 | regions/mod.rs:1002 | ported |
-| 29 | `GetDefUnc`: get the base Frame and its axis count | region.c:3544-3549 | regions/mod.rs:463-464 | ported |
-| 30 | Get the base-Frame bounding box, honouring that `astRegBaseBox` assumes an un-negated Region | region.c:3550-3559 | regions/mod.rs:462 | ported |
-| 31 | Build a Box covering 1.0E-6 of that bounding box, centred on its centre | region.c:3560-3566 | regions/mod.rs:465,472-478 | ported |
-| 32 | Fall back to a half-width of `c * 0.5E-6` when the box is degenerate on an axis | region.c:3567 | regions/mod.rs:474-476 | ported |
-| 33 | Set both bounds to zero on an axis whose bound is `±DBL_MAX` | region.c:3568-3573 | regions/mod.rs:471,479-482 | ported |
-| 34 | Create the Box in the base Frame | region.c:3574-3577 | regions/mod.rs:484 | ported |
-| 35 | Free resources and return NULL on error | region.c:3578-3585 | -- | n/a: owned values are dropped and an error is a `Result::Err` |
-| 36 | Return the Box | region.c:3586-3587 | regions/mod.rs:484 | ported |
+The Rust counterparts are `parent_region_simplify`
+(`regions/mod.rs:963-1079 (fn parent_region_simplify)`) — which every concrete
+Region's `simplified` calls first, matching C where every subclass `Simplify`
+calls the parent — and `default_bounding_box_unc`
+(`regions/mod.rs:525-549 (fn default_bounding_box_unc)`) behind `get_def_unc`
+(`regions/mod.rs:558 (fn get_def_unc)`).
 
-## Row 23 — the tolerance is C's, and C's comment understates it
+| # | C step | C site | Rust site | extension point | verdict |
+|---|---|---|---|---|---|
+| 1 | Initialise the returned pointer | region.c:11119-11121 (fn Simplify) | -- | ceremony | n/a: the Rust returns `Option<DynRegion>`, `None` meaning nothing changed |
+| 2 | Check the global error status and bail out | region.c:11122-11124 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | Obtain a pointer to the Region structure | region.c:11125-11127 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
+| 4 | Take a deep copy of the supplied Region, so the returned pointer differs from the supplied one when anything simplifies | region.c:11128-11132 (fn Simplify) | regions/mod.rs:966 (fn parent_region_simplify) | architecture | ported |
+| 5 | Simplify the encapsulated FrameSet, noting whether any simplification took place | region.c:11133-11137 (fn Simplify) | regions/mod.rs:972-976 (fn parent_region_simplify) | architecture | ported |
+| 6 | If so, annul the existing FrameSet and use the simpler one | region.c:11138-11144 (fn Simplify) | regions/mod.rs:977-978 (fn parent_region_simplify) | architecture | ported |
+| 7 | A default uncertainty is simplified by deleting it, since it is regenerated on demand from the simplified Region | region.c:11145-11149 (fn Simplify) | -- | ceremony | n/a: C annuls its cached `defunc`; the port caches nothing, so `get_def_unc` already regenerates the default from whatever the Region now is |
+| 8 | An uncertainty supplied explicitly is simplified in place instead | region.c:11150-11153 (fn Simplify) | regions/mod.rs:984 (fn parent_region_simplify) | architecture | ported |
+| 9 | Obtain the Region's uncertainty | region.c:11154-11156 (fn Simplify) | regions/mod.rs:986 (fn parent_region_simplify) | architecture | ported |
+| 10 | Get the base->current Mapping from `this` | region.c:11157-11159 (fn Simplify) | regions/mod.rs:989-991 (fn parent_region_simplify) | architecture | ported |
+| 11 | Where that Mapping has different numbers of inputs and outputs — a PermMap taking a slice through a Region — the uncertainty has to be centred on the slice | region.c:11160-11166 (fn Simplify) | regions/mod.rs:999 (fn parent_region_simplify) | architecture | ported |
+| 12 | Get the current centre of the uncertainty in its current Frame, which is the base Frame of `this` | region.c:11167-11170 (fn Simplify) | regions/mod.rs:1000 (fn parent_region_simplify) | architecture | ported |
+| 13 | Store that centre in a PointSet so it can be transformed | region.c:11171-11175 (fn Simplify) | regions/mod.rs:1002 (fn parent_region_simplify) | architecture | ported |
+| 14 | Transform it into the current Frame of `this` and then back into the base Frame | region.c:11176-11180 (fn Simplify) | regions/mod.rs:1003-1004 (fn parent_region_simplify) | architecture | ported |
+| 15 | Re-centre the uncertainty at that position | region.c:11181-11183 (fn Simplify) | regions/mod.rs:1005-1006 (fn parent_region_simplify) | architecture | ported |
+| 16 | Free the PointSets | region.c:11184-11189 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 17 | Free the centre array and the Mapping pointer | region.c:11190-11192 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 18 | Try simplifying the uncertainty, proceeding only if it changed | region.c:11193-11197 (fn Simplify) | regions/mod.rs:1015-1016 (fn parent_region_simplify) | architecture | ported |
+| 19 | A simplifiable uncertainty means its base->current Mapping is linear enough for the shape to survive the transformation, but that has been tested only at the uncertainty's centre; it has to hold across the whole of `this`, which is what re-centring at opposite corners of a test box measures | region.c:11198-11212 (fn Simplify) | regions/mod.rs:1017-1019 (fn parent_region_simplify) | architecture | ported |
+| 20 | Note the original base-Frame centre of the simplified uncertainty | region.c:11213-11215 (fn Simplify) | regions/mod.rs:1020 (fn parent_region_simplify) | architecture | ported |
+| 21 | Take the base-Frame axis count and allocate the test-box bounds | region.c:11216-11220 (fn Simplify) | regions/mod.rs:1021 (fn parent_region_simplify) | architecture | ported |
+| 22 | Where `this` is bounded, use its base-Frame bounding box as the test box | region.c:11221-11225 (fn Simplify) | regions/mod.rs:1026-1027 (fn parent_region_simplify) | architecture | ported |
+| 23 | Otherwise centre the test box on the uncertainty's own centre, sized from the uncertainty's bounding box | region.c:11226-11237 (fn Simplify) | regions/mod.rs:1029-1038 (fn parent_region_simplify) | architecture | ported |
+| 24 | Re-centre the uncertainty at the test box's lower bounds, which are in the base Frame of `this` and so the current Frame of `sunc` | region.c:11238-11241 (fn Simplify) | regions/mod.rs:1043 (fn parent_region_simplify) | architecture | ported |
+| 25 | Take the bounding box of the re-centred uncertainty within its current Frame | region.c:11242-11247 (fn Simplify) | regions/mod.rs:1044 (fn parent_region_simplify) | architecture | ported |
+| 26 | Re-centre the uncertainty at the test box's upper bounds | region.c:11248-11251 (fn Simplify) | regions/mod.rs:1048 (fn parent_region_simplify) | architecture | ported |
+| 27 | Take its bounding box again | region.c:11252-11256 (fn Simplify) | regions/mod.rs:1049 (fn parent_region_simplify) | architecture | ported |
+| 28 | Get a pointer to the base Frame of `this` | region.c:11257-11259 (fn Simplify) | -- | ceremony | n/a: C fetches `bfrm` here and annuls it at `region.c:11300 (fn Simplify)` without ever reading it |
+| 29 | Initialise the `ok` flag to indicate the simplified uncertainty should not be used | region.c:11260-11263 (fn Simplify) | -- | ceremony | n/a: the flag starts at zero only to cover the error path, and there is no ambient status here to fail |
+| 30 | Check pointers can be referenced safely | region.c:11264-11266 (fn Simplify) | -- | ceremony | n/a: a failed step is an `Err`, so the code below it does not run |
+| 31 | Now indicate that the simplified uncertainty should be used | region.c:11267-11269 (fn Simplify) | regions/mod.rs:1054 (fn parent_region_simplify) | architecture | ported |
+| 32 | Loop round all axes of the base Frame of `this` | region.c:11270-11272 (fn Simplify) | regions/mod.rs:1055 (fn parent_region_simplify) | architecture | ported |
+| 33 | Get the width of the two bounding boxes on this axis | region.c:11273-11276 (fn Simplify) | regions/mod.rs:1056-1057 (fn parent_region_simplify) | architecture | ported |
+| 34 | Reject the simplified uncertainty where the widths differ by more than the arbitrary figure C calls 0.1% | region.c:11277-11287 (fn Simplify) | regions/mod.rs:1058-1061 (fn parent_region_simplify) | architecture | ported |
+| 35 | Reinstate the original base-Frame centre of the simplified uncertainty | region.c:11288-11290 (fn Simplify) | regions/mod.rs:1065-1067 (fn parent_region_simplify) | architecture | ported |
+| 36 | Free the centre and bounds arrays and the base Frame pointer | region.c:11291-11300 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 37 | Where it can be used, record a simplification and store the new uncertainty | region.c:11301-11308 (fn Simplify) | regions/mod.rs:1071-1074 (fn parent_region_simplify) | architecture | ported |
+| 38 | Free the uncertainty pointers | region.c:11309-11313 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 39 | Return the new Region if anything simplified, otherwise a clone of the supplied pointer | region.c:11314-11322 (fn Simplify) | regions/mod.rs:1078 (fn parent_region_simplify) | architecture | ported |
+| 40 | Annul the returned pointer if an error occurred | region.c:11323-11325 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err` |
+| 41 | Return the result | region.c:11326-11328 (fn Simplify) | regions/mod.rs:1078 (fn parent_region_simplify) | ceremony | ported |
+| 42 | Initialise the returned pointer | region.c:3538-3540 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no pointer to pre-clear |
+| 43 | Check the global error status and bail out | region.c:3541-3543 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 44 | Get a pointer to the base Frame of the supplied Region | region.c:3544-3546 (fn GetDefUnc) | regions/mod.rs:528 (fn default_bounding_box_unc) | architecture | ported |
+| 45 | Get the number of base-Frame axes | region.c:3547-3549 (fn GetDefUnc) | regions/mod.rs:527 (fn default_bounding_box_unc) | architecture | ported |
+| 46 | Get the base-Frame bounding box through `astRegBaseBox2`, so the un-negated assumption reaches the component Regions of a Prism or CmpRegion | region.c:3550-3559 (fn GetDefUnc) | regions/mod.rs:526 (fn default_bounding_box_unc) | architecture | ported |
+| 47 | Create a Box covering 1.0E-6 of that bounding box, centred on its centre, with an unbounded axis contributing zero and a degenerate axis a half-width scaled from its centre | region.c:3560-3577 (fn GetDefUnc) | regions/mod.rs:529-548 (fn default_bounding_box_unc) | architecture | ported |
+| 48 | Free the base Frame pointer and the bounds arrays | region.c:3578-3582 (fn GetDefUnc) | -- | ceremony | n/a: owned values are dropped |
+| 49 | Return NULL if an error occurred | region.c:3583-3585 (fn GetDefUnc) | -- | ceremony | n/a: an error is a `Result::Err` |
+| 50 | Return the required pointer | region.c:3586-3588 (fn GetDefUnc) | regions/mod.rs:548 (fn default_bounding_box_unc) | ceremony | ported |
+
+## Rows 21 and 45 — the axis count comes from the box
+
+C asks for the base-Frame axis count directly: `astGetNin( this->frameset )` in
+`Simplify` (`region.c:11217 (fn Simplify)`) and `astGetNaxes( bfrm )` in
+`GetDefUnc` (`region.c:3548 (fn GetDefUnc)`), each followed by an `astMalloc` of
+that many doubles. The port takes the count from the bounding box it already
+holds — one bound per base-Frame axis — and its owned vectors need no separate
+allocation step, so C's two lines become one in each body.
+
+## Row 34 — the tolerance is C's, and C's comment understates it
 
 C rejects the simplified uncertainty when
-`|w1 - w2| > 0.005 * (|w1| + |w2|)`. Its own comment calls that 0.1% and adds
-that the figure is arbitrary; 0.005 of the sum of two widths is nearer 0.5% of
-their mean. The port uses `0.005` and records both the constant and C's wording,
-so the arithmetic follows C rather than C's comment.
+`|w1 - w2| > 0.005 * (|w1| + |w2|)`
+(`region.c:11281 (fn Simplify)`). Its own comment calls that 0.1% and adds that
+the figure is arbitrary; 0.005 of the sum of two widths is nearer 0.5% of their
+mean. The port uses `0.005` and records both the constant and C's wording, so
+the arithmetic follows C rather than C's comment.
 
-## Row 33 — the guard has to test the two bounds asymmetrically
+## Row 47 — the guard has to test the two bounds asymmetrically
 
 C skips an axis whose upper bound is `+DBL_MAX` or whose lower bound is
-`-DBL_MAX`, setting both output bounds to zero. `is_bad(v)` is
-`v == BAD_VALUE || !v.is_finite()` (`mappings/helpers/mod.rs:11-13`) with
-`BAD_VALUE == -f64::MAX`, so an `is_bad` test on its own covers only the lower
-half; `+f64::MAX` is an ordinary finite number and takes the bounded branch,
-where it earns a half-width of about `0.5e-6 * f64::MAX`.
+`-DBL_MAX` (`region.c:3564 (fn GetDefUnc)`), setting both output bounds to zero.
+`is_bad(v)` is `v == BAD_VALUE || !v.is_finite()`
+(`mappings/helpers/mod.rs:11-13 (fn is_bad)`) with `BAD_VALUE == -f64::MAX`, so
+an `is_bad` test on its own covers only the lower half; `+f64::MAX` is an
+ordinary finite number and takes the bounded branch, where it earns a half-width
+of about `0.5e-6 * f64::MAX`.
 
-The port carries C's test in the same asymmetric form. A magnitude test would
+The port carries C's test in the same asymmetric form
+(`regions/mod.rs:535 (fn default_bounding_box_unc)`). A magnitude test would
 diverge for `lbnd == +DBL_MAX`, where C is bounded.
 
 ## Row 11 — re-centring is what makes a sliced Region's uncertainty usable
 
-When the base-to-current Mapping has unequal input and output counts — a PermMap
+When the base->current Mapping has unequal input and output counts — a PermMap
 taking a slice through a Region — the uncertainty must be re-centred inside the
 Region's extent before it is simplified, or the stability test measures it
 somewhere the Region does not reach. C does that by transforming the uncertainty
 centre into the current Frame and back, and the port does the same.
+
+## Row 23 — the fallback test box is the uncertainty's own width
+
+C's comment calls this box "100 times the size of the uncertainty region", but
+the arithmetic sets `delta` to half the width of the uncertainty's bounding box
+and then spans `centre ± delta` (`region.c:11231-11235 (fn Simplify)`), which is
+that bounding box's width exactly. The port mirrors the arithmetic. The
+consequence matters: for an unbounded Region the stability test moves the
+uncertainty by one of its own widths rather than a hundred, so it is a weaker
+test than C's comment describes — and a Region that passes here in C passes here
+in the port for the same reason.
+
+C also indexes `orig_cen` directly in that loop, relying on every uncertainty
+Region having a centre. `reg_centre_query` returns an `Option`, and the port
+falls back to zeros (`regions/mod.rs:1030 (fn parent_region_simplify)`) where it
+is `None` — unreachable for the bounded uncertainty Regions this branch handles,
+and a defined result rather than a null dereference if it ever were not.
+
+## Row 22 — the test box is the base-Frame box, not the current-Frame one
+
+C takes the bounded branch's test box from `astRegBaseBox`
+(`region.c:11224 (fn Simplify)`) and the unbounded branch's from
+`astGetRegionBounds` (`region.c:11230 (fn Simplify)`). The two are different
+boxes: the first is in the Region's base Frame, the second in the current Frame
+of `sunc`, which is the base Frame of `this`. Both branches therefore produce
+bounds in the base Frame of `this`, which is what rows 24 and 26 then pass to
+`astRegCentre` with `AST__CURRENT`. The port keeps the same split —
+`region_base_box` in the bounded branch, `get_region_bounds` in the other — so
+the two Frames cannot be confused by a reader who sees only one branch.

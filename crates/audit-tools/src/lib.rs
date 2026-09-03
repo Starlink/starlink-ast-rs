@@ -203,18 +203,21 @@ pub fn rust_items(src: &str) -> Vec<(String, usize, usize)> {
     out
 }
 
-/// The `impl` header enclosing `line` (1-based), as `"Trait for Type"` when the
-/// block implements a trait and `"Type"` when it does not.
+/// The `impl` or `trait` header enclosing `line` (1-based): `"Trait for Type"`
+/// for a trait implementation, `"Type"` for an inherent one, and `"trait Name"`
+/// for a trait definition.
 ///
 /// This is what distinguishes a step that landed on a trait method — the port's
-/// equivalent of a C vtab slot — from one that landed on an inherent helper.
-pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String> {
+/// equivalent of a C vtab slot, declared either in the trait or in a per-class
+/// implementation of it — from one that landed on an inherent helper. Ask
+/// [`declares_trait_methods`] which of the three a header is.
+pub fn enclosing_rust_block(src: &str, line: usize) -> Option<String> {
     let mut stack: Vec<(String, usize)> = Vec::new();
     let mut depth = 0usize;
     let mut pending: Option<String> = None;
     for (i, text) in src.lines().enumerate() {
         let code = code_only(text);
-        if let Some(header) = impl_header(&code) {
+        if let Some(header) = block_header(&code) {
             pending = Some(header);
         }
         for c in code.chars() {
@@ -241,10 +244,28 @@ pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String> {
     None
 }
 
-/// The subject of an `impl` line, with generics and `where` clauses removed.
-fn impl_header(code: &str) -> Option<String> {
+/// Whether a header from [`enclosing_rust_block`] declares trait methods.
+///
+/// A trait implementation (`impl Trait for Type`) and a trait definition
+/// (`trait Trait`) both declare methods a generic driver dispatches to per
+/// class; an inherent `impl Type` does not.
+pub fn declares_trait_methods(header: &str) -> bool {
+    header.contains(" for ") || header.starts_with("trait ")
+}
+
+/// The subject of an `impl` or `trait` line, with generics and `where` clauses
+/// removed. A trait definition keeps its keyword, which is what tells it apart
+/// from an inherent `impl` on a type of the same name.
+fn block_header(code: &str) -> Option<String> {
     let trimmed = code.trim_start();
-    let rest = trimmed.strip_prefix("impl")?;
+    let trimmed = trimmed
+        .strip_prefix("pub(crate) ")
+        .or_else(|| trimmed.strip_prefix("pub "))
+        .unwrap_or(trimmed);
+    let (keyword, rest) = match trimmed.strip_prefix("impl") {
+        Some(rest) => ("", rest),
+        None => ("trait ", trimmed.strip_prefix("trait")?),
+    };
     if rest.starts_with(|c: char| is_ident(c)) {
         return None;
     }
@@ -266,7 +287,7 @@ fn impl_header(code: &str) -> Option<String> {
         }
     }
     let header = out.split_whitespace().collect::<Vec<_>>().join(" ");
-    (!header.is_empty()).then_some(header)
+    (!header.is_empty()).then(|| format!("{keyword}{header}"))
 }
 
 /// The name of the `fn` whose body, signature or documentation contains `line`
@@ -476,12 +497,40 @@ impl Mapping for Zoom {
 
     #[test]
     fn distinguishes_a_trait_method_from_an_inherent_one() {
-        assert_eq!(enclosing_rust_impl(IMPLS, 5).as_deref(), Some("Zoom"));
+        assert_eq!(enclosing_rust_block(IMPLS, 5).as_deref(), Some("Zoom"));
         assert_eq!(
-            enclosing_rust_impl(IMPLS, 11).as_deref(),
+            enclosing_rust_block(IMPLS, 11).as_deref(),
             Some("Mapping for Zoom")
         );
-        assert_eq!(enclosing_rust_impl(IMPLS, 1), None);
+        assert_eq!(enclosing_rust_block(IMPLS, 1), None);
+        assert!(!declares_trait_methods("Zoom"));
+        assert!(declares_trait_methods("Mapping for Zoom"));
+    }
+
+    const TRAIT_DEF: &str = "\
+pub trait Region: Frame + Mapping {
+    fn parent_simplify(&self) -> u32 {
+        helper()
+    }
+}
+
+fn helper() -> u32 {
+    1
+}
+";
+
+    #[test]
+    fn a_default_method_on_the_trait_is_a_trait_method() {
+        assert_eq!(
+            enclosing_rust_block(TRAIT_DEF, 3).as_deref(),
+            Some("trait Region: Frame + Mapping")
+        );
+        assert!(declares_trait_methods("trait Region: Frame + Mapping"));
+        assert_eq!(
+            trait_method_names(TRAIT_DEF),
+            vec!["parent_simplify".to_string()]
+        );
+        assert!(reached_from_trait_method(TRAIT_DEF, TRAIT_DEF, "helper"));
     }
 
     use super::*;
@@ -818,15 +867,18 @@ pub fn resolve_source(root: &std::path::Path, file: &str) -> Resolution {
     }
 }
 
-/// Every `fn` in `src` declared inside an `impl <Trait> for <Type>` block.
+/// Every `fn` in `src` declared inside an `impl <Trait> for <Type>` block or a
+/// `trait <Trait>` definition.
 ///
 /// These are the port's equivalent of C's vtab slots: the methods a generic
-/// driver reaches per class.
+/// driver reaches per class. A base class's own module declares them in the
+/// trait rather than in an implementation of it, and a default method there is
+/// dispatched per class exactly as an implemented one is.
 pub fn trait_method_names(src: &str) -> Vec<String> {
     rust_items(src)
         .into_iter()
         .filter(|(_, _, last)| {
-            enclosing_rust_impl(src, *last).is_some_and(|header| header.contains(" for "))
+            enclosing_rust_block(src, *last).is_some_and(|header| declares_trait_methods(&header))
         })
         .map(|(name, _, _)| name)
         .collect()

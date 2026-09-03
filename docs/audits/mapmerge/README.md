@@ -26,9 +26,10 @@ the first twelve lines of the file.
 `Citations:` says every citation in the file carries the name of the item it
 lands in and was checked against that pin; `Extension points:` says every row
 classifies its C step.
-A file without them is skipped by those gates and counted in `PLAN.md` §6, so
-adding a marker to a file whose rows do not hold up makes a test fail rather
-than a claim pass.
+Both are mandatory: `every_checklist_declares_both_markers` fails on a file that
+lacks either, so a checklist arrives gated rather than opting in later.
+Adding a marker to a file whose rows do not hold up makes a test fail rather than
+a claim pass.
 
 ## The table
 
@@ -63,8 +64,12 @@ a generic driver in another file dispatch to this through the vtab?
   off the same per-class seam C reaches it through.
 
 `test_audit_citations.rs` checks the second one: an `architecture` row whose
-verdict is `ported` must cite a Rust site inside an `impl Trait for Type` block,
-or inside code one of the class's trait methods calls.
+verdict is `ported` must cite a Rust site inside an `impl Trait for Type` block or
+a `trait Trait` definition, or inside code one of the class's trait methods calls.
+A default method on the trait counts, which is how the base modules declare their
+seams — `regions/mod.rs` puts the shared `Region` bodies in `pub trait Region`
+rather than in an implementation of it, and a generic driver dispatches to one of
+those per class exactly as it does to an implemented override.
 The second form is what this port does with `MapMerge`: the trait method is a
 few lines that call a `<class>_map_merge` body in `mappings/simplify.rs`, and
 the rows cite the body.
@@ -81,6 +86,8 @@ to the code the seam actually owns, or the collapse fixed.
 - `gap: PLAN.md <section>` — not ported.
   The named `PLAN.md` section must exist and must say what would expose the
   gap, not merely what is missing.
+  No row carries this verdict, and `no_row_is_left_at_gap` keeps it that way; the
+  form stays valid so a newly found gap can be recorded before it is closed.
 - `deferred: <class>` — the step belongs to a class this port has not started,
   counted in `test_deferred_fixtures.rs::DEFERRED_CLASSES`.
 - `driver: <path>` — the step is performed by the shared driver at that path

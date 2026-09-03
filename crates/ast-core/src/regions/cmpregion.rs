@@ -810,6 +810,10 @@ impl Region for CmpRegion {
     }
 
     fn get_region_bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
+        super::region_bounds_current(self)
+    }
+
+    fn region_base_box(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
         self.reg_base_box()
     }
 
@@ -985,7 +989,7 @@ impl Region for CmpRegion {
 /// `othereg`, carrying `othereg`'s uncertainty.
 ///
 /// Mirrors C `astNullRegion( othereg, astGetUnc( othereg, 0 ), ... )`
-/// (cmpregion.c:3654): the new NullRegion is defined in `othereg`'s current
+/// (cmpregion.c:3659): the new NullRegion is defined in `othereg`'s current
 /// Frame and takes `othereg`'s explicit uncertainty when one is set (the
 /// `def=0` argument to `astGetUnc` means no default uncertainty is substituted).
 fn build_null_like(othereg: &DynRegion, negated: bool) -> AstResult<DynRegion> {
@@ -1271,14 +1275,14 @@ impl Mapping for CmpRegion {
 
         // Decide whether to use the base-Frame result "newb" or a clone of the
         // supplied Region (cmpregion.c:3760). A base-Frame result is mapped
-        // into the parent's current Frame and simplified.
+        // into the parent's current Frame, and is returned as it stands: the
+        // mapped Region is not simplified again.
         if !simpler {
             // C's `else`: `result = astClone( this_mapping )` (cmpregion.c:3773).
             return Ok((self.clone_box(), false));
         }
         let result: DynRegion = if let Some(nb) = newb {
-            let mapped = nb.map_region(bcmap.as_ref(), cfrm.as_ref())?;
-            mapping_into_region(<dyn Mapping>::simplify(mapped.as_ref())?).unwrap_or(mapped)
+            nb.map_region(bcmap.as_ref(), cfrm.as_ref())?
         } else {
             // No base-Frame result: use the parent-simplified copy
             // (cmpregion.c:3767 `result = astClone( newc )`).

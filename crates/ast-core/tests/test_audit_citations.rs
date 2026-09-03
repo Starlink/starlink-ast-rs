@@ -256,8 +256,8 @@ fn every_architecture_row_lands_on_a_trait_method() {
                     break;
                 };
                 let src = std::fs::read_to_string(&src_path).expect("source readable");
-                let on_trait = audit_tools::enclosing_rust_impl(&src, cit.start)
-                    .is_some_and(|header| header.contains(" for "));
+                let on_trait = audit_tools::enclosing_rust_block(&src, cit.start)
+                    .is_some_and(|header| audit_tools::declares_trait_methods(&header));
                 let owned = || {
                     audit_tools::enclosing_rust_item(&src, cit.start).is_some_and(|item| {
                         audit_tools::reached_from_trait_method(&class_src, &src, &item)
@@ -387,5 +387,64 @@ fn every_c_step_in_a_cited_body_is_covered_by_a_row() {
         bad.is_empty(),
         "C steps present in a cited body and absent from the checklist:\n  {}",
         bad.join("\n  ")
+    );
+}
+
+/// Every checklist declares both markers, so the four gates above have no
+/// checklist they silently skip.
+///
+/// The markers were opt-in while the citations were being anchored, and a
+/// ledger row counted the files that had not opted in. They are now the entry
+/// condition: a checklist added later fails here until its citations are
+/// anchored to the current pin and its rows classified, which is the point at
+/// which its claims become checkable.
+#[test]
+fn every_checklist_declares_both_markers() {
+    let mut missing = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if !is_repaired(&text) {
+            missing.push(format!("{name}: no `{REPAIRED}` line in the header"));
+        }
+        if !is_classified(&text) {
+            missing.push(format!("{name}: no `{CLASSIFIED}` line in the header"));
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "checklists that opt out of the citation gates:\n  {}\n\
+         Anchor the citations against the current pin and classify each row's \
+         extension point, then declare both markers.",
+        missing.join("\n  ")
+    );
+}
+
+/// No checklist row may record a gap.
+///
+/// A `gap:` verdict says the C step has no Rust counterpart. The other
+/// verdicts — `ported`, `n/a: <reason>`, `unreachable: <reason>`,
+/// `divergence: <quirks citation>`, `deferred: <class>`, `driver: <path>` —
+/// each say the behaviour is accounted for.
+#[test]
+fn no_row_is_left_at_gap() {
+    let mut gaps = Vec::new();
+    for path in checklists() {
+        let text = std::fs::read_to_string(&path).expect("checklist readable");
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for (i, line) in text.lines().enumerate() {
+            let Some(cells) = row_cells(line) else {
+                continue;
+            };
+            let verdict = cells.last().map(|c| c.trim()).unwrap_or("");
+            if verdict.starts_with("gap:") {
+                gaps.push(format!("{name}:{}: {verdict}", i + 1));
+            }
+        }
+    }
+    assert!(
+        gaps.is_empty(),
+        "checklist rows still recording a gap:\n  {}",
+        gaps.join("\n  ")
     );
 }

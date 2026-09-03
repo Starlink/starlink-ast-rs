@@ -449,10 +449,12 @@ fn simplify_regression() {
     ));
     let manifest = fixture_dir.join("simplify_tests.txt");
 
-    if !manifest.exists() {
-        eprintln!("simplify_tests.txt not found, skipping regression tests");
-        return;
-    }
+    assert!(
+        manifest.exists(),
+        "{} not found. The manifest is committed, so its absence is a broken \
+         checkout rather than a reason for this gate to pass.",
+        manifest.display()
+    );
 
     let contents = std::fs::read_to_string(&manifest).unwrap();
     let mut passed = 0usize;
@@ -836,10 +838,28 @@ fn simplify_regression() {
         panic!("{total} simplify regression tests failed");
     }
 
-    // Require at least one test actually ran
+    // Every manifest case is accounted for: it passed, or it was counted as a
+    // failure above. A skip would be a case that did neither, which is what the
+    // three assertions below rule out.
+    assert_eq!(
+        skipped_missing, 0,
+        "{skipped_missing} manifest cases have no fixture file. The corpus is \
+         committed, so a missing fixture is a broken checkout or a manifest \
+         entry added without its data, not a case to pass over."
+    );
     assert!(
-        passed > 0,
-        "No simplify regression tests passed (all skipped?)"
+        parse_skipped.is_empty(),
+        "{} fixtures failed to parse: {}. A fixture the reader cannot load is \
+         an unported class or a read-path gap, and either way it is a failure \
+         of this gate rather than a case outside it.",
+        parse_skipped.len(),
+        parse_skipped.join(", ")
+    );
+    assert!(
+        passed >= 471,
+        "only {passed} cases passed; the corpus held 471 when this floor was \
+         set and fixtures are only ever added. A drop means cases stopped being \
+         run, which no failure count would show."
     );
 }
 
