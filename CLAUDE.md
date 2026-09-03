@@ -423,6 +423,10 @@ The C ABI is **frozen**. Existing applications must keep linking.
   [`docs/reports/2026-08-19-spec-conformance-review.md`](docs/reports/2026-08-19-spec-conformance-review.md),
   with a companion progress report beside it. Consult it before concluding that
   a divergence you have found is new.
+  [`docs/reports/2026-09-03-simplify-parity-final.md`](docs/reports/2026-09-03-simplify-parity-final.md)
+  is the matching statement for the simplifier: what byte-equality against the C
+  oracle covers today, every relaxation transcribed from the executable ledger,
+  and the one open design question.
 - **Test-migration tracker**: `PLAN.md` — every C test program in
   the upstream `ast_tester/` directory must end up with a green
   Rust counterpart by step 11 of the delivery order.

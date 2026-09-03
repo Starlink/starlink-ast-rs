@@ -563,6 +563,8 @@ alongside `check_corpus_fresh.sh` after any pin move.
 | testmapping.c | crates/ast-core/tests/test_mapping.rs | partially ported 2026-08-20 — the four `IsSimple` functions added upstream at `f6762005`. `testselfsimplifyafterset` is unconstructible here (ZoomMap's `Zoom` and PcdMap's `Disco` have no `&mut self` setter). The file's original PolyMap / LinearApprox body, converted from `testmapping.f`, is covered by `test_polymap.rs` and `test_polytran.rs` |
 | testfitschan.c | crates/ast-core/tests/test_fitschan*.rs | partially ported — `testgrismorder`, added upstream at `f6762005`, is in `test_fitschan_wcs_write.rs` (2026-08-20); the rest of the file is spread across the seven `test_fitschan_*` files |
 | testimmutable.c | (deferred) | tests `AST__IMMUT`, which guards a change made to a Mapping whose reference count exceeds one. Owned values, deep `Clone` and single-owner `Box` make that condition unconstructible in `ast-core`; the guard belongs to `ast-capi`, which restores sharing at the handle boundary and is unstarted (§7) |
+| gen_simplify_fixtures / check_simplify | crates/ast-core/tests/test_simplify_regression.rs | ported; 471 manifest cases against the pinned oracle's `.map` / `.simp` dumps, byte-exact with no skip mode, plus `test_serialisation`'s 794-file round trip over the same corpus. `gen_simplify_fixtures` itself stays in C: it writes the references |
+| (no C ancestor) | crates/ast-core/tests/test_frame_in_map_slot.rs | added 2026-09-03; pins the reader's refusal of a C-written bare Frame in a `Map<n>` slot, with the settled Region nestings as controls (§9.6) |
 | testobjectkeymap.c | (deferred) | tests the Object-associated retained KeyMap (`object.c:1736`, `:2480`), `astGetObjSize` and `astSame`; those calls (`astMapPut0I`, `astMapGet0I`, `astMapSize`) are only reachable through the protected `astGetKeyMap`/`astHasKeyMap` machinery, an explicit spec Non-goal of the owned-value port |
 
 
@@ -571,7 +573,12 @@ alongside `check_corpus_fresh.sh` after any pin move.
 The `.simp` corpus was stale relative to the submodule pin. Regenerating it
 against the pinned C closed two disagreements and opened two questions.
 
-### 9.0 The instrument was broken, and it hid eleven failures
+Of the sections below, only §9.4 and §9.6 remain open, and neither is a
+simplifier gap: §9.4 waits on the upstream fixture sync and §9.6 on a maintainer
+decision. What the gates hold today is stated with its evidence in
+[`docs/reports/2026-09-03-simplify-parity-final.md`](reports/2026-09-03-simplify-parity-final.md).
+
+### 9.0 The instrument was broken, and it hid eleven failures — CLOSED
 
 `test_simplify_regression.rs` and `test_regions.rs` each hand-rolled their own
 `&dyn Mapping` -> `AnyObject` dispatch. The simplify harness's version covered
@@ -807,7 +814,7 @@ for `LutEpsilon` and for every GrismMap attribute.
 None of the setters raises `AST__IMMUT`, for a structural reason: `&mut self` is
 what C's `astGetRefCount( this ) > 1` guard tests for.
 
-### 9.4 51 simplify fixture files have no transform-oracle section
+### 9.4 51 simplify fixture files have no transform-oracle section — OPEN, resolves on the upstream sync
 
 Every section the generator can produce for a fixture that exists in
 `reference/starlink-ast/ast_tester/simplify_fixtures/` is now committed, so of
@@ -987,8 +994,10 @@ What the closeout leaves open, and where:
   under-merge: the port forms the CmpMaps C tags, and was raising C's stamps on
   objects it then discarded. What survives is one card per fixture that a merge
   probe C abandoned left on a shared sub-Mapping, licensed positionally in §6.
-- **§9.4's two sectionless buckets and §9.5's checklist citations** — record
-  work the closeout measured rather than finished.
+- **§9.4's two sectionless buckets** — record work, waiting on the upstream
+  fixture sync (§8): nine fixtures cannot have a section, and forty-two are
+  Rust-only fixtures the submodule's generator never sees. §9.5's checklist
+  citations closed with the parity plan's cluster 7.
 
 ### 10.1 RateMap's self-reduction is unreachable from the nominate loop — FIXED
 
