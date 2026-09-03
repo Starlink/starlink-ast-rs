@@ -570,6 +570,8 @@ matrix_perm_const_swap           | simplify_fixtures/matrix_perm_const_swap.map 
 neg_wcsmap_perm_nonbidir           | simplify_fixtures/neg_wcsmap_perm_nonbidir.map | simplify_fixtures/neg_wcsmap_perm_nonbidir.map |
 neg_wcsmap_perm_disconnect         | simplify_fixtures/neg_wcsmap_perm_disconnect.map | simplify_fixtures/neg_wcsmap_perm_disconnect.map |
 neg_wcsmap_perm_disconnect_lower       | simplify_fixtures/neg_wcsmap_perm_disconnect_lower.map | simplify_fixtures/neg_wcsmap_perm_disconnect_lower.map |
+neg_wcsmap_perm_allconst           | simplify_fixtures/neg_wcsmap_perm_allconst.map | simplify_fixtures/neg_wcsmap_perm_allconst.map |
+neg_wcsmap_perm_both_sides         | simplify_fixtures/neg_wcsmap_perm_both_sides.map | simplify_fixtures/neg_wcsmap_perm_both_sides.map |
 neg_wcsmap_pv_mismatch                 | simplify_fixtures/neg_wcsmap_pv_mismatch.map | simplify_fixtures/neg_wcsmap_pv_mismatch.map |
 neg_pcd_diff_disco         | simplify_fixtures/neg_pcd_diff_disco.map | simplify_fixtures/neg_pcd_diff_disco.map |
 neg_pcd_diff_centre        | simplify_fixtures/neg_pcd_diff_centre.map | simplify_fixtures/neg_pcd_diff_centre.map |
