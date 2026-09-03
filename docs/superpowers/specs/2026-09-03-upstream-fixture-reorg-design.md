@@ -215,14 +215,36 @@ Only the compiled binary survives, in the untracked
 It is rewritten from the 24 fixtures it produced, which fully determine its
 output.
 
-**U3. Our fixtures land upstream.**
-46 simplify fixtures (4 of them negative, `.map` only); `lsst.simp` regenerated
-with default Channel attributes, its input already present as
-`wcsconv/inputs/lsst.ast`; `offset-sref.native`; `pc-sparse-naxis.head`, which
-is our `pc-sparse.head` — it differs from upstream's only by a leading
-`NAXIS = 2` card, so it goes upstream under a distinct name rather than
-diverging silently; the `serialisation/` and `wcsconv/framesets/` trees; and the
-matching `cases.txt` rows.
+**U3. Our fixtures land upstream — with the generators that build them.**
+
+46 simplify fixtures across 25 case stems (4 stems negative, `.map` only) are
+Rust-originated, and none of them is reproducible: `gen_simplify_fixtures.c`
+knows nothing about `cefit_*`, `defunc_*`, `regbasepick_*`, `setunc_*`,
+`simpstab_*`, `cap_cmpmap_nested_tag` or the four `neg_*` stems, and no
+committed program here builds them either.
+`a96bc80` and its siblings commit the bytes with no `.c` alongside, and
+`docs/audits/region-phase5-parity-spec.md` records each fixture's intent in
+prose but not its constructor calls or numeric parameters.
+
+Copying the bytes alone would leave 25 fixtures that a corpus regeneration
+either orphans or deletes, and that no future C behaviour change could
+re-baseline.
+So U3 adds a constructor function per stem to `gen_simplify_fixtures.c`, each
+calling the existing `write_fixture` or `write_negative_fixture` helper so both
+halves of a pair come out of one pass.
+Only the `.map` half needs reconstructing: a `.map` is the complete native
+serialization of the constructed object, so every attribute is already in the
+committed bytes, and the `.simp` derives from it exactly as `write_fixture`
+derives it.
+The gate is byte-identity — regenerating the corpus must reproduce all 46
+committed files with an empty `git diff`.
+
+U3 also lands `lsst.simp` regenerated with default Channel attributes, its input
+already present as `wcsconv/inputs/lsst.ast`; `offset-sref.native`;
+`pc-sparse-naxis.head`, which is our `pc-sparse.head` — it differs from
+upstream's only by a leading `NAXIS = 2` card, so it goes upstream under a
+distinct name rather than diverging silently; the `serialisation/` and
+`wcsconv/framesets/` trees; and the matching `cases.txt` rows.
 
 **U4. The C harness gets ULP-and-`IsSimp`-aware comparison,** and every
 `skip_string_compare` flag is re-audited against it.
@@ -264,9 +286,10 @@ If they do not, that is a real MapMerge gap in `ChebyMap` and belongs in
 - Manifests read from `fixtures/{simplify,wcsconv}/cases.txt`.
   `test_verification_ledger.rs:174` reads both by path and asserts derived
   counts; those numbers move.
-- Every relpath-keyed list and floor is rekeyed: `SLAMAP_ORACLE_EXCLUDED`
-  (2 entries), the empty `HEAD_ORACLE_EXCLUDED` and `SIMPLIFY_ORACLE_EXCLUDED`,
-  the floors 136 / 259 / 1339, `is_slamap_section`, `is_head_section`,
+- Every relpath-keyed list and floor is rekeyed.
+  All three exclusion lists — `SLAMAP_ORACLE_EXCLUDED`, `HEAD_ORACLE_EXCLUDED`,
+  `SIMPLIFY_ORACLE_EXCLUDED` — are currently empty, so only the key *format* and
+  the floors change: the floors 136 / 259 / 1339, `is_slamap_section`, `is_head_section`,
   `is_simplify_section`, the `framesets.oracle has 20 sections` assertion, and
   the FMA substitution table keyed on
   `simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map`.
@@ -381,6 +404,10 @@ Recorded so they are not re-derived.
 
 ## 8. Risks
 
+- **U3 is larger than a copy.**
+  25 constructor functions have to be reverse-engineered from committed dumps
+  and proven byte-identical.
+  It is the second-largest piece after U4.
 - **U1's blast radius is unknown until measured.**
   If preserving nested `IsSimp` changes many `.simp` outputs, U1 stops being a
   small fix and its diff review becomes the bulk of the upstream work.
