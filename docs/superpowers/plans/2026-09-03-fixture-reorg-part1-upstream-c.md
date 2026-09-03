@@ -624,6 +624,37 @@ is committed data captured by other programs, as the file header records."
 
 ---
 
+### Task 3 outcome (2026-09-03)
+
+Landed. `gen_native_fixtures.c` reproduces all 19 built fixtures byte-exactly,
+verified by deleting them and rebuilding from nothing.
+
+Four things differed from the plan's steps:
+
+- `splittest1.ast` turned out to be byte-identical to
+  `programs/testcmpmap/splittest1.ast` *after* Task 2b normalised that file — the
+  Rust-side copy had been in the modern 17-digit form all along. Dropped as a
+  duplicate, along with `specflux.ast`. So `serialisation/` holds 27 files, not 29.
+- `degen1.ast`, `lsst.ast` and `timj.ast` are exactly
+  `roundtrip(wcsconv/inputs/<name>.ast)`, so they need no generator code. Their
+  value is that they *are* fixed points where the wcsconv inputs are not.
+- `jan-dsb.ast` lacked five commented default cards the library now writes, so it
+  was normalised like the Task 2b fixtures.
+- Two constructors needed correcting on the first byte-identity run: the SkyFrame
+  in `frameset_3frame` has `Equinox` set, and the SpecFrame in
+  `frameset_skyspec` has `Unit=GHz` set. The gate caught both, which is what it
+  is for.
+
+`wcsconv/inputs/*.ast` stay out of the round-trip gate. Stripping the leading
+header (see Task 2b) is not enough: `degen1.ast` still differs by 40 lines —
+seven redundant `Invert = 0` cards, thirteen `IM0`–`IM8` inverse-matrix values,
+`M1`–`M8` precision, added `PlrLg` defaults, a changed commented `Domain`
+default, and a dropped `ActUnt = 0`. Those are library changes since the fixture
+was captured, so including them would mean normalising the wcsconv inputs, which
+is a larger change than this branch needs.
+
+---
+
 ## Task 4: `head2ast` and the `wcsconv/framesets/` tree
 
 139 `.ast` files, each the library's dump of the FrameSet obtained by reading one `wcsconv/inputs/` header. This is the corpus that proves the Native serializer round-trips FITS-derived FrameSets. The generator exists in the Rust repo at `tools/oracle_fixtures/head2ast.c` and moves here so the data is reproducible from this tree.
