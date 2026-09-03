@@ -733,6 +733,43 @@ reproducible from this tree."
 
 ---
 
+### Task 4 outcome (2026-09-03)
+
+Landed. `head2ast.c` did not move across as-is: it converts one file, and the
+manifest walk lived in a shell script in the Rust port. Upstream got
+`gen_frameset_fixtures.c` instead, which walks `wcsconv/cases.txt` itself, in the
+same shape as `gen_simplify_fixtures` and `gen_native_fixtures`. It writes 139
+fixtures, one per distinct input, and two runs are byte-identical.
+
+**The byte-identity gate against the Rust port's copies does not hold, and
+should not.** 39 of the 139 differ, because those copies were generated
+**2026-06-15** and every cause postdates that:
+
+| files | difference | cause |
+|---|---|---|
+| 37 | `IsSimp` cards on different nodes | `e40e71b4` (2026-08-15) records the simplified state per orientation, which changed which nodes carry the card |
+| 4 | redundant `Invert` cards dropped | same class of change seen when normalising the older fixtures in Task 2b |
+| 1 | `Epoch` 2017.5519807923772 → 2017.5519807675655 | `254d4c99` (2026-06-19), whose message names `azel.head`'s exact `DATE-OBS` and the 0.783 s error: `%d` dropped the leading zero in `.087`, reconstructing 0.87 s |
+| 2 | `DSBCen`, `IF` | `ad04291c` (2026-06-20) stopped losing precision when setting RefRA/RefDec, which the standard-of-rest correction depends on |
+| 1 | `Sft1`, `Scl1` (`vrad-v2f`) | the `astRate` fixes `e782c220` and `c1a88658` (2026-06-19); `project_vradv2f_astrate_dependency` already records that this fixture is astRate-driven |
+
+So the regenerated fixtures are *more correct* than the ones the Rust port has
+been testing against, and the gate for this task is that the generator is
+deterministic and that every difference is explained — not that it reproduces
+stale bytes.
+
+Note for Part 2 R2: the wholesale mirror brings all 39 changed fixtures across at
+once. They are not regressions, and the round-trip sweep should pass on them
+immediately. `azel-head.ast`'s Epoch change in particular is a bug fix the Rust
+port must match — if it does not, that is a real FITS-read gap in `DateObs`.
+
+Also: `wcsconv/framesets/` **is** covered by the round-trip glob. Only
+`wcsconv/inputs/` and `wcsconv/expected/` stay out. The framesets are pure native
+dumps the generator wrote, so they are fixed points; the inputs are hand-edited
+and the expected outputs are FITS-encoded.
+
+---
+
 ## Task 5: `gen_keymap_mapsz` and `oracle/keymap_mapsz.txt`
 
 The Rust port compares its `MapSz` card emission against a C capture currently living at `crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt`. Moving the probe here makes that capture reproducible.
