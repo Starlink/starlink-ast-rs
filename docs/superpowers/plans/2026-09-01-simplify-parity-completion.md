@@ -9887,7 +9887,7 @@ The report is not a summary of the plan. It is a statement of what holds parity 
 - Consumes: the ledger in `test_verification_ledger.rs`; the gate counts printed by `test_transform_oracle`, `test_simplify_regression`, `test_native_roundtrip_all`, `test_wcsconv`; the audit gates in `test_audit_citations.rs` and `test_mapmerge_audit.rs`.
 - Produces: nothing code-facing. The report is terminal.
 
-- [ ] **Step 1: Run the whole suite and capture the real numbers**
+- [x] **Step 1: Run the whole suite and capture the real numbers**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
@@ -9920,7 +9920,7 @@ cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep -E 'passed|e
 cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E 'passed|excluded'
 ```
 
-- [ ] **Step 2: Re-derive the ledger, from the ledger**
+- [x] **Step 2: Re-derive the ledger, from the ledger**
 
 ```bash
 cargo test -p ast-core --test test_verification_ledger -- --nocapture 2>&1 | tail -40
@@ -9930,7 +9930,7 @@ grep -n '^    (' -A4 crates/ast-core/tests/test_verification_ledger.rs | grep -E
 Then read `LEDGER` and transcribe every row into the report's table.
 The ledger is the authority on what is excluded; the report must not add an exclusion the ledger does not carry, or omit one it does.
 
-- [ ] **Step 3: Confirm the tier-3 and tier-4 tiers, if the submodule is present**
+- [x] **Step 3: Confirm the tier-3 and tier-4 tiers, if the submodule is present**
 
 ```bash
 git -C reference/starlink-ast rev-parse --short HEAD
@@ -9940,7 +9940,7 @@ cargo test -p ast-oracle-tests 2>&1 | tail -12
 If the submodule is absent, say so in the report rather than implying those tiers were run.
 A declared gate that was not run is worse than no gate.
 
-- [ ] **Step 4: Write the report**
+- [x] **Step 4: Write the report**
 
 ```bash
 REPORT=docs/reports/$(date +%F)-simplify-parity-final.md
@@ -10076,7 +10076,7 @@ that sync rather than here.
 Write the counts, not the placeholders.
 A `<measured in Step 1>` left in the report is the defect this whole document exists to prevent.
 
-- [ ] **Step 5: Close the `PLAN.md` sections this plan finished**
+- [x] **Step 5: Close the `PLAN.md` sections this plan finished**
 
 ```bash
 grep -n '^### 9\.\|^### 10\.' PLAN.md
@@ -10092,7 +10092,7 @@ Then update §6's totals row if it has one, and confirm the table still adds up:
 cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -6
 ```
 
-- [ ] **Step 6: Update the test-migration tracker and the `CLAUDE.md` pointer**
+- [x] **Step 6: Update the test-migration tracker and the `CLAUDE.md` pointer**
 
 Mark the rows for every test this plan added or changed in `PLAN.md`'s "C → Rust test migration" tracker, and point `CLAUDE.md`'s conformance-status paragraph at the new report alongside the existing one:
 
@@ -10102,7 +10102,7 @@ grep -n 'spec-conformance-review' CLAUDE.md
 
 Add one sentence naming the report and what it establishes, in the same paragraph.
 
-- [ ] **Step 7: Full suite, format, lint, commit**
+- [x] **Step 7: Full suite, format, lint, commit**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -10135,7 +10135,7 @@ Co-Authored-By: SLAC AI
 MSG
 ```
 
-- [ ] **Step 8: Report the state of the branch**
+- [x] **Step 8: Report the state of the branch**
 
 Print, for the record, what the branch now contains and what is left:
 
