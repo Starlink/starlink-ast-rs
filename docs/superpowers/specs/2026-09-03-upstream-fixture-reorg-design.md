@@ -141,15 +141,50 @@ can invalidate a simplification.
 It is wrong when the "change" is the loader echoing back the value it just read.
 Net effect: C writes `IsSimp = 1` and cannot read it back.
 
-The class distribution across all 50 lost cards is exactly the set of classes
-whose setter clears the flag, and nothing else:
+The loader is the visible victim, not the cause.
+Every one of the 31 loader call sites assigns the field *first* and then calls
+`SetX( new, new->field )`, so the loader's set is a no-op in value terms — it
+exists only to borrow the setter's validator.
+The cause is one layer down, in the justification at `mapping.h:455`:
 
-| class | cards lost | setter |
+> Discarding anyway is safe — the records can only ever suppress a
+> simplification, never make one wrong — so err towards it when in doubt.
+
+That holds while `IsSimple` is an internal optimisation hint.
+It stops holding once the flag is serialized as an `IsSimp` card and compared
+byte-for-byte, because over-clearing then changes observable output.
+
+So the fix guards each `astClearIsSimple` on the value actually differing,
+rather than saving and restoring the flag around the loader's call.
+Setting an attribute to the value it already holds cannot invalidate a recorded
+simplification, so the loader stops losing the card as a consequence of a true
+general rule rather than as a special case, and any other no-op set is fixed
+with it.
+`mapping.h:455`'s justification is amended in the same change: a comment that
+tells the next reader over-clearing is free is what made this defect survive.
+
+The class distribution across all 50 lost cards is a subset of the classes whose
+setter clears the flag — which of them the corpus happens to contain, not which
+are affected:
+
+| class | cards lost in the corpus | loader `Set*` sites |
 |---|---|---|
-| ZoomMap | 44 | `zoommap.c:1704` |
-| PcdMap | 2 | `pcdmap.c:2586` |
-| MathMap | 2 | `mathmap.c:5705` |
-| GrismMap | 2 | `grismmap.c:255` |
+| ZoomMap | 44 | 1 |
+| PcdMap | 2 | 3 |
+| MathMap | 2 | 3 |
+| GrismMap | 2 | 8 |
+| WcsMap | 0 | 5 |
+| PolyMap | 0 | 3 |
+| SplineMap | 0 | 3 |
+| LutMap | 0 | 2 |
+| SphMap | 0 | 2 |
+| PermMap | 0 | 1 |
+
+Ten classes, 31 sites. `IntraMap` clears the flag in a setter but its loader
+calls none, so it is unaffected.
+`docs/issues/c-library-quirks.md` already records this under "The `IsSimp` card
+does not survive being read back, for twelve classes", including the seven
+fixtures that pin the Rust mirror.
 
 The fix is upstream (U1), and the 43 files are deleted rather than moved.
 The round-trip test then has no override path at all.
@@ -178,15 +213,25 @@ cannot be read here without silently relaxing roughly 265 comparisons.
 
 ## 4. Upstream work — branch `u/timj/more-fixtures-2`
 
-**U1. The `IsSimp` loader fix.**
-Preserve the flag across the validating `Set` in the four affected loaders:
+**U1. The `IsSimp` fix, in the setters.**
+Guard each `astClearIsSimple` on the value actually differing, in the ten
+affected classes:
 
 ```c
-int simp = astIsSimple( new );
-new->zoom = astReadDouble( channel, "zoom", 0.0 );
-if ( TestZoom( new, status ) ) SetZoom( new, new->zoom, status );
-if ( simp ) astSetIsSimple( new );
+astMAKE_SET1(ZoomMap,Zoom,double,zoom,(
+   ( value != this->zoom ) ? astClearIsSimple(this) : (void)0,
+   ( value != 0.0 ) ? value
+                    : ( astError( AST__ZOOMI, "astSetZoom(%s): A zoom factor "
+                                  "of zero is not allowed.", status,
+                                  astGetClass( this ) ), this->zoom ) ))
 ```
+
+The guard wraps only the clear.
+`MathMap`'s `Seed` setter carries three further side effects in the same
+expression (`seed_set = 1`, `active = 0`), and `GrismMap` and `PcdMap` clear
+inside their own hand-written macros alongside a clone check and
+`UpdateConstants`, so no single edit to `astMAKE_SET1`'s definition covers the
+set and each site is edited surgically.
 
 Then regenerate the simplify corpus and read the diff.
 Nested `IsSimp` cards now survive load, and `astSimplify` skips nodes already
@@ -340,6 +385,14 @@ If they do not, that is a real MapMerge gap in `ChebyMap` and belongs in
   `testprotectedcmpequal` and `testprotectedcmpequalstable`.
 - *Un-mirror the `IsSimp` loader loss* and retire its `c-library-quirks.md`
   entry.
+  This is a deletion rather than a behaviour change.
+  The port already builds a complete `Node` tree and constructs the object in
+  one shot with the right values, so it would not have the defect; each
+  `from_node` then *adds* a redundant re-application through a setter, purely to
+  reproduce C's clear. `ZoomMap::from_node` is the pattern — `ZoomMap::new(nin,
+  raw)`, then `set_has_been_simplified`, then a `set_zoom(raw)` whose only
+  effect is to wipe it. Removing those ten redundant re-applications is the
+  whole fix.
 
 **R5.** Green all four tiers; update `PLAN.md` §8 and the C → Rust migration
 tracker; fix the docs that name old paths.

@@ -26,15 +26,17 @@
 ## File Structure
 
 **Modified — library source (Task 1 only).** Every class whose attribute setter
-calls `astClearIsSimple` *and* whose loader validates by re-applying — 9 classes,
-23 call sites:
-- `src/zoommap.c` (1), `src/pcdmap.c` (1), `src/permmap.c` (1)
-- `src/mathmap.c` (2), `src/lutmap.c` (2), `src/sphmap.c` (2)
-- `src/polymap.c` (3), `src/splinemap.c` (3)
+calls `astClearIsSimple` *and* whose loader calls that setter — 10 classes,
+31 call sites:
+- `src/zoommap.c` (1), `src/permmap.c` (1)
+- `src/lutmap.c` (2), `src/sphmap.c` (2)
+- `src/pcdmap.c` (3), `src/mathmap.c` (3), `src/polymap.c` (3), `src/splinemap.c` (3)
+- `src/wcsmap.c` (5)
 - `src/grismmap.c` (8)
+- `src/mapping.h:455` — the justification comment that made this survive
 
-`intramap.c` and `wcsmap.c` also clear the flag in a setter but have no loader
-validate-set call, so they are not affected and are not touched.
+`intramap.c` also clears the flag in a setter but its loader calls none, so it is
+unaffected and is not touched.
 
 **Modified — test programs and harness:**
 - `ast_tester/testmapping.c` — gains `testissimpsurvivesload`
@@ -57,17 +59,23 @@ Each generator is its own file rather than a mode of one program, because they h
 
 ## Task 1: `IsSimp` survives a load
 
-The parent loader reads the `IsSimp` card and sets the flag (`src/mapping.c:24137`). A subclass loader then validates the attribute it just read by re-applying it through a setter that calls `astClearIsSimple`, wiping it. Net effect: the library writes `IsSimp = 1` and cannot read it back. See spec §2.3.
+The parent loader reads the `IsSimp` card and sets the flag (`src/mapping.c:24137`). A subclass loader then validates the attribute it just read by re-applying it through a setter that calls `astClearIsSimple`, wiping it. Net effect: the library writes `IsSimp = 1` and cannot read it back.
 
-The committed corpus exposes this in only four classes — 44 lost cards on ZoomMap, 2 each on PcdMap, MathMap and GrismMap. That is a property of which objects the corpus happens to contain, not of the defect: 9 classes have both a clear-on-set setter and a loader that validates through it. Fixing only the four the corpus catches would leave five latent, so all 9 are fixed here and all 9 are asserted in the test.
+**The loader is the visible victim, not the cause.** All 31 loader sites assign the field *first* and then call `SetX( new, new->field )`, so the loader's set is a no-op in value terms — it exists only to borrow the setter's validator. Saving and restoring the flag around that call would suppress the symptom at 31 sites and leave the cause in place. The cause is the justification at `mapping.h:455`:
+
+> Discarding anyway is safe — the records can only ever suppress a simplification, never make one wrong — so err towards it when in doubt.
+
+True while `IsSimple` is an internal hint; false once it is serialized as an `IsSimp` card and compared byte-for-byte, because over-clearing then changes observable output. So the fix guards the clear on the value actually differing — setting an attribute to the value it already holds cannot invalidate a recorded simplification — and amends that comment, because a comment telling the next reader over-clearing is free is what let this defect survive.
+
+The committed corpus loses cards in only four classes (44 on ZoomMap, 2 each on PcdMap, MathMap and GrismMap). That is which objects the corpus contains, not which classes are affected: ten are. `docs/issues/c-library-quirks.md` already records the full set under "The `IsSimp` card does not survive being read back, for twelve classes".
 
 **Files:**
-- Test: `ast_tester/testmapping.c` (append a static function plus its `main` call)
-- Modify: `src/zoommap.c:2238`, `src/pcdmap.c:3205`, `src/permmap.c`, `src/mathmap.c:7392,7397`, `src/lutmap.c`, `src/sphmap.c`, `src/polymap.c`, `src/splinemap.c`, `src/grismmap.c:2550-2571`
+- Test: `ast_tester/testmapping.c` (append two static functions plus their `main` calls)
+- Modify: `src/zoommap.c`, `src/permmap.c`, `src/lutmap.c`, `src/sphmap.c`, `src/pcdmap.c`, `src/mathmap.c`, `src/polymap.c`, `src/splinemap.c`, `src/wcsmap.c`, `src/grismmap.c`, `src/mapping.h`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: a library in which `astGetI( obj, "IsSimple" )` is preserved across `astToString` / `astFromString` for all 9 affected classes. Task 2 depends on this behaviour; Tasks 6, 8 and 11 depend on Task 2's regenerated corpus.
+- Produces: a library in which `astGetI( obj, "IsSimple" )` is preserved across `astToString` / `astFromString` for all 10 affected classes, and in which no no-op set clears the flag. Task 2 depends on this behaviour; Tasks 6, 8 and 11 depend on Task 2's regenerated corpus.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -78,11 +86,10 @@ Append to `ast_tester/testmapping.c`, immediately before `int main( void ) {`:
    yield a Mapping that still reports IsSimple.  astLoadMapping sets the flag
    from the card (mapping.c:24137); a subclass loader that validates an
    attribute by re-applying it through a clear-on-set setter used to wipe it
-   again, so the library could not read back what it wrote.  ZoomMap, PcdMap,
-   again, so the library could not read back what it wrote.  Nine classes have
-   both a clear-on-set setter and a loader that validates through it, so all
-   nine are checked here rather than only the four the fixture corpus happens
-   to contain. */
+   again, so the library could not read back what it wrote.  Ten classes have
+   both a clear-on-set setter and a loader that calls it, so all ten are
+   checked here rather than only the four the fixture corpus happens to
+   contain. */
 static void checkissimpround( int *status, AstMapping *map, const char *what ) {
    AstMapping *reloaded;
    AstMapping *simp;
@@ -136,11 +143,29 @@ static void testissimpsurvivesload( int *status ) {
    /* ... one block per remaining class: permmap (PermSplit set), mathmap
       (SimpFI/SimpIF set), lutmap (LutInterp or LutEpsilon set), sphmap
       (its cleared attributes set), polymap, splinemap, grismmap (any
-      Grism* attribute set).  Build each with the smallest constructor that
-      sets the attribute its loader validates; read the class's
-      astMAKE_SET1 line to see which attribute that is:
+      Grism* attribute set), wcsmap, polymap, splinemap.  Build each with the
+      smallest constructor that sets the attribute its loader validates; read
+      the class's astClearIsSimple line to see which attribute that is:
         grep -n 'astClearIsSimple' src/<class>.c
    */
+
+   /* A second check, for the general rule the guard rests on: a set to the
+      value already held must leave the record alone, whoever the caller is. */
+   {
+      AstZoomMap *m = astZoomMap( 1, 3.5, " " );
+      AstMapping *simp = astSimplify( m );
+      astSetD( simp, "Zoom", astGetD( simp, "Zoom" ) );
+      if( !astGetI( simp, "IsSimple" ) ) {
+         stopit( status, "Error issimpnoopset-1" );
+      }
+      /* ...and a set to a different value must still clear it. */
+      astSetD( simp, "Zoom", 7.0 );
+      if( astGetI( simp, "IsSimple" ) ) {
+         stopit( status, "Error issimpnoopset-2" );
+      }
+      simp = astAnnul( simp );
+      m = astAnnul( m );
+   }
 }
 ```
 
@@ -169,48 +194,68 @@ cmake --build build --target testmapping -j
 ctest --test-dir build -R '^testmapping$' --output-on-failure
 ```
 
-Expected: FAIL, printing an `Error issimpround-<class>-reload` line for each affected class. The `-simplify` and `-dump` assertions pass — the library does set the flag and does write the card — and only the read-back assertion fails, which is what pins the defect to the loader rather than to the writer. A class that reports no failure has an unset attribute and needs its constructor fixed before you touch the loader.
+Expected: FAIL, printing an `Error issimpround-<class>-reload` line for each affected class, plus `Error issimpnoopset-1`. The `-simplify` and `-dump` assertions pass — the library does set the flag and does write the card — and only the read-back assertion fails, which is what pins the defect to the setter's side effect rather than to the writer. `issimpnoopset-2` must *not* fire: a set to a different value has to keep clearing, and that assertion is what stops the guard being written too broadly. A class that reports no failure has an unset attribute, so its loader never reaches the setter — fix its constructor before touching any source.
 
-- [ ] **Step 3: Fix the four loaders**
+- [ ] **Step 3: Guard the clear on the value changing**
 
-In `src/zoommap.c`, replace line 2238:
-
-```c
-      if ( TestZoom( new, status ) ) SetZoom( new, new->zoom, status );
-```
-
-with:
+Edit each `astClearIsSimple` call in the ten classes so it fires only when the value differs. In `src/zoommap.c:1704`:
 
 ```c
-/* Re-applying the value just read validates it, but the private setter clears
-   the simplified record that astLoadMapping installed from the IsSimp card.
-   The value has not changed, so restore what the card said. */
-      {
-         int simp = astIsSimple( new );
-         if ( TestZoom( new, status ) ) SetZoom( new, new->zoom, status );
-         if ( simp ) astSetIsSimple( new );
-      }
+/* Clearing the simplified records is right when an attribute changes, and
+   wrong when it does not: a set to the value already held cannot invalidate a
+   recorded simplification.  The loaders rely on this -- each assigns the field
+   and then calls this setter with that same value, purely to validate it. */
+astMAKE_SET1(ZoomMap,Zoom,double,zoom,(
+            ( value != this->zoom ) ? astClearIsSimple(this) : (void)0,
+            ( value != 0.0 ) ?
+            value :
+            ( astError( AST__ZOOMI,
+                       "astSetZoom(%s): A zoom factor of zero is not allowed.", status,
+                        astGetClass( this ) ),
+              this->zoom ) ))
 ```
 
-Apply the identical shape in all nine loaders, wrapping each contiguous group of validate-set calls in one block rather than each call separately — the flag is then read once and restored once, which is cheaper and easier to read:
+Three shapes need care:
 
-| file | calls to wrap |
-|---|---|
-| `src/zoommap.c` | 1 (`Zoom`) |
-| `src/pcdmap.c` | 1 (`Disco`) |
-| `src/permmap.c` | 1 (`PermSplit`) |
-| `src/mathmap.c` | 2 (`SimpFI`, `SimpIF`) |
-| `src/lutmap.c` | 2 |
-| `src/sphmap.c` | 2 |
-| `src/polymap.c` | 3 |
-| `src/splinemap.c` | 3 |
-| `src/grismmap.c` | 8 |
+- **`MathMap`'s `Seed`** (`mathmap.c:5629`) has three further side effects in the same expression. Guard **only** the clear; `seed_set = 1` and `active = 0` must still run on every set:
 
-Find each group with:
+```c
+astMAKE_SET1(MathMap,Seed,int,rcontext.seed,(
+                    ( value != this->rcontext.seed ) ? astClearIsSimple(this) : (void)0,
+                                             this->rcontext.seed_set = 1,
+                                             this->rcontext.active = 0,
+                                             value ))
+```
+
+- **`GrismMap` and `PcdMap`** clear inside their own hand-written macros (`grismmap.c:165,255`, `pcdmap.c:311,506`), beside a clone check and `UpdateConstants`. Guard the clear there, leaving the assignment and `UpdateConstants` unconditional:
+
+```c
+   } else { \
+      if( (assign) != this->component ) astClearIsSimple( this ); \
+      this->component = (assign); \
+   } \
+```
+
+- **`PcdMap`'s `PcdCen`** is per-axis, so the comparison is against `this->component[ axis ]`.
+
+Find every site, and note that no single edit to `astMAKE_SET1`'s definition covers the set:
 
 ```bash
 cd reference/starlink-ast/src
-grep -n 'if ( Test.*( new, status ) ) Set' zoommap.c pcdmap.c permmap.c mathmap.c lutmap.c sphmap.c polymap.c splinemap.c grismmap.c
+grep -n 'astClearIsSimple' zoommap.c permmap.c lutmap.c sphmap.c pcdmap.c \
+                           mathmap.c polymap.c splinemap.c wcsmap.c grismmap.c
+```
+
+Then amend the justification at `src/mapping.h:455`, which is what made this defect survive review:
+
+```c
+/* Discarding a record can only ever suppress a simplification, never make one
+   wrong, so a clear is safe wherever an attribute genuinely changes.  It is
+   not free, though: the record is written out as an IsSimp card and dumps are
+   compared card for card, so clearing on a set that changes nothing makes a
+   Mapping dump differently from the way it was read.  Each setter therefore
+   clears only when the value differs -- which is what lets a loader validate
+   by re-applying the value it just read. */
 ```
 
 - [ ] **Step 4: Run the test to verify it passes, and the rest of the suite to verify nothing regressed**
@@ -228,9 +273,9 @@ Expected: `testmapping` PASSES. The excluded families are the fixture-driven one
 
 ```bash
 cd reference/starlink-ast
-git add src/zoommap.c src/pcdmap.c src/permmap.c src/mathmap.c src/lutmap.c \
-        src/sphmap.c src/polymap.c src/splinemap.c src/grismmap.c \
-        ast_tester/testmapping.c
+git add src/zoommap.c src/permmap.c src/lutmap.c src/sphmap.c src/pcdmap.c \
+        src/mathmap.c src/polymap.c src/splinemap.c src/wcsmap.c \
+        src/grismmap.c src/mapping.h ast_tester/testmapping.c
 git commit -m "mapping: keep IsSimple across a loader's validating set
 
 astLoadMapping reads the IsSimp card and sets the flag, then the subclass

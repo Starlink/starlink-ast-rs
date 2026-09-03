@@ -955,12 +955,23 @@ ast_tester/testmapping.c."
 
 ---
 
-## Task 9: Un-mirror the `IsSimp` loader clear
+## Task 9: Delete the redundant re-application that mirrors the `IsSimp` loss
 
-The port deliberately mirrors C's clear-on-set loader behaviour, with comments saying so at `zoom.rs:344`, `pcdmap.rs:434`, `mathmap/mod.rs:698`, `polymap.rs:2049` and `wcsmap.rs:1171`. Part 1 fixed nine classes in C, so those mirrors are now bugs — the case `CLAUDE.md`'s sync protocol warns about, where a faithful mirror becomes a defect the moment upstream fixes the original.
+The port does not inherit this defect from its structure. It builds a complete `Node` tree and constructs each object in one shot with the right values, so `from_node` would preserve the `IsSimp` card for free. Each `from_node` then *adds* a re-application through a setter, purely to reproduce C's clear. `ZoomMap::from_node` (`zoom.rs:339`) is the pattern:
+
+```rust
+let mut m = ZoomMap::new(base.nin, if raw != 0.0 { raw } else { 1.0 })?;   // correct already
+if base.inverted { m.invert(); }
+m.set_has_been_simplified(base.has_been_simplified);                       // installs the flag
+if raw != 0.0 { m.set_zoom(raw)?; }                                        // wipes it again
+```
+
+That final `set_zoom(raw)` is a no-op in value terms — the object was constructed with `raw` three lines earlier — and its only effect is the clear. So the fix is a deletion, not a behaviour change, which makes it easy to verify: nothing about the constructed object changes except that the flag survives.
+
+Part 1 fixed ten classes in C, so these mirrors are now bugs — the case `CLAUDE.md`'s sync protocol warns about, where a faithful mirror becomes a defect the moment upstream fixes the original. `docs/issues/c-library-quirks.md` names the ten `from_node` sites and the seven fixtures that pin them.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/{zoom,pcdmap,perm,lutmap,sphmap,polymap,splinemap,grismmap}.rs`, `crates/ast-core/src/mappings/mathmap/mod.rs`, `docs/issues/c-library-quirks.md`
+- Modify: `crates/ast-core/src/mappings/{zoom,perm,lutmap,sphmap,pcdmap,mathmap/mod,polymap,splinemap,wcsmap,grismmap}.rs`, `docs/issues/c-library-quirks.md`
 - Test: the Task 5 sweep is the test
 
 **Interfaces:**
@@ -974,31 +985,34 @@ cd /sdf/home/t/timj/WORK/starlink-astrs
 cargo test -p ast-core --test test_serialisation native_byte_exact_round_trip_simplify_corpus 2>&1 | grep -c 'FAIL:'
 ```
 
-Expected: 43. A different number means Part 1's fix or Task 5's repoint changed the population, and you need to know which before editing nine files.
+Expected: 43. A different number means Part 1's fix or Task 5's repoint changed the population, and you need to know which before editing ten files.
 
-- [ ] **Step 2: Find every mirror**
+- [ ] **Step 2: Find all ten sites**
+
+The quirks entry lists them: `ZoomMap`, `MathMap`, `LutMap` (`LutInterp` and `LutEpsilon`), `PolyMap`, `SplineMap`, `SphMap`, `WcsMap`, `PcdMap` (`Disco` and both `PcdCen` axes), `PermMap`, and `GrismMap` (all eight attributes). Confirm against the source rather than trusting the list:
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-rg -n 'discards the simplified|clear-on-set|set_has_been_simplified' crates/ast-core/src/mappings --glob '*.rs'
+rg -n 'discards the simplified|clear-on-set' crates/ast-core/src/mappings --glob '*.rs'
 ```
 
-Each site reads the `IsSimp` value from the deserialized base and then drops it, following C's old behaviour. Nine classes were fixed upstream: ZoomMap, PcdMap, PermMap, MathMap, LutMap, SphMap, PolyMap, SplineMap, GrismMap.
+- [ ] **Step 3: Delete the re-application at each site**
 
-- [ ] **Step 3: Preserve the flag in those nine `from_node` implementations**
-
-The shape at `zoom.rs:339-352` is representative: `from_node` builds the object, then calls `m.set_has_been_simplified(base.has_been_simplified)` guarded by a comment explaining that C's setter discards it. Remove the discard so the value from the `IsSimp` card survives, and replace the comment with one recording the new contract:
+At each one, the pattern is a `set_*` call *after* construction, guarded by a `node.get("Card").is_some()` or a `raw != default` test, whose value the constructor already used. Delete the call and its guard, and replace the comment that justified it:
 
 ```rust
-        // The IsSimp card records the orientation the object was written in,
-        // and a loader re-applying an unchanged attribute must not discard it.
-        // C used to, because its subclass loaders validate by calling a
-        // clear-on-set setter; upstream fixed that in nine classes and this
-        // is one of them.
-        m.set_has_been_simplified(base.has_been_simplified);
+        // The IsSimp card records the orientation the object was written in.
+        // The object is fully constructed above, so nothing needs re-applying;
+        // C used to re-apply through a clear-on-set setter to validate, which
+        // discarded the card it had just read, and upstream fixed that.
 ```
 
-Leave `wcsmap.rs:1171` alone: `wcsmap.c` clears the flag in a setter but has no loader validate-set call, so it was not among the nine and mirroring it is still correct parity. Check each of the nine against `src/<class>.c` before editing, and say in the commit message which you left and why.
+Two need more than a deletion:
+
+- **`MathMap::from_node`** (`mathmap/mod.rs:698`) builds its struct literally rather than through setters, so check whether the mirror is a trailing `set_simp_fi` / `set_simp_if` / seed re-application or a field assignment. Only the former is deleted; the field assignments are how the object is built.
+- **`PcdMap::from_node`** (`pcdmap.rs`) re-applies three attributes (`PcdCen` axes 1 and 2, and `Disco`) under three separate `node.get(...).is_some()` guards. All three go; confirm the constructor already received all three values.
+
+Do **not** keep `wcsmap.rs`'s mirror. An earlier draft of this plan said to, on the grounds that `wcsmap.c` has no loader validate-set call — that was a grep artifact, and `wcsmap.c` in fact has five.
 
 - [ ] **Step 4: Run the sweep, the simplify gate, and the oracle**
 
@@ -1009,23 +1023,26 @@ cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -10
 cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -15
 ```
 
-Expected: all pass. Preserving nested `IsSimp` means `simplified()` now short-circuits where it previously re-walked, so a simplify regression here is the Rust counterpart of the corpus change Part 1 Task 2 measured — compare against that task's diff rather than treating it as new.
+Expected: all pass. The seven fixtures the quirks entry names as pinning the mirror are the ones to watch: `grism_zoom_merge`, `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies`, `pcd_unit_series_merge`, `cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, and `cap_poly_bent_edges` as the control — the last carries no `SimpFI` / `SimpIF` / `Seeded` card, so it routed nothing and must be unaffected by this change either way.
+
+Preserving nested `IsSimp` means `simplified()` now short-circuits where it previously re-walked, so a simplify regression here is the Rust counterpart of the corpus change Part 1 Task 2 measured — compare against that task's diff rather than treating it as new.
 
 - [ ] **Step 5: Retire the quirks entry and commit**
 
-Move the `IsSimp` loader-loss entry in `docs/issues/c-library-quirks.md` to its RESOLVED section, naming the upstream commit that fixed it and the nine classes, in the same form as the existing `RESOLVED (upstream e40e71b4)` entry above it.
+Move "The `IsSimp` card does not survive being read back, for twelve classes" to the RESOLVED section, in the same form as the `RESOLVED (upstream e40e71b4)` entry above it: name the upstream commit, the ten classes, and that the Rust mirror was a deletion. Keep the diagnosis — the composition of loader routing and clear-on-set — because it is the part worth remembering.
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 cargo fmt && cargo clippy --workspace -- -D warnings
 git add crates/ast-core/src/mappings docs/issues/c-library-quirks.md
-git commit -q -m "serial: keep IsSimp across a load, as upstream now does
+git commit -q -m "serial: stop re-applying attributes to mirror C's IsSimp loss
 
-The port mirrored C's loader losing the IsSimp card it had just read, which
-was right while C did it and is a bug now that upstream does not. Nine
-classes are un-mirrored. WcsMap is deliberately left mirrored: it clears the
-flag in a setter but has no loader validate-set call, so it was never
-affected and matching it is still parity.
+from_node builds a complete Node tree and constructs each object in one shot,
+so it would preserve the IsSimp card for free. Ten classes then re-applied an
+attribute through a setter afterwards, purely to reproduce C's loader
+discarding the card -- a no-op in value terms whose only effect was the clear.
+Upstream no longer clears on a set that changes nothing, so the mirror is a
+bug and the re-applications are deleted.
 
 Closes the 43 round-trip failures that the deleted .rt overrides were hiding."
 ```
@@ -1098,10 +1115,10 @@ closes with the counts and with the two rules this sync produced."
 
 ## Self-Review
 
-**Spec coverage.** §2 hierarchy → Task 2. §2.2 the two named lists → Task 5 (`SIMPLIFY_DEFERRED`) and Task 5 Step 3 (`frame_in_map_slot.ast` via the existing `FRAME_IN_MAP_SLOT_UNDECIDED`). §2.3 the `.rt` deletion → Task 5; the un-mirroring → Task 9. §3 manifests → Task 4. §5 R1 → Task 1; R2 → Task 2; R3 → Tasks 3, 4, 5, 6; R4 → Tasks 7, 8, 9; R5 → Task 10. §6 the mirror gate → Task 2. §7's facts are used as expected values (Task 1 Step 4, Task 3 Step 4, Task 9 Step 1). §8's capture-host risk belongs to Part 1 Task 11 and is noted there.
+**Spec coverage.** §2 hierarchy → Task 2. §2.2 the two named lists → Task 5 (`SIMPLIFY_DEFERRED`) and Task 5 Step 3 (`frame_in_map_slot.ast` via the existing `FRAME_IN_MAP_SLOT_UNDECIDED`). §2.3 the `.rt` deletion → Task 5; the mirror deletion → Task 9. §3 manifests → Task 4. §5 R1 → Task 1; R2 → Task 2; R3 → Tasks 3, 4, 5, 6; R4 → Tasks 7, 8, 9; R5 → Task 10. §6 the mirror gate → Task 2. §7's facts are used as expected values (Task 1 Step 4, Task 3 Step 4, Task 9 Step 1). §8's capture-host risk belongs to Part 1 Task 11 and is noted there.
 
-**Two places where a step names a search rather than a line.** Task 8 Step 4 (`CmpMap::equal`'s guard) and Task 9 Step 3 (nine `from_node` sites) give the C source to mirror, the command that finds each site, and a test that fails until it is right, but not a diff — because `cmpmap.rs`'s `equal` and the nine `from_node`s have shapes that differ per class, and a fabricated diff would be worse than the instruction to read the C and match it. Both are bracketed by a failing test before and a passing gate after.
+**Two places where a step names a search rather than a line.** Task 8 Step 4 (`CmpMap::equal`'s guard) and Task 9 Step 3 (ten `from_node` sites) give the C source to mirror, the command that finds each site, and a test that fails until it is right, but not a diff — because `cmpmap.rs`'s `equal` and the ten `from_node`s have shapes that differ per class, and a fabricated diff would be worse than the instruction to read the C and match it. Both are bracketed by a failing test before and a passing gate after.
 
 **Placeholder scan.** No "TBD", no "add error handling", no "similar to Task N". Task 7's test uses two helper names (`mapping_of`, `transform_point`) with an explicit instruction to use the file's existing equivalents if it has them, because inventing a public API for a test would violate the design.
 
-**Type consistency.** `resolve_fixture(&str) -> Option<PathBuf>` (Task 3) is used unchanged by `load_fixture` and the gates. `CompareMode::{Strict, AstEqual, NoStringCompare}` with `CompareMode::parse` (Task 4) is the only new type. `SIMPLIFY_DEFERRED: &[(&str, &str)]` (Task 5) is `(file name, reason)` — file names, not stems, because both halves of a pair are listed separately. `set_has_been_simplified(bool)` (Task 9) is the existing trait method. The three renamed sweep functions are `native_byte_exact_round_trip_{simplify,frameset,serialisation}_corpus`, and Task 9 Step 1 and Task 10 use the first of those names.
+**Type consistency.** `resolve_fixture(&str) -> Option<PathBuf>` (Task 3) is used unchanged by `load_fixture` and the gates. `CompareMode::{Strict, AstEqual, NoStringCompare}` with `CompareMode::parse` (Task 4) is the only new type. `SIMPLIFY_DEFERRED: &[(&str, &str)]` (Task 5) is `(file name, reason)` — file names, not stems, because both halves of a pair are listed separately. `set_has_been_simplified(bool)` (Task 9) is the existing trait method and is *kept* at every site; what is deleted is the `set_*` attribute call after it. The three renamed sweep functions are `native_byte_exact_round_trip_{simplify,frameset,serialisation}_corpus`, and Task 9 Step 1 and Task 10 use the first of those names.
