@@ -342,7 +342,7 @@ fn every_relaxation_is_the_size_the_ledger_says() {
             "simplify manifest: skip_string_compare" => 0,
             "simplify manifest: negative fixtures stripping IsSimp" => 144,
             "wcsconv manifest: astequal compare mode" => 8,
-            "audit checklists not yet verified and classified" => 23,
+            "audit checklists not yet verified and classified" => 10,
             other => panic!("unledgered manifest relaxation: {other}"),
         };
         if got != want {
