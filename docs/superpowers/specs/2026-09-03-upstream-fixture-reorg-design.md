@@ -142,7 +142,7 @@ It is wrong when the "change" is the loader echoing back the value it just read.
 Net effect: C writes `IsSimp = 1` and cannot read it back.
 
 The loader is the visible victim, not the cause.
-Every one of the 31 loader call sites assigns the field *first* and then calls
+Every one of the 28 loader call sites assigns the field *first* and then calls
 `SetX( new, new->field )`, so the loader's set is a no-op in value terms — it
 exists only to borrow the setter's validator.
 The cause is one layer down, in the justification at `mapping.h:455`:
@@ -173,14 +173,16 @@ are affected:
 | PcdMap | 2 | 3 |
 | MathMap | 2 | 3 |
 | GrismMap | 2 | 8 |
-| WcsMap | 0 | 5 |
+| WcsMap | 0 | 2 |
 | PolyMap | 0 | 3 |
 | SplineMap | 0 | 3 |
 | LutMap | 0 | 2 |
 | SphMap | 0 | 2 |
 | PermMap | 0 | 1 |
 
-Ten classes, 31 sites. `IntraMap` clears the flag in a setter but its loader
+Ten classes, 28 sites, verified per setter rather than by counting grep hits —
+which excludes `WcsMap`'s `SetTPNTan` and its two `SetPV` calls, whose setters do
+not clear. `IntraMap` clears the flag in a setter but its loader
 calls none, so it is unaffected.
 `docs/issues/c-library-quirks.md` already records this under "The `IsSimp` card
 does not survive being read back, for twelve classes", including the seven

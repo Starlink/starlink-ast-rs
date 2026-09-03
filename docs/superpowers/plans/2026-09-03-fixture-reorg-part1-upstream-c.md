@@ -26,17 +26,26 @@
 ## File Structure
 
 **Modified — library source (Task 1 only).** Every class whose attribute setter
-calls `astClearIsSimple` *and* whose loader calls that setter — 10 classes,
-31 call sites:
-- `src/zoommap.c` (1), `src/permmap.c` (1)
-- `src/lutmap.c` (2), `src/sphmap.c` (2)
-- `src/pcdmap.c` (3), `src/mathmap.c` (3), `src/polymap.c` (3), `src/splinemap.c` (3)
-- `src/wcsmap.c` (5)
-- `src/grismmap.c` (8)
-- `src/mapping.h:455` — the justification comment that made this survive
+calls `astClearIsSimple` *and* whose loader calls that setter, plus the comment
+that made the defect survive (`src/mapping.h:455`):
 
-`intramap.c` also clears the flag in a setter but its loader calls none, so it is
-unaffected and is not touched.
+| class | loader sites | attributes |
+|---|---|---|
+| `src/zoommap.c` | 1 | `Zoom` |
+| `src/permmap.c` | 1 | `PermSplit` |
+| `src/lutmap.c` | 2 | `LutInterp`, `LutEpsilon` |
+| `src/sphmap.c` | 2 | `UnitRadius`, `PolarLong` |
+| `src/pcdmap.c` | 3 | `PcdCen` axes 0 and 1 (local macro), `Disco` |
+| `src/mathmap.c` | 3 | `SimpFI`, `SimpIF`, `Seed` |
+| `src/polymap.c` | 3 | `IterInverse`, `NiterInverse`, `TolInverse` |
+| `src/splinemap.c` | 3 | `InvNiter`, `InvTol`, `OutUnit` |
+| `src/wcsmap.c` | 2 | `FITSProj`, `LonCheck` |
+| `src/grismmap.c` | 8 | the eight `Grism*` attributes |
+
+**10 classes, 28 sites.** Verified by enumerating each loader's `Set*` calls and
+checking whether that setter's macro body clears the flag, so it excludes
+`WcsMap`'s `SetTPNTan` and its two `SetPV` calls, whose setters do not clear.
+`IntraMap` clears the flag but its loader calls no setter, so it is unaffected.
 
 **Modified — test programs and harness:**
 - `ast_tester/testmapping.c` — gains `testissimpsurvivesload`
@@ -61,7 +70,7 @@ Each generator is its own file rather than a mode of one program, because they h
 
 The parent loader reads the `IsSimp` card and sets the flag (`src/mapping.c:24137`). A subclass loader then validates the attribute it just read by re-applying it through a setter that calls `astClearIsSimple`, wiping it. Net effect: the library writes `IsSimp = 1` and cannot read it back.
 
-**The loader is the visible victim, not the cause.** All 31 loader sites assign the field *first* and then call `SetX( new, new->field )`, so the loader's set is a no-op in value terms — it exists only to borrow the setter's validator. Saving and restoring the flag around that call would suppress the symptom at 31 sites and leave the cause in place. The cause is the justification at `mapping.h:455`:
+**The loader is the visible victim, not the cause.** All 28 loader sites assign the field *first* and then call `SetX( new, new->field )`, so the loader's set is a no-op in value terms — it exists only to borrow the setter's validator. Saving and restoring the flag around that call would suppress the symptom at 28 sites and leave the cause in place. The cause is the justification at `mapping.h:455`:
 
 > Discarding anyway is safe — the records can only ever suppress a simplification, never make one wrong — so err towards it when in doubt.
 
