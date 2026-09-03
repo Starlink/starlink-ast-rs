@@ -150,6 +150,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          only gate — which is why the set is pinned on its own",
     ),
     (
+        "test_frame_in_map_slot.rs",
+        "FRAME_IN_MAP_SLOT_UNDECIDED",
+        1,
+        "one C-written dump the reader refuses: a bare Frame in a Map<n> slot. \
+         Whether to support it is an open design question, stated with its \
+         artifact in docs/issues/frame-in-a-mapping-slot.md",
+    ),
+    (
         "test_deferred_fixtures.rs",
         "DEFERRED_CLASSES",
         3,
@@ -339,6 +347,7 @@ fn no_relaxation_hides_outside_the_ledger() {
         "_UNGATED",
         "_DISAGREEMENTS",
         "_DRIFT",
+        "_UNDECIDED",
     ];
     let mut unlisted = Vec::new();
     for entry in std::fs::read_dir(tests_dir()).expect("tests dir readable") {

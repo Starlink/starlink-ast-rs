@@ -163,7 +163,7 @@ It is extended one level deeper, enumerating the per-class C *steps* from source
 | `deferred: <class>` | The class is unported per §1.3. |
 | `driver: <path>` | The step lives in a generic driver rather than the class. |
 | `mirrors-quirk: <anchor>` | The port reproduces a C defect deliberately; the anchor is in `docs/issues/c-library-quirks.md`. |
-| `unreachable: <gate>` | Correct to omit while a gated decision stands. Used only for the `cmpframe.c` `Transform` and `Simplify` rows, gated on cluster 4. |
+| ~~`unreachable: <gate>`~~ | Not introduced. It was reserved for the `cmpframe.c` `Transform` and `Simplify` rows, but those rows have no checklist to live in: `audit_universe()` derives the universe from Rust modules containing `fn simplified`, and `no_checklist_is_orphaned` rejects a checklist no module claims. The state is carried by the seam coverage form `undecided: docs/issues/frame-in-a-mapping-slot.md` instead. |
 
 ## 4. Region is the only Frame that is a Mapping
 
@@ -326,3 +326,4 @@ It answers directly whether the simplifier has validated parity with C, and stat
 |---|---|---|
 | 1 | 2026-09-01 | Initial design. Section 4 revised during review from "implement `Mapping` for seven Frame classes, reversing the sibling-trait decision" to "Region is the only Frame that is a Mapping", after establishing that a Region is already accepted as a component of both a `CmpFrame` and a `CmpMap`, exercised by fifty corpus fixtures, and that the single gap is a bare Frame where a Mapping is expected. `CmpFrame` refusing a general Mapping is not the mirror gap it resembles: C refuses it too, at `cmpframe.c:10634`. The sectionless-fixture cluster dropped as maintainer-owned, leaving seven clusters. Cluster 4 moved last and gated. |
 | 2 | 2026-09-02 | §2.2 gained the cluster's outcome: one `map_merge` defect, `PolyMap`'s linear-branch construction shape, two stale references, and one `IsSimp` card per fixture on five fixtures that C writes inside a merge probe it abandons — the last covered by §1.3's aliasing exclusion rather than by a code change. Recorded because §2.2 had predicted seven tag defects, and acting on that prediction would have meant curve-fitting the tag set. |
+| 3 | 2026-09-03 | Cluster 4 implemented. The `unreachable: <gate>` verdict form of §3.4 is withdrawn unused: the rows it was reserved for cannot exist while `CmpFrame` has no simplify seam in Rust, so the seam-coverage form `undecided: <issue path>` carries the open state, and the question is written up in `docs/issues/frame-in-a-mapping-slot.md`. `gap: PLAN.md <section>`, `deferred: <class>` and `driver: <path>` are withdrawn from the row grammar in the same pass: no row carries them, and the last two describe seam coverage rather than a step's port. |

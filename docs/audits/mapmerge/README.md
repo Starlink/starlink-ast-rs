@@ -83,23 +83,24 @@ to the code the seam actually owns, or the collapse fixed.
 - `n/a: <reason>` — the step cannot apply.
   A reason is required and must say why, not that it is unnecessary.
   "The Rust type cannot be inverted in place" is a reason; "not needed" is not.
-- `gap: PLAN.md <section>` — not ported.
-  The named `PLAN.md` section must exist and must say what would expose the
-  gap, not merely what is missing.
-  No row carries this verdict, and `no_row_is_left_at_gap` keeps it that way; the
-  form stays valid so a newly found gap can be recorded before it is closed.
-- `deferred: <class>` — the step belongs to a class this port has not started,
-  counted in `test_deferred_fixtures.rs::DEFERRED_CLASSES`.
-- `driver: <path>` — the step is performed by the shared driver at that path
-  rather than by this class.
-- `unreachable: <reason>` — the step is ported, and no construction available
-  through the public API reaches it. The reason must say what makes it
-  unreachable.
 - `divergence: <reason>` — the step applies, and the port deliberately does not
   perform it, because performing it would reproduce a defect in the C step.
   The reason must cite `docs/issues/c-library-quirks.md`, where the finding and
   the evidence for it live, and the verdict is invalid without that citation.
-  This is not a softer `gap`: a gap is work owed, a divergence is work refused.
+  A divergence is work refused, not work owed.
+
+Those three are the whole grammar, and `every_checklist_row_has_a_verdict`
+rejects anything else.
+Four further forms were withdrawn once no row used them: `gap: PLAN.md
+<section>`, because every gap is closed and readmitting one should take a
+deliberate change to the test rather than a new table cell;
+`unreachable: <reason>`, which no row ever carried; and `deferred: <class>` and
+`driver: <path>`, which describe how a whole C seam is covered rather than what
+a step's port does, and are the vocabulary of `C_SIMPLIFY_SEAMS` in
+`test_mapmerge_audit.rs`.
+A seam whose port waits on an open design question is recorded there as
+`undecided: <issue path>`, which requires the document to state the question and
+name the fixture that demonstrates it.
 
 ## `Uncited C steps:`
 

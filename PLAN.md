@@ -356,6 +356,7 @@ list as empty, so a ledger row for one would have passed at any size.
 | transform oracle | 2 rows | 2 | `FMA_SUBSTITUTIONS_LICENSED` — two rows of one UnitNormMap inverse section where the generator host's compiler fused the multiply-add at `unitnormmap.c:1079` and stepped past C's own zero-norm branch; the expectation is the unfused C value, asserted exactly |
 | frameset round-trip | 139 | 0 | `FRAMESET_FIXTURE_EXCLUDED` is empty — every wcsconv object round-trips byte-exact |
 | deferred fixtures | — | 3 | `DEFERRED_CLASSES` — `IntraMap`, `XphMap`, `StcResourceProfile` are unported classes, not gates that could otherwise pass (§5) |
+| Frame in a Mapping slot (`test_frame_in_map_slot.rs`) | 1 | 1 | `FRAME_IN_MAP_SLOT_UNDECIDED` — one C-written dump the reader refuses, a bare Frame in a `Map<n>` slot. Whether to support the construct is an open design question, stated with its artifact in `docs/issues/frame-in-a-mapping-slot.md` (§9.6). The exclusion carries the reason string, and two companion tests keep the refusal narrow: the settled Region-in-`CmpMap` and Region-in-`CmpFrame` nestings must keep reading |
 
 What the upstream `IsSimp` fix did and did not do, since the two get conflated:
 `e40e71b4` made **C's** placement deterministic — a property of the Mapping tree
@@ -896,27 +897,49 @@ lands inside `perm_map_merge`, while the driver the rows describe is
 Update the pin in both marker lines in the same commit range, so a checklist
 never claims a pin it was not checked against.
 
-### 9.6 `CmpFrame::Simplify` is unported, and the audit could not see it
+### 9.6 A bare Frame where a Mapping is expected — OPEN, awaiting a maintainer decision
 
-C gives CmpFrame a `Simplify` body of its own (`cmpframe.c:8963-9050`,
-installed at `:4745`): it calls `astSimplify` on each of the two component
-Frames and, if either returned a different object and both are still Frames,
-returns a copy of the CmpFrame holding the simplified components.
-`crates/ast-core/src/frames/cmpframe.rs` has no counterpart, and cannot have one
-in its present shape, because `CmpFrame` does not implement `Mapping` — the
-operation C spells `astSimplify( cmpframe )` is not expressible through the Rust
-API at all.
+C accepts a Frame in any Mapping slot, because `Frame::Transform`
+(`frame.c:11739`) transforms through a UnitMap (`frame.c:11806`).
+This port makes Region the only Frame that is also a Mapping, so a `Map<n>` slot
+holding `Begin Frame` or `Begin CmpFrame` is refused.
 
-Reachability is narrow but real. Only four C classes override the Frame-level
-`Simplify` slot — `region.c`, `frameset.c`, `stc.c` and `cmpframe.c` — so
-simplifying a component Frame changes something only when that component is a
-Region, a FrameSet, an Stc or a nested CmpFrame containing one. Nothing inside
-AST reaches this body except itself: `astSimplify` is applied to a Frame-typed
-argument only at `cmpframe.c:9019-9020`, and `FrameSet::Simplify` reduces the
-inter-node Mappings without touching the Frames (`frameset.c:10195`). The entry
-point is therefore a caller's own `astSimplify` on a CmpFrame, which is why no
-fixture in the corpus exercises it and no result in the corpus is wrong because
-of it.
+The narrow question — whether C's acceptance is a side effect of having made
+Frame a Mapping in order to support Region, or answers a real use case — is
+written up with its C citations, the cost of each answer, and the evidence
+available in
+[`docs/issues/frame-in-a-mapping-slot.md`](issues/frame-in-a-mapping-slot.md).
+
+The artifact is `crates/ast-core/tests/fixtures/frame_in_map_slot.ast`, a dump
+the C library wrote, reproducible with
+`tools/oracle_fixtures/frame_in_map_slot_probe.c`.
+`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the refusal and keeps it
+narrow: the 33 Region-in-`CmpMap` nestings in the fixture corpus and the
+Region-in-`CmpFrame` dump the same probe wrote must keep reading, so the gap
+cannot be closed by refusing Frames in Mapping slots wholesale.
+
+`C_SIMPLIFY_SEAMS` records `cmpframe.c` as
+`undecided: docs/issues/frame-in-a-mapping-slot.md`, and requires that document
+to state the question and name the fixture; `FRAME_IN_MAP_SLOT_UNDECIDED` counts
+the one fixture in §6.
+
+`CmpFrame::Simplify` (`cmpframe.c:8963-9050`, installed at `:4745`) is the seam
+the decision governs. It calls `astSimplify` on each component Frame and, if
+either returned a different object and both are still Frames, returns a copy of
+the CmpFrame holding the simplified components.
+`crates/ast-core/src/frames/cmpframe.rs` has no counterpart and cannot have one
+while `CmpFrame` is not a `Mapping`, because the operation C spells
+`astSimplify( cmpframe )` is not expressible through the Rust API.
+Reachability is narrow but real: only `region.c`, `frameset.c`, `stc.c` and
+`cmpframe.c` override the Frame-level `Simplify` slot, so simplifying a component
+Frame changes something only when that component is a Region, a FrameSet, an Stc
+or a nested CmpFrame containing one.
+Nothing inside AST reaches the body except itself — `astSimplify` is applied to a
+Frame-typed argument only at `cmpframe.c:9019-9020`, and `FrameSet::Simplify`
+reduces the inter-node Mappings without touching the Frames
+(`frameset.c:10195`) — so the entry point is a caller's own `astSimplify` on a
+CmpFrame, which is why no fixture in the corpus exercises it and no result in the
+corpus is wrong because of it.
 
 What made this invisible is worth more than the gap itself: `audit_universe` in
 `test_mapmerge_audit.rs` was derived from the Rust module tree, so a C seam with
@@ -928,16 +951,13 @@ and when the submodule is present the list is re-derived from
 `reference/starlink-ast/src/*.c` and required to match, so a pin move that adds
 a seam fails there rather than passing unnoticed.
 
-What would expose the gap in behaviour is a fixture that simplifies a
-`CmpFrame{Region, BasicFrame}` and compares against C — which first needs
-`CmpFrame` to implement `Mapping`, the same prerequisite the missing port has.
-
-
 ## 10. Gaps named by the `MapMerge` / `Simplify` audit
 
-Each entry is cited by a `gap` verdict in a checklist under
-`docs/audits/mapmerge/`, and `test_mapmerge_audit.rs` fails if a cited entry
-does not exist here.
+Each entry was cited by a `gap` verdict in a checklist under
+`docs/audits/mapmerge/`. Every one is closed, so no row cites this section any
+more and the `gap:` verdict form has been withdrawn; `no_row_is_left_at_gap` and
+`every_checklist_row_has_a_verdict` together keep it that way. The entries stay
+as the record of what each gap was and what closed it.
 
 [`docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md`](docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md)
 orders these entries into waves and gives each one a design, a gate and a record

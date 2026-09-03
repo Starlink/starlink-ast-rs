@@ -13,3 +13,8 @@ ast2ast
 keymap_hash
 gen_simp
 unitnorm_probe
+frame_in_map_slot_probe
+
+# Dumps a probe writes here; the committed copies live under
+# crates/ast-core/tests/fixtures/.
+*.ast

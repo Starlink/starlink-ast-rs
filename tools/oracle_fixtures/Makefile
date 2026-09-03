@@ -15,7 +15,7 @@ CFLAGS := -O0 -g -Wall
 
 PROGS := linear_approx analyse_poly scale_poly_inputs find_basis_vectors \
          fit_line make_int_world sip_int_world head2ast ast2ast keymap_hash \
-         gen_simp unitnorm_probe
+         gen_simp unitnorm_probe frame_in_map_slot_probe
 
 all: $(PROGS)
 

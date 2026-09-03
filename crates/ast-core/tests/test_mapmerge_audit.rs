@@ -165,10 +165,9 @@ fn verdicts(text: &str) -> Vec<String> {
 fn verdict_is_valid(verdict: &str) -> bool {
     verdict == "ported"
         || verdict.starts_with("n/a: ")
-        || verdict.starts_with("gap: PLAN.md §")
-        || verdict.starts_with("deferred: ")
-        || verdict.starts_with("driver: ")
-        || verdict.starts_with("unreachable: ")
+        // A divergence is a step the port refuses because performing it would
+        // reproduce a defect in C's own. The citation is what makes it a
+        // finding rather than an opinion, so it is part of the verdict.
         || (verdict.starts_with("divergence:")
             && verdict.contains("docs/issues/c-library-quirks.md"))
 }
@@ -208,39 +207,9 @@ fn every_checklist_row_has_a_verdict() {
     }
     assert!(
         bad.is_empty(),
-        "a verdict must be `ported`, `n/a: <reason>`, `gap: PLAN.md §<section>`, \
-         `deferred: <class>`, `driver: <path>`, `unreachable: <reason>`, or \
+        "a verdict must be `ported`, `n/a: <reason>`, or \
          `divergence: <reason citing docs/issues/c-library-quirks.md>`: \
          {bad:#?}"
-    );
-}
-
-/// Every `gap` verdict must name a `PLAN.md` section that exists. A gap citing
-/// a section nobody wrote is a gap nobody has to answer for.
-#[test]
-fn every_gap_verdict_names_a_real_plan_section() {
-    let plan = std::fs::read_to_string(repo_root().join("PLAN.md")).expect("PLAN.md readable");
-    let mut dangling = Vec::new();
-    for stem in audit_universe() {
-        let Ok(text) = std::fs::read_to_string(checklist_path(&stem)) else {
-            continue; // reported by every_audited_class_has_a_checklist
-        };
-        for (i, v) in verdicts(&text).iter().enumerate() {
-            let Some(section) = v.strip_prefix("gap: PLAN.md ") else {
-                continue;
-            };
-            let section = section.trim();
-            // A section is cited as `§10.1` and written as `### 10.1 …`.
-            let number = section.trim_start_matches('§');
-            if !plan.contains(&format!("### {number} ")) {
-                dangling.push(format!("{stem} row {}: PLAN.md has no {section:?}", i + 1));
-            }
-        }
-    }
-    assert!(
-        dangling.is_empty(),
-        "a `gap` verdict must cite a PLAN.md section that exists and says what \
-         would expose the gap: {dangling:#?}"
     );
 }
 
@@ -287,11 +256,16 @@ fn no_checklist_is_orphaned() {
 ///   is one module the per-class checklists cite rather than a class of its own;
 /// - `deferred: <class>` for a class this port has not started, counted in
 ///   `test_deferred_fixtures.rs::DEFERRED_CLASSES`;
-/// - `gap: PLAN.md <section>` for a seam that is neither ported nor deferred.
+/// - `undecided: <repo-relative path>` for a seam whose port depends on an open
+///   design question, where the path states the question, names the fixture
+///   that demonstrates it, and is counted in the verification ledger.
 const C_SIMPLIFY_SEAMS: &[(&str, &str)] = &[
     ("box.c", "region_box_region"),
     ("circle.c", "region_circle"),
-    ("cmpframe.c", "gap: PLAN.md §9.6"),
+    (
+        "cmpframe.c",
+        "undecided: docs/issues/frame-in-a-mapping-slot.md",
+    ),
     ("cmpmap.c", "cmpmap"),
     ("cmpregion.c", "region_cmpregion"),
     ("dssmap.c", "dssmap"),
@@ -354,7 +328,6 @@ fn installs_simplify_seam(line: &str) -> bool {
 
 #[test]
 fn every_c_simplify_seam_is_covered() {
-    let plan = std::fs::read_to_string(repo_root().join("PLAN.md")).expect("PLAN.md readable");
     let universe = audit_universe();
     let mut bad = Vec::new();
     for (file, coverage) in C_SIMPLIFY_SEAMS {
@@ -362,10 +335,23 @@ fn every_c_simplify_seam_is_covered() {
             if !repo_root().join(path.trim()).is_file() {
                 bad.push(format!("{file}: driver {path:?} does not exist"));
             }
-        } else if let Some(section) = coverage.strip_prefix("gap: PLAN.md ") {
-            let number = section.trim().trim_start_matches('§');
-            if !plan.contains(&format!("### {number} ")) {
-                bad.push(format!("{file}: PLAN.md has no {section:?}"));
+        } else if let Some(doc) = coverage.strip_prefix("undecided: ") {
+            let path = repo_root().join(doc.trim());
+            match std::fs::read_to_string(&path) {
+                Err(e) => bad.push(format!("{file}: {doc} unreadable: {e}")),
+                Ok(text) => {
+                    // The document has to carry the question and the artifact,
+                    // or "undecided" is an excuse rather than a record.
+                    if !text.contains("## The question") {
+                        bad.push(format!("{file}: {doc} states no question"));
+                    }
+                    if !text.contains("frame_in_map_slot.ast") {
+                        bad.push(format!(
+                            "{file}: {doc} names no fixture demonstrating the \
+                             construct"
+                        ));
+                    }
+                }
             }
         } else if let Some(class) = coverage.strip_prefix("deferred: ") {
             let deferred = std::fs::read_to_string(
@@ -390,8 +376,8 @@ fn every_c_simplify_seam_is_covered() {
     assert!(
         bad.is_empty(),
         "every C class with a MapMerge or Simplify vtab entry needs a \
-         checklist, a driver module, a DEFERRED_CLASSES row, or a PLAN.md gap \
-         section:\n  {}",
+         checklist, a driver module, a DEFERRED_CLASSES row, or an issue \
+         document stating what is undecided:\n  {}",
         bad.join("\n  ")
     );
 }
