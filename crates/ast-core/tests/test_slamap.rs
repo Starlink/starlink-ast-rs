@@ -807,3 +807,53 @@ fn bad_and_nan_input_produce_bad_output() {
         assert_eq!(out.point(i)[1], BAD_VALUE, "point {i} lat bad");
     }
 }
+
+// Inverting an AMP or MAP step exchanges its date and equinox arguments as
+// well as its type code, because the two conversions take the pair in
+// opposite orders (slamap.c:2830-2832).  Simplifying an inverted SlaMap must
+// therefore produce a forward SlaMap with the arguments swapped, and that
+// SlaMap must transform identically to the inverted original.
+#[test]
+fn simplify_inverted_map_step_swaps_date_and_equinox() {
+    let eq = 2000.0;
+    let date = 55197.0;
+    let mut m = SlaMap::new();
+    m.add(SlaCvtType::Map, &[eq, date]); // mean -> apparent (args: EQ, DATE)
+    m.invert();
+
+    let simplified = <dyn Mapping>::simplify(&m).unwrap();
+    let sla = simplified
+        .as_any()
+        .downcast_ref::<SlaMap>()
+        .expect("simplified SlaMap");
+    assert!(!sla.is_inverted(), "replacement is applied forward");
+
+    let dump = to_native_string(&AnyObject::SlaMap(sla.clone())).unwrap();
+    assert!(dump.contains("\"AMP\""), "step type inverted:\n{dump}");
+    let args: Vec<&str> = dump
+        .lines()
+        .filter(|l| l.contains("Sla1a") || l.contains("Sla1b"))
+        .collect();
+    assert_eq!(args.len(), 2, "two arguments dumped:\n{dump}");
+    assert!(
+        args[0].contains(&format!("{date}")),
+        "AMP takes the date first:\n{dump}"
+    );
+    assert!(
+        args[1].contains(&format!("{eq}")),
+        "AMP takes the equinox second:\n{dump}"
+    );
+
+    let ra = deg2rad(120.0);
+    let dec = deg2rad(-15.0);
+    let pin = PointSet::from_rows([[ra, dec]].iter().map(|p| p.as_slice()));
+    let before = m.transform(&pin, true).unwrap();
+    let after = simplified.transform(&pin, true).unwrap();
+    assert_close(after.point(0)[0], before.point(0)[0], 1e-13, "ra preserved");
+    assert_close(
+        after.point(0)[1],
+        before.point(0)[1],
+        1e-13,
+        "dec preserved",
+    );
+}

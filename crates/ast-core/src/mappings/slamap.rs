@@ -465,7 +465,9 @@ fn try_cancel_pair(a: &SlaConversion, b: &SlaConversion) -> bool {
 /// Return the normalized step list for a SlaMap, accounting for inversion.
 ///
 /// When inverted, reverses the step order and inverts each step type.
-/// For Prec/Prebn, inversion swaps the two epoch arguments.
+/// Four conversions also exchange their first two arguments: `Prec` and
+/// `Prebn` swap the starting and ending epochs, and `Amp` and `Map` swap the
+/// date and equinox, which they take in opposite orders.
 fn sla_normalized_steps(sla: &SlaMap, inv: bool) -> Vec<SlaConversion> {
     if !inv {
         return sla.conversions.clone();
@@ -475,8 +477,10 @@ fn sla_normalized_steps(sla: &SlaMap, inv: bool) -> Vec<SlaConversion> {
         .rev()
         .map(|cvt| {
             let inv_type = cvt.cvt_type.inverse();
-            let args = if matches!(cvt.cvt_type, SlaCvtType::Prec | SlaCvtType::Prebn) {
-                // For precession, inverting means swapping the two epoch arguments.
+            let args = if matches!(
+                cvt.cvt_type,
+                SlaCvtType::Prec | SlaCvtType::Prebn | SlaCvtType::Amp | SlaCvtType::Map
+            ) {
                 let mut a = cvt.args.clone();
                 if a.len() >= 2 {
                     a.swap(0, 1);
