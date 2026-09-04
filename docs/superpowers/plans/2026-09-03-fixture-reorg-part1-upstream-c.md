@@ -957,6 +957,50 @@ bytes the Rust port has been testing against."
 
 ---
 
+### Task 6 outcome (2026-09-03)
+
+Landed. 23 of the 25 stems adopted, each with a constructor in
+`gen_simplify_fixtures.c`. Two were dropped, and the gate changed.
+
+**The gate is intent, not bytes.** Byte-identity against the Rust port's copies
+would have encoded inputs I could not verify: several of these fixtures are
+*derived* values — the `defunc_*` set is whatever `astGetUnc` returns — so a
+mismatch could mean a wrong reconstruction or a stale reference, and some of them
+predate `e40e71b4`. Instead each Region was rebuilt from the intent recorded in
+`docs/audits/region-phase5-parity-spec.md`, and the check is that it reaches the
+same logic: 34 of the 46 files changed, all inside the 25 stems, no collateral
+change anywhere in the 800-file corpus.
+
+Seven converged byte-exactly anyway, and the byte gate earned its keep while it
+applied — it caught an Interval upper bound that had to be `AST__BAD`, an
+`astBox` form argument (0 is two corners, 1 is centre-and-corner), and a guessed
+`FillFactor` of 0.25 that had to be 0.8 to give the recorded product of 0.4.
+
+**Two findings worth keeping.**
+
+`regbasepick_cmpregion_subset` came out as a `CmpRegion` where the Rust port's
+copy is a `Box`. The spec says the fixture exists to prove `astSimplify` "keeps a
+CmpRegion of the picked sub-regions", so the Rust copy never reached the branch
+it was written for. The reconstruction does. (A `Box` cannot leave an axis
+unconstrained, which is why both components are Intervals.)
+
+`neg_cmpmap_neighbour_not_cmpmap` and `neg_win_series_cmpmap_neighbour` are
+dropped. Neither is referenced anywhere in the Rust repo — not its manifest, not
+a test, not the audit docs — and C simplifies both, so neither was ever a valid
+negative. Checked against the corpus for duplicate coverage rather than adopted
+on the strength of their names: the first's load-bearing reduction is literally
+`zoom_parallel_to_matrix` (same `Zoom = 2` and `3`, same diagonal MatrixMap),
+with an inert MathMap beside it; the second decomposes into `zoom_series_merge`,
+`win_zoom_series_merge` and the nested-series-CmpMap traversal already in
+`win_swap_past_matrix`. Only their composition was new, and a composition is not
+a rule. The other two `neg_wcsmap_perm_*` are genuine negatives and are kept.
+
+The `defunc_*` group needed no internal access after all: the spec assumed a probe
+calling `astGetUncFrm`, but `astGetUnc(region, def)` is public and gives the same
+default.
+
+---
+
 ## Task 7: The three remaining fixture imports
 
 `lsst.simp` is the only fixture captured with `Comment=0,Indent=0`; regenerating it with the Channel's defaults lets the `render_options` column disappear from the shared manifest. `offset-sref.native` and `pc-sparse-naxis.head` are two more Rust-only inputs.
