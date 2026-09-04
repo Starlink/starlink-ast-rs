@@ -251,7 +251,7 @@ fn reads_c_generated_variant_dump() {
     use ast_core::{AnyObject, from_native_string};
 
     let path = format!(
-        "{}/tests/fixtures/frameset/c_variants.ast",
+        "{}/tests/fixtures/serialisation/c_variants.ast",
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).expect("c_variants.ast fixture");

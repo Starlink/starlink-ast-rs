@@ -433,10 +433,8 @@ fn test_ratemap_serialization_default_axes() {
 #[test]
 fn test_ratemap_read_fixture_inverse_cancel() {
     // Read the ratemap_inverse_cancel.map fixture (CmpMap with two RateMaps).
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/ratemap_inverse_cancel.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/ratemap_inverse_cancel.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.as_mapping().unwrap();
 
@@ -448,10 +446,8 @@ fn test_ratemap_read_fixture_inverse_cancel() {
 #[test]
 fn test_ratemap_read_fixture_simplify_interior() {
     // Read the ratemap_simplify_interior.map fixture.
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/ratemap_simplify_interior.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/ratemap_simplify_interior.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.as_mapping().unwrap();
 
@@ -467,10 +463,8 @@ fn test_ratemap_read_fixture_simplify_interior() {
 fn test_ratemap_simplify_inverse_cancel_fixture() {
     // The fixture: CmpMap(RateMap(ZoomMap(2)), inv(RateMap(ZoomMap(2))), series)
     // Should simplify to UnitMap(1).
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/ratemap_inverse_cancel.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/ratemap_inverse_cancel.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.into_mapping().unwrap();
 
@@ -488,10 +482,8 @@ fn test_ratemap_simplify_inverse_cancel_fixture() {
 fn test_ratemap_simplify_interior_fixture() {
     // The fixture: RateMap(CmpMap(ZoomMap(2), ZoomMap(3), series), ax1=1, ax2=1)
     // Should simplify to RateMap(ZoomMap(6), ax1=1, ax2=1).
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/ratemap_simplify_interior.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/ratemap_simplify_interior.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.into_mapping().unwrap();
 
@@ -518,10 +510,9 @@ fn test_ratemap_simplify_interior_fixture() {
 #[test]
 fn test_ratemap_neg_nonratemap_neighbour() {
     // RateMap in series with a non-RateMap → no cancellation.
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/neg_ratemap_nonratemap_neighbour.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/neg_ratemap_nonratemap_neighbour.map")
+            .unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.into_mapping().unwrap();
 
@@ -536,10 +527,8 @@ fn test_ratemap_neg_nonratemap_neighbour() {
 #[test]
 fn test_ratemap_neg_different_inner() {
     // Two RateMaps with different encapsulated mappings → no cancellation.
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/neg_ratemap_different_inner.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/neg_ratemap_different_inner.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.into_mapping().unwrap();
 
@@ -553,10 +542,8 @@ fn test_ratemap_neg_different_inner() {
 #[test]
 fn test_ratemap_neg_parallel() {
     // Two RateMaps in parallel → no cancellation (only series cancels).
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/neg_ratemap_parallel.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/neg_ratemap_parallel.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.into_mapping().unwrap();
 

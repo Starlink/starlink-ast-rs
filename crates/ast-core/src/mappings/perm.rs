@@ -1337,11 +1337,15 @@ impl Serializable for PermMap {
 
         m.set_has_been_simplified(base.has_been_simplified);
 
-        // C re-applies `PermSplit` through `SetPermSplit` when `TestPermSplit`
-        // reports it set (permmap.c:3090-3091), which discards the record the
-        // parent loader has just installed from the `IsSimp` card.
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (permmap.c:3090-3091). Seeding the field
+        // first is what lets the `IsSimp` card the parent loader installed
+        // survive.
         if node.get("PmSplt").is_some() {
-            m.set_perm_split(node.get_int("PmSplt", 0) != 0);
+            let value = node.get_int("PmSplt", 0) != 0;
+            m.perm_split = value;
+            m.set_perm_split(value);
         }
         Ok(m)
     }

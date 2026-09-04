@@ -23,7 +23,7 @@ fn input_points() -> PointSet {
 fn load_lsst() -> Box<dyn Mapping> {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/lsst.ast"
+        "/tests/fixtures/wcsconv/inputs/lsst.ast"
     ))
     .unwrap();
     from_native_string(&text).unwrap().into_mapping().unwrap()

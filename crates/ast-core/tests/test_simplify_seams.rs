@@ -98,8 +98,7 @@ fn frameset_with_no_reducible_edge_returns_the_original() {
     use ast_core::mappings::Mapping;
     use ast_core::{AnyObject, from_native_string, to_native_string};
 
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/native/reference/simplify_fixtures");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simplify");
     let input = std::fs::read_to_string(dir.join("cap_frameset_nochange.map")).expect("read .map");
     let want = std::fs::read_to_string(dir.join("cap_frameset_nochange.simp")).expect("read .simp");
 

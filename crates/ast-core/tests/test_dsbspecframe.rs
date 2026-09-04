@@ -401,7 +401,7 @@ fn serialization_round_trip() {
 
 #[test]
 fn deserialize_fixture() {
-    let fixture = include_str!("fixtures/jan-dsb.ast");
+    let fixture = include_str!("fixtures/serialisation/jan-dsb.ast");
     let obj = from_native_string(fixture).unwrap();
     let dsb = match obj {
         AnyObject::DSBSpecFrame(d) => d,

@@ -3,7 +3,7 @@
 //!
 //! `MapSz` is excluded from the byte-exact comparison and asserted
 //! separately against the C probe's committed output; see
-//! `common::is_map_sz_card` and `tests/fixtures/keymap/mapsz_oracle.txt`.
+//! `common::is_map_sz_card` and `tests/fixtures/oracle/keymap_mapsz.txt`.
 
 mod common;
 
@@ -176,8 +176,7 @@ fn split_keymap(text: &str) -> Split {
 
 const FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fixtures/native/reference/simplify_fixtures_unsupported",
-    "/stcresourceprofile/cap_timemap_02.map"
+    "/tests/fixtures/simplify/cap_timemap_02.map"
 );
 
 /// Lift the one `Begin KeyMap` … `End KeyMap` block out of a Native dump.
@@ -292,7 +291,7 @@ struct OracleRow {
 fn oracle_rows() -> Vec<OracleRow> {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/keymap/mapsz_oracle.txt"
+        "/tests/fixtures/oracle/keymap_mapsz.txt"
     );
     let text = std::fs::read_to_string(path).unwrap();
     let mut rows = Vec::new();

@@ -30,6 +30,28 @@ pub fn native_strings_equivalent(got: &str, want: &str, max_ulps: u64) -> bool {
     }
 }
 
+/// [`native_strings_equivalent`] with AST's own `astEQUAL` tolerance on
+/// numeric tokens instead of a fixed ULP budget.
+pub fn native_strings_astequal(got: &str, want: &str) -> bool {
+    if got.trim() == want.trim() {
+        return true;
+    }
+    let mut g = got.lines();
+    let mut w = want.lines();
+    loop {
+        match (g.next(), w.next()) {
+            (None, None) => return true,
+            (Some(gl), Some(wl)) if gl == wl => continue,
+            (Some(gl), Some(wl)) => {
+                if !line_tokens_astequal(gl, wl) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+}
+
 /// Drop the `IsSimp` attribute line from a native dump.
 pub fn strip_is_simp(s: &str) -> String {
     s.lines()

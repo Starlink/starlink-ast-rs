@@ -290,7 +290,7 @@ fn pcdmap_serialization_zero_disc() {
 fn pcdmap_deserialize_fixture() {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/simplify_fixtures/pcd_zero_to_unit.map"
+        "/tests/fixtures/simplify/pcd_zero_to_unit.map"
     ))
     .unwrap();
     let obj = from_native_string(&text).unwrap();

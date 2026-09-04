@@ -27,7 +27,7 @@ use ast_core::error::AstResult;
 /// string is what a reader gets instead of a silent failure, and the count is
 /// in the verification ledger so it cannot grow unnoticed.
 const FRAME_IN_MAP_SLOT_UNDECIDED: &[(&str, &str)] = &[(
-    "frame_in_map_slot.ast",
+    "serialisation/frame_in_map_slot.ast",
     "a bare Frame in a Map<n> slot. C accepts it because every Frame is a \
      Mapping there; this port makes Region the only Frame that is a Mapping. \
      Whether C's acceptance is a side effect of supporting Region or answers a \
@@ -146,7 +146,7 @@ fn frame_in_a_map_slot_is_rejected() {
 /// anyone closes the gap by refusing Frames in Mapping slots wholesale.
 #[test]
 fn a_region_inside_a_cmpmap_still_reads() {
-    let corpus = fixtures().join("native/reference/simplify_fixtures");
+    let corpus = fixtures().join("simplify");
     let mut read = 0usize;
     for entry in std::fs::read_dir(&corpus).expect("simplify corpus readable") {
         let path = entry.expect("readable entry").path();
@@ -178,12 +178,13 @@ fn a_region_inside_a_cmpmap_still_reads() {
 /// reference product beside this test is what covers it.
 #[test]
 fn a_region_inside_a_cmpframe_still_reads() {
-    let path = fixtures().join("region_in_cmpframe.ast");
+    let path = fixtures().join("serialisation/region_in_cmpframe.ast");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
     assert!(
         region_nested_in(&text, "CmpFrame"),
-        "region_in_cmpframe.ast no longer nests a Region inside a CmpFrame, so \
+        "serialisation/region_in_cmpframe.ast no longer nests a Region inside a \
+         CmpFrame, so \
          it does not cover the settled nesting"
     );
     read_native(&text)

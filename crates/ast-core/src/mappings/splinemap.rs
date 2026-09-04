@@ -1108,9 +1108,10 @@ impl Serializable for SplineMap {
             m.invert();
         }
         m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
-        // C re-applies each attribute through its setter when the Test
-        // predicate reports it set (splinemap.c:3643-3652), which discards the
-        // simplified record installed from the `IsSimp` card.
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (splinemap.c:3643-3652): the struct literal
+        // above already holds the values read from the cards.
         if let Some(n) = inv_niter {
             m.set_inv_niter(n);
         }

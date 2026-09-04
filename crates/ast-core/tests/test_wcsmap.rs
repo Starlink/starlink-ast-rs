@@ -645,7 +645,7 @@ fn wcsmap_perm_swap_cancel_simplify() {
     // Expected simplification: PermMap(swap)
     let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/simplify_fixtures"
+        "/tests/fixtures/simplify"
     ));
     let input_text =
         std::fs::read_to_string(fixture_dir.join("wcsmap_perm_swap_cancel.map")).unwrap();
@@ -684,7 +684,7 @@ fn wcsmap_perm_swap_simplify_constants() {
     // Expected: PermMap with transformed constants (WcsMap → UnitMap).
     let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/simplify_fixtures"
+        "/tests/fixtures/simplify"
     ));
     let input_text =
         std::fs::read_to_string(fixture_dir.join("wcsmap_perm_swap_simplify.map")).unwrap();

@@ -95,7 +95,7 @@ fn main() {
     // we measure only the polynomial kernel.
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/lsst.ast"
+        "/tests/fixtures/wcsconv/inputs/lsst.ast"
     ))
     .expect("lsst.ast");
     let fset = from_native_string(&text)

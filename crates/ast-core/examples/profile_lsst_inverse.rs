@@ -8,7 +8,7 @@ use ast_core::from_native_string;
 fn main() {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/lsst.ast"
+        "/tests/fixtures/wcsconv/inputs/lsst.ast"
     ))
     .expect("lsst.ast");
     let map = from_native_string(&text)

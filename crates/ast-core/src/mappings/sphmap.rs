@@ -464,9 +464,10 @@ impl Serializable for SphMap {
         if base.inverted {
             m.invert();
         }
-        // C re-applies both attributes through their setters when the Test
-        // predicates report them set (sphmap.c:2040-2046), which discards the
-        // simplified record installed from the `IsSimp` card.
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (sphmap.c:2040-2046): the struct literal
+        // above already holds the values read from the cards.
         if node.get("UntRd").is_some() {
             m.set_unit_radius(unit_radius);
         }

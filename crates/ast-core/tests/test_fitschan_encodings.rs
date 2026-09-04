@@ -15,12 +15,12 @@ use ast_core::mappings::Mapping;
 // Helpers
 // ===========================================================================
 
-fn load_fixture(name: &str) -> String {
-    let path = format!(
-        "{}/tests/fixtures/fits/headers/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("fixture {name} not found at {path}"))
+/// Read a fixture named by its path relative to the fixture root -- the same
+/// paths the upstream harness reads.
+fn load_fixture(relpath: &str) -> String {
+    let path = format!("{}/tests/fixtures/{relpath}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("fixture {relpath} not found at {path}"))
 }
 
 // ===========================================================================
@@ -30,7 +30,7 @@ fn load_fixture(name: &str) -> String {
 #[test]
 fn guess_encoding_iraf() {
     // serpens.head has CDi_j matrix keywords + RADECSYS -> FitsIraf
-    let text = load_fixture("serpens.head");
+    let text = load_fixture("wcsconv/inputs/serpens.head");
     let fc = FitsChan::from_header(&text).unwrap();
     let enc = fc.encoding();
     assert_eq!(
@@ -43,7 +43,7 @@ fn guess_encoding_iraf() {
 #[test]
 fn guess_encoding_pc() {
     // pc-sparse.head has PC001001 keyword -> FitsPc
-    let text = load_fixture("pc-sparse.head");
+    let text = load_fixture("wcsconv/inputs/pc-sparse.head");
     let fc = FitsChan::from_header(&text).unwrap();
     let enc = fc.encoding();
     assert_eq!(
@@ -56,7 +56,7 @@ fn guess_encoding_pc() {
 #[test]
 fn guess_encoding_aips() {
     // velo-aips.head has AIPS-convention spectral CTYPE (VELO-LSR) -> FitsAips
-    let text = load_fixture("velo-aips.head");
+    let text = load_fixture("wcsconv/inputs/velo-aips.head");
     let fc = FitsChan::from_header(&text).unwrap();
     let enc = fc.encoding();
     assert_eq!(
@@ -69,7 +69,7 @@ fn guess_encoding_aips() {
 #[test]
 fn guess_encoding_class() {
     // class-write.head has DELTAV + VELO-LSR -> FitsClass
-    let text = load_fixture("class-write.head");
+    let text = load_fixture("wcsconv/inputs/class-write.head");
     let fc = FitsChan::from_header(&text).unwrap();
     let enc = fc.encoding();
     assert_eq!(
@@ -82,7 +82,7 @@ fn guess_encoding_class() {
 #[test]
 fn guess_encoding_dss() {
     // dss.dss has PLTRAH keyword -> Dss
-    let text = load_fixture("dss.dss");
+    let text = load_fixture("wcsconv/expected/dss.dss");
     let fc = FitsChan::from_header(&text).unwrap();
     let enc = fc.encoding();
     assert_eq!(
@@ -98,7 +98,7 @@ fn guess_encoding_dss() {
 
 #[test]
 fn read_iraf_produces_frameset() {
-    let text = load_fixture("serpens.head");
+    let text = load_fixture("wcsconv/inputs/serpens.head");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::FitsIraf);
     let result = fc.read().unwrap();
@@ -113,7 +113,7 @@ fn read_iraf_produces_frameset() {
 
 #[test]
 fn read_pc_produces_frameset() {
-    let text = load_fixture("pc-sparse.head");
+    let text = load_fixture("wcsconv/inputs/pc-sparse.head");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::FitsPc);
     let result = fc.read().unwrap();
@@ -128,7 +128,7 @@ fn read_pc_produces_frameset() {
 
 #[test]
 fn read_aips_spectral() {
-    let text = load_fixture("velo-aips.head");
+    let text = load_fixture("wcsconv/inputs/velo-aips.head");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::FitsAips);
     let result = fc.read().unwrap();
@@ -144,7 +144,7 @@ fn read_aips_spectral() {
 
 #[test]
 fn read_class_produces_frameset() {
-    let text = load_fixture("class-write.head");
+    let text = load_fixture("wcsconv/inputs/class-write.head");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::FitsClass);
     let result = fc.read().unwrap();
@@ -160,7 +160,7 @@ fn read_class_produces_frameset() {
 
 #[test]
 fn read_dss_produces_frameset() {
-    let text = load_fixture("dss.dss");
+    let text = load_fixture("wcsconv/expected/dss.dss");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::Dss);
     let result = fc.read().unwrap();
@@ -180,7 +180,7 @@ fn read_dss_produces_frameset() {
 #[test]
 fn iraf_frameset_has_sky() {
     // IRAF header (serpens.head) should produce a 2D FrameSet with a SkyFrame.
-    let text = load_fixture("serpens.head");
+    let text = load_fixture("wcsconv/inputs/serpens.head");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::FitsIraf);
     let obj = fc.read().unwrap().expect("should read IRAF header");
@@ -207,7 +207,7 @@ fn iraf_frameset_has_sky() {
 #[test]
 fn pc_frameset_has_sky() {
     // PC header should produce a 2D FrameSet with sky coordinates.
-    let text = load_fixture("pc-sparse.head");
+    let text = load_fixture("wcsconv/inputs/pc-sparse.head");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::FitsPc);
     let obj = fc.read().unwrap().expect("should read PC header");
@@ -233,7 +233,7 @@ fn pc_frameset_has_sky() {
 #[test]
 fn dss_frameset_has_sky() {
     // DSS should produce a 2D FrameSet with FK5 coordinates.
-    let text = load_fixture("dss.dss");
+    let text = load_fixture("wcsconv/expected/dss.dss");
     let mut fc = FitsChan::from_header(&text).unwrap();
     fc.set_encoding(Encoding::Dss);
     let obj = fc.read().unwrap().expect("should read DSS header");

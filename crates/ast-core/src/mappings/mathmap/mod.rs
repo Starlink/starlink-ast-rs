@@ -710,10 +710,12 @@ impl Serializable for MathMap {
         let has_forward = compiled.has_fwd;
         let has_inverse = compiled.has_inv;
 
-        // Read the raw attribute values against C's unset defaults. Each is
-        // then re-applied through the setter that discards the simplified
-        // records, exactly as C's loader does (mathmap.c:7392, 7397, 7410) --
-        // so a dumped `IsSimp` card does not survive being read back.
+        // Read the raw attribute values against C's unset defaults. C assigns
+        // each straight into the structure component and only then re-applies it
+        // through the setter, so the set is a no-op and the guarded clear does
+        // not fire (mathmap.c:7397, 7403, 7416). The fields are therefore seeded
+        // in the struct literal below rather than left unset, which is what lets
+        // a dumped `IsSimp` card survive being read back.
         let simp_fi_raw = node.get_int("SimpFI", -1);
         let simp_if_raw = node.get_int("SimpIF", -1);
         let seeded = node.get_int("Seeded", 0) != 0;
@@ -727,8 +729,8 @@ impl Serializable for MathMap {
             fwd_compiled,
             inv_compiled,
             rng: UnsafeCell::new(MathMapRng::with_default_seed()),
-            simp_fi: None,
-            simp_if: None,
+            simp_fi: (simp_fi_raw >= 0).then_some(simp_fi_raw != 0),
+            simp_if: (simp_if_raw >= 0).then_some(simp_if_raw != 0),
             inverted: base.inverted,
             simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
             ident: None,

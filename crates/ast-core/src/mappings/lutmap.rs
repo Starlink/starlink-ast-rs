@@ -957,18 +957,14 @@ impl Serializable for LutMap {
         if base.inverted {
             m.invert();
         }
-        // C re-applies the interpolation method through `SetLutInterp` when
-        // `TestLutInterp` reports it set (lutmap.c:2572-2573), which discards
-        // the simplified record the parent loader installed from the `IsSimp`
-        // card.
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (lutmap.c:2572-2573): the struct literal above
+        // already holds the value read from the card.
         if node.get("LutInt").is_some() {
             m.set_interp(interp);
         }
-        // C re-applies LutEpsilon the same way (lutmap.c:2576-2577). Both
-        // branches mirror a quirk rather than a design decision, so they are
-        // revisited when the pin moves: see `docs/issues/c-library-quirks.md`,
-        // "The `IsSimp` card does not survive being read back, for twelve
-        // classes".
+        // LutEpsilon the same way (lutmap.c:2576-2577).
         if node.get("LutEps").is_some() {
             m.set_lut_epsilon(lut_epsilon);
         }

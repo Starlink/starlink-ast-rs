@@ -1244,11 +1244,20 @@ impl Serializable for WcsMap {
         // set (helpful=0 in the dump). C reads all three (wcsmap.c:6016-6034)
         // before InitPrjPrm and the PV values, so TPNTan is in place by the
         // time the wcslib parameter block is built.
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (wcsmap.c:6016-6023). Seeding the
+        // field first is what lets the `IsSimp` card the parent loader installed
+        // survive.
         if node.get("FitsPrj").is_some() {
-            wcs.set_fits_proj(node.get_int("FitsPrj", 1) != 0);
+            let value = node.get_int("FitsPrj", 1) != 0;
+            wcs.fits_proj = Some(value);
+            wcs.set_fits_proj(value);
         }
         if node.get("LonChk").is_some() {
-            wcs.set_lon_check(node.get_int("LonChk", 1) != 0);
+            let value = node.get_int("LonChk", 1) != 0;
+            wcs.lon_check = Some(value);
+            wcs.set_lon_check(value);
         }
         if node.get("TpnTan").is_some() {
             wcs.set_tpn_tan(node.get_int("TpnTan", 1) != 0);

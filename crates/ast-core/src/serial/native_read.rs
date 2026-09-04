@@ -682,11 +682,12 @@ mod tests {
     // These always run (no submodule required).
     // ---------------------------------------------------------------
 
-    /// Read a committed fixture from tests/fixtures/native/reference/.
-    fn read_committed_fixture(filename: &str) -> String {
+    /// Read a committed fixture, named by its path relative to the fixture
+    /// root -- the same paths the upstream harness reads.
+    fn read_committed_fixture(relpath: &str) -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/native/reference")
-            .join(filename);
+            .join("tests/fixtures")
+            .join(relpath);
         std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()))
     }
@@ -703,7 +704,7 @@ mod tests {
 
     #[test]
     fn ref_splittest1_parse() {
-        let text = read_committed_fixture("splittest1.ast");
+        let text = read_committed_fixture("programs/testcmpmap/splittest1.ast");
         let node = parse_native(&text).unwrap();
 
         // Top-level structure.
@@ -757,7 +758,7 @@ mod tests {
 
     #[test]
     fn ref_degen1_parse() {
-        let text = read_committed_fixture("degen1.ast");
+        let text = read_committed_fixture("wcsconv/inputs/degen1.ast");
         let node = parse_native(&text).unwrap();
 
         // Top-level FrameSet with leading comment block.
@@ -806,7 +807,7 @@ mod tests {
 
     #[test]
     fn ref_brad_map_parse() {
-        let text = read_committed_fixture("brad.map");
+        let text = read_committed_fixture("simplify/brad.map");
         let node = parse_native(&text).unwrap();
 
         // Top-level parallel CmpMap with 3 inputs.
@@ -849,7 +850,7 @@ mod tests {
 
     #[test]
     fn ref_specflux_parse() {
-        let text = read_committed_fixture("specflux.ast");
+        let text = read_committed_fixture("wcsconv/inputs/specflux.ast");
         let node = parse_native(&text).unwrap();
 
         // Top-level CmpFrame.

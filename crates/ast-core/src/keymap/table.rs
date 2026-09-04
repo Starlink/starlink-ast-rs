@@ -373,7 +373,7 @@ mod tests {
         // monotonically with the set. The exact value at each n is a
         // property of djb2 that this file cannot derive without restating
         // the algorithm, so it is pinned against the C oracle in
-        // tests/fixtures/keymap/mapsz_oracle.txt rather than asserted here.
+        // tests/fixtures/oracle/keymap_mapsz.txt rather than asserted here.
         assert!(map_sz(&colliding_keys(11), None) > 16);
         let mut prev = 16;
         for n in [11usize, 40, 300] {

@@ -12,7 +12,7 @@ use ast_core::mappings::Mapping;
 fn load_lsst_frameset() -> Box<dyn Mapping> {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/lsst.ast"
+        "/tests/fixtures/wcsconv/inputs/lsst.ast"
     ))
     .expect("failed to read lsst.ast");
     let obj = from_native_string(&text).expect("failed to parse lsst.ast");

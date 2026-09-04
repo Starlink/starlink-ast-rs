@@ -2051,9 +2051,12 @@ impl Serializable for PolyMap {
         if base.inverted {
             m.invert();
         }
-        // C re-applies each iterative-inverse attribute through its setter when
-        // the Test predicate reports it set (polymap.c:7461-7470), which
-        // discards the simplified record installed from the `IsSimp` card.
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (polymap.c:7461-7470): the struct literal
+        // above already holds the values read from the cards. The setters still
+        // run because they carry side effects -- `IterInverse` builds the
+        // Jacobian terms.
         if let Some(v) = iter_inv {
             m.set_iter_inverse(v);
         }

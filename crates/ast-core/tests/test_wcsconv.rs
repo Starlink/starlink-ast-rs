@@ -30,17 +30,35 @@ enum CompareMode {
     /// check. For outputs carrying values whose last bits are platform-libm
     /// dependent (e.g. cancellation-amplified geodetic altitude). `astequal`.
     AstEqual,
+    /// Upstream runs no string comparison for this row. No wcsconv row carries
+    /// it today, and this port treats it as strict anyway: where upstream cannot
+    /// compare, this harness still can, because a case it cannot byte-compare is
+    /// named in [`NATIVE_READ_EXCLUDED`] with a reason rather than waved through
+    /// by a manifest flag.
+    NoStringCompare,
 }
 
 impl CompareMode {
-    /// Parse the manifest's 6th column. Anything other than `astequal` is
-    /// strict — there is no mode that skips the comparison, so a typo relaxes
-    /// nothing. A native case that cannot yet be byte-compared is named in
-    /// [`NATIVE_READ_EXCLUDED`] instead, where the reason is recorded.
+    /// Parse the manifest's 6th column, which is upstream's
+    /// `skip_string_compare` and takes three values.
+    ///
+    /// Panics on anything else. Mapping an unrecognised value to a default —
+    /// even the strict one — means a typo silently decides how a case is
+    /// compared, and the manifest is shared with the upstream harness, which
+    /// fails its configure on the same input.
+    ///
+    /// `yes` means upstream runs no string comparison. No wcsconv row carries it
+    /// today; a native case this port cannot yet byte-compare is named in
+    /// [`NATIVE_READ_EXCLUDED`] instead, with its reason.
     fn parse(field: &str) -> Self {
         match field.trim().to_ascii_lowercase().as_str() {
+            "" => CompareMode::Strict,
             "astequal" => CompareMode::AstEqual,
-            _ => CompareMode::Strict,
+            "yes" => CompareMode::NoStringCompare,
+            other => panic!(
+                "wcsconv/cases.txt: unknown skip_string_compare {other:?}; \
+                 expected blank, \"astequal\" or \"yes\""
+            ),
         }
     }
 }
@@ -55,8 +73,10 @@ struct TestCase {
     compare_mode: CompareMode,
 }
 
+/// The fixture root. Manifest rows carry paths relative to it -- the same paths
+/// the upstream harness reads -- so nothing here prepends a subdirectory.
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wcsconv")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
 /// `native`-encoding wcsconv cases whose keyword-card output is not yet
@@ -111,7 +131,7 @@ const ISSIMP_PLACEMENT_LICENSED: &[(&str, usize, usize)] = &[
 ];
 
 fn parse_manifest() -> Vec<TestCase> {
-    let path = fixtures_dir().join("wcsconv_tests.txt");
+    let path = fixtures_dir().join("wcsconv/cases.txt");
     let text = std::fs::read_to_string(&path).expect("manifest readable");
 
     text.lines()
@@ -199,7 +219,7 @@ fn input_encoding_from_ext(filename: &str) -> Option<Encoding> {
 /// inputs, the FitsChan it was read through. Mirrors `ast_tester/wcsconverter.c`
 /// which reuses the same FitsChan for both read and write.
 fn load_input(case: &TestCase) -> Result<(AnyObject, Option<FitsChan>), String> {
-    let input_path = fixtures_dir().join("inputs").join(&case.input_file);
+    let input_path = fixtures_dir().join(&case.input_file);
     let text = std::fs::read_to_string(&input_path).map_err(|e| format!("read input: {e}"))?;
 
     if case.input_file.ends_with(".ast") {
@@ -342,7 +362,7 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
     // NATIVE_READ_EXCLUDED.
     let compare = case.compare_mode == CompareMode::AstEqual || !native_excluded;
     if compare {
-        let expected_path = fixtures_dir().join("expected").join(&case.expected_file);
+        let expected_path = fixtures_dir().join(&case.expected_file);
         let expected_text =
             std::fs::read_to_string(&expected_path).map_err(|e| format!("read expected: {e}"))?;
 
@@ -433,7 +453,7 @@ fn run_named_case(name: &str) {
         .find(|c| c.name == name)
         .unwrap_or_else(|| panic!("manifest has no case named {name:?}"));
 
-    let input_path = fixtures_dir().join("inputs").join(&case.input_file);
+    let input_path = fixtures_dir().join(&case.input_file);
     if !input_path.exists() {
         // Skip silently: missing input fixture isn't a failure of the
         // code under test. Use eprintln so the user can see why
@@ -466,11 +486,7 @@ fn native_read_excluded_entries_still_fail() {
             unknown.push(*name);
             continue;
         };
-        if !fixtures_dir()
-            .join("inputs")
-            .join(&case.input_file)
-            .exists()
-        {
+        if !fixtures_dir().join(&case.input_file).exists() {
             unknown.push(*name);
             continue;
         }

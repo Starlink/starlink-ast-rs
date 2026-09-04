@@ -734,7 +734,7 @@ END";
         // Use the fixture.
         let sip_header = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/fits/headers/sip.head"
+            "/tests/fixtures/wcsconv/inputs/sip.head"
         ))
         .unwrap();
         let mut cards = cards_from(&sip_header);

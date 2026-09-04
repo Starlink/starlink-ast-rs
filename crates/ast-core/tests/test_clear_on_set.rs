@@ -386,15 +386,17 @@ fn record_survives_invert_and_back() {
 }
 
 /// Record the flag on `m`, dump it to native, read it back, and require the
-/// flag to be gone.
+/// flag to have survived.
 ///
 /// C's loader re-applies a validated attribute through the private setter
-/// (`zoommap.c:2231-2238` states the convention), and for a class following
-/// clear-on-set that setter discards the record `astLoadMapping` has just
-/// installed from the `IsSimp` card (`mapping.c:24137`). `m` must therefore
-/// carry an explicitly set attribute, or there is no card for the loader to
-/// route and nothing to discard.
-fn load_discards(mut m: impl Mapping, what: &str) {
+/// (`zoommap.c:2231-2238` states the convention), and that setter used to
+/// discard the record `astLoadMapping` had just installed from the `IsSimp`
+/// card (`mapping.c:24137`), so a dumped card could not be read back. Upstream
+/// `07d0cd2d` guards each clear on the value actually differing, and the
+/// re-applied value is the one just constructed with, so the record now
+/// survives. `m` must carry an explicitly set attribute, or there is no card
+/// for the loader to route and the case proves nothing.
+fn load_preserves(mut m: impl Mapping, what: &str) {
     m.set_has_been_simplified(true);
     let obj = AnyObject::from_mapping(&m).expect("class is not in AnyObject");
     let text = to_native_string(&obj).expect("dump failed");
@@ -405,8 +407,8 @@ fn load_discards(mut m: impl Mapping, what: &str) {
     let back = from_native_string(&text).expect("load failed");
     let loaded = back.as_mapping().expect("loaded object is not a Mapping");
     assert!(
-        !loaded.has_been_simplified(),
-        "{what}: the simplified record survived the load"
+        loaded.has_been_simplified(),
+        "{what}: a no-op set inside the loader discarded the simplified record"
     );
 }
 
@@ -425,59 +427,59 @@ fn load_keeps_the_record_for_a_class_that_routes_nothing() {
 }
 
 #[test]
-fn load_discards_the_record_for_every_clear_on_set_class() {
+fn load_preserves_the_record_for_every_clear_on_set_class() {
     let mut zoom = ZoomMap::new(2, 3.0).unwrap();
     zoom.set_has_been_simplified(true);
-    load_discards(zoom, "ZoomMap::Zoom");
+    load_preserves(zoom, "ZoomMap::Zoom");
 
     let mut math = math_map();
     math.set_simp_fi(true);
     math.set_simp_if(true);
-    load_discards(math, "MathMap::SimpFI");
+    load_preserves(math, "MathMap::SimpFI");
 
     let mut lut = lut_map();
     lut.set_interp(LutInterp::Nearest);
-    load_discards(lut, "LutMap::LutInterp");
+    load_preserves(lut, "LutMap::LutInterp");
 
     let mut lut_eps = lut_map();
     lut_eps.set_lut_epsilon(1e-10);
-    load_discards(lut_eps, "LutMap::LutEpsilon");
+    load_preserves(lut_eps, "LutMap::LutEpsilon");
 
     let mut poly = poly_map();
     poly.set_iter_inverse(true);
     poly.set_niter_inverse(7);
     poly.set_tol_inverse(1e-8);
-    load_discards(poly, "PolyMap::IterInverse");
+    load_preserves(poly, "PolyMap::IterInverse");
 
     let mut spline = spline_map();
     spline.set_inv_niter(9);
     spline.set_inv_tol(1e-7);
     spline.set_out_unit(true);
-    load_discards(spline, "SplineMap::InvNiter");
+    load_preserves(spline, "SplineMap::InvNiter");
 
     let mut sph = SphMap::new();
     sph.set_unit_radius(true);
     sph.set_polar_long(0.5);
-    load_discards(sph, "SphMap::UnitRadius");
+    load_preserves(sph, "SphMap::UnitRadius");
 
     let mut wcs = wcs_map();
     wcs.set_fits_proj(true);
     wcs.set_lon_check(true);
-    load_discards(wcs, "WcsMap::FITSProj");
+    load_preserves(wcs, "WcsMap::FITSProj");
 
     let mut perm = perm_map();
     perm.set_perm_split(true);
-    load_discards(perm, "PermMap::PermSplit");
+    load_preserves(perm, "PermMap::PermSplit");
 
     let mut pcd = PcdMap::new(0.01, [1.0, 2.0]);
     pcd.set_disc(0.02);
-    load_discards(pcd, "PcdMap::Disco");
+    load_preserves(pcd, "PcdMap::Disco");
 
     let mut pcd_cen = PcdMap::new(0.01, [1.0, 2.0]);
     pcd_cen.set_pcd_cen(1, 3.0).unwrap();
-    load_discards(pcd_cen, "PcdMap::PcdCen");
+    load_preserves(pcd_cen, "PcdMap::PcdCen");
 
     let mut grism = GrismMap::new(1.5, 0.0, 6000.0, 0.0, 1000.0, 1, 0.0, 0.0);
     grism.set_grism_g(1200.0);
-    load_discards(grism, "GrismMap::GrismG");
+    load_preserves(grism, "GrismMap::GrismG");
 }

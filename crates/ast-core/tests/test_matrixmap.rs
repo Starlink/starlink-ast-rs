@@ -430,9 +430,8 @@ fn diagonal_matrix_merge_with_winmap_scales() {
 fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
     use ast_core::{AnyObject, from_native_string, to_native_string};
 
-    // Same fixture as crates/ast-core/tests/fixtures/native/reference/
-    // simplify_fixtures/matrix_full_to_diagonal.map (Form="Full" with
-    // off-diagonals == 0).
+    // Same fixture as crates/ast-core/tests/fixtures/simplify/
+    // matrix_full_to_diagonal.map (Form="Full" with off-diagonals == 0).
     let src = r#" Begin MatrixMap
     Nin = 2
  IsA Mapping

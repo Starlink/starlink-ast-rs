@@ -1,14 +1,16 @@
 //! Data-driven simplification regression tests.
 //!
-//! Reads `simplify_tests.txt` and for each entry: loads the input .map file,
+//! Reads `fixtures/simplify/cases.txt` -- the same manifest the upstream C
+//! harness reads, with the same paths -- and for each entry: loads the input
+//! .map file,
 //! simplifies it, and verifies:
 //!   1. `equal()` — the simplified result must be structurally equal to the
 //!      C reference (.simp file). This is the primary assertion.
 //!   2. Transform equivalence — the simplified result must produce the same
 //!      numerical output as the C reference on test points.
-//!   3. Serialization (optional) — when `skip_string_compare` is not set,
+//!   3. Serialization — unless the manifest's fourth column says otherwise,
 //!      the native serialization of the simplified result must match the
-//!      .simp file byte-for-byte.
+//!      .simp file, numeric tokens equal to within 4 ULP.
 
 use std::path::PathBuf;
 
@@ -96,10 +98,6 @@ const ABANDONED_PROBE_STAMP_LICENSED: &[(&str, &str)] = &[
         "on the CmpMap wrapping the SpecMap/ZoomMap pair",
     ),
     (
-        "cap_cmpmap_nested_tag",
-        "on the innermost CmpMap, shrunk from cap_specmap_02",
-    ),
-    (
         "cap_cmpmap_01",
         "on the CmpMap holding the differentiated SpecMap",
     ),
@@ -179,13 +177,6 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 /// `(fixture, card name, value in the reference, value an x86-64 Linux build
 /// produces, bound on the difference between the reference and the port)`.
 const NUMERIC_PLATFORM_DRIFT: &[(&str, &str, &str, &str, f64)] = &[
-    (
-        "rigby",
-        "IM5",
-        "-5.9658198263111446e-17",
-        "-5.8980598183211441e-17",
-        1e-18,
-    ),
     (
         "cap_interval_01",
         "X5",
@@ -302,25 +293,22 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
 /// to keep out: a card-name-only rule would consume it too.
 #[test]
 fn drift_licence_fires_wherever_the_port_lands_inside_the_bound() {
-    let want = "IM5 = 0\nIM5 = -5.9658198263111446e-17\nIM6 = 1";
-    for local in ["-5.9658198263111446e-17", "-5.8980598183211441e-17"] {
-        let got = format!("IM5 = 0\nIM5 = {local}\nIM6 = 1");
-        let (g, w, problems) = drop_licensed_residue("rigby", &got, want);
+    let want = "X5 = 0\nX5 = 2.4240684055495722e-06\nX6 = 2.4240684055430873e-06";
+    for local in ["2.4240684055495722e-06", "2.4240684055476816e-06"] {
+        let got = format!("X5 = 0\nX5 = {local}\nX6 = 2.4240684055430873e-06");
+        let (g, w, problems) = drop_licensed_residue("cap_interval_01", &got, want);
         assert!(problems.is_empty(), "{local}: {problems:?}");
         assert_eq!(g, w, "{local}: the two sides must be left identical");
-        assert!(
-            g.contains("IM5 = 0"),
-            "{local}: the exact zero must survive"
-        );
+        assert!(g.contains("X5 = 0"), "{local}: the exact zero must survive");
     }
 }
 
 /// And it must lapse outside the bound, rather than absorbing the difference.
 #[test]
 fn drift_licence_lapses_outside_the_bound() {
-    let want = "IM5 = 0\nIM5 = -5.9658198263111446e-17\nIM6 = 1";
-    let got = "IM5 = 0\nIM5 = -6.5e-17\nIM6 = 1";
-    let (_, _, problems) = drop_licensed_residue("rigby", got, want);
+    let want = "X5 = 0\nX5 = 2.4240684055495722e-06\nX6 = 2.4240684055430873e-06";
+    let got = "X5 = 0\nX5 = 2.5e-06\nX6 = 2.4240684055430873e-06";
+    let (_, _, problems) = drop_licensed_residue("cap_interval_01", got, want);
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(
         problems[0].contains("dropped 0 from the got side"),
@@ -441,74 +429,85 @@ fn mapping_to_native_string(m: &dyn Mapping) -> Option<String> {
     to_native_string(&mapping_to_any_object(m)?).ok()
 }
 
-/// The serialisation options a manifest row asks for.
+/// How a manifest row asks for the serialised dump to be compared -- the
+/// fourth column of `fixtures/simplify/cases.txt`, shared verbatim with the
+/// upstream C harness (`ast_tester/CMakeLists.txt`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Compare {
+    /// Blank: numeric tokens equal to within 4 ULP. The default.
+    Ulp,
+    /// `astequal`: numeric tokens equal to within AST's own `astEQUAL`
+    /// tolerance. For a value amplified by cancellation, where the row above
+    /// it in the manifest names the value.
+    AstEqual,
+    /// `yes`: no tolerance-based comparison. Upstream uses this for a negative
+    /// fixture, whose reference is its own unsimplified `.map` and so can
+    /// never carry the `IsSimp` card `astSimplify` stamps on its result. This
+    /// harness still compares those, with `IsSimp` stripped from both sides --
+    /// the job upstream gives its `_noop` ctest family. The flag therefore
+    /// suppresses the comparison only for a row whose reference is a distinct
+    /// file, which is a genuine opt-out.
+    None,
+}
+
+impl Compare {
+    fn parse(field: &str, name: &str) -> Self {
+        match field.trim() {
+            "" => Self::Ulp,
+            "astequal" => Self::AstEqual,
+            "yes" => Self::None,
+            other => panic!(
+                "{name}: unknown skip_string_compare value {other:?}; want blank, \
+                 `astequal` or `yes`"
+            ),
+        }
+    }
+}
+
+/// Manifest rows whose reference records a C defect the port deliberately does
+/// not reproduce, each with the reason.
 ///
-/// C's `Channel` exposes `Comment` and `Indent`, and some references were
-/// captured with them off. Reproducing a reference then needs the same
-/// settings, not a licence to ignore the difference. See
-/// `docs/issues/c-library-quirks.md`, "Two simplify references were captured
-/// with Comment and Indent off".
-#[derive(Debug, Clone, Copy)]
-struct RenderOpts {
-    comment: bool,
-    indent: usize,
-}
+/// The upstream harness compares these, because upstream's own output is the
+/// reference. Reproducing them here would mean returning a Mapping that does
+/// not agree with the one it replaces, so the rows are excluded from the three
+/// checks and pinned instead by `c_defect_rows_still_diverge`, which fails if
+/// the port ever starts matching -- whether because upstream fixed the defect
+/// or because the port acquired it.
+const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[(
+    "cheby_linear_lone_reduce",
+    "PolyMap's linear MapMerge reduction reads coeff_f/power_f without the \
+     ChebyMap normalisation (polymap.c:3757-3850), so C returns a ZoomMap of 2 \
+     where the ChebyMap computes 0.4x-2 (docs/issues/c-library-quirks.md)",
+)];
 
-impl Default for RenderOpts {
-    fn default() -> Self {
-        Self {
-            comment: true,
-            indent: 3,
-        }
-    }
-}
-
-impl RenderOpts {
-    /// Parse a manifest field like `comment=0,indent=0`. An unknown key is a
-    /// hard error rather than a silent default: a typo must not quietly widen
-    /// the comparison.
-    fn parse(spec: &str, name: &str) -> Self {
-        let mut opts = Self::default();
-        for kv in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            let (k, v) = kv
-                .split_once('=')
-                .unwrap_or_else(|| panic!("{name}: bad render option {kv:?}, want key=value"));
-            match k.trim() {
-                "comment" => opts.comment = v.trim() != "0",
-                "indent" => {
-                    opts.indent = v
-                        .trim()
-                        .parse()
-                        .unwrap_or_else(|_| panic!("{name}: bad indent {v:?}"))
-                }
-                other => panic!("{name}: unknown render option {other:?}"),
-            }
-        }
-        opts
-    }
-}
-
-/// [`mapping_to_native_string`] honouring `opts`.
-fn mapping_to_native_string_with(m: &dyn Mapping, opts: RenderOpts) -> Option<String> {
-    if opts.comment && opts.indent == 3 {
-        return mapping_to_native_string(m);
-    }
-    use ast_core::channel::{Channel, NativeChannel};
-    let obj = mapping_to_any_object(m)?;
-    let mut ch = NativeChannel::with_string_sink();
-    ch.config_mut().comment = opts.comment;
-    ch.config_mut().indent = opts.indent;
-    ch.write(&obj).ok()?;
-    Some(ch.into_string())
-}
+/// Manifest rows whose fixture the Rust reader cannot load yet, each with the
+/// class that blocks it. Named here rather than skipped by a predicate so that
+/// the list shrinks only by deliberate edit, and so `deferred_rows_still_fail`
+/// can assert that every one of them really does still fail to load.
+const DEFERRED: &[(&str, &str)] = &[
+    ("cap_timemap_02", "StcResourceProfile"),
+    ("cap_xphmap_01", "XphMap"),
+    ("cap_xphmap_02", "XphMap"),
+    ("intra_invfwd_cancel", "IntraMap"),
+    ("intra_invfwd_cancel_tail", "IntraMap"),
+    ("intramap_inverse_cancel", "IntraMap"),
+    ("neg_intra_diff_flag", "IntraMap"),
+    ("neg_intra_diff_func", "IntraMap"),
+    ("neg_intra_no_simpfi", "IntraMap"),
+    ("neg_intra_no_simpif", "IntraMap"),
+    ("neg_intra_nonintra_neighbour", "IntraMap"),
+    ("neg_intra_parallel", "IntraMap"),
+    ("neg_intra_same_direction", "IntraMap"),
+    ("neg_xph_nonxph_neighbour", "XphMap"),
+    ("neg_xph_not_opposite", "XphMap"),
+    ("neg_xph_parallel", "XphMap"),
+    ("xph_inverse_cancel", "XphMap"),
+];
 
 #[test]
 fn simplify_regression() {
-    let fixture_dir = PathBuf::from(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference"
-    ));
-    let manifest = fixture_dir.join("simplify_tests.txt");
+    let fixture_dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+    let manifest = fixture_dir.join("simplify/cases.txt");
 
     assert!(
         manifest.exists(),
@@ -526,6 +525,8 @@ fn simplify_regression() {
     let mut serial_failures: Vec<String> = Vec::new();
     let mut other_failures: Vec<String> = Vec::new();
     let mut issimp_disagreements: Vec<String> = Vec::new();
+    let mut deferred_seen = 0usize;
+    let mut defect_seen = 0usize;
 
     for line in contents.lines() {
         let line = line.trim();
@@ -534,17 +535,24 @@ fn simplify_regression() {
         }
 
         let fields: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
-        if fields.len() < 3 {
-            continue;
-        }
+        assert_eq!(
+            fields.len(),
+            4,
+            "malformed manifest row (want `name | input | reference | skip`): {line}"
+        );
 
         let name = fields[0];
+        if DEFERRED.iter().any(|(n, _)| *n == name) {
+            deferred_seen += 1;
+            continue;
+        }
+        if C_DEFECT_EXCLUDED.iter().any(|(n, _)| *n == name) {
+            defect_seen += 1;
+            continue;
+        }
         let input_path = fixture_dir.join(fields[1]);
         let reference_path = fixture_dir.join(fields[2]);
-        let skip_string_compare = fields.get(3).map(|s| s.trim()) == Some("yes");
-        // Field 5: the Channel settings the reference was captured with, as
-        // `comment=0,indent=0`. Blank means C's defaults.
-        let render_opts = RenderOpts::parse(fields.get(4).copied().unwrap_or(""), name);
+        let compare = Compare::parse(fields[3], name);
         // A negative fixture names the same file as both input and reference:
         // the assertion is that `simplify` leaves the Mapping alone. C's
         // `astSimplify` still stamps `IsSimple` on whatever it returns
@@ -671,7 +679,7 @@ fn simplify_regression() {
         // construction — its reference *is* its input, which was never
         // simplified — so those are excluded: they are not a disagreement
         // about placement.
-        let rendered = mapping_to_native_string_with(simplified.as_ref(), render_opts);
+        let rendered = mapping_to_native_string(simplified.as_ref());
         if rendered.is_none() {
             // Not a skip. `AnyObject::from_mapping` has no variant for this
             // class, so neither the card count nor the byte comparison below
@@ -699,15 +707,21 @@ fn simplify_regression() {
         // Diagnostic only: `SIMPLIFY_DUMP=<name>` prints both sides of one
         // case, whatever its manifest flags say. Never changes the verdict.
         if std::env::var("SIMPLIFY_DUMP").is_ok_and(|v| v == name)
-            && let Some(s) = mapping_to_native_string_with(simplified.as_ref(), render_opts)
+            && let Some(s) = mapping_to_native_string(simplified.as_ref())
         {
             eprintln!("--- got {name} ---\n{s}\n--- want ---\n{ref_text}");
         }
 
         // === Check 3: Serialization comparison ===
-        if !skip_string_compare {
-            if let Some(simp_str) = mapping_to_native_string_with(simplified.as_ref(), render_opts)
-            {
+        // `Compare::None` on a negative fixture is upstream's `_noop` gate,
+        // which this harness runs inline (`ignore_is_simp_line`), so such a row
+        // is still compared. A row with a distinct reference opts out unless a
+        // `NUMERIC_PLATFORM_DRIFT` entry names the drifting card: upstream has
+        // no card-level licence and so gives up the whole dump, while this
+        // harness can license the one value and keep comparing the rest.
+        let licensed_per_card = NUMERIC_PLATFORM_DRIFT.iter().any(|(f, ..)| *f == name);
+        if compare != Compare::None || ignore_is_simp_line || licensed_per_card {
+            if let Some(simp_str) = mapping_to_native_string(simplified.as_ref()) {
                 let (got, want) = if ignore_is_simp_line {
                     (
                         common::strip_is_simp(&simp_str),
@@ -741,7 +755,13 @@ fn simplify_regression() {
                         other_failures.push(format!("{name}: simplify() produced no IsSimp card"));
                     }
                 }
-                if !common::native_strings_equivalent(&got, &want, 4) {
+                let matched = match compare {
+                    Compare::AstEqual => common::native_strings_astequal(&got, &want),
+                    Compare::Ulp | Compare::None => {
+                        common::native_strings_equivalent(&got, &want, 4)
+                    }
+                };
+                if !matched {
                     serial_failures.push(name.to_string());
                     // Diagnostic only: `SIMPLIFY_DIFF=1` prints the first few
                     // differing lines per failing case. Off by default so the
@@ -879,7 +899,6 @@ fn simplify_regression() {
         "rigby (8 vs C's 9)",
         "cap_specmap_02 (7 vs C's 8)",
         // Shrunk from `cap_specmap_02`, and carries the same signature.
-        "cap_cmpmap_nested_tag (4 vs C's 5)",
     ];
     issimp_disagreements.sort();
     let mut expected: Vec<String> = ISSIMP_DISAGREEMENTS.iter().map(|s| s.to_string()).collect();
@@ -916,11 +935,102 @@ fn simplify_regression() {
         parse_skipped.len(),
         parse_skipped.join(", ")
     );
+    assert_eq!(
+        defect_seen,
+        C_DEFECT_EXCLUDED.len(),
+        "the manifest carries {defect_seen} of the {} C-defect rows. A row that \
+         leaves the manifest must leave `C_DEFECT_EXCLUDED` in the same change.",
+        C_DEFECT_EXCLUDED.len()
+    );
+    assert_eq!(
+        deferred_seen,
+        DEFERRED.len(),
+        "the manifest carries {deferred_seen} of the {} deferred rows. A row \
+         that leaves the manifest must leave `DEFERRED` in the same change, or \
+         the entry silently stops excluding anything.",
+        DEFERRED.len()
+    );
     assert!(
-        passed >= 471,
-        "only {passed} cases passed; the corpus held 471 when this floor was \
+        passed >= 472,
+        "only {passed} cases passed; the corpus held 472 when this floor was \
          set and fixtures are only ever added. A drop means cases stopped being \
          run, which no failure count would show."
+    );
+}
+
+/// Every `C_DEFECT_EXCLUDED` row still diverges from its reference.
+///
+/// The exclusion says the port refuses to reproduce the reference. That claim
+/// has to be checked, or an upstream fix -- or a regression that gave the port
+/// the same defect -- would leave the row silently unexercised.
+#[test]
+fn c_defect_rows_still_diverge() {
+    let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+    let manifest = std::fs::read_to_string(root.join("simplify/cases.txt")).unwrap();
+    let mut now_agree = Vec::new();
+    for (name, reason) in C_DEFECT_EXCLUDED {
+        let row = manifest
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .find(|l| l.split('|').next().map(str::trim) == Some(*name))
+            .unwrap_or_else(|| panic!("{name} is in C_DEFECT_EXCLUDED but not in the manifest"));
+        let mut fields = row.split('|').skip(1).map(str::trim);
+        let input = fields.next().unwrap();
+        let reference = fields.next().unwrap();
+
+        let input_obj = from_native_string(&std::fs::read_to_string(root.join(input)).unwrap())
+            .unwrap_or_else(|e| panic!("{name}: input did not load: {e}"));
+        let ref_obj = from_native_string(&std::fs::read_to_string(root.join(reference)).unwrap())
+            .unwrap_or_else(|e| panic!("{name}: reference did not load: {e}"));
+        let Some(input_map) = input_obj.into_mapping() else {
+            panic!("{name}: input is not a Mapping");
+        };
+        let Some(ref_map) = ref_obj.into_mapping() else {
+            panic!("{name}: reference is not a Mapping");
+        };
+        let simplified = <dyn Mapping>::simplify(input_map.as_ref())
+            .unwrap_or_else(|e| panic!("{name}: simplify failed: {e}"));
+        if simplified.equal(ref_map.as_ref()) {
+            now_agree.push(format!("{name} ({reason})"));
+        }
+    }
+    assert!(
+        now_agree.is_empty(),
+        "these rows now match their reference, so the exclusion is stale -- \
+         either upstream fixed the defect and the row belongs in the gate, or \
+         the port acquired it: {}",
+        now_agree.join("; ")
+    );
+}
+
+/// Every `DEFERRED` row really is still unloadable.
+///
+/// Without this, a class landing in the port would leave its rows excluded and
+/// the new coverage would go unclaimed.
+#[test]
+fn deferred_rows_still_fail_to_load() {
+    let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+    let manifest = std::fs::read_to_string(root.join("simplify/cases.txt")).unwrap();
+    let mut now_loadable = Vec::new();
+    for (name, blocker) in DEFERRED {
+        let row = manifest
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .find(|l| l.split('|').next().map(str::trim) == Some(*name))
+            .unwrap_or_else(|| panic!("{name} is in DEFERRED but not in the manifest"));
+        let input = row.split('|').nth(1).unwrap().trim();
+        let text = std::fs::read_to_string(root.join(input)).unwrap();
+        if from_native_string(&text).is_ok() {
+            now_loadable.push(format!("{name} (was blocked on {blocker})"));
+        }
+    }
+    assert!(
+        now_loadable.is_empty(),
+        "these fixtures now load, so they belong in the gate rather than in \
+         `DEFERRED`: {}",
+        now_loadable.join(", ")
     );
 }
 

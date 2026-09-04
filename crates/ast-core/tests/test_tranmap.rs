@@ -472,7 +472,7 @@ fn simplify_invert_normalize_fixture_roundtrip() {
     // produces byte-exact output matching the C reference.
     let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/native/reference/simplify_fixtures"
+        "/tests/fixtures/simplify"
     ));
     let input_text =
         std::fs::read_to_string(fixture_dir.join("tranmap_invert_normalize.map")).unwrap();

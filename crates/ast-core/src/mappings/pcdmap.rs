@@ -451,13 +451,10 @@ impl Serializable for PcdMap {
             m.invert();
         }
         m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
-        // C re-applies each attribute through the private setter when its
-        // `Test*` predicate reports the card present (pcdmap.c:3192-3205), which
-        // discards the simplified record the parent loader installed from the
-        // `IsSimp` card. The routing mirrors a quirk rather than a design
-        // decision, so it is revisited when the pin moves: see
-        // `docs/issues/c-library-quirks.md`, "The `IsSimp` card does not survive
-        // being read back, for twelve classes".
+        // C assigns the structure component and only then re-applies it through
+        // the setter, so the set changes nothing and the setter's guarded
+        // `astClearIsSimple` does not fire (pcdmap.c:3192-3205): `PcdMap::new` above
+        // was already given the values read from the cards.
         if node.get("PcdCn0").is_some() {
             m.set_pcd_cen(1, pcdcen0)?;
         }

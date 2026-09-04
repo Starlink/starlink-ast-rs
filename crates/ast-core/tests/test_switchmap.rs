@@ -145,10 +145,8 @@ fn switchmap_remove_regions() {
 fn switchmap_simplify_inverse_cancel_fixture() {
     // The fixture: CmpMap(SwitchMap, inv(SwitchMap), series) with matching content.
     // Should simplify to UnitMap(1).
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/switchmap_inverse_cancel.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/switchmap_inverse_cancel.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let mapping = obj.into_mapping().unwrap();
 
@@ -166,10 +164,8 @@ fn switchmap_simplify_inverse_cancel_fixture() {
 fn switchmap_simplify_internal_fixture() {
     // The fixture: SwitchMap whose children can be simplified.
     // Result should still be a SwitchMap (or simpler), with same nin/nout.
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/switchmap_internal_simplify.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/switchmap_internal_simplify.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let original = obj.into_mapping().unwrap();
     let nin_orig = original.nin();
@@ -184,10 +180,8 @@ fn switchmap_simplify_internal_fixture() {
 fn switchmap_simplify_invert_normalize_fixture() {
     // The fixture: an inverted SwitchMap. Simplification normalises the
     // inversion into the children, leaving a non-inverted SwitchMap.
-    let input = std::fs::read_to_string(
-        "tests/fixtures/native/reference/simplify_fixtures/switchmap_invert_normalize.map",
-    )
-    .unwrap();
+    let input =
+        std::fs::read_to_string("tests/fixtures/simplify/switchmap_invert_normalize.map").unwrap();
     let obj = from_native_string(&input).unwrap();
     let original = obj.into_mapping().unwrap();
     let nin_orig = original.nin();

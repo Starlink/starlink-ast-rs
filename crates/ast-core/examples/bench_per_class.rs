@@ -474,7 +474,7 @@ fn build_dssmap() -> AnyObject {
     // load one by deserialising the committed C-generated native dump — the
     // only way a DssMap legitimately enters the public API.
     let path = format!(
-        "{}/tests/fixtures/dssmap/c_dssmap.ast",
+        "{}/tests/fixtures/serialisation/c_dssmap.ast",
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).expect("c_dssmap.ast fixture");

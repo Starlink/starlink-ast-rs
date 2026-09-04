@@ -45,7 +45,7 @@ EQUINOX =               2000.0 / Equinox
 fn load_sip_header() -> String {
     std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/fits/headers/sip.head"
+        "/tests/fixtures/wcsconv/inputs/sip.head"
     ))
     .expect("sip.head fixture should be readable")
 }
