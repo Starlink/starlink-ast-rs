@@ -14,7 +14,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet, simplify_frame_via_mapping};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::{ast_equals as helper_ast_equals, is_bad, point_has_bad};
 use crate::mappings::{AsAny, DynMapping, Mapping, UnitMap, ViaSimplify};
 
 use super::data::{RegionData, RegionGeometry};
@@ -174,6 +174,293 @@ impl Interval {
     /// area in the same Frame the Interval represents. The Interval's negation
     /// and its `Closed` value are then transferred (interval.c:509, 512), the
     /// latter as an explicit set because C uses `astSetClosed`.
+    /// Faithful port of `interval.c::OneToOne` (interval.c:1661): whether every
+    /// output of `map` depends on exactly one input, and the number of inputs
+    /// matches the number of outputs.
+    ///
+    /// C returns the permutation array but only ever uses it as a gate -- the
+    /// axis loop reads the transformed limits, not the permutation -- so this
+    /// returns the gate.
+    fn one_to_one(map: &dyn Mapping) -> AstResult<bool> {
+        let nout = map.nout();
+        if map.nin() != nout {
+            return Ok(false);
+        }
+        // Known special cases, for speed as in C (interval.c:1722). Each output
+        // of these classes is fed by the corresponding input.
+        let any = map.as_any();
+        if any.is::<crate::mappings::WinMap>()
+            || any.is::<crate::mappings::ZoomMap>()
+            || any.is::<UnitMap>()
+            || any.is::<crate::mappings::ShiftMap>()
+        {
+            return Ok(true);
+        }
+        for i in 0..nout {
+            match map.map_split(&[i + 1]) {
+                Some((outs, sub)) if outs.len() == 1 && sub.nout() == 1 => {}
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
+    /// Faithful port of `interval.c::Overlap` (interval.c:1765), the
+    /// Interval-specific `astOverlap` override.
+    ///
+    /// The generic `Region` implementation needs a finite boundary mesh from at
+    /// least one operand, which an unbounded Interval cannot supply. This
+    /// implementation instead transfers the axis limits of `that` into the base
+    /// Frame of `this` and compares them axis by axis.
+    ///
+    /// Returns `Ok(None)` where C leaves `result` at zero, which is C's signal
+    /// to fall back to the inherited implementation (interval.c:2179).
+    fn interval_overlap(&self, that: &dyn Region) -> AstResult<Option<i32>> {
+        // C's specialised branch requires both operands to be Intervals
+        // (interval.c:1888).
+        let Some(that_iv) = that.as_any().downcast_ref::<Interval>() else {
+            return Ok(None);
+        };
+
+        // astConvert(that, this): base->current runs that_current ->
+        // this_current (interval.c:1892).
+        let Some(fs) = that
+            .get_region_frame()
+            .convert_to(self.get_region_frame().as_ref(), &[])?
+        else {
+            return Ok(None);
+        };
+
+        // that_base -> that_current -> this_current -> this_base
+        // (interval.c:1898-1913).
+        let map1 = that_iv
+            .get_region_frameset()
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let map2 = fs.mapping(FrameRef::Base, FrameRef::Current)?;
+        let map3 = self
+            .get_region_frameset()
+            .mapping(FrameRef::Current, FrameRef::Base)?;
+        let tmap = crate::mappings::CmpMap::new(
+            map1.clone_box(),
+            map2.clone_box(),
+            crate::mappings::Composition::Series,
+        )?;
+        let map = crate::mappings::CmpMap::new(
+            Box::new(tmap),
+            map3.clone_box(),
+            crate::mappings::Composition::Series,
+        )?;
+        let smap = <dyn Mapping>::simplify(&map)?;
+
+        // Only proceed if each output depends on one input (interval.c:1917).
+        if !Self::one_to_one(smap.as_ref())? {
+            return Ok(None);
+        }
+
+        // Uncertainty widths, in the base Frame of `this` (interval.c:1921-1936).
+        let unc_this = self.get_unc_frm(FrameRef::Base)?;
+        let unc_temp = that_iv.get_unc_frm(FrameRef::Base)?;
+        let this_fset = self.get_region_frameset();
+        let this_base_frame = this_fset.frame(FrameRef::Base)?;
+        let unc_that = unc_temp.map_region(smap.as_ref(), this_base_frame)?;
+        let (lbndu_this, ubndu_this) = unc_this.get_region_bounds()?;
+        let (lbndu_that, ubndu_that) = unc_that.get_region_bounds()?;
+
+        // The limits of `that`, transferred into the base Frame of `this`
+        // (interval.c:1944).
+        let that_pts = &that_iv.data.points;
+        let nc = self.data.points[0].len();
+        let pset = PointSet::from_rows(that_pts.iter().map(|p| p.as_slice()));
+        let mapped = smap.transform(&pset, true)?;
+
+        // newResult[old - 1][ov - 1] (interval.c:1869).
+        const NEW_RESULT: [[i32; 5]; 5] = [
+            [1, 1, 1, 1, 1],
+            [1, 2, 4, 4, 2],
+            [1, 4, 3, 4, 3],
+            [1, 4, 4, 4, 4],
+            [1, 2, 3, 4, 5],
+        ];
+
+        let mut result = 0i32;
+        for ic in 0..nc {
+            // Joint uncertainty width on this axis (interval.c:1954-1960).
+            let err_this = ubndu_this[ic] - lbndu_this[ic];
+            let err_that = ubndu_that[ic] - lbndu_that[ic];
+            let err = (err_that * err_that + err_this * err_this).sqrt();
+
+            let mut lb_this = self.data.points[0][ic];
+            let mut ub_this = self.data.points[1][ic];
+            let mut lb_that = mapped.point(0)[ic];
+            let mut ub_that = mapped.point(1)[ic];
+
+            // Mapping the limits may have swapped them. Unswap, so that the
+            // swap is not read as a request for an excluded interval
+            // (interval.c:1971-1988).
+            if !is_bad(lb_that) && !is_bad(ub_that) {
+                let swapped = if that_pts[0][ic] < that_pts[1][ic] {
+                    lb_that > ub_that
+                } else {
+                    lb_that < ub_that
+                };
+                if swapped {
+                    std::mem::swap(&mut lb_that, &mut ub_that);
+                }
+            }
+
+            // An open Region excludes its boundary: shrink the limits by the
+            // smallest representable amount (interval.c:1990-2002).
+            if !that_iv.is_closed() {
+                if !is_bad(lb_that) && lb_that < f64::MAX {
+                    lb_that += f64::EPSILON * lb_that.abs();
+                }
+                if !is_bad(ub_that) && ub_that > -f64::MAX {
+                    ub_that -= f64::EPSILON * ub_that.abs();
+                }
+            }
+            if !self.is_closed() {
+                if !is_bad(lb_this) && lb_this < f64::MAX {
+                    lb_this += f64::EPSILON * lb_this.abs();
+                }
+                if !is_bad(ub_this) && ub_this > -f64::MAX {
+                    ub_this -= f64::EPSILON * ub_this.abs();
+                }
+            }
+
+            // A missing limit is an extreme value (interval.c:2004-2008).
+            if is_bad(lb_this) {
+                lb_this = -f64::MAX;
+            }
+            if is_bad(ub_this) {
+                ub_this = f64::MAX;
+            }
+            if is_bad(lb_that) {
+                lb_that = -f64::MAX;
+            }
+            if is_bad(ub_that) {
+                ub_that = f64::MAX;
+            }
+
+            // Limits the wrong way round mean an excluded range, not an
+            // included one (interval.c:2010-2025).
+            let inc_this = lb_this <= ub_this;
+            if !inc_this {
+                std::mem::swap(&mut lb_this, &mut ub_this);
+            }
+            let inc_that = lb_that <= ub_that;
+            if !inc_that {
+                std::mem::swap(&mut lb_that, &mut ub_that);
+            }
+
+            // Effective equality of the limits. The astEQUALS test comes first
+            // so that two DBL_MAX values compare equal without the subtraction
+            // below overflowing (interval.c:2029-2040).
+            let mut lb_equal = helper_ast_equals(lb_this, lb_that, 1.0e9);
+            if !lb_equal && lb_this.abs() != f64::MAX && lb_that.abs() != f64::MAX {
+                lb_equal = (lb_this - lb_that).abs() <= err;
+            }
+            let mut ub_equal = helper_ast_equals(ub_this, ub_that, 1.0e9);
+            if !ub_equal && ub_this.abs() != f64::MAX && ub_that.abs() != f64::MAX {
+                ub_equal = (ub_this - ub_that).abs() <= err;
+            }
+
+            // The overlap this axis alone implies (interval.c:2046-2097).
+            let ov = if lb_equal && ub_equal {
+                if inc_this == inc_that { 5 } else { 6 }
+            } else if inc_this {
+                if inc_that {
+                    if lb_that <= lb_this && ub_that >= ub_this {
+                        2
+                    } else if lb_that >= lb_this && ub_that <= ub_this {
+                        3
+                    } else if ub_that >= lb_this && lb_that <= ub_this {
+                        4
+                    } else {
+                        1
+                    }
+                } else if lb_that <= lb_this && ub_that >= ub_this {
+                    1
+                } else if lb_that >= ub_this || ub_that <= lb_this {
+                    2
+                } else if lb_this == -f64::MAX && ub_this == f64::MAX {
+                    3
+                } else {
+                    4
+                }
+            } else if inc_that {
+                if lb_this <= lb_that && ub_this >= ub_that {
+                    1
+                } else if lb_this >= ub_that || ub_this <= lb_that {
+                    3
+                } else if lb_that == -f64::MAX && ub_that == f64::MAX {
+                    2
+                } else {
+                    4
+                }
+            } else {
+                4
+            };
+
+            // Combine with the axes already seen (interval.c:2099-2110).
+            result = if ic == 0 {
+                ov
+            } else {
+                NEW_RESULT[(result - 1) as usize][(ov - 1) as usize]
+            };
+            if result == 1 {
+                break;
+            }
+        }
+
+        // The logic above assumed neither Interval is negated (interval.c:2117).
+        let neg_this = self.data.negated;
+        let neg_that = that_iv.data.negated;
+        result = match result {
+            1 => {
+                if neg_this {
+                    if neg_that { 4 } else { 3 }
+                } else if neg_that {
+                    2
+                } else {
+                    1
+                }
+            }
+            2 => {
+                if neg_this {
+                    if neg_that { 3 } else { 4 }
+                } else if neg_that {
+                    1
+                } else {
+                    2
+                }
+            }
+            3 => {
+                if neg_this {
+                    if neg_that { 2 } else { 1 }
+                } else if neg_that {
+                    4
+                } else {
+                    3
+                }
+            }
+            4 => 4,
+            5 => {
+                if neg_this {
+                    if neg_that { 5 } else { 6 }
+                } else if neg_that {
+                    6
+                } else {
+                    5
+                }
+            }
+            other => other,
+        };
+
+        // Zero is C's signal that this implementation could not decide
+        // (interval.c:2179).
+        Ok(if result == 0 { None } else { Some(result) })
+    }
+
     fn cache(&self) -> AstResult<(Vec<f64>, Vec<f64>, Option<DynRegion>)> {
         let raw_l = &self.data.points[0];
         let raw_u = &self.data.points[1];
@@ -753,6 +1040,14 @@ impl Region for Interval {
     }
 
     fn overlap(&self, other: &dyn Region) -> AstResult<Overlap> {
+        // Interval overrides astOverlap (interval.c:1765): the generic
+        // implementation needs a finite boundary mesh from one of the two
+        // Regions, which an unbounded Interval cannot supply. C falls back to
+        // the inherited implementation when its own cannot decide
+        // (interval.c:2179).
+        if let Some(code) = self.interval_overlap(other)? {
+            return Ok(super::overlap::code_to_overlap(code));
+        }
         super::overlap::compute_overlap(self, other)
     }
 

@@ -3563,7 +3563,7 @@ fn prism_simplify_carries_explicit_uncertainty() {
 
 fn setunc_fixture_map(name: &str) -> String {
     let path = format!(
-        "{}/tests/fixtures/native/reference/simplify_fixtures/{}.map",
+        "{}/tests/fixtures/simplify/{}.map",
         env!("CARGO_MANIFEST_DIR"),
         name
     );
@@ -3578,13 +3578,15 @@ fn set_uncertainty_unitmap_clears_region_fs() {
     // FrameSet is omitted from the dump, and re-centres it at the box centre
     // (5, 5).
     let frm = BasicFrameBuilder::new(2).build().unwrap();
-    let mut region = BoxRegionBuilder::from_bounds(frm, &[0.0, 0.0], &[10.0, 10.0])
+    // Upstream builds this with `astBox( f, 0, ... )`, whose two positions are
+    // a centre and a corner rather than two bounds (box.c:4810).
+    let mut region = BoxRegionBuilder::new(frm, vec![0.0, 0.0], vec![10.0, 10.0])
         .unwrap()
         .build()
         .unwrap();
 
     let ufrm = BasicFrameBuilder::new(2).build().unwrap();
-    let unc = BoxRegionBuilder::from_bounds(ufrm, &[-0.5, -0.5], &[0.5, 0.5])
+    let unc = BoxRegionBuilder::new(ufrm, vec![-0.5, -0.5], vec![0.5, 0.5])
         .unwrap()
         .build()
         .unwrap();
@@ -3601,13 +3603,15 @@ fn set_uncertainty_negates_unbounded() {
     // Box is supplied; C negates it again (region.c:10856) to restore a bounded
     // uncertainty before storing, then re-centres it at the box centre (5, 5).
     let frm = BasicFrameBuilder::new(2).build().unwrap();
-    let mut region = BoxRegionBuilder::from_bounds(frm, &[0.0, 0.0], &[10.0, 10.0])
+    // Upstream builds this with `astBox( f, 0, ... )`, whose two positions are
+    // a centre and a corner rather than two bounds (box.c:4810).
+    let mut region = BoxRegionBuilder::new(frm, vec![0.0, 0.0], vec![10.0, 10.0])
         .unwrap()
         .build()
         .unwrap();
 
     let ufrm = BasicFrameBuilder::new(2).build().unwrap();
-    let mut unc = BoxRegionBuilder::from_bounds(ufrm, &[-1.0, -1.0], &[1.0, 1.0])
+    let mut unc = BoxRegionBuilder::new(ufrm, vec![-0.5, -0.5], vec![0.5, 0.5])
         .unwrap()
         .build()
         .unwrap();
@@ -3633,7 +3637,7 @@ fn set_uncertainty_negates_unbounded() {
 
 fn defunc_fixture_map(name: &str) -> String {
     let path = format!(
-        "{}/tests/fixtures/native/reference/simplify_fixtures/{}.map",
+        "{}/tests/fixtures/simplify/{}.map",
         env!("CARGO_MANIFEST_DIR"),
         name
     );
@@ -3669,12 +3673,12 @@ fn defunc_native(region: &dyn Region) -> String {
 #[test]
 fn get_def_unc_interval_unbounded() {
     // Oracle: defunc_interval_unbounded. A 2-D Interval with a bounded axis 1
-    // ([2, 8]) and a half-open axis 2 (no upper limit) is not Box-equivalent,
+    // ([5, 8]) and a half-open axis 2 (no upper limit) is not Box-equivalent,
     // so Interval::get_def_unc (interval.c:583) builds a Box covering 1.0E-6 of
-    // its own limits: axis 1 half-width 3.0E-6 about centre 5, axis 2 collapses
-    // to [0, 0].
+    // its own limits: axis 1 half-width 1.5E-6 about centre 6.5, axis 2
+    // collapses to [0, 0].
     let frm = BasicFrameBuilder::new(2).build().unwrap();
-    let interval = IntervalBuilder::new(frm, vec![2.0, 3.0], vec![8.0, BAD_VALUE])
+    let interval = IntervalBuilder::new(frm, vec![5.0, 0.0], vec![8.0, BAD_VALUE])
         .unwrap()
         .build()
         .unwrap();
@@ -3705,13 +3709,15 @@ fn get_def_unc_nullregion_is_zero_circle() {
 fn get_def_unc_prism_combines_components() {
     // Oracle: defunc_prism_box_interval. Prism::get_def_unc (prism.c:1207) is a
     // Prism of the two component default uncertainties (Box's and Interval's).
+    // Upstream builds the Box with `astBox( f, 0, ... )`: a centre and a
+    // corner, not two bounds (box.c:4810).
     let f2 = BasicFrameBuilder::new(2).build().unwrap();
-    let boxr = BoxRegionBuilder::from_bounds(f2, &[0.0, 0.0], &[4.0, 6.0])
+    let boxr = BoxRegionBuilder::new(f2, vec![0.0, 0.0], vec![4.0, 6.0])
         .unwrap()
         .build()
         .unwrap();
     let f1 = BasicFrameBuilder::new(1).build().unwrap();
-    let interval = IntervalBuilder::new(f1, vec![1.0], vec![5.0])
+    let interval = IntervalBuilder::new(f1, vec![1.0], vec![9.0])
         .unwrap()
         .build()
         .unwrap();
@@ -3728,21 +3734,25 @@ fn get_def_unc_cmpregion_uses_component_uncertainty() {
     // Oracle: defunc_cmpregion_component_unc. CmpRegion::get_def_unc
     // (cmpregion.c:1090) returns the first component's uncertainty when that
     // component has an explicit (non-default) uncertainty, recentred by
-    // set_uncertainty on the component's centre (5, 5).
+    // set_uncertainty on the component's centre.
+    //
+    // Every Box here is built the way upstream builds it, with
+    // `astBox( f, 0, ... )`: a centre and a corner, not two bounds
+    // (box.c:4810).
     let f = BasicFrameBuilder::new(2).build().unwrap();
-    let mut reg1 = BoxRegionBuilder::from_bounds(f, &[0.0, 0.0], &[10.0, 10.0])
+    let mut reg1 = BoxRegionBuilder::new(f, vec![0.0, 0.0], vec![10.0, 10.0])
         .unwrap()
         .build()
         .unwrap();
     let ufrm = BasicFrameBuilder::new(2).build().unwrap();
-    let unc = BoxRegionBuilder::from_bounds(ufrm, &[-0.2, -0.2], &[0.2, 0.2])
+    let unc = BoxRegionBuilder::new(ufrm, vec![-0.25, -0.25], vec![0.25, 0.25])
         .unwrap()
         .build()
         .unwrap();
     reg1.set_uncertainty(Box::new(unc));
 
     let f2 = BasicFrameBuilder::new(2).build().unwrap();
-    let reg2 = BoxRegionBuilder::from_bounds(f2, &[5.0, 5.0], &[15.0, 15.0])
+    let reg2 = BoxRegionBuilder::new(f2, vec![5.0, 5.0], vec![15.0, 15.0])
         .unwrap()
         .build()
         .unwrap();
@@ -3854,7 +3864,7 @@ fn strip_is_simp(s: &str) -> String {
 
 fn simpstab_fixture(name: &str) -> String {
     let path = format!(
-        "{}/tests/fixtures/native/reference/simplify_fixtures/{}",
+        "{}/tests/fixtures/simplify/{}",
         env!("CARGO_MANIFEST_DIR"),
         name
     );

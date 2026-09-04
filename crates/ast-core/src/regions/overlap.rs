@@ -21,7 +21,7 @@ use super::{Overlap, Region};
 /// could not be mapped into the coordinate system of the first Region")
 /// has no distinct variant; it collapses to [`Overlap::None`], matching the
 /// enum's inability to represent the un-mappable case.
-fn code_to_overlap(code: i32) -> Overlap {
+pub(crate) fn code_to_overlap(code: i32) -> Overlap {
     match code {
         2 => Overlap::FirstInside,
         3 => Overlap::SecondInside,
