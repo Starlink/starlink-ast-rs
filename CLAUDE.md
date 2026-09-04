@@ -50,9 +50,14 @@ Two principles:
 1. **`vendor/` is owned by this repo.** Everyday `cargo build` /
    `cargo test` works on a fresh clone with no submodule init.
 2. **`reference/starlink-ast/` is opt-in.** Initialised only for
-   tier-3 (`ast-ffi-tests`) and tier-4 (`ast-oracle-tests`). CI runs
-   them on a nightly job; PR-time runs skip with a notice when the
-   submodule is absent.
+   tier-3 (`ast-ffi-tests`) and tier-4 (`ast-oracle-tests`), and for
+   the fixture-mirror check. **CI runs neither tier.** The workflow
+   has two jobs: `fixture-mirror`, which initialises the submodule and
+   diffs the fixture trees, and `test`, which runs tier-1 / tier-2
+   (`cargo test -p ast-core`) plus clippy, fmt and docs without it.
+   The design (`2026-04-20-rust-port-design.md` step 0) calls for a
+   nightly job running tiers 3 and 4; it has not been created, so
+   those tiers are run by hand only.
 
 ## Build & test
 

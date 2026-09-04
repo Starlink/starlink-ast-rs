@@ -415,8 +415,10 @@ empty output.
 It catches both directions — an upstream fixture we failed to copy, and a local
 fixture that never got upstreamed — which is the whole invariant in one command.
 
-It needs the submodule, so it runs in the nightly job that already initializes
-it, alongside tiers 3 and 4, and hard-fails there.
+It needs the submodule, so it initializes it and hard-fails.
+It runs on every pull request rather than nightly: there is no nightly job in
+this repo, and one recursive diff is cheap enough that waiting for a schedule
+would only delay the signal.
 That is a deliberate exception to this repo's rule against skip modes, and the
 reason is that this gate measures drift from upstream rather than test coverage:
 tier-1 coverage does not depend on it, because the fixtures are committed here

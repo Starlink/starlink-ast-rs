@@ -116,6 +116,7 @@ Closed (marked historical in-doc, removed as active work):
 |---|---|---|
 | C-library quirks mirrored in the port | `docs/issues/c-library-quirks.md` | running list — discuss with upstream |
 | Whether `XmlChan` / `YamlChan` / `StcsChan` carry a `KeyMap` or a `Node` | `docs/superpowers/specs/2026-08-06-keymap-port-design.md` (Deferred decisions) | OPEN — decide per subclass when the first one is ported; `yamlchan.c` relies on `SortBy` ordering as algorithm state (`:9814`, `:11391`, `:11531`, `:12191`), which `Node` cannot express |
+| Tiers 3, 4 and 5 are not run by CI | `.github/workflows/ci.yml` | OPEN — the design (step 0) calls for a nightly job running the submodule-dependent tiers. It does not exist: the workflow has a `fixture-mirror` job and a `test` job running tier-1 / tier-2 plus clippy, fmt and docs, and nothing on a schedule. So `ast-ffi-tests`, `ast-oracle-tests` and `ast-oracle-bench` are run by hand, which is also why the hot-path constraint has no gate (CLAUDE.md says so directly). Until a scheduled job exists, a tier-3/4 regression is caught only when someone runs it |
 
 ### Verification-posture ledger
 
@@ -269,7 +270,7 @@ code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`, `YamlChan`,
 `Table` / `FitsTable` (§3, §5) and `IntraMap` / `XphMap` (§5 deferred fixtures)
 currently gate active work.
 
-## 8. Upstream sync at `f6762005` — done
+## 8. Upstream syncs — done
 
 Landed in `2efde3a`, `e0cb246`, `e029927` and `3a0a9d9`: nineteen upstream defect
 fixes reconciled against `docs/issues/c-library-quirks.md`, five mirrored bugs
@@ -288,9 +289,60 @@ Two rules came out of it and hold for the next pin move:
   corpus and must be run alongside `check_corpus_fresh.sh` after any pin move;
   before it existed, two stale references were read as port defects.
 
-The sync that resolves §9.4 and unblocks §10.2's linear half is still to be
-planned: upstream has reorganised `ast_tester`, so the pin move needs a plan of
-its own.
+### Pin move to the reorganised fixture tree — done
+
+Planned in
+[`docs/superpowers/specs/2026-09-03-upstream-fixture-reorg-design.md`](docs/superpowers/specs/2026-09-03-upstream-fixture-reorg-design.md)
+and executed in two parts: 23 commits upstream on `u/timj/more-fixtures-2`
+(Starlink/ast PR #77), then the Rust side here.
+
+Upstream and the port now share one fixture tree and one manifest per corpus.
+`tools/fixtures/check_mirror.sh` diffs `crates/ast-core/tests/fixtures/` against
+`reference/starlink-ast/ast_tester/fixtures/` and a CI job runs it on every pull
+request, so a fixture can no longer exist on one side only. The transform-oracle
+sections are keyed by the same relative paths both harnesses read, which is what
+makes a fixture and its oracle section impossible to separate.
+
+What the sync closed:
+
+- **The `IsSimp` card did not survive being read back, for ten classes.** A
+  subclass loader re-applies a validated attribute through a clear-on-set setter,
+  which discarded the record `astLoadMapping` had just installed from the card.
+  Upstream `07d0cd2d` guards each clear on the value actually differing; the port
+  mirrors it across 27 setters. The 43 `.rt` round-trip references that existed
+  only to record the defect are gone, and upstream gained `roundtrip.c` plus a
+  `roundtrip_*` ctest family, which is the only family that can see a
+  serialisation defect at all — every other one calls `astSimplify` after reading,
+  and that re-stamps `IsSimp` on each node it visits.
+- **A WinMap shift that is zero within `astEQUAL` is zero.** `cap_winmap_03`'s
+  residual shift on axis 2 cancelled to exactly zero without a fused multiply-add
+  and to about -1e-16 with one, and a ShiftMap writes a `Sft` card only for a
+  non-zero shift, so the dump gained a line on a contracting build. Upstream
+  `1e00a02c` snaps it in `astMapMerge`, beside the tolerance the scale terms were
+  already tested against. That retired the fixture's opt-out and `rigby`'s
+  `NUMERIC_PLATFORM_DRIFT` entry with it.
+- **`Interval` overrides `astOverlap` and the port had collapsed it** into the
+  generic implementation, which needs a boundary mesh an unbounded Interval cannot
+  supply. Ported at the same granularity as C (§1).
+
+Freshness after the move: `check_simplify_fresh.sh` reports 485 fresh, 5
+numerically drifted, 0 card-drifted, 0 structurally drifted — and now covers the
+whole corpus, because `gen_simp` links upstream's `oracle_register_intramaps` and
+so can load the IntraMap fixtures it previously reported as structural drift.
+`check_corpus_fresh.sh` reports 108 reproduced, 1 numeric.
+
+A third rule comes out of this move:
+
+- **A corpus generated on both sides can disagree with itself.** The `.ast`
+  FrameSet round-trip corpus had a generator here and gained one upstream;
+  keeping both would make "which is authoritative" a question nobody asks until
+  the two diverge. The local generator and its two probes were deleted and the
+  tree is mirrored, with the mirror asserted in CI.
+
+Still open from this move: the pin points at a branch tip rather than a merge
+commit, so it needs moving again once PR #77 lands. Two port gaps the new
+round-trip sweep exposed are named in §6's ledger with the C function that closes
+each.
 
 ## C → Rust test migration tracker
 
@@ -298,13 +350,16 @@ its own.
 |---|---|---|
 | testconvert.c | crates/ast-core/tests/test_convert.rs | ported 2026-06-12 |
 | testframe.c | (deferred) | NormUnit(1) via capi units layer; orthogonal to the Frame-base port |
-| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 1752 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
+| check_transform_oracle | crates/ast-core/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 2229 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
 | testkeymap.c | crates/ast-core/tests/test_keymap.rs | ported 2026-08-08; the nine functions added upstream at `f6762005` ported 2026-08-20 |
 | testmapping.c | crates/ast-core/tests/test_mapping.rs | partially ported 2026-08-20 — the four `IsSimple` functions added upstream at `f6762005`. `testselfsimplifyafterset` is unconstructible here (ZoomMap's `Zoom` and PcdMap's `Disco` have no `&mut self` setter). The file's original PolyMap / LinearApprox body, converted from `testmapping.f`, is covered by `test_polymap.rs` and `test_polytran.rs` |
 | testfitschan.c | crates/ast-core/tests/test_fitschan*.rs | partially ported — `testgrismorder`, added upstream at `f6762005`, is in `test_fitschan_wcs_write.rs` (2026-08-20); the rest of the file is spread across the seven `test_fitschan_*` files |
 | testimmutable.c | (deferred) | tests `AST__IMMUT`, which guards a change made to a Mapping whose reference count exceeds one. Owned values, deep `Clone` and single-owner `Box` make that condition unconstructible in `ast-core`; the guard belongs to `ast-capi`, which restores sharing at the handle boundary and is unstarted (§7) |
-| gen_simplify_fixtures / check_simplify | crates/ast-core/tests/test_simplify_regression.rs | ported; 471 manifest cases against the pinned oracle's `.map` / `.simp` dumps, byte-exact with no skip mode, plus `test_serialisation`'s 794-file round trip over the same corpus. `gen_simplify_fixtures` itself stays in C: it writes the references |
+| gen_simplify_fixtures / check_simplify | crates/ast-core/tests/test_simplify_regression.rs | ported; 472 of the 490 rows in the shared manifest against the pinned oracle's `.map` / `.simp` dumps, plus `test_serialisation`'s 808-file round trip over the same corpus. The 18 rows not run are named: 17 in `DEFERRED` (unported class) and one in `C_DEFECT_EXCLUDED`, each with a companion test that fails when it starts working. `gen_simplify_fixtures` itself stays in C: it writes the references |
 | (no C ancestor) | crates/ast-core/tests/test_frame_in_map_slot.rs | added 2026-09-03; pins the reader's refusal of a C-written bare Frame in a `Map<n>` slot, with the settled Region nestings as controls (§9.6) |
+| roundtrip.c | crates/ast-core/tests/test_serialisation.rs | ported 2026-09-04 as three sweeps covering the same file set upstream's `roundtrip_*` ctests glob: `simplify/*.{map,simp}`, `serialisation/*.ast`, `programs/**/*.ast` and `wcsconv/framesets/*.ast`. `wcsconv/` itself is excluded on both sides: its references are FITS-encoded, so reading one back needs a FitsChan and the encoding it was written with, which the wcsconv harness already does |
+| testissimp.c | crates/ast-core/tests/test_clear_on_set.rs | ported 2026-09-04. Upstream built `testissimp.c` to cover the clear-on-set rule across all ten affected classes rather than the four the fixture corpus happens to reach; the Rust file already had a case per setter, and `load_preserves_the_record_for_every_clear_on_set_class` is the read-back half. Upstream needs `astCLASS` for `PermMap`'s `PermSplit` and `WcsMap`'s `FITSProj` / `LonCheck`, which are absent from those classes' `SetAttrib`; the port exposes all three as typed setters, so no equivalent is needed |
+| compare_dumps.c | (not ported) | the comparator upstream's fixture-driven ctests use: token-wise with a 4-ULP budget and an `--astequal` mode. `tests/common/mod.rs` is the Rust equivalent and predates it (`native_strings_equivalent`, `native_strings_astequal`, `ast_equal_close`); the two were reconciled during the sync, which is where C's missing `1e-12` absolute floor and the port's invented `astEQUAL` tolerance were both found |
 | testobjectkeymap.c | (deferred) | tests the Object-associated retained KeyMap (`object.c:1736`, `:2480`), `astGetObjSize` and `astSame`; those calls (`astMapPut0I`, `astMapGet0I`, `astMapSize`) are only reachable through the protected `astGetKeyMap`/`astHasKeyMap` machinery, an explicit spec Non-goal of the owned-value port |
 
 ## 9. Findings from the fixture regeneration

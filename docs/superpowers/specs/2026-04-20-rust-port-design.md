@@ -1291,6 +1291,10 @@ progress the same way it tracks today's Fortran → C migrations.
    `reference/starlink-ast/` as a submodule pinned to a known-good
    commit. CI configured to run tier-1 / tier-2 / tier-5 tests on
    every PR; tier-3 / tier-4 (submodule-dependent) on a nightly job.
+   *Status: the nightly job does not exist. `.github/workflows/ci.yml`
+   runs tier-1 / tier-2, clippy, fmt, docs and the fixture-mirror check
+   on every PR, and nothing on a schedule, so tiers 3, 4 and 5 are run
+   by hand. Tracked in `PLAN.md`.*
 1. Workspace, error model, traits (`Mapping`, `Frame`, `Region`), both
    coordinate array types (`PointSet`, `PointList`).
 2. Simplest Mappings: `UnitMap`, `ZoomMap`, `ShiftMap`, `MatrixMap`,
