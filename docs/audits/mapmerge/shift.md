@@ -3,7 +3,8 @@
 C source: reference/starlink-ast/src/shiftmap.c
 Rust: crates/ast-core/src/mappings/shift.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3e60abaa
+Citations: verified against pin ca610685 (re-derived from file content at the
+fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
 Extension points: classified
 
 Uncited C steps:
@@ -37,7 +38,7 @@ An effectively inverted one is rebuilt forward with negated shift terms by the
 revert path (rows 9 and 11, `shift.rs:203-219 (fn map_merge)`). An all-zero one never comes
 back at all: `win_map_merge`'s replace-with-simpler step sees every shift zero
 and yields a diagonal `MatrixMap`, which reduces on to a `UnitMap`
-(`winmap_merge.rs:381-395 (fn win_map_merge)`, C `winmap.c:1819 (fn MapMerge)`).
+(`winmap_merge.rs:381-395 (fn win_map_merge)`, C `winmap.c:1827 (fn MapMerge)`).
 
 ## Notes on rows 9 and 10
 

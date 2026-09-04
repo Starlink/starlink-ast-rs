@@ -3,7 +3,8 @@
 C source: reference/starlink-ast/src/grismmap.c
 Rust: crates/ast-core/src/mappings/grismmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3e60abaa
+Citations: verified against pin ca610685 (re-derived from file content at the
+fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
 Extension points: classified
 
 Uncited C steps:
@@ -16,7 +17,7 @@ C's `MapMerge` body runs `grismmap.c:1191-1269 (fn MapMerge)` and is thin: it as
 comes back. The rule itself lives in `CanMerge`
 (`grismmap.c:466-600 (fn CanMerge)`), so both are audited here.
 
-`GrismMap::map_merge` (`grismmap.rs:516-523 (fn map_merge)`) delegates to
+`GrismMap::map_merge` (`grismmap.rs:547-554 (fn map_merge)`) delegates to
 `simplify::grism_map_merge` (`mappings/simplify.rs:2685-2705 (fn grism_map_merge)`),
 whose per-pair body is
 `grism_zoom_merge_at` (`mappings/simplify.rs:2613-2675 (fn grism_zoom_merge_at)`).
@@ -40,21 +41,21 @@ whose per-pair body is
 | 15 | Check the global error status and bail out | grismmap.c:479-480 (fn CanMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 16 | Initialise the GrismMap pointer and the invert flag to silence compiler warnings | grismmap.c:482-485 (fn CanMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
 | 17 | Initialise the adjacent ZoomMap's factor to mean "none found" | grismmap.c:487-489 (fn CanMerge) | -- | ceremony | n/a: each pattern reads its own zoom factor inside the branch that matched, so there is no sentinel spanning the branches |
-| 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2619 (fn grism_zoom_merge_at), grismmap.rs:537 (fn try_merge) | architecture | ported |
-| 19 | Two GrismMaps merge to a UnitMap when one is the inverse of the other | grismmap.c:495-499 (fn CanMerge) | grismmap.rs:537 (fn try_merge) | architecture | ported |
-| 20 | Require the two GrismMaps to have equal attribute values | grismmap.c:500-509 (fn CanMerge) | grismmap.rs:541-548 (fn try_merge) | architecture | ported |
-| 21 | Require them to be applied in opposite senses, then return a UnitMap | grismmap.c:510-514 (fn CanMerge) | grismmap.rs:549-551 (fn try_merge) | architecture | ported |
+| 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2619 (fn grism_zoom_merge_at), grismmap.rs:568 (fn try_merge) | architecture | ported |
+| 19 | Two GrismMaps merge to a UnitMap when one is the inverse of the other | grismmap.c:495-499 (fn CanMerge) | grismmap.rs:568 (fn try_merge) | architecture | ported |
+| 20 | Require the two GrismMaps to have equal attribute values | grismmap.c:500-509 (fn CanMerge) | grismmap.rs:572-579 (fn try_merge) | architecture | ported |
+| 21 | Require them to be applied in opposite senses, then return a UnitMap | grismmap.c:510-514 (fn CanMerge) | grismmap.rs:580-582 (fn try_merge) | architecture | ported |
 | 22 | A GrismMap followed by a non-GrismMap merges only if the GrismMap is un-inverted, so its output is the wavelength | grismmap.c:515-523 (fn CanMerge) | mappings/simplify.rs:2619-2622 (fn grism_zoom_merge_at) | architecture | ported |
 | 23 | Note that the merged Mapping will not need inverting | grismmap.c:524-527 (fn CanMerge) | mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
 | 24 | Require the second Mapping to be a ZoomMap, and take its zoom factor at the right Invert setting | grismmap.c:528-538 (fn CanMerge) | mappings/simplify.rs:2620-2633 (fn grism_zoom_merge_at) | architecture | ported |
 | 25 | A non-GrismMap followed by a GrismMap merges only if the GrismMap is inverted | grismmap.c:539-548 (fn CanMerge) | mappings/simplify.rs:2645-2648 (fn grism_zoom_merge_at) | architecture | ported |
 | 26 | Re-express that case as an un-inverted GrismMap followed by a ZoomMap, inverting the result at the end | grismmap.c:549-555 (fn CanMerge) | mappings/simplify.rs:2666 (fn grism_zoom_merge_at) | architecture | ported |
 | 27 | Require the first Mapping to be a ZoomMap at the opposite Invert setting, and take its factor | grismmap.c:556-566 (fn CanMerge) | mappings/simplify.rs:2649-2663 (fn grism_zoom_merge_at) | architecture | ported |
-| 28 | Build the merged Mapping by folding the zoom factor into the GrismMap's attributes | grismmap.c:567-571 (fn CanMerge) | grismmap.rs:344-376 (fn merge_with_zoom), via mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
-| 29 | Ensure a forward GrismMap before doing so | grismmap.c:572-575 (fn CanMerge) | grismmap.rs:357 (fn merge_with_zoom), via mappings/simplify.rs:2619 (fn grism_zoom_merge_at) | architecture | ported |
-| 30 | Read the GrismMap attribute values the fold needs | grismmap.c:576-580 (fn CanMerge) | grismmap.rs:358-360 (fn merge_with_zoom), via mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
-| 31 | Apply the zoom to the wavelength scale, producing the amended attributes | grismmap.c:581-593 (fn CanMerge) | grismmap.rs:358-364 (fn merge_with_zoom), via mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
-| 32 | Invert the resulting GrismMap if the original pair required it | grismmap.c:594-598 (fn CanMerge) | grismmap.rs:366-368 (fn merge_with_zoom), via mappings/simplify.rs:2666 (fn grism_zoom_merge_at) | architecture | ported |
+| 28 | Build the merged Mapping by folding the zoom factor into the GrismMap's attributes | grismmap.c:567-571 (fn CanMerge) | grismmap.rs:375-407 (fn merge_with_zoom), via mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
+| 29 | Ensure a forward GrismMap before doing so | grismmap.c:572-575 (fn CanMerge) | grismmap.rs:388 (fn merge_with_zoom), via mappings/simplify.rs:2619 (fn grism_zoom_merge_at) | architecture | ported |
+| 30 | Read the GrismMap attribute values the fold needs | grismmap.c:576-580 (fn CanMerge) | grismmap.rs:389-391 (fn merge_with_zoom), via mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
+| 31 | Apply the zoom to the wavelength scale, producing the amended attributes | grismmap.c:581-593 (fn CanMerge) | grismmap.rs:389-395 (fn merge_with_zoom), via mappings/simplify.rs:2636 (fn grism_zoom_merge_at) | architecture | ported |
+| 32 | Invert the resulting GrismMap if the original pair required it | grismmap.c:594-598 (fn CanMerge) | grismmap.rs:397-399 (fn merge_with_zoom), via mappings/simplify.rs:2666 (fn grism_zoom_merge_at) | architecture | ported |
 | 33 | Return the merged Mapping, or NULL | grismmap.c:599-600 (fn CanMerge) | mappings/simplify.rs:2640 (fn grism_zoom_merge_at),2670 | architecture | ported |
 
 ## A lone GrismMap has no reduction of its own
@@ -74,7 +75,7 @@ ZoomMap case lives in `grism_zoom_merge_at` because C's rule is
 order-sensitive — an un-inverted GrismMap must come *before* the ZoomMap, and the
 mirror case is re-expressed into that form — and `try_merge` is called without
 telling the callee which side of the pair it is. The comment at
-`grismmap.rs:556-559 (fn try_merge)` records that.
+`grismmap.rs:587-590 (fn try_merge)` records that.
 
 ## Rows 6 and 7 — the order is observable
 
@@ -102,7 +103,7 @@ C copies the GrismMap and re-sets `GrismG`, `GrismNRP` and `GrismWaveR` through
 their setters, so each assignment runs `astClearIsSimple` and the merged GrismMap
 starts with both simplified records empty. `merge_with_zoom` writes the three
 fields directly and then clears the record explicitly
-(`grismmap.rs:373 (fn merge_with_zoom)`), reaching the same state; it also marks
+(`grismmap.rs:404 (fn merge_with_zoom)`), reaching the same state; it also marks
 the three attributes as explicitly set, which is what C's setters do and what
 decides whether they are dumped.
 
@@ -115,7 +116,7 @@ part of the class's `MapMerge` must discard the record. Every GrismMap attribute
 does feed it, through `CanMerge`'s attribute comparison and the wavelength fold.
 
 The port implements the convention in all eight setters — `set_grism_nr`
-(`grismmap.rs:195-204 (fn set_grism_nr)`) is the shape the other seven repeat —
+(`grismmap.rs:210-221 (fn set_grism_nr)`) is the shape the other seven repeat —
 and exposes no clearers, because a constructed GrismMap always carries a value
 for each attribute and has no unset state to return to. See PLAN.md §9.2 for the
 whole convention and the classes it covers.

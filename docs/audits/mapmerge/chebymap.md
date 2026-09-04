@@ -3,7 +3,8 @@
 C source: reference/starlink-ast/src/polymap.c
 Rust: crates/ast-core/src/mappings/chebymap.rs
 Audited: 2026-08-24 against pin d0346c0d
-Citations: verified against pin 3e60abaa
+Citations: verified against pin ca610685 (re-derived from file content at the
+fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
 Extension points: classified
 
 Uncited C steps:
@@ -21,10 +22,10 @@ ChebyMap in a list of one (`mapping.c:16871-16883 (fn Simplify)`) and calls
 default.
 
 The Rust ChebyMap does not delegate to `PolyMap::map_merge`
-(`polymap.rs:1537-1559 (fn map_merge)`). It has its own
+(`polymap.rs:1544-1566 (fn map_merge)`). It has its own
 (`chebymap.rs:506-555 (fn map_merge)`), which runs the coefficient consolidation
 through `PolyMap::consolidated_terms`
-(`polymap.rs:845-889 (fn consolidated_terms)`) and then falls through to the
+(`polymap.rs:852-896 (fn consolidated_terms)`) and then falls through to the
 shared direct merge; the neighbour cancellation is
 `ChebyMap::try_merge` (`chebymap.rs:465-504 (fn try_merge)`).
 
@@ -41,8 +42,8 @@ below.
 | 4 | See if the PolyMap can be replaced by a simpler Mapping, without reference to its neighbours | polymap.c:3606-3608 (fn MapMerge) | chebymap.rs:529-551 (fn map_merge) | architecture | ported |
 | 5 | Get the input and output counts of the transformation as constructed | polymap.c:3610-3618 (fn MapMerge) | chebymap.rs:530-534 (fn map_merge) | architecture | ported |
 | 6 | Take a deep copy to modify | polymap.c:3620-3622 (fn MapMerge) | chebymap.rs:535-548 (fn map_merge) | architecture | ported |
-| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3624-3731 (fn MapMerge) | polymap.rs:845-889 (fn consolidated_terms) | architecture | ported |
-| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3732-3745 (fn MapMerge) | polymap.rs:884-888 (fn consolidated_terms), chebymap.rs:549-550 (fn map_merge) | architecture | ported |
+| 7 | Combine coefficients that refer to the same combination of input powers, forward then inverse | polymap.c:3624-3731 (fn MapMerge) | polymap.rs:852-896 (fn consolidated_terms) | architecture | ported |
+| 8 | If any transformation changed, store the new PolyMap in place of the old and report a change | polymap.c:3732-3745 (fn MapMerge) | polymap.rs:891-895 (fn consolidated_terms), chebymap.rs:549-550 (fn map_merge) | architecture | ported |
 | 9 | Test whether the forward transformation is linear, accumulating an offset vector and a matrix | polymap.c:3747-3842 (fn MapMerge) | -- | architecture | divergence: C mirrors PolyMap here and loses the Chebyshev domain scaling; docs/issues/c-library-quirks.md |
 | 10 | If it is linear, build the ShiftMap and MatrixMap and compose them | polymap.c:3843-3855 (fn MapMerge) | -- | architecture | divergence: C mirrors PolyMap here and loses the Chebyshev domain scaling; docs/issues/c-library-quirks.md |
 | 11 | Replace the PolyMap in the list with that composition | polymap.c:3856-3863 (fn MapMerge) | -- | architecture | divergence: C mirrors PolyMap here and loses the Chebyshev domain scaling; docs/issues/c-library-quirks.md |

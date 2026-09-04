@@ -3,7 +3,8 @@
 C source: reference/starlink-ast/src/pcdmap.c
 Rust: crates/ast-core/src/mappings/pcdmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3e60abaa
+Citations: verified against pin ca610685 (re-derived from file content at the
+fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
 Extension points: classified
 
 Uncited C steps:
@@ -19,7 +20,7 @@ adjacency; and, with no such Mapping in reach, swap speculatively and keep the
 swap only if one of the swapped Mappings then simplifies. A PcdMap combines in
 parallel with nothing.
 
-`PcdMap::map_merge` (`pcdmap.rs:308-315 (fn map_merge)`) delegates to
+`PcdMap::map_merge` (`pcdmap.rs:330-337 (fn map_merge)`) delegates to
 `simplify::pcd_map_merge` (`mappings/simplify.rs:2718-2752 (fn pcd_map_merge)`), whose swap half is
 `pcd_swap_strategy` (`mappings/simplify.rs:2761-2819 (fn pcd_swap_strategy)`), so Rust sites below
 are in `mappings/simplify.rs` unless stated.
@@ -43,10 +44,10 @@ must discard the simplified record.
 | 7 | If the PcdMap itself could not be simplified, see whether it merges with the Mappings on either side | pcdmap.c:1434-1437 (fn MapMerge) | mappings/simplify.rs:2740-2747 (fn pcd_map_merge) | architecture | ported |
 | 8 | Store the classes of the neighbouring Mappings in the list | pcdmap.c:1438-1441 (fn MapMerge) | mappings/simplify.rs:1332-1354 (fn default_map_merge) | ceremony | ported |
 | 9 | Everything that follows is in series | pcdmap.c:1442-1445 (fn MapMerge) | mappings/simplify.rs:2736-2738 (fn pcd_map_merge) | architecture | ported |
-| 10 | Look on each side for a neighbour the PcdMap can merge with directly — its own inverse, or a UnitMap | pcdmap.c:1446-1469 (fn MapMerge) | pcdmap.rs:317-351 (fn try_merge) | architecture | ported |
-| 11 | If it can, create the merged Mapping | pcdmap.c:1470-1473 (fn MapMerge) | pcdmap.rs:328-348 (fn try_merge) | architecture | ported |
-| 12 | A PcdMap neighbour must be the nominated Mapping's inverse, so the pair becomes a UnitMap | pcdmap.c:1474-1479 (fn MapMerge) | pcdmap.rs:329-340 (fn try_merge) | architecture | ported |
-| 13 | A UnitMap neighbour merges to a clone of the nominated PcdMap, carrying the entry's Invert flag | pcdmap.c:1480-1486 (fn MapMerge) | pcdmap.rs:343-348 (fn try_merge) | architecture | ported |
+| 10 | Look on each side for a neighbour the PcdMap can merge with directly — its own inverse, or a UnitMap | pcdmap.c:1446-1469 (fn MapMerge) | pcdmap.rs:339-373 (fn try_merge) | architecture | ported |
+| 11 | If it can, create the merged Mapping | pcdmap.c:1470-1473 (fn MapMerge) | pcdmap.rs:350-370 (fn try_merge) | architecture | ported |
+| 12 | A PcdMap neighbour must be the nominated Mapping's inverse, so the pair becomes a UnitMap | pcdmap.c:1474-1479 (fn MapMerge) | pcdmap.rs:351-362 (fn try_merge) | architecture | ported |
+| 13 | A UnitMap neighbour merges to a clone of the nominated PcdMap, carrying the entry's Invert flag | pcdmap.c:1480-1486 (fn MapMerge) | pcdmap.rs:365-370 (fn try_merge) | architecture | ported |
 | 14 | Proceed only if the merged Mapping was built successfully | pcdmap.c:1487-1489 (fn MapMerge) | mappings/simplify.rs:2745 (fn pcd_map_merge) | ceremony | ported |
 | 15 | Annul the first of the two Mappings, replace it with the merged Mapping and set its Invert flag | pcdmap.c:1490-1495 (fn MapMerge) | mappings/simplify.rs:1407-1412 (fn default_map_merge) | architecture | ported |
 | 16 | Annul the second and shuffle the rest of the list down to fill the gap | pcdmap.c:1496-1503 (fn MapMerge) | mappings/simplify.rs:1413 (fn default_map_merge) | architecture | ported |
@@ -73,7 +74,7 @@ must discard the simplified record.
 | 37 | Annul the simplified Mappings | pcdmap.c:1720-1728 (fn MapMerge) | -- | ceremony | n/a: the simplification is an owned value dropped at the end of the worthwhile test |
 | 38 | In parallel, a PcdMap cannot combine with any other Mapping | pcdmap.c:1729-1734 (fn MapMerge) | mappings/simplify.rs:2736-2738 (fn pcd_map_merge) | architecture | ported |
 | 39 | Return the result | pcdmap.c:1735-1736 (fn MapMerge) | mappings/simplify.rs:2751 (fn pcd_map_merge) | ceremony | ported |
-| 40 | Setting or clearing Disco clears the simplified record | pcdmap.c:2583 (fn astMAKE_CLEAR1),2586 | pcdmap.rs:109-113 (fn set_disc) | ceremony | ported |
+| 40 | Setting or clearing Disco clears the simplified record | pcdmap.c:2583 (fn astMAKE_CLEAR1),2586 | pcdmap.rs:127-133 (fn set_disc) | ceremony | ported |
 
 ## Rows 3 to 6 — the reduction, and the ordering around it
 
@@ -184,7 +185,7 @@ coefficient is the reduction in rows 3 to 6.
 `PcdCen` is set and cleared through class-local `MAKE_SET` and `MAKE_CLEAR`
 macros rather than the `mapping.h` ones, because the attribute is axis indexed;
 those macros clear the record in the same comma expression, and
-`PcdMap::set_pcd_cen` (`pcdmap.rs:125-137 (fn set_pcd_cen)`) does the same. It matters because
+`PcdMap::set_pcd_cen` (`pcdmap.rs:145-159 (fn set_pcd_cen)`) does the same. It matters because
 `PcdCen` feeds `CanMerge`'s equality test.
 
 See PLAN.md §9.2 for the whole convention and the classes it covers.

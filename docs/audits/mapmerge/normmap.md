@@ -3,7 +3,8 @@
 C source: reference/starlink-ast/src/normmap.c
 Rust: crates/ast-core/src/mappings/normmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3e60abaa
+Citations: verified against pin ca610685 (re-derived from file content at the
+fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
 Extension points: classified
 
 Uncited C steps:

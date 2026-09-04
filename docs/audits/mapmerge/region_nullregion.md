@@ -3,7 +3,8 @@
 C source: reference/starlink-ast/src/nullregion.c
 Rust: crates/ast-core/src/regions/nullregion.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin 3e60abaa
+Citations: verified against pin ca610685 (re-derived from file content at the
+fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
 Extension points: classified
 
 Uncited C steps:
