@@ -3,8 +3,7 @@
 C source: reference/starlink-ast/src/specmap.c
 Rust: crates/ast-core/src/mappings/specmap.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin ca610685 (re-derived from file content at the
-fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
+Citations: verified against pin ca610685
 Extension points: classified
 
 Uncited C steps:

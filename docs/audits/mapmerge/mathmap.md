@@ -3,8 +3,7 @@
 C source: reference/starlink-ast/src/mathmap.c
 Rust: crates/ast-core/src/mappings/mathmap/mod.rs
 Audited: 2026-08-24 against pin d0346c0d
-Citations: verified against pin ca610685 (re-derived from file content at the
-fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
+Citations: verified against pin ca610685
 Extension points: classified
 
 Uncited C steps:

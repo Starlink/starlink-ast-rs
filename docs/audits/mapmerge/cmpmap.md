@@ -4,8 +4,7 @@ C source: reference/starlink-ast/src/cmpmap.c
 Rust: crates/ast-core/src/mappings/cmpmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c (rows 1-42, `MapMerge`)
 Audited: 2026-08-24 against pin 07fbe2dc (rows 43-76, `Simplify`)
-Citations: verified against pin ca610685 (re-derived from file content at the
-fixture-reorg sync; the numbers before that were correct against pin 3e60abaa)
+Citations: verified against pin ca610685
 Extension points: classified
 
 Uncited C steps:

@@ -2,7 +2,9 @@
 //!
 //! Ancestor: `reference/starlink-ast/ast_tester/testmapping.c` — the
 //! `testequaldumpstable`, `testsimplevsinvert`, `testsimplevsinvertdump` and
-//! `testmutationclearssimple` functions added with the C fix at `e40e71b4`.
+//! `testmutationclearssimple` functions added with the C fix at `e40e71b4`, plus
+//! `testprotectedcmpequal` and `testprotectedcmpequalstable`, added with the
+//! `CmpMap::Equal` recursion fix at `0f797ae7` / `16ed5d37`.
 //!
 //! Divergences from the C original:
 //!
@@ -239,5 +241,106 @@ fn mutating_an_attribute_discards_the_record() {
     assert!(
         !refitted.has_been_simplified(),
         "poly_tran returned a Mapping still claiming to be simplified"
+    );
+}
+
+/// Two protected CmpMaps that describe the same transformation compare equal.
+///
+/// Ancestor: `testprotectedcmpequal` (added upstream with `0f797ae7`). `Ident`
+/// makes `astDoNotSimplify` true, so `astMapList` refuses to decompose either
+/// operand and returns a list holding a clone of the CmpMap itself
+/// (`cmpmap.c:1154`). Comparing those lists element by element calls `astEqual`
+/// on the same pair again, which recursed until the stack was exhausted before
+/// upstream `16ed5d37`. The port decomposes the components instead, so this both
+/// terminates and gives the right answer.
+///
+/// `b` is the reversed pair with each component inverted and the CmpMap itself
+/// inverted, which is the same effective sequence and the same component senses
+/// as `a`.
+#[test]
+fn protected_cmp_maps_describing_the_same_mapping_are_equal() {
+    let a = {
+        let a1 = ZoomMap::new(1, 2.0).unwrap();
+        let a2 = ZoomMap::new(1, 3.0).unwrap();
+        let mut a = CmpMap::new(Box::new(a1), Box::new(a2), Composition::Series).unwrap();
+        a.set_ident("keep");
+        a
+    };
+    let b = {
+        let mut b1 = ZoomMap::new(1, 3.0).unwrap();
+        b1.invert();
+        let mut b2 = ZoomMap::new(1, 2.0).unwrap();
+        b2.invert();
+        let mut b = CmpMap::new(Box::new(b1), Box::new(b2), Composition::Series).unwrap();
+        b.set_ident("keep");
+        b.invert();
+        b
+    };
+    assert!(
+        a.do_not_simplify() && b.do_not_simplify(),
+        "Ident must make both protected, or the case does not reach the branch \
+         it exists for"
+    );
+    assert!(
+        (&a as &dyn Mapping).equal(&b as &dyn Mapping),
+        "two protected CmpMaps describing the same transformation compared unequal"
+    );
+
+    // The control. Without it the assertion above would pass for an `equal`
+    // that returned true for any protected pair, which is exactly what a
+    // recursion guard written the wrong way would produce.
+    let c = {
+        let c1 = ZoomMap::new(1, 2.0).unwrap();
+        let c2 = ZoomMap::new(1, 5.0).unwrap();
+        let mut c = CmpMap::new(Box::new(c1), Box::new(c2), Composition::Series).unwrap();
+        c.set_ident("keep");
+        c
+    };
+    assert!(
+        !(&a as &dyn Mapping).equal(&c as &dyn Mapping),
+        "two protected CmpMaps with different zoom factors compared equal"
+    );
+}
+
+/// Comparing protected CmpMaps that share a component leaves that component's
+/// live `Invert` alone.
+///
+/// Ancestor: `testprotectedcmpequalstable`. C has to save and restore the
+/// component's `Invert` around the comparison, because it re-instates the value
+/// the component had when the CmpMap was built. The port holds components by
+/// value, so a CmpMap cannot observe or disturb anything a caller does to the
+/// Mapping it was built from; this pins that, and pins the equality the C test
+/// asserts alongside it.
+#[test]
+fn comparing_protected_cmp_maps_leaves_a_shared_component_alone() {
+    let mut map1 = ZoomMap::new(1, 2.0).unwrap();
+    let map2 = ZoomMap::new(1, 3.0).unwrap();
+    let build = |m1: &ZoomMap, m2: &ZoomMap| {
+        let mut c = CmpMap::new(
+            (m1 as &dyn Mapping).clone_box(),
+            (m2 as &dyn Mapping).clone_box(),
+            Composition::Series,
+        )
+        .unwrap();
+        c.set_ident("keep");
+        c
+    };
+    let a = build(&map1, &map2);
+    let b = build(&map1, &map2);
+
+    // The CmpMaps hold the components as they were; a caller stays free to
+    // change the Mapping it built them from.
+    map1.invert();
+    let before = map1.is_inverted();
+    assert!(before, "invert() did not take");
+
+    assert!(
+        (&a as &dyn Mapping).equal(&b as &dyn Mapping),
+        "two protected CmpMaps built from the same components compared unequal"
+    );
+    assert_eq!(
+        map1.is_inverted(),
+        before,
+        "comparing the CmpMaps changed the component's Invert"
     );
 }
