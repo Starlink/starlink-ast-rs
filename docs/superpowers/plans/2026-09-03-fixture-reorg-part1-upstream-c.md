@@ -1086,6 +1086,41 @@ NAXIS card and takes a distinct name rather than replacing it."
 
 ---
 
+### Task 7 outcome (2026-09-03)
+
+Landed, with two of the three items changing shape.
+
+**`lsst` needed a constructor, not a regeneration.** The Rust reference is a
+`CmpMap`, not a `FrameSet`: it was captured with `gen_simp -m`, which replaces a
+FrameSet by its base-to-current Mapping before simplifying. Upstream's `simplify`
+has no such mode, and simplifying the FrameSet as a whole gives a FrameSet — a
+different object. Rather than add a flag, `gen_lsst_scenario_fixture` extracts the
+Mapping with `astGetMapping(fs, AST__BASE, AST__CURRENT)` and writes an ordinary
+`.map`/`.simp` pair, so the corpus convention holds and the harness needs no new
+mode. The result is structurally identical to the Rust reference once comments are
+set aside, which is the intent check.
+
+**`pc-sparse-naxis.head` is not added.** The Rust tree carries two `pc-sparse`
+headers — `wcsconv/inputs/pc-sparse.head`, identical to upstream's, and
+`fits/headers/pc-sparse.head`, which adds a leading `NAXIS = 2`. Only
+`test_fitschan_encodings.rs` reads the second, and only to check that `PC001001`
+drives encoding detection, which does not consult `NAXIS`. Adding an upstream
+fixture no upstream test uses, to serve one Rust test that does not need the
+difference, is the wrong way round.
+
+*Part 2 action:* repoint `test_fitschan_encodings.rs`'s `load_fixture` at
+`wcsconv/inputs/pc-sparse.head` and confirm its three assertions still hold. If
+any of them turns out to depend on `NAXIS`, add the variant upstream then, with a
+comment saying which assertion needs it.
+
+**`offset-sref.native` was stale by one card.** `SCL1_A` differs in one column of
+leading whitespace, from `68bcb7db` (2026-08-09) keeping wide float values right
+justified in `EncodeFloat` — after the Rust reference was captured. Regenerated.
+The row carries the Linux-capture note from the Rust manifest, since that caveat
+is about the reference and travels with it.
+
+---
+
 ## Task 8: `compare_dumps` — a ULP-and-`IsSimp`-aware comparator
 
 `cmake/run_simplify_test.cmake` and `cmake/run_wcsconverter_test.cmake` compare with `cmake -E compare_files`, a byte comparison. That is why upstream opts out of string comparison on 165 of 467 simplify rows and 108 of 192 wcsconv rows, where the Rust harness — which compares numeric tokens to 4 ULP — opts out on 0 and 8. Until both sides compare to the same standard, the shared manifest's flags cannot be read by the Rust port without relaxing roughly 265 comparisons. See spec §3.
